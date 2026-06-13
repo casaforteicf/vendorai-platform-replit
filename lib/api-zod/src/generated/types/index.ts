@@ -7,8 +7,13 @@
  */
 
 export * from './createTenantBody';
+export * from './createUserBody';
 export * from './errorResponse';
 export * from './healthStatus';
+export * from './platformRole';
 export * from './tenant';
 export * from './tenantStatus';
 export * from './updateTenantBody';
+export * from './updateUserBody';
+export * from './user';
+export * from './userRole';

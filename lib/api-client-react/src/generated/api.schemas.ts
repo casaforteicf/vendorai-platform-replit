@@ -59,3 +59,51 @@ export interface ErrorResponse {
   error: string;
 }
 
+export type UserRole = typeof UserRole[keyof typeof UserRole];
+
+
+export const UserRole = {
+  admin: 'admin',
+  member: 'member',
+} as const;
+
+export type PlatformRole = typeof PlatformRole[keyof typeof PlatformRole];
+
+
+export const PlatformRole = {
+  super_admin: 'super_admin',
+  tenant_admin: 'tenant_admin',
+  member: 'member',
+} as const;
+
+export interface User {
+  id: string;
+  tenantId: string;
+  name: string;
+  email: string;
+  role: UserRole;
+  platformRole: PlatformRole;
+  active: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface CreateUserBody {
+  tenantId: string;
+  name: string;
+  email: string;
+  password: string;
+  role?: UserRole;
+  platformRole?: PlatformRole;
+  active?: boolean;
+}
+
+export interface UpdateUserBody {
+  name?: string;
+  email?: string;
+  password?: string;
+  role?: UserRole;
+  platformRole?: PlatformRole;
+  active?: boolean;
+}
+

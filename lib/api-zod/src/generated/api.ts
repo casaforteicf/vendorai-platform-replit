@@ -18,6 +18,95 @@ export const HealthCheckResponse = zod.object({
 
 
 /**
+ * Returns all users (password excluded)
+ * @summary List users
+ */
+export const ListUsersResponseItem = zod.object({
+  "id": zod.string(),
+  "tenantId": zod.string(),
+  "name": zod.string(),
+  "email": zod.string(),
+  "role": zod.enum(['admin', 'member']),
+  "platformRole": zod.enum(['super_admin', 'tenant_admin', 'member']),
+  "active": zod.boolean(),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date()
+})
+export const ListUsersResponse = zod.array(ListUsersResponseItem)
+
+
+/**
+ * @summary Create user
+ */
+export const CreateUserBody = zod.object({
+  "tenantId": zod.string(),
+  "name": zod.string(),
+  "email": zod.string(),
+  "password": zod.string(),
+  "role": zod.enum(['admin', 'member']).optional(),
+  "platformRole": zod.enum(['super_admin', 'tenant_admin', 'member']).optional(),
+  "active": zod.boolean().optional()
+})
+
+
+/**
+ * @summary Get user by ID
+ */
+export const GetUserParams = zod.object({
+  "id": zod.coerce.string()
+})
+
+export const GetUserResponse = zod.object({
+  "id": zod.string(),
+  "tenantId": zod.string(),
+  "name": zod.string(),
+  "email": zod.string(),
+  "role": zod.enum(['admin', 'member']),
+  "platformRole": zod.enum(['super_admin', 'tenant_admin', 'member']),
+  "active": zod.boolean(),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date()
+})
+
+
+/**
+ * @summary Update user
+ */
+export const UpdateUserParams = zod.object({
+  "id": zod.coerce.string()
+})
+
+export const UpdateUserBody = zod.object({
+  "name": zod.string().optional(),
+  "email": zod.string().optional(),
+  "password": zod.string().optional(),
+  "role": zod.enum(['admin', 'member']).optional(),
+  "platformRole": zod.enum(['super_admin', 'tenant_admin', 'member']).optional(),
+  "active": zod.boolean().optional()
+})
+
+export const UpdateUserResponse = zod.object({
+  "id": zod.string(),
+  "tenantId": zod.string(),
+  "name": zod.string(),
+  "email": zod.string(),
+  "role": zod.enum(['admin', 'member']),
+  "platformRole": zod.enum(['super_admin', 'tenant_admin', 'member']),
+  "active": zod.boolean(),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date()
+})
+
+
+/**
+ * @summary Delete user
+ */
+export const DeleteUserParams = zod.object({
+  "id": zod.coerce.string()
+})
+
+
+/**
  * Returns all tenants
  * @summary List tenants
  */
