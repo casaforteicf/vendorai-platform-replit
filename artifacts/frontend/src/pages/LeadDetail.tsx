@@ -265,8 +265,13 @@ export default function LeadDetail() {
     setEditingChurnRisk(false);
   }
 
+  const NBA_MAX_LENGTH = 300;
+  const nextBestActionIsValid =
+    nextBestActionDraft.trim().length > 0 &&
+    nextBestActionDraft.length <= NBA_MAX_LENGTH;
+
   function saveNextBestAction() {
-    if (!intelligence?.id) return;
+    if (!intelligence?.id || !nextBestActionIsValid) return;
     updateIntelligence({
       id: intelligence.id,
       data: { nextBestAction: nextBestActionDraft },
@@ -727,32 +732,45 @@ export default function LeadDetail() {
                           onChange={(e) => setNextBestActionDraft(e.target.value)}
                           className="h-7 text-xs"
                           placeholder="Descreva a próxima ação..."
+                          maxLength={NBA_MAX_LENGTH}
                           data-testid="input-next-best-action"
                           autoFocus
                           onKeyDown={(e) => {
-                            if (e.key === "Enter") saveNextBestAction();
+                            if (e.key === "Enter" && nextBestActionIsValid) saveNextBestAction();
                             if (e.key === "Escape") setEditingNextBestAction(false);
                           }}
                         />
-                        <div className="flex items-center gap-2">
-                          <Button
-                            size="sm"
-                            className="h-6 text-xs px-2"
-                            onClick={saveNextBestAction}
-                            disabled={isUpdating}
-                            data-testid="btn-save-next-best-action"
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-2">
+                            <Button
+                              size="sm"
+                              className="h-6 text-xs px-2"
+                              onClick={saveNextBestAction}
+                              disabled={isUpdating || !nextBestActionIsValid}
+                              data-testid="btn-save-next-best-action"
+                            >
+                              <Check className="h-3 w-3 mr-1" />
+                              Salvar
+                            </Button>
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              className="h-6 text-xs px-2"
+                              onClick={() => setEditingNextBestAction(false)}
+                            >
+                              Cancelar
+                            </Button>
+                          </div>
+                          <span
+                            className={`text-xs tabular-nums ${
+                              nextBestActionDraft.length >= NBA_MAX_LENGTH
+                                ? "text-destructive"
+                                : "text-muted-foreground"
+                            }`}
+                            data-testid="next-best-action-char-count"
                           >
-                            <Check className="h-3 w-3 mr-1" />
-                            Salvar
-                          </Button>
-                          <Button
-                            size="sm"
-                            variant="ghost"
-                            className="h-6 text-xs px-2"
-                            onClick={() => setEditingNextBestAction(false)}
-                          >
-                            Cancelar
-                          </Button>
+                            {nextBestActionDraft.length}/{NBA_MAX_LENGTH}
+                          </span>
                         </div>
                       </div>
                     ) : intelligence?.nextBestAction ? (
