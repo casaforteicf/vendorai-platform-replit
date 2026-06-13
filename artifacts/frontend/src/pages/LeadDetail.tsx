@@ -789,7 +789,7 @@ export default function LeadDetail() {
 
                   {/* Journey Stage */}
                   {intelligence?.journeyStage && (
-                    <div className="space-y-1">
+                    <div className="space-y-1" data-testid="section-journey-stage">
                       <div className="flex items-center gap-1.5 text-muted-foreground">
                         <MapPin className="h-3.5 w-3.5" />
                         <span className="text-xs font-medium uppercase tracking-wide">
@@ -802,7 +802,7 @@ export default function LeadDetail() {
 
                   {/* Intent Analysis */}
                   {intelligence?.intentAnalysis && (
-                    <div className="space-y-1">
+                    <div className="space-y-1" data-testid="section-intent-analysis">
                       <div className="flex items-center gap-1.5 text-muted-foreground">
                         <Target className="h-3.5 w-3.5" />
                         <span className="text-xs font-medium uppercase tracking-wide">
@@ -916,7 +916,7 @@ export default function LeadDetail() {
 
                   {/* Opportunities */}
                   {opportunities.length > 0 && (
-                    <div className="space-y-2">
+                    <div className="space-y-2" data-testid="section-opportunities">
                       <div className="flex items-center gap-1.5 text-muted-foreground">
                         <TrendingUp className="h-3.5 w-3.5" />
                         <span className="text-xs font-medium uppercase tracking-wide">

@@ -302,11 +302,11 @@ test.describe("Customer Intelligence - null/empty data state", () => {
 
     await expect(page.getByTestId("text-churn-risk")).toHaveText("—");
 
-    await expect(ciCard).not.toContainText("Etapa da Jornada");
+    await expect(page.getByTestId("section-journey-stage")).not.toBeVisible();
 
-    await expect(ciCard).not.toContainText("Intenção de Compra");
+    await expect(page.getByTestId("section-intent-analysis")).not.toBeVisible();
 
-    await expect(page.getByTestId("opportunity-0")).not.toBeVisible();
+    await expect(page.getByTestId("section-opportunities")).not.toBeVisible();
 
     await expect(page.getByTestId("text-last-analyzed")).toHaveText(
       "Nunca analisado"
@@ -365,9 +365,9 @@ test.describe("Customer Intelligence - null/empty data state", () => {
       timeout: 15_000,
     });
 
-    await expect(ciCard).toContainText("Etapa da Jornada");
-    await expect(ciCard).toContainText("Avaliação");
-    await expect(ciCard).toContainText("Intenção de Compra");
-    await expect(ciCard).toContainText("Alta intenção de compra");
+    await expect(page.getByTestId("section-journey-stage")).toBeVisible();
+    await expect(page.getByTestId("section-journey-stage")).toContainText("Avaliação");
+    await expect(page.getByTestId("section-intent-analysis")).toBeVisible();
+    await expect(page.getByTestId("section-intent-analysis")).toContainText("Alta intenção de compra");
   });
 });
