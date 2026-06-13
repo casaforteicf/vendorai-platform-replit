@@ -1,0 +1,77 @@
+Crie dois arquivos SVG na pasta /frontend/public/:
+
+1. /frontend/public/logo-icon.svg (apenas o ícone, sem texto):
+
+<svg width="180" height="180" viewBox="0 0 180 180" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="bgGrad" x1="0" y1="0" x2="180" y2="180" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#1E3A8A"/>
+      <stop offset="100%" stop-color="#1E40AF"/>
+    </linearGradient>
+    <linearGradient id="nodeGrad" x1="0" y1="0" x2="180" y2="180" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#FFFFFF"/>
+      <stop offset="100%" stop-color="#93C5FD"/>
+    </linearGradient>
+  </defs>
+  <rect width="180" height="180" rx="36" fill="url(#bgGrad)"/>
+  <g stroke="#60A5FA" stroke-width="3" opacity="0.7">
+    <line x1="90" y1="45" x2="51" y2="79"/>
+    <line x1="90" y1="45" x2="129" y2="79"/>
+    <line x1="51" y1="79" x2="51" y2="124"/>
+    <line x1="129" y1="79" x2="129" y2="124"/>
+    <line x1="51" y1="79" x2="90" y2="101"/>
+    <line x1="129" y1="79" x2="90" y2="101"/>
+    <line x1="51" y1="124" x2="90" y2="101"/>
+    <line x1="129" y1="124" x2="90" y2="101"/>
+    <line x1="51" y1="124" x2="90" y2="141"/>
+    <line x1="129" y1="124" x2="90" y2="141"/>
+    <line x1="90" y1="101" x2="90" y2="141"/>
+  </g>
+  <circle cx="90" cy="45" r="10" fill="url(#nodeGrad)"/>
+  <circle cx="51" cy="79" r="7" fill="#93C5FD"/>
+  <circle cx="129" cy="79" r="7" fill="#93C5FD"/>
+  <circle cx="51" cy="124" r="7" fill="#60A5FA"/>
+  <circle cx="129" cy="124" r="7" fill="#60A5FA"/>
+  <circle cx="90" cy="101" r="11" fill="url(#nodeGrad)"/>
+  <circle cx="90" cy="141" r="8" fill="#BFDBFE"/>
+</svg>
+
+2. /frontend/public/logo-full.svg (ícone + texto "Vendor.ai"):
+
+<svg width="640" height="180" viewBox="0 0 640 180" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="bgGrad2" x1="0" y1="0" x2="180" y2="180" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#1E3A8A"/>
+      <stop offset="100%" stop-color="#1E40AF"/>
+    </linearGradient>
+    <linearGradient id="nodeGrad2" x1="0" y1="0" x2="180" y2="180" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#FFFFFF"/>
+      <stop offset="100%" stop-color="#93C5FD"/>
+    </linearGradient>
+  </defs>
+  <rect width="180" height="180" rx="36" fill="url(#bgGrad2)"/>
+  <g stroke="#60A5FA" stroke-width="3" opacity="0.7">
+    <line x1="90" y1="45" x2="51" y2="79"/>
+    <line x1="90" y1="45" x2="129" y2="79"/>
+    <line x1="51" y1="79" x2="51" y2="124"/>
+    <line x1="129" y1="79" x2="129" y2="124"/>
+    <line x1="51" y1="79" x2="90" y2="101"/>
+    <line x1="129" y1="79" x2="90" y2="101"/>
+    <line x1="51" y1="124" x2="90" y2="101"/>
+    <line x1="129" y1="124" x2="90" y2="101"/>
+    <line x1="51" y1="124" x2="90" y2="141"/>
+    <line x1="129" y1="124" x2="90" y2="141"/>
+    <line x1="90" y1="101" x2="90" y2="141"/>
+  </g>
+  <circle cx="90" cy="45" r="10" fill="url(#nodeGrad2)"/>
+  <circle cx="51" cy="79" r="7" fill="#93C5FD"/>
+  <circle cx="129" cy="79" r="7" fill="#93C5FD"/>
+  <circle cx="51" cy="124" r="7" fill="#60A5FA"/>
+  <circle cx="129" cy="124" r="7" fill="#60A5FA"/>
+  <circle cx="90" cy="101" r="11" fill="url(#nodeGrad2)"/>
+  <circle cx="90" cy="141" r="8" fill="#BFDBFE"/>
+  <text x="210" y="105" font-family="Arial, Helvetica, sans-serif" font-size="56" font-weight="700" fill="#1E3A8A">Vendor<tspan fill="#60A5FA">.ai</tspan></text>
+  <text x="210" y="135" font-family="Arial, Helvetica, sans-serif" font-size="18" font-weight="400" fill="#6B7280" letter-spacing="2">INTELIGÊNCIA COMERCIAL</text>
+</svg>
+
+Depois, use logo-icon.svg como favicon do site, e logo-full.svg no topo da sidebar (substituindo o texto "Vendor.ai" atual) e na tela de login.

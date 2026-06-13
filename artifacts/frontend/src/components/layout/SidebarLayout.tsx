@@ -3,6 +3,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import { LayoutDashboard, Users, Briefcase, MessageSquare, Calendar, LogOut } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
+import logoFull from "/logo-full.svg";
 
 export function SidebarLayout({ children }: { children: React.ReactNode }) {
   const { user, logout } = useAuth();
@@ -20,9 +21,8 @@ export function SidebarLayout({ children }: { children: React.ReactNode }) {
     <div className="flex h-screen bg-muted/20">
       {/* Sidebar */}
       <div className="w-64 bg-card border-r flex flex-col">
-        <div className="p-6 border-b">
-          <h1 className="text-xl font-bold tracking-tight text-primary">VendorAI</h1>
-          <p className="text-xs text-muted-foreground mt-1 font-medium tracking-wide uppercase">Core Platform</p>
+        <div className="p-5 border-b">
+          <img src={logoFull} alt="Vendor.ai" className="h-10 w-auto" />
         </div>
         
         <div className="flex-1 py-4 flex flex-col gap-1 px-3">
