@@ -8,6 +8,7 @@ import {
 } from "@workspace/db";
 import {
   analyzeLeadIntelligence,
+  AnalysisAlreadyInFlightError,
   ANALYSIS_COOLDOWN_MINUTES,
 } from "../lib/analyze-intelligence.js";
 
@@ -241,6 +242,10 @@ router.post(
       const result = await analyzeLeadIntelligence({ tenantId, leadId, log: req.log, triggeredBy: "manual" });
       res.json(result);
     } catch (err) {
+      if (err instanceof AnalysisAlreadyInFlightError) {
+        res.status(409).json({ error: "An analysis is already running for this lead. Please try again shortly." });
+        return;
+      }
       const message = err instanceof Error ? err.message : String(err);
       if (message.includes("not found")) {
         res.status(404).json({ error: "Lead not found" });

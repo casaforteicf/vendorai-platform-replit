@@ -37,6 +37,25 @@ export const ANALYSIS_MESSAGE_THRESHOLD =
 export const ANALYSIS_COOLDOWN_MINUTES =
   Number(process.env["ANALYSIS_COOLDOWN_MINUTES"] ?? 5);
 
+// ── In-process concurrency guard ─────────────────────────────────────────────
+/**
+ * Tracks lead IDs for which an AI analysis is currently in flight.
+ * Scoped to this process — sufficient for a single-instance API server.
+ */
+const inFlightAnalyses = new Set<string>();
+
+/**
+ * Thrown when `analyzeLeadIntelligence` is called for a lead that already has
+ * an analysis running. Callers should treat this as a benign "already busy"
+ * signal, not a hard error.
+ */
+export class AnalysisAlreadyInFlightError extends Error {
+  constructor(leadId: string) {
+    super(`Analysis already in flight for lead ${leadId}`);
+    this.name = "AnalysisAlreadyInFlightError";
+  }
+}
+
 // ── AI response schema ────────────────────────────────────────────────────────
 const aiAnalysisSchema = z.object({
   churnRisk:            z.number().int().min(0).max(100),
@@ -86,6 +105,13 @@ export async function analyzeLeadIntelligence(params: {
 }): Promise<AnalyzeResult> {
   const { tenantId, leadId, log, triggeredBy = "manual" } = params;
 
+  // Guard: reject concurrent calls for the same lead
+  if (inFlightAnalyses.has(leadId)) {
+    throw new AnalysisAlreadyInFlightError(leadId);
+  }
+  inFlightAnalyses.add(leadId);
+
+  try {
   // 1. Load lead — must exist and belong to this tenant
   const [lead] = await db
     .select()
@@ -290,6 +316,9 @@ Regras:
   }
 
   return { intelligence, tokensUsed, rulesTriggered, rulesResults };
+  } finally {
+    inFlightAnalyses.delete(leadId);
+  }
 }
 
 /**
@@ -366,6 +395,10 @@ export function maybeReanalyze(params: {
       }
     })
     .catch((err) => {
+      if (err instanceof AnalysisAlreadyInFlightError) {
+        log.debug({ leadId, tenantId }, "auto-analyze: skipped — analysis already in flight");
+        return;
+      }
       log.error({ err, leadId, tenantId }, "auto-analyze: background re-analysis failed");
     });
 }
