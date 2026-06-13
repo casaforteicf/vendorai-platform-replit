@@ -462,6 +462,31 @@ export default function LeadDetail() {
                         data-testid="progress-churn-risk"
                       />
                     </div>
+                    {Array.isArray(intelligence?.churnReasons) &&
+                      (intelligence.churnReasons as unknown[]).filter(
+                        (r) => typeof r === "string" && r.trim() !== ""
+                      ).length > 0 && (
+                        <ul
+                          className="mt-2 space-y-1"
+                          data-testid="list-churn-reasons"
+                        >
+                          {(intelligence.churnReasons as unknown[])
+                            .filter(
+                              (r): r is string =>
+                                typeof r === "string" && r.trim() !== ""
+                            )
+                            .map((reason, i) => (
+                              <li
+                                key={i}
+                                className="flex items-start gap-2 text-xs text-muted-foreground"
+                                data-testid={`churn-reason-${i}`}
+                              >
+                                <span className="mt-1.5 h-1 w-1 rounded-full bg-red-400 shrink-0" />
+                                <span className="leading-snug">{reason}</span>
+                              </li>
+                            ))}
+                        </ul>
+                      )}
                   </div>
 
                   {/* Journey Stage */}
