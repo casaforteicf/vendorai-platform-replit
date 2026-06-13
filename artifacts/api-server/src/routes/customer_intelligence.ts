@@ -27,6 +27,12 @@ function isUniqueViolation(err: unknown): boolean {
   return isPgCode(err, "23505");
 }
 
+function getOpenAI(): OpenAI {
+  const apiKey = process.env["OPENAI_API_KEY"];
+  if (!apiKey) throw new Error("OPENAI_API_KEY environment variable is not set");
+  return new OpenAI({ apiKey });
+}
+
 router.post("/customer-intelligence", async (req, res) => {
   const parsed = insertCustomerIntelligenceSchema.safeParse(req.body);
   if (!parsed.success) {
@@ -184,6 +190,12 @@ router.post(
   async (req, res): Promise<void> => {
     const tenantId = String(req.params.tenantId);
     const leadId   = String(req.params.leadId);
+
+    // 0. Tenant scope guard — requester must belong to this tenant (super_admin bypasses)
+    if (req.user?.platformRole !== "super_admin" && req.user?.tenantId !== tenantId) {
+      res.status(403).json({ error: "Access denied to this tenant" });
+      return;
+    }
 
     // 1. Load lead — must exist and belong to this tenant
     const [lead] = await db
