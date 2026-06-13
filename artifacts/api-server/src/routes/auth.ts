@@ -4,9 +4,9 @@ import bcrypt from "bcryptjs";
 import { z } from "zod/v4";
 import { db, usersTable, tenantsTable } from "@workspace/db";
 import { signToken } from "../lib/jwt.js";
-import { authenticate } from "../middlewares/auth.js";
 
 const router: IRouter = Router();
+const protectedRouter: IRouter = Router();
 
 const PUBLIC_FIELDS = {
   id: usersTable.id,
@@ -127,7 +127,7 @@ router.post("/auth/register", async (req, res) => {
   }
 });
 
-router.get("/auth/me", authenticate, async (req, res) => {
+protectedRouter.get("/auth/me", async (req, res) => {
   const [user] = await db
     .select(PUBLIC_FIELDS)
     .from(usersTable)
@@ -141,7 +141,7 @@ router.get("/auth/me", authenticate, async (req, res) => {
   res.json(user);
 });
 
-router.post("/auth/refresh", authenticate, async (req, res) => {
+protectedRouter.post("/auth/refresh", async (req, res) => {
   const [user] = await db
     .select(PUBLIC_FIELDS)
     .from(usersTable)
@@ -172,4 +172,5 @@ function isUniqueViolation(err: unknown): boolean {
   );
 }
 
+export { protectedRouter as authProtectedRouter };
 export default router;

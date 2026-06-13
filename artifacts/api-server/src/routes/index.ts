@@ -1,6 +1,6 @@
 import { Router, type IRouter } from "express";
 import healthRouter from "./health";
-import authRouter from "./auth";
+import authRouter, { authProtectedRouter } from "./auth";
 import tenantsRouter from "./tenants";
 import usersRouter from "./users";
 import leadsRouter from "./leads";
@@ -37,6 +37,9 @@ router.use(webhooksRouter);
 
 // Protected — all routes below require a valid JWT
 router.use(authenticate);
+
+// Auth — protected endpoints (me, refresh)
+router.use(authProtectedRouter);
 
 // Tenants — super_admin only for write, tenant scope for reads
 router.use(tenantsRouter);
