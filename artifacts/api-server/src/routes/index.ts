@@ -24,6 +24,7 @@ import invoicesRouter from "./invoices";
 import dashboardRouter from "./dashboard";
 import knowledgeBaseRouter from "./knowledge_base";
 import rulesRouter from "./rules";
+import webhooksRouter from "./webhooks";
 import { authenticate, requireRole, requireSameTenanOrSuperAdmin } from "../middlewares/auth";
 
 const router: IRouter = Router();
@@ -31,6 +32,7 @@ const router: IRouter = Router();
 // Public
 router.use(healthRouter);
 router.use(authRouter);
+router.use(webhooksRouter);
 
 // Protected — all routes below require a valid JWT
 router.use(authenticate);
