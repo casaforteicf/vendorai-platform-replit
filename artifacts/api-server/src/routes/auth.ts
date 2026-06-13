@@ -4,6 +4,7 @@ import bcrypt from "bcryptjs";
 import { z } from "zod/v4";
 import { db, usersTable, tenantsTable } from "@workspace/db";
 import { signToken } from "../lib/jwt.js";
+import { authenticate } from "../middlewares/auth.js";
 
 const router: IRouter = Router();
 
@@ -114,6 +115,42 @@ router.post("/auth/register", async (req, res) => {
     }
     throw err;
   }
+});
+
+router.get("/auth/me", authenticate, async (req, res) => {
+  const [user] = await db
+    .select(PUBLIC_FIELDS)
+    .from(usersTable)
+    .where(eq(usersTable.id, req.user!.sub));
+
+  if (!user || !user.active) {
+    res.status(401).json({ error: "User not found or inactive" });
+    return;
+  }
+
+  res.json(user);
+});
+
+router.post("/auth/refresh", authenticate, async (req, res) => {
+  const [user] = await db
+    .select(PUBLIC_FIELDS)
+    .from(usersTable)
+    .where(eq(usersTable.id, req.user!.sub));
+
+  if (!user || !user.active) {
+    res.status(401).json({ error: "User not found or inactive" });
+    return;
+  }
+
+  const token = signToken({
+    sub: user.id,
+    email: user.email,
+    platformRole: user.platformRole,
+    tenantId: user.tenantId,
+    role: user.role,
+  });
+
+  res.json({ token, user });
 });
 
 function isUniqueViolation(err: unknown): boolean {

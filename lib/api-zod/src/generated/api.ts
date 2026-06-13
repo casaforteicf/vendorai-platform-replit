@@ -26,6 +26,43 @@ export const RegisterBody = zod.object({
 
 
 /**
+ * Returns the authenticated user's profile. Requires Bearer token.
+ * @summary Get current user
+ */
+export const GetMeResponse = zod.object({
+  "id": zod.string(),
+  "tenantId": zod.string(),
+  "name": zod.string(),
+  "email": zod.string(),
+  "role": zod.enum(['admin', 'member']),
+  "platformRole": zod.enum(['super_admin', 'tenant_admin', 'member']),
+  "active": zod.boolean(),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date()
+})
+
+
+/**
+ * Issues a new token with a fresh 7-day expiry from the current valid token. Requires Bearer token.
+ * @summary Refresh JWT token
+ */
+export const RefreshTokenResponse = zod.object({
+  "token": zod.string(),
+  "user": zod.object({
+  "id": zod.string(),
+  "tenantId": zod.string(),
+  "name": zod.string(),
+  "email": zod.string(),
+  "role": zod.enum(['admin', 'member']),
+  "platformRole": zod.enum(['super_admin', 'tenant_admin', 'member']),
+  "active": zod.boolean(),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date()
+})
+})
+
+
+/**
  * @summary Login
  */
 export const LoginBody = zod.object({
