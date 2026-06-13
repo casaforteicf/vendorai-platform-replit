@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { formatDistanceToNow } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { useParams, useLocation } from "wouter";
@@ -197,6 +197,13 @@ export default function LeadDetail() {
   // had manually edited them (server preserves rep edits, returns suggestions here)
   const [aiSuggestedReasons, setAiSuggestedReasons] = useState<string[] | null>(null);
 
+  // Tracks whether a server-side analysis is already running (received a 409).
+  // The button stays disabled and shows a spinner until the analysis completes.
+  const [serverAnalysisRunning, setServerAnalysisRunning] = useState(false);
+  // Snapshot of lastAnalyzedAt taken when the 409 was received, used to detect
+  // when the in-flight analysis finishes (value changes → analysis done).
+  const analysisSnapshotRef = useRef<string | null | undefined>(undefined);
+
   const [, setTick] = useState(0);
   useEffect(() => {
     const id = setInterval(() => setTick((t) => t + 1), 60_000);
@@ -217,11 +224,20 @@ export default function LeadDetail() {
       query: {
         enabled: !!(tenantId && id),
         queryKey: getGetOrCreateLeadIntelligenceQueryKey(tenantId, id),
-        refetchInterval: 30_000,
+        // Poll faster while waiting for a server-side analysis to finish
+        refetchInterval: serverAnalysisRunning ? 5_000 : 30_000,
         refetchIntervalInBackground: false,
       },
     }
   );
+
+  // Detect when the in-flight server-side analysis finishes by watching lastAnalyzedAt
+  useEffect(() => {
+    if (!serverAnalysisRunning) return;
+    if (intelligence?.lastAnalyzedAt !== analysisSnapshotRef.current) {
+      setServerAnalysisRunning(false);
+    }
+  }, [intelligence?.lastAnalyzedAt, serverAnalysisRunning]);
 
   const { toast } = useToast();
 
@@ -265,12 +281,30 @@ export default function LeadDetail() {
             });
           }
         },
-        onError: () => {
-          toast({
-            title: "Falha na análise",
-            description: "Não foi possível conectar ao serviço de IA. Tente novamente.",
-            variant: "destructive",
-          });
+        onError: (error) => {
+          const status =
+            typeof error === "object" &&
+            error !== null &&
+            "status" in error &&
+            typeof (error as { status: unknown }).status === "number"
+              ? (error as { status: number }).status
+              : null;
+
+          if (status === 409) {
+            // Another analysis is already running server-side — track it and wait
+            analysisSnapshotRef.current = intelligence?.lastAnalyzedAt;
+            setServerAnalysisRunning(true);
+            toast({
+              title: "Análise em andamento",
+              description: "Uma análise já está em execução. Aguarde o resultado.",
+            });
+          } else {
+            toast({
+              title: "Falha na análise",
+              description: "Não foi possível conectar ao serviço de IA. Tente novamente.",
+              variant: "destructive",
+            });
+          }
         },
       },
     });
@@ -473,15 +507,19 @@ export default function LeadDetail() {
                   variant="outline"
                   className="h-7 px-2 text-xs gap-1.5"
                   onClick={handleAnalyze}
-                  disabled={isAnalyzing || !tenantId || !id}
+                  disabled={isAnalyzing || serverAnalysisRunning || !tenantId || !id}
                   data-testid="btn-analyze-intelligence"
                 >
-                  {isAnalyzing ? (
+                  {isAnalyzing || serverAnalysisRunning ? (
                     <Loader2 className="h-3 w-3 animate-spin" />
                   ) : (
                     <Sparkles className="h-3 w-3 text-primary" />
                   )}
-                  {isAnalyzing ? "Analisando…" : "Analisar com IA"}
+                  {serverAnalysisRunning
+                    ? "Análise em andamento…"
+                    : isAnalyzing
+                      ? "Analisando…"
+                      : "Analisar com IA"}
                 </Button>
               </CardTitle>
             </CardHeader>
