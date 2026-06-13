@@ -9,6 +9,7 @@ import Login from "@/pages/Login";
 import Register from "@/pages/Register";
 import Dashboard from "@/pages/Dashboard";
 import Leads from "@/pages/Leads";
+import LeadDetail from "@/pages/LeadDetail";
 import Deals from "@/pages/Deals";
 import Conversations from "@/pages/Conversations";
 import Agenda from "@/pages/Agenda";
@@ -51,6 +52,9 @@ function AppRoutes() {
       </Route>
       <Route path="/leads">
         <ProtectedRoute component={Leads} />
+      </Route>
+      <Route path="/leads/:id">
+        <ProtectedRoute component={LeadDetail} />
       </Route>
       <Route path="/deals">
         <ProtectedRoute component={Deals} />
