@@ -10,6 +10,8 @@ servers:
 tags:
   - name: health
     description: Health operations
+  - name: tenants
+    description: Tenant management
 paths:
   /healthz:
     get:
@@ -24,6 +26,137 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/HealthStatus"
+
+  /tenants:
+    get:
+      operationId: listTenants
+      tags: [tenants]
+      summary: List tenants
+      description: Returns all tenants
+      responses:
+        "200":
+          description: List of tenants
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Tenant"
+    post:
+      operationId: createTenant
+      tags: [tenants]
+      summary: Create tenant
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateTenantBody"
+      responses:
+        "201":
+          description: Created tenant
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Tenant"
+        "409":
+          description: Slug already exists
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "422":
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /tenants/{id}:
+    get:
+      operationId: getTenant
+      tags: [tenants]
+      summary: Get tenant by ID
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Tenant found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Tenant"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+    patch:
+      operationId: updateTenant
+      tags: [tenants]
+      summary: Update tenant
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateTenantBody"
+      responses:
+        "200":
+          description: Updated tenant
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Tenant"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "409":
+          description: Slug already exists
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "422":
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+    delete:
+      operationId: deleteTenant
+      tags: [tenants]
+      summary: Delete tenant
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "204":
+          description: Deleted
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
 components:
   schemas:
     HealthStatus:
@@ -34,3 +167,114 @@ components:
       required:
         - status
 
+    TenantStatus:
+      type: string
+      enum: [active, suspended, cancelled]
+
+    Tenant:
+      type: object
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        slug:
+          type: string
+        status:
+          $ref: "#/components/schemas/TenantStatus"
+        setupCompletedAt:
+          type: string
+          format: date-time
+          nullable: true
+        autonomyEnabledAt:
+          type: string
+          format: date-time
+          nullable: true
+        monthlyTokenLimit:
+          type: integer
+          nullable: true
+        tokensUsedCurrentMonth:
+          type: integer
+        dailyMessageLimit:
+          type: integer
+          nullable: true
+        messagesSentToday:
+          type: integer
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+      required:
+        - id
+        - name
+        - slug
+        - status
+        - tokensUsedCurrentMonth
+        - messagesSentToday
+        - createdAt
+        - updatedAt
+
+    CreateTenantBody:
+      type: object
+      properties:
+        name:
+          type: string
+        slug:
+          type: string
+        status:
+          $ref: "#/components/schemas/TenantStatus"
+        setupCompletedAt:
+          type: string
+          format: date-time
+          nullable: true
+        autonomyEnabledAt:
+          type: string
+          format: date-time
+          nullable: true
+        monthlyTokenLimit:
+          type: integer
+          nullable: true
+        dailyMessageLimit:
+          type: integer
+          nullable: true
+      required:
+        - name
+        - slug
+
+    UpdateTenantBody:
+      type: object
+      properties:
+        name:
+          type: string
+        slug:
+          type: string
+        status:
+          $ref: "#/components/schemas/TenantStatus"
+        setupCompletedAt:
+          type: string
+          format: date-time
+          nullable: true
+        autonomyEnabledAt:
+          type: string
+          format: date-time
+          nullable: true
+        monthlyTokenLimit:
+          type: integer
+          nullable: true
+        tokensUsedCurrentMonth:
+          type: integer
+        dailyMessageLimit:
+          type: integer
+          nullable: true
+        messagesSentToday:
+          type: integer
+
+    ErrorResponse:
+      type: object
+      properties:
+        error:
+          type: string
+      required:
+        - error

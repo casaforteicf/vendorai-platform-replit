@@ -22,15 +22,21 @@ _Replace the heading above with the project's name, and this line with one sente
 
 ## Where things live
 
-_Populate as you build — short repo map plus pointers to the source-of-truth file for DB schema, API contracts, theme files, etc._
+- `lib/db/src/schema/` — Drizzle table definitions (source of truth for DB schema)
+- `lib/api-spec/openapi.yaml` — OpenAPI spec (source of truth for API contracts)
+- `lib/api-zod/src/generated/` — auto-generated Zod validators (do not edit manually)
+- `lib/api-client-react/src/generated/` — auto-generated React Query hooks (do not edit manually)
+- `artifacts/api-server/src/routes/` — Express route handlers
 
 ## Architecture decisions
 
-_Populate as you build — non-obvious choices a reader couldn't infer from the code (3-5 bullets)._
+- **Contract-first API**: OpenAPI spec drives Zod validators and React Query hooks via Orval codegen. Always update the spec first, then run `pnpm --filter @workspace/api-spec run codegen`.
+- **`lib/api-zod/src/index.ts` exports selectively**: Orval generates duplicate names across `generated/api.ts` (Zod schemas) and `generated/types/` (TS interfaces). The barrel re-exports `*` from `api.ts` and only the non-conflicting types from `types/` to avoid TS2308 ambiguity errors.
+- **Supabase Postgres**: `DATABASE_URL` is set as a runtime-managed secret pointing to the user's existing Supabase instance. Run `pnpm --filter @workspace/db run push` to apply schema changes.
 
 ## Product
 
-_Describe the high-level user-facing capabilities of this app once they exist._
+- Multi-tenant backend API. Tenants represent client organizations with token/message usage limits and lifecycle status (active/suspended/cancelled).
 
 ## User preferences
 
