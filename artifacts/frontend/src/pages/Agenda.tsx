@@ -29,10 +29,10 @@ export default function Agenda() {
   const { toast } = useToast();
   const [isDialogOpen, setIsDialogOpen] = useState(false);
 
-  const { data: agendamentos, isLoading } = useListAgendamentos(tenantId, {
+  const { data: agendamentos, isLoading } = useListAgendamentos(tenantId, undefined, {
     query: {
       enabled: !!tenantId,
-      queryKey: getListAgendamentosQueryKey(tenantId)
+      queryKey: getListAgendamentosQueryKey(tenantId),
     }
   });
 

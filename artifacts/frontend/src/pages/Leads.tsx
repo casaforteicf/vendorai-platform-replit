@@ -15,9 +15,9 @@ import { useQueryClient } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
 
 const formSchema = z.object({
-  name: z.string().min(2, "Nome é obrigatório"),
+  nome: z.string().min(2, "Nome é obrigatório"),
   email: z.string().email("Email inválido").optional().or(z.literal("")),
-  phone: z.string().optional().or(z.literal("")),
+  telefone: z.string().optional().or(z.literal("")),
 });
 
 export default function Leads() {
@@ -40,14 +40,21 @@ export default function Leads() {
   const form = useForm<z.infer<typeof formSchema>>({
     resolver: zodResolver(formSchema),
     defaultValues: {
-      name: "",
+      nome: "",
       email: "",
-      phone: "",
+      telefone: "",
     },
   });
 
   function onSubmit(values: z.infer<typeof formSchema>) {
-    createLead.mutate({ data: { tenantId, ...values } }, {
+    createLead.mutate({
+      data: {
+        tenantId,
+        nome: values.nome,
+        email: values.email || null,
+        telefone: values.telefone || null,
+      }
+    }, {
       onSuccess: () => {
         toast({ title: "Lead criado com sucesso." });
         queryClient.invalidateQueries({ queryKey: getListTenantLeadsQueryKey(tenantId) });
@@ -60,8 +67,8 @@ export default function Leads() {
     });
   }
 
-  const filteredLeads = leads?.filter(lead => 
-    lead.name.toLowerCase().includes(search.toLowerCase()) ||
+  const filteredLeads = leads?.filter(lead =>
+    lead.nome.toLowerCase().includes(search.toLowerCase()) ||
     lead.email?.toLowerCase().includes(search.toLowerCase())
   ) || [];
 
@@ -88,7 +95,7 @@ export default function Leads() {
               <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
                 <FormField
                   control={form.control}
-                  name="name"
+                  name="nome"
                   render={({ field }) => (
                     <FormItem>
                       <FormLabel>Nome</FormLabel>
@@ -110,7 +117,7 @@ export default function Leads() {
                 />
                 <FormField
                   control={form.control}
-                  name="phone"
+                  name="telefone"
                   render={({ field }) => (
                     <FormItem>
                       <FormLabel>Telefone</FormLabel>
@@ -157,9 +164,9 @@ export default function Leads() {
               ) : (
                 filteredLeads.map((lead: any) => (
                   <TableRow key={lead.id}>
-                    <TableCell className="font-medium">{lead.name}</TableCell>
+                    <TableCell className="font-medium">{lead.nome}</TableCell>
                     <TableCell>{lead.email || '-'}</TableCell>
-                    <TableCell>{lead.phone || '-'}</TableCell>
+                    <TableCell>{lead.telefone || '-'}</TableCell>
                     <TableCell>
                       <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-primary/10 text-primary">
                         {lead.status}

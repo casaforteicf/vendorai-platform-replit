@@ -26,10 +26,10 @@ export default function Deals() {
   const { toast } = useToast();
   const [isDialogOpen, setIsDialogOpen] = useState(false);
 
-  const { data: deals, isLoading } = useListDeals(tenantId, {
+  const { data: deals, isLoading } = useListDeals(tenantId, undefined, {
     query: {
       enabled: !!tenantId,
-      queryKey: getListDealsQueryKey(tenantId)
+      queryKey: getListDealsQueryKey(tenantId),
     }
   });
 

@@ -1,111 +1,390 @@
 import { useAuth } from "@/contexts/AuthContext";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Users, MessageSquare, Briefcase, DollarSign, AlertCircle, Calendar } from "lucide-react";
-// Assuming the hook might be useGetDashboard or similar if useGetTenantDashboard doesn't exist.
-// Based on the prompt, it's useGetTenantDashboard
-import { useGetTenantDashboard, getGetTenantDashboardQueryKey } from "@workspace/api-client-react";
+import { Badge } from "@/components/ui/badge";
+import {
+  Users,
+  TrendingUp,
+  DollarSign,
+  Percent,
+  AlertTriangle,
+  FileWarning,
+  Clock,
+} from "lucide-react";
+import {
+  useGetTenantDashboard,
+  getGetTenantDashboardQueryKey,
+} from "@workspace/api-client-react";
+import {
+  BarChart,
+  Bar,
+  XAxis,
+  YAxis,
+  Tooltip,
+  ResponsiveContainer,
+  Cell,
+} from "recharts";
+
+const ETAPA_LABELS: Record<string, string> = {
+  prospeccao: "Prospecção",
+  qualificacao: "Qualificação",
+  proposta: "Proposta",
+  negociacao: "Negociação",
+  fechado_ganho: "Ganho",
+  fechado_perdido: "Perdido",
+};
+
+const ETAPA_COLORS: Record<string, string> = {
+  prospeccao: "#60A5FA",
+  qualificacao: "#818CF8",
+  proposta: "#A78BFA",
+  negociacao: "#F59E0B",
+  fechado_ganho: "#10B981",
+  fechado_perdido: "#EF4444",
+};
+
+function formatCurrency(value: string | undefined): string {
+  if (!value) return "R$ 0,00";
+  const num = parseFloat(value);
+  if (isNaN(num)) return "R$ 0,00";
+  return num.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
+}
+
+function formatPercent(value: number | undefined): string {
+  if (value === undefined || value === null) return "0%";
+  return (value * 100).toFixed(1) + "%";
+}
+
+function churnBadge(risk: number | null | undefined) {
+  if (risk === null || risk === undefined) return null;
+  if (risk > 70)
+    return (
+      <Badge className="bg-red-100 text-red-700 border-red-200 hover:bg-red-100">
+        Alto {risk}%
+      </Badge>
+    );
+  if (risk >= 30)
+    return (
+      <Badge className="bg-amber-100 text-amber-700 border-amber-200 hover:bg-amber-100">
+        Médio {risk}%
+      </Badge>
+    );
+  return (
+    <Badge className="bg-emerald-100 text-emerald-700 border-emerald-200 hover:bg-emerald-100">
+      Baixo {risk}%
+    </Badge>
+  );
+}
+
+function StatCardSkeleton() {
+  return (
+    <Card className="animate-pulse">
+      <CardHeader className="pb-2">
+        <div className="h-3 bg-muted rounded w-24" />
+      </CardHeader>
+      <CardContent>
+        <div className="h-7 bg-muted rounded w-16 mb-1" />
+        <div className="h-2.5 bg-muted rounded w-20" />
+      </CardContent>
+    </Card>
+  );
+}
 
 export default function Dashboard() {
   const { user } = useAuth();
-  const tenantId = user?.tenantId || "";
+  const tenantId = user?.tenantId ?? "";
 
-  // The prompt says useGetTenantDashboard(tenantId)
-  // Let's wrap it in try-catch or assume it exists and handles loading
   const { data: dashboard, isLoading } = useGetTenantDashboard(tenantId, {
     query: {
       enabled: !!tenantId,
-      queryKey: getGetTenantDashboardQueryKey(tenantId)
-    }
+      queryKey: getGetTenantDashboardQueryKey(tenantId),
+    },
   });
 
-  if (isLoading) {
-    return (
-      <div className="space-y-6">
-        <div>
-          <h1 className="text-3xl font-bold tracking-tight">Dashboard</h1>
-          <p className="text-muted-foreground">Carregando seus dados...</p>
-        </div>
-        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-          {[1, 2, 3, 4, 5, 6].map((i) => (
-            <Card key={i} className="animate-pulse">
-              <CardHeader className="h-10"></CardHeader>
-              <CardContent className="h-16"></CardContent>
-            </Card>
-          ))}
-        </div>
-      </div>
-    );
-  }
-
-  const stats = [
-    {
-      title: "Total de Leads",
-      value: dashboard?.leads?.total || 0,
-      icon: Users,
-      color: "text-blue-500",
-      bgColor: "bg-blue-500/10",
-    },
-    {
-      title: "Deals em Pipeline",
-      value: dashboard?.deals?.totalDeals || 0,
-      icon: Briefcase,
-      color: "text-primary",
-      bgColor: "bg-primary/10",
-    },
-    {
-      title: "Valor em Negociação",
-      value: `R$ ${dashboard?.deals?.totalEmNegociacao || "0,00"}`,
-      icon: DollarSign,
-      color: "text-emerald-500",
-      bgColor: "bg-emerald-500/10",
-    },
-    {
-      title: "Atividades Atrasadas",
-      value: dashboard?.atividadesAtrasadas || 0,
-      icon: AlertCircle,
-      color: "text-destructive",
-      bgColor: "bg-destructive/10",
-    },
-    {
-      title: "Conversas Ativas",
-      value: dashboard?.activeConversations || 0, // Fallback if property doesn't map exactly
-      icon: MessageSquare,
-      color: "text-orange-500",
-      bgColor: "bg-orange-500/10",
-    },
-    {
-      title: "Agendamentos",
-      value: dashboard?.upcomingAgendamentos || 0, // Fallback
-      icon: Calendar,
-      color: "text-purple-500",
-      bgColor: "bg-purple-500/10",
-    },
-  ];
+  const etapaChartData = dashboard
+    ? Object.entries(dashboard.deals.porEtapa)
+        .filter(([key]) => key !== "fechado_perdido")
+        .map(([etapa, count]) => ({
+          etapa,
+          label: ETAPA_LABELS[etapa] ?? etapa,
+          count: count as number,
+          color: ETAPA_COLORS[etapa] ?? "#94A3B8",
+        }))
+    : [];
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-8">
       <div>
-        <h1 className="text-3xl font-bold tracking-tight text-foreground">Visão Geral</h1>
-        <p className="text-muted-foreground">Bem-vindo de volta, {user?.name}. Aqui está o resumo da sua operação.</p>
+        <h1 className="text-2xl font-bold tracking-tight">Visão Geral</h1>
+        <p className="text-sm text-muted-foreground mt-1">
+          Bem-vindo de volta, {user?.name}.
+        </p>
       </div>
 
-      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-        {stats.map((stat, index) => (
-          <Card key={index} className="border-border">
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium text-muted-foreground">
-                {stat.title}
-              </CardTitle>
-              <div className={`p-2 rounded-md ${stat.bgColor}`}>
-                <stat.icon className={`h-4 w-4 ${stat.color}`} />
-              </div>
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold">{stat.value}</div>
-            </CardContent>
-          </Card>
-        ))}
+      {/* KPI Cards */}
+      <div className="grid gap-4 grid-cols-2 lg:grid-cols-4">
+        {isLoading ? (
+          Array.from({ length: 4 }).map((_, i) => <StatCardSkeleton key={i} />)
+        ) : (
+          <>
+            <Card data-testid="card-total-leads">
+              <CardHeader className="flex flex-row items-center justify-between pb-2 space-y-0">
+                <CardTitle className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
+                  Total de Leads
+                </CardTitle>
+                <div className="p-1.5 rounded-md bg-blue-500/10">
+                  <Users className="h-4 w-4 text-blue-500" />
+                </div>
+              </CardHeader>
+              <CardContent>
+                <p className="text-2xl font-bold">{dashboard?.leads.total ?? 0}</p>
+                <p className="text-xs text-muted-foreground mt-0.5">
+                  {dashboard?.leads.novosUltimos30Dias ?? 0} novos nos últimos 30 dias
+                </p>
+              </CardContent>
+            </Card>
+
+            <Card data-testid="card-novos-leads">
+              <CardHeader className="flex flex-row items-center justify-between pb-2 space-y-0">
+                <CardTitle className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
+                  Novos (30 dias)
+                </CardTitle>
+                <div className="p-1.5 rounded-md bg-indigo-500/10">
+                  <TrendingUp className="h-4 w-4 text-indigo-500" />
+                </div>
+              </CardHeader>
+              <CardContent>
+                <p className="text-2xl font-bold">
+                  {dashboard?.leads.novosUltimos30Dias ?? 0}
+                </p>
+                <p className="text-xs text-muted-foreground mt-0.5">leads criados</p>
+              </CardContent>
+            </Card>
+
+            <Card data-testid="card-valor-negociacao">
+              <CardHeader className="flex flex-row items-center justify-between pb-2 space-y-0">
+                <CardTitle className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
+                  Valor em Pipeline
+                </CardTitle>
+                <div className="p-1.5 rounded-md bg-emerald-500/10">
+                  <DollarSign className="h-4 w-4 text-emerald-500" />
+                </div>
+              </CardHeader>
+              <CardContent>
+                <p className="text-2xl font-bold">
+                  {formatCurrency(dashboard?.deals.totalEmNegociacao)}
+                </p>
+                <p className="text-xs text-muted-foreground mt-0.5">
+                  {dashboard?.deals.totalDeals ?? 0} negócios ativos
+                </p>
+              </CardContent>
+            </Card>
+
+            <Card data-testid="card-taxa-conversao">
+              <CardHeader className="flex flex-row items-center justify-between pb-2 space-y-0">
+                <CardTitle className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
+                  Taxa de Conversão
+                </CardTitle>
+                <div className="p-1.5 rounded-md bg-violet-500/10">
+                  <Percent className="h-4 w-4 text-violet-500" />
+                </div>
+              </CardHeader>
+              <CardContent>
+                <p className="text-2xl font-bold">
+                  {formatPercent(dashboard?.deals.taxaConversao)}
+                </p>
+                <p className="text-xs text-muted-foreground mt-0.5">ganhos / total</p>
+              </CardContent>
+            </Card>
+          </>
+        )}
       </div>
+
+      <div className="grid gap-6 lg:grid-cols-3">
+        {/* Funil de Negócios */}
+        <Card className="lg:col-span-2" data-testid="card-funil">
+          <CardHeader>
+            <CardTitle className="text-sm font-semibold">Funil de Negócios</CardTitle>
+          </CardHeader>
+          <CardContent>
+            {isLoading ? (
+              <div className="h-48 bg-muted animate-pulse rounded" />
+            ) : etapaChartData.length === 0 ? (
+              <div className="h-48 flex items-center justify-center text-sm text-muted-foreground">
+                Nenhum negócio ativo no momento.
+              </div>
+            ) : (
+              <ResponsiveContainer width="100%" height={200}>
+                <BarChart
+                  data={etapaChartData}
+                  layout="vertical"
+                  margin={{ top: 0, right: 16, bottom: 0, left: 0 }}
+                >
+                  <XAxis type="number" hide />
+                  <YAxis
+                    type="category"
+                    dataKey="label"
+                    width={96}
+                    tick={{ fontSize: 12, fill: "hsl(var(--muted-foreground))" }}
+                    axisLine={false}
+                    tickLine={false}
+                  />
+                  <Tooltip
+                    cursor={{ fill: "hsl(var(--muted))" }}
+                    formatter={(value: number) => [value, "Negócios"]}
+                    contentStyle={{
+                      fontSize: 12,
+                      border: "1px solid hsl(var(--border))",
+                      borderRadius: 6,
+                      background: "hsl(var(--card))",
+                      color: "hsl(var(--foreground))",
+                    }}
+                  />
+                  <Bar dataKey="count" radius={[0, 4, 4, 0]} maxBarSize={20}>
+                    {etapaChartData.map((entry) => (
+                      <Cell key={entry.etapa} fill={entry.color} />
+                    ))}
+                  </Bar>
+                </BarChart>
+              </ResponsiveContainer>
+            )}
+          </CardContent>
+        </Card>
+
+        {/* Atividades Atrasadas */}
+        <Card data-testid="card-atividades-atrasadas">
+          <CardHeader className="flex flex-row items-center justify-between pb-2 space-y-0">
+            <CardTitle className="text-sm font-semibold">Atividades Atrasadas</CardTitle>
+            <div className="p-1.5 rounded-md bg-red-500/10">
+              <Clock className="h-4 w-4 text-red-500" />
+            </div>
+          </CardHeader>
+          <CardContent>
+            {isLoading ? (
+              <div className="h-16 bg-muted animate-pulse rounded" />
+            ) : (
+              <>
+                <p className="text-4xl font-bold text-red-500">
+                  {dashboard?.atividadesAtrasadas ?? 0}
+                </p>
+                <p className="text-xs text-muted-foreground mt-1">
+                  {(dashboard?.atividadesAtrasadas ?? 0) === 1
+                    ? "atividade pendente vencida"
+                    : "atividades pendentes vencidas"}
+                </p>
+              </>
+            )}
+          </CardContent>
+        </Card>
+      </div>
+
+      {/* Faturas */}
+      <div className="grid gap-4 md:grid-cols-2">
+        <Card data-testid="card-faturas-pendentes">
+          <CardHeader className="flex flex-row items-center justify-between pb-2 space-y-0">
+            <CardTitle className="text-sm font-semibold">Faturas Pendentes</CardTitle>
+            <div className="p-1.5 rounded-md bg-amber-500/10">
+              <FileWarning className="h-4 w-4 text-amber-500" />
+            </div>
+          </CardHeader>
+          <CardContent>
+            {isLoading ? (
+              <div className="h-12 bg-muted animate-pulse rounded" />
+            ) : (
+              <div className="flex items-end gap-4">
+                <div>
+                  <p className="text-3xl font-bold">
+                    {dashboard?.faturas.pendente.count ?? 0}
+                  </p>
+                  <p className="text-xs text-muted-foreground mt-0.5">faturas</p>
+                </div>
+                <div className="pb-0.5">
+                  <p className="text-lg font-semibold text-amber-600">
+                    {formatCurrency(dashboard?.faturas.pendente.somaValor)}
+                  </p>
+                  <p className="text-xs text-muted-foreground">valor total</p>
+                </div>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+
+        <Card data-testid="card-faturas-atrasadas">
+          <CardHeader className="flex flex-row items-center justify-between pb-2 space-y-0">
+            <CardTitle className="text-sm font-semibold">Faturas Atrasadas</CardTitle>
+            <div className="p-1.5 rounded-md bg-red-500/10">
+              <AlertTriangle className="h-4 w-4 text-red-500" />
+            </div>
+          </CardHeader>
+          <CardContent>
+            {isLoading ? (
+              <div className="h-12 bg-muted animate-pulse rounded" />
+            ) : (
+              <div className="flex items-end gap-4">
+                <div>
+                  <p className="text-3xl font-bold text-red-600">
+                    {dashboard?.faturas.atrasada.count ?? 0}
+                  </p>
+                  <p className="text-xs text-muted-foreground mt-0.5">faturas</p>
+                </div>
+                <div className="pb-0.5">
+                  <p className="text-lg font-semibold text-red-600">
+                    {formatCurrency(dashboard?.faturas.atrasada.somaValor)}
+                  </p>
+                  <p className="text-xs text-muted-foreground">valor total</p>
+                </div>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      </div>
+
+      {/* Leads em Risco */}
+      <Card data-testid="card-leads-risco">
+        <CardHeader>
+          <CardTitle className="text-sm font-semibold">Leads em Risco de Churn</CardTitle>
+          <p className="text-xs text-muted-foreground">
+            Top 5 leads com maior probabilidade de abandono
+          </p>
+        </CardHeader>
+        <CardContent>
+          {isLoading ? (
+            <div className="space-y-3">
+              {Array.from({ length: 5 }).map((_, i) => (
+                <div key={i} className="h-10 bg-muted animate-pulse rounded" />
+              ))}
+            </div>
+          ) : !dashboard?.top5ChurnRisk?.length ? (
+            <p className="text-sm text-muted-foreground py-4 text-center">
+              Nenhum lead em risco no momento.
+            </p>
+          ) : (
+            <div className="divide-y divide-border">
+              {dashboard.top5ChurnRisk.map((lead, idx) => (
+                <div
+                  key={lead.leadId}
+                  className="flex items-center justify-between py-3 gap-4"
+                  data-testid={`row-lead-risco-${lead.leadId}`}
+                >
+                  <div className="flex items-center gap-3 min-w-0">
+                    <span className="text-xs text-muted-foreground w-4 shrink-0">
+                      {idx + 1}
+                    </span>
+                    <div className="min-w-0">
+                      <p className="text-sm font-medium truncate">
+                        {lead.nome ?? "Lead sem nome"}
+                      </p>
+                      <p className="text-xs text-muted-foreground truncate">
+                        {lead.email ?? lead.telefone ?? lead.leadId}
+                      </p>
+                    </div>
+                  </div>
+                  {churnBadge(lead.churnRisk)}
+                </div>
+              ))}
+            </div>
+          )}
+        </CardContent>
+      </Card>
     </div>
   );
 }
