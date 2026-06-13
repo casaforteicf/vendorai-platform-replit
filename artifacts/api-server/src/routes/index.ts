@@ -16,6 +16,7 @@ import propostasRouter from "./propostas";
 import messagesRouter from "./messages";
 import customerIntelligenceRouter from "./customer_intelligence";
 import agentTasksRouter from "./agent_tasks";
+import campaignsRouter from "./campaigns";
 import { authenticate, requireRole, requireSameTenanOrSuperAdmin } from "../middlewares/auth";
 
 const router: IRouter = Router();
@@ -57,6 +58,9 @@ router.use(customerIntelligenceRouter);
 
 // AI Hub
 router.use(agentTasksRouter);
+
+// Marketing Hub
+router.use(campaignsRouter);
 
 export { requireRole, requireSameTenanOrSuperAdmin };
 export default router;

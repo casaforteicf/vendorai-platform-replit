@@ -1400,6 +1400,177 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
 
+  /campaigns:
+    post:
+      operationId: createCampaign
+      tags: [marketing-hub]
+      summary: Create campaign
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateCampaignBody"
+      responses:
+        "201":
+          description: Campaign created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Campaign"
+        "422":
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /tenants/{tenantId}/campaigns:
+    get:
+      operationId: listCampaigns
+      tags: [marketing-hub]
+      summary: List campaigns by tenant
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: tenantId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Campaigns ordered by createdAt
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Campaign"
+
+  /tenants/{tenantId}/campaigns/{id}/preview-audience:
+    get:
+      operationId: previewCampaignAudience
+      tags: [marketing-hub]
+      summary: Preview audience for campaign
+      description: |
+        Queries customer_intelligence records that match the campaign's segmentoFiltro.
+        Returns total count and up to 10 sample records.
+        Supported filters: churnRisk (eq/gt/gte/lt/lte or plain number), journeyStage, nextBestAction, intentAnalysis.
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: tenantId
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Audience preview
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CampaignAudiencePreview"
+        "404":
+          description: Campaign not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /campaigns/{id}:
+    get:
+      operationId: getCampaign
+      tags: [marketing-hub]
+      summary: Get campaign by ID
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Campaign
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Campaign"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+    patch:
+      operationId: updateCampaign
+      tags: [marketing-hub]
+      summary: Update campaign
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateCampaignBody"
+      responses:
+        "200":
+          description: Updated campaign
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Campaign"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "422":
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+    delete:
+      operationId: deleteCampaign
+      tags: [marketing-hub]
+      summary: Delete campaign
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "204":
+          description: Deleted
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
   /agent-tasks:
     post:
       operationId: createAgentTask
@@ -2816,6 +2987,147 @@ components:
               type: boolean
           required: [used, limit, percentUsed, nearLimit, overLimit]
       required: [messages, tokens]
+
+    CampaignTipo:
+      type: string
+      enum: [whatsapp, email, instagram]
+
+    CampaignStatus:
+      type: string
+      enum: [rascunho, agendada, enviando, concluida, pausada]
+
+    NumericFilter:
+      oneOf:
+        - type: integer
+        - type: object
+          properties:
+            gt:
+              type: integer
+            gte:
+              type: integer
+            lt:
+              type: integer
+            lte:
+              type: integer
+            eq:
+              type: integer
+
+    SegmentoFiltro:
+      type: object
+      properties:
+        churnRisk:
+          $ref: "#/components/schemas/NumericFilter"
+        journeyStage:
+          type: string
+        nextBestAction:
+          type: string
+        intentAnalysis:
+          type: string
+
+    Campaign:
+      type: object
+      properties:
+        id:
+          type: string
+        tenantId:
+          type: string
+        nome:
+          type: string
+        tipo:
+          $ref: "#/components/schemas/CampaignTipo"
+        segmentoFiltro:
+          $ref: "#/components/schemas/SegmentoFiltro"
+          nullable: true
+        mensagem:
+          type: string
+        status:
+          $ref: "#/components/schemas/CampaignStatus"
+        agendadaPara:
+          type: string
+          format: date-time
+          nullable: true
+        totalDestinatarios:
+          type: integer
+        totalEnviados:
+          type: integer
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+      required: [id, tenantId, nome, tipo, mensagem, status, totalDestinatarios, totalEnviados, createdAt, updatedAt]
+
+    CreateCampaignBody:
+      type: object
+      properties:
+        tenantId:
+          type: string
+        nome:
+          type: string
+        tipo:
+          $ref: "#/components/schemas/CampaignTipo"
+        segmentoFiltro:
+          $ref: "#/components/schemas/SegmentoFiltro"
+        mensagem:
+          type: string
+        status:
+          $ref: "#/components/schemas/CampaignStatus"
+        agendadaPara:
+          type: string
+          format: date-time
+      required: [tenantId, nome, tipo, mensagem]
+
+    UpdateCampaignBody:
+      type: object
+      properties:
+        nome:
+          type: string
+        tipo:
+          $ref: "#/components/schemas/CampaignTipo"
+        segmentoFiltro:
+          $ref: "#/components/schemas/SegmentoFiltro"
+        mensagem:
+          type: string
+        status:
+          $ref: "#/components/schemas/CampaignStatus"
+        agendadaPara:
+          type: string
+          format: date-time
+        totalDestinatarios:
+          type: integer
+        totalEnviados:
+          type: integer
+
+    CampaignAudiencePreview:
+      type: object
+      properties:
+        count:
+          type: integer
+          description: Total leads matching the segmentoFiltro
+        filtersApplied:
+          $ref: "#/components/schemas/SegmentoFiltro"
+          nullable: true
+        sample:
+          type: array
+          description: Up to 10 matching customer_intelligence records
+          items:
+            type: object
+            properties:
+              id:
+                type: string
+              leadId:
+                type: string
+              churnRisk:
+                type: integer
+                nullable: true
+              journeyStage:
+                type: string
+                nullable: true
+              nextBestAction:
+                type: string
+                nullable: true
+      required: [count, filtersApplied, sample]
 
     AgentTaskAgentName:
       type: string

@@ -13,3 +13,4 @@ export * from "./propostas";
 export * from "./messages";
 export * from "./customer_intelligence";
 export * from "./agent_tasks";
+export * from "./campaigns";

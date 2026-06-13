@@ -1378,6 +1378,200 @@ export const DeleteMessageParams = zod.object({
 
 
 /**
+ * @summary Create campaign
+ */
+export const CreateCampaignBody = zod.object({
+  "tenantId": zod.string(),
+  "nome": zod.string(),
+  "tipo": zod.enum(['whatsapp', 'email', 'instagram']),
+  "segmentoFiltro": zod.object({
+  "churnRisk": zod.union([zod.number(),zod.object({
+  "gt": zod.number().optional(),
+  "gte": zod.number().optional(),
+  "lt": zod.number().optional(),
+  "lte": zod.number().optional(),
+  "eq": zod.number().optional()
+})]).optional(),
+  "journeyStage": zod.string().optional(),
+  "nextBestAction": zod.string().optional(),
+  "intentAnalysis": zod.string().optional()
+}).optional(),
+  "mensagem": zod.string(),
+  "status": zod.enum(['rascunho', 'agendada', 'enviando', 'concluida', 'pausada']).optional(),
+  "agendadaPara": zod.coerce.date().optional()
+})
+
+
+/**
+ * @summary List campaigns by tenant
+ */
+export const ListCampaignsParams = zod.object({
+  "tenantId": zod.coerce.string()
+})
+
+export const ListCampaignsResponseItem = zod.object({
+  "id": zod.string(),
+  "tenantId": zod.string(),
+  "nome": zod.string(),
+  "tipo": zod.enum(['whatsapp', 'email', 'instagram']),
+  "segmentoFiltro": zod.object({
+  "churnRisk": zod.union([zod.number(),zod.object({
+  "gt": zod.number().optional(),
+  "gte": zod.number().optional(),
+  "lt": zod.number().optional(),
+  "lte": zod.number().optional(),
+  "eq": zod.number().optional()
+})]).optional(),
+  "journeyStage": zod.string().optional(),
+  "nextBestAction": zod.string().optional(),
+  "intentAnalysis": zod.string().optional()
+}).nullish(),
+  "mensagem": zod.string(),
+  "status": zod.enum(['rascunho', 'agendada', 'enviando', 'concluida', 'pausada']),
+  "agendadaPara": zod.coerce.date().nullish(),
+  "totalDestinatarios": zod.number(),
+  "totalEnviados": zod.number(),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date()
+})
+export const ListCampaignsResponse = zod.array(ListCampaignsResponseItem)
+
+
+/**
+ * Queries customer_intelligence records that match the campaign's segmentoFiltro.
+Returns total count and up to 10 sample records.
+Supported filters: churnRisk (eq/gt/gte/lt/lte or plain number), journeyStage, nextBestAction, intentAnalysis.
+
+ * @summary Preview audience for campaign
+ */
+export const PreviewCampaignAudienceParams = zod.object({
+  "tenantId": zod.coerce.string(),
+  "id": zod.coerce.string()
+})
+
+export const PreviewCampaignAudienceResponse = zod.object({
+  "count": zod.number().describe('Total leads matching the segmentoFiltro'),
+  "filtersApplied": zod.object({
+  "churnRisk": zod.union([zod.number(),zod.object({
+  "gt": zod.number().optional(),
+  "gte": zod.number().optional(),
+  "lt": zod.number().optional(),
+  "lte": zod.number().optional(),
+  "eq": zod.number().optional()
+})]).optional(),
+  "journeyStage": zod.string().optional(),
+  "nextBestAction": zod.string().optional(),
+  "intentAnalysis": zod.string().optional()
+}).nullable(),
+  "sample": zod.array(zod.object({
+  "id": zod.string().optional(),
+  "leadId": zod.string().optional(),
+  "churnRisk": zod.number().nullish(),
+  "journeyStage": zod.string().nullish(),
+  "nextBestAction": zod.string().nullish()
+})).describe('Up to 10 matching customer_intelligence records')
+})
+
+
+/**
+ * @summary Get campaign by ID
+ */
+export const GetCampaignParams = zod.object({
+  "id": zod.coerce.string()
+})
+
+export const GetCampaignResponse = zod.object({
+  "id": zod.string(),
+  "tenantId": zod.string(),
+  "nome": zod.string(),
+  "tipo": zod.enum(['whatsapp', 'email', 'instagram']),
+  "segmentoFiltro": zod.object({
+  "churnRisk": zod.union([zod.number(),zod.object({
+  "gt": zod.number().optional(),
+  "gte": zod.number().optional(),
+  "lt": zod.number().optional(),
+  "lte": zod.number().optional(),
+  "eq": zod.number().optional()
+})]).optional(),
+  "journeyStage": zod.string().optional(),
+  "nextBestAction": zod.string().optional(),
+  "intentAnalysis": zod.string().optional()
+}).nullish(),
+  "mensagem": zod.string(),
+  "status": zod.enum(['rascunho', 'agendada', 'enviando', 'concluida', 'pausada']),
+  "agendadaPara": zod.coerce.date().nullish(),
+  "totalDestinatarios": zod.number(),
+  "totalEnviados": zod.number(),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date()
+})
+
+
+/**
+ * @summary Update campaign
+ */
+export const UpdateCampaignParams = zod.object({
+  "id": zod.coerce.string()
+})
+
+export const UpdateCampaignBody = zod.object({
+  "nome": zod.string().optional(),
+  "tipo": zod.enum(['whatsapp', 'email', 'instagram']).optional(),
+  "segmentoFiltro": zod.object({
+  "churnRisk": zod.union([zod.number(),zod.object({
+  "gt": zod.number().optional(),
+  "gte": zod.number().optional(),
+  "lt": zod.number().optional(),
+  "lte": zod.number().optional(),
+  "eq": zod.number().optional()
+})]).optional(),
+  "journeyStage": zod.string().optional(),
+  "nextBestAction": zod.string().optional(),
+  "intentAnalysis": zod.string().optional()
+}).optional(),
+  "mensagem": zod.string().optional(),
+  "status": zod.enum(['rascunho', 'agendada', 'enviando', 'concluida', 'pausada']).optional(),
+  "agendadaPara": zod.coerce.date().optional(),
+  "totalDestinatarios": zod.number().optional(),
+  "totalEnviados": zod.number().optional()
+})
+
+export const UpdateCampaignResponse = zod.object({
+  "id": zod.string(),
+  "tenantId": zod.string(),
+  "nome": zod.string(),
+  "tipo": zod.enum(['whatsapp', 'email', 'instagram']),
+  "segmentoFiltro": zod.object({
+  "churnRisk": zod.union([zod.number(),zod.object({
+  "gt": zod.number().optional(),
+  "gte": zod.number().optional(),
+  "lt": zod.number().optional(),
+  "lte": zod.number().optional(),
+  "eq": zod.number().optional()
+})]).optional(),
+  "journeyStage": zod.string().optional(),
+  "nextBestAction": zod.string().optional(),
+  "intentAnalysis": zod.string().optional()
+}).nullish(),
+  "mensagem": zod.string(),
+  "status": zod.enum(['rascunho', 'agendada', 'enviando', 'concluida', 'pausada']),
+  "agendadaPara": zod.coerce.date().nullish(),
+  "totalDestinatarios": zod.number(),
+  "totalEnviados": zod.number(),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date()
+})
+
+
+/**
+ * @summary Delete campaign
+ */
+export const DeleteCampaignParams = zod.object({
+  "id": zod.coerce.string()
+})
+
+
+/**
  * Validates that the agent is enabled in the tenant's agent_config before creating. Created with status "pendente_aprovacao" by default.
  * @summary Create agent task
  */

@@ -93,6 +93,93 @@ export interface UsageSummary {
   tokens: UsageSummaryTokens;
 }
 
+export type CampaignTipo = typeof CampaignTipo[keyof typeof CampaignTipo];
+
+
+export const CampaignTipo = {
+  whatsapp: 'whatsapp',
+  email: 'email',
+  instagram: 'instagram',
+} as const;
+
+export type CampaignStatus = typeof CampaignStatus[keyof typeof CampaignStatus];
+
+
+export const CampaignStatus = {
+  rascunho: 'rascunho',
+  agendada: 'agendada',
+  enviando: 'enviando',
+  concluida: 'concluida',
+  pausada: 'pausada',
+} as const;
+
+export type NumericFilter = number | {
+  gt?: number;
+  gte?: number;
+  lt?: number;
+  lte?: number;
+  eq?: number;
+};
+
+export interface SegmentoFiltro {
+  churnRisk?: NumericFilter;
+  journeyStage?: string;
+  nextBestAction?: string;
+  intentAnalysis?: string;
+}
+
+export interface Campaign {
+  id: string;
+  tenantId: string;
+  nome: string;
+  tipo: CampaignTipo;
+  segmentoFiltro?: SegmentoFiltro | null;
+  mensagem: string;
+  status: CampaignStatus;
+  agendadaPara?: string | null;
+  totalDestinatarios: number;
+  totalEnviados: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface CreateCampaignBody {
+  tenantId: string;
+  nome: string;
+  tipo: CampaignTipo;
+  segmentoFiltro?: SegmentoFiltro;
+  mensagem: string;
+  status?: CampaignStatus;
+  agendadaPara?: string;
+}
+
+export interface UpdateCampaignBody {
+  nome?: string;
+  tipo?: CampaignTipo;
+  segmentoFiltro?: SegmentoFiltro;
+  mensagem?: string;
+  status?: CampaignStatus;
+  agendadaPara?: string;
+  totalDestinatarios?: number;
+  totalEnviados?: number;
+}
+
+export type CampaignAudiencePreviewSampleItem = {
+  id?: string;
+  leadId?: string;
+  churnRisk?: number | null;
+  journeyStage?: string | null;
+  nextBestAction?: string | null;
+};
+
+export interface CampaignAudiencePreview {
+  /** Total leads matching the segmentoFiltro */
+  count: number;
+  filtersApplied: SegmentoFiltro | null;
+  /** Up to 10 matching customer_intelligence records */
+  sample: CampaignAudiencePreviewSampleItem[];
+}
+
 export type AgentTaskAgentName = typeof AgentTaskAgentName[keyof typeof AgentTaskAgentName];
 
 
