@@ -45,6 +45,7 @@ import {
   TrendingUp,
   Sparkles,
   Loader2,
+  Plus,
 } from "lucide-react";
 
 const STATUS_STYLES: Record<string, string> = {
@@ -189,6 +190,9 @@ export default function LeadDetail() {
   const [editingNextBestAction, setEditingNextBestAction] = useState(false);
   const [nextBestActionDraft, setNextBestActionDraft] = useState<string>("");
 
+  const [editingChurnReasons, setEditingChurnReasons] = useState(false);
+  const [churnReasonsDraft, setChurnReasonsDraft] = useState<string[]>([]);
+
   const { data: lead, isLoading: leadLoading } = useGetLead(id, {
     query: {
       enabled: !!id,
@@ -268,6 +272,13 @@ export default function LeadDetail() {
       data: { nextBestAction: nextBestActionDraft },
     });
     setEditingNextBestAction(false);
+  }
+
+  function saveChurnReasons() {
+    if (!intelligence?.id) return;
+    const cleaned = churnReasonsDraft.map((r) => r.trim()).filter((r) => r !== "");
+    updateIntelligence({ id: intelligence.id, data: { churnReasons: cleaned } });
+    setEditingChurnReasons(false);
   }
 
   const { data: activities, isLoading: activitiesLoading } = useListActivities(
@@ -543,18 +554,98 @@ export default function LeadDetail() {
                         />
                       </div>
                     )}
-                    {Array.isArray(intelligence?.churnReasons) &&
-                      (intelligence.churnReasons as unknown[]).filter(
-                        (r) => typeof r === "string" && r.trim() !== ""
-                      ).length > 0 && (
-                        <ul
-                          className="mt-2 space-y-1"
-                          data-testid="list-churn-reasons"
-                        >
+                    {/* Churn Reasons */}
+                    <div className="mt-2">
+                      <div className="flex items-center justify-between mb-1">
+                        <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                          Razões do Churn
+                        </span>
+                        {intelligence?.id && !editingChurnReasons && (
+                          <button
+                            onClick={() => {
+                              const current = Array.isArray(intelligence.churnReasons)
+                                ? (intelligence.churnReasons as unknown[])
+                                    .filter((r): r is string => typeof r === "string")
+                                : [];
+                              setChurnReasonsDraft(current.length > 0 ? current : [""]);
+                              setEditingChurnReasons(true);
+                            }}
+                            className="text-muted-foreground hover:text-foreground"
+                            data-testid="btn-edit-churn-reasons"
+                          >
+                            <Pencil className="h-3 w-3" />
+                          </button>
+                        )}
+                      </div>
+
+                      {editingChurnReasons ? (
+                        <div className="space-y-2" data-testid="editor-churn-reasons">
+                          {churnReasonsDraft.map((reason, i) => (
+                            <div key={i} className="flex items-center gap-1.5">
+                              <Input
+                                value={reason}
+                                onChange={(e) => {
+                                  const next = [...churnReasonsDraft];
+                                  next[i] = e.target.value;
+                                  setChurnReasonsDraft(next);
+                                }}
+                                className="h-6 text-xs flex-1"
+                                placeholder="Descreva uma razão..."
+                                data-testid={`input-churn-reason-${i}`}
+                                autoFocus={i === 0}
+                                onKeyDown={(e) => {
+                                  if (e.key === "Enter") saveChurnReasons();
+                                  if (e.key === "Escape") setEditingChurnReasons(false);
+                                }}
+                              />
+                              <button
+                                onClick={() =>
+                                  setChurnReasonsDraft(churnReasonsDraft.filter((_, j) => j !== i))
+                                }
+                                className="text-muted-foreground hover:text-destructive shrink-0"
+                                data-testid={`btn-remove-churn-reason-${i}`}
+                              >
+                                <X className="h-3.5 w-3.5" />
+                              </button>
+                            </div>
+                          ))}
+                          <button
+                            onClick={() => setChurnReasonsDraft([...churnReasonsDraft, ""])}
+                            className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground"
+                            data-testid="btn-add-churn-reason"
+                          >
+                            <Plus className="h-3 w-3" />
+                            Adicionar razão
+                          </button>
+                          <div className="flex items-center gap-2 pt-1">
+                            <Button
+                              size="sm"
+                              className="h-6 text-xs px-2"
+                              onClick={saveChurnReasons}
+                              disabled={isUpdating}
+                              data-testid="btn-save-churn-reasons"
+                            >
+                              <Check className="h-3 w-3 mr-1" />
+                              Salvar
+                            </Button>
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              className="h-6 text-xs px-2"
+                              onClick={() => setEditingChurnReasons(false)}
+                            >
+                              Cancelar
+                            </Button>
+                          </div>
+                        </div>
+                      ) : Array.isArray(intelligence?.churnReasons) &&
+                        (intelligence.churnReasons as unknown[]).filter(
+                          (r) => typeof r === "string" && r.trim() !== ""
+                        ).length > 0 ? (
+                        <ul className="space-y-1" data-testid="list-churn-reasons">
                           {(intelligence.churnReasons as unknown[])
                             .filter(
-                              (r): r is string =>
-                                typeof r === "string" && r.trim() !== ""
+                              (r): r is string => typeof r === "string" && r.trim() !== ""
                             )
                             .map((reason, i) => (
                               <li
@@ -567,7 +658,14 @@ export default function LeadDetail() {
                               </li>
                             ))}
                         </ul>
+                      ) : (
+                        intelligence?.id && (
+                          <p className="text-xs text-muted-foreground">
+                            Nenhuma razão registrada. Clique para editar.
+                          </p>
+                        )
                       )}
+                    </div>
                   </div>
 
                   {/* Journey Stage */}
