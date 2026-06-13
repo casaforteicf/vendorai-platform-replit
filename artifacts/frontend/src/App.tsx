@@ -17,6 +17,7 @@ import Configuracoes from "@/pages/Configuracoes";
 import Campanhas from "@/pages/Campanhas";
 import Propostas from "@/pages/Propostas";
 import Faturamento from "@/pages/Faturamento";
+import AdminAIUsage from "@/pages/AdminAIUsage";
 import { useEffect } from "react";
 
 const queryClient = new QueryClient();
@@ -37,6 +38,37 @@ function ProtectedRoute({ component: Component, ...rest }: any) {
         <div className="animate-spin h-8 w-8 border-4 border-primary border-t-transparent rounded-full" />
       </div>
     );
+  }
+
+  return (
+    <SidebarLayout>
+      <Component {...rest} />
+    </SidebarLayout>
+  );
+}
+
+function SuperAdminRoute({ component: Component, ...rest }: any) {
+  const { token, user, isLoading } = useAuth();
+  const [, setLocation] = useLocation();
+
+  useEffect(() => {
+    if (!isLoading && !token) {
+      setLocation("/login");
+    } else if (!isLoading && user && user.platformRole !== "super_admin") {
+      setLocation("/");
+    }
+  }, [token, user, isLoading, setLocation]);
+
+  if (isLoading || !token || !user) {
+    return (
+      <div className="min-h-screen w-full flex items-center justify-center bg-background">
+        <div className="animate-spin h-8 w-8 border-4 border-primary border-t-transparent rounded-full" />
+      </div>
+    );
+  }
+
+  if (user.platformRole !== "super_admin") {
+    return null;
   }
 
   return (
@@ -105,6 +137,9 @@ function AppRoutes() {
       </Route>
       <Route path="/faturamento">
         {() => <ProtectedRoute component={Faturamento} />}
+      </Route>
+      <Route path="/admin/ai-usage">
+        {() => <SuperAdminRoute component={AdminAIUsage} />}
       </Route>
       <Route component={NotFound} />
     </Switch>
