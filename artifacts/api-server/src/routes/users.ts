@@ -109,6 +109,49 @@ router.patch("/users/:id", async (req, res) => {
   }
 });
 
+router.patch("/users/:id/password", async (req, res) => {
+  const { currentPassword, newPassword } = req.body as {
+    currentPassword?: unknown;
+    newPassword?: unknown;
+  };
+
+  if (typeof currentPassword !== "string" || typeof newPassword !== "string") {
+    res.status(422).json({ error: "currentPassword and newPassword are required strings" });
+    return;
+  }
+
+  if (newPassword.length < 8) {
+    res.status(422).json({ error: "newPassword must be at least 8 characters" });
+    return;
+  }
+
+  const [existing] = await db
+    .select({ id: usersTable.id, password: usersTable.password })
+    .from(usersTable)
+    .where(eq(usersTable.id, String(req.params.id)));
+
+  if (!existing) {
+    res.status(404).json({ error: "User not found" });
+    return;
+  }
+
+  const valid = await bcrypt.compare(currentPassword, existing.password);
+  if (!valid) {
+    res.status(401).json({ error: "Current password is incorrect" });
+    return;
+  }
+
+  const hashed = await bcrypt.hash(newPassword, 12);
+
+  const [user] = await db
+    .update(usersTable)
+    .set({ password: hashed, updatedAt: new Date() })
+    .where(eq(usersTable.id, String(req.params.id)))
+    .returning(PUBLIC_FIELDS);
+
+  res.json(user);
+});
+
 router.delete("/users/:id", async (req, res) => {
   const [deleted] = await db
     .delete(usersTable)

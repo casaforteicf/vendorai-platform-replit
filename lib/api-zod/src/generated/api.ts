@@ -128,6 +128,36 @@ export const CreateUserBody = zod.object({
 
 
 /**
+ * Requires the current password to confirm identity before setting a new one.
+ * @summary Change user password
+ */
+export const ChangePasswordParams = zod.object({
+  "id": zod.coerce.string()
+})
+
+export const changePasswordBodyNewPasswordMin = 8;
+
+
+
+export const ChangePasswordBody = zod.object({
+  "currentPassword": zod.string(),
+  "newPassword": zod.string().min(changePasswordBodyNewPasswordMin)
+})
+
+export const ChangePasswordResponse = zod.object({
+  "id": zod.string(),
+  "tenantId": zod.string(),
+  "name": zod.string(),
+  "email": zod.string(),
+  "role": zod.enum(['admin', 'member']),
+  "platformRole": zod.enum(['super_admin', 'tenant_admin', 'member']),
+  "active": zod.boolean(),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date()
+})
+
+
+/**
  * @summary Get user by ID
  */
 export const GetUserParams = zod.object({

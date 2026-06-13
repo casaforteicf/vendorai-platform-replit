@@ -10,6 +10,7 @@ export * from './agentActionLog';
 export * from './agentActionLogPayload';
 export * from './agentActionStatus';
 export * from './authResponse';
+export * from './changePasswordBody';
 export * from './consent';
 export * from './conversation';
 export * from './conversationMetadata';
