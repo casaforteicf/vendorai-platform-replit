@@ -18,11 +18,15 @@ export const TenantStatus = {
   cancelled: 'cancelled',
 } as const;
 
+export type TenantAgentsEnabled = { [key: string]: unknown };
+
 export interface Tenant {
   id: string;
   name: string;
   slug: string;
   status: TenantStatus;
+  vertical?: string | null;
+  agentsEnabled?: TenantAgentsEnabled;
   setupCompletedAt?: string | null;
   autonomyEnabledAt?: string | null;
   monthlyTokenLimit?: number | null;
@@ -33,20 +37,28 @@ export interface Tenant {
   updatedAt: string;
 }
 
+export type CreateTenantBodyAgentsEnabled = { [key: string]: unknown };
+
 export interface CreateTenantBody {
   name: string;
   slug: string;
   status?: TenantStatus;
+  vertical?: string | null;
+  agentsEnabled?: CreateTenantBodyAgentsEnabled;
   setupCompletedAt?: string | null;
   autonomyEnabledAt?: string | null;
   monthlyTokenLimit?: number | null;
   dailyMessageLimit?: number | null;
 }
 
+export type UpdateTenantBodyAgentsEnabled = { [key: string]: unknown };
+
 export interface UpdateTenantBody {
   name?: string;
   slug?: string;
   status?: TenantStatus;
+  vertical?: string | null;
+  agentsEnabled?: UpdateTenantBodyAgentsEnabled;
   setupCompletedAt?: string | null;
   autonomyEnabledAt?: string | null;
   monthlyTokenLimit?: number | null;
@@ -158,5 +170,100 @@ export interface UpdateLeadBody {
   proximaAcao?: string | null;
   status?: string;
   activeAgentLock?: string | null;
+}
+
+export type ConversationMetadata = { [key: string]: unknown } | null;
+
+export interface Conversation {
+  id: string;
+  tenantId: string;
+  leadId?: string | null;
+  channel?: string | null;
+  status: string;
+  agentName?: string | null;
+  metadata?: ConversationMetadata;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export type CreateConversationBodyMetadata = { [key: string]: unknown } | null;
+
+export interface CreateConversationBody {
+  tenantId: string;
+  leadId?: string | null;
+  channel?: string | null;
+  status?: string;
+  agentName?: string | null;
+  metadata?: CreateConversationBodyMetadata;
+}
+
+export type UpdateConversationBodyMetadata = { [key: string]: unknown } | null;
+
+export interface UpdateConversationBody {
+  leadId?: string | null;
+  channel?: string | null;
+  status?: string;
+  agentName?: string | null;
+  metadata?: UpdateConversationBodyMetadata;
+}
+
+export type AgentActionStatus = typeof AgentActionStatus[keyof typeof AgentActionStatus];
+
+
+export const AgentActionStatus = {
+  pending: 'pending',
+  approved: 'approved',
+  executed: 'executed',
+  rejected: 'rejected',
+} as const;
+
+export type AgentActionLogPayload = { [key: string]: unknown } | null;
+
+export interface AgentActionLog {
+  id: string;
+  tenantId: string;
+  leadId?: string | null;
+  agentName: string;
+  actionType: string;
+  status: AgentActionStatus;
+  payload?: AgentActionLogPayload;
+  createdAt: string;
+}
+
+export type CreateAgentActionLogBodyPayload = { [key: string]: unknown } | null;
+
+export interface CreateAgentActionLogBody {
+  tenantId: string;
+  leadId?: string | null;
+  agentName: string;
+  actionType: string;
+  status?: AgentActionStatus;
+  payload?: CreateAgentActionLogBodyPayload;
+}
+
+export type UpdateAgentActionLogBodyPayload = { [key: string]: unknown } | null;
+
+export interface UpdateAgentActionLogBody {
+  leadId?: string | null;
+  agentName?: string;
+  actionType?: string;
+  status?: AgentActionStatus;
+  payload?: UpdateAgentActionLogBodyPayload;
+}
+
+export interface Consent {
+  id: string;
+  tenantId: string;
+  leadId: string;
+  channel: string;
+  consentGivenAt: string;
+  createdAt: string;
+}
+
+export interface CreateConsentBody {
+  tenantId: string;
+  leadId: string;
+  channel: string;
+  consentGivenAt?: string;
 }
 

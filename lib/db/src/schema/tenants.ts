@@ -1,4 +1,4 @@
-import { pgTable, text, integer, timestamp, pgEnum } from "drizzle-orm/pg-core";
+import { pgTable, text, integer, timestamp, pgEnum, json } from "drizzle-orm/pg-core";
 import { createInsertSchema, createSelectSchema } from "drizzle-zod";
 import { z } from "zod/v4";
 
@@ -15,6 +15,11 @@ export const tenantsTable = pgTable("tenants", {
   name: text("name").notNull(),
   slug: text("slug").notNull().unique(),
   status: tenantStatusEnum("status").notNull().default("active"),
+  vertical: text("vertical"),
+  agentsEnabled: json("agents_enabled")
+    .$type<Record<string, unknown>>()
+    .notNull()
+    .default({}),
   setupCompletedAt: timestamp("setup_completed_at"),
   autonomyEnabledAt: timestamp("autonomy_enabled_at"),
   monthlyTokenLimit: integer("monthly_token_limit"),

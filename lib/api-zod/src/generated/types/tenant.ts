@@ -5,6 +5,7 @@
  * API specification
  * OpenAPI spec version: 0.1.0
  */
+import type { TenantAgentsEnabled } from './tenantAgentsEnabled';
 import type { TenantStatus } from './tenantStatus';
 
 export interface Tenant {
@@ -12,6 +13,8 @@ export interface Tenant {
   name: string;
   slug: string;
   status: TenantStatus;
+  vertical?: string | null;
+  agentsEnabled?: TenantAgentsEnabled;
   setupCompletedAt?: Date | null;
   autonomyEnabledAt?: Date | null;
   monthlyTokenLimit?: number | null;

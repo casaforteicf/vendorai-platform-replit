@@ -115,6 +115,8 @@ export const ListTenantsResponseItem = zod.object({
   "name": zod.string(),
   "slug": zod.string(),
   "status": zod.enum(['active', 'suspended', 'cancelled']),
+  "vertical": zod.string().nullish(),
+  "agentsEnabled": zod.record(zod.string(), zod.unknown()).optional(),
   "setupCompletedAt": zod.coerce.date().nullish(),
   "autonomyEnabledAt": zod.coerce.date().nullish(),
   "monthlyTokenLimit": zod.number().nullish(),
@@ -134,6 +136,8 @@ export const CreateTenantBody = zod.object({
   "name": zod.string(),
   "slug": zod.string(),
   "status": zod.enum(['active', 'suspended', 'cancelled']).optional(),
+  "vertical": zod.string().nullish(),
+  "agentsEnabled": zod.record(zod.string(), zod.unknown()).optional(),
   "setupCompletedAt": zod.coerce.date().nullish(),
   "autonomyEnabledAt": zod.coerce.date().nullish(),
   "monthlyTokenLimit": zod.number().nullish(),
@@ -153,6 +157,8 @@ export const GetTenantResponse = zod.object({
   "name": zod.string(),
   "slug": zod.string(),
   "status": zod.enum(['active', 'suspended', 'cancelled']),
+  "vertical": zod.string().nullish(),
+  "agentsEnabled": zod.record(zod.string(), zod.unknown()).optional(),
   "setupCompletedAt": zod.coerce.date().nullish(),
   "autonomyEnabledAt": zod.coerce.date().nullish(),
   "monthlyTokenLimit": zod.number().nullish(),
@@ -175,6 +181,8 @@ export const UpdateTenantBody = zod.object({
   "name": zod.string().optional(),
   "slug": zod.string().optional(),
   "status": zod.enum(['active', 'suspended', 'cancelled']).optional(),
+  "vertical": zod.string().nullish(),
+  "agentsEnabled": zod.record(zod.string(), zod.unknown()).optional(),
   "setupCompletedAt": zod.coerce.date().nullish(),
   "autonomyEnabledAt": zod.coerce.date().nullish(),
   "monthlyTokenLimit": zod.number().nullish(),
@@ -188,6 +196,8 @@ export const UpdateTenantResponse = zod.object({
   "name": zod.string(),
   "slug": zod.string(),
   "status": zod.enum(['active', 'suspended', 'cancelled']),
+  "vertical": zod.string().nullish(),
+  "agentsEnabled": zod.record(zod.string(), zod.unknown()).optional(),
   "setupCompletedAt": zod.coerce.date().nullish(),
   "autonomyEnabledAt": zod.coerce.date().nullish(),
   "monthlyTokenLimit": zod.number().nullish(),
@@ -203,6 +213,302 @@ export const UpdateTenantResponse = zod.object({
  * @summary Delete tenant
  */
 export const DeleteTenantParams = zod.object({
+  "id": zod.coerce.string()
+})
+
+
+/**
+ * @summary List all conversations
+ */
+export const ListConversationsResponseItem = zod.object({
+  "id": zod.string(),
+  "tenantId": zod.string(),
+  "leadId": zod.string().nullish(),
+  "channel": zod.string().nullish(),
+  "status": zod.string(),
+  "agentName": zod.string().nullish(),
+  "metadata": zod.record(zod.string(), zod.unknown()).nullish(),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date()
+})
+export const ListConversationsResponse = zod.array(ListConversationsResponseItem)
+
+
+/**
+ * @summary Create conversation
+ */
+export const CreateConversationBody = zod.object({
+  "tenantId": zod.string(),
+  "leadId": zod.string().nullish(),
+  "channel": zod.string().nullish(),
+  "status": zod.string().optional(),
+  "agentName": zod.string().nullish(),
+  "metadata": zod.record(zod.string(), zod.unknown()).nullish()
+})
+
+
+/**
+ * @summary List conversations of a tenant
+ */
+export const ListTenantConversationsParams = zod.object({
+  "tenantId": zod.coerce.string()
+})
+
+export const ListTenantConversationsResponseItem = zod.object({
+  "id": zod.string(),
+  "tenantId": zod.string(),
+  "leadId": zod.string().nullish(),
+  "channel": zod.string().nullish(),
+  "status": zod.string(),
+  "agentName": zod.string().nullish(),
+  "metadata": zod.record(zod.string(), zod.unknown()).nullish(),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date()
+})
+export const ListTenantConversationsResponse = zod.array(ListTenantConversationsResponseItem)
+
+
+/**
+ * @summary Get conversation by ID
+ */
+export const GetConversationParams = zod.object({
+  "id": zod.coerce.string()
+})
+
+export const GetConversationResponse = zod.object({
+  "id": zod.string(),
+  "tenantId": zod.string(),
+  "leadId": zod.string().nullish(),
+  "channel": zod.string().nullish(),
+  "status": zod.string(),
+  "agentName": zod.string().nullish(),
+  "metadata": zod.record(zod.string(), zod.unknown()).nullish(),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date()
+})
+
+
+/**
+ * @summary Update conversation
+ */
+export const UpdateConversationParams = zod.object({
+  "id": zod.coerce.string()
+})
+
+export const UpdateConversationBody = zod.object({
+  "leadId": zod.string().nullish(),
+  "channel": zod.string().nullish(),
+  "status": zod.string().optional(),
+  "agentName": zod.string().nullish(),
+  "metadata": zod.record(zod.string(), zod.unknown()).nullish()
+})
+
+export const UpdateConversationResponse = zod.object({
+  "id": zod.string(),
+  "tenantId": zod.string(),
+  "leadId": zod.string().nullish(),
+  "channel": zod.string().nullish(),
+  "status": zod.string(),
+  "agentName": zod.string().nullish(),
+  "metadata": zod.record(zod.string(), zod.unknown()).nullish(),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date()
+})
+
+
+/**
+ * @summary Delete conversation
+ */
+export const DeleteConversationParams = zod.object({
+  "id": zod.coerce.string()
+})
+
+
+/**
+ * @summary List all agent action logs
+ */
+export const ListAgentActionLogsResponseItem = zod.object({
+  "id": zod.string(),
+  "tenantId": zod.string(),
+  "leadId": zod.string().nullish(),
+  "agentName": zod.string(),
+  "actionType": zod.string(),
+  "status": zod.enum(['pending', 'approved', 'executed', 'rejected']),
+  "payload": zod.record(zod.string(), zod.unknown()).nullish(),
+  "createdAt": zod.coerce.date()
+})
+export const ListAgentActionLogsResponse = zod.array(ListAgentActionLogsResponseItem)
+
+
+/**
+ * @summary Create agent action log
+ */
+export const CreateAgentActionLogBody = zod.object({
+  "tenantId": zod.string(),
+  "leadId": zod.string().nullish(),
+  "agentName": zod.string(),
+  "actionType": zod.string(),
+  "status": zod.enum(['pending', 'approved', 'executed', 'rejected']).optional(),
+  "payload": zod.record(zod.string(), zod.unknown()).nullish()
+})
+
+
+/**
+ * @summary List agent action logs of a tenant
+ */
+export const ListTenantAgentActionLogsParams = zod.object({
+  "tenantId": zod.coerce.string()
+})
+
+export const ListTenantAgentActionLogsResponseItem = zod.object({
+  "id": zod.string(),
+  "tenantId": zod.string(),
+  "leadId": zod.string().nullish(),
+  "agentName": zod.string(),
+  "actionType": zod.string(),
+  "status": zod.enum(['pending', 'approved', 'executed', 'rejected']),
+  "payload": zod.record(zod.string(), zod.unknown()).nullish(),
+  "createdAt": zod.coerce.date()
+})
+export const ListTenantAgentActionLogsResponse = zod.array(ListTenantAgentActionLogsResponseItem)
+
+
+/**
+ * @summary Get agent action log by ID
+ */
+export const GetAgentActionLogParams = zod.object({
+  "id": zod.coerce.string()
+})
+
+export const GetAgentActionLogResponse = zod.object({
+  "id": zod.string(),
+  "tenantId": zod.string(),
+  "leadId": zod.string().nullish(),
+  "agentName": zod.string(),
+  "actionType": zod.string(),
+  "status": zod.enum(['pending', 'approved', 'executed', 'rejected']),
+  "payload": zod.record(zod.string(), zod.unknown()).nullish(),
+  "createdAt": zod.coerce.date()
+})
+
+
+/**
+ * @summary Update agent action log (e.g. change status)
+ */
+export const UpdateAgentActionLogParams = zod.object({
+  "id": zod.coerce.string()
+})
+
+export const UpdateAgentActionLogBody = zod.object({
+  "leadId": zod.string().nullish(),
+  "agentName": zod.string().optional(),
+  "actionType": zod.string().optional(),
+  "status": zod.enum(['pending', 'approved', 'executed', 'rejected']).optional(),
+  "payload": zod.record(zod.string(), zod.unknown()).nullish()
+})
+
+export const UpdateAgentActionLogResponse = zod.object({
+  "id": zod.string(),
+  "tenantId": zod.string(),
+  "leadId": zod.string().nullish(),
+  "agentName": zod.string(),
+  "actionType": zod.string(),
+  "status": zod.enum(['pending', 'approved', 'executed', 'rejected']),
+  "payload": zod.record(zod.string(), zod.unknown()).nullish(),
+  "createdAt": zod.coerce.date()
+})
+
+
+/**
+ * @summary Delete agent action log
+ */
+export const DeleteAgentActionLogParams = zod.object({
+  "id": zod.coerce.string()
+})
+
+
+/**
+ * @summary List all consents
+ */
+export const ListConsentsResponseItem = zod.object({
+  "id": zod.string(),
+  "tenantId": zod.string(),
+  "leadId": zod.string(),
+  "channel": zod.string(),
+  "consentGivenAt": zod.coerce.date(),
+  "createdAt": zod.coerce.date()
+})
+export const ListConsentsResponse = zod.array(ListConsentsResponseItem)
+
+
+/**
+ * @summary Create consent
+ */
+export const CreateConsentBody = zod.object({
+  "tenantId": zod.string(),
+  "leadId": zod.string(),
+  "channel": zod.string(),
+  "consentGivenAt": zod.coerce.date().optional()
+})
+
+
+/**
+ * @summary List consents of a tenant
+ */
+export const ListTenantConsentsParams = zod.object({
+  "tenantId": zod.coerce.string()
+})
+
+export const ListTenantConsentsResponseItem = zod.object({
+  "id": zod.string(),
+  "tenantId": zod.string(),
+  "leadId": zod.string(),
+  "channel": zod.string(),
+  "consentGivenAt": zod.coerce.date(),
+  "createdAt": zod.coerce.date()
+})
+export const ListTenantConsentsResponse = zod.array(ListTenantConsentsResponseItem)
+
+
+/**
+ * @summary List consents of a lead
+ */
+export const ListLeadConsentsParams = zod.object({
+  "leadId": zod.coerce.string()
+})
+
+export const ListLeadConsentsResponseItem = zod.object({
+  "id": zod.string(),
+  "tenantId": zod.string(),
+  "leadId": zod.string(),
+  "channel": zod.string(),
+  "consentGivenAt": zod.coerce.date(),
+  "createdAt": zod.coerce.date()
+})
+export const ListLeadConsentsResponse = zod.array(ListLeadConsentsResponseItem)
+
+
+/**
+ * @summary Get consent by ID
+ */
+export const GetConsentParams = zod.object({
+  "id": zod.coerce.string()
+})
+
+export const GetConsentResponse = zod.object({
+  "id": zod.string(),
+  "tenantId": zod.string(),
+  "leadId": zod.string(),
+  "channel": zod.string(),
+  "consentGivenAt": zod.coerce.date(),
+  "createdAt": zod.coerce.date()
+})
+
+
+/**
+ * @summary Delete consent (revoke)
+ */
+export const DeleteConsentParams = zod.object({
   "id": zod.coerce.string()
 })
 

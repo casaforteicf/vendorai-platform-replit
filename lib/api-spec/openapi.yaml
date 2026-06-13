@@ -16,6 +16,12 @@ tags:
     description: User management
   - name: leads
     description: Lead management
+  - name: conversations
+    description: Conversation management
+  - name: agent-action-logs
+    description: Agent action log management
+  - name: consents
+    description: Consent management
 paths:
   /healthz:
     get:
@@ -297,6 +303,406 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
 
+  /conversations:
+    get:
+      operationId: listConversations
+      tags: [conversations]
+      summary: List all conversations
+      responses:
+        "200":
+          description: List of conversations
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Conversation"
+    post:
+      operationId: createConversation
+      tags: [conversations]
+      summary: Create conversation
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateConversationBody"
+      responses:
+        "201":
+          description: Created conversation
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Conversation"
+        "422":
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /tenants/{tenantId}/conversations:
+    get:
+      operationId: listTenantConversations
+      tags: [conversations]
+      summary: List conversations of a tenant
+      parameters:
+        - name: tenantId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: List of conversations for the tenant
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Conversation"
+
+  /conversations/{id}:
+    get:
+      operationId: getConversation
+      tags: [conversations]
+      summary: Get conversation by ID
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Conversation found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Conversation"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+    patch:
+      operationId: updateConversation
+      tags: [conversations]
+      summary: Update conversation
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateConversationBody"
+      responses:
+        "200":
+          description: Updated conversation
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Conversation"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "422":
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+    delete:
+      operationId: deleteConversation
+      tags: [conversations]
+      summary: Delete conversation
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "204":
+          description: Deleted
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /agent-action-logs:
+    get:
+      operationId: listAgentActionLogs
+      tags: [agent-action-logs]
+      summary: List all agent action logs
+      responses:
+        "200":
+          description: List of agent action logs
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/AgentActionLog"
+    post:
+      operationId: createAgentActionLog
+      tags: [agent-action-logs]
+      summary: Create agent action log
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateAgentActionLogBody"
+      responses:
+        "201":
+          description: Created agent action log
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AgentActionLog"
+        "422":
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /tenants/{tenantId}/agent-action-logs:
+    get:
+      operationId: listTenantAgentActionLogs
+      tags: [agent-action-logs]
+      summary: List agent action logs of a tenant
+      parameters:
+        - name: tenantId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: List of agent action logs for the tenant
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/AgentActionLog"
+
+  /agent-action-logs/{id}:
+    get:
+      operationId: getAgentActionLog
+      tags: [agent-action-logs]
+      summary: Get agent action log by ID
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Agent action log found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AgentActionLog"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+    patch:
+      operationId: updateAgentActionLog
+      tags: [agent-action-logs]
+      summary: Update agent action log (e.g. change status)
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateAgentActionLogBody"
+      responses:
+        "200":
+          description: Updated agent action log
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AgentActionLog"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "422":
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+    delete:
+      operationId: deleteAgentActionLog
+      tags: [agent-action-logs]
+      summary: Delete agent action log
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "204":
+          description: Deleted
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /consents:
+    get:
+      operationId: listConsents
+      tags: [consents]
+      summary: List all consents
+      responses:
+        "200":
+          description: List of consents
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Consent"
+    post:
+      operationId: createConsent
+      tags: [consents]
+      summary: Create consent
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateConsentBody"
+      responses:
+        "201":
+          description: Created consent
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Consent"
+        "422":
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /tenants/{tenantId}/consents:
+    get:
+      operationId: listTenantConsents
+      tags: [consents]
+      summary: List consents of a tenant
+      parameters:
+        - name: tenantId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: List of consents for the tenant
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Consent"
+
+  /leads/{leadId}/consents:
+    get:
+      operationId: listLeadConsents
+      tags: [consents]
+      summary: List consents of a lead
+      parameters:
+        - name: leadId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: List of consents for the lead
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Consent"
+
+  /consents/{id}:
+    get:
+      operationId: getConsent
+      tags: [consents]
+      summary: Get consent by ID
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Consent found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Consent"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+    delete:
+      operationId: deleteConsent
+      tags: [consents]
+      summary: Delete consent (revoke)
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "204":
+          description: Deleted
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
   /tenants/{tenantId}/users:
     get:
       operationId: listTenantUsers
@@ -481,6 +887,12 @@ components:
           type: string
         status:
           $ref: "#/components/schemas/TenantStatus"
+        vertical:
+          type: string
+          nullable: true
+        agentsEnabled:
+          type: object
+          additionalProperties: true
         setupCompletedAt:
           type: string
           format: date-time
@@ -524,6 +936,12 @@ components:
           type: string
         status:
           $ref: "#/components/schemas/TenantStatus"
+        vertical:
+          type: string
+          nullable: true
+        agentsEnabled:
+          type: object
+          additionalProperties: true
         setupCompletedAt:
           type: string
           format: date-time
@@ -551,6 +969,12 @@ components:
           type: string
         status:
           $ref: "#/components/schemas/TenantStatus"
+        vertical:
+          type: string
+          nullable: true
+        agentsEnabled:
+          type: object
+          additionalProperties: true
         setupCompletedAt:
           type: string
           format: date-time
@@ -803,3 +1227,197 @@ components:
         activeAgentLock:
           type: string
           nullable: true
+
+    Conversation:
+      type: object
+      properties:
+        id:
+          type: string
+        tenantId:
+          type: string
+        leadId:
+          type: string
+          nullable: true
+        channel:
+          type: string
+          nullable: true
+        status:
+          type: string
+        agentName:
+          type: string
+          nullable: true
+        metadata:
+          type: object
+          additionalProperties: true
+          nullable: true
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+      required:
+        - id
+        - tenantId
+        - status
+        - createdAt
+        - updatedAt
+
+    CreateConversationBody:
+      type: object
+      properties:
+        tenantId:
+          type: string
+        leadId:
+          type: string
+          nullable: true
+        channel:
+          type: string
+          nullable: true
+        status:
+          type: string
+        agentName:
+          type: string
+          nullable: true
+        metadata:
+          type: object
+          additionalProperties: true
+          nullable: true
+      required:
+        - tenantId
+
+    UpdateConversationBody:
+      type: object
+      properties:
+        leadId:
+          type: string
+          nullable: true
+        channel:
+          type: string
+          nullable: true
+        status:
+          type: string
+        agentName:
+          type: string
+          nullable: true
+        metadata:
+          type: object
+          additionalProperties: true
+          nullable: true
+
+    AgentActionStatus:
+      type: string
+      enum: [pending, approved, executed, rejected]
+
+    AgentActionLog:
+      type: object
+      properties:
+        id:
+          type: string
+        tenantId:
+          type: string
+        leadId:
+          type: string
+          nullable: true
+        agentName:
+          type: string
+        actionType:
+          type: string
+        status:
+          $ref: "#/components/schemas/AgentActionStatus"
+        payload:
+          type: object
+          additionalProperties: true
+          nullable: true
+        createdAt:
+          type: string
+          format: date-time
+      required:
+        - id
+        - tenantId
+        - agentName
+        - actionType
+        - status
+        - createdAt
+
+    CreateAgentActionLogBody:
+      type: object
+      properties:
+        tenantId:
+          type: string
+        leadId:
+          type: string
+          nullable: true
+        agentName:
+          type: string
+        actionType:
+          type: string
+        status:
+          $ref: "#/components/schemas/AgentActionStatus"
+        payload:
+          type: object
+          additionalProperties: true
+          nullable: true
+      required:
+        - tenantId
+        - agentName
+        - actionType
+
+    UpdateAgentActionLogBody:
+      type: object
+      properties:
+        leadId:
+          type: string
+          nullable: true
+        agentName:
+          type: string
+        actionType:
+          type: string
+        status:
+          $ref: "#/components/schemas/AgentActionStatus"
+        payload:
+          type: object
+          additionalProperties: true
+          nullable: true
+
+    Consent:
+      type: object
+      properties:
+        id:
+          type: string
+        tenantId:
+          type: string
+        leadId:
+          type: string
+        channel:
+          type: string
+        consentGivenAt:
+          type: string
+          format: date-time
+        createdAt:
+          type: string
+          format: date-time
+      required:
+        - id
+        - tenantId
+        - leadId
+        - channel
+        - consentGivenAt
+        - createdAt
+
+    CreateConsentBody:
+      type: object
+      properties:
+        tenantId:
+          type: string
+        leadId:
+          type: string
+        channel:
+          type: string
+        consentGivenAt:
+          type: string
+          format: date-time
+      required:
+        - tenantId
+        - leadId
+        - channel

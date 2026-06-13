@@ -6,11 +6,14 @@
  * OpenAPI spec version: 0.1.0
  */
 import type { TenantStatus } from './tenantStatus';
+import type { UpdateTenantBodyAgentsEnabled } from './updateTenantBodyAgentsEnabled';
 
 export interface UpdateTenantBody {
   name?: string;
   slug?: string;
   status?: TenantStatus;
+  vertical?: string | null;
+  agentsEnabled?: UpdateTenantBodyAgentsEnabled;
   setupCompletedAt?: Date | null;
   autonomyEnabledAt?: Date | null;
   monthlyTokenLimit?: number | null;

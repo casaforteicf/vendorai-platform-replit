@@ -6,17 +6,35 @@
  * OpenAPI spec version: 0.1.0
  */
 
+export * from './agentActionLog';
+export * from './agentActionLogPayload';
+export * from './agentActionStatus';
+export * from './consent';
+export * from './conversation';
+export * from './conversationMetadata';
+export * from './createAgentActionLogBody';
+export * from './createAgentActionLogBodyPayload';
+export * from './createConsentBody';
+export * from './createConversationBody';
+export * from './createConversationBodyMetadata';
 export * from './createLeadBody';
 export * from './createTenantBody';
+export * from './createTenantBodyAgentsEnabled';
 export * from './createUserBody';
 export * from './errorResponse';
 export * from './healthStatus';
 export * from './lead';
 export * from './platformRole';
 export * from './tenant';
+export * from './tenantAgentsEnabled';
 export * from './tenantStatus';
+export * from './updateAgentActionLogBody';
+export * from './updateAgentActionLogBodyPayload';
+export * from './updateConversationBody';
+export * from './updateConversationBodyMetadata';
 export * from './updateLeadBody';
 export * from './updateTenantBody';
+export * from './updateTenantBodyAgentsEnabled';
 export * from './updateUserBody';
 export * from './user';
 export * from './userRole';
