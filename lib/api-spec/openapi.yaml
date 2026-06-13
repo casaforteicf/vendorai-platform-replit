@@ -2822,14 +2822,14 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/CustomerIntelligence"
-        "409":
-          description: Record already exists for this lead
+        "400":
+          description: Validation error (e.g. churnRisk out of 0–100 range)
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
-        "422":
-          description: Validation error
+        "409":
+          description: Record already exists for this lead
           content:
             application/json:
               schema:

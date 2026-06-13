@@ -31,7 +31,11 @@ function isUniqueViolation(err: unknown): boolean {
 router.post("/customer-intelligence", async (req, res) => {
   const parsed = insertCustomerIntelligenceSchema.safeParse(req.body);
   if (!parsed.success) {
-    res.status(422).json({ error: parsed.error.message });
+    const fieldErrors = parsed.error.flatten().fieldErrors;
+    const messages = Object.entries(fieldErrors)
+      .map(([field, errs]) => `${field}: ${(errs ?? []).join(", ")}`)
+      .join("; ");
+    res.status(400).json({ error: messages || "Invalid request body" });
     return;
   }
 
