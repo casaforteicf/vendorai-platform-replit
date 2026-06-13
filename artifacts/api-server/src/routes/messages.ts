@@ -23,6 +23,24 @@ router.post("/messages", async (req, res) => {
   res.status(201).json(message);
 });
 
+router.get(
+  "/tenants/:tenantId/conversations/:conversationId/messages",
+  async (req, res) => {
+    const messages = await db
+      .select()
+      .from(messagesTable)
+      .where(
+        and(
+          eq(messagesTable.tenantId, String(req.params.tenantId)),
+          eq(messagesTable.conversationId, String(req.params.conversationId))
+        )
+      )
+      .orderBy(asc(messagesTable.createdAt));
+
+    res.json(messages);
+  }
+);
+
 router.get("/tenants/:tenantId/messages", async (req, res) => {
   const { conversationId, leadId } = req.query as Record<string, string | undefined>;
 

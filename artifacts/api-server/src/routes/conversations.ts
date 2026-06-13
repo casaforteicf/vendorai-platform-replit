@@ -1,5 +1,5 @@
 import { Router, type IRouter } from "express";
-import { eq } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 import {
   db,
   conversationsTable,
@@ -39,6 +39,26 @@ router.get("/tenants/:tenantId/conversations", async (req, res) => {
     .orderBy(conversationsTable.createdAt);
   res.json(conversations);
 });
+
+router.post(
+  "/tenants/:tenantId/conversations/:conversationId/mark-read",
+  async (req, res) => {
+    const [conversation] = await db
+      .update(conversationsTable)
+      .set({ naoLidas: 0, updatedAt: new Date() })
+      .where(
+        sql`${conversationsTable.id} = ${req.params.conversationId} AND ${conversationsTable.tenantId} = ${req.params.tenantId}`
+      )
+      .returning();
+
+    if (!conversation) {
+      res.status(404).json({ error: "Conversation not found" });
+      return;
+    }
+
+    res.json(conversation);
+  }
+);
 
 router.get("/conversations/:id", async (req, res) => {
   const [conversation] = await db

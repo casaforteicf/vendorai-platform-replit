@@ -1719,6 +1719,8 @@ paths:
       operationId: listTenantConversations
       tags: [conversations]
       summary: List conversations of a tenant
+      security:
+        - bearerAuth: []
       parameters:
         - name: tenantId
           in: path
@@ -1734,6 +1736,68 @@ paths:
                 type: array
                 items:
                   $ref: "#/components/schemas/Conversation"
+
+  /tenants/{tenantId}/conversations/{conversationId}/messages:
+    get:
+      operationId: listConversationMessages
+      tags: [omnichannel]
+      summary: List all messages of a conversation
+      description: Shortcut for fetching the full message history of a conversation, ordered chronologically (createdAt ASC).
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: tenantId
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: conversationId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Messages ordered by createdAt ascending
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Message"
+
+  /tenants/{tenantId}/conversations/{conversationId}/mark-read:
+    post:
+      operationId: markConversationRead
+      tags: [omnichannel]
+      summary: Mark conversation as read
+      description: Resets naoLidas counter to 0 and updates updatedAt.
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: tenantId
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: conversationId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Updated conversation with naoLidas = 0
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Conversation"
+        "404":
+          description: Conversation not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
 
   /conversations/{id}:
     get:
@@ -3402,6 +3466,13 @@ components:
           type: object
           additionalProperties: true
           nullable: true
+        ultimaMensagemEm:
+          type: string
+          format: date-time
+          nullable: true
+        naoLidas:
+          type: integer
+          default: 0
         createdAt:
           type: string
           format: date-time
@@ -3412,6 +3483,7 @@ components:
         - id
         - tenantId
         - status
+        - naoLidas
         - createdAt
         - updatedAt
 

@@ -15,6 +15,8 @@ export interface Conversation {
   status: string;
   agentName?: string | null;
   metadata?: ConversationMetadata;
+  ultimaMensagemEm?: Date | null;
+  naoLidas: number;
   createdAt: Date;
   updatedAt: Date;
 }

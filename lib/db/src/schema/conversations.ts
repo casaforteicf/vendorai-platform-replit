@@ -1,4 +1,4 @@
-import { pgTable, text, timestamp, json } from "drizzle-orm/pg-core";
+import { pgTable, text, timestamp, json, integer } from "drizzle-orm/pg-core";
 import { createInsertSchema, createSelectSchema } from "drizzle-zod";
 import { z } from "zod/v4";
 import { tenantsTable } from "./tenants";
@@ -18,19 +18,23 @@ export const conversationsTable = pgTable("conversations", {
   status: text("status").notNull().default("open"),
   agentName: text("agent_name"),
   metadata: json("metadata").$type<Record<string, unknown>>(),
+  ultimaMensagemEm: timestamp("ultima_mensagem_em"),
+  naoLidas: integer("nao_lidas").notNull().default(0),
   createdAt: timestamp("created_at").notNull().defaultNow(),
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
 });
 
-export const insertConversationSchema = createInsertSchema(
-  conversationsTable,
-).omit({
+export const insertConversationSchema = createInsertSchema(conversationsTable, {
+  ultimaMensagemEm: z.coerce.date().optional(),
+}).omit({
   id: true,
   createdAt: true,
   updatedAt: true,
 });
 
-export const updateConversationSchema = createSelectSchema(conversationsTable)
+export const updateConversationSchema = createSelectSchema(conversationsTable, {
+  ultimaMensagemEm: z.coerce.date().optional(),
+})
   .omit({
     id: true,
     tenantId: true,

@@ -1626,6 +1626,8 @@ export const DeleteTenantParams = zod.object({
 /**
  * @summary List all conversations
  */
+export const listConversationsResponseNaoLidasDefault = 0;
+
 export const ListConversationsResponseItem = zod.object({
   "id": zod.string(),
   "tenantId": zod.string(),
@@ -1634,6 +1636,8 @@ export const ListConversationsResponseItem = zod.object({
   "status": zod.string(),
   "agentName": zod.string().nullish(),
   "metadata": zod.record(zod.string(), zod.unknown()).nullish(),
+  "ultimaMensagemEm": zod.coerce.date().nullish(),
+  "naoLidas": zod.number().default(listConversationsResponseNaoLidasDefault),
   "createdAt": zod.coerce.date(),
   "updatedAt": zod.coerce.date()
 })
@@ -1660,6 +1664,8 @@ export const ListTenantConversationsParams = zod.object({
   "tenantId": zod.coerce.string()
 })
 
+export const listTenantConversationsResponseNaoLidasDefault = 0;
+
 export const ListTenantConversationsResponseItem = zod.object({
   "id": zod.string(),
   "tenantId": zod.string(),
@@ -1668,10 +1674,65 @@ export const ListTenantConversationsResponseItem = zod.object({
   "status": zod.string(),
   "agentName": zod.string().nullish(),
   "metadata": zod.record(zod.string(), zod.unknown()).nullish(),
+  "ultimaMensagemEm": zod.coerce.date().nullish(),
+  "naoLidas": zod.number().default(listTenantConversationsResponseNaoLidasDefault),
   "createdAt": zod.coerce.date(),
   "updatedAt": zod.coerce.date()
 })
 export const ListTenantConversationsResponse = zod.array(ListTenantConversationsResponseItem)
+
+
+/**
+ * Shortcut for fetching the full message history of a conversation, ordered chronologically (createdAt ASC).
+ * @summary List all messages of a conversation
+ */
+export const ListConversationMessagesParams = zod.object({
+  "tenantId": zod.coerce.string(),
+  "conversationId": zod.coerce.string()
+})
+
+export const ListConversationMessagesResponseItem = zod.object({
+  "id": zod.string(),
+  "tenantId": zod.string(),
+  "conversationId": zod.string(),
+  "leadId": zod.string(),
+  "direcao": zod.enum(['entrada', 'saida']),
+  "canal": zod.enum(['whatsapp', 'instagram', 'email', 'chat']),
+  "conteudo": zod.string(),
+  "tipoConteudo": zod.enum(['texto', 'imagem', 'audio', 'documento']),
+  "enviadoPor": zod.enum(['lead', 'agente_ia', 'humano']),
+  "agentName": zod.string().nullish(),
+  "status": zod.enum(['enviado', 'entregue', 'lido', 'erro']),
+  "externalId": zod.string().nullish(),
+  "createdAt": zod.coerce.date()
+})
+export const ListConversationMessagesResponse = zod.array(ListConversationMessagesResponseItem)
+
+
+/**
+ * Resets naoLidas counter to 0 and updates updatedAt.
+ * @summary Mark conversation as read
+ */
+export const MarkConversationReadParams = zod.object({
+  "tenantId": zod.coerce.string(),
+  "conversationId": zod.coerce.string()
+})
+
+export const markConversationReadResponseNaoLidasDefault = 0;
+
+export const MarkConversationReadResponse = zod.object({
+  "id": zod.string(),
+  "tenantId": zod.string(),
+  "leadId": zod.string().nullish(),
+  "channel": zod.string().nullish(),
+  "status": zod.string(),
+  "agentName": zod.string().nullish(),
+  "metadata": zod.record(zod.string(), zod.unknown()).nullish(),
+  "ultimaMensagemEm": zod.coerce.date().nullish(),
+  "naoLidas": zod.number().default(markConversationReadResponseNaoLidasDefault),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date()
+})
 
 
 /**
@@ -1681,6 +1742,8 @@ export const GetConversationParams = zod.object({
   "id": zod.coerce.string()
 })
 
+export const getConversationResponseNaoLidasDefault = 0;
+
 export const GetConversationResponse = zod.object({
   "id": zod.string(),
   "tenantId": zod.string(),
@@ -1689,6 +1752,8 @@ export const GetConversationResponse = zod.object({
   "status": zod.string(),
   "agentName": zod.string().nullish(),
   "metadata": zod.record(zod.string(), zod.unknown()).nullish(),
+  "ultimaMensagemEm": zod.coerce.date().nullish(),
+  "naoLidas": zod.number().default(getConversationResponseNaoLidasDefault),
   "createdAt": zod.coerce.date(),
   "updatedAt": zod.coerce.date()
 })
@@ -1709,6 +1774,8 @@ export const UpdateConversationBody = zod.object({
   "metadata": zod.record(zod.string(), zod.unknown()).nullish()
 })
 
+export const updateConversationResponseNaoLidasDefault = 0;
+
 export const UpdateConversationResponse = zod.object({
   "id": zod.string(),
   "tenantId": zod.string(),
@@ -1717,6 +1784,8 @@ export const UpdateConversationResponse = zod.object({
   "status": zod.string(),
   "agentName": zod.string().nullish(),
   "metadata": zod.record(zod.string(), zod.unknown()).nullish(),
+  "ultimaMensagemEm": zod.coerce.date().nullish(),
+  "naoLidas": zod.number().default(updateConversationResponseNaoLidasDefault),
   "createdAt": zod.coerce.date(),
   "updatedAt": zod.coerce.date()
 })

@@ -626,6 +626,8 @@ export interface Conversation {
   status: string;
   agentName?: string | null;
   metadata?: ConversationMetadata;
+  ultimaMensagemEm?: string | null;
+  naoLidas: number;
   createdAt: string;
   updatedAt: string;
 }
