@@ -886,83 +886,85 @@ export default function Configuracoes() {
         {/* ── Tab: Análise de IA ──────────────────────────────────────────── */}
         <TabsContent value="analise" className="space-y-5">
 
-          {/* Threshold Settings Card */}
-          <div className="rounded-xl border bg-card p-6 space-y-5">
-            <div>
-              <h2 className="font-semibold text-base flex items-center gap-2">
-                <Brain className="h-4 w-4 text-primary" />
-                Configurações de Re-análise
-              </h2>
-              <p className="text-sm text-muted-foreground mt-0.5">
-                Defina quando um lead deve ser reanalisado automaticamente. Deixe em branco para usar o padrão global.
-              </p>
-            </div>
-
-            {tenantQuery.isLoading ? (
-              <div className="space-y-4">
-                <Skeleton className="h-10 w-full" />
-                <Skeleton className="h-10 w-full" />
+          {/* Threshold Settings Card — admin only */}
+          {(user?.platformRole === "tenant_admin" || user?.platformRole === "super_admin") && (
+            <div className="rounded-xl border bg-card p-6 space-y-5">
+              <div>
+                <h2 className="font-semibold text-base flex items-center gap-2">
+                  <Brain className="h-4 w-4 text-primary" />
+                  Configurações de Re-análise
+                </h2>
+                <p className="text-sm text-muted-foreground mt-0.5">
+                  Defina quando um lead deve ser reanalisado automaticamente. Deixe em branco para usar o padrão global.
+                </p>
               </div>
-            ) : (
-              <Form {...thresholdForm}>
-                <form onSubmit={thresholdForm.handleSubmit(onSaveThresholds)} className="space-y-5">
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                    <FormField
-                      control={thresholdForm.control}
-                      name="analysisStalenessHours"
-                      render={({ field }) => (
-                        <FormItem>
-                          <FormLabel>Re-analisar após (horas)</FormLabel>
-                          <FormControl>
-                            <Input
-                              type="number"
-                              min={1}
-                              step={1}
-                              placeholder="Padrão global"
-                              {...field}
-                            />
-                          </FormControl>
-                          <p className="text-xs text-muted-foreground">
-                            Horas de inatividade antes de um lead ser considerado desatualizado.
-                          </p>
-                          <FormMessage />
-                        </FormItem>
-                      )}
-                    />
-                    <FormField
-                      control={thresholdForm.control}
-                      name="analysisMessageThreshold"
-                      render={({ field }) => (
-                        <FormItem>
-                          <FormLabel>Re-analisar após (novas mensagens)</FormLabel>
-                          <FormControl>
-                            <Input
-                              type="number"
-                              min={1}
-                              step={1}
-                              placeholder="Padrão global"
-                              {...field}
-                            />
-                          </FormControl>
-                          <p className="text-xs text-muted-foreground">
-                            Quantidade de novas mensagens que dispara uma nova análise automática.
-                          </p>
-                          <FormMessage />
-                        </FormItem>
-                      )}
-                    />
-                  </div>
 
-                  <div className="flex justify-end pt-1">
-                    <Button type="submit" disabled={thresholdSaving} className="gap-2">
-                      <Save className="h-4 w-4" />
-                      {thresholdSaving ? "Salvando..." : "Salvar Configurações"}
-                    </Button>
-                  </div>
-                </form>
-              </Form>
-            )}
-          </div>
+              {tenantQuery.isLoading ? (
+                <div className="space-y-4">
+                  <Skeleton className="h-10 w-full" />
+                  <Skeleton className="h-10 w-full" />
+                </div>
+              ) : (
+                <Form {...thresholdForm}>
+                  <form onSubmit={thresholdForm.handleSubmit(onSaveThresholds)} className="space-y-5">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                      <FormField
+                        control={thresholdForm.control}
+                        name="analysisStalenessHours"
+                        render={({ field }) => (
+                          <FormItem>
+                            <FormLabel>Re-analisar após (horas)</FormLabel>
+                            <FormControl>
+                              <Input
+                                type="number"
+                                min={1}
+                                step={1}
+                                placeholder="Padrão global"
+                                {...field}
+                              />
+                            </FormControl>
+                            <p className="text-xs text-muted-foreground">
+                              Horas de inatividade antes de um lead ser considerado desatualizado.
+                            </p>
+                            <FormMessage />
+                          </FormItem>
+                        )}
+                      />
+                      <FormField
+                        control={thresholdForm.control}
+                        name="analysisMessageThreshold"
+                        render={({ field }) => (
+                          <FormItem>
+                            <FormLabel>Re-analisar após (novas mensagens)</FormLabel>
+                            <FormControl>
+                              <Input
+                                type="number"
+                                min={1}
+                                step={1}
+                                placeholder="Padrão global"
+                                {...field}
+                              />
+                            </FormControl>
+                            <p className="text-xs text-muted-foreground">
+                              Quantidade de novas mensagens que dispara uma nova análise automática.
+                            </p>
+                            <FormMessage />
+                          </FormItem>
+                        )}
+                      />
+                    </div>
+
+                    <div className="flex justify-end pt-1">
+                      <Button type="submit" disabled={thresholdSaving} className="gap-2">
+                        <Save className="h-4 w-4" />
+                        {thresholdSaving ? "Salvando..." : "Salvar Configurações"}
+                      </Button>
+                    </div>
+                  </form>
+                </Form>
+              )}
+            </div>
+          )}
 
           {/* Analysis Log */}
           <div>
