@@ -1,4 +1,4 @@
-import { useState } from "react";
+import React, { useState } from "react";
 import { useLocation } from "wouter";
 import { useAuth } from "@/contexts/AuthContext";
 import {
@@ -11,7 +11,7 @@ import {
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Plus, Search, ChevronRight } from "lucide-react";
+import { Plus, Search, ChevronRight, AlertTriangle } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import {
   Select,
@@ -35,6 +35,12 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 import {
   Form,
   FormControl,
@@ -65,24 +71,48 @@ const STATUS_STYLES: Record<string, string> = {
   perdido: "bg-red-100 text-red-600 border-red-200",
 };
 
-function churnBadge(risk: number | null | undefined) {
+function getFirstChurnReason(reasons: unknown[] | null | undefined): string | null {
+  if (!reasons || reasons.length === 0) return null;
+  const first = reasons[0];
+  if (typeof first === "string") return first;
+  if (first && typeof first === "object" && "reason" in first && typeof (first as Record<string, unknown>).reason === "string") {
+    return (first as Record<string, unknown>).reason as string;
+  }
+  return null;
+}
+
+function churnBadge(risk: number | null | undefined, reasons?: unknown[] | null) {
   if (risk === null || risk === undefined) return null;
+
+  const firstReason = getFirstChurnReason(reasons);
+
+  let badge: React.ReactNode;
   if (risk > 70)
-    return (
+    badge = (
       <Badge className="bg-red-100 text-red-700 border-red-200 hover:bg-red-100 font-mono text-xs">
         {risk}%
       </Badge>
     );
-  if (risk >= 30)
-    return (
+  else if (risk >= 30)
+    badge = (
       <Badge className="bg-amber-100 text-amber-700 border-amber-200 hover:bg-amber-100 font-mono text-xs">
         {risk}%
       </Badge>
     );
+  else
+    badge = (
+      <Badge className="bg-emerald-100 text-emerald-700 border-emerald-200 hover:bg-emerald-100 font-mono text-xs">
+        {risk}%
+      </Badge>
+    );
+
+  if (!firstReason) return badge;
+
   return (
-    <Badge className="bg-emerald-100 text-emerald-700 border-emerald-200 hover:bg-emerald-100 font-mono text-xs">
-      {risk}%
-    </Badge>
+    <Tooltip>
+      <TooltipTrigger asChild>{badge}</TooltipTrigger>
+      <TooltipContent className="max-w-[240px] text-center">{firstReason}</TooltipContent>
+    </Tooltip>
   );
 }
 
@@ -294,6 +324,7 @@ export default function Leads() {
         </div>
 
         <CardContent className="p-0">
+          <TooltipProvider delayDuration={300}>
           <Table>
             <TableHeader>
               <TableRow>
@@ -330,14 +361,22 @@ export default function Leads() {
               ) : (
                 filteredLeads.map((lead) => {
                   const ci = ciMap.get(lead.id);
+                  const isHighRisk = typeof ci?.churnRisk === "number" && ci.churnRisk > 70;
                   return (
                     <TableRow
                       key={lead.id}
-                      className="cursor-pointer hover:bg-muted/50"
+                      className={`cursor-pointer hover:bg-muted/50 ${isHighRisk ? "border-l-4 border-l-red-500" : ""}`}
                       onClick={() => setLocation(`/leads/${lead.id}`)}
                       data-testid={`row-lead-${lead.id}`}
                     >
-                      <TableCell className="font-medium">{lead.nome}</TableCell>
+                      <TableCell className="font-medium">
+                        <span className="flex items-center gap-1.5">
+                          {isHighRisk && (
+                            <AlertTriangle className="h-3.5 w-3.5 text-red-500 shrink-0" />
+                          )}
+                          {lead.nome}
+                        </span>
+                      </TableCell>
                       <TableCell className="text-muted-foreground">
                         {lead.empresa || "—"}
                       </TableCell>
@@ -353,7 +392,7 @@ export default function Leads() {
                             lead.status}
                         </Badge>
                       </TableCell>
-                      <TableCell>{churnBadge(ci?.churnRisk)}</TableCell>
+                      <TableCell>{churnBadge(ci?.churnRisk, ci?.churnReasons)}</TableCell>
                       <TableCell>
                         <ChevronRight className="h-4 w-4 text-muted-foreground" />
                       </TableCell>
@@ -363,6 +402,7 @@ export default function Leads() {
               )}
             </TableBody>
           </Table>
+          </TooltipProvider>
         </CardContent>
       </Card>
     </div>
