@@ -27,7 +27,17 @@ const loginSchema = z.object({
 
 const registerSchema = z.object({
   tenantName: z.string().min(1),
-  tenantSlug: z.string().min(1).regex(/^[a-z0-9-]+$/, "Slug must be lowercase alphanumeric with hyphens"),
+  tenantSlug: z
+    .string()
+    .min(1)
+    .transform((s) =>
+      s
+        .trim()
+        .toLowerCase()
+        .replace(/\s+/g, "-")
+        .replace(/[^a-z0-9-]/g, "")
+    )
+    .refine((s) => s.length > 0, "Slug must contain valid characters"),
   name: z.string().min(1),
   email: z.email(),
   password: z.string().min(8),
