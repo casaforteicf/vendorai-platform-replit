@@ -9,6 +9,8 @@ import agentActionsLogRouter from "./agent_actions_log";
 import consentsRouter from "./consents";
 import businessProfilesRouter from "./business_profiles";
 import agentConfigsRouter from "./agent_configs";
+import funisRouter from "./funis";
+import dealsRouter from "./deals";
 import { authenticate, requireRole, requireSameTenanOrSuperAdmin } from "../middlewares/auth";
 
 const router: IRouter = Router();
@@ -37,6 +39,10 @@ router.use(businessProfilesRouter);
 
 // Agent Config
 router.use(agentConfigsRouter);
+
+// CRM Hub
+router.use(funisRouter);
+router.use(dealsRouter);
 
 export { requireRole, requireSameTenanOrSuperAdmin };
 export default router;

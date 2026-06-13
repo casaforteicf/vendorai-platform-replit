@@ -72,6 +72,110 @@ export const TenantStatus = {
   cancelled: 'cancelled',
 } as const;
 
+export type UsageSummaryMessages = {
+  sent: number;
+  limit: number;
+  percentUsed: number;
+  nearLimit: boolean;
+  overLimit: boolean;
+};
+
+export type UsageSummaryTokens = {
+  used: number;
+  limit: number;
+  percentUsed: number;
+  nearLimit: boolean;
+  overLimit: boolean;
+};
+
+export interface UsageSummary {
+  messages: UsageSummaryMessages;
+  tokens: UsageSummaryTokens;
+}
+
+export type DealEtapa = typeof DealEtapa[keyof typeof DealEtapa];
+
+
+export const DealEtapa = {
+  novo: 'novo',
+  qualificado: 'qualificado',
+  proposta: 'proposta',
+  negociacao: 'negociacao',
+  ganho: 'ganho',
+  perdido: 'perdido',
+} as const;
+
+export interface Funil {
+  id: string;
+  tenantId: string;
+  nome: string;
+  etapas: string[];
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface CreateFunilBody {
+  tenantId: string;
+  nome: string;
+  etapas?: string[];
+}
+
+export interface UpdateFunilBody {
+  nome?: string;
+  etapas?: string[];
+}
+
+export interface Deal {
+  id: string;
+  tenantId: string;
+  leadId?: string | null;
+  titulo: string;
+  /** Decimal stored as string (Postgres numeric) */
+  valor?: string | null;
+  etapa: DealEtapa;
+  funilId?: string | null;
+  /**
+     * @minimum 0
+     * @maximum 100
+     */
+  probabilidade?: number | null;
+  dataFechamentoPrevista?: string | null;
+  motivoPerda?: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface CreateDealBody {
+  tenantId: string;
+  leadId?: string;
+  titulo: string;
+  valor?: number;
+  etapa?: DealEtapa;
+  funilId?: string;
+  /**
+     * @minimum 0
+     * @maximum 100
+     */
+  probabilidade?: number;
+  dataFechamentoPrevista?: string;
+  motivoPerda?: string;
+}
+
+export interface UpdateDealBody {
+  leadId?: string;
+  titulo?: string;
+  valor?: number;
+  etapa?: DealEtapa;
+  funilId?: string;
+  /**
+     * @minimum 0
+     * @maximum 100
+     */
+  probabilidade?: number;
+  dataFechamentoPrevista?: string;
+  motivoPerda?: string;
+}
+
 export interface IncrementBody {
   /** @minimum 1 */
   count: number;

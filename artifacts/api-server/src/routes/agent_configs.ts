@@ -90,6 +90,44 @@ router.patch("/agent-configs/:id", async (req, res) => {
   res.json(config);
 });
 
+router.get("/agent-configs/:id/usage", async (req, res) => {
+  const [config] = await db
+    .select()
+    .from(agentConfigsTable)
+    .where(eq(agentConfigsTable.id, String(req.params.id)));
+
+  if (!config) {
+    res.status(404).json({ error: "Agent config not found" });
+    return;
+  }
+
+  const dailyPct =
+    config.dailyMessageLimit > 0
+      ? Math.round((config.messagesSentToday / config.dailyMessageLimit) * 100)
+      : 0;
+  const monthlyPct =
+    config.monthlyTokenLimit > 0
+      ? Math.round((config.tokensUsedCurrentMonth / config.monthlyTokenLimit) * 100)
+      : 0;
+
+  res.json({
+    messages: {
+      sent: config.messagesSentToday,
+      limit: config.dailyMessageLimit,
+      percentUsed: dailyPct,
+      nearLimit: dailyPct >= 80,
+      overLimit: config.messagesSentToday >= config.dailyMessageLimit,
+    },
+    tokens: {
+      used: config.tokensUsedCurrentMonth,
+      limit: config.monthlyTokenLimit,
+      percentUsed: monthlyPct,
+      nearLimit: monthlyPct >= 80,
+      overLimit: config.tokensUsedCurrentMonth >= config.monthlyTokenLimit,
+    },
+  });
+});
+
 router.post("/agent-configs/:id/complete-setup", async (req, res) => {
   const [existing] = await db
     .select()

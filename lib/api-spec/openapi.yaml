@@ -554,6 +554,34 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
 
+  /agent-configs/{id}/usage:
+    get:
+      operationId: getAgentConfigUsage
+      tags: [agent-configs]
+      summary: Get usage summary
+      description: Returns daily message and monthly token usage vs. limits, with nearLimit and overLimit flags.
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Usage summary
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UsageSummary"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
   /agent-configs/{id}/complete-setup:
     post:
       operationId: completeAgentConfigSetup
@@ -575,6 +603,276 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/AgentConfig"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /funis:
+    post:
+      operationId: createFunil
+      tags: [crm]
+      summary: Create pipeline
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateFunilBody"
+      responses:
+        "201":
+          description: Pipeline created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Funil"
+        "422":
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /tenants/{tenantId}/funis:
+    get:
+      operationId: listFunis
+      tags: [crm]
+      summary: List pipelines by tenant
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: tenantId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: List of pipelines
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Funil"
+
+  /funis/{id}:
+    get:
+      operationId: getFunil
+      tags: [crm]
+      summary: Get pipeline by ID
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Pipeline
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Funil"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+    patch:
+      operationId: updateFunil
+      tags: [crm]
+      summary: Update pipeline
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateFunilBody"
+      responses:
+        "200":
+          description: Updated pipeline
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Funil"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "422":
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+    delete:
+      operationId: deleteFunil
+      tags: [crm]
+      summary: Delete pipeline
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "204":
+          description: Deleted
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /deals:
+    post:
+      operationId: createDeal
+      tags: [crm]
+      summary: Create deal
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateDealBody"
+      responses:
+        "201":
+          description: Deal created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Deal"
+        "422":
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /tenants/{tenantId}/deals:
+    get:
+      operationId: listDeals
+      tags: [crm]
+      summary: List deals by tenant
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: tenantId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: List of deals
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Deal"
+
+  /deals/{id}:
+    get:
+      operationId: getDeal
+      tags: [crm]
+      summary: Get deal by ID
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Deal
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Deal"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+    patch:
+      operationId: updateDeal
+      tags: [crm]
+      summary: Update deal
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateDealBody"
+      responses:
+        "200":
+          description: Updated deal
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Deal"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "422":
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+    delete:
+      operationId: deleteDeal
+      tags: [crm]
+      summary: Delete deal
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "204":
+          description: Deleted
         "404":
           description: Not found
           content:
@@ -1487,6 +1785,177 @@ components:
     TenantStatus:
       type: string
       enum: [active, suspended, cancelled]
+
+    UsageSummary:
+      type: object
+      properties:
+        messages:
+          type: object
+          properties:
+            sent:
+              type: integer
+            limit:
+              type: integer
+            percentUsed:
+              type: integer
+            nearLimit:
+              type: boolean
+            overLimit:
+              type: boolean
+          required: [sent, limit, percentUsed, nearLimit, overLimit]
+        tokens:
+          type: object
+          properties:
+            used:
+              type: integer
+            limit:
+              type: integer
+            percentUsed:
+              type: integer
+            nearLimit:
+              type: boolean
+            overLimit:
+              type: boolean
+          required: [used, limit, percentUsed, nearLimit, overLimit]
+      required: [messages, tokens]
+
+    DealEtapa:
+      type: string
+      enum: [novo, qualificado, proposta, negociacao, ganho, perdido]
+
+    Funil:
+      type: object
+      properties:
+        id:
+          type: string
+        tenantId:
+          type: string
+        nome:
+          type: string
+        etapas:
+          type: array
+          items:
+            type: string
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+      required: [id, tenantId, nome, etapas, createdAt, updatedAt]
+
+    CreateFunilBody:
+      type: object
+      properties:
+        tenantId:
+          type: string
+        nome:
+          type: string
+        etapas:
+          type: array
+          items:
+            type: string
+      required: [tenantId, nome]
+
+    UpdateFunilBody:
+      type: object
+      properties:
+        nome:
+          type: string
+        etapas:
+          type: array
+          items:
+            type: string
+
+    Deal:
+      type: object
+      properties:
+        id:
+          type: string
+        tenantId:
+          type: string
+        leadId:
+          type: string
+          nullable: true
+        titulo:
+          type: string
+        valor:
+          type: string
+          nullable: true
+          description: Decimal stored as string (Postgres numeric)
+        etapa:
+          $ref: "#/components/schemas/DealEtapa"
+        funilId:
+          type: string
+          nullable: true
+        probabilidade:
+          type: integer
+          minimum: 0
+          maximum: 100
+          nullable: true
+        dataFechamentoPrevista:
+          type: string
+          format: date-time
+          nullable: true
+        motivoPerda:
+          type: string
+          nullable: true
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+      required: [id, tenantId, titulo, etapa, createdAt, updatedAt]
+
+    CreateDealBody:
+      type: object
+      properties:
+        tenantId:
+          type: string
+        leadId:
+          type: string
+        titulo:
+          type: string
+        valor:
+          type: number
+        etapa:
+          $ref: "#/components/schemas/DealEtapa"
+        funilId:
+          type: string
+        probabilidade:
+          type: integer
+          minimum: 0
+          maximum: 100
+        dataFechamentoPrevista:
+          type: string
+          format: date-time
+        motivoPerda:
+          type: string
+      required: [tenantId, titulo]
+
+    UpdateDealBody:
+      type: object
+      properties:
+        leadId:
+          type: string
+        titulo:
+          type: string
+        valor:
+          type: number
+        etapa:
+          $ref: "#/components/schemas/DealEtapa"
+        funilId:
+          type: string
+        probabilidade:
+          type: integer
+          minimum: 0
+          maximum: 100
+        dataFechamentoPrevista:
+          type: string
+          format: date-time
+        motivoPerda:
+          type: string
 
     IncrementBody:
       type: object

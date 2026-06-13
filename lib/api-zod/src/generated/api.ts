@@ -656,6 +656,32 @@ export const IncrementTokensResponse = zod.object({
 
 
 /**
+ * Returns daily message and monthly token usage vs. limits, with nearLimit and overLimit flags.
+ * @summary Get usage summary
+ */
+export const GetAgentConfigUsageParams = zod.object({
+  "id": zod.coerce.string()
+})
+
+export const GetAgentConfigUsageResponse = zod.object({
+  "messages": zod.object({
+  "sent": zod.number(),
+  "limit": zod.number(),
+  "percentUsed": zod.number(),
+  "nearLimit": zod.boolean(),
+  "overLimit": zod.boolean()
+}),
+  "tokens": zod.object({
+  "used": zod.number(),
+  "limit": zod.number(),
+  "percentUsed": zod.number(),
+  "nearLimit": zod.boolean(),
+  "overLimit": zod.boolean()
+})
+})
+
+
+/**
  * Sets setupCompletedAt to now and autonomyEnabledAt to now + 5 days. After autonomyEnabledAt, agent actions execute automatically instead of awaiting approval.
  * @summary Mark setup as complete
  */
@@ -716,6 +742,211 @@ export const CompleteAgentConfigSetupResponse = zod.object({
   "autonomyEnabledAt": zod.coerce.date().nullish().describe('Computed as setupCompletedAt + 5 days. Before this timestamp, agent actions require manual approval.'),
   "createdAt": zod.coerce.date(),
   "updatedAt": zod.coerce.date()
+})
+
+
+/**
+ * @summary Create pipeline
+ */
+export const CreateFunilBody = zod.object({
+  "tenantId": zod.string(),
+  "nome": zod.string(),
+  "etapas": zod.array(zod.string()).optional()
+})
+
+
+/**
+ * @summary List pipelines by tenant
+ */
+export const ListFunisParams = zod.object({
+  "tenantId": zod.coerce.string()
+})
+
+export const ListFunisResponseItem = zod.object({
+  "id": zod.string(),
+  "tenantId": zod.string(),
+  "nome": zod.string(),
+  "etapas": zod.array(zod.string()),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date()
+})
+export const ListFunisResponse = zod.array(ListFunisResponseItem)
+
+
+/**
+ * @summary Get pipeline by ID
+ */
+export const GetFunilParams = zod.object({
+  "id": zod.coerce.string()
+})
+
+export const GetFunilResponse = zod.object({
+  "id": zod.string(),
+  "tenantId": zod.string(),
+  "nome": zod.string(),
+  "etapas": zod.array(zod.string()),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date()
+})
+
+
+/**
+ * @summary Update pipeline
+ */
+export const UpdateFunilParams = zod.object({
+  "id": zod.coerce.string()
+})
+
+export const UpdateFunilBody = zod.object({
+  "nome": zod.string().optional(),
+  "etapas": zod.array(zod.string()).optional()
+})
+
+export const UpdateFunilResponse = zod.object({
+  "id": zod.string(),
+  "tenantId": zod.string(),
+  "nome": zod.string(),
+  "etapas": zod.array(zod.string()),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date()
+})
+
+
+/**
+ * @summary Delete pipeline
+ */
+export const DeleteFunilParams = zod.object({
+  "id": zod.coerce.string()
+})
+
+
+/**
+ * @summary Create deal
+ */
+export const createDealBodyProbabilidadeMin = 0;
+export const createDealBodyProbabilidadeMax = 100;
+
+
+
+export const CreateDealBody = zod.object({
+  "tenantId": zod.string(),
+  "leadId": zod.string().optional(),
+  "titulo": zod.string(),
+  "valor": zod.number().optional(),
+  "etapa": zod.enum(['novo', 'qualificado', 'proposta', 'negociacao', 'ganho', 'perdido']).optional(),
+  "funilId": zod.string().optional(),
+  "probabilidade": zod.number().min(createDealBodyProbabilidadeMin).max(createDealBodyProbabilidadeMax).optional(),
+  "dataFechamentoPrevista": zod.coerce.date().optional(),
+  "motivoPerda": zod.string().optional()
+})
+
+
+/**
+ * @summary List deals by tenant
+ */
+export const ListDealsParams = zod.object({
+  "tenantId": zod.coerce.string()
+})
+
+export const listDealsResponseProbabilidadeMin = 0;
+export const listDealsResponseProbabilidadeMax = 100;
+
+
+
+export const ListDealsResponseItem = zod.object({
+  "id": zod.string(),
+  "tenantId": zod.string(),
+  "leadId": zod.string().nullish(),
+  "titulo": zod.string(),
+  "valor": zod.string().nullish().describe('Decimal stored as string (Postgres numeric)'),
+  "etapa": zod.enum(['novo', 'qualificado', 'proposta', 'negociacao', 'ganho', 'perdido']),
+  "funilId": zod.string().nullish(),
+  "probabilidade": zod.number().min(listDealsResponseProbabilidadeMin).max(listDealsResponseProbabilidadeMax).nullish(),
+  "dataFechamentoPrevista": zod.coerce.date().nullish(),
+  "motivoPerda": zod.string().nullish(),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date()
+})
+export const ListDealsResponse = zod.array(ListDealsResponseItem)
+
+
+/**
+ * @summary Get deal by ID
+ */
+export const GetDealParams = zod.object({
+  "id": zod.coerce.string()
+})
+
+export const getDealResponseProbabilidadeMin = 0;
+export const getDealResponseProbabilidadeMax = 100;
+
+
+
+export const GetDealResponse = zod.object({
+  "id": zod.string(),
+  "tenantId": zod.string(),
+  "leadId": zod.string().nullish(),
+  "titulo": zod.string(),
+  "valor": zod.string().nullish().describe('Decimal stored as string (Postgres numeric)'),
+  "etapa": zod.enum(['novo', 'qualificado', 'proposta', 'negociacao', 'ganho', 'perdido']),
+  "funilId": zod.string().nullish(),
+  "probabilidade": zod.number().min(getDealResponseProbabilidadeMin).max(getDealResponseProbabilidadeMax).nullish(),
+  "dataFechamentoPrevista": zod.coerce.date().nullish(),
+  "motivoPerda": zod.string().nullish(),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date()
+})
+
+
+/**
+ * @summary Update deal
+ */
+export const UpdateDealParams = zod.object({
+  "id": zod.coerce.string()
+})
+
+export const updateDealBodyProbabilidadeMin = 0;
+export const updateDealBodyProbabilidadeMax = 100;
+
+
+
+export const UpdateDealBody = zod.object({
+  "leadId": zod.string().optional(),
+  "titulo": zod.string().optional(),
+  "valor": zod.number().optional(),
+  "etapa": zod.enum(['novo', 'qualificado', 'proposta', 'negociacao', 'ganho', 'perdido']).optional(),
+  "funilId": zod.string().optional(),
+  "probabilidade": zod.number().min(updateDealBodyProbabilidadeMin).max(updateDealBodyProbabilidadeMax).optional(),
+  "dataFechamentoPrevista": zod.coerce.date().optional(),
+  "motivoPerda": zod.string().optional()
+})
+
+export const updateDealResponseProbabilidadeMin = 0;
+export const updateDealResponseProbabilidadeMax = 100;
+
+
+
+export const UpdateDealResponse = zod.object({
+  "id": zod.string(),
+  "tenantId": zod.string(),
+  "leadId": zod.string().nullish(),
+  "titulo": zod.string(),
+  "valor": zod.string().nullish().describe('Decimal stored as string (Postgres numeric)'),
+  "etapa": zod.enum(['novo', 'qualificado', 'proposta', 'negociacao', 'ganho', 'perdido']),
+  "funilId": zod.string().nullish(),
+  "probabilidade": zod.number().min(updateDealResponseProbabilidadeMin).max(updateDealResponseProbabilidadeMax).nullish(),
+  "dataFechamentoPrevista": zod.coerce.date().nullish(),
+  "motivoPerda": zod.string().nullish(),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date()
+})
+
+
+/**
+ * @summary Delete deal
+ */
+export const DeleteDealParams = zod.object({
+  "id": zod.coerce.string()
 })
 
 
