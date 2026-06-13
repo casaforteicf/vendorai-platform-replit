@@ -16,6 +16,7 @@ import Agenda from "@/pages/Agenda";
 import Configuracoes from "@/pages/Configuracoes";
 import Campanhas from "@/pages/Campanhas";
 import Propostas from "@/pages/Propostas";
+import Faturamento from "@/pages/Faturamento";
 import { useEffect } from "react";
 
 const queryClient = new QueryClient();
@@ -101,6 +102,9 @@ function AppRoutes() {
       </Route>
       <Route path="/campanhas">
         <ProtectedRoute component={Campanhas} />
+      </Route>
+      <Route path="/faturamento">
+        {() => <ProtectedRoute component={Faturamento} />}
       </Route>
       <Route component={NotFound} />
     </Switch>
