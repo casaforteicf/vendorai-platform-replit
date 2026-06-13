@@ -6,10 +6,11 @@ import {
   insertMessageSchema,
   updateMessageSchema,
 } from "@workspace/db";
+import { maybeReanalyze } from "../lib/analyze-intelligence.js";
 
 const router: IRouter = Router();
 
-router.post("/messages", async (req, res) => {
+router.post("/messages", async (req, res): Promise<void> => {
   const parsed = insertMessageSchema.safeParse(req.body);
   if (!parsed.success) {
     res.status(422).json({ error: parsed.error.message });
@@ -20,7 +21,16 @@ router.post("/messages", async (req, res) => {
     .insert(messagesTable)
     .values(parsed.data)
     .returning();
+
   res.status(201).json(message);
+
+  // Fire-and-forget: check whether this lead's intelligence is stale or has
+  // accumulated enough new messages to warrant automatic re-analysis.
+  maybeReanalyze({
+    tenantId: parsed.data.tenantId,
+    leadId:   parsed.data.leadId,
+    log:      req.log,
+  });
 });
 
 router.get(
