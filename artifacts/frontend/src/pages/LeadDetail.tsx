@@ -212,11 +212,13 @@ export default function LeadDetail() {
       },
     });
 
+  const churnRiskParsed = parseInt(churnRiskDraft, 10);
+  const churnRiskIsValid =
+    !isNaN(churnRiskParsed) && churnRiskParsed >= 0 && churnRiskParsed <= 100;
+
   function saveChurnRisk() {
-    if (!intelligence?.id) return;
-    const value = parseInt(churnRiskDraft, 10);
-    if (isNaN(value) || value < 0 || value > 100) return;
-    updateIntelligence({ id: intelligence.id, data: { churnRisk: value } });
+    if (!intelligence?.id || !churnRiskIsValid) return;
+    updateIntelligence({ id: intelligence.id, data: { churnRisk: churnRiskParsed } });
     setEditingChurnRisk(false);
   }
 
@@ -392,76 +394,99 @@ export default function LeadDetail() {
                       <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
                         Risco de Churn
                       </span>
-                      <div className="flex items-center gap-1">
-                        {editingChurnRisk ? (
-                          <>
-                            <Input
-                              type="number"
-                              min={0}
-                              max={100}
-                              value={churnRiskDraft}
-                              onChange={(e) => setChurnRiskDraft(e.target.value)}
-                              className="h-6 w-16 text-xs px-1.5 py-0"
-                              data-testid="input-churn-risk"
-                              autoFocus
-                              onKeyDown={(e) => {
-                                if (e.key === "Enter") saveChurnRisk();
-                                if (e.key === "Escape") setEditingChurnRisk(false);
+                      {!editingChurnRisk && (
+                        <div className="flex items-center gap-1">
+                          <span
+                            className={`font-bold text-sm ${churnColor(intelligence?.churnRisk)}`}
+                            data-testid="text-churn-risk"
+                          >
+                            {intelligence?.churnRisk !== null &&
+                            intelligence?.churnRisk !== undefined
+                              ? `${intelligence.churnRisk}%`
+                              : "—"}
+                          </span>
+                          {intelligence?.id && (
+                            <button
+                              onClick={() => {
+                                setChurnRiskDraft(
+                                  intelligence.churnRisk?.toString() ?? ""
+                                );
+                                setEditingChurnRisk(true);
                               }}
-                            />
-                            <button
-                              onClick={saveChurnRisk}
-                              disabled={isUpdating}
-                              className="text-emerald-600 hover:text-emerald-700 disabled:opacity-50"
-                              data-testid="btn-save-churn-risk"
+                              className="ml-1 text-muted-foreground hover:text-foreground"
+                              data-testid="btn-edit-churn-risk"
                             >
-                              <Check className="h-3.5 w-3.5" />
+                              <Pencil className="h-3 w-3" />
                             </button>
-                            <button
-                              onClick={() => setEditingChurnRisk(false)}
-                              className="text-muted-foreground hover:text-foreground"
-                            >
-                              <X className="h-3.5 w-3.5" />
-                            </button>
-                          </>
-                        ) : (
-                          <>
-                            <span
-                              className={`font-bold text-sm ${churnColor(intelligence?.churnRisk)}`}
-                              data-testid="text-churn-risk"
-                            >
-                              {intelligence?.churnRisk !== null &&
-                              intelligence?.churnRisk !== undefined
-                                ? `${intelligence.churnRisk}%`
-                                : "—"}
-                            </span>
-                            {intelligence?.id && (
-                              <button
-                                onClick={() => {
-                                  setChurnRiskDraft(
-                                    intelligence.churnRisk?.toString() ?? ""
-                                  );
-                                  setEditingChurnRisk(true);
-                                }}
-                                className="ml-1 text-muted-foreground hover:text-foreground"
-                                data-testid="btn-edit-churn-risk"
-                              >
-                                <Pencil className="h-3 w-3" />
-                              </button>
-                            )}
-                          </>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                    {editingChurnRisk ? (
+                      <div className="space-y-2 pt-1">
+                        <div className="flex items-center gap-2">
+                          <input
+                            type="range"
+                            min={0}
+                            max={100}
+                            value={churnRiskIsValid ? churnRiskParsed : 0}
+                            onChange={(e) => setChurnRiskDraft(e.target.value)}
+                            className="flex-1 h-2 accent-primary cursor-pointer"
+                            data-testid="slider-churn-risk"
+                          />
+                          <Input
+                            type="number"
+                            min={0}
+                            max={100}
+                            value={churnRiskDraft}
+                            onChange={(e) => setChurnRiskDraft(e.target.value)}
+                            className={`h-6 w-16 text-xs px-1.5 py-0 ${!churnRiskIsValid && churnRiskDraft !== "" ? "border-red-500 focus-visible:ring-red-500" : ""}`}
+                            data-testid="input-churn-risk"
+                            autoFocus
+                            onKeyDown={(e) => {
+                              if (e.key === "Enter") saveChurnRisk();
+                              if (e.key === "Escape") setEditingChurnRisk(false);
+                            }}
+                          />
+                          <span className="text-xs text-muted-foreground">%</span>
+                        </div>
+                        {!churnRiskIsValid && churnRiskDraft !== "" && (
+                          <p
+                            className="text-xs text-red-500 flex items-center gap-1"
+                            data-testid="error-churn-risk"
+                          >
+                            <AlertTriangle className="h-3 w-3 shrink-0" />
+                            Digite um valor entre 0 e 100
+                          </p>
                         )}
+                        <div className="flex items-center gap-2">
+                          <button
+                            onClick={saveChurnRisk}
+                            disabled={isUpdating || !churnRiskIsValid}
+                            className="text-emerald-600 hover:text-emerald-700 disabled:opacity-40 disabled:cursor-not-allowed"
+                            data-testid="btn-save-churn-risk"
+                          >
+                            <Check className="h-3.5 w-3.5" />
+                          </button>
+                          <button
+                            onClick={() => setEditingChurnRisk(false)}
+                            className="text-muted-foreground hover:text-foreground"
+                          >
+                            <X className="h-3.5 w-3.5" />
+                          </button>
+                        </div>
                       </div>
-                    </div>
-                    <div className="relative h-2 w-full overflow-hidden rounded-full bg-muted">
-                      <div
-                        className={`h-full transition-all ${churnProgressColor(intelligence?.churnRisk)}`}
-                        style={{
-                          width: `${intelligence?.churnRisk ?? 0}%`,
-                        }}
-                        data-testid="progress-churn-risk"
-                      />
-                    </div>
+                    ) : (
+                      <div className="relative h-2 w-full overflow-hidden rounded-full bg-muted">
+                        <div
+                          className={`h-full transition-all ${churnProgressColor(intelligence?.churnRisk)}`}
+                          style={{
+                            width: `${intelligence?.churnRisk ?? 0}%`,
+                          }}
+                          data-testid="progress-churn-risk"
+                        />
+                      </div>
+                    )}
                     {Array.isArray(intelligence?.churnReasons) &&
                       (intelligence.churnReasons as unknown[]).filter(
                         (r) => typeof r === "string" && r.trim() !== ""
