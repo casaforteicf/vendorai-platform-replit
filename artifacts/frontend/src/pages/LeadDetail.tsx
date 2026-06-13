@@ -290,9 +290,11 @@ export default function LeadDetail() {
     setEditingChurnRisk(false);
   }
 
+  const NBA_MIN_LENGTH = 10;
   const NBA_MAX_LENGTH = 300;
+  const nextBestActionTrimmed = nextBestActionDraft.trim();
   const nextBestActionIsValid =
-    nextBestActionDraft.trim().length > 0 &&
+    nextBestActionTrimmed.length >= NBA_MIN_LENGTH &&
     nextBestActionDraft.length <= NBA_MAX_LENGTH;
 
   function saveNextBestAction() {
@@ -852,6 +854,15 @@ export default function LeadDetail() {
                             if (e.key === "Escape") setEditingNextBestAction(false);
                           }}
                         />
+                        {nextBestActionTrimmed.length > 0 &&
+                          nextBestActionTrimmed.length < NBA_MIN_LENGTH && (
+                            <p
+                              className="text-xs text-muted-foreground"
+                              data-testid="next-best-action-min-hint"
+                            >
+                              Mínimo de {NBA_MIN_LENGTH} caracteres
+                            </p>
+                          )}
                         <div className="flex items-center justify-between">
                           <div className="flex items-center gap-2">
                             <Button
