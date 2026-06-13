@@ -1,7 +1,6 @@
 import { useState, useEffect, useRef } from "react";
-import { formatDistanceToNow } from "date-fns";
-import { ptBR } from "date-fns/locale";
 import { useParams, useLocation } from "wouter";
+import { useRelativeTime } from "@/hooks/useRelativeTime";
 import { useQueryClient } from "@tanstack/react-query";
 import { useAuth } from "@/contexts/AuthContext";
 import { useToast } from "@/hooks/use-toast";
@@ -204,12 +203,6 @@ export default function LeadDetail() {
   // when the in-flight analysis finishes (value changes → analysis done).
   const analysisSnapshotRef = useRef<string | null | undefined>(undefined);
 
-  const [, setTick] = useState(0);
-  useEffect(() => {
-    const id = setInterval(() => setTick((t) => t + 1), 60_000);
-    return () => clearInterval(id);
-  }, []);
-
   const { data: lead, isLoading: leadLoading } = useGetLead(id, {
     query: {
       enabled: !!id,
@@ -230,6 +223,13 @@ export default function LeadDetail() {
       },
     }
   );
+
+  // Relative-time labels — re-computed every 60 s by the hook
+  const churnReasonsEditedRelative = useRelativeTime(
+    intelligence?.churnReasonsEditedAt,
+    { addSuffix: true }
+  );
+  const lastAnalyzedRelative = useRelativeTime(intelligence?.lastAnalyzedAt);
 
   // Detect when the in-flight server-side analysis finishes by watching lastAnalyzedAt
   useEffect(() => {
@@ -754,13 +754,10 @@ export default function LeadDetail() {
                           {intelligence.churnReasonsEditedBy === "ai"
                             ? "Atualizado pela IA"
                             : "Editado manualmente"}
-                          {intelligence.churnReasonsEditedAt && (
+                          {intelligence.churnReasonsEditedAt && churnReasonsEditedRelative && (
                             <>
                               {" · "}
-                              {formatDistanceToNow(
-                                new Date(intelligence.churnReasonsEditedAt),
-                                { addSuffix: true, locale: ptBR }
-                              )}
+                              {churnReasonsEditedRelative}
                             </>
                           )}
                         </p>
@@ -994,8 +991,8 @@ export default function LeadDetail() {
                     className="text-xs text-muted-foreground/60 pt-1 border-t border-border/40"
                     data-testid="text-last-analyzed"
                   >
-                    {intelligence?.lastAnalyzedAt
-                      ? `Última análise: há ${formatDistanceToNow(new Date(intelligence.lastAnalyzedAt), { locale: ptBR })}`
+                    {intelligence?.lastAnalyzedAt && lastAnalyzedRelative
+                      ? `Última análise: há ${lastAnalyzedRelative}`
                       : "Nunca analisado"}
                   </p>
                 </>
