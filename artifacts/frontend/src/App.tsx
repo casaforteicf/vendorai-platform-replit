@@ -13,6 +13,7 @@ import LeadDetail from "@/pages/LeadDetail";
 import Deals from "@/pages/Deals";
 import Conversations from "@/pages/Conversations";
 import Agenda from "@/pages/Agenda";
+import Configuracoes from "@/pages/Configuracoes";
 import { useEffect } from "react";
 
 const queryClient = new QueryClient();
@@ -89,6 +90,9 @@ function AppRoutes() {
       </Route>
       <Route path="/agenda">
         <ProtectedRoute component={Agenda} />
+      </Route>
+      <Route path="/configuracoes">
+        <ProtectedRoute component={Configuracoes} />
       </Route>
       <Route component={NotFound} />
     </Switch>
