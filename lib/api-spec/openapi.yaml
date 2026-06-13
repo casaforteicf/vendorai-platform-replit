@@ -1400,6 +1400,178 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
 
+  /produtos-catalogo:
+    post:
+      operationId: createProdutoCatalogo
+      tags: [sales-cpq]
+      summary: Create catalog product
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateProdutoCatalogoBody"
+      responses:
+        "201":
+          description: Product created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProdutoCatalogo"
+        "422":
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /tenants/{tenantId}/produtos-catalogo:
+    get:
+      operationId: listProdutosCatalogo
+      tags: [sales-cpq]
+      summary: List catalog products by tenant (ordered by name)
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: tenantId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: List of products
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/ProdutoCatalogo"
+
+  /produtos-catalogo/{id}:
+    get:
+      operationId: getProdutoCatalogo
+      tags: [sales-cpq]
+      summary: Get catalog product by ID
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Product
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProdutoCatalogo"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+    patch:
+      operationId: updateProdutoCatalogo
+      tags: [sales-cpq]
+      summary: Update catalog product
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateProdutoCatalogoBody"
+      responses:
+        "200":
+          description: Updated product
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProdutoCatalogo"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "422":
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+    delete:
+      operationId: deleteProdutoCatalogo
+      tags: [sales-cpq]
+      summary: Delete catalog product
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "204":
+          description: Deleted
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /tenants/{tenantId}/propostas/from-catalogo:
+    post:
+      operationId: createPropostaFromCatalogo
+      tags: [sales-cpq]
+      summary: Generate proposta from catalog products
+      description: |
+        Looks up each produtoId in the tenant's catalog, verifies they are active,
+        builds the itens array with nome/quantidade/valorUnitario, and calculates
+        valorTotal automatically. Returns the created proposta in "rascunho" status.
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: tenantId
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreatePropostaFromCatalogoBody"
+      responses:
+        "201":
+          description: Proposta created with auto-calculated itens and valorTotal
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Proposta"
+        "422":
+          description: Validation error, product not found, or product inactive
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
   /campaigns:
     post:
       operationId: createCampaign
@@ -2987,6 +3159,105 @@ components:
               type: boolean
           required: [used, limit, percentUsed, nearLimit, overLimit]
       required: [messages, tokens]
+
+    ProdutoCatalogo:
+      type: object
+      properties:
+        id:
+          type: string
+        tenantId:
+          type: string
+        nome:
+          type: string
+        descricao:
+          type: string
+          nullable: true
+        categoria:
+          type: string
+          nullable: true
+        precoBase:
+          type: string
+          description: Decimal price stored as string (e.g. "99.90")
+        unidade:
+          type: string
+          description: 'Unit of measure (e.g. "un", "m2", "kg")'
+        ativo:
+          type: boolean
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+      required: [id, tenantId, nome, precoBase, unidade, ativo, createdAt, updatedAt]
+
+    CreateProdutoCatalogoBody:
+      type: object
+      properties:
+        tenantId:
+          type: string
+        nome:
+          type: string
+        descricao:
+          type: string
+        categoria:
+          type: string
+        precoBase:
+          oneOf:
+            - type: string
+            - type: number
+          description: Decimal price (e.g. 99.90 or "99.90")
+        unidade:
+          type: string
+        ativo:
+          type: boolean
+      required: [tenantId, nome, precoBase]
+
+    UpdateProdutoCatalogoBody:
+      type: object
+      properties:
+        nome:
+          type: string
+        descricao:
+          type: string
+        categoria:
+          type: string
+        precoBase:
+          oneOf:
+            - type: string
+            - type: number
+        unidade:
+          type: string
+        ativo:
+          type: boolean
+
+    CreatePropostaFromCatalogoBody:
+      type: object
+      properties:
+        leadId:
+          type: string
+        titulo:
+          type: string
+        dealId:
+          type: string
+        validadeAte:
+          type: string
+          format: date-time
+        observacoes:
+          type: string
+        itens:
+          type: array
+          minItems: 1
+          items:
+            type: object
+            properties:
+              produtoId:
+                type: string
+              quantidade:
+                type: number
+                exclusiveMinimum: 0
+            required: [produtoId, quantidade]
+      required: [leadId, titulo, itens]
 
     CampaignTipo:
       type: string

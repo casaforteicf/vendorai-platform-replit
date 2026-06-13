@@ -44,7 +44,9 @@ import type {
   CreateFunilBody,
   CreateLeadBody,
   CreateMessageBody,
+  CreateProdutoCatalogoBody,
   CreatePropostaBody,
+  CreatePropostaFromCatalogoBody,
   CreateTenantBody,
   CreateUserBody,
   CustomerIntelligence,
@@ -60,6 +62,7 @@ import type {
   ListPropostasParams,
   LoginBody,
   Message,
+  ProdutoCatalogo,
   Proposta,
   RegisterBody,
   Tenant,
@@ -75,6 +78,7 @@ import type {
   UpdateFunilBody,
   UpdateLeadBody,
   UpdateMessageBody,
+  UpdateProdutoCatalogoBody,
   UpdatePropostaBody,
   UpdatePropostaStatusBody,
   UpdateTenantBody,
@@ -3608,6 +3612,449 @@ export const useDeleteMessage = <TError = ErrorType<ErrorResponse>,
         TContext
       > => {
       return useMutation(getDeleteMessageMutationOptions(options));
+    }
+
+export const getCreateProdutoCatalogoUrl = () => {
+
+
+
+
+  return `/api/produtos-catalogo`
+}
+
+/**
+ * @summary Create catalog product
+ */
+export const createProdutoCatalogo = async (createProdutoCatalogoBody: CreateProdutoCatalogoBody, options?: RequestInit): Promise<ProdutoCatalogo> => {
+
+  return customFetch<ProdutoCatalogo>(getCreateProdutoCatalogoUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(
+      createProdutoCatalogoBody,)
+  }
+);}
+
+
+
+
+export const getCreateProdutoCatalogoMutationOptions = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createProdutoCatalogo>>, TError,{data: BodyType<CreateProdutoCatalogoBody>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof createProdutoCatalogo>>, TError,{data: BodyType<CreateProdutoCatalogoBody>}, TContext> => {
+
+const mutationKey = ['createProdutoCatalogo'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof createProdutoCatalogo>>, {data: BodyType<CreateProdutoCatalogoBody>}> = (props) => {
+          const {data} = props ?? {};
+
+          return  createProdutoCatalogo(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type CreateProdutoCatalogoMutationResult = NonNullable<Awaited<ReturnType<typeof createProdutoCatalogo>>>
+    export type CreateProdutoCatalogoMutationBody = BodyType<CreateProdutoCatalogoBody>
+    export type CreateProdutoCatalogoMutationError = ErrorType<ErrorResponse>
+
+    /**
+ * @summary Create catalog product
+ */
+export const useCreateProdutoCatalogo = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createProdutoCatalogo>>, TError,{data: BodyType<CreateProdutoCatalogoBody>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof createProdutoCatalogo>>,
+        TError,
+        {data: BodyType<CreateProdutoCatalogoBody>},
+        TContext
+      > => {
+      return useMutation(getCreateProdutoCatalogoMutationOptions(options));
+    }
+
+export const getListProdutosCatalogoUrl = (tenantId: string,) => {
+
+
+
+
+  return `/api/tenants/${tenantId}/produtos-catalogo`
+}
+
+/**
+ * @summary List catalog products by tenant (ordered by name)
+ */
+export const listProdutosCatalogo = async (tenantId: string, options?: RequestInit): Promise<ProdutoCatalogo[]> => {
+
+  return customFetch<ProdutoCatalogo[]>(getListProdutosCatalogoUrl(tenantId),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getListProdutosCatalogoQueryKey = (tenantId: string,) => {
+    return [
+    `/api/tenants/${tenantId}/produtos-catalogo`
+    ] as const;
+    }
+
+
+export const getListProdutosCatalogoQueryOptions = <TData = Awaited<ReturnType<typeof listProdutosCatalogo>>, TError = ErrorType<unknown>>(tenantId: string, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listProdutosCatalogo>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getListProdutosCatalogoQueryKey(tenantId);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof listProdutosCatalogo>>> = ({ signal }) => listProdutosCatalogo(tenantId, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, enabled: !!(tenantId), ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof listProdutosCatalogo>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type ListProdutosCatalogoQueryResult = NonNullable<Awaited<ReturnType<typeof listProdutosCatalogo>>>
+export type ListProdutosCatalogoQueryError = ErrorType<unknown>
+
+
+/**
+ * @summary List catalog products by tenant (ordered by name)
+ */
+
+export function useListProdutosCatalogo<TData = Awaited<ReturnType<typeof listProdutosCatalogo>>, TError = ErrorType<unknown>>(
+ tenantId: string, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listProdutosCatalogo>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getListProdutosCatalogoQueryOptions(tenantId,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+
+
+
+
+
+
+export const getGetProdutoCatalogoUrl = (id: string,) => {
+
+
+
+
+  return `/api/produtos-catalogo/${id}`
+}
+
+/**
+ * @summary Get catalog product by ID
+ */
+export const getProdutoCatalogo = async (id: string, options?: RequestInit): Promise<ProdutoCatalogo> => {
+
+  return customFetch<ProdutoCatalogo>(getGetProdutoCatalogoUrl(id),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetProdutoCatalogoQueryKey = (id: string,) => {
+    return [
+    `/api/produtos-catalogo/${id}`
+    ] as const;
+    }
+
+
+export const getGetProdutoCatalogoQueryOptions = <TData = Awaited<ReturnType<typeof getProdutoCatalogo>>, TError = ErrorType<ErrorResponse>>(id: string, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getProdutoCatalogo>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetProdutoCatalogoQueryKey(id);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getProdutoCatalogo>>> = ({ signal }) => getProdutoCatalogo(id, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, enabled: !!(id), ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getProdutoCatalogo>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetProdutoCatalogoQueryResult = NonNullable<Awaited<ReturnType<typeof getProdutoCatalogo>>>
+export type GetProdutoCatalogoQueryError = ErrorType<ErrorResponse>
+
+
+/**
+ * @summary Get catalog product by ID
+ */
+
+export function useGetProdutoCatalogo<TData = Awaited<ReturnType<typeof getProdutoCatalogo>>, TError = ErrorType<ErrorResponse>>(
+ id: string, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getProdutoCatalogo>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetProdutoCatalogoQueryOptions(id,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+
+
+
+
+
+
+export const getUpdateProdutoCatalogoUrl = (id: string,) => {
+
+
+
+
+  return `/api/produtos-catalogo/${id}`
+}
+
+/**
+ * @summary Update catalog product
+ */
+export const updateProdutoCatalogo = async (id: string,
+    updateProdutoCatalogoBody: UpdateProdutoCatalogoBody, options?: RequestInit): Promise<ProdutoCatalogo> => {
+
+  return customFetch<ProdutoCatalogo>(getUpdateProdutoCatalogoUrl(id),
+  {
+    ...options,
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(
+      updateProdutoCatalogoBody,)
+  }
+);}
+
+
+
+
+export const getUpdateProdutoCatalogoMutationOptions = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updateProdutoCatalogo>>, TError,{id: string;data: BodyType<UpdateProdutoCatalogoBody>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof updateProdutoCatalogo>>, TError,{id: string;data: BodyType<UpdateProdutoCatalogoBody>}, TContext> => {
+
+const mutationKey = ['updateProdutoCatalogo'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof updateProdutoCatalogo>>, {id: string;data: BodyType<UpdateProdutoCatalogoBody>}> = (props) => {
+          const {id,data} = props ?? {};
+
+          return  updateProdutoCatalogo(id,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type UpdateProdutoCatalogoMutationResult = NonNullable<Awaited<ReturnType<typeof updateProdutoCatalogo>>>
+    export type UpdateProdutoCatalogoMutationBody = BodyType<UpdateProdutoCatalogoBody>
+    export type UpdateProdutoCatalogoMutationError = ErrorType<ErrorResponse>
+
+    /**
+ * @summary Update catalog product
+ */
+export const useUpdateProdutoCatalogo = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updateProdutoCatalogo>>, TError,{id: string;data: BodyType<UpdateProdutoCatalogoBody>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof updateProdutoCatalogo>>,
+        TError,
+        {id: string;data: BodyType<UpdateProdutoCatalogoBody>},
+        TContext
+      > => {
+      return useMutation(getUpdateProdutoCatalogoMutationOptions(options));
+    }
+
+export const getDeleteProdutoCatalogoUrl = (id: string,) => {
+
+
+
+
+  return `/api/produtos-catalogo/${id}`
+}
+
+/**
+ * @summary Delete catalog product
+ */
+export const deleteProdutoCatalogo = async (id: string, options?: RequestInit): Promise<void> => {
+
+  return customFetch<void>(getDeleteProdutoCatalogoUrl(id),
+  {
+    ...options,
+    method: 'DELETE'
+
+
+  }
+);}
+
+
+
+
+export const getDeleteProdutoCatalogoMutationOptions = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof deleteProdutoCatalogo>>, TError,{id: string}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof deleteProdutoCatalogo>>, TError,{id: string}, TContext> => {
+
+const mutationKey = ['deleteProdutoCatalogo'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof deleteProdutoCatalogo>>, {id: string}> = (props) => {
+          const {id} = props ?? {};
+
+          return  deleteProdutoCatalogo(id,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type DeleteProdutoCatalogoMutationResult = NonNullable<Awaited<ReturnType<typeof deleteProdutoCatalogo>>>
+
+    export type DeleteProdutoCatalogoMutationError = ErrorType<ErrorResponse>
+
+    /**
+ * @summary Delete catalog product
+ */
+export const useDeleteProdutoCatalogo = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof deleteProdutoCatalogo>>, TError,{id: string}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof deleteProdutoCatalogo>>,
+        TError,
+        {id: string},
+        TContext
+      > => {
+      return useMutation(getDeleteProdutoCatalogoMutationOptions(options));
+    }
+
+export const getCreatePropostaFromCatalogoUrl = (tenantId: string,) => {
+
+
+
+
+  return `/api/tenants/${tenantId}/propostas/from-catalogo`
+}
+
+/**
+ * Looks up each produtoId in the tenant's catalog, verifies they are active,
+builds the itens array with nome/quantidade/valorUnitario, and calculates
+valorTotal automatically. Returns the created proposta in "rascunho" status.
+
+ * @summary Generate proposta from catalog products
+ */
+export const createPropostaFromCatalogo = async (tenantId: string,
+    createPropostaFromCatalogoBody: CreatePropostaFromCatalogoBody, options?: RequestInit): Promise<Proposta> => {
+
+  return customFetch<Proposta>(getCreatePropostaFromCatalogoUrl(tenantId),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(
+      createPropostaFromCatalogoBody,)
+  }
+);}
+
+
+
+
+export const getCreatePropostaFromCatalogoMutationOptions = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createPropostaFromCatalogo>>, TError,{tenantId: string;data: BodyType<CreatePropostaFromCatalogoBody>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof createPropostaFromCatalogo>>, TError,{tenantId: string;data: BodyType<CreatePropostaFromCatalogoBody>}, TContext> => {
+
+const mutationKey = ['createPropostaFromCatalogo'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof createPropostaFromCatalogo>>, {tenantId: string;data: BodyType<CreatePropostaFromCatalogoBody>}> = (props) => {
+          const {tenantId,data} = props ?? {};
+
+          return  createPropostaFromCatalogo(tenantId,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type CreatePropostaFromCatalogoMutationResult = NonNullable<Awaited<ReturnType<typeof createPropostaFromCatalogo>>>
+    export type CreatePropostaFromCatalogoMutationBody = BodyType<CreatePropostaFromCatalogoBody>
+    export type CreatePropostaFromCatalogoMutationError = ErrorType<ErrorResponse>
+
+    /**
+ * @summary Generate proposta from catalog products
+ */
+export const useCreatePropostaFromCatalogo = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createPropostaFromCatalogo>>, TError,{tenantId: string;data: BodyType<CreatePropostaFromCatalogoBody>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof createPropostaFromCatalogo>>,
+        TError,
+        {tenantId: string;data: BodyType<CreatePropostaFromCatalogoBody>},
+        TContext
+      > => {
+      return useMutation(getCreatePropostaFromCatalogoMutationOptions(options));
     }
 
 export const getCreateCampaignUrl = () => {

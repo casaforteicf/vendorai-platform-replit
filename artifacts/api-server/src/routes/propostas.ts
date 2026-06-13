@@ -1,8 +1,10 @@
 import { Router, type IRouter } from "express";
-import { and, eq } from "drizzle-orm";
+import { and, eq, inArray } from "drizzle-orm";
+import { z } from "zod/v4";
 import {
   db,
   propostasTable,
+  produtosCatalogoTable,
   insertPropostaSchema,
   updatePropostaSchema,
 } from "@workspace/db";
@@ -115,6 +117,98 @@ router.patch("/propostas/:id/status", async (req, res) => {
 
   res.json(updated);
 });
+
+const fromCatalogoBodySchema = z.object({
+  leadId: z.string().min(1),
+  titulo: z.string().min(1),
+  dealId: z.string().optional(),
+  validadeAte: z.coerce.date().optional(),
+  observacoes: z.string().optional(),
+  itens: z
+    .array(
+      z.object({
+        produtoId: z.string().min(1),
+        quantidade: z.number().positive(),
+      })
+    )
+    .min(1, "At least one item is required"),
+});
+
+router.post(
+  "/tenants/:tenantId/propostas/from-catalogo",
+  async (req, res) => {
+    const tenantId = String(req.params.tenantId);
+
+    const parsed = fromCatalogoBodySchema.safeParse(req.body);
+    if (!parsed.success) {
+      res.status(422).json({ error: parsed.error.message });
+      return;
+    }
+
+    const { leadId, titulo, dealId, validadeAte, observacoes, itens } =
+      parsed.data;
+
+    const produtoIds = itens.map((i) => i.produtoId);
+
+    const produtos = await db
+      .select()
+      .from(produtosCatalogoTable)
+      .where(
+        and(
+          eq(produtosCatalogoTable.tenantId, tenantId),
+          inArray(produtosCatalogoTable.id, produtoIds)
+        )
+      );
+
+    const missingIds = produtoIds.filter(
+      (id) => !produtos.find((p) => p.id === id)
+    );
+    if (missingIds.length > 0) {
+      res.status(422).json({
+        error: `Products not found or do not belong to this tenant: ${missingIds.join(", ")}`,
+      });
+      return;
+    }
+
+    const inactiveProdutos = produtos.filter((p) => !p.ativo);
+    if (inactiveProdutos.length > 0) {
+      res.status(422).json({
+        error: `Inactive products cannot be added to a proposta: ${inactiveProdutos.map((p) => p.nome).join(", ")}`,
+      });
+      return;
+    }
+
+    const produtoMap = new Map(produtos.map((p) => [p.id, p]));
+
+    let valorTotal = 0;
+    const propostaItens = itens.map((item) => {
+      const produto = produtoMap.get(item.produtoId)!;
+      const valorUnitario = parseFloat(produto.precoBase);
+      valorTotal += item.quantidade * valorUnitario;
+      return {
+        nome: produto.nome,
+        quantidade: item.quantidade,
+        valorUnitario,
+      };
+    });
+
+    const [proposta] = await db
+      .insert(propostasTable)
+      .values({
+        tenantId,
+        leadId,
+        titulo,
+        ...(dealId ? { dealId } : {}),
+        ...(validadeAte ? { validadeAte } : {}),
+        ...(observacoes ? { observacoes } : {}),
+        itens: propostaItens,
+        valorTotal: valorTotal.toFixed(2),
+      })
+      .returning();
+
+    res.status(201).json(proposta);
+  }
+);
 
 router.delete("/propostas/:id", async (req, res) => {
   const [deleted] = await db

@@ -93,6 +93,57 @@ export interface UsageSummary {
   tokens: UsageSummaryTokens;
 }
 
+export interface ProdutoCatalogo {
+  id: string;
+  tenantId: string;
+  nome: string;
+  descricao?: string | null;
+  categoria?: string | null;
+  /** Decimal price stored as string (e.g. "99.90") */
+  precoBase: string;
+  /** Unit of measure (e.g. "un", "m2", "kg") */
+  unidade: string;
+  ativo: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface CreateProdutoCatalogoBody {
+  tenantId: string;
+  nome: string;
+  descricao?: string;
+  categoria?: string;
+  /** Decimal price (e.g. 99.90 or "99.90") */
+  precoBase: string | number;
+  unidade?: string;
+  ativo?: boolean;
+}
+
+export interface UpdateProdutoCatalogoBody {
+  nome?: string;
+  descricao?: string;
+  categoria?: string;
+  precoBase?: string | number;
+  unidade?: string;
+  ativo?: boolean;
+}
+
+export type CreatePropostaFromCatalogoBodyItensItem = {
+  produtoId: string;
+  /** @exclusiveMinimum 0 */
+  quantidade: number;
+};
+
+export interface CreatePropostaFromCatalogoBody {
+  leadId: string;
+  titulo: string;
+  dealId?: string;
+  validadeAte?: string;
+  observacoes?: string;
+  /** @minItems 1 */
+  itens: CreatePropostaFromCatalogoBodyItensItem[];
+}
+
 export type CampaignTipo = typeof CampaignTipo[keyof typeof CampaignTipo];
 
 

@@ -1378,6 +1378,130 @@ export const DeleteMessageParams = zod.object({
 
 
 /**
+ * @summary Create catalog product
+ */
+export const CreateProdutoCatalogoBody = zod.object({
+  "tenantId": zod.string(),
+  "nome": zod.string(),
+  "descricao": zod.string().optional(),
+  "categoria": zod.string().optional(),
+  "precoBase": zod.union([zod.string(),zod.number()]).describe('Decimal price (e.g. 99.90 or \"99.90\")'),
+  "unidade": zod.string().optional(),
+  "ativo": zod.boolean().optional()
+})
+
+
+/**
+ * @summary List catalog products by tenant (ordered by name)
+ */
+export const ListProdutosCatalogoParams = zod.object({
+  "tenantId": zod.coerce.string()
+})
+
+export const ListProdutosCatalogoResponseItem = zod.object({
+  "id": zod.string(),
+  "tenantId": zod.string(),
+  "nome": zod.string(),
+  "descricao": zod.string().nullish(),
+  "categoria": zod.string().nullish(),
+  "precoBase": zod.string().describe('Decimal price stored as string (e.g. \"99.90\")'),
+  "unidade": zod.string().describe('Unit of measure (e.g. \"un\", \"m2\", \"kg\")'),
+  "ativo": zod.boolean(),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date()
+})
+export const ListProdutosCatalogoResponse = zod.array(ListProdutosCatalogoResponseItem)
+
+
+/**
+ * @summary Get catalog product by ID
+ */
+export const GetProdutoCatalogoParams = zod.object({
+  "id": zod.coerce.string()
+})
+
+export const GetProdutoCatalogoResponse = zod.object({
+  "id": zod.string(),
+  "tenantId": zod.string(),
+  "nome": zod.string(),
+  "descricao": zod.string().nullish(),
+  "categoria": zod.string().nullish(),
+  "precoBase": zod.string().describe('Decimal price stored as string (e.g. \"99.90\")'),
+  "unidade": zod.string().describe('Unit of measure (e.g. \"un\", \"m2\", \"kg\")'),
+  "ativo": zod.boolean(),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date()
+})
+
+
+/**
+ * @summary Update catalog product
+ */
+export const UpdateProdutoCatalogoParams = zod.object({
+  "id": zod.coerce.string()
+})
+
+export const UpdateProdutoCatalogoBody = zod.object({
+  "nome": zod.string().optional(),
+  "descricao": zod.string().optional(),
+  "categoria": zod.string().optional(),
+  "precoBase": zod.union([zod.string(),zod.number()]).optional(),
+  "unidade": zod.string().optional(),
+  "ativo": zod.boolean().optional()
+})
+
+export const UpdateProdutoCatalogoResponse = zod.object({
+  "id": zod.string(),
+  "tenantId": zod.string(),
+  "nome": zod.string(),
+  "descricao": zod.string().nullish(),
+  "categoria": zod.string().nullish(),
+  "precoBase": zod.string().describe('Decimal price stored as string (e.g. \"99.90\")'),
+  "unidade": zod.string().describe('Unit of measure (e.g. \"un\", \"m2\", \"kg\")'),
+  "ativo": zod.boolean(),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date()
+})
+
+
+/**
+ * @summary Delete catalog product
+ */
+export const DeleteProdutoCatalogoParams = zod.object({
+  "id": zod.coerce.string()
+})
+
+
+/**
+ * Looks up each produtoId in the tenant's catalog, verifies they are active,
+builds the itens array with nome/quantidade/valorUnitario, and calculates
+valorTotal automatically. Returns the created proposta in "rascunho" status.
+
+ * @summary Generate proposta from catalog products
+ */
+export const CreatePropostaFromCatalogoParams = zod.object({
+  "tenantId": zod.coerce.string()
+})
+
+export const createPropostaFromCatalogoBodyItensItemQuantidadeExclusiveMin = 0;
+
+
+
+
+export const CreatePropostaFromCatalogoBody = zod.object({
+  "leadId": zod.string(),
+  "titulo": zod.string(),
+  "dealId": zod.string().optional(),
+  "validadeAte": zod.coerce.date().optional(),
+  "observacoes": zod.string().optional(),
+  "itens": zod.array(zod.object({
+  "produtoId": zod.string(),
+  "quantidade": zod.number().gt(createPropostaFromCatalogoBodyItensItemQuantidadeExclusiveMin)
+})).min(1)
+})
+
+
+/**
  * @summary Create campaign
  */
 export const CreateCampaignBody = zod.object({
