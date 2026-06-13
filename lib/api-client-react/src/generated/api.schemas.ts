@@ -107,3 +107,56 @@ export interface UpdateUserBody {
   active?: boolean;
 }
 
+export interface Lead {
+  id: string;
+  tenantId: string;
+  nome: string;
+  telefone?: string | null;
+  email?: string | null;
+  empresa?: string | null;
+  tamanhoEquipe?: string | null;
+  objetivo?: string | null;
+  urgencia?: string | null;
+  orcamento?: string | null;
+  planoRecomendado?: string | null;
+  dorPrincipal?: string | null;
+  proximaAcao?: string | null;
+  status: string;
+  activeAgentLock?: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface CreateLeadBody {
+  tenantId: string;
+  nome: string;
+  telefone?: string | null;
+  email?: string | null;
+  empresa?: string | null;
+  tamanhoEquipe?: string | null;
+  objetivo?: string | null;
+  urgencia?: string | null;
+  orcamento?: string | null;
+  planoRecomendado?: string | null;
+  dorPrincipal?: string | null;
+  proximaAcao?: string | null;
+  status?: string;
+  activeAgentLock?: string | null;
+}
+
+export interface UpdateLeadBody {
+  nome?: string;
+  telefone?: string | null;
+  email?: string | null;
+  empresa?: string | null;
+  tamanhoEquipe?: string | null;
+  objetivo?: string | null;
+  urgencia?: string | null;
+  orcamento?: string | null;
+  planoRecomendado?: string | null;
+  dorPrincipal?: string | null;
+  proximaAcao?: string | null;
+  status?: string;
+  activeAgentLock?: string | null;
+}
+

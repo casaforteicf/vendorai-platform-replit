@@ -207,3 +207,179 @@ export const DeleteTenantParams = zod.object({
 })
 
 
+/**
+ * @summary List users of a tenant
+ */
+export const ListTenantUsersParams = zod.object({
+  "tenantId": zod.coerce.string()
+})
+
+export const ListTenantUsersResponseItem = zod.object({
+  "id": zod.string(),
+  "tenantId": zod.string(),
+  "name": zod.string(),
+  "email": zod.string(),
+  "role": zod.enum(['admin', 'member']),
+  "platformRole": zod.enum(['super_admin', 'tenant_admin', 'member']),
+  "active": zod.boolean(),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date()
+})
+export const ListTenantUsersResponse = zod.array(ListTenantUsersResponseItem)
+
+
+/**
+ * @summary List all leads
+ */
+export const ListLeadsResponseItem = zod.object({
+  "id": zod.string(),
+  "tenantId": zod.string(),
+  "nome": zod.string(),
+  "telefone": zod.string().nullish(),
+  "email": zod.string().nullish(),
+  "empresa": zod.string().nullish(),
+  "tamanhoEquipe": zod.string().nullish(),
+  "objetivo": zod.string().nullish(),
+  "urgencia": zod.string().nullish(),
+  "orcamento": zod.string().nullish(),
+  "planoRecomendado": zod.string().nullish(),
+  "dorPrincipal": zod.string().nullish(),
+  "proximaAcao": zod.string().nullish(),
+  "status": zod.string(),
+  "activeAgentLock": zod.string().nullish(),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date()
+})
+export const ListLeadsResponse = zod.array(ListLeadsResponseItem)
+
+
+/**
+ * @summary Create lead
+ */
+export const CreateLeadBody = zod.object({
+  "tenantId": zod.string(),
+  "nome": zod.string(),
+  "telefone": zod.string().nullish(),
+  "email": zod.string().nullish(),
+  "empresa": zod.string().nullish(),
+  "tamanhoEquipe": zod.string().nullish(),
+  "objetivo": zod.string().nullish(),
+  "urgencia": zod.string().nullish(),
+  "orcamento": zod.string().nullish(),
+  "planoRecomendado": zod.string().nullish(),
+  "dorPrincipal": zod.string().nullish(),
+  "proximaAcao": zod.string().nullish(),
+  "status": zod.string().optional(),
+  "activeAgentLock": zod.string().nullish()
+})
+
+
+/**
+ * @summary List leads of a tenant
+ */
+export const ListTenantLeadsParams = zod.object({
+  "tenantId": zod.coerce.string()
+})
+
+export const ListTenantLeadsResponseItem = zod.object({
+  "id": zod.string(),
+  "tenantId": zod.string(),
+  "nome": zod.string(),
+  "telefone": zod.string().nullish(),
+  "email": zod.string().nullish(),
+  "empresa": zod.string().nullish(),
+  "tamanhoEquipe": zod.string().nullish(),
+  "objetivo": zod.string().nullish(),
+  "urgencia": zod.string().nullish(),
+  "orcamento": zod.string().nullish(),
+  "planoRecomendado": zod.string().nullish(),
+  "dorPrincipal": zod.string().nullish(),
+  "proximaAcao": zod.string().nullish(),
+  "status": zod.string(),
+  "activeAgentLock": zod.string().nullish(),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date()
+})
+export const ListTenantLeadsResponse = zod.array(ListTenantLeadsResponseItem)
+
+
+/**
+ * @summary Get lead by ID
+ */
+export const GetLeadParams = zod.object({
+  "id": zod.coerce.string()
+})
+
+export const GetLeadResponse = zod.object({
+  "id": zod.string(),
+  "tenantId": zod.string(),
+  "nome": zod.string(),
+  "telefone": zod.string().nullish(),
+  "email": zod.string().nullish(),
+  "empresa": zod.string().nullish(),
+  "tamanhoEquipe": zod.string().nullish(),
+  "objetivo": zod.string().nullish(),
+  "urgencia": zod.string().nullish(),
+  "orcamento": zod.string().nullish(),
+  "planoRecomendado": zod.string().nullish(),
+  "dorPrincipal": zod.string().nullish(),
+  "proximaAcao": zod.string().nullish(),
+  "status": zod.string(),
+  "activeAgentLock": zod.string().nullish(),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date()
+})
+
+
+/**
+ * @summary Update lead
+ */
+export const UpdateLeadParams = zod.object({
+  "id": zod.coerce.string()
+})
+
+export const UpdateLeadBody = zod.object({
+  "nome": zod.string().optional(),
+  "telefone": zod.string().nullish(),
+  "email": zod.string().nullish(),
+  "empresa": zod.string().nullish(),
+  "tamanhoEquipe": zod.string().nullish(),
+  "objetivo": zod.string().nullish(),
+  "urgencia": zod.string().nullish(),
+  "orcamento": zod.string().nullish(),
+  "planoRecomendado": zod.string().nullish(),
+  "dorPrincipal": zod.string().nullish(),
+  "proximaAcao": zod.string().nullish(),
+  "status": zod.string().optional(),
+  "activeAgentLock": zod.string().nullish()
+})
+
+export const UpdateLeadResponse = zod.object({
+  "id": zod.string(),
+  "tenantId": zod.string(),
+  "nome": zod.string(),
+  "telefone": zod.string().nullish(),
+  "email": zod.string().nullish(),
+  "empresa": zod.string().nullish(),
+  "tamanhoEquipe": zod.string().nullish(),
+  "objetivo": zod.string().nullish(),
+  "urgencia": zod.string().nullish(),
+  "orcamento": zod.string().nullish(),
+  "planoRecomendado": zod.string().nullish(),
+  "dorPrincipal": zod.string().nullish(),
+  "proximaAcao": zod.string().nullish(),
+  "status": zod.string(),
+  "activeAgentLock": zod.string().nullish(),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date()
+})
+
+
+/**
+ * @summary Delete lead
+ */
+export const DeleteLeadParams = zod.object({
+  "id": zod.coerce.string()
+})
+
+

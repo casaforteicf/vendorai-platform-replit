@@ -6,13 +6,16 @@
  * OpenAPI spec version: 0.1.0
  */
 
+export * from './createLeadBody';
 export * from './createTenantBody';
 export * from './createUserBody';
 export * from './errorResponse';
 export * from './healthStatus';
+export * from './lead';
 export * from './platformRole';
 export * from './tenant';
 export * from './tenantStatus';
+export * from './updateLeadBody';
 export * from './updateTenantBody';
 export * from './updateUserBody';
 export * from './user';

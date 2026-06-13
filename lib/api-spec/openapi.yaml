@@ -12,6 +12,10 @@ tags:
     description: Health operations
   - name: tenants
     description: Tenant management
+  - name: users
+    description: User management
+  - name: leads
+    description: Lead management
 paths:
   /healthz:
     get:
@@ -293,6 +297,165 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
 
+  /tenants/{tenantId}/users:
+    get:
+      operationId: listTenantUsers
+      tags: [users]
+      summary: List users of a tenant
+      parameters:
+        - name: tenantId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: List of users for the tenant (password excluded)
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/User"
+
+  /leads:
+    get:
+      operationId: listLeads
+      tags: [leads]
+      summary: List all leads
+      responses:
+        "200":
+          description: List of leads
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Lead"
+    post:
+      operationId: createLead
+      tags: [leads]
+      summary: Create lead
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateLeadBody"
+      responses:
+        "201":
+          description: Created lead
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Lead"
+        "422":
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /tenants/{tenantId}/leads:
+    get:
+      operationId: listTenantLeads
+      tags: [leads]
+      summary: List leads of a tenant
+      parameters:
+        - name: tenantId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: List of leads for the tenant
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Lead"
+
+  /leads/{id}:
+    get:
+      operationId: getLead
+      tags: [leads]
+      summary: Get lead by ID
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Lead found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Lead"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+    patch:
+      operationId: updateLead
+      tags: [leads]
+      summary: Update lead
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateLeadBody"
+      responses:
+        "200":
+          description: Updated lead
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Lead"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "422":
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+    delete:
+      operationId: deleteLead
+      tags: [leads]
+      summary: Delete lead
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "204":
+          description: Deleted
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
 components:
   schemas:
     HealthStatus:
@@ -495,3 +658,148 @@ components:
           $ref: "#/components/schemas/PlatformRole"
         active:
           type: boolean
+
+    Lead:
+      type: object
+      properties:
+        id:
+          type: string
+        tenantId:
+          type: string
+        nome:
+          type: string
+        telefone:
+          type: string
+          nullable: true
+        email:
+          type: string
+          nullable: true
+        empresa:
+          type: string
+          nullable: true
+        tamanhoEquipe:
+          type: string
+          nullable: true
+        objetivo:
+          type: string
+          nullable: true
+        urgencia:
+          type: string
+          nullable: true
+        orcamento:
+          type: string
+          nullable: true
+        planoRecomendado:
+          type: string
+          nullable: true
+        dorPrincipal:
+          type: string
+          nullable: true
+        proximaAcao:
+          type: string
+          nullable: true
+        status:
+          type: string
+        activeAgentLock:
+          type: string
+          nullable: true
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+      required:
+        - id
+        - tenantId
+        - nome
+        - status
+        - createdAt
+        - updatedAt
+
+    CreateLeadBody:
+      type: object
+      properties:
+        tenantId:
+          type: string
+        nome:
+          type: string
+        telefone:
+          type: string
+          nullable: true
+        email:
+          type: string
+          nullable: true
+        empresa:
+          type: string
+          nullable: true
+        tamanhoEquipe:
+          type: string
+          nullable: true
+        objetivo:
+          type: string
+          nullable: true
+        urgencia:
+          type: string
+          nullable: true
+        orcamento:
+          type: string
+          nullable: true
+        planoRecomendado:
+          type: string
+          nullable: true
+        dorPrincipal:
+          type: string
+          nullable: true
+        proximaAcao:
+          type: string
+          nullable: true
+        status:
+          type: string
+        activeAgentLock:
+          type: string
+          nullable: true
+      required:
+        - tenantId
+        - nome
+
+    UpdateLeadBody:
+      type: object
+      properties:
+        nome:
+          type: string
+        telefone:
+          type: string
+          nullable: true
+        email:
+          type: string
+          nullable: true
+        empresa:
+          type: string
+          nullable: true
+        tamanhoEquipe:
+          type: string
+          nullable: true
+        objetivo:
+          type: string
+          nullable: true
+        urgencia:
+          type: string
+          nullable: true
+        orcamento:
+          type: string
+          nullable: true
+        planoRecomendado:
+          type: string
+          nullable: true
+        dorPrincipal:
+          type: string
+          nullable: true
+        proximaAcao:
+          type: string
+          nullable: true
+        status:
+          type: string
+        activeAgentLock:
+          type: string
+          nullable: true

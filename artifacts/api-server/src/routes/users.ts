@@ -16,6 +16,15 @@ const PUBLIC_FIELDS = {
   updatedAt: usersTable.updatedAt,
 } as const;
 
+router.get("/tenants/:tenantId/users", async (req, res) => {
+  const users = await db
+    .select(PUBLIC_FIELDS)
+    .from(usersTable)
+    .where(eq(usersTable.tenantId, req.params.tenantId))
+    .orderBy(usersTable.createdAt);
+  res.json(users);
+});
+
 router.get("/users", async (req, res) => {
   const users = await db
     .select(PUBLIC_FIELDS)
