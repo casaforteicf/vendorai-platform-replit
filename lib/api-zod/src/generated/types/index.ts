@@ -6,6 +6,9 @@
  * OpenAPI spec version: 0.1.0
  */
 
+export * from './activity';
+export * from './activityStatus';
+export * from './activityTipo';
 export * from './agentActionLog';
 export * from './agentActionLogPayload';
 export * from './agentActionStatus';
@@ -19,6 +22,7 @@ export * from './changePasswordBody';
 export * from './consent';
 export * from './conversation';
 export * from './conversationMetadata';
+export * from './createActivityBody';
 export * from './createAgentActionLogBody';
 export * from './createAgentActionLogBodyPayload';
 export * from './createAgentConfigBody';
@@ -40,6 +44,8 @@ export * from './funil';
 export * from './healthStatus';
 export * from './incrementBody';
 export * from './lead';
+export * from './listActivitiesParams';
+export * from './listDealsParams';
 export * from './loginBody';
 export * from './platformRole';
 export * from './product';
@@ -47,6 +53,7 @@ export * from './registerBody';
 export * from './tenant';
 export * from './tenantAgentsEnabled';
 export * from './tenantStatus';
+export * from './updateActivityBody';
 export * from './updateAgentActionLogBody';
 export * from './updateAgentActionLogBodyPayload';
 export * from './updateAgentConfigBody';

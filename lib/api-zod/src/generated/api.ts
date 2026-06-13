@@ -848,6 +848,12 @@ export const ListDealsParams = zod.object({
   "tenantId": zod.coerce.string()
 })
 
+export const ListDealsQueryParams = zod.object({
+  "etapa": zod.enum(['novo', 'qualificado', 'proposta', 'negociacao', 'ganho', 'perdido']).optional(),
+  "funilId": zod.coerce.string().optional(),
+  "leadId": zod.coerce.string().optional()
+})
+
 export const listDealsResponseProbabilidadeMin = 0;
 export const listDealsResponseProbabilidadeMax = 100;
 
@@ -946,6 +952,123 @@ export const UpdateDealResponse = zod.object({
  * @summary Delete deal
  */
 export const DeleteDealParams = zod.object({
+  "id": zod.coerce.string()
+})
+
+
+/**
+ * @summary Create activity
+ */
+export const CreateActivityBody = zod.object({
+  "tenantId": zod.string(),
+  "leadId": zod.string(),
+  "dealId": zod.string().optional(),
+  "tipo": zod.enum(['ligacao', 'whatsapp', 'email', 'visita', 'tarefa']),
+  "titulo": zod.string(),
+  "descricao": zod.string().optional(),
+  "status": zod.enum(['pendente', 'concluida', 'cancelada']).optional(),
+  "dataVencimento": zod.coerce.date().optional(),
+  "concluidaEm": zod.coerce.date().optional(),
+  "responsavelId": zod.string().optional()
+})
+
+
+/**
+ * @summary List activities by tenant
+ */
+export const ListActivitiesParams = zod.object({
+  "tenantId": zod.coerce.string()
+})
+
+export const ListActivitiesQueryParams = zod.object({
+  "leadId": zod.coerce.string().optional(),
+  "dealId": zod.coerce.string().optional(),
+  "status": zod.enum(['pendente', 'concluida', 'cancelada']).optional()
+})
+
+export const ListActivitiesResponseItem = zod.object({
+  "id": zod.string(),
+  "tenantId": zod.string(),
+  "leadId": zod.string(),
+  "dealId": zod.string().nullish(),
+  "tipo": zod.enum(['ligacao', 'whatsapp', 'email', 'visita', 'tarefa']),
+  "titulo": zod.string(),
+  "descricao": zod.string().nullish(),
+  "status": zod.enum(['pendente', 'concluida', 'cancelada']),
+  "dataVencimento": zod.coerce.date().nullish(),
+  "concluidaEm": zod.coerce.date().nullish(),
+  "responsavelId": zod.string().nullish(),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date()
+})
+export const ListActivitiesResponse = zod.array(ListActivitiesResponseItem)
+
+
+/**
+ * @summary Get activity by ID
+ */
+export const GetActivityParams = zod.object({
+  "id": zod.coerce.string()
+})
+
+export const GetActivityResponse = zod.object({
+  "id": zod.string(),
+  "tenantId": zod.string(),
+  "leadId": zod.string(),
+  "dealId": zod.string().nullish(),
+  "tipo": zod.enum(['ligacao', 'whatsapp', 'email', 'visita', 'tarefa']),
+  "titulo": zod.string(),
+  "descricao": zod.string().nullish(),
+  "status": zod.enum(['pendente', 'concluida', 'cancelada']),
+  "dataVencimento": zod.coerce.date().nullish(),
+  "concluidaEm": zod.coerce.date().nullish(),
+  "responsavelId": zod.string().nullish(),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date()
+})
+
+
+/**
+ * When status is set to "concluida" and concluidaEm is not provided, it is auto-set to now.
+ * @summary Update activity
+ */
+export const UpdateActivityParams = zod.object({
+  "id": zod.coerce.string()
+})
+
+export const UpdateActivityBody = zod.object({
+  "leadId": zod.string().optional(),
+  "dealId": zod.string().optional(),
+  "tipo": zod.enum(['ligacao', 'whatsapp', 'email', 'visita', 'tarefa']).optional(),
+  "titulo": zod.string().optional(),
+  "descricao": zod.string().optional(),
+  "status": zod.enum(['pendente', 'concluida', 'cancelada']).optional(),
+  "dataVencimento": zod.coerce.date().optional(),
+  "concluidaEm": zod.coerce.date().optional(),
+  "responsavelId": zod.string().optional()
+})
+
+export const UpdateActivityResponse = zod.object({
+  "id": zod.string(),
+  "tenantId": zod.string(),
+  "leadId": zod.string(),
+  "dealId": zod.string().nullish(),
+  "tipo": zod.enum(['ligacao', 'whatsapp', 'email', 'visita', 'tarefa']),
+  "titulo": zod.string(),
+  "descricao": zod.string().nullish(),
+  "status": zod.enum(['pendente', 'concluida', 'cancelada']),
+  "dataVencimento": zod.coerce.date().nullish(),
+  "concluidaEm": zod.coerce.date().nullish(),
+  "responsavelId": zod.string().nullish(),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date()
+})
+
+
+/**
+ * @summary Delete activity
+ */
+export const DeleteActivityParams = zod.object({
   "id": zod.coerce.string()
 })
 

@@ -1,5 +1,5 @@
 import { Router, type IRouter } from "express";
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import { db, dealsTable, insertDealSchema, updateDealSchema } from "@workspace/db";
 
 const router: IRouter = Router();
@@ -16,11 +16,19 @@ router.post("/deals", async (req, res) => {
 });
 
 router.get("/tenants/:tenantId/deals", async (req, res) => {
+  const { etapa, funilId, leadId } = req.query as Record<string, string | undefined>;
+
+  const conditions = [eq(dealsTable.tenantId, String(req.params.tenantId))];
+  if (etapa) conditions.push(eq(dealsTable.etapa, etapa as typeof dealsTable.etapa._.data));
+  if (funilId) conditions.push(eq(dealsTable.funilId, funilId));
+  if (leadId) conditions.push(eq(dealsTable.leadId, leadId));
+
   const deals = await db
     .select()
     .from(dealsTable)
-    .where(eq(dealsTable.tenantId, String(req.params.tenantId)))
+    .where(and(...conditions))
     .orderBy(dealsTable.createdAt);
+
   res.json(deals);
 });
 

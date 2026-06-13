@@ -93,6 +93,67 @@ export interface UsageSummary {
   tokens: UsageSummaryTokens;
 }
 
+export type ActivityTipo = typeof ActivityTipo[keyof typeof ActivityTipo];
+
+
+export const ActivityTipo = {
+  ligacao: 'ligacao',
+  whatsapp: 'whatsapp',
+  email: 'email',
+  visita: 'visita',
+  tarefa: 'tarefa',
+} as const;
+
+export type ActivityStatus = typeof ActivityStatus[keyof typeof ActivityStatus];
+
+
+export const ActivityStatus = {
+  pendente: 'pendente',
+  concluida: 'concluida',
+  cancelada: 'cancelada',
+} as const;
+
+export interface Activity {
+  id: string;
+  tenantId: string;
+  leadId: string;
+  dealId?: string | null;
+  tipo: ActivityTipo;
+  titulo: string;
+  descricao?: string | null;
+  status: ActivityStatus;
+  dataVencimento?: string | null;
+  concluidaEm?: string | null;
+  responsavelId?: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface CreateActivityBody {
+  tenantId: string;
+  leadId: string;
+  dealId?: string;
+  tipo: ActivityTipo;
+  titulo: string;
+  descricao?: string;
+  status?: ActivityStatus;
+  dataVencimento?: string;
+  concluidaEm?: string;
+  responsavelId?: string;
+}
+
+export interface UpdateActivityBody {
+  leadId?: string;
+  dealId?: string;
+  tipo?: ActivityTipo;
+  titulo?: string;
+  descricao?: string;
+  status?: ActivityStatus;
+  dataVencimento?: string;
+  concluidaEm?: string;
+  responsavelId?: string;
+}
+
 export type DealEtapa = typeof DealEtapa[keyof typeof DealEtapa];
 
 
@@ -507,4 +568,16 @@ export interface CreateConsentBody {
   channel: string;
   consentGivenAt?: string;
 }
+
+export type ListDealsParams = {
+etapa?: DealEtapa;
+funilId?: string;
+leadId?: string;
+};
+
+export type ListActivitiesParams = {
+leadId?: string;
+dealId?: string;
+status?: ActivityStatus;
+};
 

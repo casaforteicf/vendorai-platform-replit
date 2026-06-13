@@ -8,3 +8,4 @@ export * from "./business_profiles";
 export * from "./agent_configs";
 export * from "./funis";
 export * from "./deals";
+export * from "./activities";

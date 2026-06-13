@@ -785,6 +785,18 @@ paths:
           required: true
           schema:
             type: string
+        - name: etapa
+          in: query
+          schema:
+            $ref: "#/components/schemas/DealEtapa"
+        - name: funilId
+          in: query
+          schema:
+            type: string
+        - name: leadId
+          in: query
+          schema:
+            type: string
       responses:
         "200":
           description: List of deals
@@ -862,6 +874,154 @@ paths:
       operationId: deleteDeal
       tags: [crm]
       summary: Delete deal
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "204":
+          description: Deleted
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /activities:
+    post:
+      operationId: createActivity
+      tags: [crm]
+      summary: Create activity
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateActivityBody"
+      responses:
+        "201":
+          description: Activity created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Activity"
+        "422":
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /tenants/{tenantId}/activities:
+    get:
+      operationId: listActivities
+      tags: [crm]
+      summary: List activities by tenant
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: tenantId
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: leadId
+          in: query
+          schema:
+            type: string
+        - name: dealId
+          in: query
+          schema:
+            type: string
+        - name: status
+          in: query
+          schema:
+            $ref: "#/components/schemas/ActivityStatus"
+      responses:
+        "200":
+          description: List of activities ordered by dataVencimento then createdAt
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Activity"
+
+  /activities/{id}:
+    get:
+      operationId: getActivity
+      tags: [crm]
+      summary: Get activity by ID
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Activity
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Activity"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+    patch:
+      operationId: updateActivity
+      tags: [crm]
+      summary: Update activity
+      description: When status is set to "concluida" and concluidaEm is not provided, it is auto-set to now.
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateActivityBody"
+      responses:
+        "200":
+          description: Updated activity
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Activity"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "422":
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+    delete:
+      operationId: deleteActivity
+      tags: [crm]
+      summary: Delete activity
       security:
         - bearerAuth: []
       parameters:
@@ -1818,6 +1978,105 @@ components:
               type: boolean
           required: [used, limit, percentUsed, nearLimit, overLimit]
       required: [messages, tokens]
+
+    ActivityTipo:
+      type: string
+      enum: [ligacao, whatsapp, email, visita, tarefa]
+
+    ActivityStatus:
+      type: string
+      enum: [pendente, concluida, cancelada]
+
+    Activity:
+      type: object
+      properties:
+        id:
+          type: string
+        tenantId:
+          type: string
+        leadId:
+          type: string
+        dealId:
+          type: string
+          nullable: true
+        tipo:
+          $ref: "#/components/schemas/ActivityTipo"
+        titulo:
+          type: string
+        descricao:
+          type: string
+          nullable: true
+        status:
+          $ref: "#/components/schemas/ActivityStatus"
+        dataVencimento:
+          type: string
+          format: date-time
+          nullable: true
+        concluidaEm:
+          type: string
+          format: date-time
+          nullable: true
+        responsavelId:
+          type: string
+          nullable: true
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+      required: [id, tenantId, leadId, tipo, titulo, status, createdAt, updatedAt]
+
+    CreateActivityBody:
+      type: object
+      properties:
+        tenantId:
+          type: string
+        leadId:
+          type: string
+        dealId:
+          type: string
+        tipo:
+          $ref: "#/components/schemas/ActivityTipo"
+        titulo:
+          type: string
+        descricao:
+          type: string
+        status:
+          $ref: "#/components/schemas/ActivityStatus"
+        dataVencimento:
+          type: string
+          format: date-time
+        concluidaEm:
+          type: string
+          format: date-time
+        responsavelId:
+          type: string
+      required: [tenantId, leadId, tipo, titulo]
+
+    UpdateActivityBody:
+      type: object
+      properties:
+        leadId:
+          type: string
+        dealId:
+          type: string
+        tipo:
+          $ref: "#/components/schemas/ActivityTipo"
+        titulo:
+          type: string
+        descricao:
+          type: string
+        status:
+          $ref: "#/components/schemas/ActivityStatus"
+        dataVencimento:
+          type: string
+          format: date-time
+        concluidaEm:
+          type: string
+          format: date-time
+        responsavelId:
+          type: string
 
     DealEtapa:
       type: string

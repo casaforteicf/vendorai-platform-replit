@@ -11,6 +11,7 @@ import businessProfilesRouter from "./business_profiles";
 import agentConfigsRouter from "./agent_configs";
 import funisRouter from "./funis";
 import dealsRouter from "./deals";
+import activitiesRouter from "./activities";
 import { authenticate, requireRole, requireSameTenanOrSuperAdmin } from "../middlewares/auth";
 
 const router: IRouter = Router();
@@ -43,6 +44,7 @@ router.use(agentConfigsRouter);
 // CRM Hub
 router.use(funisRouter);
 router.use(dealsRouter);
+router.use(activitiesRouter);
 
 export { requireRole, requireSameTenanOrSuperAdmin };
 export default router;
