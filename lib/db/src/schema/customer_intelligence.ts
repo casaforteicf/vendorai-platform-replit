@@ -1,4 +1,4 @@
-import { pgTable, text, timestamp, integer, jsonb, check } from "drizzle-orm/pg-core";
+import { pgTable, text, timestamp, integer, jsonb, boolean, check } from "drizzle-orm/pg-core";
 import { sql } from "drizzle-orm";
 import { createInsertSchema, createSelectSchema } from "drizzle-zod";
 import { z } from "zod/v4";
@@ -28,6 +28,12 @@ export const customerIntelligenceTable = pgTable("customer_intelligence", {
   churnReasonsEditedBy: text("churn_reasons_edited_by").$type<"ai" | "rep">(),
   churnReasonsEditedAt: timestamp("churn_reasons_edited_at"),
   lastAnalyzedAt: timestamp("last_analyzed_at"),
+  /**
+   * Cross-process analysis lock. Set to true at the start of an analysis run
+   * and false in a finally block. The in-process Set is a fast first check;
+   * this column is the authoritative cross-instance guard.
+   */
+  isAnalyzing: boolean("is_analyzing").notNull().default(false),
   createdAt: timestamp("created_at").notNull().defaultNow(),
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
 }, (table) => [

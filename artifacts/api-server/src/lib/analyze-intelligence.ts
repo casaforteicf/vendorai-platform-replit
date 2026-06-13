@@ -123,14 +123,18 @@ export async function analyzeLeadIntelligence(params: {
 }): Promise<AnalyzeResult> {
   const { tenantId, leadId, log, triggeredBy = "manual" } = params;
 
-  // Guard: reject concurrent calls for the same lead
+  // ── Fast in-process check ──────────────────────────────────────────────────
+  // Avoids a round-trip to the DB when the same process is already running the
+  // analysis. The DB flag below is the authoritative cross-process guard.
   if (inFlightAnalyses.has(leadId)) {
     throw new AnalysisAlreadyInFlightError(leadId);
   }
-  inFlightAnalyses.add(leadId);
 
-  try {
-  // 1. Load lead — must exist and belong to this tenant
+  // ── Lead validation (before any CI table side effects) ────────────────────
+  // Must happen before lock acquisition: inserting into customer_intelligence
+  // with an invalid leadId would either trigger an FK violation (raw DB error)
+  // or — if leadId belongs to another tenant — silently create a cross-tenant
+  // placeholder row and poison the unique leadId slot.
   const [lead] = await db
     .select()
     .from(leadsTable)
@@ -139,6 +143,40 @@ export async function analyzeLeadIntelligence(params: {
   if (!lead) {
     throw new Error(`Lead ${leadId} not found in tenant ${tenantId}`);
   }
+
+  // Mark in-flight, then acquire the DB lock. Both are released in the finally
+  // block below, which runs on every exit path (return, throw, or error).
+  inFlightAnalyses.add(leadId);
+  let dbLockAcquired = false;
+
+  try {
+  // ── DB-level cross-process lock ────────────────────────────────────────────
+  // Atomically either:
+  //   (a) INSERT a placeholder row with isAnalyzing = true (first analysis), or
+  //   (b) UPDATE the existing row from isAnalyzing = false → true (CAS).
+  // If another process holds the lock (isAnalyzing is already true) the WHERE
+  // clause on the conflict action fails and Postgres returns 0 rows.
+  const lockResult = await db
+    .insert(customerIntelligenceTable)
+    .values({ tenantId, leadId, isAnalyzing: true })
+    .onConflictDoUpdate({
+      target: customerIntelligenceTable.leadId,
+      set: { isAnalyzing: true, updatedAt: new Date() },
+      where: eq(customerIntelligenceTable.isAnalyzing, false),
+    })
+    .returning({
+      id: customerIntelligenceTable.id,
+      churnReasonsEditedBy: customerIntelligenceTable.churnReasonsEditedBy,
+    });
+
+  if (lockResult.length === 0) {
+    // Another process already holds the analysis lock for this lead.
+    throw new AnalysisAlreadyInFlightError(leadId);
+  }
+  dbLockAcquired = true;
+
+  // The row is now guaranteed to exist (either just inserted or already present).
+  const existingRecord = lockResult[0]!;
 
   // 2. Load most recent conversation + last 15 messages
   const [conversation = null] = await db
@@ -248,26 +286,15 @@ Regras:
     throw new Error("AI returned an unexpected response format");
   }
 
-  // 7. Upsert customer intelligence record
+  // 7. Update customer intelligence record with AI results.
+  // The row is guaranteed to exist because lock acquisition above either
+  // inserted it (first analysis) or confirmed a pre-existing row.
   const now = new Date();
-  const existing = await db
-    .select({
-      id:                   customerIntelligenceTable.id,
-      churnReasonsEditedBy: customerIntelligenceTable.churnReasonsEditedBy,
-    })
-    .from(customerIntelligenceTable)
-    .where(
-      and(
-        eq(customerIntelligenceTable.leadId, leadId),
-        eq(customerIntelligenceTable.tenantId, tenantId)
-      )
-    )
-    .then((rows) => rows[0] ?? null);
 
   // When a rep has manually edited churn reasons, preserve them rather than
   // silently overwriting with AI output. The AI's suggestions are returned to
   // the caller so the UI can offer a diff/prompt.
-  const repHasEditedReasons = existing?.churnReasonsEditedBy === "rep";
+  const repHasEditedReasons = existingRecord.churnReasonsEditedBy === "rep";
   let aiSuggestedChurnReasons: string[] | undefined;
 
   const churnReasonsFields = repHasEditedReasons
@@ -300,18 +327,11 @@ Regras:
     updatedAt:             now,
   };
 
-  if (existing) {
-    [intelligence] = await db
-      .update(customerIntelligenceTable)
-      .set(updateFields)
-      .where(eq(customerIntelligenceTable.id, existing.id))
-      .returning();
-  } else {
-    [intelligence] = await db
-      .insert(customerIntelligenceTable)
-      .values({ tenantId, leadId, ...updateFields })
-      .returning();
-  }
+  [intelligence] = await db
+    .update(customerIntelligenceTable)
+    .set(updateFields)
+    .where(eq(customerIntelligenceTable.id, existingRecord.id))
+    .returning();
 
   log.info(
     { leadId, tenantId, churnRisk: parsed.churnRisk, journeyStage: parsed.journeyStage },
@@ -379,7 +399,30 @@ Regras:
 
   return { intelligence, tokensUsed, rulesTriggered, rulesResults, aiSuggestedChurnReasons };
   } finally {
+    // Always release the in-process lock.
     inFlightAnalyses.delete(leadId);
+
+    // Always release the DB-level lock so other processes (and this one on retry)
+    // can acquire it. Only attempt if we successfully acquired it; avoids a
+    // spurious UPDATE when lock acquisition itself threw.
+    if (dbLockAcquired) {
+      try {
+        await db
+          .update(customerIntelligenceTable)
+          .set({ isAnalyzing: false })
+          .where(
+            and(
+              eq(customerIntelligenceTable.leadId, leadId),
+              eq(customerIntelligenceTable.tenantId, tenantId)
+            )
+          );
+      } catch (releaseErr) {
+        log.error(
+          { releaseErr, leadId, tenantId },
+          "intelligence/analyze: failed to release DB isAnalyzing lock (non-fatal)"
+        );
+      }
+    }
   }
 }
 
