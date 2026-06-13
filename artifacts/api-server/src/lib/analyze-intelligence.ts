@@ -5,6 +5,7 @@ import type { Logger } from "pino";
 import {
   db,
   customerIntelligenceTable,
+  intelligenceAnalysisLogTable,
   leadsTable,
   conversationsTable,
   messagesTable,
@@ -27,6 +28,14 @@ export const ANALYSIS_STALENESS_HOURS =
  */
 export const ANALYSIS_MESSAGE_THRESHOLD =
   Number(process.env["ANALYSIS_MESSAGE_THRESHOLD"] ?? 5);
+
+/**
+ * Minimum minutes that must pass before a lead can be manually re-analyzed.
+ * Prevents runaway token costs from rapid repeated calls on the same lead.
+ * Override via ANALYSIS_COOLDOWN_MINUTES env var.
+ */
+export const ANALYSIS_COOLDOWN_MINUTES =
+  Number(process.env["ANALYSIS_COOLDOWN_MINUTES"] ?? 5);
 
 // ── AI response schema ────────────────────────────────────────────────────────
 const aiAnalysisSchema = z.object({
@@ -59,18 +68,23 @@ export interface AnalyzeResult {
  *   1. Load lead + recent conversation + activities
  *   2. Call GPT-4o-mini
  *   3. Upsert the customer_intelligence record
- *   4. Fire the churn_risk_alto rules engine if churnRisk >= 60
+ *   4. Insert a row in intelligence_analysis_log for cost attribution
+ *   5. Fire the churn_risk_alto rules engine if churnRisk >= 60
  *
  * Throws on unrecoverable errors (lead not found, AI unavailable, bad AI
  * response format). Callers that fire this as a background task should catch
  * and log all errors.
+ *
+ * @param triggeredBy - "manual" for explicit API calls, "auto" for background
+ *   re-analysis triggered by message-count or staleness thresholds.
  */
 export async function analyzeLeadIntelligence(params: {
   tenantId: string;
   leadId: string;
   log: Logger;
+  triggeredBy?: "manual" | "auto";
 }): Promise<AnalyzeResult> {
-  const { tenantId, leadId, log } = params;
+  const { tenantId, leadId, log, triggeredBy = "manual" } = params;
 
   // 1. Load lead — must exist and belong to this tenant
   const [lead] = await db
@@ -235,7 +249,24 @@ Regras:
     "intelligence/analyze: record upserted"
   );
 
-  // 8. Fire rules engine if churnRisk >= 60
+  // 8. Record this analysis call for cost attribution (non-fatal if it fails)
+  try {
+    await db.insert(intelligenceAnalysisLogTable).values({
+      tenantId,
+      leadId,
+      tokensUsed,
+      churnRisk: parsed.churnRisk,
+      triggeredBy,
+    });
+    log.info(
+      { leadId, tenantId, tokensUsed, triggeredBy },
+      "intelligence/analyze: analysis logged"
+    );
+  } catch (err) {
+    log.error({ err, leadId, tenantId }, "intelligence/analyze: failed to write analysis log (non-fatal)");
+  }
+
+  // 9. Fire rules engine if churnRisk >= 60
   let rulesTriggered = 0;
   let rulesResults: unknown[] = [];
 
@@ -305,7 +336,7 @@ export function maybeReanalyze(params: {
           { leadId, tenantId, lastAnalyzedAt, trigger: "staleness" },
           "auto-analyze: triggering re-analysis (stale)"
         );
-        await analyzeLeadIntelligence({ tenantId, leadId, log });
+        await analyzeLeadIntelligence({ tenantId, leadId, log, triggeredBy: "auto" });
         return;
       }
 
@@ -326,7 +357,7 @@ export function maybeReanalyze(params: {
           { leadId, tenantId, newMessageCount, threshold: ANALYSIS_MESSAGE_THRESHOLD, trigger: "message_count" },
           "auto-analyze: triggering re-analysis (message threshold reached)"
         );
-        await analyzeLeadIntelligence({ tenantId, leadId, log });
+        await analyzeLeadIntelligence({ tenantId, leadId, log, triggeredBy: "auto" });
       } else {
         log.debug(
           { leadId, tenantId, newMessageCount, threshold: ANALYSIS_MESSAGE_THRESHOLD },

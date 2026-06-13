@@ -20,3 +20,4 @@ export * from "./subscriptions";
 export * from "./invoices";
 export * from "./knowledge_base";
 export * from "./rules";
+export * from "./intelligence_analysis_log";

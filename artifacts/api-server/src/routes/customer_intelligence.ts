@@ -6,7 +6,10 @@ import {
   insertCustomerIntelligenceSchema,
   updateCustomerIntelligenceSchema,
 } from "@workspace/db";
-import { analyzeLeadIntelligence } from "../lib/analyze-intelligence.js";
+import {
+  analyzeLeadIntelligence,
+  ANALYSIS_COOLDOWN_MINUTES,
+} from "../lib/analyze-intelligence.js";
 
 const router: IRouter = Router();
 
@@ -201,8 +204,37 @@ router.post(
       return;
     }
 
+    // Per-lead cooldown: reject if last analysis was within ANALYSIS_COOLDOWN_MINUTES
+    const [ciRecord] = await db
+      .select({ lastAnalyzedAt: customerIntelligenceTable.lastAnalyzedAt })
+      .from(customerIntelligenceTable)
+      .where(
+        and(
+          eq(customerIntelligenceTable.leadId, leadId),
+          eq(customerIntelligenceTable.tenantId, tenantId)
+        )
+      );
+
+    if (ciRecord?.lastAnalyzedAt) {
+      const cooldownMs   = ANALYSIS_COOLDOWN_MINUTES * 60 * 1000;
+      const elapsedMs    = Date.now() - new Date(ciRecord.lastAnalyzedAt).getTime();
+      const remainingSec = Math.ceil((cooldownMs - elapsedMs) / 1000);
+
+      if (elapsedMs < cooldownMs) {
+        req.log.info(
+          { leadId, tenantId, lastAnalyzedAt: ciRecord.lastAnalyzedAt, remainingSec },
+          "intelligence/analyze: rate-limited (cooldown active)"
+        );
+        res.status(429).json({
+          error: `This lead was analyzed recently. Please wait ${remainingSec} second${remainingSec !== 1 ? "s" : ""} before re-analyzing.`,
+          retryAfterSeconds: remainingSec,
+        });
+        return;
+      }
+    }
+
     try {
-      const result = await analyzeLeadIntelligence({ tenantId, leadId, log: req.log });
+      const result = await analyzeLeadIntelligence({ tenantId, leadId, log: req.log, triggeredBy: "manual" });
       res.json(result);
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);

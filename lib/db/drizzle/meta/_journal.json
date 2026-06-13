@@ -8,6 +8,13 @@
       "when": 1781321472650,
       "tag": "0000_dapper_wolfpack",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1781368812516,
+      "tag": "0001_absent_blizzard",
+      "breakpoints": true
     }
   ]
 }
