@@ -215,6 +215,141 @@ export const DeleteUserParams = zod.object({
 
 
 /**
+ * Creates the business profile for a tenant. Each tenant may have only one profile.
+ * @summary Create business profile
+ */
+export const CreateBusinessProfileBody = zod.object({
+  "tenantId": zod.string(),
+  "razaoSocial": zod.string(),
+  "nomeFantasia": zod.string().optional(),
+  "cnpj": zod.string().optional(),
+  "endereco": zod.string().optional(),
+  "telefone": zod.string().optional(),
+  "email": zod.string().optional(),
+  "vertical": zod.string().optional(),
+  "produtos": zod.array(zod.object({
+  "nome": zod.string(),
+  "descricao": zod.string().nullish(),
+  "preco": zod.number().nullish()
+})).optional(),
+  "discoveryCompletedAt": zod.coerce.date().optional(),
+  "discoveryData": zod.record(zod.string(), zod.unknown()).optional()
+})
+
+
+/**
+ * @summary Get business profile by tenant
+ */
+export const GetBusinessProfileByTenantParams = zod.object({
+  "tenantId": zod.coerce.string()
+})
+
+export const GetBusinessProfileByTenantResponse = zod.object({
+  "id": zod.string(),
+  "tenantId": zod.string(),
+  "razaoSocial": zod.string(),
+  "nomeFantasia": zod.string().nullish(),
+  "cnpj": zod.string().nullish(),
+  "endereco": zod.string().nullish(),
+  "telefone": zod.string().nullish(),
+  "email": zod.string().nullish(),
+  "vertical": zod.string().nullish(),
+  "produtos": zod.array(zod.object({
+  "nome": zod.string(),
+  "descricao": zod.string().nullish(),
+  "preco": zod.number().nullish()
+})).nullish(),
+  "discoveryCompletedAt": zod.coerce.date().nullish(),
+  "discoveryData": zod.record(zod.string(), zod.unknown()).nullish(),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date()
+})
+
+
+/**
+ * @summary Get business profile by ID
+ */
+export const GetBusinessProfileParams = zod.object({
+  "id": zod.coerce.string()
+})
+
+export const GetBusinessProfileResponse = zod.object({
+  "id": zod.string(),
+  "tenantId": zod.string(),
+  "razaoSocial": zod.string(),
+  "nomeFantasia": zod.string().nullish(),
+  "cnpj": zod.string().nullish(),
+  "endereco": zod.string().nullish(),
+  "telefone": zod.string().nullish(),
+  "email": zod.string().nullish(),
+  "vertical": zod.string().nullish(),
+  "produtos": zod.array(zod.object({
+  "nome": zod.string(),
+  "descricao": zod.string().nullish(),
+  "preco": zod.number().nullish()
+})).nullish(),
+  "discoveryCompletedAt": zod.coerce.date().nullish(),
+  "discoveryData": zod.record(zod.string(), zod.unknown()).nullish(),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date()
+})
+
+
+/**
+ * @summary Update business profile
+ */
+export const UpdateBusinessProfileParams = zod.object({
+  "id": zod.coerce.string()
+})
+
+export const UpdateBusinessProfileBody = zod.object({
+  "razaoSocial": zod.string().optional(),
+  "nomeFantasia": zod.string().optional(),
+  "cnpj": zod.string().optional(),
+  "endereco": zod.string().optional(),
+  "telefone": zod.string().optional(),
+  "email": zod.string().optional(),
+  "vertical": zod.string().optional(),
+  "produtos": zod.array(zod.object({
+  "nome": zod.string(),
+  "descricao": zod.string().nullish(),
+  "preco": zod.number().nullish()
+})).optional(),
+  "discoveryCompletedAt": zod.coerce.date().optional(),
+  "discoveryData": zod.record(zod.string(), zod.unknown()).optional()
+})
+
+export const UpdateBusinessProfileResponse = zod.object({
+  "id": zod.string(),
+  "tenantId": zod.string(),
+  "razaoSocial": zod.string(),
+  "nomeFantasia": zod.string().nullish(),
+  "cnpj": zod.string().nullish(),
+  "endereco": zod.string().nullish(),
+  "telefone": zod.string().nullish(),
+  "email": zod.string().nullish(),
+  "vertical": zod.string().nullish(),
+  "produtos": zod.array(zod.object({
+  "nome": zod.string(),
+  "descricao": zod.string().nullish(),
+  "preco": zod.number().nullish()
+})).nullish(),
+  "discoveryCompletedAt": zod.coerce.date().nullish(),
+  "discoveryData": zod.record(zod.string(), zod.unknown()).nullish(),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date()
+})
+
+
+/**
+ * @summary Delete business profile
+ */
+export const DeleteBusinessProfileParams = zod.object({
+  "id": zod.coerce.string()
+})
+
+
+/**
  * Returns all tenants
  * @summary List tenants
  */

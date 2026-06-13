@@ -7,6 +7,7 @@ import leadsRouter from "./leads";
 import conversationsRouter from "./conversations";
 import agentActionsLogRouter from "./agent_actions_log";
 import consentsRouter from "./consents";
+import businessProfilesRouter from "./business_profiles";
 import { authenticate, requireRole, requireSameTenanOrSuperAdmin } from "../middlewares/auth";
 
 const router: IRouter = Router();
@@ -29,6 +30,9 @@ router.use(leadsRouter);
 router.use(conversationsRouter);
 router.use(agentActionsLogRouter);
 router.use(consentsRouter);
+
+// Business Hub
+router.use(businessProfilesRouter);
 
 export { requireRole, requireSameTenanOrSuperAdmin };
 export default router;

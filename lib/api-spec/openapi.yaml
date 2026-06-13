@@ -328,6 +328,152 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
 
+  /business-profiles:
+    post:
+      operationId: createBusinessProfile
+      tags: [business-profiles]
+      summary: Create business profile
+      description: Creates the business profile for a tenant. Each tenant may have only one profile.
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateBusinessProfileBody"
+      responses:
+        "201":
+          description: Business profile created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BusinessProfile"
+        "409":
+          description: Tenant already has a business profile
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "422":
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /tenants/{tenantId}/business-profile:
+    get:
+      operationId: getBusinessProfileByTenant
+      tags: [business-profiles]
+      summary: Get business profile by tenant
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: tenantId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Business profile
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BusinessProfile"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /business-profiles/{id}:
+    get:
+      operationId: getBusinessProfile
+      tags: [business-profiles]
+      summary: Get business profile by ID
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Business profile
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BusinessProfile"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+    patch:
+      operationId: updateBusinessProfile
+      tags: [business-profiles]
+      summary: Update business profile
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateBusinessProfileBody"
+      responses:
+        "200":
+          description: Updated business profile
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BusinessProfile"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "422":
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+    delete:
+      operationId: deleteBusinessProfile
+      tags: [business-profiles]
+      summary: Delete business profile
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "204":
+          description: Deleted
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
   /tenants:
     get:
       operationId: listTenants
@@ -1087,6 +1233,134 @@ components:
     TenantStatus:
       type: string
       enum: [active, suspended, cancelled]
+
+    Product:
+      type: object
+      properties:
+        nome:
+          type: string
+        descricao:
+          type: string
+          nullable: true
+        preco:
+          type: number
+          nullable: true
+      required:
+        - nome
+
+    BusinessProfile:
+      type: object
+      properties:
+        id:
+          type: string
+        tenantId:
+          type: string
+        razaoSocial:
+          type: string
+        nomeFantasia:
+          type: string
+          nullable: true
+        cnpj:
+          type: string
+          nullable: true
+        endereco:
+          type: string
+          nullable: true
+        telefone:
+          type: string
+          nullable: true
+        email:
+          type: string
+          nullable: true
+        vertical:
+          type: string
+          nullable: true
+        produtos:
+          type: array
+          items:
+            $ref: "#/components/schemas/Product"
+          nullable: true
+        discoveryCompletedAt:
+          type: string
+          format: date-time
+          nullable: true
+        discoveryData:
+          type: object
+          additionalProperties: true
+          nullable: true
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+      required:
+        - id
+        - tenantId
+        - razaoSocial
+        - createdAt
+        - updatedAt
+
+    CreateBusinessProfileBody:
+      type: object
+      properties:
+        tenantId:
+          type: string
+        razaoSocial:
+          type: string
+        nomeFantasia:
+          type: string
+        cnpj:
+          type: string
+        endereco:
+          type: string
+        telefone:
+          type: string
+        email:
+          type: string
+        vertical:
+          type: string
+        produtos:
+          type: array
+          items:
+            $ref: "#/components/schemas/Product"
+        discoveryCompletedAt:
+          type: string
+          format: date-time
+        discoveryData:
+          type: object
+          additionalProperties: true
+      required:
+        - tenantId
+        - razaoSocial
+
+    UpdateBusinessProfileBody:
+      type: object
+      properties:
+        razaoSocial:
+          type: string
+        nomeFantasia:
+          type: string
+        cnpj:
+          type: string
+        endereco:
+          type: string
+        telefone:
+          type: string
+        email:
+          type: string
+        vertical:
+          type: string
+        produtos:
+          type: array
+          items:
+            $ref: "#/components/schemas/Product"
+        discoveryCompletedAt:
+          type: string
+          format: date-time
+        discoveryData:
+          type: object
+          additionalProperties: true
 
     Tenant:
       type: object

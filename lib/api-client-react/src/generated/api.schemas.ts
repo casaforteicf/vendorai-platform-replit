@@ -72,6 +72,62 @@ export const TenantStatus = {
   cancelled: 'cancelled',
 } as const;
 
+export interface Product {
+  nome: string;
+  descricao?: string | null;
+  preco?: number | null;
+}
+
+export type BusinessProfileDiscoveryData = { [key: string]: unknown } | null;
+
+export interface BusinessProfile {
+  id: string;
+  tenantId: string;
+  razaoSocial: string;
+  nomeFantasia?: string | null;
+  cnpj?: string | null;
+  endereco?: string | null;
+  telefone?: string | null;
+  email?: string | null;
+  vertical?: string | null;
+  produtos?: Product[] | null;
+  discoveryCompletedAt?: string | null;
+  discoveryData?: BusinessProfileDiscoveryData;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export type CreateBusinessProfileBodyDiscoveryData = { [key: string]: unknown };
+
+export interface CreateBusinessProfileBody {
+  tenantId: string;
+  razaoSocial: string;
+  nomeFantasia?: string;
+  cnpj?: string;
+  endereco?: string;
+  telefone?: string;
+  email?: string;
+  vertical?: string;
+  produtos?: Product[];
+  discoveryCompletedAt?: string;
+  discoveryData?: CreateBusinessProfileBodyDiscoveryData;
+}
+
+export type UpdateBusinessProfileBodyDiscoveryData = { [key: string]: unknown };
+
+export interface UpdateBusinessProfileBody {
+  razaoSocial?: string;
+  nomeFantasia?: string;
+  cnpj?: string;
+  endereco?: string;
+  telefone?: string;
+  email?: string;
+  vertical?: string;
+  produtos?: Product[];
+  discoveryCompletedAt?: string;
+  discoveryData?: UpdateBusinessProfileBodyDiscoveryData;
+}
+
 export type TenantAgentsEnabled = { [key: string]: unknown };
 
 export interface Tenant {
