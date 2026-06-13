@@ -474,6 +474,86 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
 
+  /agent-configs/{id}/increment-messages:
+    post:
+      operationId: incrementMessages
+      tags: [agent-configs]
+      summary: Increment daily message counter
+      description: Atomically increments messagesSentToday by `count`. Resets to `count` automatically if the last increment was on a previous calendar day.
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/IncrementBody"
+      responses:
+        "200":
+          description: Updated agent config
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AgentConfig"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "422":
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /agent-configs/{id}/increment-tokens:
+    post:
+      operationId: incrementTokens
+      tags: [agent-configs]
+      summary: Increment monthly token counter
+      description: Atomically increments tokensUsedCurrentMonth by `count`. Resets to `count` automatically if the last increment was in a previous calendar month.
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/IncrementBody"
+      responses:
+        "200":
+          description: Updated agent config
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AgentConfig"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "422":
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
   /agent-configs/{id}/complete-setup:
     post:
       operationId: completeAgentConfigSetup
@@ -1407,6 +1487,16 @@ components:
     TenantStatus:
       type: string
       enum: [active, suspended, cancelled]
+
+    IncrementBody:
+      type: object
+      properties:
+        count:
+          type: integer
+          minimum: 1
+          default: 1
+      required:
+        - count
 
     AgentEntry:
       type: object

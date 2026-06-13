@@ -512,6 +512,150 @@ export const DeleteAgentConfigParams = zod.object({
 
 
 /**
+ * Atomically increments messagesSentToday by `count`. Resets to `count` automatically if the last increment was on a previous calendar day.
+ * @summary Increment daily message counter
+ */
+export const IncrementMessagesParams = zod.object({
+  "id": zod.coerce.string()
+})
+
+export const incrementMessagesBodyCountDefault = 1;
+
+
+
+export const IncrementMessagesBody = zod.object({
+  "count": zod.number().min(1).default(incrementMessagesBodyCountDefault)
+})
+
+export const incrementMessagesResponseAgentsSdrEnabledDefault = false;
+export const incrementMessagesResponseAgentsCloserEnabledDefault = false;
+export const incrementMessagesResponseAgentsFollowupEnabledDefault = false;
+export const incrementMessagesResponseAgentsReactivationEnabledDefault = false;
+export const incrementMessagesResponseAgentsSchedulerEnabledDefault = false;
+export const incrementMessagesResponseAgentsServiceEnabledDefault = false;
+export const incrementMessagesResponseAgentsOnboardingEnabledDefault = false;
+export const incrementMessagesResponseDailyMessageLimitDefault = 100;
+export const incrementMessagesResponseMessagesSentTodayDefault = 0;
+export const incrementMessagesResponseMonthlyTokenLimitDefault = 100000;
+export const incrementMessagesResponseTokensUsedCurrentMonthDefault = 0;
+
+export const IncrementMessagesResponse = zod.object({
+  "id": zod.string(),
+  "tenantId": zod.string(),
+  "agents": zod.object({
+  "sdr": zod.object({
+  "enabled": zod.boolean().default(incrementMessagesResponseAgentsSdrEnabledDefault),
+  "prompt": zod.string().nullish()
+}).optional(),
+  "closer": zod.object({
+  "enabled": zod.boolean().default(incrementMessagesResponseAgentsCloserEnabledDefault),
+  "prompt": zod.string().nullish()
+}).optional(),
+  "followup": zod.object({
+  "enabled": zod.boolean().default(incrementMessagesResponseAgentsFollowupEnabledDefault),
+  "prompt": zod.string().nullish()
+}).optional(),
+  "reactivation": zod.object({
+  "enabled": zod.boolean().default(incrementMessagesResponseAgentsReactivationEnabledDefault),
+  "prompt": zod.string().nullish()
+}).optional(),
+  "scheduler": zod.object({
+  "enabled": zod.boolean().default(incrementMessagesResponseAgentsSchedulerEnabledDefault),
+  "prompt": zod.string().nullish()
+}).optional(),
+  "service": zod.object({
+  "enabled": zod.boolean().default(incrementMessagesResponseAgentsServiceEnabledDefault),
+  "prompt": zod.string().nullish()
+}).optional(),
+  "onboarding": zod.object({
+  "enabled": zod.boolean().default(incrementMessagesResponseAgentsOnboardingEnabledDefault),
+  "prompt": zod.string().nullish()
+}).optional()
+}),
+  "dailyMessageLimit": zod.number().default(incrementMessagesResponseDailyMessageLimitDefault),
+  "messagesSentToday": zod.number().default(incrementMessagesResponseMessagesSentTodayDefault),
+  "monthlyTokenLimit": zod.number().default(incrementMessagesResponseMonthlyTokenLimitDefault),
+  "tokensUsedCurrentMonth": zod.number().default(incrementMessagesResponseTokensUsedCurrentMonthDefault),
+  "setupCompletedAt": zod.coerce.date().nullish(),
+  "autonomyEnabledAt": zod.coerce.date().nullish().describe('Computed as setupCompletedAt + 5 days. Before this timestamp, agent actions require manual approval.'),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date()
+})
+
+
+/**
+ * Atomically increments tokensUsedCurrentMonth by `count`. Resets to `count` automatically if the last increment was in a previous calendar month.
+ * @summary Increment monthly token counter
+ */
+export const IncrementTokensParams = zod.object({
+  "id": zod.coerce.string()
+})
+
+export const incrementTokensBodyCountDefault = 1;
+
+
+
+export const IncrementTokensBody = zod.object({
+  "count": zod.number().min(1).default(incrementTokensBodyCountDefault)
+})
+
+export const incrementTokensResponseAgentsSdrEnabledDefault = false;
+export const incrementTokensResponseAgentsCloserEnabledDefault = false;
+export const incrementTokensResponseAgentsFollowupEnabledDefault = false;
+export const incrementTokensResponseAgentsReactivationEnabledDefault = false;
+export const incrementTokensResponseAgentsSchedulerEnabledDefault = false;
+export const incrementTokensResponseAgentsServiceEnabledDefault = false;
+export const incrementTokensResponseAgentsOnboardingEnabledDefault = false;
+export const incrementTokensResponseDailyMessageLimitDefault = 100;
+export const incrementTokensResponseMessagesSentTodayDefault = 0;
+export const incrementTokensResponseMonthlyTokenLimitDefault = 100000;
+export const incrementTokensResponseTokensUsedCurrentMonthDefault = 0;
+
+export const IncrementTokensResponse = zod.object({
+  "id": zod.string(),
+  "tenantId": zod.string(),
+  "agents": zod.object({
+  "sdr": zod.object({
+  "enabled": zod.boolean().default(incrementTokensResponseAgentsSdrEnabledDefault),
+  "prompt": zod.string().nullish()
+}).optional(),
+  "closer": zod.object({
+  "enabled": zod.boolean().default(incrementTokensResponseAgentsCloserEnabledDefault),
+  "prompt": zod.string().nullish()
+}).optional(),
+  "followup": zod.object({
+  "enabled": zod.boolean().default(incrementTokensResponseAgentsFollowupEnabledDefault),
+  "prompt": zod.string().nullish()
+}).optional(),
+  "reactivation": zod.object({
+  "enabled": zod.boolean().default(incrementTokensResponseAgentsReactivationEnabledDefault),
+  "prompt": zod.string().nullish()
+}).optional(),
+  "scheduler": zod.object({
+  "enabled": zod.boolean().default(incrementTokensResponseAgentsSchedulerEnabledDefault),
+  "prompt": zod.string().nullish()
+}).optional(),
+  "service": zod.object({
+  "enabled": zod.boolean().default(incrementTokensResponseAgentsServiceEnabledDefault),
+  "prompt": zod.string().nullish()
+}).optional(),
+  "onboarding": zod.object({
+  "enabled": zod.boolean().default(incrementTokensResponseAgentsOnboardingEnabledDefault),
+  "prompt": zod.string().nullish()
+}).optional()
+}),
+  "dailyMessageLimit": zod.number().default(incrementTokensResponseDailyMessageLimitDefault),
+  "messagesSentToday": zod.number().default(incrementTokensResponseMessagesSentTodayDefault),
+  "monthlyTokenLimit": zod.number().default(incrementTokensResponseMonthlyTokenLimitDefault),
+  "tokensUsedCurrentMonth": zod.number().default(incrementTokensResponseTokensUsedCurrentMonthDefault),
+  "setupCompletedAt": zod.coerce.date().nullish(),
+  "autonomyEnabledAt": zod.coerce.date().nullish().describe('Computed as setupCompletedAt + 5 days. Before this timestamp, agent actions require manual approval.'),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date()
+})
+
+
+/**
  * Sets setupCompletedAt to now and autonomyEnabledAt to now + 5 days. After autonomyEnabledAt, agent actions execute automatically instead of awaiting approval.
  * @summary Mark setup as complete
  */

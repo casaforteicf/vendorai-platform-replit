@@ -33,6 +33,7 @@ export * from './createTenantBodyAgentsEnabled';
 export * from './createUserBody';
 export * from './errorResponse';
 export * from './healthStatus';
+export * from './incrementBody';
 export * from './lead';
 export * from './loginBody';
 export * from './platformRole';

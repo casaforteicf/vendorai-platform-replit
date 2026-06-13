@@ -37,6 +37,7 @@ import type {
   CreateUserBody,
   ErrorResponse,
   HealthStatus,
+  IncrementBody,
   Lead,
   LoginBody,
   RegisterBody,
@@ -1240,6 +1241,152 @@ export const useDeleteAgentConfig = <TError = ErrorType<ErrorResponse>,
         TContext
       > => {
       return useMutation(getDeleteAgentConfigMutationOptions(options));
+    }
+
+export const getIncrementMessagesUrl = (id: string,) => {
+
+
+
+
+  return `/api/agent-configs/${id}/increment-messages`
+}
+
+/**
+ * Atomically increments messagesSentToday by `count`. Resets to `count` automatically if the last increment was on a previous calendar day.
+ * @summary Increment daily message counter
+ */
+export const incrementMessages = async (id: string,
+    incrementBody: IncrementBody, options?: RequestInit): Promise<AgentConfig> => {
+
+  return customFetch<AgentConfig>(getIncrementMessagesUrl(id),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(
+      incrementBody,)
+  }
+);}
+
+
+
+
+export const getIncrementMessagesMutationOptions = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof incrementMessages>>, TError,{id: string;data: BodyType<IncrementBody>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof incrementMessages>>, TError,{id: string;data: BodyType<IncrementBody>}, TContext> => {
+
+const mutationKey = ['incrementMessages'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof incrementMessages>>, {id: string;data: BodyType<IncrementBody>}> = (props) => {
+          const {id,data} = props ?? {};
+
+          return  incrementMessages(id,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type IncrementMessagesMutationResult = NonNullable<Awaited<ReturnType<typeof incrementMessages>>>
+    export type IncrementMessagesMutationBody = BodyType<IncrementBody>
+    export type IncrementMessagesMutationError = ErrorType<ErrorResponse>
+
+    /**
+ * @summary Increment daily message counter
+ */
+export const useIncrementMessages = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof incrementMessages>>, TError,{id: string;data: BodyType<IncrementBody>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof incrementMessages>>,
+        TError,
+        {id: string;data: BodyType<IncrementBody>},
+        TContext
+      > => {
+      return useMutation(getIncrementMessagesMutationOptions(options));
+    }
+
+export const getIncrementTokensUrl = (id: string,) => {
+
+
+
+
+  return `/api/agent-configs/${id}/increment-tokens`
+}
+
+/**
+ * Atomically increments tokensUsedCurrentMonth by `count`. Resets to `count` automatically if the last increment was in a previous calendar month.
+ * @summary Increment monthly token counter
+ */
+export const incrementTokens = async (id: string,
+    incrementBody: IncrementBody, options?: RequestInit): Promise<AgentConfig> => {
+
+  return customFetch<AgentConfig>(getIncrementTokensUrl(id),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(
+      incrementBody,)
+  }
+);}
+
+
+
+
+export const getIncrementTokensMutationOptions = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof incrementTokens>>, TError,{id: string;data: BodyType<IncrementBody>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof incrementTokens>>, TError,{id: string;data: BodyType<IncrementBody>}, TContext> => {
+
+const mutationKey = ['incrementTokens'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof incrementTokens>>, {id: string;data: BodyType<IncrementBody>}> = (props) => {
+          const {id,data} = props ?? {};
+
+          return  incrementTokens(id,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type IncrementTokensMutationResult = NonNullable<Awaited<ReturnType<typeof incrementTokens>>>
+    export type IncrementTokensMutationBody = BodyType<IncrementBody>
+    export type IncrementTokensMutationError = ErrorType<ErrorResponse>
+
+    /**
+ * @summary Increment monthly token counter
+ */
+export const useIncrementTokens = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof incrementTokens>>, TError,{id: string;data: BodyType<IncrementBody>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof incrementTokens>>,
+        TError,
+        {id: string;data: BodyType<IncrementBody>},
+        TContext
+      > => {
+      return useMutation(getIncrementTokensMutationOptions(options));
     }
 
 export const getCompleteAgentConfigSetupUrl = (id: string,) => {

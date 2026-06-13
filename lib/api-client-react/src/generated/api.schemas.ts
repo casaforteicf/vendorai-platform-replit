@@ -72,6 +72,11 @@ export const TenantStatus = {
   cancelled: 'cancelled',
 } as const;
 
+export interface IncrementBody {
+  /** @minimum 1 */
+  count: number;
+}
+
 export interface AgentEntry {
   enabled?: boolean;
   prompt?: string | null;
