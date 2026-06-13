@@ -2594,6 +2594,39 @@ export const ListCustomerIntelligenceResponse = zod.array(ListCustomerIntelligen
 
 
 /**
+ * Analyzes the lead's conversation history, profile, and activities using GPT-4o-mini. Writes churnRisk, journeyStage, intentAnalysis, goalAnalysis, nextBestAction, nextBestActionReason, opportunities, and churnReasons back to the customer intelligence record (upsert). Sets lastAnalyzedAt to now.
+ * @summary AI-powered customer intelligence analysis
+ */
+export const AnalyzeLeadIntelligenceParams = zod.object({
+  "tenantId": zod.coerce.string(),
+  "leadId": zod.coerce.string()
+})
+
+export const analyzeLeadIntelligenceResponseChurnRiskMin = 0;
+export const analyzeLeadIntelligenceResponseChurnRiskMax = 100;
+
+
+
+export const AnalyzeLeadIntelligenceResponse = zod.object({
+  "id": zod.string(),
+  "tenantId": zod.string(),
+  "leadId": zod.string(),
+  "behaviorScore": zod.record(zod.string(), zod.unknown()).nullish().describe('Detected behavioral patterns (free-form JSON)'),
+  "intentAnalysis": zod.string().nullish().describe('Why the customer buys'),
+  "goalAnalysis": zod.string().nullish().describe('The customer\'s real objective'),
+  "journeyStage": zod.string().nullish().describe('Where the customer is in their journey'),
+  "opportunities": zod.array(zod.unknown()).nullish().describe('Array of detected future opportunities'),
+  "churnRisk": zod.number().min(analyzeLeadIntelligenceResponseChurnRiskMin).max(analyzeLeadIntelligenceResponseChurnRiskMax).nullish(),
+  "churnReasons": zod.array(zod.unknown()).nullish(),
+  "nextBestAction": zod.string().nullish(),
+  "nextBestActionReason": zod.string().nullish(),
+  "lastAnalyzedAt": zod.coerce.date().nullish(),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date()
+})
+
+
+/**
  * Returns the existing record for the lead. If none exists, creates and returns an empty record automatically (upsert-on-read). Returns 200 for existing and 201 for newly created.
  * @summary Get or auto-create customer intelligence for a lead
  */
