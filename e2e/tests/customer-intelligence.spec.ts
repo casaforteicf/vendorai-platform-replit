@@ -212,6 +212,37 @@ test.describe("Churn risk inline editor — client-side validation", () => {
   });
 });
 
+test.describe("AI analysis button — failure feedback", () => {
+  test("shows destructive toast and re-enables button when analyze request returns 500", async ({
+    page,
+  }) => {
+    const { token, tenantId } = await loginAndGetToken(page);
+
+    await page.route(
+      `**/tenants/${tenantId}/leads/${TEST_LEAD_ID}/intelligence/analyze`,
+      async (route) => {
+        await route.fulfill({ status: 500, body: JSON.stringify({ error: "internal server error" }), contentType: "application/json" });
+      }
+    );
+
+    await setAuthAndNavigate(page, token, LEAD_DETAIL_PATH);
+    await page.waitForLoadState("networkidle");
+
+    const ciCard = page.getByTestId("card-customer-intelligence");
+    await expect(ciCard).toBeVisible({ timeout: 15_000 });
+
+    const analyzeBtn = page.getByTestId("btn-analyze-intelligence");
+    await expect(analyzeBtn).toBeVisible();
+    await expect(analyzeBtn).not.toBeDisabled();
+
+    await analyzeBtn.click();
+
+    await expect(page.getByText("Falha na análise", { exact: true }).first()).toBeVisible({ timeout: 10_000 });
+
+    await expect(analyzeBtn).not.toBeDisabled({ timeout: 5_000 });
+  });
+});
+
 test.describe("Customer Intelligence - loading state", () => {
   test("shows loading skeleton inside CI card while intelligence data is being fetched", async ({
     page,
