@@ -42,11 +42,36 @@ function ProtectedRoute({ component: Component, ...rest }: any) {
   );
 }
 
+function PublicRoute({ component: Component }: any) {
+  const { token, isLoading } = useAuth();
+  const [, setLocation] = useLocation();
+
+  useEffect(() => {
+    if (!isLoading && token) {
+      setLocation("/");
+    }
+  }, [token, isLoading, setLocation]);
+
+  if (isLoading) {
+    return (
+      <div className="min-h-screen w-full flex items-center justify-center bg-background">
+        <div className="animate-spin h-8 w-8 border-4 border-primary border-t-transparent rounded-full" />
+      </div>
+    );
+  }
+
+  return <Component />;
+}
+
 function AppRoutes() {
   return (
     <Switch>
-      <Route path="/login" component={Login} />
-      <Route path="/register" component={Register} />
+      <Route path="/login">
+        <PublicRoute component={Login} />
+      </Route>
+      <Route path="/register">
+        <PublicRoute component={Register} />
+      </Route>
       <Route path="/">
         <ProtectedRoute component={Dashboard} />
       </Route>
