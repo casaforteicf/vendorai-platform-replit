@@ -1378,6 +1378,192 @@ export const DeleteMessageParams = zod.object({
 
 
 /**
+ * Validates that the agent is enabled in the tenant's agent_config before creating. Created with status "pendente_aprovacao" by default.
+ * @summary Create agent task
+ */
+export const CreateAgentTaskBody = zod.object({
+  "tenantId": zod.string(),
+  "leadId": zod.string(),
+  "agentName": zod.enum(['sdr', 'closer', 'followup', 'reactivation', 'scheduler', 'service', 'onboarding']),
+  "actionType": zod.string(),
+  "payload": zod.record(zod.string(), zod.unknown()).optional(),
+  "status": zod.enum(['pendente_aprovacao', 'aprovado', 'executando', 'concluido', 'rejeitado', 'erro']).optional(),
+  "scheduledFor": zod.coerce.date().optional()
+})
+
+
+/**
+ * @summary List agent tasks by tenant
+ */
+export const ListAgentTasksParams = zod.object({
+  "tenantId": zod.coerce.string()
+})
+
+export const ListAgentTasksResponseItem = zod.object({
+  "id": zod.string(),
+  "tenantId": zod.string(),
+  "leadId": zod.string(),
+  "agentName": zod.enum(['sdr', 'closer', 'followup', 'reactivation', 'scheduler', 'service', 'onboarding']),
+  "actionType": zod.string().describe('e.g. enviar_whatsapp, agendar_reuniao'),
+  "payload": zod.record(zod.string(), zod.unknown()).nullish(),
+  "status": zod.enum(['pendente_aprovacao', 'aprovado', 'executando', 'concluido', 'rejeitado', 'erro']),
+  "result": zod.record(zod.string(), zod.unknown()).nullish(),
+  "errorMessage": zod.string().nullish(),
+  "scheduledFor": zod.coerce.date().nullish(),
+  "executedAt": zod.coerce.date().nullish(),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date()
+})
+export const ListAgentTasksResponse = zod.array(ListAgentTasksResponseItem)
+
+
+/**
+ * @summary List tasks pending approval
+ */
+export const ListPendingAgentTasksParams = zod.object({
+  "tenantId": zod.coerce.string()
+})
+
+export const ListPendingAgentTasksResponseItem = zod.object({
+  "id": zod.string(),
+  "tenantId": zod.string(),
+  "leadId": zod.string(),
+  "agentName": zod.enum(['sdr', 'closer', 'followup', 'reactivation', 'scheduler', 'service', 'onboarding']),
+  "actionType": zod.string().describe('e.g. enviar_whatsapp, agendar_reuniao'),
+  "payload": zod.record(zod.string(), zod.unknown()).nullish(),
+  "status": zod.enum(['pendente_aprovacao', 'aprovado', 'executando', 'concluido', 'rejeitado', 'erro']),
+  "result": zod.record(zod.string(), zod.unknown()).nullish(),
+  "errorMessage": zod.string().nullish(),
+  "scheduledFor": zod.coerce.date().nullish(),
+  "executedAt": zod.coerce.date().nullish(),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date()
+})
+export const ListPendingAgentTasksResponse = zod.array(ListPendingAgentTasksResponseItem)
+
+
+/**
+ * Changes status to "aprovado". If the tenant's autonomyEnabledAt is set and already in the past,
+the task transitions directly to "executando" (autonomous mode — no human gate needed).
+Only tasks in "pendente_aprovacao" can be approved.
+
+ * @summary Approve agent task
+ */
+export const ApproveAgentTaskParams = zod.object({
+  "tenantId": zod.coerce.string(),
+  "id": zod.coerce.string()
+})
+
+export const ApproveAgentTaskResponse = zod.object({
+  "id": zod.string(),
+  "tenantId": zod.string(),
+  "leadId": zod.string(),
+  "agentName": zod.enum(['sdr', 'closer', 'followup', 'reactivation', 'scheduler', 'service', 'onboarding']),
+  "actionType": zod.string().describe('e.g. enviar_whatsapp, agendar_reuniao'),
+  "payload": zod.record(zod.string(), zod.unknown()).nullish(),
+  "status": zod.enum(['pendente_aprovacao', 'aprovado', 'executando', 'concluido', 'rejeitado', 'erro']),
+  "result": zod.record(zod.string(), zod.unknown()).nullish(),
+  "errorMessage": zod.string().nullish(),
+  "scheduledFor": zod.coerce.date().nullish(),
+  "executedAt": zod.coerce.date().nullish(),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date()
+})
+
+
+/**
+ * Changes status to "rejeitado". Only tasks in "pendente_aprovacao" can be rejected.
+ * @summary Reject agent task
+ */
+export const RejectAgentTaskParams = zod.object({
+  "tenantId": zod.coerce.string(),
+  "id": zod.coerce.string()
+})
+
+export const RejectAgentTaskResponse = zod.object({
+  "id": zod.string(),
+  "tenantId": zod.string(),
+  "leadId": zod.string(),
+  "agentName": zod.enum(['sdr', 'closer', 'followup', 'reactivation', 'scheduler', 'service', 'onboarding']),
+  "actionType": zod.string().describe('e.g. enviar_whatsapp, agendar_reuniao'),
+  "payload": zod.record(zod.string(), zod.unknown()).nullish(),
+  "status": zod.enum(['pendente_aprovacao', 'aprovado', 'executando', 'concluido', 'rejeitado', 'erro']),
+  "result": zod.record(zod.string(), zod.unknown()).nullish(),
+  "errorMessage": zod.string().nullish(),
+  "scheduledFor": zod.coerce.date().nullish(),
+  "executedAt": zod.coerce.date().nullish(),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date()
+})
+
+
+/**
+ * @summary Get agent task by ID
+ */
+export const GetAgentTaskParams = zod.object({
+  "id": zod.coerce.string()
+})
+
+export const GetAgentTaskResponse = zod.object({
+  "id": zod.string(),
+  "tenantId": zod.string(),
+  "leadId": zod.string(),
+  "agentName": zod.enum(['sdr', 'closer', 'followup', 'reactivation', 'scheduler', 'service', 'onboarding']),
+  "actionType": zod.string().describe('e.g. enviar_whatsapp, agendar_reuniao'),
+  "payload": zod.record(zod.string(), zod.unknown()).nullish(),
+  "status": zod.enum(['pendente_aprovacao', 'aprovado', 'executando', 'concluido', 'rejeitado', 'erro']),
+  "result": zod.record(zod.string(), zod.unknown()).nullish(),
+  "errorMessage": zod.string().nullish(),
+  "scheduledFor": zod.coerce.date().nullish(),
+  "executedAt": zod.coerce.date().nullish(),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date()
+})
+
+
+/**
+ * @summary Update agent task
+ */
+export const UpdateAgentTaskParams = zod.object({
+  "id": zod.coerce.string()
+})
+
+export const UpdateAgentTaskBody = zod.object({
+  "actionType": zod.string().optional(),
+  "payload": zod.record(zod.string(), zod.unknown()).optional(),
+  "status": zod.enum(['pendente_aprovacao', 'aprovado', 'executando', 'concluido', 'rejeitado', 'erro']).optional(),
+  "result": zod.record(zod.string(), zod.unknown()).optional(),
+  "errorMessage": zod.string().optional(),
+  "scheduledFor": zod.coerce.date().optional(),
+  "executedAt": zod.coerce.date().optional()
+})
+
+export const UpdateAgentTaskResponse = zod.object({
+  "id": zod.string(),
+  "tenantId": zod.string(),
+  "leadId": zod.string(),
+  "agentName": zod.enum(['sdr', 'closer', 'followup', 'reactivation', 'scheduler', 'service', 'onboarding']),
+  "actionType": zod.string().describe('e.g. enviar_whatsapp, agendar_reuniao'),
+  "payload": zod.record(zod.string(), zod.unknown()).nullish(),
+  "status": zod.enum(['pendente_aprovacao', 'aprovado', 'executando', 'concluido', 'rejeitado', 'erro']),
+  "result": zod.record(zod.string(), zod.unknown()).nullish(),
+  "errorMessage": zod.string().nullish(),
+  "scheduledFor": zod.coerce.date().nullish(),
+  "executedAt": zod.coerce.date().nullish(),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date()
+})
+
+
+/**
+ * @summary Delete agent task
+ */
+export const DeleteAgentTaskParams = zod.object({
+  "id": zod.coerce.string()
+})
+
+
+/**
  * @summary Create customer intelligence record
  */
 export const createCustomerIntelligenceBodyChurnRiskMin = 0;

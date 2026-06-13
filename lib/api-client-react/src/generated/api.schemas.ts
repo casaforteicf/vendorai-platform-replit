@@ -93,6 +93,78 @@ export interface UsageSummary {
   tokens: UsageSummaryTokens;
 }
 
+export type AgentTaskAgentName = typeof AgentTaskAgentName[keyof typeof AgentTaskAgentName];
+
+
+export const AgentTaskAgentName = {
+  sdr: 'sdr',
+  closer: 'closer',
+  followup: 'followup',
+  reactivation: 'reactivation',
+  scheduler: 'scheduler',
+  service: 'service',
+  onboarding: 'onboarding',
+} as const;
+
+export type AgentTaskStatus = typeof AgentTaskStatus[keyof typeof AgentTaskStatus];
+
+
+export const AgentTaskStatus = {
+  pendente_aprovacao: 'pendente_aprovacao',
+  aprovado: 'aprovado',
+  executando: 'executando',
+  concluido: 'concluido',
+  rejeitado: 'rejeitado',
+  erro: 'erro',
+} as const;
+
+export type AgentTaskPayload = { [key: string]: unknown } | null;
+
+export type AgentTaskResult = { [key: string]: unknown } | null;
+
+export interface AgentTask {
+  id: string;
+  tenantId: string;
+  leadId: string;
+  agentName: AgentTaskAgentName;
+  /** e.g. enviar_whatsapp, agendar_reuniao */
+  actionType: string;
+  payload?: AgentTaskPayload;
+  status: AgentTaskStatus;
+  result?: AgentTaskResult;
+  errorMessage?: string | null;
+  scheduledFor?: string | null;
+  executedAt?: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export type CreateAgentTaskBodyPayload = { [key: string]: unknown };
+
+export interface CreateAgentTaskBody {
+  tenantId: string;
+  leadId: string;
+  agentName: AgentTaskAgentName;
+  actionType: string;
+  payload?: CreateAgentTaskBodyPayload;
+  status?: AgentTaskStatus;
+  scheduledFor?: string;
+}
+
+export type UpdateAgentTaskBodyPayload = { [key: string]: unknown };
+
+export type UpdateAgentTaskBodyResult = { [key: string]: unknown };
+
+export interface UpdateAgentTaskBody {
+  actionType?: string;
+  payload?: UpdateAgentTaskBodyPayload;
+  status?: AgentTaskStatus;
+  result?: UpdateAgentTaskBodyResult;
+  errorMessage?: string;
+  scheduledFor?: string;
+  executedAt?: string;
+}
+
 /**
  * Detected behavioral patterns (free-form JSON)
  */

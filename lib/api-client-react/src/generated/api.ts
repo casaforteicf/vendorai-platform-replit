@@ -23,6 +23,7 @@ import type {
   Activity,
   AgentActionLog,
   AgentConfig,
+  AgentTask,
   AuthResponse,
   BusinessProfile,
   ChangePasswordBody,
@@ -31,6 +32,7 @@ import type {
   CreateActivityBody,
   CreateAgentActionLogBody,
   CreateAgentConfigBody,
+  CreateAgentTaskBody,
   CreateBusinessProfileBody,
   CreateConsentBody,
   CreateConversationBody,
@@ -61,6 +63,7 @@ import type {
   UpdateActivityBody,
   UpdateAgentActionLogBody,
   UpdateAgentConfigBody,
+  UpdateAgentTaskBody,
   UpdateBusinessProfileBody,
   UpdateConversationBody,
   UpdateCustomerIntelligenceBody,
@@ -3601,6 +3604,600 @@ export const useDeleteMessage = <TError = ErrorType<ErrorResponse>,
         TContext
       > => {
       return useMutation(getDeleteMessageMutationOptions(options));
+    }
+
+export const getCreateAgentTaskUrl = () => {
+
+
+
+
+  return `/api/agent-tasks`
+}
+
+/**
+ * Validates that the agent is enabled in the tenant's agent_config before creating. Created with status "pendente_aprovacao" by default.
+ * @summary Create agent task
+ */
+export const createAgentTask = async (createAgentTaskBody: CreateAgentTaskBody, options?: RequestInit): Promise<AgentTask> => {
+
+  return customFetch<AgentTask>(getCreateAgentTaskUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(
+      createAgentTaskBody,)
+  }
+);}
+
+
+
+
+export const getCreateAgentTaskMutationOptions = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createAgentTask>>, TError,{data: BodyType<CreateAgentTaskBody>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof createAgentTask>>, TError,{data: BodyType<CreateAgentTaskBody>}, TContext> => {
+
+const mutationKey = ['createAgentTask'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof createAgentTask>>, {data: BodyType<CreateAgentTaskBody>}> = (props) => {
+          const {data} = props ?? {};
+
+          return  createAgentTask(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type CreateAgentTaskMutationResult = NonNullable<Awaited<ReturnType<typeof createAgentTask>>>
+    export type CreateAgentTaskMutationBody = BodyType<CreateAgentTaskBody>
+    export type CreateAgentTaskMutationError = ErrorType<ErrorResponse>
+
+    /**
+ * @summary Create agent task
+ */
+export const useCreateAgentTask = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createAgentTask>>, TError,{data: BodyType<CreateAgentTaskBody>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof createAgentTask>>,
+        TError,
+        {data: BodyType<CreateAgentTaskBody>},
+        TContext
+      > => {
+      return useMutation(getCreateAgentTaskMutationOptions(options));
+    }
+
+export const getListAgentTasksUrl = (tenantId: string,) => {
+
+
+
+
+  return `/api/tenants/${tenantId}/agent-tasks`
+}
+
+/**
+ * @summary List agent tasks by tenant
+ */
+export const listAgentTasks = async (tenantId: string, options?: RequestInit): Promise<AgentTask[]> => {
+
+  return customFetch<AgentTask[]>(getListAgentTasksUrl(tenantId),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getListAgentTasksQueryKey = (tenantId: string,) => {
+    return [
+    `/api/tenants/${tenantId}/agent-tasks`
+    ] as const;
+    }
+
+
+export const getListAgentTasksQueryOptions = <TData = Awaited<ReturnType<typeof listAgentTasks>>, TError = ErrorType<unknown>>(tenantId: string, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listAgentTasks>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getListAgentTasksQueryKey(tenantId);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof listAgentTasks>>> = ({ signal }) => listAgentTasks(tenantId, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, enabled: !!(tenantId), ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof listAgentTasks>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type ListAgentTasksQueryResult = NonNullable<Awaited<ReturnType<typeof listAgentTasks>>>
+export type ListAgentTasksQueryError = ErrorType<unknown>
+
+
+/**
+ * @summary List agent tasks by tenant
+ */
+
+export function useListAgentTasks<TData = Awaited<ReturnType<typeof listAgentTasks>>, TError = ErrorType<unknown>>(
+ tenantId: string, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listAgentTasks>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getListAgentTasksQueryOptions(tenantId,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+
+
+
+
+
+
+export const getListPendingAgentTasksUrl = (tenantId: string,) => {
+
+
+
+
+  return `/api/tenants/${tenantId}/agent-tasks/pending`
+}
+
+/**
+ * @summary List tasks pending approval
+ */
+export const listPendingAgentTasks = async (tenantId: string, options?: RequestInit): Promise<AgentTask[]> => {
+
+  return customFetch<AgentTask[]>(getListPendingAgentTasksUrl(tenantId),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getListPendingAgentTasksQueryKey = (tenantId: string,) => {
+    return [
+    `/api/tenants/${tenantId}/agent-tasks/pending`
+    ] as const;
+    }
+
+
+export const getListPendingAgentTasksQueryOptions = <TData = Awaited<ReturnType<typeof listPendingAgentTasks>>, TError = ErrorType<unknown>>(tenantId: string, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listPendingAgentTasks>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getListPendingAgentTasksQueryKey(tenantId);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof listPendingAgentTasks>>> = ({ signal }) => listPendingAgentTasks(tenantId, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, enabled: !!(tenantId), ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof listPendingAgentTasks>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type ListPendingAgentTasksQueryResult = NonNullable<Awaited<ReturnType<typeof listPendingAgentTasks>>>
+export type ListPendingAgentTasksQueryError = ErrorType<unknown>
+
+
+/**
+ * @summary List tasks pending approval
+ */
+
+export function useListPendingAgentTasks<TData = Awaited<ReturnType<typeof listPendingAgentTasks>>, TError = ErrorType<unknown>>(
+ tenantId: string, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listPendingAgentTasks>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getListPendingAgentTasksQueryOptions(tenantId,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+
+
+
+
+
+
+export const getApproveAgentTaskUrl = (tenantId: string,
+    id: string,) => {
+
+
+
+
+  return `/api/tenants/${tenantId}/agent-tasks/${id}/approve`
+}
+
+/**
+ * Changes status to "aprovado". If the tenant's autonomyEnabledAt is set and already in the past,
+the task transitions directly to "executando" (autonomous mode — no human gate needed).
+Only tasks in "pendente_aprovacao" can be approved.
+
+ * @summary Approve agent task
+ */
+export const approveAgentTask = async (tenantId: string,
+    id: string, options?: RequestInit): Promise<AgentTask> => {
+
+  return customFetch<AgentTask>(getApproveAgentTaskUrl(tenantId,id),
+  {
+    ...options,
+    method: 'POST'
+
+
+  }
+);}
+
+
+
+
+export const getApproveAgentTaskMutationOptions = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof approveAgentTask>>, TError,{tenantId: string;id: string}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof approveAgentTask>>, TError,{tenantId: string;id: string}, TContext> => {
+
+const mutationKey = ['approveAgentTask'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof approveAgentTask>>, {tenantId: string;id: string}> = (props) => {
+          const {tenantId,id} = props ?? {};
+
+          return  approveAgentTask(tenantId,id,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type ApproveAgentTaskMutationResult = NonNullable<Awaited<ReturnType<typeof approveAgentTask>>>
+
+    export type ApproveAgentTaskMutationError = ErrorType<ErrorResponse>
+
+    /**
+ * @summary Approve agent task
+ */
+export const useApproveAgentTask = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof approveAgentTask>>, TError,{tenantId: string;id: string}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof approveAgentTask>>,
+        TError,
+        {tenantId: string;id: string},
+        TContext
+      > => {
+      return useMutation(getApproveAgentTaskMutationOptions(options));
+    }
+
+export const getRejectAgentTaskUrl = (tenantId: string,
+    id: string,) => {
+
+
+
+
+  return `/api/tenants/${tenantId}/agent-tasks/${id}/reject`
+}
+
+/**
+ * Changes status to "rejeitado". Only tasks in "pendente_aprovacao" can be rejected.
+ * @summary Reject agent task
+ */
+export const rejectAgentTask = async (tenantId: string,
+    id: string, options?: RequestInit): Promise<AgentTask> => {
+
+  return customFetch<AgentTask>(getRejectAgentTaskUrl(tenantId,id),
+  {
+    ...options,
+    method: 'POST'
+
+
+  }
+);}
+
+
+
+
+export const getRejectAgentTaskMutationOptions = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof rejectAgentTask>>, TError,{tenantId: string;id: string}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof rejectAgentTask>>, TError,{tenantId: string;id: string}, TContext> => {
+
+const mutationKey = ['rejectAgentTask'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof rejectAgentTask>>, {tenantId: string;id: string}> = (props) => {
+          const {tenantId,id} = props ?? {};
+
+          return  rejectAgentTask(tenantId,id,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type RejectAgentTaskMutationResult = NonNullable<Awaited<ReturnType<typeof rejectAgentTask>>>
+
+    export type RejectAgentTaskMutationError = ErrorType<ErrorResponse>
+
+    /**
+ * @summary Reject agent task
+ */
+export const useRejectAgentTask = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof rejectAgentTask>>, TError,{tenantId: string;id: string}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof rejectAgentTask>>,
+        TError,
+        {tenantId: string;id: string},
+        TContext
+      > => {
+      return useMutation(getRejectAgentTaskMutationOptions(options));
+    }
+
+export const getGetAgentTaskUrl = (id: string,) => {
+
+
+
+
+  return `/api/agent-tasks/${id}`
+}
+
+/**
+ * @summary Get agent task by ID
+ */
+export const getAgentTask = async (id: string, options?: RequestInit): Promise<AgentTask> => {
+
+  return customFetch<AgentTask>(getGetAgentTaskUrl(id),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetAgentTaskQueryKey = (id: string,) => {
+    return [
+    `/api/agent-tasks/${id}`
+    ] as const;
+    }
+
+
+export const getGetAgentTaskQueryOptions = <TData = Awaited<ReturnType<typeof getAgentTask>>, TError = ErrorType<ErrorResponse>>(id: string, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getAgentTask>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetAgentTaskQueryKey(id);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getAgentTask>>> = ({ signal }) => getAgentTask(id, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, enabled: !!(id), ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getAgentTask>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetAgentTaskQueryResult = NonNullable<Awaited<ReturnType<typeof getAgentTask>>>
+export type GetAgentTaskQueryError = ErrorType<ErrorResponse>
+
+
+/**
+ * @summary Get agent task by ID
+ */
+
+export function useGetAgentTask<TData = Awaited<ReturnType<typeof getAgentTask>>, TError = ErrorType<ErrorResponse>>(
+ id: string, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getAgentTask>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetAgentTaskQueryOptions(id,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+
+
+
+
+
+
+export const getUpdateAgentTaskUrl = (id: string,) => {
+
+
+
+
+  return `/api/agent-tasks/${id}`
+}
+
+/**
+ * @summary Update agent task
+ */
+export const updateAgentTask = async (id: string,
+    updateAgentTaskBody: UpdateAgentTaskBody, options?: RequestInit): Promise<AgentTask> => {
+
+  return customFetch<AgentTask>(getUpdateAgentTaskUrl(id),
+  {
+    ...options,
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(
+      updateAgentTaskBody,)
+  }
+);}
+
+
+
+
+export const getUpdateAgentTaskMutationOptions = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updateAgentTask>>, TError,{id: string;data: BodyType<UpdateAgentTaskBody>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof updateAgentTask>>, TError,{id: string;data: BodyType<UpdateAgentTaskBody>}, TContext> => {
+
+const mutationKey = ['updateAgentTask'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof updateAgentTask>>, {id: string;data: BodyType<UpdateAgentTaskBody>}> = (props) => {
+          const {id,data} = props ?? {};
+
+          return  updateAgentTask(id,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type UpdateAgentTaskMutationResult = NonNullable<Awaited<ReturnType<typeof updateAgentTask>>>
+    export type UpdateAgentTaskMutationBody = BodyType<UpdateAgentTaskBody>
+    export type UpdateAgentTaskMutationError = ErrorType<ErrorResponse>
+
+    /**
+ * @summary Update agent task
+ */
+export const useUpdateAgentTask = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updateAgentTask>>, TError,{id: string;data: BodyType<UpdateAgentTaskBody>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof updateAgentTask>>,
+        TError,
+        {id: string;data: BodyType<UpdateAgentTaskBody>},
+        TContext
+      > => {
+      return useMutation(getUpdateAgentTaskMutationOptions(options));
+    }
+
+export const getDeleteAgentTaskUrl = (id: string,) => {
+
+
+
+
+  return `/api/agent-tasks/${id}`
+}
+
+/**
+ * @summary Delete agent task
+ */
+export const deleteAgentTask = async (id: string, options?: RequestInit): Promise<void> => {
+
+  return customFetch<void>(getDeleteAgentTaskUrl(id),
+  {
+    ...options,
+    method: 'DELETE'
+
+
+  }
+);}
+
+
+
+
+export const getDeleteAgentTaskMutationOptions = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof deleteAgentTask>>, TError,{id: string}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof deleteAgentTask>>, TError,{id: string}, TContext> => {
+
+const mutationKey = ['deleteAgentTask'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof deleteAgentTask>>, {id: string}> = (props) => {
+          const {id} = props ?? {};
+
+          return  deleteAgentTask(id,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type DeleteAgentTaskMutationResult = NonNullable<Awaited<ReturnType<typeof deleteAgentTask>>>
+
+    export type DeleteAgentTaskMutationError = ErrorType<ErrorResponse>
+
+    /**
+ * @summary Delete agent task
+ */
+export const useDeleteAgentTask = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof deleteAgentTask>>, TError,{id: string}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof deleteAgentTask>>,
+        TError,
+        {id: string},
+        TContext
+      > => {
+      return useMutation(getDeleteAgentTaskMutationOptions(options));
     }
 
 export const getCreateCustomerIntelligenceUrl = () => {

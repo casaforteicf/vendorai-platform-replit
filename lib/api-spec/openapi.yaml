@@ -1400,6 +1400,246 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
 
+  /agent-tasks:
+    post:
+      operationId: createAgentTask
+      tags: [ai-hub]
+      summary: Create agent task
+      description: Validates that the agent is enabled in the tenant's agent_config before creating. Created with status "pendente_aprovacao" by default.
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateAgentTaskBody"
+      responses:
+        "201":
+          description: Task created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AgentTask"
+        "422":
+          description: Validation error or agent not enabled
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /tenants/{tenantId}/agent-tasks:
+    get:
+      operationId: listAgentTasks
+      tags: [ai-hub]
+      summary: List agent tasks by tenant
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: tenantId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: List of tasks ordered by createdAt
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/AgentTask"
+
+  /tenants/{tenantId}/agent-tasks/pending:
+    get:
+      operationId: listPendingAgentTasks
+      tags: [ai-hub]
+      summary: List tasks pending approval
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: tenantId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Tasks with status "pendente_aprovacao"
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/AgentTask"
+
+  /tenants/{tenantId}/agent-tasks/{id}/approve:
+    post:
+      operationId: approveAgentTask
+      tags: [ai-hub]
+      summary: Approve agent task
+      description: |
+        Changes status to "aprovado". If the tenant's autonomyEnabledAt is set and already in the past,
+        the task transitions directly to "executando" (autonomous mode — no human gate needed).
+        Only tasks in "pendente_aprovacao" can be approved.
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: tenantId
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Updated task
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AgentTask"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "422":
+          description: Task is not in pendente_aprovacao status
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /tenants/{tenantId}/agent-tasks/{id}/reject:
+    post:
+      operationId: rejectAgentTask
+      tags: [ai-hub]
+      summary: Reject agent task
+      description: Changes status to "rejeitado". Only tasks in "pendente_aprovacao" can be rejected.
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: tenantId
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Updated task
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AgentTask"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "422":
+          description: Task is not in pendente_aprovacao status
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /agent-tasks/{id}:
+    get:
+      operationId: getAgentTask
+      tags: [ai-hub]
+      summary: Get agent task by ID
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Agent task
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AgentTask"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+    patch:
+      operationId: updateAgentTask
+      tags: [ai-hub]
+      summary: Update agent task
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateAgentTaskBody"
+      responses:
+        "200":
+          description: Updated task
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AgentTask"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "422":
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+    delete:
+      operationId: deleteAgentTask
+      tags: [ai-hub]
+      summary: Delete agent task
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "204":
+          description: Deleted
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
   /customer-intelligence:
     post:
       operationId: createCustomerIntelligence
@@ -2576,6 +2816,100 @@ components:
               type: boolean
           required: [used, limit, percentUsed, nearLimit, overLimit]
       required: [messages, tokens]
+
+    AgentTaskAgentName:
+      type: string
+      enum: [sdr, closer, followup, reactivation, scheduler, service, onboarding]
+
+    AgentTaskStatus:
+      type: string
+      enum: [pendente_aprovacao, aprovado, executando, concluido, rejeitado, erro]
+
+    AgentTask:
+      type: object
+      properties:
+        id:
+          type: string
+        tenantId:
+          type: string
+        leadId:
+          type: string
+        agentName:
+          $ref: "#/components/schemas/AgentTaskAgentName"
+        actionType:
+          type: string
+          description: "e.g. enviar_whatsapp, agendar_reuniao"
+        payload:
+          type: object
+          additionalProperties: true
+          nullable: true
+        status:
+          $ref: "#/components/schemas/AgentTaskStatus"
+        result:
+          type: object
+          additionalProperties: true
+          nullable: true
+        errorMessage:
+          type: string
+          nullable: true
+        scheduledFor:
+          type: string
+          format: date-time
+          nullable: true
+        executedAt:
+          type: string
+          format: date-time
+          nullable: true
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+      required: [id, tenantId, leadId, agentName, actionType, status, createdAt, updatedAt]
+
+    CreateAgentTaskBody:
+      type: object
+      properties:
+        tenantId:
+          type: string
+        leadId:
+          type: string
+        agentName:
+          $ref: "#/components/schemas/AgentTaskAgentName"
+        actionType:
+          type: string
+        payload:
+          type: object
+          additionalProperties: true
+        status:
+          $ref: "#/components/schemas/AgentTaskStatus"
+        scheduledFor:
+          type: string
+          format: date-time
+      required: [tenantId, leadId, agentName, actionType]
+
+    UpdateAgentTaskBody:
+      type: object
+      properties:
+        actionType:
+          type: string
+        payload:
+          type: object
+          additionalProperties: true
+        status:
+          $ref: "#/components/schemas/AgentTaskStatus"
+        result:
+          type: object
+          additionalProperties: true
+        errorMessage:
+          type: string
+        scheduledFor:
+          type: string
+          format: date-time
+        executedAt:
+          type: string
+          format: date-time
 
     CustomerIntelligence:
       type: object

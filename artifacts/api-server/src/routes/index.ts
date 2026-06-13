@@ -15,6 +15,7 @@ import activitiesRouter from "./activities";
 import propostasRouter from "./propostas";
 import messagesRouter from "./messages";
 import customerIntelligenceRouter from "./customer_intelligence";
+import agentTasksRouter from "./agent_tasks";
 import { authenticate, requireRole, requireSameTenanOrSuperAdmin } from "../middlewares/auth";
 
 const router: IRouter = Router();
@@ -53,6 +54,9 @@ router.use(messagesRouter);
 
 // Customer Intelligence Hub
 router.use(customerIntelligenceRouter);
+
+// AI Hub
+router.use(agentTasksRouter);
 
 export { requireRole, requireSameTenanOrSuperAdmin };
 export default router;
