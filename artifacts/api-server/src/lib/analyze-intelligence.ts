@@ -91,6 +91,13 @@ export interface AnalyzeResult {
   tokensUsed: number;
   rulesTriggered: number;
   rulesResults: unknown[];
+  /**
+   * Only present when the existing record had `churnReasonsEditedBy === "rep"`.
+   * Contains the AI's freshly-computed churn reasons, which were NOT written to
+   * the DB so the rep's manual edits are preserved. The caller (UI) should offer
+   * the rep a chance to accept or discard these suggestions.
+   */
+  aiSuggestedChurnReasons?: string[];
 }
 
 /**
@@ -244,7 +251,10 @@ Regras:
   // 7. Upsert customer intelligence record
   const now = new Date();
   const existing = await db
-    .select({ id: customerIntelligenceTable.id })
+    .select({
+      id:                   customerIntelligenceTable.id,
+      churnReasonsEditedBy: customerIntelligenceTable.churnReasonsEditedBy,
+    })
     .from(customerIntelligenceTable)
     .where(
       and(
@@ -254,13 +264,33 @@ Regras:
     )
     .then((rows) => rows[0] ?? null);
 
+  // When a rep has manually edited churn reasons, preserve them rather than
+  // silently overwriting with AI output. The AI's suggestions are returned to
+  // the caller so the UI can offer a diff/prompt.
+  const repHasEditedReasons = existing?.churnReasonsEditedBy === "rep";
+  let aiSuggestedChurnReasons: string[] | undefined;
+
+  const churnReasonsFields = repHasEditedReasons
+    ? {} // keep rep's edits — do not touch churnReasons, churnReasonsEditedBy, churnReasonsEditedAt
+    : {
+        churnReasons:         parsed.churnReasons,
+        churnReasonsEditedBy: "ai" as const,
+        churnReasonsEditedAt: now,
+      };
+
+  if (repHasEditedReasons) {
+    aiSuggestedChurnReasons = parsed.churnReasons;
+    log.info(
+      { leadId, tenantId },
+      "intelligence/analyze: rep-edited churn reasons preserved; AI suggestions returned separately"
+    );
+  }
+
   let intelligence: typeof customerIntelligenceTable.$inferSelect;
 
   const updateFields = {
     churnRisk:             parsed.churnRisk,
-    churnReasons:          parsed.churnReasons,
-    churnReasonsEditedBy:  "ai" as const,
-    churnReasonsEditedAt:  now,
+    ...churnReasonsFields,
     journeyStage:          parsed.journeyStage,
     intentAnalysis:        parsed.intentAnalysis,
     opportunities:         parsed.opportunities,
@@ -347,7 +377,7 @@ Regras:
     }
   }
 
-  return { intelligence, tokensUsed, rulesTriggered, rulesResults };
+  return { intelligence, tokensUsed, rulesTriggered, rulesResults, aiSuggestedChurnReasons };
   } finally {
     inFlightAnalyses.delete(leadId);
   }

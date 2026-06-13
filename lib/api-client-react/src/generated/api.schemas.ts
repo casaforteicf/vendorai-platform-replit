@@ -772,6 +772,9 @@ export interface AnalyzeLeadIntelligenceResponse {
   rulesTriggered: number;
   /** Detailed results from the rules engine evaluation */
   rulesResults?: AnalyzeLeadIntelligenceResponseRulesResultsItem[];
+  /** Present only when the existing intelligence record had churnReasonsEditedBy === "rep". The AI's freshly-computed churn reasons were NOT written to the database so the rep's manual edits are preserved. The UI should offer the rep a chance to accept or discard these suggestions.
+   */
+  aiSuggestedChurnReasons?: string[];
 }
 
 export type MessageDirecao = typeof MessageDirecao[keyof typeof MessageDirecao];

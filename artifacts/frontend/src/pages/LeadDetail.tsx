@@ -193,6 +193,10 @@ export default function LeadDetail() {
   const [editingChurnReasons, setEditingChurnReasons] = useState(false);
   const [churnReasonsDraft, setChurnReasonsDraft] = useState<string[]>([]);
 
+  // AI suggestions prompt — shown when AI returns new churn reasons but the rep
+  // had manually edited them (server preserves rep edits, returns suggestions here)
+  const [aiSuggestedReasons, setAiSuggestedReasons] = useState<string[] | null>(null);
+
   const [, setTick] = useState(0);
   useEffect(() => {
     const id = setInterval(() => setTick((t) => t + 1), 60_000);
@@ -240,13 +244,26 @@ export default function LeadDetail() {
             queryKey: getGetOrCreateLeadIntelligenceQueryKey(tenantId, id),
           });
           const risk = data.intelligence?.churnRisk;
-          toast({
-            title: "Análise concluída",
-            description:
-              risk !== null && risk !== undefined
-                ? `Risco de churn: ${risk}% · ${data.tokensUsed ?? 0} tokens usados`
-                : "Inteligência do lead atualizada com sucesso.",
-          });
+          // If the server preserved rep-edited reasons, surface the AI suggestions
+          // so the rep can decide whether to accept them
+          if (data.aiSuggestedChurnReasons && data.aiSuggestedChurnReasons.length > 0) {
+            setAiSuggestedReasons(data.aiSuggestedChurnReasons);
+            toast({
+              title: "Análise concluída",
+              description:
+                risk !== null && risk !== undefined
+                  ? `Risco de churn: ${risk}% · A IA sugeriu novas razões de churn.`
+                  : "A IA sugeriu novas razões de churn.",
+            });
+          } else {
+            toast({
+              title: "Análise concluída",
+              description:
+                risk !== null && risk !== undefined
+                  ? `Risco de churn: ${risk}% · ${data.tokensUsed ?? 0} tokens usados`
+                  : "Inteligência do lead atualizada com sucesso.",
+            });
+          }
         },
         onError: () => {
           toast({
@@ -707,6 +724,63 @@ export default function LeadDetail() {
                             </>
                           )}
                         </p>
+                      )}
+
+                      {/* AI suggestions prompt — shown only when server preserved rep edits */}
+                      {aiSuggestedReasons && aiSuggestedReasons.length > 0 && !editingChurnReasons && (
+                        <div
+                          className="mt-2 rounded-md border border-amber-200 bg-amber-50 p-2.5 space-y-2"
+                          data-testid="ai-churn-reasons-prompt"
+                        >
+                          <p className="flex items-center gap-1.5 text-xs font-medium text-amber-800">
+                            <Sparkles className="h-3 w-3 shrink-0 text-amber-600" />
+                            A IA sugeriu novas razões de churn
+                          </p>
+                          <ul className="space-y-1" data-testid="list-ai-suggested-reasons">
+                            {aiSuggestedReasons.map((reason, i) => (
+                              <li
+                                key={i}
+                                className="flex items-start gap-2 text-xs text-amber-700"
+                                data-testid={`ai-suggested-reason-${i}`}
+                              >
+                                <span className="mt-1.5 h-1 w-1 rounded-full bg-amber-400 shrink-0" />
+                                <span className="leading-snug">{reason}</span>
+                              </li>
+                            ))}
+                          </ul>
+                          <div className="flex items-center gap-2 pt-0.5">
+                            <Button
+                              size="sm"
+                              className="h-6 text-xs px-2 bg-amber-700 hover:bg-amber-800 text-white"
+                              disabled={isUpdating}
+                              data-testid="btn-accept-ai-reasons"
+                              onClick={() => {
+                                if (!intelligence?.id) return;
+                                updateIntelligence({
+                                  id: intelligence.id,
+                                  data: {
+                                    churnReasons: aiSuggestedReasons,
+                                    churnReasonsEditedBy: "ai",
+                                    churnReasonsEditedAt: new Date().toISOString(),
+                                  },
+                                });
+                                setAiSuggestedReasons(null);
+                              }}
+                            >
+                              <Check className="h-3 w-3 mr-1" />
+                              Aceitar sugestões
+                            </Button>
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              className="h-6 text-xs px-2 text-amber-700 hover:text-amber-900"
+                              data-testid="btn-dismiss-ai-reasons"
+                              onClick={() => setAiSuggestedReasons(null)}
+                            >
+                              Manter minhas edições
+                            </Button>
+                          </div>
+                        </div>
                       )}
                     </div>
                   </div>

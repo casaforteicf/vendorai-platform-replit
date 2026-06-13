@@ -2668,7 +2668,8 @@ export const AnalyzeLeadIntelligenceResponse = zod.object({
 }),
   "tokensUsed": zod.number().describe('Total tokens consumed by the GPT-4o-mini call'),
   "rulesTriggered": zod.number().describe('Number of churn_risk_alto rules that fired after analysis'),
-  "rulesResults": zod.array(zod.record(zod.string(), zod.unknown())).optional().describe('Detailed results from the rules engine evaluation')
+  "rulesResults": zod.array(zod.record(zod.string(), zod.unknown())).optional().describe('Detailed results from the rules engine evaluation'),
+  "aiSuggestedChurnReasons": zod.array(zod.string()).optional().describe('Present only when the existing intelligence record had churnReasonsEditedBy === \"rep\". The AI\'s freshly-computed churn reasons were NOT written to the database so the rep\'s manual edits are preserved. The UI should offer the rep a chance to accept or discard these suggestions.\n')
 })
 
 
