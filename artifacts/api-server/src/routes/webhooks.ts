@@ -9,14 +9,17 @@ import {
 } from "@workspace/db";
 import { z } from "zod";
 import { verifyToken } from "../lib/jwt.js";
+import {
+  sendOutgoingMessage,
+  LeadNotFoundError,
+} from "../services/omnichannel.js";
 
 const router: IRouter = Router();
 
 // ── Dual-auth helper ─────────────────────────────────────────────────────────
 // Accepts either X-Webhook-Secret (n8n / agents) or Authorization: Bearer JWT
-// (frontend). Returns true and sets req.user on JWT path; returns false and
-// sends the error response otherwise.
-async function dualAuth(
+// (frontend). Returns true and sets req.user on JWT path.
+export async function dualAuth(
   req: Request,
   res: Response,
   tenantId: string
@@ -54,7 +57,6 @@ async function dualAuth(
     const token = authHeader.slice(7);
     try {
       const payload = verifyToken(token);
-      // super_admin can act on any tenant; others must match
       if (
         payload.platformRole !== "super_admin" &&
         payload.tenantId !== tenantId
@@ -87,7 +89,7 @@ router.post("/tenants/:tenantId/webhooks/whatsapp", async (req, res) => {
   const { tenantId } = req.params;
   const secret = req.headers["x-webhook-secret"];
 
-  // ── 1. Validate webhook secret ──────────────────────────────────────────
+  // ── 1. Validate webhook secret ─────────────────────────────────────────
   if (!secret || typeof secret !== "string") {
     res.status(401).json({ error: "Missing X-Webhook-Secret header" });
     return;
@@ -129,12 +131,7 @@ router.post("/tenants/:tenantId/webhooks/whatsapp", async (req, res) => {
   if (!lead) {
     [lead] = await db
       .insert(leadsTable)
-      .values({
-        tenantId,
-        nome: nome ?? telefone,
-        telefone,
-        status: "novo",
-      })
+      .values({ tenantId, nome: nome ?? telefone, telefone, status: "novo" })
       .returning();
     req.log.info({ leadId: lead.id, telefone }, "webhook: new lead created");
   }
@@ -155,13 +152,7 @@ router.post("/tenants/:tenantId/webhooks/whatsapp", async (req, res) => {
   if (!conversation) {
     [conversation] = await db
       .insert(conversationsTable)
-      .values({
-        tenantId,
-        leadId: lead.id,
-        channel: "whatsapp",
-        status: "open",
-        naoLidas: 0,
-      })
+      .values({ tenantId, leadId: lead.id, channel: "whatsapp", status: "open", naoLidas: 0 })
       .returning();
     req.log.info(
       { conversationId: conversation.id },
@@ -197,7 +188,6 @@ router.post("/tenants/:tenantId/webhooks/whatsapp", async (req, res) => {
     })
     .where(eq(conversationsTable.id, conversation.id));
 
-  // ── 7. Respond ─────────────────────────────────────────────────────────
   res.status(200).json({
     leadId: lead.id,
     conversationId: conversation.id,
@@ -206,7 +196,7 @@ router.post("/tenants/:tenantId/webhooks/whatsapp", async (req, res) => {
   });
 });
 
-// ── POST /tenants/:tenantId/messages/send ────────────────────────────────────
+// ── POST /tenants/:tenantId/messages/send ─────────────────────────────────────
 const sendMessageBody = z.object({
   leadId: z.string().min(1),
   conteudo: z.string().min(1),
@@ -231,90 +221,20 @@ router.post("/tenants/:tenantId/messages/send", async (req, res) => {
     return;
   }
 
-  const { leadId, conteudo, canal, agentName } = parsed.data;
-
-  // ── 3. Fetch lead (validate ownership + get telefone) ──────────────────
-  const [lead] = await db
-    .select()
-    .from(leadsTable)
-    .where(
-      and(eq(leadsTable.id, leadId), eq(leadsTable.tenantId, tenantId))
-    )
-    .limit(1);
-
-  if (!lead) {
-    res.status(404).json({ error: "Lead not found" });
-    return;
-  }
-
-  // ── 4. Find or create conversation for leadId + canal ─────────────────
-  let [conversation] = await db
-    .select()
-    .from(conversationsTable)
-    .where(
-      and(
-        eq(conversationsTable.tenantId, tenantId),
-        eq(conversationsTable.leadId, leadId),
-        eq(conversationsTable.channel, canal)
-      )
-    )
-    .limit(1);
-
-  if (!conversation) {
-    [conversation] = await db
-      .insert(conversationsTable)
-      .values({
-        tenantId,
-        leadId,
-        channel: canal,
-        status: "open",
-        naoLidas: 0,
-      })
-      .returning();
-    req.log.info(
-      { conversationId: conversation.id, canal },
-      "send: new conversation created"
+  // ── 3. Execute via shared service ──────────────────────────────────────
+  try {
+    const { message, telefoneDestino } = await sendOutgoingMessage(
+      { ...parsed.data, tenantId },
+      req.log
     );
+    res.status(201).json({ ...message, telefoneDestino });
+  } catch (err) {
+    if (err instanceof LeadNotFoundError) {
+      res.status(404).json({ error: err.message });
+      return;
+    }
+    throw err;
   }
-
-  // ── 5. Insert outgoing message ─────────────────────────────────────────
-  const enviadoPor: "humano" | "agente_ia" = agentName ? "agente_ia" : "humano";
-
-  const [message] = await db
-    .insert(messagesTable)
-    .values({
-      tenantId,
-      conversationId: conversation.id,
-      leadId,
-      direcao: "saida",
-      canal,
-      conteudo,
-      enviadoPor,
-      agentName: agentName ?? null,
-      tipoConteudo: "texto",
-      status: "enviado",
-    })
-    .returning();
-
-  req.log.info(
-    { messageId: message.id, enviadoPor, canal },
-    "send: outgoing message inserted"
-  );
-
-  // ── 6. Update conversation: ultimaMensagemEm only (no naoLidas for saida)
-  await db
-    .update(conversationsTable)
-    .set({
-      ultimaMensagemEm: new Date(),
-      updatedAt: new Date(),
-    })
-    .where(eq(conversationsTable.id, conversation.id));
-
-  // ── 7. Respond with message + telefoneDestino for n8n → Z-API ─────────
-  res.status(201).json({
-    ...message,
-    telefoneDestino: lead.telefone ?? null,
-  });
 });
 
 export default router;

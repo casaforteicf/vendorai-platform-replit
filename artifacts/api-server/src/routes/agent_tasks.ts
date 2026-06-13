@@ -7,10 +7,109 @@ import {
   insertAgentTaskSchema,
   updateAgentTaskSchema,
 } from "@workspace/db";
-import type { AgentType } from "@workspace/db";
+import type { AgentTask, AgentType } from "@workspace/db";
+import { z } from "zod";
+import {
+  sendOutgoingMessage,
+  LeadNotFoundError,
+} from "../services/omnichannel.js";
+import type { Logger } from "pino";
 
 const router: IRouter = Router();
 
+// ── Payload schema for actionType="enviar_whatsapp" ──────────────────────────
+const whatsappPayloadSchema = z.object({
+  leadId: z.string().min(1),
+  conteudo: z.string().min(1),
+  agentName: z.string().optional(),
+  canal: z
+    .enum(["whatsapp", "instagram", "email", "chat"])
+    .optional()
+    .default("whatsapp"),
+});
+
+// ── Shared action executor ────────────────────────────────────────────────────
+// Runs the action for a task that is already in "executando" status.
+// Updates the task to "concluido" with result, or "erro" with errorMessage.
+async function executeTaskAction(
+  task: AgentTask,
+  log: Logger
+): Promise<AgentTask> {
+  if (task.actionType !== "enviar_whatsapp") {
+    // Unknown action — mark as error so the task doesn't get stuck
+    const [updated] = await db
+      .update(agentTasksTable)
+      .set({
+        status: "erro",
+        errorMessage: `Unknown actionType: "${task.actionType}"`,
+        updatedAt: new Date(),
+      })
+      .where(eq(agentTasksTable.id, task.id))
+      .returning();
+    log.warn({ taskId: task.id, actionType: task.actionType }, "agent_task: unknown actionType");
+    return updated;
+  }
+
+  // ── enviar_whatsapp ───────────────────────────────────────────────────────
+  const parsedPayload = whatsappPayloadSchema.safeParse(task.payload ?? {});
+  if (!parsedPayload.success) {
+    const [updated] = await db
+      .update(agentTasksTable)
+      .set({
+        status: "erro",
+        errorMessage: `Invalid payload: ${parsedPayload.error.message}`,
+        updatedAt: new Date(),
+      })
+      .where(eq(agentTasksTable.id, task.id))
+      .returning();
+    log.warn({ taskId: task.id }, "agent_task: invalid whatsapp payload");
+    return updated;
+  }
+
+  const { leadId, conteudo, agentName, canal } = parsedPayload.data;
+
+  try {
+    const { message, telefoneDestino } = await sendOutgoingMessage(
+      { tenantId: task.tenantId, leadId, conteudo, agentName, canal },
+      log
+    );
+
+    const [updated] = await db
+      .update(agentTasksTable)
+      .set({
+        status: "concluido",
+        result: { messageId: message.id, telefoneDestino },
+        executedAt: new Date(),
+        updatedAt: new Date(),
+      })
+      .where(eq(agentTasksTable.id, task.id))
+      .returning();
+
+    log.info(
+      { taskId: task.id, messageId: message.id },
+      "agent_task: enviar_whatsapp concluido"
+    );
+    return updated;
+  } catch (err) {
+    const errorMessage =
+      err instanceof LeadNotFoundError
+        ? err.message
+        : err instanceof Error
+          ? err.message
+          : "Unknown error during task execution";
+
+    const [updated] = await db
+      .update(agentTasksTable)
+      .set({ status: "erro", errorMessage, updatedAt: new Date() })
+      .where(eq(agentTasksTable.id, task.id))
+      .returning();
+
+    log.error({ taskId: task.id, err }, "agent_task: execution failed");
+    return updated;
+  }
+}
+
+// ── POST /agent-tasks ─────────────────────────────────────────────────────────
 router.post("/agent-tasks", async (req, res) => {
   const parsed = insertAgentTaskSchema.safeParse(req.body);
   if (!parsed.success) {
@@ -45,6 +144,7 @@ router.post("/agent-tasks", async (req, res) => {
   res.status(201).json(task);
 });
 
+// ── GET /tenants/:tenantId/agent-tasks ────────────────────────────────────────
 router.get("/tenants/:tenantId/agent-tasks", async (req, res) => {
   const tasks = await db
     .select()
@@ -54,6 +154,7 @@ router.get("/tenants/:tenantId/agent-tasks", async (req, res) => {
   res.json(tasks);
 });
 
+// ── GET /tenants/:tenantId/agent-tasks/pending ────────────────────────────────
 router.get("/tenants/:tenantId/agent-tasks/pending", async (req, res) => {
   const tasks = await db
     .select()
@@ -68,6 +169,10 @@ router.get("/tenants/:tenantId/agent-tasks/pending", async (req, res) => {
   res.json(tasks);
 });
 
+// ── POST /tenants/:tenantId/agent-tasks/:id/approve ───────────────────────────
+// Transitions: pendente_aprovacao → executando (+ runs action) when autonomous
+//              pendente_aprovacao → executando (+ runs action) for enviar_whatsapp always
+//              pendente_aprovacao → aprovado for non-whatsapp tasks without autonomy
 router.post(
   "/tenants/:tenantId/agent-tasks/:id/approve",
   async (req, res) => {
@@ -102,25 +207,78 @@ router.post(
 
     const now = new Date();
     const autonomy = config?.autonomyEnabledAt;
-    const isAutonomous = autonomy !== null && autonomy !== undefined && autonomy <= now;
+    const isAutonomous =
+      autonomy !== null && autonomy !== undefined && autonomy <= now;
 
-    const newStatus = isAutonomous ? "executando" : "aprovado";
-    const executedAt = isAutonomous ? now : null;
+    // enviar_whatsapp always executes immediately on approval (no holding state)
+    const shouldExecuteNow = isAutonomous || task.actionType === "enviar_whatsapp";
 
-    const [updated] = await db
-      .update(agentTasksTable)
-      .set({
-        status: newStatus,
-        ...(executedAt ? { executedAt } : {}),
-        updatedAt: now,
-      })
-      .where(eq(agentTasksTable.id, String(id)))
-      .returning();
+    if (shouldExecuteNow) {
+      // Move to "executando" first, then run the action
+      const [executing] = await db
+        .update(agentTasksTable)
+        .set({ status: "executando", executedAt: now, updatedAt: now })
+        .where(eq(agentTasksTable.id, String(id)))
+        .returning();
 
-    res.json(updated);
+      const finished = await executeTaskAction(executing, req.log);
+      res.json(finished);
+    } else {
+      // Non-autonomous, non-whatsapp: hold in "aprovado" for explicit execute
+      const [updated] = await db
+        .update(agentTasksTable)
+        .set({ status: "aprovado", updatedAt: now })
+        .where(eq(agentTasksTable.id, String(id)))
+        .returning();
+
+      res.json(updated);
+    }
   }
 );
 
+// ── POST /tenants/:tenantId/agent-tasks/:id/execute ───────────────────────────
+// Explicitly executes a task in "aprovado" status.
+// Useful for non-autonomous tasks or future action types that need manual trigger.
+router.post(
+  "/tenants/:tenantId/agent-tasks/:id/execute",
+  async (req, res) => {
+    const { tenantId, id } = req.params;
+
+    const [task] = await db
+      .select()
+      .from(agentTasksTable)
+      .where(
+        and(
+          eq(agentTasksTable.id, String(id)),
+          eq(agentTasksTable.tenantId, String(tenantId))
+        )
+      );
+
+    if (!task) {
+      res.status(404).json({ error: "Agent task not found" });
+      return;
+    }
+
+    if (task.status !== "aprovado") {
+      res.status(422).json({
+        error: `Task cannot be executed from status "${task.status}" — must be "aprovado"`,
+      });
+      return;
+    }
+
+    // Move to "executando"
+    const [executing] = await db
+      .update(agentTasksTable)
+      .set({ status: "executando", executedAt: new Date(), updatedAt: new Date() })
+      .where(eq(agentTasksTable.id, String(id)))
+      .returning();
+
+    const finished = await executeTaskAction(executing, req.log);
+    res.json(finished);
+  }
+);
+
+// ── POST /tenants/:tenantId/agent-tasks/:id/reject ────────────────────────────
 router.post(
   "/tenants/:tenantId/agent-tasks/:id/reject",
   async (req, res) => {
@@ -158,6 +316,7 @@ router.post(
   }
 );
 
+// ── GET /agent-tasks/:id ──────────────────────────────────────────────────────
 router.get("/agent-tasks/:id", async (req, res) => {
   const [task] = await db
     .select()
@@ -172,6 +331,7 @@ router.get("/agent-tasks/:id", async (req, res) => {
   res.json(task);
 });
 
+// ── PATCH /agent-tasks/:id ────────────────────────────────────────────────────
 router.patch("/agent-tasks/:id", async (req, res) => {
   const parsed = updateAgentTaskSchema.safeParse(req.body);
   if (!parsed.success) {
@@ -193,6 +353,7 @@ router.patch("/agent-tasks/:id", async (req, res) => {
   res.json(task);
 });
 
+// ── DELETE /agent-tasks/:id ───────────────────────────────────────────────────
 router.delete("/agent-tasks/:id", async (req, res) => {
   const [deleted] = await db
     .delete(agentTasksTable)
