@@ -5929,6 +5929,11 @@ components:
           description: >
             Per-tenant override for how many new messages since the last analysis trigger
             an automatic re-analysis. Null means fall back to the global ANALYSIS_MESSAGE_THRESHOLD env var.
+        maxAnalysesPerHour:
+          type: ["integer", "null"]
+          description: >
+            Per-tenant override for the maximum number of AI analyses allowed per rolling
+            hour window. Null means fall back to the global MAX_ANALYSES_PER_TENANT_PER_HOUR env var.
         createdAt:
           type: string
           format: date-time
@@ -5984,6 +5989,11 @@ components:
           description: >
             Per-tenant override for new-message count that triggers auto re-analysis.
             Null falls back to the global ANALYSIS_MESSAGE_THRESHOLD env var.
+        maxAnalysesPerHour:
+          type: ["integer", "null"]
+          description: >
+            Per-tenant override for the maximum number of AI analyses allowed per rolling
+            hour window. Null falls back to the global MAX_ANALYSES_PER_TENANT_PER_HOUR env var.
       required:
         - name
         - slug
@@ -6031,6 +6041,11 @@ components:
           description: >
             Per-tenant override for new-message count that triggers auto re-analysis.
             Null falls back to the global ANALYSIS_MESSAGE_THRESHOLD env var.
+        maxAnalysesPerHour:
+          type: ["integer", "null"]
+          description: >
+            Per-tenant override for the maximum number of AI analyses allowed per rolling
+            hour window. Null falls back to the global MAX_ANALYSES_PER_TENANT_PER_HOUR env var.
 
     ErrorResponse:
       type: object

@@ -6,6 +6,7 @@ import {
   insertCustomerIntelligenceSchema,
   updateCustomerIntelligenceSchema,
   intelligenceAnalysisLogTable,
+  tenantsTable,
 } from "@workspace/db";
 import {
   analyzeLeadIntelligence,
@@ -270,7 +271,7 @@ router.get("/tenants/:tenantId/intelligence-analysis-log", async (req, res) => {
 
   const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000);
 
-  const [items, totalsRow, byTrigger, hourlyRow] = await Promise.all([
+  const [items, totalsRow, byTrigger, hourlyRow, tenantRow] = await Promise.all([
     db
       .select()
       .from(intelligenceAnalysisLogTable)
@@ -308,7 +309,15 @@ router.get("/tenants/:tenantId/intelligence-analysis-log", async (req, res) => {
         )
       )
       .then((rows) => rows[0] ?? { recentCount: 0 }),
+
+    db
+      .select({ maxAnalysesPerHour: tenantsTable.maxAnalysesPerHour })
+      .from(tenantsTable)
+      .where(eq(tenantsTable.id, tenantId))
+      .then((rows) => rows[0] ?? { maxAnalysesPerHour: null }),
   ]);
+
+  const effectiveHourlyLimit = tenantRow.maxAnalysesPerHour ?? MAX_ANALYSES_PER_TENANT_PER_HOUR;
 
   const byTriggeredBy: Record<string, { calls: number; tokens: number }> = {};
   for (const row of byTrigger) {
@@ -328,7 +337,7 @@ router.get("/tenants/:tenantId/intelligence-analysis-log", async (req, res) => {
       totalTokens: Number(totalsRow.totalTokens ?? 0),
       byTriggeredBy,
       rollingHourCount: Number(hourlyRow.recentCount),
-      hourlyLimit: MAX_ANALYSES_PER_TENANT_PER_HOUR,
+      hourlyLimit: effectiveHourlyLimit,
     },
   });
 });
@@ -357,26 +366,33 @@ router.post(
 
     // Tenant hourly rate limit: count analyses in the rolling last hour and reject if over the cap
     const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000);
-    const [hourlyRow] = await db
-      .select({ recentCount: count() })
-      .from(intelligenceAnalysisLogTable)
-      .where(
-        and(
-          eq(intelligenceAnalysisLogTable.tenantId, tenantId),
-          gte(intelligenceAnalysisLogTable.createdAt, oneHourAgo)
-        )
-      );
+    const [[hourlyRow], [tenantRow]] = await Promise.all([
+      db
+        .select({ recentCount: count() })
+        .from(intelligenceAnalysisLogTable)
+        .where(
+          and(
+            eq(intelligenceAnalysisLogTable.tenantId, tenantId),
+            gte(intelligenceAnalysisLogTable.createdAt, oneHourAgo)
+          )
+        ),
+      db
+        .select({ maxAnalysesPerHour: tenantsTable.maxAnalysesPerHour })
+        .from(tenantsTable)
+        .where(eq(tenantsTable.id, tenantId)),
+    ]);
 
+    const effectiveHourlyLimit = tenantRow?.maxAnalysesPerHour ?? MAX_ANALYSES_PER_TENANT_PER_HOUR;
     const recentCount = Number(hourlyRow?.recentCount ?? 0);
-    if (recentCount >= MAX_ANALYSES_PER_TENANT_PER_HOUR) {
+    if (recentCount >= effectiveHourlyLimit) {
       req.log.warn(
-        { tenantId, recentCount, limit: MAX_ANALYSES_PER_TENANT_PER_HOUR },
+        { tenantId, recentCount, limit: effectiveHourlyLimit },
         "intelligence/analyze: tenant hourly rate limit exceeded"
       );
       res.status(429).json({
-        error: `Your tenant has exceeded the maximum of ${MAX_ANALYSES_PER_TENANT_PER_HOUR} AI analyses per hour. Please wait before running more analyses.`,
+        error: `Your tenant has exceeded the maximum of ${effectiveHourlyLimit} AI analyses per hour. Please wait before running more analyses.`,
         retryAfterSeconds: 3600,
-        limit: MAX_ANALYSES_PER_TENANT_PER_HOUR,
+        limit: effectiveHourlyLimit,
         recentCount,
       });
       return;

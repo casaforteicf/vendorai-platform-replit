@@ -1203,6 +1203,12 @@ export interface Tenant {
      * @nullable
      */
   analysisMessageThreshold?: number | null;
+  /**
+     * Per-tenant override for the maximum number of AI analyses allowed per rolling hour window. Null means fall back to the global MAX_ANALYSES_PER_TENANT_PER_HOUR env var.
+
+     * @nullable
+     */
+  maxAnalysesPerHour?: number | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -1231,6 +1237,12 @@ export interface CreateTenantBody {
      * @nullable
      */
   analysisMessageThreshold?: number | null;
+  /**
+     * Per-tenant override for the maximum number of AI analyses allowed per rolling hour window. Null falls back to the global MAX_ANALYSES_PER_TENANT_PER_HOUR env var.
+
+     * @nullable
+     */
+  maxAnalysesPerHour?: number | null;
 }
 
 export type UpdateTenantBodyAgentsEnabled = { [key: string]: unknown };
@@ -1259,6 +1271,12 @@ export interface UpdateTenantBody {
      * @nullable
      */
   analysisMessageThreshold?: number | null;
+  /**
+     * Per-tenant override for the maximum number of AI analyses allowed per rolling hour window. Null falls back to the global MAX_ANALYSES_PER_TENANT_PER_HOUR env var.
+
+     * @nullable
+     */
+  maxAnalysesPerHour?: number | null;
 }
 
 export interface ErrorResponse {

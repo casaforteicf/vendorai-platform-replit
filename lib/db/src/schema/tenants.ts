@@ -33,6 +33,7 @@ export const tenantsTable = pgTable(
     messagesSentToday: integer("messages_sent_today").notNull().default(0),
     analysisStalenessHours: integer("analysis_staleness_hours"),
     analysisMessageThreshold: integer("analysis_message_threshold"),
+    maxAnalysesPerHour: integer("max_analyses_per_hour"),
     createdAt: timestamp("created_at").notNull().defaultNow(),
     updatedAt: timestamp("updated_at").notNull().defaultNow(),
   },
@@ -44,6 +45,10 @@ export const tenantsTable = pgTable(
     check(
       "analysis_message_threshold_positive",
       sql`${table.analysisMessageThreshold} IS NULL OR ${table.analysisMessageThreshold} >= 1`,
+    ),
+    check(
+      "max_analyses_per_hour_positive",
+      sql`${table.maxAnalysesPerHour} IS NULL OR ${table.maxAnalysesPerHour} >= 1`,
     ),
   ],
 );
@@ -65,6 +70,7 @@ export const insertTenantSchema = createInsertSchema(tenantsTable)
   .extend({
     analysisStalenessHours: positiveIntOrNull,
     analysisMessageThreshold: positiveIntOrNull,
+    maxAnalysesPerHour: positiveIntOrNull,
   });
 
 export const updateTenantSchema = createSelectSchema(tenantsTable)
@@ -76,6 +82,7 @@ export const updateTenantSchema = createSelectSchema(tenantsTable)
   .extend({
     analysisStalenessHours: positiveIntOrNull,
     analysisMessageThreshold: positiveIntOrNull,
+    maxAnalysesPerHour: positiveIntOrNull,
   })
   .partial();
 

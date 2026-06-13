@@ -38,6 +38,10 @@ vi.mock("@workspace/db", () => ({
     lastAnalyzedAt: "lastAnalyzedAt",
     updatedAt: "updatedAt",
   },
+  tenantsTable: {
+    id: "id",
+    maxAnalysesPerHour: "maxAnalysesPerHour",
+  },
   insertCustomerIntelligenceSchema: {
     safeParse: () => ({ success: false, error: { message: "not exercised here" } }),
   },
@@ -77,11 +81,12 @@ type LogRow = {
 type ByTriggerRow = { triggeredBy: string; calls: number; tokens: string };
 
 /**
- * Sets up the four parallel db.select() calls the log endpoint makes:
+ * Sets up the five parallel db.select() calls the log endpoint makes:
  *   1. Paginated items list
  *   2. Aggregate totals (totalCalls, totalTokens) — resolved via Promise .then()
  *   3. Per-trigger breakdown — groupBy
  *   4. Rolling-hour count — resolved via Promise .then()
+ *   5. Tenant maxAnalysesPerHour override — resolved via Promise .then()
  */
 function setupLogSelects(
   items: LogRow[],
@@ -115,6 +120,11 @@ function setupLogSelects(
     .mockReturnValueOnce({
       from: vi.fn().mockReturnThis(),
       where: vi.fn().mockResolvedValue([{ recentCount: rollingHourCount }]),
+    })
+    // Query 5: tenant maxAnalysesPerHour override — null means fall back to global
+    .mockReturnValueOnce({
+      from: vi.fn().mockReturnThis(),
+      where: vi.fn().mockResolvedValue([{ maxAnalysesPerHour: null }]),
     });
 }
 

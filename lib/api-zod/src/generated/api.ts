@@ -2983,6 +2983,7 @@ export const ListTenantsResponseItem = zod.object({
   "messagesSentToday": zod.number(),
   "analysisStalenessHours": zod.number().nullish().describe('Per-tenant override for how many hours must pass before a lead is considered stale and auto-reanalyzed. Null means fall back to the global ANALYSIS_STALENESS_HOURS env var.\n'),
   "analysisMessageThreshold": zod.number().nullish().describe('Per-tenant override for how many new messages since the last analysis trigger an automatic re-analysis. Null means fall back to the global ANALYSIS_MESSAGE_THRESHOLD env var.\n'),
+  "maxAnalysesPerHour": zod.number().nullish().describe('Per-tenant override for the maximum number of AI analyses allowed per rolling hour window. Null means fall back to the global MAX_ANALYSES_PER_TENANT_PER_HOUR env var.\n'),
   "createdAt": zod.coerce.date(),
   "updatedAt": zod.coerce.date()
 })
@@ -3003,7 +3004,8 @@ export const CreateTenantBody = zod.object({
   "monthlyTokenLimit": zod.number().nullish(),
   "dailyMessageLimit": zod.number().nullish(),
   "analysisStalenessHours": zod.number().nullish().describe('Per-tenant override for how many hours before a lead is considered stale. Null falls back to the global ANALYSIS_STALENESS_HOURS env var.\n'),
-  "analysisMessageThreshold": zod.number().nullish().describe('Per-tenant override for new-message count that triggers auto re-analysis. Null falls back to the global ANALYSIS_MESSAGE_THRESHOLD env var.\n')
+  "analysisMessageThreshold": zod.number().nullish().describe('Per-tenant override for new-message count that triggers auto re-analysis. Null falls back to the global ANALYSIS_MESSAGE_THRESHOLD env var.\n'),
+  "maxAnalysesPerHour": zod.number().nullish().describe('Per-tenant override for the maximum number of AI analyses allowed per rolling hour window. Null falls back to the global MAX_ANALYSES_PER_TENANT_PER_HOUR env var.\n')
 })
 
 
@@ -3029,6 +3031,7 @@ export const GetTenantResponse = zod.object({
   "messagesSentToday": zod.number(),
   "analysisStalenessHours": zod.number().nullish().describe('Per-tenant override for how many hours must pass before a lead is considered stale and auto-reanalyzed. Null means fall back to the global ANALYSIS_STALENESS_HOURS env var.\n'),
   "analysisMessageThreshold": zod.number().nullish().describe('Per-tenant override for how many new messages since the last analysis trigger an automatic re-analysis. Null means fall back to the global ANALYSIS_MESSAGE_THRESHOLD env var.\n'),
+  "maxAnalysesPerHour": zod.number().nullish().describe('Per-tenant override for the maximum number of AI analyses allowed per rolling hour window. Null means fall back to the global MAX_ANALYSES_PER_TENANT_PER_HOUR env var.\n'),
   "createdAt": zod.coerce.date(),
   "updatedAt": zod.coerce.date()
 })
@@ -3054,7 +3057,8 @@ export const UpdateTenantBody = zod.object({
   "dailyMessageLimit": zod.number().nullish(),
   "messagesSentToday": zod.number().optional(),
   "analysisStalenessHours": zod.number().nullish().describe('Per-tenant override for how many hours before a lead is considered stale. Null falls back to the global ANALYSIS_STALENESS_HOURS env var.\n'),
-  "analysisMessageThreshold": zod.number().nullish().describe('Per-tenant override for new-message count that triggers auto re-analysis. Null falls back to the global ANALYSIS_MESSAGE_THRESHOLD env var.\n')
+  "analysisMessageThreshold": zod.number().nullish().describe('Per-tenant override for new-message count that triggers auto re-analysis. Null falls back to the global ANALYSIS_MESSAGE_THRESHOLD env var.\n'),
+  "maxAnalysesPerHour": zod.number().nullish().describe('Per-tenant override for the maximum number of AI analyses allowed per rolling hour window. Null falls back to the global MAX_ANALYSES_PER_TENANT_PER_HOUR env var.\n')
 })
 
 export const UpdateTenantResponse = zod.object({
@@ -3072,6 +3076,7 @@ export const UpdateTenantResponse = zod.object({
   "messagesSentToday": zod.number(),
   "analysisStalenessHours": zod.number().nullish().describe('Per-tenant override for how many hours must pass before a lead is considered stale and auto-reanalyzed. Null means fall back to the global ANALYSIS_STALENESS_HOURS env var.\n'),
   "analysisMessageThreshold": zod.number().nullish().describe('Per-tenant override for how many new messages since the last analysis trigger an automatic re-analysis. Null means fall back to the global ANALYSIS_MESSAGE_THRESHOLD env var.\n'),
+  "maxAnalysesPerHour": zod.number().nullish().describe('Per-tenant override for the maximum number of AI analyses allowed per rolling hour window. Null means fall back to the global MAX_ANALYSES_PER_TENANT_PER_HOUR env var.\n'),
   "createdAt": zod.coerce.date(),
   "updatedAt": zod.coerce.date()
 })

@@ -51,6 +51,10 @@ vi.mock("@workspace/db", () => ({
     tenantId: "tenantId",
     createdAt: "createdAt",
   },
+  tenantsTable: {
+    id: "id",
+    maxAnalysesPerHour: "maxAnalysesPerHour",
+  },
   insertCustomerIntelligenceSchema: {
     safeParse: () => ({ success: false, error: { message: "not exercised here" } }),
   },
@@ -118,10 +122,17 @@ const LEAD_ID = "lead-hourly-rate-limit-test";
  */
 function setupHourlyCountSelect(recentCount: number) {
   mockDbSelect
+    // 1. Hourly rolling-window count (intelligenceAnalysisLogTable)
     .mockReturnValueOnce({
       from: vi.fn().mockReturnThis(),
       where: vi.fn().mockResolvedValue([{ recentCount }]),
     })
+    // 2. Tenant maxAnalysesPerHour override (tenantsTable) — fetched in parallel with (1)
+    .mockReturnValueOnce({
+      from: vi.fn().mockReturnThis(),
+      where: vi.fn().mockResolvedValue([{ maxAnalysesPerHour: null }]),
+    })
+    // 3. Per-lead cooldown check (customerIntelligenceTable)
     .mockReturnValueOnce({
       from: vi.fn().mockReturnThis(),
       where: vi.fn().mockResolvedValue([]),

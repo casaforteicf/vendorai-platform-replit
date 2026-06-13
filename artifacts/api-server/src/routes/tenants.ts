@@ -50,7 +50,7 @@ router.patch("/tenants/:id", requireSameTenanOrSuperAdmin(), async (req, res) =>
     return;
   }
 
-  const ADMIN_ONLY_FIELDS = ["analysisStalenessHours", "analysisMessageThreshold"] as const;
+  const ADMIN_ONLY_FIELDS = ["analysisStalenessHours", "analysisMessageThreshold", "maxAnalysesPerHour"] as const;
   const hasAdminOnlyField = ADMIN_ONLY_FIELDS.some((f) => f in parsed.data && parsed.data[f] !== undefined);
   if (hasAdminOnlyField && req.user?.platformRole === "member") {
     res.status(403).json({ error: "Only admins can update analysis thresholds" });

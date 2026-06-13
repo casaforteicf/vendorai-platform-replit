@@ -86,6 +86,11 @@ const thresholdSchema = z.object({
     .refine((v) => v === "" || (!isNaN(Number(v)) && Number(v) > 0), {
       message: "Digite um número inteiro positivo ou deixe em branco para usar o padrão global",
     }),
+  maxAnalysesPerHour: z
+    .string()
+    .refine((v) => v === "" || (!isNaN(Number(v)) && Number(v) > 0), {
+      message: "Digite um número inteiro positivo ou deixe em branco para usar o padrão global",
+    }),
 });
 type ThresholdForm = z.infer<typeof thresholdSchema>;
 
@@ -601,11 +606,12 @@ export default function Configuracoes() {
 
   const thresholdForm = useForm<ThresholdForm>({
     resolver: zodResolver(thresholdSchema),
-    defaultValues: { analysisStalenessHours: "", analysisMessageThreshold: "" },
+    defaultValues: { analysisStalenessHours: "", analysisMessageThreshold: "", maxAnalysesPerHour: "" },
     values: tenantQuery.data
       ? {
           analysisStalenessHours:     tenantQuery.data.analysisStalenessHours    != null ? String(tenantQuery.data.analysisStalenessHours)    : "",
           analysisMessageThreshold:   tenantQuery.data.analysisMessageThreshold  != null ? String(tenantQuery.data.analysisMessageThreshold)  : "",
+          maxAnalysesPerHour:         tenantQuery.data.maxAnalysesPerHour        != null ? String(tenantQuery.data.maxAnalysesPerHour)        : "",
         }
       : undefined,
   });
@@ -617,6 +623,7 @@ export default function Configuracoes() {
         data: {
           analysisStalenessHours:   values.analysisStalenessHours   !== "" ? parseInt(values.analysisStalenessHours!, 10)   : null,
           analysisMessageThreshold: values.analysisMessageThreshold  !== "" ? parseInt(values.analysisMessageThreshold!, 10) : null,
+          maxAnalysesPerHour:       values.maxAnalysesPerHour        !== "" ? parseInt(values.maxAnalysesPerHour!, 10)       : null,
         },
       },
       {
@@ -994,6 +1001,28 @@ export default function Configuracoes() {
                             </FormControl>
                             <p className="text-xs text-muted-foreground">
                               Quantidade de novas mensagens que dispara uma nova análise automática.
+                            </p>
+                            <FormMessage />
+                          </FormItem>
+                        )}
+                      />
+                      <FormField
+                        control={thresholdForm.control}
+                        name="maxAnalysesPerHour"
+                        render={({ field }) => (
+                          <FormItem>
+                            <FormLabel>Limite de análises por hora</FormLabel>
+                            <FormControl>
+                              <Input
+                                type="number"
+                                min={1}
+                                step={1}
+                                placeholder="Padrão global"
+                                {...field}
+                              />
+                            </FormControl>
+                            <p className="text-xs text-muted-foreground">
+                              Máximo de análises de IA permitidas por hora para este tenant. Deixe em branco para usar o padrão global.
                             </p>
                             <FormMessage />
                           </FormItem>

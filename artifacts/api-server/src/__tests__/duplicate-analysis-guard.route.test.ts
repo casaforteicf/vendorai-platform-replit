@@ -42,6 +42,10 @@ vi.mock("@workspace/db", () => ({
     tenantId: "tenantId",
     createdAt: "createdAt",
   },
+  tenantsTable: {
+    id: "id",
+    maxAnalysesPerHour: "maxAnalysesPerHour",
+  },
   // These are referenced by the router's POST /customer-intelligence route
   insertCustomerIntelligenceSchema: {
     safeParse: () => ({ success: false, error: { message: "not exercised here" } }),
@@ -85,10 +89,17 @@ const LEAD_ID = "lead-409-route-test";
  */
 function setupPassthroughDbSelects() {
   mockDbSelect
+    // 1. Hourly rolling-window count → 0 (well within limit)
     .mockReturnValueOnce({
       from: vi.fn().mockReturnThis(),
       where: vi.fn().mockResolvedValue([{ recentCount: 0 }]),
     })
+    // 2. Tenant maxAnalysesPerHour override — fetched in parallel with (1)
+    .mockReturnValueOnce({
+      from: vi.fn().mockReturnThis(),
+      where: vi.fn().mockResolvedValue([{ maxAnalysesPerHour: null }]),
+    })
+    // 3. Per-lead cooldown check → no existing record (no cooldown)
     .mockReturnValueOnce({
       from: vi.fn().mockReturnThis(),
       where: vi.fn().mockResolvedValue([]),
