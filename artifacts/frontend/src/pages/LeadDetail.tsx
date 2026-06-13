@@ -507,9 +507,8 @@ export default function LeadDetail() {
                             data-testid="slider-churn-risk"
                           />
                           <Input
-                            type="number"
-                            min={0}
-                            max={100}
+                            type="text"
+                            inputMode="numeric"
                             value={churnRiskDraft}
                             onChange={(e) => setChurnRiskDraft(e.target.value)}
                             className={`h-6 w-16 text-xs px-1.5 py-0 ${!churnRiskIsValid && churnRiskDraft !== "" ? "border-red-500 focus-visible:ring-red-500" : ""}`}

@@ -123,6 +123,95 @@ test.describe("Customer Intelligence card", () => {
   });
 });
 
+test.describe("Churn risk inline editor — client-side validation", () => {
+  test("typing 150 shows error message and disables save button", async ({
+    page,
+  }) => {
+    await authenticateAndNavigate(page, LEAD_DETAIL_PATH);
+
+    const ciCard = page.getByTestId("card-customer-intelligence");
+    await expect(ciCard).toBeVisible({ timeout: 15_000 });
+
+    await page.getByTestId("btn-edit-churn-risk").click();
+
+    const input = page.getByTestId("input-churn-risk");
+    await expect(input).toBeVisible();
+
+    await input.click({ clickCount: 3 });
+    await input.fill("150");
+
+    await expect(page.getByTestId("error-churn-risk")).toBeVisible();
+    await expect(page.getByTestId("btn-save-churn-risk")).toBeDisabled();
+  });
+
+  test("typing -5 shows error message and disables save button", async ({
+    page,
+  }) => {
+    await authenticateAndNavigate(page, LEAD_DETAIL_PATH);
+
+    const ciCard = page.getByTestId("card-customer-intelligence");
+    await expect(ciCard).toBeVisible({ timeout: 15_000 });
+
+    await page.getByTestId("btn-edit-churn-risk").click();
+
+    const input = page.getByTestId("input-churn-risk");
+    await expect(input).toBeVisible();
+
+    await input.click({ clickCount: 3 });
+    await input.fill("-5");
+
+    await expect(page.getByTestId("error-churn-risk")).toBeVisible();
+    await expect(page.getByTestId("btn-save-churn-risk")).toBeDisabled();
+  });
+
+  test("typing non-numeric value (abc) shows error message and disables save button", async ({
+    page,
+  }) => {
+    await authenticateAndNavigate(page, LEAD_DETAIL_PATH);
+
+    const ciCard = page.getByTestId("card-customer-intelligence");
+    await expect(ciCard).toBeVisible({ timeout: 15_000 });
+
+    await page.getByTestId("btn-edit-churn-risk").click();
+
+    const input = page.getByTestId("input-churn-risk");
+    await expect(input).toBeVisible();
+
+    await input.click({ clickCount: 3 });
+    await input.pressSequentially("abc");
+
+    await expect(page.getByTestId("error-churn-risk")).toBeVisible();
+    await expect(page.getByTestId("btn-save-churn-risk")).toBeDisabled();
+  });
+
+  test("pressing Escape closes edit mode without saving", async ({ page }) => {
+    await authenticateAndNavigate(page, LEAD_DETAIL_PATH);
+
+    const ciCard = page.getByTestId("card-customer-intelligence");
+    await expect(ciCard).toBeVisible({ timeout: 15_000 });
+
+    const originalText = await page
+      .getByTestId("text-churn-risk")
+      .textContent();
+
+    await page.getByTestId("btn-edit-churn-risk").click();
+
+    const input = page.getByTestId("input-churn-risk");
+    await expect(input).toBeVisible();
+
+    await input.click({ clickCount: 3 });
+    await input.fill("99");
+
+    await input.press("Escape");
+
+    await expect(input).not.toBeVisible({ timeout: 5_000 });
+
+    await expect(page.getByTestId("text-churn-risk")).toHaveText(
+      originalText ?? "—"
+    );
+  });
+});
+
 test.describe("Customer Intelligence - loading state", () => {
   test("shows loading skeleton inside CI card while intelligence data is being fetched", async ({
     page,
