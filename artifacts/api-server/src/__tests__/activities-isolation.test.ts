@@ -1,8 +1,13 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import request from "supertest";
-import jwt from "jsonwebtoken";
-
-const TEST_SECRET = "test-jwt-secret-for-unit-tests";
+import {
+  TENANT_A,
+  TENANT_B,
+  makeToken,
+  tokenA,
+  tokenB,
+  tokenSuperAdmin,
+} from "./helpers/auth.js";
 
 const { mockDbSelect, mockDbUpdate, mockDbDelete, mockDbInsert } = vi.hoisted(
   () => ({
@@ -47,23 +52,6 @@ const app = express();
 app.use(express.json());
 app.use("/api", authenticate, activitiesRouter);
 
-function makeToken(
-  tenantId: string,
-  platformRole: "super_admin" | "tenant_admin" | "member" = "tenant_admin"
-): string {
-  return jwt.sign(
-    {
-      sub: `user-${tenantId}`,
-      email: `user@${tenantId}.example.com`,
-      platformRole,
-      tenantId,
-      role: "admin",
-    },
-    TEST_SECRET,
-    { expiresIn: "1h" }
-  );
-}
-
 type MockRow = { id: string; tenantId: string; [k: string]: unknown };
 
 function setupSelectReturning(rows: MockRow[]) {
@@ -87,8 +75,6 @@ function setupDeleteSuccess() {
   mockDbDelete.mockReturnValue({ where });
 }
 
-const TENANT_A = "tenant-alpha";
-const TENANT_B = "tenant-beta";
 const RECORD_ID = "activity-owned-by-b";
 
 const recordOwnedByTenantB: MockRow = {
@@ -97,10 +83,6 @@ const recordOwnedByTenantB: MockRow = {
   tipo: "call",
   status: "pendente",
 };
-
-const tokenA = makeToken(TENANT_A);
-const tokenB = makeToken(TENANT_B);
-const tokenSuperAdmin = makeToken("platform", "super_admin");
 
 describe("GET /api/activities/:id — cross-tenant isolation", () => {
   beforeEach(() => {

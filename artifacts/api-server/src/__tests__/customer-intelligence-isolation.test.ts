@@ -1,8 +1,13 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import request from "supertest";
-import jwt from "jsonwebtoken";
-
-const TEST_SECRET = "test-jwt-secret-for-unit-tests";
+import {
+  TENANT_A,
+  TENANT_B,
+  makeToken,
+  tokenA,
+  tokenB,
+  tokenSuperAdmin,
+} from "./helpers/auth.js";
 
 // ---------------------------------------------------------------------------
 // Hoisted mock state — must be created before vi.mock calls
@@ -62,26 +67,6 @@ app.use(express.json());
 app.use("/api", authenticate, customerIntelligenceRouter);
 
 // ---------------------------------------------------------------------------
-// JWT helpers
-// ---------------------------------------------------------------------------
-function makeToken(
-  tenantId: string,
-  platformRole: "super_admin" | "tenant_admin" | "member" = "tenant_admin"
-): string {
-  return jwt.sign(
-    {
-      sub: `user-${tenantId}`,
-      email: `user@${tenantId}.example.com`,
-      platformRole,
-      tenantId,
-      role: "admin",
-    },
-    TEST_SECRET,
-    { expiresIn: "1h" }
-  );
-}
-
-// ---------------------------------------------------------------------------
 // DB mock helpers
 // ---------------------------------------------------------------------------
 type MockRow = { id: string; tenantId: string; [k: string]: unknown };
@@ -107,11 +92,6 @@ function setupDeleteSuccess() {
   mockDbDelete.mockReturnValue({ where });
 }
 
-// ---------------------------------------------------------------------------
-// Shared test fixture
-// ---------------------------------------------------------------------------
-const TENANT_A = "tenant-alpha";
-const TENANT_B = "tenant-beta";
 const RECORD_ID = "ci-record-owned-by-b";
 
 const recordOwnedByTenantB: MockRow = {
@@ -119,10 +99,6 @@ const recordOwnedByTenantB: MockRow = {
   tenantId: TENANT_B,
   churnRisk: 72,
 };
-
-const tokenA = makeToken(TENANT_A);
-const tokenB = makeToken(TENANT_B);
-const tokenSuperAdmin = makeToken("platform", "super_admin");
 
 // ---------------------------------------------------------------------------
 // Cross-tenant isolation tests
