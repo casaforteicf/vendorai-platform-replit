@@ -210,7 +210,7 @@ export default function LeadDetail() {
     },
   });
 
-  const { data: intelligence, isLoading: ciLoading } = useGetOrCreateLeadIntelligence(
+  const { data: intelligence, isLoading: ciLoading, isFetching: ciRefetching } = useGetOrCreateLeadIntelligence(
     tenantId,
     id,
     {
@@ -501,6 +501,15 @@ export default function LeadDetail() {
                 <span className="flex items-center gap-2">
                   <Brain className="h-4 w-4 text-primary" />
                   Inteligência do Cliente
+                  {ciRefetching && !ciLoading && (
+                    <span
+                      className="inline-flex items-center gap-1 text-[10px] font-medium text-muted-foreground"
+                      data-testid="ci-updating-indicator"
+                    >
+                      <Loader2 className="h-2.5 w-2.5 animate-spin" />
+                      Atualizando…
+                    </span>
+                  )}
                 </span>
                 <Button
                   size="sm"
