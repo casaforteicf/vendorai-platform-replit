@@ -9,6 +9,47 @@ import * as zod from 'zod';
 
 
 /**
+ * Creates a new tenant and a super_admin user in a single step
+ * @summary Register first super_admin
+ */
+export const registerBodyPasswordMin = 8;
+
+
+
+export const RegisterBody = zod.object({
+  "tenantName": zod.string(),
+  "tenantSlug": zod.string(),
+  "name": zod.string(),
+  "email": zod.string().email(),
+  "password": zod.string().min(registerBodyPasswordMin)
+})
+
+
+/**
+ * @summary Login
+ */
+export const LoginBody = zod.object({
+  "email": zod.string().email(),
+  "password": zod.string()
+})
+
+export const LoginResponse = zod.object({
+  "token": zod.string(),
+  "user": zod.object({
+  "id": zod.string(),
+  "tenantId": zod.string(),
+  "name": zod.string(),
+  "email": zod.string(),
+  "role": zod.enum(['admin', 'member']),
+  "platformRole": zod.enum(['super_admin', 'tenant_admin', 'member']),
+  "active": zod.boolean(),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date()
+})
+})
+
+
+/**
  * Returns server health status
  * @summary Health check
  */

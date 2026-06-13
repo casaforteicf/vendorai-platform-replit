@@ -5,6 +5,54 @@
  * API specification
  * OpenAPI spec version: 0.1.0
  */
+export interface LoginBody {
+  email: string;
+  password: string;
+}
+
+export interface RegisterBody {
+  tenantName: string;
+  tenantSlug: string;
+  name: string;
+  email: string;
+  /** @minLength 8 */
+  password: string;
+}
+
+export type UserRole = typeof UserRole[keyof typeof UserRole];
+
+
+export const UserRole = {
+  admin: 'admin',
+  member: 'member',
+} as const;
+
+export type PlatformRole = typeof PlatformRole[keyof typeof PlatformRole];
+
+
+export const PlatformRole = {
+  super_admin: 'super_admin',
+  tenant_admin: 'tenant_admin',
+  member: 'member',
+} as const;
+
+export interface User {
+  id: string;
+  tenantId: string;
+  name: string;
+  email: string;
+  role: UserRole;
+  platformRole: PlatformRole;
+  active: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface AuthResponse {
+  token: string;
+  user: User;
+}
+
 export interface HealthStatus {
   status: string;
 }
@@ -69,35 +117,6 @@ export interface UpdateTenantBody {
 
 export interface ErrorResponse {
   error: string;
-}
-
-export type UserRole = typeof UserRole[keyof typeof UserRole];
-
-
-export const UserRole = {
-  admin: 'admin',
-  member: 'member',
-} as const;
-
-export type PlatformRole = typeof PlatformRole[keyof typeof PlatformRole];
-
-
-export const PlatformRole = {
-  super_admin: 'super_admin',
-  tenant_admin: 'tenant_admin',
-  member: 'member',
-} as const;
-
-export interface User {
-  id: string;
-  tenantId: string;
-  name: string;
-  email: string;
-  role: UserRole;
-  platformRole: PlatformRole;
-  active: boolean;
-  createdAt: string;
-  updatedAt: string;
 }
 
 export interface CreateUserBody {

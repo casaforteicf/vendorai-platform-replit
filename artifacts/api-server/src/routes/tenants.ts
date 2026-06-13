@@ -1,6 +1,7 @@
 import { Router, type IRouter } from "express";
 import { eq } from "drizzle-orm";
 import { db, tenantsTable, insertTenantSchema, updateTenantSchema } from "@workspace/db";
+import { requireRole, requireSameTenanOrSuperAdmin } from "../middlewares/auth";
 
 const router: IRouter = Router();
 
@@ -9,7 +10,7 @@ router.get("/tenants", async (req, res) => {
   res.json(tenants);
 });
 
-router.post("/tenants", async (req, res) => {
+router.post("/tenants", requireRole("super_admin"), async (req, res) => {
   const parsed = insertTenantSchema.safeParse(req.body);
   if (!parsed.success) {
     res.status(422).json({ error: parsed.error.message });
@@ -28,11 +29,11 @@ router.post("/tenants", async (req, res) => {
   }
 });
 
-router.get("/tenants/:id", async (req, res) => {
+router.get("/tenants/:id", requireSameTenanOrSuperAdmin(), async (req, res) => {
   const [tenant] = await db
     .select()
     .from(tenantsTable)
-    .where(eq(tenantsTable.id, req.params.id));
+    .where(eq(tenantsTable.id, String(req.params.id)));
 
   if (!tenant) {
     res.status(404).json({ error: "Tenant not found" });
@@ -42,7 +43,7 @@ router.get("/tenants/:id", async (req, res) => {
   res.json(tenant);
 });
 
-router.patch("/tenants/:id", async (req, res) => {
+router.patch("/tenants/:id", requireSameTenanOrSuperAdmin(), async (req, res) => {
   const parsed = updateTenantSchema.safeParse(req.body);
   if (!parsed.success) {
     res.status(422).json({ error: parsed.error.message });
@@ -53,7 +54,7 @@ router.patch("/tenants/:id", async (req, res) => {
     const [tenant] = await db
       .update(tenantsTable)
       .set({ ...parsed.data, updatedAt: new Date() })
-      .where(eq(tenantsTable.id, req.params.id))
+      .where(eq(tenantsTable.id, String(req.params.id)))
       .returning();
 
     if (!tenant) {
@@ -71,10 +72,10 @@ router.patch("/tenants/:id", async (req, res) => {
   }
 });
 
-router.delete("/tenants/:id", async (req, res) => {
+router.delete("/tenants/:id", requireRole("super_admin"), async (req, res) => {
   const [deleted] = await db
     .delete(tenantsTable)
-    .where(eq(tenantsTable.id, req.params.id))
+    .where(eq(tenantsTable.id, String(req.params.id)))
     .returning({ id: tenantsTable.id });
 
   if (!deleted) {

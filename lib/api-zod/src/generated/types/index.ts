@@ -9,6 +9,7 @@
 export * from './agentActionLog';
 export * from './agentActionLogPayload';
 export * from './agentActionStatus';
+export * from './authResponse';
 export * from './consent';
 export * from './conversation';
 export * from './conversationMetadata';
@@ -24,7 +25,9 @@ export * from './createUserBody';
 export * from './errorResponse';
 export * from './healthStatus';
 export * from './lead';
+export * from './loginBody';
 export * from './platformRole';
+export * from './registerBody';
 export * from './tenant';
 export * from './tenantAgentsEnabled';
 export * from './tenantStatus';
