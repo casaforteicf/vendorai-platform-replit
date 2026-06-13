@@ -1,5 +1,5 @@
 import { Router, type IRouter } from "express";
-import { and, eq, sql, count, sum, desc, gte } from "drizzle-orm";
+import { and, eq, sql, count, sum, desc, gte, lte } from "drizzle-orm";
 import {
   db,
   customerIntelligenceTable,
@@ -191,6 +191,63 @@ router.delete("/customer-intelligence/:id", async (req, res) => {
     .where(eq(customerIntelligenceTable.id, existing.id));
 
   res.status(204).send();
+});
+
+/**
+ * GET /tenants/:tenantId/intelligence-analysis-log/export
+ *
+ * Returns a CSV file of all intelligence_analysis_log entries for the tenant,
+ * optionally filtered by date range (from, to query params in ISO 8601).
+ * Accessible by super_admin only — intended for billing reconciliation.
+ */
+router.get("/tenants/:tenantId/intelligence-analysis-log/export", async (req, res) => {
+  const tenantId = String(req.params.tenantId);
+
+  if (req.user?.platformRole !== "super_admin") {
+    res.status(403).json({ error: "Access denied: super_admin only" });
+    return;
+  }
+
+  const fromRaw = req.query.from ? String(req.query.from) : undefined;
+  const toRaw   = req.query.to   ? String(req.query.to)   : undefined;
+
+  const fromDate = fromRaw ? new Date(fromRaw) : undefined;
+  const toDate   = toRaw   ? new Date(toRaw)   : undefined;
+
+  if (fromDate && isNaN(fromDate.getTime())) {
+    res.status(400).json({ error: "Invalid 'from' date" });
+    return;
+  }
+  if (toDate && isNaN(toDate.getTime())) {
+    res.status(400).json({ error: "Invalid 'to' date" });
+    return;
+  }
+
+  const conditions = [eq(intelligenceAnalysisLogTable.tenantId, tenantId)];
+  if (fromDate) conditions.push(gte(intelligenceAnalysisLogTable.createdAt, fromDate));
+  if (toDate)   conditions.push(lte(intelligenceAnalysisLogTable.createdAt, toDate));
+
+  const rows = await db
+    .select()
+    .from(intelligenceAnalysisLogTable)
+    .where(and(...conditions))
+    .orderBy(desc(intelligenceAnalysisLogTable.createdAt));
+
+  const csvHeader = "id,tenantId,leadId,tokensUsed,churnRisk,triggeredBy,createdAt\n";
+  const csvRows = rows.map((r) => [
+    r.id,
+    r.tenantId,
+    r.leadId,
+    r.tokensUsed,
+    r.churnRisk ?? "",
+    r.triggeredBy,
+    r.createdAt instanceof Date ? r.createdAt.toISOString() : String(r.createdAt),
+  ].map((v) => `"${String(v).replace(/"/g, '""')}"`).join(",")).join("\n");
+
+  const filename = `analysis-log-${tenantId}.csv`;
+  res.setHeader("Content-Type", "text/csv; charset=utf-8");
+  res.setHeader("Content-Disposition", `attachment; filename="${filename}"`);
+  res.send(csvHeader + csvRows);
 });
 
 /**

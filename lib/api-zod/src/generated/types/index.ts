@@ -78,6 +78,7 @@ export * from './dashboardLeadEntry';
 export * from './deal';
 export * from './dealEtapa';
 export * from './errorResponse';
+export * from './exportIntelligenceAnalysisLogParams';
 export * from './funil';
 export * from './healthStatus';
 export * from './incrementBody';

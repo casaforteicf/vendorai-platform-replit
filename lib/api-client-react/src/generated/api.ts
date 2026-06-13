@@ -61,6 +61,7 @@ import type {
   CustomerIntelligence,
   Deal,
   ErrorResponse,
+  ExportIntelligenceAnalysisLogParams,
   Funil,
   HealthStatus,
   IncrementBody,
@@ -7495,6 +7496,96 @@ export const useAnalyzeLeadIntelligence = <TError = ErrorType<ErrorResponse>,
       > => {
       return useMutation(getAnalyzeLeadIntelligenceMutationOptions(options));
     }
+
+export const getExportIntelligenceAnalysisLogUrl = (tenantId: string,
+    params?: ExportIntelligenceAnalysisLogParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : value.toString())
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/api/tenants/${tenantId}/intelligence-analysis-log/export?${stringifiedParams}` : `/api/tenants/${tenantId}/intelligence-analysis-log/export`
+}
+
+/**
+ * Returns a CSV file of all intelligence_analysis_log entries for the tenant, optionally filtered by date range. Accessible by super_admin only. Intended for billing reconciliation.
+ * @summary Export AI analysis log as CSV (super_admin only)
+ */
+export const exportIntelligenceAnalysisLog = async (tenantId: string,
+    params?: ExportIntelligenceAnalysisLogParams, options?: RequestInit): Promise<string> => {
+
+  return customFetch<string>(getExportIntelligenceAnalysisLogUrl(tenantId,params),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getExportIntelligenceAnalysisLogQueryKey = (tenantId: string,
+    params?: ExportIntelligenceAnalysisLogParams,) => {
+    return [
+    `/api/tenants/${tenantId}/intelligence-analysis-log/export`, ...(params ? [params] : [])
+    ] as const;
+    }
+
+
+export const getExportIntelligenceAnalysisLogQueryOptions = <TData = Awaited<ReturnType<typeof exportIntelligenceAnalysisLog>>, TError = ErrorType<ErrorResponse>>(tenantId: string,
+    params?: ExportIntelligenceAnalysisLogParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof exportIntelligenceAnalysisLog>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getExportIntelligenceAnalysisLogQueryKey(tenantId,params);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof exportIntelligenceAnalysisLog>>> = ({ signal }) => exportIntelligenceAnalysisLog(tenantId,params, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, enabled: !!(tenantId), ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof exportIntelligenceAnalysisLog>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type ExportIntelligenceAnalysisLogQueryResult = NonNullable<Awaited<ReturnType<typeof exportIntelligenceAnalysisLog>>>
+export type ExportIntelligenceAnalysisLogQueryError = ErrorType<ErrorResponse>
+
+
+/**
+ * @summary Export AI analysis log as CSV (super_admin only)
+ */
+
+export function useExportIntelligenceAnalysisLog<TData = Awaited<ReturnType<typeof exportIntelligenceAnalysisLog>>, TError = ErrorType<ErrorResponse>>(
+ tenantId: string,
+    params?: ExportIntelligenceAnalysisLogParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof exportIntelligenceAnalysisLog>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getExportIntelligenceAnalysisLogQueryOptions(tenantId,params,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+
+
+
+
+
 
 export const getListIntelligenceAnalysisLogUrl = (tenantId: string,
     params?: ListIntelligenceAnalysisLogParams,) => {

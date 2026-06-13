@@ -1546,6 +1546,17 @@ from: string;
 to: string;
 };
 
+export type ExportIntelligenceAnalysisLogParams = {
+/**
+ * Start of date range (ISO 8601, inclusive)
+ */
+from?: string;
+/**
+ * End of date range (ISO 8601, inclusive)
+ */
+to?: string;
+};
+
 export type ListIntelligenceAnalysisLogParams = {
 /**
  * @minimum 1

@@ -2674,6 +2674,20 @@ export const AnalyzeLeadIntelligenceResponse = zod.object({
 
 
 /**
+ * Returns a CSV file of all intelligence_analysis_log entries for the tenant, optionally filtered by date range. Accessible by super_admin only. Intended for billing reconciliation.
+ * @summary Export AI analysis log as CSV (super_admin only)
+ */
+export const ExportIntelligenceAnalysisLogParams = zod.object({
+  "tenantId": zod.coerce.string()
+})
+
+export const ExportIntelligenceAnalysisLogQueryParams = zod.object({
+  "from": zod.date().optional().describe('Start of date range (ISO 8601, inclusive)'),
+  "to": zod.date().optional().describe('End of date range (ISO 8601, inclusive)')
+})
+
+
+/**
  * Returns paginated log entries and aggregate stats (total calls, total tokens, breakdown by triggeredBy). Accessible by super_admin or users belonging to the tenant.
  * @summary List AI analysis log entries for a tenant
  */

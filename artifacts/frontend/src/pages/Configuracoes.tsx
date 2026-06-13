@@ -67,6 +67,7 @@ import {
   ChevronLeft,
   ChevronRight,
   BarChart3,
+  Download,
 } from "lucide-react";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
@@ -254,7 +255,11 @@ function triggeredByLabel(val: string) {
 
 function AnalysisLogTab({ tenantId }: { tenantId: string }) {
   const [page, setPage] = useState(1);
+  const [downloading, setDownloading] = useState(false);
   const LIMIT = 20;
+
+  const { user, token } = useAuth();
+  const isSuperAdmin = user?.platformRole === "super_admin";
 
   const logParams = { page, limit: LIMIT };
   const { data, isLoading } = useListIntelligenceAnalysisLog(
@@ -265,8 +270,50 @@ function AnalysisLogTab({ tenantId }: { tenantId: string }) {
 
   const totalPages = data ? Math.max(1, Math.ceil(data.total / LIMIT)) : 1;
 
+  async function handleExport() {
+    if (!token) return;
+    setDownloading(true);
+    try {
+      const url = `/api/tenants/${encodeURIComponent(tenantId)}/intelligence-analysis-log/export`;
+      const resp = await fetch(url, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (!resp.ok) {
+        const body = await resp.json().catch(() => ({}));
+        throw new Error((body as { error?: string }).error ?? `HTTP ${resp.status}`);
+      }
+      const blob = await resp.blob();
+      const objectUrl = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = objectUrl;
+      a.download = `analysis-log-${tenantId}.csv`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(objectUrl);
+    } catch (err) {
+      console.error("CSV export failed:", err);
+    } finally {
+      setDownloading(false);
+    }
+  }
+
   return (
     <div className="space-y-5">
+      {isSuperAdmin && (
+        <div className="flex justify-end">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={handleExport}
+            disabled={downloading}
+            className="gap-1.5"
+          >
+            <Download className="h-4 w-4" />
+            {downloading ? "Exportando…" : "Exportar CSV"}
+          </Button>
+        </div>
+      )}
       {/* Stats cards */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
         <div className="rounded-xl border bg-card p-5">
