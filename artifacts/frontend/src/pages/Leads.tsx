@@ -188,7 +188,13 @@ export default function Leads() {
       lead.nome.toLowerCase().includes(search.toLowerCase()) ||
       lead.email?.toLowerCase().includes(search.toLowerCase()) ||
       lead.empresa?.toLowerCase().includes(search.toLowerCase());
-    const matchesStatus = statusFilter === "all" || lead.status === statusFilter;
+    const matchesStatus =
+      statusFilter === "all"
+        ? true
+        : statusFilter === "high_risk"
+          ? typeof ciMap.get(lead.id)?.churnRisk === "number" &&
+            (ciMap.get(lead.id)?.churnRisk ?? 0) > 70
+          : lead.status === statusFilter;
     return matchesSearch && matchesStatus;
   });
 
@@ -314,6 +320,9 @@ export default function Leads() {
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="all">Todos os status</SelectItem>
+              <SelectItem value="high_risk" data-testid="filter-high-risk">
+                Alto risco (&gt;70)
+              </SelectItem>
               {LEAD_STATUSES.map((s) => (
                 <SelectItem key={s.value} value={s.value}>
                   {s.label}
