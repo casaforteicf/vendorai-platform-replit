@@ -1,6 +1,6 @@
 import { Link, useLocation } from "wouter";
 import { useAuth } from "@/contexts/AuthContext";
-import { LayoutDashboard, Users, Briefcase, MessageSquare, Calendar, Settings, LogOut } from "lucide-react";
+import { LayoutDashboard, Users, Briefcase, MessageSquare, Calendar, Settings, LogOut, Megaphone } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import logoFull from "/logo-full.svg";
@@ -15,6 +15,7 @@ export function SidebarLayout({ children }: { children: React.ReactNode }) {
     { name: "Negócios",     href: "/deals",           icon: Briefcase },
     { name: "Conversas",    href: "/conversations",   icon: MessageSquare },
     { name: "Agenda",       href: "/agenda",          icon: Calendar },
+    { name: "Campanhas",    href: "/campanhas",       icon: Megaphone },
     { name: "Configurações", href: "/configuracoes",  icon: Settings },
   ];
 
