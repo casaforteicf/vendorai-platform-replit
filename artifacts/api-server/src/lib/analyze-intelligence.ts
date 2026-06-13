@@ -1,4 +1,4 @@
-import { and, count, desc, eq, gt } from "drizzle-orm";
+import { and, count, desc, eq, gt, gte, sql } from "drizzle-orm";
 import { z } from "zod";
 import OpenAI from "openai";
 import type { Logger } from "pino";
@@ -6,6 +6,7 @@ import {
   db,
   customerIntelligenceTable,
   intelligenceAnalysisLogTable,
+  agentConfigsTable,
   leadsTable,
   conversationsTable,
   messagesTable,
@@ -37,6 +38,15 @@ export const ANALYSIS_MESSAGE_THRESHOLD =
  */
 export const ANALYSIS_COOLDOWN_MINUTES =
   Number(process.env["ANALYSIS_COOLDOWN_MINUTES"] ?? 5);
+
+/**
+ * Maximum number of AI analyses allowed per tenant per rolling hour window.
+ * A tenant with many leads could rack up large token bills by triggering
+ * per-lead analyses in rapid succession; this cap provides an aggregate guard.
+ * Override via MAX_ANALYSES_PER_TENANT_PER_HOUR env var.
+ */
+export const MAX_ANALYSES_PER_TENANT_PER_HOUR =
+  Number(process.env["MAX_ANALYSES_PER_TENANT_PER_HOUR"] ?? 50);
 
 // ── In-process concurrency guard ─────────────────────────────────────────────
 /**
@@ -276,7 +286,7 @@ Regras:
     "intelligence/analyze: record upserted"
   );
 
-  // 8. Record this analysis call for cost attribution (non-fatal if it fails)
+  // 8. Record this analysis call for cost attribution and bump monthly token counter (non-fatal if either fails)
   try {
     await db.insert(intelligenceAnalysisLogTable).values({
       tenantId,
@@ -291,6 +301,25 @@ Regras:
     );
   } catch (err) {
     log.error({ err, leadId, tenantId }, "intelligence/analyze: failed to write analysis log (non-fatal)");
+  }
+
+  // Bump tokensUsedCurrentMonth on the tenant's agent_configs row (non-fatal)
+  if (tokensUsed > 0) {
+    try {
+      await db
+        .update(agentConfigsTable)
+        .set({
+          tokensUsedCurrentMonth: sql`${agentConfigsTable.tokensUsedCurrentMonth} + ${tokensUsed}`,
+          updatedAt: new Date(),
+        })
+        .where(eq(agentConfigsTable.tenantId, tenantId));
+      log.info(
+        { leadId, tenantId, tokensUsed },
+        "intelligence/analyze: tokensUsedCurrentMonth bumped"
+      );
+    } catch (err) {
+      log.error({ err, leadId, tenantId }, "intelligence/analyze: failed to bump tokensUsedCurrentMonth (non-fatal)");
+    }
   }
 
   // 9. Fire rules engine if churnRisk >= 60

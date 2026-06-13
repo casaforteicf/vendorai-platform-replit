@@ -1,5 +1,5 @@
 import { Router, type IRouter } from "express";
-import { and, eq, sql, count, sum, desc } from "drizzle-orm";
+import { and, eq, sql, count, sum, desc, gte } from "drizzle-orm";
 import {
   db,
   customerIntelligenceTable,
@@ -11,6 +11,7 @@ import {
   analyzeLeadIntelligence,
   AnalysisAlreadyInFlightError,
   ANALYSIS_COOLDOWN_MINUTES,
+  MAX_ANALYSES_PER_TENANT_PER_HOUR,
 } from "../lib/analyze-intelligence.js";
 
 const router: IRouter = Router();
@@ -275,6 +276,33 @@ router.post(
     // Tenant scope guard — requester must belong to this tenant (super_admin bypasses)
     if (req.user?.platformRole !== "super_admin" && req.user?.tenantId !== tenantId) {
       res.status(403).json({ error: "Access denied to this tenant" });
+      return;
+    }
+
+    // Tenant hourly rate limit: count analyses in the rolling last hour and reject if over the cap
+    const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000);
+    const [hourlyRow] = await db
+      .select({ recentCount: count() })
+      .from(intelligenceAnalysisLogTable)
+      .where(
+        and(
+          eq(intelligenceAnalysisLogTable.tenantId, tenantId),
+          gte(intelligenceAnalysisLogTable.createdAt, oneHourAgo)
+        )
+      );
+
+    const recentCount = Number(hourlyRow?.recentCount ?? 0);
+    if (recentCount >= MAX_ANALYSES_PER_TENANT_PER_HOUR) {
+      req.log.warn(
+        { tenantId, recentCount, limit: MAX_ANALYSES_PER_TENANT_PER_HOUR },
+        "intelligence/analyze: tenant hourly rate limit exceeded"
+      );
+      res.status(429).json({
+        error: `Your tenant has exceeded the maximum of ${MAX_ANALYSES_PER_TENANT_PER_HOUR} AI analyses per hour. Please wait before running more analyses.`,
+        retryAfterSeconds: 3600,
+        limit: MAX_ANALYSES_PER_TENANT_PER_HOUR,
+        recentCount,
+      });
       return;
     }
 
