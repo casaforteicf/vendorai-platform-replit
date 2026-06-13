@@ -1,11 +1,13 @@
 import { useState } from "react";
 import { useParams, useLocation } from "wouter";
+import { useQueryClient } from "@tanstack/react-query";
 import { useAuth } from "@/contexts/AuthContext";
 import {
   useGetLead,
   getGetLeadQueryKey,
   useGetOrCreateLeadIntelligence,
   getGetOrCreateLeadIntelligenceQueryKey,
+  useUpdateCustomerIntelligence,
   useListActivities,
   getListActivitiesQueryKey,
   useListTenantConversations,
@@ -16,6 +18,8 @@ import {
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Progress } from "@/components/ui/progress";
 import {
   ArrowLeft,
   Phone,
@@ -31,6 +35,10 @@ import {
   MessageSquare,
   ChevronDown,
   ChevronUp,
+  Pencil,
+  X,
+  Check,
+  TrendingUp,
 } from "lucide-react";
 
 const STATUS_STYLES: Record<string, string> = {
@@ -66,11 +74,18 @@ const CHANNEL_LABELS: Record<string, string> = {
   web_chat: "Web Chat",
 };
 
-function churnColor(risk: number | null | undefined) {
+function churnColor(risk: number | null | undefined): string {
   if (risk === null || risk === undefined) return "text-muted-foreground";
   if (risk > 70) return "text-red-600";
   if (risk >= 30) return "text-amber-600";
   return "text-emerald-600";
+}
+
+function churnProgressColor(risk: number | null | undefined): string {
+  if (risk === null || risk === undefined) return "bg-muted";
+  if (risk > 70) return "bg-red-500";
+  if (risk >= 30) return "bg-amber-500";
+  return "bg-emerald-500";
 }
 
 function formatDate(iso: string | null | undefined) {
@@ -160,6 +175,13 @@ export default function LeadDetail() {
   const tenantId = user?.tenantId ?? "";
   const [, setLocation] = useLocation();
   const [openConvId, setOpenConvId] = useState<string | null>(null);
+  const queryClient = useQueryClient();
+
+  const [editingChurnRisk, setEditingChurnRisk] = useState(false);
+  const [churnRiskDraft, setChurnRiskDraft] = useState<string>("");
+
+  const [editingNextBestAction, setEditingNextBestAction] = useState(false);
+  const [nextBestActionDraft, setNextBestActionDraft] = useState<string>("");
 
   const { data: lead, isLoading: leadLoading } = useGetLead(id, {
     query: {
@@ -178,6 +200,34 @@ export default function LeadDetail() {
       },
     }
   );
+
+  const { mutate: updateIntelligence, isPending: isUpdating } =
+    useUpdateCustomerIntelligence({
+      mutation: {
+        onSuccess: () => {
+          void queryClient.invalidateQueries({
+            queryKey: getGetOrCreateLeadIntelligenceQueryKey(tenantId, id),
+          });
+        },
+      },
+    });
+
+  function saveChurnRisk() {
+    if (!intelligence?.id) return;
+    const value = parseInt(churnRiskDraft, 10);
+    if (isNaN(value) || value < 0 || value > 100) return;
+    updateIntelligence({ id: intelligence.id, data: { churnRisk: value } });
+    setEditingChurnRisk(false);
+  }
+
+  function saveNextBestAction() {
+    if (!intelligence?.id) return;
+    updateIntelligence({
+      id: intelligence.id,
+      data: { nextBestAction: nextBestActionDraft },
+    });
+    setEditingNextBestAction(false);
+  }
 
   const { data: activities, isLoading: activitiesLoading } = useListActivities(
     tenantId,
@@ -239,6 +289,9 @@ export default function LeadDetail() {
 
   const pendingActivities = activities?.filter((a) => a.status === "pendente") ?? [];
   const doneActivities = activities?.filter((a) => a.status !== "pendente") ?? [];
+  const opportunities = Array.isArray(intelligence?.opportunities)
+    ? (intelligence.opportunities as string[])
+    : [];
 
   return (
     <div className="space-y-6">
@@ -334,16 +387,81 @@ export default function LeadDetail() {
               ) : (
                 <>
                   {/* Churn Risk */}
-                  <div className="flex items-center justify-between">
-                    <span className="text-muted-foreground">Churn Risk</span>
-                    <span
-                      className={`font-bold text-base ${churnColor(intelligence?.churnRisk)}`}
-                      data-testid="text-churn-risk"
-                    >
-                      {intelligence?.churnRisk !== null && intelligence?.churnRisk !== undefined
-                        ? `${intelligence.churnRisk}%`
-                        : "—"}
-                    </span>
+                  <div className="space-y-1.5">
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                        Risco de Churn
+                      </span>
+                      <div className="flex items-center gap-1">
+                        {editingChurnRisk ? (
+                          <>
+                            <Input
+                              type="number"
+                              min={0}
+                              max={100}
+                              value={churnRiskDraft}
+                              onChange={(e) => setChurnRiskDraft(e.target.value)}
+                              className="h-6 w-16 text-xs px-1.5 py-0"
+                              data-testid="input-churn-risk"
+                              autoFocus
+                              onKeyDown={(e) => {
+                                if (e.key === "Enter") saveChurnRisk();
+                                if (e.key === "Escape") setEditingChurnRisk(false);
+                              }}
+                            />
+                            <button
+                              onClick={saveChurnRisk}
+                              disabled={isUpdating}
+                              className="text-emerald-600 hover:text-emerald-700 disabled:opacity-50"
+                              data-testid="btn-save-churn-risk"
+                            >
+                              <Check className="h-3.5 w-3.5" />
+                            </button>
+                            <button
+                              onClick={() => setEditingChurnRisk(false)}
+                              className="text-muted-foreground hover:text-foreground"
+                            >
+                              <X className="h-3.5 w-3.5" />
+                            </button>
+                          </>
+                        ) : (
+                          <>
+                            <span
+                              className={`font-bold text-sm ${churnColor(intelligence?.churnRisk)}`}
+                              data-testid="text-churn-risk"
+                            >
+                              {intelligence?.churnRisk !== null &&
+                              intelligence?.churnRisk !== undefined
+                                ? `${intelligence.churnRisk}%`
+                                : "—"}
+                            </span>
+                            {intelligence?.id && (
+                              <button
+                                onClick={() => {
+                                  setChurnRiskDraft(
+                                    intelligence.churnRisk?.toString() ?? ""
+                                  );
+                                  setEditingChurnRisk(true);
+                                }}
+                                className="ml-1 text-muted-foreground hover:text-foreground"
+                                data-testid="btn-edit-churn-risk"
+                              >
+                                <Pencil className="h-3 w-3" />
+                              </button>
+                            )}
+                          </>
+                        )}
+                      </div>
+                    </div>
+                    <div className="relative h-2 w-full overflow-hidden rounded-full bg-muted">
+                      <div
+                        className={`h-full transition-all ${churnProgressColor(intelligence?.churnRisk)}`}
+                        style={{
+                          width: `${intelligence?.churnRisk ?? 0}%`,
+                        }}
+                        data-testid="progress-churn-risk"
+                      />
+                    </div>
                   </div>
 
                   {/* Journey Stage */}
@@ -375,29 +493,113 @@ export default function LeadDetail() {
                   )}
 
                   {/* Next Best Action */}
-                  {intelligence?.nextBestAction && (
-                    <div className="space-y-1 p-3 rounded-md bg-primary/5 border border-primary/10">
+                  <div className="space-y-1.5 p-3 rounded-md bg-primary/5 border border-primary/10">
+                    <div className="flex items-center justify-between">
                       <div className="flex items-center gap-1.5 text-primary">
                         <Zap className="h-3.5 w-3.5" />
                         <span className="text-xs font-semibold uppercase tracking-wide">
                           Próxima Melhor Ação
                         </span>
                       </div>
-                      <p className="text-foreground leading-snug font-medium">
-                        {intelligence.nextBestAction}
-                      </p>
-                      {intelligence.nextBestActionReason && (
-                        <p className="text-xs text-muted-foreground leading-snug">
-                          {intelligence.nextBestActionReason}
-                        </p>
+                      {intelligence?.id && !editingNextBestAction && (
+                        <button
+                          onClick={() => {
+                            setNextBestActionDraft(
+                              intelligence.nextBestAction ?? ""
+                            );
+                            setEditingNextBestAction(true);
+                          }}
+                          className="text-muted-foreground hover:text-foreground"
+                          data-testid="btn-edit-next-best-action"
+                        >
+                          <Pencil className="h-3 w-3" />
+                        </button>
                       )}
+                    </div>
+                    {editingNextBestAction ? (
+                      <div className="space-y-2">
+                        <Input
+                          value={nextBestActionDraft}
+                          onChange={(e) => setNextBestActionDraft(e.target.value)}
+                          className="h-7 text-xs"
+                          placeholder="Descreva a próxima ação..."
+                          data-testid="input-next-best-action"
+                          autoFocus
+                          onKeyDown={(e) => {
+                            if (e.key === "Enter") saveNextBestAction();
+                            if (e.key === "Escape") setEditingNextBestAction(false);
+                          }}
+                        />
+                        <div className="flex items-center gap-2">
+                          <Button
+                            size="sm"
+                            className="h-6 text-xs px-2"
+                            onClick={saveNextBestAction}
+                            disabled={isUpdating}
+                            data-testid="btn-save-next-best-action"
+                          >
+                            <Check className="h-3 w-3 mr-1" />
+                            Salvar
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            className="h-6 text-xs px-2"
+                            onClick={() => setEditingNextBestAction(false)}
+                          >
+                            Cancelar
+                          </Button>
+                        </div>
+                      </div>
+                    ) : intelligence?.nextBestAction ? (
+                      <>
+                        <p className="text-foreground leading-snug font-medium text-sm">
+                          {intelligence.nextBestAction}
+                        </p>
+                        {intelligence.nextBestActionReason && (
+                          <p className="text-xs text-muted-foreground leading-snug">
+                            {intelligence.nextBestActionReason}
+                          </p>
+                        )}
+                      </>
+                    ) : (
+                      <p className="text-xs text-muted-foreground">
+                        Nenhuma ação definida. Clique para editar.
+                      </p>
+                    )}
+                  </div>
+
+                  {/* Opportunities */}
+                  {opportunities.length > 0 && (
+                    <div className="space-y-2">
+                      <div className="flex items-center gap-1.5 text-muted-foreground">
+                        <TrendingUp className="h-3.5 w-3.5" />
+                        <span className="text-xs font-medium uppercase tracking-wide">
+                          Oportunidades
+                        </span>
+                      </div>
+                      <ul className="space-y-1.5">
+                        {opportunities.map((opp, i) => (
+                          <li
+                            key={i}
+                            className="flex items-start gap-2 text-sm"
+                            data-testid={`opportunity-${i}`}
+                          >
+                            <span className="mt-1 h-1.5 w-1.5 rounded-full bg-primary shrink-0" />
+                            <span className="text-foreground leading-snug">
+                              {typeof opp === "string" ? opp : JSON.stringify(opp)}
+                            </span>
+                          </li>
+                        ))}
+                      </ul>
                     </div>
                   )}
 
                   {!intelligence?.journeyStage &&
                     !intelligence?.intentAnalysis &&
                     !intelligence?.nextBestAction &&
-                    intelligence?.churnRisk === null && (
+                    intelligence?.churnRisk === null &&
+                    opportunities.length === 0 && (
                       <p className="text-muted-foreground text-xs py-2">
                         Análise ainda não disponível para este lead.
                       </p>
