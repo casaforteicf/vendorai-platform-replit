@@ -24,6 +24,11 @@ router.post("/conversations", async (req, res) => {
     return;
   }
 
+  if (req.user?.platformRole !== "super_admin" && req.user?.tenantId !== parsed.data.tenantId) {
+    res.status(403).json({ error: "Access denied to this tenant" });
+    return;
+  }
+
   const [conversation] = await db
     .insert(conversationsTable)
     .values(parsed.data)
@@ -43,11 +48,18 @@ router.get("/tenants/:tenantId/conversations", async (req, res) => {
 router.post(
   "/tenants/:tenantId/conversations/:conversationId/mark-read",
   async (req, res) => {
+    const tenantId = String(req.params.tenantId);
+
+    if (req.user?.platformRole !== "super_admin" && req.user?.tenantId !== tenantId) {
+      res.status(403).json({ error: "Access denied to this tenant" });
+      return;
+    }
+
     const [conversation] = await db
       .update(conversationsTable)
       .set({ naoLidas: 0, updatedAt: new Date() })
       .where(
-        sql`${conversationsTable.id} = ${req.params.conversationId} AND ${conversationsTable.tenantId} = ${req.params.tenantId}`
+        sql`${conversationsTable.id} = ${req.params.conversationId} AND ${conversationsTable.tenantId} = ${tenantId}`
       )
       .returning();
 
@@ -81,30 +93,47 @@ router.patch("/conversations/:id", async (req, res) => {
     return;
   }
 
-  const [conversation] = await db
-    .update(conversationsTable)
-    .set({ ...parsed.data, updatedAt: new Date() })
-    .where(eq(conversationsTable.id, req.params.id))
-    .returning();
+  const [existing] = await db
+    .select({ id: conversationsTable.id, tenantId: conversationsTable.tenantId })
+    .from(conversationsTable)
+    .where(eq(conversationsTable.id, req.params.id));
 
-  if (!conversation) {
+  if (!existing) {
     res.status(404).json({ error: "Conversation not found" });
     return;
   }
+
+  if (req.user?.platformRole !== "super_admin" && existing.tenantId !== req.user?.tenantId) {
+    res.status(403).json({ error: "Access denied to this tenant" });
+    return;
+  }
+
+  const [conversation] = await db
+    .update(conversationsTable)
+    .set({ ...parsed.data, updatedAt: new Date() })
+    .where(eq(conversationsTable.id, existing.id))
+    .returning();
 
   res.json(conversation);
 });
 
 router.delete("/conversations/:id", async (req, res) => {
-  const [deleted] = await db
-    .delete(conversationsTable)
-    .where(eq(conversationsTable.id, req.params.id))
-    .returning({ id: conversationsTable.id });
+  const [existing] = await db
+    .select({ id: conversationsTable.id, tenantId: conversationsTable.tenantId })
+    .from(conversationsTable)
+    .where(eq(conversationsTable.id, req.params.id));
 
-  if (!deleted) {
+  if (!existing) {
     res.status(404).json({ error: "Conversation not found" });
     return;
   }
+
+  if (req.user?.platformRole !== "super_admin" && existing.tenantId !== req.user?.tenantId) {
+    res.status(403).json({ error: "Access denied to this tenant" });
+    return;
+  }
+
+  await db.delete(conversationsTable).where(eq(conversationsTable.id, existing.id));
 
   res.status(204).send();
 });

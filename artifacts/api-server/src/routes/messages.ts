@@ -17,6 +17,11 @@ router.post("/messages", async (req, res): Promise<void> => {
     return;
   }
 
+  if (req.user?.platformRole !== "super_admin" && req.user?.tenantId !== parsed.data.tenantId) {
+    res.status(403).json({ error: "Access denied to this tenant" });
+    return;
+  }
+
   const [message] = await db
     .insert(messagesTable)
     .values(parsed.data)
@@ -88,30 +93,47 @@ router.patch("/messages/:id", async (req, res) => {
     return;
   }
 
-  const [message] = await db
-    .update(messagesTable)
-    .set(parsed.data)
-    .where(eq(messagesTable.id, String(req.params.id)))
-    .returning();
+  const [existing] = await db
+    .select({ id: messagesTable.id, tenantId: messagesTable.tenantId })
+    .from(messagesTable)
+    .where(eq(messagesTable.id, String(req.params.id)));
 
-  if (!message) {
+  if (!existing) {
     res.status(404).json({ error: "Message not found" });
     return;
   }
+
+  if (req.user?.platformRole !== "super_admin" && existing.tenantId !== req.user?.tenantId) {
+    res.status(403).json({ error: "Access denied to this tenant" });
+    return;
+  }
+
+  const [message] = await db
+    .update(messagesTable)
+    .set(parsed.data)
+    .where(eq(messagesTable.id, existing.id))
+    .returning();
 
   res.json(message);
 });
 
 router.delete("/messages/:id", async (req, res) => {
-  const [deleted] = await db
-    .delete(messagesTable)
-    .where(eq(messagesTable.id, String(req.params.id)))
-    .returning({ id: messagesTable.id });
+  const [existing] = await db
+    .select({ id: messagesTable.id, tenantId: messagesTable.tenantId })
+    .from(messagesTable)
+    .where(eq(messagesTable.id, String(req.params.id)));
 
-  if (!deleted) {
+  if (!existing) {
     res.status(404).json({ error: "Message not found" });
     return;
   }
+
+  if (req.user?.platformRole !== "super_admin" && existing.tenantId !== req.user?.tenantId) {
+    res.status(403).json({ error: "Access denied to this tenant" });
+    return;
+  }
+
+  await db.delete(messagesTable).where(eq(messagesTable.id, existing.id));
 
   res.status(204).send();
 });

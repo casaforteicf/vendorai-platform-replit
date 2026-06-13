@@ -16,6 +16,11 @@ router.post("/business-profiles", async (req, res) => {
     return;
   }
 
+  if (req.user?.platformRole !== "super_admin" && req.user?.tenantId !== parsed.data.tenantId) {
+    res.status(403).json({ error: "Access denied to this tenant" });
+    return;
+  }
+
   try {
     const [profile] = await db
       .insert(businessProfilesTable)
@@ -66,30 +71,47 @@ router.patch("/business-profiles/:id", async (req, res) => {
     return;
   }
 
-  const [profile] = await db
-    .update(businessProfilesTable)
-    .set({ ...parsed.data, updatedAt: new Date() })
-    .where(eq(businessProfilesTable.id, String(req.params.id)))
-    .returning();
+  const [existing] = await db
+    .select({ id: businessProfilesTable.id, tenantId: businessProfilesTable.tenantId })
+    .from(businessProfilesTable)
+    .where(eq(businessProfilesTable.id, String(req.params.id)));
 
-  if (!profile) {
+  if (!existing) {
     res.status(404).json({ error: "Business profile not found" });
     return;
   }
+
+  if (req.user?.platformRole !== "super_admin" && existing.tenantId !== req.user?.tenantId) {
+    res.status(403).json({ error: "Access denied to this tenant" });
+    return;
+  }
+
+  const [profile] = await db
+    .update(businessProfilesTable)
+    .set({ ...parsed.data, updatedAt: new Date() })
+    .where(eq(businessProfilesTable.id, existing.id))
+    .returning();
 
   res.json(profile);
 });
 
 router.delete("/business-profiles/:id", async (req, res) => {
-  const [deleted] = await db
-    .delete(businessProfilesTable)
-    .where(eq(businessProfilesTable.id, String(req.params.id)))
-    .returning({ id: businessProfilesTable.id });
+  const [existing] = await db
+    .select({ id: businessProfilesTable.id, tenantId: businessProfilesTable.tenantId })
+    .from(businessProfilesTable)
+    .where(eq(businessProfilesTable.id, String(req.params.id)));
 
-  if (!deleted) {
+  if (!existing) {
     res.status(404).json({ error: "Business profile not found" });
     return;
   }
+
+  if (req.user?.platformRole !== "super_admin" && existing.tenantId !== req.user?.tenantId) {
+    res.status(403).json({ error: "Access denied to this tenant" });
+    return;
+  }
+
+  await db.delete(businessProfilesTable).where(eq(businessProfilesTable.id, existing.id));
 
   res.status(204).send();
 });

@@ -41,6 +41,11 @@ router.post("/users", async (req, res) => {
     return;
   }
 
+  if (req.user?.platformRole !== "super_admin" && req.user?.tenantId !== parsed.data.tenantId) {
+    res.status(403).json({ error: "Access denied to this tenant" });
+    return;
+  }
+
   const data = {
     ...parsed.data,
     password: await bcrypt.hash(parsed.data.password, 12),
@@ -82,6 +87,21 @@ router.patch("/users/:id", async (req, res) => {
     return;
   }
 
+  const [existing] = await db
+    .select({ id: usersTable.id, tenantId: usersTable.tenantId })
+    .from(usersTable)
+    .where(eq(usersTable.id, req.params.id));
+
+  if (!existing) {
+    res.status(404).json({ error: "User not found" });
+    return;
+  }
+
+  if (req.user?.platformRole !== "super_admin" && existing.tenantId !== req.user?.tenantId) {
+    res.status(403).json({ error: "Access denied to this tenant" });
+    return;
+  }
+
   const data: typeof parsed.data = { ...parsed.data };
   if (data.password) {
     data.password = await bcrypt.hash(data.password, 12);
@@ -91,13 +111,8 @@ router.patch("/users/:id", async (req, res) => {
     const [user] = await db
       .update(usersTable)
       .set({ ...data, updatedAt: new Date() })
-      .where(eq(usersTable.id, req.params.id))
+      .where(eq(usersTable.id, existing.id))
       .returning(PUBLIC_FIELDS);
-
-    if (!user) {
-      res.status(404).json({ error: "User not found" });
-      return;
-    }
 
     res.json(user);
   } catch (err: unknown) {
@@ -126,12 +141,17 @@ router.patch("/users/:id/password", async (req, res) => {
   }
 
   const [existing] = await db
-    .select({ id: usersTable.id, password: usersTable.password })
+    .select({ id: usersTable.id, password: usersTable.password, tenantId: usersTable.tenantId })
     .from(usersTable)
     .where(eq(usersTable.id, String(req.params.id)));
 
   if (!existing) {
     res.status(404).json({ error: "User not found" });
+    return;
+  }
+
+  if (req.user?.platformRole !== "super_admin" && existing.tenantId !== req.user?.tenantId) {
+    res.status(403).json({ error: "Access denied to this tenant" });
     return;
   }
 
@@ -146,22 +166,29 @@ router.patch("/users/:id/password", async (req, res) => {
   const [user] = await db
     .update(usersTable)
     .set({ password: hashed, updatedAt: new Date() })
-    .where(eq(usersTable.id, String(req.params.id)))
+    .where(eq(usersTable.id, existing.id))
     .returning(PUBLIC_FIELDS);
 
   res.json(user);
 });
 
 router.delete("/users/:id", async (req, res) => {
-  const [deleted] = await db
-    .delete(usersTable)
-    .where(eq(usersTable.id, req.params.id))
-    .returning({ id: usersTable.id });
+  const [existing] = await db
+    .select({ id: usersTable.id, tenantId: usersTable.tenantId })
+    .from(usersTable)
+    .where(eq(usersTable.id, req.params.id));
 
-  if (!deleted) {
+  if (!existing) {
     res.status(404).json({ error: "User not found" });
     return;
   }
+
+  if (req.user?.platformRole !== "super_admin" && existing.tenantId !== req.user?.tenantId) {
+    res.status(403).json({ error: "Access denied to this tenant" });
+    return;
+  }
+
+  await db.delete(usersTable).where(eq(usersTable.id, existing.id));
 
   res.status(204).send();
 });

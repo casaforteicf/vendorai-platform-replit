@@ -6,6 +6,7 @@ import {
   insertSubscriptionSchema,
   updateSubscriptionSchema,
 } from "@workspace/db";
+
 const router: IRouter = Router();
 
 function isPgCode(err: unknown, code: string): boolean {
@@ -19,6 +20,11 @@ router.post("/subscriptions", async (req, res) => {
   const parsed = insertSubscriptionSchema.safeParse(req.body);
   if (!parsed.success) {
     res.status(422).json({ error: parsed.error.message });
+    return;
+  }
+
+  if (req.user?.platformRole !== "super_admin" && req.user?.tenantId !== parsed.data.tenantId) {
+    res.status(403).json({ error: "Access denied to this tenant" });
     return;
   }
 
@@ -72,30 +78,47 @@ router.patch("/subscriptions/:id", async (req, res) => {
     return;
   }
 
-  const [subscription] = await db
-    .update(subscriptionsTable)
-    .set({ ...parsed.data, updatedAt: new Date() })
-    .where(eq(subscriptionsTable.id, String(req.params.id)))
-    .returning();
+  const [existing] = await db
+    .select({ id: subscriptionsTable.id, tenantId: subscriptionsTable.tenantId })
+    .from(subscriptionsTable)
+    .where(eq(subscriptionsTable.id, String(req.params.id)));
 
-  if (!subscription) {
+  if (!existing) {
     res.status(404).json({ error: "Subscription not found" });
     return;
   }
+
+  if (req.user?.platformRole !== "super_admin" && existing.tenantId !== req.user?.tenantId) {
+    res.status(403).json({ error: "Access denied to this tenant" });
+    return;
+  }
+
+  const [subscription] = await db
+    .update(subscriptionsTable)
+    .set({ ...parsed.data, updatedAt: new Date() })
+    .where(eq(subscriptionsTable.id, existing.id))
+    .returning();
 
   res.json(subscription);
 });
 
 router.delete("/subscriptions/:id", async (req, res) => {
-  const [deleted] = await db
-    .delete(subscriptionsTable)
-    .where(eq(subscriptionsTable.id, String(req.params.id)))
-    .returning({ id: subscriptionsTable.id });
+  const [existing] = await db
+    .select({ id: subscriptionsTable.id, tenantId: subscriptionsTable.tenantId })
+    .from(subscriptionsTable)
+    .where(eq(subscriptionsTable.id, String(req.params.id)));
 
-  if (!deleted) {
+  if (!existing) {
     res.status(404).json({ error: "Subscription not found" });
     return;
   }
+
+  if (req.user?.platformRole !== "super_admin" && existing.tenantId !== req.user?.tenantId) {
+    res.status(403).json({ error: "Access denied to this tenant" });
+    return;
+  }
+
+  await db.delete(subscriptionsTable).where(eq(subscriptionsTable.id, existing.id));
 
   res.status(204).send();
 });

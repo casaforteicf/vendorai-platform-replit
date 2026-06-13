@@ -19,6 +19,11 @@ router.post("/consents", async (req, res) => {
     return;
   }
 
+  if (req.user?.platformRole !== "super_admin" && req.user?.tenantId !== parsed.data.tenantId) {
+    res.status(403).json({ error: "Access denied to this tenant" });
+    return;
+  }
+
   const [consent] = await db
     .insert(consentsTable)
     .values(parsed.data)
@@ -59,15 +64,22 @@ router.get("/consents/:id", async (req, res) => {
 });
 
 router.delete("/consents/:id", async (req, res) => {
-  const [deleted] = await db
-    .delete(consentsTable)
-    .where(eq(consentsTable.id, req.params.id))
-    .returning({ id: consentsTable.id });
+  const [existing] = await db
+    .select({ id: consentsTable.id, tenantId: consentsTable.tenantId })
+    .from(consentsTable)
+    .where(eq(consentsTable.id, req.params.id));
 
-  if (!deleted) {
+  if (!existing) {
     res.status(404).json({ error: "Consent not found" });
     return;
   }
+
+  if (req.user?.platformRole !== "super_admin" && existing.tenantId !== req.user?.tenantId) {
+    res.status(403).json({ error: "Access denied to this tenant" });
+    return;
+  }
+
+  await db.delete(consentsTable).where(eq(consentsTable.id, existing.id));
 
   res.status(204).send();
 });

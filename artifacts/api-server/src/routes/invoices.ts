@@ -16,6 +16,11 @@ router.post("/invoices", async (req, res) => {
     return;
   }
 
+  if (req.user?.platformRole !== "super_admin" && req.user?.tenantId !== parsed.data.tenantId) {
+    res.status(403).json({ error: "Access denied to this tenant" });
+    return;
+  }
+
   const [invoice] = await db
     .insert(invoicesTable)
     .values(parsed.data)
@@ -66,30 +71,47 @@ router.patch("/invoices/:id", async (req, res) => {
     return;
   }
 
-  const [invoice] = await db
-    .update(invoicesTable)
-    .set({ ...parsed.data, updatedAt: new Date() })
-    .where(eq(invoicesTable.id, String(req.params.id)))
-    .returning();
+  const [existing] = await db
+    .select({ id: invoicesTable.id, tenantId: invoicesTable.tenantId })
+    .from(invoicesTable)
+    .where(eq(invoicesTable.id, String(req.params.id)));
 
-  if (!invoice) {
+  if (!existing) {
     res.status(404).json({ error: "Invoice not found" });
     return;
   }
+
+  if (req.user?.platformRole !== "super_admin" && existing.tenantId !== req.user?.tenantId) {
+    res.status(403).json({ error: "Access denied to this tenant" });
+    return;
+  }
+
+  const [invoice] = await db
+    .update(invoicesTable)
+    .set({ ...parsed.data, updatedAt: new Date() })
+    .where(eq(invoicesTable.id, existing.id))
+    .returning();
 
   res.json(invoice);
 });
 
 router.delete("/invoices/:id", async (req, res) => {
-  const [deleted] = await db
-    .delete(invoicesTable)
-    .where(eq(invoicesTable.id, String(req.params.id)))
-    .returning({ id: invoicesTable.id });
+  const [existing] = await db
+    .select({ id: invoicesTable.id, tenantId: invoicesTable.tenantId })
+    .from(invoicesTable)
+    .where(eq(invoicesTable.id, String(req.params.id)));
 
-  if (!deleted) {
+  if (!existing) {
     res.status(404).json({ error: "Invoice not found" });
     return;
   }
+
+  if (req.user?.platformRole !== "super_admin" && existing.tenantId !== req.user?.tenantId) {
+    res.status(403).json({ error: "Access denied to this tenant" });
+    return;
+  }
+
+  await db.delete(invoicesTable).where(eq(invoicesTable.id, existing.id));
 
   res.status(204).send();
 });

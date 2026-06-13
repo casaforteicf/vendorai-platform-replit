@@ -16,6 +16,11 @@ router.post("/produtos-catalogo", async (req, res) => {
     return;
   }
 
+  if (req.user?.platformRole !== "super_admin" && req.user?.tenantId !== parsed.data.tenantId) {
+    res.status(403).json({ error: "Access denied to this tenant" });
+    return;
+  }
+
   const [product] = await db
     .insert(produtosCatalogoTable)
     .values(parsed.data)
@@ -53,30 +58,47 @@ router.patch("/produtos-catalogo/:id", async (req, res) => {
     return;
   }
 
-  const [product] = await db
-    .update(produtosCatalogoTable)
-    .set({ ...parsed.data, updatedAt: new Date() })
-    .where(eq(produtosCatalogoTable.id, String(req.params.id)))
-    .returning();
+  const [existing] = await db
+    .select({ id: produtosCatalogoTable.id, tenantId: produtosCatalogoTable.tenantId })
+    .from(produtosCatalogoTable)
+    .where(eq(produtosCatalogoTable.id, String(req.params.id)));
 
-  if (!product) {
+  if (!existing) {
     res.status(404).json({ error: "Product not found" });
     return;
   }
+
+  if (req.user?.platformRole !== "super_admin" && existing.tenantId !== req.user?.tenantId) {
+    res.status(403).json({ error: "Access denied to this tenant" });
+    return;
+  }
+
+  const [product] = await db
+    .update(produtosCatalogoTable)
+    .set({ ...parsed.data, updatedAt: new Date() })
+    .where(eq(produtosCatalogoTable.id, existing.id))
+    .returning();
 
   res.json(product);
 });
 
 router.delete("/produtos-catalogo/:id", async (req, res) => {
-  const [deleted] = await db
-    .delete(produtosCatalogoTable)
-    .where(eq(produtosCatalogoTable.id, String(req.params.id)))
-    .returning({ id: produtosCatalogoTable.id });
+  const [existing] = await db
+    .select({ id: produtosCatalogoTable.id, tenantId: produtosCatalogoTable.tenantId })
+    .from(produtosCatalogoTable)
+    .where(eq(produtosCatalogoTable.id, String(req.params.id)));
 
-  if (!deleted) {
+  if (!existing) {
     res.status(404).json({ error: "Product not found" });
     return;
   }
+
+  if (req.user?.platformRole !== "super_admin" && existing.tenantId !== req.user?.tenantId) {
+    res.status(403).json({ error: "Access denied to this tenant" });
+    return;
+  }
+
+  await db.delete(produtosCatalogoTable).where(eq(produtosCatalogoTable.id, existing.id));
 
   res.status(204).send();
 });

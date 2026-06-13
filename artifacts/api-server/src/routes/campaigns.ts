@@ -70,6 +70,11 @@ router.post("/campaigns", async (req, res) => {
     return;
   }
 
+  if (req.user?.platformRole !== "super_admin" && req.user?.tenantId !== parsed.data.tenantId) {
+    res.status(403).json({ error: "Access denied to this tenant" });
+    return;
+  }
+
   const [campaign] = await db
     .insert(campaignsTable)
     .values(parsed.data)
@@ -153,30 +158,47 @@ router.patch("/campaigns/:id", async (req, res) => {
     return;
   }
 
-  const [campaign] = await db
-    .update(campaignsTable)
-    .set({ ...parsed.data, updatedAt: new Date() })
-    .where(eq(campaignsTable.id, String(req.params.id)))
-    .returning();
+  const [existing] = await db
+    .select({ id: campaignsTable.id, tenantId: campaignsTable.tenantId })
+    .from(campaignsTable)
+    .where(eq(campaignsTable.id, String(req.params.id)));
 
-  if (!campaign) {
+  if (!existing) {
     res.status(404).json({ error: "Campaign not found" });
     return;
   }
+
+  if (req.user?.platformRole !== "super_admin" && existing.tenantId !== req.user?.tenantId) {
+    res.status(403).json({ error: "Access denied to this tenant" });
+    return;
+  }
+
+  const [campaign] = await db
+    .update(campaignsTable)
+    .set({ ...parsed.data, updatedAt: new Date() })
+    .where(eq(campaignsTable.id, existing.id))
+    .returning();
 
   res.json(campaign);
 });
 
 router.delete("/campaigns/:id", async (req, res) => {
-  const [deleted] = await db
-    .delete(campaignsTable)
-    .where(eq(campaignsTable.id, String(req.params.id)))
-    .returning({ id: campaignsTable.id });
+  const [existing] = await db
+    .select({ id: campaignsTable.id, tenantId: campaignsTable.tenantId })
+    .from(campaignsTable)
+    .where(eq(campaignsTable.id, String(req.params.id)));
 
-  if (!deleted) {
+  if (!existing) {
     res.status(404).json({ error: "Campaign not found" });
     return;
   }
+
+  if (req.user?.platformRole !== "super_admin" && existing.tenantId !== req.user?.tenantId) {
+    res.status(403).json({ error: "Access denied to this tenant" });
+    return;
+  }
+
+  await db.delete(campaignsTable).where(eq(campaignsTable.id, existing.id));
 
   res.status(204).send();
 });

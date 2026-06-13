@@ -16,6 +16,11 @@ router.post("/activities", async (req, res) => {
     return;
   }
 
+  if (req.user?.platformRole !== "super_admin" && req.user?.tenantId !== parsed.data.tenantId) {
+    res.status(403).json({ error: "Access denied to this tenant" });
+    return;
+  }
+
   const [activity] = await db
     .insert(activitiesTable)
     .values(parsed.data)
@@ -81,6 +86,21 @@ router.patch("/activities/:id", async (req, res) => {
     return;
   }
 
+  const [existing] = await db
+    .select({ id: activitiesTable.id, tenantId: activitiesTable.tenantId })
+    .from(activitiesTable)
+    .where(eq(activitiesTable.id, String(req.params.id)));
+
+  if (!existing) {
+    res.status(404).json({ error: "Activity not found" });
+    return;
+  }
+
+  if (req.user?.platformRole !== "super_admin" && existing.tenantId !== req.user?.tenantId) {
+    res.status(403).json({ error: "Access denied to this tenant" });
+    return;
+  }
+
   const data = { ...parsed.data, updatedAt: new Date() };
 
   // Auto-set concluidaEm when status transitions to "concluida"
@@ -91,27 +111,29 @@ router.patch("/activities/:id", async (req, res) => {
   const [activity] = await db
     .update(activitiesTable)
     .set(data)
-    .where(eq(activitiesTable.id, String(req.params.id)))
+    .where(eq(activitiesTable.id, existing.id))
     .returning();
-
-  if (!activity) {
-    res.status(404).json({ error: "Activity not found" });
-    return;
-  }
 
   res.json(activity);
 });
 
 router.delete("/activities/:id", async (req, res) => {
-  const [deleted] = await db
-    .delete(activitiesTable)
-    .where(eq(activitiesTable.id, String(req.params.id)))
-    .returning({ id: activitiesTable.id });
+  const [existing] = await db
+    .select({ id: activitiesTable.id, tenantId: activitiesTable.tenantId })
+    .from(activitiesTable)
+    .where(eq(activitiesTable.id, String(req.params.id)));
 
-  if (!deleted) {
+  if (!existing) {
     res.status(404).json({ error: "Activity not found" });
     return;
   }
+
+  if (req.user?.platformRole !== "super_admin" && existing.tenantId !== req.user?.tenantId) {
+    res.status(403).json({ error: "Access denied to this tenant" });
+    return;
+  }
+
+  await db.delete(activitiesTable).where(eq(activitiesTable.id, existing.id));
 
   res.status(204).send();
 });

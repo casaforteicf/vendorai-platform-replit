@@ -117,6 +117,11 @@ router.post("/agent-tasks", async (req, res) => {
     return;
   }
 
+  if (req.user?.platformRole !== "super_admin" && req.user?.tenantId !== parsed.data.tenantId) {
+    res.status(403).json({ error: "Access denied to this tenant" });
+    return;
+  }
+
   const { tenantId, agentName } = parsed.data;
 
   const [config] = await db
@@ -177,6 +182,11 @@ router.post(
   "/tenants/:tenantId/agent-tasks/:id/approve",
   async (req, res) => {
     const { tenantId, id } = req.params;
+
+    if (req.user?.platformRole !== "super_admin" && req.user?.tenantId !== tenantId) {
+      res.status(403).json({ error: "Access denied to this tenant" });
+      return;
+    }
 
     const [task] = await db
       .select()
@@ -244,6 +254,11 @@ router.post(
   async (req, res) => {
     const { tenantId, id } = req.params;
 
+    if (req.user?.platformRole !== "super_admin" && req.user?.tenantId !== tenantId) {
+      res.status(403).json({ error: "Access denied to this tenant" });
+      return;
+    }
+
     const [task] = await db
       .select()
       .from(agentTasksTable)
@@ -283,6 +298,11 @@ router.post(
   "/tenants/:tenantId/agent-tasks/:id/reject",
   async (req, res) => {
     const { tenantId, id } = req.params;
+
+    if (req.user?.platformRole !== "super_admin" && req.user?.tenantId !== tenantId) {
+      res.status(403).json({ error: "Access denied to this tenant" });
+      return;
+    }
 
     const [task] = await db
       .select()
@@ -339,31 +359,48 @@ router.patch("/agent-tasks/:id", async (req, res) => {
     return;
   }
 
-  const [task] = await db
-    .update(agentTasksTable)
-    .set({ ...parsed.data, updatedAt: new Date() })
-    .where(eq(agentTasksTable.id, String(req.params.id)))
-    .returning();
+  const [existing] = await db
+    .select({ id: agentTasksTable.id, tenantId: agentTasksTable.tenantId })
+    .from(agentTasksTable)
+    .where(eq(agentTasksTable.id, String(req.params.id)));
 
-  if (!task) {
+  if (!existing) {
     res.status(404).json({ error: "Agent task not found" });
     return;
   }
+
+  if (req.user?.platformRole !== "super_admin" && existing.tenantId !== req.user?.tenantId) {
+    res.status(403).json({ error: "Access denied to this tenant" });
+    return;
+  }
+
+  const [task] = await db
+    .update(agentTasksTable)
+    .set({ ...parsed.data, updatedAt: new Date() })
+    .where(eq(agentTasksTable.id, existing.id))
+    .returning();
 
   res.json(task);
 });
 
 // ── DELETE /agent-tasks/:id ───────────────────────────────────────────────────
 router.delete("/agent-tasks/:id", async (req, res) => {
-  const [deleted] = await db
-    .delete(agentTasksTable)
-    .where(eq(agentTasksTable.id, String(req.params.id)))
-    .returning({ id: agentTasksTable.id });
+  const [existing] = await db
+    .select({ id: agentTasksTable.id, tenantId: agentTasksTable.tenantId })
+    .from(agentTasksTable)
+    .where(eq(agentTasksTable.id, String(req.params.id)));
 
-  if (!deleted) {
+  if (!existing) {
     res.status(404).json({ error: "Agent task not found" });
     return;
   }
+
+  if (req.user?.platformRole !== "super_admin" && existing.tenantId !== req.user?.tenantId) {
+    res.status(403).json({ error: "Access denied to this tenant" });
+    return;
+  }
+
+  await db.delete(agentTasksTable).where(eq(agentTasksTable.id, existing.id));
 
   res.status(204).send();
 });

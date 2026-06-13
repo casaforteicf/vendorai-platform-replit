@@ -16,6 +16,12 @@ router.post("/knowledge-base", async (req, res) => {
     res.status(422).json({ error: "Validation error", details: parsed.error.issues });
     return;
   }
+
+  if (req.user?.platformRole !== "super_admin" && req.user?.tenantId !== parsed.data.tenantId) {
+    res.status(403).json({ error: "Access denied to this tenant" });
+    return;
+  }
+
   const [row] = await db.insert(knowledgeBaseTable).values(parsed.data).returning();
   res.status(201).json(row);
 });
@@ -74,23 +80,44 @@ router.patch("/knowledge-base/:id", async (req, res) => {
     res.status(422).json({ error: "Validation error", details: parsed.error.issues });
     return;
   }
+
+  const [existing] = await db
+    .select({ id: knowledgeBaseTable.id, tenantId: knowledgeBaseTable.tenantId })
+    .from(knowledgeBaseTable)
+    .where(eq(knowledgeBaseTable.id, id));
+
+  if (!existing) { res.status(404).json({ error: "Not found" }); return; }
+
+  if (req.user?.platformRole !== "super_admin" && existing.tenantId !== req.user?.tenantId) {
+    res.status(403).json({ error: "Access denied to this tenant" });
+    return;
+  }
+
   const [row] = await db
     .update(knowledgeBaseTable)
     .set({ ...parsed.data, updatedAt: new Date() })
-    .where(eq(knowledgeBaseTable.id, id))
+    .where(eq(knowledgeBaseTable.id, existing.id))
     .returning();
-  if (!row) { res.status(404).json({ error: "Not found" }); return; }
   res.json(row);
 });
 
 // DELETE /knowledge-base/:id
 router.delete("/knowledge-base/:id", async (req, res) => {
   const id = String(req.params.id);
-  const [row] = await db
-    .delete(knowledgeBaseTable)
-    .where(eq(knowledgeBaseTable.id, id))
-    .returning();
-  if (!row) { res.status(404).json({ error: "Not found" }); return; }
+
+  const [existing] = await db
+    .select({ id: knowledgeBaseTable.id, tenantId: knowledgeBaseTable.tenantId })
+    .from(knowledgeBaseTable)
+    .where(eq(knowledgeBaseTable.id, id));
+
+  if (!existing) { res.status(404).json({ error: "Not found" }); return; }
+
+  if (req.user?.platformRole !== "super_admin" && existing.tenantId !== req.user?.tenantId) {
+    res.status(403).json({ error: "Access denied to this tenant" });
+    return;
+  }
+
+  await db.delete(knowledgeBaseTable).where(eq(knowledgeBaseTable.id, existing.id));
   res.status(204).send();
 });
 

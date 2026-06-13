@@ -17,6 +17,11 @@ router.post("/agendamentos", async (req, res) => {
     return;
   }
 
+  if (req.user?.platformRole !== "super_admin" && req.user?.tenantId !== parsed.data.tenantId) {
+    res.status(403).json({ error: "Access denied to this tenant" });
+    return;
+  }
+
   const { dataHoraInicio, dataHoraFim } = parsed.data;
   if (dataHoraFim <= dataHoraInicio) {
     res
@@ -132,6 +137,21 @@ router.patch("/agendamentos/:id", async (req, res) => {
     return;
   }
 
+  const [existing] = await db
+    .select({ id: agendamentosTable.id, tenantId: agendamentosTable.tenantId })
+    .from(agendamentosTable)
+    .where(eq(agendamentosTable.id, String(req.params.id)));
+
+  if (!existing) {
+    res.status(404).json({ error: "Agendamento not found" });
+    return;
+  }
+
+  if (req.user?.platformRole !== "super_admin" && existing.tenantId !== req.user?.tenantId) {
+    res.status(403).json({ error: "Access denied to this tenant" });
+    return;
+  }
+
   const data = parsed.data;
   if (
     data.dataHoraInicio &&
@@ -147,27 +167,29 @@ router.patch("/agendamentos/:id", async (req, res) => {
   const [agendamento] = await db
     .update(agendamentosTable)
     .set({ ...data, updatedAt: new Date() })
-    .where(eq(agendamentosTable.id, String(req.params.id)))
+    .where(eq(agendamentosTable.id, existing.id))
     .returning();
-
-  if (!agendamento) {
-    res.status(404).json({ error: "Agendamento not found" });
-    return;
-  }
 
   res.json(agendamento);
 });
 
 router.delete("/agendamentos/:id", async (req, res) => {
-  const [deleted] = await db
-    .delete(agendamentosTable)
-    .where(eq(agendamentosTable.id, String(req.params.id)))
-    .returning({ id: agendamentosTable.id });
+  const [existing] = await db
+    .select({ id: agendamentosTable.id, tenantId: agendamentosTable.tenantId })
+    .from(agendamentosTable)
+    .where(eq(agendamentosTable.id, String(req.params.id)));
 
-  if (!deleted) {
+  if (!existing) {
     res.status(404).json({ error: "Agendamento not found" });
     return;
   }
+
+  if (req.user?.platformRole !== "super_admin" && existing.tenantId !== req.user?.tenantId) {
+    res.status(403).json({ error: "Access denied to this tenant" });
+    return;
+  }
+
+  await db.delete(agendamentosTable).where(eq(agendamentosTable.id, existing.id));
 
   res.status(204).send();
 });

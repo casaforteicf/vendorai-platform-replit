@@ -463,6 +463,11 @@ async function handleAgentProcess(
 ): Promise<void> {
   const { tenantId } = req.params as { tenantId: string };
 
+  if (req.user?.platformRole !== "super_admin" && req.user?.tenantId !== tenantId) {
+    res.status(403).json({ error: "Access denied to this tenant" });
+    return;
+  }
+
   const parsed = processBodySchema.safeParse(req.body);
   if (!parsed.success) {
     res.status(422).json({ error: parsed.error.message });
@@ -515,6 +520,11 @@ async function handleAgentProcess(
 
 async function handleSchedulerProcess(req: Request, res: Response): Promise<void> {
   const { tenantId } = req.params as { tenantId: string };
+
+  if (req.user?.platformRole !== "super_admin" && req.user?.tenantId !== tenantId) {
+    res.status(403).json({ error: "Access denied to this tenant" });
+    return;
+  }
 
   const parsed = schedulerBodySchema.safeParse(req.body);
   if (!parsed.success) {

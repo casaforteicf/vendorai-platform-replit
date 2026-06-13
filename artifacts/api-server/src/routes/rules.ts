@@ -333,6 +333,12 @@ router.post("/rules", async (req, res) => {
     res.status(422).json({ error: "Validation error", details: parsed.error.issues });
     return;
   }
+
+  if (req.user?.platformRole !== "super_admin" && req.user?.tenantId !== parsed.data.tenantId) {
+    res.status(403).json({ error: "Access denied to this tenant" });
+    return;
+  }
+
   const [row] = await db.insert(rulesTable).values(parsed.data).returning();
   res.status(201).json(row);
 });
@@ -381,20 +387,44 @@ router.patch("/rules/:id", async (req, res) => {
     res.status(422).json({ error: "Validation error", details: parsed.error.issues });
     return;
   }
+
+  const [existing] = await db
+    .select({ id: rulesTable.id, tenantId: rulesTable.tenantId })
+    .from(rulesTable)
+    .where(eq(rulesTable.id, id));
+
+  if (!existing) { res.status(404).json({ error: "Not found" }); return; }
+
+  if (req.user?.platformRole !== "super_admin" && existing.tenantId !== req.user?.tenantId) {
+    res.status(403).json({ error: "Access denied to this tenant" });
+    return;
+  }
+
   const [row] = await db
     .update(rulesTable)
     .set({ ...parsed.data, updatedAt: new Date() })
-    .where(eq(rulesTable.id, id))
+    .where(eq(rulesTable.id, existing.id))
     .returning();
-  if (!row) { res.status(404).json({ error: "Not found" }); return; }
   res.json(row);
 });
 
 // DELETE /rules/:id
 router.delete("/rules/:id", async (req, res) => {
   const id = String(req.params.id);
-  const [row] = await db.delete(rulesTable).where(eq(rulesTable.id, id)).returning();
-  if (!row) { res.status(404).json({ error: "Not found" }); return; }
+
+  const [existing] = await db
+    .select({ id: rulesTable.id, tenantId: rulesTable.tenantId })
+    .from(rulesTable)
+    .where(eq(rulesTable.id, id));
+
+  if (!existing) { res.status(404).json({ error: "Not found" }); return; }
+
+  if (req.user?.platformRole !== "super_admin" && existing.tenantId !== req.user?.tenantId) {
+    res.status(403).json({ error: "Access denied to this tenant" });
+    return;
+  }
+
+  await db.delete(rulesTable).where(eq(rulesTable.id, existing.id));
   res.status(204).send();
 });
 
@@ -414,6 +444,12 @@ router.delete("/rules/:id", async (req, res) => {
  */
 router.post("/tenants/:tenantId/rules/evaluate", async (req, res) => {
   const tenantId = String(req.params.tenantId);
+
+  if (req.user?.platformRole !== "super_admin" && req.user?.tenantId !== tenantId) {
+    res.status(403).json({ error: "Access denied to this tenant" });
+    return;
+  }
+
   const { trigger, leadId } = req.body as { trigger?: string; leadId?: string };
 
   if (!trigger || !VALID_TRIGGERS.includes(trigger as RuleTrigger)) {
@@ -443,6 +479,12 @@ router.post("/tenants/:tenantId/rules/evaluate", async (req, res) => {
  */
 router.post("/tenants/:tenantId/rules/run-churn-check", async (req, res) => {
   const tenantId  = String(req.params.tenantId);
+
+  if (req.user?.platformRole !== "super_admin" && req.user?.tenantId !== tenantId) {
+    res.status(403).json({ error: "Access denied to this tenant" });
+    return;
+  }
+
   const threshold = Number(req.query.threshold ?? 70);
 
   if (isNaN(threshold) || threshold < 0 || threshold > 100) {

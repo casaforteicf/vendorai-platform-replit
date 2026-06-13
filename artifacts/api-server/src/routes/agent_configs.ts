@@ -26,6 +26,11 @@ router.post("/agent-configs", async (req, res) => {
     return;
   }
 
+  if (req.user?.platformRole !== "super_admin" && req.user?.tenantId !== parsed.data.tenantId) {
+    res.status(403).json({ error: "Access denied to this tenant" });
+    return;
+  }
+
   try {
     const [config] = await db
       .insert(agentConfigsTable)
@@ -76,16 +81,26 @@ router.patch("/agent-configs/:id", async (req, res) => {
     return;
   }
 
-  const [config] = await db
-    .update(agentConfigsTable)
-    .set({ ...parsed.data, updatedAt: new Date() })
-    .where(eq(agentConfigsTable.id, String(req.params.id)))
-    .returning();
+  const [existing] = await db
+    .select({ id: agentConfigsTable.id, tenantId: agentConfigsTable.tenantId })
+    .from(agentConfigsTable)
+    .where(eq(agentConfigsTable.id, String(req.params.id)));
 
-  if (!config) {
+  if (!existing) {
     res.status(404).json({ error: "Agent config not found" });
     return;
   }
+
+  if (req.user?.platformRole !== "super_admin" && existing.tenantId !== req.user?.tenantId) {
+    res.status(403).json({ error: "Access denied to this tenant" });
+    return;
+  }
+
+  const [config] = await db
+    .update(agentConfigsTable)
+    .set({ ...parsed.data, updatedAt: new Date() })
+    .where(eq(agentConfigsTable.id, existing.id))
+    .returning();
 
   res.json(config);
 });
@@ -130,12 +145,17 @@ router.get("/agent-configs/:id/usage", async (req, res) => {
 
 router.post("/agent-configs/:id/complete-setup", async (req, res) => {
   const [existing] = await db
-    .select()
+    .select({ id: agentConfigsTable.id, tenantId: agentConfigsTable.tenantId })
     .from(agentConfigsTable)
     .where(eq(agentConfigsTable.id, String(req.params.id)));
 
   if (!existing) {
     res.status(404).json({ error: "Agent config not found" });
+    return;
+  }
+
+  if (req.user?.platformRole !== "super_admin" && existing.tenantId !== req.user?.tenantId) {
+    res.status(403).json({ error: "Access denied to this tenant" });
     return;
   }
 
@@ -146,7 +166,7 @@ router.post("/agent-configs/:id/complete-setup", async (req, res) => {
   const [config] = await db
     .update(agentConfigsTable)
     .set({ setupCompletedAt, autonomyEnabledAt, updatedAt: new Date() })
-    .where(eq(agentConfigsTable.id, String(req.params.id)))
+    .where(eq(agentConfigsTable.id, existing.id))
     .returning();
 
   res.json(config);
@@ -158,6 +178,21 @@ router.post("/agent-configs/:id/increment-messages", async (req, res) => {
     count = incrementCountSchema.parse(req.body);
   } catch (err) {
     res.status(422).json({ error: (err as Error).message });
+    return;
+  }
+
+  const [existing] = await db
+    .select({ id: agentConfigsTable.id, tenantId: agentConfigsTable.tenantId })
+    .from(agentConfigsTable)
+    .where(eq(agentConfigsTable.id, String(req.params.id)));
+
+  if (!existing) {
+    res.status(404).json({ error: "Agent config not found" });
+    return;
+  }
+
+  if (req.user?.platformRole !== "super_admin" && existing.tenantId !== req.user?.tenantId) {
+    res.status(403).json({ error: "Access denied to this tenant" });
     return;
   }
 
@@ -178,13 +213,8 @@ router.post("/agent-configs/:id/increment-messages", async (req, res) => {
       END`,
       updatedAt: new Date(),
     })
-    .where(eq(agentConfigsTable.id, String(req.params.id)))
+    .where(eq(agentConfigsTable.id, existing.id))
     .returning();
-
-  if (!config) {
-    res.status(404).json({ error: "Agent config not found" });
-    return;
-  }
 
   res.json(config);
 });
@@ -195,6 +225,21 @@ router.post("/agent-configs/:id/increment-tokens", async (req, res) => {
     count = incrementCountSchema.parse(req.body);
   } catch (err) {
     res.status(422).json({ error: (err as Error).message });
+    return;
+  }
+
+  const [existing] = await db
+    .select({ id: agentConfigsTable.id, tenantId: agentConfigsTable.tenantId })
+    .from(agentConfigsTable)
+    .where(eq(agentConfigsTable.id, String(req.params.id)));
+
+  if (!existing) {
+    res.status(404).json({ error: "Agent config not found" });
+    return;
+  }
+
+  if (req.user?.platformRole !== "super_admin" && existing.tenantId !== req.user?.tenantId) {
+    res.status(403).json({ error: "Access denied to this tenant" });
     return;
   }
 
@@ -215,27 +260,29 @@ router.post("/agent-configs/:id/increment-tokens", async (req, res) => {
       END`,
       updatedAt: new Date(),
     })
-    .where(eq(agentConfigsTable.id, String(req.params.id)))
+    .where(eq(agentConfigsTable.id, existing.id))
     .returning();
-
-  if (!config) {
-    res.status(404).json({ error: "Agent config not found" });
-    return;
-  }
 
   res.json(config);
 });
 
 router.delete("/agent-configs/:id", async (req, res) => {
-  const [deleted] = await db
-    .delete(agentConfigsTable)
-    .where(eq(agentConfigsTable.id, String(req.params.id)))
-    .returning({ id: agentConfigsTable.id });
+  const [existing] = await db
+    .select({ id: agentConfigsTable.id, tenantId: agentConfigsTable.tenantId })
+    .from(agentConfigsTable)
+    .where(eq(agentConfigsTable.id, String(req.params.id)));
 
-  if (!deleted) {
+  if (!existing) {
     res.status(404).json({ error: "Agent config not found" });
     return;
   }
+
+  if (req.user?.platformRole !== "super_admin" && existing.tenantId !== req.user?.tenantId) {
+    res.status(403).json({ error: "Access denied to this tenant" });
+    return;
+  }
+
+  await db.delete(agentConfigsTable).where(eq(agentConfigsTable.id, existing.id));
 
   res.status(204).send();
 });

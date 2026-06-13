@@ -18,6 +18,11 @@ router.post("/propostas", async (req, res) => {
     return;
   }
 
+  if (req.user?.platformRole !== "super_admin" && req.user?.tenantId !== parsed.data.tenantId) {
+    res.status(403).json({ error: "Access denied to this tenant" });
+    return;
+  }
+
   const [proposta] = await db
     .insert(propostasTable)
     .values(parsed.data)
@@ -62,16 +67,26 @@ router.patch("/propostas/:id", async (req, res) => {
     return;
   }
 
-  const [proposta] = await db
-    .update(propostasTable)
-    .set({ ...parsed.data, updatedAt: new Date() })
-    .where(eq(propostasTable.id, String(req.params.id)))
-    .returning();
+  const [existing] = await db
+    .select({ id: propostasTable.id, tenantId: propostasTable.tenantId })
+    .from(propostasTable)
+    .where(eq(propostasTable.id, String(req.params.id)));
 
-  if (!proposta) {
+  if (!existing) {
     res.status(404).json({ error: "Proposta not found" });
     return;
   }
+
+  if (req.user?.platformRole !== "super_admin" && existing.tenantId !== req.user?.tenantId) {
+    res.status(403).json({ error: "Access denied to this tenant" });
+    return;
+  }
+
+  const [proposta] = await db
+    .update(propostasTable)
+    .set({ ...parsed.data, updatedAt: new Date() })
+    .where(eq(propostasTable.id, existing.id))
+    .returning();
 
   res.json(proposta);
 });
@@ -98,6 +113,11 @@ router.patch("/propostas/:id/status", async (req, res) => {
 
   if (!proposta) {
     res.status(404).json({ error: "Proposta not found" });
+    return;
+  }
+
+  if (req.user?.platformRole !== "super_admin" && proposta.tenantId !== req.user?.tenantId) {
+    res.status(403).json({ error: "Access denied to this tenant" });
     return;
   }
 
@@ -138,6 +158,11 @@ router.post(
   "/tenants/:tenantId/propostas/from-catalogo",
   async (req, res) => {
     const tenantId = String(req.params.tenantId);
+
+    if (req.user?.platformRole !== "super_admin" && req.user?.tenantId !== tenantId) {
+      res.status(403).json({ error: "Access denied to this tenant" });
+      return;
+    }
 
     const parsed = fromCatalogoBodySchema.safeParse(req.body);
     if (!parsed.success) {
@@ -211,15 +236,22 @@ router.post(
 );
 
 router.delete("/propostas/:id", async (req, res) => {
-  const [deleted] = await db
-    .delete(propostasTable)
-    .where(eq(propostasTable.id, String(req.params.id)))
-    .returning({ id: propostasTable.id });
+  const [existing] = await db
+    .select({ id: propostasTable.id, tenantId: propostasTable.tenantId })
+    .from(propostasTable)
+    .where(eq(propostasTable.id, String(req.params.id)));
 
-  if (!deleted) {
+  if (!existing) {
     res.status(404).json({ error: "Proposta not found" });
     return;
   }
+
+  if (req.user?.platformRole !== "super_admin" && existing.tenantId !== req.user?.tenantId) {
+    res.status(403).json({ error: "Access denied to this tenant" });
+    return;
+  }
+
+  await db.delete(propostasTable).where(eq(propostasTable.id, existing.id));
 
   res.status(204).send();
 });

@@ -11,6 +11,11 @@ router.post("/deals", async (req, res) => {
     return;
   }
 
+  if (req.user?.platformRole !== "super_admin" && req.user?.tenantId !== parsed.data.tenantId) {
+    res.status(403).json({ error: "Access denied to this tenant" });
+    return;
+  }
+
   const [deal] = await db.insert(dealsTable).values(parsed.data).returning();
   res.status(201).json(deal);
 });
@@ -53,30 +58,47 @@ router.patch("/deals/:id", async (req, res) => {
     return;
   }
 
-  const [deal] = await db
-    .update(dealsTable)
-    .set({ ...parsed.data, updatedAt: new Date() })
-    .where(eq(dealsTable.id, String(req.params.id)))
-    .returning();
+  const [existing] = await db
+    .select({ id: dealsTable.id, tenantId: dealsTable.tenantId })
+    .from(dealsTable)
+    .where(eq(dealsTable.id, String(req.params.id)));
 
-  if (!deal) {
+  if (!existing) {
     res.status(404).json({ error: "Deal not found" });
     return;
   }
+
+  if (req.user?.platformRole !== "super_admin" && existing.tenantId !== req.user?.tenantId) {
+    res.status(403).json({ error: "Access denied to this tenant" });
+    return;
+  }
+
+  const [deal] = await db
+    .update(dealsTable)
+    .set({ ...parsed.data, updatedAt: new Date() })
+    .where(eq(dealsTable.id, existing.id))
+    .returning();
 
   res.json(deal);
 });
 
 router.delete("/deals/:id", async (req, res) => {
-  const [deleted] = await db
-    .delete(dealsTable)
-    .where(eq(dealsTable.id, String(req.params.id)))
-    .returning({ id: dealsTable.id });
+  const [existing] = await db
+    .select({ id: dealsTable.id, tenantId: dealsTable.tenantId })
+    .from(dealsTable)
+    .where(eq(dealsTable.id, String(req.params.id)));
 
-  if (!deleted) {
+  if (!existing) {
     res.status(404).json({ error: "Deal not found" });
     return;
   }
+
+  if (req.user?.platformRole !== "super_admin" && existing.tenantId !== req.user?.tenantId) {
+    res.status(403).json({ error: "Access denied to this tenant" });
+    return;
+  }
+
+  await db.delete(dealsTable).where(eq(dealsTable.id, existing.id));
 
   res.status(204).send();
 });

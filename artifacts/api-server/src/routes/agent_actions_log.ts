@@ -24,6 +24,11 @@ router.post("/agent-action-logs", async (req, res) => {
     return;
   }
 
+  if (req.user?.platformRole !== "super_admin" && req.user?.tenantId !== parsed.data.tenantId) {
+    res.status(403).json({ error: "Access denied to this tenant" });
+    return;
+  }
+
   const [log] = await db
     .insert(agentActionsLogTable)
     .values(parsed.data)
@@ -61,30 +66,47 @@ router.patch("/agent-action-logs/:id", async (req, res) => {
     return;
   }
 
-  const [log] = await db
-    .update(agentActionsLogTable)
-    .set(parsed.data)
-    .where(eq(agentActionsLogTable.id, req.params.id))
-    .returning();
+  const [existing] = await db
+    .select({ id: agentActionsLogTable.id, tenantId: agentActionsLogTable.tenantId })
+    .from(agentActionsLogTable)
+    .where(eq(agentActionsLogTable.id, req.params.id));
 
-  if (!log) {
+  if (!existing) {
     res.status(404).json({ error: "Agent action log not found" });
     return;
   }
+
+  if (req.user?.platformRole !== "super_admin" && existing.tenantId !== req.user?.tenantId) {
+    res.status(403).json({ error: "Access denied to this tenant" });
+    return;
+  }
+
+  const [log] = await db
+    .update(agentActionsLogTable)
+    .set(parsed.data)
+    .where(eq(agentActionsLogTable.id, existing.id))
+    .returning();
 
   res.json(log);
 });
 
 router.delete("/agent-action-logs/:id", async (req, res) => {
-  const [deleted] = await db
-    .delete(agentActionsLogTable)
-    .where(eq(agentActionsLogTable.id, req.params.id))
-    .returning({ id: agentActionsLogTable.id });
+  const [existing] = await db
+    .select({ id: agentActionsLogTable.id, tenantId: agentActionsLogTable.tenantId })
+    .from(agentActionsLogTable)
+    .where(eq(agentActionsLogTable.id, req.params.id));
 
-  if (!deleted) {
+  if (!existing) {
     res.status(404).json({ error: "Agent action log not found" });
     return;
   }
+
+  if (req.user?.platformRole !== "super_admin" && existing.tenantId !== req.user?.tenantId) {
+    res.status(403).json({ error: "Access denied to this tenant" });
+    return;
+  }
+
+  await db.delete(agentActionsLogTable).where(eq(agentActionsLogTable.id, existing.id));
 
   res.status(204).send();
 });

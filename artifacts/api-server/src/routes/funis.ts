@@ -11,6 +11,11 @@ router.post("/funis", async (req, res) => {
     return;
   }
 
+  if (req.user?.platformRole !== "super_admin" && req.user?.tenantId !== parsed.data.tenantId) {
+    res.status(403).json({ error: "Access denied to this tenant" });
+    return;
+  }
+
   const [funil] = await db.insert(funisTable).values(parsed.data).returning();
   res.status(201).json(funil);
 });
@@ -45,30 +50,47 @@ router.patch("/funis/:id", async (req, res) => {
     return;
   }
 
-  const [funil] = await db
-    .update(funisTable)
-    .set({ ...parsed.data, updatedAt: new Date() })
-    .where(eq(funisTable.id, String(req.params.id)))
-    .returning();
+  const [existing] = await db
+    .select({ id: funisTable.id, tenantId: funisTable.tenantId })
+    .from(funisTable)
+    .where(eq(funisTable.id, String(req.params.id)));
 
-  if (!funil) {
+  if (!existing) {
     res.status(404).json({ error: "Funil not found" });
     return;
   }
+
+  if (req.user?.platformRole !== "super_admin" && existing.tenantId !== req.user?.tenantId) {
+    res.status(403).json({ error: "Access denied to this tenant" });
+    return;
+  }
+
+  const [funil] = await db
+    .update(funisTable)
+    .set({ ...parsed.data, updatedAt: new Date() })
+    .where(eq(funisTable.id, existing.id))
+    .returning();
 
   res.json(funil);
 });
 
 router.delete("/funis/:id", async (req, res) => {
-  const [deleted] = await db
-    .delete(funisTable)
-    .where(eq(funisTable.id, String(req.params.id)))
-    .returning({ id: funisTable.id });
+  const [existing] = await db
+    .select({ id: funisTable.id, tenantId: funisTable.tenantId })
+    .from(funisTable)
+    .where(eq(funisTable.id, String(req.params.id)));
 
-  if (!deleted) {
+  if (!existing) {
     res.status(404).json({ error: "Funil not found" });
     return;
   }
+
+  if (req.user?.platformRole !== "super_admin" && existing.tenantId !== req.user?.tenantId) {
+    res.status(403).json({ error: "Access denied to this tenant" });
+    return;
+  }
+
+  await db.delete(funisTable).where(eq(funisTable.id, existing.id));
 
   res.status(204).send();
 });
