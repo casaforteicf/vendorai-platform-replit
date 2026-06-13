@@ -21,12 +21,14 @@ import type {
 
 import type {
   AgentActionLog,
+  AgentConfig,
   AuthResponse,
   BusinessProfile,
   ChangePasswordBody,
   Consent,
   Conversation,
   CreateAgentActionLogBody,
+  CreateAgentConfigBody,
   CreateBusinessProfileBody,
   CreateConsentBody,
   CreateConversationBody,
@@ -40,6 +42,7 @@ import type {
   RegisterBody,
   Tenant,
   UpdateAgentActionLogBody,
+  UpdateAgentConfigBody,
   UpdateBusinessProfileBody,
   UpdateConversationBody,
   UpdateLeadBody,
@@ -869,6 +872,445 @@ export const useDeleteUser = <TError = ErrorType<ErrorResponse>,
         TContext
       > => {
       return useMutation(getDeleteUserMutationOptions(options));
+    }
+
+export const getCreateAgentConfigUrl = () => {
+
+
+
+
+  return `/api/agent-configs`
+}
+
+/**
+ * Creates the agent config for a tenant. Each tenant may have only one config.
+ * @summary Create agent config
+ */
+export const createAgentConfig = async (createAgentConfigBody: CreateAgentConfigBody, options?: RequestInit): Promise<AgentConfig> => {
+
+  return customFetch<AgentConfig>(getCreateAgentConfigUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(
+      createAgentConfigBody,)
+  }
+);}
+
+
+
+
+export const getCreateAgentConfigMutationOptions = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createAgentConfig>>, TError,{data: BodyType<CreateAgentConfigBody>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof createAgentConfig>>, TError,{data: BodyType<CreateAgentConfigBody>}, TContext> => {
+
+const mutationKey = ['createAgentConfig'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof createAgentConfig>>, {data: BodyType<CreateAgentConfigBody>}> = (props) => {
+          const {data} = props ?? {};
+
+          return  createAgentConfig(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type CreateAgentConfigMutationResult = NonNullable<Awaited<ReturnType<typeof createAgentConfig>>>
+    export type CreateAgentConfigMutationBody = BodyType<CreateAgentConfigBody>
+    export type CreateAgentConfigMutationError = ErrorType<ErrorResponse>
+
+    /**
+ * @summary Create agent config
+ */
+export const useCreateAgentConfig = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createAgentConfig>>, TError,{data: BodyType<CreateAgentConfigBody>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof createAgentConfig>>,
+        TError,
+        {data: BodyType<CreateAgentConfigBody>},
+        TContext
+      > => {
+      return useMutation(getCreateAgentConfigMutationOptions(options));
+    }
+
+export const getGetAgentConfigByTenantUrl = (tenantId: string,) => {
+
+
+
+
+  return `/api/tenants/${tenantId}/agent-config`
+}
+
+/**
+ * @summary Get agent config by tenant
+ */
+export const getAgentConfigByTenant = async (tenantId: string, options?: RequestInit): Promise<AgentConfig> => {
+
+  return customFetch<AgentConfig>(getGetAgentConfigByTenantUrl(tenantId),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetAgentConfigByTenantQueryKey = (tenantId: string,) => {
+    return [
+    `/api/tenants/${tenantId}/agent-config`
+    ] as const;
+    }
+
+
+export const getGetAgentConfigByTenantQueryOptions = <TData = Awaited<ReturnType<typeof getAgentConfigByTenant>>, TError = ErrorType<ErrorResponse>>(tenantId: string, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getAgentConfigByTenant>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetAgentConfigByTenantQueryKey(tenantId);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getAgentConfigByTenant>>> = ({ signal }) => getAgentConfigByTenant(tenantId, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, enabled: !!(tenantId), ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getAgentConfigByTenant>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetAgentConfigByTenantQueryResult = NonNullable<Awaited<ReturnType<typeof getAgentConfigByTenant>>>
+export type GetAgentConfigByTenantQueryError = ErrorType<ErrorResponse>
+
+
+/**
+ * @summary Get agent config by tenant
+ */
+
+export function useGetAgentConfigByTenant<TData = Awaited<ReturnType<typeof getAgentConfigByTenant>>, TError = ErrorType<ErrorResponse>>(
+ tenantId: string, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getAgentConfigByTenant>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetAgentConfigByTenantQueryOptions(tenantId,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+
+
+
+
+
+
+export const getGetAgentConfigUrl = (id: string,) => {
+
+
+
+
+  return `/api/agent-configs/${id}`
+}
+
+/**
+ * @summary Get agent config by ID
+ */
+export const getAgentConfig = async (id: string, options?: RequestInit): Promise<AgentConfig> => {
+
+  return customFetch<AgentConfig>(getGetAgentConfigUrl(id),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetAgentConfigQueryKey = (id: string,) => {
+    return [
+    `/api/agent-configs/${id}`
+    ] as const;
+    }
+
+
+export const getGetAgentConfigQueryOptions = <TData = Awaited<ReturnType<typeof getAgentConfig>>, TError = ErrorType<ErrorResponse>>(id: string, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getAgentConfig>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetAgentConfigQueryKey(id);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getAgentConfig>>> = ({ signal }) => getAgentConfig(id, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, enabled: !!(id), ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getAgentConfig>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetAgentConfigQueryResult = NonNullable<Awaited<ReturnType<typeof getAgentConfig>>>
+export type GetAgentConfigQueryError = ErrorType<ErrorResponse>
+
+
+/**
+ * @summary Get agent config by ID
+ */
+
+export function useGetAgentConfig<TData = Awaited<ReturnType<typeof getAgentConfig>>, TError = ErrorType<ErrorResponse>>(
+ id: string, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getAgentConfig>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetAgentConfigQueryOptions(id,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+
+
+
+
+
+
+export const getUpdateAgentConfigUrl = (id: string,) => {
+
+
+
+
+  return `/api/agent-configs/${id}`
+}
+
+/**
+ * @summary Update agent config
+ */
+export const updateAgentConfig = async (id: string,
+    updateAgentConfigBody: UpdateAgentConfigBody, options?: RequestInit): Promise<AgentConfig> => {
+
+  return customFetch<AgentConfig>(getUpdateAgentConfigUrl(id),
+  {
+    ...options,
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(
+      updateAgentConfigBody,)
+  }
+);}
+
+
+
+
+export const getUpdateAgentConfigMutationOptions = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updateAgentConfig>>, TError,{id: string;data: BodyType<UpdateAgentConfigBody>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof updateAgentConfig>>, TError,{id: string;data: BodyType<UpdateAgentConfigBody>}, TContext> => {
+
+const mutationKey = ['updateAgentConfig'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof updateAgentConfig>>, {id: string;data: BodyType<UpdateAgentConfigBody>}> = (props) => {
+          const {id,data} = props ?? {};
+
+          return  updateAgentConfig(id,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type UpdateAgentConfigMutationResult = NonNullable<Awaited<ReturnType<typeof updateAgentConfig>>>
+    export type UpdateAgentConfigMutationBody = BodyType<UpdateAgentConfigBody>
+    export type UpdateAgentConfigMutationError = ErrorType<ErrorResponse>
+
+    /**
+ * @summary Update agent config
+ */
+export const useUpdateAgentConfig = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updateAgentConfig>>, TError,{id: string;data: BodyType<UpdateAgentConfigBody>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof updateAgentConfig>>,
+        TError,
+        {id: string;data: BodyType<UpdateAgentConfigBody>},
+        TContext
+      > => {
+      return useMutation(getUpdateAgentConfigMutationOptions(options));
+    }
+
+export const getDeleteAgentConfigUrl = (id: string,) => {
+
+
+
+
+  return `/api/agent-configs/${id}`
+}
+
+/**
+ * @summary Delete agent config
+ */
+export const deleteAgentConfig = async (id: string, options?: RequestInit): Promise<void> => {
+
+  return customFetch<void>(getDeleteAgentConfigUrl(id),
+  {
+    ...options,
+    method: 'DELETE'
+
+
+  }
+);}
+
+
+
+
+export const getDeleteAgentConfigMutationOptions = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof deleteAgentConfig>>, TError,{id: string}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof deleteAgentConfig>>, TError,{id: string}, TContext> => {
+
+const mutationKey = ['deleteAgentConfig'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof deleteAgentConfig>>, {id: string}> = (props) => {
+          const {id} = props ?? {};
+
+          return  deleteAgentConfig(id,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type DeleteAgentConfigMutationResult = NonNullable<Awaited<ReturnType<typeof deleteAgentConfig>>>
+
+    export type DeleteAgentConfigMutationError = ErrorType<ErrorResponse>
+
+    /**
+ * @summary Delete agent config
+ */
+export const useDeleteAgentConfig = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof deleteAgentConfig>>, TError,{id: string}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof deleteAgentConfig>>,
+        TError,
+        {id: string},
+        TContext
+      > => {
+      return useMutation(getDeleteAgentConfigMutationOptions(options));
+    }
+
+export const getCompleteAgentConfigSetupUrl = (id: string,) => {
+
+
+
+
+  return `/api/agent-configs/${id}/complete-setup`
+}
+
+/**
+ * Sets setupCompletedAt to now and autonomyEnabledAt to now + 5 days. After autonomyEnabledAt, agent actions execute automatically instead of awaiting approval.
+ * @summary Mark setup as complete
+ */
+export const completeAgentConfigSetup = async (id: string, options?: RequestInit): Promise<AgentConfig> => {
+
+  return customFetch<AgentConfig>(getCompleteAgentConfigSetupUrl(id),
+  {
+    ...options,
+    method: 'POST'
+
+
+  }
+);}
+
+
+
+
+export const getCompleteAgentConfigSetupMutationOptions = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof completeAgentConfigSetup>>, TError,{id: string}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof completeAgentConfigSetup>>, TError,{id: string}, TContext> => {
+
+const mutationKey = ['completeAgentConfigSetup'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof completeAgentConfigSetup>>, {id: string}> = (props) => {
+          const {id} = props ?? {};
+
+          return  completeAgentConfigSetup(id,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type CompleteAgentConfigSetupMutationResult = NonNullable<Awaited<ReturnType<typeof completeAgentConfigSetup>>>
+
+    export type CompleteAgentConfigSetupMutationError = ErrorType<ErrorResponse>
+
+    /**
+ * @summary Mark setup as complete
+ */
+export const useCompleteAgentConfigSetup = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof completeAgentConfigSetup>>, TError,{id: string}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof completeAgentConfigSetup>>,
+        TError,
+        {id: string},
+        TContext
+      > => {
+      return useMutation(getCompleteAgentConfigSetupMutationOptions(options));
     }
 
 export const getCreateBusinessProfileUrl = () => {

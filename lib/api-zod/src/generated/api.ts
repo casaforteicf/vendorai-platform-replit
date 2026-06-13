@@ -215,6 +215,367 @@ export const DeleteUserParams = zod.object({
 
 
 /**
+ * Creates the agent config for a tenant. Each tenant may have only one config.
+ * @summary Create agent config
+ */
+export const createAgentConfigBodyAgentsSdrEnabledDefault = false;
+export const createAgentConfigBodyAgentsCloserEnabledDefault = false;
+export const createAgentConfigBodyAgentsFollowupEnabledDefault = false;
+export const createAgentConfigBodyAgentsReactivationEnabledDefault = false;
+export const createAgentConfigBodyAgentsSchedulerEnabledDefault = false;
+export const createAgentConfigBodyAgentsServiceEnabledDefault = false;
+export const createAgentConfigBodyAgentsOnboardingEnabledDefault = false;
+
+export const CreateAgentConfigBody = zod.object({
+  "tenantId": zod.string(),
+  "agents": zod.object({
+  "sdr": zod.object({
+  "enabled": zod.boolean().default(createAgentConfigBodyAgentsSdrEnabledDefault),
+  "prompt": zod.string().nullish()
+}).optional(),
+  "closer": zod.object({
+  "enabled": zod.boolean().default(createAgentConfigBodyAgentsCloserEnabledDefault),
+  "prompt": zod.string().nullish()
+}).optional(),
+  "followup": zod.object({
+  "enabled": zod.boolean().default(createAgentConfigBodyAgentsFollowupEnabledDefault),
+  "prompt": zod.string().nullish()
+}).optional(),
+  "reactivation": zod.object({
+  "enabled": zod.boolean().default(createAgentConfigBodyAgentsReactivationEnabledDefault),
+  "prompt": zod.string().nullish()
+}).optional(),
+  "scheduler": zod.object({
+  "enabled": zod.boolean().default(createAgentConfigBodyAgentsSchedulerEnabledDefault),
+  "prompt": zod.string().nullish()
+}).optional(),
+  "service": zod.object({
+  "enabled": zod.boolean().default(createAgentConfigBodyAgentsServiceEnabledDefault),
+  "prompt": zod.string().nullish()
+}).optional(),
+  "onboarding": zod.object({
+  "enabled": zod.boolean().default(createAgentConfigBodyAgentsOnboardingEnabledDefault),
+  "prompt": zod.string().nullish()
+}).optional()
+}).optional(),
+  "dailyMessageLimit": zod.number().optional(),
+  "messagesSentToday": zod.number().optional(),
+  "monthlyTokenLimit": zod.number().optional(),
+  "tokensUsedCurrentMonth": zod.number().optional(),
+  "setupCompletedAt": zod.coerce.date().optional(),
+  "autonomyEnabledAt": zod.coerce.date().optional()
+})
+
+
+/**
+ * @summary Get agent config by tenant
+ */
+export const GetAgentConfigByTenantParams = zod.object({
+  "tenantId": zod.coerce.string()
+})
+
+export const getAgentConfigByTenantResponseAgentsSdrEnabledDefault = false;
+export const getAgentConfigByTenantResponseAgentsCloserEnabledDefault = false;
+export const getAgentConfigByTenantResponseAgentsFollowupEnabledDefault = false;
+export const getAgentConfigByTenantResponseAgentsReactivationEnabledDefault = false;
+export const getAgentConfigByTenantResponseAgentsSchedulerEnabledDefault = false;
+export const getAgentConfigByTenantResponseAgentsServiceEnabledDefault = false;
+export const getAgentConfigByTenantResponseAgentsOnboardingEnabledDefault = false;
+export const getAgentConfigByTenantResponseDailyMessageLimitDefault = 100;
+export const getAgentConfigByTenantResponseMessagesSentTodayDefault = 0;
+export const getAgentConfigByTenantResponseMonthlyTokenLimitDefault = 100000;
+export const getAgentConfigByTenantResponseTokensUsedCurrentMonthDefault = 0;
+
+export const GetAgentConfigByTenantResponse = zod.object({
+  "id": zod.string(),
+  "tenantId": zod.string(),
+  "agents": zod.object({
+  "sdr": zod.object({
+  "enabled": zod.boolean().default(getAgentConfigByTenantResponseAgentsSdrEnabledDefault),
+  "prompt": zod.string().nullish()
+}).optional(),
+  "closer": zod.object({
+  "enabled": zod.boolean().default(getAgentConfigByTenantResponseAgentsCloserEnabledDefault),
+  "prompt": zod.string().nullish()
+}).optional(),
+  "followup": zod.object({
+  "enabled": zod.boolean().default(getAgentConfigByTenantResponseAgentsFollowupEnabledDefault),
+  "prompt": zod.string().nullish()
+}).optional(),
+  "reactivation": zod.object({
+  "enabled": zod.boolean().default(getAgentConfigByTenantResponseAgentsReactivationEnabledDefault),
+  "prompt": zod.string().nullish()
+}).optional(),
+  "scheduler": zod.object({
+  "enabled": zod.boolean().default(getAgentConfigByTenantResponseAgentsSchedulerEnabledDefault),
+  "prompt": zod.string().nullish()
+}).optional(),
+  "service": zod.object({
+  "enabled": zod.boolean().default(getAgentConfigByTenantResponseAgentsServiceEnabledDefault),
+  "prompt": zod.string().nullish()
+}).optional(),
+  "onboarding": zod.object({
+  "enabled": zod.boolean().default(getAgentConfigByTenantResponseAgentsOnboardingEnabledDefault),
+  "prompt": zod.string().nullish()
+}).optional()
+}),
+  "dailyMessageLimit": zod.number().default(getAgentConfigByTenantResponseDailyMessageLimitDefault),
+  "messagesSentToday": zod.number().default(getAgentConfigByTenantResponseMessagesSentTodayDefault),
+  "monthlyTokenLimit": zod.number().default(getAgentConfigByTenantResponseMonthlyTokenLimitDefault),
+  "tokensUsedCurrentMonth": zod.number().default(getAgentConfigByTenantResponseTokensUsedCurrentMonthDefault),
+  "setupCompletedAt": zod.coerce.date().nullish(),
+  "autonomyEnabledAt": zod.coerce.date().nullish().describe('Computed as setupCompletedAt + 5 days. Before this timestamp, agent actions require manual approval.'),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date()
+})
+
+
+/**
+ * @summary Get agent config by ID
+ */
+export const GetAgentConfigParams = zod.object({
+  "id": zod.coerce.string()
+})
+
+export const getAgentConfigResponseAgentsSdrEnabledDefault = false;
+export const getAgentConfigResponseAgentsCloserEnabledDefault = false;
+export const getAgentConfigResponseAgentsFollowupEnabledDefault = false;
+export const getAgentConfigResponseAgentsReactivationEnabledDefault = false;
+export const getAgentConfigResponseAgentsSchedulerEnabledDefault = false;
+export const getAgentConfigResponseAgentsServiceEnabledDefault = false;
+export const getAgentConfigResponseAgentsOnboardingEnabledDefault = false;
+export const getAgentConfigResponseDailyMessageLimitDefault = 100;
+export const getAgentConfigResponseMessagesSentTodayDefault = 0;
+export const getAgentConfigResponseMonthlyTokenLimitDefault = 100000;
+export const getAgentConfigResponseTokensUsedCurrentMonthDefault = 0;
+
+export const GetAgentConfigResponse = zod.object({
+  "id": zod.string(),
+  "tenantId": zod.string(),
+  "agents": zod.object({
+  "sdr": zod.object({
+  "enabled": zod.boolean().default(getAgentConfigResponseAgentsSdrEnabledDefault),
+  "prompt": zod.string().nullish()
+}).optional(),
+  "closer": zod.object({
+  "enabled": zod.boolean().default(getAgentConfigResponseAgentsCloserEnabledDefault),
+  "prompt": zod.string().nullish()
+}).optional(),
+  "followup": zod.object({
+  "enabled": zod.boolean().default(getAgentConfigResponseAgentsFollowupEnabledDefault),
+  "prompt": zod.string().nullish()
+}).optional(),
+  "reactivation": zod.object({
+  "enabled": zod.boolean().default(getAgentConfigResponseAgentsReactivationEnabledDefault),
+  "prompt": zod.string().nullish()
+}).optional(),
+  "scheduler": zod.object({
+  "enabled": zod.boolean().default(getAgentConfigResponseAgentsSchedulerEnabledDefault),
+  "prompt": zod.string().nullish()
+}).optional(),
+  "service": zod.object({
+  "enabled": zod.boolean().default(getAgentConfigResponseAgentsServiceEnabledDefault),
+  "prompt": zod.string().nullish()
+}).optional(),
+  "onboarding": zod.object({
+  "enabled": zod.boolean().default(getAgentConfigResponseAgentsOnboardingEnabledDefault),
+  "prompt": zod.string().nullish()
+}).optional()
+}),
+  "dailyMessageLimit": zod.number().default(getAgentConfigResponseDailyMessageLimitDefault),
+  "messagesSentToday": zod.number().default(getAgentConfigResponseMessagesSentTodayDefault),
+  "monthlyTokenLimit": zod.number().default(getAgentConfigResponseMonthlyTokenLimitDefault),
+  "tokensUsedCurrentMonth": zod.number().default(getAgentConfigResponseTokensUsedCurrentMonthDefault),
+  "setupCompletedAt": zod.coerce.date().nullish(),
+  "autonomyEnabledAt": zod.coerce.date().nullish().describe('Computed as setupCompletedAt + 5 days. Before this timestamp, agent actions require manual approval.'),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date()
+})
+
+
+/**
+ * @summary Update agent config
+ */
+export const UpdateAgentConfigParams = zod.object({
+  "id": zod.coerce.string()
+})
+
+export const updateAgentConfigBodyAgentsSdrEnabledDefault = false;
+export const updateAgentConfigBodyAgentsCloserEnabledDefault = false;
+export const updateAgentConfigBodyAgentsFollowupEnabledDefault = false;
+export const updateAgentConfigBodyAgentsReactivationEnabledDefault = false;
+export const updateAgentConfigBodyAgentsSchedulerEnabledDefault = false;
+export const updateAgentConfigBodyAgentsServiceEnabledDefault = false;
+export const updateAgentConfigBodyAgentsOnboardingEnabledDefault = false;
+
+export const UpdateAgentConfigBody = zod.object({
+  "agents": zod.object({
+  "sdr": zod.object({
+  "enabled": zod.boolean().default(updateAgentConfigBodyAgentsSdrEnabledDefault),
+  "prompt": zod.string().nullish()
+}).optional(),
+  "closer": zod.object({
+  "enabled": zod.boolean().default(updateAgentConfigBodyAgentsCloserEnabledDefault),
+  "prompt": zod.string().nullish()
+}).optional(),
+  "followup": zod.object({
+  "enabled": zod.boolean().default(updateAgentConfigBodyAgentsFollowupEnabledDefault),
+  "prompt": zod.string().nullish()
+}).optional(),
+  "reactivation": zod.object({
+  "enabled": zod.boolean().default(updateAgentConfigBodyAgentsReactivationEnabledDefault),
+  "prompt": zod.string().nullish()
+}).optional(),
+  "scheduler": zod.object({
+  "enabled": zod.boolean().default(updateAgentConfigBodyAgentsSchedulerEnabledDefault),
+  "prompt": zod.string().nullish()
+}).optional(),
+  "service": zod.object({
+  "enabled": zod.boolean().default(updateAgentConfigBodyAgentsServiceEnabledDefault),
+  "prompt": zod.string().nullish()
+}).optional(),
+  "onboarding": zod.object({
+  "enabled": zod.boolean().default(updateAgentConfigBodyAgentsOnboardingEnabledDefault),
+  "prompt": zod.string().nullish()
+}).optional()
+}).optional(),
+  "dailyMessageLimit": zod.number().optional(),
+  "messagesSentToday": zod.number().optional(),
+  "monthlyTokenLimit": zod.number().optional(),
+  "tokensUsedCurrentMonth": zod.number().optional(),
+  "setupCompletedAt": zod.coerce.date().optional(),
+  "autonomyEnabledAt": zod.coerce.date().optional()
+})
+
+export const updateAgentConfigResponseAgentsSdrEnabledDefault = false;
+export const updateAgentConfigResponseAgentsCloserEnabledDefault = false;
+export const updateAgentConfigResponseAgentsFollowupEnabledDefault = false;
+export const updateAgentConfigResponseAgentsReactivationEnabledDefault = false;
+export const updateAgentConfigResponseAgentsSchedulerEnabledDefault = false;
+export const updateAgentConfigResponseAgentsServiceEnabledDefault = false;
+export const updateAgentConfigResponseAgentsOnboardingEnabledDefault = false;
+export const updateAgentConfigResponseDailyMessageLimitDefault = 100;
+export const updateAgentConfigResponseMessagesSentTodayDefault = 0;
+export const updateAgentConfigResponseMonthlyTokenLimitDefault = 100000;
+export const updateAgentConfigResponseTokensUsedCurrentMonthDefault = 0;
+
+export const UpdateAgentConfigResponse = zod.object({
+  "id": zod.string(),
+  "tenantId": zod.string(),
+  "agents": zod.object({
+  "sdr": zod.object({
+  "enabled": zod.boolean().default(updateAgentConfigResponseAgentsSdrEnabledDefault),
+  "prompt": zod.string().nullish()
+}).optional(),
+  "closer": zod.object({
+  "enabled": zod.boolean().default(updateAgentConfigResponseAgentsCloserEnabledDefault),
+  "prompt": zod.string().nullish()
+}).optional(),
+  "followup": zod.object({
+  "enabled": zod.boolean().default(updateAgentConfigResponseAgentsFollowupEnabledDefault),
+  "prompt": zod.string().nullish()
+}).optional(),
+  "reactivation": zod.object({
+  "enabled": zod.boolean().default(updateAgentConfigResponseAgentsReactivationEnabledDefault),
+  "prompt": zod.string().nullish()
+}).optional(),
+  "scheduler": zod.object({
+  "enabled": zod.boolean().default(updateAgentConfigResponseAgentsSchedulerEnabledDefault),
+  "prompt": zod.string().nullish()
+}).optional(),
+  "service": zod.object({
+  "enabled": zod.boolean().default(updateAgentConfigResponseAgentsServiceEnabledDefault),
+  "prompt": zod.string().nullish()
+}).optional(),
+  "onboarding": zod.object({
+  "enabled": zod.boolean().default(updateAgentConfigResponseAgentsOnboardingEnabledDefault),
+  "prompt": zod.string().nullish()
+}).optional()
+}),
+  "dailyMessageLimit": zod.number().default(updateAgentConfigResponseDailyMessageLimitDefault),
+  "messagesSentToday": zod.number().default(updateAgentConfigResponseMessagesSentTodayDefault),
+  "monthlyTokenLimit": zod.number().default(updateAgentConfigResponseMonthlyTokenLimitDefault),
+  "tokensUsedCurrentMonth": zod.number().default(updateAgentConfigResponseTokensUsedCurrentMonthDefault),
+  "setupCompletedAt": zod.coerce.date().nullish(),
+  "autonomyEnabledAt": zod.coerce.date().nullish().describe('Computed as setupCompletedAt + 5 days. Before this timestamp, agent actions require manual approval.'),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date()
+})
+
+
+/**
+ * @summary Delete agent config
+ */
+export const DeleteAgentConfigParams = zod.object({
+  "id": zod.coerce.string()
+})
+
+
+/**
+ * Sets setupCompletedAt to now and autonomyEnabledAt to now + 5 days. After autonomyEnabledAt, agent actions execute automatically instead of awaiting approval.
+ * @summary Mark setup as complete
+ */
+export const CompleteAgentConfigSetupParams = zod.object({
+  "id": zod.coerce.string()
+})
+
+export const completeAgentConfigSetupResponseAgentsSdrEnabledDefault = false;
+export const completeAgentConfigSetupResponseAgentsCloserEnabledDefault = false;
+export const completeAgentConfigSetupResponseAgentsFollowupEnabledDefault = false;
+export const completeAgentConfigSetupResponseAgentsReactivationEnabledDefault = false;
+export const completeAgentConfigSetupResponseAgentsSchedulerEnabledDefault = false;
+export const completeAgentConfigSetupResponseAgentsServiceEnabledDefault = false;
+export const completeAgentConfigSetupResponseAgentsOnboardingEnabledDefault = false;
+export const completeAgentConfigSetupResponseDailyMessageLimitDefault = 100;
+export const completeAgentConfigSetupResponseMessagesSentTodayDefault = 0;
+export const completeAgentConfigSetupResponseMonthlyTokenLimitDefault = 100000;
+export const completeAgentConfigSetupResponseTokensUsedCurrentMonthDefault = 0;
+
+export const CompleteAgentConfigSetupResponse = zod.object({
+  "id": zod.string(),
+  "tenantId": zod.string(),
+  "agents": zod.object({
+  "sdr": zod.object({
+  "enabled": zod.boolean().default(completeAgentConfigSetupResponseAgentsSdrEnabledDefault),
+  "prompt": zod.string().nullish()
+}).optional(),
+  "closer": zod.object({
+  "enabled": zod.boolean().default(completeAgentConfigSetupResponseAgentsCloserEnabledDefault),
+  "prompt": zod.string().nullish()
+}).optional(),
+  "followup": zod.object({
+  "enabled": zod.boolean().default(completeAgentConfigSetupResponseAgentsFollowupEnabledDefault),
+  "prompt": zod.string().nullish()
+}).optional(),
+  "reactivation": zod.object({
+  "enabled": zod.boolean().default(completeAgentConfigSetupResponseAgentsReactivationEnabledDefault),
+  "prompt": zod.string().nullish()
+}).optional(),
+  "scheduler": zod.object({
+  "enabled": zod.boolean().default(completeAgentConfigSetupResponseAgentsSchedulerEnabledDefault),
+  "prompt": zod.string().nullish()
+}).optional(),
+  "service": zod.object({
+  "enabled": zod.boolean().default(completeAgentConfigSetupResponseAgentsServiceEnabledDefault),
+  "prompt": zod.string().nullish()
+}).optional(),
+  "onboarding": zod.object({
+  "enabled": zod.boolean().default(completeAgentConfigSetupResponseAgentsOnboardingEnabledDefault),
+  "prompt": zod.string().nullish()
+}).optional()
+}),
+  "dailyMessageLimit": zod.number().default(completeAgentConfigSetupResponseDailyMessageLimitDefault),
+  "messagesSentToday": zod.number().default(completeAgentConfigSetupResponseMessagesSentTodayDefault),
+  "monthlyTokenLimit": zod.number().default(completeAgentConfigSetupResponseMonthlyTokenLimitDefault),
+  "tokensUsedCurrentMonth": zod.number().default(completeAgentConfigSetupResponseTokensUsedCurrentMonthDefault),
+  "setupCompletedAt": zod.coerce.date().nullish(),
+  "autonomyEnabledAt": zod.coerce.date().nullish().describe('Computed as setupCompletedAt + 5 days. Before this timestamp, agent actions require manual approval.'),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date()
+})
+
+
+/**
  * Creates the business profile for a tenant. Each tenant may have only one profile.
  * @summary Create business profile
  */

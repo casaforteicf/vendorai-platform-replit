@@ -5,3 +5,4 @@ export * from "./conversations";
 export * from "./agent_actions_log";
 export * from "./consents";
 export * from "./business_profiles";
+export * from "./agent_configs";

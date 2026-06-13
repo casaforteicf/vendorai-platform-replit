@@ -72,6 +72,57 @@ export const TenantStatus = {
   cancelled: 'cancelled',
 } as const;
 
+export interface AgentEntry {
+  enabled?: boolean;
+  prompt?: string | null;
+}
+
+export interface AgentsMap {
+  sdr?: AgentEntry;
+  closer?: AgentEntry;
+  followup?: AgentEntry;
+  reactivation?: AgentEntry;
+  scheduler?: AgentEntry;
+  service?: AgentEntry;
+  onboarding?: AgentEntry;
+}
+
+export interface AgentConfig {
+  id: string;
+  tenantId: string;
+  agents: AgentsMap;
+  dailyMessageLimit: number;
+  messagesSentToday: number;
+  monthlyTokenLimit: number;
+  tokensUsedCurrentMonth: number;
+  setupCompletedAt?: string | null;
+  /** Computed as setupCompletedAt + 5 days. Before this timestamp, agent actions require manual approval. */
+  autonomyEnabledAt?: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface CreateAgentConfigBody {
+  tenantId: string;
+  agents?: AgentsMap;
+  dailyMessageLimit?: number;
+  messagesSentToday?: number;
+  monthlyTokenLimit?: number;
+  tokensUsedCurrentMonth?: number;
+  setupCompletedAt?: string;
+  autonomyEnabledAt?: string;
+}
+
+export interface UpdateAgentConfigBody {
+  agents?: AgentsMap;
+  dailyMessageLimit?: number;
+  messagesSentToday?: number;
+  monthlyTokenLimit?: number;
+  tokensUsedCurrentMonth?: number;
+  setupCompletedAt?: string;
+  autonomyEnabledAt?: string;
+}
+
 export interface Product {
   nome: string;
   descricao?: string | null;

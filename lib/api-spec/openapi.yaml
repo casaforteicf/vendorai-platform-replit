@@ -328,6 +328,180 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
 
+  /agent-configs:
+    post:
+      operationId: createAgentConfig
+      tags: [agent-configs]
+      summary: Create agent config
+      description: Creates the agent config for a tenant. Each tenant may have only one config.
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateAgentConfigBody"
+      responses:
+        "201":
+          description: Agent config created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AgentConfig"
+        "409":
+          description: Tenant already has an agent config
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "422":
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /tenants/{tenantId}/agent-config:
+    get:
+      operationId: getAgentConfigByTenant
+      tags: [agent-configs]
+      summary: Get agent config by tenant
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: tenantId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Agent config
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AgentConfig"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /agent-configs/{id}:
+    get:
+      operationId: getAgentConfig
+      tags: [agent-configs]
+      summary: Get agent config by ID
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Agent config
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AgentConfig"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+    patch:
+      operationId: updateAgentConfig
+      tags: [agent-configs]
+      summary: Update agent config
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateAgentConfigBody"
+      responses:
+        "200":
+          description: Updated agent config
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AgentConfig"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "422":
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+    delete:
+      operationId: deleteAgentConfig
+      tags: [agent-configs]
+      summary: Delete agent config
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "204":
+          description: Deleted
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /agent-configs/{id}/complete-setup:
+    post:
+      operationId: completeAgentConfigSetup
+      tags: [agent-configs]
+      summary: Mark setup as complete
+      description: Sets setupCompletedAt to now and autonomyEnabledAt to now + 5 days. After autonomyEnabledAt, agent actions execute automatically instead of awaiting approval.
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Setup marked complete
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AgentConfig"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
   /business-profiles:
     post:
       operationId: createBusinessProfile
@@ -1233,6 +1407,125 @@ components:
     TenantStatus:
       type: string
       enum: [active, suspended, cancelled]
+
+    AgentEntry:
+      type: object
+      properties:
+        enabled:
+          type: boolean
+          default: false
+        prompt:
+          type: string
+          nullable: true
+
+    AgentsMap:
+      type: object
+      properties:
+        sdr:
+          $ref: "#/components/schemas/AgentEntry"
+        closer:
+          $ref: "#/components/schemas/AgentEntry"
+        followup:
+          $ref: "#/components/schemas/AgentEntry"
+        reactivation:
+          $ref: "#/components/schemas/AgentEntry"
+        scheduler:
+          $ref: "#/components/schemas/AgentEntry"
+        service:
+          $ref: "#/components/schemas/AgentEntry"
+        onboarding:
+          $ref: "#/components/schemas/AgentEntry"
+
+    AgentConfig:
+      type: object
+      properties:
+        id:
+          type: string
+        tenantId:
+          type: string
+        agents:
+          $ref: "#/components/schemas/AgentsMap"
+        dailyMessageLimit:
+          type: integer
+          default: 100
+        messagesSentToday:
+          type: integer
+          default: 0
+        monthlyTokenLimit:
+          type: integer
+          default: 100000
+        tokensUsedCurrentMonth:
+          type: integer
+          default: 0
+        setupCompletedAt:
+          type: string
+          format: date-time
+          nullable: true
+        autonomyEnabledAt:
+          type: string
+          format: date-time
+          nullable: true
+          description: Computed as setupCompletedAt + 5 days. Before this timestamp, agent actions require manual approval.
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+      required:
+        - id
+        - tenantId
+        - agents
+        - dailyMessageLimit
+        - messagesSentToday
+        - monthlyTokenLimit
+        - tokensUsedCurrentMonth
+        - createdAt
+        - updatedAt
+
+    CreateAgentConfigBody:
+      type: object
+      properties:
+        tenantId:
+          type: string
+        agents:
+          $ref: "#/components/schemas/AgentsMap"
+        dailyMessageLimit:
+          type: integer
+        messagesSentToday:
+          type: integer
+        monthlyTokenLimit:
+          type: integer
+        tokensUsedCurrentMonth:
+          type: integer
+        setupCompletedAt:
+          type: string
+          format: date-time
+        autonomyEnabledAt:
+          type: string
+          format: date-time
+      required:
+        - tenantId
+
+    UpdateAgentConfigBody:
+      type: object
+      properties:
+        agents:
+          $ref: "#/components/schemas/AgentsMap"
+        dailyMessageLimit:
+          type: integer
+        messagesSentToday:
+          type: integer
+        monthlyTokenLimit:
+          type: integer
+        tokensUsedCurrentMonth:
+          type: integer
+        setupCompletedAt:
+          type: string
+          format: date-time
+        autonomyEnabledAt:
+          type: string
+          format: date-time
 
     Product:
       type: object
