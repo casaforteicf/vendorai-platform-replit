@@ -213,6 +213,8 @@ export default function LeadDetail() {
       query: {
         enabled: !!(tenantId && id),
         queryKey: getGetOrCreateLeadIntelligenceQueryKey(tenantId, id),
+        refetchInterval: 30_000,
+        refetchIntervalInBackground: false,
       },
     }
   );
