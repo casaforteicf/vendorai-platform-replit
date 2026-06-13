@@ -18,3 +18,5 @@ export * from "./produtos_catalogo";
 export * from "./agendamentos";
 export * from "./subscriptions";
 export * from "./invoices";
+export * from "./knowledge_base";
+export * from "./rules";

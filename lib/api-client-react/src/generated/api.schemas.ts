@@ -267,6 +267,113 @@ export interface UpdateInvoiceBody {
   dataPagamento?: string;
 }
 
+export interface KnowledgeBase {
+  id: string;
+  tenantId: string;
+  titulo: string;
+  conteudo: string;
+  categoria: string;
+  tags?: string[] | null;
+  ativo: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface CreateKnowledgeBaseBody {
+  tenantId: string;
+  /** @minLength 1 */
+  titulo: string;
+  /** @minLength 1 */
+  conteudo: string;
+  /** @minLength 1 */
+  categoria: string;
+  tags?: string[];
+  ativo?: boolean;
+}
+
+export interface UpdateKnowledgeBaseBody {
+  /** @minLength 1 */
+  titulo?: string;
+  /** @minLength 1 */
+  conteudo?: string;
+  /** @minLength 1 */
+  categoria?: string;
+  tags?: string[];
+  ativo?: boolean;
+}
+
+export type RuleTrigger = typeof RuleTrigger[keyof typeof RuleTrigger];
+
+
+export const RuleTrigger = {
+  lead_criado: 'lead_criado',
+  churn_risk_alto: 'churn_risk_alto',
+  proposta_enviada: 'proposta_enviada',
+  agendamento_proximo: 'agendamento_proximo',
+  sem_atividade_x_dias: 'sem_atividade_x_dias',
+  deal_ganho: 'deal_ganho',
+  deal_perdido: 'deal_perdido',
+} as const;
+
+export type RuleAcao = typeof RuleAcao[keyof typeof RuleAcao];
+
+
+export const RuleAcao = {
+  criar_agent_task: 'criar_agent_task',
+  criar_campanha: 'criar_campanha',
+  notificar_usuario: 'notificar_usuario',
+  criar_atividade: 'criar_atividade',
+} as const;
+
+export interface RuleCondicao {
+  campo: string;
+  operador: string;
+  valor: unknown;
+}
+
+export type RuleAcaoPayload = { [key: string]: unknown } | null;
+
+export interface Rule {
+  id: string;
+  tenantId: string;
+  nome: string;
+  descricao?: string | null;
+  trigger: RuleTrigger;
+  condicoes?: RuleCondicao[] | null;
+  acao: RuleAcao;
+  acaoPayload?: RuleAcaoPayload;
+  ativo: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export type CreateRuleBodyAcaoPayload = { [key: string]: unknown };
+
+export interface CreateRuleBody {
+  tenantId: string;
+  /** @minLength 1 */
+  nome: string;
+  descricao?: string;
+  trigger: RuleTrigger;
+  condicoes?: RuleCondicao[];
+  acao: RuleAcao;
+  acaoPayload?: CreateRuleBodyAcaoPayload;
+  ativo?: boolean;
+}
+
+export type UpdateRuleBodyAcaoPayload = { [key: string]: unknown };
+
+export interface UpdateRuleBody {
+  /** @minLength 1 */
+  nome?: string;
+  descricao?: string;
+  trigger?: RuleTrigger;
+  condicoes?: RuleCondicao[];
+  acao?: RuleAcao;
+  acaoPayload?: UpdateRuleBodyAcaoPayload;
+  ativo?: boolean;
+}
+
 export type AgendamentoTipo = typeof AgendamentoTipo[keyof typeof AgendamentoTipo];
 
 
@@ -1269,6 +1376,31 @@ leadId?: string;
 export type ListInvoicesParams = {
 status?: InvoiceStatus;
 };
+
+export type ListKnowledgeBaseParams = {
+/**
+ * Full-text search on titulo and conteudo
+ */
+q?: string;
+categoria?: string;
+/**
+ * Comma-separated list of tags (must all match)
+ */
+tags?: string;
+};
+
+export type ListRulesParams = {
+trigger?: RuleTrigger;
+ativo?: ListRulesAtivo;
+};
+
+export type ListRulesAtivo = typeof ListRulesAtivo[keyof typeof ListRulesAtivo];
+
+
+export const ListRulesAtivo = {
+  true: 'true',
+  false: 'false',
+} as const;
 
 export type ListAgendamentosParams = {
 leadId?: string;

@@ -1632,6 +1632,246 @@ export const DeleteInvoiceParams = zod.object({
 
 
 /**
+ * @summary Create knowledge base entry
+ */
+
+
+
+
+
+export const CreateKnowledgeBaseEntryBody = zod.object({
+  "tenantId": zod.string(),
+  "titulo": zod.string().min(1),
+  "conteudo": zod.string().min(1),
+  "categoria": zod.string().min(1),
+  "tags": zod.array(zod.string()).optional(),
+  "ativo": zod.boolean().optional()
+})
+
+
+/**
+ * Optional filters: ?q for full-text search on titulo/conteudo (ILIKE), ?categoria for exact category match, ?tags as comma-separated list (all specified tags must be present).
+
+ * @summary List knowledge base entries for a tenant
+ */
+export const ListKnowledgeBaseParams = zod.object({
+  "tenantId": zod.coerce.string()
+})
+
+export const ListKnowledgeBaseQueryParams = zod.object({
+  "q": zod.coerce.string().optional().describe('Full-text search on titulo and conteudo'),
+  "categoria": zod.coerce.string().optional(),
+  "tags": zod.coerce.string().optional().describe('Comma-separated list of tags (must all match)')
+})
+
+export const ListKnowledgeBaseResponseItem = zod.object({
+  "id": zod.string(),
+  "tenantId": zod.string(),
+  "titulo": zod.string(),
+  "conteudo": zod.string(),
+  "categoria": zod.string(),
+  "tags": zod.array(zod.string()).nullish(),
+  "ativo": zod.boolean(),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date()
+})
+export const ListKnowledgeBaseResponse = zod.array(ListKnowledgeBaseResponseItem)
+
+
+/**
+ * @summary Get knowledge base entry by ID
+ */
+export const GetKnowledgeBaseEntryParams = zod.object({
+  "id": zod.coerce.string()
+})
+
+export const GetKnowledgeBaseEntryResponse = zod.object({
+  "id": zod.string(),
+  "tenantId": zod.string(),
+  "titulo": zod.string(),
+  "conteudo": zod.string(),
+  "categoria": zod.string(),
+  "tags": zod.array(zod.string()).nullish(),
+  "ativo": zod.boolean(),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date()
+})
+
+
+/**
+ * @summary Update knowledge base entry
+ */
+export const UpdateKnowledgeBaseEntryParams = zod.object({
+  "id": zod.coerce.string()
+})
+
+
+
+
+
+
+export const UpdateKnowledgeBaseEntryBody = zod.object({
+  "titulo": zod.string().min(1).optional(),
+  "conteudo": zod.string().min(1).optional(),
+  "categoria": zod.string().min(1).optional(),
+  "tags": zod.array(zod.string()).optional(),
+  "ativo": zod.boolean().optional()
+})
+
+export const UpdateKnowledgeBaseEntryResponse = zod.object({
+  "id": zod.string(),
+  "tenantId": zod.string(),
+  "titulo": zod.string(),
+  "conteudo": zod.string(),
+  "categoria": zod.string(),
+  "tags": zod.array(zod.string()).nullish(),
+  "ativo": zod.boolean(),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date()
+})
+
+
+/**
+ * @summary Delete knowledge base entry
+ */
+export const DeleteKnowledgeBaseEntryParams = zod.object({
+  "id": zod.coerce.string()
+})
+
+
+/**
+ * @summary Create automation rule
+ */
+
+
+
+export const CreateRuleBody = zod.object({
+  "tenantId": zod.string(),
+  "nome": zod.string().min(1),
+  "descricao": zod.string().optional(),
+  "trigger": zod.enum(['lead_criado', 'churn_risk_alto', 'proposta_enviada', 'agendamento_proximo', 'sem_atividade_x_dias', 'deal_ganho', 'deal_perdido']),
+  "condicoes": zod.array(zod.object({
+  "campo": zod.string(),
+  "operador": zod.string(),
+  "valor": zod.unknown()
+})).optional(),
+  "acao": zod.enum(['criar_agent_task', 'criar_campanha', 'notificar_usuario', 'criar_atividade']),
+  "acaoPayload": zod.record(zod.string(), zod.unknown()).optional(),
+  "ativo": zod.boolean().optional()
+})
+
+
+/**
+ * Optional ?trigger filter, optional ?ativo=true/false filter.
+ * @summary List automation rules for a tenant
+ */
+export const ListRulesParams = zod.object({
+  "tenantId": zod.coerce.string()
+})
+
+export const ListRulesQueryParams = zod.object({
+  "trigger": zod.enum(['lead_criado', 'churn_risk_alto', 'proposta_enviada', 'agendamento_proximo', 'sem_atividade_x_dias', 'deal_ganho', 'deal_perdido']).optional(),
+  "ativo": zod.enum(['true', 'false']).optional()
+})
+
+export const ListRulesResponseItem = zod.object({
+  "id": zod.string(),
+  "tenantId": zod.string(),
+  "nome": zod.string(),
+  "descricao": zod.string().nullish(),
+  "trigger": zod.enum(['lead_criado', 'churn_risk_alto', 'proposta_enviada', 'agendamento_proximo', 'sem_atividade_x_dias', 'deal_ganho', 'deal_perdido']),
+  "condicoes": zod.array(zod.object({
+  "campo": zod.string(),
+  "operador": zod.string(),
+  "valor": zod.unknown()
+})).nullish(),
+  "acao": zod.enum(['criar_agent_task', 'criar_campanha', 'notificar_usuario', 'criar_atividade']),
+  "acaoPayload": zod.record(zod.string(), zod.unknown()).nullish(),
+  "ativo": zod.boolean(),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date()
+})
+export const ListRulesResponse = zod.array(ListRulesResponseItem)
+
+
+/**
+ * @summary Get rule by ID
+ */
+export const GetRuleParams = zod.object({
+  "id": zod.coerce.string()
+})
+
+export const GetRuleResponse = zod.object({
+  "id": zod.string(),
+  "tenantId": zod.string(),
+  "nome": zod.string(),
+  "descricao": zod.string().nullish(),
+  "trigger": zod.enum(['lead_criado', 'churn_risk_alto', 'proposta_enviada', 'agendamento_proximo', 'sem_atividade_x_dias', 'deal_ganho', 'deal_perdido']),
+  "condicoes": zod.array(zod.object({
+  "campo": zod.string(),
+  "operador": zod.string(),
+  "valor": zod.unknown()
+})).nullish(),
+  "acao": zod.enum(['criar_agent_task', 'criar_campanha', 'notificar_usuario', 'criar_atividade']),
+  "acaoPayload": zod.record(zod.string(), zod.unknown()).nullish(),
+  "ativo": zod.boolean(),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date()
+})
+
+
+/**
+ * @summary Update automation rule
+ */
+export const UpdateRuleParams = zod.object({
+  "id": zod.coerce.string()
+})
+
+
+
+
+export const UpdateRuleBody = zod.object({
+  "nome": zod.string().min(1).optional(),
+  "descricao": zod.string().optional(),
+  "trigger": zod.enum(['lead_criado', 'churn_risk_alto', 'proposta_enviada', 'agendamento_proximo', 'sem_atividade_x_dias', 'deal_ganho', 'deal_perdido']).optional(),
+  "condicoes": zod.array(zod.object({
+  "campo": zod.string(),
+  "operador": zod.string(),
+  "valor": zod.unknown()
+})).optional(),
+  "acao": zod.enum(['criar_agent_task', 'criar_campanha', 'notificar_usuario', 'criar_atividade']).optional(),
+  "acaoPayload": zod.record(zod.string(), zod.unknown()).optional(),
+  "ativo": zod.boolean().optional()
+})
+
+export const UpdateRuleResponse = zod.object({
+  "id": zod.string(),
+  "tenantId": zod.string(),
+  "nome": zod.string(),
+  "descricao": zod.string().nullish(),
+  "trigger": zod.enum(['lead_criado', 'churn_risk_alto', 'proposta_enviada', 'agendamento_proximo', 'sem_atividade_x_dias', 'deal_ganho', 'deal_perdido']),
+  "condicoes": zod.array(zod.object({
+  "campo": zod.string(),
+  "operador": zod.string(),
+  "valor": zod.unknown()
+})).nullish(),
+  "acao": zod.enum(['criar_agent_task', 'criar_campanha', 'notificar_usuario', 'criar_atividade']),
+  "acaoPayload": zod.record(zod.string(), zod.unknown()).nullish(),
+  "ativo": zod.boolean(),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date()
+})
+
+
+/**
+ * @summary Delete automation rule
+ */
+export const DeleteRuleParams = zod.object({
+  "id": zod.coerce.string()
+})
+
+
+/**
  * dataHoraFim must be after dataHoraInicio.
  * @summary Create agendamento
  */

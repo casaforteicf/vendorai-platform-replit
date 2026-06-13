@@ -22,6 +22,8 @@ import agendamentosRouter from "./agendamentos";
 import subscriptionsRouter from "./subscriptions";
 import invoicesRouter from "./invoices";
 import dashboardRouter from "./dashboard";
+import knowledgeBaseRouter from "./knowledge_base";
+import rulesRouter from "./rules";
 import { authenticate, requireRole, requireSameTenanOrSuperAdmin } from "../middlewares/auth";
 
 const router: IRouter = Router();
@@ -79,6 +81,12 @@ router.use(invoicesRouter);
 
 // Executive Intelligence Hub
 router.use(dashboardRouter);
+
+// Knowledge Hub
+router.use(knowledgeBaseRouter);
+
+// Rules Engine
+router.use(rulesRouter);
 
 export { requireRole, requireSameTenanOrSuperAdmin };
 export default router;

@@ -1711,6 +1711,304 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
 
+  /knowledge-base:
+    post:
+      operationId: createKnowledgeBaseEntry
+      tags: [knowledge-hub]
+      summary: Create knowledge base entry
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateKnowledgeBaseBody"
+      responses:
+        "201":
+          description: Entry created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/KnowledgeBase"
+        "422":
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /tenants/{tenantId}/knowledge-base:
+    get:
+      operationId: listKnowledgeBase
+      tags: [knowledge-hub]
+      summary: List knowledge base entries for a tenant
+      description: >
+        Optional filters: ?q for full-text search on titulo/conteudo (ILIKE),
+        ?categoria for exact category match, ?tags as comma-separated list
+        (all specified tags must be present).
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: tenantId
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: q
+          in: query
+          description: Full-text search on titulo and conteudo
+          schema:
+            type: string
+        - name: categoria
+          in: query
+          schema:
+            type: string
+        - name: tags
+          in: query
+          description: Comma-separated list of tags (must all match)
+          schema:
+            type: string
+      responses:
+        "200":
+          description: List of entries ordered by createdAt
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/KnowledgeBase"
+
+  /knowledge-base/{id}:
+    get:
+      operationId: getKnowledgeBaseEntry
+      tags: [knowledge-hub]
+      summary: Get knowledge base entry by ID
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Entry
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/KnowledgeBase"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+    patch:
+      operationId: updateKnowledgeBaseEntry
+      tags: [knowledge-hub]
+      summary: Update knowledge base entry
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateKnowledgeBaseBody"
+      responses:
+        "200":
+          description: Updated entry
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/KnowledgeBase"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "422":
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+    delete:
+      operationId: deleteKnowledgeBaseEntry
+      tags: [knowledge-hub]
+      summary: Delete knowledge base entry
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "204":
+          description: Deleted
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /rules:
+    post:
+      operationId: createRule
+      tags: [rules-engine]
+      summary: Create automation rule
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateRuleBody"
+      responses:
+        "201":
+          description: Rule created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Rule"
+        "422":
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /tenants/{tenantId}/rules:
+    get:
+      operationId: listRules
+      tags: [rules-engine]
+      summary: List automation rules for a tenant
+      description: Optional ?trigger filter, optional ?ativo=true/false filter.
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: tenantId
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: trigger
+          in: query
+          schema:
+            $ref: "#/components/schemas/RuleTrigger"
+        - name: ativo
+          in: query
+          schema:
+            type: string
+            enum: ["true", "false"]
+      responses:
+        "200":
+          description: List of rules ordered by createdAt
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Rule"
+
+  /rules/{id}:
+    get:
+      operationId: getRule
+      tags: [rules-engine]
+      summary: Get rule by ID
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Rule
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Rule"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+    patch:
+      operationId: updateRule
+      tags: [rules-engine]
+      summary: Update automation rule
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateRuleBody"
+      responses:
+        "200":
+          description: Updated rule
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Rule"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "422":
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+    delete:
+      operationId: deleteRule
+      tags: [rules-engine]
+      summary: Delete automation rule
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "204":
+          description: Deleted
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
   /agendamentos:
     post:
       operationId: createAgendamento
@@ -3956,6 +4254,186 @@ components:
         dataPagamento:
           type: string
           format: date-time
+
+    KnowledgeBase:
+      type: object
+      properties:
+        id:
+          type: string
+        tenantId:
+          type: string
+        titulo:
+          type: string
+        conteudo:
+          type: string
+        categoria:
+          type: string
+        tags:
+          type: array
+          items:
+            type: string
+          nullable: true
+        ativo:
+          type: boolean
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+      required: [id, tenantId, titulo, conteudo, categoria, ativo, createdAt, updatedAt]
+
+    CreateKnowledgeBaseBody:
+      type: object
+      properties:
+        tenantId:
+          type: string
+        titulo:
+          type: string
+          minLength: 1
+        conteudo:
+          type: string
+          minLength: 1
+        categoria:
+          type: string
+          minLength: 1
+        tags:
+          type: array
+          items:
+            type: string
+        ativo:
+          type: boolean
+      required: [tenantId, titulo, conteudo, categoria]
+
+    UpdateKnowledgeBaseBody:
+      type: object
+      properties:
+        titulo:
+          type: string
+          minLength: 1
+        conteudo:
+          type: string
+          minLength: 1
+        categoria:
+          type: string
+          minLength: 1
+        tags:
+          type: array
+          items:
+            type: string
+        ativo:
+          type: boolean
+
+    RuleTrigger:
+      type: string
+      enum:
+        - lead_criado
+        - churn_risk_alto
+        - proposta_enviada
+        - agendamento_proximo
+        - sem_atividade_x_dias
+        - deal_ganho
+        - deal_perdido
+
+    RuleAcao:
+      type: string
+      enum:
+        - criar_agent_task
+        - criar_campanha
+        - notificar_usuario
+        - criar_atividade
+
+    RuleCondicao:
+      type: object
+      properties:
+        campo:
+          type: string
+        operador:
+          type: string
+        valor: {}
+      required: [campo, operador, valor]
+
+    Rule:
+      type: object
+      properties:
+        id:
+          type: string
+        tenantId:
+          type: string
+        nome:
+          type: string
+        descricao:
+          type: string
+          nullable: true
+        trigger:
+          $ref: "#/components/schemas/RuleTrigger"
+        condicoes:
+          type: array
+          items:
+            $ref: "#/components/schemas/RuleCondicao"
+          nullable: true
+        acao:
+          $ref: "#/components/schemas/RuleAcao"
+        acaoPayload:
+          type: object
+          additionalProperties: true
+          nullable: true
+        ativo:
+          type: boolean
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+      required: [id, tenantId, nome, trigger, acao, ativo, createdAt, updatedAt]
+
+    CreateRuleBody:
+      type: object
+      properties:
+        tenantId:
+          type: string
+        nome:
+          type: string
+          minLength: 1
+        descricao:
+          type: string
+        trigger:
+          $ref: "#/components/schemas/RuleTrigger"
+        condicoes:
+          type: array
+          items:
+            $ref: "#/components/schemas/RuleCondicao"
+        acao:
+          $ref: "#/components/schemas/RuleAcao"
+        acaoPayload:
+          type: object
+          additionalProperties: true
+        ativo:
+          type: boolean
+      required: [tenantId, nome, trigger, acao]
+
+    UpdateRuleBody:
+      type: object
+      properties:
+        nome:
+          type: string
+          minLength: 1
+        descricao:
+          type: string
+        trigger:
+          $ref: "#/components/schemas/RuleTrigger"
+        condicoes:
+          type: array
+          items:
+            $ref: "#/components/schemas/RuleCondicao"
+        acao:
+          $ref: "#/components/schemas/RuleAcao"
+        acaoPayload:
+          type: object
+          additionalProperties: true
+        ativo:
+          type: boolean
 
     AgendamentoTipo:
       type: string
