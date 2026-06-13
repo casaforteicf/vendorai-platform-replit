@@ -131,7 +131,11 @@ router.get("/customer-intelligence/:id", async (req, res) => {
 router.patch("/customer-intelligence/:id", async (req, res) => {
   const parsed = updateCustomerIntelligenceSchema.safeParse(req.body);
   if (!parsed.success) {
-    res.status(422).json({ error: parsed.error.message });
+    const fieldErrors = parsed.error.flatten().fieldErrors;
+    const messages = Object.entries(fieldErrors)
+      .map(([field, errs]) => `${field}: ${(errs ?? []).join(", ")}`)
+      .join("; ");
+    res.status(400).json({ error: messages || "Invalid request body" });
     return;
   }
 

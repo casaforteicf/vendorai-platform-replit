@@ -2979,14 +2979,14 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/CustomerIntelligence"
-        "404":
-          description: Not found
+        "400":
+          description: Validation error (e.g. churnRisk out of 0–100 range)
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
-        "422":
-          description: Validation error
+        "404":
+          description: Not found
           content:
             application/json:
               schema:
