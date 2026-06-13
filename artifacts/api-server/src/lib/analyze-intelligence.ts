@@ -10,6 +10,7 @@ import {
   conversationsTable,
   messagesTable,
   activitiesTable,
+  tenantsTable,
 } from "@workspace/db";
 import { evaluateForLead } from "../routes/rules.js";
 
@@ -341,6 +342,20 @@ export function maybeReanalyze(params: {
   // Fire-and-forget — never awaited, never slows down the message-save response
   Promise.resolve()
     .then(async () => {
+      // Load tenant settings for per-tenant overrides
+      const [tenant] = await db
+        .select({
+          analysisStalenessHours:   tenantsTable.analysisStalenessHours,
+          analysisMessageThreshold: tenantsTable.analysisMessageThreshold,
+        })
+        .from(tenantsTable)
+        .where(eq(tenantsTable.id, tenantId));
+
+      const effectiveStalenessHours =
+        tenant?.analysisStalenessHours ?? ANALYSIS_STALENESS_HOURS;
+      const effectiveMessageThreshold =
+        tenant?.analysisMessageThreshold ?? ANALYSIS_MESSAGE_THRESHOLD;
+
       // Load the existing CI record (if any) to check lastAnalyzedAt
       const [ci] = await db
         .select({
@@ -355,14 +370,14 @@ export function maybeReanalyze(params: {
         );
 
       const lastAnalyzedAt = ci?.lastAnalyzedAt ?? null;
-      const stalenessMs    = ANALYSIS_STALENESS_HOURS * 60 * 60 * 1000;
+      const stalenessMs    = effectiveStalenessHours * 60 * 60 * 1000;
       const isStale        =
         lastAnalyzedAt === null ||
         Date.now() - new Date(lastAnalyzedAt).getTime() > stalenessMs;
 
       if (isStale) {
         log.info(
-          { leadId, tenantId, lastAnalyzedAt, trigger: "staleness" },
+          { leadId, tenantId, lastAnalyzedAt, stalenessHours: effectiveStalenessHours, trigger: "staleness" },
           "auto-analyze: triggering re-analysis (stale)"
         );
         await analyzeLeadIntelligence({ tenantId, leadId, log, triggeredBy: "auto" });
@@ -381,15 +396,15 @@ export function maybeReanalyze(params: {
           )
         );
 
-      if (newMessageCount >= ANALYSIS_MESSAGE_THRESHOLD) {
+      if (newMessageCount >= effectiveMessageThreshold) {
         log.info(
-          { leadId, tenantId, newMessageCount, threshold: ANALYSIS_MESSAGE_THRESHOLD, trigger: "message_count" },
+          { leadId, tenantId, newMessageCount, threshold: effectiveMessageThreshold, trigger: "message_count" },
           "auto-analyze: triggering re-analysis (message threshold reached)"
         );
         await analyzeLeadIntelligence({ tenantId, leadId, log, triggeredBy: "auto" });
       } else {
         log.debug(
-          { leadId, tenantId, newMessageCount, threshold: ANALYSIS_MESSAGE_THRESHOLD },
+          { leadId, tenantId, newMessageCount, threshold: effectiveMessageThreshold },
           "auto-analyze: skipping re-analysis (threshold not reached)"
         );
       }

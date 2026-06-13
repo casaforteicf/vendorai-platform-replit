@@ -28,6 +28,8 @@ export const tenantsTable = pgTable("tenants", {
     .default(0),
   dailyMessageLimit: integer("daily_message_limit"),
   messagesSentToday: integer("messages_sent_today").notNull().default(0),
+  analysisStalenessHours: integer("analysis_staleness_hours"),
+  analysisMessageThreshold: integer("analysis_message_threshold"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
 });

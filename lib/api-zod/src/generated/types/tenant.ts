@@ -21,6 +21,18 @@ export interface Tenant {
   tokensUsedCurrentMonth: number;
   dailyMessageLimit?: number | null;
   messagesSentToday: number;
+  /**
+     * Per-tenant override for how many hours must pass before a lead is considered stale and auto-reanalyzed. Null means fall back to the global ANALYSIS_STALENESS_HOURS env var.
+
+     * @nullable
+     */
+  analysisStalenessHours?: number | null;
+  /**
+     * Per-tenant override for how many new messages since the last analysis trigger an automatic re-analysis. Null means fall back to the global ANALYSIS_MESSAGE_THRESHOLD env var.
+
+     * @nullable
+     */
+  analysisMessageThreshold?: number | null;
   createdAt: Date;
   updatedAt: Date;
 }

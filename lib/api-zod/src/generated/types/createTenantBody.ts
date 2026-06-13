@@ -18,4 +18,16 @@ export interface CreateTenantBody {
   autonomyEnabledAt?: Date | null;
   monthlyTokenLimit?: number | null;
   dailyMessageLimit?: number | null;
+  /**
+     * Per-tenant override for how many hours before a lead is considered stale. Null falls back to the global ANALYSIS_STALENESS_HOURS env var.
+
+     * @nullable
+     */
+  analysisStalenessHours?: number | null;
+  /**
+     * Per-tenant override for new-message count that triggers auto re-analysis. Null falls back to the global ANALYSIS_MESSAGE_THRESHOLD env var.
+
+     * @nullable
+     */
+  analysisMessageThreshold?: number | null;
 }

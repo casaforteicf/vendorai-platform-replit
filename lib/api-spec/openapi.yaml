@@ -5789,6 +5789,16 @@ components:
           nullable: true
         messagesSentToday:
           type: integer
+        analysisStalenessHours:
+          type: ["integer", "null"]
+          description: >
+            Per-tenant override for how many hours must pass before a lead is considered
+            stale and auto-reanalyzed. Null means fall back to the global ANALYSIS_STALENESS_HOURS env var.
+        analysisMessageThreshold:
+          type: ["integer", "null"]
+          description: >
+            Per-tenant override for how many new messages since the last analysis trigger
+            an automatic re-analysis. Null means fall back to the global ANALYSIS_MESSAGE_THRESHOLD env var.
         createdAt:
           type: string
           format: date-time
@@ -5834,6 +5844,16 @@ components:
         dailyMessageLimit:
           type: integer
           nullable: true
+        analysisStalenessHours:
+          type: ["integer", "null"]
+          description: >
+            Per-tenant override for how many hours before a lead is considered stale.
+            Null falls back to the global ANALYSIS_STALENESS_HOURS env var.
+        analysisMessageThreshold:
+          type: ["integer", "null"]
+          description: >
+            Per-tenant override for new-message count that triggers auto re-analysis.
+            Null falls back to the global ANALYSIS_MESSAGE_THRESHOLD env var.
       required:
         - name
         - slug
@@ -5871,6 +5891,16 @@ components:
           nullable: true
         messagesSentToday:
           type: integer
+        analysisStalenessHours:
+          type: ["integer", "null"]
+          description: >
+            Per-tenant override for how many hours before a lead is considered stale.
+            Null falls back to the global ANALYSIS_STALENESS_HOURS env var.
+        analysisMessageThreshold:
+          type: ["integer", "null"]
+          description: >
+            Per-tenant override for new-message count that triggers auto re-analysis.
+            Null falls back to the global ANALYSIS_MESSAGE_THRESHOLD env var.
 
     ErrorResponse:
       type: object

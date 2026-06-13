@@ -15,6 +15,13 @@
       "when": 1781368812516,
       "tag": "0001_absent_blizzard",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1781450000000,
+      "tag": "0002_tenant_analysis_thresholds",
+      "breakpoints": true
     }
   ]
 }

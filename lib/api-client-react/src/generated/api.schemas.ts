@@ -1152,6 +1152,18 @@ export interface Tenant {
   tokensUsedCurrentMonth: number;
   dailyMessageLimit?: number | null;
   messagesSentToday: number;
+  /**
+     * Per-tenant override for how many hours must pass before a lead is considered stale and auto-reanalyzed. Null means fall back to the global ANALYSIS_STALENESS_HOURS env var.
+
+     * @nullable
+     */
+  analysisStalenessHours?: number | null;
+  /**
+     * Per-tenant override for how many new messages since the last analysis trigger an automatic re-analysis. Null means fall back to the global ANALYSIS_MESSAGE_THRESHOLD env var.
+
+     * @nullable
+     */
+  analysisMessageThreshold?: number | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -1168,6 +1180,18 @@ export interface CreateTenantBody {
   autonomyEnabledAt?: string | null;
   monthlyTokenLimit?: number | null;
   dailyMessageLimit?: number | null;
+  /**
+     * Per-tenant override for how many hours before a lead is considered stale. Null falls back to the global ANALYSIS_STALENESS_HOURS env var.
+
+     * @nullable
+     */
+  analysisStalenessHours?: number | null;
+  /**
+     * Per-tenant override for new-message count that triggers auto re-analysis. Null falls back to the global ANALYSIS_MESSAGE_THRESHOLD env var.
+
+     * @nullable
+     */
+  analysisMessageThreshold?: number | null;
 }
 
 export type UpdateTenantBodyAgentsEnabled = { [key: string]: unknown };
@@ -1184,6 +1208,18 @@ export interface UpdateTenantBody {
   tokensUsedCurrentMonth?: number;
   dailyMessageLimit?: number | null;
   messagesSentToday?: number;
+  /**
+     * Per-tenant override for how many hours before a lead is considered stale. Null falls back to the global ANALYSIS_STALENESS_HOURS env var.
+
+     * @nullable
+     */
+  analysisStalenessHours?: number | null;
+  /**
+     * Per-tenant override for new-message count that triggers auto re-analysis. Null falls back to the global ANALYSIS_MESSAGE_THRESHOLD env var.
+
+     * @nullable
+     */
+  analysisMessageThreshold?: number | null;
 }
 
 export interface ErrorResponse {
