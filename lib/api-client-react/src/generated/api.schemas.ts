@@ -93,6 +93,117 @@ export interface UsageSummary {
   tokens: UsageSummaryTokens;
 }
 
+export type SubscriptionPlano = typeof SubscriptionPlano[keyof typeof SubscriptionPlano];
+
+
+export const SubscriptionPlano = {
+  starter: 'starter',
+  growth: 'growth',
+  enterprise: 'enterprise',
+} as const;
+
+export type SubscriptionStatus = typeof SubscriptionStatus[keyof typeof SubscriptionStatus];
+
+
+export const SubscriptionStatus = {
+  trial: 'trial',
+  ativa: 'ativa',
+  inadimplente: 'inadimplente',
+  cancelada: 'cancelada',
+} as const;
+
+export interface Subscription {
+  id: string;
+  tenantId: string;
+  plano: SubscriptionPlano;
+  /** Monthly value as decimal string (e.g. "299.90") */
+  valorMensal: string;
+  status: SubscriptionStatus;
+  asaasCustomerId?: string | null;
+  asaasSubscriptionId?: string | null;
+  dataInicio: string;
+  proximaCobranca?: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface CreateSubscriptionBody {
+  tenantId: string;
+  plano: SubscriptionPlano;
+  valorMensal: string | number;
+  status?: SubscriptionStatus;
+  asaasCustomerId?: string;
+  asaasSubscriptionId?: string;
+  dataInicio: string;
+  proximaCobranca?: string;
+}
+
+export interface UpdateSubscriptionBody {
+  plano?: SubscriptionPlano;
+  valorMensal?: string | number;
+  status?: SubscriptionStatus;
+  asaasCustomerId?: string;
+  asaasSubscriptionId?: string;
+  proximaCobranca?: string;
+}
+
+export type InvoiceStatus = typeof InvoiceStatus[keyof typeof InvoiceStatus];
+
+
+export const InvoiceStatus = {
+  pendente: 'pendente',
+  paga: 'paga',
+  atrasada: 'atrasada',
+  cancelada: 'cancelada',
+} as const;
+
+export type InvoiceFormaPagamento = typeof InvoiceFormaPagamento[keyof typeof InvoiceFormaPagamento];
+
+
+export const InvoiceFormaPagamento = {
+  pix: 'pix',
+  cartao: 'cartao',
+  boleto: 'boleto',
+} as const;
+
+export interface Invoice {
+  id: string;
+  tenantId: string;
+  subscriptionId: string;
+  /** Amount as decimal string (e.g. "299.90") */
+  valor: string;
+  status: InvoiceStatus;
+  formaPagamento?: InvoiceFormaPagamento | null;
+  asaasInvoiceId?: string | null;
+  linkPagamento?: string | null;
+  dataVencimento: string;
+  dataPagamento?: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface CreateInvoiceBody {
+  tenantId: string;
+  subscriptionId: string;
+  valor: string | number;
+  status?: InvoiceStatus;
+  formaPagamento?: InvoiceFormaPagamento;
+  asaasInvoiceId?: string;
+  linkPagamento?: string;
+  dataVencimento: string;
+  dataPagamento?: string;
+}
+
+export interface UpdateInvoiceBody {
+  valor?: string | number;
+  status?: InvoiceStatus;
+  formaPagamento?: InvoiceFormaPagamento;
+  asaasInvoiceId?: string;
+  linkPagamento?: string;
+  dataVencimento?: string;
+  dataPagamento?: string;
+}
+
 export type AgendamentoTipo = typeof AgendamentoTipo[keyof typeof AgendamentoTipo];
 
 
@@ -1090,6 +1201,10 @@ export type UpdatePropostaStatusBody = {
 export type ListMessagesParams = {
 conversationId?: string;
 leadId?: string;
+};
+
+export type ListInvoicesParams = {
+status?: InvoiceStatus;
 };
 
 export type ListAgendamentosParams = {

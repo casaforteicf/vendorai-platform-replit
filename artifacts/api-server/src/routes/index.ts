@@ -19,6 +19,8 @@ import agentTasksRouter from "./agent_tasks";
 import campaignsRouter from "./campaigns";
 import produtosCatalogoRouter from "./produtos_catalogo";
 import agendamentosRouter from "./agendamentos";
+import subscriptionsRouter from "./subscriptions";
+import invoicesRouter from "./invoices";
 import { authenticate, requireRole, requireSameTenanOrSuperAdmin } from "../middlewares/auth";
 
 const router: IRouter = Router();
@@ -69,6 +71,10 @@ router.use(produtosCatalogoRouter);
 
 // Schedule Hub
 router.use(agendamentosRouter);
+
+// Billing Hub
+router.use(subscriptionsRouter);
+router.use(invoicesRouter);
 
 export { requireRole, requireSameTenanOrSuperAdmin };
 export default router;

@@ -1378,6 +1378,214 @@ export const DeleteMessageParams = zod.object({
 
 
 /**
+ * One subscription per tenant — returns 409 if one already exists.
+ * @summary Create subscription
+ */
+export const CreateSubscriptionBody = zod.object({
+  "tenantId": zod.string(),
+  "plano": zod.enum(['starter', 'growth', 'enterprise']),
+  "valorMensal": zod.union([zod.string(),zod.number()]),
+  "status": zod.enum(['trial', 'ativa', 'inadimplente', 'cancelada']).optional(),
+  "asaasCustomerId": zod.string().optional(),
+  "asaasSubscriptionId": zod.string().optional(),
+  "dataInicio": zod.coerce.date(),
+  "proximaCobranca": zod.coerce.date().optional()
+})
+
+
+/**
+ * @summary Get the subscription for a tenant
+ */
+export const GetTenantSubscriptionParams = zod.object({
+  "tenantId": zod.coerce.string()
+})
+
+export const GetTenantSubscriptionResponse = zod.object({
+  "id": zod.string(),
+  "tenantId": zod.string(),
+  "plano": zod.enum(['starter', 'growth', 'enterprise']),
+  "valorMensal": zod.string().describe('Monthly value as decimal string (e.g. \"299.90\")'),
+  "status": zod.enum(['trial', 'ativa', 'inadimplente', 'cancelada']),
+  "asaasCustomerId": zod.string().nullish(),
+  "asaasSubscriptionId": zod.string().nullish(),
+  "dataInicio": zod.coerce.date(),
+  "proximaCobranca": zod.coerce.date().nullish(),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date()
+})
+
+
+/**
+ * @summary Get subscription by ID
+ */
+export const GetSubscriptionParams = zod.object({
+  "id": zod.coerce.string()
+})
+
+export const GetSubscriptionResponse = zod.object({
+  "id": zod.string(),
+  "tenantId": zod.string(),
+  "plano": zod.enum(['starter', 'growth', 'enterprise']),
+  "valorMensal": zod.string().describe('Monthly value as decimal string (e.g. \"299.90\")'),
+  "status": zod.enum(['trial', 'ativa', 'inadimplente', 'cancelada']),
+  "asaasCustomerId": zod.string().nullish(),
+  "asaasSubscriptionId": zod.string().nullish(),
+  "dataInicio": zod.coerce.date(),
+  "proximaCobranca": zod.coerce.date().nullish(),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date()
+})
+
+
+/**
+ * @summary Update subscription
+ */
+export const UpdateSubscriptionParams = zod.object({
+  "id": zod.coerce.string()
+})
+
+export const UpdateSubscriptionBody = zod.object({
+  "plano": zod.enum(['starter', 'growth', 'enterprise']).optional(),
+  "valorMensal": zod.union([zod.string(),zod.number()]).optional(),
+  "status": zod.enum(['trial', 'ativa', 'inadimplente', 'cancelada']).optional(),
+  "asaasCustomerId": zod.string().optional(),
+  "asaasSubscriptionId": zod.string().optional(),
+  "proximaCobranca": zod.coerce.date().optional()
+})
+
+export const UpdateSubscriptionResponse = zod.object({
+  "id": zod.string(),
+  "tenantId": zod.string(),
+  "plano": zod.enum(['starter', 'growth', 'enterprise']),
+  "valorMensal": zod.string().describe('Monthly value as decimal string (e.g. \"299.90\")'),
+  "status": zod.enum(['trial', 'ativa', 'inadimplente', 'cancelada']),
+  "asaasCustomerId": zod.string().nullish(),
+  "asaasSubscriptionId": zod.string().nullish(),
+  "dataInicio": zod.coerce.date(),
+  "proximaCobranca": zod.coerce.date().nullish(),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date()
+})
+
+
+/**
+ * @summary Delete subscription
+ */
+export const DeleteSubscriptionParams = zod.object({
+  "id": zod.coerce.string()
+})
+
+
+/**
+ * @summary Create invoice
+ */
+export const CreateInvoiceBody = zod.object({
+  "tenantId": zod.string(),
+  "subscriptionId": zod.string(),
+  "valor": zod.union([zod.string(),zod.number()]),
+  "status": zod.enum(['pendente', 'paga', 'atrasada', 'cancelada']).optional(),
+  "formaPagamento": zod.enum(['pix', 'cartao', 'boleto']).optional(),
+  "asaasInvoiceId": zod.string().optional(),
+  "linkPagamento": zod.string().optional(),
+  "dataVencimento": zod.coerce.date(),
+  "dataPagamento": zod.coerce.date().optional()
+})
+
+
+/**
+ * Optional ?status filter. Ordered by dataVencimento ASC.
+ * @summary List invoices by tenant
+ */
+export const ListInvoicesParams = zod.object({
+  "tenantId": zod.coerce.string()
+})
+
+export const ListInvoicesQueryParams = zod.object({
+  "status": zod.enum(['pendente', 'paga', 'atrasada', 'cancelada']).optional()
+})
+
+export const ListInvoicesResponseItem = zod.object({
+  "id": zod.string(),
+  "tenantId": zod.string(),
+  "subscriptionId": zod.string(),
+  "valor": zod.string().describe('Amount as decimal string (e.g. \"299.90\")'),
+  "status": zod.enum(['pendente', 'paga', 'atrasada', 'cancelada']),
+  "formaPagamento": zod.enum(['pix', 'cartao', 'boleto']).nullish(),
+  "asaasInvoiceId": zod.string().nullish(),
+  "linkPagamento": zod.string().nullish(),
+  "dataVencimento": zod.coerce.date(),
+  "dataPagamento": zod.coerce.date().nullish(),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date()
+})
+export const ListInvoicesResponse = zod.array(ListInvoicesResponseItem)
+
+
+/**
+ * @summary Get invoice by ID
+ */
+export const GetInvoiceParams = zod.object({
+  "id": zod.coerce.string()
+})
+
+export const GetInvoiceResponse = zod.object({
+  "id": zod.string(),
+  "tenantId": zod.string(),
+  "subscriptionId": zod.string(),
+  "valor": zod.string().describe('Amount as decimal string (e.g. \"299.90\")'),
+  "status": zod.enum(['pendente', 'paga', 'atrasada', 'cancelada']),
+  "formaPagamento": zod.enum(['pix', 'cartao', 'boleto']).nullish(),
+  "asaasInvoiceId": zod.string().nullish(),
+  "linkPagamento": zod.string().nullish(),
+  "dataVencimento": zod.coerce.date(),
+  "dataPagamento": zod.coerce.date().nullish(),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date()
+})
+
+
+/**
+ * @summary Update invoice
+ */
+export const UpdateInvoiceParams = zod.object({
+  "id": zod.coerce.string()
+})
+
+export const UpdateInvoiceBody = zod.object({
+  "valor": zod.union([zod.string(),zod.number()]).optional(),
+  "status": zod.enum(['pendente', 'paga', 'atrasada', 'cancelada']).optional(),
+  "formaPagamento": zod.enum(['pix', 'cartao', 'boleto']).optional(),
+  "asaasInvoiceId": zod.string().optional(),
+  "linkPagamento": zod.string().optional(),
+  "dataVencimento": zod.coerce.date().optional(),
+  "dataPagamento": zod.coerce.date().optional()
+})
+
+export const UpdateInvoiceResponse = zod.object({
+  "id": zod.string(),
+  "tenantId": zod.string(),
+  "subscriptionId": zod.string(),
+  "valor": zod.string().describe('Amount as decimal string (e.g. \"299.90\")'),
+  "status": zod.enum(['pendente', 'paga', 'atrasada', 'cancelada']),
+  "formaPagamento": zod.enum(['pix', 'cartao', 'boleto']).nullish(),
+  "asaasInvoiceId": zod.string().nullish(),
+  "linkPagamento": zod.string().nullish(),
+  "dataVencimento": zod.coerce.date(),
+  "dataPagamento": zod.coerce.date().nullish(),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date()
+})
+
+
+/**
+ * @summary Delete invoice
+ */
+export const DeleteInvoiceParams = zod.object({
+  "id": zod.coerce.string()
+})
+
+
+/**
  * dataHoraFim must be after dataHoraInicio.
  * @summary Create agendamento
  */
