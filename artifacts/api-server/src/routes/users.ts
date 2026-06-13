@@ -1,5 +1,6 @@
 import { Router, type IRouter } from "express";
 import { eq } from "drizzle-orm";
+import bcrypt from "bcryptjs";
 import { db, usersTable, insertUserSchema, updateUserSchema } from "@workspace/db";
 
 const router: IRouter = Router();
@@ -40,10 +41,15 @@ router.post("/users", async (req, res) => {
     return;
   }
 
+  const data = {
+    ...parsed.data,
+    password: await bcrypt.hash(parsed.data.password, 12),
+  };
+
   try {
     const [user] = await db
       .insert(usersTable)
-      .values(parsed.data)
+      .values(data)
       .returning(PUBLIC_FIELDS);
     res.status(201).json(user);
   } catch (err: unknown) {
@@ -76,10 +82,15 @@ router.patch("/users/:id", async (req, res) => {
     return;
   }
 
+  const data: typeof parsed.data = { ...parsed.data };
+  if (data.password) {
+    data.password = await bcrypt.hash(data.password, 12);
+  }
+
   try {
     const [user] = await db
       .update(usersTable)
-      .set({ ...parsed.data, updatedAt: new Date() })
+      .set({ ...data, updatedAt: new Date() })
       .where(eq(usersTable.id, req.params.id))
       .returning(PUBLIC_FIELDS);
 
