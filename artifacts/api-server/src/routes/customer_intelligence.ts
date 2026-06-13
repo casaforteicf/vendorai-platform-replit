@@ -27,12 +27,6 @@ function isUniqueViolation(err: unknown): boolean {
   return isPgCode(err, "23505");
 }
 
-function getOpenAI(): OpenAI {
-  const apiKey = process.env["OPENAI_API_KEY"];
-  if (!apiKey) throw new Error("OPENAI_API_KEY environment variable is not set");
-  return new OpenAI({ apiKey });
-}
-
 router.post("/customer-intelligence", async (req, res) => {
   const parsed = insertCustomerIntelligenceSchema.safeParse(req.body);
   if (!parsed.success) {
@@ -105,6 +99,11 @@ router.get("/customer-intelligence/:id", async (req, res) => {
     return;
   }
 
+  if (req.user?.platformRole !== "super_admin" && record.tenantId !== req.user?.tenantId) {
+    res.status(403).json({ error: "Access denied to this tenant" });
+    return;
+  }
+
   res.json(record);
 });
 
@@ -115,30 +114,49 @@ router.patch("/customer-intelligence/:id", async (req, res) => {
     return;
   }
 
-  const [record] = await db
-    .update(customerIntelligenceTable)
-    .set({ ...parsed.data, updatedAt: new Date() })
-    .where(eq(customerIntelligenceTable.id, String(req.params.id)))
-    .returning();
+  const [existing] = await db
+    .select({ id: customerIntelligenceTable.id, tenantId: customerIntelligenceTable.tenantId })
+    .from(customerIntelligenceTable)
+    .where(eq(customerIntelligenceTable.id, String(req.params.id)));
 
-  if (!record) {
+  if (!existing) {
     res.status(404).json({ error: "Customer intelligence record not found" });
     return;
   }
+
+  if (req.user?.platformRole !== "super_admin" && existing.tenantId !== req.user?.tenantId) {
+    res.status(403).json({ error: "Access denied to this tenant" });
+    return;
+  }
+
+  const [record] = await db
+    .update(customerIntelligenceTable)
+    .set({ ...parsed.data, updatedAt: new Date() })
+    .where(eq(customerIntelligenceTable.id, existing.id))
+    .returning();
 
   res.json(record);
 });
 
 router.delete("/customer-intelligence/:id", async (req, res) => {
-  const [deleted] = await db
-    .delete(customerIntelligenceTable)
-    .where(eq(customerIntelligenceTable.id, String(req.params.id)))
-    .returning({ id: customerIntelligenceTable.id });
+  const [existing] = await db
+    .select({ id: customerIntelligenceTable.id, tenantId: customerIntelligenceTable.tenantId })
+    .from(customerIntelligenceTable)
+    .where(eq(customerIntelligenceTable.id, String(req.params.id)));
 
-  if (!deleted) {
+  if (!existing) {
     res.status(404).json({ error: "Customer intelligence record not found" });
     return;
   }
+
+  if (req.user?.platformRole !== "super_admin" && existing.tenantId !== req.user?.tenantId) {
+    res.status(403).json({ error: "Access denied to this tenant" });
+    return;
+  }
+
+  await db
+    .delete(customerIntelligenceTable)
+    .where(eq(customerIntelligenceTable.id, existing.id));
 
   res.status(204).send();
 });
