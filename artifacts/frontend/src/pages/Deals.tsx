@@ -371,14 +371,17 @@ function EditDealSheet({
                 <FormItem>
                   <FormLabel>Lead associado</FormLabel>
                   {leadMap.size > 0 ? (
-                    <Select onValueChange={field.onChange} value={field.value ?? ""}>
+                    <Select
+                      onValueChange={(v) => field.onChange(v === "__none__" ? "" : v)}
+                      value={field.value || "__none__"}
+                    >
                       <FormControl>
                         <SelectTrigger>
                           <SelectValue placeholder="Selecionar lead..." />
                         </SelectTrigger>
                       </FormControl>
                       <SelectContent>
-                        <SelectItem value="">Nenhum</SelectItem>
+                        <SelectItem value="__none__">Nenhum</SelectItem>
                         {Array.from(leadMap.entries()).map(([id, nome]) => (
                           <SelectItem key={id} value={id}>
                             {nome}
@@ -625,14 +628,17 @@ export default function Deals() {
                     <FormItem>
                       <FormLabel>Lead associado</FormLabel>
                       {leads.length > 0 ? (
-                        <Select onValueChange={field.onChange} value={field.value ?? ""}>
+                        <Select
+                          onValueChange={(v) => field.onChange(v === "__none__" ? "" : v)}
+                          value={field.value || "__none__"}
+                        >
                           <FormControl>
                             <SelectTrigger data-testid="select-lead">
                               <SelectValue placeholder="Selecionar lead..." />
                             </SelectTrigger>
                           </FormControl>
                           <SelectContent>
-                            <SelectItem value="">Nenhum</SelectItem>
+                            <SelectItem value="__none__">Nenhum</SelectItem>
                             {leads.map((l) => (
                               <SelectItem key={l.id} value={l.id}>
                                 {l.nome}
