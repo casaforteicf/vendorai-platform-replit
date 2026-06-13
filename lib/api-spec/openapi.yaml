@@ -2856,45 +2856,6 @@ paths:
                 items:
                   $ref: "#/components/schemas/CustomerIntelligence"
 
-  /tenants/{tenantId}/leads/{leadId}/intelligence/analyze:
-    post:
-      operationId: analyzeLeadIntelligence
-      tags: [intelligence]
-      summary: AI-powered customer intelligence analysis
-      description: Analyzes the lead's conversation history, profile, and activities using GPT-4o-mini. Writes churnRisk, journeyStage, intentAnalysis, goalAnalysis, nextBestAction, nextBestActionReason, opportunities, and churnReasons back to the customer intelligence record (upsert). Sets lastAnalyzedAt to now.
-      security:
-        - bearerAuth: []
-      parameters:
-        - name: tenantId
-          in: path
-          required: true
-          schema:
-            type: string
-        - name: leadId
-          in: path
-          required: true
-          schema:
-            type: string
-      responses:
-        "200":
-          description: Updated customer intelligence record with AI-generated scores
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/CustomerIntelligence"
-        "404":
-          description: Lead not found
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ErrorResponse"
-        "502":
-          description: AI analysis failed (OpenAI error)
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ErrorResponse"
-
   /tenants/{tenantId}/leads/{leadId}/intelligence:
     get:
       operationId: getOrCreateLeadIntelligence
