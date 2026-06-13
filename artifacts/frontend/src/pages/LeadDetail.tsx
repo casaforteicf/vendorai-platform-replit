@@ -290,7 +290,14 @@ export default function LeadDetail() {
   function saveChurnReasons() {
     if (!intelligence?.id) return;
     const cleaned = churnReasonsDraft.map((r) => r.trim()).filter((r) => r !== "");
-    updateIntelligence({ id: intelligence.id, data: { churnReasons: cleaned } });
+    updateIntelligence({
+      id: intelligence.id,
+      data: {
+        churnReasons: cleaned,
+        churnReasonsEditedBy: "rep",
+        churnReasonsEditedAt: new Date().toISOString(),
+      },
+    });
     setEditingChurnReasons(false);
   }
 
@@ -676,6 +683,30 @@ export default function LeadDetail() {
                             Nenhuma razão registrada. Clique para editar.
                           </p>
                         )
+                      )}
+                      {!editingChurnReasons && intelligence?.churnReasonsEditedBy && (
+                        <p
+                          className="flex items-center gap-1 text-[10px] text-muted-foreground mt-1.5"
+                          data-testid="churn-reasons-edited-by"
+                        >
+                          {intelligence.churnReasonsEditedBy === "ai" ? (
+                            <Sparkles className="h-2.5 w-2.5 shrink-0" />
+                          ) : (
+                            <Pencil className="h-2.5 w-2.5 shrink-0" />
+                          )}
+                          {intelligence.churnReasonsEditedBy === "ai"
+                            ? "Atualizado pela IA"
+                            : "Editado manualmente"}
+                          {intelligence.churnReasonsEditedAt && (
+                            <>
+                              {" · "}
+                              {formatDistanceToNow(
+                                new Date(intelligence.churnReasonsEditedAt),
+                                { addSuffix: true, locale: ptBR }
+                              )}
+                            </>
+                          )}
+                        </p>
                       )}
                     </div>
                   </div>

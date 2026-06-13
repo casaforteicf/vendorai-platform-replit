@@ -257,15 +257,17 @@ Regras:
   let intelligence: typeof customerIntelligenceTable.$inferSelect;
 
   const updateFields = {
-    churnRisk:            parsed.churnRisk,
-    churnReasons:         parsed.churnReasons,
-    journeyStage:         parsed.journeyStage,
-    intentAnalysis:       parsed.intentAnalysis,
-    opportunities:        parsed.opportunities,
-    nextBestAction:       parsed.nextBestAction,
-    nextBestActionReason: parsed.nextBestActionReason,
-    lastAnalyzedAt:       now,
-    updatedAt:            now,
+    churnRisk:             parsed.churnRisk,
+    churnReasons:          parsed.churnReasons,
+    churnReasonsEditedBy:  "ai" as const,
+    churnReasonsEditedAt:  now,
+    journeyStage:          parsed.journeyStage,
+    intentAnalysis:        parsed.intentAnalysis,
+    opportunities:         parsed.opportunities,
+    nextBestAction:        parsed.nextBestAction,
+    nextBestActionReason:  parsed.nextBestActionReason,
+    lastAnalyzedAt:        now,
+    updatedAt:             now,
   };
 
   if (existing) {

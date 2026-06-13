@@ -6,6 +6,7 @@
  * OpenAPI spec version: 0.1.0
  */
 import type { CreateCustomerIntelligenceBodyBehaviorScore } from './createCustomerIntelligenceBodyBehaviorScore';
+import type { CreateCustomerIntelligenceBodyChurnReasonsEditedBy } from './createCustomerIntelligenceBodyChurnReasonsEditedBy';
 
 export interface CreateCustomerIntelligenceBody {
   tenantId: string;
@@ -23,5 +24,7 @@ export interface CreateCustomerIntelligenceBody {
   churnReasons?: unknown[];
   nextBestAction?: string;
   nextBestActionReason?: string;
+  churnReasonsEditedBy?: CreateCustomerIntelligenceBodyChurnReasonsEditedBy;
+  churnReasonsEditedAt?: Date;
   lastAnalyzedAt?: Date;
 }

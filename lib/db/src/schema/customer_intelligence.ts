@@ -24,6 +24,8 @@ export const customerIntelligenceTable = pgTable("customer_intelligence", {
   churnReasons: jsonb("churn_reasons").$type<unknown[]>(),
   nextBestAction: text("next_best_action"),
   nextBestActionReason: text("next_best_action_reason"),
+  churnReasonsEditedBy: text("churn_reasons_edited_by").$type<"ai" | "rep">(),
+  churnReasonsEditedAt: timestamp("churn_reasons_edited_at"),
   lastAnalyzedAt: timestamp("last_analyzed_at"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
@@ -34,6 +36,8 @@ export const insertCustomerIntelligenceSchema = createInsertSchema(
   {
     lastAnalyzedAt: z.coerce.date().optional(),
     churnRisk: z.number().int().min(0).max(100).optional(),
+    churnReasonsEditedBy: z.enum(["ai", "rep"]).nullable().optional(),
+    churnReasonsEditedAt: z.coerce.date().optional(),
   }
 ).omit({ id: true, createdAt: true, updatedAt: true });
 
@@ -42,6 +46,8 @@ export const updateCustomerIntelligenceSchema = createSelectSchema(
   {
     lastAnalyzedAt: z.coerce.date().optional(),
     churnRisk: z.number().int().min(0).max(100).optional(),
+    churnReasonsEditedBy: z.enum(["ai", "rep"]).nullable().optional(),
+    churnReasonsEditedAt: z.coerce.date().optional(),
   }
 )
   .omit({ id: true, tenantId: true, leadId: true, createdAt: true, updatedAt: true })

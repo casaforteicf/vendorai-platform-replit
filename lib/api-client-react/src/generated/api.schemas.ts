@@ -660,6 +660,17 @@ export interface UpdateAgentTaskBody {
  */
 export type CustomerIntelligenceBehaviorScore = { [key: string]: unknown } | null;
 
+/**
+ * Who last edited the churn reasons — "ai" for AI-generated, "rep" for manual edit
+ */
+export type CustomerIntelligenceChurnReasonsEditedBy = typeof CustomerIntelligenceChurnReasonsEditedBy[keyof typeof CustomerIntelligenceChurnReasonsEditedBy] | null;
+
+
+export const CustomerIntelligenceChurnReasonsEditedBy = {
+  ai: 'ai',
+  rep: 'rep',
+} as const;
+
 export interface CustomerIntelligence {
   id: string;
   tenantId: string;
@@ -682,12 +693,24 @@ export interface CustomerIntelligence {
   churnReasons?: unknown[] | null;
   nextBestAction?: string | null;
   nextBestActionReason?: string | null;
+  /** Who last edited the churn reasons — "ai" for AI-generated, "rep" for manual edit */
+  churnReasonsEditedBy?: CustomerIntelligenceChurnReasonsEditedBy;
+  /** When the churn reasons were last edited */
+  churnReasonsEditedAt?: string | null;
   lastAnalyzedAt?: string | null;
   createdAt: string;
   updatedAt: string;
 }
 
 export type CreateCustomerIntelligenceBodyBehaviorScore = { [key: string]: unknown };
+
+export type CreateCustomerIntelligenceBodyChurnReasonsEditedBy = typeof CreateCustomerIntelligenceBodyChurnReasonsEditedBy[keyof typeof CreateCustomerIntelligenceBodyChurnReasonsEditedBy];
+
+
+export const CreateCustomerIntelligenceBodyChurnReasonsEditedBy = {
+  ai: 'ai',
+  rep: 'rep',
+} as const;
 
 export interface CreateCustomerIntelligenceBody {
   tenantId: string;
@@ -705,10 +728,20 @@ export interface CreateCustomerIntelligenceBody {
   churnReasons?: unknown[];
   nextBestAction?: string;
   nextBestActionReason?: string;
+  churnReasonsEditedBy?: CreateCustomerIntelligenceBodyChurnReasonsEditedBy;
+  churnReasonsEditedAt?: string;
   lastAnalyzedAt?: string;
 }
 
 export type UpdateCustomerIntelligenceBodyBehaviorScore = { [key: string]: unknown };
+
+export type UpdateCustomerIntelligenceBodyChurnReasonsEditedBy = typeof UpdateCustomerIntelligenceBodyChurnReasonsEditedBy[keyof typeof UpdateCustomerIntelligenceBodyChurnReasonsEditedBy];
+
+
+export const UpdateCustomerIntelligenceBodyChurnReasonsEditedBy = {
+  ai: 'ai',
+  rep: 'rep',
+} as const;
 
 export interface UpdateCustomerIntelligenceBody {
   behaviorScore?: UpdateCustomerIntelligenceBodyBehaviorScore;
@@ -724,6 +757,8 @@ export interface UpdateCustomerIntelligenceBody {
   churnReasons?: unknown[];
   nextBestAction?: string;
   nextBestActionReason?: string;
+  churnReasonsEditedBy?: UpdateCustomerIntelligenceBodyChurnReasonsEditedBy;
+  churnReasonsEditedAt?: string;
   lastAnalyzedAt?: string;
 }
 

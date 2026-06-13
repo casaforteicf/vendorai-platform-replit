@@ -5014,6 +5014,16 @@ components:
         nextBestActionReason:
           type: string
           nullable: true
+        churnReasonsEditedBy:
+          type: string
+          enum: [ai, rep]
+          nullable: true
+          description: Who last edited the churn reasons — "ai" for AI-generated, "rep" for manual edit
+        churnReasonsEditedAt:
+          type: string
+          format: date-time
+          nullable: true
+          description: When the churn reasons were last edited
         lastAnalyzedAt:
           type: string
           format: date-time
@@ -5056,6 +5066,12 @@ components:
           type: string
         nextBestActionReason:
           type: string
+        churnReasonsEditedBy:
+          type: string
+          enum: [ai, rep]
+        churnReasonsEditedAt:
+          type: string
+          format: date-time
         lastAnalyzedAt:
           type: string
           format: date-time
@@ -5087,6 +5103,12 @@ components:
           type: string
         nextBestActionReason:
           type: string
+        churnReasonsEditedBy:
+          type: string
+          enum: [ai, rep]
+        churnReasonsEditedAt:
+          type: string
+          format: date-time
         lastAnalyzedAt:
           type: string
           format: date-time

@@ -2557,6 +2557,8 @@ export const CreateCustomerIntelligenceBody = zod.object({
   "churnReasons": zod.array(zod.unknown()).optional(),
   "nextBestAction": zod.string().optional(),
   "nextBestActionReason": zod.string().optional(),
+  "churnReasonsEditedBy": zod.enum(['ai', 'rep']).optional(),
+  "churnReasonsEditedAt": zod.coerce.date().optional(),
   "lastAnalyzedAt": zod.coerce.date().optional()
 })
 
@@ -2586,6 +2588,8 @@ export const ListCustomerIntelligenceResponseItem = zod.object({
   "churnReasons": zod.array(zod.unknown()).nullish(),
   "nextBestAction": zod.string().nullish(),
   "nextBestActionReason": zod.string().nullish(),
+  "churnReasonsEditedBy": zod.enum(['ai', 'rep']).nullish().describe('Who last edited the churn reasons — \"ai\" for AI-generated, \"rep\" for manual edit'),
+  "churnReasonsEditedAt": zod.coerce.date().nullish().describe('When the churn reasons were last edited'),
   "lastAnalyzedAt": zod.coerce.date().nullish(),
   "createdAt": zod.coerce.date(),
   "updatedAt": zod.coerce.date()
@@ -2620,6 +2624,8 @@ export const GetOrCreateLeadIntelligenceResponse = zod.object({
   "churnReasons": zod.array(zod.unknown()).nullish(),
   "nextBestAction": zod.string().nullish(),
   "nextBestActionReason": zod.string().nullish(),
+  "churnReasonsEditedBy": zod.enum(['ai', 'rep']).nullish().describe('Who last edited the churn reasons — \"ai\" for AI-generated, \"rep\" for manual edit'),
+  "churnReasonsEditedAt": zod.coerce.date().nullish().describe('When the churn reasons were last edited'),
   "lastAnalyzedAt": zod.coerce.date().nullish(),
   "createdAt": zod.coerce.date(),
   "updatedAt": zod.coerce.date()
@@ -2654,6 +2660,8 @@ export const AnalyzeLeadIntelligenceResponse = zod.object({
   "churnReasons": zod.array(zod.unknown()).nullish(),
   "nextBestAction": zod.string().nullish(),
   "nextBestActionReason": zod.string().nullish(),
+  "churnReasonsEditedBy": zod.enum(['ai', 'rep']).nullish().describe('Who last edited the churn reasons — \"ai\" for AI-generated, \"rep\" for manual edit'),
+  "churnReasonsEditedAt": zod.coerce.date().nullish().describe('When the churn reasons were last edited'),
   "lastAnalyzedAt": zod.coerce.date().nullish(),
   "createdAt": zod.coerce.date(),
   "updatedAt": zod.coerce.date()
@@ -2733,6 +2741,8 @@ export const GetCustomerIntelligenceResponse = zod.object({
   "churnReasons": zod.array(zod.unknown()).nullish(),
   "nextBestAction": zod.string().nullish(),
   "nextBestActionReason": zod.string().nullish(),
+  "churnReasonsEditedBy": zod.enum(['ai', 'rep']).nullish().describe('Who last edited the churn reasons — \"ai\" for AI-generated, \"rep\" for manual edit'),
+  "churnReasonsEditedAt": zod.coerce.date().nullish().describe('When the churn reasons were last edited'),
   "lastAnalyzedAt": zod.coerce.date().nullish(),
   "createdAt": zod.coerce.date(),
   "updatedAt": zod.coerce.date()
@@ -2761,6 +2771,8 @@ export const UpdateCustomerIntelligenceBody = zod.object({
   "churnReasons": zod.array(zod.unknown()).optional(),
   "nextBestAction": zod.string().optional(),
   "nextBestActionReason": zod.string().optional(),
+  "churnReasonsEditedBy": zod.enum(['ai', 'rep']).optional(),
+  "churnReasonsEditedAt": zod.coerce.date().optional(),
   "lastAnalyzedAt": zod.coerce.date().optional()
 })
 
@@ -2782,6 +2794,8 @@ export const UpdateCustomerIntelligenceResponse = zod.object({
   "churnReasons": zod.array(zod.unknown()).nullish(),
   "nextBestAction": zod.string().nullish(),
   "nextBestActionReason": zod.string().nullish(),
+  "churnReasonsEditedBy": zod.enum(['ai', 'rep']).nullish().describe('Who last edited the churn reasons — \"ai\" for AI-generated, \"rep\" for manual edit'),
+  "churnReasonsEditedAt": zod.coerce.date().nullish().describe('When the churn reasons were last edited'),
   "lastAnalyzedAt": zod.coerce.date().nullish(),
   "createdAt": zod.coerce.date(),
   "updatedAt": zod.coerce.date()

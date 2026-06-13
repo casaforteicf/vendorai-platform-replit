@@ -6,6 +6,7 @@
  * OpenAPI spec version: 0.1.0
  */
 import type { UpdateCustomerIntelligenceBodyBehaviorScore } from './updateCustomerIntelligenceBodyBehaviorScore';
+import type { UpdateCustomerIntelligenceBodyChurnReasonsEditedBy } from './updateCustomerIntelligenceBodyChurnReasonsEditedBy';
 
 export interface UpdateCustomerIntelligenceBody {
   behaviorScore?: UpdateCustomerIntelligenceBodyBehaviorScore;
@@ -21,5 +22,7 @@ export interface UpdateCustomerIntelligenceBody {
   churnReasons?: unknown[];
   nextBestAction?: string;
   nextBestActionReason?: string;
+  churnReasonsEditedBy?: UpdateCustomerIntelligenceBodyChurnReasonsEditedBy;
+  churnReasonsEditedAt?: Date;
   lastAnalyzedAt?: Date;
 }

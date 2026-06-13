@@ -6,6 +6,7 @@
  * OpenAPI spec version: 0.1.0
  */
 import type { CustomerIntelligenceBehaviorScore } from './customerIntelligenceBehaviorScore';
+import type { CustomerIntelligenceChurnReasonsEditedBy } from './customerIntelligenceChurnReasonsEditedBy';
 
 export interface CustomerIntelligence {
   id: string;
@@ -29,6 +30,10 @@ export interface CustomerIntelligence {
   churnReasons?: unknown[] | null;
   nextBestAction?: string | null;
   nextBestActionReason?: string | null;
+  /** Who last edited the churn reasons — "ai" for AI-generated, "rep" for manual edit */
+  churnReasonsEditedBy?: CustomerIntelligenceChurnReasonsEditedBy;
+  /** When the churn reasons were last edited */
+  churnReasonsEditedAt?: Date | null;
   lastAnalyzedAt?: Date | null;
   createdAt: Date;
   updatedAt: Date;
