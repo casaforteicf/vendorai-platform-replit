@@ -93,6 +93,77 @@ export interface UsageSummary {
   tokens: UsageSummaryTokens;
 }
 
+export type AgendamentoTipo = typeof AgendamentoTipo[keyof typeof AgendamentoTipo];
+
+
+export const AgendamentoTipo = {
+  reuniao: 'reuniao',
+  visita: 'visita',
+  consulta: 'consulta',
+  instalacao: 'instalacao',
+} as const;
+
+export type AgendamentoStatus = typeof AgendamentoStatus[keyof typeof AgendamentoStatus];
+
+
+export const AgendamentoStatus = {
+  agendado: 'agendado',
+  confirmado: 'confirmado',
+  concluido: 'concluido',
+  cancelado: 'cancelado',
+  no_show: 'no_show',
+} as const;
+
+export interface Agendamento {
+  id: string;
+  tenantId: string;
+  leadId: string;
+  dealId?: string | null;
+  tipo: AgendamentoTipo;
+  titulo: string;
+  dataHoraInicio: string;
+  dataHoraFim: string;
+  local?: string | null;
+  status: AgendamentoStatus;
+  responsavelId?: string | null;
+  observacoes?: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface CreateAgendamentoBody {
+  tenantId: string;
+  leadId: string;
+  dealId?: string;
+  tipo: AgendamentoTipo;
+  titulo: string;
+  dataHoraInicio: string;
+  dataHoraFim: string;
+  local?: string;
+  status?: AgendamentoStatus;
+  responsavelId?: string;
+  observacoes?: string;
+}
+
+export interface UpdateAgendamentoBody {
+  tipo?: AgendamentoTipo;
+  titulo?: string;
+  dataHoraInicio?: string;
+  dataHoraFim?: string;
+  local?: string;
+  status?: AgendamentoStatus;
+  responsavelId?: string;
+  observacoes?: string;
+  dealId?: string;
+}
+
+export interface AgendamentoDisponibilidade {
+  /** True when no conflicts exist in the requested window */
+  disponivel: boolean;
+  /** Overlapping agendamentos found for this responsavel */
+  conflitos: Agendamento[];
+}
+
 export interface ProdutoCatalogo {
   id: string;
   tenantId: string;
@@ -1019,5 +1090,30 @@ export type UpdatePropostaStatusBody = {
 export type ListMessagesParams = {
 conversationId?: string;
 leadId?: string;
+};
+
+export type ListAgendamentosParams = {
+leadId?: string;
+status?: AgendamentoStatus;
+/**
+ * ISO 8601 datetime — filter dataHoraInicio >= from
+ */
+from?: string;
+/**
+ * ISO 8601 datetime — filter dataHoraInicio <= to
+ */
+to?: string;
+};
+
+export type CheckAgendamentoDisponibilidadeParams = {
+responsavelId: string;
+/**
+ * Start of the window to check (ISO 8601)
+ */
+from: string;
+/**
+ * End of the window to check (ISO 8601)
+ */
+to: string;
 };
 

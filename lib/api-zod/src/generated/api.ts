@@ -1378,6 +1378,168 @@ export const DeleteMessageParams = zod.object({
 
 
 /**
+ * dataHoraFim must be after dataHoraInicio.
+ * @summary Create agendamento
+ */
+export const CreateAgendamentoBody = zod.object({
+  "tenantId": zod.string(),
+  "leadId": zod.string(),
+  "dealId": zod.string().optional(),
+  "tipo": zod.enum(['reuniao', 'visita', 'consulta', 'instalacao']),
+  "titulo": zod.string(),
+  "dataHoraInicio": zod.coerce.date(),
+  "dataHoraFim": zod.coerce.date(),
+  "local": zod.string().optional(),
+  "status": zod.enum(['agendado', 'confirmado', 'concluido', 'cancelado', 'no_show']).optional(),
+  "responsavelId": zod.string().optional(),
+  "observacoes": zod.string().optional()
+})
+
+
+/**
+ * Supports filtering by leadId, status, and date range (from/to apply to dataHoraInicio). Ordered by dataHoraInicio ASC.
+ * @summary List agendamentos by tenant
+ */
+export const ListAgendamentosParams = zod.object({
+  "tenantId": zod.coerce.string()
+})
+
+export const ListAgendamentosQueryParams = zod.object({
+  "leadId": zod.coerce.string().optional(),
+  "status": zod.enum(['agendado', 'confirmado', 'concluido', 'cancelado', 'no_show']).optional(),
+  "from": zod.date().optional().describe('ISO 8601 datetime — filter dataHoraInicio >= from'),
+  "to": zod.date().optional().describe('ISO 8601 datetime — filter dataHoraInicio <= to')
+})
+
+export const ListAgendamentosResponseItem = zod.object({
+  "id": zod.string(),
+  "tenantId": zod.string(),
+  "leadId": zod.string(),
+  "dealId": zod.string().nullish(),
+  "tipo": zod.enum(['reuniao', 'visita', 'consulta', 'instalacao']),
+  "titulo": zod.string(),
+  "dataHoraInicio": zod.coerce.date(),
+  "dataHoraFim": zod.coerce.date(),
+  "local": zod.string().nullish(),
+  "status": zod.enum(['agendado', 'confirmado', 'concluido', 'cancelado', 'no_show']),
+  "responsavelId": zod.string().nullish(),
+  "observacoes": zod.string().nullish(),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date()
+})
+export const ListAgendamentosResponse = zod.array(ListAgendamentosResponseItem)
+
+
+/**
+ * Returns whether a given responsavel has no scheduling conflicts in the
+requested time window. Conflict detection uses interval overlap:
+agendamento.dataHoraInicio < to AND agendamento.dataHoraFim > from.
+Only active (non-cancelled, non-concluido) records are counted.
+
+ * @summary Check schedule availability for a responsavel
+ */
+export const CheckAgendamentoDisponibilidadeParams = zod.object({
+  "tenantId": zod.coerce.string()
+})
+
+export const CheckAgendamentoDisponibilidadeQueryParams = zod.object({
+  "responsavelId": zod.coerce.string(),
+  "from": zod.date().describe('Start of the window to check (ISO 8601)'),
+  "to": zod.date().describe('End of the window to check (ISO 8601)')
+})
+
+export const CheckAgendamentoDisponibilidadeResponse = zod.object({
+  "disponivel": zod.boolean().describe('True when no conflicts exist in the requested window'),
+  "conflitos": zod.array(zod.object({
+  "id": zod.string(),
+  "tenantId": zod.string(),
+  "leadId": zod.string(),
+  "dealId": zod.string().nullish(),
+  "tipo": zod.enum(['reuniao', 'visita', 'consulta', 'instalacao']),
+  "titulo": zod.string(),
+  "dataHoraInicio": zod.coerce.date(),
+  "dataHoraFim": zod.coerce.date(),
+  "local": zod.string().nullish(),
+  "status": zod.enum(['agendado', 'confirmado', 'concluido', 'cancelado', 'no_show']),
+  "responsavelId": zod.string().nullish(),
+  "observacoes": zod.string().nullish(),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date()
+})).describe('Overlapping agendamentos found for this responsavel')
+})
+
+
+/**
+ * @summary Get agendamento by ID
+ */
+export const GetAgendamentoParams = zod.object({
+  "id": zod.coerce.string()
+})
+
+export const GetAgendamentoResponse = zod.object({
+  "id": zod.string(),
+  "tenantId": zod.string(),
+  "leadId": zod.string(),
+  "dealId": zod.string().nullish(),
+  "tipo": zod.enum(['reuniao', 'visita', 'consulta', 'instalacao']),
+  "titulo": zod.string(),
+  "dataHoraInicio": zod.coerce.date(),
+  "dataHoraFim": zod.coerce.date(),
+  "local": zod.string().nullish(),
+  "status": zod.enum(['agendado', 'confirmado', 'concluido', 'cancelado', 'no_show']),
+  "responsavelId": zod.string().nullish(),
+  "observacoes": zod.string().nullish(),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date()
+})
+
+
+/**
+ * @summary Update agendamento
+ */
+export const UpdateAgendamentoParams = zod.object({
+  "id": zod.coerce.string()
+})
+
+export const UpdateAgendamentoBody = zod.object({
+  "tipo": zod.enum(['reuniao', 'visita', 'consulta', 'instalacao']).optional(),
+  "titulo": zod.string().optional(),
+  "dataHoraInicio": zod.coerce.date().optional(),
+  "dataHoraFim": zod.coerce.date().optional(),
+  "local": zod.string().optional(),
+  "status": zod.enum(['agendado', 'confirmado', 'concluido', 'cancelado', 'no_show']).optional(),
+  "responsavelId": zod.string().optional(),
+  "observacoes": zod.string().optional(),
+  "dealId": zod.string().optional()
+})
+
+export const UpdateAgendamentoResponse = zod.object({
+  "id": zod.string(),
+  "tenantId": zod.string(),
+  "leadId": zod.string(),
+  "dealId": zod.string().nullish(),
+  "tipo": zod.enum(['reuniao', 'visita', 'consulta', 'instalacao']),
+  "titulo": zod.string(),
+  "dataHoraInicio": zod.coerce.date(),
+  "dataHoraFim": zod.coerce.date(),
+  "local": zod.string().nullish(),
+  "status": zod.enum(['agendado', 'confirmado', 'concluido', 'cancelado', 'no_show']),
+  "responsavelId": zod.string().nullish(),
+  "observacoes": zod.string().nullish(),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date()
+})
+
+
+/**
+ * @summary Delete agendamento
+ */
+export const DeleteAgendamentoParams = zod.object({
+  "id": zod.coerce.string()
+})
+
+
+/**
  * @summary Create catalog product
  */
 export const CreateProdutoCatalogoBody = zod.object({

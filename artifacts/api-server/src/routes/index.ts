@@ -18,6 +18,7 @@ import customerIntelligenceRouter from "./customer_intelligence";
 import agentTasksRouter from "./agent_tasks";
 import campaignsRouter from "./campaigns";
 import produtosCatalogoRouter from "./produtos_catalogo";
+import agendamentosRouter from "./agendamentos";
 import { authenticate, requireRole, requireSameTenanOrSuperAdmin } from "../middlewares/auth";
 
 const router: IRouter = Router();
@@ -65,6 +66,9 @@ router.use(campaignsRouter);
 
 // Sales / CPQ Hub
 router.use(produtosCatalogoRouter);
+
+// Schedule Hub
+router.use(agendamentosRouter);
 
 export { requireRole, requireSameTenanOrSuperAdmin };
 export default router;

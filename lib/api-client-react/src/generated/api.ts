@@ -21,6 +21,8 @@ import type {
 
 import type {
   Activity,
+  Agendamento,
+  AgendamentoDisponibilidade,
   AgentActionLog,
   AgentConfig,
   AgentTask,
@@ -29,9 +31,11 @@ import type {
   Campaign,
   CampaignAudiencePreview,
   ChangePasswordBody,
+  CheckAgendamentoDisponibilidadeParams,
   Consent,
   Conversation,
   CreateActivityBody,
+  CreateAgendamentoBody,
   CreateAgentActionLogBody,
   CreateAgentConfigBody,
   CreateAgentTaskBody,
@@ -57,6 +61,7 @@ import type {
   IncrementBody,
   Lead,
   ListActivitiesParams,
+  ListAgendamentosParams,
   ListDealsParams,
   ListMessagesParams,
   ListPropostasParams,
@@ -67,6 +72,7 @@ import type {
   RegisterBody,
   Tenant,
   UpdateActivityBody,
+  UpdateAgendamentoBody,
   UpdateAgentActionLogBody,
   UpdateAgentConfigBody,
   UpdateAgentTaskBody,
@@ -3612,6 +3618,481 @@ export const useDeleteMessage = <TError = ErrorType<ErrorResponse>,
         TContext
       > => {
       return useMutation(getDeleteMessageMutationOptions(options));
+    }
+
+export const getCreateAgendamentoUrl = () => {
+
+
+
+
+  return `/api/agendamentos`
+}
+
+/**
+ * dataHoraFim must be after dataHoraInicio.
+ * @summary Create agendamento
+ */
+export const createAgendamento = async (createAgendamentoBody: CreateAgendamentoBody, options?: RequestInit): Promise<Agendamento> => {
+
+  return customFetch<Agendamento>(getCreateAgendamentoUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(
+      createAgendamentoBody,)
+  }
+);}
+
+
+
+
+export const getCreateAgendamentoMutationOptions = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createAgendamento>>, TError,{data: BodyType<CreateAgendamentoBody>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof createAgendamento>>, TError,{data: BodyType<CreateAgendamentoBody>}, TContext> => {
+
+const mutationKey = ['createAgendamento'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof createAgendamento>>, {data: BodyType<CreateAgendamentoBody>}> = (props) => {
+          const {data} = props ?? {};
+
+          return  createAgendamento(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type CreateAgendamentoMutationResult = NonNullable<Awaited<ReturnType<typeof createAgendamento>>>
+    export type CreateAgendamentoMutationBody = BodyType<CreateAgendamentoBody>
+    export type CreateAgendamentoMutationError = ErrorType<ErrorResponse>
+
+    /**
+ * @summary Create agendamento
+ */
+export const useCreateAgendamento = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createAgendamento>>, TError,{data: BodyType<CreateAgendamentoBody>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof createAgendamento>>,
+        TError,
+        {data: BodyType<CreateAgendamentoBody>},
+        TContext
+      > => {
+      return useMutation(getCreateAgendamentoMutationOptions(options));
+    }
+
+export const getListAgendamentosUrl = (tenantId: string,
+    params?: ListAgendamentosParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : value.toString())
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/api/tenants/${tenantId}/agendamentos?${stringifiedParams}` : `/api/tenants/${tenantId}/agendamentos`
+}
+
+/**
+ * Supports filtering by leadId, status, and date range (from/to apply to dataHoraInicio). Ordered by dataHoraInicio ASC.
+ * @summary List agendamentos by tenant
+ */
+export const listAgendamentos = async (tenantId: string,
+    params?: ListAgendamentosParams, options?: RequestInit): Promise<Agendamento[]> => {
+
+  return customFetch<Agendamento[]>(getListAgendamentosUrl(tenantId,params),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getListAgendamentosQueryKey = (tenantId: string,
+    params?: ListAgendamentosParams,) => {
+    return [
+    `/api/tenants/${tenantId}/agendamentos`, ...(params ? [params] : [])
+    ] as const;
+    }
+
+
+export const getListAgendamentosQueryOptions = <TData = Awaited<ReturnType<typeof listAgendamentos>>, TError = ErrorType<unknown>>(tenantId: string,
+    params?: ListAgendamentosParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listAgendamentos>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getListAgendamentosQueryKey(tenantId,params);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof listAgendamentos>>> = ({ signal }) => listAgendamentos(tenantId,params, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, enabled: !!(tenantId), ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof listAgendamentos>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type ListAgendamentosQueryResult = NonNullable<Awaited<ReturnType<typeof listAgendamentos>>>
+export type ListAgendamentosQueryError = ErrorType<unknown>
+
+
+/**
+ * @summary List agendamentos by tenant
+ */
+
+export function useListAgendamentos<TData = Awaited<ReturnType<typeof listAgendamentos>>, TError = ErrorType<unknown>>(
+ tenantId: string,
+    params?: ListAgendamentosParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listAgendamentos>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getListAgendamentosQueryOptions(tenantId,params,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+
+
+
+
+
+
+export const getCheckAgendamentoDisponibilidadeUrl = (tenantId: string,
+    params: CheckAgendamentoDisponibilidadeParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : value.toString())
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/api/tenants/${tenantId}/agendamentos/disponibilidade?${stringifiedParams}` : `/api/tenants/${tenantId}/agendamentos/disponibilidade`
+}
+
+/**
+ * Returns whether a given responsavel has no scheduling conflicts in the
+requested time window. Conflict detection uses interval overlap:
+agendamento.dataHoraInicio < to AND agendamento.dataHoraFim > from.
+Only active (non-cancelled, non-concluido) records are counted.
+
+ * @summary Check schedule availability for a responsavel
+ */
+export const checkAgendamentoDisponibilidade = async (tenantId: string,
+    params: CheckAgendamentoDisponibilidadeParams, options?: RequestInit): Promise<AgendamentoDisponibilidade> => {
+
+  return customFetch<AgendamentoDisponibilidade>(getCheckAgendamentoDisponibilidadeUrl(tenantId,params),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getCheckAgendamentoDisponibilidadeQueryKey = (tenantId: string,
+    params?: CheckAgendamentoDisponibilidadeParams,) => {
+    return [
+    `/api/tenants/${tenantId}/agendamentos/disponibilidade`, ...(params ? [params] : [])
+    ] as const;
+    }
+
+
+export const getCheckAgendamentoDisponibilidadeQueryOptions = <TData = Awaited<ReturnType<typeof checkAgendamentoDisponibilidade>>, TError = ErrorType<ErrorResponse>>(tenantId: string,
+    params: CheckAgendamentoDisponibilidadeParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof checkAgendamentoDisponibilidade>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getCheckAgendamentoDisponibilidadeQueryKey(tenantId,params);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof checkAgendamentoDisponibilidade>>> = ({ signal }) => checkAgendamentoDisponibilidade(tenantId,params, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, enabled: !!(tenantId), ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof checkAgendamentoDisponibilidade>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type CheckAgendamentoDisponibilidadeQueryResult = NonNullable<Awaited<ReturnType<typeof checkAgendamentoDisponibilidade>>>
+export type CheckAgendamentoDisponibilidadeQueryError = ErrorType<ErrorResponse>
+
+
+/**
+ * @summary Check schedule availability for a responsavel
+ */
+
+export function useCheckAgendamentoDisponibilidade<TData = Awaited<ReturnType<typeof checkAgendamentoDisponibilidade>>, TError = ErrorType<ErrorResponse>>(
+ tenantId: string,
+    params: CheckAgendamentoDisponibilidadeParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof checkAgendamentoDisponibilidade>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getCheckAgendamentoDisponibilidadeQueryOptions(tenantId,params,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+
+
+
+
+
+
+export const getGetAgendamentoUrl = (id: string,) => {
+
+
+
+
+  return `/api/agendamentos/${id}`
+}
+
+/**
+ * @summary Get agendamento by ID
+ */
+export const getAgendamento = async (id: string, options?: RequestInit): Promise<Agendamento> => {
+
+  return customFetch<Agendamento>(getGetAgendamentoUrl(id),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetAgendamentoQueryKey = (id: string,) => {
+    return [
+    `/api/agendamentos/${id}`
+    ] as const;
+    }
+
+
+export const getGetAgendamentoQueryOptions = <TData = Awaited<ReturnType<typeof getAgendamento>>, TError = ErrorType<ErrorResponse>>(id: string, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getAgendamento>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetAgendamentoQueryKey(id);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getAgendamento>>> = ({ signal }) => getAgendamento(id, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, enabled: !!(id), ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getAgendamento>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetAgendamentoQueryResult = NonNullable<Awaited<ReturnType<typeof getAgendamento>>>
+export type GetAgendamentoQueryError = ErrorType<ErrorResponse>
+
+
+/**
+ * @summary Get agendamento by ID
+ */
+
+export function useGetAgendamento<TData = Awaited<ReturnType<typeof getAgendamento>>, TError = ErrorType<ErrorResponse>>(
+ id: string, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getAgendamento>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetAgendamentoQueryOptions(id,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+
+
+
+
+
+
+export const getUpdateAgendamentoUrl = (id: string,) => {
+
+
+
+
+  return `/api/agendamentos/${id}`
+}
+
+/**
+ * @summary Update agendamento
+ */
+export const updateAgendamento = async (id: string,
+    updateAgendamentoBody: UpdateAgendamentoBody, options?: RequestInit): Promise<Agendamento> => {
+
+  return customFetch<Agendamento>(getUpdateAgendamentoUrl(id),
+  {
+    ...options,
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(
+      updateAgendamentoBody,)
+  }
+);}
+
+
+
+
+export const getUpdateAgendamentoMutationOptions = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updateAgendamento>>, TError,{id: string;data: BodyType<UpdateAgendamentoBody>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof updateAgendamento>>, TError,{id: string;data: BodyType<UpdateAgendamentoBody>}, TContext> => {
+
+const mutationKey = ['updateAgendamento'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof updateAgendamento>>, {id: string;data: BodyType<UpdateAgendamentoBody>}> = (props) => {
+          const {id,data} = props ?? {};
+
+          return  updateAgendamento(id,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type UpdateAgendamentoMutationResult = NonNullable<Awaited<ReturnType<typeof updateAgendamento>>>
+    export type UpdateAgendamentoMutationBody = BodyType<UpdateAgendamentoBody>
+    export type UpdateAgendamentoMutationError = ErrorType<ErrorResponse>
+
+    /**
+ * @summary Update agendamento
+ */
+export const useUpdateAgendamento = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updateAgendamento>>, TError,{id: string;data: BodyType<UpdateAgendamentoBody>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof updateAgendamento>>,
+        TError,
+        {id: string;data: BodyType<UpdateAgendamentoBody>},
+        TContext
+      > => {
+      return useMutation(getUpdateAgendamentoMutationOptions(options));
+    }
+
+export const getDeleteAgendamentoUrl = (id: string,) => {
+
+
+
+
+  return `/api/agendamentos/${id}`
+}
+
+/**
+ * @summary Delete agendamento
+ */
+export const deleteAgendamento = async (id: string, options?: RequestInit): Promise<void> => {
+
+  return customFetch<void>(getDeleteAgendamentoUrl(id),
+  {
+    ...options,
+    method: 'DELETE'
+
+
+  }
+);}
+
+
+
+
+export const getDeleteAgendamentoMutationOptions = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof deleteAgendamento>>, TError,{id: string}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof deleteAgendamento>>, TError,{id: string}, TContext> => {
+
+const mutationKey = ['deleteAgendamento'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof deleteAgendamento>>, {id: string}> = (props) => {
+          const {id} = props ?? {};
+
+          return  deleteAgendamento(id,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type DeleteAgendamentoMutationResult = NonNullable<Awaited<ReturnType<typeof deleteAgendamento>>>
+
+    export type DeleteAgendamentoMutationError = ErrorType<ErrorResponse>
+
+    /**
+ * @summary Delete agendamento
+ */
+export const useDeleteAgendamento = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof deleteAgendamento>>, TError,{id: string}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof deleteAgendamento>>,
+        TError,
+        {id: string},
+        TContext
+      > => {
+      return useMutation(getDeleteAgendamentoMutationOptions(options));
     }
 
 export const getCreateProdutoCatalogoUrl = () => {
