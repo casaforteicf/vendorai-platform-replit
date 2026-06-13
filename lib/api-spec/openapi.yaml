@@ -24,6 +24,8 @@ tags:
     description: Agent action log management
   - name: consents
     description: Consent management
+  - name: intelligence
+    description: Customer intelligence and AI analysis
 paths:
   /auth/register:
     post:
@@ -2923,6 +2925,49 @@ paths:
                 $ref: "#/components/schemas/ErrorResponse"
         "502":
           description: AI service unavailable
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /tenants/{tenantId}/intelligence-analysis-log:
+    get:
+      operationId: listIntelligenceAnalysisLog
+      tags: [intelligence]
+      summary: List AI analysis log entries for a tenant
+      description: Returns paginated log entries and aggregate stats (total calls, total tokens, breakdown by triggeredBy). Accessible by super_admin or users belonging to the tenant.
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: tenantId
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: page
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            default: 1
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 20
+      responses:
+        "200":
+          description: Paginated log entries with aggregate stats
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/IntelligenceAnalysisLogPage"
+        "403":
+          description: Access denied
           content:
             application/json:
               schema:
@@ -6337,3 +6382,78 @@ components:
         - tenantId
         - leadId
         - channel
+
+    IntelligenceAnalysisLogEntry:
+      type: object
+      properties:
+        id:
+          type: string
+        tenantId:
+          type: string
+        leadId:
+          type: string
+        tokensUsed:
+          type: integer
+        churnRisk:
+          type: ["integer", "null"]
+        triggeredBy:
+          type: string
+        createdAt:
+          type: string
+          format: date-time
+      required:
+        - id
+        - tenantId
+        - leadId
+        - tokensUsed
+        - triggeredBy
+        - createdAt
+
+    IntelligenceAnalysisLogTriggeredByStat:
+      type: object
+      properties:
+        calls:
+          type: integer
+        tokens:
+          type: integer
+      required:
+        - calls
+        - tokens
+
+    IntelligenceAnalysisLogStats:
+      type: object
+      properties:
+        totalCalls:
+          type: integer
+        totalTokens:
+          type: integer
+        byTriggeredBy:
+          type: object
+          additionalProperties:
+            $ref: "#/components/schemas/IntelligenceAnalysisLogTriggeredByStat"
+      required:
+        - totalCalls
+        - totalTokens
+        - byTriggeredBy
+
+    IntelligenceAnalysisLogPage:
+      type: object
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/IntelligenceAnalysisLogEntry"
+        total:
+          type: integer
+        page:
+          type: integer
+        limit:
+          type: integer
+        stats:
+          $ref: "#/components/schemas/IntelligenceAnalysisLogStats"
+      required:
+        - items
+        - total
+        - page
+        - limit
+        - stats

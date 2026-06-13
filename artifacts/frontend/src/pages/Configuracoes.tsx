@@ -16,6 +16,8 @@ import {
   useUpdateAgentConfig,
   useGetAgentConfigUsage,
   useCompleteAgentConfigSetup,
+  useListIntelligenceAnalysisLog,
+  getListIntelligenceAnalysisLogQueryKey,
   AgentsMap,
 } from "@workspace/api-client-react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -42,6 +44,14 @@ import {
 } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
+import {
   Building2,
   Bot,
   CheckCircle2,
@@ -50,7 +60,13 @@ import {
   MessageSquare,
   Zap,
   Save,
+  Brain,
+  ChevronLeft,
+  ChevronRight,
+  BarChart3,
 } from "lucide-react";
+import { format } from "date-fns";
+import { ptBR } from "date-fns/locale";
 import { cn } from "@/lib/utils";
 
 // ─── Schemas ─────────────────────────────────────────────────────────────────
@@ -200,6 +216,165 @@ function UsageBars({ agentConfigId }: { agentConfigId: string }) {
             : "[&>div]:bg-primary"
           )}
         />
+      </div>
+    </div>
+  );
+}
+
+// ─── Triggered-by label map ──────────────────────────────────────────────────
+
+const TRIGGERED_BY_LABEL: Record<string, string> = {
+  manual:    "Manual",
+  automatic: "Automático",
+  webhook:   "Webhook",
+};
+
+function triggeredByLabel(val: string) {
+  return TRIGGERED_BY_LABEL[val] ?? val;
+}
+
+// ─── Analysis Log Tab ─────────────────────────────────────────────────────────
+
+function AnalysisLogTab({ tenantId }: { tenantId: string }) {
+  const [page, setPage] = useState(1);
+  const LIMIT = 20;
+
+  const logParams = { page, limit: LIMIT };
+  const { data, isLoading } = useListIntelligenceAnalysisLog(
+    tenantId,
+    logParams,
+    { query: { queryKey: getListIntelligenceAnalysisLogQueryKey(tenantId, logParams), enabled: !!tenantId } }
+  );
+
+  const totalPages = data ? Math.max(1, Math.ceil(data.total / LIMIT)) : 1;
+
+  return (
+    <div className="space-y-5">
+      {/* Stats cards */}
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+        <div className="rounded-xl border bg-card p-5">
+          <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide mb-1">Total de análises</p>
+          {isLoading
+            ? <Skeleton className="h-7 w-24 mt-1" />
+            : <p className="text-2xl font-bold">{(data?.stats.totalCalls ?? 0).toLocaleString("pt-BR")}</p>
+          }
+        </div>
+        <div className="rounded-xl border bg-card p-5">
+          <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide mb-1">Tokens consumidos</p>
+          {isLoading
+            ? <Skeleton className="h-7 w-24 mt-1" />
+            : <p className="text-2xl font-bold">{(data?.stats.totalTokens ?? 0).toLocaleString("pt-BR")}</p>
+          }
+        </div>
+        <div className="rounded-xl border bg-card p-5">
+          <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide mb-2">Por origem</p>
+          {isLoading
+            ? <div className="space-y-1"><Skeleton className="h-4 w-32" /><Skeleton className="h-4 w-28" /></div>
+            : data && Object.keys(data.stats.byTriggeredBy).length > 0
+              ? (
+                <ul className="space-y-1">
+                  {Object.entries(data.stats.byTriggeredBy).map(([key, stat]) => (
+                    <li key={key} className="flex items-center justify-between gap-2 text-sm">
+                      <span className="text-muted-foreground">{triggeredByLabel(key)}</span>
+                      <span className="font-medium">{stat.calls.toLocaleString("pt-BR")} chamadas</span>
+                    </li>
+                  ))}
+                </ul>
+              )
+              : <p className="text-sm text-muted-foreground">Nenhuma análise registrada.</p>
+          }
+        </div>
+      </div>
+
+      {/* Log table */}
+      <div className="rounded-xl border bg-card overflow-hidden">
+        <div className="px-5 py-4 border-b">
+          <h3 className="font-semibold text-sm flex items-center gap-2">
+            <BarChart3 className="h-4 w-4 text-primary" />
+            Histórico de análises
+          </h3>
+        </div>
+
+        {isLoading ? (
+          <div className="p-5 space-y-3">
+            {Array.from({ length: 5 }).map((_, i) => <Skeleton key={i} className="h-10 w-full" />)}
+          </div>
+        ) : !data || data.items.length === 0 ? (
+          <div className="p-8 text-center text-sm text-muted-foreground">
+            Nenhuma análise de IA registrada ainda.
+          </div>
+        ) : (
+          <>
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Data</TableHead>
+                  <TableHead>Lead</TableHead>
+                  <TableHead>Tokens</TableHead>
+                  <TableHead>Risco de Churn</TableHead>
+                  <TableHead>Origem</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {data.items.map((entry) => (
+                  <TableRow key={entry.id}>
+                    <TableCell className="text-sm text-muted-foreground whitespace-nowrap">
+                      {format(new Date(entry.createdAt), "dd/MM/yyyy HH:mm", { locale: ptBR })}
+                    </TableCell>
+                    <TableCell className="text-sm font-mono text-xs text-muted-foreground">
+                      {entry.leadId.slice(0, 8)}…
+                    </TableCell>
+                    <TableCell className="text-sm font-medium">
+                      {entry.tokensUsed.toLocaleString("pt-BR")}
+                    </TableCell>
+                    <TableCell className="text-sm">
+                      {entry.churnRisk != null ? (
+                        <span className={cn(
+                          "font-medium",
+                          entry.churnRisk >= 60 ? "text-red-500" : entry.churnRisk >= 40 ? "text-yellow-500" : "text-green-600"
+                        )}>
+                          {entry.churnRisk}
+                        </span>
+                      ) : (
+                        <span className="text-muted-foreground">—</span>
+                      )}
+                    </TableCell>
+                    <TableCell>
+                      <Badge variant="secondary" className="text-xs">
+                        {triggeredByLabel(entry.triggeredBy)}
+                      </Badge>
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+
+            {/* Pagination */}
+            {totalPages > 1 && (
+              <div className="flex items-center justify-between px-5 py-3 border-t text-sm text-muted-foreground">
+                <span>
+                  Página {page} de {totalPages} · {data.total} registros
+                </span>
+                <div className="flex items-center gap-1">
+                  <button
+                    onClick={() => setPage((p) => Math.max(1, p - 1))}
+                    disabled={page <= 1}
+                    className="p-1 rounded hover:bg-muted disabled:opacity-40 disabled:cursor-not-allowed"
+                  >
+                    <ChevronLeft className="h-4 w-4" />
+                  </button>
+                  <button
+                    onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+                    disabled={page >= totalPages}
+                    className="p-1 rounded hover:bg-muted disabled:opacity-40 disabled:cursor-not-allowed"
+                  >
+                    <ChevronRight className="h-4 w-4" />
+                  </button>
+                </div>
+              </div>
+            )}
+          </>
+        )}
       </div>
     </div>
   );
@@ -367,7 +542,7 @@ export default function Configuracoes() {
       </div>
 
       <Tabs defaultValue="perfil" className="space-y-6">
-        <TabsList className="grid w-full grid-cols-2 max-w-sm">
+        <TabsList className="grid w-full grid-cols-3 max-w-lg">
           <TabsTrigger value="perfil" className="gap-2">
             <Building2 className="h-4 w-4" />
             Perfil
@@ -375,6 +550,10 @@ export default function Configuracoes() {
           <TabsTrigger value="agentes" className="gap-2">
             <Bot className="h-4 w-4" />
             Agentes de IA
+          </TabsTrigger>
+          <TabsTrigger value="analise" className="gap-2">
+            <Brain className="h-4 w-4" />
+            Análise de IA
           </TabsTrigger>
         </TabsList>
 
@@ -649,6 +828,22 @@ export default function Configuracoes() {
                   );
                 })
             }
+          </div>
+        </TabsContent>
+
+        {/* ── Tab: Análise de IA ──────────────────────────────────────────── */}
+        <TabsContent value="analise">
+          <div>
+            <div className="mb-5">
+              <h2 className="font-semibold text-base flex items-center gap-2">
+                <Brain className="h-4 w-4 text-primary" />
+                Uso de Análise de IA
+              </h2>
+              <p className="text-sm text-muted-foreground mt-0.5">
+                Tokens consumidos por análises de risco de churn via IA.
+              </p>
+            </div>
+            <AnalysisLogTab tenantId={tenantId} />
           </div>
         </TabsContent>
       </Tabs>

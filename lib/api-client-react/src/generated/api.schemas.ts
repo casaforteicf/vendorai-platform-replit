@@ -1395,6 +1395,38 @@ export interface CreateConsentBody {
   consentGivenAt?: string;
 }
 
+export interface IntelligenceAnalysisLogEntry {
+  id: string;
+  tenantId: string;
+  leadId: string;
+  tokensUsed: number;
+  /** @nullable */
+  churnRisk?: number | null;
+  triggeredBy: string;
+  createdAt: string;
+}
+
+export interface IntelligenceAnalysisLogTriggeredByStat {
+  calls: number;
+  tokens: number;
+}
+
+export type IntelligenceAnalysisLogStatsByTriggeredBy = {[key: string]: IntelligenceAnalysisLogTriggeredByStat};
+
+export interface IntelligenceAnalysisLogStats {
+  totalCalls: number;
+  totalTokens: number;
+  byTriggeredBy: IntelligenceAnalysisLogStatsByTriggeredBy;
+}
+
+export interface IntelligenceAnalysisLogPage {
+  items: IntelligenceAnalysisLogEntry[];
+  total: number;
+  page: number;
+  limit: number;
+  stats: IntelligenceAnalysisLogStats;
+}
+
 export type ListDealsParams = {
 etapa?: DealEtapa;
 funilId?: string;
@@ -1473,5 +1505,17 @@ from: string;
  * End of the window to check (ISO 8601)
  */
 to: string;
+};
+
+export type ListIntelligenceAnalysisLogParams = {
+/**
+ * @minimum 1
+ */
+page?: number;
+/**
+ * @minimum 1
+ * @maximum 100
+ */
+limit?: number;
 };
 

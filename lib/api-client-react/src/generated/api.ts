@@ -64,12 +64,14 @@ import type {
   Funil,
   HealthStatus,
   IncrementBody,
+  IntelligenceAnalysisLogPage,
   Invoice,
   KnowledgeBase,
   Lead,
   ListActivitiesParams,
   ListAgendamentosParams,
   ListDealsParams,
+  ListIntelligenceAnalysisLogParams,
   ListInvoicesParams,
   ListKnowledgeBaseParams,
   ListMessagesParams,
@@ -7493,6 +7495,96 @@ export const useAnalyzeLeadIntelligence = <TError = ErrorType<ErrorResponse>,
       > => {
       return useMutation(getAnalyzeLeadIntelligenceMutationOptions(options));
     }
+
+export const getListIntelligenceAnalysisLogUrl = (tenantId: string,
+    params?: ListIntelligenceAnalysisLogParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : value.toString())
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/api/tenants/${tenantId}/intelligence-analysis-log?${stringifiedParams}` : `/api/tenants/${tenantId}/intelligence-analysis-log`
+}
+
+/**
+ * Returns paginated log entries and aggregate stats (total calls, total tokens, breakdown by triggeredBy). Accessible by super_admin or users belonging to the tenant.
+ * @summary List AI analysis log entries for a tenant
+ */
+export const listIntelligenceAnalysisLog = async (tenantId: string,
+    params?: ListIntelligenceAnalysisLogParams, options?: RequestInit): Promise<IntelligenceAnalysisLogPage> => {
+
+  return customFetch<IntelligenceAnalysisLogPage>(getListIntelligenceAnalysisLogUrl(tenantId,params),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getListIntelligenceAnalysisLogQueryKey = (tenantId: string,
+    params?: ListIntelligenceAnalysisLogParams,) => {
+    return [
+    `/api/tenants/${tenantId}/intelligence-analysis-log`, ...(params ? [params] : [])
+    ] as const;
+    }
+
+
+export const getListIntelligenceAnalysisLogQueryOptions = <TData = Awaited<ReturnType<typeof listIntelligenceAnalysisLog>>, TError = ErrorType<ErrorResponse>>(tenantId: string,
+    params?: ListIntelligenceAnalysisLogParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listIntelligenceAnalysisLog>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getListIntelligenceAnalysisLogQueryKey(tenantId,params);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof listIntelligenceAnalysisLog>>> = ({ signal }) => listIntelligenceAnalysisLog(tenantId,params, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, enabled: !!(tenantId), ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof listIntelligenceAnalysisLog>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type ListIntelligenceAnalysisLogQueryResult = NonNullable<Awaited<ReturnType<typeof listIntelligenceAnalysisLog>>>
+export type ListIntelligenceAnalysisLogQueryError = ErrorType<ErrorResponse>
+
+
+/**
+ * @summary List AI analysis log entries for a tenant
+ */
+
+export function useListIntelligenceAnalysisLog<TData = Awaited<ReturnType<typeof listIntelligenceAnalysisLog>>, TError = ErrorType<ErrorResponse>>(
+ tenantId: string,
+    params?: ListIntelligenceAnalysisLogParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listIntelligenceAnalysisLog>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getListIntelligenceAnalysisLogQueryOptions(tenantId,params,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+
+
+
+
+
 
 export const getGetCustomerIntelligenceUrl = (id: string,) => {
 

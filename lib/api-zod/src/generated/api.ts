@@ -2665,6 +2665,50 @@ export const AnalyzeLeadIntelligenceResponse = zod.object({
 
 
 /**
+ * Returns paginated log entries and aggregate stats (total calls, total tokens, breakdown by triggeredBy). Accessible by super_admin or users belonging to the tenant.
+ * @summary List AI analysis log entries for a tenant
+ */
+export const ListIntelligenceAnalysisLogParams = zod.object({
+  "tenantId": zod.coerce.string()
+})
+
+export const listIntelligenceAnalysisLogQueryPageDefault = 1;
+
+export const listIntelligenceAnalysisLogQueryLimitDefault = 20;
+export const listIntelligenceAnalysisLogQueryLimitMax = 100;
+
+
+
+export const ListIntelligenceAnalysisLogQueryParams = zod.object({
+  "page": zod.coerce.number().min(1).default(listIntelligenceAnalysisLogQueryPageDefault),
+  "limit": zod.coerce.number().min(1).max(listIntelligenceAnalysisLogQueryLimitMax).default(listIntelligenceAnalysisLogQueryLimitDefault)
+})
+
+export const ListIntelligenceAnalysisLogResponse = zod.object({
+  "items": zod.array(zod.object({
+  "id": zod.string(),
+  "tenantId": zod.string(),
+  "leadId": zod.string(),
+  "tokensUsed": zod.number(),
+  "churnRisk": zod.number().nullish(),
+  "triggeredBy": zod.string(),
+  "createdAt": zod.coerce.date()
+})),
+  "total": zod.number(),
+  "page": zod.number(),
+  "limit": zod.number(),
+  "stats": zod.object({
+  "totalCalls": zod.number(),
+  "totalTokens": zod.number(),
+  "byTriggeredBy": zod.record(zod.string(), zod.object({
+  "calls": zod.number(),
+  "tokens": zod.number()
+}))
+})
+})
+
+
+/**
  * @summary Get customer intelligence record by ID
  */
 export const GetCustomerIntelligenceParams = zod.object({

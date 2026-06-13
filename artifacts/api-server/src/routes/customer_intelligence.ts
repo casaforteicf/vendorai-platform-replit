@@ -1,10 +1,11 @@
 import { Router, type IRouter } from "express";
-import { and, eq } from "drizzle-orm";
+import { and, eq, sql, count, sum, desc } from "drizzle-orm";
 import {
   db,
   customerIntelligenceTable,
   insertCustomerIntelligenceSchema,
   updateCustomerIntelligenceSchema,
+  intelligenceAnalysisLogTable,
 } from "@workspace/db";
 import {
   analyzeLeadIntelligence,
@@ -185,6 +186,74 @@ router.delete("/customer-intelligence/:id", async (req, res) => {
     .where(eq(customerIntelligenceTable.id, existing.id));
 
   res.status(204).send();
+});
+
+/**
+ * GET /tenants/:tenantId/intelligence-analysis-log
+ *
+ * Returns paginated AI analysis log entries for a tenant with aggregate stats.
+ * Accessible by super_admin or users belonging to the tenant.
+ */
+router.get("/tenants/:tenantId/intelligence-analysis-log", async (req, res) => {
+  const tenantId = String(req.params.tenantId);
+
+  if (req.user?.platformRole !== "super_admin" && req.user?.tenantId !== tenantId) {
+    res.status(403).json({ error: "Access denied to this tenant" });
+    return;
+  }
+
+  const page  = Math.max(1, parseInt(String(req.query.page  ?? "1"),  10) || 1);
+  const limit = Math.min(100, Math.max(1, parseInt(String(req.query.limit ?? "20"), 10) || 20));
+  const offset = (page - 1) * limit;
+
+  const [items, totalsRow, byTrigger] = await Promise.all([
+    db
+      .select()
+      .from(intelligenceAnalysisLogTable)
+      .where(eq(intelligenceAnalysisLogTable.tenantId, tenantId))
+      .orderBy(desc(intelligenceAnalysisLogTable.createdAt))
+      .limit(limit)
+      .offset(offset),
+
+    db
+      .select({
+        totalCalls:  count(),
+        totalTokens: sum(intelligenceAnalysisLogTable.tokensUsed),
+      })
+      .from(intelligenceAnalysisLogTable)
+      .where(eq(intelligenceAnalysisLogTable.tenantId, tenantId))
+      .then((rows) => rows[0] ?? { totalCalls: 0, totalTokens: "0" }),
+
+    db
+      .select({
+        triggeredBy: intelligenceAnalysisLogTable.triggeredBy,
+        calls:       count(),
+        tokens:      sum(intelligenceAnalysisLogTable.tokensUsed),
+      })
+      .from(intelligenceAnalysisLogTable)
+      .where(eq(intelligenceAnalysisLogTable.tenantId, tenantId))
+      .groupBy(intelligenceAnalysisLogTable.triggeredBy),
+  ]);
+
+  const byTriggeredBy: Record<string, { calls: number; tokens: number }> = {};
+  for (const row of byTrigger) {
+    byTriggeredBy[row.triggeredBy] = {
+      calls:  Number(row.calls),
+      tokens: Number(row.tokens ?? 0),
+    };
+  }
+
+  res.json({
+    items,
+    total: Number(totalsRow.totalCalls),
+    page,
+    limit,
+    stats: {
+      totalCalls:  Number(totalsRow.totalCalls),
+      totalTokens: Number(totalsRow.totalTokens ?? 0),
+      byTriggeredBy,
+    },
+  });
 });
 
 /**
