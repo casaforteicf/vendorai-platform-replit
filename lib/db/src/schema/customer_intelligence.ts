@@ -1,4 +1,5 @@
-import { pgTable, text, timestamp, integer, jsonb } from "drizzle-orm/pg-core";
+import { pgTable, text, timestamp, integer, jsonb, check } from "drizzle-orm/pg-core";
+import { sql } from "drizzle-orm";
 import { createInsertSchema, createSelectSchema } from "drizzle-zod";
 import { z } from "zod/v4";
 import { tenantsTable } from "./tenants";
@@ -29,7 +30,9 @@ export const customerIntelligenceTable = pgTable("customer_intelligence", {
   lastAnalyzedAt: timestamp("last_analyzed_at"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
-});
+}, (table) => [
+  check("churn_risk_range", sql`${table.churnRisk} >= 0 AND ${table.churnRisk} <= 100`),
+]);
 
 export const insertCustomerIntelligenceSchema = createInsertSchema(
   customerIntelligenceTable,
