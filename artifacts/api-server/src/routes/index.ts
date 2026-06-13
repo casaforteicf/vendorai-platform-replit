@@ -12,6 +12,7 @@ import agentConfigsRouter from "./agent_configs";
 import funisRouter from "./funis";
 import dealsRouter from "./deals";
 import activitiesRouter from "./activities";
+import propostasRouter from "./propostas";
 import { authenticate, requireRole, requireSameTenanOrSuperAdmin } from "../middlewares/auth";
 
 const router: IRouter = Router();
@@ -45,6 +46,7 @@ router.use(agentConfigsRouter);
 router.use(funisRouter);
 router.use(dealsRouter);
 router.use(activitiesRouter);
+router.use(propostasRouter);
 
 export { requireRole, requireSameTenanOrSuperAdmin };
 export default router;

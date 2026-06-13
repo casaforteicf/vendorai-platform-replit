@@ -93,6 +93,62 @@ export interface UsageSummary {
   tokens: UsageSummaryTokens;
 }
 
+export type PropostaStatus = typeof PropostaStatus[keyof typeof PropostaStatus];
+
+
+export const PropostaStatus = {
+  rascunho: 'rascunho',
+  enviada: 'enviada',
+  aceita: 'aceita',
+  rejeitada: 'rejeitada',
+  expirada: 'expirada',
+} as const;
+
+export interface PropostaItem {
+  nome: string;
+  quantidade: number;
+  valorUnitario: number;
+}
+
+export interface Proposta {
+  id: string;
+  tenantId: string;
+  leadId: string;
+  dealId?: string | null;
+  titulo: string;
+  itens: PropostaItem[];
+  /** Decimal stored as string (Postgres numeric) */
+  valorTotal?: string | null;
+  status: PropostaStatus;
+  validadeAte?: string | null;
+  observacoes?: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface CreatePropostaBody {
+  tenantId: string;
+  leadId: string;
+  dealId?: string;
+  titulo: string;
+  itens?: PropostaItem[];
+  valorTotal?: number;
+  status?: PropostaStatus;
+  validadeAte?: string;
+  observacoes?: string;
+}
+
+export interface UpdatePropostaBody {
+  leadId?: string;
+  dealId?: string;
+  titulo?: string;
+  itens?: PropostaItem[];
+  valorTotal?: number;
+  status?: PropostaStatus;
+  validadeAte?: string;
+  observacoes?: string;
+}
+
 export type ActivityTipo = typeof ActivityTipo[keyof typeof ActivityTipo];
 
 
@@ -579,5 +635,10 @@ export type ListActivitiesParams = {
 leadId?: string;
 dealId?: string;
 status?: ActivityStatus;
+};
+
+export type ListPropostasParams = {
+leadId?: string;
+dealId?: string;
 };
 

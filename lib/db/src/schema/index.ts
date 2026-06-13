@@ -9,3 +9,4 @@ export * from "./agent_configs";
 export * from "./funis";
 export * from "./deals";
 export * from "./activities";
+export * from "./propostas";

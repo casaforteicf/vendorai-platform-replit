@@ -1,0 +1,66 @@
+import { pgTable, text, timestamp, numeric, pgEnum, jsonb } from "drizzle-orm/pg-core";
+import { createInsertSchema, createSelectSchema } from "drizzle-zod";
+import { z } from "zod/v4";
+import { tenantsTable } from "./tenants";
+import { leadsTable } from "./leads";
+import { dealsTable } from "./deals";
+
+export const propostaStatusEnum = pgEnum("proposta_status", [
+  "rascunho",
+  "enviada",
+  "aceita",
+  "rejeitada",
+  "expirada",
+]);
+
+export const propostaItemSchema = z.object({
+  nome: z.string().min(1),
+  quantidade: z.number().positive(),
+  valorUnitario: z.number().nonnegative(),
+});
+
+export type PropostaItem = z.infer<typeof propostaItemSchema>;
+
+const valorField = z
+  .union([z.number(), z.string()])
+  .transform((v) => String(v))
+  .optional();
+
+export const propostasTable = pgTable("propostas", {
+  id: text("id")
+    .primaryKey()
+    .$defaultFn(() => crypto.randomUUID()),
+  tenantId: text("tenant_id")
+    .notNull()
+    .references(() => tenantsTable.id, { onDelete: "cascade" }),
+  leadId: text("lead_id")
+    .notNull()
+    .references(() => leadsTable.id, { onDelete: "cascade" }),
+  dealId: text("deal_id").references(() => dealsTable.id, { onDelete: "set null" }),
+  titulo: text("titulo").notNull(),
+  itens: jsonb("itens").$type<PropostaItem[]>().notNull().default([]),
+  valorTotal: numeric("valor_total", { precision: 12, scale: 2 }),
+  status: propostaStatusEnum("status").notNull().default("rascunho"),
+  validadeAte: timestamp("validade_ate"),
+  observacoes: text("observacoes"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+});
+
+export const insertPropostaSchema = createInsertSchema(propostasTable, {
+  itens: z.array(propostaItemSchema).optional(),
+  valorTotal: valorField,
+  validadeAte: z.coerce.date().optional(),
+}).omit({ id: true, createdAt: true, updatedAt: true });
+
+export const updatePropostaSchema = createSelectSchema(propostasTable, {
+  itens: z.array(propostaItemSchema).optional(),
+  valorTotal: valorField,
+  validadeAte: z.coerce.date().optional(),
+})
+  .omit({ id: true, tenantId: true, createdAt: true, updatedAt: true })
+  .partial();
+
+export type InsertProposta = z.infer<typeof insertPropostaSchema>;
+export type UpdateProposta = z.infer<typeof updatePropostaSchema>;
+export type Proposta = typeof propostasTable.$inferSelect;

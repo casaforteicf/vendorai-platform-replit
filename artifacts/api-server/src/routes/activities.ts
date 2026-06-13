@@ -1,5 +1,5 @@
 import { Router, type IRouter } from "express";
-import { and, eq } from "drizzle-orm";
+import { and, eq, lt, isNotNull } from "drizzle-orm";
 import {
   db,
   activitiesTable,
@@ -39,6 +39,23 @@ router.get("/tenants/:tenantId/activities", async (req, res) => {
     .from(activitiesTable)
     .where(and(...conditions))
     .orderBy(activitiesTable.dataVencimento, activitiesTable.createdAt);
+
+  res.json(activities);
+});
+
+router.get("/tenants/:tenantId/activities/overdue", async (req, res) => {
+  const activities = await db
+    .select()
+    .from(activitiesTable)
+    .where(
+      and(
+        eq(activitiesTable.tenantId, String(req.params.tenantId)),
+        eq(activitiesTable.status, "pendente"),
+        isNotNull(activitiesTable.dataVencimento),
+        lt(activitiesTable.dataVencimento, new Date())
+      )
+    )
+    .orderBy(activitiesTable.dataVencimento);
 
   res.json(activities);
 });

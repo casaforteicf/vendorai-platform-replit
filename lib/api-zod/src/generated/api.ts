@@ -974,6 +974,32 @@ export const CreateActivityBody = zod.object({
 
 
 /**
+ * Returns pending activities with dataVencimento in the past, ordered by most overdue first.
+ * @summary List overdue activities
+ */
+export const ListOverdueActivitiesParams = zod.object({
+  "tenantId": zod.coerce.string()
+})
+
+export const ListOverdueActivitiesResponseItem = zod.object({
+  "id": zod.string(),
+  "tenantId": zod.string(),
+  "leadId": zod.string(),
+  "dealId": zod.string().nullish(),
+  "tipo": zod.enum(['ligacao', 'whatsapp', 'email', 'visita', 'tarefa']),
+  "titulo": zod.string(),
+  "descricao": zod.string().nullish(),
+  "status": zod.enum(['pendente', 'concluida', 'cancelada']),
+  "dataVencimento": zod.coerce.date().nullish(),
+  "concluidaEm": zod.coerce.date().nullish(),
+  "responsavelId": zod.string().nullish(),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date()
+})
+export const ListOverdueActivitiesResponse = zod.array(ListOverdueActivitiesResponseItem)
+
+
+/**
  * @summary List activities by tenant
  */
 export const ListActivitiesParams = zod.object({
@@ -1069,6 +1095,136 @@ export const UpdateActivityResponse = zod.object({
  * @summary Delete activity
  */
 export const DeleteActivityParams = zod.object({
+  "id": zod.coerce.string()
+})
+
+
+/**
+ * @summary Create proposal
+ */
+export const CreatePropostaBody = zod.object({
+  "tenantId": zod.string(),
+  "leadId": zod.string(),
+  "dealId": zod.string().optional(),
+  "titulo": zod.string(),
+  "itens": zod.array(zod.object({
+  "nome": zod.string(),
+  "quantidade": zod.number(),
+  "valorUnitario": zod.number()
+})).optional(),
+  "valorTotal": zod.number().optional(),
+  "status": zod.enum(['rascunho', 'enviada', 'aceita', 'rejeitada', 'expirada']).optional(),
+  "validadeAte": zod.coerce.date().optional(),
+  "observacoes": zod.string().optional()
+})
+
+
+/**
+ * @summary List proposals by tenant
+ */
+export const ListPropostasParams = zod.object({
+  "tenantId": zod.coerce.string()
+})
+
+export const ListPropostasQueryParams = zod.object({
+  "leadId": zod.coerce.string().optional(),
+  "dealId": zod.coerce.string().optional()
+})
+
+export const ListPropostasResponseItem = zod.object({
+  "id": zod.string(),
+  "tenantId": zod.string(),
+  "leadId": zod.string(),
+  "dealId": zod.string().nullish(),
+  "titulo": zod.string(),
+  "itens": zod.array(zod.object({
+  "nome": zod.string(),
+  "quantidade": zod.number(),
+  "valorUnitario": zod.number()
+})),
+  "valorTotal": zod.string().nullish().describe('Decimal stored as string (Postgres numeric)'),
+  "status": zod.enum(['rascunho', 'enviada', 'aceita', 'rejeitada', 'expirada']),
+  "validadeAte": zod.coerce.date().nullish(),
+  "observacoes": zod.string().nullish(),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date()
+})
+export const ListPropostasResponse = zod.array(ListPropostasResponseItem)
+
+
+/**
+ * @summary Get proposal by ID
+ */
+export const GetPropostaParams = zod.object({
+  "id": zod.coerce.string()
+})
+
+export const GetPropostaResponse = zod.object({
+  "id": zod.string(),
+  "tenantId": zod.string(),
+  "leadId": zod.string(),
+  "dealId": zod.string().nullish(),
+  "titulo": zod.string(),
+  "itens": zod.array(zod.object({
+  "nome": zod.string(),
+  "quantidade": zod.number(),
+  "valorUnitario": zod.number()
+})),
+  "valorTotal": zod.string().nullish().describe('Decimal stored as string (Postgres numeric)'),
+  "status": zod.enum(['rascunho', 'enviada', 'aceita', 'rejeitada', 'expirada']),
+  "validadeAte": zod.coerce.date().nullish(),
+  "observacoes": zod.string().nullish(),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date()
+})
+
+
+/**
+ * @summary Update proposal
+ */
+export const UpdatePropostaParams = zod.object({
+  "id": zod.coerce.string()
+})
+
+export const UpdatePropostaBody = zod.object({
+  "leadId": zod.string().optional(),
+  "dealId": zod.string().optional(),
+  "titulo": zod.string().optional(),
+  "itens": zod.array(zod.object({
+  "nome": zod.string(),
+  "quantidade": zod.number(),
+  "valorUnitario": zod.number()
+})).optional(),
+  "valorTotal": zod.number().optional(),
+  "status": zod.enum(['rascunho', 'enviada', 'aceita', 'rejeitada', 'expirada']).optional(),
+  "validadeAte": zod.coerce.date().optional(),
+  "observacoes": zod.string().optional()
+})
+
+export const UpdatePropostaResponse = zod.object({
+  "id": zod.string(),
+  "tenantId": zod.string(),
+  "leadId": zod.string(),
+  "dealId": zod.string().nullish(),
+  "titulo": zod.string(),
+  "itens": zod.array(zod.object({
+  "nome": zod.string(),
+  "quantidade": zod.number(),
+  "valorUnitario": zod.number()
+})),
+  "valorTotal": zod.string().nullish().describe('Decimal stored as string (Postgres numeric)'),
+  "status": zod.enum(['rascunho', 'enviada', 'aceita', 'rejeitada', 'expirada']),
+  "validadeAte": zod.coerce.date().nullish(),
+  "observacoes": zod.string().nullish(),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date()
+})
+
+
+/**
+ * @summary Delete proposal
+ */
+export const DeletePropostaParams = zod.object({
   "id": zod.coerce.string()
 })
 

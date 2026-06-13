@@ -919,6 +919,30 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
 
+  /tenants/{tenantId}/activities/overdue:
+    get:
+      operationId: listOverdueActivities
+      tags: [crm]
+      summary: List overdue activities
+      description: Returns pending activities with dataVencimento in the past, ordered by most overdue first.
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: tenantId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: List of overdue activities
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Activity"
+
   /tenants/{tenantId}/activities:
     get:
       operationId: listActivities
@@ -1022,6 +1046,149 @@ paths:
       operationId: deleteActivity
       tags: [crm]
       summary: Delete activity
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "204":
+          description: Deleted
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /propostas:
+    post:
+      operationId: createProposta
+      tags: [crm]
+      summary: Create proposal
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreatePropostaBody"
+      responses:
+        "201":
+          description: Proposal created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Proposta"
+        "422":
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /tenants/{tenantId}/propostas:
+    get:
+      operationId: listPropostas
+      tags: [crm]
+      summary: List proposals by tenant
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: tenantId
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: leadId
+          in: query
+          schema:
+            type: string
+        - name: dealId
+          in: query
+          schema:
+            type: string
+      responses:
+        "200":
+          description: List of proposals
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Proposta"
+
+  /propostas/{id}:
+    get:
+      operationId: getProposta
+      tags: [crm]
+      summary: Get proposal by ID
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Proposal
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Proposta"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+    patch:
+      operationId: updateProposta
+      tags: [crm]
+      summary: Update proposal
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdatePropostaBody"
+      responses:
+        "200":
+          description: Updated proposal
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Proposta"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "422":
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+    delete:
+      operationId: deleteProposta
+      tags: [crm]
+      summary: Delete proposal
       security:
         - bearerAuth: []
       parameters:
@@ -1978,6 +2145,109 @@ components:
               type: boolean
           required: [used, limit, percentUsed, nearLimit, overLimit]
       required: [messages, tokens]
+
+    PropostaStatus:
+      type: string
+      enum: [rascunho, enviada, aceita, rejeitada, expirada]
+
+    PropostaItem:
+      type: object
+      properties:
+        nome:
+          type: string
+        quantidade:
+          type: number
+        valorUnitario:
+          type: number
+      required: [nome, quantidade, valorUnitario]
+
+    Proposta:
+      type: object
+      properties:
+        id:
+          type: string
+        tenantId:
+          type: string
+        leadId:
+          type: string
+        dealId:
+          type: string
+          nullable: true
+        titulo:
+          type: string
+        itens:
+          type: array
+          items:
+            $ref: "#/components/schemas/PropostaItem"
+        valorTotal:
+          type: string
+          nullable: true
+          description: Decimal stored as string (Postgres numeric)
+        status:
+          $ref: "#/components/schemas/PropostaStatus"
+        validadeAte:
+          type: string
+          format: date-time
+          nullable: true
+        observacoes:
+          type: string
+          nullable: true
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+      required: [id, tenantId, leadId, titulo, itens, status, createdAt, updatedAt]
+
+    CreatePropostaBody:
+      type: object
+      properties:
+        tenantId:
+          type: string
+        leadId:
+          type: string
+        dealId:
+          type: string
+        titulo:
+          type: string
+        itens:
+          type: array
+          items:
+            $ref: "#/components/schemas/PropostaItem"
+        valorTotal:
+          type: number
+        status:
+          $ref: "#/components/schemas/PropostaStatus"
+        validadeAte:
+          type: string
+          format: date-time
+        observacoes:
+          type: string
+      required: [tenantId, leadId, titulo]
+
+    UpdatePropostaBody:
+      type: object
+      properties:
+        leadId:
+          type: string
+        dealId:
+          type: string
+        titulo:
+          type: string
+        itens:
+          type: array
+          items:
+            $ref: "#/components/schemas/PropostaItem"
+        valorTotal:
+          type: number
+        status:
+          $ref: "#/components/schemas/PropostaStatus"
+        validadeAte:
+          type: string
+          format: date-time
+        observacoes:
+          type: string
 
     ActivityTipo:
       type: string

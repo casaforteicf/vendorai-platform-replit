@@ -37,6 +37,7 @@ import type {
   CreateDealBody,
   CreateFunilBody,
   CreateLeadBody,
+  CreatePropostaBody,
   CreateTenantBody,
   CreateUserBody,
   Deal,
@@ -47,7 +48,9 @@ import type {
   Lead,
   ListActivitiesParams,
   ListDealsParams,
+  ListPropostasParams,
   LoginBody,
+  Proposta,
   RegisterBody,
   Tenant,
   UpdateActivityBody,
@@ -58,6 +61,7 @@ import type {
   UpdateDealBody,
   UpdateFunilBody,
   UpdateLeadBody,
+  UpdatePropostaBody,
   UpdateTenantBody,
   UpdateUserBody,
   UsageSummary,
@@ -2367,6 +2371,84 @@ export const useCreateActivity = <TError = ErrorType<ErrorResponse>,
       return useMutation(getCreateActivityMutationOptions(options));
     }
 
+export const getListOverdueActivitiesUrl = (tenantId: string,) => {
+
+
+
+
+  return `/api/tenants/${tenantId}/activities/overdue`
+}
+
+/**
+ * Returns pending activities with dataVencimento in the past, ordered by most overdue first.
+ * @summary List overdue activities
+ */
+export const listOverdueActivities = async (tenantId: string, options?: RequestInit): Promise<Activity[]> => {
+
+  return customFetch<Activity[]>(getListOverdueActivitiesUrl(tenantId),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getListOverdueActivitiesQueryKey = (tenantId: string,) => {
+    return [
+    `/api/tenants/${tenantId}/activities/overdue`
+    ] as const;
+    }
+
+
+export const getListOverdueActivitiesQueryOptions = <TData = Awaited<ReturnType<typeof listOverdueActivities>>, TError = ErrorType<unknown>>(tenantId: string, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listOverdueActivities>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getListOverdueActivitiesQueryKey(tenantId);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof listOverdueActivities>>> = ({ signal }) => listOverdueActivities(tenantId, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, enabled: !!(tenantId), ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof listOverdueActivities>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type ListOverdueActivitiesQueryResult = NonNullable<Awaited<ReturnType<typeof listOverdueActivities>>>
+export type ListOverdueActivitiesQueryError = ErrorType<unknown>
+
+
+/**
+ * @summary List overdue activities
+ */
+
+export function useListOverdueActivities<TData = Awaited<ReturnType<typeof listOverdueActivities>>, TError = ErrorType<unknown>>(
+ tenantId: string, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listOverdueActivities>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getListOverdueActivitiesQueryOptions(tenantId,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+
+
+
+
+
+
 export const getListActivitiesUrl = (tenantId: string,
     params?: ListActivitiesParams,) => {
   const normalizedParams = new URLSearchParams();
@@ -2674,6 +2756,385 @@ export const useDeleteActivity = <TError = ErrorType<ErrorResponse>,
         TContext
       > => {
       return useMutation(getDeleteActivityMutationOptions(options));
+    }
+
+export const getCreatePropostaUrl = () => {
+
+
+
+
+  return `/api/propostas`
+}
+
+/**
+ * @summary Create proposal
+ */
+export const createProposta = async (createPropostaBody: CreatePropostaBody, options?: RequestInit): Promise<Proposta> => {
+
+  return customFetch<Proposta>(getCreatePropostaUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(
+      createPropostaBody,)
+  }
+);}
+
+
+
+
+export const getCreatePropostaMutationOptions = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createProposta>>, TError,{data: BodyType<CreatePropostaBody>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof createProposta>>, TError,{data: BodyType<CreatePropostaBody>}, TContext> => {
+
+const mutationKey = ['createProposta'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof createProposta>>, {data: BodyType<CreatePropostaBody>}> = (props) => {
+          const {data} = props ?? {};
+
+          return  createProposta(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type CreatePropostaMutationResult = NonNullable<Awaited<ReturnType<typeof createProposta>>>
+    export type CreatePropostaMutationBody = BodyType<CreatePropostaBody>
+    export type CreatePropostaMutationError = ErrorType<ErrorResponse>
+
+    /**
+ * @summary Create proposal
+ */
+export const useCreateProposta = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createProposta>>, TError,{data: BodyType<CreatePropostaBody>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof createProposta>>,
+        TError,
+        {data: BodyType<CreatePropostaBody>},
+        TContext
+      > => {
+      return useMutation(getCreatePropostaMutationOptions(options));
+    }
+
+export const getListPropostasUrl = (tenantId: string,
+    params?: ListPropostasParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : value.toString())
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/api/tenants/${tenantId}/propostas?${stringifiedParams}` : `/api/tenants/${tenantId}/propostas`
+}
+
+/**
+ * @summary List proposals by tenant
+ */
+export const listPropostas = async (tenantId: string,
+    params?: ListPropostasParams, options?: RequestInit): Promise<Proposta[]> => {
+
+  return customFetch<Proposta[]>(getListPropostasUrl(tenantId,params),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getListPropostasQueryKey = (tenantId: string,
+    params?: ListPropostasParams,) => {
+    return [
+    `/api/tenants/${tenantId}/propostas`, ...(params ? [params] : [])
+    ] as const;
+    }
+
+
+export const getListPropostasQueryOptions = <TData = Awaited<ReturnType<typeof listPropostas>>, TError = ErrorType<unknown>>(tenantId: string,
+    params?: ListPropostasParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listPropostas>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getListPropostasQueryKey(tenantId,params);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof listPropostas>>> = ({ signal }) => listPropostas(tenantId,params, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, enabled: !!(tenantId), ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof listPropostas>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type ListPropostasQueryResult = NonNullable<Awaited<ReturnType<typeof listPropostas>>>
+export type ListPropostasQueryError = ErrorType<unknown>
+
+
+/**
+ * @summary List proposals by tenant
+ */
+
+export function useListPropostas<TData = Awaited<ReturnType<typeof listPropostas>>, TError = ErrorType<unknown>>(
+ tenantId: string,
+    params?: ListPropostasParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listPropostas>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getListPropostasQueryOptions(tenantId,params,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+
+
+
+
+
+
+export const getGetPropostaUrl = (id: string,) => {
+
+
+
+
+  return `/api/propostas/${id}`
+}
+
+/**
+ * @summary Get proposal by ID
+ */
+export const getProposta = async (id: string, options?: RequestInit): Promise<Proposta> => {
+
+  return customFetch<Proposta>(getGetPropostaUrl(id),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetPropostaQueryKey = (id: string,) => {
+    return [
+    `/api/propostas/${id}`
+    ] as const;
+    }
+
+
+export const getGetPropostaQueryOptions = <TData = Awaited<ReturnType<typeof getProposta>>, TError = ErrorType<ErrorResponse>>(id: string, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getProposta>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetPropostaQueryKey(id);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getProposta>>> = ({ signal }) => getProposta(id, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, enabled: !!(id), ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getProposta>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetPropostaQueryResult = NonNullable<Awaited<ReturnType<typeof getProposta>>>
+export type GetPropostaQueryError = ErrorType<ErrorResponse>
+
+
+/**
+ * @summary Get proposal by ID
+ */
+
+export function useGetProposta<TData = Awaited<ReturnType<typeof getProposta>>, TError = ErrorType<ErrorResponse>>(
+ id: string, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getProposta>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetPropostaQueryOptions(id,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+
+
+
+
+
+
+export const getUpdatePropostaUrl = (id: string,) => {
+
+
+
+
+  return `/api/propostas/${id}`
+}
+
+/**
+ * @summary Update proposal
+ */
+export const updateProposta = async (id: string,
+    updatePropostaBody: UpdatePropostaBody, options?: RequestInit): Promise<Proposta> => {
+
+  return customFetch<Proposta>(getUpdatePropostaUrl(id),
+  {
+    ...options,
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(
+      updatePropostaBody,)
+  }
+);}
+
+
+
+
+export const getUpdatePropostaMutationOptions = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updateProposta>>, TError,{id: string;data: BodyType<UpdatePropostaBody>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof updateProposta>>, TError,{id: string;data: BodyType<UpdatePropostaBody>}, TContext> => {
+
+const mutationKey = ['updateProposta'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof updateProposta>>, {id: string;data: BodyType<UpdatePropostaBody>}> = (props) => {
+          const {id,data} = props ?? {};
+
+          return  updateProposta(id,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type UpdatePropostaMutationResult = NonNullable<Awaited<ReturnType<typeof updateProposta>>>
+    export type UpdatePropostaMutationBody = BodyType<UpdatePropostaBody>
+    export type UpdatePropostaMutationError = ErrorType<ErrorResponse>
+
+    /**
+ * @summary Update proposal
+ */
+export const useUpdateProposta = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updateProposta>>, TError,{id: string;data: BodyType<UpdatePropostaBody>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof updateProposta>>,
+        TError,
+        {id: string;data: BodyType<UpdatePropostaBody>},
+        TContext
+      > => {
+      return useMutation(getUpdatePropostaMutationOptions(options));
+    }
+
+export const getDeletePropostaUrl = (id: string,) => {
+
+
+
+
+  return `/api/propostas/${id}`
+}
+
+/**
+ * @summary Delete proposal
+ */
+export const deleteProposta = async (id: string, options?: RequestInit): Promise<void> => {
+
+  return customFetch<void>(getDeletePropostaUrl(id),
+  {
+    ...options,
+    method: 'DELETE'
+
+
+  }
+);}
+
+
+
+
+export const getDeletePropostaMutationOptions = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof deleteProposta>>, TError,{id: string}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof deleteProposta>>, TError,{id: string}, TContext> => {
+
+const mutationKey = ['deleteProposta'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof deleteProposta>>, {id: string}> = (props) => {
+          const {id} = props ?? {};
+
+          return  deleteProposta(id,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type DeletePropostaMutationResult = NonNullable<Awaited<ReturnType<typeof deleteProposta>>>
+
+    export type DeletePropostaMutationError = ErrorType<ErrorResponse>
+
+    /**
+ * @summary Delete proposal
+ */
+export const useDeleteProposta = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof deleteProposta>>, TError,{id: string}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof deleteProposta>>,
+        TError,
+        {id: string},
+        TContext
+      > => {
+      return useMutation(getDeletePropostaMutationOptions(options));
     }
 
 export const getCreateBusinessProfileUrl = () => {
