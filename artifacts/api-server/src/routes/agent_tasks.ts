@@ -31,7 +31,7 @@ const whatsappPayloadSchema = z.object({
 // ── Shared action executor ────────────────────────────────────────────────────
 // Runs the action for a task that is already in "executando" status.
 // Updates the task to "concluido" with result, or "erro" with errorMessage.
-async function executeTaskAction(
+export async function executeTaskAction(
   task: AgentTask,
   log: Logger
 ): Promise<AgentTask> {

@@ -25,6 +25,7 @@ import dashboardRouter from "./dashboard";
 import knowledgeBaseRouter from "./knowledge_base";
 import rulesRouter from "./rules";
 import webhooksRouter from "./webhooks";
+import agentsRouter from "./agents";
 import { authenticate, requireRole, requireSameTenanOrSuperAdmin } from "../middlewares/auth";
 
 const router: IRouter = Router();
@@ -67,6 +68,7 @@ router.use(customerIntelligenceRouter);
 
 // AI Hub
 router.use(agentTasksRouter);
+router.use(agentsRouter);
 
 // Marketing Hub
 router.use(campaignsRouter);
