@@ -24,6 +24,8 @@ export * from './agentTaskAgentName';
 export * from './agentTaskPayload';
 export * from './agentTaskResult';
 export * from './agentTaskStatus';
+export * from './analyzeLeadIntelligenceResponse';
+export * from './analyzeLeadIntelligenceResponseRulesResultsItem';
 export * from './authResponse';
 export * from './businessProfile';
 export * from './businessProfileDiscoveryData';

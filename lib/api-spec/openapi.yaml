@@ -2928,6 +2928,45 @@ paths:
               schema:
                 $ref: "#/components/schemas/CustomerIntelligence"
 
+  /tenants/{tenantId}/leads/{leadId}/intelligence/analyze:
+    post:
+      operationId: analyzeLeadIntelligence
+      tags: [intelligence]
+      summary: AI-powered analysis of lead churn risk and opportunities
+      description: Calls GPT-4o-mini to analyze the lead's conversation history and activity, then writes back churnRisk, journeyStage, nextBestAction, intentAnalysis, opportunities, and churnReasons. Sets lastAnalyzedAt. Fires the churn_risk_alto rules engine trigger if churnRisk >= 60.
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: tenantId
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: leadId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Analysis complete — returns updated customer intelligence record and rules evaluation summary
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AnalyzeLeadIntelligenceResponse"
+        "404":
+          description: Lead not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "502":
+          description: AI service unavailable
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
   /customer-intelligence/{id}:
     get:
       operationId: getCustomerIntelligence
@@ -5045,6 +5084,25 @@ components:
         lastAnalyzedAt:
           type: string
           format: date-time
+
+    AnalyzeLeadIntelligenceResponse:
+      type: object
+      properties:
+        intelligence:
+          $ref: "#/components/schemas/CustomerIntelligence"
+        tokensUsed:
+          type: integer
+          description: Total tokens consumed by the GPT-4o-mini call
+        rulesTriggered:
+          type: integer
+          description: Number of churn_risk_alto rules that fired after analysis
+        rulesResults:
+          type: array
+          description: Detailed results from the rules engine evaluation
+          items:
+            type: object
+            additionalProperties: true
+      required: [intelligence, tokensUsed, rulesTriggered]
 
     MessageDirecao:
       type: string

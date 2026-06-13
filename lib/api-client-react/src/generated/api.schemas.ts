@@ -727,6 +727,18 @@ export interface UpdateCustomerIntelligenceBody {
   lastAnalyzedAt?: string;
 }
 
+export type AnalyzeLeadIntelligenceResponseRulesResultsItem = { [key: string]: unknown };
+
+export interface AnalyzeLeadIntelligenceResponse {
+  intelligence: CustomerIntelligence;
+  /** Total tokens consumed by the GPT-4o-mini call */
+  tokensUsed: number;
+  /** Number of churn_risk_alto rules that fired after analysis */
+  rulesTriggered: number;
+  /** Detailed results from the rules engine evaluation */
+  rulesResults?: AnalyzeLeadIntelligenceResponseRulesResultsItem[];
+}
+
 export type MessageDirecao = typeof MessageDirecao[keyof typeof MessageDirecao];
 
 

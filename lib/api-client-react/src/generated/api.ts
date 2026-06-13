@@ -26,6 +26,7 @@ import type {
   AgentActionLog,
   AgentConfig,
   AgentTask,
+  AnalyzeLeadIntelligenceResponse,
   AuthResponse,
   BusinessProfile,
   Campaign,
@@ -7492,6 +7493,79 @@ export function useGetOrCreateLeadIntelligence<TData = Awaited<ReturnType<typeof
 
 
 
+
+export const getAnalyzeLeadIntelligenceUrl = (tenantId: string,
+    leadId: string,) => {
+
+
+
+
+  return `/api/tenants/${tenantId}/leads/${leadId}/intelligence/analyze`
+}
+
+/**
+ * Calls GPT-4o-mini to analyze the lead's conversation history and activity, then writes back churnRisk, journeyStage, nextBestAction, intentAnalysis, opportunities, and churnReasons. Sets lastAnalyzedAt. Fires the churn_risk_alto rules engine trigger if churnRisk >= 60.
+ * @summary AI-powered analysis of lead churn risk and opportunities
+ */
+export const analyzeLeadIntelligence = async (tenantId: string,
+    leadId: string, options?: RequestInit): Promise<AnalyzeLeadIntelligenceResponse> => {
+
+  return customFetch<AnalyzeLeadIntelligenceResponse>(getAnalyzeLeadIntelligenceUrl(tenantId,leadId),
+  {
+    ...options,
+    method: 'POST'
+
+
+  }
+);}
+
+
+
+
+export const getAnalyzeLeadIntelligenceMutationOptions = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof analyzeLeadIntelligence>>, TError,{tenantId: string;leadId: string}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof analyzeLeadIntelligence>>, TError,{tenantId: string;leadId: string}, TContext> => {
+
+const mutationKey = ['analyzeLeadIntelligence'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof analyzeLeadIntelligence>>, {tenantId: string;leadId: string}> = (props) => {
+          const {tenantId,leadId} = props ?? {};
+
+          return  analyzeLeadIntelligence(tenantId,leadId,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type AnalyzeLeadIntelligenceMutationResult = NonNullable<Awaited<ReturnType<typeof analyzeLeadIntelligence>>>
+
+    export type AnalyzeLeadIntelligenceMutationError = ErrorType<ErrorResponse>
+
+    /**
+ * @summary AI-powered analysis of lead churn risk and opportunities
+ */
+export const useAnalyzeLeadIntelligence = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof analyzeLeadIntelligence>>, TError,{tenantId: string;leadId: string}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof analyzeLeadIntelligence>>,
+        TError,
+        {tenantId: string;leadId: string},
+        TContext
+      > => {
+      return useMutation(getAnalyzeLeadIntelligenceMutationOptions(options));
+    }
 
 export const getGetCustomerIntelligenceUrl = (id: string,) => {
 

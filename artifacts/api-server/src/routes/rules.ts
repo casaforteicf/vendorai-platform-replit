@@ -492,4 +492,5 @@ router.post("/tenants/:tenantId/rules/run-churn-check", async (req, res) => {
   });
 });
 
+export { evaluateForLead };
 export default router;

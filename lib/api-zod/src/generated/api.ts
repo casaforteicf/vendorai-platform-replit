@@ -2660,6 +2660,44 @@ export const GetOrCreateLeadIntelligenceResponse = zod.object({
 
 
 /**
+ * Calls GPT-4o-mini to analyze the lead's conversation history and activity, then writes back churnRisk, journeyStage, nextBestAction, intentAnalysis, opportunities, and churnReasons. Sets lastAnalyzedAt. Fires the churn_risk_alto rules engine trigger if churnRisk >= 60.
+ * @summary AI-powered analysis of lead churn risk and opportunities
+ */
+export const AnalyzeLeadIntelligenceParams = zod.object({
+  "tenantId": zod.coerce.string(),
+  "leadId": zod.coerce.string()
+})
+
+export const analyzeLeadIntelligenceResponseIntelligenceChurnRiskMin = 0;
+export const analyzeLeadIntelligenceResponseIntelligenceChurnRiskMax = 100;
+
+
+
+export const AnalyzeLeadIntelligenceResponse = zod.object({
+  "intelligence": zod.object({
+  "id": zod.string(),
+  "tenantId": zod.string(),
+  "leadId": zod.string(),
+  "behaviorScore": zod.record(zod.string(), zod.unknown()).nullish().describe('Detected behavioral patterns (free-form JSON)'),
+  "intentAnalysis": zod.string().nullish().describe('Why the customer buys'),
+  "goalAnalysis": zod.string().nullish().describe('The customer\'s real objective'),
+  "journeyStage": zod.string().nullish().describe('Where the customer is in their journey'),
+  "opportunities": zod.array(zod.unknown()).nullish().describe('Array of detected future opportunities'),
+  "churnRisk": zod.number().min(analyzeLeadIntelligenceResponseIntelligenceChurnRiskMin).max(analyzeLeadIntelligenceResponseIntelligenceChurnRiskMax).nullish(),
+  "churnReasons": zod.array(zod.unknown()).nullish(),
+  "nextBestAction": zod.string().nullish(),
+  "nextBestActionReason": zod.string().nullish(),
+  "lastAnalyzedAt": zod.coerce.date().nullish(),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date()
+}),
+  "tokensUsed": zod.number().describe('Total tokens consumed by the GPT-4o-mini call'),
+  "rulesTriggered": zod.number().describe('Number of churn_risk_alto rules that fired after analysis'),
+  "rulesResults": zod.array(zod.record(zod.string(), zod.unknown())).optional().describe('Detailed results from the rules engine evaluation')
+})
+
+
+/**
  * @summary Get customer intelligence record by ID
  */
 export const GetCustomerIntelligenceParams = zod.object({
