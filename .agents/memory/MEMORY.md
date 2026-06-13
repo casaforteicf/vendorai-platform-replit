@@ -1,0 +1,1 @@
+- [Supabase pooler region](supabase-pooler-region.md) — vendorai-core usa aws-1-sa-east-1 (não aws-0); conexão direta bloqueada no Replit.
