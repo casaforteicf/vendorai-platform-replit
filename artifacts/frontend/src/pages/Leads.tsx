@@ -11,7 +11,7 @@ import {
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Plus, Search, ChevronRight, AlertTriangle } from "lucide-react";
+import { Plus, Search, ChevronRight, AlertTriangle, ArrowDown, ArrowUp, ArrowUpDown } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import {
   Select,
@@ -133,6 +133,7 @@ export default function Leads() {
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState<string>("all");
+  const [churnSort, setChurnSort] = useState<"desc" | "asc" | null>(null);
 
   const { data: leads, isLoading: leadsLoading } = useListTenantLeads(tenantId, {
     query: {
@@ -183,20 +184,34 @@ export default function Leads() {
     );
   }
 
-  const filteredLeads = (leads ?? []).filter((lead) => {
-    const matchesSearch =
-      lead.nome.toLowerCase().includes(search.toLowerCase()) ||
-      lead.email?.toLowerCase().includes(search.toLowerCase()) ||
-      lead.empresa?.toLowerCase().includes(search.toLowerCase());
-    const matchesStatus =
-      statusFilter === "all"
-        ? true
-        : statusFilter === "high_risk"
-          ? typeof ciMap.get(lead.id)?.churnRisk === "number" &&
-            (ciMap.get(lead.id)?.churnRisk ?? 0) > 70
-          : lead.status === statusFilter;
-    return matchesSearch && matchesStatus;
-  });
+  const filteredLeads = (leads ?? [])
+    .filter((lead) => {
+      const matchesSearch =
+        lead.nome.toLowerCase().includes(search.toLowerCase()) ||
+        lead.email?.toLowerCase().includes(search.toLowerCase()) ||
+        lead.empresa?.toLowerCase().includes(search.toLowerCase());
+      const matchesStatus =
+        statusFilter === "all"
+          ? true
+          : statusFilter === "high_risk"
+            ? typeof ciMap.get(lead.id)?.churnRisk === "number" &&
+              (ciMap.get(lead.id)?.churnRisk ?? 0) > 70
+            : lead.status === statusFilter;
+      return matchesSearch && matchesStatus;
+    })
+    .sort((a, b) => {
+      if (!churnSort) return 0;
+      const riskA = ciMap.get(a.id)?.churnRisk ?? null;
+      const riskB = ciMap.get(b.id)?.churnRisk ?? null;
+      if (riskA === null && riskB === null) return 0;
+      if (riskA === null) return 1;
+      if (riskB === null) return -1;
+      return churnSort === "desc" ? riskB - riskA : riskA - riskB;
+    });
+
+  function toggleChurnSort() {
+    setChurnSort((prev) => (prev === "desc" ? "asc" : "desc"));
+  }
 
   return (
     <div className="space-y-6">
@@ -341,7 +356,22 @@ export default function Leads() {
                 <TableHead>Empresa</TableHead>
                 <TableHead>Telefone</TableHead>
                 <TableHead>Status</TableHead>
-                <TableHead>Churn Risk</TableHead>
+                <TableHead>
+                  <button
+                    data-testid="sort-churn-risk"
+                    onClick={toggleChurnSort}
+                    className="flex items-center gap-1 hover:text-foreground transition-colors"
+                  >
+                    Churn Risk
+                    {churnSort === "desc" ? (
+                      <ArrowDown className="h-3.5 w-3.5" />
+                    ) : churnSort === "asc" ? (
+                      <ArrowUp className="h-3.5 w-3.5" />
+                    ) : (
+                      <ArrowUpDown className="h-3.5 w-3.5 opacity-40" />
+                    )}
+                  </button>
+                </TableHead>
                 <TableHead className="w-8" />
               </TableRow>
             </TableHeader>
