@@ -34,6 +34,7 @@ import type {
   CreateBusinessProfileBody,
   CreateConsentBody,
   CreateConversationBody,
+  CreateCustomerIntelligenceBody,
   CreateDealBody,
   CreateFunilBody,
   CreateLeadBody,
@@ -41,6 +42,7 @@ import type {
   CreatePropostaBody,
   CreateTenantBody,
   CreateUserBody,
+  CustomerIntelligence,
   Deal,
   ErrorResponse,
   Funil,
@@ -61,6 +63,7 @@ import type {
   UpdateAgentConfigBody,
   UpdateBusinessProfileBody,
   UpdateConversationBody,
+  UpdateCustomerIntelligenceBody,
   UpdateDealBody,
   UpdateFunilBody,
   UpdateLeadBody,
@@ -3598,6 +3601,456 @@ export const useDeleteMessage = <TError = ErrorType<ErrorResponse>,
         TContext
       > => {
       return useMutation(getDeleteMessageMutationOptions(options));
+    }
+
+export const getCreateCustomerIntelligenceUrl = () => {
+
+
+
+
+  return `/api/customer-intelligence`
+}
+
+/**
+ * @summary Create customer intelligence record
+ */
+export const createCustomerIntelligence = async (createCustomerIntelligenceBody: CreateCustomerIntelligenceBody, options?: RequestInit): Promise<CustomerIntelligence> => {
+
+  return customFetch<CustomerIntelligence>(getCreateCustomerIntelligenceUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(
+      createCustomerIntelligenceBody,)
+  }
+);}
+
+
+
+
+export const getCreateCustomerIntelligenceMutationOptions = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createCustomerIntelligence>>, TError,{data: BodyType<CreateCustomerIntelligenceBody>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof createCustomerIntelligence>>, TError,{data: BodyType<CreateCustomerIntelligenceBody>}, TContext> => {
+
+const mutationKey = ['createCustomerIntelligence'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof createCustomerIntelligence>>, {data: BodyType<CreateCustomerIntelligenceBody>}> = (props) => {
+          const {data} = props ?? {};
+
+          return  createCustomerIntelligence(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type CreateCustomerIntelligenceMutationResult = NonNullable<Awaited<ReturnType<typeof createCustomerIntelligence>>>
+    export type CreateCustomerIntelligenceMutationBody = BodyType<CreateCustomerIntelligenceBody>
+    export type CreateCustomerIntelligenceMutationError = ErrorType<ErrorResponse>
+
+    /**
+ * @summary Create customer intelligence record
+ */
+export const useCreateCustomerIntelligence = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createCustomerIntelligence>>, TError,{data: BodyType<CreateCustomerIntelligenceBody>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof createCustomerIntelligence>>,
+        TError,
+        {data: BodyType<CreateCustomerIntelligenceBody>},
+        TContext
+      > => {
+      return useMutation(getCreateCustomerIntelligenceMutationOptions(options));
+    }
+
+export const getListCustomerIntelligenceUrl = (tenantId: string,) => {
+
+
+
+
+  return `/api/tenants/${tenantId}/customer-intelligence`
+}
+
+/**
+ * @summary List customer intelligence records by tenant
+ */
+export const listCustomerIntelligence = async (tenantId: string, options?: RequestInit): Promise<CustomerIntelligence[]> => {
+
+  return customFetch<CustomerIntelligence[]>(getListCustomerIntelligenceUrl(tenantId),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getListCustomerIntelligenceQueryKey = (tenantId: string,) => {
+    return [
+    `/api/tenants/${tenantId}/customer-intelligence`
+    ] as const;
+    }
+
+
+export const getListCustomerIntelligenceQueryOptions = <TData = Awaited<ReturnType<typeof listCustomerIntelligence>>, TError = ErrorType<unknown>>(tenantId: string, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listCustomerIntelligence>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getListCustomerIntelligenceQueryKey(tenantId);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof listCustomerIntelligence>>> = ({ signal }) => listCustomerIntelligence(tenantId, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, enabled: !!(tenantId), ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof listCustomerIntelligence>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type ListCustomerIntelligenceQueryResult = NonNullable<Awaited<ReturnType<typeof listCustomerIntelligence>>>
+export type ListCustomerIntelligenceQueryError = ErrorType<unknown>
+
+
+/**
+ * @summary List customer intelligence records by tenant
+ */
+
+export function useListCustomerIntelligence<TData = Awaited<ReturnType<typeof listCustomerIntelligence>>, TError = ErrorType<unknown>>(
+ tenantId: string, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listCustomerIntelligence>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getListCustomerIntelligenceQueryOptions(tenantId,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+
+
+
+
+
+
+export const getGetOrCreateLeadIntelligenceUrl = (tenantId: string,
+    leadId: string,) => {
+
+
+
+
+  return `/api/tenants/${tenantId}/leads/${leadId}/intelligence`
+}
+
+/**
+ * Returns the existing record for the lead. If none exists, creates and returns an empty record automatically (upsert-on-read). Returns 200 for existing and 201 for newly created.
+ * @summary Get or auto-create customer intelligence for a lead
+ */
+export const getOrCreateLeadIntelligence = async (tenantId: string,
+    leadId: string, options?: RequestInit): Promise<CustomerIntelligence> => {
+
+  return customFetch<CustomerIntelligence>(getGetOrCreateLeadIntelligenceUrl(tenantId,leadId),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetOrCreateLeadIntelligenceQueryKey = (tenantId: string,
+    leadId: string,) => {
+    return [
+    `/api/tenants/${tenantId}/leads/${leadId}/intelligence`
+    ] as const;
+    }
+
+
+export const getGetOrCreateLeadIntelligenceQueryOptions = <TData = Awaited<ReturnType<typeof getOrCreateLeadIntelligence>>, TError = ErrorType<unknown>>(tenantId: string,
+    leadId: string, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getOrCreateLeadIntelligence>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetOrCreateLeadIntelligenceQueryKey(tenantId,leadId);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getOrCreateLeadIntelligence>>> = ({ signal }) => getOrCreateLeadIntelligence(tenantId,leadId, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, enabled: !!(tenantId && leadId), ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getOrCreateLeadIntelligence>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetOrCreateLeadIntelligenceQueryResult = NonNullable<Awaited<ReturnType<typeof getOrCreateLeadIntelligence>>>
+export type GetOrCreateLeadIntelligenceQueryError = ErrorType<unknown>
+
+
+/**
+ * @summary Get or auto-create customer intelligence for a lead
+ */
+
+export function useGetOrCreateLeadIntelligence<TData = Awaited<ReturnType<typeof getOrCreateLeadIntelligence>>, TError = ErrorType<unknown>>(
+ tenantId: string,
+    leadId: string, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getOrCreateLeadIntelligence>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetOrCreateLeadIntelligenceQueryOptions(tenantId,leadId,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+
+
+
+
+
+
+export const getGetCustomerIntelligenceUrl = (id: string,) => {
+
+
+
+
+  return `/api/customer-intelligence/${id}`
+}
+
+/**
+ * @summary Get customer intelligence record by ID
+ */
+export const getCustomerIntelligence = async (id: string, options?: RequestInit): Promise<CustomerIntelligence> => {
+
+  return customFetch<CustomerIntelligence>(getGetCustomerIntelligenceUrl(id),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetCustomerIntelligenceQueryKey = (id: string,) => {
+    return [
+    `/api/customer-intelligence/${id}`
+    ] as const;
+    }
+
+
+export const getGetCustomerIntelligenceQueryOptions = <TData = Awaited<ReturnType<typeof getCustomerIntelligence>>, TError = ErrorType<ErrorResponse>>(id: string, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getCustomerIntelligence>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetCustomerIntelligenceQueryKey(id);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getCustomerIntelligence>>> = ({ signal }) => getCustomerIntelligence(id, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, enabled: !!(id), ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getCustomerIntelligence>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetCustomerIntelligenceQueryResult = NonNullable<Awaited<ReturnType<typeof getCustomerIntelligence>>>
+export type GetCustomerIntelligenceQueryError = ErrorType<ErrorResponse>
+
+
+/**
+ * @summary Get customer intelligence record by ID
+ */
+
+export function useGetCustomerIntelligence<TData = Awaited<ReturnType<typeof getCustomerIntelligence>>, TError = ErrorType<ErrorResponse>>(
+ id: string, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getCustomerIntelligence>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetCustomerIntelligenceQueryOptions(id,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+
+
+
+
+
+
+export const getUpdateCustomerIntelligenceUrl = (id: string,) => {
+
+
+
+
+  return `/api/customer-intelligence/${id}`
+}
+
+/**
+ * @summary Update customer intelligence record
+ */
+export const updateCustomerIntelligence = async (id: string,
+    updateCustomerIntelligenceBody: UpdateCustomerIntelligenceBody, options?: RequestInit): Promise<CustomerIntelligence> => {
+
+  return customFetch<CustomerIntelligence>(getUpdateCustomerIntelligenceUrl(id),
+  {
+    ...options,
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(
+      updateCustomerIntelligenceBody,)
+  }
+);}
+
+
+
+
+export const getUpdateCustomerIntelligenceMutationOptions = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updateCustomerIntelligence>>, TError,{id: string;data: BodyType<UpdateCustomerIntelligenceBody>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof updateCustomerIntelligence>>, TError,{id: string;data: BodyType<UpdateCustomerIntelligenceBody>}, TContext> => {
+
+const mutationKey = ['updateCustomerIntelligence'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof updateCustomerIntelligence>>, {id: string;data: BodyType<UpdateCustomerIntelligenceBody>}> = (props) => {
+          const {id,data} = props ?? {};
+
+          return  updateCustomerIntelligence(id,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type UpdateCustomerIntelligenceMutationResult = NonNullable<Awaited<ReturnType<typeof updateCustomerIntelligence>>>
+    export type UpdateCustomerIntelligenceMutationBody = BodyType<UpdateCustomerIntelligenceBody>
+    export type UpdateCustomerIntelligenceMutationError = ErrorType<ErrorResponse>
+
+    /**
+ * @summary Update customer intelligence record
+ */
+export const useUpdateCustomerIntelligence = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updateCustomerIntelligence>>, TError,{id: string;data: BodyType<UpdateCustomerIntelligenceBody>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof updateCustomerIntelligence>>,
+        TError,
+        {id: string;data: BodyType<UpdateCustomerIntelligenceBody>},
+        TContext
+      > => {
+      return useMutation(getUpdateCustomerIntelligenceMutationOptions(options));
+    }
+
+export const getDeleteCustomerIntelligenceUrl = (id: string,) => {
+
+
+
+
+  return `/api/customer-intelligence/${id}`
+}
+
+/**
+ * @summary Delete customer intelligence record
+ */
+export const deleteCustomerIntelligence = async (id: string, options?: RequestInit): Promise<void> => {
+
+  return customFetch<void>(getDeleteCustomerIntelligenceUrl(id),
+  {
+    ...options,
+    method: 'DELETE'
+
+
+  }
+);}
+
+
+
+
+export const getDeleteCustomerIntelligenceMutationOptions = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof deleteCustomerIntelligence>>, TError,{id: string}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof deleteCustomerIntelligence>>, TError,{id: string}, TContext> => {
+
+const mutationKey = ['deleteCustomerIntelligence'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof deleteCustomerIntelligence>>, {id: string}> = (props) => {
+          const {id} = props ?? {};
+
+          return  deleteCustomerIntelligence(id,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type DeleteCustomerIntelligenceMutationResult = NonNullable<Awaited<ReturnType<typeof deleteCustomerIntelligence>>>
+
+    export type DeleteCustomerIntelligenceMutationError = ErrorType<ErrorResponse>
+
+    /**
+ * @summary Delete customer intelligence record
+ */
+export const useDeleteCustomerIntelligence = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof deleteCustomerIntelligence>>, TError,{id: string}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof deleteCustomerIntelligence>>,
+        TError,
+        {id: string},
+        TContext
+      > => {
+      return useMutation(getDeleteCustomerIntelligenceMutationOptions(options));
     }
 
 export const getCreateBusinessProfileUrl = () => {

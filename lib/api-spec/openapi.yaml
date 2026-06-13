@@ -1400,6 +1400,180 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
 
+  /customer-intelligence:
+    post:
+      operationId: createCustomerIntelligence
+      tags: [intelligence]
+      summary: Create customer intelligence record
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateCustomerIntelligenceBody"
+      responses:
+        "201":
+          description: Record created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CustomerIntelligence"
+        "409":
+          description: Record already exists for this lead
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "422":
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /tenants/{tenantId}/customer-intelligence:
+    get:
+      operationId: listCustomerIntelligence
+      tags: [intelligence]
+      summary: List customer intelligence records by tenant
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: tenantId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: List of records
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/CustomerIntelligence"
+
+  /tenants/{tenantId}/leads/{leadId}/intelligence:
+    get:
+      operationId: getOrCreateLeadIntelligence
+      tags: [intelligence]
+      summary: Get or auto-create customer intelligence for a lead
+      description: Returns the existing record for the lead. If none exists, creates and returns an empty record automatically (upsert-on-read). Returns 200 for existing and 201 for newly created.
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: tenantId
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: leadId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Existing record
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CustomerIntelligence"
+        "201":
+          description: Newly created empty record
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CustomerIntelligence"
+
+  /customer-intelligence/{id}:
+    get:
+      operationId: getCustomerIntelligence
+      tags: [intelligence]
+      summary: Get customer intelligence record by ID
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Record
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CustomerIntelligence"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+    patch:
+      operationId: updateCustomerIntelligence
+      tags: [intelligence]
+      summary: Update customer intelligence record
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateCustomerIntelligenceBody"
+      responses:
+        "200":
+          description: Updated record
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CustomerIntelligence"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "422":
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+    delete:
+      operationId: deleteCustomerIntelligence
+      tags: [intelligence]
+      summary: Delete customer intelligence record
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "204":
+          description: Deleted
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
   /business-profiles:
     post:
       operationId: createBusinessProfile
@@ -2402,6 +2576,129 @@ components:
               type: boolean
           required: [used, limit, percentUsed, nearLimit, overLimit]
       required: [messages, tokens]
+
+    CustomerIntelligence:
+      type: object
+      properties:
+        id:
+          type: string
+        tenantId:
+          type: string
+        leadId:
+          type: string
+        behaviorScore:
+          type: object
+          additionalProperties: true
+          nullable: true
+          description: Detected behavioral patterns (free-form JSON)
+        intentAnalysis:
+          type: string
+          nullable: true
+          description: Why the customer buys
+        goalAnalysis:
+          type: string
+          nullable: true
+          description: The customer's real objective
+        journeyStage:
+          type: string
+          nullable: true
+          description: Where the customer is in their journey
+        opportunities:
+          type: array
+          items: {}
+          nullable: true
+          description: Array of detected future opportunities
+        churnRisk:
+          type: integer
+          minimum: 0
+          maximum: 100
+          nullable: true
+        churnReasons:
+          type: array
+          items: {}
+          nullable: true
+        nextBestAction:
+          type: string
+          nullable: true
+        nextBestActionReason:
+          type: string
+          nullable: true
+        lastAnalyzedAt:
+          type: string
+          format: date-time
+          nullable: true
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+      required: [id, tenantId, leadId, createdAt, updatedAt]
+
+    CreateCustomerIntelligenceBody:
+      type: object
+      properties:
+        tenantId:
+          type: string
+        leadId:
+          type: string
+        behaviorScore:
+          type: object
+          additionalProperties: true
+        intentAnalysis:
+          type: string
+        goalAnalysis:
+          type: string
+        journeyStage:
+          type: string
+        opportunities:
+          type: array
+          items: {}
+        churnRisk:
+          type: integer
+          minimum: 0
+          maximum: 100
+        churnReasons:
+          type: array
+          items: {}
+        nextBestAction:
+          type: string
+        nextBestActionReason:
+          type: string
+        lastAnalyzedAt:
+          type: string
+          format: date-time
+      required: [tenantId, leadId]
+
+    UpdateCustomerIntelligenceBody:
+      type: object
+      properties:
+        behaviorScore:
+          type: object
+          additionalProperties: true
+        intentAnalysis:
+          type: string
+        goalAnalysis:
+          type: string
+        journeyStage:
+          type: string
+        opportunities:
+          type: array
+          items: {}
+        churnRisk:
+          type: integer
+          minimum: 0
+          maximum: 100
+        churnReasons:
+          type: array
+          items: {}
+        nextBestAction:
+          type: string
+        nextBestActionReason:
+          type: string
+        lastAnalyzedAt:
+          type: string
+          format: date-time
 
     MessageDirecao:
       type: string

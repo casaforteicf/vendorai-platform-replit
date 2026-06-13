@@ -93,6 +93,78 @@ export interface UsageSummary {
   tokens: UsageSummaryTokens;
 }
 
+/**
+ * Detected behavioral patterns (free-form JSON)
+ */
+export type CustomerIntelligenceBehaviorScore = { [key: string]: unknown } | null;
+
+export interface CustomerIntelligence {
+  id: string;
+  tenantId: string;
+  leadId: string;
+  /** Detected behavioral patterns (free-form JSON) */
+  behaviorScore?: CustomerIntelligenceBehaviorScore;
+  /** Why the customer buys */
+  intentAnalysis?: string | null;
+  /** The customer's real objective */
+  goalAnalysis?: string | null;
+  /** Where the customer is in their journey */
+  journeyStage?: string | null;
+  /** Array of detected future opportunities */
+  opportunities?: unknown[] | null;
+  /**
+     * @minimum 0
+     * @maximum 100
+     */
+  churnRisk?: number | null;
+  churnReasons?: unknown[] | null;
+  nextBestAction?: string | null;
+  nextBestActionReason?: string | null;
+  lastAnalyzedAt?: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export type CreateCustomerIntelligenceBodyBehaviorScore = { [key: string]: unknown };
+
+export interface CreateCustomerIntelligenceBody {
+  tenantId: string;
+  leadId: string;
+  behaviorScore?: CreateCustomerIntelligenceBodyBehaviorScore;
+  intentAnalysis?: string;
+  goalAnalysis?: string;
+  journeyStage?: string;
+  opportunities?: unknown[];
+  /**
+     * @minimum 0
+     * @maximum 100
+     */
+  churnRisk?: number;
+  churnReasons?: unknown[];
+  nextBestAction?: string;
+  nextBestActionReason?: string;
+  lastAnalyzedAt?: string;
+}
+
+export type UpdateCustomerIntelligenceBodyBehaviorScore = { [key: string]: unknown };
+
+export interface UpdateCustomerIntelligenceBody {
+  behaviorScore?: UpdateCustomerIntelligenceBodyBehaviorScore;
+  intentAnalysis?: string;
+  goalAnalysis?: string;
+  journeyStage?: string;
+  opportunities?: unknown[];
+  /**
+     * @minimum 0
+     * @maximum 100
+     */
+  churnRisk?: number;
+  churnReasons?: unknown[];
+  nextBestAction?: string;
+  nextBestActionReason?: string;
+  lastAnalyzedAt?: string;
+}
+
 export type MessageDirecao = typeof MessageDirecao[keyof typeof MessageDirecao];
 
 

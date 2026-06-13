@@ -1378,6 +1378,183 @@ export const DeleteMessageParams = zod.object({
 
 
 /**
+ * @summary Create customer intelligence record
+ */
+export const createCustomerIntelligenceBodyChurnRiskMin = 0;
+export const createCustomerIntelligenceBodyChurnRiskMax = 100;
+
+
+
+export const CreateCustomerIntelligenceBody = zod.object({
+  "tenantId": zod.string(),
+  "leadId": zod.string(),
+  "behaviorScore": zod.record(zod.string(), zod.unknown()).optional(),
+  "intentAnalysis": zod.string().optional(),
+  "goalAnalysis": zod.string().optional(),
+  "journeyStage": zod.string().optional(),
+  "opportunities": zod.array(zod.unknown()).optional(),
+  "churnRisk": zod.number().min(createCustomerIntelligenceBodyChurnRiskMin).max(createCustomerIntelligenceBodyChurnRiskMax).optional(),
+  "churnReasons": zod.array(zod.unknown()).optional(),
+  "nextBestAction": zod.string().optional(),
+  "nextBestActionReason": zod.string().optional(),
+  "lastAnalyzedAt": zod.coerce.date().optional()
+})
+
+
+/**
+ * @summary List customer intelligence records by tenant
+ */
+export const ListCustomerIntelligenceParams = zod.object({
+  "tenantId": zod.coerce.string()
+})
+
+export const listCustomerIntelligenceResponseChurnRiskMin = 0;
+export const listCustomerIntelligenceResponseChurnRiskMax = 100;
+
+
+
+export const ListCustomerIntelligenceResponseItem = zod.object({
+  "id": zod.string(),
+  "tenantId": zod.string(),
+  "leadId": zod.string(),
+  "behaviorScore": zod.record(zod.string(), zod.unknown()).nullish().describe('Detected behavioral patterns (free-form JSON)'),
+  "intentAnalysis": zod.string().nullish().describe('Why the customer buys'),
+  "goalAnalysis": zod.string().nullish().describe('The customer\'s real objective'),
+  "journeyStage": zod.string().nullish().describe('Where the customer is in their journey'),
+  "opportunities": zod.array(zod.unknown()).nullish().describe('Array of detected future opportunities'),
+  "churnRisk": zod.number().min(listCustomerIntelligenceResponseChurnRiskMin).max(listCustomerIntelligenceResponseChurnRiskMax).nullish(),
+  "churnReasons": zod.array(zod.unknown()).nullish(),
+  "nextBestAction": zod.string().nullish(),
+  "nextBestActionReason": zod.string().nullish(),
+  "lastAnalyzedAt": zod.coerce.date().nullish(),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date()
+})
+export const ListCustomerIntelligenceResponse = zod.array(ListCustomerIntelligenceResponseItem)
+
+
+/**
+ * Returns the existing record for the lead. If none exists, creates and returns an empty record automatically (upsert-on-read). Returns 200 for existing and 201 for newly created.
+ * @summary Get or auto-create customer intelligence for a lead
+ */
+export const GetOrCreateLeadIntelligenceParams = zod.object({
+  "tenantId": zod.coerce.string(),
+  "leadId": zod.coerce.string()
+})
+
+export const getOrCreateLeadIntelligenceResponseChurnRiskMin = 0;
+export const getOrCreateLeadIntelligenceResponseChurnRiskMax = 100;
+
+
+
+export const GetOrCreateLeadIntelligenceResponse = zod.object({
+  "id": zod.string(),
+  "tenantId": zod.string(),
+  "leadId": zod.string(),
+  "behaviorScore": zod.record(zod.string(), zod.unknown()).nullish().describe('Detected behavioral patterns (free-form JSON)'),
+  "intentAnalysis": zod.string().nullish().describe('Why the customer buys'),
+  "goalAnalysis": zod.string().nullish().describe('The customer\'s real objective'),
+  "journeyStage": zod.string().nullish().describe('Where the customer is in their journey'),
+  "opportunities": zod.array(zod.unknown()).nullish().describe('Array of detected future opportunities'),
+  "churnRisk": zod.number().min(getOrCreateLeadIntelligenceResponseChurnRiskMin).max(getOrCreateLeadIntelligenceResponseChurnRiskMax).nullish(),
+  "churnReasons": zod.array(zod.unknown()).nullish(),
+  "nextBestAction": zod.string().nullish(),
+  "nextBestActionReason": zod.string().nullish(),
+  "lastAnalyzedAt": zod.coerce.date().nullish(),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date()
+})
+
+
+/**
+ * @summary Get customer intelligence record by ID
+ */
+export const GetCustomerIntelligenceParams = zod.object({
+  "id": zod.coerce.string()
+})
+
+export const getCustomerIntelligenceResponseChurnRiskMin = 0;
+export const getCustomerIntelligenceResponseChurnRiskMax = 100;
+
+
+
+export const GetCustomerIntelligenceResponse = zod.object({
+  "id": zod.string(),
+  "tenantId": zod.string(),
+  "leadId": zod.string(),
+  "behaviorScore": zod.record(zod.string(), zod.unknown()).nullish().describe('Detected behavioral patterns (free-form JSON)'),
+  "intentAnalysis": zod.string().nullish().describe('Why the customer buys'),
+  "goalAnalysis": zod.string().nullish().describe('The customer\'s real objective'),
+  "journeyStage": zod.string().nullish().describe('Where the customer is in their journey'),
+  "opportunities": zod.array(zod.unknown()).nullish().describe('Array of detected future opportunities'),
+  "churnRisk": zod.number().min(getCustomerIntelligenceResponseChurnRiskMin).max(getCustomerIntelligenceResponseChurnRiskMax).nullish(),
+  "churnReasons": zod.array(zod.unknown()).nullish(),
+  "nextBestAction": zod.string().nullish(),
+  "nextBestActionReason": zod.string().nullish(),
+  "lastAnalyzedAt": zod.coerce.date().nullish(),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date()
+})
+
+
+/**
+ * @summary Update customer intelligence record
+ */
+export const UpdateCustomerIntelligenceParams = zod.object({
+  "id": zod.coerce.string()
+})
+
+export const updateCustomerIntelligenceBodyChurnRiskMin = 0;
+export const updateCustomerIntelligenceBodyChurnRiskMax = 100;
+
+
+
+export const UpdateCustomerIntelligenceBody = zod.object({
+  "behaviorScore": zod.record(zod.string(), zod.unknown()).optional(),
+  "intentAnalysis": zod.string().optional(),
+  "goalAnalysis": zod.string().optional(),
+  "journeyStage": zod.string().optional(),
+  "opportunities": zod.array(zod.unknown()).optional(),
+  "churnRisk": zod.number().min(updateCustomerIntelligenceBodyChurnRiskMin).max(updateCustomerIntelligenceBodyChurnRiskMax).optional(),
+  "churnReasons": zod.array(zod.unknown()).optional(),
+  "nextBestAction": zod.string().optional(),
+  "nextBestActionReason": zod.string().optional(),
+  "lastAnalyzedAt": zod.coerce.date().optional()
+})
+
+export const updateCustomerIntelligenceResponseChurnRiskMin = 0;
+export const updateCustomerIntelligenceResponseChurnRiskMax = 100;
+
+
+
+export const UpdateCustomerIntelligenceResponse = zod.object({
+  "id": zod.string(),
+  "tenantId": zod.string(),
+  "leadId": zod.string(),
+  "behaviorScore": zod.record(zod.string(), zod.unknown()).nullish().describe('Detected behavioral patterns (free-form JSON)'),
+  "intentAnalysis": zod.string().nullish().describe('Why the customer buys'),
+  "goalAnalysis": zod.string().nullish().describe('The customer\'s real objective'),
+  "journeyStage": zod.string().nullish().describe('Where the customer is in their journey'),
+  "opportunities": zod.array(zod.unknown()).nullish().describe('Array of detected future opportunities'),
+  "churnRisk": zod.number().min(updateCustomerIntelligenceResponseChurnRiskMin).max(updateCustomerIntelligenceResponseChurnRiskMax).nullish(),
+  "churnReasons": zod.array(zod.unknown()).nullish(),
+  "nextBestAction": zod.string().nullish(),
+  "nextBestActionReason": zod.string().nullish(),
+  "lastAnalyzedAt": zod.coerce.date().nullish(),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date()
+})
+
+
+/**
+ * @summary Delete customer intelligence record
+ */
+export const DeleteCustomerIntelligenceParams = zod.object({
+  "id": zod.coerce.string()
+})
+
+
+/**
  * Creates the business profile for a tenant. Each tenant may have only one profile.
  * @summary Create business profile
  */
