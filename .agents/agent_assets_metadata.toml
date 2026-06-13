@@ -1,0 +1,8 @@
+uploads = []
+generated = []
+
+[[outputs]]
+id = "CzHf0XRri64JCvzOGN2c9"
+uri = "file://vendorai-core-schema.txt"
+type = "text"
+title = "vendorai-core — schema completo (22 tabelas + 25 ENUMs)"
