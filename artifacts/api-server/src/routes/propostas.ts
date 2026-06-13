@@ -74,6 +74,48 @@ router.patch("/propostas/:id", async (req, res) => {
   res.json(proposta);
 });
 
+const PROPOSTA_TRANSITIONS: Record<string, string[]> = {
+  rascunho: ["enviada"],
+  enviada: ["aceita", "rejeitada", "expirada"],
+  aceita: [],
+  rejeitada: [],
+  expirada: [],
+};
+
+router.patch("/propostas/:id/status", async (req, res) => {
+  const { status } = req.body as { status?: string };
+  if (!status) {
+    res.status(422).json({ error: "status is required" });
+    return;
+  }
+
+  const [proposta] = await db
+    .select()
+    .from(propostasTable)
+    .where(eq(propostasTable.id, String(req.params.id)));
+
+  if (!proposta) {
+    res.status(404).json({ error: "Proposta not found" });
+    return;
+  }
+
+  const allowed = PROPOSTA_TRANSITIONS[proposta.status] ?? [];
+  if (!allowed.includes(status)) {
+    res.status(422).json({
+      error: `Transition from "${proposta.status}" to "${status}" is not allowed. Allowed: [${allowed.join(", ") || "none"}]`,
+    });
+    return;
+  }
+
+  const [updated] = await db
+    .update(propostasTable)
+    .set({ status: status as typeof proposta.status, updatedAt: new Date() })
+    .where(eq(propostasTable.id, String(req.params.id)))
+    .returning();
+
+  res.json(updated);
+});
+
 router.delete("/propostas/:id", async (req, res) => {
   const [deleted] = await db
     .delete(propostasTable)

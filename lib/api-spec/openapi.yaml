@@ -1122,6 +1122,54 @@ paths:
                 items:
                   $ref: "#/components/schemas/Proposta"
 
+  /propostas/{id}/status:
+    patch:
+      operationId: updatePropostaStatus
+      tags: [crm]
+      summary: Transition proposal status
+      description: |
+        Enforces allowed transitions:
+        - rascunho → enviada
+        - enviada → aceita | rejeitada | expirada
+        - aceita, rejeitada, expirada are terminal states.
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                status:
+                  $ref: "#/components/schemas/PropostaStatus"
+              required: [status]
+      responses:
+        "200":
+          description: Updated proposal
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Proposta"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "422":
+          description: Transition not allowed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
   /propostas/{id}:
     get:
       operationId: getProposta
@@ -1189,6 +1237,151 @@ paths:
       operationId: deleteProposta
       tags: [crm]
       summary: Delete proposal
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "204":
+          description: Deleted
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /messages:
+    post:
+      operationId: createMessage
+      tags: [omnichannel]
+      summary: Create message
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateMessageBody"
+      responses:
+        "201":
+          description: Message created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Message"
+        "422":
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /tenants/{tenantId}/messages:
+    get:
+      operationId: listMessages
+      tags: [omnichannel]
+      summary: List messages by tenant
+      description: Returns messages ordered by createdAt ascending (chronological order).
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: tenantId
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: conversationId
+          in: query
+          schema:
+            type: string
+        - name: leadId
+          in: query
+          schema:
+            type: string
+      responses:
+        "200":
+          description: List of messages
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Message"
+
+  /messages/{id}:
+    get:
+      operationId: getMessage
+      tags: [omnichannel]
+      summary: Get message by ID
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Message
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Message"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+    patch:
+      operationId: updateMessage
+      tags: [omnichannel]
+      summary: Update message status or metadata
+      description: Only status, externalId and agentName are mutable. Message content is immutable.
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateMessageBody"
+      responses:
+        "200":
+          description: Updated message
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Message"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "422":
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+    delete:
+      operationId: deleteMessage
+      tags: [omnichannel]
+      summary: Delete message
       security:
         - bearerAuth: []
       parameters:
@@ -2145,6 +2338,98 @@ components:
               type: boolean
           required: [used, limit, percentUsed, nearLimit, overLimit]
       required: [messages, tokens]
+
+    MessageDirecao:
+      type: string
+      enum: [entrada, saida]
+
+    MessageCanal:
+      type: string
+      enum: [whatsapp, instagram, email, chat]
+
+    MessageTipoConteudo:
+      type: string
+      enum: [texto, imagem, audio, documento]
+
+    MessageEnviadoPor:
+      type: string
+      enum: [lead, agente_ia, humano]
+
+    MessageStatus:
+      type: string
+      enum: [enviado, entregue, lido, erro]
+
+    Message:
+      type: object
+      properties:
+        id:
+          type: string
+        tenantId:
+          type: string
+        conversationId:
+          type: string
+        leadId:
+          type: string
+        direcao:
+          $ref: "#/components/schemas/MessageDirecao"
+        canal:
+          $ref: "#/components/schemas/MessageCanal"
+        conteudo:
+          type: string
+        tipoConteudo:
+          $ref: "#/components/schemas/MessageTipoConteudo"
+        enviadoPor:
+          $ref: "#/components/schemas/MessageEnviadoPor"
+        agentName:
+          type: string
+          nullable: true
+        status:
+          $ref: "#/components/schemas/MessageStatus"
+        externalId:
+          type: string
+          nullable: true
+        createdAt:
+          type: string
+          format: date-time
+      required: [id, tenantId, conversationId, leadId, direcao, canal, conteudo, tipoConteudo, enviadoPor, status, createdAt]
+
+    CreateMessageBody:
+      type: object
+      properties:
+        tenantId:
+          type: string
+        conversationId:
+          type: string
+        leadId:
+          type: string
+        direcao:
+          $ref: "#/components/schemas/MessageDirecao"
+        canal:
+          $ref: "#/components/schemas/MessageCanal"
+        conteudo:
+          type: string
+        tipoConteudo:
+          $ref: "#/components/schemas/MessageTipoConteudo"
+        enviadoPor:
+          $ref: "#/components/schemas/MessageEnviadoPor"
+        agentName:
+          type: string
+        status:
+          $ref: "#/components/schemas/MessageStatus"
+        externalId:
+          type: string
+      required: [tenantId, conversationId, leadId, direcao, canal, conteudo, enviadoPor]
+
+    UpdateMessageBody:
+      type: object
+      description: Only status, externalId and agentName are mutable.
+      properties:
+        status:
+          $ref: "#/components/schemas/MessageStatus"
+        externalId:
+          type: string
+        agentName:
+          type: string
 
     PropostaStatus:
       type: string

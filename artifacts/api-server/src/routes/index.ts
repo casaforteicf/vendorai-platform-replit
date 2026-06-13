@@ -13,6 +13,7 @@ import funisRouter from "./funis";
 import dealsRouter from "./deals";
 import activitiesRouter from "./activities";
 import propostasRouter from "./propostas";
+import messagesRouter from "./messages";
 import { authenticate, requireRole, requireSameTenanOrSuperAdmin } from "../middlewares/auth";
 
 const router: IRouter = Router();
@@ -47,6 +48,7 @@ router.use(funisRouter);
 router.use(dealsRouter);
 router.use(activitiesRouter);
 router.use(propostasRouter);
+router.use(messagesRouter);
 
 export { requireRole, requireSameTenanOrSuperAdmin };
 export default router;

@@ -37,6 +37,7 @@ import type {
   CreateDealBody,
   CreateFunilBody,
   CreateLeadBody,
+  CreateMessageBody,
   CreatePropostaBody,
   CreateTenantBody,
   CreateUserBody,
@@ -48,8 +49,10 @@ import type {
   Lead,
   ListActivitiesParams,
   ListDealsParams,
+  ListMessagesParams,
   ListPropostasParams,
   LoginBody,
+  Message,
   Proposta,
   RegisterBody,
   Tenant,
@@ -61,7 +64,9 @@ import type {
   UpdateDealBody,
   UpdateFunilBody,
   UpdateLeadBody,
+  UpdateMessageBody,
   UpdatePropostaBody,
+  UpdatePropostaStatusBody,
   UpdateTenantBody,
   UpdateUserBody,
   UsageSummary,
@@ -2918,6 +2923,83 @@ export function useListPropostas<TData = Awaited<ReturnType<typeof listPropostas
 
 
 
+export const getUpdatePropostaStatusUrl = (id: string,) => {
+
+
+
+
+  return `/api/propostas/${id}/status`
+}
+
+/**
+ * Enforces allowed transitions:
+- rascunho → enviada
+- enviada → aceita | rejeitada | expirada
+- aceita, rejeitada, expirada are terminal states.
+
+ * @summary Transition proposal status
+ */
+export const updatePropostaStatus = async (id: string,
+    updatePropostaStatusBody: UpdatePropostaStatusBody, options?: RequestInit): Promise<Proposta> => {
+
+  return customFetch<Proposta>(getUpdatePropostaStatusUrl(id),
+  {
+    ...options,
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(
+      updatePropostaStatusBody,)
+  }
+);}
+
+
+
+
+export const getUpdatePropostaStatusMutationOptions = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updatePropostaStatus>>, TError,{id: string;data: BodyType<UpdatePropostaStatusBody>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof updatePropostaStatus>>, TError,{id: string;data: BodyType<UpdatePropostaStatusBody>}, TContext> => {
+
+const mutationKey = ['updatePropostaStatus'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof updatePropostaStatus>>, {id: string;data: BodyType<UpdatePropostaStatusBody>}> = (props) => {
+          const {id,data} = props ?? {};
+
+          return  updatePropostaStatus(id,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type UpdatePropostaStatusMutationResult = NonNullable<Awaited<ReturnType<typeof updatePropostaStatus>>>
+    export type UpdatePropostaStatusMutationBody = BodyType<UpdatePropostaStatusBody>
+    export type UpdatePropostaStatusMutationError = ErrorType<ErrorResponse>
+
+    /**
+ * @summary Transition proposal status
+ */
+export const useUpdatePropostaStatus = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updatePropostaStatus>>, TError,{id: string;data: BodyType<UpdatePropostaStatusBody>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof updatePropostaStatus>>,
+        TError,
+        {id: string;data: BodyType<UpdatePropostaStatusBody>},
+        TContext
+      > => {
+      return useMutation(getUpdatePropostaStatusMutationOptions(options));
+    }
+
 export const getGetPropostaUrl = (id: string,) => {
 
 
@@ -3135,6 +3217,387 @@ export const useDeleteProposta = <TError = ErrorType<ErrorResponse>,
         TContext
       > => {
       return useMutation(getDeletePropostaMutationOptions(options));
+    }
+
+export const getCreateMessageUrl = () => {
+
+
+
+
+  return `/api/messages`
+}
+
+/**
+ * @summary Create message
+ */
+export const createMessage = async (createMessageBody: CreateMessageBody, options?: RequestInit): Promise<Message> => {
+
+  return customFetch<Message>(getCreateMessageUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(
+      createMessageBody,)
+  }
+);}
+
+
+
+
+export const getCreateMessageMutationOptions = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createMessage>>, TError,{data: BodyType<CreateMessageBody>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof createMessage>>, TError,{data: BodyType<CreateMessageBody>}, TContext> => {
+
+const mutationKey = ['createMessage'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof createMessage>>, {data: BodyType<CreateMessageBody>}> = (props) => {
+          const {data} = props ?? {};
+
+          return  createMessage(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type CreateMessageMutationResult = NonNullable<Awaited<ReturnType<typeof createMessage>>>
+    export type CreateMessageMutationBody = BodyType<CreateMessageBody>
+    export type CreateMessageMutationError = ErrorType<ErrorResponse>
+
+    /**
+ * @summary Create message
+ */
+export const useCreateMessage = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createMessage>>, TError,{data: BodyType<CreateMessageBody>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof createMessage>>,
+        TError,
+        {data: BodyType<CreateMessageBody>},
+        TContext
+      > => {
+      return useMutation(getCreateMessageMutationOptions(options));
+    }
+
+export const getListMessagesUrl = (tenantId: string,
+    params?: ListMessagesParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : value.toString())
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/api/tenants/${tenantId}/messages?${stringifiedParams}` : `/api/tenants/${tenantId}/messages`
+}
+
+/**
+ * Returns messages ordered by createdAt ascending (chronological order).
+ * @summary List messages by tenant
+ */
+export const listMessages = async (tenantId: string,
+    params?: ListMessagesParams, options?: RequestInit): Promise<Message[]> => {
+
+  return customFetch<Message[]>(getListMessagesUrl(tenantId,params),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getListMessagesQueryKey = (tenantId: string,
+    params?: ListMessagesParams,) => {
+    return [
+    `/api/tenants/${tenantId}/messages`, ...(params ? [params] : [])
+    ] as const;
+    }
+
+
+export const getListMessagesQueryOptions = <TData = Awaited<ReturnType<typeof listMessages>>, TError = ErrorType<unknown>>(tenantId: string,
+    params?: ListMessagesParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listMessages>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getListMessagesQueryKey(tenantId,params);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof listMessages>>> = ({ signal }) => listMessages(tenantId,params, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, enabled: !!(tenantId), ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof listMessages>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type ListMessagesQueryResult = NonNullable<Awaited<ReturnType<typeof listMessages>>>
+export type ListMessagesQueryError = ErrorType<unknown>
+
+
+/**
+ * @summary List messages by tenant
+ */
+
+export function useListMessages<TData = Awaited<ReturnType<typeof listMessages>>, TError = ErrorType<unknown>>(
+ tenantId: string,
+    params?: ListMessagesParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listMessages>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getListMessagesQueryOptions(tenantId,params,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+
+
+
+
+
+
+export const getGetMessageUrl = (id: string,) => {
+
+
+
+
+  return `/api/messages/${id}`
+}
+
+/**
+ * @summary Get message by ID
+ */
+export const getMessage = async (id: string, options?: RequestInit): Promise<Message> => {
+
+  return customFetch<Message>(getGetMessageUrl(id),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetMessageQueryKey = (id: string,) => {
+    return [
+    `/api/messages/${id}`
+    ] as const;
+    }
+
+
+export const getGetMessageQueryOptions = <TData = Awaited<ReturnType<typeof getMessage>>, TError = ErrorType<ErrorResponse>>(id: string, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getMessage>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetMessageQueryKey(id);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getMessage>>> = ({ signal }) => getMessage(id, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, enabled: !!(id), ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getMessage>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetMessageQueryResult = NonNullable<Awaited<ReturnType<typeof getMessage>>>
+export type GetMessageQueryError = ErrorType<ErrorResponse>
+
+
+/**
+ * @summary Get message by ID
+ */
+
+export function useGetMessage<TData = Awaited<ReturnType<typeof getMessage>>, TError = ErrorType<ErrorResponse>>(
+ id: string, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getMessage>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetMessageQueryOptions(id,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+
+
+
+
+
+
+export const getUpdateMessageUrl = (id: string,) => {
+
+
+
+
+  return `/api/messages/${id}`
+}
+
+/**
+ * Only status, externalId and agentName are mutable. Message content is immutable.
+ * @summary Update message status or metadata
+ */
+export const updateMessage = async (id: string,
+    updateMessageBody: UpdateMessageBody, options?: RequestInit): Promise<Message> => {
+
+  return customFetch<Message>(getUpdateMessageUrl(id),
+  {
+    ...options,
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(
+      updateMessageBody,)
+  }
+);}
+
+
+
+
+export const getUpdateMessageMutationOptions = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updateMessage>>, TError,{id: string;data: BodyType<UpdateMessageBody>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof updateMessage>>, TError,{id: string;data: BodyType<UpdateMessageBody>}, TContext> => {
+
+const mutationKey = ['updateMessage'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof updateMessage>>, {id: string;data: BodyType<UpdateMessageBody>}> = (props) => {
+          const {id,data} = props ?? {};
+
+          return  updateMessage(id,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type UpdateMessageMutationResult = NonNullable<Awaited<ReturnType<typeof updateMessage>>>
+    export type UpdateMessageMutationBody = BodyType<UpdateMessageBody>
+    export type UpdateMessageMutationError = ErrorType<ErrorResponse>
+
+    /**
+ * @summary Update message status or metadata
+ */
+export const useUpdateMessage = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updateMessage>>, TError,{id: string;data: BodyType<UpdateMessageBody>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof updateMessage>>,
+        TError,
+        {id: string;data: BodyType<UpdateMessageBody>},
+        TContext
+      > => {
+      return useMutation(getUpdateMessageMutationOptions(options));
+    }
+
+export const getDeleteMessageUrl = (id: string,) => {
+
+
+
+
+  return `/api/messages/${id}`
+}
+
+/**
+ * @summary Delete message
+ */
+export const deleteMessage = async (id: string, options?: RequestInit): Promise<void> => {
+
+  return customFetch<void>(getDeleteMessageUrl(id),
+  {
+    ...options,
+    method: 'DELETE'
+
+
+  }
+);}
+
+
+
+
+export const getDeleteMessageMutationOptions = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof deleteMessage>>, TError,{id: string}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof deleteMessage>>, TError,{id: string}, TContext> => {
+
+const mutationKey = ['deleteMessage'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof deleteMessage>>, {id: string}> = (props) => {
+          const {id} = props ?? {};
+
+          return  deleteMessage(id,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type DeleteMessageMutationResult = NonNullable<Awaited<ReturnType<typeof deleteMessage>>>
+
+    export type DeleteMessageMutationError = ErrorType<ErrorResponse>
+
+    /**
+ * @summary Delete message
+ */
+export const useDeleteMessage = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof deleteMessage>>, TError,{id: string}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof deleteMessage>>,
+        TError,
+        {id: string},
+        TContext
+      > => {
+      return useMutation(getDeleteMessageMutationOptions(options));
     }
 
 export const getCreateBusinessProfileUrl = () => {

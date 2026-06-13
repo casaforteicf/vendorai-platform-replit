@@ -1,0 +1,91 @@
+import { Router, type IRouter } from "express";
+import { and, eq, asc } from "drizzle-orm";
+import {
+  db,
+  messagesTable,
+  insertMessageSchema,
+  updateMessageSchema,
+} from "@workspace/db";
+
+const router: IRouter = Router();
+
+router.post("/messages", async (req, res) => {
+  const parsed = insertMessageSchema.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(422).json({ error: parsed.error.message });
+    return;
+  }
+
+  const [message] = await db
+    .insert(messagesTable)
+    .values(parsed.data)
+    .returning();
+  res.status(201).json(message);
+});
+
+router.get("/tenants/:tenantId/messages", async (req, res) => {
+  const { conversationId, leadId } = req.query as Record<string, string | undefined>;
+
+  const conditions = [eq(messagesTable.tenantId, String(req.params.tenantId))];
+  if (conversationId) conditions.push(eq(messagesTable.conversationId, conversationId));
+  if (leadId) conditions.push(eq(messagesTable.leadId, leadId));
+
+  const messages = await db
+    .select()
+    .from(messagesTable)
+    .where(and(...conditions))
+    .orderBy(asc(messagesTable.createdAt));
+
+  res.json(messages);
+});
+
+router.get("/messages/:id", async (req, res) => {
+  const [message] = await db
+    .select()
+    .from(messagesTable)
+    .where(eq(messagesTable.id, String(req.params.id)));
+
+  if (!message) {
+    res.status(404).json({ error: "Message not found" });
+    return;
+  }
+
+  res.json(message);
+});
+
+router.patch("/messages/:id", async (req, res) => {
+  const parsed = updateMessageSchema.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(422).json({ error: parsed.error.message });
+    return;
+  }
+
+  const [message] = await db
+    .update(messagesTable)
+    .set(parsed.data)
+    .where(eq(messagesTable.id, String(req.params.id)))
+    .returning();
+
+  if (!message) {
+    res.status(404).json({ error: "Message not found" });
+    return;
+  }
+
+  res.json(message);
+});
+
+router.delete("/messages/:id", async (req, res) => {
+  const [deleted] = await db
+    .delete(messagesTable)
+    .where(eq(messagesTable.id, String(req.params.id)))
+    .returning({ id: messagesTable.id });
+
+  if (!deleted) {
+    res.status(404).json({ error: "Message not found" });
+    return;
+  }
+
+  res.status(204).send();
+});
+
+export default router;

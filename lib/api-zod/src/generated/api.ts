@@ -1153,6 +1153,42 @@ export const ListPropostasResponse = zod.array(ListPropostasResponseItem)
 
 
 /**
+ * Enforces allowed transitions:
+- rascunho → enviada
+- enviada → aceita | rejeitada | expirada
+- aceita, rejeitada, expirada are terminal states.
+
+ * @summary Transition proposal status
+ */
+export const UpdatePropostaStatusParams = zod.object({
+  "id": zod.coerce.string()
+})
+
+export const UpdatePropostaStatusBody = zod.object({
+  "status": zod.enum(['rascunho', 'enviada', 'aceita', 'rejeitada', 'expirada'])
+})
+
+export const UpdatePropostaStatusResponse = zod.object({
+  "id": zod.string(),
+  "tenantId": zod.string(),
+  "leadId": zod.string(),
+  "dealId": zod.string().nullish(),
+  "titulo": zod.string(),
+  "itens": zod.array(zod.object({
+  "nome": zod.string(),
+  "quantidade": zod.number(),
+  "valorUnitario": zod.number()
+})),
+  "valorTotal": zod.string().nullish().describe('Decimal stored as string (Postgres numeric)'),
+  "status": zod.enum(['rascunho', 'enviada', 'aceita', 'rejeitada', 'expirada']),
+  "validadeAte": zod.coerce.date().nullish(),
+  "observacoes": zod.string().nullish(),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date()
+})
+
+
+/**
  * @summary Get proposal by ID
  */
 export const GetPropostaParams = zod.object({
@@ -1225,6 +1261,118 @@ export const UpdatePropostaResponse = zod.object({
  * @summary Delete proposal
  */
 export const DeletePropostaParams = zod.object({
+  "id": zod.coerce.string()
+})
+
+
+/**
+ * @summary Create message
+ */
+export const CreateMessageBody = zod.object({
+  "tenantId": zod.string(),
+  "conversationId": zod.string(),
+  "leadId": zod.string(),
+  "direcao": zod.enum(['entrada', 'saida']),
+  "canal": zod.enum(['whatsapp', 'instagram', 'email', 'chat']),
+  "conteudo": zod.string(),
+  "tipoConteudo": zod.enum(['texto', 'imagem', 'audio', 'documento']).optional(),
+  "enviadoPor": zod.enum(['lead', 'agente_ia', 'humano']),
+  "agentName": zod.string().optional(),
+  "status": zod.enum(['enviado', 'entregue', 'lido', 'erro']).optional(),
+  "externalId": zod.string().optional()
+})
+
+
+/**
+ * Returns messages ordered by createdAt ascending (chronological order).
+ * @summary List messages by tenant
+ */
+export const ListMessagesParams = zod.object({
+  "tenantId": zod.coerce.string()
+})
+
+export const ListMessagesQueryParams = zod.object({
+  "conversationId": zod.coerce.string().optional(),
+  "leadId": zod.coerce.string().optional()
+})
+
+export const ListMessagesResponseItem = zod.object({
+  "id": zod.string(),
+  "tenantId": zod.string(),
+  "conversationId": zod.string(),
+  "leadId": zod.string(),
+  "direcao": zod.enum(['entrada', 'saida']),
+  "canal": zod.enum(['whatsapp', 'instagram', 'email', 'chat']),
+  "conteudo": zod.string(),
+  "tipoConteudo": zod.enum(['texto', 'imagem', 'audio', 'documento']),
+  "enviadoPor": zod.enum(['lead', 'agente_ia', 'humano']),
+  "agentName": zod.string().nullish(),
+  "status": zod.enum(['enviado', 'entregue', 'lido', 'erro']),
+  "externalId": zod.string().nullish(),
+  "createdAt": zod.coerce.date()
+})
+export const ListMessagesResponse = zod.array(ListMessagesResponseItem)
+
+
+/**
+ * @summary Get message by ID
+ */
+export const GetMessageParams = zod.object({
+  "id": zod.coerce.string()
+})
+
+export const GetMessageResponse = zod.object({
+  "id": zod.string(),
+  "tenantId": zod.string(),
+  "conversationId": zod.string(),
+  "leadId": zod.string(),
+  "direcao": zod.enum(['entrada', 'saida']),
+  "canal": zod.enum(['whatsapp', 'instagram', 'email', 'chat']),
+  "conteudo": zod.string(),
+  "tipoConteudo": zod.enum(['texto', 'imagem', 'audio', 'documento']),
+  "enviadoPor": zod.enum(['lead', 'agente_ia', 'humano']),
+  "agentName": zod.string().nullish(),
+  "status": zod.enum(['enviado', 'entregue', 'lido', 'erro']),
+  "externalId": zod.string().nullish(),
+  "createdAt": zod.coerce.date()
+})
+
+
+/**
+ * Only status, externalId and agentName are mutable. Message content is immutable.
+ * @summary Update message status or metadata
+ */
+export const UpdateMessageParams = zod.object({
+  "id": zod.coerce.string()
+})
+
+export const UpdateMessageBody = zod.object({
+  "status": zod.enum(['enviado', 'entregue', 'lido', 'erro']).optional(),
+  "externalId": zod.string().optional(),
+  "agentName": zod.string().optional()
+}).describe('Only status, externalId and agentName are mutable.')
+
+export const UpdateMessageResponse = zod.object({
+  "id": zod.string(),
+  "tenantId": zod.string(),
+  "conversationId": zod.string(),
+  "leadId": zod.string(),
+  "direcao": zod.enum(['entrada', 'saida']),
+  "canal": zod.enum(['whatsapp', 'instagram', 'email', 'chat']),
+  "conteudo": zod.string(),
+  "tipoConteudo": zod.enum(['texto', 'imagem', 'audio', 'documento']),
+  "enviadoPor": zod.enum(['lead', 'agente_ia', 'humano']),
+  "agentName": zod.string().nullish(),
+  "status": zod.enum(['enviado', 'entregue', 'lido', 'erro']),
+  "externalId": zod.string().nullish(),
+  "createdAt": zod.coerce.date()
+})
+
+
+/**
+ * @summary Delete message
+ */
+export const DeleteMessageParams = zod.object({
   "id": zod.coerce.string()
 })
 

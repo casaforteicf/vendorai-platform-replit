@@ -93,6 +93,92 @@ export interface UsageSummary {
   tokens: UsageSummaryTokens;
 }
 
+export type MessageDirecao = typeof MessageDirecao[keyof typeof MessageDirecao];
+
+
+export const MessageDirecao = {
+  entrada: 'entrada',
+  saida: 'saida',
+} as const;
+
+export type MessageCanal = typeof MessageCanal[keyof typeof MessageCanal];
+
+
+export const MessageCanal = {
+  whatsapp: 'whatsapp',
+  instagram: 'instagram',
+  email: 'email',
+  chat: 'chat',
+} as const;
+
+export type MessageTipoConteudo = typeof MessageTipoConteudo[keyof typeof MessageTipoConteudo];
+
+
+export const MessageTipoConteudo = {
+  texto: 'texto',
+  imagem: 'imagem',
+  audio: 'audio',
+  documento: 'documento',
+} as const;
+
+export type MessageEnviadoPor = typeof MessageEnviadoPor[keyof typeof MessageEnviadoPor];
+
+
+export const MessageEnviadoPor = {
+  lead: 'lead',
+  agente_ia: 'agente_ia',
+  humano: 'humano',
+} as const;
+
+export type MessageStatus = typeof MessageStatus[keyof typeof MessageStatus];
+
+
+export const MessageStatus = {
+  enviado: 'enviado',
+  entregue: 'entregue',
+  lido: 'lido',
+  erro: 'erro',
+} as const;
+
+export interface Message {
+  id: string;
+  tenantId: string;
+  conversationId: string;
+  leadId: string;
+  direcao: MessageDirecao;
+  canal: MessageCanal;
+  conteudo: string;
+  tipoConteudo: MessageTipoConteudo;
+  enviadoPor: MessageEnviadoPor;
+  agentName?: string | null;
+  status: MessageStatus;
+  externalId?: string | null;
+  createdAt: string;
+}
+
+export interface CreateMessageBody {
+  tenantId: string;
+  conversationId: string;
+  leadId: string;
+  direcao: MessageDirecao;
+  canal: MessageCanal;
+  conteudo: string;
+  tipoConteudo?: MessageTipoConteudo;
+  enviadoPor: MessageEnviadoPor;
+  agentName?: string;
+  status?: MessageStatus;
+  externalId?: string;
+}
+
+/**
+ * Only status, externalId and agentName are mutable.
+ */
+export interface UpdateMessageBody {
+  status?: MessageStatus;
+  externalId?: string;
+  agentName?: string;
+}
+
 export type PropostaStatus = typeof PropostaStatus[keyof typeof PropostaStatus];
 
 
@@ -640,5 +726,14 @@ status?: ActivityStatus;
 export type ListPropostasParams = {
 leadId?: string;
 dealId?: string;
+};
+
+export type UpdatePropostaStatusBody = {
+  status: PropostaStatus;
+};
+
+export type ListMessagesParams = {
+conversationId?: string;
+leadId?: string;
 };
 
