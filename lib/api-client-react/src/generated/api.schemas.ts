@@ -755,6 +755,7 @@ export interface UpdateCustomerIntelligenceBody {
      */
   churnRisk?: number;
   churnReasons?: unknown[];
+  /** @maxLength 300 */
   nextBestAction?: string;
   nextBestActionReason?: string;
   churnReasonsEditedBy?: UpdateCustomerIntelligenceBodyChurnReasonsEditedBy;

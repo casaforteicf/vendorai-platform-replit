@@ -48,6 +48,7 @@ export const updateCustomerIntelligenceSchema = createSelectSchema(
     churnRisk: z.number().int().min(0).max(100).optional(),
     churnReasonsEditedBy: z.enum(["ai", "rep"]).nullable().optional(),
     churnReasonsEditedAt: z.coerce.date().optional(),
+    nextBestAction: z.string().max(300).nullable().optional(),
   }
 )
   .omit({ id: true, tenantId: true, leadId: true, createdAt: true, updatedAt: true })

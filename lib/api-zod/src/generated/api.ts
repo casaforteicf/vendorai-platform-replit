@@ -2760,6 +2760,8 @@ export const UpdateCustomerIntelligenceParams = zod.object({
 export const updateCustomerIntelligenceBodyChurnRiskMin = 0;
 export const updateCustomerIntelligenceBodyChurnRiskMax = 100;
 
+export const updateCustomerIntelligenceBodyNextBestActionMax = 300;
+
 
 
 export const UpdateCustomerIntelligenceBody = zod.object({
@@ -2770,7 +2772,7 @@ export const UpdateCustomerIntelligenceBody = zod.object({
   "opportunities": zod.array(zod.unknown()).optional(),
   "churnRisk": zod.number().min(updateCustomerIntelligenceBodyChurnRiskMin).max(updateCustomerIntelligenceBodyChurnRiskMax).optional(),
   "churnReasons": zod.array(zod.unknown()).optional(),
-  "nextBestAction": zod.string().optional(),
+  "nextBestAction": zod.string().max(updateCustomerIntelligenceBodyNextBestActionMax).optional(),
   "nextBestActionReason": zod.string().optional(),
   "churnReasonsEditedBy": zod.enum(['ai', 'rep']).optional(),
   "churnReasonsEditedAt": zod.coerce.date().optional(),

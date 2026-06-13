@@ -5101,6 +5101,7 @@ components:
           items: {}
         nextBestAction:
           type: string
+          maxLength: 300
         nextBestActionReason:
           type: string
         churnReasonsEditedBy:

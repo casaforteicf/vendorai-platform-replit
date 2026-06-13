@@ -138,7 +138,7 @@ router.patch("/customer-intelligence/:id", async (req, res) => {
     const messages = Object.entries(fieldErrors)
       .map(([field, errs]) => `${field}: ${(errs ?? []).join(", ")}`)
       .join("; ");
-    res.status(400).json({ error: messages || "Invalid request body" });
+    res.status(422).json({ error: messages || "Invalid request body" });
     return;
   }
 
