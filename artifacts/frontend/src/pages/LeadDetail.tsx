@@ -453,7 +453,7 @@ export default function LeadDetail() {
             </CardHeader>
             <CardContent className="space-y-4 text-sm">
               {ciLoading ? (
-                <div className="space-y-2">
+                <div className="space-y-2" data-testid="ci-loading-skeleton">
                   {[1, 2, 3].map((i) => (
                     <div key={i} className="h-3 bg-muted animate-pulse rounded" />
                   ))}
