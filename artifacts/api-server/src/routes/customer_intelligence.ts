@@ -40,6 +40,15 @@ router.post("/customer-intelligence", async (req, res) => {
     return;
   }
 
+  // Enforce tenant scope: body tenantId must match the requester's tenant
+  if (
+    req.user?.platformRole !== "super_admin" &&
+    req.user?.tenantId !== parsed.data.tenantId
+  ) {
+    res.status(403).json({ error: "Access denied to this tenant" });
+    return;
+  }
+
   try {
     const [record] = await db
       .insert(customerIntelligenceTable)
@@ -56,10 +65,17 @@ router.post("/customer-intelligence", async (req, res) => {
 });
 
 router.get("/tenants/:tenantId/customer-intelligence", async (req, res) => {
+  const tenantId = String(req.params.tenantId);
+
+  if (req.user?.platformRole !== "super_admin" && req.user?.tenantId !== tenantId) {
+    res.status(403).json({ error: "Access denied to this tenant" });
+    return;
+  }
+
   const records = await db
     .select()
     .from(customerIntelligenceTable)
-    .where(eq(customerIntelligenceTable.tenantId, String(req.params.tenantId)))
+    .where(eq(customerIntelligenceTable.tenantId, tenantId))
     .orderBy(customerIntelligenceTable.createdAt);
 
   res.json(records);
@@ -68,29 +84,36 @@ router.get("/tenants/:tenantId/customer-intelligence", async (req, res) => {
 router.get(
   "/tenants/:tenantId/leads/:leadId/intelligence",
   async (req, res) => {
-    const { tenantId, leadId } = req.params;
+    const tenantId = String(req.params.tenantId);
+    const leadId   = String(req.params.leadId);
 
-    const [existing] = await db
+    if (req.user?.platformRole !== "super_admin" && req.user?.tenantId !== tenantId) {
+      res.status(403).json({ error: "Access denied to this tenant" });
+      return;
+    }
+
+    // Concurrency-safe upsert: insert-or-do-nothing on leadId unique constraint, then select
+    await db
+      .insert(customerIntelligenceTable)
+      .values({ tenantId, leadId })
+      .onConflictDoNothing({ target: customerIntelligenceTable.leadId });
+
+    const [record] = await db
       .select()
       .from(customerIntelligenceTable)
       .where(
         and(
-          eq(customerIntelligenceTable.tenantId, String(tenantId)),
-          eq(customerIntelligenceTable.leadId, String(leadId))
+          eq(customerIntelligenceTable.tenantId, tenantId),
+          eq(customerIntelligenceTable.leadId, leadId)
         )
       );
 
-    if (existing) {
-      res.json(existing);
+    if (!record) {
+      res.status(404).json({ error: "Customer intelligence record not found" });
       return;
     }
 
-    const [created] = await db
-      .insert(customerIntelligenceTable)
-      .values({ tenantId: String(tenantId), leadId: String(leadId) })
-      .returning();
-
-    res.status(201).json(created);
+    res.json(record);
   }
 );
 
