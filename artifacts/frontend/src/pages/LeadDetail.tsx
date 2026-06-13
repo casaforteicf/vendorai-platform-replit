@@ -1,4 +1,6 @@
 import { useState } from "react";
+import { formatDistanceToNow } from "date-fns";
+import { ptBR } from "date-fns/locale";
 import { useParams, useLocation } from "wouter";
 import { useQueryClient } from "@tanstack/react-query";
 import { useAuth } from "@/contexts/AuthContext";
@@ -711,21 +713,14 @@ export default function LeadDetail() {
                     )}
 
                   {/* Last analyzed timestamp */}
-                  {intelligence?.lastAnalyzedAt && (
-                    <p
-                      className="text-xs text-muted-foreground/60 pt-1 border-t border-border/40"
-                      data-testid="text-last-analyzed"
-                    >
-                      Última análise:{" "}
-                      {new Date(intelligence.lastAnalyzedAt).toLocaleString("pt-BR", {
-                        day: "2-digit",
-                        month: "2-digit",
-                        year: "numeric",
-                        hour: "2-digit",
-                        minute: "2-digit",
-                      })}
-                    </p>
-                  )}
+                  <p
+                    className="text-xs text-muted-foreground/60 pt-1 border-t border-border/40"
+                    data-testid="text-last-analyzed"
+                  >
+                    {intelligence?.lastAnalyzedAt
+                      ? `Última análise: há ${formatDistanceToNow(new Date(intelligence.lastAnalyzedAt), { locale: ptBR })}`
+                      : "Nunca analisado"}
+                  </p>
                 </>
               )}
             </CardContent>
