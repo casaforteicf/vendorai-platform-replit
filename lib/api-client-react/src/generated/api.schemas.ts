@@ -93,6 +93,69 @@ export interface UsageSummary {
   tokens: UsageSummaryTokens;
 }
 
+export interface DashboardLeadEntry {
+  leadId: string;
+  nome?: string | null;
+  email?: string | null;
+  telefone?: string | null;
+  churnRisk: number | null;
+}
+
+export type TenantDashboardLeads = {
+  total: number;
+  novosUltimos30Dias: number;
+};
+
+/**
+ * Map of etapa → count (only stages with at least one deal present)
+ */
+export type TenantDashboardDealsPorEtapa = {[key: string]: number};
+
+export type TenantDashboardDeals = {
+  /** Map of etapa → count (only stages with at least one deal present) */
+  porEtapa: TenantDashboardDealsPorEtapa;
+  /** Sum of valor for open deals (não ganho/perdido) as decimal string */
+  totalEmNegociacao: string;
+  totalDeals: number;
+  /** ganho / totalDeals (0–1 range, 4 decimal places) */
+  taxaConversao: number;
+};
+
+export type TenantDashboardFaturasPendente = {
+  count: number;
+  somaValor: string;
+};
+
+export type TenantDashboardFaturasAtrasada = {
+  count: number;
+  somaValor: string;
+};
+
+export type TenantDashboardFaturas = {
+  pendente: TenantDashboardFaturasPendente;
+  atrasada: TenantDashboardFaturasAtrasada;
+};
+
+export type TenantDashboardChurnRiskDistribuicao = {
+  /** churnRisk < 30 */
+  baixo: number;
+  /** 30 <= churnRisk <= 70 */
+  medio: number;
+  /** churnRisk > 70 */
+  alto: number;
+};
+
+export interface TenantDashboard {
+  leads: TenantDashboardLeads;
+  deals: TenantDashboardDeals;
+  faturas: TenantDashboardFaturas;
+  /** Activities with status=pendente and dataVencimento in the past */
+  atividadesAtrasadas: number;
+  churnRiskDistribuicao: TenantDashboardChurnRiskDistribuicao;
+  /** Top 5 leads ordered by churnRisk descending */
+  top5ChurnRisk: DashboardLeadEntry[];
+}
+
 export type SubscriptionPlano = typeof SubscriptionPlano[keyof typeof SubscriptionPlano];
 
 

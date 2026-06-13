@@ -1434,6 +1434,31 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
 
+  /tenants/{tenantId}/dashboard:
+    get:
+      operationId: getTenantDashboard
+      tags: [executive-intelligence]
+      summary: Consolidated executive dashboard for a tenant
+      description: >
+        Returns aggregated KPIs: leads summary, deals by stage, conversion rate,
+        invoices (pending + overdue), overdue activities, churn risk distribution,
+        and top-5 leads by churn risk — all scoped to the given tenant.
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: tenantId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Dashboard payload
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TenantDashboard"
+
   /tenants/{tenantId}/subscription:
     get:
       operationId: getTenantSubscription
@@ -3653,6 +3678,102 @@ components:
               type: boolean
           required: [used, limit, percentUsed, nearLimit, overLimit]
       required: [messages, tokens]
+
+    DashboardLeadEntry:
+      type: object
+      properties:
+        leadId:
+          type: string
+        nome:
+          type: string
+          nullable: true
+        email:
+          type: string
+          nullable: true
+        telefone:
+          type: string
+          nullable: true
+        churnRisk:
+          type: integer
+          nullable: true
+      required: [leadId, churnRisk]
+
+    TenantDashboard:
+      type: object
+      properties:
+        leads:
+          type: object
+          properties:
+            total:
+              type: integer
+            novosUltimos30Dias:
+              type: integer
+          required: [total, novosUltimos30Dias]
+        deals:
+          type: object
+          properties:
+            porEtapa:
+              type: object
+              additionalProperties:
+                type: integer
+              description: Map of etapa → count (only stages with at least one deal present)
+            totalEmNegociacao:
+              type: string
+              description: Sum of valor for open deals (não ganho/perdido) as decimal string
+            totalDeals:
+              type: integer
+            taxaConversao:
+              type: number
+              description: ganho / totalDeals (0–1 range, 4 decimal places)
+          required: [porEtapa, totalEmNegociacao, totalDeals, taxaConversao]
+        faturas:
+          type: object
+          properties:
+            pendente:
+              type: object
+              properties:
+                count:
+                  type: integer
+                somaValor:
+                  type: string
+              required: [count, somaValor]
+            atrasada:
+              type: object
+              properties:
+                count:
+                  type: integer
+                somaValor:
+                  type: string
+              required: [count, somaValor]
+          required: [pendente, atrasada]
+        atividadesAtrasadas:
+          type: integer
+          description: Activities with status=pendente and dataVencimento in the past
+        churnRiskDistribuicao:
+          type: object
+          properties:
+            baixo:
+              type: integer
+              description: churnRisk < 30
+            medio:
+              type: integer
+              description: 30 <= churnRisk <= 70
+            alto:
+              type: integer
+              description: churnRisk > 70
+          required: [baixo, medio, alto]
+        top5ChurnRisk:
+          type: array
+          description: Top 5 leads ordered by churnRisk descending
+          items:
+            $ref: "#/components/schemas/DashboardLeadEntry"
+      required:
+        - leads
+        - deals
+        - faturas
+        - atividadesAtrasadas
+        - churnRiskDistribuicao
+        - top5ChurnRisk
 
     SubscriptionPlano:
       type: string

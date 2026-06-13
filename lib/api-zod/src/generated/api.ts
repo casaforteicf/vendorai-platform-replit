@@ -1394,6 +1394,52 @@ export const CreateSubscriptionBody = zod.object({
 
 
 /**
+ * Returns aggregated KPIs: leads summary, deals by stage, conversion rate, invoices (pending + overdue), overdue activities, churn risk distribution, and top-5 leads by churn risk — all scoped to the given tenant.
+
+ * @summary Consolidated executive dashboard for a tenant
+ */
+export const GetTenantDashboardParams = zod.object({
+  "tenantId": zod.coerce.string()
+})
+
+export const GetTenantDashboardResponse = zod.object({
+  "leads": zod.object({
+  "total": zod.number(),
+  "novosUltimos30Dias": zod.number()
+}),
+  "deals": zod.object({
+  "porEtapa": zod.record(zod.string(), zod.number()).describe('Map of etapa → count (only stages with at least one deal present)'),
+  "totalEmNegociacao": zod.string().describe('Sum of valor for open deals (não ganho\/perdido) as decimal string'),
+  "totalDeals": zod.number(),
+  "taxaConversao": zod.number().describe('ganho \/ totalDeals (0–1 range, 4 decimal places)')
+}),
+  "faturas": zod.object({
+  "pendente": zod.object({
+  "count": zod.number(),
+  "somaValor": zod.string()
+}),
+  "atrasada": zod.object({
+  "count": zod.number(),
+  "somaValor": zod.string()
+})
+}),
+  "atividadesAtrasadas": zod.number().describe('Activities with status=pendente and dataVencimento in the past'),
+  "churnRiskDistribuicao": zod.object({
+  "baixo": zod.number().describe('churnRisk < 30'),
+  "medio": zod.number().describe('30 <= churnRisk <= 70'),
+  "alto": zod.number().describe('churnRisk > 70')
+}),
+  "top5ChurnRisk": zod.array(zod.object({
+  "leadId": zod.string(),
+  "nome": zod.string().nullish(),
+  "email": zod.string().nullish(),
+  "telefone": zod.string().nullish(),
+  "churnRisk": zod.number().nullable()
+})).describe('Top 5 leads ordered by churnRisk descending')
+})
+
+
+/**
  * @summary Get the subscription for a tenant
  */
 export const GetTenantSubscriptionParams = zod.object({

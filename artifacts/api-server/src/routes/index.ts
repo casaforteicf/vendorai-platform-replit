@@ -21,6 +21,7 @@ import produtosCatalogoRouter from "./produtos_catalogo";
 import agendamentosRouter from "./agendamentos";
 import subscriptionsRouter from "./subscriptions";
 import invoicesRouter from "./invoices";
+import dashboardRouter from "./dashboard";
 import { authenticate, requireRole, requireSameTenanOrSuperAdmin } from "../middlewares/auth";
 
 const router: IRouter = Router();
@@ -75,6 +76,9 @@ router.use(agendamentosRouter);
 // Billing Hub
 router.use(subscriptionsRouter);
 router.use(invoicesRouter);
+
+// Executive Intelligence Hub
+router.use(dashboardRouter);
 
 export { requireRole, requireSameTenanOrSuperAdmin };
 export default router;

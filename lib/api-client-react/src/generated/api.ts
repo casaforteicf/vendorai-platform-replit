@@ -76,6 +76,7 @@ import type {
   RegisterBody,
   Subscription,
   Tenant,
+  TenantDashboard,
   UpdateActivityBody,
   UpdateAgendamentoBody,
   UpdateAgentActionLogBody,
@@ -3698,6 +3699,85 @@ export const useCreateSubscription = <TError = ErrorType<ErrorResponse>,
       > => {
       return useMutation(getCreateSubscriptionMutationOptions(options));
     }
+
+export const getGetTenantDashboardUrl = (tenantId: string,) => {
+
+
+
+
+  return `/api/tenants/${tenantId}/dashboard`
+}
+
+/**
+ * Returns aggregated KPIs: leads summary, deals by stage, conversion rate, invoices (pending + overdue), overdue activities, churn risk distribution, and top-5 leads by churn risk — all scoped to the given tenant.
+
+ * @summary Consolidated executive dashboard for a tenant
+ */
+export const getTenantDashboard = async (tenantId: string, options?: RequestInit): Promise<TenantDashboard> => {
+
+  return customFetch<TenantDashboard>(getGetTenantDashboardUrl(tenantId),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetTenantDashboardQueryKey = (tenantId: string,) => {
+    return [
+    `/api/tenants/${tenantId}/dashboard`
+    ] as const;
+    }
+
+
+export const getGetTenantDashboardQueryOptions = <TData = Awaited<ReturnType<typeof getTenantDashboard>>, TError = ErrorType<unknown>>(tenantId: string, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getTenantDashboard>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetTenantDashboardQueryKey(tenantId);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getTenantDashboard>>> = ({ signal }) => getTenantDashboard(tenantId, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, enabled: !!(tenantId), ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getTenantDashboard>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetTenantDashboardQueryResult = NonNullable<Awaited<ReturnType<typeof getTenantDashboard>>>
+export type GetTenantDashboardQueryError = ErrorType<unknown>
+
+
+/**
+ * @summary Consolidated executive dashboard for a tenant
+ */
+
+export function useGetTenantDashboard<TData = Awaited<ReturnType<typeof getTenantDashboard>>, TError = ErrorType<unknown>>(
+ tenantId: string, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getTenantDashboard>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetTenantDashboardQueryOptions(tenantId,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+
+
+
+
+
 
 export const getGetTenantSubscriptionUrl = (tenantId: string,) => {
 
