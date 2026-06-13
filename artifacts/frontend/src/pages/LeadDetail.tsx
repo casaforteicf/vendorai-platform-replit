@@ -2,12 +2,14 @@ import { useState } from "react";
 import { useParams, useLocation } from "wouter";
 import { useQueryClient } from "@tanstack/react-query";
 import { useAuth } from "@/contexts/AuthContext";
+import { useToast } from "@/hooks/use-toast";
 import {
   useGetLead,
   getGetLeadQueryKey,
   useGetOrCreateLeadIntelligence,
   getGetOrCreateLeadIntelligenceQueryKey,
   useUpdateCustomerIntelligence,
+  useAnalyzeLeadIntelligence,
   useListActivities,
   getListActivitiesQueryKey,
   useListTenantConversations,
@@ -39,6 +41,8 @@ import {
   X,
   Check,
   TrendingUp,
+  Sparkles,
+  Loader2,
 } from "lucide-react";
 
 const STATUS_STYLES: Record<string, string> = {
@@ -201,6 +205,8 @@ export default function LeadDetail() {
     }
   );
 
+  const { toast } = useToast();
+
   const { mutate: updateIntelligence, isPending: isUpdating } =
     useUpdateCustomerIntelligence({
       mutation: {
@@ -211,6 +217,37 @@ export default function LeadDetail() {
         },
       },
     });
+
+  const { mutate: analyzeIntelligence, isPending: isAnalyzing } =
+    useAnalyzeLeadIntelligence({
+      mutation: {
+        onSuccess: (data) => {
+          void queryClient.invalidateQueries({
+            queryKey: getGetOrCreateLeadIntelligenceQueryKey(tenantId, id),
+          });
+          const risk = data.intelligence?.churnRisk;
+          toast({
+            title: "Análise concluída",
+            description:
+              risk !== null && risk !== undefined
+                ? `Risco de churn: ${risk}% · ${data.tokensUsed ?? 0} tokens usados`
+                : "Inteligência do lead atualizada com sucesso.",
+          });
+        },
+        onError: () => {
+          toast({
+            title: "Falha na análise",
+            description: "Não foi possível conectar ao serviço de IA. Tente novamente.",
+            variant: "destructive",
+          });
+        },
+      },
+    });
+
+  function handleAnalyze() {
+    if (!tenantId || !id) return;
+    analyzeIntelligence({ tenantId, leadId: id });
+  }
 
   const churnRiskParsed = parseInt(churnRiskDraft, 10);
   const churnRiskIsValid =
@@ -374,9 +411,26 @@ export default function LeadDetail() {
           {/* Customer Intelligence */}
           <Card data-testid="card-customer-intelligence">
             <CardHeader className="pb-3">
-              <CardTitle className="text-sm font-semibold flex items-center gap-2">
-                <Brain className="h-4 w-4 text-primary" />
-                Inteligência do Cliente
+              <CardTitle className="text-sm font-semibold flex items-center justify-between">
+                <span className="flex items-center gap-2">
+                  <Brain className="h-4 w-4 text-primary" />
+                  Inteligência do Cliente
+                </span>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="h-7 px-2 text-xs gap-1.5"
+                  onClick={handleAnalyze}
+                  disabled={isAnalyzing || !tenantId || !id}
+                  data-testid="btn-analyze-intelligence"
+                >
+                  {isAnalyzing ? (
+                    <Loader2 className="h-3 w-3 animate-spin" />
+                  ) : (
+                    <Sparkles className="h-3 w-3 text-primary" />
+                  )}
+                  {isAnalyzing ? "Analisando…" : "Analisar com IA"}
+                </Button>
               </CardTitle>
             </CardHeader>
             <CardContent className="space-y-4 text-sm">
@@ -651,9 +705,27 @@ export default function LeadDetail() {
                     intelligence?.churnRisk === null &&
                     opportunities.length === 0 && (
                       <p className="text-muted-foreground text-xs py-2">
-                        Análise ainda não disponível para este lead.
+                        Análise ainda não disponível. Clique em{" "}
+                        <span className="font-medium">Analisar com IA</span> para gerar insights automaticamente.
                       </p>
                     )}
+
+                  {/* Last analyzed timestamp */}
+                  {intelligence?.lastAnalyzedAt && (
+                    <p
+                      className="text-xs text-muted-foreground/60 pt-1 border-t border-border/40"
+                      data-testid="text-last-analyzed"
+                    >
+                      Última análise:{" "}
+                      {new Date(intelligence.lastAnalyzedAt).toLocaleString("pt-BR", {
+                        day: "2-digit",
+                        month: "2-digit",
+                        year: "numeric",
+                        hour: "2-digit",
+                        minute: "2-digit",
+                      })}
+                    </p>
+                  )}
                 </>
               )}
             </CardContent>
