@@ -1456,6 +1456,10 @@ export interface IntelligenceAnalysisLogStats {
   totalCalls: number;
   totalTokens: number;
   byTriggeredBy: IntelligenceAnalysisLogStatsByTriggeredBy;
+  /** Number of analyses run in the last rolling 60 minutes for this tenant */
+  rollingHourCount: number;
+  /** Maximum analyses allowed per tenant per rolling hour */
+  hourlyLimit: number;
 }
 
 export interface IntelligenceAnalysisLogPage {

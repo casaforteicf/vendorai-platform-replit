@@ -268,7 +268,9 @@ router.get("/tenants/:tenantId/intelligence-analysis-log", async (req, res) => {
   const limit = Math.min(100, Math.max(1, parseInt(String(req.query.limit ?? "20"), 10) || 20));
   const offset = (page - 1) * limit;
 
-  const [items, totalsRow, byTrigger] = await Promise.all([
+  const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000);
+
+  const [items, totalsRow, byTrigger, hourlyRow] = await Promise.all([
     db
       .select()
       .from(intelligenceAnalysisLogTable)
@@ -295,6 +297,17 @@ router.get("/tenants/:tenantId/intelligence-analysis-log", async (req, res) => {
       .from(intelligenceAnalysisLogTable)
       .where(eq(intelligenceAnalysisLogTable.tenantId, tenantId))
       .groupBy(intelligenceAnalysisLogTable.triggeredBy),
+
+    db
+      .select({ recentCount: count() })
+      .from(intelligenceAnalysisLogTable)
+      .where(
+        and(
+          eq(intelligenceAnalysisLogTable.tenantId, tenantId),
+          gte(intelligenceAnalysisLogTable.createdAt, oneHourAgo)
+        )
+      )
+      .then((rows) => rows[0] ?? { recentCount: 0 }),
   ]);
 
   const byTriggeredBy: Record<string, { calls: number; tokens: number }> = {};
@@ -314,6 +327,8 @@ router.get("/tenants/:tenantId/intelligence-analysis-log", async (req, res) => {
       totalCalls:  Number(totalsRow.totalCalls),
       totalTokens: Number(totalsRow.totalTokens ?? 0),
       byTriggeredBy,
+      rollingHourCount: Number(hourlyRow.recentCount),
+      hourlyLimit: MAX_ANALYSES_PER_TENANT_PER_HOUR,
     },
   });
 });

@@ -6516,10 +6516,18 @@ components:
           type: object
           additionalProperties:
             $ref: "#/components/schemas/IntelligenceAnalysisLogTriggeredByStat"
+        rollingHourCount:
+          type: integer
+          description: Number of analyses run in the last rolling 60 minutes for this tenant
+        hourlyLimit:
+          type: integer
+          description: Maximum analyses allowed per tenant per rolling hour
       required:
         - totalCalls
         - totalTokens
         - byTriggeredBy
+        - rollingHourCount
+        - hourlyLimit
 
     IntelligenceAnalysisLogPage:
       type: object

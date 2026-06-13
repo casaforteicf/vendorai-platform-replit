@@ -68,6 +68,40 @@ function formatNumber(n: number): string {
   return String(n);
 }
 
+function HourlyCapCell({ used, limit }: { used: number; limit: number }) {
+  const pct = limit > 0 ? Math.min(1, used / limit) : 0;
+  const isNearLimit = pct >= 0.8;
+  const isAtLimit = pct >= 1;
+
+  return (
+    <div className="flex flex-col items-end gap-1">
+      <span
+        className={`text-xs font-mono font-medium ${
+          isAtLimit
+            ? "text-destructive"
+            : isNearLimit
+            ? "text-amber-600"
+            : "text-foreground"
+        }`}
+      >
+        {used} / {limit}
+      </span>
+      <div className="w-20 h-1.5 rounded-full bg-muted overflow-hidden">
+        <div
+          className={`h-full rounded-full transition-all ${
+            isAtLimit
+              ? "bg-destructive"
+              : isNearLimit
+              ? "bg-amber-500"
+              : "bg-primary"
+          }`}
+          style={{ width: `${Math.round(pct * 100)}%` }}
+        />
+      </div>
+    </div>
+  );
+}
+
 export default function AdminAIUsage() {
   const { user } = useAuth();
   const [sortField, setSortField] = useState<SortField>("totalTokens");
@@ -236,20 +270,21 @@ export default function AdminAIUsage() {
                     Tokens Used
                   </SortButton>
                 </TableHead>
+                <TableHead className="text-right">Hourly Cap</TableHead>
                 <TableHead className="text-right pr-6">Breakdown</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {tenantsLoading ? (
                 <TableRow>
-                  <TableCell colSpan={5} className="h-32 text-center">
+                  <TableCell colSpan={6} className="h-32 text-center">
                     <Loader2 className="h-5 w-5 animate-spin mx-auto text-muted-foreground" />
                   </TableCell>
                 </TableRow>
               ) : sorted.length === 0 ? (
                 <TableRow>
                   <TableCell
-                    colSpan={5}
+                    colSpan={6}
                     className="h-32 text-center text-muted-foreground"
                   >
                     No tenants found.
@@ -298,6 +333,18 @@ export default function AdminAIUsage() {
                           <span className="font-mono font-medium">
                             {formatNumber(stats?.totalTokens ?? 0)}
                           </span>
+                        )}
+                      </TableCell>
+                      <TableCell className="text-right">
+                        {isLoading ? (
+                          <div className="h-4 w-20 bg-muted animate-pulse rounded ml-auto" />
+                        ) : stats ? (
+                          <HourlyCapCell
+                            used={stats.rollingHourCount}
+                            limit={stats.hourlyLimit}
+                          />
+                        ) : (
+                          <span className="text-xs text-muted-foreground">—</span>
                         )}
                       </TableCell>
                       <TableCell className="text-right pr-6">

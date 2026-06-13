@@ -77,15 +77,17 @@ type LogRow = {
 type ByTriggerRow = { triggeredBy: string; calls: number; tokens: string };
 
 /**
- * Sets up the three parallel db.select() calls the log endpoint makes:
+ * Sets up the four parallel db.select() calls the log endpoint makes:
  *   1. Paginated items list
  *   2. Aggregate totals (totalCalls, totalTokens) — resolved via Promise .then()
  *   3. Per-trigger breakdown — groupBy
+ *   4. Rolling-hour count — resolved via Promise .then()
  */
 function setupLogSelects(
   items: LogRow[],
   totals: { totalCalls: number; totalTokens: string },
-  byTrigger: ByTriggerRow[]
+  byTrigger: ByTriggerRow[],
+  rollingHourCount = 0
 ) {
   mockDbSelect
     // Query 1: paginated items — chain ends with .offset()
@@ -107,6 +109,12 @@ function setupLogSelects(
       from: vi.fn().mockReturnThis(),
       where: vi.fn().mockReturnThis(),
       groupBy: vi.fn().mockResolvedValue(byTrigger),
+    })
+    // Query 4: rolling-hour count — chain ends with .where() which must be
+    // thenable because the route calls .then(rows => rows[0] ?? ...)
+    .mockReturnValueOnce({
+      from: vi.fn().mockReturnThis(),
+      where: vi.fn().mockResolvedValue([{ recentCount: rollingHourCount }]),
     });
 }
 
@@ -203,7 +211,7 @@ describe("GET /api/tenants/:tenantId/intelligence-analysis-log — response shap
     expect(typeof res.body.total).toBe("number");
   });
 
-  it("includes aggregate stats with totalCalls, totalTokens, and byTriggeredBy", async () => {
+  it("includes aggregate stats with totalCalls, totalTokens, byTriggeredBy, rollingHourCount, and hourlyLimit", async () => {
     const res = await request(app)
       .get(`/api/tenants/${TENANT_B}/intelligence-analysis-log`)
       .set("Authorization", `Bearer ${tokenB}`);
@@ -216,6 +224,8 @@ describe("GET /api/tenants/:tenantId/intelligence-analysis-log — response shap
         manual: { calls: 1, tokens: 120 },
         auto:   { calls: 1, tokens: 80  },
       },
+      rollingHourCount: 0,
+      hourlyLimit: 50,
     });
   });
 
@@ -284,5 +294,7 @@ describe("GET /api/tenants/:tenantId/intelligence-analysis-log — pagination pa
     expect(res.body.stats.totalCalls).toBe(0);
     expect(res.body.stats.totalTokens).toBe(0);
     expect(res.body.stats.byTriggeredBy).toEqual({});
+    expect(res.body.stats.rollingHourCount).toBe(0);
+    expect(res.body.stats.hourlyLimit).toBe(50);
   });
 });

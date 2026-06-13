@@ -2726,7 +2726,9 @@ export const ListIntelligenceAnalysisLogResponse = zod.object({
   "byTriggeredBy": zod.record(zod.string(), zod.object({
   "calls": zod.number(),
   "tokens": zod.number()
-}))
+})),
+  "rollingHourCount": zod.number().describe('Number of analyses run in the last rolling 60 minutes for this tenant'),
+  "hourlyLimit": zod.number().describe('Maximum analyses allowed per tenant per rolling hour')
 })
 })
 
