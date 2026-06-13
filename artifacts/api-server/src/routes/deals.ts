@@ -48,6 +48,11 @@ router.get("/deals/:id", async (req, res) => {
     return;
   }
 
+  if (req.user?.platformRole !== "super_admin" && deal.tenantId !== req.user?.tenantId) {
+    res.status(403).json({ error: "Access denied to this tenant" });
+    return;
+  }
+
   res.json(deal);
 });
 

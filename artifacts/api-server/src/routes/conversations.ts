@@ -83,6 +83,11 @@ router.get("/conversations/:id", async (req, res) => {
     return;
   }
 
+  if (req.user?.platformRole !== "super_admin" && conversation.tenantId !== req.user?.tenantId) {
+    res.status(403).json({ error: "Access denied to this tenant" });
+    return;
+  }
+
   res.json(conversation);
 });
 
