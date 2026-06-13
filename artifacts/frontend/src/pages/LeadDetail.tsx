@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { formatDistanceToNow } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { useParams, useLocation } from "wouter";
@@ -192,6 +192,12 @@ export default function LeadDetail() {
 
   const [editingChurnReasons, setEditingChurnReasons] = useState(false);
   const [churnReasonsDraft, setChurnReasonsDraft] = useState<string[]>([]);
+
+  const [, setTick] = useState(0);
+  useEffect(() => {
+    const id = setInterval(() => setTick((t) => t + 1), 60_000);
+    return () => clearInterval(id);
+  }, []);
 
   const { data: lead, isLoading: leadLoading } = useGetLead(id, {
     query: {
