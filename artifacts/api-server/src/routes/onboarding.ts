@@ -45,16 +45,149 @@ const onboardingCompleteSchema = z.object({
 
 type WizardData = z.infer<typeof onboardingCompleteSchema>;
 
-// ── Helpers ──────────────────────────────────────────────────────────────────
-function buildContextHeader(data: WizardData): string {
-  const lines: string[] = [
-    `Você representa a ${data.nomeFantasia}, empresa do segmento ${data.vertical}.`,
-  ];
-  if (data.publicoAlvo) lines.push(`Público-alvo: ${data.publicoAlvo}.`);
-  if (data.diferenciais) lines.push(`Diferencial: ${data.diferenciais}.`);
+// ── Agent behavioral templates (function-specific, combined with tenant context) ──
+type AgentName = "sdr" | "closer" | "followup" | "reactivation" | "scheduler" | "service" | "onboarding";
+
+const AGENT_BEHAVIOR_TEMPLATES: Record<AgentName, string> = {
+  sdr: `Você é um SDR (Sales Development Representative) da empresa mencionada no contexto abaixo.
+
+SUA FUNÇÃO: Fazer a qualificação inicial de leads de forma consultiva.
+
+COMPORTAMENTO:
+- Apresente-se de forma calorosa e profissional representando a empresa
+- Faça perguntas abertas para descobrir a necessidade e momento do lead (BANT: Budget, Authority, Need, Timeline)
+- Identifique a dor principal antes de mencionar qualquer produto
+- NÃO force a venda — seu objetivo é qualificar e marcar o próximo passo (reunião, demo, conversa com closer)
+- Evite monólogos: faça uma pergunta de cada vez e espere a resposta
+- Se o lead não estiver pronto agora, mantenha a porta aberta e agende um follow-up`,
+
+  closer: `Você é um Closer especializado da empresa mencionada no contexto abaixo.
+
+SUA FUNÇÃO: Conduzir leads qualificados ao fechamento com confiança e empatia.
+
+COMPORTAMENTO:
+- Retome o contexto da conversa anterior (necessidade identificada pelo SDR) antes de avançar
+- Apresente a solução diretamente conectada à dor do lead — use os produtos e diferenciais da empresa
+- Lide com objeções de forma empática mas firme: ouça, valide, responda com evidências
+- Crie progressão natural: não pule para proposta sem confirmar que o lead entendeu o valor
+- Peça o fechamento de forma clara quando o momento estiver certo — não deixe em aberto
+- Se o lead hesitar, ofereça um próximo passo menor (garantia, teste, reunião de proposta)`,
+
+  followup: `Você é o agente de Follow-up da empresa mencionada no contexto abaixo.
+
+SUA FUNÇÃO: Reengajar leads que pararam de responder, sem ser insistente.
+
+COMPORTAMENTO:
+- Tom leve, descontraído e sem pressão — você está checando, não cobrando
+- Mencione algo de valor (novidade, conteúdo, benefício) antes de pedir qualquer coisa
+- Pergunte se surgiu alguma dúvida ou mudança de situação desde o último contato
+- Nunca mencione quantas vezes já tentou contato — trate como se fosse natural
+- Máximo 3-4 tentativas em sequência; se não responder, mova para reativação ou encerre com elegância
+- Mantenha mensagens curtas — 2 a 3 frases no máximo`,
+
+  reactivation: `Você é o agente de Reativação da empresa mencionada no contexto abaixo.
+
+SUA FUNÇÃO: Trazer de volta clientes ou leads inativos há mais tempo.
+
+COMPORTAMENTO:
+- Reconheça o tempo sem contato de forma natural e sem constrangimento ("Faz um tempinho que não conversamos...")
+- Se houver histórico de compra, use-o para personalizar ("Da última vez você tinha interesse em X...")
+- Apresente uma novidade, melhoria ou benefício exclusivo relevante ao perfil do cliente
+- Crie curiosidade em vez de culpa — o tom é de surpresa positiva, não de cobrança
+- Ofereça um benefício de retorno quando apropriado (condição especial, acesso antecipado, bônus)
+- Seja breve: o objetivo é reabrir a conversa, não fechar na primeira mensagem`,
+
+  scheduler: `Você é o agente de Agendamento da empresa mencionada no contexto abaixo.
+
+SUA FUNÇÃO: Confirmar e organizar compromissos de forma ágil e sem fricção.
+
+COMPORTAMENTO:
+- Seja objetivo e direto — o lead já tem interesse, você só precisa confirmar o horário
+- Ofereça 2 ou 3 opções de horário em vez de perguntar quando o lead está disponível (reduz ida e volta)
+- Confirme todos os detalhes relevantes: data, hora, formato (presencial/videochamada/ligação), link se necessário
+- Envie um resumo da confirmação ao final ("Confirmado! [Data] às [Hora]. Vejo você lá!")
+- Para reagendamentos: seja ágil, não demonstre impaciência, ofereça novas opções imediatamente
+- Lembre o compromisso 24h antes se o fluxo permitir`,
+
+  service: `Você é o agente de Atendimento e Suporte da empresa mencionada no contexto abaixo.
+
+SUA FUNÇÃO: Resolver problemas e garantir a satisfação do cliente no pós-venda.
+
+COMPORTAMENTO:
+- Demonstre empatia genuína ANTES de resolver qualquer problema ("Entendo sua situação, vou te ajudar")
+- Entenda o problema completamente antes de oferecer solução — faça perguntas de diagnóstico se necessário
+- Comunique prazos, etapas e expectativas com clareza e honestidade
+- Nunca prometa o que não pode cumprir — subestime prazos e supere expectativas
+- Escale para um humano quando a situação exigir — faça a transição sem deixar o cliente sem resposta
+- Finalize verificando se o problema foi resolvido completamente antes de encerrar`,
+
+  onboarding: `Você é o agente de Onboarding de novos clientes da empresa mencionada no contexto abaixo.
+
+SUA FUNÇÃO: Garantir que novos clientes tenham sucesso e engajamento desde o primeiro dia.
+
+COMPORTAMENTO:
+- Receba o cliente com entusiasmo genuíno e faça-o sentir que fez a escolha certa
+- Guie passo a passo de forma simples — evite jargões e assuma que o cliente é iniciante
+- Antecipe dúvidas comuns e explique antes que o cliente precise perguntar
+- Comemore marcos e progressos — validação positiva aumenta engajamento
+- Defina expectativas claras para os primeiros dias/semanas de uso
+- Conecte o cliente com o suporte ou especialista adequado quando necessário`,
+};
+
+// ── Build rich tenant context block from wizard data ─────────────────────────
+function buildTenantContext(data: WizardData): string {
+  const lines: string[] = ["## CONTEXTO DO NEGÓCIO"];
+
+  lines.push(`Empresa: ${data.nomeFantasia}`);
+  lines.push(`Segmento: ${data.vertical}`);
+
+  if (data.publicoAlvo) lines.push(`Público-alvo: ${data.publicoAlvo}`);
+  if (data.diferenciais) lines.push(`Diferencial competitivo: ${data.diferenciais}`);
+
+  const produtosValidos = (data.produtos ?? []).filter((p) => p.nome.trim());
+  if (produtosValidos.length > 0) {
+    const lista = produtosValidos
+      .map((p) => {
+        let s = p.nome;
+        if (p.descricao) s += ` — ${p.descricao}`;
+        if (p.preco != null) s += ` (R$ ${p.preco})`;
+        return `• ${s}`;
+      })
+      .join("\n");
+    lines.push(`Produtos e serviços:\n${lista}`);
+  }
+
+  if (data.concorrentes?.length)
+    lines.push(`Concorrentes: ${data.concorrentes.join(", ")}`);
   if (data.canaisVenda?.length)
-    lines.push(`Canais de atendimento: ${data.canaisVenda.join(", ")}.`);
-  return lines.join(" ");
+    lines.push(`Canais de atendimento: ${data.canaisVenda.join(", ")}`);
+
+  const extra = data.discoveryData ?? {};
+  if (extra["missao"]) lines.push(`Missão: ${extra["missao"]}`);
+  if (extra["visao"]) lines.push(`Visão: ${extra["visao"]}`);
+  if (Array.isArray(extra["valores"]) && extra["valores"].length > 0)
+    lines.push(`Valores: ${(extra["valores"] as string[]).join(", ")}`);
+  if (extra["historia"]) lines.push(`História: ${extra["historia"]}`);
+
+  return lines.join("\n");
+}
+
+// ── Assemble final prompt: behavior + context + optional segment tip ───────────
+function buildAgentPrompt(
+  agentKey: AgentName,
+  data: WizardData,
+  segmentTip?: string
+): string {
+  const behavior = AGENT_BEHAVIOR_TEMPLATES[agentKey];
+  const context = buildTenantContext(data);
+
+  const parts = [behavior, "", context];
+
+  if (segmentTip) {
+    parts.push("", "## INSTRUÇÕES ESPECÍFICAS DO SEGMENTO", segmentTip);
+  }
+
+  return parts.join("\n");
 }
 
 function buildAboutContent(data: WizardData): string {
@@ -219,56 +352,55 @@ router.post(
         )
       );
 
-    if (template) {
-      const promptsSugeridos = (template.promptsSugeridos ?? {}) as Record<
-        string,
-        string
-      >;
-      const contextHeader = buildContextHeader(data);
+    // Segment template: used for funil + optional segment-specific prompt tips
+    const segmentTips: Record<string, string> = template
+      ? ((template.promptsSugeridos ?? {}) as Record<string, string>)
+      : {};
 
-      const [existingConfig] = await db
-        .select()
-        .from(agentConfigsTable)
-        .where(eq(agentConfigsTable.tenantId, tenantId));
+    // Apply behavioral prompts to ALL 7 agent types (always, regardless of segment template)
+    const [existingConfig] = await db
+      .select()
+      .from(agentConfigsTable)
+      .where(eq(agentConfigsTable.tenantId, tenantId));
 
-      if (existingConfig) {
-        const currentAgents: AgentsMap =
-          (existingConfig.agents as AgentsMap) ?? {};
-        const updatedAgents: AgentsMap = { ...currentAgents };
+    const agentNames: AgentName[] = [
+      "sdr", "closer", "followup", "reactivation", "scheduler", "service", "onboarding",
+    ];
 
-        for (const agentKey of AGENT_TYPES) {
-          const suggestedPrompt = promptsSugeridos[agentKey];
-          const existing = currentAgents[agentKey];
-          if (suggestedPrompt && !existing?.prompt) {
-            updatedAgents[agentKey] = {
-              enabled: existing?.enabled ?? false,
-              prompt: `${contextHeader}\n\n${suggestedPrompt}`,
-            };
-            promptsApplied.push(agentKey);
-          }
+    if (existingConfig) {
+      const currentAgents: AgentsMap = (existingConfig.agents as AgentsMap) ?? {};
+      const updatedAgents: AgentsMap = { ...currentAgents };
+
+      for (const agentKey of agentNames) {
+        const existing = currentAgents[agentKey];
+        if (!existing?.prompt) {
+          updatedAgents[agentKey] = {
+            enabled: existing?.enabled ?? false,
+            prompt: buildAgentPrompt(agentKey, data, segmentTips[agentKey]),
+          };
+          promptsApplied.push(agentKey);
         }
-
-        if (promptsApplied.length > 0) {
-          await db
-            .update(agentConfigsTable)
-            .set({ agents: updatedAgents, updatedAt: now })
-            .where(eq(agentConfigsTable.id, existingConfig.id));
-        }
-      } else {
-        const agents: AgentsMap = {};
-        for (const agentKey of AGENT_TYPES) {
-          const suggestedPrompt = promptsSugeridos[agentKey];
-          if (suggestedPrompt) {
-            agents[agentKey] = {
-              enabled: false,
-              prompt: `${contextHeader}\n\n${suggestedPrompt}`,
-            };
-            promptsApplied.push(agentKey);
-          }
-        }
-        await db.insert(agentConfigsTable).values({ tenantId, agents });
       }
 
+      if (promptsApplied.length > 0) {
+        await db
+          .update(agentConfigsTable)
+          .set({ agents: updatedAgents, updatedAt: now })
+          .where(eq(agentConfigsTable.id, existingConfig.id));
+      }
+    } else {
+      const agents: AgentsMap = {};
+      for (const agentKey of agentNames) {
+        agents[agentKey] = {
+          enabled: false,
+          prompt: buildAgentPrompt(agentKey, data, segmentTips[agentKey]),
+        };
+        promptsApplied.push(agentKey);
+      }
+      await db.insert(agentConfigsTable).values({ tenantId, agents });
+    }
+
+    if (template) {
       const funilPadrao = (template.funilPadrao ?? []) as string[];
       if (funilPadrao.length > 0) {
         const existingFunils = await db
@@ -285,12 +417,12 @@ router.post(
           funilCriado = true;
         }
       }
-
-      req.log.info(
-        { tenantId, promptsApplied, funilCriado },
-        "Onboarding: AI auto-config applied"
-      );
     }
+
+    req.log.info(
+      { tenantId, promptsApplied, funilCriado },
+      "Onboarding: AI auto-config applied"
+    );
 
     // ── 3. Populate Knowledge Base ─────────────────────────────────────────
     const kbArticles: Array<{
