@@ -1511,6 +1511,33 @@ export interface CreateInventoryItemBody {
   unidade: string;
 }
 
+export interface ImportInventoryRow {
+  nome: string;
+  sku?: string | null;
+  quantidade: string;
+  quantidadeMinima?: string | null;
+  preco?: string | null;
+  categoria?: string | null;
+  unidade?: string | null;
+  localizacao?: string | null;
+}
+
+export interface ImportInventoryBody {
+  rows: ImportInventoryRow[];
+}
+
+export interface ImportInventoryError {
+  row: number;
+  nome: string;
+  error: string;
+}
+
+export interface ImportInventoryResult {
+  imported: number;
+  skipped: number;
+  errors: ImportInventoryError[];
+}
+
 export interface UpdateInventoryItemBody {
   produtoId?: string;
   quantidadeMinima?: string;

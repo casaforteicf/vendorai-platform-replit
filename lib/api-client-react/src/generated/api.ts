@@ -68,6 +68,8 @@ import type {
   ExportIntelligenceAnalysisLogParams,
   Funil,
   HealthStatus,
+  ImportInventoryBody,
+  ImportInventoryResult,
   IncrementBody,
   IntelligenceAnalysisLogPage,
   InventoryItem,
@@ -11322,6 +11324,78 @@ export function useListInventoryItems<TData = Awaited<ReturnType<typeof listInve
 
 
 
+
+export const getImportInventoryItemsCsvUrl = (tenantId: string,) => {
+
+
+
+
+  return `/api/tenants/${tenantId}/inventory-items/import`
+}
+
+/**
+ * @summary Bulk-import inventory items from parsed CSV rows
+ */
+export const importInventoryItemsCsv = async (tenantId: string,
+    importInventoryBody: ImportInventoryBody, options?: RequestInit): Promise<ImportInventoryResult> => {
+
+  return customFetch<ImportInventoryResult>(getImportInventoryItemsCsvUrl(tenantId),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(
+      importInventoryBody,)
+  }
+);}
+
+
+
+
+export const getImportInventoryItemsCsvMutationOptions = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof importInventoryItemsCsv>>, TError,{tenantId: string;data: BodyType<ImportInventoryBody>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof importInventoryItemsCsv>>, TError,{tenantId: string;data: BodyType<ImportInventoryBody>}, TContext> => {
+
+const mutationKey = ['importInventoryItemsCsv'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof importInventoryItemsCsv>>, {tenantId: string;data: BodyType<ImportInventoryBody>}> = (props) => {
+          const {tenantId,data} = props ?? {};
+
+          return  importInventoryItemsCsv(tenantId,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type ImportInventoryItemsCsvMutationResult = NonNullable<Awaited<ReturnType<typeof importInventoryItemsCsv>>>
+    export type ImportInventoryItemsCsvMutationBody = BodyType<ImportInventoryBody>
+    export type ImportInventoryItemsCsvMutationError = ErrorType<ErrorResponse>
+
+    /**
+ * @summary Bulk-import inventory items from parsed CSV rows
+ */
+export const useImportInventoryItemsCsv = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof importInventoryItemsCsv>>, TError,{tenantId: string;data: BodyType<ImportInventoryBody>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof importInventoryItemsCsv>>,
+        TError,
+        {tenantId: string;data: BodyType<ImportInventoryBody>},
+        TContext
+      > => {
+      return useMutation(getImportInventoryItemsCsvMutationOptions(options));
+    }
 
 export const getListLowStockItemsUrl = (tenantId: string,) => {
 

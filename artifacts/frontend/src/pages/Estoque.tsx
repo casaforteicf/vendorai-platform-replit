@@ -9,8 +9,9 @@ import {
   getListInventoryMovementsQueryKey,
   useListProdutosCatalogo,
   getListProdutosCatalogoQueryKey,
+  useImportInventoryItemsCsv,
 } from "@workspace/api-client-react";
-import type { InventoryItem, InventoryMovement } from "@workspace/api-client-react";
+import type { InventoryItem, InventoryMovement, ImportInventoryResult } from "@workspace/api-client-react";
 import { useQueryClient } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
 import { useForm } from "react-hook-form";
@@ -60,6 +61,10 @@ import {
   ArrowDownToLine,
   ArrowUpFromLine,
   Loader2,
+  Upload,
+  Download,
+  CheckCircle2,
+  XCircle,
 } from "lucide-react";
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -92,6 +97,62 @@ const tipoConfig = {
   ajuste:  { label: "Ajuste",  icon: SlidersHorizontal, className: "text-blue-600 bg-blue-50 border-blue-200" },
 } as const;
 
+// ── CSV parser ────────────────────────────────────────────────────────────────
+
+const CSV_TEMPLATE = "nome,sku,quantidade,quantidade_minima,preco,categoria,unidade,localizacao\nProduto Exemplo,SKU001,100,10,29.90,Eletrônicos,un,Prateleira A1";
+
+type CsvRow = {
+  nome: string; sku?: string; quantidade: string;
+  quantidadeMinima?: string; preco?: string;
+  categoria?: string; unidade?: string; localizacao?: string;
+};
+
+function parseCsv(text: string): { rows: CsvRow[]; errors: string[] } {
+  const lines = text.replace(/\r\n/g, "\n").replace(/\r/g, "\n").split("\n").filter(Boolean);
+  const errors: string[] = [];
+  if (lines.length < 2) return { rows: [], errors: ["Arquivo deve ter cabeçalho + ao menos 1 linha"] };
+
+  const header = lines[0].split(",").map((h) => h.trim().toLowerCase().replace(/[^a-z_]/g, ""));
+  const nomeIdx     = header.indexOf("nome");
+  const qtyIdx      = header.findIndex((h) => h === "quantidade" || h === "qtd" || h === "qty");
+  const qtyMinIdx   = header.findIndex((h) => h === "quantidade_minima" || h === "qtd_minima" || h === "qty_min" || h === "estoque_minimo");
+  const precoIdx    = header.findIndex((h) => h === "preco" || h === "preo" || h === "price");
+  const catIdx      = header.findIndex((h) => h === "categoria" || h === "category");
+  const unidIdx     = header.findIndex((h) => h === "unidade" || h === "unit");
+  const locIdx      = header.findIndex((h) => h === "localizacao" || h === "localizaco" || h === "location");
+
+  if (nomeIdx === -1) return { rows: [], errors: ["Coluna 'nome' não encontrada no cabeçalho"] };
+  if (qtyIdx  === -1) return { rows: [], errors: ["Coluna 'quantidade' não encontrada no cabeçalho"] };
+
+  const rows: CsvRow[] = [];
+  for (let i = 1; i < lines.length; i++) {
+    const cols = lines[i].split(",").map((c) => c.trim().replace(/^"|"$/g, ""));
+    const nome = cols[nomeIdx] ?? "";
+    const qty  = (cols[qtyIdx] ?? "").replace(",", ".");
+    if (!nome) { errors.push(`Linha ${i + 1}: nome vazio`); continue; }
+    if (!qty || isNaN(parseFloat(qty))) { errors.push(`Linha ${i + 1}: quantidade inválida`); continue; }
+    rows.push({
+      nome,
+      sku:              cols[header.indexOf("sku")] || undefined,
+      quantidade:       qty,
+      quantidadeMinima: qtyMinIdx >= 0 ? (cols[qtyMinIdx] ?? "").replace(",", ".") || undefined : undefined,
+      preco:            precoIdx >= 0  ? (cols[precoIdx]  ?? "").replace(",", ".") || undefined : undefined,
+      categoria:        catIdx >= 0    ? cols[catIdx]  || undefined : undefined,
+      unidade:          unidIdx >= 0   ? cols[unidIdx] || undefined : undefined,
+      localizacao:      locIdx >= 0    ? cols[locIdx]  || undefined : undefined,
+    });
+  }
+  return { rows, errors };
+}
+
+function downloadTemplate() {
+  const blob = new Blob([CSV_TEMPLATE], { type: "text/csv;charset=utf-8;" });
+  const url  = URL.createObjectURL(blob);
+  const a    = document.createElement("a");
+  a.href = url; a.download = "template-estoque.csv"; a.click();
+  URL.revokeObjectURL(url);
+}
+
 // ── Schemas ───────────────────────────────────────────────────────────────────
 
 const novoItemSchema = z.object({
@@ -122,6 +183,10 @@ export default function Estoque() {
   const [showNovoItem, setShowNovoItem]         = useState(false);
   const [movItem, setMovItem]                   = useState<InventoryItem | null>(null);
   const [activeTab, setActiveTab]               = useState<"itens" | "historico">("itens");
+  const [showImport, setShowImport]             = useState(false);
+  const [csvRows, setCsvRows]                   = useState<CsvRow[]>([]);
+  const [csvParseErrors, setCsvParseErrors]     = useState<string[]>([]);
+  const [importResult, setImportResult]         = useState<ImportInventoryResult | null>(null);
 
   // ── Queries ──────────────────────────────────────────────────────────────
   const { data: items = [], isLoading: loadingItems } = useListInventoryItems(tenantId, {
@@ -135,8 +200,9 @@ export default function Estoque() {
   });
 
   // ── Mutations ─────────────────────────────────────────────────────────────
-  const createItem = useCreateInventoryItem();
-  const registerMov = useRegisterInventoryMovement();
+  const createItem   = useCreateInventoryItem();
+  const registerMov  = useRegisterInventoryMovement();
+  const importCsv    = useImportInventoryItemsCsv();
 
   // ── Forms ─────────────────────────────────────────────────────────────────
   const novoItemForm = useForm<NovoItemForm>({
@@ -150,6 +216,45 @@ export default function Estoque() {
   });
 
   // ── Handlers ──────────────────────────────────────────────────────────────
+  function handleCsvFile(file: File) {
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      const text = e.target?.result as string;
+      const { rows, errors } = parseCsv(text);
+      setCsvRows(rows);
+      setCsvParseErrors(errors);
+      setImportResult(null);
+    };
+    reader.readAsText(file, "utf-8");
+  }
+
+  function handleConfirmImport() {
+    if (!csvRows.length) return;
+    importCsv.mutate(
+      { tenantId, data: { rows: csvRows } },
+      {
+        onSuccess: (result) => {
+          setImportResult(result);
+          setCsvRows([]);
+          qc.invalidateQueries({ queryKey: getListInventoryItemsQueryKey(tenantId) });
+          qc.invalidateQueries({ queryKey: getListProdutosCatalogoQueryKey(tenantId) });
+          toast({
+            title: `${result.imported} ${result.imported === 1 ? "item importado" : "itens importados"}`,
+            description: result.skipped > 0 ? `${result.skipped} já existiam e foram ignorados.` : undefined,
+          });
+        },
+        onError: () => toast({ title: "Erro ao importar", variant: "destructive" }),
+      }
+    );
+  }
+
+  function handleImportClose() {
+    setShowImport(false);
+    setCsvRows([]);
+    setCsvParseErrors([]);
+    setImportResult(null);
+  }
+
   function handleSubmitNovoItem(values: NovoItemForm) {
     createItem.mutate(
       { data: { tenantId, ...values } },
@@ -211,10 +316,16 @@ export default function Estoque() {
             </p>
           </div>
         </div>
-        <Button onClick={() => setShowNovoItem(true)} className="gap-2">
-          <Plus className="h-4 w-4" />
-          Novo Item
-        </Button>
+        <div className="flex gap-2">
+          <Button variant="outline" onClick={() => setShowImport(true)} className="gap-2">
+            <Upload className="h-4 w-4" />
+            Importar CSV
+          </Button>
+          <Button onClick={() => setShowNovoItem(true)} className="gap-2">
+            <Plus className="h-4 w-4" />
+            Novo Item
+          </Button>
+        </div>
       </div>
 
       {/* Low-stock alert banner */}
@@ -625,6 +736,142 @@ export default function Estoque() {
               </div>
             </form>
           </Form>
+        </DialogContent>
+      </Dialog>
+
+      {/* ── Modal: Importar CSV ───────────────────────────────────────────── */}
+      <Dialog open={showImport} onOpenChange={(open) => { if (!open) handleImportClose(); }}>
+        <DialogContent className="sm:max-w-2xl">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Upload className="h-5 w-5 text-primary" />
+              Importar Estoque via CSV
+            </DialogTitle>
+          </DialogHeader>
+
+          <div className="space-y-4">
+            {/* Template download */}
+            <div className="flex items-center justify-between rounded-lg border border-dashed p-3 bg-muted/30">
+              <div className="text-sm text-muted-foreground">
+                <p className="font-medium text-foreground">Colunas aceitas:</p>
+                <p className="text-xs mt-0.5">nome*, quantidade*, sku, quantidade_minima, preco, categoria, unidade, localizacao</p>
+              </div>
+              <Button variant="outline" size="sm" onClick={downloadTemplate} className="gap-2 shrink-0">
+                <Download className="h-4 w-4" />
+                Template CSV
+              </Button>
+            </div>
+
+            {/* File picker */}
+            {!importResult && (
+              <div
+                className="flex flex-col items-center justify-center rounded-lg border-2 border-dashed border-muted-foreground/25 p-8 text-center cursor-pointer hover:border-primary/50 hover:bg-muted/20 transition-colors"
+                onDragOver={(e) => e.preventDefault()}
+                onDrop={(e) => { e.preventDefault(); const f = e.dataTransfer.files[0]; if (f) handleCsvFile(f); }}
+                onClick={() => document.getElementById("csv-file-input")?.click()}
+              >
+                <Upload className="h-8 w-8 text-muted-foreground/50 mb-2" />
+                <p className="text-sm font-medium">Clique para selecionar ou arraste o arquivo CSV</p>
+                <p className="text-xs text-muted-foreground mt-1">Apenas .csv — máx. 1.000 linhas</p>
+                <input
+                  id="csv-file-input"
+                  type="file"
+                  accept=".csv,text/csv"
+                  className="hidden"
+                  onChange={(e) => { const f = e.target.files?.[0]; if (f) handleCsvFile(f); e.target.value = ""; }}
+                />
+              </div>
+            )}
+
+            {/* Parse errors */}
+            {csvParseErrors.length > 0 && (
+              <div className="rounded-lg bg-red-50 border border-red-200 p-3 space-y-1">
+                {csvParseErrors.map((err, i) => (
+                  <p key={i} className="text-sm text-red-700 flex items-start gap-1.5">
+                    <XCircle className="h-4 w-4 mt-0.5 shrink-0" />{err}
+                  </p>
+                ))}
+              </div>
+            )}
+
+            {/* Preview table */}
+            {csvRows.length > 0 && !importResult && (
+              <div className="space-y-2">
+                <p className="text-sm font-medium">{csvRows.length} linha{csvRows.length !== 1 ? "s" : ""} encontradas — pré-visualização:</p>
+                <div className="rounded-lg border max-h-52 overflow-auto">
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Nome</TableHead>
+                        <TableHead>Qtd</TableHead>
+                        <TableHead>Qtd Mín.</TableHead>
+                        <TableHead>Preço</TableHead>
+                        <TableHead>Categoria</TableHead>
+                        <TableHead>Unidade</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {csvRows.slice(0, 50).map((row, i) => (
+                        <TableRow key={i}>
+                          <TableCell className="font-medium text-sm">{row.nome}</TableCell>
+                          <TableCell className="text-sm">{row.quantidade}</TableCell>
+                          <TableCell className="text-sm text-muted-foreground">{row.quantidadeMinima ?? "—"}</TableCell>
+                          <TableCell className="text-sm text-muted-foreground">{row.preco ?? "—"}</TableCell>
+                          <TableCell className="text-sm text-muted-foreground">{row.categoria ?? "—"}</TableCell>
+                          <TableCell className="text-sm text-muted-foreground">{row.unidade ?? "un"}</TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                  {csvRows.length > 50 && (
+                    <p className="text-xs text-muted-foreground text-center py-2">
+                      … e mais {csvRows.length - 50} linhas
+                    </p>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {/* Import result */}
+            {importResult && (
+              <div className="space-y-3">
+                <div className="flex items-center gap-3 rounded-lg bg-emerald-50 border border-emerald-200 p-4">
+                  <CheckCircle2 className="h-6 w-6 text-emerald-600 shrink-0" />
+                  <div>
+                    <p className="font-semibold text-emerald-800">Importação concluída</p>
+                    <p className="text-sm text-emerald-700">
+                      {importResult.imported} importado{importResult.imported !== 1 ? "s" : ""}
+                      {importResult.skipped > 0 && ` · ${importResult.skipped} ignorado${importResult.skipped !== 1 ? "s" : ""} (já existiam)`}
+                    </p>
+                  </div>
+                </div>
+                {importResult.errors.length > 0 && (
+                  <div className="rounded-lg bg-red-50 border border-red-200 p-3 space-y-1">
+                    <p className="text-sm font-medium text-red-800">Erros em {importResult.errors.length} linha{importResult.errors.length !== 1 ? "s" : ""}:</p>
+                    {importResult.errors.map((err, i) => (
+                      <p key={i} className="text-xs text-red-700 flex items-start gap-1.5">
+                        <XCircle className="h-3.5 w-3.5 mt-0.5 shrink-0" />
+                        Linha {err.row} ({err.nome}): {err.error}
+                      </p>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* Actions */}
+            <div className="flex justify-end gap-2 pt-1">
+              <Button variant="outline" onClick={handleImportClose}>
+                {importResult ? "Fechar" : "Cancelar"}
+              </Button>
+              {csvRows.length > 0 && !importResult && (
+                <Button onClick={handleConfirmImport} disabled={importCsv.isPending} className="gap-2">
+                  {importCsv.isPending && <Loader2 className="h-4 w-4 animate-spin" />}
+                  Importar {csvRows.length} {csvRows.length === 1 ? "item" : "itens"}
+                </Button>
+              )}
+            </div>
+          </div>
         </DialogContent>
       </Dialog>
     </div>

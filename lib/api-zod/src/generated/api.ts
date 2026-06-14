@@ -3813,6 +3813,37 @@ export const ListInventoryItemsResponse = zod.array(ListInventoryItemsResponseIt
 
 
 /**
+ * @summary Bulk-import inventory items from parsed CSV rows
+ */
+export const ImportInventoryItemsCsvParams = zod.object({
+  "tenantId": zod.coerce.string()
+})
+
+export const ImportInventoryItemsCsvBody = zod.object({
+  "rows": zod.array(zod.object({
+  "nome": zod.string(),
+  "sku": zod.string().nullish(),
+  "quantidade": zod.string(),
+  "quantidadeMinima": zod.string().nullish(),
+  "preco": zod.string().nullish(),
+  "categoria": zod.string().nullish(),
+  "unidade": zod.string().nullish(),
+  "localizacao": zod.string().nullish()
+}))
+})
+
+export const ImportInventoryItemsCsvResponse = zod.object({
+  "imported": zod.number(),
+  "skipped": zod.number(),
+  "errors": zod.array(zod.object({
+  "row": zod.number(),
+  "nome": zod.string(),
+  "error": zod.string()
+}))
+})
+
+
+/**
  * @summary List items with quantidadeAtual <= quantidadeMinima
  */
 export const ListLowStockItemsParams = zod.object({

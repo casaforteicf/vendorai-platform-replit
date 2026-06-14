@@ -4287,6 +4287,45 @@ paths:
                 items:
                   $ref: "#/components/schemas/InventoryItem"
 
+  /tenants/{tenantId}/inventory-items/import:
+    post:
+      operationId: importInventoryItemsCsv
+      tags: [inventory]
+      summary: Bulk-import inventory items from parsed CSV rows
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: tenantId
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ImportInventoryBody"
+      responses:
+        "200":
+          description: Import result
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ImportInventoryResult"
+        "403":
+          description: Access denied
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "422":
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
   /tenants/{tenantId}/inventory-items/low-stock:
     get:
       operationId: listLowStockItems
@@ -7133,6 +7172,75 @@ components:
         - tenantId
         - produtoId
         - unidade
+
+    ImportInventoryRow:
+      type: object
+      properties:
+        nome:
+          type: string
+        sku:
+          type: string
+          nullable: true
+        quantidade:
+          type: string
+        quantidadeMinima:
+          type: string
+          nullable: true
+        preco:
+          type: string
+          nullable: true
+        categoria:
+          type: string
+          nullable: true
+        unidade:
+          type: string
+          nullable: true
+        localizacao:
+          type: string
+          nullable: true
+      required:
+        - nome
+        - quantidade
+
+    ImportInventoryBody:
+      type: object
+      properties:
+        rows:
+          type: array
+          items:
+            $ref: "#/components/schemas/ImportInventoryRow"
+      required:
+        - rows
+
+    ImportInventoryError:
+      type: object
+      properties:
+        row:
+          type: integer
+        nome:
+          type: string
+        error:
+          type: string
+      required:
+        - row
+        - nome
+        - error
+
+    ImportInventoryResult:
+      type: object
+      properties:
+        imported:
+          type: integer
+        skipped:
+          type: integer
+        errors:
+          type: array
+          items:
+            $ref: "#/components/schemas/ImportInventoryError"
+      required:
+        - imported
+        - skipped
+        - errors
 
     UpdateInventoryItemBody:
       type: object

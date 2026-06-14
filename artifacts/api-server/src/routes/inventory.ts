@@ -1,9 +1,10 @@
 import { Router, type IRouter } from "express";
-import { and, eq, lte, desc } from "drizzle-orm";
+import { and, eq, lte, desc, ilike } from "drizzle-orm";
 import {
   db,
   inventoryItemsTable,
   inventoryMovementsTable,
+  produtosCatalogoTable,
   insertInventoryItemSchema,
   updateInventoryItemSchema,
   insertInventoryMovementSchema,
@@ -65,6 +66,113 @@ router.get("/tenants/:tenantId/inventory-items", async (req, res) => {
     .orderBy(inventoryItemsTable.createdAt);
 
   res.json(items);
+});
+
+// ─── CSV Import ──────────────────────────────────────────────────────────────
+
+const importRowSchema = z.object({
+  nome:             z.string().min(1),
+  sku:              z.string().optional().nullable(),
+  quantidade:       z.string().regex(/^\d+(\.\d+)?$/, "Quantidade inválida"),
+  quantidadeMinima: z.string().regex(/^\d+(\.\d+)?$/).optional().nullable(),
+  preco:            z.string().optional().nullable(),
+  categoria:        z.string().optional().nullable(),
+  unidade:          z.string().optional().nullable(),
+  localizacao:      z.string().optional().nullable(),
+});
+
+const importBodySchema = z.object({
+  rows: z.array(importRowSchema).min(1).max(1000),
+});
+
+// POST /tenants/:tenantId/inventory-items/import
+// NOTE: declared before /:id to avoid route shadowing
+router.post("/tenants/:tenantId/inventory-items/import", async (req, res) => {
+  const { tenantId } = req.params;
+
+  if (!canAccessTenant(req, tenantId)) {
+    res.status(403).json({ error: "Access denied to this tenant" });
+    return;
+  }
+
+  const parsed = importBodySchema.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(422).json({ error: parsed.error.message });
+    return;
+  }
+
+  const { rows } = parsed.data;
+  let imported = 0;
+  let skipped = 0;
+  const errors: Array<{ row: number; nome: string; error: string }> = [];
+
+  for (let i = 0; i < rows.length; i++) {
+    const row = rows[i];
+    try {
+      const nomeLower = row.nome.trim();
+
+      // Find or create product in catalogue
+      let [produto] = await db
+        .select()
+        .from(produtosCatalogoTable)
+        .where(
+          and(
+            eq(produtosCatalogoTable.tenantId, tenantId),
+            ilike(produtosCatalogoTable.nome, nomeLower)
+          )
+        )
+        .limit(1);
+
+      if (!produto) {
+        const precoBase = row.preco
+          ? String(parseFloat(row.preco.replace(",", ".")).toFixed(2))
+          : "0.00";
+        [produto] = await db
+          .insert(produtosCatalogoTable)
+          .values({
+            tenantId,
+            nome: row.nome.trim(),
+            categoria: row.categoria ?? null,
+            precoBase,
+            unidade: row.unidade ?? "un",
+          })
+          .returning();
+      }
+
+      // Check if item already exists for this product
+      const [existing] = await db
+        .select()
+        .from(inventoryItemsTable)
+        .where(
+          and(
+            eq(inventoryItemsTable.tenantId, tenantId),
+            eq(inventoryItemsTable.produtoId, produto.id)
+          )
+        )
+        .limit(1);
+
+      if (existing) {
+        skipped++;
+        continue;
+      }
+
+      await db.insert(inventoryItemsTable).values({
+        tenantId,
+        produtoId: produto.id,
+        quantidadeAtual:  row.quantidade,
+        quantidadeMinima: row.quantidadeMinima ?? "0",
+        unidade:          row.unidade ?? "un",
+        localizacao:      row.localizacao ?? null,
+      });
+
+      imported++;
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : "Erro desconhecido";
+      errors.push({ row: i + 1, nome: row.nome, error: msg });
+    }
+  }
+
+  res.json({ imported, skipped, errors });
 });
 
 // GET /tenants/:tenantId/inventory-items/low-stock
