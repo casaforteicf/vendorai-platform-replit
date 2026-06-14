@@ -20,6 +20,7 @@ import Faturamento from "@/pages/Faturamento";
 import AdminAIUsage from "@/pages/AdminAIUsage";
 import SiteLandingPage from "@/pages/SiteLandingPage";
 import Marketplace from "@/pages/Marketplace";
+import Estoque from "@/pages/Estoque";
 import { useEffect } from "react";
 
 const queryClient = new QueryClient();
@@ -136,6 +137,9 @@ function AppRoutes() {
       </Route>
       <Route path="/campanhas">
         <ProtectedRoute component={Campanhas} />
+      </Route>
+      <Route path="/estoque">
+        {() => <ProtectedRoute component={Estoque} />}
       </Route>
       <Route path="/faturamento">
         {() => <ProtectedRoute component={Faturamento} />}
