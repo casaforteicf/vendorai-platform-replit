@@ -3,7 +3,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import { LayoutDashboard, Users, Briefcase, MessageSquare, Calendar, Settings, LogOut, Megaphone, FileText, Receipt, BrainCircuit, Store, Package } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
-import logoFull from "/logo-full.svg";
+import logoFull from "/logo-fundo-claro.svg";
 
 export function SidebarLayout({ children }: { children: React.ReactNode }) {
   const { user, logout } = useAuth();

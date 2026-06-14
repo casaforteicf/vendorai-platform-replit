@@ -15,7 +15,7 @@ import {
 } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
 import { useToast } from "@/hooks/use-toast";
-import logoFull from "/logo-full.svg";
+import logoDark from "/logo-fundo-escuro.svg";
 
 const formSchema = z.object({
   email: z.string().email("Email inválido"),
@@ -103,7 +103,7 @@ export default function Login() {
       </div>
       <div className="hidden lg:flex bg-primary items-center justify-center p-12">
         <div className="max-w-md text-primary-foreground space-y-6">
-          <img src={logoFull} alt="Vendor.ai" className="h-14 w-auto brightness-0 invert" />
+          <img src={logoDark} alt="Vendor.ai" className="h-14 w-auto" />
           <h2 className="text-4xl font-bold">O comando central de vendas.</h2>
           <p className="text-lg opacity-80 leading-relaxed">
             CRM, conversas, agendamentos e IA em uma única interface pensada para velocidade e densidade de informação.
