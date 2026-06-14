@@ -6,6 +6,7 @@
  * OpenAPI spec version: 0.1.0
  */
 
+export * from './acceptInviteBody';
 export * from './activity';
 export * from './activityStatus';
 export * from './activityTipo';
@@ -61,6 +62,7 @@ export * from './createFunilBody';
 export * from './createInventoryItemBody';
 export * from './createInventoryMovementBody';
 export * from './createInventoryMovementBodyTipo';
+export * from './createInviteBody';
 export * from './createInvoiceBody';
 export * from './createKnowledgeBaseBody';
 export * from './createLeadBody';
@@ -102,6 +104,9 @@ export * from './inventoryItem';
 export * from './inventoryMovement';
 export * from './inventoryMovementResult';
 export * from './inventoryMovementTipo';
+export * from './inviteCreatedResponse';
+export * from './inviteDetails';
+export * from './inviteItem';
 export * from './invoice';
 export * from './invoiceFormaPagamento';
 export * from './invoiceStatus';

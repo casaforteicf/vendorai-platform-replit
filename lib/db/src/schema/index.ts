@@ -25,3 +25,4 @@ export * from "./inventory_items";
 export * from "./inventory_movements";
 export * from "./site_config";
 export * from "./segment_templates";
+export * from "./tenant_invites";

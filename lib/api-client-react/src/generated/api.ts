@@ -20,6 +20,7 @@ import type {
 } from '@tanstack/react-query';
 
 import type {
+  AcceptInviteBody,
   Activity,
   Agendamento,
   AgendamentoDisponibilidade,
@@ -50,6 +51,7 @@ import type {
   CreateFunilBody,
   CreateInventoryItemBody,
   CreateInventoryMovementBody,
+  CreateInviteBody,
   CreateInvoiceBody,
   CreateKnowledgeBaseBody,
   CreateLeadBody,
@@ -76,6 +78,9 @@ import type {
   InventoryItem,
   InventoryMovement,
   InventoryMovementResult,
+  InviteCreatedResponse,
+  InviteDetails,
+  InviteItem,
   Invoice,
   KnowledgeBase,
   Lead,
@@ -434,6 +439,306 @@ export const useLogin = <TError = ErrorType<ErrorResponse>,
         TContext
       > => {
       return useMutation(getLoginMutationOptions(options));
+    }
+
+export const getCreateInviteUrl = () => {
+
+
+
+
+  return `/api/admin/invites`
+}
+
+/**
+ * Generates an invite token for a tenant. Requires super_admin.
+ * @summary Create a tenant invite
+ */
+export const createInvite = async (createInviteBody: CreateInviteBody, options?: RequestInit): Promise<InviteCreatedResponse> => {
+
+  return customFetch<InviteCreatedResponse>(getCreateInviteUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(
+      createInviteBody,)
+  }
+);}
+
+
+
+
+export const getCreateInviteMutationOptions = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createInvite>>, TError,{data: BodyType<CreateInviteBody>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof createInvite>>, TError,{data: BodyType<CreateInviteBody>}, TContext> => {
+
+const mutationKey = ['createInvite'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof createInvite>>, {data: BodyType<CreateInviteBody>}> = (props) => {
+          const {data} = props ?? {};
+
+          return  createInvite(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type CreateInviteMutationResult = NonNullable<Awaited<ReturnType<typeof createInvite>>>
+    export type CreateInviteMutationBody = BodyType<CreateInviteBody>
+    export type CreateInviteMutationError = ErrorType<ErrorResponse>
+
+    /**
+ * @summary Create a tenant invite
+ */
+export const useCreateInvite = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createInvite>>, TError,{data: BodyType<CreateInviteBody>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof createInvite>>,
+        TError,
+        {data: BodyType<CreateInviteBody>},
+        TContext
+      > => {
+      return useMutation(getCreateInviteMutationOptions(options));
+    }
+
+export const getListInvitesByTenantUrl = (tenantId: string,) => {
+
+
+
+
+  return `/api/admin/invites/${tenantId}`
+}
+
+/**
+ * Returns all invites for a tenant. Requires super_admin.
+ * @summary List invites for a tenant
+ */
+export const listInvitesByTenant = async (tenantId: string, options?: RequestInit): Promise<InviteItem[]> => {
+
+  return customFetch<InviteItem[]>(getListInvitesByTenantUrl(tenantId),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getListInvitesByTenantQueryKey = (tenantId: string,) => {
+    return [
+    `/api/admin/invites/${tenantId}`
+    ] as const;
+    }
+
+
+export const getListInvitesByTenantQueryOptions = <TData = Awaited<ReturnType<typeof listInvitesByTenant>>, TError = ErrorType<unknown>>(tenantId: string, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listInvitesByTenant>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getListInvitesByTenantQueryKey(tenantId);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof listInvitesByTenant>>> = ({ signal }) => listInvitesByTenant(tenantId, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, enabled: !!(tenantId), ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof listInvitesByTenant>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type ListInvitesByTenantQueryResult = NonNullable<Awaited<ReturnType<typeof listInvitesByTenant>>>
+export type ListInvitesByTenantQueryError = ErrorType<unknown>
+
+
+/**
+ * @summary List invites for a tenant
+ */
+
+export function useListInvitesByTenant<TData = Awaited<ReturnType<typeof listInvitesByTenant>>, TError = ErrorType<unknown>>(
+ tenantId: string, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listInvitesByTenant>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getListInvitesByTenantQueryOptions(tenantId,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+
+
+
+
+
+
+export const getValidateInviteUrl = (token: string,) => {
+
+
+
+
+  return `/api/invites/${token}`
+}
+
+/**
+ * Returns tenant info if the token is valid and not expired/used.
+ * @summary Validate an invite token
+ */
+export const validateInvite = async (token: string, options?: RequestInit): Promise<InviteDetails> => {
+
+  return customFetch<InviteDetails>(getValidateInviteUrl(token),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getValidateInviteQueryKey = (token: string,) => {
+    return [
+    `/api/invites/${token}`
+    ] as const;
+    }
+
+
+export const getValidateInviteQueryOptions = <TData = Awaited<ReturnType<typeof validateInvite>>, TError = ErrorType<ErrorResponse>>(token: string, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof validateInvite>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getValidateInviteQueryKey(token);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof validateInvite>>> = ({ signal }) => validateInvite(token, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, enabled: !!(token), ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof validateInvite>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type ValidateInviteQueryResult = NonNullable<Awaited<ReturnType<typeof validateInvite>>>
+export type ValidateInviteQueryError = ErrorType<ErrorResponse>
+
+
+/**
+ * @summary Validate an invite token
+ */
+
+export function useValidateInvite<TData = Awaited<ReturnType<typeof validateInvite>>, TError = ErrorType<ErrorResponse>>(
+ token: string, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof validateInvite>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getValidateInviteQueryOptions(token,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+
+
+
+
+
+
+export const getAcceptInviteUrl = () => {
+
+
+
+
+  return `/api/auth/accept-invite`
+}
+
+/**
+ * Creates a new user in the invited tenant using a valid invite token.
+ * @summary Accept an invite and create user account
+ */
+export const acceptInvite = async (acceptInviteBody: AcceptInviteBody, options?: RequestInit): Promise<AuthResponse> => {
+
+  return customFetch<AuthResponse>(getAcceptInviteUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(
+      acceptInviteBody,)
+  }
+);}
+
+
+
+
+export const getAcceptInviteMutationOptions = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof acceptInvite>>, TError,{data: BodyType<AcceptInviteBody>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof acceptInvite>>, TError,{data: BodyType<AcceptInviteBody>}, TContext> => {
+
+const mutationKey = ['acceptInvite'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof acceptInvite>>, {data: BodyType<AcceptInviteBody>}> = (props) => {
+          const {data} = props ?? {};
+
+          return  acceptInvite(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type AcceptInviteMutationResult = NonNullable<Awaited<ReturnType<typeof acceptInvite>>>
+    export type AcceptInviteMutationBody = BodyType<AcceptInviteBody>
+    export type AcceptInviteMutationError = ErrorType<ErrorResponse>
+
+    /**
+ * @summary Accept an invite and create user account
+ */
+export const useAcceptInvite = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof acceptInvite>>, TError,{data: BodyType<AcceptInviteBody>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof acceptInvite>>,
+        TError,
+        {data: BodyType<AcceptInviteBody>},
+        TContext
+      > => {
+      return useMutation(getAcceptInviteMutationOptions(options));
     }
 
 export const getHealthCheckUrl = () => {

@@ -29,6 +29,7 @@ import agentsRouter from "./agents";
 import inventoryRouter, { inventorySyncRouter } from "./inventory";
 import siteConfigRouter, { publicSiteRouter } from "./site_config";
 import segmentTemplatesRouter, { publicSegmentTemplatesRouter } from "./segment_templates";
+import invitesRouter, { invitesProtectedRouter } from "./invites";
 import { authenticate, requireRole, requireSameTenanOrSuperAdmin } from "../middlewares/auth";
 
 const router: IRouter = Router();
@@ -36,6 +37,7 @@ const router: IRouter = Router();
 // Public
 router.use(healthRouter);
 router.use(authRouter);
+router.use(invitesRouter);
 router.use(webhooksRouter);
 router.use(publicSiteRouter);
 router.use(publicSegmentTemplatesRouter);
@@ -109,6 +111,9 @@ router.use(siteConfigRouter);
 
 // Marketplace Hub
 router.use(segmentTemplatesRouter);
+
+// Invites Hub (protected: create + list)
+router.use(invitesProtectedRouter);
 
 export { requireRole, requireSameTenanOrSuperAdmin };
 export default router;

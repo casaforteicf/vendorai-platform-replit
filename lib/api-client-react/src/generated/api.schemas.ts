@@ -5,6 +5,45 @@
  * API specification
  * OpenAPI spec version: 0.1.0
  */
+export interface CreateInviteBody {
+  tenantId: string;
+  email: string;
+}
+
+export interface AcceptInviteBody {
+  token: string;
+  name: string;
+  /** @minLength 8 */
+  password: string;
+}
+
+export interface InviteCreatedResponse {
+  id: string;
+  tenantId: string;
+  email: string;
+  token: string;
+  expiresAt: string;
+  inviteUrl: string;
+}
+
+export interface InviteDetails {
+  tenantId: string;
+  tenantName: string;
+  email: string;
+  expiresAt: string;
+}
+
+export interface InviteItem {
+  id: string;
+  tenantId: string;
+  email: string;
+  token: string;
+  expiresAt: string;
+  usedAt?: string | null;
+  createdAt: string;
+  inviteUrl: string;
+}
+
 export interface ChangePasswordBody {
   currentPassword: string;
   /** @minLength 8 */

@@ -3,7 +3,6 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
 import { useLogin } from "@workspace/api-client-react";
 import { useAuth } from "@/contexts/AuthContext";
-import { Link } from "wouter";
 import { Button } from "@/components/ui/button";
 import {
   Form,
@@ -95,12 +94,6 @@ export default function Login() {
             </form>
           </Form>
           
-          <div className="text-center text-sm text-muted-foreground">
-            Não tem uma conta?{" "}
-            <Link href="/register" className="font-semibold text-primary hover:underline">
-              Criar conta
-            </Link>
-          </div>
         </div>
       </div>
       <div className="hidden lg:flex bg-primary items-center justify-center p-12">

@@ -4,10 +4,13 @@ import {
   useListTenants,
   getListTenantsQueryKey,
   getListIntelligenceAnalysisLogQueryOptions,
+  useCreateInvite,
+  useListInvitesByTenant,
   type Tenant,
   type IntelligenceAnalysisLogStats,
+  type InviteItem,
 } from "@workspace/api-client-react";
-import { useQueries } from "@tanstack/react-query";
+import { useQueries, useQueryClient } from "@tanstack/react-query";
 import {
   Table,
   TableBody,
@@ -18,7 +21,28 @@ import {
 } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { ArrowDown, ArrowUp, ArrowUpDown, BrainCircuit, Loader2 } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+} from "@/components/ui/dialog";
+import { useToast } from "@/hooks/use-toast";
+import {
+  ArrowDown,
+  ArrowUp,
+  ArrowUpDown,
+  BrainCircuit,
+  Mail,
+  Copy,
+  Check,
+  Loader2,
+  Clock,
+  UserCheck,
+} from "lucide-react";
 
 type SortField = "name" | "totalCalls" | "totalTokens";
 type SortDir = "asc" | "desc";
@@ -102,10 +126,204 @@ function HourlyCapCell({ used, limit }: { used: number; limit: number }) {
   );
 }
 
+function CopyButton({ text }: { text: string }) {
+  const [copied, setCopied] = useState(false);
+
+  function handleCopy() {
+    navigator.clipboard.writeText(text).then(() => {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    });
+  }
+
+  return (
+    <Button
+      type="button"
+      variant="outline"
+      size="sm"
+      onClick={handleCopy}
+      className="flex-shrink-0"
+    >
+      {copied ? (
+        <Check className="h-4 w-4 text-green-600" />
+      ) : (
+        <Copy className="h-4 w-4" />
+      )}
+    </Button>
+  );
+}
+
+function InviteStatusBadge({ invite }: { invite: InviteItem }) {
+  if (invite.usedAt) {
+    return (
+      <Badge variant="secondary" className="text-xs gap-1">
+        <UserCheck className="h-3 w-3" />
+        Aceito
+      </Badge>
+    );
+  }
+  const isExpired = new Date(invite.expiresAt) < new Date();
+  if (isExpired) {
+    return (
+      <Badge variant="destructive" className="text-xs gap-1">
+        Expirado
+      </Badge>
+    );
+  }
+  return (
+    <Badge variant="outline" className="text-xs gap-1 text-amber-600 border-amber-300">
+      <Clock className="h-3 w-3" />
+      Pendente
+    </Badge>
+  );
+}
+
+function InviteDialog({
+  tenant,
+  open,
+  onClose,
+}: {
+  tenant: Tenant;
+  open: boolean;
+  onClose: () => void;
+}) {
+  const [email, setEmail] = useState("");
+  const [generatedUrl, setGeneratedUrl] = useState<string | null>(null);
+  const { toast } = useToast();
+  const queryClient = useQueryClient();
+  const createInvite = useCreateInvite();
+
+  const { data: invites = [], isLoading: invitesLoading } =
+    useListInvitesByTenant(tenant.id, { query: { enabled: open } });
+
+  function handleGenerate(e: React.FormEvent) {
+    e.preventDefault();
+    if (!email) return;
+    createInvite.mutate(
+      { data: { tenantId: tenant.id, email } },
+      {
+        onSuccess: (data) => {
+          setGeneratedUrl(data.inviteUrl);
+          setEmail("");
+          queryClient.invalidateQueries({
+            queryKey: ["listInvitesByTenant", tenant.id],
+          });
+        },
+        onError: (err) => {
+          toast({
+            title: "Erro ao gerar convite",
+            description: err.message || "Tente novamente.",
+            variant: "destructive",
+          });
+        },
+      }
+    );
+  }
+
+  function handleClose() {
+    setEmail("");
+    setGeneratedUrl(null);
+    onClose();
+  }
+
+  return (
+    <Dialog open={open} onOpenChange={(o) => !o && handleClose()}>
+      <DialogContent className="max-w-lg">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2">
+            <Mail className="h-5 w-5" />
+            Convidar para {tenant.name}
+          </DialogTitle>
+          <DialogDescription>
+            Gere um link de convite com validade de 7 dias. O cliente usará o
+            link para criar sua conta.
+          </DialogDescription>
+        </DialogHeader>
+
+        <form onSubmit={handleGenerate} className="space-y-3">
+          <div className="flex gap-2">
+            <Input
+              type="email"
+              placeholder="email@cliente.com"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              required
+              className="flex-1"
+            />
+            <Button
+              type="submit"
+              disabled={createInvite.isPending || !email}
+            >
+              {createInvite.isPending ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                "Gerar"
+              )}
+            </Button>
+          </div>
+        </form>
+
+        {generatedUrl && (
+          <div className="rounded-lg border border-green-200 bg-green-50 dark:bg-green-950/20 p-3 space-y-2">
+            <p className="text-sm font-medium text-green-800 dark:text-green-400">
+              ✓ Link gerado — compartilhe com o cliente:
+            </p>
+            <div className="flex gap-2 items-center">
+              <Input
+                readOnly
+                value={generatedUrl}
+                className="flex-1 text-xs font-mono"
+              />
+              <CopyButton text={generatedUrl} />
+            </div>
+          </div>
+        )}
+
+        {invites.length > 0 && (
+          <div className="space-y-2">
+            <p className="text-sm font-medium text-muted-foreground">
+              Convites anteriores
+            </p>
+            {invitesLoading ? (
+              <div className="h-4 w-full bg-muted animate-pulse rounded" />
+            ) : (
+              <div className="space-y-1.5 max-h-48 overflow-y-auto">
+                {invites.map((inv) => (
+                  <div
+                    key={inv.id}
+                    className="flex items-center justify-between gap-2 rounded-md border px-3 py-2 text-sm"
+                  >
+                    <div className="flex-1 min-w-0">
+                      <p className="font-medium truncate">{inv.email}</p>
+                      <p className="text-xs text-muted-foreground">
+                        Expira:{" "}
+                        {new Date(inv.expiresAt).toLocaleDateString("pt-BR")}
+                      </p>
+                    </div>
+                    <div className="flex items-center gap-2 flex-shrink-0">
+                      <InviteStatusBadge invite={inv} />
+                      {!inv.usedAt && (
+                        <CopyButton text={inv.inviteUrl} />
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+      </DialogContent>
+    </Dialog>
+  );
+}
+
 export default function AdminAIUsage() {
   const { user } = useAuth();
   const [sortField, setSortField] = useState<SortField>("totalTokens");
   const [sortDir, setSortDir] = useState<SortDir>("desc");
+  const [inviteDialogTenant, setInviteDialogTenant] = useState<Tenant | null>(
+    null
+  );
 
   const isSuperAdmin = user?.platformRole === "super_admin";
 
@@ -272,19 +490,20 @@ export default function AdminAIUsage() {
                 </TableHead>
                 <TableHead className="text-right">Hourly Cap</TableHead>
                 <TableHead className="text-right pr-6">Breakdown</TableHead>
+                <TableHead className="text-right pr-6">Ações</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {tenantsLoading ? (
                 <TableRow>
-                  <TableCell colSpan={6} className="h-32 text-center">
+                  <TableCell colSpan={7} className="h-32 text-center">
                     <Loader2 className="h-5 w-5 animate-spin mx-auto text-muted-foreground" />
                   </TableCell>
                 </TableRow>
               ) : sorted.length === 0 ? (
                 <TableRow>
                   <TableCell
-                    colSpan={6}
+                    colSpan={7}
                     className="h-32 text-center text-muted-foreground"
                   >
                     No tenants found.
@@ -370,6 +589,17 @@ export default function AdminAIUsage() {
                           </div>
                         )}
                       </TableCell>
+                      <TableCell className="text-right pr-6">
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="gap-1.5 text-xs"
+                          onClick={() => setInviteDialogTenant(tenant)}
+                        >
+                          <Mail className="h-3.5 w-3.5" />
+                          Convidar
+                        </Button>
+                      </TableCell>
                     </TableRow>
                   );
                 })
@@ -378,6 +608,14 @@ export default function AdminAIUsage() {
           </Table>
         </CardContent>
       </Card>
+
+      {inviteDialogTenant && (
+        <InviteDialog
+          tenant={inviteDialogTenant}
+          open={!!inviteDialogTenant}
+          onClose={() => setInviteDialogTenant(null)}
+        />
+      )}
     </div>
   );
 }

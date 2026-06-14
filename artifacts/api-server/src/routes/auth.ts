@@ -4,6 +4,7 @@ import bcrypt from "bcryptjs";
 import { z } from "zod/v4";
 import { db, usersTable, tenantsTable } from "@workspace/db";
 import { signToken } from "../lib/jwt.js";
+import { authenticate, requireRole } from "../middlewares/auth.js";
 
 const router: IRouter = Router();
 const protectedRouter: IRouter = Router();
@@ -80,7 +81,7 @@ router.post("/auth/login", async (req, res) => {
   res.json({ token, user: publicUser });
 });
 
-router.post("/auth/register", async (req, res) => {
+router.post("/auth/register", authenticate, requireRole("super_admin"), async (req, res) => {
   const parsed = registerSchema.safeParse(req.body);
   if (!parsed.success) {
     res.status(422).json({ error: parsed.error.message });

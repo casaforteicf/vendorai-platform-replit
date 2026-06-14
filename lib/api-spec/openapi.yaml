@@ -28,6 +28,8 @@ tags:
     description: Customer intelligence and AI analysis
   - name: inventory
     description: Inventory Hub — stock items and movements
+  - name: invites
+    description: Tenant invite management
   - name: site
   - name: marketplace
     description: Website Hub — public landing page config
@@ -128,6 +130,140 @@ paths:
                 $ref: "#/components/schemas/AuthResponse"
         "401":
           description: Invalid credentials
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "422":
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /admin/invites:
+    post:
+      operationId: createInvite
+      tags: [invites]
+      summary: Create a tenant invite
+      description: Generates an invite token for a tenant. Requires super_admin.
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateInviteBody"
+      responses:
+        "201":
+          description: Invite created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/InviteCreatedResponse"
+        "404":
+          description: Tenant not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "422":
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /admin/invites/{tenantId}:
+    get:
+      operationId: listInvitesByTenant
+      tags: [invites]
+      summary: List invites for a tenant
+      description: Returns all invites for a tenant. Requires super_admin.
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: tenantId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: List of invites
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/InviteItem"
+
+  /invites/{token}:
+    get:
+      operationId: validateInvite
+      tags: [invites]
+      summary: Validate an invite token
+      description: Returns tenant info if the token is valid and not expired/used.
+      parameters:
+        - name: token
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Invite is valid
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/InviteDetails"
+        "404":
+          description: Token not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "410":
+          description: Token expired or already used
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /auth/accept-invite:
+    post:
+      operationId: acceptInvite
+      tags: [auth]
+      summary: Accept an invite and create user account
+      description: Creates a new user in the invited tenant using a valid invite token.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AcceptInviteBody"
+      responses:
+        "201":
+          description: Account created and logged in
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AuthResponse"
+        "404":
+          description: Token not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "409":
+          description: Email already registered
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "410":
+          description: Token expired or already used
           content:
             application/json:
               schema:
@@ -4699,6 +4835,107 @@ paths:
 
 components:
   schemas:
+    CreateInviteBody:
+      type: object
+      properties:
+        tenantId:
+          type: string
+        email:
+          type: string
+          format: email
+      required:
+        - tenantId
+        - email
+
+    AcceptInviteBody:
+      type: object
+      properties:
+        token:
+          type: string
+        name:
+          type: string
+        password:
+          type: string
+          minLength: 8
+      required:
+        - token
+        - name
+        - password
+
+    InviteCreatedResponse:
+      type: object
+      properties:
+        id:
+          type: string
+        tenantId:
+          type: string
+        email:
+          type: string
+        token:
+          type: string
+        expiresAt:
+          type: string
+          format: date-time
+        inviteUrl:
+          type: string
+      required:
+        - id
+        - tenantId
+        - email
+        - token
+        - expiresAt
+        - inviteUrl
+
+    InviteDetails:
+      type: object
+      properties:
+        tenantId:
+          type: string
+        tenantName:
+          type: string
+        email:
+          type: string
+        expiresAt:
+          type: string
+          format: date-time
+      required:
+        - tenantId
+        - tenantName
+        - email
+        - expiresAt
+
+    InviteItem:
+      type: object
+      properties:
+        id:
+          type: string
+        tenantId:
+          type: string
+        email:
+          type: string
+        token:
+          type: string
+        expiresAt:
+          type: string
+          format: date-time
+        usedAt:
+          type: string
+          format: date-time
+          nullable: true
+        createdAt:
+          type: string
+          format: date-time
+        inviteUrl:
+          type: string
+      required:
+        - id
+        - tenantId
+        - email
+        - token
+        - expiresAt
+        - createdAt
+        - inviteUrl
+
     ChangePasswordBody:
       type: object
       properties:

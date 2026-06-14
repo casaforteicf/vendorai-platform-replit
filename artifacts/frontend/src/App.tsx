@@ -18,6 +18,7 @@ import Campanhas from "@/pages/Campanhas";
 import Propostas from "@/pages/Propostas";
 import Faturamento from "@/pages/Faturamento";
 import AdminAIUsage from "@/pages/AdminAIUsage";
+import AcceptInvite from "@/pages/AcceptInvite";
 import SiteLandingPage from "@/pages/SiteLandingPage";
 import Marketplace from "@/pages/Marketplace";
 import Estoque from "@/pages/Estoque";
@@ -149,6 +150,9 @@ function AppRoutes() {
       </Route>
       <Route path="/marketplace">
         {() => <ProtectedRoute component={Marketplace} />}
+      </Route>
+      <Route path="/invite/:token">
+        <AcceptInvite />
       </Route>
       <Route path="/site/:tenantSlug">
         <SiteLandingPage />

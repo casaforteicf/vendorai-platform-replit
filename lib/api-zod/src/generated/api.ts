@@ -87,6 +87,68 @@ export const LoginResponse = zod.object({
 
 
 /**
+ * Generates an invite token for a tenant. Requires super_admin.
+ * @summary Create a tenant invite
+ */
+export const CreateInviteBody = zod.object({
+  "tenantId": zod.string(),
+  "email": zod.string().email()
+})
+
+
+/**
+ * Returns all invites for a tenant. Requires super_admin.
+ * @summary List invites for a tenant
+ */
+export const ListInvitesByTenantParams = zod.object({
+  "tenantId": zod.coerce.string()
+})
+
+export const ListInvitesByTenantResponseItem = zod.object({
+  "id": zod.string(),
+  "tenantId": zod.string(),
+  "email": zod.string(),
+  "token": zod.string(),
+  "expiresAt": zod.coerce.date(),
+  "usedAt": zod.coerce.date().nullish(),
+  "createdAt": zod.coerce.date(),
+  "inviteUrl": zod.string()
+})
+export const ListInvitesByTenantResponse = zod.array(ListInvitesByTenantResponseItem)
+
+
+/**
+ * Returns tenant info if the token is valid and not expired/used.
+ * @summary Validate an invite token
+ */
+export const ValidateInviteParams = zod.object({
+  "token": zod.coerce.string()
+})
+
+export const ValidateInviteResponse = zod.object({
+  "tenantId": zod.string(),
+  "tenantName": zod.string(),
+  "email": zod.string(),
+  "expiresAt": zod.coerce.date()
+})
+
+
+/**
+ * Creates a new user in the invited tenant using a valid invite token.
+ * @summary Accept an invite and create user account
+ */
+export const acceptInviteBodyPasswordMin = 8;
+
+
+
+export const AcceptInviteBody = zod.object({
+  "token": zod.string(),
+  "name": zod.string(),
+  "password": zod.string().min(acceptInviteBodyPasswordMin)
+})
+
+
+/**
  * Returns server health status
  * @summary Health check
  */
