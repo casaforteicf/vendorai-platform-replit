@@ -1652,6 +1652,26 @@ export interface PublicSiteResponse {
   siteConfig: SiteConfig;
 }
 
+export type SegmentTemplatePromptsSugeridos = {[key: string]: string};
+
+export interface SegmentTemplate {
+  id: string;
+  nome: string;
+  descricao?: string | null;
+  promptsSugeridos: SegmentTemplatePromptsSugeridos;
+  funilPadrao: string[];
+  categoriasProdutoSugeridas: string[];
+  ativo: boolean;
+  createdAt: string;
+}
+
+export interface ApplyTemplateResponse {
+  agentConfigUpdated: boolean;
+  funilCreated: boolean;
+  businessProfileUpdated: boolean;
+  promptsApplied: string[];
+}
+
 export type ListDealsParams = {
 etapa?: DealEtapa;
 funilId?: string;

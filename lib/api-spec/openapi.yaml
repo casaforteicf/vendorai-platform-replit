@@ -29,6 +29,7 @@ tags:
   - name: inventory
     description: Inventory Hub — stock items and movements
   - name: site
+  - name: marketplace
     description: Website Hub — public landing page config
 paths:
   /auth/register:
@@ -4177,6 +4178,59 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
 
+  /segment-templates:
+    get:
+      operationId: listSegmentTemplates
+      tags: [marketplace]
+      summary: List all active segment templates (public)
+      responses:
+        "200":
+          description: List of active segment templates
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/SegmentTemplate"
+
+  /tenants/{tenantId}/segment-templates/{id}/apply:
+    post:
+      operationId: applySegmentTemplate
+      tags: [marketplace]
+      summary: Apply a segment template to the tenant
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: path
+          name: tenantId
+          required: true
+          schema:
+            type: string
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Template applied successfully
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApplyTemplateResponse"
+        "403":
+          description: Access denied
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Template or tenant not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
   /inventory-items:
     post:
       operationId: createInventoryItem
@@ -7310,3 +7364,58 @@ components:
         - tenant
         - produtos
         - siteConfig
+
+    SegmentTemplate:
+      type: object
+      properties:
+        id:
+          type: string
+        nome:
+          type: string
+        descricao:
+          type: string
+          nullable: true
+        promptsSugeridos:
+          type: object
+          additionalProperties:
+            type: string
+        funilPadrao:
+          type: array
+          items:
+            type: string
+        categoriasProdutoSugeridas:
+          type: array
+          items:
+            type: string
+        ativo:
+          type: boolean
+        createdAt:
+          type: string
+          format: date-time
+      required:
+        - id
+        - nome
+        - promptsSugeridos
+        - funilPadrao
+        - categoriasProdutoSugeridas
+        - ativo
+        - createdAt
+
+    ApplyTemplateResponse:
+      type: object
+      properties:
+        agentConfigUpdated:
+          type: boolean
+        funilCreated:
+          type: boolean
+        businessProfileUpdated:
+          type: boolean
+        promptsApplied:
+          type: array
+          items:
+            type: string
+      required:
+        - agentConfigUpdated
+        - funilCreated
+        - businessProfileUpdated
+        - promptsApplied

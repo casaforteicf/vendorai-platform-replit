@@ -3747,6 +3747,38 @@ export const DeleteSiteConfigParams = zod.object({
 
 
 /**
+ * @summary List all active segment templates (public)
+ */
+export const ListSegmentTemplatesResponseItem = zod.object({
+  "id": zod.string(),
+  "nome": zod.string(),
+  "descricao": zod.string().nullish(),
+  "promptsSugeridos": zod.record(zod.string(), zod.string()),
+  "funilPadrao": zod.array(zod.string()),
+  "categoriasProdutoSugeridas": zod.array(zod.string()),
+  "ativo": zod.boolean(),
+  "createdAt": zod.coerce.date()
+})
+export const ListSegmentTemplatesResponse = zod.array(ListSegmentTemplatesResponseItem)
+
+
+/**
+ * @summary Apply a segment template to the tenant
+ */
+export const ApplySegmentTemplateParams = zod.object({
+  "tenantId": zod.coerce.string(),
+  "id": zod.coerce.string()
+})
+
+export const ApplySegmentTemplateResponse = zod.object({
+  "agentConfigUpdated": zod.boolean(),
+  "funilCreated": zod.boolean(),
+  "businessProfileUpdated": zod.boolean(),
+  "promptsApplied": zod.array(zod.string())
+})
+
+
+/**
  * @summary Create inventory item
  */
 export const CreateInventoryItemBody = zod.object({

@@ -28,6 +28,7 @@ import webhooksRouter from "./webhooks";
 import agentsRouter from "./agents";
 import inventoryRouter from "./inventory";
 import siteConfigRouter, { publicSiteRouter } from "./site_config";
+import segmentTemplatesRouter, { publicSegmentTemplatesRouter } from "./segment_templates";
 import { authenticate, requireRole, requireSameTenanOrSuperAdmin } from "../middlewares/auth";
 
 const router: IRouter = Router();
@@ -37,6 +38,7 @@ router.use(healthRouter);
 router.use(authRouter);
 router.use(webhooksRouter);
 router.use(publicSiteRouter);
+router.use(publicSegmentTemplatesRouter);
 
 // Protected — all routes below require a valid JWT
 router.use(authenticate);
@@ -103,6 +105,9 @@ router.use(inventoryRouter);
 
 // Website Hub
 router.use(siteConfigRouter);
+
+// Marketplace Hub
+router.use(segmentTemplatesRouter);
 
 export { requireRole, requireSameTenanOrSuperAdmin };
 export default router;

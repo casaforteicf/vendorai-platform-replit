@@ -19,6 +19,7 @@ import Propostas from "@/pages/Propostas";
 import Faturamento from "@/pages/Faturamento";
 import AdminAIUsage from "@/pages/AdminAIUsage";
 import SiteLandingPage from "@/pages/SiteLandingPage";
+import Marketplace from "@/pages/Marketplace";
 import { useEffect } from "react";
 
 const queryClient = new QueryClient();
@@ -141,6 +142,9 @@ function AppRoutes() {
       </Route>
       <Route path="/admin/ai-usage">
         {() => <SuperAdminRoute component={AdminAIUsage} />}
+      </Route>
+      <Route path="/marketplace">
+        {() => <ProtectedRoute component={Marketplace} />}
       </Route>
       <Route path="/site/:tenantSlug">
         <SiteLandingPage />

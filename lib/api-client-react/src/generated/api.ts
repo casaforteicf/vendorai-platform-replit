@@ -27,6 +27,7 @@ import type {
   AgentConfig,
   AgentTask,
   AnalyzeLeadIntelligenceResponse,
+  ApplyTemplateResponse,
   AuthResponse,
   BusinessProfile,
   Campaign,
@@ -92,6 +93,7 @@ import type {
   PublicSiteResponse,
   RegisterBody,
   Rule,
+  SegmentTemplate,
   SiteConfig,
   Subscription,
   Tenant,
@@ -11022,6 +11024,155 @@ export const useDeleteSiteConfig = <TError = ErrorType<ErrorResponse>,
         TContext
       > => {
       return useMutation(getDeleteSiteConfigMutationOptions(options));
+    }
+
+export const getListSegmentTemplatesUrl = () => {
+
+
+
+
+  return `/api/segment-templates`
+}
+
+/**
+ * @summary List all active segment templates (public)
+ */
+export const listSegmentTemplates = async ( options?: RequestInit): Promise<SegmentTemplate[]> => {
+
+  return customFetch<SegmentTemplate[]>(getListSegmentTemplatesUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getListSegmentTemplatesQueryKey = () => {
+    return [
+    `/api/segment-templates`
+    ] as const;
+    }
+
+
+export const getListSegmentTemplatesQueryOptions = <TData = Awaited<ReturnType<typeof listSegmentTemplates>>, TError = ErrorType<unknown>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listSegmentTemplates>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getListSegmentTemplatesQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof listSegmentTemplates>>> = ({ signal }) => listSegmentTemplates({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof listSegmentTemplates>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type ListSegmentTemplatesQueryResult = NonNullable<Awaited<ReturnType<typeof listSegmentTemplates>>>
+export type ListSegmentTemplatesQueryError = ErrorType<unknown>
+
+
+/**
+ * @summary List all active segment templates (public)
+ */
+
+export function useListSegmentTemplates<TData = Awaited<ReturnType<typeof listSegmentTemplates>>, TError = ErrorType<unknown>>(
+  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listSegmentTemplates>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getListSegmentTemplatesQueryOptions(options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+
+
+
+
+
+
+export const getApplySegmentTemplateUrl = (tenantId: string,
+    id: string,) => {
+
+
+
+
+  return `/api/tenants/${tenantId}/segment-templates/${id}/apply`
+}
+
+/**
+ * @summary Apply a segment template to the tenant
+ */
+export const applySegmentTemplate = async (tenantId: string,
+    id: string, options?: RequestInit): Promise<ApplyTemplateResponse> => {
+
+  return customFetch<ApplyTemplateResponse>(getApplySegmentTemplateUrl(tenantId,id),
+  {
+    ...options,
+    method: 'POST'
+
+
+  }
+);}
+
+
+
+
+export const getApplySegmentTemplateMutationOptions = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof applySegmentTemplate>>, TError,{tenantId: string;id: string}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof applySegmentTemplate>>, TError,{tenantId: string;id: string}, TContext> => {
+
+const mutationKey = ['applySegmentTemplate'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof applySegmentTemplate>>, {tenantId: string;id: string}> = (props) => {
+          const {tenantId,id} = props ?? {};
+
+          return  applySegmentTemplate(tenantId,id,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type ApplySegmentTemplateMutationResult = NonNullable<Awaited<ReturnType<typeof applySegmentTemplate>>>
+
+    export type ApplySegmentTemplateMutationError = ErrorType<ErrorResponse>
+
+    /**
+ * @summary Apply a segment template to the tenant
+ */
+export const useApplySegmentTemplate = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof applySegmentTemplate>>, TError,{tenantId: string;id: string}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof applySegmentTemplate>>,
+        TError,
+        {tenantId: string;id: string},
+        TContext
+      > => {
+      return useMutation(getApplySegmentTemplateMutationOptions(options));
     }
 
 export const getCreateInventoryItemUrl = () => {
