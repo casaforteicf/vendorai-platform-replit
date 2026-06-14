@@ -16,6 +16,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { useToast } from "@/hooks/use-toast";
 import logoDark from "/logo-full-dark.svg";
+import logoLight from "/logo-full-light.svg";
 
 const formSchema = z.object({
   email: z.string().email("Email inválido"),
@@ -55,6 +56,7 @@ export default function Login() {
       <div className="flex flex-col justify-center p-8 sm:p-12 lg:p-24">
         <div className="mx-auto w-full max-w-sm space-y-8">
           <div className="space-y-2">
+            <img src={logoLight} alt="Vendor.ai" className="h-10 w-auto mb-6" />
             <h1 className="text-3xl font-bold tracking-tight">Entrar</h1>
             <p className="text-muted-foreground">Insira suas credenciais para acessar a plataforma.</p>
           </div>
