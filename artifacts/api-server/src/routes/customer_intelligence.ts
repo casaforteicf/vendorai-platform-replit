@@ -6,6 +6,7 @@ import {
   insertCustomerIntelligenceSchema,
   updateCustomerIntelligenceSchema,
   intelligenceAnalysisLogTable,
+  leadsTable,
   tenantsTable,
 } from "@workspace/db";
 import {
@@ -49,6 +50,22 @@ router.post("/customer-intelligence", async (req, res) => {
     return;
   }
 
+  // Verify leadId actually belongs to this tenant (prevents cross-tenant CI slot poisoning)
+  const [lead] = await db
+    .select({ id: leadsTable.id })
+    .from(leadsTable)
+    .where(
+      and(
+        eq(leadsTable.id, parsed.data.leadId),
+        eq(leadsTable.tenantId, parsed.data.tenantId)
+      )
+    );
+
+  if (!lead) {
+    res.status(404).json({ error: "Lead not found in this tenant" });
+    return;
+  }
+
   try {
     const [record] = await db
       .insert(customerIntelligenceTable)
@@ -89,6 +106,17 @@ router.get(
 
     if (req.user?.platformRole !== "super_admin" && req.user?.tenantId !== tenantId) {
       res.status(403).json({ error: "Access denied to this tenant" });
+      return;
+    }
+
+    // Verify leadId belongs to this tenant before upserting (prevents cross-tenant slot poisoning)
+    const [leadCheck] = await db
+      .select({ id: leadsTable.id })
+      .from(leadsTable)
+      .where(and(eq(leadsTable.id, leadId), eq(leadsTable.tenantId, tenantId)));
+
+    if (!leadCheck) {
+      res.status(404).json({ error: "Lead not found in this tenant" });
       return;
     }
 
