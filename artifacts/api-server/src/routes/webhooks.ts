@@ -13,6 +13,7 @@ import {
   sendOutgoingMessage,
   LeadNotFoundError,
 } from "../services/omnichannel.js";
+import { dispatchAgentBackground } from "../services/agent-dispatch.js";
 
 const router: IRouter = Router();
 
@@ -188,11 +189,25 @@ router.post("/tenants/:tenantId/webhooks/whatsapp", async (req, res) => {
     })
     .where(eq(conversationsTable.id, conversation.id));
 
+  // ── 7. Respond immediately — dispatch AI agent in background ───────────
+  // The agent selection and OpenAI call happen asynchronously so the webhook
+  // response is always fast (< 200 ms). The n8n transport layer (or any caller)
+  // does not need to wait for the AI to generate and send the reply.
+  dispatchAgentBackground({
+    tenantId,
+    leadId: lead.id,
+    mensagem,
+    log: req.log,
+  });
+
+  req.log.info({ leadId: lead.id, conversationId: conversation.id }, "webhook: agent dispatch triggered");
+
   res.status(200).json({
     leadId: lead.id,
     conversationId: conversation.id,
     messageId: message.id,
     leadCreated: !lead.updatedAt || lead.createdAt === lead.updatedAt,
+    agentDispatched: true,
   });
 });
 
