@@ -3632,6 +3632,121 @@ export const DeleteLeadParams = zod.object({
 
 
 /**
+ * @summary Public landing page data (no auth required)
+ */
+export const GetPublicSiteParams = zod.object({
+  "tenantSlug": zod.coerce.string()
+})
+
+export const GetPublicSiteResponse = zod.object({
+  "tenant": zod.object({
+  "id": zod.string(),
+  "slug": zod.string(),
+  "name": zod.string()
+}),
+  "businessProfile": zod.object({
+  "nomeFantasia": zod.string().nullish(),
+  "sobreEmpresa": zod.string().nullish(),
+  "telefone": zod.string().nullish(),
+  "email": zod.string().nullish(),
+  "vertical": zod.string().nullish()
+}).nullish(),
+  "produtos": zod.array(zod.object({
+  "id": zod.string(),
+  "nome": zod.string(),
+  "descricao": zod.string().nullish(),
+  "precoBase": zod.string(),
+  "unidade": zod.string()
+})),
+  "siteConfig": zod.object({
+  "id": zod.string(),
+  "tenantId": zod.string(),
+  "template": zod.enum(['padrao', 'moderno', 'minimalista']),
+  "corPrimaria": zod.string().nullish(),
+  "tagline": zod.string().nullish(),
+  "sobreEmpresa": zod.string().nullish(),
+  "whatsappContato": zod.string().nullish(),
+  "ativo": zod.boolean(),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date()
+})
+})
+
+
+/**
+ * @summary Create site config for a tenant
+ */
+export const CreateSiteConfigBody = zod.object({
+  "tenantId": zod.string(),
+  "template": zod.enum(['padrao', 'moderno', 'minimalista']).optional(),
+  "corPrimaria": zod.string().nullish(),
+  "tagline": zod.string().nullish(),
+  "sobreEmpresa": zod.string().nullish(),
+  "whatsappContato": zod.string().nullish(),
+  "ativo": zod.boolean().optional()
+})
+
+
+/**
+ * @summary Get site config for a tenant
+ */
+export const GetSiteConfigByTenantParams = zod.object({
+  "tenantId": zod.coerce.string()
+})
+
+export const GetSiteConfigByTenantResponse = zod.object({
+  "id": zod.string(),
+  "tenantId": zod.string(),
+  "template": zod.enum(['padrao', 'moderno', 'minimalista']),
+  "corPrimaria": zod.string().nullish(),
+  "tagline": zod.string().nullish(),
+  "sobreEmpresa": zod.string().nullish(),
+  "whatsappContato": zod.string().nullish(),
+  "ativo": zod.boolean(),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date()
+})
+
+
+/**
+ * @summary Update site config
+ */
+export const UpdateSiteConfigParams = zod.object({
+  "id": zod.coerce.string()
+})
+
+export const UpdateSiteConfigBody = zod.object({
+  "template": zod.enum(['padrao', 'moderno', 'minimalista']).optional(),
+  "corPrimaria": zod.string().nullish(),
+  "tagline": zod.string().nullish(),
+  "sobreEmpresa": zod.string().nullish(),
+  "whatsappContato": zod.string().nullish(),
+  "ativo": zod.boolean().optional()
+})
+
+export const UpdateSiteConfigResponse = zod.object({
+  "id": zod.string(),
+  "tenantId": zod.string(),
+  "template": zod.enum(['padrao', 'moderno', 'minimalista']),
+  "corPrimaria": zod.string().nullish(),
+  "tagline": zod.string().nullish(),
+  "sobreEmpresa": zod.string().nullish(),
+  "whatsappContato": zod.string().nullish(),
+  "ativo": zod.boolean(),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date()
+})
+
+
+/**
+ * @summary Delete site config
+ */
+export const DeleteSiteConfigParams = zod.object({
+  "id": zod.coerce.string()
+})
+
+
+/**
  * @summary Create inventory item
  */
 export const CreateInventoryItemBody = zod.object({

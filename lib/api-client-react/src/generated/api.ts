@@ -57,6 +57,7 @@ import type {
   CreatePropostaBody,
   CreatePropostaFromCatalogoBody,
   CreateRuleBody,
+  CreateSiteConfigBody,
   CreateSubscriptionBody,
   CreateTenantBody,
   CreateUserBody,
@@ -88,8 +89,10 @@ import type {
   Message,
   ProdutoCatalogo,
   Proposta,
+  PublicSiteResponse,
   RegisterBody,
   Rule,
+  SiteConfig,
   Subscription,
   Tenant,
   TenantDashboard,
@@ -113,6 +116,7 @@ import type {
   UpdatePropostaBody,
   UpdatePropostaStatusBody,
   UpdateRuleBody,
+  UpdateSiteConfigBody,
   UpdateSubscriptionBody,
   UpdateTenantBody,
   UpdateUserBody,
@@ -10651,6 +10655,373 @@ export const useDeleteLead = <TError = ErrorType<ErrorResponse>,
         TContext
       > => {
       return useMutation(getDeleteLeadMutationOptions(options));
+    }
+
+export const getGetPublicSiteUrl = (tenantSlug: string,) => {
+
+
+
+
+  return `/api/public/${tenantSlug}/site`
+}
+
+/**
+ * @summary Public landing page data (no auth required)
+ */
+export const getPublicSite = async (tenantSlug: string, options?: RequestInit): Promise<PublicSiteResponse> => {
+
+  return customFetch<PublicSiteResponse>(getGetPublicSiteUrl(tenantSlug),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetPublicSiteQueryKey = (tenantSlug: string,) => {
+    return [
+    `/api/public/${tenantSlug}/site`
+    ] as const;
+    }
+
+
+export const getGetPublicSiteQueryOptions = <TData = Awaited<ReturnType<typeof getPublicSite>>, TError = ErrorType<ErrorResponse>>(tenantSlug: string, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getPublicSite>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetPublicSiteQueryKey(tenantSlug);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getPublicSite>>> = ({ signal }) => getPublicSite(tenantSlug, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, enabled: !!(tenantSlug), ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getPublicSite>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetPublicSiteQueryResult = NonNullable<Awaited<ReturnType<typeof getPublicSite>>>
+export type GetPublicSiteQueryError = ErrorType<ErrorResponse>
+
+
+/**
+ * @summary Public landing page data (no auth required)
+ */
+
+export function useGetPublicSite<TData = Awaited<ReturnType<typeof getPublicSite>>, TError = ErrorType<ErrorResponse>>(
+ tenantSlug: string, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getPublicSite>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetPublicSiteQueryOptions(tenantSlug,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+
+
+
+
+
+
+export const getCreateSiteConfigUrl = () => {
+
+
+
+
+  return `/api/site-config`
+}
+
+/**
+ * @summary Create site config for a tenant
+ */
+export const createSiteConfig = async (createSiteConfigBody: CreateSiteConfigBody, options?: RequestInit): Promise<SiteConfig> => {
+
+  return customFetch<SiteConfig>(getCreateSiteConfigUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(
+      createSiteConfigBody,)
+  }
+);}
+
+
+
+
+export const getCreateSiteConfigMutationOptions = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createSiteConfig>>, TError,{data: BodyType<CreateSiteConfigBody>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof createSiteConfig>>, TError,{data: BodyType<CreateSiteConfigBody>}, TContext> => {
+
+const mutationKey = ['createSiteConfig'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof createSiteConfig>>, {data: BodyType<CreateSiteConfigBody>}> = (props) => {
+          const {data} = props ?? {};
+
+          return  createSiteConfig(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type CreateSiteConfigMutationResult = NonNullable<Awaited<ReturnType<typeof createSiteConfig>>>
+    export type CreateSiteConfigMutationBody = BodyType<CreateSiteConfigBody>
+    export type CreateSiteConfigMutationError = ErrorType<ErrorResponse>
+
+    /**
+ * @summary Create site config for a tenant
+ */
+export const useCreateSiteConfig = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createSiteConfig>>, TError,{data: BodyType<CreateSiteConfigBody>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof createSiteConfig>>,
+        TError,
+        {data: BodyType<CreateSiteConfigBody>},
+        TContext
+      > => {
+      return useMutation(getCreateSiteConfigMutationOptions(options));
+    }
+
+export const getGetSiteConfigByTenantUrl = (tenantId: string,) => {
+
+
+
+
+  return `/api/tenants/${tenantId}/site-config`
+}
+
+/**
+ * @summary Get site config for a tenant
+ */
+export const getSiteConfigByTenant = async (tenantId: string, options?: RequestInit): Promise<SiteConfig> => {
+
+  return customFetch<SiteConfig>(getGetSiteConfigByTenantUrl(tenantId),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetSiteConfigByTenantQueryKey = (tenantId: string,) => {
+    return [
+    `/api/tenants/${tenantId}/site-config`
+    ] as const;
+    }
+
+
+export const getGetSiteConfigByTenantQueryOptions = <TData = Awaited<ReturnType<typeof getSiteConfigByTenant>>, TError = ErrorType<ErrorResponse>>(tenantId: string, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getSiteConfigByTenant>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetSiteConfigByTenantQueryKey(tenantId);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getSiteConfigByTenant>>> = ({ signal }) => getSiteConfigByTenant(tenantId, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, enabled: !!(tenantId), ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getSiteConfigByTenant>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetSiteConfigByTenantQueryResult = NonNullable<Awaited<ReturnType<typeof getSiteConfigByTenant>>>
+export type GetSiteConfigByTenantQueryError = ErrorType<ErrorResponse>
+
+
+/**
+ * @summary Get site config for a tenant
+ */
+
+export function useGetSiteConfigByTenant<TData = Awaited<ReturnType<typeof getSiteConfigByTenant>>, TError = ErrorType<ErrorResponse>>(
+ tenantId: string, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getSiteConfigByTenant>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetSiteConfigByTenantQueryOptions(tenantId,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+
+
+
+
+
+
+export const getUpdateSiteConfigUrl = (id: string,) => {
+
+
+
+
+  return `/api/site-config/${id}`
+}
+
+/**
+ * @summary Update site config
+ */
+export const updateSiteConfig = async (id: string,
+    updateSiteConfigBody: UpdateSiteConfigBody, options?: RequestInit): Promise<SiteConfig> => {
+
+  return customFetch<SiteConfig>(getUpdateSiteConfigUrl(id),
+  {
+    ...options,
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(
+      updateSiteConfigBody,)
+  }
+);}
+
+
+
+
+export const getUpdateSiteConfigMutationOptions = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updateSiteConfig>>, TError,{id: string;data: BodyType<UpdateSiteConfigBody>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof updateSiteConfig>>, TError,{id: string;data: BodyType<UpdateSiteConfigBody>}, TContext> => {
+
+const mutationKey = ['updateSiteConfig'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof updateSiteConfig>>, {id: string;data: BodyType<UpdateSiteConfigBody>}> = (props) => {
+          const {id,data} = props ?? {};
+
+          return  updateSiteConfig(id,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type UpdateSiteConfigMutationResult = NonNullable<Awaited<ReturnType<typeof updateSiteConfig>>>
+    export type UpdateSiteConfigMutationBody = BodyType<UpdateSiteConfigBody>
+    export type UpdateSiteConfigMutationError = ErrorType<ErrorResponse>
+
+    /**
+ * @summary Update site config
+ */
+export const useUpdateSiteConfig = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updateSiteConfig>>, TError,{id: string;data: BodyType<UpdateSiteConfigBody>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof updateSiteConfig>>,
+        TError,
+        {id: string;data: BodyType<UpdateSiteConfigBody>},
+        TContext
+      > => {
+      return useMutation(getUpdateSiteConfigMutationOptions(options));
+    }
+
+export const getDeleteSiteConfigUrl = (id: string,) => {
+
+
+
+
+  return `/api/site-config/${id}`
+}
+
+/**
+ * @summary Delete site config
+ */
+export const deleteSiteConfig = async (id: string, options?: RequestInit): Promise<void> => {
+
+  return customFetch<void>(getDeleteSiteConfigUrl(id),
+  {
+    ...options,
+    method: 'DELETE'
+
+
+  }
+);}
+
+
+
+
+export const getDeleteSiteConfigMutationOptions = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof deleteSiteConfig>>, TError,{id: string}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof deleteSiteConfig>>, TError,{id: string}, TContext> => {
+
+const mutationKey = ['deleteSiteConfig'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof deleteSiteConfig>>, {id: string}> = (props) => {
+          const {id} = props ?? {};
+
+          return  deleteSiteConfig(id,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type DeleteSiteConfigMutationResult = NonNullable<Awaited<ReturnType<typeof deleteSiteConfig>>>
+
+    export type DeleteSiteConfigMutationError = ErrorType<ErrorResponse>
+
+    /**
+ * @summary Delete site config
+ */
+export const useDeleteSiteConfig = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof deleteSiteConfig>>, TError,{id: string}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof deleteSiteConfig>>,
+        TError,
+        {id: string},
+        TContext
+      > => {
+      return useMutation(getDeleteSiteConfigMutationOptions(options));
     }
 
 export const getCreateInventoryItemUrl = () => {

@@ -1564,6 +1564,94 @@ export interface InventoryMovementResult {
   item: InventoryItem;
 }
 
+export type SiteConfigTemplate = typeof SiteConfigTemplate[keyof typeof SiteConfigTemplate];
+
+
+export const SiteConfigTemplate = {
+  padrao: 'padrao',
+  moderno: 'moderno',
+  minimalista: 'minimalista',
+} as const;
+
+export interface SiteConfig {
+  id: string;
+  tenantId: string;
+  template: SiteConfigTemplate;
+  corPrimaria?: string | null;
+  tagline?: string | null;
+  sobreEmpresa?: string | null;
+  whatsappContato?: string | null;
+  ativo: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export type CreateSiteConfigBodyTemplate = typeof CreateSiteConfigBodyTemplate[keyof typeof CreateSiteConfigBodyTemplate];
+
+
+export const CreateSiteConfigBodyTemplate = {
+  padrao: 'padrao',
+  moderno: 'moderno',
+  minimalista: 'minimalista',
+} as const;
+
+export interface CreateSiteConfigBody {
+  tenantId: string;
+  template?: CreateSiteConfigBodyTemplate;
+  corPrimaria?: string | null;
+  tagline?: string | null;
+  sobreEmpresa?: string | null;
+  whatsappContato?: string | null;
+  ativo?: boolean;
+}
+
+export type UpdateSiteConfigBodyTemplate = typeof UpdateSiteConfigBodyTemplate[keyof typeof UpdateSiteConfigBodyTemplate];
+
+
+export const UpdateSiteConfigBodyTemplate = {
+  padrao: 'padrao',
+  moderno: 'moderno',
+  minimalista: 'minimalista',
+} as const;
+
+export interface UpdateSiteConfigBody {
+  template?: UpdateSiteConfigBodyTemplate;
+  corPrimaria?: string | null;
+  tagline?: string | null;
+  sobreEmpresa?: string | null;
+  whatsappContato?: string | null;
+  ativo?: boolean;
+}
+
+export type PublicSiteResponseTenant = {
+  id: string;
+  slug: string;
+  name: string;
+};
+
+export type PublicSiteResponseBusinessProfile = {
+  nomeFantasia?: string | null;
+  sobreEmpresa?: string | null;
+  telefone?: string | null;
+  email?: string | null;
+  vertical?: string | null;
+} | null;
+
+export type PublicSiteResponseProdutosItem = {
+  id: string;
+  nome: string;
+  descricao?: string | null;
+  precoBase: string;
+  unidade: string;
+};
+
+export interface PublicSiteResponse {
+  tenant: PublicSiteResponseTenant;
+  businessProfile?: PublicSiteResponseBusinessProfile;
+  produtos: PublicSiteResponseProdutosItem[];
+  siteConfig: SiteConfig;
+}
+
 export type ListDealsParams = {
 etapa?: DealEtapa;
 funilId?: string;

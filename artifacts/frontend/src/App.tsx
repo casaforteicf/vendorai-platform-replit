@@ -18,6 +18,7 @@ import Campanhas from "@/pages/Campanhas";
 import Propostas from "@/pages/Propostas";
 import Faturamento from "@/pages/Faturamento";
 import AdminAIUsage from "@/pages/AdminAIUsage";
+import SiteLandingPage from "@/pages/SiteLandingPage";
 import { useEffect } from "react";
 
 const queryClient = new QueryClient();
@@ -140,6 +141,9 @@ function AppRoutes() {
       </Route>
       <Route path="/admin/ai-usage">
         {() => <SuperAdminRoute component={AdminAIUsage} />}
+      </Route>
+      <Route path="/site/:tenantSlug">
+        <SiteLandingPage />
       </Route>
       <Route component={NotFound} />
     </Switch>

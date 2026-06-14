@@ -28,6 +28,8 @@ tags:
     description: Customer intelligence and AI analysis
   - name: inventory
     description: Inventory Hub — stock items and movements
+  - name: site
+    description: Website Hub — public landing page config
 paths:
   /auth/register:
     post:
@@ -4012,6 +4014,169 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
 
+  /public/{tenantSlug}/site:
+    get:
+      operationId: getPublicSite
+      tags: [site]
+      summary: Public landing page data (no auth required)
+      parameters:
+        - name: tenantSlug
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Public site data
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PublicSiteResponse"
+        "404":
+          description: Tenant not found or site is inactive
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /site-config:
+    post:
+      operationId: createSiteConfig
+      tags: [site]
+      summary: Create site config for a tenant
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateSiteConfigBody"
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SiteConfig"
+        "403":
+          description: Access denied
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "409":
+          description: Site config already exists for this tenant
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "422":
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /tenants/{tenantId}/site-config:
+    get:
+      operationId: getSiteConfigByTenant
+      tags: [site]
+      summary: Get site config for a tenant
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: tenantId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Site config
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SiteConfig"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /site-config/{id}:
+    patch:
+      operationId: updateSiteConfig
+      tags: [site]
+      summary: Update site config
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateSiteConfigBody"
+      responses:
+        "200":
+          description: Updated site config
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SiteConfig"
+        "403":
+          description: Access denied
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "422":
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+    delete:
+      operationId: deleteSiteConfig
+      tags: [site]
+      summary: Delete site config
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "204":
+          description: Deleted
+        "403":
+          description: Access denied
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
   /inventory-items:
     post:
       operationId: createInventoryItem
@@ -6998,3 +7163,150 @@ components:
       required:
         - movement
         - item
+
+    SiteConfig:
+      type: object
+      properties:
+        id:
+          type: string
+        tenantId:
+          type: string
+        template:
+          type: string
+          enum: [padrao, moderno, minimalista]
+        corPrimaria:
+          type: string
+          nullable: true
+        tagline:
+          type: string
+          nullable: true
+        sobreEmpresa:
+          type: string
+          nullable: true
+        whatsappContato:
+          type: string
+          nullable: true
+        ativo:
+          type: boolean
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+      required:
+        - id
+        - tenantId
+        - template
+        - ativo
+        - createdAt
+        - updatedAt
+
+    CreateSiteConfigBody:
+      type: object
+      properties:
+        tenantId:
+          type: string
+        template:
+          type: string
+          enum: [padrao, moderno, minimalista]
+        corPrimaria:
+          type: string
+          nullable: true
+        tagline:
+          type: string
+          nullable: true
+        sobreEmpresa:
+          type: string
+          nullable: true
+        whatsappContato:
+          type: string
+          nullable: true
+        ativo:
+          type: boolean
+      required:
+        - tenantId
+
+    UpdateSiteConfigBody:
+      type: object
+      properties:
+        template:
+          type: string
+          enum: [padrao, moderno, minimalista]
+        corPrimaria:
+          type: string
+          nullable: true
+        tagline:
+          type: string
+          nullable: true
+        sobreEmpresa:
+          type: string
+          nullable: true
+        whatsappContato:
+          type: string
+          nullable: true
+        ativo:
+          type: boolean
+
+    PublicSiteResponse:
+      type: object
+      properties:
+        tenant:
+          type: object
+          properties:
+            id:
+              type: string
+            slug:
+              type: string
+            name:
+              type: string
+          required:
+            - id
+            - slug
+            - name
+        businessProfile:
+          type: object
+          nullable: true
+          properties:
+            nomeFantasia:
+              type: string
+              nullable: true
+            sobreEmpresa:
+              type: string
+              nullable: true
+            telefone:
+              type: string
+              nullable: true
+            email:
+              type: string
+              nullable: true
+            vertical:
+              type: string
+              nullable: true
+        produtos:
+          type: array
+          items:
+            type: object
+            properties:
+              id:
+                type: string
+              nome:
+                type: string
+              descricao:
+                type: string
+                nullable: true
+              precoBase:
+                type: string
+              unidade:
+                type: string
+            required:
+              - id
+              - nome
+              - precoBase
+              - unidade
+        siteConfig:
+          $ref: "#/components/schemas/SiteConfig"
+      required:
+        - tenant
+        - produtos
+        - siteConfig
