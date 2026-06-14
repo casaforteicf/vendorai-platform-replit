@@ -298,6 +298,13 @@ router.post(
       ...(data.discoveryData ?? {}),
     };
 
+    // Extract dedicated-column fields from discoveryData if provided
+    const dd = data.discoveryData ?? {};
+    const cnpjVal = typeof dd["cnpj"] === "string" ? dd["cnpj"] : null;
+    const telefoneVal = typeof dd["telefone"] === "string" ? dd["telefone"] : null;
+    const emailVal = typeof dd["email"] === "string" ? dd["email"] : null;
+    const enderecoVal = typeof dd["endereco"] === "string" ? dd["endereco"] : null;
+
     const profileUpdate = {
       nomeFantasia: data.nomeFantasia,
       vertical: data.vertical,
@@ -307,6 +314,10 @@ router.post(
       publicoAlvo: data.publicoAlvo ?? null,
       concorrentes: data.concorrentes ?? null,
       canaisVenda: data.canaisVenda ?? null,
+      cnpj: cnpjVal,
+      telefone: telefoneVal,
+      email: emailVal,
+      endereco: enderecoVal,
       discoveryCompletedAt: now,
       discoveryData: mergedDiscoveryData,
       updatedAt: now,
@@ -367,6 +378,11 @@ router.post(
       "sdr", "closer", "followup", "reactivation", "scheduler", "service", "onboarding",
     ];
 
+    // Respect agentesAtivos from discoveryData to set enabled flags
+    const agentesAtivos = Array.isArray(dd["agentesAtivos"])
+      ? (dd["agentesAtivos"] as string[])
+      : [];
+
     if (existingConfig) {
       const currentAgents: AgentsMap = (existingConfig.agents as AgentsMap) ?? {};
       const updatedAgents: AgentsMap = { ...currentAgents };
@@ -375,14 +391,20 @@ router.post(
         const existing = currentAgents[agentKey];
         if (!existing?.prompt) {
           updatedAgents[agentKey] = {
-            enabled: existing?.enabled ?? false,
+            enabled: agentesAtivos.includes(agentKey) ? true : (existing?.enabled ?? false),
             prompt: buildAgentPrompt(agentKey, data, segmentTips[agentKey]),
           };
           promptsApplied.push(agentKey);
+        } else if (agentesAtivos.includes(agentKey) && !existing.enabled) {
+          // User explicitly activated this agent — enable even if prompt already set
+          updatedAgents[agentKey] = { ...existing, enabled: true };
         }
       }
 
-      if (promptsApplied.length > 0) {
+      const enabledChanged = (Object.keys(updatedAgents) as AgentName[]).some(
+        (k) => updatedAgents[k]?.enabled !== currentAgents[k]?.enabled
+      );
+      if (promptsApplied.length > 0 || enabledChanged) {
         await db
           .update(agentConfigsTable)
           .set({ agents: updatedAgents, updatedAt: now })
@@ -392,7 +414,7 @@ router.post(
       const agents: AgentsMap = {};
       for (const agentKey of agentNames) {
         agents[agentKey] = {
-          enabled: false,
+          enabled: agentesAtivos.includes(agentKey),
           prompt: buildAgentPrompt(agentKey, data, segmentTips[agentKey]),
         };
         promptsApplied.push(agentKey);
