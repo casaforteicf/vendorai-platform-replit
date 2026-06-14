@@ -30,6 +30,7 @@ import inventoryRouter, { inventorySyncRouter } from "./inventory";
 import siteConfigRouter, { publicSiteRouter } from "./site_config";
 import segmentTemplatesRouter, { publicSegmentTemplatesRouter } from "./segment_templates";
 import invitesRouter, { invitesProtectedRouter } from "./invites";
+import onboardingRouter from "./onboarding";
 import { authenticate, requireRole, requireSameTenanOrSuperAdmin } from "../middlewares/auth";
 
 const router: IRouter = Router();
@@ -114,6 +115,9 @@ router.use(segmentTemplatesRouter);
 
 // Invites Hub (protected: create + list)
 router.use(invitesProtectedRouter);
+
+// Onboarding Hub
+router.use(onboardingRouter);
 
 export { requireRole, requireSameTenanOrSuperAdmin };
 export default router;

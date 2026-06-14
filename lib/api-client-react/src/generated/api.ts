@@ -35,6 +35,7 @@ import type {
   CampaignAudiencePreview,
   ChangePasswordBody,
   CheckAgendamentoDisponibilidadeParams,
+  CompleteOnboarding200,
   Consent,
   Conversation,
   CreateActivityBody,
@@ -96,6 +97,7 @@ import type {
   ListRulesParams,
   LoginBody,
   Message,
+  OnboardingCompleteBody,
   ProdutoCatalogo,
   Proposta,
   PublicSiteResponse,
@@ -4114,6 +4116,79 @@ export function useGetTenantDashboard<TData = Awaited<ReturnType<typeof getTenan
 
 
 
+
+export const getCompleteOnboardingUrl = (tenantId: string,) => {
+
+
+
+
+  return `/api/tenants/${tenantId}/onboarding/complete`
+}
+
+/**
+ * Saves wizard data to business profile and marks tenant setup as complete.
+ * @summary Complete onboarding wizard
+ */
+export const completeOnboarding = async (tenantId: string,
+    onboardingCompleteBody: OnboardingCompleteBody, options?: RequestInit): Promise<CompleteOnboarding200> => {
+
+  return customFetch<CompleteOnboarding200>(getCompleteOnboardingUrl(tenantId),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(
+      onboardingCompleteBody,)
+  }
+);}
+
+
+
+
+export const getCompleteOnboardingMutationOptions = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof completeOnboarding>>, TError,{tenantId: string;data: BodyType<OnboardingCompleteBody>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof completeOnboarding>>, TError,{tenantId: string;data: BodyType<OnboardingCompleteBody>}, TContext> => {
+
+const mutationKey = ['completeOnboarding'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof completeOnboarding>>, {tenantId: string;data: BodyType<OnboardingCompleteBody>}> = (props) => {
+          const {tenantId,data} = props ?? {};
+
+          return  completeOnboarding(tenantId,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type CompleteOnboardingMutationResult = NonNullable<Awaited<ReturnType<typeof completeOnboarding>>>
+    export type CompleteOnboardingMutationBody = BodyType<OnboardingCompleteBody>
+    export type CompleteOnboardingMutationError = ErrorType<ErrorResponse>
+
+    /**
+ * @summary Complete onboarding wizard
+ */
+export const useCompleteOnboarding = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof completeOnboarding>>, TError,{tenantId: string;data: BodyType<OnboardingCompleteBody>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof completeOnboarding>>,
+        TError,
+        {tenantId: string;data: BodyType<OnboardingCompleteBody>},
+        TContext
+      > => {
+      return useMutation(getCompleteOnboardingMutationOptions(options));
+    }
 
 export const getGetTenantSubscriptionUrl = (tenantId: string,) => {
 

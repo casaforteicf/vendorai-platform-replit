@@ -22,13 +22,38 @@ import AcceptInvite from "@/pages/AcceptInvite";
 import SiteLandingPage from "@/pages/SiteLandingPage";
 import Marketplace from "@/pages/Marketplace";
 import Estoque from "@/pages/Estoque";
+import Onboarding from "@/pages/Onboarding";
 import { useEffect } from "react";
+import {
+  useGetTenant,
+  getGetTenantQueryKey,
+} from "@workspace/api-client-react";
 
 const queryClient = new QueryClient();
 
+function Spinner() {
+  return (
+    <div className="min-h-screen w-full flex items-center justify-center bg-background">
+      <div className="animate-spin h-8 w-8 border-4 border-primary border-t-transparent rounded-full" />
+    </div>
+  );
+}
+
 function ProtectedRoute({ component: Component, ...rest }: any) {
-  const { token, isLoading } = useAuth();
+  const { token, user, isLoading } = useAuth();
   const [, setLocation] = useLocation();
+
+  const isTenantAdmin = user?.platformRole === "tenant_admin";
+
+  const { data: tenant, isLoading: tenantLoading } = useGetTenant(
+    user?.tenantId ?? "",
+    {
+      query: {
+        enabled: !isLoading && !!token && isTenantAdmin && !!user?.tenantId,
+        queryKey: getGetTenantQueryKey(user?.tenantId ?? ""),
+      },
+    }
+  );
 
   useEffect(() => {
     if (!isLoading && !token) {
@@ -36,13 +61,15 @@ function ProtectedRoute({ component: Component, ...rest }: any) {
     }
   }, [token, isLoading, setLocation]);
 
-  if (isLoading || !token) {
-    return (
-      <div className="min-h-screen w-full flex items-center justify-center bg-background">
-        <div className="animate-spin h-8 w-8 border-4 border-primary border-t-transparent rounded-full" />
-      </div>
-    );
-  }
+  useEffect(() => {
+    if (!isTenantAdmin || tenantLoading || !tenant) return;
+    if (!tenant.setupCompletedAt) {
+      setLocation("/onboarding");
+    }
+  }, [tenant, tenantLoading, isTenantAdmin, setLocation]);
+
+  if (isLoading || !token || !user) return <Spinner />;
+  if (isTenantAdmin && tenantLoading) return <Spinner />;
 
   return (
     <SidebarLayout>
@@ -63,23 +90,47 @@ function SuperAdminRoute({ component: Component, ...rest }: any) {
     }
   }, [token, user, isLoading, setLocation]);
 
-  if (isLoading || !token || !user) {
-    return (
-      <div className="min-h-screen w-full flex items-center justify-center bg-background">
-        <div className="animate-spin h-8 w-8 border-4 border-primary border-t-transparent rounded-full" />
-      </div>
-    );
-  }
-
-  if (user.platformRole !== "super_admin") {
-    return null;
-  }
+  if (isLoading || !token || !user) return <Spinner />;
+  if (user.platformRole !== "super_admin") return null;
 
   return (
     <SidebarLayout>
       <Component {...rest} />
     </SidebarLayout>
   );
+}
+
+function OnboardingRoute() {
+  const { token, user, isLoading } = useAuth();
+  const [, setLocation] = useLocation();
+
+  const isTenantAdmin = user?.platformRole === "tenant_admin";
+
+  const { data: tenant, isLoading: tenantLoading } = useGetTenant(
+    user?.tenantId ?? "",
+    {
+      query: {
+        enabled: !isLoading && !!token && isTenantAdmin && !!user?.tenantId,
+        queryKey: getGetTenantQueryKey(user?.tenantId ?? ""),
+      },
+    }
+  );
+
+  useEffect(() => {
+    if (!isLoading && !token) setLocation("/login");
+  }, [token, isLoading, setLocation]);
+
+  useEffect(() => {
+    if (!isTenantAdmin || tenantLoading || !tenant) return;
+    if (tenant.setupCompletedAt) {
+      setLocation("/");
+    }
+  }, [tenant, tenantLoading, isTenantAdmin, setLocation]);
+
+  if (isLoading || !token) return <Spinner />;
+  if (isTenantAdmin && tenantLoading) return <Spinner />;
+
+  return <Onboarding />;
 }
 
 function PublicRoute({ component: Component }: any) {
@@ -92,13 +143,7 @@ function PublicRoute({ component: Component }: any) {
     }
   }, [token, isLoading, setLocation]);
 
-  if (isLoading) {
-    return (
-      <div className="min-h-screen w-full flex items-center justify-center bg-background">
-        <div className="animate-spin h-8 w-8 border-4 border-primary border-t-transparent rounded-full" />
-      </div>
-    );
-  }
+  if (isLoading) return <Spinner />;
 
   return <Component />;
 }
@@ -111,6 +156,9 @@ function AppRoutes() {
       </Route>
       <Route path="/register">
         <PublicRoute component={Register} />
+      </Route>
+      <Route path="/onboarding">
+        <OnboardingRoute />
       </Route>
       <Route path="/">
         <ProtectedRoute component={Dashboard} />

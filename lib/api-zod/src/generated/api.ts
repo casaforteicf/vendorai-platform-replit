@@ -1502,6 +1502,34 @@ export const GetTenantDashboardResponse = zod.object({
 
 
 /**
+ * Saves wizard data to business profile and marks tenant setup as complete.
+ * @summary Complete onboarding wizard
+ */
+export const CompleteOnboardingParams = zod.object({
+  "tenantId": zod.coerce.string()
+})
+
+export const CompleteOnboardingBody = zod.object({
+  "nomeFantasia": zod.string(),
+  "vertical": zod.string(),
+  "logoUrl": zod.string().optional(),
+  "produtos": zod.array(zod.object({
+  "nome": zod.string(),
+  "descricao": zod.string().nullish(),
+  "preco": zod.number().nullish()
+})).optional(),
+  "diferenciais": zod.string().optional(),
+  "publicoAlvo": zod.string().optional(),
+  "concorrentes": zod.array(zod.string()).optional(),
+  "canaisVenda": zod.array(zod.string()).optional()
+})
+
+export const CompleteOnboardingResponse = zod.object({
+  "setupCompletedAt": zod.coerce.date()
+})
+
+
+/**
  * @summary Get the subscription for a tenant
  */
 export const GetTenantSubscriptionParams = zod.object({
@@ -2904,11 +2932,16 @@ export const CreateBusinessProfileBody = zod.object({
   "telefone": zod.string().optional(),
   "email": zod.string().optional(),
   "vertical": zod.string().optional(),
+  "logoUrl": zod.string().optional(),
   "produtos": zod.array(zod.object({
   "nome": zod.string(),
   "descricao": zod.string().nullish(),
   "preco": zod.number().nullish()
 })).optional(),
+  "diferenciais": zod.string().optional(),
+  "publicoAlvo": zod.string().optional(),
+  "concorrentes": zod.array(zod.string()).optional(),
+  "canaisVenda": zod.array(zod.string()).optional(),
   "discoveryCompletedAt": zod.coerce.date().optional(),
   "discoveryData": zod.record(zod.string(), zod.unknown()).optional()
 })
@@ -2931,11 +2964,16 @@ export const GetBusinessProfileByTenantResponse = zod.object({
   "telefone": zod.string().nullish(),
   "email": zod.string().nullish(),
   "vertical": zod.string().nullish(),
+  "logoUrl": zod.string().nullish(),
   "produtos": zod.array(zod.object({
   "nome": zod.string(),
   "descricao": zod.string().nullish(),
   "preco": zod.number().nullish()
 })).nullish(),
+  "diferenciais": zod.string().nullish(),
+  "publicoAlvo": zod.string().nullish(),
+  "concorrentes": zod.array(zod.string()).nullish(),
+  "canaisVenda": zod.array(zod.string()).nullish(),
   "discoveryCompletedAt": zod.coerce.date().nullish(),
   "discoveryData": zod.record(zod.string(), zod.unknown()).nullish(),
   "createdAt": zod.coerce.date(),
@@ -2960,11 +2998,16 @@ export const GetBusinessProfileResponse = zod.object({
   "telefone": zod.string().nullish(),
   "email": zod.string().nullish(),
   "vertical": zod.string().nullish(),
+  "logoUrl": zod.string().nullish(),
   "produtos": zod.array(zod.object({
   "nome": zod.string(),
   "descricao": zod.string().nullish(),
   "preco": zod.number().nullish()
 })).nullish(),
+  "diferenciais": zod.string().nullish(),
+  "publicoAlvo": zod.string().nullish(),
+  "concorrentes": zod.array(zod.string()).nullish(),
+  "canaisVenda": zod.array(zod.string()).nullish(),
   "discoveryCompletedAt": zod.coerce.date().nullish(),
   "discoveryData": zod.record(zod.string(), zod.unknown()).nullish(),
   "createdAt": zod.coerce.date(),
@@ -2987,11 +3030,16 @@ export const UpdateBusinessProfileBody = zod.object({
   "telefone": zod.string().optional(),
   "email": zod.string().optional(),
   "vertical": zod.string().optional(),
+  "logoUrl": zod.string().optional(),
   "produtos": zod.array(zod.object({
   "nome": zod.string(),
   "descricao": zod.string().nullish(),
   "preco": zod.number().nullish()
 })).optional(),
+  "diferenciais": zod.string().optional(),
+  "publicoAlvo": zod.string().optional(),
+  "concorrentes": zod.array(zod.string()).optional(),
+  "canaisVenda": zod.array(zod.string()).optional(),
   "discoveryCompletedAt": zod.coerce.date().optional(),
   "discoveryData": zod.record(zod.string(), zod.unknown()).optional()
 })
@@ -3006,11 +3054,16 @@ export const UpdateBusinessProfileResponse = zod.object({
   "telefone": zod.string().nullish(),
   "email": zod.string().nullish(),
   "vertical": zod.string().nullish(),
+  "logoUrl": zod.string().nullish(),
   "produtos": zod.array(zod.object({
   "nome": zod.string(),
   "descricao": zod.string().nullish(),
   "preco": zod.number().nullish()
 })).nullish(),
+  "diferenciais": zod.string().nullish(),
+  "publicoAlvo": zod.string().nullish(),
+  "concorrentes": zod.array(zod.string()).nullish(),
+  "canaisVenda": zod.array(zod.string()).nullish(),
   "discoveryCompletedAt": zod.coerce.date().nullish(),
   "discoveryData": zod.record(zod.string(), zod.unknown()).nullish(),
   "createdAt": zod.coerce.date(),

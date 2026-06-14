@@ -1177,7 +1177,12 @@ export interface BusinessProfile {
   telefone?: string | null;
   email?: string | null;
   vertical?: string | null;
+  logoUrl?: string | null;
   produtos?: Product[] | null;
+  diferenciais?: string | null;
+  publicoAlvo?: string | null;
+  concorrentes?: string[] | null;
+  canaisVenda?: string[] | null;
   discoveryCompletedAt?: string | null;
   discoveryData?: BusinessProfileDiscoveryData;
   createdAt: string;
@@ -1195,7 +1200,12 @@ export interface CreateBusinessProfileBody {
   telefone?: string;
   email?: string;
   vertical?: string;
+  logoUrl?: string;
   produtos?: Product[];
+  diferenciais?: string;
+  publicoAlvo?: string;
+  concorrentes?: string[];
+  canaisVenda?: string[];
   discoveryCompletedAt?: string;
   discoveryData?: CreateBusinessProfileBodyDiscoveryData;
 }
@@ -1210,9 +1220,25 @@ export interface UpdateBusinessProfileBody {
   telefone?: string;
   email?: string;
   vertical?: string;
+  logoUrl?: string;
   produtos?: Product[];
+  diferenciais?: string;
+  publicoAlvo?: string;
+  concorrentes?: string[];
+  canaisVenda?: string[];
   discoveryCompletedAt?: string;
   discoveryData?: UpdateBusinessProfileBodyDiscoveryData;
+}
+
+export interface OnboardingCompleteBody {
+  nomeFantasia: string;
+  vertical: string;
+  logoUrl?: string;
+  produtos?: Product[];
+  diferenciais?: string;
+  publicoAlvo?: string;
+  concorrentes?: string[];
+  canaisVenda?: string[];
 }
 
 export type TenantAgentsEnabled = { [key: string]: unknown };
@@ -1797,6 +1823,10 @@ export type UpdatePropostaStatusBody = {
 export type ListMessagesParams = {
 conversationId?: string;
 leadId?: string;
+};
+
+export type CompleteOnboarding200 = {
+  setupCompletedAt: string;
 };
 
 export type ListInvoicesParams = {

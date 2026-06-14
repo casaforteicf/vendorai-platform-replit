@@ -17,7 +17,12 @@ export interface CreateBusinessProfileBody {
   telefone?: string;
   email?: string;
   vertical?: string;
+  logoUrl?: string;
   produtos?: Product[];
+  diferenciais?: string;
+  publicoAlvo?: string;
+  concorrentes?: string[];
+  canaisVenda?: string[];
   discoveryCompletedAt?: Date;
   discoveryData?: CreateBusinessProfileBodyDiscoveryData;
 }

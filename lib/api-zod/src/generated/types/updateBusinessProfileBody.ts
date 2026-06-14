@@ -16,7 +16,12 @@ export interface UpdateBusinessProfileBody {
   telefone?: string;
   email?: string;
   vertical?: string;
+  logoUrl?: string;
   produtos?: Product[];
+  diferenciais?: string;
+  publicoAlvo?: string;
+  concorrentes?: string[];
+  canaisVenda?: string[];
   discoveryCompletedAt?: Date;
   discoveryData?: UpdateBusinessProfileBodyDiscoveryData;
 }

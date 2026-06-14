@@ -18,7 +18,12 @@ export interface BusinessProfile {
   telefone?: string | null;
   email?: string | null;
   vertical?: string | null;
+  logoUrl?: string | null;
   produtos?: Product[] | null;
+  diferenciais?: string | null;
+  publicoAlvo?: string | null;
+  concorrentes?: string[] | null;
+  canaisVenda?: string[] | null;
   discoveryCompletedAt?: Date | null;
   discoveryData?: BusinessProfileDiscoveryData;
   createdAt: Date;
