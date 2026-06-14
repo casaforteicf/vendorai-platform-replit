@@ -26,6 +26,7 @@ import knowledgeBaseRouter from "./knowledge_base";
 import rulesRouter from "./rules";
 import webhooksRouter from "./webhooks";
 import agentsRouter from "./agents";
+import inventoryRouter from "./inventory";
 import { authenticate, requireRole, requireSameTenanOrSuperAdmin } from "../middlewares/auth";
 
 const router: IRouter = Router();
@@ -94,6 +95,9 @@ router.use(knowledgeBaseRouter);
 
 // Rules Engine
 router.use(rulesRouter);
+
+// Inventory Hub
+router.use(inventoryRouter);
 
 export { requireRole, requireSameTenanOrSuperAdmin };
 export default router;

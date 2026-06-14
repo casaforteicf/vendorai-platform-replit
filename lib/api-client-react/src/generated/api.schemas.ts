@@ -1488,6 +1488,82 @@ export interface IntelligenceAnalysisLogPage {
   stats: IntelligenceAnalysisLogStats;
 }
 
+export interface InventoryItem {
+  id: string;
+  tenantId: string;
+  produtoId: string;
+  /** Decimal quantity as string */
+  quantidadeAtual: string;
+  /** Reorder point as string */
+  quantidadeMinima: string;
+  localizacao?: string | null;
+  unidade: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface CreateInventoryItemBody {
+  tenantId: string;
+  produtoId: string;
+  quantidadeAtual?: string;
+  quantidadeMinima?: string;
+  localizacao?: string | null;
+  unidade: string;
+}
+
+export interface UpdateInventoryItemBody {
+  produtoId?: string;
+  quantidadeMinima?: string;
+  localizacao?: string | null;
+  unidade?: string;
+}
+
+export type InventoryMovementTipo = typeof InventoryMovementTipo[keyof typeof InventoryMovementTipo];
+
+
+export const InventoryMovementTipo = {
+  entrada: 'entrada',
+  saida: 'saida',
+  ajuste: 'ajuste',
+} as const;
+
+export interface InventoryMovement {
+  id: string;
+  tenantId: string;
+  inventoryItemId: string;
+  tipo: InventoryMovementTipo;
+  quantidade: string;
+  motivo: string;
+  referenciaId?: string | null;
+  responsavelId?: string | null;
+  createdAt: string;
+}
+
+export type CreateInventoryMovementBodyTipo = typeof CreateInventoryMovementBodyTipo[keyof typeof CreateInventoryMovementBodyTipo];
+
+
+export const CreateInventoryMovementBodyTipo = {
+  entrada: 'entrada',
+  saida: 'saida',
+  ajuste: 'ajuste',
+} as const;
+
+export interface CreateInventoryMovementBody {
+  tipo: CreateInventoryMovementBodyTipo;
+  /** Positive decimal quantity */
+  quantidade: string;
+  motivo: string;
+  referenciaId?: string | null;
+  responsavelId?: string | null;
+  /** Allow saída even if stock would go negative */
+  forcarNegativo?: boolean;
+}
+
+export interface InventoryMovementResult {
+  movement: InventoryMovement;
+  item: InventoryItem;
+}
+
 export type ListDealsParams = {
 etapa?: DealEtapa;
 funilId?: string;
@@ -1589,5 +1665,9 @@ page?: number;
  * @maximum 100
  */
 limit?: number;
+};
+
+export type ListInventoryMovementsParams = {
+inventoryItemId?: string;
 };
 

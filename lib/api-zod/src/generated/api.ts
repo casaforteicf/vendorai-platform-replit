@@ -3631,3 +3631,180 @@ export const DeleteLeadParams = zod.object({
 })
 
 
+/**
+ * @summary Create inventory item
+ */
+export const CreateInventoryItemBody = zod.object({
+  "tenantId": zod.string(),
+  "produtoId": zod.string(),
+  "quantidadeAtual": zod.string().optional(),
+  "quantidadeMinima": zod.string().optional(),
+  "localizacao": zod.string().nullish(),
+  "unidade": zod.string()
+})
+
+
+/**
+ * @summary List inventory items by tenant
+ */
+export const ListInventoryItemsParams = zod.object({
+  "tenantId": zod.coerce.string()
+})
+
+export const ListInventoryItemsResponseItem = zod.object({
+  "id": zod.string(),
+  "tenantId": zod.string(),
+  "produtoId": zod.string(),
+  "quantidadeAtual": zod.string().describe('Decimal quantity as string'),
+  "quantidadeMinima": zod.string().describe('Reorder point as string'),
+  "localizacao": zod.string().nullish(),
+  "unidade": zod.string(),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date()
+})
+export const ListInventoryItemsResponse = zod.array(ListInventoryItemsResponseItem)
+
+
+/**
+ * @summary List items with quantidadeAtual <= quantidadeMinima
+ */
+export const ListLowStockItemsParams = zod.object({
+  "tenantId": zod.coerce.string()
+})
+
+export const ListLowStockItemsResponseItem = zod.object({
+  "id": zod.string(),
+  "tenantId": zod.string(),
+  "produtoId": zod.string(),
+  "quantidadeAtual": zod.string().describe('Decimal quantity as string'),
+  "quantidadeMinima": zod.string().describe('Reorder point as string'),
+  "localizacao": zod.string().nullish(),
+  "unidade": zod.string(),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date()
+})
+export const ListLowStockItemsResponse = zod.array(ListLowStockItemsResponseItem)
+
+
+/**
+ * @summary Get inventory item by ID
+ */
+export const GetInventoryItemParams = zod.object({
+  "id": zod.coerce.string()
+})
+
+export const GetInventoryItemResponse = zod.object({
+  "id": zod.string(),
+  "tenantId": zod.string(),
+  "produtoId": zod.string(),
+  "quantidadeAtual": zod.string().describe('Decimal quantity as string'),
+  "quantidadeMinima": zod.string().describe('Reorder point as string'),
+  "localizacao": zod.string().nullish(),
+  "unidade": zod.string(),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date()
+})
+
+
+/**
+ * @summary Update inventory item
+ */
+export const UpdateInventoryItemParams = zod.object({
+  "id": zod.coerce.string()
+})
+
+export const UpdateInventoryItemBody = zod.object({
+  "produtoId": zod.string().optional(),
+  "quantidadeMinima": zod.string().optional(),
+  "localizacao": zod.string().nullish(),
+  "unidade": zod.string().optional()
+})
+
+export const UpdateInventoryItemResponse = zod.object({
+  "id": zod.string(),
+  "tenantId": zod.string(),
+  "produtoId": zod.string(),
+  "quantidadeAtual": zod.string().describe('Decimal quantity as string'),
+  "quantidadeMinima": zod.string().describe('Reorder point as string'),
+  "localizacao": zod.string().nullish(),
+  "unidade": zod.string(),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date()
+})
+
+
+/**
+ * @summary Delete inventory item
+ */
+export const DeleteInventoryItemParams = zod.object({
+  "id": zod.coerce.string()
+})
+
+
+/**
+ * Records an entrada/saida/ajuste and updates quantidadeAtual. Saída that would make stock negative returns 409 unless forcarNegativo=true.
+
+ * @summary Register a movement and update stock atomically
+ */
+export const RegisterInventoryMovementParams = zod.object({
+  "tenantId": zod.coerce.string(),
+  "id": zod.coerce.string()
+})
+
+export const registerInventoryMovementBodyForcarNegativoDefault = false;
+
+export const RegisterInventoryMovementBody = zod.object({
+  "tipo": zod.enum(['entrada', 'saida', 'ajuste']),
+  "quantidade": zod.string().describe('Positive decimal quantity'),
+  "motivo": zod.string(),
+  "referenciaId": zod.string().nullish(),
+  "responsavelId": zod.string().nullish(),
+  "forcarNegativo": zod.boolean().default(registerInventoryMovementBodyForcarNegativoDefault).describe('Allow saída even if stock would go negative')
+})
+
+
+/**
+ * @summary List movements for a tenant (optionally filtered by item)
+ */
+export const ListInventoryMovementsParams = zod.object({
+  "tenantId": zod.coerce.string()
+})
+
+export const ListInventoryMovementsQueryParams = zod.object({
+  "inventoryItemId": zod.coerce.string().optional()
+})
+
+export const ListInventoryMovementsResponseItem = zod.object({
+  "id": zod.string(),
+  "tenantId": zod.string(),
+  "inventoryItemId": zod.string(),
+  "tipo": zod.enum(['entrada', 'saida', 'ajuste']),
+  "quantidade": zod.string(),
+  "motivo": zod.string(),
+  "referenciaId": zod.string().nullish(),
+  "responsavelId": zod.string().nullish(),
+  "createdAt": zod.coerce.date()
+})
+export const ListInventoryMovementsResponse = zod.array(ListInventoryMovementsResponseItem)
+
+
+/**
+ * @summary Get movement by ID
+ */
+export const GetInventoryMovementParams = zod.object({
+  "id": zod.coerce.string()
+})
+
+export const GetInventoryMovementResponse = zod.object({
+  "id": zod.string(),
+  "tenantId": zod.string(),
+  "inventoryItemId": zod.string(),
+  "tipo": zod.enum(['entrada', 'saida', 'ajuste']),
+  "quantidade": zod.string(),
+  "motivo": zod.string(),
+  "referenciaId": zod.string().nullish(),
+  "responsavelId": zod.string().nullish(),
+  "createdAt": zod.coerce.date()
+})
+
+

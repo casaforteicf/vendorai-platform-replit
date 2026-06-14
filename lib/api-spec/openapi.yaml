@@ -26,6 +26,8 @@ tags:
     description: Consent management
   - name: intelligence
     description: Customer intelligence and AI analysis
+  - name: inventory
+    description: Inventory Hub — stock items and movements
 paths:
   /auth/register:
     post:
@@ -4010,6 +4012,296 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
 
+  /inventory-items:
+    post:
+      operationId: createInventoryItem
+      tags: [inventory]
+      summary: Create inventory item
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateInventoryItemBody"
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/InventoryItem"
+        "403":
+          description: Access denied
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "422":
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /tenants/{tenantId}/inventory-items:
+    get:
+      operationId: listInventoryItems
+      tags: [inventory]
+      summary: List inventory items by tenant
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: tenantId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: List of inventory items
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/InventoryItem"
+
+  /tenants/{tenantId}/inventory-items/low-stock:
+    get:
+      operationId: listLowStockItems
+      tags: [inventory]
+      summary: List items with quantidadeAtual <= quantidadeMinima
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: tenantId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Low-stock items
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/InventoryItem"
+
+  /inventory-items/{id}:
+    get:
+      operationId: getInventoryItem
+      tags: [inventory]
+      summary: Get inventory item by ID
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Inventory item
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/InventoryItem"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+    patch:
+      operationId: updateInventoryItem
+      tags: [inventory]
+      summary: Update inventory item
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateInventoryItemBody"
+      responses:
+        "200":
+          description: Updated item
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/InventoryItem"
+        "403":
+          description: Access denied
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "422":
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+    delete:
+      operationId: deleteInventoryItem
+      tags: [inventory]
+      summary: Delete inventory item
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "204":
+          description: Deleted
+        "403":
+          description: Access denied
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /tenants/{tenantId}/inventory-items/{id}/movement:
+    post:
+      operationId: registerInventoryMovement
+      tags: [inventory]
+      summary: Register a movement and update stock atomically
+      description: >
+        Records an entrada/saida/ajuste and updates quantidadeAtual.
+        Saída that would make stock negative returns 409 unless forcarNegativo=true.
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: tenantId
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateInventoryMovementBody"
+      responses:
+        "201":
+          description: Movement registered and stock updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/InventoryMovementResult"
+        "403":
+          description: Access denied
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Item not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "409":
+          description: Insufficient stock for saída
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "422":
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /tenants/{tenantId}/inventory-movements:
+    get:
+      operationId: listInventoryMovements
+      tags: [inventory]
+      summary: List movements for a tenant (optionally filtered by item)
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: tenantId
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: inventoryItemId
+          in: query
+          required: false
+          schema:
+            type: string
+      responses:
+        "200":
+          description: List of movements
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/InventoryMovement"
+
+  /inventory-movements/{id}:
+    get:
+      operationId: getInventoryMovement
+      tags: [inventory]
+      summary: Get movement by ID
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Movement
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/InventoryMovement"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
 components:
   schemas:
     ChangePasswordBody:
@@ -6565,3 +6857,144 @@ components:
         - page
         - limit
         - stats
+
+    InventoryItem:
+      type: object
+      properties:
+        id:
+          type: string
+        tenantId:
+          type: string
+        produtoId:
+          type: string
+        quantidadeAtual:
+          type: string
+          description: Decimal quantity as string
+        quantidadeMinima:
+          type: string
+          description: Reorder point as string
+        localizacao:
+          type: string
+          nullable: true
+        unidade:
+          type: string
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+      required:
+        - id
+        - tenantId
+        - produtoId
+        - quantidadeAtual
+        - quantidadeMinima
+        - unidade
+        - createdAt
+        - updatedAt
+
+    CreateInventoryItemBody:
+      type: object
+      properties:
+        tenantId:
+          type: string
+        produtoId:
+          type: string
+        quantidadeAtual:
+          type: string
+        quantidadeMinima:
+          type: string
+        localizacao:
+          type: string
+          nullable: true
+        unidade:
+          type: string
+      required:
+        - tenantId
+        - produtoId
+        - unidade
+
+    UpdateInventoryItemBody:
+      type: object
+      properties:
+        produtoId:
+          type: string
+        quantidadeMinima:
+          type: string
+        localizacao:
+          type: string
+          nullable: true
+        unidade:
+          type: string
+
+    InventoryMovement:
+      type: object
+      properties:
+        id:
+          type: string
+        tenantId:
+          type: string
+        inventoryItemId:
+          type: string
+        tipo:
+          type: string
+          enum: [entrada, saida, ajuste]
+        quantidade:
+          type: string
+        motivo:
+          type: string
+        referenciaId:
+          type: string
+          nullable: true
+        responsavelId:
+          type: string
+          nullable: true
+        createdAt:
+          type: string
+          format: date-time
+      required:
+        - id
+        - tenantId
+        - inventoryItemId
+        - tipo
+        - quantidade
+        - motivo
+        - createdAt
+
+    CreateInventoryMovementBody:
+      type: object
+      properties:
+        tipo:
+          type: string
+          enum: [entrada, saida, ajuste]
+        quantidade:
+          type: string
+          description: Positive decimal quantity
+        motivo:
+          type: string
+        referenciaId:
+          type: string
+          nullable: true
+        responsavelId:
+          type: string
+          nullable: true
+        forcarNegativo:
+          type: boolean
+          description: Allow saída even if stock would go negative
+          default: false
+      required:
+        - tipo
+        - quantidade
+        - motivo
+
+    InventoryMovementResult:
+      type: object
+      properties:
+        movement:
+          $ref: "#/components/schemas/InventoryMovement"
+        item:
+          $ref: "#/components/schemas/InventoryItem"
+      required:
+        - movement
+        - item
