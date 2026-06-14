@@ -3392,6 +3392,91 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
 
+  /tenants/{id}/integration-settings:
+    get:
+      operationId: getIntegrationSettings
+      tags: [tenants]
+      summary: Get tenant ERP integration settings
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Integration settings
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/IntegrationSettings"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+    patch:
+      operationId: updateIntegrationSettings
+      tags: [tenants]
+      summary: Update tenant ERP integration settings
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateIntegrationSettingsBody"
+      responses:
+        "200":
+          description: Updated settings
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/IntegrationSettings"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /tenants/{id}/integration-settings/regenerate-key:
+    post:
+      operationId: regenerateIntegrationApiKey
+      tags: [tenants]
+      summary: Regenerate tenant ERP API key
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: New API key generated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/IntegrationSettings"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
   /conversations:
     get:
       operationId: listConversations
@@ -4532,6 +4617,58 @@ paths:
                 type: array
                 items:
                   $ref: "#/components/schemas/InventoryMovement"
+
+  /tenants/{tenantId}/inventory/sync:
+    post:
+      operationId: syncInventory
+      tags: [inventory]
+      summary: Sync inventory from ERP (upsert by SKU)
+      description: >
+        Accepts x-api-key header (tenant apiKeyEstoque) for external callers (n8n, ERPs)
+        or a standard Bearer JWT token. Each item is matched by SKU — existing items
+        have their quantity updated; new items are created with a matching catalogue entry.
+      parameters:
+        - name: tenantId
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: x-api-key
+          in: header
+          required: false
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SyncInventoryBody"
+      responses:
+        "200":
+          description: Sync result
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SyncInventoryResponse"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Tenant not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "422":
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
 
   /inventory-movements/{id}:
     get:
@@ -7527,3 +7664,72 @@ components:
         - funilCreated
         - businessProfileUpdated
         - promptsApplied
+
+    IntegrationSettings:
+      type: object
+      properties:
+        webhookEstoqueUrl:
+          type: string
+          nullable: true
+        apiKeyEstoque:
+          type: string
+          nullable: true
+      required:
+        - webhookEstoqueUrl
+        - apiKeyEstoque
+
+    UpdateIntegrationSettingsBody:
+      type: object
+      properties:
+        webhookEstoqueUrl:
+          type: string
+          nullable: true
+
+    SyncInventoryBody:
+      type: object
+      properties:
+        items:
+          type: array
+          minItems: 1
+          maxItems: 500
+          items:
+            type: object
+            properties:
+              sku:
+                type: string
+              nome:
+                type: string
+              quantidade:
+                type: number
+              preco:
+                type: number
+                nullable: true
+            required:
+              - sku
+              - quantidade
+      required:
+        - items
+
+    SyncInventoryResponse:
+      type: object
+      properties:
+        upserted:
+          type: integer
+        skipped:
+          type: integer
+        errors:
+          type: array
+          items:
+            type: object
+            properties:
+              sku:
+                type: string
+              error:
+                type: string
+            required:
+              - sku
+              - error
+      required:
+        - upserted
+        - skipped
+        - errors

@@ -79,6 +79,77 @@ router.patch("/tenants/:id", requireSameTenanOrSuperAdmin(), async (req, res) =>
   }
 });
 
+// ── Integration Settings ──────────────────────────────────────────────────────
+
+router.get("/tenants/:id/integration-settings", requireSameTenanOrSuperAdmin(), async (req, res) => {
+  const [tenant] = await db
+    .select({
+      webhookEstoqueUrl: tenantsTable.webhookEstoqueUrl,
+      apiKeyEstoque: tenantsTable.apiKeyEstoque,
+    })
+    .from(tenantsTable)
+    .where(eq(tenantsTable.id, String(req.params.id)));
+
+  if (!tenant) {
+    res.status(404).json({ error: "Tenant not found" });
+    return;
+  }
+
+  res.json({
+    webhookEstoqueUrl: tenant.webhookEstoqueUrl ?? null,
+    apiKeyEstoque: tenant.apiKeyEstoque ?? null,
+  });
+});
+
+router.patch("/tenants/:id/integration-settings", requireSameTenanOrSuperAdmin(), async (req, res) => {
+  const { webhookEstoqueUrl } = req.body as { webhookEstoqueUrl?: string | null };
+
+  const [tenant] = await db
+    .update(tenantsTable)
+    .set({
+      webhookEstoqueUrl: webhookEstoqueUrl !== undefined ? (webhookEstoqueUrl || null) : undefined,
+      updatedAt: new Date(),
+    })
+    .where(eq(tenantsTable.id, String(req.params.id)))
+    .returning({
+      webhookEstoqueUrl: tenantsTable.webhookEstoqueUrl,
+      apiKeyEstoque: tenantsTable.apiKeyEstoque,
+    });
+
+  if (!tenant) {
+    res.status(404).json({ error: "Tenant not found" });
+    return;
+  }
+
+  res.json({
+    webhookEstoqueUrl: tenant.webhookEstoqueUrl ?? null,
+    apiKeyEstoque: tenant.apiKeyEstoque ?? null,
+  });
+});
+
+router.post("/tenants/:id/integration-settings/regenerate-key", requireSameTenanOrSuperAdmin(), async (req, res) => {
+  const newKey = `vak_${crypto.randomUUID().replace(/-/g, "")}`;
+
+  const [tenant] = await db
+    .update(tenantsTable)
+    .set({ apiKeyEstoque: newKey, updatedAt: new Date() })
+    .where(eq(tenantsTable.id, String(req.params.id)))
+    .returning({
+      webhookEstoqueUrl: tenantsTable.webhookEstoqueUrl,
+      apiKeyEstoque: tenantsTable.apiKeyEstoque,
+    });
+
+  if (!tenant) {
+    res.status(404).json({ error: "Tenant not found" });
+    return;
+  }
+
+  res.json({
+    webhookEstoqueUrl: tenant.webhookEstoqueUrl ?? null,
+    apiKeyEstoque: tenant.apiKeyEstoque ?? null,
+  });
+});
+
 router.delete("/tenants/:id", requireRole("super_admin"), async (req, res) => {
   const [deleted] = await db
     .delete(tenantsTable)

@@ -34,6 +34,8 @@ export const tenantsTable = pgTable(
     analysisStalenessHours: integer("analysis_staleness_hours"),
     analysisMessageThreshold: integer("analysis_message_threshold"),
     maxAnalysesPerHour: integer("max_analyses_per_hour"),
+    webhookEstoqueUrl: text("webhook_estoque_url"),
+    apiKeyEstoque: text("api_key_estoque"),
     createdAt: timestamp("created_at").notNull().defaultNow(),
     updatedAt: timestamp("updated_at").notNull().defaultNow(),
   },

@@ -1,6 +1,7 @@
 import { Router, type IRouter } from "express";
 import { and, eq } from "drizzle-orm";
-import { db, dealsTable, insertDealSchema, updateDealSchema } from "@workspace/db";
+import { db, dealsTable, insertDealSchema, updateDealSchema, tenantsTable } from "@workspace/db";
+import { dispatchVendaWebhook } from "../services/erp-webhook.js";
 
 const router: IRouter = Router();
 
@@ -64,7 +65,7 @@ router.patch("/deals/:id", async (req, res) => {
   }
 
   const [existing] = await db
-    .select({ id: dealsTable.id, tenantId: dealsTable.tenantId })
+    .select({ id: dealsTable.id, tenantId: dealsTable.tenantId, etapa: dealsTable.etapa })
     .from(dealsTable)
     .where(eq(dealsTable.id, String(req.params.id)));
 
@@ -83,6 +84,36 @@ router.patch("/deals/:id", async (req, res) => {
     .set({ ...parsed.data, updatedAt: new Date() })
     .where(eq(dealsTable.id, existing.id))
     .returning();
+
+  // ── Webhook de saída: deal ganho = venda realizada ────────────────────────
+  if (parsed.data.etapa === "ganho" && existing.etapa !== "ganho") {
+    void (async () => {
+      try {
+        const [tenant] = await db
+          .select({ webhookEstoqueUrl: tenantsTable.webhookEstoqueUrl })
+          .from(tenantsTable)
+          .where(eq(tenantsTable.id, existing.tenantId));
+
+        if (!tenant?.webhookEstoqueUrl) return;
+
+        dispatchVendaWebhook(
+          tenant.webhookEstoqueUrl,
+          {
+            event: "venda_realizada",
+            tenantId: existing.tenantId,
+            vendaId: deal.id,
+            tipo: "deal",
+            produtos: [],
+            valorTotal: deal.valor ? Number(deal.valor) : null,
+            realizadaEm: new Date().toISOString(),
+          },
+          req.log,
+        );
+      } catch (err) {
+        req.log.warn({ err }, "erp-webhook: failed to read tenant config");
+      }
+    })();
+  }
 
   res.json(deal);
 });

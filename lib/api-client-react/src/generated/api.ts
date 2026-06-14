@@ -71,6 +71,7 @@ import type {
   ImportInventoryBody,
   ImportInventoryResult,
   IncrementBody,
+  IntegrationSettings,
   IntelligenceAnalysisLogPage,
   InventoryItem,
   InventoryMovement,
@@ -98,6 +99,8 @@ import type {
   SegmentTemplate,
   SiteConfig,
   Subscription,
+  SyncInventoryBody,
+  SyncInventoryResponse,
   Tenant,
   TenantDashboard,
   UpdateActivityBody,
@@ -111,6 +114,7 @@ import type {
   UpdateCustomerIntelligenceBody,
   UpdateDealBody,
   UpdateFunilBody,
+  UpdateIntegrationSettingsBody,
   UpdateInventoryItemBody,
   UpdateInvoiceBody,
   UpdateKnowledgeBaseBody,
@@ -8647,6 +8651,225 @@ export const useDeleteTenant = <TError = ErrorType<ErrorResponse>,
       return useMutation(getDeleteTenantMutationOptions(options));
     }
 
+export const getGetIntegrationSettingsUrl = (id: string,) => {
+
+
+
+
+  return `/api/tenants/${id}/integration-settings`
+}
+
+/**
+ * @summary Get tenant ERP integration settings
+ */
+export const getIntegrationSettings = async (id: string, options?: RequestInit): Promise<IntegrationSettings> => {
+
+  return customFetch<IntegrationSettings>(getGetIntegrationSettingsUrl(id),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetIntegrationSettingsQueryKey = (id: string,) => {
+    return [
+    `/api/tenants/${id}/integration-settings`
+    ] as const;
+    }
+
+
+export const getGetIntegrationSettingsQueryOptions = <TData = Awaited<ReturnType<typeof getIntegrationSettings>>, TError = ErrorType<ErrorResponse>>(id: string, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getIntegrationSettings>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetIntegrationSettingsQueryKey(id);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getIntegrationSettings>>> = ({ signal }) => getIntegrationSettings(id, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, enabled: !!(id), ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getIntegrationSettings>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetIntegrationSettingsQueryResult = NonNullable<Awaited<ReturnType<typeof getIntegrationSettings>>>
+export type GetIntegrationSettingsQueryError = ErrorType<ErrorResponse>
+
+
+/**
+ * @summary Get tenant ERP integration settings
+ */
+
+export function useGetIntegrationSettings<TData = Awaited<ReturnType<typeof getIntegrationSettings>>, TError = ErrorType<ErrorResponse>>(
+ id: string, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getIntegrationSettings>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetIntegrationSettingsQueryOptions(id,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+
+
+
+
+
+
+export const getUpdateIntegrationSettingsUrl = (id: string,) => {
+
+
+
+
+  return `/api/tenants/${id}/integration-settings`
+}
+
+/**
+ * @summary Update tenant ERP integration settings
+ */
+export const updateIntegrationSettings = async (id: string,
+    updateIntegrationSettingsBody: UpdateIntegrationSettingsBody, options?: RequestInit): Promise<IntegrationSettings> => {
+
+  return customFetch<IntegrationSettings>(getUpdateIntegrationSettingsUrl(id),
+  {
+    ...options,
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(
+      updateIntegrationSettingsBody,)
+  }
+);}
+
+
+
+
+export const getUpdateIntegrationSettingsMutationOptions = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updateIntegrationSettings>>, TError,{id: string;data: BodyType<UpdateIntegrationSettingsBody>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof updateIntegrationSettings>>, TError,{id: string;data: BodyType<UpdateIntegrationSettingsBody>}, TContext> => {
+
+const mutationKey = ['updateIntegrationSettings'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof updateIntegrationSettings>>, {id: string;data: BodyType<UpdateIntegrationSettingsBody>}> = (props) => {
+          const {id,data} = props ?? {};
+
+          return  updateIntegrationSettings(id,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type UpdateIntegrationSettingsMutationResult = NonNullable<Awaited<ReturnType<typeof updateIntegrationSettings>>>
+    export type UpdateIntegrationSettingsMutationBody = BodyType<UpdateIntegrationSettingsBody>
+    export type UpdateIntegrationSettingsMutationError = ErrorType<ErrorResponse>
+
+    /**
+ * @summary Update tenant ERP integration settings
+ */
+export const useUpdateIntegrationSettings = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updateIntegrationSettings>>, TError,{id: string;data: BodyType<UpdateIntegrationSettingsBody>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof updateIntegrationSettings>>,
+        TError,
+        {id: string;data: BodyType<UpdateIntegrationSettingsBody>},
+        TContext
+      > => {
+      return useMutation(getUpdateIntegrationSettingsMutationOptions(options));
+    }
+
+export const getRegenerateIntegrationApiKeyUrl = (id: string,) => {
+
+
+
+
+  return `/api/tenants/${id}/integration-settings/regenerate-key`
+}
+
+/**
+ * @summary Regenerate tenant ERP API key
+ */
+export const regenerateIntegrationApiKey = async (id: string, options?: RequestInit): Promise<IntegrationSettings> => {
+
+  return customFetch<IntegrationSettings>(getRegenerateIntegrationApiKeyUrl(id),
+  {
+    ...options,
+    method: 'POST'
+
+
+  }
+);}
+
+
+
+
+export const getRegenerateIntegrationApiKeyMutationOptions = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof regenerateIntegrationApiKey>>, TError,{id: string}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof regenerateIntegrationApiKey>>, TError,{id: string}, TContext> => {
+
+const mutationKey = ['regenerateIntegrationApiKey'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof regenerateIntegrationApiKey>>, {id: string}> = (props) => {
+          const {id} = props ?? {};
+
+          return  regenerateIntegrationApiKey(id,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type RegenerateIntegrationApiKeyMutationResult = NonNullable<Awaited<ReturnType<typeof regenerateIntegrationApiKey>>>
+
+    export type RegenerateIntegrationApiKeyMutationError = ErrorType<ErrorResponse>
+
+    /**
+ * @summary Regenerate tenant ERP API key
+ */
+export const useRegenerateIntegrationApiKey = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof regenerateIntegrationApiKey>>, TError,{id: string}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof regenerateIntegrationApiKey>>,
+        TError,
+        {id: string},
+        TContext
+      > => {
+      return useMutation(getRegenerateIntegrationApiKeyMutationOptions(options));
+    }
+
 export const getListConversationsUrl = () => {
 
 
@@ -11857,6 +12080,80 @@ export function useListInventoryMovements<TData = Awaited<ReturnType<typeof list
 
 
 
+
+export const getSyncInventoryUrl = (tenantId: string,) => {
+
+
+
+
+  return `/api/tenants/${tenantId}/inventory/sync`
+}
+
+/**
+ * Accepts x-api-key header (tenant apiKeyEstoque) for external callers (n8n, ERPs) or a standard Bearer JWT token. Each item is matched by SKU — existing items have their quantity updated; new items are created with a matching catalogue entry.
+
+ * @summary Sync inventory from ERP (upsert by SKU)
+ */
+export const syncInventory = async (tenantId: string,
+    syncInventoryBody: SyncInventoryBody, options?: RequestInit): Promise<SyncInventoryResponse> => {
+
+  return customFetch<SyncInventoryResponse>(getSyncInventoryUrl(tenantId),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(
+      syncInventoryBody,)
+  }
+);}
+
+
+
+
+export const getSyncInventoryMutationOptions = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof syncInventory>>, TError,{tenantId: string;data: BodyType<SyncInventoryBody>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof syncInventory>>, TError,{tenantId: string;data: BodyType<SyncInventoryBody>}, TContext> => {
+
+const mutationKey = ['syncInventory'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof syncInventory>>, {tenantId: string;data: BodyType<SyncInventoryBody>}> = (props) => {
+          const {tenantId,data} = props ?? {};
+
+          return  syncInventory(tenantId,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type SyncInventoryMutationResult = NonNullable<Awaited<ReturnType<typeof syncInventory>>>
+    export type SyncInventoryMutationBody = BodyType<SyncInventoryBody>
+    export type SyncInventoryMutationError = ErrorType<ErrorResponse>
+
+    /**
+ * @summary Sync inventory from ERP (upsert by SKU)
+ */
+export const useSyncInventory = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof syncInventory>>, TError,{tenantId: string;data: BodyType<SyncInventoryBody>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof syncInventory>>,
+        TError,
+        {tenantId: string;data: BodyType<SyncInventoryBody>},
+        TContext
+      > => {
+      return useMutation(getSyncInventoryMutationOptions(options));
+    }
 
 export const getGetInventoryMovementUrl = (id: string,) => {
 

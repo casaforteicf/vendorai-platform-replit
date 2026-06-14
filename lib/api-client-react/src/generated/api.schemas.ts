@@ -1699,6 +1699,41 @@ export interface ApplyTemplateResponse {
   promptsApplied: string[];
 }
 
+export interface IntegrationSettings {
+  webhookEstoqueUrl: string | null;
+  apiKeyEstoque: string | null;
+}
+
+export interface UpdateIntegrationSettingsBody {
+  webhookEstoqueUrl?: string | null;
+}
+
+export type SyncInventoryBodyItemsItem = {
+  sku: string;
+  nome?: string;
+  quantidade: number;
+  preco?: number | null;
+};
+
+export interface SyncInventoryBody {
+  /**
+     * @minItems 1
+     * @maxItems 500
+     */
+  items: SyncInventoryBodyItemsItem[];
+}
+
+export type SyncInventoryResponseErrorsItem = {
+  sku: string;
+  error: string;
+};
+
+export interface SyncInventoryResponse {
+  upserted: number;
+  skipped: number;
+  errors: SyncInventoryResponseErrorsItem[];
+}
+
 export type ListDealsParams = {
 etapa?: DealEtapa;
 funilId?: string;

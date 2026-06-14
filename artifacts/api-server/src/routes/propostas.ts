@@ -7,7 +7,9 @@ import {
   produtosCatalogoTable,
   insertPropostaSchema,
   updatePropostaSchema,
+  tenantsTable,
 } from "@workspace/db";
+import { dispatchVendaWebhook } from "../services/erp-webhook.js";
 
 const router: IRouter = Router();
 
@@ -139,6 +141,52 @@ router.patch("/propostas/:id/status", async (req, res) => {
     .set({ status: status as typeof proposta.status, updatedAt: new Date() })
     .where(eq(propostasTable.id, String(req.params.id)))
     .returning();
+
+  // ── Webhook de saída: proposta aceita = venda realizada ───────────────────
+  if (status === "aceita") {
+    void (async () => {
+      try {
+        const [tenant] = await db
+          .select({ webhookEstoqueUrl: tenantsTable.webhookEstoqueUrl })
+          .from(tenantsTable)
+          .where(eq(tenantsTable.id, proposta.tenantId));
+
+        if (!tenant?.webhookEstoqueUrl) return;
+
+        const itens = (updated.itens ?? []) as Array<{
+          nome: string;
+          sku?: string | null;
+          quantidade: number;
+          precoUnitario?: number | null;
+        }>;
+
+        const valorTotal = itens.reduce(
+          (acc, item) => acc + item.quantidade * (item.precoUnitario ?? 0),
+          0,
+        );
+
+        dispatchVendaWebhook(
+          tenant.webhookEstoqueUrl,
+          {
+            event: "venda_realizada",
+            tenantId: proposta.tenantId,
+            vendaId: updated.id,
+            tipo: "proposta",
+            produtos: itens.map((item) => ({
+              nome: item.nome,
+              sku: item.sku ?? null,
+              quantidade: item.quantidade,
+            })),
+            valorTotal,
+            realizadaEm: new Date().toISOString(),
+          },
+          req.log,
+        );
+      } catch (err) {
+        req.log.warn({ err }, "erp-webhook: failed to read tenant config");
+      }
+    })();
+  }
 
   res.json(updated);
 });

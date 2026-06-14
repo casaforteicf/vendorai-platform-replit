@@ -26,7 +26,7 @@ import knowledgeBaseRouter from "./knowledge_base";
 import rulesRouter from "./rules";
 import webhooksRouter from "./webhooks";
 import agentsRouter from "./agents";
-import inventoryRouter from "./inventory";
+import inventoryRouter, { inventorySyncRouter } from "./inventory";
 import siteConfigRouter, { publicSiteRouter } from "./site_config";
 import segmentTemplatesRouter, { publicSegmentTemplatesRouter } from "./segment_templates";
 import { authenticate, requireRole, requireSameTenanOrSuperAdmin } from "../middlewares/auth";
@@ -39,6 +39,7 @@ router.use(authRouter);
 router.use(webhooksRouter);
 router.use(publicSiteRouter);
 router.use(publicSegmentTemplatesRouter);
+router.use(inventorySyncRouter);
 
 // Protected — all routes below require a valid JWT
 router.use(authenticate);

@@ -3091,6 +3091,49 @@ export const DeleteTenantParams = zod.object({
 
 
 /**
+ * @summary Get tenant ERP integration settings
+ */
+export const GetIntegrationSettingsParams = zod.object({
+  "id": zod.coerce.string()
+})
+
+export const GetIntegrationSettingsResponse = zod.object({
+  "webhookEstoqueUrl": zod.string().nullable(),
+  "apiKeyEstoque": zod.string().nullable()
+})
+
+
+/**
+ * @summary Update tenant ERP integration settings
+ */
+export const UpdateIntegrationSettingsParams = zod.object({
+  "id": zod.coerce.string()
+})
+
+export const UpdateIntegrationSettingsBody = zod.object({
+  "webhookEstoqueUrl": zod.string().nullish()
+})
+
+export const UpdateIntegrationSettingsResponse = zod.object({
+  "webhookEstoqueUrl": zod.string().nullable(),
+  "apiKeyEstoque": zod.string().nullable()
+})
+
+
+/**
+ * @summary Regenerate tenant ERP API key
+ */
+export const RegenerateIntegrationApiKeyParams = zod.object({
+  "id": zod.coerce.string()
+})
+
+export const RegenerateIntegrationApiKeyResponse = zod.object({
+  "webhookEstoqueUrl": zod.string().nullable(),
+  "apiKeyEstoque": zod.string().nullable()
+})
+
+
+/**
  * @summary List all conversations
  */
 export const listConversationsResponseNaoLidasDefault = 0;
@@ -3964,6 +4007,42 @@ export const ListInventoryMovementsResponseItem = zod.object({
   "createdAt": zod.coerce.date()
 })
 export const ListInventoryMovementsResponse = zod.array(ListInventoryMovementsResponseItem)
+
+
+/**
+ * Accepts x-api-key header (tenant apiKeyEstoque) for external callers (n8n, ERPs) or a standard Bearer JWT token. Each item is matched by SKU — existing items have their quantity updated; new items are created with a matching catalogue entry.
+
+ * @summary Sync inventory from ERP (upsert by SKU)
+ */
+export const SyncInventoryParams = zod.object({
+  "tenantId": zod.coerce.string()
+})
+
+export const SyncInventoryHeader = zod.object({
+  "x-api-key": zod.string().optional()
+})
+
+export const syncInventoryBodyItemsMax = 500;
+
+
+
+export const SyncInventoryBody = zod.object({
+  "items": zod.array(zod.object({
+  "sku": zod.string(),
+  "nome": zod.string().optional(),
+  "quantidade": zod.number(),
+  "preco": zod.number().nullish()
+})).min(1).max(syncInventoryBodyItemsMax)
+})
+
+export const SyncInventoryResponse = zod.object({
+  "upserted": zod.number(),
+  "skipped": zod.number(),
+  "errors": zod.array(zod.object({
+  "sku": zod.string(),
+  "error": zod.string()
+}))
+})
 
 
 /**

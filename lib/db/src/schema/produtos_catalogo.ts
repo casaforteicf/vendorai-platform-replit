@@ -11,6 +11,7 @@ export const produtosCatalogoTable = pgTable("produtos_catalogo", {
     .notNull()
     .references(() => tenantsTable.id, { onDelete: "cascade" }),
   nome: text("nome").notNull(),
+  sku: text("sku"),
   descricao: text("descricao"),
   categoria: text("categoria"),
   precoBase: numeric("preco_base", { precision: 12, scale: 2 }).notNull(),

@@ -26,6 +26,10 @@ import {
   getGetSiteConfigByTenantQueryKey,
   useCreateSiteConfig,
   useUpdateSiteConfig,
+  useGetIntegrationSettings,
+  getGetIntegrationSettingsQueryKey,
+  useUpdateIntegrationSettings,
+  useRegenerateIntegrationApiKey,
 } from "@workspace/api-client-react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
@@ -74,6 +78,12 @@ import {
   Download,
   Globe,
   ExternalLink,
+  Webhook,
+  Key,
+  Copy,
+  RefreshCw,
+  Eye,
+  EyeOff,
 } from "lucide-react";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
@@ -705,6 +715,50 @@ export default function Configuracoes() {
     }
   }
 
+  // ── Integration Settings ───────────────────────────────────────────────────
+  const integrationQuery    = useGetIntegrationSettings(tenantId, { query: { queryKey: getGetIntegrationSettingsQueryKey(tenantId), enabled: !!tenantId } });
+  const updateIntegration   = useUpdateIntegrationSettings();
+  const regenerateKey       = useRegenerateIntegrationApiKey();
+
+  const [webhookUrlInput, setWebhookUrlInput] = useState<string>("");
+  const [showApiKey, setShowApiKey] = useState(false);
+
+  const integrationData = integrationQuery.data;
+  const [syncedIntegration, setSyncedIntegration] = useState(false);
+  if (integrationData !== undefined && !syncedIntegration) {
+    setWebhookUrlInput(integrationData.webhookEstoqueUrl ?? "");
+    setSyncedIntegration(true);
+  }
+
+  function onSaveWebhookUrl() {
+    updateIntegration.mutate(
+      { id: tenantId, data: { webhookEstoqueUrl: webhookUrlInput || null } },
+      {
+        onSuccess: () => {
+          queryClient.invalidateQueries({ queryKey: getGetIntegrationSettingsQueryKey(tenantId) });
+          setSyncedIntegration(false);
+          toast({ title: "URL do webhook salva." });
+        },
+        onError: () => toast({ title: "Erro ao salvar webhook.", variant: "destructive" }),
+      }
+    );
+  }
+
+  function onRegenerateKey() {
+    regenerateKey.mutate(
+      { id: tenantId },
+      {
+        onSuccess: () => {
+          queryClient.invalidateQueries({ queryKey: getGetIntegrationSettingsQueryKey(tenantId) });
+          setSyncedIntegration(false);
+          setShowApiKey(true);
+          toast({ title: "API key regenerada com sucesso." });
+        },
+        onError: () => toast({ title: "Erro ao regenerar API key.", variant: "destructive" }),
+      }
+    );
+  }
+
   const profileSaving    = createProfile.isPending || updateProfile.isPending;
   const agentSaving      = createAgentConf.isPending || updateAgentConf.isPending;
   const thresholdSaving  = updateTenant.isPending;
@@ -718,22 +772,26 @@ export default function Configuracoes() {
       </div>
 
       <Tabs defaultValue="perfil" className="space-y-6">
-        <TabsList className="grid w-full grid-cols-4 max-w-xl">
-          <TabsTrigger value="perfil" className="gap-2">
+        <TabsList className="grid w-full grid-cols-5 max-w-2xl">
+          <TabsTrigger value="perfil" className="gap-1.5">
             <Building2 className="h-4 w-4" />
             Perfil
           </TabsTrigger>
-          <TabsTrigger value="agentes" className="gap-2">
+          <TabsTrigger value="agentes" className="gap-1.5">
             <Bot className="h-4 w-4" />
-            Agentes de IA
+            Agentes
           </TabsTrigger>
-          <TabsTrigger value="analise" className="gap-2">
+          <TabsTrigger value="analise" className="gap-1.5">
             <Brain className="h-4 w-4" />
-            Análise de IA
+            Análise
           </TabsTrigger>
-          <TabsTrigger value="site" className="gap-2">
+          <TabsTrigger value="site" className="gap-1.5">
             <Globe className="h-4 w-4" />
             Site
+          </TabsTrigger>
+          <TabsTrigger value="integracoes" className="gap-1.5">
+            <Webhook className="h-4 w-4" />
+            Integrações
           </TabsTrigger>
         </TabsList>
 
@@ -1301,6 +1359,169 @@ export default function Configuracoes() {
             )}
           </div>
         </TabsContent>
+        {/* ── Tab: Integrações ERP ────────────────────────────────────────── */}
+        <TabsContent value="integracoes">
+          <div className="space-y-6">
+
+            {/* Webhook de saída */}
+            <div className="rounded-xl border bg-card p-6 space-y-5">
+              <div>
+                <h2 className="font-semibold text-base flex items-center gap-2">
+                  <Webhook className="h-4 w-4 text-primary" />
+                  Webhook de saída — Venda realizada
+                </h2>
+                <p className="text-sm text-muted-foreground mt-1">
+                  Quando uma proposta for aceita ou um deal marcado como ganho, o sistema dispara
+                  um POST para esta URL com os dados da venda. Use para conectar ao n8n e
+                  atualizar automaticamente seu ERP (Bling, Tiny, Omie etc.).
+                </p>
+              </div>
+
+              <div className="space-y-3">
+                <div className="space-y-1.5">
+                  <label className="text-sm font-medium">URL do webhook (n8n)</label>
+                  <div className="flex gap-2">
+                    <Input
+                      placeholder="https://seu-n8n.app/webhook/xxxxxxxx"
+                      value={webhookUrlInput}
+                      onChange={(e) => setWebhookUrlInput(e.target.value)}
+                      className="font-mono text-sm"
+                    />
+                    <Button
+                      onClick={onSaveWebhookUrl}
+                      disabled={updateIntegration.isPending}
+                      className="gap-2 shrink-0"
+                    >
+                      <Save className="h-4 w-4" />
+                      {updateIntegration.isPending ? "Salvando…" : "Salvar"}
+                    </Button>
+                  </div>
+                  {integrationData?.webhookEstoqueUrl && (
+                    <p className="text-xs text-muted-foreground flex items-center gap-1">
+                      <CheckCircle2 className="h-3 w-3 text-green-500" />
+                      Webhook configurado e ativo.
+                    </p>
+                  )}
+                </div>
+
+                <div className="rounded-lg bg-muted/50 border p-4 space-y-2">
+                  <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Payload enviado</p>
+                  <pre className="text-xs text-muted-foreground whitespace-pre-wrap">
+{`{
+  "event": "venda_realizada",
+  "tenantId": "...",
+  "vendaId": "...",
+  "tipo": "proposta" | "deal",
+  "produtos": [{ "nome": "...", "sku": "...", "quantidade": 2 }],
+  "valorTotal": 1500.00,
+  "realizadaEm": "2026-06-14T10:00:00Z"
+}`}
+                  </pre>
+                </div>
+              </div>
+            </div>
+
+            {/* API key de entrada */}
+            <div className="rounded-xl border bg-card p-6 space-y-5">
+              <div>
+                <h2 className="font-semibold text-base flex items-center gap-2">
+                  <Key className="h-4 w-4 text-primary" />
+                  API Key — Sincronização de estoque
+                </h2>
+                <p className="text-sm text-muted-foreground mt-1">
+                  Use esta chave no cabeçalho <code className="text-xs bg-muted px-1 py-0.5 rounded">x-api-key</code> para
+                  chamar o endpoint de sincronização a partir do n8n ou de qualquer ERP externo.
+                  Envie um array de itens com SKU e quantidade para atualizar o estoque.
+                </p>
+              </div>
+
+              <div className="space-y-4">
+                {/* API key display */}
+                {integrationQuery.isLoading ? (
+                  <div className="h-10 bg-muted rounded-md animate-pulse" />
+                ) : integrationData?.apiKeyEstoque ? (
+                  <div className="space-y-2">
+                    <label className="text-sm font-medium">Sua API key</label>
+                    <div className="flex gap-2">
+                      <div className="flex-1 flex items-center gap-2 rounded-md border bg-muted/50 px-3 py-2 font-mono text-sm">
+                        {showApiKey
+                          ? integrationData.apiKeyEstoque
+                          : "vak_" + "•".repeat(32)}
+                      </div>
+                      <Button
+                        variant="outline"
+                        size="icon"
+                        onClick={() => setShowApiKey((v) => !v)}
+                        title={showApiKey ? "Ocultar" : "Mostrar"}
+                      >
+                        {showApiKey ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                      </Button>
+                      <Button
+                        variant="outline"
+                        size="icon"
+                        title="Copiar"
+                        onClick={() => {
+                          navigator.clipboard.writeText(integrationData.apiKeyEstoque ?? "");
+                          toast({ title: "API key copiada." });
+                        }}
+                      >
+                        <Copy className="h-4 w-4" />
+                      </Button>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="rounded-lg border border-dashed p-5 text-center space-y-2">
+                    <Key className="h-8 w-8 text-muted-foreground mx-auto" />
+                    <p className="text-sm text-muted-foreground">Nenhuma API key gerada ainda.</p>
+                  </div>
+                )}
+
+                <Button
+                  variant={integrationData?.apiKeyEstoque ? "outline" : "default"}
+                  onClick={onRegenerateKey}
+                  disabled={regenerateKey.isPending}
+                  className="gap-2"
+                >
+                  <RefreshCw className={cn("h-4 w-4", regenerateKey.isPending && "animate-spin")} />
+                  {regenerateKey.isPending
+                    ? "Gerando…"
+                    : integrationData?.apiKeyEstoque
+                    ? "Regenerar API key"
+                    : "Gerar API key"}
+                </Button>
+                {integrationData?.apiKeyEstoque && (
+                  <p className="text-xs text-yellow-600 dark:text-yellow-400 flex items-center gap-1">
+                    <AlertTriangle className="h-3 w-3 shrink-0" />
+                    Ao regenerar, a chave antiga é invalidada imediatamente. Atualize o n8n antes.
+                  </p>
+                )}
+
+                {/* Endpoint reference */}
+                <div className="rounded-lg bg-muted/50 border p-4 space-y-2">
+                  <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Endpoint de sincronização</p>
+                  <code className="text-xs block text-muted-foreground">
+                    POST /api/tenants/{tenantId}/inventory/sync
+                  </code>
+                  <pre className="text-xs text-muted-foreground whitespace-pre-wrap mt-2">
+{`Headers:
+  x-api-key: <sua-api-key>
+  Content-Type: application/json
+
+Body:
+{
+  "items": [
+    { "sku": "PROD-001", "quantidade": 100, "preco": 29.90 },
+    { "sku": "PROD-002", "quantidade": 45 }
+  ]
+}`}
+                  </pre>
+                </div>
+              </div>
+            </div>
+
+          </div>
+        </TabsContent>
+
       </Tabs>
     </div>
   );

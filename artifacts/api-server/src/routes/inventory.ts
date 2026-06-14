@@ -5,6 +5,7 @@ import {
   inventoryItemsTable,
   inventoryMovementsTable,
   produtosCatalogoTable,
+  tenantsTable,
   insertInventoryItemSchema,
   updateInventoryItemSchema,
   insertInventoryMovementSchema,
@@ -12,6 +13,10 @@ import {
 import { z } from "zod/v4";
 
 const router: IRouter = Router();
+
+// Separate router for the sync endpoint — registered BEFORE the authenticate
+// middleware so that API-key callers (n8n, ERPs) don't need a JWT.
+export const inventorySyncRouter: IRouter = Router();
 
 // ─── helpers ────────────────────────────────────────────────────────────────
 
@@ -26,6 +31,151 @@ function userTenantId(req: Express.Request) {
 function canAccessTenant(req: Express.Request, tenantId: string) {
   return isSuperAdmin(req) || userTenantId(req) === tenantId;
 }
+
+// ─── ERP Sync (API key auth) ──────────────────────────────────────────────────
+
+const syncBodySchema = z.object({
+  items: z
+    .array(
+      z.object({
+        sku:        z.string().min(1),
+        nome:       z.string().optional(),
+        quantidade: z.number().nonnegative(),
+        preco:      z.number().positive().optional(),
+      }),
+    )
+    .min(1)
+    .max(500),
+});
+
+// POST /tenants/:tenantId/inventory/sync
+// Accepts x-api-key header (tenant apiKeyEstoque) OR regular JWT.
+// External callers (n8n, ERPs) use the API key.
+// Registered on inventorySyncRouter (before authenticate middleware).
+inventorySyncRouter.post("/tenants/:tenantId/inventory/sync", async (req, res) => {
+  const { tenantId } = req.params;
+
+  // ── Auth: JWT (already set by authenticate middleware) OR API key ──────────
+  const apiKey = req.headers["x-api-key"] as string | undefined;
+  const jwtUser = (req as any).user as { platformRole?: string; tenantId?: string } | undefined;
+
+  if (!jwtUser && !apiKey) {
+    res.status(401).json({ error: "Authentication required (Bearer token or x-api-key)" });
+    return;
+  }
+
+  if (apiKey) {
+    const [tenant] = await db
+      .select({ id: tenantsTable.id, apiKeyEstoque: tenantsTable.apiKeyEstoque })
+      .from(tenantsTable)
+      .where(eq(tenantsTable.id, tenantId));
+
+    if (!tenant) {
+      res.status(404).json({ error: "Tenant not found" });
+      return;
+    }
+
+    if (!tenant.apiKeyEstoque || tenant.apiKeyEstoque !== apiKey) {
+      res.status(401).json({ error: "Invalid API key" });
+      return;
+    }
+  } else {
+    // JWT path — check tenant access
+    if (jwtUser?.platformRole !== "super_admin" && jwtUser?.tenantId !== tenantId) {
+      res.status(403).json({ error: "Access denied to this tenant" });
+      return;
+    }
+  }
+
+  const parsed = syncBodySchema.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(422).json({ error: parsed.error.message });
+    return;
+  }
+
+  const { items } = parsed.data;
+  let upserted = 0;
+  let skipped = 0;
+  const errors: Array<{ sku: string; error: string }> = [];
+
+  for (const item of items) {
+    try {
+      // Find existing inventory item by SKU (via produto with matching SKU)
+      const [existing] = await db
+        .select({
+          id: inventoryItemsTable.id,
+          produtoId: inventoryItemsTable.produtoId,
+        })
+        .from(inventoryItemsTable)
+        .innerJoin(produtosCatalogoTable, eq(produtosCatalogoTable.id, inventoryItemsTable.produtoId))
+        .where(
+          and(
+            eq(inventoryItemsTable.tenantId, tenantId),
+            eq(produtosCatalogoTable.sku, item.sku),
+          ),
+        )
+        .limit(1);
+
+      if (existing) {
+        // Update quantity and optionally price
+        await db
+          .update(inventoryItemsTable)
+          .set({ quantidadeAtual: String(item.quantidade), updatedAt: new Date() })
+          .where(eq(inventoryItemsTable.id, existing.id));
+
+        if (item.preco !== undefined) {
+          await db
+            .update(produtosCatalogoTable)
+            .set({ precoBase: String(item.preco.toFixed(2)), updatedAt: new Date() })
+            .where(eq(produtosCatalogoTable.id, existing.produtoId));
+        }
+
+        upserted++;
+      } else {
+        // Find or create catalogue product by SKU
+        let [produto] = await db
+          .select()
+          .from(produtosCatalogoTable)
+          .where(
+            and(
+              eq(produtosCatalogoTable.tenantId, tenantId),
+              eq(produtosCatalogoTable.sku, item.sku),
+            ),
+          )
+          .limit(1);
+
+        if (!produto) {
+          [produto] = await db
+            .insert(produtosCatalogoTable)
+            .values({
+              tenantId,
+              nome: item.nome ?? item.sku,
+              sku: item.sku,
+              precoBase: item.preco != null ? String(item.preco.toFixed(2)) : "0.00",
+              unidade: "un",
+            })
+            .returning();
+        }
+
+        await db.insert(inventoryItemsTable).values({
+          tenantId,
+          produtoId: produto.id,
+          quantidadeAtual: String(item.quantidade),
+          quantidadeMinima: "0",
+          unidade: "un",
+        });
+
+        upserted++;
+      }
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : "Erro desconhecido";
+      errors.push({ sku: item.sku, error: msg });
+      skipped++;
+    }
+  }
+
+  res.json({ upserted, skipped, errors });
+});
 
 // ─── Inventory Items ─────────────────────────────────────────────────────────
 
