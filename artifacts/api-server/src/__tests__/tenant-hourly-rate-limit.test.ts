@@ -97,12 +97,17 @@ app.use(express.json());
 // The analyze route calls req.log.warn / req.log.info (pino-http).
 // Attach a no-op logger so those calls don't throw in the test environment.
 app.use((req: Request, _res: Response, next: NextFunction) => {
-  (req as Request & { log: Record<string, unknown> }).log = {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  (req as any).log = {
+    fatal: vi.fn(),
     warn: vi.fn(),
     info: vi.fn(),
     debug: vi.fn(),
     error: vi.fn(),
     trace: vi.fn(),
+    silent: vi.fn(),
+    level: "info",
+    msgPrefix: "",
   };
   next();
 });
