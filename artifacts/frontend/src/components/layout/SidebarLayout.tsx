@@ -1,106 +1,171 @@
 import { Link, useLocation } from "wouter";
 import { useAuth } from "@/contexts/AuthContext";
-import { LayoutDashboard, Users, Briefcase, MessageSquare, Calendar, Settings, LogOut, Megaphone, FileText, Receipt, BrainCircuit, Store, Package } from "lucide-react";
+import {
+  LayoutDashboard, Users, Briefcase, MessageSquare, Calendar,
+  Settings, LogOut, Megaphone, FileText, Receipt, BrainCircuit,
+  Store, Package, Menu, X,
+} from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import logoFull from "/logo-full-light.svg";
+import { useState } from "react";
 
 export function SidebarLayout({ children }: { children: React.ReactNode }) {
   const { user, logout } = useAuth();
   const [location] = useLocation();
+  const [mobileOpen, setMobileOpen] = useState(false);
 
   const navigation = [
-    { name: "Dashboard",    href: "/",               icon: LayoutDashboard },
-    { name: "Leads",        href: "/leads",           icon: Users },
-    { name: "Negócios",     href: "/deals",           icon: Briefcase },
-    { name: "Conversas",    href: "/conversations",   icon: MessageSquare },
-    { name: "Agenda",       href: "/agenda",          icon: Calendar },
-    { name: "Propostas",    href: "/propostas",       icon: FileText },
-    { name: "Estoque",      href: "/estoque",         icon: Package },
-    { name: "Campanhas",    href: "/campanhas",       icon: Megaphone },
-    { name: "Faturamento",  href: "/faturamento",     icon: Receipt },
-    { name: "Marketplace",   href: "/marketplace",    icon: Store },
-    { name: "Configurações", href: "/configuracoes",  icon: Settings },
+    { name: "Dashboard",     href: "/",             icon: LayoutDashboard },
+    { name: "Leads",         href: "/leads",         icon: Users },
+    { name: "Negócios",      href: "/deals",         icon: Briefcase },
+    { name: "Conversas",     href: "/conversations", icon: MessageSquare },
+    { name: "Agenda",        href: "/agenda",        icon: Calendar },
+    { name: "Propostas",     href: "/propostas",     icon: FileText },
+    { name: "Estoque",       href: "/estoque",       icon: Package },
+    { name: "Campanhas",     href: "/campanhas",     icon: Megaphone },
+    { name: "Faturamento",   href: "/faturamento",   icon: Receipt },
+    { name: "Marketplace",   href: "/marketplace",   icon: Store },
+    { name: "Configurações", href: "/configuracoes", icon: Settings },
   ];
 
-  const adminNavigation = user?.platformRole === "super_admin"
-    ? [{ name: "AI Usage", href: "/admin/ai-usage", icon: BrainCircuit }]
-    : [];
+  const adminNavigation =
+    user?.platformRole === "super_admin"
+      ? [{ name: "AI Usage", href: "/admin/ai-usage", icon: BrainCircuit }]
+      : [];
+
+  function NavLinks({ onNavigate }: { onNavigate?: () => void }) {
+    return (
+      <>
+        {navigation.map((item) => {
+          const isActive = location === item.href;
+          return (
+            <Link
+              key={item.name}
+              href={item.href}
+              onClick={onNavigate}
+              className={cn(
+                "flex items-center gap-3 px-3 py-2.5 rounded-md text-sm font-medium transition-colors min-h-[44px]",
+                isActive
+                  ? "bg-primary text-primary-foreground"
+                  : "text-muted-foreground hover:bg-muted hover:text-foreground"
+              )}
+            >
+              <item.icon className="h-4 w-4 shrink-0" />
+              {item.name}
+            </Link>
+          );
+        })}
+        {adminNavigation.length > 0 && (
+          <div className="mt-3 pt-3 border-t">
+            <p className="px-3 mb-1 text-[10px] font-semibold uppercase tracking-widest text-muted-foreground/60">
+              Super Admin
+            </p>
+            {adminNavigation.map((item) => {
+              const isActive = location === item.href;
+              return (
+                <Link
+                  key={item.name}
+                  href={item.href}
+                  onClick={onNavigate}
+                  className={cn(
+                    "flex items-center gap-3 px-3 py-2.5 rounded-md text-sm font-medium transition-colors min-h-[44px]",
+                    isActive
+                      ? "bg-primary text-primary-foreground"
+                      : "text-muted-foreground hover:bg-muted hover:text-foreground"
+                  )}
+                >
+                  <item.icon className="h-4 w-4 shrink-0" />
+                  {item.name}
+                </Link>
+              );
+            })}
+          </div>
+        )}
+      </>
+    );
+  }
+
+  function UserFooter() {
+    return (
+      <div className="p-4 border-t">
+        <div className="flex items-center gap-3 mb-3 px-2">
+          <div className="h-8 w-8 rounded-full bg-primary/10 flex items-center justify-center text-primary font-bold text-sm shrink-0">
+            {user?.name?.charAt(0).toUpperCase() || "U"}
+          </div>
+          <div className="flex-1 min-w-0">
+            <p className="text-sm font-medium truncate">{user?.name}</p>
+            <p className="text-xs text-muted-foreground truncate">{user?.email}</p>
+          </div>
+        </div>
+        <Button
+          variant="outline"
+          className="w-full justify-start text-muted-foreground hover:text-foreground min-h-[44px]"
+          onClick={logout}
+        >
+          <LogOut className="h-4 w-4 mr-2" />
+          Sair
+        </Button>
+      </div>
+    );
+  }
 
   return (
     <div className="flex h-screen bg-muted/20">
-      {/* Sidebar */}
-      <div className="w-64 bg-card border-r flex flex-col">
+      {/* ── Desktop sidebar ────────────────────────────────── */}
+      <div className="hidden md:flex w-64 bg-card border-r flex-col shrink-0">
         <div className="p-5 border-b">
           <img src={logoFull} alt="Vendor.ai" className="h-10 w-auto" />
         </div>
-        
         <div className="flex-1 py-4 flex flex-col gap-1 px-3 overflow-y-auto">
-          {navigation.map((item) => {
-            const isActive = location === item.href;
-            return (
-              <Link 
-                key={item.name} 
-                href={item.href}
-                className={cn(
-                  "flex items-center gap-3 px-3 py-2.5 rounded-md text-sm font-medium transition-colors",
-                  isActive 
-                    ? "bg-primary text-primary-foreground" 
-                    : "text-muted-foreground hover:bg-muted hover:text-foreground"
-                )}
-              >
-                <item.icon className="h-4 w-4" />
-                {item.name}
-              </Link>
-            );
-          })}
-          {adminNavigation.length > 0 && (
-            <div className="mt-3 pt-3 border-t">
-              <p className="px-3 mb-1 text-[10px] font-semibold uppercase tracking-widest text-muted-foreground/60">
-                Super Admin
-              </p>
-              {adminNavigation.map((item) => {
-                const isActive = location === item.href;
-                return (
-                  <Link
-                    key={item.name}
-                    href={item.href}
-                    className={cn(
-                      "flex items-center gap-3 px-3 py-2.5 rounded-md text-sm font-medium transition-colors",
-                      isActive
-                        ? "bg-primary text-primary-foreground"
-                        : "text-muted-foreground hover:bg-muted hover:text-foreground"
-                    )}
-                  >
-                    <item.icon className="h-4 w-4" />
-                    {item.name}
-                  </Link>
-                );
-              })}
-            </div>
-          )}
+          <NavLinks />
         </div>
-
-        <div className="p-4 border-t">
-          <div className="flex items-center gap-3 mb-4 px-2">
-            <div className="h-8 w-8 rounded-full bg-primary/10 flex items-center justify-center text-primary font-bold text-sm">
-              {user?.name?.charAt(0).toUpperCase() || 'U'}
-            </div>
-            <div className="flex-1 min-w-0">
-              <p className="text-sm font-medium truncate">{user?.name}</p>
-              <p className="text-xs text-muted-foreground truncate">{user?.email}</p>
-            </div>
-          </div>
-          <Button variant="outline" className="w-full justify-start text-muted-foreground hover:text-foreground" onClick={logout}>
-            <LogOut className="h-4 w-4 mr-2" />
-            Sair
-          </Button>
-        </div>
+        <UserFooter />
       </div>
 
-      {/* Main Content */}
+      {/* ── Mobile drawer overlay ───────────────────────────── */}
+      {mobileOpen && (
+        <div className="fixed inset-0 z-50 md:hidden">
+          <div
+            className="absolute inset-0 bg-black/50"
+            onClick={() => setMobileOpen(false)}
+          />
+          <div className="absolute left-0 top-0 h-full w-72 bg-card flex flex-col shadow-2xl">
+            <div className="flex items-center justify-between p-4 border-b">
+              <img src={logoFull} alt="Vendor.ai" className="h-8 w-auto" />
+              <Button
+                variant="ghost"
+                size="icon"
+                onClick={() => setMobileOpen(false)}
+                className="h-9 w-9"
+              >
+                <X className="h-5 w-5" />
+              </Button>
+            </div>
+            <div className="flex-1 py-3 flex flex-col gap-1 px-3 overflow-y-auto">
+              <NavLinks onNavigate={() => setMobileOpen(false)} />
+            </div>
+            <UserFooter />
+          </div>
+        </div>
+      )}
+
+      {/* ── Main content ────────────────────────────────────── */}
       <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
-        <main className="flex-1 overflow-y-auto p-8">
+        {/* Mobile top bar */}
+        <header className="md:hidden flex items-center gap-3 px-4 py-3 border-b bg-card shrink-0">
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={() => setMobileOpen(true)}
+            className="h-9 w-9"
+          >
+            <Menu className="h-5 w-5" />
+          </Button>
+          <img src={logoFull} alt="Vendor.ai" className="h-7 w-auto" />
+        </header>
+
+        <main className="flex-1 overflow-y-auto p-4 md:p-8">
           {children}
         </main>
       </div>

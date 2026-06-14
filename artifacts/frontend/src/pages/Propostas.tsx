@@ -760,17 +760,17 @@ export default function Propostas() {
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col sm:flex-row sm:items-center gap-3 sm:justify-between">
         <div>
           <h1 className="text-2xl font-bold tracking-tight">Propostas</h1>
           <p className="text-muted-foreground text-sm mt-0.5">Gerencie orçamentos e propostas comerciais</p>
         </div>
         <div className="flex gap-2">
-          <Button variant="outline" onClick={() => setCatOpen(true)}>
+          <Button variant="outline" onClick={() => setCatOpen(true)} className="flex-1 sm:flex-none min-h-[44px]">
             <BookOpen className="h-4 w-4 mr-2" />
-            Gerenciar Catálogo
+            Catálogo
           </Button>
-          <Button onClick={() => setModalOpen(true)}>
+          <Button onClick={() => setModalOpen(true)} className="flex-1 sm:flex-none min-h-[44px]">
             <Plus className="h-4 w-4 mr-2" />
             Nova Proposta
           </Button>
@@ -807,7 +807,58 @@ export default function Propostas() {
               </Button>
             </div>
           ) : (
-            <Table>
+            <>
+            {/* Mobile card list */}
+            <div className="md:hidden divide-y">
+              {propostas.map((p) => {
+                const statusCfg = STATUS_CONFIG[p.status] ?? STATUS_CONFIG.rascunho;
+                const canSend   = p.status === "rascunho";
+                const canAccept = p.status === "enviada";
+                const canReject = p.status === "enviada";
+                const canDelete = p.status === "rascunho";
+                return (
+                  <div
+                    key={p.id}
+                    className="p-4 space-y-2 cursor-pointer hover:bg-muted/50 active:bg-muted/80 transition-colors"
+                    onClick={() => setDetailProposta(p)}
+                  >
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="flex-1 min-w-0">
+                        <p className="font-medium text-sm truncate">{p.titulo}</p>
+                        <p className="text-xs text-muted-foreground truncate">
+                          {leadMap[p.leadId] ?? p.leadId.slice(0, 8) + "…"}
+                        </p>
+                      </div>
+                      <div onClick={(e) => e.stopPropagation()}>
+                        <DropdownMenu>
+                          <DropdownMenuTrigger asChild>
+                            <Button variant="ghost" size="icon" className="h-8 w-8 shrink-0">
+                              <MoreHorizontal className="h-4 w-4" />
+                            </Button>
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent align="end">
+                            <DropdownMenuItem onClick={() => setDetailProposta(p)}><Eye className="h-4 w-4 mr-2" />Ver detalhes</DropdownMenuItem>
+                            {canSend && <DropdownMenuItem onClick={() => changeStatus(p, "enviada")}><Send className="h-4 w-4 mr-2" />Enviar proposta</DropdownMenuItem>}
+                            {canAccept && <DropdownMenuItem onClick={() => changeStatus(p, "aceita")}><CheckCircle2 className="h-4 w-4 mr-2 text-emerald-600" />Marcar aceita</DropdownMenuItem>}
+                            {canReject && <DropdownMenuItem onClick={() => changeStatus(p, "rejeitada")}><XCircle className="h-4 w-4 mr-2 text-red-500" />Marcar rejeitada</DropdownMenuItem>}
+                            {canDelete && (<><DropdownMenuSeparator /><DropdownMenuItem className="text-destructive focus:text-destructive" onClick={() => setDeleteTarget(p)}><Trash2 className="h-4 w-4 mr-2" />Excluir</DropdownMenuItem></>)}
+                          </DropdownMenuContent>
+                        </DropdownMenu>
+                      </div>
+                    </div>
+                    <div className="flex items-center justify-between gap-2">
+                      <Badge variant="outline" className={`text-xs ${statusCfg.className}`}>{statusCfg.label}</Badge>
+                      <span className="text-sm font-semibold font-mono">{fmtCurrency(p.valorTotal)}</span>
+                    </div>
+                    {p.validadeAte && (
+                      <p className="text-xs text-muted-foreground">Válida até {fmtDate(p.validadeAte)}</p>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+            {/* Desktop table */}
+            <Table className="hidden md:table">
               <TableHeader>
                 <TableRow>
                   <TableHead>Título</TableHead>
@@ -892,6 +943,7 @@ export default function Propostas() {
                 })}
               </TableBody>
             </Table>
+            </>
           )}
         </CardContent>
       </Card>

@@ -297,11 +297,11 @@ export default function Estoque() {
 
   // ── Render ────────────────────────────────────────────────────────────────
   return (
-    <div className="p-6 max-w-7xl mx-auto space-y-6">
+    <div className="space-y-6">
       {/* Header */}
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col sm:flex-row sm:items-center gap-3 sm:justify-between">
         <div className="flex items-center gap-3">
-          <div className="p-2 bg-primary/10 rounded-lg">
+          <div className="p-2 bg-primary/10 rounded-lg shrink-0">
             <Package className="h-6 w-6 text-primary" />
           </div>
           <div>
@@ -317,11 +317,11 @@ export default function Estoque() {
           </div>
         </div>
         <div className="flex gap-2">
-          <Button variant="outline" onClick={() => setShowImport(true)} className="gap-2">
+          <Button variant="outline" onClick={() => setShowImport(true)} className="gap-2 flex-1 sm:flex-none min-h-[44px]">
             <Upload className="h-4 w-4" />
-            Importar CSV
+            <span className="sm:inline">Importar CSV</span>
           </Button>
-          <Button onClick={() => setShowNovoItem(true)} className="gap-2">
+          <Button onClick={() => setShowNovoItem(true)} className="gap-2 flex-1 sm:flex-none min-h-[44px]">
             <Plus className="h-4 w-4" />
             Novo Item
           </Button>
@@ -369,7 +369,49 @@ export default function Estoque() {
                   </div>
                 </div>
               ) : (
-                <Table>
+                <>
+                {/* Mobile cards */}
+                <div className="md:hidden divide-y">
+                  {items.map((item) => {
+                    const low = isLowStock(item);
+                    const prodNome = produtoMap[item.produtoId] ?? item.produtoId;
+                    return (
+                      <div key={item.id} className={`p-4 space-y-2 ${low ? "border-l-4 border-l-red-500" : ""}`}>
+                        <div className="flex items-start justify-between gap-2">
+                          <p className="font-medium text-sm">{prodNome}</p>
+                          {low ? (
+                            <Badge variant="destructive" className="gap-1 text-xs shrink-0">
+                              <AlertTriangle className="h-3 w-3" />Baixo
+                            </Badge>
+                          ) : (
+                            <Badge variant="secondary" className="text-xs text-emerald-700 bg-emerald-50 border-emerald-200 shrink-0">Normal</Badge>
+                          )}
+                        </div>
+                        <div className="flex items-center gap-4 text-sm">
+                          <span className={low ? "text-red-600 font-bold" : "font-semibold"}>
+                            {formatQty(item.quantidadeAtual)} {item.unidade}
+                          </span>
+                          <span className="text-muted-foreground text-xs">mín. {formatQty(item.quantidadeMinima)}</span>
+                          {item.localizacao && <span className="text-muted-foreground text-xs">{item.localizacao}</span>}
+                        </div>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="gap-1.5 w-full min-h-[40px]"
+                          onClick={() => {
+                            setMovItem(item);
+                            movForm.reset({ tipo: "entrada", quantidade: "", motivo: "" });
+                          }}
+                        >
+                          <TrendingUp className="h-3.5 w-3.5" />
+                          Registrar Movimentação
+                        </Button>
+                      </div>
+                    );
+                  })}
+                </div>
+                {/* Desktop table */}
+                <Table className="hidden md:table">
                   <TableHeader>
                     <TableRow>
                       <TableHead>Produto</TableHead>
@@ -431,6 +473,7 @@ export default function Estoque() {
                     })}
                   </TableBody>
                 </Table>
+                </>
               )}
             </CardContent>
           </Card>
@@ -457,7 +500,37 @@ export default function Estoque() {
                   </div>
                 </div>
               ) : (
-                <Table>
+                <>
+                {/* Mobile cards */}
+                <div className="md:hidden divide-y">
+                  {movements.map((mov) => {
+                    const tipo = tipoConfig[mov.tipo as keyof typeof tipoConfig] ?? tipoConfig.ajuste;
+                    const TipoIcon = tipo.icon;
+                    const itemName = (() => {
+                      const item = items.find((i) => i.id === mov.inventoryItemId);
+                      if (!item) return "—";
+                      return produtoMap[item.produtoId] ?? "—";
+                    })();
+                    return (
+                      <div key={mov.id} className="p-4 space-y-1.5">
+                        <div className="flex items-center justify-between gap-2">
+                          <p className="font-medium text-sm">{itemName}</p>
+                          <span className={`inline-flex items-center gap-1.5 text-xs font-medium px-2 py-1 rounded-full border ${tipo.className}`}>
+                            <TipoIcon className="h-3 w-3" />
+                            {tipo.label}
+                          </span>
+                        </div>
+                        <div className="flex items-center gap-3 text-sm">
+                          <span className="font-semibold">{mov.tipo === "saida" ? "-" : "+"}{formatQty(mov.quantidade)}</span>
+                          <span className="text-muted-foreground text-xs">{formatDate(mov.createdAt)}</span>
+                        </div>
+                        {mov.motivo && <p className="text-xs text-muted-foreground truncate">{mov.motivo}</p>}
+                      </div>
+                    );
+                  })}
+                </div>
+                {/* Desktop table */}
+                <Table className="hidden md:table">
                   <TableHeader>
                     <TableRow>
                       <TableHead>Data</TableHead>
@@ -505,6 +578,7 @@ export default function Estoque() {
                     })}
                   </TableBody>
                 </Table>
+                </>
               )}
             </CardContent>
           </Card>

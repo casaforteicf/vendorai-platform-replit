@@ -112,7 +112,7 @@ export default function Dashboard() {
     : [];
 
   return (
-    <div className="space-y-8">
+    <div className="space-y-6 md:space-y-8">
       <div>
         <h1 className="text-2xl font-bold tracking-tight">Visão Geral</h1>
         <p className="text-sm text-muted-foreground mt-1">
@@ -121,7 +121,7 @@ export default function Dashboard() {
       </div>
 
       {/* KPI Cards */}
-      <div className="grid gap-4 grid-cols-2 lg:grid-cols-4">
+      <div className="grid gap-3 grid-cols-2 lg:grid-cols-4">
         {isLoading ? (
           Array.from({ length: 4 }).map((_, i) => <StatCardSkeleton key={i} />)
         ) : (

@@ -167,59 +167,98 @@ function InvoiceTable({ invoices, isLoading }: { invoices: Invoice[]; isLoading:
   }
 
   return (
-    <Table>
-      <TableHeader>
-        <TableRow>
-          <TableHead>Vencimento</TableHead>
-          <TableHead className="text-right">Valor</TableHead>
-          <TableHead>Status</TableHead>
-          <TableHead>Forma Pagamento</TableHead>
-          <TableHead>Data Pagamento</TableHead>
-          <TableHead className="w-28" />
-        </TableRow>
-      </TableHeader>
-      <TableBody>
+    <>
+      {/* Mobile card list */}
+      <div className="md:hidden divide-y">
         {invoices.map((inv) => {
           const statusCfg = INV_STATUS_CONFIG[inv.status] ?? INV_STATUS_CONFIG.pendente;
           const isPendente = inv.status === "pendente";
           const hasLink = isPendente && !!inv.linkPagamento;
-
           return (
-            <TableRow key={inv.id}>
-              <TableCell className="font-medium">{fmtDate(inv.dataVencimento)}</TableCell>
-              <TableCell className="text-right font-mono text-sm font-semibold">
-                {fmtCurrency(inv.valor)}
-              </TableCell>
-              <TableCell>
-                <Badge variant="outline" className={`gap-1.5 text-xs ${statusCfg.className}`}>
+            <div key={inv.id} className="p-4 space-y-2">
+              <div className="flex items-center justify-between gap-3">
+                <div>
+                  <p className="font-semibold text-sm">{fmtCurrency(inv.valor)}</p>
+                  <p className="text-xs text-muted-foreground">Venc. {fmtDate(inv.dataVencimento)}</p>
+                </div>
+                <Badge variant="outline" className={`gap-1.5 text-xs shrink-0 ${statusCfg.className}`}>
                   {statusCfg.icon}
                   {statusCfg.label}
                 </Badge>
-              </TableCell>
-              <TableCell className="text-muted-foreground text-sm">
-                {inv.formaPagamento ? FORMA_LABEL[inv.formaPagamento] ?? inv.formaPagamento : "—"}
-              </TableCell>
-              <TableCell className="text-muted-foreground text-sm">
-                {fmtDate(inv.dataPagamento)}
-              </TableCell>
-              <TableCell>
-                {hasLink && (
-                  <Button
-                    size="sm"
-                    variant="default"
-                    className="h-7 text-xs gap-1.5"
-                    onClick={() => window.open(inv.linkPagamento!, "_blank", "noopener")}
-                  >
-                    <ExternalLink className="h-3 w-3" />
-                    Pagar agora
-                  </Button>
-                )}
-              </TableCell>
-            </TableRow>
+              </div>
+              {inv.formaPagamento && (
+                <p className="text-xs text-muted-foreground">{FORMA_LABEL[inv.formaPagamento] ?? inv.formaPagamento}</p>
+              )}
+              {hasLink && (
+                <Button
+                  size="sm"
+                  variant="default"
+                  className="h-9 text-xs gap-1.5 w-full"
+                  onClick={() => window.open(inv.linkPagamento!, "_blank", "noopener")}
+                >
+                  <ExternalLink className="h-3 w-3" />
+                  Pagar agora
+                </Button>
+              )}
+            </div>
           );
         })}
-      </TableBody>
-    </Table>
+      </div>
+      {/* Desktop table */}
+      <Table className="hidden md:table">
+        <TableHeader>
+          <TableRow>
+            <TableHead>Vencimento</TableHead>
+            <TableHead className="text-right">Valor</TableHead>
+            <TableHead>Status</TableHead>
+            <TableHead>Forma Pagamento</TableHead>
+            <TableHead>Data Pagamento</TableHead>
+            <TableHead className="w-28" />
+          </TableRow>
+        </TableHeader>
+        <TableBody>
+          {invoices.map((inv) => {
+            const statusCfg = INV_STATUS_CONFIG[inv.status] ?? INV_STATUS_CONFIG.pendente;
+            const isPendente = inv.status === "pendente";
+            const hasLink = isPendente && !!inv.linkPagamento;
+
+            return (
+              <TableRow key={inv.id}>
+                <TableCell className="font-medium">{fmtDate(inv.dataVencimento)}</TableCell>
+                <TableCell className="text-right font-mono text-sm font-semibold">
+                  {fmtCurrency(inv.valor)}
+                </TableCell>
+                <TableCell>
+                  <Badge variant="outline" className={`gap-1.5 text-xs ${statusCfg.className}`}>
+                    {statusCfg.icon}
+                    {statusCfg.label}
+                  </Badge>
+                </TableCell>
+                <TableCell className="text-muted-foreground text-sm">
+                  {inv.formaPagamento ? FORMA_LABEL[inv.formaPagamento] ?? inv.formaPagamento : "—"}
+                </TableCell>
+                <TableCell className="text-muted-foreground text-sm">
+                  {fmtDate(inv.dataPagamento)}
+                </TableCell>
+                <TableCell>
+                  {hasLink && (
+                    <Button
+                      size="sm"
+                      variant="default"
+                      className="h-7 text-xs gap-1.5"
+                      onClick={() => window.open(inv.linkPagamento!, "_blank", "noopener")}
+                    >
+                      <ExternalLink className="h-3 w-3" />
+                      Pagar agora
+                    </Button>
+                  )}
+                </TableCell>
+              </TableRow>
+            );
+          })}
+        </TableBody>
+      </Table>
+    </>
   );
 }
 

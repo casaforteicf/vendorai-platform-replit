@@ -635,14 +635,14 @@ export default function Campanhas() {
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col sm:flex-row sm:items-center gap-3 sm:justify-between">
         <div>
           <h1 className="text-2xl font-bold tracking-tight">Campanhas</h1>
           <p className="text-muted-foreground text-sm mt-0.5">
             Crie e gerencie campanhas de marketing multicanal
           </p>
         </div>
-        <Button onClick={openNew}>
+        <Button onClick={openNew} className="min-h-[44px] sm:w-auto">
           <Plus className="h-4 w-4 mr-2" />
           Nova Campanha
         </Button>
@@ -687,7 +687,62 @@ export default function Campanhas() {
               </Button>
             </div>
           ) : (
-            <Table>
+            <>
+            {/* Mobile card list */}
+            <div className="md:hidden divide-y">
+              {campaigns.map((c) => {
+                const statusCfg = STATUS_CONFIG[c.status] ?? STATUS_CONFIG.rascunho;
+                const tipoCfg = TIPO_CONFIG[c.tipo] ?? TIPO_CONFIG.whatsapp;
+                const canPause = c.status === "agendada" || c.status === "enviando";
+                const canResume = c.status === "pausada";
+                const canDelete = c.status === "rascunho";
+                return (
+                  <div key={c.id} className="p-4 space-y-2">
+                    <div className="flex items-start justify-between gap-2">
+                      <p className="font-medium text-sm leading-tight flex-1">{c.nome}</p>
+                      <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                          <Button variant="ghost" size="icon" className="h-8 w-8 shrink-0">
+                            <MoreHorizontal className="h-4 w-4" />
+                          </Button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="end">
+                          <DropdownMenuItem onClick={() => openEdit(c)}>
+                            <Pencil className="h-4 w-4 mr-2" />Editar
+                          </DropdownMenuItem>
+                          {(canPause || canResume) && (
+                            <DropdownMenuItem onClick={() => handlePauseResume(c)}>
+                              {canPause ? <><Pause className="h-4 w-4 mr-2" />Pausar</> : <><Play className="h-4 w-4 mr-2" />Retomar</>}
+                            </DropdownMenuItem>
+                          )}
+                          {canDelete && (
+                            <>
+                              <DropdownMenuSeparator />
+                              <DropdownMenuItem className="text-destructive focus:text-destructive" onClick={() => setDeleteTarget(c)}>
+                                <Trash2 className="h-4 w-4 mr-2" />Excluir
+                              </DropdownMenuItem>
+                            </>
+                          )}
+                        </DropdownMenuContent>
+                      </DropdownMenu>
+                    </div>
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <Badge variant="outline" className={`text-xs ${tipoCfg.className}`}>{tipoCfg.label}</Badge>
+                      <Badge variant="outline" className={`text-xs ${statusCfg.className}`}>{statusCfg.label}</Badge>
+                    </div>
+                    <div className="flex items-center gap-4 text-xs text-muted-foreground">
+                      <span>{c.totalDestinatarios.toLocaleString("pt-BR")} destinatários</span>
+                      <span>{c.totalEnviados.toLocaleString("pt-BR")} enviados</span>
+                    </div>
+                    {c.agendadaPara && (
+                      <p className="text-xs text-muted-foreground">{fmtDate(c.agendadaPara)}</p>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+            {/* Desktop table */}
+            <Table className="hidden md:table">
               <TableHeader>
                 <TableRow>
                   <TableHead>Nome</TableHead>
@@ -794,6 +849,7 @@ export default function Campanhas() {
                 })}
               </TableBody>
             </Table>
+            </>
           )}
         </CardContent>
       </Card>

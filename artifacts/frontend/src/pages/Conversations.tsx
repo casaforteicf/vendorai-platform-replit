@@ -31,6 +31,7 @@ import {
   User,
   Wifi,
   MessageCircle,
+  ChevronLeft,
 } from "lucide-react";
 import { formatDistanceToNow, format, isToday, isYesterday } from "date-fns";
 import { ptBR } from "date-fns/locale";
@@ -214,10 +215,12 @@ function ChatPanel({
   conv,
   leadName,
   tenantId,
+  onBack,
 }: {
   conv: Conversation;
   leadName: string | undefined;
   tenantId: string;
+  onBack?: () => void;
 }) {
   const [inputValue, setInputValue] = useState("");
   const bottomRef = useRef<HTMLDivElement>(null);
@@ -298,8 +301,18 @@ function ChatPanel({
   return (
     <div className="flex flex-col h-full">
       {/* Chat header */}
-      <div className="flex items-center gap-3 px-6 py-4 border-b border-border shrink-0">
-        <div className="h-9 w-9 rounded-full bg-muted flex items-center justify-center text-sm font-semibold text-muted-foreground uppercase">
+      <div className="flex items-center gap-3 px-4 md:px-6 py-4 border-b border-border shrink-0">
+        {onBack && (
+          <Button
+            variant="ghost"
+            size="icon"
+            className="md:hidden h-9 w-9 shrink-0"
+            onClick={onBack}
+          >
+            <ChevronLeft className="h-5 w-5" />
+          </Button>
+        )}
+        <div className="h-9 w-9 rounded-full bg-muted flex items-center justify-center text-sm font-semibold text-muted-foreground uppercase shrink-0">
           {(leadName ?? "?")[0]}
         </div>
         <div>
@@ -396,6 +409,7 @@ export default function Conversations() {
   const queryClient = useQueryClient();
 
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [showMobileChat, setShowMobileChat] = useState(false);
 
   const { data: conversations = [], isLoading: convsLoading } =
     useListTenantConversations(tenantId, {
@@ -429,6 +443,7 @@ export default function Conversations() {
   const handleSelectConv = useCallback(
     (conv: Conversation) => {
       setSelectedId(conv.id);
+      setShowMobileChat(true);
       if (conv.naoLidas > 0) {
         markRead.mutate(
           { tenantId, conversationId: conv.id },
@@ -455,9 +470,9 @@ export default function Conversations() {
   const totalUnread = conversations.reduce((acc, c) => acc + c.naoLidas, 0);
 
   return (
-    <div className="flex h-[calc(100vh-4rem)] -mx-6 -my-6 overflow-hidden">
+    <div className="flex h-full -mx-4 -my-4 md:-mx-8 md:-my-8 overflow-hidden">
       {/* ── Left sidebar ── */}
-      <div className="w-80 shrink-0 flex flex-col border-r border-border bg-background">
+      <div className={`${showMobileChat ? "hidden md:flex" : "flex"} flex-col border-r border-border bg-background w-full md:w-80 md:shrink-0`}>
         {/* Sidebar header */}
         <div className="px-4 py-4 border-b border-border shrink-0">
           <div className="flex items-center justify-between">
@@ -504,13 +519,14 @@ export default function Conversations() {
       </div>
 
       {/* ── Right chat panel ── */}
-      <div className="flex-1 flex flex-col overflow-hidden">
+      <div className={`${showMobileChat ? "flex" : "hidden md:flex"} flex-1 flex-col overflow-hidden`}>
         {selectedConv ? (
           <ChatPanel
             key={selectedConv.id}
             conv={selectedConv}
             leadName={selectedConv.leadId ? leadMap.get(selectedConv.leadId) : undefined}
             tenantId={tenantId}
+            onBack={() => setShowMobileChat(false)}
           />
         ) : (
           <div className="flex flex-col items-center justify-center h-full gap-3 text-muted-foreground">

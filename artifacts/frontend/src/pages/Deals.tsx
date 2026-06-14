@@ -535,7 +535,7 @@ export default function Deals() {
   return (
     <div className="flex flex-col h-full space-y-6">
       {/* Header */}
-      <div className="flex justify-between items-center shrink-0">
+      <div className="flex justify-between items-center shrink-0 gap-3">
         <div>
           <h1 className="text-2xl font-bold tracking-tight">Negócios</h1>
           <p className="text-sm text-muted-foreground mt-1">

@@ -348,100 +348,147 @@ export default function Leads() {
         </div>
 
         <CardContent className="p-0">
-          <TooltipProvider delayDuration={300}>
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Nome</TableHead>
-                <TableHead>Empresa</TableHead>
-                <TableHead>Telefone</TableHead>
-                <TableHead>Status</TableHead>
-                <TableHead>
-                  <button
-                    data-testid="sort-churn-risk"
-                    onClick={toggleChurnSort}
-                    className="flex items-center gap-1 hover:text-foreground transition-colors"
+          {/* Mobile card list */}
+          <div className="md:hidden divide-y">
+            {leadsLoading ? (
+              Array.from({ length: 4 }).map((_, i) => (
+                <div key={i} className="p-4 space-y-2 animate-pulse">
+                  <div className="h-4 bg-muted rounded w-3/4" />
+                  <div className="h-3 bg-muted rounded w-1/2" />
+                </div>
+              ))
+            ) : filteredLeads.length === 0 ? (
+              <p className="p-8 text-center text-sm text-muted-foreground">
+                {leads?.length === 0 ? "Nenhum lead cadastrado ainda." : "Nenhum resultado para os filtros aplicados."}
+              </p>
+            ) : (
+              filteredLeads.map((lead) => {
+                const ci = ciMap.get(lead.id);
+                const isHighRisk = typeof ci?.churnRisk === "number" && ci.churnRisk > 70;
+                return (
+                  <div
+                    key={lead.id}
+                    className={`flex items-center gap-3 p-4 cursor-pointer hover:bg-muted/50 active:bg-muted/80 transition-colors min-h-[72px] ${isHighRisk ? "border-l-4 border-l-red-500" : ""}`}
+                    onClick={() => setLocation(`/leads/${lead.id}`)}
+                    data-testid={`row-lead-${lead.id}`}
                   >
-                    Churn Risk
-                    {churnSort === "desc" ? (
-                      <ArrowDown className="h-3.5 w-3.5" />
-                    ) : churnSort === "asc" ? (
-                      <ArrowUp className="h-3.5 w-3.5" />
-                    ) : (
-                      <ArrowUpDown className="h-3.5 w-3.5 opacity-40" />
-                    )}
-                  </button>
-                </TableHead>
-                <TableHead className="w-8" />
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {leadsLoading ? (
-                Array.from({ length: 5 }).map((_, i) => (
-                  <TableRow key={i}>
-                    {Array.from({ length: 6 }).map((__, j) => (
-                      <TableCell key={j}>
-                        <div className="h-4 bg-muted animate-pulse rounded w-full max-w-[120px]" />
-                      </TableCell>
-                    ))}
-                  </TableRow>
-                ))
-              ) : filteredLeads.length === 0 ? (
-                <TableRow>
-                  <TableCell
-                    colSpan={6}
-                    className="text-center py-12 text-muted-foreground"
-                  >
-                    {leads?.length === 0
-                      ? "Nenhum lead cadastrado ainda."
-                      : "Nenhum resultado para os filtros aplicados."}
-                  </TableCell>
-                </TableRow>
-              ) : (
-                filteredLeads.map((lead) => {
-                  const ci = ciMap.get(lead.id);
-                  const isHighRisk = typeof ci?.churnRisk === "number" && ci.churnRisk > 70;
-                  return (
-                    <TableRow
-                      key={lead.id}
-                      className={`cursor-pointer hover:bg-muted/50 ${isHighRisk ? "border-l-4 border-l-red-500" : ""}`}
-                      onClick={() => setLocation(`/leads/${lead.id}`)}
-                      data-testid={`row-lead-${lead.id}`}
-                    >
-                      <TableCell className="font-medium">
-                        <span className="flex items-center gap-1.5">
-                          {isHighRisk && (
-                            <AlertTriangle className="h-3.5 w-3.5 text-red-500 shrink-0" />
-                          )}
-                          {lead.nome}
-                        </span>
-                      </TableCell>
-                      <TableCell className="text-muted-foreground">
-                        {lead.empresa || "—"}
-                      </TableCell>
-                      <TableCell className="text-muted-foreground font-mono text-sm">
-                        {lead.telefone || "—"}
-                      </TableCell>
-                      <TableCell>
-                        <Badge
-                          variant="outline"
-                          className={STATUS_STYLES[lead.status] ?? ""}
-                        >
-                          {LEAD_STATUSES.find((s) => s.value === lead.status)?.label ??
-                            lead.status}
+                    <div className="flex-1 min-w-0 space-y-1">
+                      <div className="flex items-center gap-1.5">
+                        {isHighRisk && <AlertTriangle className="h-3.5 w-3.5 text-red-500 shrink-0" />}
+                        <p className="font-medium text-sm truncate">{lead.nome}</p>
+                      </div>
+                      {lead.empresa && <p className="text-xs text-muted-foreground truncate">{lead.empresa}</p>}
+                      <div className="flex items-center gap-2 flex-wrap pt-0.5">
+                        <Badge variant="outline" className={`text-xs ${STATUS_STYLES[lead.status] ?? ""}`}>
+                          {LEAD_STATUSES.find((s) => s.value === lead.status)?.label ?? lead.status}
                         </Badge>
-                      </TableCell>
-                      <TableCell>{churnBadge(ci?.churnRisk, ci?.churnReasons)}</TableCell>
-                      <TableCell>
-                        <ChevronRight className="h-4 w-4 text-muted-foreground" />
-                      </TableCell>
+                        {churnBadge(ci?.churnRisk, ci?.churnReasons)}
+                      </div>
+                    </div>
+                    <ChevronRight className="h-4 w-4 text-muted-foreground shrink-0" />
+                  </div>
+                );
+              })
+            )}
+          </div>
+
+          {/* Desktop table */}
+          <div className="hidden md:block">
+            <TooltipProvider delayDuration={300}>
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Nome</TableHead>
+                  <TableHead>Empresa</TableHead>
+                  <TableHead>Telefone</TableHead>
+                  <TableHead>Status</TableHead>
+                  <TableHead>
+                    <button
+                      data-testid="sort-churn-risk"
+                      onClick={toggleChurnSort}
+                      className="flex items-center gap-1 hover:text-foreground transition-colors"
+                    >
+                      Churn Risk
+                      {churnSort === "desc" ? (
+                        <ArrowDown className="h-3.5 w-3.5" />
+                      ) : churnSort === "asc" ? (
+                        <ArrowUp className="h-3.5 w-3.5" />
+                      ) : (
+                        <ArrowUpDown className="h-3.5 w-3.5 opacity-40" />
+                      )}
+                    </button>
+                  </TableHead>
+                  <TableHead className="w-8" />
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {leadsLoading ? (
+                  Array.from({ length: 5 }).map((_, i) => (
+                    <TableRow key={i}>
+                      {Array.from({ length: 6 }).map((__, j) => (
+                        <TableCell key={j}>
+                          <div className="h-4 bg-muted animate-pulse rounded w-full max-w-[120px]" />
+                        </TableCell>
+                      ))}
                     </TableRow>
-                  );
-                })
-              )}
-            </TableBody>
-          </Table>
-          </TooltipProvider>
+                  ))
+                ) : filteredLeads.length === 0 ? (
+                  <TableRow>
+                    <TableCell
+                      colSpan={6}
+                      className="text-center py-12 text-muted-foreground"
+                    >
+                      {leads?.length === 0
+                        ? "Nenhum lead cadastrado ainda."
+                        : "Nenhum resultado para os filtros aplicados."}
+                    </TableCell>
+                  </TableRow>
+                ) : (
+                  filteredLeads.map((lead) => {
+                    const ci = ciMap.get(lead.id);
+                    const isHighRisk = typeof ci?.churnRisk === "number" && ci.churnRisk > 70;
+                    return (
+                      <TableRow
+                        key={lead.id}
+                        className={`cursor-pointer hover:bg-muted/50 ${isHighRisk ? "border-l-4 border-l-red-500" : ""}`}
+                        onClick={() => setLocation(`/leads/${lead.id}`)}
+                        data-testid={`row-lead-${lead.id}`}
+                      >
+                        <TableCell className="font-medium">
+                          <span className="flex items-center gap-1.5">
+                            {isHighRisk && (
+                              <AlertTriangle className="h-3.5 w-3.5 text-red-500 shrink-0" />
+                            )}
+                            {lead.nome}
+                          </span>
+                        </TableCell>
+                        <TableCell className="text-muted-foreground">
+                          {lead.empresa || "—"}
+                        </TableCell>
+                        <TableCell className="text-muted-foreground font-mono text-sm">
+                          {lead.telefone || "—"}
+                        </TableCell>
+                        <TableCell>
+                          <Badge
+                            variant="outline"
+                            className={STATUS_STYLES[lead.status] ?? ""}
+                          >
+                            {LEAD_STATUSES.find((s) => s.value === lead.status)?.label ??
+                              lead.status}
+                          </Badge>
+                        </TableCell>
+                        <TableCell>{churnBadge(ci?.churnRisk, ci?.churnReasons)}</TableCell>
+                        <TableCell>
+                          <ChevronRight className="h-4 w-4 text-muted-foreground" />
+                        </TableCell>
+                      </TableRow>
+                    );
+                  })
+                )}
+              </TableBody>
+            </Table>
+            </TooltipProvider>
+          </div>
         </CardContent>
       </Card>
     </div>
