@@ -1502,6 +1502,37 @@ export const GetTenantDashboardResponse = zod.object({
 
 
 /**
+ * @summary Extract business data from uploaded documents using AI
+ */
+export const AnalyzeOnboardingDocumentsParams = zod.object({
+  "tenantId": zod.coerce.string()
+})
+
+export const AnalyzeOnboardingDocumentsBody = zod.object({
+  "files": zod.array(zod.instanceof(File))
+})
+
+export const AnalyzeOnboardingDocumentsResponse = zod.object({
+  "nomeFantasia": zod.string().nullish(),
+  "vertical": zod.string().nullish(),
+  "produtos": zod.array(zod.object({
+  "nome": zod.string(),
+  "descricao": zod.string().nullish(),
+  "preco": zod.number().nullish()
+})).nullish(),
+  "diferenciais": zod.string().nullish(),
+  "publicoAlvo": zod.string().nullish(),
+  "concorrentes": zod.array(zod.string()).nullish(),
+  "canaisVenda": zod.array(zod.string()).nullish(),
+  "missao": zod.string().nullish(),
+  "visao": zod.string().nullish(),
+  "valores": zod.array(zod.string()).nullish(),
+  "historia": zod.string().nullish(),
+  "confianca": zod.number().nullish()
+})
+
+
+/**
  * Saves wizard data to business profile and marks tenant setup as complete.
  * @summary Complete onboarding wizard
  */
@@ -1521,7 +1552,8 @@ export const CompleteOnboardingBody = zod.object({
   "diferenciais": zod.string().optional(),
   "publicoAlvo": zod.string().optional(),
   "concorrentes": zod.array(zod.string()).optional(),
-  "canaisVenda": zod.array(zod.string()).optional()
+  "canaisVenda": zod.array(zod.string()).optional(),
+  "discoveryData": zod.record(zod.string(), zod.unknown()).optional().describe('Extra data from document extraction (missao, visao, valores, historia, etc.)')
 })
 
 export const CompleteOnboardingResponse = zod.object({

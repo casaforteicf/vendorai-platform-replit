@@ -1230,6 +1230,11 @@ export interface UpdateBusinessProfileBody {
   discoveryData?: UpdateBusinessProfileBodyDiscoveryData;
 }
 
+/**
+ * Extra data from document extraction (missao, visao, valores, historia, etc.)
+ */
+export type OnboardingCompleteBodyDiscoveryData = { [key: string]: unknown };
+
 export interface OnboardingCompleteBody {
   nomeFantasia: string;
   vertical: string;
@@ -1239,6 +1244,23 @@ export interface OnboardingCompleteBody {
   publicoAlvo?: string;
   concorrentes?: string[];
   canaisVenda?: string[];
+  /** Extra data from document extraction (missao, visao, valores, historia, etc.) */
+  discoveryData?: OnboardingCompleteBodyDiscoveryData;
+}
+
+export interface DocumentExtractionResult {
+  nomeFantasia?: string | null;
+  vertical?: string | null;
+  produtos?: Product[] | null;
+  diferenciais?: string | null;
+  publicoAlvo?: string | null;
+  concorrentes?: string[] | null;
+  canaisVenda?: string[] | null;
+  missao?: string | null;
+  visao?: string | null;
+  valores?: string[] | null;
+  historia?: string | null;
+  confianca?: number | null;
 }
 
 export type TenantAgentsEnabled = { [key: string]: unknown };
@@ -1823,6 +1845,10 @@ export type UpdatePropostaStatusBody = {
 export type ListMessagesParams = {
 conversationId?: string;
 leadId?: string;
+};
+
+export type AnalyzeOnboardingDocumentsBody = {
+  files: Blob[];
 };
 
 export type CompleteOnboarding200 = {

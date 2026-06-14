@@ -5,6 +5,7 @@
  * API specification
  * OpenAPI spec version: 0.1.0
  */
+import type { OnboardingCompleteBodyDiscoveryData } from './onboardingCompleteBodyDiscoveryData';
 import type { Product } from './product';
 
 export interface OnboardingCompleteBody {
@@ -16,4 +17,6 @@ export interface OnboardingCompleteBody {
   publicoAlvo?: string;
   concorrentes?: string[];
   canaisVenda?: string[];
+  /** Extra data from document extraction (missao, visao, valores, historia, etc.) */
+  discoveryData?: OnboardingCompleteBodyDiscoveryData;
 }

@@ -1,6 +1,7 @@
 import { Router, type IRouter } from "express";
 import { eq, and } from "drizzle-orm";
 import { z } from "zod/v4";
+import multer from "multer";
 import {
   db,
   tenantsTable,
@@ -13,9 +14,17 @@ import {
   type AgentsMap,
 } from "@workspace/db";
 import { requireSameTenanOrSuperAdmin } from "../middlewares/auth.js";
+import { extractBusinessDataFromDocuments } from "../lib/document-extraction.js";
 
 const router: IRouter = Router();
 
+// ── Multer: in-memory, max 10 MB/file, 3 files ──────────────────────────────
+const upload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 10 * 1024 * 1024 },
+});
+
+// ── Zod schemas ──────────────────────────────────────────────────────────────
 const productSchema = z.object({
   nome: z.string().min(1),
   descricao: z.string().optional(),
@@ -31,10 +40,12 @@ const onboardingCompleteSchema = z.object({
   publicoAlvo: z.string().optional(),
   concorrentes: z.array(z.string()).optional(),
   canaisVenda: z.array(z.string()).optional(),
+  discoveryData: z.record(z.string(), z.unknown()).optional(),
 });
 
 type WizardData = z.infer<typeof onboardingCompleteSchema>;
 
+// ── Helpers ──────────────────────────────────────────────────────────────────
 function buildContextHeader(data: WizardData): string {
   const lines: string[] = [
     `Você representa a ${data.nomeFantasia}, empresa do segmento ${data.vertical}.`,
@@ -55,7 +66,16 @@ function buildAboutContent(data: WizardData): string {
     parts.push(`\n**Diferencial competitivo:** ${data.diferenciais}`);
   if (data.canaisVenda?.length)
     parts.push(`\n**Canais de atendimento:** ${data.canaisVenda.join(", ")}`);
+
+  // Include document-extracted institutional data
+  const extra = data.discoveryData ?? {};
+  if (extra["missao"]) parts.push(`\n**Missão:** ${extra["missao"]}`);
+  if (extra["visao"]) parts.push(`\n**Visão:** ${extra["visao"]}`);
+  if (Array.isArray(extra["valores"]) && extra["valores"].length > 0)
+    parts.push(`\n**Valores:** ${(extra["valores"] as string[]).join(", ")}`);
+  if (extra["historia"]) parts.push(`\n\n${extra["historia"]}`);
   if (data.logoUrl) parts.push(`\n**Logo:** ${data.logoUrl}`);
+
   return parts.join("\n").trim();
 }
 
@@ -87,6 +107,38 @@ function buildStrategyContent(data: WizardData): string {
   return parts.join("\n\n").trim();
 }
 
+// ── POST /tenants/:tenantId/onboarding/analyze-documents ─────────────────────
+router.post(
+  "/tenants/:tenantId/onboarding/analyze-documents",
+  requireSameTenanOrSuperAdmin(),
+  upload.array("files", 3),
+  async (req, res) => {
+    const tenantId = String(req.params["tenantId"]);
+    const files = (req.files as Express.Multer.File[]) ?? [];
+
+    if (files.length === 0) {
+      res.status(422).json({ error: "Nenhum arquivo enviado" });
+      return;
+    }
+
+    const result = await extractBusinessDataFromDocuments(
+      files.map((f) => ({
+        buffer: f.buffer,
+        mimeType: f.mimetype,
+        originalName: f.originalname,
+      }))
+    );
+
+    req.log.info(
+      { tenantId, filesCount: files.length, confianca: result.confianca },
+      "Onboarding: documents analyzed"
+    );
+
+    res.json(result);
+  }
+);
+
+// ── POST /tenants/:tenantId/onboarding/complete ──────────────────────────────
 router.post(
   "/tenants/:tenantId/onboarding/complete",
   requireSameTenanOrSuperAdmin(),
@@ -102,7 +154,17 @@ router.post(
     const data = parsed.data;
     const now = new Date();
 
-    // ── 1. Save business profile + mark tenant setup complete ────────────────
+    // ── 1. Save business profile + mark tenant setup complete ──────────────
+    const mergedDiscoveryData = {
+      nomeFantasia: data.nomeFantasia,
+      vertical: data.vertical,
+      diferenciais: data.diferenciais,
+      publicoAlvo: data.publicoAlvo,
+      concorrentes: data.concorrentes,
+      canaisVenda: data.canaisVenda,
+      ...(data.discoveryData ?? {}),
+    };
+
     const profileUpdate = {
       nomeFantasia: data.nomeFantasia,
       vertical: data.vertical,
@@ -113,14 +175,7 @@ router.post(
       concorrentes: data.concorrentes ?? null,
       canaisVenda: data.canaisVenda ?? null,
       discoveryCompletedAt: now,
-      discoveryData: {
-        nomeFantasia: data.nomeFantasia,
-        vertical: data.vertical,
-        diferenciais: data.diferenciais,
-        publicoAlvo: data.publicoAlvo,
-        concorrentes: data.concorrentes,
-        canaisVenda: data.canaisVenda,
-      },
+      discoveryData: mergedDiscoveryData,
       updatedAt: now,
     };
 
@@ -150,11 +205,10 @@ router.post(
 
     req.log.info({ tenantId }, "Onboarding: profile saved, setup marked complete");
 
-    // ── 2. Bloco 3: Auto-config IA ──────────────────────────────────────────
+    // ── 2. Auto-config IA via segment template ─────────────────────────────
     const promptsApplied: string[] = [];
     let funilCriado = false;
 
-    // Find matching segment template by vertical name
     const [template] = await db
       .select()
       .from(segmentTemplatesTable)
@@ -172,7 +226,6 @@ router.post(
       >;
       const contextHeader = buildContextHeader(data);
 
-      // Apply prompts enriched with business context
       const [existingConfig] = await db
         .select()
         .from(agentConfigsTable)
@@ -216,7 +269,6 @@ router.post(
         await db.insert(agentConfigsTable).values({ tenantId, agents });
       }
 
-      // Create default funnel if none exists
       const funilPadrao = (template.funilPadrao ?? []) as string[];
       if (funilPadrao.length > 0) {
         const existingFunils = await db
@@ -236,16 +288,11 @@ router.post(
 
       req.log.info(
         { tenantId, promptsApplied, funilCriado },
-        "Onboarding: AI auto-config applied from segment template"
-      );
-    } else {
-      req.log.info(
-        { tenantId, vertical: data.vertical },
-        "Onboarding: no matching segment template found, skipping AI auto-config"
+        "Onboarding: AI auto-config applied"
       );
     }
 
-    // ── 3. Populate Knowledge Base ──────────────────────────────────────────
+    // ── 3. Populate Knowledge Base ─────────────────────────────────────────
     const kbArticles: Array<{
       tenantId: string;
       titulo: string;
@@ -254,7 +301,6 @@ router.post(
       tags: string[];
     }> = [];
 
-    // Article 1: About the business (always)
     kbArticles.push({
       tenantId,
       titulo: `Sobre a ${data.nomeFantasia}`,
@@ -263,7 +309,6 @@ router.post(
       conteudo: buildAboutContent(data),
     });
 
-    // Article 2: Products/services (if any filled)
     const produtosValidos = (data.produtos ?? []).filter((p) => p.nome.trim());
     if (produtosValidos.length > 0) {
       kbArticles.push({
@@ -275,7 +320,6 @@ router.post(
       });
     }
 
-    // Article 3: Commercial strategy (if any data provided)
     const hasStrategyData =
       data.diferenciais ||
       data.publicoAlvo ||

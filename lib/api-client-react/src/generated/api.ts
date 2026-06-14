@@ -28,6 +28,7 @@ import type {
   AgentConfig,
   AgentTask,
   AnalyzeLeadIntelligenceResponse,
+  AnalyzeOnboardingDocumentsBody,
   ApplyTemplateResponse,
   AuthResponse,
   BusinessProfile,
@@ -67,6 +68,7 @@ import type {
   CreateUserBody,
   CustomerIntelligence,
   Deal,
+  DocumentExtractionResult,
   ErrorResponse,
   ExportIntelligenceAnalysisLogParams,
   Funil,
@@ -4116,6 +4118,80 @@ export function useGetTenantDashboard<TData = Awaited<ReturnType<typeof getTenan
 
 
 
+
+export const getAnalyzeOnboardingDocumentsUrl = (tenantId: string,) => {
+
+
+
+
+  return `/api/tenants/${tenantId}/onboarding/analyze-documents`
+}
+
+/**
+ * @summary Extract business data from uploaded documents using AI
+ */
+export const analyzeOnboardingDocuments = async (tenantId: string,
+    analyzeOnboardingDocumentsBody: AnalyzeOnboardingDocumentsBody, options?: RequestInit): Promise<DocumentExtractionResult> => {
+    const formData = new FormData();
+analyzeOnboardingDocumentsBody.files.forEach(value => formData.append(`files`, value));
+
+  return customFetch<DocumentExtractionResult>(getAnalyzeOnboardingDocumentsUrl(tenantId),
+  {
+    ...options,
+    method: 'POST'
+    ,
+    body:
+      formData,
+  }
+);}
+
+
+
+
+export const getAnalyzeOnboardingDocumentsMutationOptions = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof analyzeOnboardingDocuments>>, TError,{tenantId: string;data: BodyType<AnalyzeOnboardingDocumentsBody>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof analyzeOnboardingDocuments>>, TError,{tenantId: string;data: BodyType<AnalyzeOnboardingDocumentsBody>}, TContext> => {
+
+const mutationKey = ['analyzeOnboardingDocuments'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof analyzeOnboardingDocuments>>, {tenantId: string;data: BodyType<AnalyzeOnboardingDocumentsBody>}> = (props) => {
+          const {tenantId,data} = props ?? {};
+
+          return  analyzeOnboardingDocuments(tenantId,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type AnalyzeOnboardingDocumentsMutationResult = NonNullable<Awaited<ReturnType<typeof analyzeOnboardingDocuments>>>
+    export type AnalyzeOnboardingDocumentsMutationBody = BodyType<AnalyzeOnboardingDocumentsBody>
+    export type AnalyzeOnboardingDocumentsMutationError = ErrorType<ErrorResponse>
+
+    /**
+ * @summary Extract business data from uploaded documents using AI
+ */
+export const useAnalyzeOnboardingDocuments = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof analyzeOnboardingDocuments>>, TError,{tenantId: string;data: BodyType<AnalyzeOnboardingDocumentsBody>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof analyzeOnboardingDocuments>>,
+        TError,
+        {tenantId: string;data: BodyType<AnalyzeOnboardingDocumentsBody>},
+        TContext
+      > => {
+      return useMutation(getAnalyzeOnboardingDocumentsMutationOptions(options));
+    }
 
 export const getCompleteOnboardingUrl = (tenantId: string,) => {
 
