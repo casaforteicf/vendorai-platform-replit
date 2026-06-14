@@ -1633,8 +1633,19 @@ paths:
                   setupCompletedAt:
                     type: string
                     format: date-time
+                  promptsApplied:
+                    type: array
+                    items:
+                      type: string
+                  funilCriado:
+                    type: boolean
+                  kbArtigosGerados:
+                    type: integer
                 required:
                   - setupCompletedAt
+                  - promptsApplied
+                  - funilCriado
+                  - kbArtigosGerados
         "422":
           description: Validation error
           content:

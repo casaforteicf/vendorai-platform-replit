@@ -8,4 +8,7 @@
 
 export type CompleteOnboarding200 = {
   setupCompletedAt: Date;
+  promptsApplied: string[];
+  funilCriado: boolean;
+  kbArtigosGerados: number;
 };

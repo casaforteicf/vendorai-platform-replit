@@ -82,6 +82,11 @@ export default function Onboarding() {
   const [step, setStep] = useState(1);
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
+  const [configResult, setConfigResult] = useState<{
+    promptsApplied: string[];
+    funilCriado: boolean;
+    kbArtigosGerados: number;
+  } | null>(null);
   const [, setLocation] = useLocation();
   const { toast } = useToast();
   const queryClient = useQueryClient();
@@ -178,12 +183,17 @@ export default function Onboarding() {
         },
       },
       {
-        onSuccess: () => {
+        onSuccess: (result) => {
           queryClient.invalidateQueries({
             queryKey: getGetTenantQueryKey(tenantId),
           });
           setSubmitting(false);
-          setLocation("/");
+          setConfigResult({
+            promptsApplied: result.promptsApplied,
+            funilCriado: result.funilCriado,
+            kbArtigosGerados: result.kbArtigosGerados,
+          });
+          setTimeout(() => setLocation("/"), 3000);
         },
         onError: (err) => {
           setSubmitting(false);
@@ -530,16 +540,41 @@ export default function Onboarding() {
                   </>
                 )}
 
-                {!submitting && !submitError && (
+                {!submitting && !submitError && configResult && (
                   <>
                     <CheckCircle2 className="h-12 w-12 text-green-500" />
-                    <div>
-                      <p className="text-lg font-semibold">
-                        Tudo configurado!
-                      </p>
-                      <p className="text-sm text-muted-foreground mt-1">
-                        Redirecionando para o dashboard...
-                      </p>
+                    <div className="w-full space-y-4">
+                      <div className="text-center">
+                        <p className="text-lg font-semibold">Tudo configurado!</p>
+                        <p className="text-sm text-muted-foreground mt-1">
+                          Redirecionando para o dashboard em instantes...
+                        </p>
+                      </div>
+                      <div className="rounded-lg border bg-muted/30 divide-y text-sm">
+                        {configResult.promptsApplied.length > 0 && (
+                          <div className="flex items-center gap-3 px-4 py-3">
+                            <CheckCircle2 className="h-4 w-4 text-green-500 flex-shrink-0" />
+                            <span>
+                              <strong>{configResult.promptsApplied.length}</strong> agentes de IA configurados automaticamente
+                            </span>
+                          </div>
+                        )}
+                        {configResult.funilCriado && (
+                          <div className="flex items-center gap-3 px-4 py-3">
+                            <CheckCircle2 className="h-4 w-4 text-green-500 flex-shrink-0" />
+                            <span>Funil de vendas criado para seu segmento</span>
+                          </div>
+                        )}
+                        {configResult.kbArtigosGerados > 0 && (
+                          <div className="flex items-center gap-3 px-4 py-3">
+                            <CheckCircle2 className="h-4 w-4 text-green-500 flex-shrink-0" />
+                            <span>
+                              <strong>{configResult.kbArtigosGerados}</strong>{" "}
+                              {configResult.kbArtigosGerados === 1 ? "artigo adicionado" : "artigos adicionados"} à base de conhecimento
+                            </span>
+                          </div>
+                        )}
+                      </div>
                     </div>
                   </>
                 )}

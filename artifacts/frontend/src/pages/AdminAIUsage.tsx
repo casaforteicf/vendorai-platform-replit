@@ -6,6 +6,7 @@ import {
   getListIntelligenceAnalysisLogQueryOptions,
   useCreateInvite,
   useListInvitesByTenant,
+  getListInvitesByTenantQueryKey,
   type Tenant,
   type IntelligenceAnalysisLogStats,
   type InviteItem,
@@ -194,7 +195,9 @@ function InviteDialog({
   const createInvite = useCreateInvite();
 
   const { data: invites = [], isLoading: invitesLoading } =
-    useListInvitesByTenant(tenant.id, { query: { enabled: open } });
+    useListInvitesByTenant(tenant.id, {
+      query: { enabled: open, queryKey: getListInvitesByTenantQueryKey(tenant.id) },
+    });
 
   function handleGenerate(e: React.FormEvent) {
     e.preventDefault();

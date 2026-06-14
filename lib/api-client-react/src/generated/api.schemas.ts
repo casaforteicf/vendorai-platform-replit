@@ -1827,6 +1827,9 @@ leadId?: string;
 
 export type CompleteOnboarding200 = {
   setupCompletedAt: string;
+  promptsApplied: string[];
+  funilCriado: boolean;
+  kbArtigosGerados: number;
 };
 
 export type ListInvoicesParams = {

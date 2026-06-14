@@ -1525,7 +1525,10 @@ export const CompleteOnboardingBody = zod.object({
 })
 
 export const CompleteOnboardingResponse = zod.object({
-  "setupCompletedAt": zod.coerce.date()
+  "setupCompletedAt": zod.coerce.date(),
+  "promptsApplied": zod.array(zod.string()),
+  "funilCriado": zod.boolean(),
+  "kbArtigosGerados": zod.number()
 })
 
 
