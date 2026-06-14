@@ -1,0 +1,72 @@
+Vamos substituir a logo atual (rede neural) por uma nova versão corporativa. Crie/substitua 3 arquivos em /frontend/public/:
+
+1. /frontend/public/logo-icon.svg (ícone isolado, para favicon):
+
+<svg width="180" height="180" viewBox="0 0 180 180" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <rect width="180" height="180" rx="32" fill="#1E3A5F"/>
+  <g stroke="#3B82F6" stroke-width="2" opacity="0.5">
+    <line x1="50" y1="70" x2="34" y2="50"/>
+    <line x1="50" y1="70" x2="56" y2="46"/>
+    <line x1="130" y1="70" x2="146" y2="50"/>
+    <line x1="130" y1="70" x2="124" y2="46"/>
+    <line x1="90" y1="50" x2="56" y2="46"/>
+    <line x1="90" y1="50" x2="124" y2="46"/>
+  </g>
+  <circle cx="34" cy="50" r="5" fill="#60A5FA"/>
+  <circle cx="56" cy="46" r="5" fill="#60A5FA"/>
+  <circle cx="146" cy="50" r="5" fill="#60A5FA"/>
+  <circle cx="124" cy="46" r="5" fill="#60A5FA"/>
+  <path d="M50 70 L90 130 L130 70" stroke="#FFFFFF" stroke-width="14" stroke-linecap="square" stroke-linejoin="miter" fill="none"/>
+  <circle cx="90" cy="50" r="9" fill="#3B82F6"/>
+</svg>
+
+2. /frontend/public/logo-full-light.svg (para fundos claros - sidebar):
+
+<svg width="640" height="180" viewBox="0 0 640 180" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <rect width="180" height="180" rx="32" fill="#1E3A5F"/>
+  <g stroke="#3B82F6" stroke-width="2" opacity="0.5">
+    <line x1="50" y1="70" x2="34" y2="50"/>
+    <line x1="50" y1="70" x2="56" y2="46"/>
+    <line x1="130" y1="70" x2="146" y2="50"/>
+    <line x1="130" y1="70" x2="124" y2="46"/>
+    <line x1="90" y1="50" x2="56" y2="46"/>
+    <line x1="90" y1="50" x2="124" y2="46"/>
+  </g>
+  <circle cx="34" cy="50" r="5" fill="#60A5FA"/>
+  <circle cx="56" cy="46" r="5" fill="#60A5FA"/>
+  <circle cx="146" cy="50" r="5" fill="#60A5FA"/>
+  <circle cx="124" cy="46" r="5" fill="#60A5FA"/>
+  <path d="M50 70 L90 130 L130 70" stroke="#FFFFFF" stroke-width="14" stroke-linecap="square" stroke-linejoin="miter" fill="none"/>
+  <circle cx="90" cy="50" r="9" fill="#3B82F6"/>
+  <text x="212" y="100" font-family="Arial, Helvetica, sans-serif" font-size="58" font-weight="700" letter-spacing="-1" fill="#1E293B">Vendor<tspan fill="#3B82F6">.ai</tspan></text>
+  <text x="212" y="130" font-family="Arial, Helvetica, sans-serif" font-size="16" font-weight="500" fill="#94A3B8" letter-spacing="3">INTELIGÊNCIA COMERCIAL</text>
+</svg>
+
+3. /frontend/public/logo-full-dark.svg (para fundos escuros - tela de login):
+
+<svg width="640" height="180" viewBox="0 0 640 180" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <rect width="180" height="180" rx="32" fill="#1E3A5F"/>
+  <g stroke="#60A5FA" stroke-width="2" opacity="0.6">
+    <line x1="50" y1="70" x2="34" y2="50"/>
+    <line x1="50" y1="70" x2="56" y2="46"/>
+    <line x1="130" y1="70" x2="146" y2="50"/>
+    <line x1="130" y1="70" x2="124" y2="46"/>
+    <line x1="90" y1="50" x2="56" y2="46"/>
+    <line x1="90" y1="50" x2="124" y2="46"/>
+  </g>
+  <circle cx="34" cy="50" r="5" fill="#93C5FD"/>
+  <circle cx="56" cy="46" r="5" fill="#93C5FD"/>
+  <circle cx="146" cy="50" r="5" fill="#93C5FD"/>
+  <circle cx="124" cy="46" r="5" fill="#93C5FD"/>
+  <path d="M50 70 L90 130 L130 70" stroke="#FFFFFF" stroke-width="14" stroke-linecap="square" stroke-linejoin="miter" fill="none"/>
+  <circle cx="90" cy="50" r="9" fill="#60A5FA"/>
+  <text x="212" y="100" font-family="Arial, Helvetica, sans-serif" font-size="58" font-weight="700" letter-spacing="-1" fill="#FFFFFF">Vendor<tspan fill="#60A5FA">.ai</tspan></text>
+  <text x="212" y="130" font-family="Arial, Helvetica, sans-serif" font-size="16" font-weight="500" fill="#94A3B8" letter-spacing="3">INTELIGÊNCIA COMERCIAL</text>
+</svg>
+
+Depois:
+- Use logo-icon.svg como favicon (substituindo o anterior)
+- Use logo-full-light.svg na sidebar (substituindo a logo atual)
+- Use logo-full-dark.svg no painel azul da tela de login (substituindo a logo atual)
+
+Remova os arquivos antigos logo-icon.svg / logo-full.svg se tiverem nomes conflitantes (renomeie como necessário).
