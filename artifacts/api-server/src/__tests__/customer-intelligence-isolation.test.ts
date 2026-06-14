@@ -61,7 +61,7 @@ vi.mock("@workspace/db", () => ({
     maxAnalysesPerHour: "maxAnalysesPerHour",
   },
   insertCustomerIntelligenceSchema: {
-    safeParse: (body: unknown) => mockInsertSafeParse(body),
+    safeParse: (_body: unknown) => mockInsertSafeParse(),
   },
   updateCustomerIntelligenceSchema: {
     safeParse: () => ({ success: true, data: {} }),
@@ -309,10 +309,11 @@ describe("POST /api/customer-intelligence — lead ownership validation", () => 
   beforeEach(() => {
     vi.clearAllMocks();
     // Make safeParse succeed with a valid body for Tenant B
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     mockInsertSafeParse.mockReturnValue({
       success: true,
       data: { tenantId: TENANT_B, leadId: LEAD_ID_B },
-    });
+    } as any);
   });
 
   it("returns 404 when leadId does not belong to the tenant (cross-tenant poisoning attempt)", async () => {
