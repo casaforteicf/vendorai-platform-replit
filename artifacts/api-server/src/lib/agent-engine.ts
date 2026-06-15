@@ -267,22 +267,41 @@ export function buildCloserPrompt(customPrompt: string | undefined, ctx: AgentCo
 export function buildFollowupPrompt(customPrompt: string | undefined, ctx: AgentContext): string {
   const { lead, ci } = ctx;
   const dias = daysSinceLastContact(ctx);
+  const isPrimeiroContato = !ctx.conversation && ctx.recentMessages.length === 0;
   const parts: string[] = [];
-  parts.push(
-    "Você é um especialista em follow-up de vendas B2B.\n" +
-    "Missão: retomar o contato com um lead que ficou sem resposta, de forma calorosa e não invasiva.\n" +
-    "Regras:\n" +
-    "- Responda em português brasileiro, tom leve e genuinamente prestativo\n" +
-    "- Máximo 2 parágrafos curtos\n" +
-    "- Não mencione diretamente que o lead sumiu — simplesmente retome a conversa\n" +
-    "- Traga algo de valor: uma dúvida, uma novidade relevante, ou um convite gentil para continuar" +
-    (dias !== null && dias > 0 ? `\n- Contexto: o lead está sem atividade há ${dias} dia${dias > 1 ? "s" : ""}` : "")
-  );
+
+  if (isPrimeiroContato) {
+    parts.push(
+      "Você é um especialista em primeiro contato comercial B2B.\n" +
+      "Missão: apresentar-se de forma calorosa, colocar-se à disposição e despertar interesse genuíno — sem pressão.\n" +
+      "Regras:\n" +
+      "- Responda em português brasileiro, tom acolhedor e genuinamente prestativo\n" +
+      "- Máximo 2 parágrafos curtos\n" +
+      "- É o PRIMEIRO contato: NÃO mencione 'nossa última interação', 'tempo que passou' ou qualquer referência a conversa anterior\n" +
+      "- Diga que está feliz em poder atender e que está à disposição\n" +
+      "- Mencione, de forma natural, que sabe da busca do lead e que pode apoiar nessa jornada\n" +
+      "- Encerre perguntando se há algo específico que faça mais sentido abordar agora\n" +
+      "- Seja breve, humano e deixe espaço para o lead responder"
+    );
+  } else {
+    parts.push(
+      "Você é um especialista em follow-up de vendas B2B.\n" +
+      "Missão: retomar o contato com um lead que ficou sem resposta, de forma calorosa e não invasiva.\n" +
+      "Regras:\n" +
+      "- Responda em português brasileiro, tom leve e genuinamente prestativo\n" +
+      "- Máximo 2 parágrafos curtos\n" +
+      "- Não mencione diretamente que o lead sumiu — simplesmente retome a conversa\n" +
+      "- Traga algo de valor: uma dúvida, uma novidade relevante, ou um convite gentil para continuar" +
+      (dias !== null && dias > 0 ? `\n- Contexto: o lead está sem atividade há ${dias} dia${dias > 1 ? "s" : ""}` : "")
+    );
+  }
+
   if (customPrompt?.trim()) parts.push("## INSTRUÇÕES DA EMPRESA\n" + customPrompt.trim());
   parts.push(buildLeadSection(lead));
   if (ci) {
     const lines = ["## INTELIGÊNCIA DE CLIENTE"];
     if (ci.journeyStage)         lines.push(`Estágio: ${ci.journeyStage}`);
+    if (ci.intentAnalysis)       lines.push(`Intenção de busca: ${ci.intentAnalysis}`);
     if (ci.goalAnalysis)         lines.push(`Objetivo: ${ci.goalAnalysis}`);
     if (ci.nextBestAction)       lines.push(`Ação recomendada: ${ci.nextBestAction}`);
     if (ci.nextBestActionReason) lines.push(`Motivo: ${ci.nextBestActionReason}`);
@@ -294,37 +313,56 @@ export function buildFollowupPrompt(customPrompt: string | undefined, ctx: Agent
 export function buildReactivationPrompt(customPrompt: string | undefined, ctx: AgentContext): string {
   const { lead, ci } = ctx;
   const dias = daysSinceLastContact(ctx);
+  const isPrimeiroContato = !ctx.conversation && ctx.recentMessages.length === 0;
 
-  const churnAlert = ci?.churnRisk !== null && ci?.churnRisk !== undefined && ci.churnRisk >= 60
+  const churnAlert = !isPrimeiroContato && ci?.churnRisk !== null && ci?.churnRisk !== undefined && ci.churnRisk >= 60
     ? `Atenção: este lead tem ${ci.churnRisk}% de risco de churn. As razões detectadas devem guiar sua abordagem — mas NÃO as mencione diretamente; use-as para construir uma proposta de valor genuína.`
     : "";
 
   const parts: string[] = [];
-  parts.push(
-    "Você é um especialista em reativação de clientes e leads B2B.\n" +
-    "Missão: reconectar com um lead de alto risco ou com longa inatividade, com empatia, curiosidade genuína e uma proposta de valor renovada.\n" +
-    "Regras:\n" +
-    "- Responda em português brasileiro, tom humano, sem pressão\n" +
-    "- Máximo 3 parágrafos curtos\n" +
-    "- Não demonstre desespero nem urgência excessiva\n" +
-    "- Reconheça implicitamente que o tempo passou e ofereça algo novo ou relevante\n" +
-    "- Se houver oportunidade clara, sugira um próximo passo concreto e de baixo atrito" +
-    (dias !== null && dias > 7 ? `\n- O lead está inativo há ${dias} dias` : "") +
-    (churnAlert ? `\n- ${churnAlert}` : "")
-  );
+
+  if (isPrimeiroContato) {
+    parts.push(
+      "Você é um especialista em primeiro contato comercial B2B.\n" +
+      "Missão: apresentar-se de forma calorosa, colocar-se à disposição e despertar interesse genuíno — sem pressão.\n" +
+      "Regras:\n" +
+      "- Responda em português brasileiro, tom acolhedor e genuinamente prestativo\n" +
+      "- Máximo 2 parágrafos curtos\n" +
+      "- É o PRIMEIRO contato: NÃO mencione 'nossa última interação', 'tempo que passou' ou qualquer referência a conversa anterior\n" +
+      "- Diga que está feliz em poder atender e que está à disposição\n" +
+      "- Mencione, de forma natural, que sabe da busca do lead e que pode apoiar nessa jornada\n" +
+      "- Encerre perguntando se há algo específico que faça mais sentido abordar agora\n" +
+      "- Seja breve, humano e deixe espaço para o lead responder"
+    );
+  } else {
+    parts.push(
+      "Você é um especialista em reativação de clientes e leads B2B.\n" +
+      "Missão: reconectar com um lead de alto risco ou com longa inatividade, com empatia, curiosidade genuína e uma proposta de valor renovada.\n" +
+      "Regras:\n" +
+      "- Responda em português brasileiro, tom humano, sem pressão\n" +
+      "- Máximo 3 parágrafos curtos\n" +
+      "- Não demonstre desespero nem urgência excessiva\n" +
+      "- Reconheça implicitamente que o tempo passou e ofereça algo novo ou relevante\n" +
+      "- Se houver oportunidade clara, sugira um próximo passo concreto e de baixo atrito" +
+      (dias !== null && dias > 7 ? `\n- O lead está inativo há ${dias} dias` : "") +
+      (churnAlert ? `\n- ${churnAlert}` : "")
+    );
+  }
+
   if (customPrompt?.trim()) parts.push("## INSTRUÇÕES DA EMPRESA\n" + customPrompt.trim());
   parts.push(buildLeadSection(lead));
   if (ci) {
     const lines = ["## INTELIGÊNCIA DE CLIENTE"];
-    if (ci.journeyStage) lines.push(`Estágio: ${ci.journeyStage}`);
-    if (ci.goalAnalysis) lines.push(`Objetivo original: ${ci.goalAnalysis}`);
-    if (Array.isArray(ci.opportunities) && ci.opportunities.length > 0) {
+    if (ci.journeyStage)         lines.push(`Estágio: ${ci.journeyStage}`);
+    if (ci.intentAnalysis)       lines.push(`Intenção de busca: ${ci.intentAnalysis}`);
+    if (ci.goalAnalysis)         lines.push(isPrimeiroContato ? `O que está buscando: ${ci.goalAnalysis}` : `Objetivo original: ${ci.goalAnalysis}`);
+    if (!isPrimeiroContato && Array.isArray(ci.opportunities) && ci.opportunities.length > 0) {
       lines.push(`Oportunidades detectadas:\n${ci.opportunities.map((o) => `  - ${String(o)}`).join("\n")}`);
     }
-    if (ci.churnRisk !== null && ci.churnRisk !== undefined) {
+    if (!isPrimeiroContato && ci.churnRisk !== null && ci.churnRisk !== undefined) {
       lines.push(`Risco de churn: ${ci.churnRisk}%`);
     }
-    if (Array.isArray(ci.churnReasons) && ci.churnReasons.length > 0) {
+    if (!isPrimeiroContato && Array.isArray(ci.churnReasons) && ci.churnReasons.length > 0) {
       lines.push(`Razões de risco (use para guiar sua proposta de valor):\n${ci.churnReasons.map((r) => `  - ${String(r)}`).join("\n")}`);
     }
     if (ci.nextBestAction)       lines.push(`Próxima melhor ação: ${ci.nextBestAction}`);
