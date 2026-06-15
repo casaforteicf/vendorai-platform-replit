@@ -14,6 +14,7 @@ export type ReelsVariation = {
   scenes: ReelsScene[];
   audioSuggestion: string;
   cta: string;
+  videoUrl?: string;
 };
 export type ContentVariation = FeedVariation | StoriesVariation | ReelsVariation;
 export type ContentGenerationResult = { variations: ContentVariation[] };

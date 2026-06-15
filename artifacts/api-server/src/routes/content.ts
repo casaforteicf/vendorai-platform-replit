@@ -176,7 +176,10 @@ router.get("/tenants/:tenantId/content", async (req, res) => {
 });
 
 const publishBodySchema = z.object({ variationIndex: z.number().int().min(0) });
-const patchImageBodySchema = z.object({ objectPath: z.string().min(1) });
+const patchMediaBodySchema = z.object({
+  objectPath: z.string().min(1),
+  field: z.enum(["imageUrl", "videoUrl"]).default("imageUrl"),
+});
 
 router.patch("/tenants/:tenantId/content/:contentId/variations/:idx/image", async (req, res) => {
   const tenantId = String(req.params["tenantId"]);
@@ -188,7 +191,7 @@ router.patch("/tenants/:tenantId/content/:contentId/variations/:idx/image", asyn
     return;
   }
 
-  const body = patchImageBodySchema.safeParse(req.body);
+  const body = patchMediaBodySchema.safeParse(req.body);
   if (!body.success) {
     res.status(400).json({ error: "objectPath é obrigatório" });
     return;
@@ -202,18 +205,18 @@ router.patch("/tenants/:tenantId/content/:contentId/variations/:idx/image", asyn
 
   if (!gen) { res.status(404).json({ error: "Conteúdo não encontrado" }); return; }
 
-  const variations = [...gen.result.variations] as (typeof gen.result.variations[number] & { imageUrl?: string })[];
+  const variations = [...gen.result.variations] as (typeof gen.result.variations[number] & { imageUrl?: string; videoUrl?: string })[];
   if (!variations[idx]) { res.status(400).json({ error: "Variação inválida" }); return; }
 
-  const imageUrl = `/api/storage${body.data.objectPath}`;
-  variations[idx] = { ...variations[idx], imageUrl };
+  const mediaUrl = `/api/storage${body.data.objectPath}`;
+  variations[idx] = { ...variations[idx], [body.data.field]: mediaUrl };
 
   await db
     .update(contentGenerationsTable)
     .set({ result: { variations } })
     .where(eq(contentGenerationsTable.id, contentId));
 
-  res.json({ success: true, imageUrl });
+  res.json({ success: true, mediaUrl, field: body.data.field });
 });
 
 router.post("/tenants/:tenantId/content/:contentId/publish-instagram", async (req, res) => {

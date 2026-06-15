@@ -21,7 +21,7 @@ type ContentType = "feed" | "stories" | "reels";
 interface FeedVariation { caption: string; hashtags: string[]; imageUrl?: string }
 interface StoriesVariation { text: string; cta: string; imageUrl?: string }
 interface ReelsScene { visual: string; fala: string; duracao: string }
-interface ReelsVariation { title: string; scenes: ReelsScene[]; audioSuggestion: string; cta: string }
+interface ReelsVariation { title: string; scenes: ReelsScene[]; audioSuggestion: string; cta: string; videoUrl?: string }
 type ContentVariation = FeedVariation | StoriesVariation | ReelsVariation;
 
 interface ContentGenerationResult { variations: ContentVariation[] }
@@ -154,6 +154,13 @@ function ReelsCard({ v }: { v: ReelsVariation }) {
         <h4 className="font-semibold text-sm flex-1">🎬 {v.title}</h4>
         <CopyButton text={scriptText} />
       </div>
+      {v.videoUrl && (
+        <video
+          src={v.videoUrl}
+          controls
+          className="w-full rounded-md max-h-72 bg-black"
+        />
+      )}
       <div className="space-y-2">
         {v.scenes.map((scene, i) => (
           <div key={i} className="border rounded-md p-3 bg-muted/30 text-sm space-y-1">
@@ -237,30 +244,47 @@ function PublishInstagramButton({
   );
 }
 
-function ImageUploadButton({
+function MediaUploadButton({
   contentId,
   variationIndex,
   tenantId,
+  mediaType,
   onUploaded,
 }: {
   contentId: string;
   variationIndex: number;
   tenantId: string;
-  onUploaded: (imageUrl: string) => void;
+  mediaType: "image" | "video";
+  onUploaded: (mediaUrl: string) => void;
 }) {
   const { toast } = useToast();
   const qc = useQueryClient();
   const [uploading, setUploading] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
 
+  const isVideo = mediaType === "video";
+  const allowedTypes = isVideo
+    ? ["video/mp4", "video/quicktime", "video/webm"]
+    : ["image/jpeg", "image/png", "image/webp"];
+  const maxBytes = isVideo ? 100 * 1024 * 1024 : 10 * 1024 * 1024;
+  const accept = isVideo ? "video/mp4,video/quicktime,video/webm" : "image/jpeg,image/png,image/webp";
+  const field = isVideo ? "videoUrl" : "imageUrl";
+
   async function handleFile(file: File) {
-    const allowed = ["image/jpeg", "image/png", "image/webp"];
-    if (!allowed.includes(file.type)) {
-      toast({ title: "Formato inválido", description: "Use JPG, PNG ou WebP.", variant: "destructive" });
+    if (!allowedTypes.includes(file.type)) {
+      toast({
+        title: "Formato inválido",
+        description: isVideo ? "Use MP4, MOV ou WebM." : "Use JPG, PNG ou WebP.",
+        variant: "destructive",
+      });
       return;
     }
-    if (file.size > 10 * 1024 * 1024) {
-      toast({ title: "Imagem muito grande", description: "Máximo 10 MB.", variant: "destructive" });
+    if (file.size > maxBytes) {
+      toast({
+        title: `${isVideo ? "Vídeo" : "Imagem"} muito grande`,
+        description: `Máximo ${isVideo ? "100" : "10"} MB.`,
+        variant: "destructive",
+      });
       return;
     }
 
@@ -279,7 +303,7 @@ function ImageUploadButton({
         body: file,
         headers: { "Content-Type": file.type },
       });
-      if (!putRes.ok) throw new Error("Falha ao enviar imagem");
+      if (!putRes.ok) throw new Error(`Falha ao enviar ${isVideo ? "vídeo" : "imagem"}`);
 
       const patchRes = await fetch(
         `/api/tenants/${tenantId}/content/${contentId}/variations/${variationIndex}/image`,
@@ -289,15 +313,18 @@ function ImageUploadButton({
             "Content-Type": "application/json",
             Authorization: `Bearer ${localStorage.getItem("vendorai_token")}`,
           },
-          body: JSON.stringify({ objectPath }),
+          body: JSON.stringify({ objectPath, field }),
         }
       );
-      if (!patchRes.ok) throw new Error("Falha ao salvar imagem");
-      const { imageUrl } = (await patchRes.json()) as { imageUrl: string };
+      if (!patchRes.ok) throw new Error(`Falha ao salvar ${isVideo ? "vídeo" : "imagem"}`);
+      const { mediaUrl } = (await patchRes.json()) as { mediaUrl: string };
 
-      onUploaded(imageUrl);
+      onUploaded(mediaUrl);
       qc.invalidateQueries({ queryKey: ["content", tenantId] });
-      toast({ title: "Imagem atualizada!", description: "Imagem salva e pronta para publicar." });
+      toast({
+        title: `${isVideo ? "Vídeo" : "Imagem"} atualizado!`,
+        description: `${isVideo ? "Vídeo" : "Imagem"} salvo e pronto para publicar.`,
+      });
     } catch (err) {
       toast({ title: "Erro no upload", description: err instanceof Error ? err.message : "Tente novamente.", variant: "destructive" });
     } finally {
@@ -310,7 +337,7 @@ function ImageUploadButton({
       <input
         ref={inputRef}
         type="file"
-        accept="image/jpeg,image/png,image/webp"
+        accept={accept}
         className="hidden"
         onChange={(e) => { const f = e.target.files?.[0]; if (f) handleFile(f); e.target.value = ""; }}
       />
@@ -319,11 +346,11 @@ function ImageUploadButton({
         size="sm"
         onClick={() => inputRef.current?.click()}
         disabled={uploading}
-        title="Usar minha imagem"
+        title={isVideo ? "Usar meu vídeo" : "Usar minha imagem"}
         className="h-7 px-2 text-xs gap-1"
       >
         {uploading ? <Loader2 className="h-3 w-3 animate-spin" /> : <Upload className="h-3 w-3" />}
-        {uploading ? "Enviando…" : "Minha imagem"}
+        {uploading ? "Enviando…" : isVideo ? "Meu vídeo" : "Minha imagem"}
       </Button>
     </>
   );
@@ -343,9 +370,13 @@ function VariationCard({
   tenantId?: string;
 }) {
   const [localImageUrl, setLocalImageUrl] = useState<string | undefined>(undefined);
-  const effectiveVariation = localImageUrl
-    ? { ...variation, imageUrl: localImageUrl }
-    : variation;
+  const [localVideoUrl, setLocalVideoUrl] = useState<string | undefined>(undefined);
+
+  const effectiveVariation =
+    type === "reels"
+      ? localVideoUrl ? { ...variation, videoUrl: localVideoUrl } : variation
+      : localImageUrl ? { ...variation, imageUrl: localImageUrl } : variation;
+
   const hasImage = !!(effectiveVariation as { imageUrl?: string }).imageUrl;
 
   return (
@@ -355,20 +386,23 @@ function VariationCard({
           <CardTitle className="text-sm font-semibold text-muted-foreground">
             Variação {index + 1}
           </CardTitle>
-          {contentId && tenantId && type !== "reels" && (
+          {contentId && tenantId && (
             <div className="flex items-center gap-1">
-              <ImageUploadButton
+              <MediaUploadButton
                 contentId={contentId}
                 variationIndex={index}
                 tenantId={tenantId}
-                onUploaded={setLocalImageUrl}
+                mediaType={type === "reels" ? "video" : "image"}
+                onUploaded={type === "reels" ? setLocalVideoUrl : setLocalImageUrl}
               />
-              <PublishInstagramButton
-                contentId={contentId}
-                variationIndex={index}
-                hasImage={hasImage}
-                tenantId={tenantId}
-              />
+              {type !== "reels" && (
+                <PublishInstagramButton
+                  contentId={contentId}
+                  variationIndex={index}
+                  hasImage={hasImage}
+                  tenantId={tenantId}
+                />
+              )}
             </div>
           )}
         </div>
@@ -376,7 +410,7 @@ function VariationCard({
       <CardContent className="px-4 pb-4">
         {type === "feed" && <FeedCard v={effectiveVariation as FeedVariation} />}
         {type === "stories" && <StoriesCard v={effectiveVariation as StoriesVariation} />}
-        {type === "reels" && <ReelsCard v={variation as ReelsVariation} />}
+        {type === "reels" && <ReelsCard v={effectiveVariation as ReelsVariation} />}
       </CardContent>
     </Card>
   );
