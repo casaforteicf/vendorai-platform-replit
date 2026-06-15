@@ -36,6 +36,7 @@ import contentRouter from "./content";
 import partnerRouter from "./partner";
 import adminPartnersRouter from "./admin_partners";
 import billingEventsRouter from "./billing_events";
+import { intakeRouter } from "./intake";
 import { authenticate, blockPartnerFromCRM, blockSuspendedTenants, requireRole, requireSameTenanOrSuperAdmin } from "../middlewares/auth";
 
 const router: IRouter = Router();
@@ -49,6 +50,7 @@ router.use(webhooksRouter);
 router.use(publicSiteRouter);
 router.use(publicSegmentTemplatesRouter);
 router.use(inventorySyncRouter);
+router.use(intakeRouter);
 
 // Protected — all routes below require a valid JWT
 router.use(authenticate);

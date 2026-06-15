@@ -27,6 +27,7 @@ import Estoque from "@/pages/Estoque";
 import Onboarding from "@/pages/Onboarding";
 import Content from "@/pages/Content";
 import Suspended from "@/pages/Suspended";
+import Questionario from "@/pages/Questionario";
 import { useEffect } from "react";
 import {
   useGetTenant,
@@ -245,6 +246,9 @@ function AppRoutes() {
       </Route>
       <Route path="/site/:tenantSlug">
         <SiteLandingPage />
+      </Route>
+      <Route path="/questionario/:tenantSlug">
+        <Questionario />
       </Route>
       <Route component={NotFound} />
     </Switch>
