@@ -33,6 +33,29 @@ vi.mock("@workspace/db", () => ({
     etapa: "etapa",
     funilId: "funilId",
     leadId: "leadId",
+    assignedTo: "assignedTo",
+  },
+  leadsTable: { id: "id", tenantId: "tenantId", email: "email" },
+  tenantsTable: { id: "id", name: "name", webhookEstoqueUrl: "webhookEstoqueUrl" },
+  tenantInvitesTable: {
+    id: "id",
+    tenantId: "tenantId",
+    email: "email",
+    role: "role",
+    usedAt: "usedAt",
+    token: "token",
+    expiresAt: "expiresAt",
+  },
+  usersTable: {
+    id: "id",
+    tenantId: "tenantId",
+    name: "name",
+    email: "email",
+    role: "role",
+    platformRole: "platformRole",
+    active: "active",
+    createdAt: "createdAt",
+    updatedAt: "updatedAt",
   },
   insertDealSchema: {
     safeParse: () => ({ success: false, error: { message: "not exercised" } }),
@@ -40,6 +63,16 @@ vi.mock("@workspace/db", () => ({
   updateDealSchema: {
     safeParse: () => ({ success: true, data: {} }),
   },
+}));
+
+vi.mock("../routes/invites.js", () => ({
+  buildInviteUrl: vi.fn(() => "https://example.com/invite/test-token"),
+  invitesProtectedRouter: { use: vi.fn(), get: vi.fn(), post: vi.fn() },
+  default: { use: vi.fn(), get: vi.fn(), post: vi.fn() },
+}));
+
+vi.mock("../lib/email.js", () => ({
+  sendInviteEmail: vi.fn().mockResolvedValue(true),
 }));
 
 import express from "express";

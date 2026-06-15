@@ -277,8 +277,18 @@ function EditDealSheet({
         },
       },
       {
-        onSuccess: () => {
+        onSuccess: (data) => {
           toast({ title: "Negócio atualizado." });
+          if (values.etapa === "ganho" && deal.etapa !== "ganho") {
+            if ((data as any).inviteSent && (data as any).inviteEmail) {
+              toast({ title: `Convite de onboarding enviado para ${(data as any).inviteEmail}` });
+            } else if ((data as any).inviteSkipReason === "no_email") {
+              toast({
+                title: "Negócio ganho — sem e-mail cadastrado",
+                description: "Envie o convite manualmente após adicionar o e-mail do lead.",
+              });
+            }
+          }
           queryClient.invalidateQueries({ queryKey: getListDealsQueryKey(tenantId) });
           onClose();
         },
@@ -519,6 +529,19 @@ export default function Deals() {
       updateDeal.mutate(
         { id: draggedDeal.id, data: { etapa: targetEtapa.value } },
         {
+          onSuccess: (data) => {
+            if (targetEtapa.value === "ganho") {
+              if ((data as any).inviteSent && (data as any).inviteEmail) {
+                toast({ title: `Convite de onboarding enviado para ${(data as any).inviteEmail}` });
+              } else if ((data as any).inviteSkipReason === "no_email") {
+                toast({
+                  title: "Negócio ganho — sem e-mail cadastrado",
+                  description: "Envie o convite manualmente após adicionar o e-mail do lead.",
+                  variant: "default",
+                });
+              }
+            }
+          },
           onError: () => {
             toast({ title: "Erro ao mover negócio", variant: "destructive" });
             queryClient.invalidateQueries({ queryKey: getListDealsQueryKey(tenantId) });

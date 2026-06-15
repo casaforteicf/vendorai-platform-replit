@@ -1,10 +1,11 @@
 import { Router, type IRouter } from "express";
-import { eq, and } from "drizzle-orm";
+import { eq, and, isNull } from "drizzle-orm";
 import bcrypt from "bcryptjs";
 import { z } from "zod/v4";
 import { db, tenantsTable, usersTable, tenantInvitesTable } from "@workspace/db";
 import { signToken } from "../lib/jwt.js";
 import { requireRole, requireSameTenanOrSuperAdmin } from "../middlewares/auth.js";
+import { sendInviteEmail } from "../lib/email.js";
 
 const router: IRouter = Router();
 const protectedRouter: IRouter = Router();
@@ -37,7 +38,7 @@ const acceptInviteSchema = z.object({
   password: z.string().min(8),
 });
 
-function buildInviteUrl(req: import("express").Request, token: string): string {
+export function buildInviteUrl(req: import("express").Request, token: string): string {
   const domain = process.env.REPLIT_DOMAINS?.split(",")[0];
   const baseUrl = domain
     ? `https://${domain}`
@@ -310,6 +311,88 @@ protectedRouter.post(
       inviteUrl,
     });
   }
+);
+
+// tenant_admin: create an onboarding invite for their own tenant (Feature 2 prep)
+protectedRouter.post(
+  "/tenants/:id/invites",
+  requireSameTenanOrSuperAdmin(),
+  requireRole("tenant_admin", "super_admin"),
+  async (req, res) => {
+    const tenantId = String(req.params["id"]);
+
+    const bodySchema = z.object({ email: z.email() });
+    const parsed = bodySchema.safeParse(req.body);
+    if (!parsed.success) {
+      res.status(422).json({ error: parsed.error.message });
+      return;
+    }
+    const { email } = parsed.data;
+
+    const [tenant] = await db
+      .select({ id: tenantsTable.id, name: tenantsTable.name })
+      .from(tenantsTable)
+      .where(eq(tenantsTable.id, tenantId));
+
+    if (!tenant) {
+      res.status(404).json({ error: "Tenant não encontrado" });
+      return;
+    }
+
+    const expiresAt = new Date();
+    expiresAt.setDate(expiresAt.getDate() + 7);
+
+    const [existingPending] = await db
+      .select({ id: tenantInvitesTable.id, token: tenantInvitesTable.token })
+      .from(tenantInvitesTable)
+      .where(
+        and(
+          eq(tenantInvitesTable.email, email),
+          eq(tenantInvitesTable.tenantId, tenantId),
+          eq(tenantInvitesTable.role, "tenant_admin"),
+          isNull(tenantInvitesTable.usedAt),
+        ),
+      );
+
+    let invite: typeof tenantInvitesTable.$inferSelect;
+    if (existingPending) {
+      [invite] = await db
+        .update(tenantInvitesTable)
+        .set({ expiresAt })
+        .where(eq(tenantInvitesTable.id, existingPending.id))
+        .returning();
+    } else {
+      [invite] = await db
+        .insert(tenantInvitesTable)
+        .values({
+          tenantId,
+          email,
+          role: "tenant_admin",
+          expiresAt,
+          createdBy: req.user!.sub,
+        })
+        .returning();
+    }
+
+    if (!invite) {
+      res.status(500).json({ error: "Falha ao criar convite" });
+      return;
+    }
+
+    const inviteUrl = buildInviteUrl(req, invite.token);
+    await sendInviteEmail(email, inviteUrl, tenant.name);
+    req.log.info({ inviteId: invite.id, tenantId, email }, "Tenant invite created/resent");
+
+    res.status(201).json({
+      id: invite.id,
+      tenantId: invite.tenantId,
+      email: invite.email,
+      role: invite.role,
+      token: invite.token,
+      expiresAt: invite.expiresAt.toISOString(),
+      inviteUrl,
+    });
+  },
 );
 
 export { protectedRouter as invitesProtectedRouter };

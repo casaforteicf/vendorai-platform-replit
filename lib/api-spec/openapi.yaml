@@ -1002,7 +1002,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Deal"
+                $ref: "#/components/schemas/DealUpdateResponse"
         "404":
           description: Not found
           content:
@@ -3622,6 +3622,46 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
 
+  /tenants/{id}/invites:
+    post:
+      operationId: createTenantInvite
+      tags: [invites]
+      summary: Create an onboarding invite for a tenant
+      description: Creates (or reuses a pending) tenant_admin invite and sends it via email. Requires tenant_admin or super_admin.
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateTenantInviteBody"
+      responses:
+        "201":
+          description: Invite created or reused
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/InviteCreatedResponse"
+        "404":
+          description: Tenant not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "422":
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
   /tenants/{id}/integration-settings:
     get:
       operationId: getIntegrationSettings
@@ -5270,6 +5310,15 @@ components:
           format: email
         name:
           type: string
+      required:
+        - email
+
+    CreateTenantInviteBody:
+      type: object
+      properties:
+        email:
+          type: string
+          format: email
       required:
         - email
 
@@ -6935,6 +6984,23 @@ components:
           type: string
           format: date-time
       required: [id, tenantId, titulo, etapa, createdAt, updatedAt]
+
+    DealUpdateResponse:
+      allOf:
+        - $ref: "#/components/schemas/Deal"
+        - type: object
+          properties:
+            inviteSent:
+              type: boolean
+              description: Whether an onboarding invite was automatically sent on deal win
+            inviteEmail:
+              type: string
+              nullable: true
+              description: The email address the invite was sent to
+            inviteSkipReason:
+              type: string
+              nullable: true
+              description: Why the invite was not sent (e.g. no_email, not_won)
 
     CreateDealBody:
       type: object

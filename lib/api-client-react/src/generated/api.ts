@@ -69,9 +69,11 @@ import type {
   CreateSiteConfigBody,
   CreateSubscriptionBody,
   CreateTenantBody,
+  CreateTenantInviteBody,
   CreateUserBody,
   CustomerIntelligence,
   Deal,
+  DealUpdateResponse,
   DeleteContentGeneration200,
   DocumentExtractionResult,
   ErrorResponse,
@@ -2555,9 +2557,9 @@ export const getUpdateDealUrl = (id: string,) => {
  * @summary Update deal
  */
 export const updateDeal = async (id: string,
-    updateDealBody: UpdateDealBody, options?: RequestInit): Promise<Deal> => {
+    updateDealBody: UpdateDealBody, options?: RequestInit): Promise<DealUpdateResponse> => {
 
-  return customFetch<Deal>(getUpdateDealUrl(id),
+  return customFetch<DealUpdateResponse>(getUpdateDealUrl(id),
   {
     ...options,
     method: 'PATCH',
@@ -9117,6 +9119,79 @@ export const useDeleteTenant = <TError = ErrorType<ErrorResponse>,
         TContext
       > => {
       return useMutation(getDeleteTenantMutationOptions(options));
+    }
+
+export const getCreateTenantInviteUrl = (id: string,) => {
+
+
+
+
+  return `/api/tenants/${id}/invites`
+}
+
+/**
+ * Creates (or reuses a pending) tenant_admin invite and sends it via email. Requires tenant_admin or super_admin.
+ * @summary Create an onboarding invite for a tenant
+ */
+export const createTenantInvite = async (id: string,
+    createTenantInviteBody: CreateTenantInviteBody, options?: RequestInit): Promise<InviteCreatedResponse> => {
+
+  return customFetch<InviteCreatedResponse>(getCreateTenantInviteUrl(id),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(
+      createTenantInviteBody,)
+  }
+);}
+
+
+
+
+export const getCreateTenantInviteMutationOptions = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createTenantInvite>>, TError,{id: string;data: BodyType<CreateTenantInviteBody>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof createTenantInvite>>, TError,{id: string;data: BodyType<CreateTenantInviteBody>}, TContext> => {
+
+const mutationKey = ['createTenantInvite'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof createTenantInvite>>, {id: string;data: BodyType<CreateTenantInviteBody>}> = (props) => {
+          const {id,data} = props ?? {};
+
+          return  createTenantInvite(id,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type CreateTenantInviteMutationResult = NonNullable<Awaited<ReturnType<typeof createTenantInvite>>>
+    export type CreateTenantInviteMutationBody = BodyType<CreateTenantInviteBody>
+    export type CreateTenantInviteMutationError = ErrorType<ErrorResponse>
+
+    /**
+ * @summary Create an onboarding invite for a tenant
+ */
+export const useCreateTenantInvite = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createTenantInvite>>, TError,{id: string;data: BodyType<CreateTenantInviteBody>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof createTenantInvite>>,
+        TError,
+        {id: string;data: BodyType<CreateTenantInviteBody>},
+        TContext
+      > => {
+      return useMutation(getCreateTenantInviteMutationOptions(options));
     }
 
 export const getGetIntegrationSettingsUrl = (id: string,) => {

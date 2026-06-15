@@ -991,8 +991,8 @@ export const UpdateDealBody = zod.object({
   "motivoPerda": zod.string().optional()
 })
 
-export const updateDealResponseProbabilidadeMin = 0;
-export const updateDealResponseProbabilidadeMax = 100;
+export const updateDealResponseOneProbabilidadeMin = 0;
+export const updateDealResponseOneProbabilidadeMax = 100;
 
 
 
@@ -1004,12 +1004,16 @@ export const UpdateDealResponse = zod.object({
   "valor": zod.string().nullish().describe('Decimal stored as string (Postgres numeric)'),
   "etapa": zod.enum(['novo', 'qualificado', 'proposta', 'negociacao', 'ganho', 'perdido']),
   "funilId": zod.string().nullish(),
-  "probabilidade": zod.number().min(updateDealResponseProbabilidadeMin).max(updateDealResponseProbabilidadeMax).nullish(),
+  "probabilidade": zod.number().min(updateDealResponseOneProbabilidadeMin).max(updateDealResponseOneProbabilidadeMax).nullish(),
   "dataFechamentoPrevista": zod.coerce.date().nullish(),
   "motivoPerda": zod.string().nullish(),
   "createdAt": zod.coerce.date(),
   "updatedAt": zod.coerce.date()
-})
+}).and(zod.object({
+  "inviteSent": zod.boolean().optional().describe('Whether an onboarding invite was automatically sent on deal win'),
+  "inviteEmail": zod.string().nullish().describe('The email address the invite was sent to'),
+  "inviteSkipReason": zod.string().nullish().describe('Why the invite was not sent (e.g. no_email, not_won)')
+}))
 
 
 /**
@@ -3239,6 +3243,19 @@ export const UpdateTenantResponse = zod.object({
  */
 export const DeleteTenantParams = zod.object({
   "id": zod.coerce.string()
+})
+
+
+/**
+ * Creates (or reuses a pending) tenant_admin invite and sends it via email. Requires tenant_admin or super_admin.
+ * @summary Create an onboarding invite for a tenant
+ */
+export const CreateTenantInviteParams = zod.object({
+  "id": zod.coerce.string()
+})
+
+export const CreateTenantInviteBody = zod.object({
+  "email": zod.string().email()
 })
 
 

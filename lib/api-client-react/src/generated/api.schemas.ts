@@ -15,6 +15,10 @@ export interface CreateSellerInviteBody {
   name?: string;
 }
 
+export interface CreateTenantInviteBody {
+  email: string;
+}
+
 export interface AcceptInviteBody {
   token: string;
   name: string;
@@ -1081,6 +1085,15 @@ export interface Deal {
   createdAt: string;
   updatedAt: string;
 }
+
+export type DealUpdateResponse = Deal & ({
+  /** Whether an onboarding invite was automatically sent on deal win */
+  inviteSent?: boolean;
+  /** The email address the invite was sent to */
+  inviteEmail?: string | null;
+  /** Why the invite was not sent (e.g. no_email, not_won) */
+  inviteSkipReason?: string | null;
+});
 
 export interface CreateDealBody {
   tenantId: string;
