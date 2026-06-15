@@ -65,6 +65,9 @@ import {
   Download,
   CheckCircle2,
   XCircle,
+  Search,
+  Filter,
+  X,
 } from "lucide-react";
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -187,6 +190,8 @@ export default function Estoque() {
   const [csvRows, setCsvRows]                   = useState<CsvRow[]>([]);
   const [csvParseErrors, setCsvParseErrors]     = useState<string[]>([]);
   const [importResult, setImportResult]         = useState<ImportInventoryResult | null>(null);
+  const [search, setSearch]                     = useState("");
+  const [categoriaFilter, setCategoriaFilter]   = useState<string>("__all__");
 
   // ── Queries ──────────────────────────────────────────────────────────────
   const { data: items = [], isLoading: loadingItems } = useListInventoryItems(tenantId, {
@@ -291,8 +296,21 @@ export default function Estoque() {
   }
 
   // ── Derived ───────────────────────────────────────────────────────────────
-  const produtoMap = Object.fromEntries(produtos.map((p) => [p.id, p.nome]));
-  const precoMap   = Object.fromEntries(produtos.map((p) => [p.id, p.precoBase]));
+  const produtoMap    = Object.fromEntries(produtos.map((p) => [p.id, p.nome]));
+  const precoMap      = Object.fromEntries(produtos.map((p) => [p.id, p.precoBase]));
+  const categoriaMap  = Object.fromEntries(produtos.map((p) => [p.id, p.categoria ?? ""]));
+
+  const categoriasDisponiveis = [...new Set(
+    items.map((i) => categoriaMap[i.produtoId] ?? "").filter(Boolean)
+  )].sort();
+
+  const filteredItems = items.filter((item) => {
+    const prodNome = (produtoMap[item.produtoId] ?? "").toLowerCase();
+    const matchesSearch = !search.trim() || prodNome.includes(search.toLowerCase().trim());
+    const cat = categoriaMap[item.produtoId] ?? "";
+    const matchesCategoria = categoriaFilter === "__all__" || cat === categoriaFilter;
+    return matchesSearch && matchesCategoria;
+  });
 
   const lowStockCount = items.filter(isLowStock).length;
 
@@ -354,6 +372,41 @@ export default function Estoque() {
 
         {/* ── Tab: Itens ──────────────────────────────────────────────── */}
         <TabsContent value="itens">
+          {/* Search + Sector filter bar */}
+          <div className="flex flex-col sm:flex-row gap-2 mb-3">
+            <div className="relative flex-1">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none" />
+              <Input
+                placeholder="Buscar produto…"
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                className="pl-9 pr-9"
+              />
+              {search && (
+                <button
+                  onClick={() => setSearch("")}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                >
+                  <X className="h-3.5 w-3.5" />
+                </button>
+              )}
+            </div>
+            <div className="relative sm:w-52">
+              <Filter className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none z-10" />
+              <Select value={categoriaFilter} onValueChange={setCategoriaFilter}>
+                <SelectTrigger className="pl-9">
+                  <SelectValue placeholder="Todos os setores" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="__all__">Todos os setores</SelectItem>
+                  {categoriasDisponiveis.map((cat) => (
+                    <SelectItem key={cat} value={cat}>{cat}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+
           <Card>
             <CardContent className="p-0">
               {loadingItems ? (
@@ -369,11 +422,19 @@ export default function Estoque() {
                     <p className="text-sm text-muted-foreground/70">Clique em "Novo Item" para começar</p>
                   </div>
                 </div>
+              ) : filteredItems.length === 0 ? (
+                <div className="flex flex-col items-center justify-center py-16 text-center gap-3">
+                  <Search className="h-12 w-12 text-muted-foreground/40" />
+                  <div>
+                    <p className="font-medium text-muted-foreground">Nenhum item encontrado</p>
+                    <p className="text-sm text-muted-foreground/70">Tente outros termos ou remova o filtro de setor</p>
+                  </div>
+                </div>
               ) : (
                 <>
                 {/* Mobile cards */}
                 <div className="md:hidden divide-y">
-                  {items.map((item) => {
+                  {filteredItems.map((item) => {
                     const low = isLowStock(item);
                     const prodNome = produtoMap[item.produtoId] ?? item.produtoId;
                     return (
@@ -421,6 +482,7 @@ export default function Estoque() {
                   <TableHeader>
                     <TableRow>
                       <TableHead>Produto</TableHead>
+                      <TableHead>Setor</TableHead>
                       <TableHead className="text-center">Qtd. Atual</TableHead>
                       <TableHead className="text-center">Qtd. Mínima</TableHead>
                       <TableHead>Unidade</TableHead>
@@ -431,12 +493,15 @@ export default function Estoque() {
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {items.map((item) => {
+                    {filteredItems.map((item) => {
                       const low = isLowStock(item);
                       const prodNome = produtoMap[item.produtoId] ?? item.produtoId;
                       return (
                         <TableRow key={item.id} className={low ? "bg-red-50/50" : undefined}>
                           <TableCell className="font-medium">{prodNome}</TableCell>
+                          <TableCell className="text-muted-foreground text-sm">
+                            {categoriaMap[item.produtoId] || <span className="text-muted-foreground/40">—</span>}
+                          </TableCell>
                           <TableCell className="text-center">
                             <span className={low ? "text-red-600 font-bold" : "font-semibold"}>
                               {formatQty(item.quantidadeAtual)}
