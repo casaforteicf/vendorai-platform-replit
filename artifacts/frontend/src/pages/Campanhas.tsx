@@ -77,6 +77,8 @@ import {
   Loader2,
   Megaphone,
   ArrowLeft,
+  SlidersHorizontal,
+  X,
 } from "lucide-react";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
@@ -469,62 +471,148 @@ function CampaignModal({
               />
 
               {/* Segmento */}
-              <div className="rounded-lg border p-4 space-y-3 bg-muted/30">
-                <p className="text-sm font-medium text-foreground">
-                  Segmento de Audiência{" "}
-                  <span className="text-muted-foreground font-normal text-xs">
-                    (opcional)
-                  </span>
-                </p>
+              {(() => {
+                const churnVal   = form.watch("churnRiskMin");
+                const stageVal   = form.watch("journeyStage");
+                const activeCount = (churnVal !== undefined ? 1 : 0) + (stageVal ? 1 : 0);
 
-                <FormField
-                  control={form.control}
-                  name="churnRiskMin"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel className="text-xs text-muted-foreground">
-                        Churn Risk mínimo (%)
-                      </FormLabel>
-                      <FormControl>
-                        <Input
-                          type="number"
-                          min={0}
-                          max={100}
-                          placeholder="Ex: 50  →  leads com risco ≥ 50%"
-                          {...field}
-                          value={field.value ?? ""}
-                          onChange={(e) =>
-                            field.onChange(
-                              e.target.value === "" ? undefined : Number(e.target.value)
-                            )
-                          }
-                        />
-                      </FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
+                const CHURN_PRESETS = [
+                  { label: "Todos os leads",  value: undefined,   className: "bg-muted text-foreground border-border" },
+                  { label: "Risco ≥ 40%",     value: 40,          className: "bg-amber-50 text-amber-700 border-amber-300" },
+                  { label: "Risco ≥ 60%",     value: 60,          className: "bg-orange-50 text-orange-700 border-orange-300" },
+                  { label: "Crítico ≥ 80%",   value: 80,          className: "bg-red-50 text-red-700 border-red-300" },
+                ] as const;
 
-                <FormField
-                  control={form.control}
-                  name="journeyStage"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel className="text-xs text-muted-foreground">
-                        Journey Stage
-                      </FormLabel>
-                      <FormControl>
-                        <Input
-                          placeholder="Ex: onboarding, active, at-risk…"
-                          {...field}
-                          value={field.value ?? ""}
-                        />
-                      </FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-              </div>
+                const STAGES = [
+                  { label: "Qualquer estágio", value: "" },
+                  { label: "Novo",             value: "novo" },
+                  { label: "Onboarding",       value: "onboarding" },
+                  { label: "Ativo",            value: "ativo" },
+                  { label: "Em risco",         value: "em risco" },
+                  { label: "Inativo",          value: "inativo" },
+                  { label: "Reativação",       value: "reativação" },
+                ];
+
+                return (
+                  <div className="rounded-lg border p-4 space-y-4 bg-muted/20">
+                    {/* Header */}
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-1.5">
+                        <SlidersHorizontal className="h-3.5 w-3.5 text-muted-foreground" />
+                        <span className="text-sm font-medium">Segmento de Audiência</span>
+                        {activeCount > 0 && (
+                          <span className="text-xs bg-primary text-primary-foreground rounded-full px-1.5 py-0 leading-5 font-medium">
+                            {activeCount}
+                          </span>
+                        )}
+                      </div>
+                      {activeCount > 0 && (
+                        <button
+                          type="button"
+                          className="text-xs text-muted-foreground hover:text-foreground flex items-center gap-1"
+                          onClick={() => {
+                            form.setValue("churnRiskMin", undefined);
+                            form.setValue("journeyStage", "");
+                          }}
+                        >
+                          <X className="h-3 w-3" />
+                          Limpar filtros
+                        </button>
+                      )}
+                    </div>
+
+                    {/* Churn Risk chips */}
+                    <FormField
+                      control={form.control}
+                      name="churnRiskMin"
+                      render={({ field }) => (
+                        <FormItem className="space-y-1.5">
+                          <FormLabel className="text-xs text-muted-foreground">
+                            Risco de Churn
+                          </FormLabel>
+                          <div className="flex flex-wrap gap-2">
+                            {CHURN_PRESETS.map((preset) => {
+                              const isActive = field.value === preset.value;
+                              return (
+                                <button
+                                  key={preset.label}
+                                  type="button"
+                                  onClick={() => field.onChange(preset.value)}
+                                  className={[
+                                    "px-3 py-1 rounded-full text-xs font-medium border transition-all",
+                                    isActive
+                                      ? preset.className + " ring-2 ring-offset-1 ring-primary/40 shadow-sm"
+                                      : "bg-background text-muted-foreground border-border hover:border-primary/50 hover:text-foreground",
+                                  ].join(" ")}
+                                >
+                                  {preset.label}
+                                </button>
+                              );
+                            })}
+                          </div>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+
+                    {/* Journey Stage select */}
+                    <FormField
+                      control={form.control}
+                      name="journeyStage"
+                      render={({ field }) => (
+                        <FormItem className="space-y-1.5">
+                          <FormLabel className="text-xs text-muted-foreground">
+                            Estágio da Jornada
+                          </FormLabel>
+                          <div className="flex flex-wrap gap-2">
+                            {STAGES.map((stage) => {
+                              const isActive = (field.value ?? "") === stage.value;
+                              return (
+                                <button
+                                  key={stage.value || "__any__"}
+                                  type="button"
+                                  onClick={() => field.onChange(stage.value)}
+                                  className={[
+                                    "px-3 py-1 rounded-full text-xs font-medium border transition-all",
+                                    isActive
+                                      ? "bg-primary text-primary-foreground border-primary shadow-sm"
+                                      : "bg-background text-muted-foreground border-border hover:border-primary/50 hover:text-foreground",
+                                  ].join(" ")}
+                                >
+                                  {stage.label}
+                                </button>
+                              );
+                            })}
+                          </div>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+
+                    {/* Active filter summary */}
+                    {activeCount > 0 && (
+                      <div className="flex flex-wrap gap-1.5 pt-1 border-t">
+                        {churnVal !== undefined && (
+                          <span className="inline-flex items-center gap-1 text-xs bg-primary/10 text-primary rounded px-2 py-0.5">
+                            Churn ≥ {churnVal}%
+                            <button type="button" onClick={() => form.setValue("churnRiskMin", undefined)}>
+                              <X className="h-2.5 w-2.5" />
+                            </button>
+                          </span>
+                        )}
+                        {stageVal && (
+                          <span className="inline-flex items-center gap-1 text-xs bg-primary/10 text-primary rounded px-2 py-0.5">
+                            Estágio: {stageVal}
+                            <button type="button" onClick={() => form.setValue("journeyStage", "")}>
+                              <X className="h-2.5 w-2.5" />
+                            </button>
+                          </span>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                );
+              })()}
 
               <FormField
                 control={form.control}
