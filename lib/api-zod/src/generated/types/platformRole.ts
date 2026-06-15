@@ -12,5 +12,6 @@ export type PlatformRole = typeof PlatformRole[keyof typeof PlatformRole];
 export const PlatformRole = {
   super_admin: 'super_admin',
   tenant_admin: 'tenant_admin',
+  tenant_seller: 'tenant_seller',
   member: 'member',
 } as const;

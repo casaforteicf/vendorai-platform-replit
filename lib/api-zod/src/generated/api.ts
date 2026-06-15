@@ -35,7 +35,7 @@ export const GetMeResponse = zod.object({
   "name": zod.string(),
   "email": zod.string(),
   "role": zod.enum(['admin', 'member']),
-  "platformRole": zod.enum(['super_admin', 'tenant_admin', 'member']),
+  "platformRole": zod.enum(['super_admin', 'tenant_admin', 'tenant_seller', 'member']),
   "active": zod.boolean(),
   "createdAt": zod.coerce.date(),
   "updatedAt": zod.coerce.date()
@@ -54,7 +54,7 @@ export const RefreshTokenResponse = zod.object({
   "name": zod.string(),
   "email": zod.string(),
   "role": zod.enum(['admin', 'member']),
-  "platformRole": zod.enum(['super_admin', 'tenant_admin', 'member']),
+  "platformRole": zod.enum(['super_admin', 'tenant_admin', 'tenant_seller', 'member']),
   "active": zod.boolean(),
   "createdAt": zod.coerce.date(),
   "updatedAt": zod.coerce.date()
@@ -78,7 +78,7 @@ export const LoginResponse = zod.object({
   "name": zod.string(),
   "email": zod.string(),
   "role": zod.enum(['admin', 'member']),
-  "platformRole": zod.enum(['super_admin', 'tenant_admin', 'member']),
+  "platformRole": zod.enum(['super_admin', 'tenant_admin', 'tenant_seller', 'member']),
   "active": zod.boolean(),
   "createdAt": zod.coerce.date(),
   "updatedAt": zod.coerce.date()
@@ -108,6 +108,7 @@ export const ListInvitesByTenantResponseItem = zod.object({
   "id": zod.string(),
   "tenantId": zod.string(),
   "email": zod.string(),
+  "role": zod.string().optional(),
   "token": zod.string(),
   "expiresAt": zod.coerce.date(),
   "usedAt": zod.coerce.date().nullish(),
@@ -129,6 +130,7 @@ export const ValidateInviteResponse = zod.object({
   "tenantId": zod.string(),
   "tenantName": zod.string(),
   "email": zod.string(),
+  "role": zod.string(),
   "expiresAt": zod.coerce.date()
 })
 
@@ -167,7 +169,7 @@ export const ListUsersResponseItem = zod.object({
   "name": zod.string(),
   "email": zod.string(),
   "role": zod.enum(['admin', 'member']),
-  "platformRole": zod.enum(['super_admin', 'tenant_admin', 'member']),
+  "platformRole": zod.enum(['super_admin', 'tenant_admin', 'tenant_seller', 'member']),
   "active": zod.boolean(),
   "createdAt": zod.coerce.date(),
   "updatedAt": zod.coerce.date()
@@ -184,7 +186,7 @@ export const CreateUserBody = zod.object({
   "email": zod.string(),
   "password": zod.string(),
   "role": zod.enum(['admin', 'member']).optional(),
-  "platformRole": zod.enum(['super_admin', 'tenant_admin', 'member']).optional(),
+  "platformRole": zod.enum(['super_admin', 'tenant_admin', 'tenant_seller', 'member']).optional(),
   "active": zod.boolean().optional()
 })
 
@@ -212,7 +214,7 @@ export const ChangePasswordResponse = zod.object({
   "name": zod.string(),
   "email": zod.string(),
   "role": zod.enum(['admin', 'member']),
-  "platformRole": zod.enum(['super_admin', 'tenant_admin', 'member']),
+  "platformRole": zod.enum(['super_admin', 'tenant_admin', 'tenant_seller', 'member']),
   "active": zod.boolean(),
   "createdAt": zod.coerce.date(),
   "updatedAt": zod.coerce.date()
@@ -232,7 +234,7 @@ export const GetUserResponse = zod.object({
   "name": zod.string(),
   "email": zod.string(),
   "role": zod.enum(['admin', 'member']),
-  "platformRole": zod.enum(['super_admin', 'tenant_admin', 'member']),
+  "platformRole": zod.enum(['super_admin', 'tenant_admin', 'tenant_seller', 'member']),
   "active": zod.boolean(),
   "createdAt": zod.coerce.date(),
   "updatedAt": zod.coerce.date()
@@ -251,7 +253,7 @@ export const UpdateUserBody = zod.object({
   "email": zod.string().optional(),
   "password": zod.string().optional(),
   "role": zod.enum(['admin', 'member']).optional(),
-  "platformRole": zod.enum(['super_admin', 'tenant_admin', 'member']).optional(),
+  "platformRole": zod.enum(['super_admin', 'tenant_admin', 'tenant_seller', 'member']).optional(),
   "active": zod.boolean().optional()
 })
 
@@ -261,7 +263,7 @@ export const UpdateUserResponse = zod.object({
   "name": zod.string(),
   "email": zod.string(),
   "role": zod.enum(['admin', 'member']),
-  "platformRole": zod.enum(['super_admin', 'tenant_admin', 'member']),
+  "platformRole": zod.enum(['super_admin', 'tenant_admin', 'tenant_seller', 'member']),
   "active": zod.boolean(),
   "createdAt": zod.coerce.date(),
   "updatedAt": zod.coerce.date()
@@ -3661,12 +3663,26 @@ export const ListTenantUsersResponseItem = zod.object({
   "name": zod.string(),
   "email": zod.string(),
   "role": zod.enum(['admin', 'member']),
-  "platformRole": zod.enum(['super_admin', 'tenant_admin', 'member']),
+  "platformRole": zod.enum(['super_admin', 'tenant_admin', 'tenant_seller', 'member']),
   "active": zod.boolean(),
   "createdAt": zod.coerce.date(),
   "updatedAt": zod.coerce.date()
 })
 export const ListTenantUsersResponse = zod.array(ListTenantUsersResponseItem)
+
+
+/**
+ * Generates an invite token for a tenant_seller. Requires tenant_admin.
+ * @summary Invite a seller to the tenant
+ */
+export const InviteTenantSellerParams = zod.object({
+  "tenantId": zod.coerce.string()
+})
+
+export const InviteTenantSellerBody = zod.object({
+  "email": zod.string().email(),
+  "name": zod.string().optional()
+})
 
 
 /**

@@ -22,12 +22,17 @@ router.post("/deals", async (req, res) => {
 });
 
 router.get("/tenants/:tenantId/deals", async (req, res) => {
+  const tenantId = String(req.params["tenantId"]);
   const { etapa, funilId, leadId } = req.query as Record<string, string | undefined>;
 
-  const conditions = [eq(dealsTable.tenantId, String(req.params.tenantId))];
+  const conditions = [eq(dealsTable.tenantId, tenantId)];
   if (etapa) conditions.push(eq(dealsTable.etapa, etapa as typeof dealsTable.etapa._.data));
   if (funilId) conditions.push(eq(dealsTable.funilId, funilId));
   if (leadId) conditions.push(eq(dealsTable.leadId, leadId));
+
+  if (req.user?.platformRole === "tenant_seller") {
+    conditions.push(eq(dealsTable.assignedTo, req.user.sub));
+  }
 
   const deals = await db
     .select()
@@ -54,6 +59,11 @@ router.get("/deals/:id", async (req, res) => {
     return;
   }
 
+  if (req.user?.platformRole === "tenant_seller" && deal.assignedTo !== req.user.sub) {
+    res.status(403).json({ error: "Access denied to this deal" });
+    return;
+  }
+
   res.json(deal);
 });
 
@@ -65,7 +75,7 @@ router.patch("/deals/:id", async (req, res) => {
   }
 
   const [existing] = await db
-    .select({ id: dealsTable.id, tenantId: dealsTable.tenantId, etapa: dealsTable.etapa })
+    .select({ id: dealsTable.id, tenantId: dealsTable.tenantId, etapa: dealsTable.etapa, assignedTo: dealsTable.assignedTo })
     .from(dealsTable)
     .where(eq(dealsTable.id, String(req.params.id)));
 
@@ -76,6 +86,11 @@ router.patch("/deals/:id", async (req, res) => {
 
   if (req.user?.platformRole !== "super_admin" && existing.tenantId !== req.user?.tenantId) {
     res.status(403).json({ error: "Access denied to this tenant" });
+    return;
+  }
+
+  if (req.user?.platformRole === "tenant_seller" && existing.assignedTo !== req.user.sub) {
+    res.status(403).json({ error: "Access denied to this deal" });
     return;
   }
 
@@ -120,7 +135,7 @@ router.patch("/deals/:id", async (req, res) => {
 
 router.delete("/deals/:id", async (req, res) => {
   const [existing] = await db
-    .select({ id: dealsTable.id, tenantId: dealsTable.tenantId })
+    .select({ id: dealsTable.id, tenantId: dealsTable.tenantId, assignedTo: dealsTable.assignedTo })
     .from(dealsTable)
     .where(eq(dealsTable.id, String(req.params.id)));
 
@@ -131,6 +146,11 @@ router.delete("/deals/:id", async (req, res) => {
 
   if (req.user?.platformRole !== "super_admin" && existing.tenantId !== req.user?.tenantId) {
     res.status(403).json({ error: "Access denied to this tenant" });
+    return;
+  }
+
+  if (req.user?.platformRole === "tenant_seller" && existing.assignedTo !== req.user.sub) {
+    res.status(403).json({ error: "Access denied to this deal" });
     return;
   }
 

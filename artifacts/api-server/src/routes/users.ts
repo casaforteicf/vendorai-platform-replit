@@ -18,10 +18,26 @@ const PUBLIC_FIELDS = {
 } as const;
 
 router.get("/tenants/:tenantId/users", async (req, res) => {
+  const tenantId = String(req.params["tenantId"]);
+
+  if (
+    req.user?.platformRole !== "super_admin" &&
+    req.user?.platformRole !== "tenant_admin" &&
+    req.user?.tenantId !== tenantId
+  ) {
+    res.status(403).json({ error: "Access denied" });
+    return;
+  }
+
+  if (req.user?.platformRole !== "super_admin" && req.user?.tenantId !== tenantId) {
+    res.status(403).json({ error: "Access denied to this tenant" });
+    return;
+  }
+
   const users = await db
     .select(PUBLIC_FIELDS)
     .from(usersTable)
-    .where(eq(usersTable.tenantId, req.params.tenantId))
+    .where(eq(usersTable.tenantId, tenantId))
     .orderBy(usersTable.createdAt);
   res.json(users);
 });

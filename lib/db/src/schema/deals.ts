@@ -4,6 +4,7 @@ import { z } from "zod/v4";
 import { tenantsTable } from "./tenants";
 import { leadsTable } from "./leads";
 import { funisTable } from "./funis";
+import { usersTable } from "./users";
 
 export const dealEtapaEnum = pgEnum("deal_etapa", [
   "novo",
@@ -29,6 +30,7 @@ export const dealsTable = pgTable("deals", {
   probabilidade: integer("probabilidade").default(0),
   dataFechamentoPrevista: timestamp("data_fechamento_prevista"),
   motivoPerda: text("motivo_perda"),
+  assignedTo: text("assigned_to").references(() => usersTable.id, { onDelete: "set null" }),
   createdAt: timestamp("created_at").notNull().defaultNow(),
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
 });

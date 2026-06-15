@@ -10,6 +10,7 @@ export interface InviteCreatedResponse {
   id: string;
   tenantId: string;
   email: string;
+  role: string;
   token: string;
   expiresAt: Date;
   inviteUrl: string;

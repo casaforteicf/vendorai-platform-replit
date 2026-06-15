@@ -15,6 +15,7 @@ export const tenantInvitesTable = pgTable(
     token: text("token")
       .notNull()
       .$defaultFn(() => crypto.randomUUID()),
+    role: text("role").notNull().default("tenant_admin"),
     expiresAt: timestamp("expires_at").notNull(),
     usedAt: timestamp("used_at"),
     createdBy: text("created_by")

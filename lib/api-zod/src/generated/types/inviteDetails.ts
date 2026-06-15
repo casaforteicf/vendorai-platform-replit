@@ -10,5 +10,6 @@ export interface InviteDetails {
   tenantId: string;
   tenantName: string;
   email: string;
+  role: string;
   expiresAt: Date;
 }

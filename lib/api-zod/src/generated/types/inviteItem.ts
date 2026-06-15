@@ -10,6 +10,7 @@ export interface InviteItem {
   id: string;
   tenantId: string;
   email: string;
+  role?: string;
   token: string;
   expiresAt: Date;
   usedAt?: Date | null;

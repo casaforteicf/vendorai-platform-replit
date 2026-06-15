@@ -1,5 +1,5 @@
 import { Router, type IRouter } from "express";
-import { eq, sql } from "drizzle-orm";
+import { and, eq, sql } from "drizzle-orm";
 import {
   db,
   conversationsTable,
@@ -37,10 +37,17 @@ router.post("/conversations", async (req, res) => {
 });
 
 router.get("/tenants/:tenantId/conversations", async (req, res) => {
+  const tenantId = String(req.params["tenantId"]);
+  const conditions = [eq(conversationsTable.tenantId, tenantId)];
+
+  if (req.user?.platformRole === "tenant_seller") {
+    conditions.push(eq(conversationsTable.assignedTo, req.user.sub));
+  }
+
   const conversations = await db
     .select()
     .from(conversationsTable)
-    .where(eq(conversationsTable.tenantId, req.params.tenantId))
+    .where(and(...conditions))
     .orderBy(conversationsTable.createdAt);
   res.json(conversations);
 });
@@ -88,6 +95,11 @@ router.get("/conversations/:id", async (req, res) => {
     return;
   }
 
+  if (req.user?.platformRole === "tenant_seller" && conversation.assignedTo !== req.user.sub) {
+    res.status(403).json({ error: "Access denied to this conversation" });
+    return;
+  }
+
   res.json(conversation);
 });
 
@@ -99,7 +111,7 @@ router.patch("/conversations/:id", async (req, res) => {
   }
 
   const [existing] = await db
-    .select({ id: conversationsTable.id, tenantId: conversationsTable.tenantId })
+    .select({ id: conversationsTable.id, tenantId: conversationsTable.tenantId, assignedTo: conversationsTable.assignedTo })
     .from(conversationsTable)
     .where(eq(conversationsTable.id, req.params.id));
 
@@ -110,6 +122,11 @@ router.patch("/conversations/:id", async (req, res) => {
 
   if (req.user?.platformRole !== "super_admin" && existing.tenantId !== req.user?.tenantId) {
     res.status(403).json({ error: "Access denied to this tenant" });
+    return;
+  }
+
+  if (req.user?.platformRole === "tenant_seller" && existing.assignedTo !== req.user.sub) {
+    res.status(403).json({ error: "Access denied to this conversation" });
     return;
   }
 
@@ -124,7 +141,7 @@ router.patch("/conversations/:id", async (req, res) => {
 
 router.delete("/conversations/:id", async (req, res) => {
   const [existing] = await db
-    .select({ id: conversationsTable.id, tenantId: conversationsTable.tenantId })
+    .select({ id: conversationsTable.id, tenantId: conversationsTable.tenantId, assignedTo: conversationsTable.assignedTo })
     .from(conversationsTable)
     .where(eq(conversationsTable.id, req.params.id));
 
@@ -135,6 +152,11 @@ router.delete("/conversations/:id", async (req, res) => {
 
   if (req.user?.platformRole !== "super_admin" && existing.tenantId !== req.user?.tenantId) {
     res.status(403).json({ error: "Access denied to this tenant" });
+    return;
+  }
+
+  if (req.user?.platformRole === "tenant_seller" && existing.assignedTo !== req.user.sub) {
+    res.status(403).json({ error: "Access denied to this conversation" });
     return;
   }
 

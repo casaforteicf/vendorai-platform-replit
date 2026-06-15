@@ -80,6 +80,7 @@ export * from './createPropostaFromCatalogoBody';
 export * from './createPropostaFromCatalogoBodyItensItem';
 export * from './createRuleBody';
 export * from './createRuleBodyAcaoPayload';
+export * from './createSellerInviteBody';
 export * from './createSiteConfigBody';
 export * from './createSiteConfigBodyTemplate';
 export * from './createSubscriptionBody';

@@ -30,6 +30,10 @@ import {
   getGetIntegrationSettingsQueryKey,
   useUpdateIntegrationSettings,
   useRegenerateIntegrationApiKey,
+  useListTenantUsers,
+  getListTenantUsersQueryKey,
+  useInviteTenantSeller,
+  useDeleteUser,
 } from "@workspace/api-client-react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
@@ -84,6 +88,10 @@ import {
   RefreshCw,
   Eye,
   EyeOff,
+  Users,
+  Trash2,
+  UserPlus,
+  Link,
 } from "lucide-react";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
@@ -482,6 +490,36 @@ export default function Configuracoes() {
   const tenantId = user?.tenantId ?? "";
   const { toast } = useToast();
   const queryClient = useQueryClient();
+  const isTenantAdmin = user?.platformRole === "tenant_admin";
+
+  // ── Team Management ────────────────────────────────────────────────────────
+  const [inviteEmail, setInviteEmail] = useState("");
+  const [lastInviteUrl, setLastInviteUrl] = useState<string | null>(null);
+
+  const teamQuery = useListTenantUsers(tenantId, {
+    query: { queryKey: getListTenantUsersQueryKey(tenantId), enabled: !!tenantId && isTenantAdmin },
+  });
+
+  const inviteSeller = useInviteTenantSeller({
+    mutation: {
+      onSuccess: (data) => {
+        setLastInviteUrl(data.inviteUrl);
+        setInviteEmail("");
+        toast({ title: "Convite gerado!", description: `Link de acesso criado para ${data.email}.` });
+      },
+      onError: () => toast({ title: "Erro ao gerar convite.", variant: "destructive" }),
+    },
+  });
+
+  const removeUser = useDeleteUser({
+    mutation: {
+      onSuccess: () => {
+        queryClient.invalidateQueries({ queryKey: getListTenantUsersQueryKey(tenantId) });
+        toast({ title: "Usuário removido." });
+      },
+      onError: () => toast({ title: "Erro ao remover usuário.", variant: "destructive" }),
+    },
+  });
 
   // ── Business Profile ───────────────────────────────────────────────────────
   const profileQuery   = useGetBusinessProfileByTenant(tenantId, { query: { queryKey: getGetBusinessProfileByTenantQueryKey(tenantId), enabled: !!tenantId, retry: false } });
@@ -772,7 +810,7 @@ export default function Configuracoes() {
       </div>
 
       <Tabs defaultValue="perfil" className="space-y-6">
-        <TabsList className="grid w-full grid-cols-5 max-w-2xl">
+        <TabsList className={cn("grid w-full max-w-2xl", isTenantAdmin ? "grid-cols-6" : "grid-cols-5")}>
           <TabsTrigger value="perfil" className="gap-1.5">
             <Building2 className="h-4 w-4" />
             Perfil
@@ -793,6 +831,12 @@ export default function Configuracoes() {
             <Webhook className="h-4 w-4" />
             Integrações
           </TabsTrigger>
+          {isTenantAdmin && (
+            <TabsTrigger value="equipe" className="gap-1.5">
+              <Users className="h-4 w-4" />
+              Equipe
+            </TabsTrigger>
+          )}
         </TabsList>
 
         {/* ── Tab: Perfil da Empresa ──────────────────────────────────────── */}
@@ -1521,6 +1565,141 @@ Body:
 
           </div>
         </TabsContent>
+
+        {/* ── Tab: Equipe ─────────────────────────────────────────────────── */}
+        {isTenantAdmin && (
+          <TabsContent value="equipe">
+            <div className="space-y-6">
+
+              {/* Invite form */}
+              <div className="rounded-xl border bg-card p-6 space-y-4">
+                <div>
+                  <h3 className="text-base font-semibold flex items-center gap-2">
+                    <UserPlus className="h-4 w-4" />
+                    Convidar Vendedor
+                  </h3>
+                  <p className="text-sm text-muted-foreground mt-1">
+                    Gere um link de convite para um novo membro da equipe com acesso de vendedor.
+                  </p>
+                </div>
+
+                <div className="flex gap-2">
+                  <input
+                    type="email"
+                    placeholder="email@exemplo.com"
+                    value={inviteEmail}
+                    onChange={(e) => setInviteEmail(e.target.value)}
+                    className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                  />
+                  <Button
+                    onClick={() => {
+                      if (!inviteEmail.trim()) return;
+                      inviteSeller.mutate({ tenantId, data: { email: inviteEmail.trim() } });
+                    }}
+                    disabled={inviteSeller.isPending || !inviteEmail.trim()}
+                    size="sm"
+                    className="shrink-0"
+                  >
+                    {inviteSeller.isPending ? (
+                      <RefreshCw className="h-4 w-4 animate-spin" />
+                    ) : (
+                      <>
+                        <Link className="h-4 w-4 mr-1.5" />
+                        Gerar Link
+                      </>
+                    )}
+                  </Button>
+                </div>
+
+                {lastInviteUrl && (
+                  <div className="rounded-lg bg-muted p-3 space-y-2">
+                    <p className="text-xs text-muted-foreground font-medium">Link de convite gerado:</p>
+                    <div className="flex gap-2 items-center">
+                      <code className="flex-1 text-xs bg-background border rounded px-2 py-1.5 truncate">
+                        {lastInviteUrl}
+                      </code>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => {
+                          navigator.clipboard.writeText(lastInviteUrl);
+                          toast({ title: "Link copiado!" });
+                        }}
+                      >
+                        <Copy className="h-3.5 w-3.5" />
+                      </Button>
+                    </div>
+                    <p className="text-xs text-muted-foreground">
+                      Envie este link para o vendedor. Ele expira em 7 dias.
+                    </p>
+                  </div>
+                )}
+              </div>
+
+              {/* Users list */}
+              <div className="rounded-xl border bg-card p-6 space-y-4">
+                <div>
+                  <h3 className="text-base font-semibold flex items-center gap-2">
+                    <Users className="h-4 w-4" />
+                    Membros da Equipe
+                  </h3>
+                  <p className="text-sm text-muted-foreground mt-1">
+                    Usuários com acesso a este tenant.
+                  </p>
+                </div>
+
+                {teamQuery.isPending ? (
+                  <div className="flex items-center justify-center py-8 text-muted-foreground text-sm gap-2">
+                    <RefreshCw className="h-4 w-4 animate-spin" />
+                    Carregando equipe...
+                  </div>
+                ) : teamQuery.isError ? (
+                  <div className="flex items-center gap-2 text-destructive text-sm py-4">
+                    <AlertTriangle className="h-4 w-4" />
+                    Erro ao carregar membros da equipe.
+                  </div>
+                ) : !teamQuery.data || teamQuery.data.length === 0 ? (
+                  <p className="text-sm text-muted-foreground py-4 text-center">
+                    Nenhum membro encontrado.
+                  </p>
+                ) : (
+                  <div className="divide-y divide-border rounded-lg border">
+                    {teamQuery.data.map((member) => (
+                      <div key={member.id} className="flex items-center justify-between px-4 py-3">
+                        <div className="min-w-0 flex-1">
+                          <p className="text-sm font-medium truncate">{member.name}</p>
+                          <p className="text-xs text-muted-foreground truncate">{member.email}</p>
+                        </div>
+                        <div className="flex items-center gap-3 ml-4 shrink-0">
+                          <span className={cn(
+                            "inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium",
+                            member.platformRole === "tenant_admin"
+                              ? "bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400"
+                              : "bg-zinc-100 text-zinc-600 dark:bg-zinc-800 dark:text-zinc-400"
+                          )}>
+                            {member.platformRole === "tenant_admin" ? "Admin" : "Vendedor"}
+                          </span>
+                          {member.platformRole !== "tenant_admin" && (
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="h-7 w-7 text-muted-foreground hover:text-destructive"
+                              disabled={removeUser.isPending}
+                              onClick={() => removeUser.mutate({ id: member.id })}
+                            >
+                              <Trash2 className="h-3.5 w-3.5" />
+                            </Button>
+                          )}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+            </div>
+          </TabsContent>
+        )}
 
       </Tabs>
     </div>

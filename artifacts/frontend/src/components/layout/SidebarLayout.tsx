@@ -16,20 +16,23 @@ export function SidebarLayout({ children }: { children: React.ReactNode }) {
   const [mobileOpen, setMobileOpen] = useState(false);
 
   const isSuperAdmin = user?.platformRole === "super_admin";
+  const isSeller = user?.platformRole === "tenant_seller";
 
-  const navigation = [
-    { name: "Dashboard",     href: "/",             icon: LayoutDashboard },
-    { name: "Leads",         href: "/leads",         icon: Users },
-    { name: "Negócios",      href: "/deals",         icon: Briefcase },
-    { name: "Conversas",     href: "/conversations", icon: MessageSquare },
-    { name: "Agenda",        href: "/agenda",        icon: Calendar },
-    { name: "Propostas",     href: "/propostas",     icon: FileText },
-    { name: "Estoque",       href: "/estoque",       icon: Package },
-    { name: "Conteúdo",      href: "/content",       icon: Sparkles },
-    { name: "Campanhas",     href: "/campanhas",     icon: Megaphone },
-    { name: "Faturamento",   href: "/faturamento",   icon: Receipt },
-    { name: "Configurações", href: "/configuracoes", icon: Settings },
+  const allNavItems = [
+    { name: "Dashboard",     href: "/",             icon: LayoutDashboard, sellerHidden: false },
+    { name: "Leads",         href: "/leads",         icon: Users,           sellerHidden: false },
+    { name: "Negócios",      href: "/deals",         icon: Briefcase,       sellerHidden: false },
+    { name: "Conversas",     href: "/conversations", icon: MessageSquare,   sellerHidden: false },
+    { name: "Agenda",        href: "/agenda",        icon: Calendar,        sellerHidden: false },
+    { name: "Propostas",     href: "/propostas",     icon: FileText,        sellerHidden: false },
+    { name: "Estoque",       href: "/estoque",       icon: Package,         sellerHidden: false },
+    { name: "Conteúdo",      href: "/content",       icon: Sparkles,        sellerHidden: false },
+    { name: "Campanhas",     href: "/campanhas",     icon: Megaphone,       sellerHidden: true  },
+    { name: "Faturamento",   href: "/faturamento",   icon: Receipt,         sellerHidden: true  },
+    { name: "Configurações", href: "/configuracoes", icon: Settings,        sellerHidden: true  },
   ];
+
+  const navigation = allNavItems.filter(item => !(isSeller && item.sellerHidden));
 
   const adminNavigation = isSuperAdmin
     ? [

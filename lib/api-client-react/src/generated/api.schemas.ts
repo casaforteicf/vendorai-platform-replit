@@ -10,6 +10,11 @@ export interface CreateInviteBody {
   email: string;
 }
 
+export interface CreateSellerInviteBody {
+  email: string;
+  name?: string;
+}
+
 export interface AcceptInviteBody {
   token: string;
   name: string;
@@ -21,6 +26,7 @@ export interface InviteCreatedResponse {
   id: string;
   tenantId: string;
   email: string;
+  role: string;
   token: string;
   expiresAt: string;
   inviteUrl: string;
@@ -30,6 +36,7 @@ export interface InviteDetails {
   tenantId: string;
   tenantName: string;
   email: string;
+  role: string;
   expiresAt: string;
 }
 
@@ -37,6 +44,7 @@ export interface InviteItem {
   id: string;
   tenantId: string;
   email: string;
+  role?: string;
   token: string;
   expiresAt: string;
   usedAt?: string | null;
@@ -78,6 +86,7 @@ export type PlatformRole = typeof PlatformRole[keyof typeof PlatformRole];
 export const PlatformRole = {
   super_admin: 'super_admin',
   tenant_admin: 'tenant_admin',
+  tenant_seller: 'tenant_seller',
   member: 'member',
 } as const;
 

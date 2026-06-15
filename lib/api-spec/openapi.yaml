@@ -4176,6 +4176,8 @@ paths:
       operationId: listTenantUsers
       tags: [users]
       summary: List users of a tenant
+      security:
+        - bearerAuth: []
       parameters:
         - name: tenantId
           in: path
@@ -4191,6 +4193,52 @@ paths:
                 type: array
                 items:
                   $ref: "#/components/schemas/User"
+        "403":
+          description: Access denied
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /tenants/{tenantId}/users/invite:
+    post:
+      operationId: inviteTenantSeller
+      tags: [invites]
+      summary: Invite a seller to the tenant
+      description: Generates an invite token for a tenant_seller. Requires tenant_admin.
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: tenantId
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateSellerInviteBody"
+      responses:
+        "201":
+          description: Seller invite created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/InviteCreatedResponse"
+        "403":
+          description: Access denied
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "422":
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
 
   /leads:
     get:
@@ -5026,6 +5074,17 @@ components:
         - tenantId
         - email
 
+    CreateSellerInviteBody:
+      type: object
+      properties:
+        email:
+          type: string
+          format: email
+        name:
+          type: string
+      required:
+        - email
+
     AcceptInviteBody:
       type: object
       properties:
@@ -5050,6 +5109,8 @@ components:
           type: string
         email:
           type: string
+        role:
+          type: string
         token:
           type: string
         expiresAt:
@@ -5061,6 +5122,7 @@ components:
         - id
         - tenantId
         - email
+        - role
         - token
         - expiresAt
         - inviteUrl
@@ -5074,6 +5136,8 @@ components:
           type: string
         email:
           type: string
+        role:
+          type: string
         expiresAt:
           type: string
           format: date-time
@@ -5081,6 +5145,7 @@ components:
         - tenantId
         - tenantName
         - email
+        - role
         - expiresAt
 
     InviteItem:
@@ -5091,6 +5156,8 @@ components:
         tenantId:
           type: string
         email:
+          type: string
+        role:
           type: string
         token:
           type: string
@@ -7292,7 +7359,7 @@ components:
 
     PlatformRole:
       type: string
-      enum: [super_admin, tenant_admin, member]
+      enum: [super_admin, tenant_admin, tenant_seller, member]
 
     User:
       type: object

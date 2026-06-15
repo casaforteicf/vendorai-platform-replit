@@ -4,7 +4,7 @@ import bcrypt from "bcryptjs";
 import { z } from "zod/v4";
 import { db, tenantsTable, usersTable, tenantInvitesTable } from "@workspace/db";
 import { signToken } from "../lib/jwt.js";
-import { requireRole } from "../middlewares/auth.js";
+import { requireRole, requireSameTenanOrSuperAdmin } from "../middlewares/auth.js";
 
 const router: IRouter = Router();
 const protectedRouter: IRouter = Router();
@@ -24,6 +24,11 @@ const PUBLIC_USER_FIELDS = {
 const createInviteSchema = z.object({
   tenantId: z.string().min(1),
   email: z.email(),
+});
+
+const createSellerInviteSchema = z.object({
+  email: z.email(),
+  name: z.string().min(1).optional(),
 });
 
 const acceptInviteSchema = z.object({
@@ -77,6 +82,7 @@ router.get("/invites/:token", async (req, res) => {
     tenantId: tenant.id,
     tenantName: tenant.name,
     email: invite.email,
+    role: invite.role,
     expiresAt: invite.expiresAt.toISOString(),
   });
 });
@@ -127,6 +133,7 @@ router.post("/auth/accept-invite", async (req, res) => {
 
   const hashed = await bcrypt.hash(password, 12);
 
+  const isSeller = invite.role === "tenant_seller";
   const [user] = await db
     .insert(usersTable)
     .values({
@@ -134,8 +141,8 @@ router.post("/auth/accept-invite", async (req, res) => {
       name,
       email: invite.email,
       password: hashed,
-      role: "admin",
-      platformRole: "tenant_admin",
+      role: isSeller ? "member" : "admin",
+      platformRole: isSeller ? "tenant_seller" : "tenant_admin",
     })
     .returning(PUBLIC_USER_FIELDS);
 
@@ -155,6 +162,7 @@ router.post("/auth/accept-invite", async (req, res) => {
   res.status(201).json({ token: jwtToken, user });
 });
 
+// super_admin: create tenant_admin invite
 protectedRouter.post(
   "/admin/invites",
   requireRole("super_admin"),
@@ -185,6 +193,7 @@ protectedRouter.post(
       .values({
         tenantId,
         email,
+        role: "tenant_admin",
         expiresAt,
         createdBy: req.user!.sub,
       })
@@ -198,6 +207,7 @@ protectedRouter.post(
       id: invite.id,
       tenantId: invite.tenantId,
       email: invite.email,
+      role: invite.role,
       token: invite.token,
       expiresAt: invite.expiresAt.toISOString(),
       inviteUrl,
@@ -221,6 +231,7 @@ protectedRouter.get(
       id: inv.id,
       tenantId: inv.tenantId,
       email: inv.email,
+      role: inv.role,
       token: inv.token,
       expiresAt: inv.expiresAt.toISOString(),
       usedAt: inv.usedAt?.toISOString() ?? null,
@@ -229,6 +240,75 @@ protectedRouter.get(
     }));
 
     res.json(result);
+  }
+);
+
+// tenant_admin: invite a seller into their own tenant
+protectedRouter.post(
+  "/tenants/:id/users/invite",
+  requireSameTenanOrSuperAdmin(),
+  requireRole("tenant_admin", "super_admin"),
+  async (req, res) => {
+    const tenantId = String(req.params["id"]);
+    const parsed = createSellerInviteSchema.safeParse(req.body);
+    if (!parsed.success) {
+      res.status(422).json({ error: parsed.error.message });
+      return;
+    }
+
+    const { email } = parsed.data;
+
+    const existingPending = await db
+      .select({ id: tenantInvitesTable.id, token: tenantInvitesTable.token })
+      .from(tenantInvitesTable)
+      .where(
+        and(
+          eq(tenantInvitesTable.email, email),
+          eq(tenantInvitesTable.tenantId, tenantId),
+          eq(tenantInvitesTable.role, "tenant_seller")
+        )
+      );
+
+    const expiresAt = new Date();
+    expiresAt.setDate(expiresAt.getDate() + 7);
+
+    let invite;
+    if (existingPending.length > 0 && existingPending[0]) {
+      [invite] = await db
+        .update(tenantInvitesTable)
+        .set({ usedAt: null, expiresAt })
+        .where(eq(tenantInvitesTable.id, existingPending[0].id))
+        .returning();
+    } else {
+      [invite] = await db
+        .insert(tenantInvitesTable)
+        .values({
+          tenantId,
+          email,
+          role: "tenant_seller",
+          expiresAt,
+          createdBy: req.user!.sub,
+        })
+        .returning();
+    }
+
+    if (!invite) {
+      res.status(500).json({ error: "Falha ao criar convite" });
+      return;
+    }
+
+    const inviteUrl = buildInviteUrl(req, invite.token);
+    req.log.info({ inviteId: invite.id, tenantId, email }, "Seller invite created");
+
+    res.status(201).json({
+      id: invite.id,
+      tenantId: invite.tenantId,
+      email: invite.email,
+      role: invite.role,
+      token: invite.token,
+      expiresAt: invite.expiresAt.toISOString(),
+      inviteUrl,
+    });
   }
 );
 

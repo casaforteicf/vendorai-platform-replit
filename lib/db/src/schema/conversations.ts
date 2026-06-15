@@ -3,6 +3,7 @@ import { createInsertSchema, createSelectSchema } from "drizzle-zod";
 import { z } from "zod/v4";
 import { tenantsTable } from "./tenants";
 import { leadsTable } from "./leads";
+import { usersTable } from "./users";
 
 export const conversationsTable = pgTable("conversations", {
   id: text("id")
@@ -20,6 +21,7 @@ export const conversationsTable = pgTable("conversations", {
   metadata: json("metadata").$type<Record<string, unknown>>(),
   ultimaMensagemEm: timestamp("ultima_mensagem_em"),
   naoLidas: integer("nao_lidas").notNull().default(0),
+  assignedTo: text("assigned_to").references(() => usersTable.id, { onDelete: "set null" }),
   createdAt: timestamp("created_at").notNull().defaultNow(),
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
 });

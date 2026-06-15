@@ -2,6 +2,7 @@ import { pgTable, text, timestamp } from "drizzle-orm/pg-core";
 import { createInsertSchema, createSelectSchema } from "drizzle-zod";
 import { z } from "zod/v4";
 import { tenantsTable } from "./tenants";
+import { usersTable } from "./users";
 
 export const leadsTable = pgTable("leads", {
   id: text("id")
@@ -23,6 +24,7 @@ export const leadsTable = pgTable("leads", {
   proximaAcao: text("proxima_acao"),
   status: text("status").notNull().default("novo"),
   activeAgentLock: text("active_agent_lock"),
+  assignedTo: text("assigned_to").references(() => usersTable.id, { onDelete: "set null" }),
   createdAt: timestamp("created_at").notNull().defaultNow(),
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
 });

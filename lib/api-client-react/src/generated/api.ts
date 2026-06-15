@@ -63,6 +63,7 @@ import type {
   CreatePropostaBody,
   CreatePropostaFromCatalogoBody,
   CreateRuleBody,
+  CreateSellerInviteBody,
   CreateSiteConfigBody,
   CreateSubscriptionBody,
   CreateTenantBody,
@@ -10856,7 +10857,7 @@ export const getListTenantUsersQueryKey = (tenantId: string,) => {
     }
 
 
-export const getListTenantUsersQueryOptions = <TData = Awaited<ReturnType<typeof listTenantUsers>>, TError = ErrorType<unknown>>(tenantId: string, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listTenantUsers>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+export const getListTenantUsersQueryOptions = <TData = Awaited<ReturnType<typeof listTenantUsers>>, TError = ErrorType<ErrorResponse>>(tenantId: string, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listTenantUsers>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
 ) => {
 
 const {query: queryOptions, request: requestOptions} = options ?? {};
@@ -10875,14 +10876,14 @@ const {query: queryOptions, request: requestOptions} = options ?? {};
 }
 
 export type ListTenantUsersQueryResult = NonNullable<Awaited<ReturnType<typeof listTenantUsers>>>
-export type ListTenantUsersQueryError = ErrorType<unknown>
+export type ListTenantUsersQueryError = ErrorType<ErrorResponse>
 
 
 /**
  * @summary List users of a tenant
  */
 
-export function useListTenantUsers<TData = Awaited<ReturnType<typeof listTenantUsers>>, TError = ErrorType<unknown>>(
+export function useListTenantUsers<TData = Awaited<ReturnType<typeof listTenantUsers>>, TError = ErrorType<ErrorResponse>>(
  tenantId: string, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listTenantUsers>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
 
  ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
@@ -10899,6 +10900,79 @@ export function useListTenantUsers<TData = Awaited<ReturnType<typeof listTenantU
 
 
 
+
+export const getInviteTenantSellerUrl = (tenantId: string,) => {
+
+
+
+
+  return `/api/tenants/${tenantId}/users/invite`
+}
+
+/**
+ * Generates an invite token for a tenant_seller. Requires tenant_admin.
+ * @summary Invite a seller to the tenant
+ */
+export const inviteTenantSeller = async (tenantId: string,
+    createSellerInviteBody: CreateSellerInviteBody, options?: RequestInit): Promise<InviteCreatedResponse> => {
+
+  return customFetch<InviteCreatedResponse>(getInviteTenantSellerUrl(tenantId),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(
+      createSellerInviteBody,)
+  }
+);}
+
+
+
+
+export const getInviteTenantSellerMutationOptions = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof inviteTenantSeller>>, TError,{tenantId: string;data: BodyType<CreateSellerInviteBody>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof inviteTenantSeller>>, TError,{tenantId: string;data: BodyType<CreateSellerInviteBody>}, TContext> => {
+
+const mutationKey = ['inviteTenantSeller'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof inviteTenantSeller>>, {tenantId: string;data: BodyType<CreateSellerInviteBody>}> = (props) => {
+          const {tenantId,data} = props ?? {};
+
+          return  inviteTenantSeller(tenantId,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type InviteTenantSellerMutationResult = NonNullable<Awaited<ReturnType<typeof inviteTenantSeller>>>
+    export type InviteTenantSellerMutationBody = BodyType<CreateSellerInviteBody>
+    export type InviteTenantSellerMutationError = ErrorType<ErrorResponse>
+
+    /**
+ * @summary Invite a seller to the tenant
+ */
+export const useInviteTenantSeller = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof inviteTenantSeller>>, TError,{tenantId: string;data: BodyType<CreateSellerInviteBody>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof inviteTenantSeller>>,
+        TError,
+        {tenantId: string;data: BodyType<CreateSellerInviteBody>},
+        TContext
+      > => {
+      return useMutation(getInviteTenantSellerMutationOptions(options));
+    }
 
 export const getListLeadsUrl = () => {
 

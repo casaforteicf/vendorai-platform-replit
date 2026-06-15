@@ -1,5 +1,5 @@
 import { Router, type IRouter } from "express";
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import { db, leadsTable, insertLeadSchema, updateLeadSchema } from "@workspace/db";
 
 const router: IRouter = Router();
@@ -29,10 +29,17 @@ router.post("/leads", async (req, res) => {
 });
 
 router.get("/tenants/:tenantId/leads", async (req, res) => {
+  const tenantId = String(req.params["tenantId"]);
+  const conditions = [eq(leadsTable.tenantId, tenantId)];
+
+  if (req.user?.platformRole === "tenant_seller") {
+    conditions.push(eq(leadsTable.assignedTo, req.user.sub));
+  }
+
   const leads = await db
     .select()
     .from(leadsTable)
-    .where(eq(leadsTable.tenantId, req.params.tenantId))
+    .where(and(...conditions))
     .orderBy(leadsTable.createdAt);
   res.json(leads);
 });
@@ -53,6 +60,11 @@ router.get("/leads/:id", async (req, res) => {
     return;
   }
 
+  if (req.user?.platformRole === "tenant_seller" && lead.assignedTo !== req.user.sub) {
+    res.status(403).json({ error: "Access denied to this lead" });
+    return;
+  }
+
   res.json(lead);
 });
 
@@ -64,7 +76,7 @@ router.patch("/leads/:id", async (req, res) => {
   }
 
   const [existing] = await db
-    .select({ id: leadsTable.id, tenantId: leadsTable.tenantId })
+    .select({ id: leadsTable.id, tenantId: leadsTable.tenantId, assignedTo: leadsTable.assignedTo })
     .from(leadsTable)
     .where(eq(leadsTable.id, req.params.id));
 
@@ -75,6 +87,11 @@ router.patch("/leads/:id", async (req, res) => {
 
   if (req.user?.platformRole !== "super_admin" && existing.tenantId !== req.user?.tenantId) {
     res.status(403).json({ error: "Access denied to this tenant" });
+    return;
+  }
+
+  if (req.user?.platformRole === "tenant_seller" && existing.assignedTo !== req.user.sub) {
+    res.status(403).json({ error: "Access denied to this lead" });
     return;
   }
 
@@ -89,7 +106,7 @@ router.patch("/leads/:id", async (req, res) => {
 
 router.delete("/leads/:id", async (req, res) => {
   const [existing] = await db
-    .select({ id: leadsTable.id, tenantId: leadsTable.tenantId })
+    .select({ id: leadsTable.id, tenantId: leadsTable.tenantId, assignedTo: leadsTable.assignedTo })
     .from(leadsTable)
     .where(eq(leadsTable.id, req.params.id));
 
@@ -100,6 +117,11 @@ router.delete("/leads/:id", async (req, res) => {
 
   if (req.user?.platformRole !== "super_admin" && existing.tenantId !== req.user?.tenantId) {
     res.status(403).json({ error: "Access denied to this tenant" });
+    return;
+  }
+
+  if (req.user?.platformRole === "tenant_seller" && existing.assignedTo !== req.user.sub) {
+    res.status(403).json({ error: "Access denied to this lead" });
     return;
   }
 
