@@ -1563,6 +1563,11 @@ export interface UpdateUserBody {
   active?: boolean;
 }
 
+export type LeadFilhosItem = {
+  nome: string;
+  dataNascimento?: string;
+};
+
 export interface Lead {
   id: string;
   tenantId: string;
@@ -1581,9 +1586,22 @@ export interface Lead {
   activeAgentLock?: string | null;
   /** Instagram Scoped User ID (IGSID) — set automatically when the lead sends an Instagram DM. */
   instagramScopedId?: string | null;
+  /** Data de nascimento do lead (YYYY-MM-DD). */
+  dataNascimento?: string | null;
+  /** Estado civil: solteiro, casado, divorciado, viuvo, uniao_estavel. */
+  estadoCivil?: string | null;
+  conjugeNome?: string | null;
+  conjugeTelefone?: string | null;
+  conjugeEmail?: string | null;
+  filhos?: LeadFilhosItem[] | null;
   createdAt: string;
   updatedAt: string;
 }
+
+export type CreateLeadBodyFilhosItem = {
+  nome: string;
+  dataNascimento?: string;
+};
 
 export interface CreateLeadBody {
   tenantId: string;
@@ -1600,7 +1618,18 @@ export interface CreateLeadBody {
   proximaAcao?: string | null;
   status?: string;
   activeAgentLock?: string | null;
+  dataNascimento?: string | null;
+  estadoCivil?: string | null;
+  conjugeNome?: string | null;
+  conjugeTelefone?: string | null;
+  conjugeEmail?: string | null;
+  filhos?: CreateLeadBodyFilhosItem[] | null;
 }
+
+export type UpdateLeadBodyFilhosItem = {
+  nome: string;
+  dataNascimento?: string;
+};
 
 export interface UpdateLeadBody {
   nome?: string;
@@ -1616,6 +1645,12 @@ export interface UpdateLeadBody {
   proximaAcao?: string | null;
   status?: string;
   activeAgentLock?: string | null;
+  dataNascimento?: string | null;
+  estadoCivil?: string | null;
+  conjugeNome?: string | null;
+  conjugeTelefone?: string | null;
+  conjugeEmail?: string | null;
+  filhos?: UpdateLeadBodyFilhosItem[] | null;
 }
 
 export type ConversationMetadata = { [key: string]: unknown } | null;

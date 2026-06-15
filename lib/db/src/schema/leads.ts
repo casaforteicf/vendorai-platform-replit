@@ -1,4 +1,4 @@
-import { pgTable, text, timestamp } from "drizzle-orm/pg-core";
+import { pgTable, text, timestamp, jsonb } from "drizzle-orm/pg-core";
 import { createInsertSchema, createSelectSchema } from "drizzle-zod";
 import { z } from "zod/v4";
 import { tenantsTable } from "./tenants";
@@ -26,6 +26,12 @@ export const leadsTable = pgTable("leads", {
   activeAgentLock: text("active_agent_lock"),
   assignedTo: text("assigned_to").references(() => usersTable.id, { onDelete: "set null" }),
   instagramScopedId: text("instagram_scoped_id"),
+  dataNascimento: text("data_nascimento"),
+  estadoCivil: text("estado_civil"),
+  conjugeNome: text("conjuge_nome"),
+  conjugeTelefone: text("conjuge_telefone"),
+  conjugeEmail: text("conjuge_email"),
+  filhos: jsonb("filhos").$type<Array<{ nome: string; dataNascimento: string }>>(),
   createdAt: timestamp("created_at").notNull().defaultNow(),
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
 });

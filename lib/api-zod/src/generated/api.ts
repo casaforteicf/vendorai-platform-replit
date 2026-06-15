@@ -3849,6 +3849,15 @@ export const ListLeadsResponseItem = zod.object({
   "status": zod.string(),
   "activeAgentLock": zod.string().nullish(),
   "instagramScopedId": zod.string().nullish().describe('Instagram Scoped User ID (IGSID) — set automatically when the lead sends an Instagram DM.'),
+  "dataNascimento": zod.string().nullish().describe('Data de nascimento do lead (YYYY-MM-DD).'),
+  "estadoCivil": zod.string().nullish().describe('Estado civil: solteiro, casado, divorciado, viuvo, uniao_estavel.'),
+  "conjugeNome": zod.string().nullish(),
+  "conjugeTelefone": zod.string().nullish(),
+  "conjugeEmail": zod.string().nullish(),
+  "filhos": zod.array(zod.object({
+  "nome": zod.string(),
+  "dataNascimento": zod.string().optional()
+})).nullish(),
   "createdAt": zod.coerce.date(),
   "updatedAt": zod.coerce.date()
 })
@@ -3872,7 +3881,16 @@ export const CreateLeadBody = zod.object({
   "dorPrincipal": zod.string().nullish(),
   "proximaAcao": zod.string().nullish(),
   "status": zod.string().optional(),
-  "activeAgentLock": zod.string().nullish()
+  "activeAgentLock": zod.string().nullish(),
+  "dataNascimento": zod.string().nullish(),
+  "estadoCivil": zod.string().nullish(),
+  "conjugeNome": zod.string().nullish(),
+  "conjugeTelefone": zod.string().nullish(),
+  "conjugeEmail": zod.string().nullish(),
+  "filhos": zod.array(zod.object({
+  "nome": zod.string(),
+  "dataNascimento": zod.string().optional()
+})).nullish()
 })
 
 
@@ -3900,6 +3918,15 @@ export const ListTenantLeadsResponseItem = zod.object({
   "status": zod.string(),
   "activeAgentLock": zod.string().nullish(),
   "instagramScopedId": zod.string().nullish().describe('Instagram Scoped User ID (IGSID) — set automatically when the lead sends an Instagram DM.'),
+  "dataNascimento": zod.string().nullish().describe('Data de nascimento do lead (YYYY-MM-DD).'),
+  "estadoCivil": zod.string().nullish().describe('Estado civil: solteiro, casado, divorciado, viuvo, uniao_estavel.'),
+  "conjugeNome": zod.string().nullish(),
+  "conjugeTelefone": zod.string().nullish(),
+  "conjugeEmail": zod.string().nullish(),
+  "filhos": zod.array(zod.object({
+  "nome": zod.string(),
+  "dataNascimento": zod.string().optional()
+})).nullish(),
   "createdAt": zod.coerce.date(),
   "updatedAt": zod.coerce.date()
 })
@@ -3930,6 +3957,15 @@ export const GetLeadResponse = zod.object({
   "status": zod.string(),
   "activeAgentLock": zod.string().nullish(),
   "instagramScopedId": zod.string().nullish().describe('Instagram Scoped User ID (IGSID) — set automatically when the lead sends an Instagram DM.'),
+  "dataNascimento": zod.string().nullish().describe('Data de nascimento do lead (YYYY-MM-DD).'),
+  "estadoCivil": zod.string().nullish().describe('Estado civil: solteiro, casado, divorciado, viuvo, uniao_estavel.'),
+  "conjugeNome": zod.string().nullish(),
+  "conjugeTelefone": zod.string().nullish(),
+  "conjugeEmail": zod.string().nullish(),
+  "filhos": zod.array(zod.object({
+  "nome": zod.string(),
+  "dataNascimento": zod.string().optional()
+})).nullish(),
   "createdAt": zod.coerce.date(),
   "updatedAt": zod.coerce.date()
 })
@@ -3955,7 +3991,16 @@ export const UpdateLeadBody = zod.object({
   "dorPrincipal": zod.string().nullish(),
   "proximaAcao": zod.string().nullish(),
   "status": zod.string().optional(),
-  "activeAgentLock": zod.string().nullish()
+  "activeAgentLock": zod.string().nullish(),
+  "dataNascimento": zod.string().nullish(),
+  "estadoCivil": zod.string().nullish(),
+  "conjugeNome": zod.string().nullish(),
+  "conjugeTelefone": zod.string().nullish(),
+  "conjugeEmail": zod.string().nullish(),
+  "filhos": zod.array(zod.object({
+  "nome": zod.string(),
+  "dataNascimento": zod.string().optional()
+})).nullish()
 })
 
 export const UpdateLeadResponse = zod.object({
@@ -3975,6 +4020,15 @@ export const UpdateLeadResponse = zod.object({
   "status": zod.string(),
   "activeAgentLock": zod.string().nullish(),
   "instagramScopedId": zod.string().nullish().describe('Instagram Scoped User ID (IGSID) — set automatically when the lead sends an Instagram DM.'),
+  "dataNascimento": zod.string().nullish().describe('Data de nascimento do lead (YYYY-MM-DD).'),
+  "estadoCivil": zod.string().nullish().describe('Estado civil: solteiro, casado, divorciado, viuvo, uniao_estavel.'),
+  "conjugeNome": zod.string().nullish(),
+  "conjugeTelefone": zod.string().nullish(),
+  "conjugeEmail": zod.string().nullish(),
+  "filhos": zod.array(zod.object({
+  "nome": zod.string(),
+  "dataNascimento": zod.string().optional()
+})).nullish(),
   "createdAt": zod.coerce.date(),
   "updatedAt": zod.coerce.date()
 })

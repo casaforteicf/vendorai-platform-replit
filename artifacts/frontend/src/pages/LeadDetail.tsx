@@ -17,12 +17,28 @@ import {
   getListTenantConversationsQueryKey,
   useListConversationMessages,
   getListConversationMessagesQueryKey,
+  useUpdateLead,
 } from "@workspace/api-client-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Progress } from "@/components/ui/progress";
+import { Textarea } from "@/components/ui/textarea";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogFooter,
+} from "@/components/ui/dialog";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import {
   ArrowLeft,
   Phone,
@@ -45,6 +61,11 @@ import {
   Sparkles,
   Loader2,
   Plus,
+  Heart,
+  Baby,
+  CalendarDays,
+  UserRound,
+  Trash2,
 } from "lucide-react";
 
 const STATUS_STYLES: Record<string, string> = {
@@ -62,6 +83,29 @@ const STATUS_LABELS: Record<string, string> = {
   convertido: "Convertido",
   perdido: "Perdido",
 };
+
+const ESTADO_CIVIL_LABELS: Record<string, string> = {
+  solteiro: "Solteiro(a)",
+  casado: "Casado(a)",
+  uniao_estavel: "União Estável",
+  divorciado: "Divorciado(a)",
+  viuvo: "Viúvo(a)",
+};
+
+function calcularIdade(dataNascimento: string): string {
+  const hoje = new Date();
+  const nasc = new Date(dataNascimento + "T00:00:00");
+  let idade = hoje.getFullYear() - nasc.getFullYear();
+  const m = hoje.getMonth() - nasc.getMonth();
+  if (m < 0 || (m === 0 && hoje.getDate() < nasc.getDate())) idade--;
+  return `${idade} anos`;
+}
+
+function formatBirthday(iso: string): string {
+  const parts = iso.split("-");
+  if (parts.length < 3) return iso;
+  return `${parts[2]}/${parts[1]}`;
+}
 
 const ACTIVITY_TIPO_LABELS: Record<string, string> = {
   ligacao: "Ligação",
@@ -240,6 +284,62 @@ export default function LeadDetail() {
   }, [intelligence?.lastAnalyzedAt, serverAnalysisRunning]);
 
   const { toast } = useToast();
+
+  const [editingPessoal, setEditingPessoal] = useState(false);
+  const [pessoalDraft, setPessoalDraft] = useState({
+    dataNascimento: "",
+    estadoCivil: "",
+    conjugeNome: "",
+    conjugeTelefone: "",
+    conjugeEmail: "",
+    filhos: [] as Array<{ nome: string; dataNascimento: string }>,
+  });
+
+  const { mutate: updateLead, isPending: isUpdatingLead } = useUpdateLead({
+    mutation: {
+      onSuccess: () => {
+        void queryClient.invalidateQueries({ queryKey: getGetLeadQueryKey(id) });
+        setEditingPessoal(false);
+        toast({ title: "Dados pessoais salvos." });
+      },
+      onError: () => {
+        toast({ title: "Erro ao salvar dados pessoais", variant: "destructive" });
+      },
+    },
+  });
+
+  function openPessoalEdit() {
+    if (!lead) return;
+    setPessoalDraft({
+      dataNascimento: lead.dataNascimento ?? "",
+      estadoCivil: lead.estadoCivil ?? "",
+      conjugeNome: lead.conjugeNome ?? "",
+      conjugeTelefone: lead.conjugeTelefone ?? "",
+      conjugeEmail: lead.conjugeEmail ?? "",
+      filhos: (lead.filhos ?? []).map((f) => ({
+        nome: f.nome ?? "",
+        dataNascimento: f.dataNascimento ?? "",
+      })),
+    });
+    setEditingPessoal(true);
+  }
+
+  function savePessoal() {
+    if (!id) return;
+    updateLead({
+      id,
+      data: {
+        dataNascimento: pessoalDraft.dataNascimento || null,
+        estadoCivil: pessoalDraft.estadoCivil || null,
+        conjugeNome: pessoalDraft.conjugeNome || null,
+        conjugeTelefone: pessoalDraft.conjugeTelefone || null,
+        conjugeEmail: pessoalDraft.conjugeEmail || null,
+        filhos: pessoalDraft.filhos.filter((f) => f.nome.trim()).length > 0
+          ? pessoalDraft.filhos.filter((f) => f.nome.trim())
+          : null,
+      },
+    });
+  }
 
   const { mutate: updateIntelligence, isPending: isUpdating } =
     useUpdateCustomerIntelligence({
@@ -491,6 +591,79 @@ export default function LeadDetail() {
                   Criado em {formatDate(lead.createdAt)}
                 </p>
               </div>
+            </CardContent>
+          </Card>
+
+          {/* Dados Pessoais */}
+          <Card data-testid="card-dados-pessoais">
+            <CardHeader className="pb-3">
+              <CardTitle className="text-sm font-semibold flex items-center justify-between">
+                <span className="flex items-center gap-2">
+                  <UserRound className="h-4 w-4" />
+                  Dados Pessoais
+                </span>
+                <button
+                  onClick={openPessoalEdit}
+                  className="text-muted-foreground hover:text-foreground"
+                  data-testid="btn-edit-dados-pessoais"
+                >
+                  <Pencil className="h-3 w-3" />
+                </button>
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-3 text-sm">
+              {!lead.dataNascimento && !lead.estadoCivil && !lead.conjugeNome && !lead.filhos?.length ? (
+                <p className="text-xs text-muted-foreground italic">
+                  Clique em editar para adicionar dados pessoais.
+                </p>
+              ) : (
+                <>
+                  {lead.dataNascimento && (
+                    <div className="flex items-center gap-2 text-muted-foreground">
+                      <CalendarDays className="h-3.5 w-3.5 shrink-0" />
+                      <span>{formatDate(lead.dataNascimento)} · {calcularIdade(lead.dataNascimento)}</span>
+                    </div>
+                  )}
+                  {lead.estadoCivil && (
+                    <div className="flex items-center gap-2 text-muted-foreground">
+                      <Heart className="h-3.5 w-3.5 shrink-0" />
+                      <span>{ESTADO_CIVIL_LABELS[lead.estadoCivil] ?? lead.estadoCivil}</span>
+                    </div>
+                  )}
+                  {lead.conjugeNome && (
+                    <div className="space-y-1 border-l-2 border-muted pl-3">
+                      <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Cônjuge</p>
+                      <p className="font-medium">{lead.conjugeNome}</p>
+                      {lead.conjugeTelefone && (
+                        <div className="flex items-center gap-1.5 text-muted-foreground text-xs">
+                          <Phone className="h-3 w-3" />
+                          <span className="font-mono">{lead.conjugeTelefone}</span>
+                        </div>
+                      )}
+                      {lead.conjugeEmail && (
+                        <div className="flex items-center gap-1.5 text-muted-foreground text-xs">
+                          <Mail className="h-3 w-3" />
+                          <span>{lead.conjugeEmail}</span>
+                        </div>
+                      )}
+                    </div>
+                  )}
+                  {lead.filhos && lead.filhos.length > 0 && (
+                    <div className="space-y-1">
+                      <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Filhos</p>
+                      {lead.filhos.map((filho, i) => (
+                        <div key={i} className="flex items-center gap-2 text-muted-foreground">
+                          <Baby className="h-3.5 w-3.5 shrink-0" />
+                          <span>{filho.nome}</span>
+                          {filho.dataNascimento && (
+                            <span className="text-xs ml-auto">🎂 {formatBirthday(filho.dataNascimento)}</span>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </>
+              )}
             </CardContent>
           </Card>
 
@@ -1176,6 +1349,154 @@ export default function LeadDetail() {
           </Card>
         </div>
       </div>
+
+      {/* Dados Pessoais — edit dialog */}
+      <Dialog open={editingPessoal} onOpenChange={setEditingPessoal}>
+        <DialogContent className="max-w-md max-h-[85vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Dados Pessoais</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 py-2">
+            <div className="space-y-1.5">
+              <label className="text-sm font-medium">Data de Nascimento</label>
+              <Input
+                type="date"
+                value={pessoalDraft.dataNascimento}
+                onChange={(e) => setPessoalDraft((d) => ({ ...d, dataNascimento: e.target.value }))}
+              />
+            </div>
+            <div className="space-y-1.5">
+              <label className="text-sm font-medium">Estado Civil</label>
+              <Select
+                value={pessoalDraft.estadoCivil || "__none__"}
+                onValueChange={(v) =>
+                  setPessoalDraft((d) => ({ ...d, estadoCivil: v === "__none__" ? "" : v }))
+                }
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Selecione..." />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="__none__">Não informado</SelectItem>
+                  <SelectItem value="solteiro">Solteiro(a)</SelectItem>
+                  <SelectItem value="casado">Casado(a)</SelectItem>
+                  <SelectItem value="uniao_estavel">União Estável</SelectItem>
+                  <SelectItem value="divorciado">Divorciado(a)</SelectItem>
+                  <SelectItem value="viuvo">Viúvo(a)</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            {(pessoalDraft.estadoCivil === "casado" || pessoalDraft.estadoCivil === "uniao_estavel") && (
+              <div className="space-y-3 border rounded-md p-3 bg-muted/30">
+                <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                  Cônjuge
+                </p>
+                <div className="space-y-1.5">
+                  <label className="text-sm font-medium">Nome</label>
+                  <Input
+                    placeholder="Nome do cônjuge"
+                    value={pessoalDraft.conjugeNome}
+                    onChange={(e) => setPessoalDraft((d) => ({ ...d, conjugeNome: e.target.value }))}
+                  />
+                </div>
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="space-y-1.5">
+                    <label className="text-sm font-medium">Telefone</label>
+                    <Input
+                      placeholder="(11) 99999-9999"
+                      value={pessoalDraft.conjugeTelefone}
+                      onChange={(e) =>
+                        setPessoalDraft((d) => ({ ...d, conjugeTelefone: e.target.value }))
+                      }
+                    />
+                  </div>
+                  <div className="space-y-1.5">
+                    <label className="text-sm font-medium">Email</label>
+                    <Input
+                      placeholder="email@..."
+                      value={pessoalDraft.conjugeEmail}
+                      onChange={(e) =>
+                        setPessoalDraft((d) => ({ ...d, conjugeEmail: e.target.value }))
+                      }
+                    />
+                  </div>
+                </div>
+              </div>
+            )}
+            <div className="space-y-2">
+              <div className="flex items-center justify-between">
+                <p className="text-sm font-medium">Filhos</p>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  className="h-7 px-2 text-xs gap-1"
+                  onClick={() =>
+                    setPessoalDraft((d) => ({
+                      ...d,
+                      filhos: [...d.filhos, { nome: "", dataNascimento: "" }],
+                    }))
+                  }
+                >
+                  <Plus className="h-3 w-3" />
+                  Adicionar
+                </Button>
+              </div>
+              {pessoalDraft.filhos.length === 0 && (
+                <p className="text-xs text-muted-foreground">Nenhum filho cadastrado.</p>
+              )}
+              {pessoalDraft.filhos.map((filho, i) => (
+                <div key={i} className="flex items-start gap-2">
+                  <div className="flex-1 grid grid-cols-2 gap-2">
+                    <Input
+                      placeholder="Nome"
+                      value={filho.nome}
+                      onChange={(e) => {
+                        const filhos = [...pessoalDraft.filhos];
+                        filhos[i] = { ...filhos[i]!, nome: e.target.value };
+                        setPessoalDraft((d) => ({ ...d, filhos }));
+                      }}
+                    />
+                    <Input
+                      type="date"
+                      title="Data de nascimento"
+                      value={filho.dataNascimento}
+                      onChange={(e) => {
+                        const filhos = [...pessoalDraft.filhos];
+                        filhos[i] = { ...filhos[i]!, dataNascimento: e.target.value };
+                        setPessoalDraft((d) => ({ ...d, filhos }));
+                      }}
+                    />
+                  </div>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    className="h-9 px-2 text-muted-foreground hover:text-destructive"
+                    onClick={() =>
+                      setPessoalDraft((d) => ({
+                        ...d,
+                        filhos: d.filhos.filter((_, j) => j !== i),
+                      }))
+                    }
+                  >
+                    <Trash2 className="h-3.5 w-3.5" />
+                  </Button>
+                </div>
+              ))}
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setEditingPessoal(false)}>
+              Cancelar
+            </Button>
+            <Button onClick={savePessoal} disabled={isUpdatingLead}>
+              {isUpdatingLead && <Loader2 className="h-4 w-4 animate-spin mr-2" />}
+              Salvar
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

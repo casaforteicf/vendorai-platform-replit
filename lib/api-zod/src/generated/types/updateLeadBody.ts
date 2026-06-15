@@ -5,6 +5,7 @@
  * API specification
  * OpenAPI spec version: 0.1.0
  */
+import type { UpdateLeadBodyFilhosItem } from './updateLeadBodyFilhosItem';
 
 export interface UpdateLeadBody {
   nome?: string;
@@ -20,4 +21,10 @@ export interface UpdateLeadBody {
   proximaAcao?: string | null;
   status?: string;
   activeAgentLock?: string | null;
+  dataNascimento?: string | null;
+  estadoCivil?: string | null;
+  conjugeNome?: string | null;
+  conjugeTelefone?: string | null;
+  conjugeEmail?: string | null;
+  filhos?: UpdateLeadBodyFilhosItem[] | null;
 }

@@ -5,6 +5,7 @@
  * API specification
  * OpenAPI spec version: 0.1.0
  */
+import type { LeadFilhosItem } from './leadFilhosItem';
 
 export interface Lead {
   id: string;
@@ -24,6 +25,14 @@ export interface Lead {
   activeAgentLock?: string | null;
   /** Instagram Scoped User ID (IGSID) — set automatically when the lead sends an Instagram DM. */
   instagramScopedId?: string | null;
+  /** Data de nascimento do lead (YYYY-MM-DD). */
+  dataNascimento?: string | null;
+  /** Estado civil: solteiro, casado, divorciado, viuvo, uniao_estavel. */
+  estadoCivil?: string | null;
+  conjugeNome?: string | null;
+  conjugeTelefone?: string | null;
+  conjugeEmail?: string | null;
+  filhos?: LeadFilhosItem[] | null;
   createdAt: Date;
   updatedAt: Date;
 }

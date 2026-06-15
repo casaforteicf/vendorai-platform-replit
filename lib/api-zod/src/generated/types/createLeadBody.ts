@@ -5,6 +5,7 @@
  * API specification
  * OpenAPI spec version: 0.1.0
  */
+import type { CreateLeadBodyFilhosItem } from './createLeadBodyFilhosItem';
 
 export interface CreateLeadBody {
   tenantId: string;
@@ -21,4 +22,10 @@ export interface CreateLeadBody {
   proximaAcao?: string | null;
   status?: string;
   activeAgentLock?: string | null;
+  dataNascimento?: string | null;
+  estadoCivil?: string | null;
+  conjugeNome?: string | null;
+  conjugeTelefone?: string | null;
+  conjugeEmail?: string | null;
+  filhos?: CreateLeadBodyFilhosItem[] | null;
 }

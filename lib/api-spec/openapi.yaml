@@ -8095,6 +8095,35 @@ components:
           type: string
           nullable: true
           description: Instagram Scoped User ID (IGSID) — set automatically when the lead sends an Instagram DM.
+        dataNascimento:
+          type: string
+          nullable: true
+          description: Data de nascimento do lead (YYYY-MM-DD).
+        estadoCivil:
+          type: string
+          nullable: true
+          description: "Estado civil: solteiro, casado, divorciado, viuvo, uniao_estavel."
+        conjugeNome:
+          type: string
+          nullable: true
+        conjugeTelefone:
+          type: string
+          nullable: true
+        conjugeEmail:
+          type: string
+          nullable: true
+        filhos:
+          type: array
+          nullable: true
+          items:
+            type: object
+            properties:
+              nome:
+                type: string
+              dataNascimento:
+                type: string
+            required:
+              - nome
         createdAt:
           type: string
           format: date-time
@@ -8151,6 +8180,33 @@ components:
         activeAgentLock:
           type: string
           nullable: true
+        dataNascimento:
+          type: string
+          nullable: true
+        estadoCivil:
+          type: string
+          nullable: true
+        conjugeNome:
+          type: string
+          nullable: true
+        conjugeTelefone:
+          type: string
+          nullable: true
+        conjugeEmail:
+          type: string
+          nullable: true
+        filhos:
+          type: array
+          nullable: true
+          items:
+            type: object
+            properties:
+              nome:
+                type: string
+              dataNascimento:
+                type: string
+            required:
+              - nome
       required:
         - tenantId
         - nome
@@ -8195,6 +8251,33 @@ components:
         activeAgentLock:
           type: string
           nullable: true
+        dataNascimento:
+          type: string
+          nullable: true
+        estadoCivil:
+          type: string
+          nullable: true
+        conjugeNome:
+          type: string
+          nullable: true
+        conjugeTelefone:
+          type: string
+          nullable: true
+        conjugeEmail:
+          type: string
+          nullable: true
+        filhos:
+          type: array
+          nullable: true
+          items:
+            type: object
+            properties:
+              nome:
+                type: string
+              dataNascimento:
+                type: string
+            required:
+              - nome
 
     Conversation:
       type: object
