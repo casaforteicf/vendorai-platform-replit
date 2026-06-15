@@ -1,5 +1,6 @@
 import { Router, type IRouter } from "express";
 import healthRouter from "./health";
+import storageRouter from "./storage";
 import authRouter, { authProtectedRouter } from "./auth";
 import tenantsRouter from "./tenants";
 import usersRouter from "./users";
@@ -41,6 +42,7 @@ const router: IRouter = Router();
 
 // Public
 router.use(healthRouter);
+router.use(storageRouter);
 router.use(authRouter);
 router.use(invitesRouter);
 router.use(webhooksRouter);

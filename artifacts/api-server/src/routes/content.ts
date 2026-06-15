@@ -176,6 +176,45 @@ router.get("/tenants/:tenantId/content", async (req, res) => {
 });
 
 const publishBodySchema = z.object({ variationIndex: z.number().int().min(0) });
+const patchImageBodySchema = z.object({ objectPath: z.string().min(1) });
+
+router.patch("/tenants/:tenantId/content/:contentId/variations/:idx/image", async (req, res) => {
+  const tenantId = String(req.params["tenantId"]);
+  const contentId = String(req.params["contentId"]);
+  const idx = parseInt(String(req.params["idx"]), 10);
+
+  if (req.user?.platformRole !== "super_admin" && req.user?.tenantId !== tenantId) {
+    res.status(403).json({ error: "Acesso negado" });
+    return;
+  }
+
+  const body = patchImageBodySchema.safeParse(req.body);
+  if (!body.success) {
+    res.status(400).json({ error: "objectPath é obrigatório" });
+    return;
+  }
+
+  const [gen] = await db
+    .select()
+    .from(contentGenerationsTable)
+    .where(and(eq(contentGenerationsTable.id, contentId), eq(contentGenerationsTable.tenantId, tenantId)))
+    .limit(1);
+
+  if (!gen) { res.status(404).json({ error: "Conteúdo não encontrado" }); return; }
+
+  const variations = [...gen.result.variations] as (typeof gen.result.variations[number] & { imageUrl?: string })[];
+  if (!variations[idx]) { res.status(400).json({ error: "Variação inválida" }); return; }
+
+  const imageUrl = `/api/storage${body.data.objectPath}`;
+  variations[idx] = { ...variations[idx], imageUrl };
+
+  await db
+    .update(contentGenerationsTable)
+    .set({ result: { variations } })
+    .where(eq(contentGenerationsTable.id, contentId));
+
+  res.json({ success: true, imageUrl });
+});
 
 router.post("/tenants/:tenantId/content/:contentId/publish-instagram", async (req, res) => {
   const tenantId = String(req.params["tenantId"]);

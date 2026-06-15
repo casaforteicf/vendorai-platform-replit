@@ -235,6 +235,8 @@ export * from './updateSubscriptionBody';
 export * from './updateTenantBody';
 export * from './updateTenantBodyAgentsEnabled';
 export * from './updateUserBody';
+export * from './uploadUrlRequest';
+export * from './uploadUrlResponse';
 export * from './usageSummary';
 export * from './usageSummaryMessages';
 export * from './usageSummaryTokens';

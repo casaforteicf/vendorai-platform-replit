@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useRef } from "react";
 import { useAuth } from "@/contexts/AuthContext";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
@@ -12,7 +12,7 @@ import { useToast } from "@/hooks/use-toast";
 import { useListProdutosCatalogo, getListProdutosCatalogoQueryKey } from "@workspace/api-client-react";
 import {
   Sparkles, Copy, Trash2, Loader2, Instagram, Clapperboard, Image,
-  CheckCircle2, AlertCircle, ChevronDown, ChevronUp, ExternalLink,
+  CheckCircle2, AlertCircle, ChevronDown, ChevronUp, ExternalLink, Upload,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -237,6 +237,98 @@ function PublishInstagramButton({
   );
 }
 
+function ImageUploadButton({
+  contentId,
+  variationIndex,
+  tenantId,
+  onUploaded,
+}: {
+  contentId: string;
+  variationIndex: number;
+  tenantId: string;
+  onUploaded: (imageUrl: string) => void;
+}) {
+  const { toast } = useToast();
+  const qc = useQueryClient();
+  const [uploading, setUploading] = useState(false);
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  async function handleFile(file: File) {
+    const allowed = ["image/jpeg", "image/png", "image/webp"];
+    if (!allowed.includes(file.type)) {
+      toast({ title: "Formato inválido", description: "Use JPG, PNG ou WebP.", variant: "destructive" });
+      return;
+    }
+    if (file.size > 10 * 1024 * 1024) {
+      toast({ title: "Imagem muito grande", description: "Máximo 10 MB.", variant: "destructive" });
+      return;
+    }
+
+    setUploading(true);
+    try {
+      const metaRes = await fetch("/api/storage/uploads/request-url", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name: file.name, size: file.size, contentType: file.type }),
+      });
+      if (!metaRes.ok) throw new Error("Falha ao obter URL de upload");
+      const { uploadURL, objectPath } = (await metaRes.json()) as { uploadURL: string; objectPath: string };
+
+      const putRes = await fetch(uploadURL, {
+        method: "PUT",
+        body: file,
+        headers: { "Content-Type": file.type },
+      });
+      if (!putRes.ok) throw new Error("Falha ao enviar imagem");
+
+      const patchRes = await fetch(
+        `/api/tenants/${tenantId}/content/${contentId}/variations/${variationIndex}/image`,
+        {
+          method: "PATCH",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${localStorage.getItem("vendorai_token")}`,
+          },
+          body: JSON.stringify({ objectPath }),
+        }
+      );
+      if (!patchRes.ok) throw new Error("Falha ao salvar imagem");
+      const { imageUrl } = (await patchRes.json()) as { imageUrl: string };
+
+      onUploaded(imageUrl);
+      qc.invalidateQueries({ queryKey: ["content", tenantId] });
+      toast({ title: "Imagem atualizada!", description: "Imagem salva e pronta para publicar." });
+    } catch (err) {
+      toast({ title: "Erro no upload", description: err instanceof Error ? err.message : "Tente novamente.", variant: "destructive" });
+    } finally {
+      setUploading(false);
+    }
+  }
+
+  return (
+    <>
+      <input
+        ref={inputRef}
+        type="file"
+        accept="image/jpeg,image/png,image/webp"
+        className="hidden"
+        onChange={(e) => { const f = e.target.files?.[0]; if (f) handleFile(f); e.target.value = ""; }}
+      />
+      <Button
+        variant="outline"
+        size="sm"
+        onClick={() => inputRef.current?.click()}
+        disabled={uploading}
+        title="Usar minha imagem"
+        className="h-7 px-2 text-xs gap-1"
+      >
+        {uploading ? <Loader2 className="h-3 w-3 animate-spin" /> : <Upload className="h-3 w-3" />}
+        {uploading ? "Enviando…" : "Minha imagem"}
+      </Button>
+    </>
+  );
+}
+
 function VariationCard({
   index,
   type,
@@ -250,7 +342,12 @@ function VariationCard({
   contentId?: string;
   tenantId?: string;
 }) {
-  const hasImage = !!(variation as { imageUrl?: string }).imageUrl;
+  const [localImageUrl, setLocalImageUrl] = useState<string | undefined>(undefined);
+  const effectiveVariation = localImageUrl
+    ? { ...variation, imageUrl: localImageUrl }
+    : variation;
+  const hasImage = !!(effectiveVariation as { imageUrl?: string }).imageUrl;
+
   return (
     <Card>
       <CardHeader className="pb-3 pt-4 px-4">
@@ -259,18 +356,26 @@ function VariationCard({
             Variação {index + 1}
           </CardTitle>
           {contentId && tenantId && type !== "reels" && (
-            <PublishInstagramButton
-              contentId={contentId}
-              variationIndex={index}
-              hasImage={hasImage}
-              tenantId={tenantId}
-            />
+            <div className="flex items-center gap-1">
+              <ImageUploadButton
+                contentId={contentId}
+                variationIndex={index}
+                tenantId={tenantId}
+                onUploaded={setLocalImageUrl}
+              />
+              <PublishInstagramButton
+                contentId={contentId}
+                variationIndex={index}
+                hasImage={hasImage}
+                tenantId={tenantId}
+              />
+            </div>
           )}
         </div>
       </CardHeader>
       <CardContent className="px-4 pb-4">
-        {type === "feed" && <FeedCard v={variation as FeedVariation} />}
-        {type === "stories" && <StoriesCard v={variation as StoriesVariation} />}
+        {type === "feed" && <FeedCard v={effectiveVariation as FeedVariation} />}
+        {type === "stories" && <StoriesCard v={effectiveVariation as StoriesVariation} />}
         {type === "reels" && <ReelsCard v={variation as ReelsVariation} />}
       </CardContent>
     </Card>
