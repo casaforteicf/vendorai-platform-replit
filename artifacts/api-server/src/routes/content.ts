@@ -14,6 +14,8 @@ import {
   generateStoriesContent,
   generateReelsScript,
 } from "../lib/content-generation.js";
+import { publishFeedPost, publishStoriesPost } from "../lib/instagram-publish.js";
+import type { FeedVariation, StoriesVariation } from "@workspace/db";
 
 const router: IRouter = Router();
 
@@ -171,6 +173,77 @@ router.get("/tenants/:tenantId/content", async (req, res) => {
     monthlyUsed: usage.used,
     monthlyLimit: usage.limit,
   });
+});
+
+const publishBodySchema = z.object({ variationIndex: z.number().int().min(0) });
+
+router.post("/tenants/:tenantId/content/:contentId/publish-instagram", async (req, res) => {
+  const tenantId = String(req.params["tenantId"]);
+  const contentId = String(req.params["contentId"]);
+
+  if (req.user?.platformRole !== "super_admin" && req.user?.tenantId !== tenantId) {
+    res.status(403).json({ error: "Acesso negado" });
+    return;
+  }
+
+  const body = publishBodySchema.safeParse(req.body);
+  if (!body.success) {
+    res.status(400).json({ error: "variationIndex inválido" });
+    return;
+  }
+
+  const [gen] = await db
+    .select()
+    .from(contentGenerationsTable)
+    .where(and(eq(contentGenerationsTable.id, contentId), eq(contentGenerationsTable.tenantId, tenantId)))
+    .limit(1);
+
+  if (!gen) { res.status(404).json({ error: "Conteúdo não encontrado" }); return; }
+  if (gen.type === "reels") {
+    res.status(400).json({ error: "Publicação de Reels ainda não é suportada via API." });
+    return;
+  }
+
+  const variation = gen.result.variations[body.data.variationIndex];
+  if (!variation) { res.status(400).json({ error: "Variação inválida" }); return; }
+
+  const imageUrl = (variation as { imageUrl?: string }).imageUrl;
+  if (!imageUrl) {
+    res.status(400).json({
+      error: "Imagem não disponível. Imagens do DALL-E expiram em ~1h após a geração — regere o conteúdo para publicar.",
+    });
+    return;
+  }
+
+  const [config] = await db
+    .select({
+      instagramPageAccessToken: agentConfigsTable.instagramPageAccessToken,
+      instagramPageId: agentConfigsTable.instagramPageId,
+    })
+    .from(agentConfigsTable)
+    .where(eq(agentConfigsTable.tenantId, tenantId))
+    .limit(1);
+
+  if (!config?.instagramPageAccessToken || !config?.instagramPageId) {
+    res.status(400).json({ error: "Instagram não conectado. Configure o Page Access Token nas Configurações." });
+    return;
+  }
+
+  try {
+    let postId: string;
+    if (gen.type === "feed") {
+      const v = variation as FeedVariation;
+      const caption = `${v.caption}\n\n${v.hashtags.join(" ")}`;
+      postId = await publishFeedPost(config.instagramPageId, config.instagramPageAccessToken, caption, imageUrl, req.log);
+    } else {
+      postId = await publishStoriesPost(config.instagramPageId, config.instagramPageAccessToken, imageUrl, req.log);
+    }
+    res.json({ success: true, postId });
+  } catch (err) {
+    req.log.error({ err }, "instagram-publish: route failed");
+    const msg = err instanceof Error ? err.message : "Erro desconhecido";
+    res.status(502).json({ error: `Falha ao publicar no Instagram: ${msg}` });
+  }
 });
 
 router.delete("/tenants/:tenantId/content/:id", async (req, res) => {

@@ -174,21 +174,99 @@ function ReelsCard({ v }: { v: ReelsVariation }) {
   );
 }
 
+function PublishInstagramButton({
+  contentId,
+  variationIndex,
+  hasImage,
+  tenantId,
+}: {
+  contentId: string;
+  variationIndex: number;
+  hasImage: boolean;
+  tenantId: string;
+}) {
+  const { toast } = useToast();
+  const [publishing, setPublishing] = useState(false);
+
+  async function handlePublish() {
+    if (!hasImage) {
+      toast({
+        title: "Imagem expirada",
+        description: "Imagens do DALL-E expiram em ~1h. Regere o conteúdo para publicar.",
+        variant: "destructive",
+      });
+      return;
+    }
+    setPublishing(true);
+    try {
+      const res = await fetch(`/api/tenants/${tenantId}/content/${contentId}/publish-instagram`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${localStorage.getItem("vendorai_token")}`,
+        },
+        body: JSON.stringify({ variationIndex }),
+      });
+      const data = (await res.json()) as { error?: string };
+      if (!res.ok) {
+        toast({ title: "Falha ao publicar", description: data.error ?? "Erro desconhecido", variant: "destructive" });
+      } else {
+        toast({ title: "Publicado no Instagram!", description: "Post publicado com sucesso." });
+      }
+    } catch {
+      toast({ title: "Erro de conexão", variant: "destructive" });
+    } finally {
+      setPublishing(false);
+    }
+  }
+
+  return (
+    <Button
+      variant="outline"
+      size="sm"
+      onClick={handlePublish}
+      disabled={publishing}
+      title={!hasImage ? "Imagem expirada — regere o conteúdo para publicar" : "Publicar no Instagram"}
+      className={cn("h-7 px-2 text-xs gap-1", !hasImage && "opacity-50")}
+    >
+      {publishing
+        ? <Loader2 className="h-3 w-3 animate-spin" />
+        : <Instagram className="h-3 w-3" />}
+      {publishing ? "Publicando…" : "Publicar"}
+    </Button>
+  );
+}
+
 function VariationCard({
   index,
   type,
   variation,
+  contentId,
+  tenantId,
 }: {
   index: number;
   type: ContentType;
   variation: ContentVariation;
+  contentId?: string;
+  tenantId?: string;
 }) {
+  const hasImage = !!(variation as { imageUrl?: string }).imageUrl;
   return (
     <Card>
       <CardHeader className="pb-3 pt-4 px-4">
-        <CardTitle className="text-sm font-semibold text-muted-foreground">
-          Variação {index + 1}
-        </CardTitle>
+        <div className="flex items-center justify-between gap-2">
+          <CardTitle className="text-sm font-semibold text-muted-foreground">
+            Variação {index + 1}
+          </CardTitle>
+          {contentId && tenantId && type !== "reels" && (
+            <PublishInstagramButton
+              contentId={contentId}
+              variationIndex={index}
+              hasImage={hasImage}
+              tenantId={tenantId}
+            />
+          )}
+        </div>
       </CardHeader>
       <CardContent className="px-4 pb-4">
         {type === "feed" && <FeedCard v={variation as FeedVariation} />}
@@ -264,7 +342,7 @@ function HistoryItem({
             <p className="text-xs text-muted-foreground text-center py-2">Sem variações salvas.</p>
           ) : (
             item.result.variations.map((v, i) => (
-              <VariationCard key={i} index={i} type={item.type} variation={v} />
+              <VariationCard key={i} index={i} type={item.type} variation={v} contentId={item.id} tenantId={item.tenantId} />
             ))
           )}
         </div>
@@ -502,7 +580,7 @@ export default function Content() {
                       {lastResult.result.variations.length} variações geradas
                     </p>
                     {lastResult.result.variations.map((v, i) => (
-                      <VariationCard key={i} index={i} type={lastResult.type} variation={v} />
+                      <VariationCard key={i} index={i} type={lastResult.type} variation={v} contentId={lastResult.id} tenantId={tenantId} />
                     ))}
                   </div>
                 )}
