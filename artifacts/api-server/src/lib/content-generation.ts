@@ -34,6 +34,37 @@ function buildBrandContext(profile: TenantProfile): string {
   return lines.join("\n") || "Empresa sem contexto definido.";
 }
 
+async function generateImageForContent(
+  profile: TenantProfile,
+  theme: string,
+  productName: string | undefined,
+  format: "feed" | "stories"
+): Promise<string | undefined> {
+  try {
+    const openai = getOpenAI();
+    const brand = profile.nomeFantasia || "a empresa";
+    const subject = productName ? `${productName} — ${theme}` : theme;
+    const ratio = format === "stories" ? "1024x1792" : "1024x1024";
+
+    const imagePrompt = `Professional marketing image for the Instagram ${format === "stories" ? "Stories (vertical 9:16 format)" : "Feed (square format)"} of the brand "${brand}". 
+Theme: ${subject}.
+Style: clean, modern, professional marketing photography. High quality, visually appealing, suitable for a business Instagram profile. 
+No text overlays. No watermarks. Bright, well-lit, commercial photography aesthetic.`;
+
+    const response = await openai.images.generate({
+      model: "dall-e-3",
+      prompt: imagePrompt,
+      n: 1,
+      size: ratio as "1024x1024" | "1024x1792",
+      quality: "standard",
+    });
+
+    return response.data?.[0]?.url ?? undefined;
+  } catch {
+    return undefined;
+  }
+}
+
 export async function generateFeedContent(
   profile: TenantProfile,
   theme: string,
@@ -61,19 +92,28 @@ Crie ${variationsCount} variações distintas de legenda para o Feed do Instagra
 Retorne SOMENTE JSON válido no formato:
 {"variations": [{"caption": "...", "hashtags": ["#hashtag1", "#hashtag2"]}]}`;
 
-  const response = await openai.chat.completions.create({
-    model: "gpt-4o-mini",
-    messages: [{ role: "user", content: prompt }],
-    response_format: { type: "json_object" },
-    temperature: 0.85,
-  });
+  const [textResponse, imageUrl] = await Promise.all([
+    openai.chat.completions.create({
+      model: "gpt-4o-mini",
+      messages: [{ role: "user", content: prompt }],
+      response_format: { type: "json_object" },
+      temperature: 0.85,
+    }),
+    generateImageForContent(profile, theme, productName, "feed"),
+  ]);
 
-  const tokensUsed = response.usage?.total_tokens ?? 0;
-  const raw = JSON.parse(response.choices[0]?.message?.content ?? "{}") as {
-    variations?: FeedVariation[];
+  const tokensUsed = textResponse.usage?.total_tokens ?? 0;
+  const raw = JSON.parse(textResponse.choices[0]?.message?.content ?? "{}") as {
+    variations?: Omit<FeedVariation, "imageUrl">[];
   };
+
+  const variations: FeedVariation[] = (raw.variations ?? []).map((v, i) => ({
+    ...v,
+    imageUrl: i === 0 ? imageUrl : undefined,
+  }));
+
   return {
-    result: { variations: raw.variations ?? [] },
+    result: { variations },
     tokensUsed,
   };
 }
@@ -105,19 +145,28 @@ Crie ${variationsCount} variações distintas de conteúdo para Stories do Insta
 Retorne SOMENTE JSON válido no formato:
 {"variations": [{"text": "...", "cta": "..."}]}`;
 
-  const response = await openai.chat.completions.create({
-    model: "gpt-4o-mini",
-    messages: [{ role: "user", content: prompt }],
-    response_format: { type: "json_object" },
-    temperature: 0.85,
-  });
+  const [textResponse, imageUrl] = await Promise.all([
+    openai.chat.completions.create({
+      model: "gpt-4o-mini",
+      messages: [{ role: "user", content: prompt }],
+      response_format: { type: "json_object" },
+      temperature: 0.85,
+    }),
+    generateImageForContent(profile, theme, productName, "stories"),
+  ]);
 
-  const tokensUsed = response.usage?.total_tokens ?? 0;
-  const raw = JSON.parse(response.choices[0]?.message?.content ?? "{}") as {
-    variations?: StoriesVariation[];
+  const tokensUsed = textResponse.usage?.total_tokens ?? 0;
+  const raw = JSON.parse(textResponse.choices[0]?.message?.content ?? "{}") as {
+    variations?: Omit<StoriesVariation, "imageUrl">[];
   };
+
+  const variations: StoriesVariation[] = (raw.variations ?? []).map((v, i) => ({
+    ...v,
+    imageUrl: i === 0 ? imageUrl : undefined,
+  }));
+
   return {
-    result: { variations: raw.variations ?? [] },
+    result: { variations },
     tokensUsed,
   };
 }

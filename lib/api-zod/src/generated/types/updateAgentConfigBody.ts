@@ -15,4 +15,7 @@ export interface UpdateAgentConfigBody {
   tokensUsedCurrentMonth?: number;
   setupCompletedAt?: Date;
   autonomyEnabledAt?: Date;
+  instagramPageAccessToken?: string | null;
+  instagramPageId?: string | null;
+  instagramUsername?: string | null;
 }

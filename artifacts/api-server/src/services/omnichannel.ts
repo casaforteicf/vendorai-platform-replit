@@ -4,6 +4,7 @@ import {
   leadsTable,
   conversationsTable,
   messagesTable,
+  agentConfigsTable,
 } from "@workspace/db";
 import type { Message, Conversation } from "@workspace/db";
 import type { Logger } from "pino";
@@ -30,13 +31,60 @@ export class LeadNotFoundError extends Error {
   }
 }
 
+export class InstagramNotConnectedError extends Error {
+  readonly statusCode = 422;
+  constructor() {
+    super("Instagram não conectado. Configure o token de acesso em Configurações > Integrações.");
+    this.name = "InstagramNotConnectedError";
+  }
+}
+
+export class InstagramScopedIdMissingError extends Error {
+  readonly statusCode = 422;
+  constructor(leadId: string) {
+    super(`Lead "${leadId}" não tem Instagram Scoped ID. O lead precisa ter enviado uma mensagem primeiro via Instagram.`);
+    this.name = "InstagramScopedIdMissingError";
+  }
+}
+
+async function sendInstagramMessage(
+  pageAccessToken: string,
+  recipientIgsid: string,
+  messageText: string,
+  log: Logger
+): Promise<void> {
+  const url = `https://graph.facebook.com/v19.0/me/messages`;
+  const body = {
+    recipient: { id: recipientIgsid },
+    message: { text: messageText },
+    messaging_type: "RESPONSE",
+  };
+
+  const res = await fetch(url, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${pageAccessToken}`,
+    },
+    body: JSON.stringify(body),
+  });
+
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    log.error({ err, recipientIgsid }, "omnichannel: instagram send failed");
+    throw new Error(`Instagram API error: ${JSON.stringify(err)}`);
+  }
+
+  log.info({ recipientIgsid }, "omnichannel: instagram message sent");
+}
+
 export async function sendOutgoingMessage(
   input: SendOutgoingMessageInput,
   log: Logger
 ): Promise<SendOutgoingMessageResult> {
   const { tenantId, leadId, conteudo, canal, agentName } = input;
 
-  // ── 1. Fetch lead — validate tenant ownership + retrieve telefone ──────
+  // ── 1. Fetch lead — validate tenant ownership + retrieve telefone/instagramScopedId ──
   const [lead] = await db
     .select()
     .from(leadsTable)
@@ -45,7 +93,34 @@ export async function sendOutgoingMessage(
 
   if (!lead) throw new LeadNotFoundError(leadId);
 
-  // ── 2. Find or create conversation for leadId + canal ─────────────────
+  // ── 2. Instagram: validate credentials + actually send ─────────────────────
+  if (canal === "instagram") {
+    const [config] = await db
+      .select({
+        instagramPageAccessToken: agentConfigsTable.instagramPageAccessToken,
+        instagramPageId: agentConfigsTable.instagramPageId,
+      })
+      .from(agentConfigsTable)
+      .where(eq(agentConfigsTable.tenantId, tenantId))
+      .limit(1);
+
+    if (!config?.instagramPageAccessToken) {
+      throw new InstagramNotConnectedError();
+    }
+
+    if (!lead.instagramScopedId) {
+      throw new InstagramScopedIdMissingError(leadId);
+    }
+
+    await sendInstagramMessage(
+      config.instagramPageAccessToken,
+      lead.instagramScopedId,
+      conteudo,
+      log
+    );
+  }
+
+  // ── 3. Find or create conversation for leadId + canal ─────────────────────
   let [conversation] = await db
     .select()
     .from(conversationsTable)
@@ -69,7 +144,7 @@ export async function sendOutgoingMessage(
     );
   }
 
-  // ── 3. Insert outgoing message ─────────────────────────────────────────
+  // ── 4. Insert outgoing message ─────────────────────────────────────────────
   const enviadoPor: "humano" | "agente_ia" = agentName ? "agente_ia" : "humano";
 
   const [message] = await db
@@ -93,7 +168,7 @@ export async function sendOutgoingMessage(
     "omnichannel: outgoing message inserted"
   );
 
-  // ── 4. Update conversation: ultimaMensagemEm (no naoLidas for saida) ───
+  // ── 5. Update conversation: ultimaMensagemEm ───────────────────────────────
   await db
     .update(conversationsTable)
     .set({ ultimaMensagemEm: new Date(), updatedAt: new Date() })

@@ -14,6 +14,8 @@ import { verifyToken } from "../lib/jwt.js";
 import {
   sendOutgoingMessage,
   LeadNotFoundError,
+  InstagramNotConnectedError,
+  InstagramScopedIdMissingError,
 } from "../services/omnichannel.js";
 import { dispatchAgentBackground } from "../services/agent-dispatch.js";
 
@@ -213,6 +215,133 @@ router.post("/tenants/:tenantId/webhooks/whatsapp", async (req, res) => {
   });
 });
 
+// ── POST /tenants/:tenantId/webhooks/instagram ───────────────────────────────
+// Receives Instagram DM events forwarded by Meta webhook (via n8n or directly).
+// Payload shape mirrors Meta's Messenger/Instagram webhook format.
+const instagramWebhookBody = z.object({
+  igsid: z.string().min(1),           // Instagram Scoped User ID of the sender
+  nome: z.string().optional(),
+  mensagem: z.string().min(1),
+});
+
+router.post("/tenants/:tenantId/webhooks/instagram", async (req, res) => {
+  const { tenantId } = req.params;
+  const secret = req.headers["x-webhook-secret"];
+
+  if (!secret || typeof secret !== "string") {
+    res.status(401).json({ error: "Missing X-Webhook-Secret header" });
+    return;
+  }
+
+  const [agentConfig] = await db
+    .select()
+    .from(agentConfigsTable)
+    .where(eq(agentConfigsTable.tenantId, tenantId));
+
+  if (!agentConfig) {
+    res.status(404).json({ error: "Tenant agent config not found" });
+    return;
+  }
+
+  if (!agentConfig.webhookSecret || agentConfig.webhookSecret !== secret) {
+    res.status(401).json({ error: "Invalid webhook secret" });
+    return;
+  }
+
+  const parsed = instagramWebhookBody.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(422).json({ error: parsed.error.message });
+    return;
+  }
+
+  const { igsid, nome, mensagem } = parsed.data;
+
+  // ── Find or create lead by Instagram Scoped ID ──────────────────────────
+  let [lead] = await db
+    .select()
+    .from(leadsTable)
+    .where(
+      and(eq(leadsTable.tenantId, tenantId), eq(leadsTable.instagramScopedId, igsid))
+    )
+    .limit(1);
+
+  if (!lead) {
+    [lead] = await db
+      .insert(leadsTable)
+      .values({ tenantId, nome: nome ?? `Instagram @${igsid.slice(0, 8)}`, instagramScopedId: igsid, status: "novo" })
+      .returning();
+    req.log.info({ leadId: lead.id, igsid }, "webhook/instagram: new lead created");
+  } else if (!lead.instagramScopedId) {
+    // Backfill if lead existed without IGSID
+    await db
+      .update(leadsTable)
+      .set({ instagramScopedId: igsid, updatedAt: new Date() })
+      .where(eq(leadsTable.id, lead.id));
+  }
+
+  // ── Find or create Instagram conversation ────────────────────────────────
+  let [conversation] = await db
+    .select()
+    .from(conversationsTable)
+    .where(
+      and(
+        eq(conversationsTable.tenantId, tenantId),
+        eq(conversationsTable.leadId, lead.id),
+        eq(conversationsTable.channel, "instagram")
+      )
+    )
+    .limit(1);
+
+  if (!conversation) {
+    [conversation] = await db
+      .insert(conversationsTable)
+      .values({ tenantId, leadId: lead.id, channel: "instagram", status: "open", naoLidas: 0 })
+      .returning();
+    req.log.info({ conversationId: conversation.id }, "webhook/instagram: new conversation created");
+  }
+
+  // ── Insert incoming message ──────────────────────────────────────────────
+  const [message] = await db
+    .insert(messagesTable)
+    .values({
+      tenantId,
+      conversationId: conversation.id,
+      leadId: lead.id,
+      direcao: "entrada",
+      canal: "instagram",
+      conteudo: mensagem,
+      enviadoPor: "lead",
+      tipoConteudo: "texto",
+      status: "entregue",
+    })
+    .returning();
+
+  req.log.info({ messageId: message.id }, "webhook/instagram: message inserted");
+
+  await db
+    .update(conversationsTable)
+    .set({
+      ultimaMensagemEm: new Date(),
+      naoLidas: sql`${conversationsTable.naoLidas} + 1`,
+      updatedAt: new Date(),
+    })
+    .where(eq(conversationsTable.id, conversation.id));
+
+  dispatchAgentBackground({
+    tenantId,
+    leadId: lead.id,
+    mensagem,
+    log: req.log,
+  });
+
+  res.status(200).json({
+    leadId: lead.id,
+    conversationId: conversation.id,
+    messageId: message.id,
+    agentDispatched: true,
+  });
+});
+
 // ── POST /tenants/:tenantId/messages/send ─────────────────────────────────────
 const sendMessageBody = z.object({
   leadId: z.string().min(1),
@@ -248,6 +377,10 @@ router.post("/tenants/:tenantId/messages/send", async (req, res) => {
   } catch (err) {
     if (err instanceof LeadNotFoundError) {
       res.status(404).json({ error: err.message });
+      return;
+    }
+    if (err instanceof InstagramNotConnectedError || err instanceof InstagramScopedIdMissingError) {
+      res.status(422).json({ error: err.message });
       return;
     }
     throw err;

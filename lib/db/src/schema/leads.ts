@@ -25,6 +25,7 @@ export const leadsTable = pgTable("leads", {
   status: text("status").notNull().default("novo"),
   activeAgentLock: text("active_agent_lock"),
   assignedTo: text("assigned_to").references(() => usersTable.id, { onDelete: "set null" }),
+  instagramScopedId: text("instagram_scoped_id"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
 });

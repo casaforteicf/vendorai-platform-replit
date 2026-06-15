@@ -18,8 +18,8 @@ import { cn } from "@/lib/utils";
 
 type ContentType = "feed" | "stories" | "reels";
 
-interface FeedVariation { caption: string; hashtags: string[] }
-interface StoriesVariation { text: string; cta: string }
+interface FeedVariation { caption: string; hashtags: string[]; imageUrl?: string }
+interface StoriesVariation { text: string; cta: string; imageUrl?: string }
 interface ReelsScene { visual: string; fala: string; duracao: string }
 interface ReelsVariation { title: string; scenes: ReelsScene[]; audioSuggestion: string; cta: string }
 type ContentVariation = FeedVariation | StoriesVariation | ReelsVariation;
@@ -88,6 +88,16 @@ function FeedCard({ v }: { v: FeedVariation }) {
   const fullText = `${v.caption}\n\n${v.hashtags.join(" ")}`;
   return (
     <div className="space-y-3">
+      {v.imageUrl && (
+        <div className="rounded-lg overflow-hidden border bg-muted/30 aspect-square max-w-sm mx-auto">
+          <img
+            src={v.imageUrl}
+            alt="Imagem gerada para o Feed"
+            className="w-full h-full object-cover"
+            loading="lazy"
+          />
+        </div>
+      )}
       <div className="flex items-start justify-between gap-2">
         <p className="text-sm leading-relaxed whitespace-pre-wrap flex-1">{v.caption}</p>
         <CopyButton text={fullText} />
@@ -103,15 +113,27 @@ function FeedCard({ v }: { v: FeedVariation }) {
 
 function StoriesCard({ v }: { v: StoriesVariation }) {
   return (
-    <div className="flex items-start justify-between gap-2">
-      <div className="flex-1 space-y-2">
-        <p className="text-sm font-medium leading-relaxed">{v.text}</p>
-        <div className="flex items-center gap-2">
-          <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">CTA:</span>
-          <span className="text-xs bg-muted px-2 py-1 rounded font-medium">{v.cta}</span>
+    <div className="space-y-3">
+      {v.imageUrl && (
+        <div className="rounded-lg overflow-hidden border bg-muted/30 mx-auto" style={{ maxWidth: "200px", aspectRatio: "9/16" }}>
+          <img
+            src={v.imageUrl}
+            alt="Imagem gerada para Stories"
+            className="w-full h-full object-cover"
+            loading="lazy"
+          />
         </div>
+      )}
+      <div className="flex items-start justify-between gap-2">
+        <div className="flex-1 space-y-2">
+          <p className="text-sm font-medium leading-relaxed">{v.text}</p>
+          <div className="flex items-center gap-2">
+            <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">CTA:</span>
+            <span className="text-xs bg-muted px-2 py-1 rounded font-medium">{v.cta}</span>
+          </div>
+        </div>
+        <CopyButton text={`${v.text}\n\n${v.cta}`} />
       </div>
-      <CopyButton text={`${v.text}\n\n${v.cta}`} />
     </div>
   );
 }

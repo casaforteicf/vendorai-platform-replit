@@ -1181,6 +1181,12 @@ export interface AgentConfig {
   autonomyEnabledAt?: string | null;
   /** Secret used to authenticate inbound WhatsApp webhooks (X-Webhook-Secret header). */
   webhookSecret?: string | null;
+  /** Long-lived Page Access Token for Instagram Graph API. */
+  instagramPageAccessToken?: string | null;
+  /** Instagram Page ID used to send messages. */
+  instagramPageId?: string | null;
+  /** Instagram username for display purposes. */
+  instagramUsername?: string | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -1204,6 +1210,9 @@ export interface UpdateAgentConfigBody {
   tokensUsedCurrentMonth?: number;
   setupCompletedAt?: string;
   autonomyEnabledAt?: string;
+  instagramPageAccessToken?: string | null;
+  instagramPageId?: string | null;
+  instagramUsername?: string | null;
 }
 
 export interface Product {
@@ -1566,6 +1575,8 @@ export interface Lead {
   proximaAcao?: string | null;
   status: string;
   activeAgentLock?: string | null;
+  /** Instagram Scoped User ID (IGSID) — set automatically when the lead sends an Instagram DM. */
+  instagramScopedId?: string | null;
   createdAt: string;
   updatedAt: string;
 }

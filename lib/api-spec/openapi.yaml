@@ -7179,6 +7179,18 @@ components:
           type: string
           nullable: true
           description: Secret used to authenticate inbound WhatsApp webhooks (X-Webhook-Secret header).
+        instagramPageAccessToken:
+          type: string
+          nullable: true
+          description: Long-lived Page Access Token for Instagram Graph API.
+        instagramPageId:
+          type: string
+          nullable: true
+          description: Instagram Page ID used to send messages.
+        instagramUsername:
+          type: string
+          nullable: true
+          description: Instagram username for display purposes.
         createdAt:
           type: string
           format: date-time
@@ -7239,6 +7251,15 @@ components:
         autonomyEnabledAt:
           type: string
           format: date-time
+        instagramPageAccessToken:
+          type: string
+          nullable: true
+        instagramPageId:
+          type: string
+          nullable: true
+        instagramUsername:
+          type: string
+          nullable: true
 
     Product:
       type: object
@@ -8034,6 +8055,10 @@ components:
         activeAgentLock:
           type: string
           nullable: true
+        instagramScopedId:
+          type: string
+          nullable: true
+          description: Instagram Scoped User ID (IGSID) — set automatically when the lead sends an Instagram DM.
         createdAt:
           type: string
           format: date-time

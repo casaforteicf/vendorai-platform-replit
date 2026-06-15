@@ -20,6 +20,12 @@ export interface AgentConfig {
   autonomyEnabledAt?: Date | null;
   /** Secret used to authenticate inbound WhatsApp webhooks (X-Webhook-Secret header). */
   webhookSecret?: string | null;
+  /** Long-lived Page Access Token for Instagram Graph API. */
+  instagramPageAccessToken?: string | null;
+  /** Instagram Page ID used to send messages. */
+  instagramPageId?: string | null;
+  /** Instagram username for display purposes. */
+  instagramUsername?: string | null;
   createdAt: Date;
   updatedAt: Date;
 }

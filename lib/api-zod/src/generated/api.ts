@@ -390,6 +390,9 @@ export const GetAgentConfigByTenantResponse = zod.object({
   "setupCompletedAt": zod.coerce.date().nullish(),
   "autonomyEnabledAt": zod.coerce.date().nullish().describe('Computed as setupCompletedAt + 5 days. Before this timestamp, agent actions require manual approval.'),
   "webhookSecret": zod.string().nullish().describe('Secret used to authenticate inbound WhatsApp webhooks (X-Webhook-Secret header).'),
+  "instagramPageAccessToken": zod.string().nullish().describe('Long-lived Page Access Token for Instagram Graph API.'),
+  "instagramPageId": zod.string().nullish().describe('Instagram Page ID used to send messages.'),
+  "instagramUsername": zod.string().nullish().describe('Instagram username for display purposes.'),
   "createdAt": zod.coerce.date(),
   "updatedAt": zod.coerce.date()
 })
@@ -454,6 +457,9 @@ export const GetAgentConfigResponse = zod.object({
   "setupCompletedAt": zod.coerce.date().nullish(),
   "autonomyEnabledAt": zod.coerce.date().nullish().describe('Computed as setupCompletedAt + 5 days. Before this timestamp, agent actions require manual approval.'),
   "webhookSecret": zod.string().nullish().describe('Secret used to authenticate inbound WhatsApp webhooks (X-Webhook-Secret header).'),
+  "instagramPageAccessToken": zod.string().nullish().describe('Long-lived Page Access Token for Instagram Graph API.'),
+  "instagramPageId": zod.string().nullish().describe('Instagram Page ID used to send messages.'),
+  "instagramUsername": zod.string().nullish().describe('Instagram username for display purposes.'),
   "createdAt": zod.coerce.date(),
   "updatedAt": zod.coerce.date()
 })
@@ -510,7 +516,10 @@ export const UpdateAgentConfigBody = zod.object({
   "monthlyTokenLimit": zod.number().optional(),
   "tokensUsedCurrentMonth": zod.number().optional(),
   "setupCompletedAt": zod.coerce.date().optional(),
-  "autonomyEnabledAt": zod.coerce.date().optional()
+  "autonomyEnabledAt": zod.coerce.date().optional(),
+  "instagramPageAccessToken": zod.string().nullish(),
+  "instagramPageId": zod.string().nullish(),
+  "instagramUsername": zod.string().nullish()
 })
 
 export const updateAgentConfigResponseAgentsSdrEnabledDefault = false;
@@ -565,6 +574,9 @@ export const UpdateAgentConfigResponse = zod.object({
   "setupCompletedAt": zod.coerce.date().nullish(),
   "autonomyEnabledAt": zod.coerce.date().nullish().describe('Computed as setupCompletedAt + 5 days. Before this timestamp, agent actions require manual approval.'),
   "webhookSecret": zod.string().nullish().describe('Secret used to authenticate inbound WhatsApp webhooks (X-Webhook-Secret header).'),
+  "instagramPageAccessToken": zod.string().nullish().describe('Long-lived Page Access Token for Instagram Graph API.'),
+  "instagramPageId": zod.string().nullish().describe('Instagram Page ID used to send messages.'),
+  "instagramUsername": zod.string().nullish().describe('Instagram username for display purposes.'),
   "createdAt": zod.coerce.date(),
   "updatedAt": zod.coerce.date()
 })
@@ -646,6 +658,9 @@ export const IncrementMessagesResponse = zod.object({
   "setupCompletedAt": zod.coerce.date().nullish(),
   "autonomyEnabledAt": zod.coerce.date().nullish().describe('Computed as setupCompletedAt + 5 days. Before this timestamp, agent actions require manual approval.'),
   "webhookSecret": zod.string().nullish().describe('Secret used to authenticate inbound WhatsApp webhooks (X-Webhook-Secret header).'),
+  "instagramPageAccessToken": zod.string().nullish().describe('Long-lived Page Access Token for Instagram Graph API.'),
+  "instagramPageId": zod.string().nullish().describe('Instagram Page ID used to send messages.'),
+  "instagramUsername": zod.string().nullish().describe('Instagram username for display purposes.'),
   "createdAt": zod.coerce.date(),
   "updatedAt": zod.coerce.date()
 })
@@ -719,6 +734,9 @@ export const IncrementTokensResponse = zod.object({
   "setupCompletedAt": zod.coerce.date().nullish(),
   "autonomyEnabledAt": zod.coerce.date().nullish().describe('Computed as setupCompletedAt + 5 days. Before this timestamp, agent actions require manual approval.'),
   "webhookSecret": zod.string().nullish().describe('Secret used to authenticate inbound WhatsApp webhooks (X-Webhook-Secret header).'),
+  "instagramPageAccessToken": zod.string().nullish().describe('Long-lived Page Access Token for Instagram Graph API.'),
+  "instagramPageId": zod.string().nullish().describe('Instagram Page ID used to send messages.'),
+  "instagramUsername": zod.string().nullish().describe('Instagram username for display purposes.'),
   "createdAt": zod.coerce.date(),
   "updatedAt": zod.coerce.date()
 })
@@ -810,6 +828,9 @@ export const RegenerateWebhookSecretResponse = zod.object({
   "setupCompletedAt": zod.coerce.date().nullish(),
   "autonomyEnabledAt": zod.coerce.date().nullish().describe('Computed as setupCompletedAt + 5 days. Before this timestamp, agent actions require manual approval.'),
   "webhookSecret": zod.string().nullish().describe('Secret used to authenticate inbound WhatsApp webhooks (X-Webhook-Secret header).'),
+  "instagramPageAccessToken": zod.string().nullish().describe('Long-lived Page Access Token for Instagram Graph API.'),
+  "instagramPageId": zod.string().nullish().describe('Instagram Page ID used to send messages.'),
+  "instagramUsername": zod.string().nullish().describe('Instagram username for display purposes.'),
   "createdAt": zod.coerce.date(),
   "updatedAt": zod.coerce.date()
 })
@@ -875,6 +896,9 @@ export const CompleteAgentConfigSetupResponse = zod.object({
   "setupCompletedAt": zod.coerce.date().nullish(),
   "autonomyEnabledAt": zod.coerce.date().nullish().describe('Computed as setupCompletedAt + 5 days. Before this timestamp, agent actions require manual approval.'),
   "webhookSecret": zod.string().nullish().describe('Secret used to authenticate inbound WhatsApp webhooks (X-Webhook-Secret header).'),
+  "instagramPageAccessToken": zod.string().nullish().describe('Long-lived Page Access Token for Instagram Graph API.'),
+  "instagramPageId": zod.string().nullish().describe('Instagram Page ID used to send messages.'),
+  "instagramUsername": zod.string().nullish().describe('Instagram username for display purposes.'),
   "createdAt": zod.coerce.date(),
   "updatedAt": zod.coerce.date()
 })
@@ -3808,6 +3832,7 @@ export const ListLeadsResponseItem = zod.object({
   "proximaAcao": zod.string().nullish(),
   "status": zod.string(),
   "activeAgentLock": zod.string().nullish(),
+  "instagramScopedId": zod.string().nullish().describe('Instagram Scoped User ID (IGSID) — set automatically when the lead sends an Instagram DM.'),
   "createdAt": zod.coerce.date(),
   "updatedAt": zod.coerce.date()
 })
@@ -3858,6 +3883,7 @@ export const ListTenantLeadsResponseItem = zod.object({
   "proximaAcao": zod.string().nullish(),
   "status": zod.string(),
   "activeAgentLock": zod.string().nullish(),
+  "instagramScopedId": zod.string().nullish().describe('Instagram Scoped User ID (IGSID) — set automatically when the lead sends an Instagram DM.'),
   "createdAt": zod.coerce.date(),
   "updatedAt": zod.coerce.date()
 })
@@ -3887,6 +3913,7 @@ export const GetLeadResponse = zod.object({
   "proximaAcao": zod.string().nullish(),
   "status": zod.string(),
   "activeAgentLock": zod.string().nullish(),
+  "instagramScopedId": zod.string().nullish().describe('Instagram Scoped User ID (IGSID) — set automatically when the lead sends an Instagram DM.'),
   "createdAt": zod.coerce.date(),
   "updatedAt": zod.coerce.date()
 })
@@ -3931,6 +3958,7 @@ export const UpdateLeadResponse = zod.object({
   "proximaAcao": zod.string().nullish(),
   "status": zod.string(),
   "activeAgentLock": zod.string().nullish(),
+  "instagramScopedId": zod.string().nullish().describe('Instagram Scoped User ID (IGSID) — set automatically when the lead sends an Instagram DM.'),
   "createdAt": zod.coerce.date(),
   "updatedAt": zod.coerce.date()
 })

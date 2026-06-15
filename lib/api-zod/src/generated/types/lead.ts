@@ -22,6 +22,8 @@ export interface Lead {
   proximaAcao?: string | null;
   status: string;
   activeAgentLock?: string | null;
+  /** Instagram Scoped User ID (IGSID) — set automatically when the lead sends an Instagram DM. */
+  instagramScopedId?: string | null;
   createdAt: Date;
   updatedAt: Date;
 }

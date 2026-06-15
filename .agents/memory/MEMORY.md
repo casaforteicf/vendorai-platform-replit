@@ -1,2 +1,3 @@
 - [Supabase pooler region](supabase-pooler-region.md) — vendorai-core usa aws-1-sa-east-1 (não aws-0); conexão direta bloqueada no Replit.
 - [ERP Integration](erp-integration.md) — outbound webhook on sale won + inbound inventory sync; inventorySyncRouter must be registered before authenticate middleware.
+- [Instagram integration pattern](instagram-integration.md) — credenciais em agent_configs; IGSID em leads; webhook /tenants/:id/webhooks/instagram; envio via Graph API v19.
