@@ -51,12 +51,12 @@ async function runChurnCheckAll(log: Logger): Promise<void> {
     try {
       // Load agent config once per tenant (needed for autonomy check)
       const [agentConfig] = await db
-        .select({ autonomyEnabledAt: agentConfigsTable.autonomyEnabledAt })
+        .select({ churnAutoWhatsapp: agentConfigsTable.churnAutoWhatsapp })
         .from(agentConfigsTable)
         .where(eq(agentConfigsTable.tenantId, tenant.id))
         .limit(1);
 
-      const isAutonomous = !!agentConfig?.autonomyEnabledAt;
+      const isAutonomous = !!agentConfig?.churnAutoWhatsapp;
 
       // Find leads with churnRisk > 70 (limit 200 per tenant for safety)
       const highRiskRows = await db

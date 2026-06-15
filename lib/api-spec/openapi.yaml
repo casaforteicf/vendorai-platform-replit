@@ -7175,6 +7175,10 @@ components:
           format: date-time
           nullable: true
           description: Computed as setupCompletedAt + 5 days. Before this timestamp, agent actions require manual approval.
+        churnAutoWhatsapp:
+          type: boolean
+          default: false
+          description: When true, the churn scheduler automatically dispatches a WhatsApp reactivation message for leads with churn risk > 70% (max once per 24h per lead).
         webhookSecret:
           type: string
           nullable: true
@@ -7229,6 +7233,8 @@ components:
         autonomyEnabledAt:
           type: string
           format: date-time
+        churnAutoWhatsapp:
+          type: boolean
       required:
         - tenantId
 
@@ -7251,6 +7257,8 @@ components:
         autonomyEnabledAt:
           type: string
           format: date-time
+        churnAutoWhatsapp:
+          type: boolean
         instagramPageAccessToken:
           type: string
           nullable: true

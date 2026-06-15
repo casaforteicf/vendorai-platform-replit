@@ -1,4 +1,4 @@
-import { pgTable, text, timestamp, integer, unique, jsonb } from "drizzle-orm/pg-core";
+import { pgTable, text, timestamp, integer, unique, jsonb, boolean } from "drizzle-orm/pg-core";
 import { createInsertSchema, createSelectSchema } from "drizzle-zod";
 import { z } from "zod/v4";
 import { tenantsTable } from "./tenants";
@@ -53,6 +53,7 @@ export const agentConfigsTable = pgTable(
     tokensResetAt: timestamp("tokens_reset_at"),
     contentGenerationsThisMonth: integer("content_generations_this_month").notNull().default(0),
     contentGenerationsResetAt: timestamp("content_generations_reset_at"),
+    churnAutoWhatsapp: boolean("churn_auto_whatsapp").notNull().default(false),
     instagramPageAccessToken: text("instagram_page_access_token"),
     instagramPageId: text("instagram_page_id"),
     instagramUsername: text("instagram_username"),

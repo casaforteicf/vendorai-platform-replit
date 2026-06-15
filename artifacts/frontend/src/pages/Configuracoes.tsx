@@ -95,6 +95,7 @@ import {
   UserPlus,
   Link,
   FileText,
+  MessageCircle,
 } from "lucide-react";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
@@ -1164,6 +1165,34 @@ export default function Configuracoes() {
               </div>
             )}
           </div>
+
+          {/* Churn Auto-WhatsApp Card */}
+          {agentQuery.data && (
+            <div className="rounded-xl border bg-card p-6">
+              <div className="flex items-center justify-between gap-4">
+                <div>
+                  <h2 className="font-semibold text-base flex items-center gap-2">
+                    <MessageCircle className="h-4 w-4 text-green-500" />
+                    Follow-up automático por churn
+                  </h2>
+                  <p className="text-sm text-muted-foreground mt-0.5">
+                    Quando ativado, o agente envia WhatsApp automaticamente para leads com risco de churn acima de 70%, máximo uma vez a cada 24h por lead.
+                  </p>
+                </div>
+                <Switch
+                  checked={!!agentQuery.data.churnAutoWhatsapp}
+                  onCheckedChange={(checked) => {
+                    if (!agentQuery.data?.id) return;
+                    updateAgentConf.mutate(
+                      { id: agentQuery.data.id, data: { churnAutoWhatsapp: checked } },
+                      { onSuccess: () => { agentQuery.refetch(); toast({ title: checked ? "Automação de churn ativada." : "Automação de churn desativada." }); } }
+                    );
+                  }}
+                  disabled={updateAgentConf.isPending}
+                />
+              </div>
+            </div>
+          )}
 
           {/* Agents List */}
           <div className="rounded-xl border bg-card divide-y">

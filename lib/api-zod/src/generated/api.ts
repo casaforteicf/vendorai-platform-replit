@@ -327,7 +327,8 @@ export const CreateAgentConfigBody = zod.object({
   "monthlyTokenLimit": zod.number().optional(),
   "tokensUsedCurrentMonth": zod.number().optional(),
   "setupCompletedAt": zod.coerce.date().optional(),
-  "autonomyEnabledAt": zod.coerce.date().optional()
+  "autonomyEnabledAt": zod.coerce.date().optional(),
+  "churnAutoWhatsapp": zod.boolean().optional()
 })
 
 
@@ -349,6 +350,7 @@ export const getAgentConfigByTenantResponseDailyMessageLimitDefault = 100;
 export const getAgentConfigByTenantResponseMessagesSentTodayDefault = 0;
 export const getAgentConfigByTenantResponseMonthlyTokenLimitDefault = 100000;
 export const getAgentConfigByTenantResponseTokensUsedCurrentMonthDefault = 0;
+export const getAgentConfigByTenantResponseChurnAutoWhatsappDefault = false;
 
 export const GetAgentConfigByTenantResponse = zod.object({
   "id": zod.string(),
@@ -389,6 +391,7 @@ export const GetAgentConfigByTenantResponse = zod.object({
   "tokensUsedCurrentMonth": zod.number().default(getAgentConfigByTenantResponseTokensUsedCurrentMonthDefault),
   "setupCompletedAt": zod.coerce.date().nullish(),
   "autonomyEnabledAt": zod.coerce.date().nullish().describe('Computed as setupCompletedAt + 5 days. Before this timestamp, agent actions require manual approval.'),
+  "churnAutoWhatsapp": zod.boolean().default(getAgentConfigByTenantResponseChurnAutoWhatsappDefault).describe('When true, the churn scheduler automatically dispatches a WhatsApp reactivation message for leads with churn risk > 70% (max once per 24h per lead).'),
   "webhookSecret": zod.string().nullish().describe('Secret used to authenticate inbound WhatsApp webhooks (X-Webhook-Secret header).'),
   "instagramPageAccessToken": zod.string().nullish().describe('Long-lived Page Access Token for Instagram Graph API.'),
   "instagramPageId": zod.string().nullish().describe('Instagram Page ID used to send messages.'),
@@ -416,6 +419,7 @@ export const getAgentConfigResponseDailyMessageLimitDefault = 100;
 export const getAgentConfigResponseMessagesSentTodayDefault = 0;
 export const getAgentConfigResponseMonthlyTokenLimitDefault = 100000;
 export const getAgentConfigResponseTokensUsedCurrentMonthDefault = 0;
+export const getAgentConfigResponseChurnAutoWhatsappDefault = false;
 
 export const GetAgentConfigResponse = zod.object({
   "id": zod.string(),
@@ -456,6 +460,7 @@ export const GetAgentConfigResponse = zod.object({
   "tokensUsedCurrentMonth": zod.number().default(getAgentConfigResponseTokensUsedCurrentMonthDefault),
   "setupCompletedAt": zod.coerce.date().nullish(),
   "autonomyEnabledAt": zod.coerce.date().nullish().describe('Computed as setupCompletedAt + 5 days. Before this timestamp, agent actions require manual approval.'),
+  "churnAutoWhatsapp": zod.boolean().default(getAgentConfigResponseChurnAutoWhatsappDefault).describe('When true, the churn scheduler automatically dispatches a WhatsApp reactivation message for leads with churn risk > 70% (max once per 24h per lead).'),
   "webhookSecret": zod.string().nullish().describe('Secret used to authenticate inbound WhatsApp webhooks (X-Webhook-Secret header).'),
   "instagramPageAccessToken": zod.string().nullish().describe('Long-lived Page Access Token for Instagram Graph API.'),
   "instagramPageId": zod.string().nullish().describe('Instagram Page ID used to send messages.'),
@@ -517,6 +522,7 @@ export const UpdateAgentConfigBody = zod.object({
   "tokensUsedCurrentMonth": zod.number().optional(),
   "setupCompletedAt": zod.coerce.date().optional(),
   "autonomyEnabledAt": zod.coerce.date().optional(),
+  "churnAutoWhatsapp": zod.boolean().optional(),
   "instagramPageAccessToken": zod.string().nullish(),
   "instagramPageId": zod.string().nullish(),
   "instagramUsername": zod.string().nullish()
@@ -533,6 +539,7 @@ export const updateAgentConfigResponseDailyMessageLimitDefault = 100;
 export const updateAgentConfigResponseMessagesSentTodayDefault = 0;
 export const updateAgentConfigResponseMonthlyTokenLimitDefault = 100000;
 export const updateAgentConfigResponseTokensUsedCurrentMonthDefault = 0;
+export const updateAgentConfigResponseChurnAutoWhatsappDefault = false;
 
 export const UpdateAgentConfigResponse = zod.object({
   "id": zod.string(),
@@ -573,6 +580,7 @@ export const UpdateAgentConfigResponse = zod.object({
   "tokensUsedCurrentMonth": zod.number().default(updateAgentConfigResponseTokensUsedCurrentMonthDefault),
   "setupCompletedAt": zod.coerce.date().nullish(),
   "autonomyEnabledAt": zod.coerce.date().nullish().describe('Computed as setupCompletedAt + 5 days. Before this timestamp, agent actions require manual approval.'),
+  "churnAutoWhatsapp": zod.boolean().default(updateAgentConfigResponseChurnAutoWhatsappDefault).describe('When true, the churn scheduler automatically dispatches a WhatsApp reactivation message for leads with churn risk > 70% (max once per 24h per lead).'),
   "webhookSecret": zod.string().nullish().describe('Secret used to authenticate inbound WhatsApp webhooks (X-Webhook-Secret header).'),
   "instagramPageAccessToken": zod.string().nullish().describe('Long-lived Page Access Token for Instagram Graph API.'),
   "instagramPageId": zod.string().nullish().describe('Instagram Page ID used to send messages.'),
@@ -617,6 +625,7 @@ export const incrementMessagesResponseDailyMessageLimitDefault = 100;
 export const incrementMessagesResponseMessagesSentTodayDefault = 0;
 export const incrementMessagesResponseMonthlyTokenLimitDefault = 100000;
 export const incrementMessagesResponseTokensUsedCurrentMonthDefault = 0;
+export const incrementMessagesResponseChurnAutoWhatsappDefault = false;
 
 export const IncrementMessagesResponse = zod.object({
   "id": zod.string(),
@@ -657,6 +666,7 @@ export const IncrementMessagesResponse = zod.object({
   "tokensUsedCurrentMonth": zod.number().default(incrementMessagesResponseTokensUsedCurrentMonthDefault),
   "setupCompletedAt": zod.coerce.date().nullish(),
   "autonomyEnabledAt": zod.coerce.date().nullish().describe('Computed as setupCompletedAt + 5 days. Before this timestamp, agent actions require manual approval.'),
+  "churnAutoWhatsapp": zod.boolean().default(incrementMessagesResponseChurnAutoWhatsappDefault).describe('When true, the churn scheduler automatically dispatches a WhatsApp reactivation message for leads with churn risk > 70% (max once per 24h per lead).'),
   "webhookSecret": zod.string().nullish().describe('Secret used to authenticate inbound WhatsApp webhooks (X-Webhook-Secret header).'),
   "instagramPageAccessToken": zod.string().nullish().describe('Long-lived Page Access Token for Instagram Graph API.'),
   "instagramPageId": zod.string().nullish().describe('Instagram Page ID used to send messages.'),
@@ -693,6 +703,7 @@ export const incrementTokensResponseDailyMessageLimitDefault = 100;
 export const incrementTokensResponseMessagesSentTodayDefault = 0;
 export const incrementTokensResponseMonthlyTokenLimitDefault = 100000;
 export const incrementTokensResponseTokensUsedCurrentMonthDefault = 0;
+export const incrementTokensResponseChurnAutoWhatsappDefault = false;
 
 export const IncrementTokensResponse = zod.object({
   "id": zod.string(),
@@ -733,6 +744,7 @@ export const IncrementTokensResponse = zod.object({
   "tokensUsedCurrentMonth": zod.number().default(incrementTokensResponseTokensUsedCurrentMonthDefault),
   "setupCompletedAt": zod.coerce.date().nullish(),
   "autonomyEnabledAt": zod.coerce.date().nullish().describe('Computed as setupCompletedAt + 5 days. Before this timestamp, agent actions require manual approval.'),
+  "churnAutoWhatsapp": zod.boolean().default(incrementTokensResponseChurnAutoWhatsappDefault).describe('When true, the churn scheduler automatically dispatches a WhatsApp reactivation message for leads with churn risk > 70% (max once per 24h per lead).'),
   "webhookSecret": zod.string().nullish().describe('Secret used to authenticate inbound WhatsApp webhooks (X-Webhook-Secret header).'),
   "instagramPageAccessToken": zod.string().nullish().describe('Long-lived Page Access Token for Instagram Graph API.'),
   "instagramPageId": zod.string().nullish().describe('Instagram Page ID used to send messages.'),
@@ -787,6 +799,7 @@ export const regenerateWebhookSecretResponseDailyMessageLimitDefault = 100;
 export const regenerateWebhookSecretResponseMessagesSentTodayDefault = 0;
 export const regenerateWebhookSecretResponseMonthlyTokenLimitDefault = 100000;
 export const regenerateWebhookSecretResponseTokensUsedCurrentMonthDefault = 0;
+export const regenerateWebhookSecretResponseChurnAutoWhatsappDefault = false;
 
 export const RegenerateWebhookSecretResponse = zod.object({
   "id": zod.string(),
@@ -827,6 +840,7 @@ export const RegenerateWebhookSecretResponse = zod.object({
   "tokensUsedCurrentMonth": zod.number().default(regenerateWebhookSecretResponseTokensUsedCurrentMonthDefault),
   "setupCompletedAt": zod.coerce.date().nullish(),
   "autonomyEnabledAt": zod.coerce.date().nullish().describe('Computed as setupCompletedAt + 5 days. Before this timestamp, agent actions require manual approval.'),
+  "churnAutoWhatsapp": zod.boolean().default(regenerateWebhookSecretResponseChurnAutoWhatsappDefault).describe('When true, the churn scheduler automatically dispatches a WhatsApp reactivation message for leads with churn risk > 70% (max once per 24h per lead).'),
   "webhookSecret": zod.string().nullish().describe('Secret used to authenticate inbound WhatsApp webhooks (X-Webhook-Secret header).'),
   "instagramPageAccessToken": zod.string().nullish().describe('Long-lived Page Access Token for Instagram Graph API.'),
   "instagramPageId": zod.string().nullish().describe('Instagram Page ID used to send messages.'),
@@ -855,6 +869,7 @@ export const completeAgentConfigSetupResponseDailyMessageLimitDefault = 100;
 export const completeAgentConfigSetupResponseMessagesSentTodayDefault = 0;
 export const completeAgentConfigSetupResponseMonthlyTokenLimitDefault = 100000;
 export const completeAgentConfigSetupResponseTokensUsedCurrentMonthDefault = 0;
+export const completeAgentConfigSetupResponseChurnAutoWhatsappDefault = false;
 
 export const CompleteAgentConfigSetupResponse = zod.object({
   "id": zod.string(),
@@ -895,6 +910,7 @@ export const CompleteAgentConfigSetupResponse = zod.object({
   "tokensUsedCurrentMonth": zod.number().default(completeAgentConfigSetupResponseTokensUsedCurrentMonthDefault),
   "setupCompletedAt": zod.coerce.date().nullish(),
   "autonomyEnabledAt": zod.coerce.date().nullish().describe('Computed as setupCompletedAt + 5 days. Before this timestamp, agent actions require manual approval.'),
+  "churnAutoWhatsapp": zod.boolean().default(completeAgentConfigSetupResponseChurnAutoWhatsappDefault).describe('When true, the churn scheduler automatically dispatches a WhatsApp reactivation message for leads with churn risk > 70% (max once per 24h per lead).'),
   "webhookSecret": zod.string().nullish().describe('Secret used to authenticate inbound WhatsApp webhooks (X-Webhook-Secret header).'),
   "instagramPageAccessToken": zod.string().nullish().describe('Long-lived Page Access Token for Instagram Graph API.'),
   "instagramPageId": zod.string().nullish().describe('Instagram Page ID used to send messages.'),

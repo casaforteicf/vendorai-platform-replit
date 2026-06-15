@@ -1179,6 +1179,8 @@ export interface AgentConfig {
   setupCompletedAt?: string | null;
   /** Computed as setupCompletedAt + 5 days. Before this timestamp, agent actions require manual approval. */
   autonomyEnabledAt?: string | null;
+  /** When true, the churn scheduler automatically dispatches a WhatsApp reactivation message for leads with churn risk > 70% (max once per 24h per lead). */
+  churnAutoWhatsapp?: boolean;
   /** Secret used to authenticate inbound WhatsApp webhooks (X-Webhook-Secret header). */
   webhookSecret?: string | null;
   /** Long-lived Page Access Token for Instagram Graph API. */
@@ -1200,6 +1202,7 @@ export interface CreateAgentConfigBody {
   tokensUsedCurrentMonth?: number;
   setupCompletedAt?: string;
   autonomyEnabledAt?: string;
+  churnAutoWhatsapp?: boolean;
 }
 
 export interface UpdateAgentConfigBody {
@@ -1210,6 +1213,7 @@ export interface UpdateAgentConfigBody {
   tokensUsedCurrentMonth?: number;
   setupCompletedAt?: string;
   autonomyEnabledAt?: string;
+  churnAutoWhatsapp?: boolean;
   instagramPageAccessToken?: string | null;
   instagramPageId?: string | null;
   instagramUsername?: string | null;

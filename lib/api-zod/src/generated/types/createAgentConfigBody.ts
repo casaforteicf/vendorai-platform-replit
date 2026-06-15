@@ -16,4 +16,5 @@ export interface CreateAgentConfigBody {
   tokensUsedCurrentMonth?: number;
   setupCompletedAt?: Date;
   autonomyEnabledAt?: Date;
+  churnAutoWhatsapp?: boolean;
 }

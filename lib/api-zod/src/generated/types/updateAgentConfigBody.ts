@@ -15,6 +15,7 @@ export interface UpdateAgentConfigBody {
   tokensUsedCurrentMonth?: number;
   setupCompletedAt?: Date;
   autonomyEnabledAt?: Date;
+  churnAutoWhatsapp?: boolean;
   instagramPageAccessToken?: string | null;
   instagramPageId?: string | null;
   instagramUsername?: string | null;
