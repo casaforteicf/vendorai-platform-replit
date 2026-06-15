@@ -501,6 +501,9 @@ export default function Content() {
   const [productId, setProductId] = useState<string>("none");
   const [variations, setVariations] = useState(2);
   const [lastResult, setLastResult] = useState<ContentGeneration | null>(null);
+  const [preImageUrl, setPreImageUrl] = useState<string | null>(null);
+  const [preImageUploading, setPreImageUploading] = useState(false);
+  const preImageInputRef = useRef<HTMLInputElement>(null);
 
   const { data: products } = useListProdutosCatalogo(tenantId, {
     query: {
@@ -562,6 +565,36 @@ export default function Content() {
     },
   });
 
+  async function handlePreImageUpload(file: File) {
+    const allowed = ["image/jpeg", "image/png", "image/webp"];
+    if (!allowed.includes(file.type)) {
+      toast({ title: "Formato inválido", description: "Use JPG, PNG ou WebP.", variant: "destructive" });
+      return;
+    }
+    if (file.size > 10 * 1024 * 1024) {
+      toast({ title: "Imagem muito grande", description: "Máximo 10 MB.", variant: "destructive" });
+      return;
+    }
+    setPreImageUploading(true);
+    try {
+      const metaRes = await fetch("/api/storage/uploads/request-url", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name: file.name, size: file.size, contentType: file.type }),
+      });
+      if (!metaRes.ok) throw new Error("Falha ao obter URL de upload");
+      const { uploadURL, objectPath } = (await metaRes.json()) as { uploadURL: string; objectPath: string };
+      const putRes = await fetch(uploadURL, { method: "PUT", body: file, headers: { "Content-Type": file.type } });
+      if (!putRes.ok) throw new Error("Falha ao enviar imagem");
+      setPreImageUrl(`/api/storage${objectPath}`);
+      toast({ title: "Imagem carregada!", description: "Será usada em todas as variações geradas." });
+    } catch (err) {
+      toast({ title: "Erro no upload", description: err instanceof Error ? err.message : "Tente novamente.", variant: "destructive" });
+    } finally {
+      setPreImageUploading(false);
+    }
+  }
+
   function handleGenerate() {
     if (!theme.trim()) {
       toast({ title: "Descreva o tema da publicação", variant: "destructive" });
@@ -573,7 +606,8 @@ export default function Content() {
       theme: theme.trim(),
       productId: productId !== "none" ? productId : undefined,
       variations,
-    });
+      imageUrl: preImageUrl ?? undefined,
+    } as any);
   }
 
   const monthlyUsed = history?.monthlyUsed ?? 0;
@@ -676,6 +710,49 @@ export default function Content() {
                           </Button>
                         ))}
                       </div>
+                    </div>
+
+                    {/* Image upload */}
+                    <div className="space-y-1.5">
+                      <Label>Imagem do cliente (opcional)</Label>
+                      <input
+                        ref={preImageInputRef}
+                        type="file"
+                        accept="image/jpeg,image/png,image/webp"
+                        className="hidden"
+                        onChange={(e) => {
+                          const f = e.target.files?.[0];
+                          if (f) handlePreImageUpload(f);
+                          e.target.value = "";
+                        }}
+                      />
+                      {preImageUrl ? (
+                        <div className="relative rounded-lg overflow-hidden border border-border">
+                          <img src={preImageUrl} alt="Imagem selecionada" className="w-full h-32 object-cover" />
+                          <button
+                            type="button"
+                            onClick={() => setPreImageUrl(null)}
+                            className="absolute top-1 right-1 bg-black/60 text-white rounded-full p-0.5 hover:bg-black/80"
+                          >
+                            <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
+                          </button>
+                          <div className="absolute bottom-0 left-0 right-0 bg-black/50 text-white text-[10px] text-center py-0.5">
+                            Imagem será incluída em todas as variações
+                          </div>
+                        </div>
+                      ) : (
+                        <button
+                          type="button"
+                          onClick={() => preImageInputRef.current?.click()}
+                          disabled={preImageUploading}
+                          className="w-full border-2 border-dashed border-border rounded-lg py-4 flex flex-col items-center gap-1.5 text-muted-foreground hover:border-primary/50 hover:text-primary transition-colors disabled:opacity-50"
+                        >
+                          {preImageUploading
+                            ? <><Loader2 className="h-5 w-5 animate-spin" /><span className="text-xs">Enviando...</span></>
+                            : <><Upload className="h-5 w-5" /><span className="text-xs">Clique para importar imagem</span><span className="text-[10px]">JPG, PNG ou WebP — máx. 10 MB</span></>
+                          }
+                        </button>
+                      )}
                     </div>
 
                     <Button

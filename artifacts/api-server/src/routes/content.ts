@@ -30,6 +30,7 @@ const generateBodySchema = z.object({
   theme: z.string().min(3, "Descreva o tema (mín. 3 caracteres)"),
   productId: z.string().optional().nullable(),
   variations: z.coerce.number().int().min(1).max(3).default(2),
+  imageUrl: z.string().optional().nullable(),
 });
 
 async function getMonthlyUsage(
@@ -81,7 +82,7 @@ router.post("/tenants/:tenantId/content/generate", async (req, res) => {
     return;
   }
 
-  const { type, theme, productId, variations } = parsed.data;
+  const { type, theme, productId, variations, imageUrl } = parsed.data;
 
   const { used, limit, configId } = await getMonthlyUsage(tenantId);
   if (used >= limit) {
@@ -127,6 +128,16 @@ router.post("/tenants/:tenantId/content/generate", async (req, res) => {
     return;
   }
 
+  // If caller uploaded an image, apply it to every variation
+  const finalResult = imageUrl
+    ? {
+        variations: (result.result.variations as Record<string, unknown>[]).map((v) => ({
+          ...v,
+          imageUrl,
+        })),
+      }
+    : result.result;
+
   const [saved] = await db
     .insert(contentGenerationsTable)
     .values({
@@ -135,7 +146,7 @@ router.post("/tenants/:tenantId/content/generate", async (req, res) => {
       productId: productId ?? null,
       productName: productName ?? null,
       theme,
-      result: result.result as { variations: [] },
+      result: finalResult as { variations: [] },
       tokensUsed: result.tokensUsed,
     })
     .returning();
