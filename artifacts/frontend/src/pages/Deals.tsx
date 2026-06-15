@@ -50,7 +50,7 @@ import {
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
-import { Plus, GripVertical, DollarSign, User, TrendingUp } from "lucide-react";
+import { Plus, GripVertical, DollarSign, User, TrendingUp, Link2, Copy, CheckCheck } from "lucide-react";
 import {
   DndContext,
   DragOverlay,
@@ -261,18 +261,21 @@ function EditDealSheet({
   open,
   onClose,
   tenantDefault,
+  tenantSlug,
 }: {
   deal: Deal | null;
   leadMap: Map<string, string>;
   open: boolean;
   onClose: () => void;
   tenantDefault?: TipoFechamento | null;
+  tenantSlug?: string;
 }) {
   const { toast } = useToast();
   const updateDeal = useUpdateDeal();
   const queryClient = useQueryClient();
   const { user } = useAuth();
   const tenantId = user?.tenantId ?? "";
+  const [copied, setCopied] = useState(false);
 
   const form = useForm<z.infer<typeof createSchema>>({
     resolver: zodResolver(createSchema),
@@ -471,6 +474,31 @@ function EditDealSheet({
             </Button>
           </form>
         </Form>
+
+        {deal?.etapa === "ganho" && tenantSlug && (
+          <div className="mt-4 rounded-lg border border-emerald-200 bg-emerald-50 p-3 space-y-2">
+            <p className="text-xs font-medium text-emerald-800 flex items-center gap-1.5">
+              <Link2 className="h-3.5 w-3.5" />
+              Link do questionário para o cliente
+            </p>
+            <p className="text-[11px] text-emerald-700 break-all font-mono bg-white/70 rounded px-2 py-1 border border-emerald-100">
+              {`${window.location.origin}/questionario/${tenantSlug}`}
+            </p>
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
+              className="w-full border-emerald-300 text-emerald-700 hover:bg-emerald-100 text-xs gap-1.5"
+              onClick={() => {
+                navigator.clipboard.writeText(`${window.location.origin}/questionario/${tenantSlug}`);
+                setCopied(true);
+                setTimeout(() => setCopied(false), 2000);
+              }}
+            >
+              {copied ? <><CheckCheck className="h-3.5 w-3.5" /> Copiado!</> : <><Copy className="h-3.5 w-3.5" /> Copiar link</>}
+            </Button>
+          </div>
+        )}
       </SheetContent>
     </Sheet>
   );
@@ -827,6 +855,7 @@ export default function Deals() {
         open={!!editDeal}
         onClose={() => setEditDeal(null)}
         tenantDefault={tenantDefault}
+        tenantSlug={tenantData?.slug}
       />
     </div>
   );
