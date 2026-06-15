@@ -292,6 +292,7 @@ export default function Estoque() {
 
   // ── Derived ───────────────────────────────────────────────────────────────
   const produtoMap = Object.fromEntries(produtos.map((p) => [p.id, p.nome]));
+  const precoMap   = Object.fromEntries(produtos.map((p) => [p.id, p.precoBase]));
 
   const lowStockCount = items.filter(isLowStock).length;
 
@@ -392,6 +393,11 @@ export default function Estoque() {
                             {formatQty(item.quantidadeAtual)} {item.unidade}
                           </span>
                           <span className="text-muted-foreground text-xs">mín. {formatQty(item.quantidadeMinima)}</span>
+                          {precoMap[item.produtoId] && (
+                            <span className="text-muted-foreground text-xs tabular-nums">
+                              R$ {parseFloat(precoMap[item.produtoId]).toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                            </span>
+                          )}
                           {item.localizacao && <span className="text-muted-foreground text-xs">{item.localizacao}</span>}
                         </div>
                         <Button
@@ -418,6 +424,7 @@ export default function Estoque() {
                       <TableHead className="text-center">Qtd. Atual</TableHead>
                       <TableHead className="text-center">Qtd. Mínima</TableHead>
                       <TableHead>Unidade</TableHead>
+                      <TableHead className="text-right">Valor Unit.</TableHead>
                       <TableHead>Localização</TableHead>
                       <TableHead>Status</TableHead>
                       <TableHead className="text-right">Ações</TableHead>
@@ -439,6 +446,11 @@ export default function Estoque() {
                             {formatQty(item.quantidadeMinima)}
                           </TableCell>
                           <TableCell className="text-muted-foreground">{item.unidade}</TableCell>
+                          <TableCell className="text-right tabular-nums">
+                            {precoMap[item.produtoId]
+                              ? `R$ ${parseFloat(precoMap[item.produtoId]).toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+                              : <span className="text-muted-foreground/40">—</span>}
+                          </TableCell>
                           <TableCell className="text-muted-foreground text-sm">
                             {item.localizacao ?? <span className="text-muted-foreground/40">—</span>}
                           </TableCell>
