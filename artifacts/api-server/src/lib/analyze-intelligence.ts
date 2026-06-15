@@ -251,7 +251,9 @@ Regras:
 - churnRisk deve refletir sinais reais: inatividade, objeções, redução de engajamento, falta de progresso
 - journeyStage deve ser um valor curto descritivo
 - opportunities são upsell, expansão, ou resolução de problemas identificados
-- nextBestAction deve ser específica e executável pela equipe de vendas/CS${diasSemContato !== null ? `\n- O lead está sem contato há ${diasSemContato} dia${diasSemContato !== 1 ? "s" : ""}` : ""}`;
+- nextBestAction deve ser específica e executável pela equipe de vendas/CS
+- O canal de comunicação preferido é SEMPRE WhatsApp — nunca sugira e-mail como canal de follow-up; use "Enviar mensagem de WhatsApp" ou "Ligar via WhatsApp"
+- Se o lead precisa ser reativado ou está em risco, a ação deve ser um contato proativo por WhatsApp${diasSemContato !== null ? `\n- O lead está sem contato há ${diasSemContato} dia${diasSemContato !== 1 ? "s" : ""}` : ""}`;
 
   const userContent = `## PERFIL DO LEAD\n${leadSection}\n\n## HISTÓRICO DE MENSAGENS (últimas ${recentMessages.length})\n${messagesSection}\n\n## ATIVIDADES RECENTES\n${activitiesSection}`;
 

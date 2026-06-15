@@ -23,16 +23,19 @@ import {
   customerIntelligenceTable,
   agentConfigsTable,
   agentTasksTable,
+  messagesTable,
+  conversationsTable,
 } from "@workspace/db";
 import type { SegmentoFiltro } from "@workspace/db";
 import { evaluateForLead } from "../routes/rules.js";
+import { dispatchAgentBackground } from "../services/agent-dispatch.js";
 
 // ── Job 1: Churn check ────────────────────────────────────────────────────────
 
 async function runChurnCheckAll(log: Logger): Promise<void> {
   log.info("scheduler/churn-check: starting");
 
-  // Get all active tenants
+  // Get all active tenants with their agent configs (for autonomy + telefone check)
   const tenants = await db
     .select({ id: tenantsTable.id, slug: tenantsTable.slug })
     .from(tenantsTable)
@@ -40,18 +43,30 @@ async function runChurnCheckAll(log: Logger): Promise<void> {
 
   log.info({ count: tenants.length }, "scheduler/churn-check: tenants found");
 
-  let totalLeads     = 0;
-  let totalTriggered = 0;
+  let totalLeads      = 0;
+  let totalTriggered  = 0;
+  let totalAutoWpp    = 0;
 
   for (const tenant of tenants) {
     try {
+      // Load agent config once per tenant (needed for autonomy check)
+      const [agentConfig] = await db
+        .select({ autonomyEnabledAt: agentConfigsTable.autonomyEnabledAt })
+        .from(agentConfigsTable)
+        .where(eq(agentConfigsTable.tenantId, tenant.id))
+        .limit(1);
+
+      const isAutonomous = !!agentConfig?.autonomyEnabledAt;
+
       // Find leads with churnRisk > 70 (limit 200 per tenant for safety)
       const highRiskRows = await db
         .select({
           leadId:    customerIntelligenceTable.leadId,
           churnRisk: customerIntelligenceTable.churnRisk,
+          telefone:  leadsTable.telefone,
         })
         .from(customerIntelligenceTable)
+        .innerJoin(leadsTable, eq(leadsTable.id, customerIntelligenceTable.leadId))
         .where(
           and(
             eq(customerIntelligenceTable.tenantId, tenant.id),
@@ -65,6 +80,7 @@ async function runChurnCheckAll(log: Logger): Promise<void> {
       totalLeads += highRiskRows.length;
 
       for (const row of highRiskRows) {
+        // ── 1. Evaluate rules (creates tasks/activities — deduped) ──────────
         try {
           const result = await evaluateForLead({
             tenantId: tenant.id,
@@ -76,6 +92,45 @@ async function runChurnCheckAll(log: Logger): Promise<void> {
         } catch (err) {
           log.error({ err, tenantId: tenant.id, leadId: row.leadId }, "scheduler/churn-check: rule evaluation failed (non-fatal)");
         }
+
+        // ── 2. Automatic WhatsApp follow-up (only when autonomous + has telefone) ──
+        if (!isAutonomous || !row.telefone) continue;
+
+        try {
+          // Dedup: skip if there's already been an outgoing whatsapp in the last 24h for this lead
+          const cutoff = new Date(Date.now() - 24 * 60 * 60 * 1000);
+          const [recentOutgoing] = await db
+            .select({ id: messagesTable.id })
+            .from(messagesTable)
+            .where(
+              and(
+                eq(messagesTable.tenantId, tenant.id),
+                eq(messagesTable.leadId, row.leadId),
+                eq(messagesTable.direcao, "saida"),
+                eq(messagesTable.canal, "whatsapp"),
+                gt(messagesTable.createdAt, cutoff)
+              )
+            )
+            .limit(1);
+
+          if (recentOutgoing) {
+            log.info({ leadId: row.leadId }, "scheduler/churn-check: recent whatsapp found — skipping auto-dispatch");
+            continue;
+          }
+
+          // Dispatch reactivation agent proactively via WhatsApp
+          dispatchAgentBackground({
+            tenantId: tenant.id,
+            leadId:   row.leadId,
+            mensagem: "PROATIVO: reativação automática — churn risk elevado, lead sem contato recente.",
+            log,
+          });
+
+          totalAutoWpp++;
+          log.info({ leadId: row.leadId, churnRisk: row.churnRisk }, "scheduler/churn-check: auto whatsapp dispatched");
+        } catch (err) {
+          log.error({ err, tenantId: tenant.id, leadId: row.leadId }, "scheduler/churn-check: auto whatsapp dispatch failed (non-fatal)");
+        }
       }
 
       log.info({ tenantId: tenant.id, slug: tenant.slug, leadsProcessed: highRiskRows.length }, "scheduler/churn-check: tenant done");
@@ -84,7 +139,7 @@ async function runChurnCheckAll(log: Logger): Promise<void> {
     }
   }
 
-  log.info({ totalLeads, totalTriggered }, "scheduler/churn-check: complete");
+  log.info({ totalLeads, totalTriggered, totalAutoWpp }, "scheduler/churn-check: complete");
 }
 
 // ── Job 2: Campaign dispatch ──────────────────────────────────────────────────
