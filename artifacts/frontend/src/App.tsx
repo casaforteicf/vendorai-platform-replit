@@ -23,6 +23,7 @@ import SiteLandingPage from "@/pages/SiteLandingPage";
 import Marketplace from "@/pages/Marketplace";
 import Estoque from "@/pages/Estoque";
 import Onboarding from "@/pages/Onboarding";
+import Content from "@/pages/Content";
 import { useEffect } from "react";
 import {
   useGetTenant,
@@ -198,6 +199,9 @@ function AppRoutes() {
       </Route>
       <Route path="/marketplace">
         {() => <ProtectedRoute component={Marketplace} />}
+      </Route>
+      <Route path="/content">
+        {() => <ProtectedRoute component={Content} />}
       </Route>
       <Route path="/invite/:token">
         <AcceptInvite />

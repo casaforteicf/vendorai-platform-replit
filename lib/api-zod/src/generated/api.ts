@@ -4215,3 +4215,100 @@ export const GetInventoryMovementResponse = zod.object({
 })
 
 
+/**
+ * @summary Generate Instagram content (Feed/Stories/Reels script) via AI
+ */
+export const GenerateContentParams = zod.object({
+  "tenantId": zod.coerce.string()
+})
+
+export const generateContentBodyVariationsDefault = 2;
+export const generateContentBodyVariationsMax = 3;
+
+
+
+export const GenerateContentBody = zod.object({
+  "type": zod.enum(['feed', 'stories', 'reels']),
+  "theme": zod.string(),
+  "productId": zod.string().nullish(),
+  "variations": zod.number().min(1).max(generateContentBodyVariationsMax).default(generateContentBodyVariationsDefault)
+})
+
+export const GenerateContentResponse = zod.object({
+  "id": zod.string(),
+  "tenantId": zod.string(),
+  "type": zod.enum(['feed', 'stories', 'reels']),
+  "productId": zod.string().nullish(),
+  "productName": zod.string().nullish(),
+  "theme": zod.string(),
+  "result": zod.object({
+  "variations": zod.array(zod.object({
+  "caption": zod.string().optional(),
+  "hashtags": zod.array(zod.string()).optional(),
+  "text": zod.string().optional(),
+  "cta": zod.string().optional(),
+  "title": zod.string().optional(),
+  "scenes": zod.array(zod.object({
+  "visual": zod.string(),
+  "fala": zod.string(),
+  "duracao": zod.string()
+})).optional(),
+  "audioSuggestion": zod.string().optional()
+}))
+}),
+  "tokensUsed": zod.number(),
+  "createdAt": zod.coerce.date()
+})
+
+
+/**
+ * @summary List content generations history with monthly usage stats
+ */
+export const ListContentGenerationsParams = zod.object({
+  "tenantId": zod.coerce.string()
+})
+
+export const ListContentGenerationsResponse = zod.object({
+  "items": zod.array(zod.object({
+  "id": zod.string(),
+  "tenantId": zod.string(),
+  "type": zod.enum(['feed', 'stories', 'reels']),
+  "productId": zod.string().nullish(),
+  "productName": zod.string().nullish(),
+  "theme": zod.string(),
+  "result": zod.object({
+  "variations": zod.array(zod.object({
+  "caption": zod.string().optional(),
+  "hashtags": zod.array(zod.string()).optional(),
+  "text": zod.string().optional(),
+  "cta": zod.string().optional(),
+  "title": zod.string().optional(),
+  "scenes": zod.array(zod.object({
+  "visual": zod.string(),
+  "fala": zod.string(),
+  "duracao": zod.string()
+})).optional(),
+  "audioSuggestion": zod.string().optional()
+}))
+}),
+  "tokensUsed": zod.number(),
+  "createdAt": zod.coerce.date()
+})),
+  "monthlyUsed": zod.number(),
+  "monthlyLimit": zod.number()
+})
+
+
+/**
+ * @summary Delete a content generation entry
+ */
+export const DeleteContentGenerationParams = zod.object({
+  "tenantId": zod.coerce.string(),
+  "id": zod.coerce.string()
+})
+
+export const DeleteContentGenerationResponse = zod.object({
+  "success": zod.boolean()
+})
+
+

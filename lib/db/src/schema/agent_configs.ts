@@ -51,6 +51,8 @@ export const agentConfigsTable = pgTable(
     autonomyEnabledAt: timestamp("autonomy_enabled_at"),
     messagesSentTodayResetAt: timestamp("messages_sent_today_reset_at"),
     tokensResetAt: timestamp("tokens_reset_at"),
+    contentGenerationsThisMonth: integer("content_generations_this_month").notNull().default(0),
+    contentGenerationsResetAt: timestamp("content_generations_reset_at"),
     createdAt: timestamp("created_at").notNull().defaultNow(),
     updatedAt: timestamp("updated_at").notNull().defaultNow(),
   },

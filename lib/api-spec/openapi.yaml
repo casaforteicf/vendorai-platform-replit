@@ -33,6 +33,8 @@ tags:
   - name: site
   - name: marketplace
     description: Website Hub — public landing page config
+  - name: content
+    description: Instagram Content Generation — Feed, Stories, and Reels scripts
 paths:
   /auth/register:
     post:
@@ -4925,6 +4927,91 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
 
+  /tenants/{tenantId}/content/generate:
+    post:
+      operationId: generateContent
+      tags: [content]
+      summary: Generate Instagram content (Feed/Stories/Reels script) via AI
+      parameters:
+        - name: tenantId
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/GenerateContentBody"
+      responses:
+        "200":
+          description: Content generated successfully
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ContentGeneration"
+        "402":
+          description: Monthly generation limit reached
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "422":
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /tenants/{tenantId}/content:
+    get:
+      operationId: listContentGenerations
+      tags: [content]
+      summary: List content generations history with monthly usage stats
+      parameters:
+        - name: tenantId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Content history and usage
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ListContentResponse"
+
+  /tenants/{tenantId}/content/{id}:
+    delete:
+      operationId: deleteContentGeneration
+      tags: [content]
+      summary: Delete a content generation entry
+      parameters:
+        - name: tenantId
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Deleted successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                required:
+                  - success
+
 components:
   schemas:
     CreateInviteBody:
@@ -8190,3 +8277,113 @@ components:
         - upserted
         - skipped
         - errors
+
+    GenerateContentBody:
+      type: object
+      properties:
+        type:
+          type: string
+          enum: [feed, stories, reels]
+        theme:
+          type: string
+        productId:
+          type: string
+          nullable: true
+        variations:
+          type: integer
+          minimum: 1
+          maximum: 3
+          default: 2
+      required:
+        - type
+        - theme
+
+    ContentVariation:
+      type: object
+      properties:
+        caption:
+          type: string
+        hashtags:
+          type: array
+          items:
+            type: string
+        text:
+          type: string
+        cta:
+          type: string
+        title:
+          type: string
+        scenes:
+          type: array
+          items:
+            type: object
+            properties:
+              visual:
+                type: string
+              fala:
+                type: string
+              duracao:
+                type: string
+            required: [visual, fala, duracao]
+        audioSuggestion:
+          type: string
+
+    ContentGenerationResult:
+      type: object
+      properties:
+        variations:
+          type: array
+          items:
+            $ref: "#/components/schemas/ContentVariation"
+      required:
+        - variations
+
+    ContentGeneration:
+      type: object
+      properties:
+        id:
+          type: string
+        tenantId:
+          type: string
+        type:
+          type: string
+          enum: [feed, stories, reels]
+        productId:
+          type: string
+          nullable: true
+        productName:
+          type: string
+          nullable: true
+        theme:
+          type: string
+        result:
+          $ref: "#/components/schemas/ContentGenerationResult"
+        tokensUsed:
+          type: integer
+        createdAt:
+          type: string
+          format: date-time
+      required:
+        - id
+        - tenantId
+        - type
+        - theme
+        - result
+        - tokensUsed
+        - createdAt
+
+    ListContentResponse:
+      type: object
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/ContentGeneration"
+        monthlyUsed:
+          type: integer
+        monthlyLimit:
+          type: integer
+      required:
+        - items
+        - monthlyUsed
+        - monthlyLimit

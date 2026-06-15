@@ -1821,6 +1821,73 @@ export interface SyncInventoryResponse {
   errors: SyncInventoryResponseErrorsItem[];
 }
 
+export type GenerateContentBodyType = typeof GenerateContentBodyType[keyof typeof GenerateContentBodyType];
+
+
+export const GenerateContentBodyType = {
+  feed: 'feed',
+  stories: 'stories',
+  reels: 'reels',
+} as const;
+
+export interface GenerateContentBody {
+  type: GenerateContentBodyType;
+  theme: string;
+  productId?: string | null;
+  /**
+     * @minimum 1
+     * @maximum 3
+     */
+  variations?: number;
+}
+
+export type ContentVariationScenesItem = {
+  visual: string;
+  fala: string;
+  duracao: string;
+};
+
+export interface ContentVariation {
+  caption?: string;
+  hashtags?: string[];
+  text?: string;
+  cta?: string;
+  title?: string;
+  scenes?: ContentVariationScenesItem[];
+  audioSuggestion?: string;
+}
+
+export interface ContentGenerationResult {
+  variations: ContentVariation[];
+}
+
+export type ContentGenerationType = typeof ContentGenerationType[keyof typeof ContentGenerationType];
+
+
+export const ContentGenerationType = {
+  feed: 'feed',
+  stories: 'stories',
+  reels: 'reels',
+} as const;
+
+export interface ContentGeneration {
+  id: string;
+  tenantId: string;
+  type: ContentGenerationType;
+  productId?: string | null;
+  productName?: string | null;
+  theme: string;
+  result: ContentGenerationResult;
+  tokensUsed: number;
+  createdAt: string;
+}
+
+export interface ListContentResponse {
+  items: ContentGeneration[];
+  monthlyUsed: number;
+  monthlyLimit: number;
+}
+
 export type ListDealsParams = {
 etapa?: DealEtapa;
 funilId?: string;
@@ -1937,5 +2004,9 @@ limit?: number;
 
 export type ListInventoryMovementsParams = {
 inventoryItemId?: string;
+};
+
+export type DeleteContentGeneration200 = {
+  success: boolean;
 };
 

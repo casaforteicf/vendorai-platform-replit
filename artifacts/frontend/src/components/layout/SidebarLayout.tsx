@@ -3,7 +3,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import {
   LayoutDashboard, Users, Briefcase, MessageSquare, Calendar,
   Settings, LogOut, Megaphone, FileText, Receipt, BrainCircuit,
-  Store, Package, Menu, X,
+  Store, Package, Menu, X, Sparkles,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
@@ -23,6 +23,7 @@ export function SidebarLayout({ children }: { children: React.ReactNode }) {
     { name: "Agenda",        href: "/agenda",        icon: Calendar },
     { name: "Propostas",     href: "/propostas",     icon: FileText },
     { name: "Estoque",       href: "/estoque",       icon: Package },
+    { name: "Conteúdo",      href: "/content",       icon: Sparkles },
     { name: "Campanhas",     href: "/campanhas",     icon: Megaphone },
     { name: "Faturamento",   href: "/faturamento",   icon: Receipt },
     { name: "Marketplace",   href: "/marketplace",   icon: Store },

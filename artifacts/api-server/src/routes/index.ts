@@ -31,6 +31,7 @@ import siteConfigRouter, { publicSiteRouter } from "./site_config";
 import segmentTemplatesRouter, { publicSegmentTemplatesRouter } from "./segment_templates";
 import invitesRouter, { invitesProtectedRouter } from "./invites";
 import onboardingRouter from "./onboarding";
+import contentRouter from "./content";
 import { authenticate, requireRole, requireSameTenanOrSuperAdmin } from "../middlewares/auth";
 
 const router: IRouter = Router();
@@ -118,6 +119,9 @@ router.use(invitesProtectedRouter);
 
 // Onboarding Hub
 router.use(onboardingRouter);
+
+// Content Generation Hub
+router.use(contentRouter);
 
 export { requireRole, requireSameTenanOrSuperAdmin };
 export default router;

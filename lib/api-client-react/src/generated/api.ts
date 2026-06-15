@@ -38,6 +38,7 @@ import type {
   CheckAgendamentoDisponibilidadeParams,
   CompleteOnboarding200,
   Consent,
+  ContentGeneration,
   Conversation,
   CreateActivityBody,
   CreateAgendamentoBody,
@@ -68,10 +69,12 @@ import type {
   CreateUserBody,
   CustomerIntelligence,
   Deal,
+  DeleteContentGeneration200,
   DocumentExtractionResult,
   ErrorResponse,
   ExportIntelligenceAnalysisLogParams,
   Funil,
+  GenerateContentBody,
   HealthStatus,
   ImportInventoryBody,
   ImportInventoryResult,
@@ -89,6 +92,7 @@ import type {
   Lead,
   ListActivitiesParams,
   ListAgendamentosParams,
+  ListContentResponse,
   ListDealsParams,
   ListIntelligenceAnalysisLogParams,
   ListInventoryMovementsParams,
@@ -12687,4 +12691,225 @@ export function useGetInventoryMovement<TData = Awaited<ReturnType<typeof getInv
 
 
 
+
+export const getGenerateContentUrl = (tenantId: string,) => {
+
+
+
+
+  return `/api/tenants/${tenantId}/content/generate`
+}
+
+/**
+ * @summary Generate Instagram content (Feed/Stories/Reels script) via AI
+ */
+export const generateContent = async (tenantId: string,
+    generateContentBody: GenerateContentBody, options?: RequestInit): Promise<ContentGeneration> => {
+
+  return customFetch<ContentGeneration>(getGenerateContentUrl(tenantId),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(
+      generateContentBody,)
+  }
+);}
+
+
+
+
+export const getGenerateContentMutationOptions = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof generateContent>>, TError,{tenantId: string;data: BodyType<GenerateContentBody>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof generateContent>>, TError,{tenantId: string;data: BodyType<GenerateContentBody>}, TContext> => {
+
+const mutationKey = ['generateContent'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof generateContent>>, {tenantId: string;data: BodyType<GenerateContentBody>}> = (props) => {
+          const {tenantId,data} = props ?? {};
+
+          return  generateContent(tenantId,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type GenerateContentMutationResult = NonNullable<Awaited<ReturnType<typeof generateContent>>>
+    export type GenerateContentMutationBody = BodyType<GenerateContentBody>
+    export type GenerateContentMutationError = ErrorType<ErrorResponse>
+
+    /**
+ * @summary Generate Instagram content (Feed/Stories/Reels script) via AI
+ */
+export const useGenerateContent = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof generateContent>>, TError,{tenantId: string;data: BodyType<GenerateContentBody>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof generateContent>>,
+        TError,
+        {tenantId: string;data: BodyType<GenerateContentBody>},
+        TContext
+      > => {
+      return useMutation(getGenerateContentMutationOptions(options));
+    }
+
+export const getListContentGenerationsUrl = (tenantId: string,) => {
+
+
+
+
+  return `/api/tenants/${tenantId}/content`
+}
+
+/**
+ * @summary List content generations history with monthly usage stats
+ */
+export const listContentGenerations = async (tenantId: string, options?: RequestInit): Promise<ListContentResponse> => {
+
+  return customFetch<ListContentResponse>(getListContentGenerationsUrl(tenantId),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getListContentGenerationsQueryKey = (tenantId: string,) => {
+    return [
+    `/api/tenants/${tenantId}/content`
+    ] as const;
+    }
+
+
+export const getListContentGenerationsQueryOptions = <TData = Awaited<ReturnType<typeof listContentGenerations>>, TError = ErrorType<unknown>>(tenantId: string, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listContentGenerations>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getListContentGenerationsQueryKey(tenantId);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof listContentGenerations>>> = ({ signal }) => listContentGenerations(tenantId, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, enabled: !!(tenantId), ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof listContentGenerations>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type ListContentGenerationsQueryResult = NonNullable<Awaited<ReturnType<typeof listContentGenerations>>>
+export type ListContentGenerationsQueryError = ErrorType<unknown>
+
+
+/**
+ * @summary List content generations history with monthly usage stats
+ */
+
+export function useListContentGenerations<TData = Awaited<ReturnType<typeof listContentGenerations>>, TError = ErrorType<unknown>>(
+ tenantId: string, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listContentGenerations>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getListContentGenerationsQueryOptions(tenantId,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+
+
+
+
+
+
+export const getDeleteContentGenerationUrl = (tenantId: string,
+    id: string,) => {
+
+
+
+
+  return `/api/tenants/${tenantId}/content/${id}`
+}
+
+/**
+ * @summary Delete a content generation entry
+ */
+export const deleteContentGeneration = async (tenantId: string,
+    id: string, options?: RequestInit): Promise<DeleteContentGeneration200> => {
+
+  return customFetch<DeleteContentGeneration200>(getDeleteContentGenerationUrl(tenantId,id),
+  {
+    ...options,
+    method: 'DELETE'
+
+
+  }
+);}
+
+
+
+
+export const getDeleteContentGenerationMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof deleteContentGeneration>>, TError,{tenantId: string;id: string}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof deleteContentGeneration>>, TError,{tenantId: string;id: string}, TContext> => {
+
+const mutationKey = ['deleteContentGeneration'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof deleteContentGeneration>>, {tenantId: string;id: string}> = (props) => {
+          const {tenantId,id} = props ?? {};
+
+          return  deleteContentGeneration(tenantId,id,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type DeleteContentGenerationMutationResult = NonNullable<Awaited<ReturnType<typeof deleteContentGeneration>>>
+
+    export type DeleteContentGenerationMutationError = ErrorType<unknown>
+
+    /**
+ * @summary Delete a content generation entry
+ */
+export const useDeleteContentGeneration = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof deleteContentGeneration>>, TError,{tenantId: string;id: string}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof deleteContentGeneration>>,
+        TError,
+        {tenantId: string;id: string},
+        TContext
+      > => {
+      return useMutation(getDeleteContentGenerationMutationOptions(options));
+    }
 
