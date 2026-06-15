@@ -1,5 +1,7 @@
 import { type RequestHandler } from "express";
 import { verifyToken, type JwtPayload } from "../lib/jwt.js";
+import { db, tenantsTable } from "@workspace/db";
+import { eq } from "drizzle-orm";
 
 declare global {
   namespace Express {
@@ -52,6 +54,43 @@ export const blockPartnerFromCRM: RequestHandler = (req, res, next) => {
     res.status(403).json({ error: "Partners cannot access CRM endpoints" });
     return;
   }
+  next();
+};
+
+/**
+ * Blocks suspended tenants from accessing the API.
+ * Super_admins and partners bypass this check.
+ * Returns 402 Payment Required with a clear message.
+ */
+export const blockSuspendedTenants: RequestHandler = async (req, res, next) => {
+  const user = req.user;
+  if (!user || user.platformRole === "super_admin" || user.platformRole === "partner") {
+    next();
+    return;
+  }
+
+  if (!user.tenantId) {
+    next();
+    return;
+  }
+
+  try {
+    const [tenant] = await db
+      .select({ status: tenantsTable.status })
+      .from(tenantsTable)
+      .where(eq(tenantsTable.id, user.tenantId));
+
+    if (tenant?.status === "suspended") {
+      res.status(402).json({
+        error: "Acesso suspenso por inadimplência. Regularize o pagamento pendente para restaurar o acesso.",
+        code: "TENANT_SUSPENDED",
+      });
+      return;
+    }
+  } catch {
+    // On DB failure, allow through — do not block legitimate users due to infra issue
+  }
+
   next();
 };
 

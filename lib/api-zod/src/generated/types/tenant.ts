@@ -42,6 +42,8 @@ export interface Tenant {
   maxAnalysesPerHour?: number | null;
   /** Tipo de fechamento padrão para novos deals deste tenant. Null significa 'pedido'. */
   tipoFechamentoDefault?: TipoFechamento | null;
+  /** Valor da mensalidade recorrente (copiado do deal ao ganhar). Usado para cobrança mensal no dia 5. */
+  mensalidadeValor?: number | null;
   createdAt: Date;
   updatedAt: Date;
 }

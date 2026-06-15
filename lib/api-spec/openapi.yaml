@@ -7518,6 +7518,10 @@ components:
           $ref: "#/components/schemas/TipoFechamento"
           nullable: true
           description: Tipo de fechamento padrão para novos deals deste tenant. Null significa 'pedido'.
+        mensalidadeValor:
+          type: number
+          nullable: true
+          description: Valor da mensalidade recorrente (copiado do deal ao ganhar). Usado para cobrança mensal no dia 5.
         createdAt:
           type: string
           format: date-time
@@ -7634,6 +7638,66 @@ components:
           $ref: "#/components/schemas/TipoFechamento"
           nullable: true
           description: Tipo de fechamento padrão para novos deals deste tenant.
+        mensalidadeValor:
+          type: number
+          nullable: true
+          description: Valor da mensalidade recorrente.
+
+    BillingEventType:
+      type: string
+      enum:
+        - initial
+        - monthly
+
+    BillingEventStatus:
+      type: string
+      enum:
+        - pending
+        - paid
+        - overdue
+        - cancelled
+
+    BillingEvent:
+      type: object
+      properties:
+        id:
+          type: string
+        tenantId:
+          type: string
+        mes:
+          type: string
+          nullable: true
+          description: "Competência no formato YYYY-MM. Null para cobrança inicial."
+        tipo:
+          $ref: "#/components/schemas/BillingEventType"
+        valor:
+          type: number
+        asaasChargeId:
+          type: string
+          nullable: true
+        asaasCustomerId:
+          type: string
+          nullable: true
+        status:
+          $ref: "#/components/schemas/BillingEventStatus"
+        dueDate:
+          type: string
+          format: date-time
+          nullable: true
+        paidAt:
+          type: string
+          format: date-time
+          nullable: true
+        createdAt:
+          type: string
+          format: date-time
+      required:
+        - id
+        - tenantId
+        - tipo
+        - valor
+        - status
+        - createdAt
 
     ErrorResponse:
       type: object

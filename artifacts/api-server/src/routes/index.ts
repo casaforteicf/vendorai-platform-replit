@@ -34,7 +34,8 @@ import onboardingRouter from "./onboarding";
 import contentRouter from "./content";
 import partnerRouter from "./partner";
 import adminPartnersRouter from "./admin_partners";
-import { authenticate, blockPartnerFromCRM, requireRole, requireSameTenanOrSuperAdmin } from "../middlewares/auth";
+import billingEventsRouter from "./billing_events";
+import { authenticate, blockPartnerFromCRM, blockSuspendedTenants, requireRole, requireSameTenanOrSuperAdmin } from "../middlewares/auth";
 
 const router: IRouter = Router();
 
@@ -50,6 +51,7 @@ router.use(inventorySyncRouter);
 // Protected — all routes below require a valid JWT
 router.use(authenticate);
 router.use(blockPartnerFromCRM);
+router.use(blockSuspendedTenants);
 
 // Auth — protected endpoints (me, refresh)
 router.use(authProtectedRouter);
@@ -98,6 +100,7 @@ router.use(agendamentosRouter);
 // Billing Hub
 router.use(subscriptionsRouter);
 router.use(invoicesRouter);
+router.use(billingEventsRouter);
 
 // Executive Intelligence Hub
 router.use(dashboardRouter);

@@ -1,4 +1,4 @@
-import { pgTable, text, integer, timestamp, pgEnum, json, check } from "drizzle-orm/pg-core";
+import { pgTable, text, integer, numeric, timestamp, pgEnum, json, check } from "drizzle-orm/pg-core";
 import { sql } from "drizzle-orm";
 import { createInsertSchema, createSelectSchema } from "drizzle-zod";
 import { z } from "zod/v4";
@@ -38,6 +38,7 @@ export const tenantsTable = pgTable(
     webhookEstoqueUrl: text("webhook_estoque_url"),
     apiKeyEstoque: text("api_key_estoque"),
     tipoFechamentoDefault: text("tipo_fechamento_default").$type<"pedido" | "contrato">(),
+    mensalidadeValor: numeric("mensalidade_valor", { precision: 10, scale: 2 }),
     partnerId: text("partner_id").references(() => partnersTable.id, { onDelete: "set null" }),
     createdAt: timestamp("created_at").notNull().defaultNow(),
     updatedAt: timestamp("updated_at").notNull().defaultNow(),

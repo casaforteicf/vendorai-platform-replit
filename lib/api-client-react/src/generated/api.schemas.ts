@@ -1343,6 +1343,8 @@ export interface Tenant {
   maxAnalysesPerHour?: number | null;
   /** Tipo de fechamento padrão para novos deals deste tenant. Null significa 'pedido'. */
   tipoFechamentoDefault?: TipoFechamento | null;
+  /** Valor da mensalidade recorrente (copiado do deal ao ganhar). Usado para cobrança mensal no dia 5. */
+  mensalidadeValor?: number | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -1413,6 +1415,41 @@ export interface UpdateTenantBody {
   maxAnalysesPerHour?: number | null;
   /** Tipo de fechamento padrão para novos deals deste tenant. */
   tipoFechamentoDefault?: TipoFechamento | null;
+  /** Valor da mensalidade recorrente. */
+  mensalidadeValor?: number | null;
+}
+
+export type BillingEventType = typeof BillingEventType[keyof typeof BillingEventType];
+
+
+export const BillingEventType = {
+  initial: 'initial',
+  monthly: 'monthly',
+} as const;
+
+export type BillingEventStatus = typeof BillingEventStatus[keyof typeof BillingEventStatus];
+
+
+export const BillingEventStatus = {
+  pending: 'pending',
+  paid: 'paid',
+  overdue: 'overdue',
+  cancelled: 'cancelled',
+} as const;
+
+export interface BillingEvent {
+  id: string;
+  tenantId: string;
+  /** Competência no formato YYYY-MM. Null para cobrança inicial. */
+  mes?: string | null;
+  tipo: BillingEventType;
+  valor: number;
+  asaasChargeId?: string | null;
+  asaasCustomerId?: string | null;
+  status: BillingEventStatus;
+  dueDate?: string | null;
+  paidAt?: string | null;
+  createdAt: string;
 }
 
 export interface ErrorResponse {

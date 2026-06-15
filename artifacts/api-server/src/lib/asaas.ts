@@ -74,6 +74,7 @@ export interface AsaasChargeInput {
   value: number;
   dueDate: string;
   description?: string;
+  externalReference?: string;
   split?: AsaasSplit[];
 }
 

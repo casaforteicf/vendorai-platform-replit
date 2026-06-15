@@ -26,13 +26,23 @@ import Marketplace from "@/pages/Marketplace";
 import Estoque from "@/pages/Estoque";
 import Onboarding from "@/pages/Onboarding";
 import Content from "@/pages/Content";
+import Suspended from "@/pages/Suspended";
 import { useEffect } from "react";
 import {
   useGetTenant,
   getGetTenantQueryKey,
 } from "@workspace/api-client-react";
 
-const queryClient = new QueryClient();
+const queryClient = new QueryClient({
+  defaultOptions: {
+    queries: {
+      retry: (failureCount, error: any) => {
+        if (error?.status === 402) return false;
+        return failureCount < 2;
+      },
+    },
+  },
+});
 
 function Spinner() {
   return (
@@ -66,13 +76,14 @@ function ProtectedRoute({ component: Component, ...rest }: any) {
 
   useEffect(() => {
     if (!isTenantAdmin || tenantLoading || !tenant) return;
-    if (!tenant.setupCompletedAt) {
+    if (tenant.status !== "suspended" && !tenant.setupCompletedAt) {
       setLocation("/onboarding");
     }
   }, [tenant, tenantLoading, isTenantAdmin, setLocation]);
 
   if (isLoading || !token || !user) return <Spinner />;
   if (isTenantAdmin && tenantLoading) return <Spinner />;
+  if (isTenantAdmin && tenant?.status === "suspended") return <Suspended />;
 
   return (
     <SidebarLayout>

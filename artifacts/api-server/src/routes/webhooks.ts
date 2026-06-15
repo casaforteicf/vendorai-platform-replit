@@ -1,11 +1,13 @@
 import { Router, type IRouter, type Request, type Response } from "express";
-import { and, eq, sql } from "drizzle-orm";
+import { and, eq, lte, sql } from "drizzle-orm";
 import {
   db,
   agentConfigsTable,
   leadsTable,
   conversationsTable,
   messagesTable,
+  tenantsTable,
+  billingEventsTable,
 } from "@workspace/db";
 import { z } from "zod";
 import { verifyToken } from "../lib/jwt.js";
@@ -250,6 +252,99 @@ router.post("/tenants/:tenantId/messages/send", async (req, res) => {
     }
     throw err;
   }
+});
+
+// ── POST /webhooks/asaas ──────────────────────────────────────────────────────
+// Asaas sends payment events here. No auth — protected by checking event metadata.
+// Relevant events:
+//   PAYMENT_OVERDUE   → if overdue ≥ 3 days, suspend tenant
+//   PAYMENT_RECEIVED  → reactivate tenant + mark billing_event as paid
+//   PAYMENT_CONFIRMED → same as RECEIVED
+
+const asaasWebhookBody = z.object({
+  event: z.string(),
+  payment: z.object({
+    id: z.string(),
+    externalReference: z.string().optional().nullable(),
+    dueDate: z.string().optional().nullable(),
+    status: z.string().optional(),
+  }),
+});
+
+router.post("/webhooks/asaas", async (req, res) => {
+  const parsed = asaasWebhookBody.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(422).json({ error: "Invalid payload" });
+    return;
+  }
+
+  const { event, payment } = parsed.data;
+  req.log.info({ event, paymentId: payment.id }, "asaas-webhook: received");
+
+  // Resolve tenantId from the billing_event linked to this charge
+  const [billingEvent] = await db
+    .select({ id: billingEventsTable.id, tenantId: billingEventsTable.tenantId })
+    .from(billingEventsTable)
+    .where(eq(billingEventsTable.asaasChargeId, payment.id))
+    .limit(1);
+
+  // Also try via externalReference for monthly charges (format: "monthly:<tenantId>:<mes>")
+  let tenantId: string | null = billingEvent?.tenantId ?? null;
+  if (!tenantId && payment.externalReference?.startsWith("monthly:")) {
+    const parts = payment.externalReference.split(":");
+    tenantId = parts[1] ?? null;
+  }
+
+  if (!tenantId) {
+    req.log.warn({ paymentId: payment.id }, "asaas-webhook: no tenant found for payment — ignoring");
+    res.status(200).json({ ok: true });
+    return;
+  }
+
+  if (event === "PAYMENT_RECEIVED" || event === "PAYMENT_CONFIRMED") {
+    // Mark billing_event paid
+    if (billingEvent) {
+      await db
+        .update(billingEventsTable)
+        .set({ status: "paid", paidAt: new Date() })
+        .where(eq(billingEventsTable.id, billingEvent.id));
+    }
+
+    // Reactivate tenant if it was suspended due to overdue
+    await db
+      .update(tenantsTable)
+      .set({ status: "active", updatedAt: new Date() })
+      .where(and(eq(tenantsTable.id, tenantId), eq(tenantsTable.status, "suspended")));
+
+    req.log.info({ tenantId, paymentId: payment.id }, "asaas-webhook: payment received — tenant reactivated if suspended");
+  } else if (event === "PAYMENT_OVERDUE") {
+    // Only suspend if overdue by ≥ 3 calendar days
+    if (payment.dueDate) {
+      const due = new Date(payment.dueDate);
+      const threeDaysAfterDue = new Date(due);
+      threeDaysAfterDue.setDate(threeDaysAfterDue.getDate() + 3);
+
+      if (new Date() >= threeDaysAfterDue) {
+        if (billingEvent) {
+          await db
+            .update(billingEventsTable)
+            .set({ status: "overdue" })
+            .where(eq(billingEventsTable.id, billingEvent.id));
+        }
+
+        await db
+          .update(tenantsTable)
+          .set({ status: "suspended", updatedAt: new Date() })
+          .where(and(eq(tenantsTable.id, tenantId), eq(tenantsTable.status, "active")));
+
+        req.log.warn({ tenantId, paymentId: payment.id, dueDate: payment.dueDate }, "asaas-webhook: payment overdue ≥3 days — tenant suspended");
+      } else {
+        req.log.info({ tenantId, paymentId: payment.id }, "asaas-webhook: payment overdue but < 3 days — not suspending yet");
+      }
+    }
+  }
+
+  res.status(200).json({ ok: true });
 });
 
 export default router;

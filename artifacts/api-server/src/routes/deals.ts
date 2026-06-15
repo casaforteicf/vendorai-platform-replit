@@ -18,6 +18,11 @@ import {
   createOrGetCustomer,
   createCharge,
 } from "../lib/asaas.js";
+import {
+  isZapSignConfigured,
+  createDocument,
+} from "../lib/zapsign.js";
+import { billingEventsTable } from "@workspace/db";
 
 const router: IRouter = Router();
 
@@ -193,13 +198,75 @@ router.patch("/deals/:id", async (req, res) => {
         req.log.info({ dealId: deal.id, inviteId: invite.id, inviteSent }, "auto-invite processed");
       }
 
-      // ── Tipo de fechamento: branching de automação ────────────────────────────
-      const tipoFechamento = deal.tipoFechamento ?? tenant?.tipoFechamentoDefault ?? "pedido";
+      // ── Copiar valor → mensalidadeValor do tenant ─────────────────────────
+      if (deal.valor) {
+        await db
+          .update(tenantsTable)
+          .set({ mensalidadeValor: deal.valor, updatedAt: new Date() })
+          .where(eq(tenantsTable.id, existing.tenantId));
+        req.log.info({ dealId: deal.id, valor: deal.valor }, "deal-ganho: mensalidadeValor updated");
+      }
 
-      if (tipoFechamento === "pedido") {
-        req.log.info({ dealId: deal.id }, "deal-ganho: tipo=pedido — confirmação simples");
+      // ── Criar billing_event initial ────────────────────────────────────────
+      if (deal.valor) {
+        const dueDate = new Date();
+        dueDate.setDate(dueDate.getDate() + 3);
+        await db.insert(billingEventsTable).values({
+          tenantId: existing.tenantId,
+          tipo: "initial",
+          valor: deal.valor,
+          status: "pending",
+          dueDate,
+        });
+      }
+
+      // ── ZapSign: contrato 2 ou 3 partes ───────────────────────────────────
+      const tipoFechamento = deal.tipoFechamento ?? tenant?.tipoFechamentoDefault ?? "pedido";
+      if (tipoFechamento === "contrato") {
+        if (!isZapSignConfigured()) {
+          req.log.warn({ dealId: deal.id }, "deal-ganho: ZapSign não configurado (ZAPSIGN_API_KEY ausente)");
+        } else {
+          try {
+            const signers: { name: string; email: string }[] = [];
+
+            // 1. Cliente
+            if (lead?.email) {
+              signers.push({ name: lead.nome ?? "Cliente", email: lead.email });
+            }
+
+            // 2. Parceiro (se tenant tem partner)
+            if (tenant?.partnerId) {
+              const [partner] = await db
+                .select({ name: partnersTable.name, email: partnersTable.email })
+                .from(partnersTable)
+                .where(eq(partnersTable.id, tenant.partnerId));
+              if (partner) signers.push({ name: partner.name, email: partner.email });
+            }
+
+            // 3. Vendor.ai (sempre — CONTRATADA)
+            const vendoraiEmail = process.env["VENDORAI_SIGNING_EMAIL"];
+            if (vendoraiEmail) {
+              signers.push({ name: "Vendor.ai", email: vendoraiEmail });
+            }
+
+            if (signers.length > 0) {
+              const partes = tenant?.partnerId ? "3 partes" : "2 partes";
+              const doc = await createDocument({
+                name: `Contrato ${deal.titulo} — ${partes}`,
+                lang: "pt-BR",
+                signers,
+              });
+              req.log.info(
+                { dealId: deal.id, docToken: doc.token, signers: signers.length, partes },
+                "deal-ganho: contrato ZapSign criado",
+              );
+            }
+          } catch (err) {
+            req.log.warn({ err, dealId: deal.id }, "deal-ganho: ZapSign falhou (non-fatal)");
+          }
+        }
       } else {
-        req.log.info({ dealId: deal.id }, "deal-ganho: tipo=contrato — fluxo ZapSign pendente de integração");
+        req.log.info({ dealId: deal.id }, "deal-ganho: tipo=pedido — confirmação simples");
       }
 
       // ── Cobrança Asaas ─────────────────────────────────────────────────────

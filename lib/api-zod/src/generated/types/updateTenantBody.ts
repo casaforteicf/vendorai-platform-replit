@@ -41,4 +41,6 @@ export interface UpdateTenantBody {
   maxAnalysesPerHour?: number | null;
   /** Tipo de fechamento padrão para novos deals deste tenant. */
   tipoFechamentoDefault?: TipoFechamento | null;
+  /** Valor da mensalidade recorrente. */
+  mensalidadeValor?: number | null;
 }

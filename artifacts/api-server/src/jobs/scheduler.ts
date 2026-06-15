@@ -13,6 +13,7 @@
  */
 import cron from "node-cron";
 import { and, eq, gt, isNotNull, lte, gte, lt, inArray, sql } from "drizzle-orm";
+import { runMonthlyBilling } from "../lib/billing.js";
 import type { Logger } from "pino";
 import {
   db,
@@ -302,5 +303,12 @@ export function startScheduler(log: Logger): void {
     });
   });
 
-  log.info("scheduler: started (churn-check @:05, campaigns @:15 every hour)");
+  // Job 3: Monthly billing — day 5 of each month at 08:00
+  cron.schedule("0 8 5 * *", () => {
+    runMonthlyBilling(log).catch((err) => {
+      log.error({ err }, "scheduler/billing: unhandled error");
+    });
+  });
+
+  log.info("scheduler: started (churn-check @:05, campaigns @:15, billing @day-5-08:00)");
 }
