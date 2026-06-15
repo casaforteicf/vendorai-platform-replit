@@ -8,12 +8,13 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
 import {
-  RefreshCw, AlertTriangle, Building2, UserPlus, Users, Link, Check,
+  RefreshCw, AlertTriangle, Building2, UserPlus, Users, Link, Check, Pencil, X,
 } from "lucide-react";
 import {
   useListPartners,
   getListPartnersQueryKey,
   useCreatePartner,
+  useUpdatePartner,
   useListTenants,
   useLinkTenantPartner,
   getListTenantsQueryKey,
@@ -47,6 +48,9 @@ export default function AdminPartners() {
   const queryClient = useQueryClient();
   const [linkingTenantId, setLinkingTenantId] = useState<string | null>(null);
   const [selectedPartnerId, setSelectedPartnerId] = useState<string>("");
+  const [editingPartnerId, setEditingPartnerId] = useState<string | null>(null);
+  const [editName, setEditName] = useState("");
+  const [editEmail, setEditEmail] = useState("");
 
   const partnersQuery = useListPartners({
     query: { queryKey: getListPartnersQueryKey() },
@@ -65,6 +69,20 @@ export default function AdminPartners() {
       },
       onError: (err: any) => {
         const msg = err?.response?.data?.error ?? "Erro ao criar parceiro.";
+        toast({ title: msg, variant: "destructive" });
+      },
+    },
+  });
+
+  const updatePartner = useUpdatePartner({
+    mutation: {
+      onSuccess: () => {
+        queryClient.invalidateQueries({ queryKey: getListPartnersQueryKey() });
+        setEditingPartnerId(null);
+        toast({ title: "Parceiro atualizado." });
+      },
+      onError: (err: any) => {
+        const msg = err?.response?.data?.error ?? "Erro ao atualizar parceiro.";
         toast({ title: msg, variant: "destructive" });
       },
     },
@@ -89,6 +107,22 @@ export default function AdminPartners() {
 
   function onSubmit(values: CreatePartnerForm) {
     createPartner.mutate({ data: values });
+  }
+
+  function startEdit(partner: { id: string; name: string; email: string }) {
+    setEditingPartnerId(partner.id);
+    setEditName(partner.name);
+    setEditEmail(partner.email);
+  }
+
+  function cancelEdit() {
+    setEditingPartnerId(null);
+    setEditName("");
+    setEditEmail("");
+  }
+
+  function saveEdit(id: string) {
+    updatePartner.mutate({ id, data: { name: editName, email: editEmail } });
   }
 
   return (
@@ -182,15 +216,74 @@ export default function AdminPartners() {
             <p className="text-sm text-muted-foreground py-4 text-center">Nenhum parceiro cadastrado.</p>
           ) : (
             <div className="divide-y divide-border rounded-lg border">
-              {partnersQuery.data.map((partner) => (
-                <div key={partner.id} className="px-4 py-3 space-y-1">
-                  <p className="text-sm font-medium">{partner.name}</p>
-                  <p className="text-xs text-muted-foreground">{partner.email}</p>
-                  <p className="text-xs text-muted-foreground/60">
-                    ID: <code className="font-mono">{partner.id}</code>
-                  </p>
-                </div>
-              ))}
+              {partnersQuery.data.map((partner) => {
+                const isEditing = editingPartnerId === partner.id;
+
+                return (
+                  <div key={partner.id} className="px-4 py-3 space-y-2">
+                    {isEditing ? (
+                      <div className="space-y-2">
+                        <Input
+                          value={editName}
+                          onChange={(e) => setEditName(e.target.value)}
+                          placeholder="Nome"
+                          className="h-8 text-sm"
+                        />
+                        <Input
+                          type="email"
+                          value={editEmail}
+                          onChange={(e) => setEditEmail(e.target.value)}
+                          placeholder="E-mail"
+                          className="h-8 text-sm"
+                        />
+                        <div className="flex gap-2">
+                          <Button
+                            size="sm"
+                            className="h-7 text-xs"
+                            disabled={updatePartner.isPending || !editName.trim() || !editEmail.trim()}
+                            onClick={() => saveEdit(partner.id)}
+                          >
+                            {updatePartner.isPending ? (
+                              <RefreshCw className="h-3 w-3 animate-spin mr-1" />
+                            ) : (
+                              <Check className="h-3 w-3 mr-1" />
+                            )}
+                            Salvar
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className="h-7 text-xs"
+                            onClick={cancelEdit}
+                          >
+                            <X className="h-3 w-3 mr-1" />
+                            Cancelar
+                          </Button>
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="flex items-start justify-between gap-2">
+                        <div className="space-y-0.5 min-w-0">
+                          <p className="text-sm font-medium">{partner.name}</p>
+                          <p className="text-xs text-muted-foreground">{partner.email}</p>
+                          <p className="text-xs text-muted-foreground/60">
+                            ID: <code className="font-mono">{partner.id}</code>
+                          </p>
+                        </div>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="h-7 w-7 p-0 shrink-0"
+                          onClick={() => startEdit(partner)}
+                          title="Editar parceiro"
+                        >
+                          <Pencil className="h-3.5 w-3.5" />
+                        </Button>
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
             </div>
           )}
         </div>
@@ -268,7 +361,7 @@ export default function AdminPartners() {
                         className="h-8"
                         onClick={() => { setLinkingTenantId(null); setSelectedPartnerId(""); }}
                       >
-                        ✕
+                        <X className="h-3.5 w-3.5" />
                       </Button>
                     </div>
                   ) : (

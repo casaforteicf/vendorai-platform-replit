@@ -163,12 +163,22 @@ protectedRouter.post("/auth/refresh", async (req, res) => {
     return;
   }
 
+  let partnerId: string | undefined;
+  if (user.platformRole === "partner") {
+    const [partnerRow] = await db
+      .select({ id: partnersTable.id })
+      .from(partnersTable)
+      .where(eq(partnersTable.userId, user.id));
+    partnerId = partnerRow?.id;
+  }
+
   const token = signToken({
     sub: user.id,
     email: user.email,
     platformRole: user.platformRole,
     tenantId: user.tenantId,
     role: user.role,
+    ...(partnerId ? { partnerId } : {}),
   });
 
   res.json({ token, user });
