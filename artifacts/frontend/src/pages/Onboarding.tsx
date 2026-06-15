@@ -74,7 +74,7 @@ interface DocumentExtractionResult {
 
 // ── Zod schemas ─────────────────────────────────────────────────────────────
 const productSchema = z.object({
-  nome: z.string().min(1, "Nome obrigatório"),
+  nome: z.string(),
   descricao: z.string().optional(),
   preco: z.coerce.number().nonnegative().optional(),
 });
@@ -610,6 +610,7 @@ export default function Onboarding() {
       if (!valid) return;
     }
     if (step === TOTAL_DATA_STEPS) {
+      setSubmitting(true);   // show spinner immediately before useEffect fires
       setStep(CONCLUSION_STEP);
       return;
     }
@@ -762,9 +763,15 @@ export default function Onboarding() {
   }
 
   useEffect(() => {
-    if (step === CONCLUSION_STEP && !submitting && !submitError) {
-      form.handleSubmit(submitWizard)();
-    }
+    if (step !== CONCLUSION_STEP) return;
+    form.handleSubmit(submitWizard, (validationErrors) => {
+      // Form validation failed — show error so user can go back and fix
+      setSubmitting(false);
+      const fields = Object.keys(validationErrors).join(", ");
+      setSubmitError(
+        `Erro de validação: verifique os campos obrigatórios (${fields || "formulário"}) e tente novamente.`
+      );
+    })();
   }, [step]);
 
   const isDataStep = step >= 1 && step <= TOTAL_DATA_STEPS;
