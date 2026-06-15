@@ -140,6 +140,7 @@ import type {
   UpdateKnowledgeBaseBody,
   UpdateLeadBody,
   UpdateMessageBody,
+  UpdatePartnerBody,
   UpdateProdutoCatalogoBody,
   UpdatePropostaBody,
   UpdatePropostaStatusBody,
@@ -13297,6 +13298,79 @@ export const useCreatePartner = <TError = ErrorType<ErrorResponse>,
         TContext
       > => {
       return useMutation(getCreatePartnerMutationOptions(options));
+    }
+
+export const getUpdatePartnerUrl = (id: string,) => {
+
+
+
+
+  return `/api/admin/partners/${id}`
+}
+
+/**
+ * Updates a partner's name or email. Requires super_admin.
+ * @summary Edit a partner
+ */
+export const updatePartner = async (id: string,
+    updatePartnerBody: UpdatePartnerBody, options?: RequestInit): Promise<Partner> => {
+
+  return customFetch<Partner>(getUpdatePartnerUrl(id),
+  {
+    ...options,
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(
+      updatePartnerBody,)
+  }
+);}
+
+
+
+
+export const getUpdatePartnerMutationOptions = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updatePartner>>, TError,{id: string;data: BodyType<UpdatePartnerBody>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof updatePartner>>, TError,{id: string;data: BodyType<UpdatePartnerBody>}, TContext> => {
+
+const mutationKey = ['updatePartner'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof updatePartner>>, {id: string;data: BodyType<UpdatePartnerBody>}> = (props) => {
+          const {id,data} = props ?? {};
+
+          return  updatePartner(id,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type UpdatePartnerMutationResult = NonNullable<Awaited<ReturnType<typeof updatePartner>>>
+    export type UpdatePartnerMutationBody = BodyType<UpdatePartnerBody>
+    export type UpdatePartnerMutationError = ErrorType<ErrorResponse>
+
+    /**
+ * @summary Edit a partner
+ */
+export const useUpdatePartner = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updatePartner>>, TError,{id: string;data: BodyType<UpdatePartnerBody>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof updatePartner>>,
+        TError,
+        {id: string;data: BodyType<UpdatePartnerBody>},
+        TContext
+      > => {
+      return useMutation(getUpdatePartnerMutationOptions(options));
     }
 
 export const getLinkTenantPartnerUrl = (id: string,) => {

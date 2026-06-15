@@ -1433,6 +1433,11 @@ export interface CreatePartnerResponse {
   user: CreatePartnerResponseUser;
 }
 
+export interface UpdatePartnerBody {
+  name?: string;
+  email?: string;
+}
+
 export interface LinkTenantPartnerBody {
   partnerId: string | null;
 }

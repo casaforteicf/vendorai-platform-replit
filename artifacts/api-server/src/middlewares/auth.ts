@@ -41,6 +41,20 @@ export function requireRole(...roles: PlatformRole[]): RequestHandler {
   };
 }
 
+export const blockPartnerFromCRM: RequestHandler = (req, res, next) => {
+  if (req.user?.platformRole !== "partner") {
+    next();
+    return;
+  }
+  const allowed = ["/partner/", "/auth/", "/admin/partners", "/healthz"];
+  const isAllowed = allowed.some((prefix) => req.path.startsWith(prefix));
+  if (!isAllowed) {
+    res.status(403).json({ error: "Partners cannot access CRM endpoints" });
+    return;
+  }
+  next();
+};
+
 export function requireSameTenanOrSuperAdmin(): RequestHandler {
   return (req, res, next) => {
     if (!req.user) {

@@ -4409,6 +4409,28 @@ export const CreatePartnerBody = zod.object({
 
 
 /**
+ * Updates a partner's name or email. Requires super_admin.
+ * @summary Edit a partner
+ */
+export const UpdatePartnerParams = zod.object({
+  "id": zod.coerce.string()
+})
+
+export const UpdatePartnerBody = zod.object({
+  "name": zod.string().optional(),
+  "email": zod.string().email().optional()
+})
+
+export const UpdatePartnerResponse = zod.object({
+  "id": zod.string(),
+  "name": zod.string(),
+  "email": zod.string(),
+  "userId": zod.string(),
+  "createdAt": zod.coerce.date()
+})
+
+
+/**
  * Associates a tenant with a partner (or removes the association). Requires super_admin.
  * @summary Link or unlink tenant to a partner
  */

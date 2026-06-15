@@ -89,6 +89,41 @@ router.post("/admin/partners", async (req, res) => {
   }
 });
 
+router.patch("/admin/partners/:id", async (req, res) => {
+  const partnerId = String(req.params["id"]);
+  const updateSchema = z.object({
+    name: z.string().min(1).optional(),
+    email: z.email().optional(),
+  });
+
+  const parsed = updateSchema.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(422).json({ error: parsed.error.message });
+    return;
+  }
+
+  try {
+    const [partner] = await db
+      .update(partnersTable)
+      .set(parsed.data)
+      .where(eq(partnersTable.id, partnerId))
+      .returning();
+
+    if (!partner) {
+      res.status(404).json({ error: "Partner not found" });
+      return;
+    }
+
+    res.json(partner);
+  } catch (err: unknown) {
+    if (isUniqueViolation(err)) {
+      res.status(409).json({ error: "Email already exists" });
+      return;
+    }
+    throw err;
+  }
+});
+
 router.patch("/admin/tenants/:id/partner", async (req, res) => {
   const parsed = linkTenantSchema.safeParse(req.body);
   if (!parsed.success) {

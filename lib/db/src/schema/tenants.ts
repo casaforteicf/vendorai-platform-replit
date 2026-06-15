@@ -2,6 +2,7 @@ import { pgTable, text, integer, timestamp, pgEnum, json, check } from "drizzle-
 import { sql } from "drizzle-orm";
 import { createInsertSchema, createSelectSchema } from "drizzle-zod";
 import { z } from "zod/v4";
+import { partnersTable } from "./partners";
 
 export const tenantStatusEnum = pgEnum("tenant_status", [
   "active",
@@ -36,7 +37,7 @@ export const tenantsTable = pgTable(
     maxAnalysesPerHour: integer("max_analyses_per_hour"),
     webhookEstoqueUrl: text("webhook_estoque_url"),
     apiKeyEstoque: text("api_key_estoque"),
-    partnerId: text("partner_id"),
+    partnerId: text("partner_id").references(() => partnersTable.id, { onDelete: "set null" }),
     createdAt: timestamp("created_at").notNull().defaultNow(),
     updatedAt: timestamp("updated_at").notNull().defaultNow(),
   },

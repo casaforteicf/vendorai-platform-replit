@@ -5162,6 +5162,52 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
 
+  /admin/partners/{id}:
+    patch:
+      operationId: updatePartner
+      tags: [partners]
+      summary: Edit a partner
+      description: Updates a partner's name or email. Requires super_admin.
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdatePartnerBody"
+      responses:
+        "200":
+          description: Partner updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Partner"
+        "404":
+          description: Partner not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "409":
+          description: Email already exists
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "422":
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
   /admin/tenants/{id}/partner:
     patch:
       operationId: linkTenantPartner
@@ -7621,6 +7667,15 @@ components:
       required:
         - partner
         - user
+
+    UpdatePartnerBody:
+      type: object
+      properties:
+        name:
+          type: string
+        email:
+          type: string
+          format: email
 
     LinkTenantPartnerBody:
       type: object

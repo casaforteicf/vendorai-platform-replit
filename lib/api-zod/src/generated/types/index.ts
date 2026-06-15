@@ -217,6 +217,7 @@ export * from './updateInvoiceBody';
 export * from './updateKnowledgeBaseBody';
 export * from './updateLeadBody';
 export * from './updateMessageBody';
+export * from './updatePartnerBody';
 export * from './updateProdutoCatalogoBody';
 export * from './updatePropostaBody';
 export * from './updatePropostaStatusBody';

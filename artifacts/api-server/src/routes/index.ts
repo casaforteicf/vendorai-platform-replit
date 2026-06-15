@@ -34,7 +34,7 @@ import onboardingRouter from "./onboarding";
 import contentRouter from "./content";
 import partnerRouter from "./partner";
 import adminPartnersRouter from "./admin_partners";
-import { authenticate, requireRole, requireSameTenanOrSuperAdmin } from "../middlewares/auth";
+import { authenticate, blockPartnerFromCRM, requireRole, requireSameTenanOrSuperAdmin } from "../middlewares/auth";
 
 const router: IRouter = Router();
 
@@ -49,6 +49,7 @@ router.use(inventorySyncRouter);
 
 // Protected — all routes below require a valid JWT
 router.use(authenticate);
+router.use(blockPartnerFromCRM);
 
 // Auth — protected endpoints (me, refresh)
 router.use(authProtectedRouter);
