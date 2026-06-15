@@ -389,6 +389,7 @@ export const GetAgentConfigByTenantResponse = zod.object({
   "tokensUsedCurrentMonth": zod.number().default(getAgentConfigByTenantResponseTokensUsedCurrentMonthDefault),
   "setupCompletedAt": zod.coerce.date().nullish(),
   "autonomyEnabledAt": zod.coerce.date().nullish().describe('Computed as setupCompletedAt + 5 days. Before this timestamp, agent actions require manual approval.'),
+  "webhookSecret": zod.string().nullish().describe('Secret used to authenticate inbound WhatsApp webhooks (X-Webhook-Secret header).'),
   "createdAt": zod.coerce.date(),
   "updatedAt": zod.coerce.date()
 })
@@ -452,6 +453,7 @@ export const GetAgentConfigResponse = zod.object({
   "tokensUsedCurrentMonth": zod.number().default(getAgentConfigResponseTokensUsedCurrentMonthDefault),
   "setupCompletedAt": zod.coerce.date().nullish(),
   "autonomyEnabledAt": zod.coerce.date().nullish().describe('Computed as setupCompletedAt + 5 days. Before this timestamp, agent actions require manual approval.'),
+  "webhookSecret": zod.string().nullish().describe('Secret used to authenticate inbound WhatsApp webhooks (X-Webhook-Secret header).'),
   "createdAt": zod.coerce.date(),
   "updatedAt": zod.coerce.date()
 })
@@ -562,6 +564,7 @@ export const UpdateAgentConfigResponse = zod.object({
   "tokensUsedCurrentMonth": zod.number().default(updateAgentConfigResponseTokensUsedCurrentMonthDefault),
   "setupCompletedAt": zod.coerce.date().nullish(),
   "autonomyEnabledAt": zod.coerce.date().nullish().describe('Computed as setupCompletedAt + 5 days. Before this timestamp, agent actions require manual approval.'),
+  "webhookSecret": zod.string().nullish().describe('Secret used to authenticate inbound WhatsApp webhooks (X-Webhook-Secret header).'),
   "createdAt": zod.coerce.date(),
   "updatedAt": zod.coerce.date()
 })
@@ -642,6 +645,7 @@ export const IncrementMessagesResponse = zod.object({
   "tokensUsedCurrentMonth": zod.number().default(incrementMessagesResponseTokensUsedCurrentMonthDefault),
   "setupCompletedAt": zod.coerce.date().nullish(),
   "autonomyEnabledAt": zod.coerce.date().nullish().describe('Computed as setupCompletedAt + 5 days. Before this timestamp, agent actions require manual approval.'),
+  "webhookSecret": zod.string().nullish().describe('Secret used to authenticate inbound WhatsApp webhooks (X-Webhook-Secret header).'),
   "createdAt": zod.coerce.date(),
   "updatedAt": zod.coerce.date()
 })
@@ -714,6 +718,7 @@ export const IncrementTokensResponse = zod.object({
   "tokensUsedCurrentMonth": zod.number().default(incrementTokensResponseTokensUsedCurrentMonthDefault),
   "setupCompletedAt": zod.coerce.date().nullish(),
   "autonomyEnabledAt": zod.coerce.date().nullish().describe('Computed as setupCompletedAt + 5 days. Before this timestamp, agent actions require manual approval.'),
+  "webhookSecret": zod.string().nullish().describe('Secret used to authenticate inbound WhatsApp webhooks (X-Webhook-Secret header).'),
   "createdAt": zod.coerce.date(),
   "updatedAt": zod.coerce.date()
 })
@@ -742,6 +747,71 @@ export const GetAgentConfigUsageResponse = zod.object({
   "nearLimit": zod.boolean(),
   "overLimit": zod.boolean()
 })
+})
+
+
+/**
+ * Generates a new webhook secret for the agent config. The old secret is immediately invalidated.
+ * @summary Regenerate webhook secret
+ */
+export const RegenerateWebhookSecretParams = zod.object({
+  "id": zod.coerce.string()
+})
+
+export const regenerateWebhookSecretResponseAgentsSdrEnabledDefault = false;
+export const regenerateWebhookSecretResponseAgentsCloserEnabledDefault = false;
+export const regenerateWebhookSecretResponseAgentsFollowupEnabledDefault = false;
+export const regenerateWebhookSecretResponseAgentsReactivationEnabledDefault = false;
+export const regenerateWebhookSecretResponseAgentsSchedulerEnabledDefault = false;
+export const regenerateWebhookSecretResponseAgentsServiceEnabledDefault = false;
+export const regenerateWebhookSecretResponseAgentsOnboardingEnabledDefault = false;
+export const regenerateWebhookSecretResponseDailyMessageLimitDefault = 100;
+export const regenerateWebhookSecretResponseMessagesSentTodayDefault = 0;
+export const regenerateWebhookSecretResponseMonthlyTokenLimitDefault = 100000;
+export const regenerateWebhookSecretResponseTokensUsedCurrentMonthDefault = 0;
+
+export const RegenerateWebhookSecretResponse = zod.object({
+  "id": zod.string(),
+  "tenantId": zod.string(),
+  "agents": zod.object({
+  "sdr": zod.object({
+  "enabled": zod.boolean().default(regenerateWebhookSecretResponseAgentsSdrEnabledDefault),
+  "prompt": zod.string().nullish()
+}).optional(),
+  "closer": zod.object({
+  "enabled": zod.boolean().default(regenerateWebhookSecretResponseAgentsCloserEnabledDefault),
+  "prompt": zod.string().nullish()
+}).optional(),
+  "followup": zod.object({
+  "enabled": zod.boolean().default(regenerateWebhookSecretResponseAgentsFollowupEnabledDefault),
+  "prompt": zod.string().nullish()
+}).optional(),
+  "reactivation": zod.object({
+  "enabled": zod.boolean().default(regenerateWebhookSecretResponseAgentsReactivationEnabledDefault),
+  "prompt": zod.string().nullish()
+}).optional(),
+  "scheduler": zod.object({
+  "enabled": zod.boolean().default(regenerateWebhookSecretResponseAgentsSchedulerEnabledDefault),
+  "prompt": zod.string().nullish()
+}).optional(),
+  "service": zod.object({
+  "enabled": zod.boolean().default(regenerateWebhookSecretResponseAgentsServiceEnabledDefault),
+  "prompt": zod.string().nullish()
+}).optional(),
+  "onboarding": zod.object({
+  "enabled": zod.boolean().default(regenerateWebhookSecretResponseAgentsOnboardingEnabledDefault),
+  "prompt": zod.string().nullish()
+}).optional()
+}),
+  "dailyMessageLimit": zod.number().default(regenerateWebhookSecretResponseDailyMessageLimitDefault),
+  "messagesSentToday": zod.number().default(regenerateWebhookSecretResponseMessagesSentTodayDefault),
+  "monthlyTokenLimit": zod.number().default(regenerateWebhookSecretResponseMonthlyTokenLimitDefault),
+  "tokensUsedCurrentMonth": zod.number().default(regenerateWebhookSecretResponseTokensUsedCurrentMonthDefault),
+  "setupCompletedAt": zod.coerce.date().nullish(),
+  "autonomyEnabledAt": zod.coerce.date().nullish().describe('Computed as setupCompletedAt + 5 days. Before this timestamp, agent actions require manual approval.'),
+  "webhookSecret": zod.string().nullish().describe('Secret used to authenticate inbound WhatsApp webhooks (X-Webhook-Secret header).'),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date()
 })
 
 
@@ -804,6 +874,7 @@ export const CompleteAgentConfigSetupResponse = zod.object({
   "tokensUsedCurrentMonth": zod.number().default(completeAgentConfigSetupResponseTokensUsedCurrentMonthDefault),
   "setupCompletedAt": zod.coerce.date().nullish(),
   "autonomyEnabledAt": zod.coerce.date().nullish().describe('Computed as setupCompletedAt + 5 days. Before this timestamp, agent actions require manual approval.'),
+  "webhookSecret": zod.string().nullish().describe('Secret used to authenticate inbound WhatsApp webhooks (X-Webhook-Secret header).'),
   "createdAt": zod.coerce.date(),
   "updatedAt": zod.coerce.date()
 })

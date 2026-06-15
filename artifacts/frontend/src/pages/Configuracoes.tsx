@@ -16,6 +16,7 @@ import {
   useUpdateAgentConfig,
   useGetAgentConfigUsage,
   useCompleteAgentConfigSetup,
+  useRegenerateWebhookSecret,
   useListIntelligenceAnalysisLog,
   getListIntelligenceAnalysisLogQueryKey,
   useGetTenant,
@@ -783,6 +784,8 @@ export default function Configuracoes() {
 
   const [webhookUrlInput, setWebhookUrlInput] = useState<string>("");
   const [showApiKey, setShowApiKey] = useState(false);
+  const [showWebhookSecret, setShowWebhookSecret] = useState(false);
+  const regenerateWebhookSecretMutation = useRegenerateWebhookSecret();
 
   const integrationData = integrationQuery.data;
   const [syncedIntegration, setSyncedIntegration] = useState(false);
@@ -1473,6 +1476,141 @@ export default function Configuracoes() {
         {/* ── Tab: Integrações ERP ────────────────────────────────────────── */}
         <TabsContent value="integracoes">
           <div className="space-y-6">
+
+            {/* Webhook de entrada — WhatsApp Omnichannel */}
+            <div className="rounded-xl border bg-card p-6 space-y-5">
+              <div>
+                <h2 className="font-semibold text-base flex items-center gap-2">
+                  <Webhook className="h-4 w-4 text-primary" />
+                  Webhook de entrada — WhatsApp Omnichannel
+                </h2>
+                <p className="text-sm text-muted-foreground mt-1">
+                  Configure o n8n (ou qualquer gateway) para enviar mensagens recebidas do WhatsApp para
+                  este endpoint. Use o <strong>Tenant ID</strong> na URL e o <strong>Webhook Secret</strong> no header
+                  <code className="text-xs bg-muted px-1 py-0.5 rounded mx-1">X-Webhook-Secret</code>.
+                </p>
+              </div>
+
+              <div className="space-y-4">
+                {/* Tenant ID */}
+                <div className="space-y-1.5">
+                  <label className="text-sm font-medium">Tenant ID</label>
+                  <div className="flex gap-2">
+                    <div className="flex-1 flex items-center rounded-md border bg-muted/50 px-3 py-2 font-mono text-sm text-muted-foreground select-all">
+                      {tenantId}
+                    </div>
+                    <Button
+                      variant="outline"
+                      size="icon"
+                      title="Copiar Tenant ID"
+                      onClick={() => {
+                        navigator.clipboard.writeText(tenantId ?? "");
+                        toast({ title: "Tenant ID copiado." });
+                      }}
+                    >
+                      <Copy className="h-4 w-4" />
+                    </Button>
+                  </div>
+                </div>
+
+                {/* Webhook Secret */}
+                <div className="space-y-1.5">
+                  <label className="text-sm font-medium">Webhook Secret</label>
+                  {agentQuery.isLoading ? (
+                    <div className="h-10 bg-muted rounded-md animate-pulse" />
+                  ) : agentQuery.data?.webhookSecret ? (
+                    <div className="flex gap-2">
+                      <div className="flex-1 flex items-center rounded-md border bg-muted/50 px-3 py-2 font-mono text-sm">
+                        {showWebhookSecret
+                          ? agentQuery.data.webhookSecret
+                          : "whs_" + "•".repeat(32)}
+                      </div>
+                      <Button
+                        variant="outline"
+                        size="icon"
+                        onClick={() => setShowWebhookSecret((v) => !v)}
+                        title={showWebhookSecret ? "Ocultar" : "Mostrar"}
+                      >
+                        {showWebhookSecret ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                      </Button>
+                      <Button
+                        variant="outline"
+                        size="icon"
+                        title="Copiar secret"
+                        onClick={() => {
+                          navigator.clipboard.writeText(agentQuery.data?.webhookSecret ?? "");
+                          toast({ title: "Webhook secret copiado." });
+                        }}
+                      >
+                        <Copy className="h-4 w-4" />
+                      </Button>
+                    </div>
+                  ) : (
+                    <div className="rounded-lg border border-dashed p-4 text-center space-y-1">
+                      <Key className="h-7 w-7 text-muted-foreground mx-auto" />
+                      <p className="text-sm text-muted-foreground">Nenhum secret gerado ainda.</p>
+                    </div>
+                  )}
+                </div>
+
+                <div className="flex items-center gap-3">
+                  <Button
+                    variant={agentQuery.data?.webhookSecret ? "outline" : "default"}
+                    disabled={regenerateWebhookSecretMutation.isPending || !agentQuery.data?.id}
+                    onClick={() => {
+                      if (!agentQuery.data?.id) return;
+                      regenerateWebhookSecretMutation.mutate(
+                        { id: agentQuery.data.id },
+                        {
+                          onSuccess: (updated) => {
+                            queryClient.setQueryData(
+                              getGetAgentConfigByTenantQueryKey(tenantId ?? ""),
+                              updated,
+                            );
+                            toast({ title: "Webhook secret gerado com sucesso." });
+                          },
+                          onError: () => toast({ title: "Erro ao gerar secret.", variant: "destructive" }),
+                        },
+                      );
+                    }}
+                    className="gap-2"
+                  >
+                    <RefreshCw className={cn("h-4 w-4", regenerateWebhookSecretMutation.isPending && "animate-spin")} />
+                    {regenerateWebhookSecretMutation.isPending
+                      ? "Gerando…"
+                      : agentQuery.data?.webhookSecret
+                      ? "Regenerar secret"
+                      : "Gerar secret"}
+                  </Button>
+                  {agentQuery.data?.webhookSecret && (
+                    <p className="text-xs text-yellow-600 dark:text-yellow-400 flex items-center gap-1">
+                      <AlertTriangle className="h-3 w-3 shrink-0" />
+                      Ao regenerar, o secret anterior é invalidado. Atualize o n8n antes.
+                    </p>
+                  )}
+                </div>
+
+                {/* Endpoint reference */}
+                <div className="rounded-lg bg-muted/50 border p-4 space-y-2">
+                  <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Endpoint n8n → Vendor.ai</p>
+                  <code className="text-xs block text-muted-foreground">
+                    POST /api/tenants/{tenantId}/webhooks/whatsapp
+                  </code>
+                  <pre className="text-xs text-muted-foreground whitespace-pre-wrap mt-2">
+{`Headers:
+  X-Webhook-Secret: <seu-webhook-secret>
+  Content-Type: application/json
+
+Body:
+{
+  "telefone": "5511999998888",
+  "mensagem": "Olá, quero saber mais",
+  "nome": "João Silva"
+}`}
+                  </pre>
+                </div>
+              </div>
+            </div>
 
             {/* Webhook de saída */}
             <div className="rounded-xl border bg-card p-6 space-y-5">

@@ -1179,6 +1179,8 @@ export interface AgentConfig {
   setupCompletedAt?: string | null;
   /** Computed as setupCompletedAt + 5 days. Before this timestamp, agent actions require manual approval. */
   autonomyEnabledAt?: string | null;
+  /** Secret used to authenticate inbound WhatsApp webhooks (X-Webhook-Secret header). */
+  webhookSecret?: string | null;
   createdAt: string;
   updatedAt: string;
 }

@@ -266,6 +266,34 @@ router.post("/agent-configs/:id/increment-tokens", async (req, res) => {
   res.json(config);
 });
 
+router.post("/agent-configs/:id/regenerate-webhook-secret", async (req, res) => {
+  const [existing] = await db
+    .select({ id: agentConfigsTable.id, tenantId: agentConfigsTable.tenantId })
+    .from(agentConfigsTable)
+    .where(eq(agentConfigsTable.id, String(req.params.id)));
+
+  if (!existing) {
+    res.status(404).json({ error: "Agent config not found" });
+    return;
+  }
+
+  if (req.user?.platformRole !== "super_admin" && existing.tenantId !== req.user?.tenantId) {
+    res.status(403).json({ error: "Access denied to this tenant" });
+    return;
+  }
+
+  const secret = `whs_${crypto.randomUUID().replace(/-/g, "")}`;
+
+  const [config] = await db
+    .update(agentConfigsTable)
+    .set({ webhookSecret: secret, updatedAt: new Date() })
+    .where(eq(agentConfigsTable.id, existing.id))
+    .returning();
+
+  req.log.info({ agentConfigId: existing.id }, "webhook secret regenerated");
+  res.json(config);
+});
+
 router.delete("/agent-configs/:id", async (req, res) => {
   const [existing] = await db
     .select({ id: agentConfigsTable.id, tenantId: agentConfigsTable.tenantId })

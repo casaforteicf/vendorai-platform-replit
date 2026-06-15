@@ -1870,6 +1870,77 @@ export function useGetAgentConfigUsage<TData = Awaited<ReturnType<typeof getAgen
 
 
 
+export const getRegenerateWebhookSecretUrl = (id: string,) => {
+
+
+
+
+  return `/api/agent-configs/${id}/regenerate-webhook-secret`
+}
+
+/**
+ * Generates a new webhook secret for the agent config. The old secret is immediately invalidated.
+ * @summary Regenerate webhook secret
+ */
+export const regenerateWebhookSecret = async (id: string, options?: RequestInit): Promise<AgentConfig> => {
+
+  return customFetch<AgentConfig>(getRegenerateWebhookSecretUrl(id),
+  {
+    ...options,
+    method: 'POST'
+
+
+  }
+);}
+
+
+
+
+export const getRegenerateWebhookSecretMutationOptions = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof regenerateWebhookSecret>>, TError,{id: string}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof regenerateWebhookSecret>>, TError,{id: string}, TContext> => {
+
+const mutationKey = ['regenerateWebhookSecret'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof regenerateWebhookSecret>>, {id: string}> = (props) => {
+          const {id} = props ?? {};
+
+          return  regenerateWebhookSecret(id,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type RegenerateWebhookSecretMutationResult = NonNullable<Awaited<ReturnType<typeof regenerateWebhookSecret>>>
+
+    export type RegenerateWebhookSecretMutationError = ErrorType<ErrorResponse>
+
+    /**
+ * @summary Regenerate webhook secret
+ */
+export const useRegenerateWebhookSecret = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof regenerateWebhookSecret>>, TError,{id: string}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof regenerateWebhookSecret>>,
+        TError,
+        {id: string},
+        TContext
+      > => {
+      return useMutation(getRegenerateWebhookSecretMutationOptions(options));
+    }
+
 export const getCompleteAgentConfigSetupUrl = (id: string,) => {
 
 

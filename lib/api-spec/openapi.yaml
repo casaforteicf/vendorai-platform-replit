@@ -727,6 +727,34 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
 
+  /agent-configs/{id}/regenerate-webhook-secret:
+    post:
+      operationId: regenerateWebhookSecret
+      tags: [agent-configs]
+      summary: Regenerate webhook secret
+      description: Generates a new webhook secret for the agent config. The old secret is immediately invalidated.
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: New secret generated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AgentConfig"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
   /agent-configs/{id}/complete-setup:
     post:
       operationId: completeAgentConfigSetup
@@ -7147,6 +7175,10 @@ components:
           format: date-time
           nullable: true
           description: Computed as setupCompletedAt + 5 days. Before this timestamp, agent actions require manual approval.
+        webhookSecret:
+          type: string
+          nullable: true
+          description: Secret used to authenticate inbound WhatsApp webhooks (X-Webhook-Secret header).
         createdAt:
           type: string
           format: date-time
