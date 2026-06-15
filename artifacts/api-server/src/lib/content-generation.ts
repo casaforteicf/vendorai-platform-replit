@@ -60,7 +60,8 @@ No text overlays. No watermarks. Bright, well-lit, commercial photography aesthe
     });
 
     return response.data?.[0]?.url ?? undefined;
-  } catch {
+  } catch (err) {
+    console.error("[content-generation] DALL-E 3 image generation failed:", err instanceof Error ? err.message : err);
     return undefined;
   }
 }

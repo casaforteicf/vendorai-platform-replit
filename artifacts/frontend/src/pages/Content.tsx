@@ -12,7 +12,7 @@ import { useToast } from "@/hooks/use-toast";
 import { useListProdutosCatalogo, getListProdutosCatalogoQueryKey } from "@workspace/api-client-react";
 import {
   Sparkles, Copy, Trash2, Loader2, Instagram, Clapperboard, Image,
-  CheckCircle2, AlertCircle,
+  CheckCircle2, AlertCircle, ChevronDown, ChevronUp, ExternalLink,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -206,6 +206,7 @@ function HistoryItem({
   item: ContentGeneration;
   onDelete: (id: string) => void;
 }) {
+  const [expanded, setExpanded] = useState(false);
   const cfg = TYPE_CONFIG[item.type];
   const Icon = cfg.icon;
   const date = new Date(item.createdAt).toLocaleDateString("pt-BR", {
@@ -215,28 +216,59 @@ function HistoryItem({
     minute: "2-digit",
   });
   return (
-    <div className="flex items-start gap-3 py-3 border-b last:border-0">
-      <div className="h-8 w-8 rounded-md bg-primary/10 flex items-center justify-center shrink-0">
-        <Icon className="h-4 w-4 text-primary" />
-      </div>
-      <div className="flex-1 min-w-0">
-        <p className="text-sm font-medium truncate">{item.theme}</p>
-        <div className="flex items-center gap-2 mt-0.5">
-          <Badge variant="secondary" className="text-xs capitalize">{cfg.label}</Badge>
-          {item.productName && (
-            <span className="text-xs text-muted-foreground truncate">{item.productName}</span>
-          )}
-          <span className="text-xs text-muted-foreground">{date}</span>
+    <div className="py-3 border-b last:border-0">
+      {/* ── Header row — click to expand ──────────────────────── */}
+      <div
+        className="flex items-start gap-3 cursor-pointer hover:bg-muted/30 rounded-md -mx-2 px-2 py-1 transition-colors"
+        onClick={() => setExpanded((e) => !e)}
+      >
+        <div className="h-8 w-8 rounded-md bg-primary/10 flex items-center justify-center shrink-0 mt-0.5">
+          <Icon className="h-4 w-4 text-primary" />
+        </div>
+        <div className="flex-1 min-w-0">
+          <p className="text-sm font-medium truncate">{item.theme}</p>
+          <div className="flex items-center gap-2 mt-0.5 flex-wrap">
+            <Badge variant="secondary" className="text-xs capitalize">{cfg.label}</Badge>
+            {item.productName && (
+              <span className="text-xs text-muted-foreground truncate">{item.productName}</span>
+            )}
+            <span className="text-xs text-muted-foreground">{date}</span>
+          </div>
+        </div>
+        <div className="flex items-center gap-0.5 shrink-0">
+          <Button
+            variant="ghost"
+            size="icon"
+            className="h-7 w-7 text-muted-foreground hover:text-destructive"
+            onClick={(e) => { e.stopPropagation(); onDelete(item.id); }}
+          >
+            <Trash2 className="h-3.5 w-3.5" />
+          </Button>
+          {expanded
+            ? <ChevronUp className="h-4 w-4 text-muted-foreground" />
+            : <ChevronDown className="h-4 w-4 text-muted-foreground" />}
         </div>
       </div>
-      <Button
-        variant="ghost"
-        size="icon"
-        className="h-7 w-7 text-muted-foreground hover:text-destructive shrink-0"
-        onClick={() => onDelete(item.id)}
-      >
-        <Trash2 className="h-3.5 w-3.5" />
-      </Button>
+
+      {/* ── Expanded content ───────────────────────────────────── */}
+      {expanded && (
+        <div className="mt-3 space-y-3 px-1">
+          <div className="flex items-start gap-1.5 rounded-md bg-blue-50 dark:bg-blue-950/30 border border-blue-200 dark:border-blue-800 px-3 py-2 text-xs text-blue-700 dark:text-blue-300">
+            <ExternalLink className="h-3.5 w-3.5 mt-0.5 shrink-0" />
+            <span>
+              Para publicar: copie o texto e publique manualmente no Instagram.
+              {item.type !== "reels" && " Imagens geradas pela IA ficam disponíveis por até 1h após a geração."}
+            </span>
+          </div>
+          {item.result.variations.length === 0 ? (
+            <p className="text-xs text-muted-foreground text-center py-2">Sem variações salvas.</p>
+          ) : (
+            item.result.variations.map((v, i) => (
+              <VariationCard key={i} index={i} type={item.type} variation={v} />
+            ))
+          )}
+        </div>
+      )}
     </div>
   );
 }
