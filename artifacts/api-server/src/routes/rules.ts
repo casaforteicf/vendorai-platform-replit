@@ -11,7 +11,7 @@ import {
   updateRuleSchema,
 } from "@workspace/db";
 import type { Logger } from "pino";
-import { eq, and, gt, desc } from "drizzle-orm";
+import { eq, and, gt, desc, inArray } from "drizzle-orm";
 
 // ── Local types ───────────────────────────────────────────────────────────────
 type Rule          = typeof rulesTable.$inferSelect;
@@ -189,8 +189,27 @@ async function executeAction(
     case "criar_agent_task": {
       if (!leadId) return { skipped: true, reason: "leadId obrigatório para criar_agent_task" };
 
-      const agentName = String(payload.agentName ?? "sdr");
+      const agentName  = String(payload.agentName  ?? "sdr");
       const actionType = String(payload.actionType ?? "enviar_whatsapp");
+
+      // Dedup: skip if a non-terminal task for the same lead + actionType + rule already exists
+      const [existingTask] = await db
+        .select({ id: agentTasksTable.id })
+        .from(agentTasksTable)
+        .where(
+          and(
+            eq(agentTasksTable.tenantId,   tenantId),
+            eq(agentTasksTable.leadId,     leadId),
+            eq(agentTasksTable.actionType, actionType),
+            inArray(agentTasksTable.status, ["pendente_aprovacao", "aprovado", "executando"])
+          )
+        )
+        .limit(1);
+
+      if (existingTask) {
+        log.info({ existingTaskId: existingTask.id, ruleName: rule.nome }, "rules: agent_task already exists — skipping dedup");
+        return { skipped: true, reason: "task já existe (dedup)", existingTaskId: existingTask.id };
+      }
 
       const [task] = await db.insert(agentTasksTable).values({
         tenantId,
@@ -208,16 +227,35 @@ async function executeAction(
     case "criar_atividade": {
       if (!leadId) return { skipped: true, reason: "leadId obrigatório para criar_atividade" };
 
-      const tipo = (payload.tipo as typeof activitiesTable.$inferInsert["tipo"]) ?? "tarefa";
+      const tipo   = (payload.tipo as typeof activitiesTable.$inferInsert["tipo"]) ?? "tarefa";
       const titulo = String(payload.titulo ?? `Ação automática — ${rule.nome}`);
+
+      // Dedup: skip if a pending activity with the same title already exists for this lead
+      const [existingActivity] = await db
+        .select({ id: activitiesTable.id })
+        .from(activitiesTable)
+        .where(
+          and(
+            eq(activitiesTable.tenantId, tenantId),
+            eq(activitiesTable.leadId,   leadId),
+            eq(activitiesTable.titulo,   titulo),
+            eq(activitiesTable.status,   "pendente")
+          )
+        )
+        .limit(1);
+
+      if (existingActivity) {
+        log.info({ existingActivityId: existingActivity.id, ruleName: rule.nome }, "rules: activity already exists — skipping dedup");
+        return { skipped: true, reason: "atividade já existe (dedup)", existingActivityId: existingActivity.id };
+      }
 
       const [activity] = await db.insert(activitiesTable).values({
         tenantId,
         leadId,
         tipo,
         titulo,
-        descricao:      payload.descricao ? String(payload.descricao) : undefined,
-        dataVencimento: payload.dataVencimento ? new Date(String(payload.dataVencimento)) : undefined,
+        descricao:      payload.descricao      ? String(payload.descricao)                   : undefined,
+        dataVencimento: payload.dataVencimento  ? new Date(String(payload.dataVencimento))    : undefined,
         status:         "pendente",
       }).returning();
 
@@ -229,6 +267,26 @@ async function executeAction(
       if (!leadId) return { skipped: true, reason: "leadId obrigatório para notificar_usuario" };
 
       const titulo = String(payload.titulo ?? `Notificação: ${rule.nome}`);
+
+      // Dedup: skip if a pending notification with the same title already exists for this lead
+      const [existingNotif] = await db
+        .select({ id: activitiesTable.id })
+        .from(activitiesTable)
+        .where(
+          and(
+            eq(activitiesTable.tenantId, tenantId),
+            eq(activitiesTable.leadId,   leadId),
+            eq(activitiesTable.titulo,   titulo),
+            eq(activitiesTable.status,   "pendente")
+          )
+        )
+        .limit(1);
+
+      if (existingNotif) {
+        log.info({ existingActivityId: existingNotif.id, ruleName: rule.nome }, "rules: notification already exists — skipping dedup");
+        return { skipped: true, reason: "notificação já existe (dedup)", existingActivityId: existingNotif.id };
+      }
+
       const [activity] = await db.insert(activitiesTable).values({
         tenantId,
         leadId,
