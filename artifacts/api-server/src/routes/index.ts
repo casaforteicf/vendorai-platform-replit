@@ -32,6 +32,8 @@ import segmentTemplatesRouter, { publicSegmentTemplatesRouter } from "./segment_
 import invitesRouter, { invitesProtectedRouter } from "./invites";
 import onboardingRouter from "./onboarding";
 import contentRouter from "./content";
+import partnerRouter from "./partner";
+import adminPartnersRouter from "./admin_partners";
 import { authenticate, requireRole, requireSameTenanOrSuperAdmin } from "../middlewares/auth";
 
 const router: IRouter = Router();
@@ -122,6 +124,12 @@ router.use(onboardingRouter);
 
 // Content Generation Hub
 router.use(contentRouter);
+
+// Partner Hub (revendedor dashboard)
+router.use(partnerRouter);
+
+// Admin Partners Hub (super_admin management)
+router.use(adminPartnersRouter);
 
 export { requireRole, requireSameTenanOrSuperAdmin };
 export default router;

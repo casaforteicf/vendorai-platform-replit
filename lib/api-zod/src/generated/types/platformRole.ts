@@ -13,5 +13,6 @@ export const PlatformRole = {
   super_admin: 'super_admin',
   tenant_admin: 'tenant_admin',
   tenant_seller: 'tenant_seller',
+  partner: 'partner',
   member: 'member',
 } as const;

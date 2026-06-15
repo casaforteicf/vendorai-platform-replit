@@ -59,6 +59,8 @@ import type {
   CreateKnowledgeBaseBody,
   CreateLeadBody,
   CreateMessageBody,
+  CreatePartnerBody,
+  CreatePartnerResponse,
   CreateProdutoCatalogoBody,
   CreatePropostaBody,
   CreatePropostaFromCatalogoBody,
@@ -91,6 +93,7 @@ import type {
   Invoice,
   KnowledgeBase,
   Lead,
+  LinkTenantPartnerBody,
   ListActivitiesParams,
   ListAgendamentosParams,
   ListContentResponse,
@@ -105,6 +108,9 @@ import type {
   LoginBody,
   Message,
   OnboardingCompleteBody,
+  Partner,
+  PartnerTenant,
+  PartnerTenantUsage,
   ProdutoCatalogo,
   Proposta,
   PublicSiteResponse,
@@ -12985,5 +12991,384 @@ export const useDeleteContentGeneration = <TError = ErrorType<unknown>,
         TContext
       > => {
       return useMutation(getDeleteContentGenerationMutationOptions(options));
+    }
+
+export const getListPartnerTenantsUrl = () => {
+
+
+
+
+  return `/api/partner/tenants`
+}
+
+/**
+ * Returns all tenants associated with the authenticated partner.
+ * @summary List partner tenants
+ */
+export const listPartnerTenants = async ( options?: RequestInit): Promise<PartnerTenant[]> => {
+
+  return customFetch<PartnerTenant[]>(getListPartnerTenantsUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getListPartnerTenantsQueryKey = () => {
+    return [
+    `/api/partner/tenants`
+    ] as const;
+    }
+
+
+export const getListPartnerTenantsQueryOptions = <TData = Awaited<ReturnType<typeof listPartnerTenants>>, TError = ErrorType<ErrorResponse>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listPartnerTenants>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getListPartnerTenantsQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof listPartnerTenants>>> = ({ signal }) => listPartnerTenants({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof listPartnerTenants>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type ListPartnerTenantsQueryResult = NonNullable<Awaited<ReturnType<typeof listPartnerTenants>>>
+export type ListPartnerTenantsQueryError = ErrorType<ErrorResponse>
+
+
+/**
+ * @summary List partner tenants
+ */
+
+export function useListPartnerTenants<TData = Awaited<ReturnType<typeof listPartnerTenants>>, TError = ErrorType<ErrorResponse>>(
+  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listPartnerTenants>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getListPartnerTenantsQueryOptions(options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+
+
+
+
+
+
+export const getGetPartnerTenantUsageUrl = (id: string,) => {
+
+
+
+
+  return `/api/partner/tenants/${id}/usage`
+}
+
+/**
+ * Returns the usage details for a specific tenant belonging to this partner.
+ * @summary Get partner tenant usage
+ */
+export const getPartnerTenantUsage = async (id: string, options?: RequestInit): Promise<PartnerTenantUsage> => {
+
+  return customFetch<PartnerTenantUsage>(getGetPartnerTenantUsageUrl(id),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetPartnerTenantUsageQueryKey = (id: string,) => {
+    return [
+    `/api/partner/tenants/${id}/usage`
+    ] as const;
+    }
+
+
+export const getGetPartnerTenantUsageQueryOptions = <TData = Awaited<ReturnType<typeof getPartnerTenantUsage>>, TError = ErrorType<ErrorResponse>>(id: string, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getPartnerTenantUsage>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetPartnerTenantUsageQueryKey(id);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getPartnerTenantUsage>>> = ({ signal }) => getPartnerTenantUsage(id, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, enabled: !!(id), ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getPartnerTenantUsage>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetPartnerTenantUsageQueryResult = NonNullable<Awaited<ReturnType<typeof getPartnerTenantUsage>>>
+export type GetPartnerTenantUsageQueryError = ErrorType<ErrorResponse>
+
+
+/**
+ * @summary Get partner tenant usage
+ */
+
+export function useGetPartnerTenantUsage<TData = Awaited<ReturnType<typeof getPartnerTenantUsage>>, TError = ErrorType<ErrorResponse>>(
+ id: string, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getPartnerTenantUsage>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetPartnerTenantUsageQueryOptions(id,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+
+
+
+
+
+
+export const getListPartnersUrl = () => {
+
+
+
+
+  return `/api/admin/partners`
+}
+
+/**
+ * Returns all partner records. Requires super_admin.
+ * @summary List all partners
+ */
+export const listPartners = async ( options?: RequestInit): Promise<Partner[]> => {
+
+  return customFetch<Partner[]>(getListPartnersUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getListPartnersQueryKey = () => {
+    return [
+    `/api/admin/partners`
+    ] as const;
+    }
+
+
+export const getListPartnersQueryOptions = <TData = Awaited<ReturnType<typeof listPartners>>, TError = ErrorType<unknown>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listPartners>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getListPartnersQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof listPartners>>> = ({ signal }) => listPartners({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof listPartners>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type ListPartnersQueryResult = NonNullable<Awaited<ReturnType<typeof listPartners>>>
+export type ListPartnersQueryError = ErrorType<unknown>
+
+
+/**
+ * @summary List all partners
+ */
+
+export function useListPartners<TData = Awaited<ReturnType<typeof listPartners>>, TError = ErrorType<unknown>>(
+  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listPartners>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getListPartnersQueryOptions(options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+
+
+
+
+
+
+export const getCreatePartnerUrl = () => {
+
+
+
+
+  return `/api/admin/partners`
+}
+
+/**
+ * Creates a partner user account and partner record. Requires super_admin.
+ * @summary Create a partner
+ */
+export const createPartner = async (createPartnerBody: CreatePartnerBody, options?: RequestInit): Promise<CreatePartnerResponse> => {
+
+  return customFetch<CreatePartnerResponse>(getCreatePartnerUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(
+      createPartnerBody,)
+  }
+);}
+
+
+
+
+export const getCreatePartnerMutationOptions = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createPartner>>, TError,{data: BodyType<CreatePartnerBody>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof createPartner>>, TError,{data: BodyType<CreatePartnerBody>}, TContext> => {
+
+const mutationKey = ['createPartner'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof createPartner>>, {data: BodyType<CreatePartnerBody>}> = (props) => {
+          const {data} = props ?? {};
+
+          return  createPartner(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type CreatePartnerMutationResult = NonNullable<Awaited<ReturnType<typeof createPartner>>>
+    export type CreatePartnerMutationBody = BodyType<CreatePartnerBody>
+    export type CreatePartnerMutationError = ErrorType<ErrorResponse>
+
+    /**
+ * @summary Create a partner
+ */
+export const useCreatePartner = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createPartner>>, TError,{data: BodyType<CreatePartnerBody>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof createPartner>>,
+        TError,
+        {data: BodyType<CreatePartnerBody>},
+        TContext
+      > => {
+      return useMutation(getCreatePartnerMutationOptions(options));
+    }
+
+export const getLinkTenantPartnerUrl = (id: string,) => {
+
+
+
+
+  return `/api/admin/tenants/${id}/partner`
+}
+
+/**
+ * Associates a tenant with a partner (or removes the association). Requires super_admin.
+ * @summary Link or unlink tenant to a partner
+ */
+export const linkTenantPartner = async (id: string,
+    linkTenantPartnerBody: LinkTenantPartnerBody, options?: RequestInit): Promise<Tenant> => {
+
+  return customFetch<Tenant>(getLinkTenantPartnerUrl(id),
+  {
+    ...options,
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(
+      linkTenantPartnerBody,)
+  }
+);}
+
+
+
+
+export const getLinkTenantPartnerMutationOptions = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof linkTenantPartner>>, TError,{id: string;data: BodyType<LinkTenantPartnerBody>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof linkTenantPartner>>, TError,{id: string;data: BodyType<LinkTenantPartnerBody>}, TContext> => {
+
+const mutationKey = ['linkTenantPartner'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof linkTenantPartner>>, {id: string;data: BodyType<LinkTenantPartnerBody>}> = (props) => {
+          const {id,data} = props ?? {};
+
+          return  linkTenantPartner(id,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type LinkTenantPartnerMutationResult = NonNullable<Awaited<ReturnType<typeof linkTenantPartner>>>
+    export type LinkTenantPartnerMutationBody = BodyType<LinkTenantPartnerBody>
+    export type LinkTenantPartnerMutationError = ErrorType<ErrorResponse>
+
+    /**
+ * @summary Link or unlink tenant to a partner
+ */
+export const useLinkTenantPartner = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof linkTenantPartner>>, TError,{id: string;data: BodyType<LinkTenantPartnerBody>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof linkTenantPartner>>,
+        TError,
+        {id: string;data: BodyType<LinkTenantPartnerBody>},
+        TContext
+      > => {
+      return useMutation(getLinkTenantPartnerMutationOptions(options));
     }
 

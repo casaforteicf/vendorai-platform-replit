@@ -6,9 +6,10 @@ if (!secret) throw new Error("JWT_SECRET is required");
 export interface JwtPayload {
   sub: string;
   email: string;
-  platformRole: "super_admin" | "tenant_admin" | "tenant_seller" | "member";
+  platformRole: "super_admin" | "tenant_admin" | "tenant_seller" | "partner" | "member";
   tenantId: string;
   role: "admin" | "member";
+  partnerId?: string;
 }
 
 export function signToken(payload: JwtPayload): string {

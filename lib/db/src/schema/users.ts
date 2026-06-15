@@ -9,6 +9,7 @@ export const platformRoleEnum = pgEnum("platform_role", [
   "super_admin",
   "tenant_admin",
   "tenant_seller",
+  "partner",
   "member",
 ]);
 

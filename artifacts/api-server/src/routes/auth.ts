@@ -2,7 +2,7 @@ import { Router, type IRouter } from "express";
 import { eq } from "drizzle-orm";
 import bcrypt from "bcryptjs";
 import { z } from "zod/v4";
-import { db, usersTable, tenantsTable } from "@workspace/db";
+import { db, usersTable, tenantsTable, partnersTable } from "@workspace/db";
 import { signToken } from "../lib/jwt.js";
 import { authenticate, requireRole } from "../middlewares/auth.js";
 
@@ -69,12 +69,22 @@ router.post("/auth/login", async (req, res) => {
     return;
   }
 
+  let partnerId: string | undefined;
+  if (user.platformRole === "partner") {
+    const [partnerRow] = await db
+      .select({ id: partnersTable.id })
+      .from(partnersTable)
+      .where(eq(partnersTable.userId, user.id));
+    partnerId = partnerRow?.id;
+  }
+
   const token = signToken({
     sub: user.id,
     email: user.email,
     platformRole: user.platformRole,
     tenantId: user.tenantId,
     role: user.role,
+    ...(partnerId ? { partnerId } : {}),
   });
 
   const { password: _pw, ...publicUser } = user;

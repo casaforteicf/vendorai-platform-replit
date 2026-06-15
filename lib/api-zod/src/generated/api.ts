@@ -35,7 +35,7 @@ export const GetMeResponse = zod.object({
   "name": zod.string(),
   "email": zod.string(),
   "role": zod.enum(['admin', 'member']),
-  "platformRole": zod.enum(['super_admin', 'tenant_admin', 'tenant_seller', 'member']),
+  "platformRole": zod.enum(['super_admin', 'tenant_admin', 'tenant_seller', 'partner', 'member']),
   "active": zod.boolean(),
   "createdAt": zod.coerce.date(),
   "updatedAt": zod.coerce.date()
@@ -54,7 +54,7 @@ export const RefreshTokenResponse = zod.object({
   "name": zod.string(),
   "email": zod.string(),
   "role": zod.enum(['admin', 'member']),
-  "platformRole": zod.enum(['super_admin', 'tenant_admin', 'tenant_seller', 'member']),
+  "platformRole": zod.enum(['super_admin', 'tenant_admin', 'tenant_seller', 'partner', 'member']),
   "active": zod.boolean(),
   "createdAt": zod.coerce.date(),
   "updatedAt": zod.coerce.date()
@@ -78,7 +78,7 @@ export const LoginResponse = zod.object({
   "name": zod.string(),
   "email": zod.string(),
   "role": zod.enum(['admin', 'member']),
-  "platformRole": zod.enum(['super_admin', 'tenant_admin', 'tenant_seller', 'member']),
+  "platformRole": zod.enum(['super_admin', 'tenant_admin', 'tenant_seller', 'partner', 'member']),
   "active": zod.boolean(),
   "createdAt": zod.coerce.date(),
   "updatedAt": zod.coerce.date()
@@ -169,7 +169,7 @@ export const ListUsersResponseItem = zod.object({
   "name": zod.string(),
   "email": zod.string(),
   "role": zod.enum(['admin', 'member']),
-  "platformRole": zod.enum(['super_admin', 'tenant_admin', 'tenant_seller', 'member']),
+  "platformRole": zod.enum(['super_admin', 'tenant_admin', 'tenant_seller', 'partner', 'member']),
   "active": zod.boolean(),
   "createdAt": zod.coerce.date(),
   "updatedAt": zod.coerce.date()
@@ -186,7 +186,7 @@ export const CreateUserBody = zod.object({
   "email": zod.string(),
   "password": zod.string(),
   "role": zod.enum(['admin', 'member']).optional(),
-  "platformRole": zod.enum(['super_admin', 'tenant_admin', 'tenant_seller', 'member']).optional(),
+  "platformRole": zod.enum(['super_admin', 'tenant_admin', 'tenant_seller', 'partner', 'member']).optional(),
   "active": zod.boolean().optional()
 })
 
@@ -214,7 +214,7 @@ export const ChangePasswordResponse = zod.object({
   "name": zod.string(),
   "email": zod.string(),
   "role": zod.enum(['admin', 'member']),
-  "platformRole": zod.enum(['super_admin', 'tenant_admin', 'tenant_seller', 'member']),
+  "platformRole": zod.enum(['super_admin', 'tenant_admin', 'tenant_seller', 'partner', 'member']),
   "active": zod.boolean(),
   "createdAt": zod.coerce.date(),
   "updatedAt": zod.coerce.date()
@@ -234,7 +234,7 @@ export const GetUserResponse = zod.object({
   "name": zod.string(),
   "email": zod.string(),
   "role": zod.enum(['admin', 'member']),
-  "platformRole": zod.enum(['super_admin', 'tenant_admin', 'tenant_seller', 'member']),
+  "platformRole": zod.enum(['super_admin', 'tenant_admin', 'tenant_seller', 'partner', 'member']),
   "active": zod.boolean(),
   "createdAt": zod.coerce.date(),
   "updatedAt": zod.coerce.date()
@@ -253,7 +253,7 @@ export const UpdateUserBody = zod.object({
   "email": zod.string().optional(),
   "password": zod.string().optional(),
   "role": zod.enum(['admin', 'member']).optional(),
-  "platformRole": zod.enum(['super_admin', 'tenant_admin', 'tenant_seller', 'member']).optional(),
+  "platformRole": zod.enum(['super_admin', 'tenant_admin', 'tenant_seller', 'partner', 'member']).optional(),
   "active": zod.boolean().optional()
 })
 
@@ -263,7 +263,7 @@ export const UpdateUserResponse = zod.object({
   "name": zod.string(),
   "email": zod.string(),
   "role": zod.enum(['admin', 'member']),
-  "platformRole": zod.enum(['super_admin', 'tenant_admin', 'tenant_seller', 'member']),
+  "platformRole": zod.enum(['super_admin', 'tenant_admin', 'tenant_seller', 'partner', 'member']),
   "active": zod.boolean(),
   "createdAt": zod.coerce.date(),
   "updatedAt": zod.coerce.date()
@@ -3663,7 +3663,7 @@ export const ListTenantUsersResponseItem = zod.object({
   "name": zod.string(),
   "email": zod.string(),
   "role": zod.enum(['admin', 'member']),
-  "platformRole": zod.enum(['super_admin', 'tenant_admin', 'tenant_seller', 'member']),
+  "platformRole": zod.enum(['super_admin', 'tenant_admin', 'tenant_seller', 'partner', 'member']),
   "active": zod.boolean(),
   "createdAt": zod.coerce.date(),
   "updatedAt": zod.coerce.date()
@@ -4325,6 +4325,119 @@ export const DeleteContentGenerationParams = zod.object({
 
 export const DeleteContentGenerationResponse = zod.object({
   "success": zod.boolean()
+})
+
+
+/**
+ * Returns all tenants associated with the authenticated partner.
+ * @summary List partner tenants
+ */
+export const ListPartnerTenantsResponseItem = zod.object({
+  "id": zod.string(),
+  "name": zod.string(),
+  "slug": zod.string(),
+  "status": zod.enum(['active', 'suspended', 'cancelled']),
+  "vertical": zod.string().nullish(),
+  "setupCompletedAt": zod.coerce.date().nullish(),
+  "monthlyTokenLimit": zod.number().nullish(),
+  "tokensUsedCurrentMonth": zod.number(),
+  "dailyMessageLimit": zod.number().nullish(),
+  "messagesSentToday": zod.number(),
+  "createdAt": zod.coerce.date()
+})
+export const ListPartnerTenantsResponse = zod.array(ListPartnerTenantsResponseItem)
+
+
+/**
+ * Returns the usage details for a specific tenant belonging to this partner.
+ * @summary Get partner tenant usage
+ */
+export const GetPartnerTenantUsageParams = zod.object({
+  "id": zod.coerce.string()
+})
+
+export const GetPartnerTenantUsageResponse = zod.object({
+  "tenant": zod.object({
+  "id": zod.string(),
+  "name": zod.string(),
+  "slug": zod.string(),
+  "status": zod.enum(['active', 'suspended', 'cancelled']),
+  "vertical": zod.string().nullish(),
+  "setupCompletedAt": zod.coerce.date().nullish(),
+  "monthlyTokenLimit": zod.number().nullish(),
+  "tokensUsedCurrentMonth": zod.number(),
+  "dailyMessageLimit": zod.number().nullish(),
+  "messagesSentToday": zod.number(),
+  "createdAt": zod.coerce.date()
+}),
+  "usage": zod.object({
+  "tokensUsedCurrentMonth": zod.number(),
+  "monthlyTokenLimit": zod.number().nullish(),
+  "messagesSentToday": zod.number(),
+  "dailyMessageLimit": zod.number().nullish()
+})
+})
+
+
+/**
+ * Returns all partner records. Requires super_admin.
+ * @summary List all partners
+ */
+export const ListPartnersResponseItem = zod.object({
+  "id": zod.string(),
+  "name": zod.string(),
+  "email": zod.string(),
+  "userId": zod.string(),
+  "createdAt": zod.coerce.date()
+})
+export const ListPartnersResponse = zod.array(ListPartnersResponseItem)
+
+
+/**
+ * Creates a partner user account and partner record. Requires super_admin.
+ * @summary Create a partner
+ */
+export const createPartnerBodyPasswordMin = 8;
+
+
+
+export const CreatePartnerBody = zod.object({
+  "name": zod.string(),
+  "email": zod.string().email(),
+  "password": zod.string().min(createPartnerBodyPasswordMin)
+})
+
+
+/**
+ * Associates a tenant with a partner (or removes the association). Requires super_admin.
+ * @summary Link or unlink tenant to a partner
+ */
+export const LinkTenantPartnerParams = zod.object({
+  "id": zod.coerce.string()
+})
+
+export const LinkTenantPartnerBody = zod.object({
+  "partnerId": zod.string().nullable()
+})
+
+export const LinkTenantPartnerResponse = zod.object({
+  "id": zod.string(),
+  "name": zod.string(),
+  "slug": zod.string(),
+  "status": zod.enum(['active', 'suspended', 'cancelled']),
+  "vertical": zod.string().nullish(),
+  "agentsEnabled": zod.record(zod.string(), zod.unknown()).optional(),
+  "setupCompletedAt": zod.coerce.date().nullish(),
+  "autonomyEnabledAt": zod.coerce.date().nullish(),
+  "monthlyTokenLimit": zod.number().nullish(),
+  "tokensUsedCurrentMonth": zod.number(),
+  "dailyMessageLimit": zod.number().nullish(),
+  "messagesSentToday": zod.number(),
+  "analysisStalenessHours": zod.number().nullish().describe('Per-tenant override for how many hours must pass before a lead is considered stale and auto-reanalyzed. Null means fall back to the global ANALYSIS_STALENESS_HOURS env var.\n'),
+  "analysisMessageThreshold": zod.number().nullish().describe('Per-tenant override for how many new messages since the last analysis trigger an automatic re-analysis. Null means fall back to the global ANALYSIS_MESSAGE_THRESHOLD env var.\n'),
+  "maxAnalysesPerHour": zod.number().nullish().describe('Per-tenant override for the maximum number of AI analyses allowed per rolling hour window. Null means fall back to the global MAX_ANALYSES_PER_TENANT_PER_HOUR env var.\n'),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date()
 })
 
 

@@ -25,7 +25,7 @@ export const authenticate: RequestHandler = (req, res, next) => {
   }
 };
 
-type PlatformRole = "super_admin" | "tenant_admin" | "tenant_seller" | "member";
+type PlatformRole = "super_admin" | "tenant_admin" | "tenant_seller" | "partner" | "member";
 
 export function requireRole(...roles: PlatformRole[]): RequestHandler {
   return (req, res, next) => {

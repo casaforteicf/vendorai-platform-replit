@@ -5060,6 +5060,148 @@ paths:
                 required:
                   - success
 
+  /partner/tenants:
+    get:
+      operationId: listPartnerTenants
+      tags: [partners]
+      summary: List partner tenants
+      description: Returns all tenants associated with the authenticated partner.
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: List of partner tenants
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/PartnerTenant"
+        "403":
+          description: No partner record
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /partner/tenants/{id}/usage:
+    get:
+      operationId: getPartnerTenantUsage
+      tags: [partners]
+      summary: Get partner tenant usage
+      description: Returns the usage details for a specific tenant belonging to this partner.
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Tenant usage details
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PartnerTenantUsage"
+        "404":
+          description: Tenant not found or not associated with this partner
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /admin/partners:
+    get:
+      operationId: listPartners
+      tags: [partners]
+      summary: List all partners
+      description: Returns all partner records. Requires super_admin.
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: List of partners
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Partner"
+    post:
+      operationId: createPartner
+      tags: [partners]
+      summary: Create a partner
+      description: Creates a partner user account and partner record. Requires super_admin.
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreatePartnerBody"
+      responses:
+        "201":
+          description: Partner created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CreatePartnerResponse"
+        "409":
+          description: Email already exists
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "422":
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /admin/tenants/{id}/partner:
+    patch:
+      operationId: linkTenantPartner
+      tags: [partners]
+      summary: Link or unlink tenant to a partner
+      description: Associates a tenant with a partner (or removes the association). Requires super_admin.
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/LinkTenantPartnerBody"
+      responses:
+        "200":
+          description: Tenant updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Tenant"
+        "404":
+          description: Tenant or partner not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "422":
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
 components:
   schemas:
     CreateInviteBody:
@@ -7353,13 +7495,149 @@ components:
       required:
         - error
 
+    Partner:
+      type: object
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        email:
+          type: string
+        userId:
+          type: string
+        createdAt:
+          type: string
+          format: date-time
+      required:
+        - id
+        - name
+        - email
+        - userId
+        - createdAt
+
+    PartnerTenant:
+      type: object
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        slug:
+          type: string
+        status:
+          $ref: "#/components/schemas/TenantStatus"
+        vertical:
+          type: string
+          nullable: true
+        setupCompletedAt:
+          type: string
+          format: date-time
+          nullable: true
+        monthlyTokenLimit:
+          type: integer
+          nullable: true
+        tokensUsedCurrentMonth:
+          type: integer
+        dailyMessageLimit:
+          type: integer
+          nullable: true
+        messagesSentToday:
+          type: integer
+        createdAt:
+          type: string
+          format: date-time
+      required:
+        - id
+        - name
+        - slug
+        - status
+        - tokensUsedCurrentMonth
+        - messagesSentToday
+        - createdAt
+
+    PartnerTenantUsage:
+      type: object
+      properties:
+        tenant:
+          $ref: "#/components/schemas/PartnerTenant"
+        usage:
+          type: object
+          properties:
+            tokensUsedCurrentMonth:
+              type: integer
+            monthlyTokenLimit:
+              type: integer
+              nullable: true
+            messagesSentToday:
+              type: integer
+            dailyMessageLimit:
+              type: integer
+              nullable: true
+          required:
+            - tokensUsedCurrentMonth
+            - messagesSentToday
+      required:
+        - tenant
+        - usage
+
+    CreatePartnerBody:
+      type: object
+      properties:
+        name:
+          type: string
+        email:
+          type: string
+          format: email
+        password:
+          type: string
+          minLength: 8
+      required:
+        - name
+        - email
+        - password
+
+    CreatePartnerResponse:
+      type: object
+      properties:
+        partner:
+          $ref: "#/components/schemas/Partner"
+        user:
+          type: object
+          properties:
+            id:
+              type: string
+            email:
+              type: string
+            name:
+              type: string
+            platformRole:
+              $ref: "#/components/schemas/PlatformRole"
+          required:
+            - id
+            - email
+            - name
+            - platformRole
+      required:
+        - partner
+        - user
+
+    LinkTenantPartnerBody:
+      type: object
+      properties:
+        partnerId:
+          type: string
+          nullable: true
+      required:
+        - partnerId
+
     UserRole:
       type: string
       enum: [admin, member]
 
     PlatformRole:
       type: string
-      enum: [super_admin, tenant_admin, tenant_seller, member]
+      enum: [super_admin, tenant_admin, tenant_seller, partner, member]
 
     User:
       type: object

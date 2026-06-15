@@ -18,6 +18,8 @@ import Campanhas from "@/pages/Campanhas";
 import Propostas from "@/pages/Propostas";
 import Faturamento from "@/pages/Faturamento";
 import AdminAIUsage from "@/pages/AdminAIUsage";
+import AdminPartners from "@/pages/AdminPartners";
+import PartnerDashboard from "@/pages/PartnerDashboard";
 import AcceptInvite from "@/pages/AcceptInvite";
 import SiteLandingPage from "@/pages/SiteLandingPage";
 import Marketplace from "@/pages/Marketplace";
@@ -99,6 +101,24 @@ function SuperAdminRoute({ component: Component, ...rest }: any) {
       <Component {...rest} />
     </SidebarLayout>
   );
+}
+
+function PartnerRoute({ component: Component }: any) {
+  const { token, user, isLoading } = useAuth();
+  const [, setLocation] = useLocation();
+
+  useEffect(() => {
+    if (!isLoading && !token) {
+      setLocation("/login");
+    } else if (!isLoading && user && user.platformRole !== "partner") {
+      setLocation("/");
+    }
+  }, [token, user, isLoading, setLocation]);
+
+  if (isLoading || !token || !user) return <Spinner />;
+  if (user.platformRole !== "partner") return null;
+
+  return <Component />;
 }
 
 function OnboardingRoute() {
@@ -196,6 +216,12 @@ function AppRoutes() {
       </Route>
       <Route path="/admin/ai-usage">
         {() => <SuperAdminRoute component={AdminAIUsage} />}
+      </Route>
+      <Route path="/admin/partners">
+        {() => <SuperAdminRoute component={AdminPartners} />}
+      </Route>
+      <Route path="/partner">
+        {() => <PartnerRoute component={PartnerDashboard} />}
       </Route>
       <Route path="/marketplace">
         {() => <ProtectedRoute component={Marketplace} />}

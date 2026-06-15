@@ -87,6 +87,7 @@ export const PlatformRole = {
   super_admin: 'super_admin',
   tenant_admin: 'tenant_admin',
   tenant_seller: 'tenant_seller',
+  partner: 'partner',
   member: 'member',
 } as const;
 
@@ -1377,6 +1378,63 @@ export interface UpdateTenantBody {
 
 export interface ErrorResponse {
   error: string;
+}
+
+export interface Partner {
+  id: string;
+  name: string;
+  email: string;
+  userId: string;
+  createdAt: string;
+}
+
+export interface PartnerTenant {
+  id: string;
+  name: string;
+  slug: string;
+  status: TenantStatus;
+  vertical?: string | null;
+  setupCompletedAt?: string | null;
+  monthlyTokenLimit?: number | null;
+  tokensUsedCurrentMonth: number;
+  dailyMessageLimit?: number | null;
+  messagesSentToday: number;
+  createdAt: string;
+}
+
+export type PartnerTenantUsageUsage = {
+  tokensUsedCurrentMonth: number;
+  monthlyTokenLimit?: number | null;
+  messagesSentToday: number;
+  dailyMessageLimit?: number | null;
+};
+
+export interface PartnerTenantUsage {
+  tenant: PartnerTenant;
+  usage: PartnerTenantUsageUsage;
+}
+
+export interface CreatePartnerBody {
+  name: string;
+  email: string;
+  /** @minLength 8 */
+  password: string;
+}
+
+export type CreatePartnerResponseUser = {
+  id: string;
+  email: string;
+  name: string;
+  platformRole: PlatformRole;
+};
+
+export interface CreatePartnerResponse {
+  partner: Partner;
+  user: CreatePartnerResponseUser;
+}
+
+export interface LinkTenantPartnerBody {
+  partnerId: string | null;
 }
 
 export interface CreateUserBody {
