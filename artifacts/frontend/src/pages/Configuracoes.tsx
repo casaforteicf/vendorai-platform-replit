@@ -1414,7 +1414,7 @@ export default function Configuracoes() {
               </div>
               {siteQuery.data?.ativo && (
                 <a
-                  href={`/site/${user?.tenantId ?? ""}`}
+                  href={`/site/${tenantQuery.data?.slug ?? ""}`}
                   target="_blank"
                   rel="noopener noreferrer"
                   className="inline-flex items-center gap-1.5 text-sm text-primary hover:underline shrink-0"
