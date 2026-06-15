@@ -10,6 +10,9 @@ export interface Partner {
   id: string;
   name: string;
   email: string;
+  cnpj: string;
+  phone: string;
+  asaasWalletId?: string | null;
   userId: string;
   createdAt: Date;
 }

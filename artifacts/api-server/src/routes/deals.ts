@@ -8,10 +8,16 @@ import {
   tenantsTable,
   leadsTable,
   tenantInvitesTable,
+  partnersTable,
 } from "@workspace/db";
 import { dispatchVendaWebhook } from "../services/erp-webhook.js";
 import { buildInviteUrl } from "./invites.js";
 import { sendInviteEmail } from "../lib/email.js";
+import {
+  isAsaasConfigured,
+  createOrGetCustomer,
+  createCharge,
+} from "../lib/asaas.js";
 
 const router: IRouter = Router();
 
@@ -113,25 +119,33 @@ router.patch("/deals/:id", async (req, res) => {
   let inviteSent = false;
   let inviteEmail: string | undefined;
   let inviteSkipReason: string | undefined;
+  let chargeId: string | null = null;
+  let chargeLink: string | null = null;
+  let chargeSkipReason: string | undefined;
 
-  // ── Auto-invite: deal ganho → convite de onboarding para o lead ──────────
+  // ── Trigger ganho: convite + cobrança + webhook ───────────────────────────
   if (parsed.data.etapa === "ganho" && existing.etapa !== "ganho") {
     try {
       const [tenant, lead] = await Promise.all([
         db
-          .select({ name: tenantsTable.name, webhookEstoqueUrl: tenantsTable.webhookEstoqueUrl })
+          .select({
+            name: tenantsTable.name,
+            webhookEstoqueUrl: tenantsTable.webhookEstoqueUrl,
+            partnerId: tenantsTable.partnerId,
+          })
           .from(tenantsTable)
           .where(eq(tenantsTable.id, existing.tenantId))
           .then((rows) => rows[0]),
         deal.leadId
           ? db
-              .select({ email: leadsTable.email })
+              .select({ email: leadsTable.email, nome: leadsTable.nome, telefone: leadsTable.telefone })
               .from(leadsTable)
               .where(eq(leadsTable.id, deal.leadId))
               .then((rows) => rows[0])
           : Promise.resolve(undefined),
       ]);
 
+      // ── Auto-invite ────────────────────────────────────────────────────────
       if (!lead?.email) {
         inviteSkipReason = "no_email";
         req.log.info({ dealId: deal.id }, "auto-invite skipped: lead has no email");
@@ -178,7 +192,73 @@ router.patch("/deals/:id", async (req, res) => {
         req.log.info({ dealId: deal.id, inviteId: invite.id, inviteSent }, "auto-invite processed");
       }
 
-      // ── Webhook ERP: venda realizada ──────────────────────────────────────
+      // ── Cobrança Asaas ─────────────────────────────────────────────────────
+      if (!isAsaasConfigured()) {
+        chargeSkipReason = "asaas_not_configured";
+        req.log.warn({ dealId: deal.id }, "Asaas charge skipped: ASAAS_API_KEY not configured");
+      } else if (!deal.valor) {
+        chargeSkipReason = "no_valor";
+        req.log.info({ dealId: deal.id }, "Asaas charge skipped: deal has no valor");
+      } else {
+        try {
+          // Descobrir walletId do parceiro (se tenant tiver parceiro com subconta)
+          let partnerWalletId: string | null = null;
+          if (tenant?.partnerId) {
+            const [partner] = await db
+              .select({ asaasWalletId: partnersTable.asaasWalletId })
+              .from(partnersTable)
+              .where(eq(partnersTable.id, tenant.partnerId));
+            partnerWalletId = partner?.asaasWalletId ?? null;
+          }
+
+          // Criar ou recuperar cliente Asaas
+          const customer = await createOrGetCustomer({
+            name: lead?.nome ?? tenant?.name ?? "Cliente",
+            email: lead?.email ?? undefined,
+            phone: lead?.telefone ?? undefined,
+          });
+
+          // Vencimento: 3 dias úteis a partir de hoje
+          const dueDate = new Date();
+          dueDate.setDate(dueDate.getDate() + 3);
+          const dueDateStr = dueDate.toISOString().split("T")[0]!;
+
+          const charge = await createCharge({
+            customer: customer.id,
+            billingType: "PIX",
+            value: Number(deal.valor),
+            dueDate: dueDateStr,
+            description: `Proposta: ${deal.titulo}`,
+            split: partnerWalletId
+              ? [{ walletId: partnerWalletId, percentualValue: 50 }]
+              : undefined,
+          });
+
+          chargeId = charge.id;
+          chargeLink = charge.invoiceUrl ?? charge.bankSlipUrl ?? null;
+
+          // Persistir dados de cobrança no deal
+          await db
+            .update(dealsTable)
+            .set({
+              asaasChargeId: charge.id,
+              chargeLink: charge.invoiceUrl,
+              chargeStatus: charge.status,
+              updatedAt: new Date(),
+            })
+            .where(eq(dealsTable.id, deal.id));
+
+          req.log.info(
+            { dealId: deal.id, chargeId: charge.id, split: !!partnerWalletId, partnerWalletId },
+            "Asaas charge created",
+          );
+        } catch (err) {
+          chargeSkipReason = "asaas_error";
+          req.log.warn({ err, dealId: deal.id }, "Asaas charge creation failed");
+        }
+      }
+
+      // ── Webhook ERP: venda realizada ───────────────────────────────────────
       if (tenant?.webhookEstoqueUrl) {
         void dispatchVendaWebhook(
           tenant.webhookEstoqueUrl,
@@ -195,11 +275,11 @@ router.patch("/deals/:id", async (req, res) => {
         );
       }
     } catch (err) {
-      req.log.warn({ err }, "deal-ganho: auto-invite or webhook failed");
+      req.log.warn({ err }, "deal-ganho: trigger processing failed");
     }
   }
 
-  res.json({ ...deal, inviteSent, inviteEmail, inviteSkipReason });
+  res.json({ ...deal, inviteSent, inviteEmail, inviteSkipReason, chargeId, chargeLink, chargeSkipReason });
 });
 
 router.delete("/deals/:id", async (req, res) => {

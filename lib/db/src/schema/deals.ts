@@ -31,6 +31,9 @@ export const dealsTable = pgTable("deals", {
   dataFechamentoPrevista: timestamp("data_fechamento_prevista"),
   motivoPerda: text("motivo_perda"),
   assignedTo: text("assigned_to").references(() => usersTable.id, { onDelete: "set null" }),
+  asaasChargeId: text("asaas_charge_id"),
+  chargeLink: text("charge_link"),
+  chargeStatus: text("charge_status"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
 });

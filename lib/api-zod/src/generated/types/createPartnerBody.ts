@@ -11,4 +11,8 @@ export interface CreatePartnerBody {
   email: string;
   /** @minLength 8 */
   password: string;
+  /** CNPJ do parceiro (obrigatório para criar subconta Asaas) */
+  cnpj: string;
+  /** Telefone celular do parceiro */
+  phone: string;
 }

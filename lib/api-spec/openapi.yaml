@@ -7001,6 +7001,18 @@ components:
               type: string
               nullable: true
               description: Why the invite was not sent (e.g. no_email, not_won)
+            chargeId:
+              type: string
+              nullable: true
+              description: Asaas charge ID created on deal win
+            chargeLink:
+              type: string
+              nullable: true
+              description: Payment link (Pix/boleto) for the charge
+            chargeSkipReason:
+              type: string
+              nullable: true
+              description: Why the charge was not created (e.g. asaas_not_configured, no_valor, asaas_error)
 
     CreateDealBody:
       type: object
@@ -7616,6 +7628,13 @@ components:
           type: string
         email:
           type: string
+        cnpj:
+          type: string
+        phone:
+          type: string
+        asaasWalletId:
+          type: string
+          nullable: true
         userId:
           type: string
         createdAt:
@@ -7625,6 +7644,8 @@ components:
         - id
         - name
         - email
+        - cnpj
+        - phone
         - userId
         - createdAt
 
@@ -7704,10 +7725,18 @@ components:
         password:
           type: string
           minLength: 8
+        cnpj:
+          type: string
+          description: CNPJ do parceiro (obrigatório para criar subconta Asaas)
+        phone:
+          type: string
+          description: Telefone celular do parceiro
       required:
         - name
         - email
         - password
+        - cnpj
+        - phone
 
     CreatePartnerResponse:
       type: object
@@ -7730,9 +7759,13 @@ components:
             - email
             - name
             - platformRole
+        asaasSubconta:
+          type: boolean
+          description: Whether an Asaas subaccount was successfully created for this partner
       required:
         - partner
         - user
+        - asaasSubconta
 
     UpdatePartnerBody:
       type: object
@@ -7742,6 +7775,10 @@ components:
         email:
           type: string
           format: email
+        cnpj:
+          type: string
+        phone:
+          type: string
 
     LinkTenantPartnerBody:
       type: object

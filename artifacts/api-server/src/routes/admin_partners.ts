@@ -4,6 +4,7 @@ import { z } from "zod/v4";
 import bcrypt from "bcryptjs";
 import { db, partnersTable, usersTable, tenantsTable } from "@workspace/db";
 import { requireRole } from "../middlewares/auth.js";
+import { createSubaccount, isAsaasConfigured } from "../lib/asaas.js";
 
 const router: IRouter = Router();
 
@@ -13,6 +14,15 @@ const createPartnerSchema = z.object({
   name: z.string().min(1),
   email: z.email(),
   password: z.string().min(8),
+  cnpj: z.string().min(14, "CNPJ must have at least 14 characters"),
+  phone: z.string().min(10, "Phone must have at least 10 characters"),
+});
+
+const updatePartnerSchema = z.object({
+  name: z.string().min(1).optional(),
+  email: z.email().optional(),
+  cnpj: z.string().min(14).optional(),
+  phone: z.string().min(10).optional(),
 });
 
 const linkTenantSchema = z.object({
@@ -25,6 +35,9 @@ router.get("/admin/partners", async (req, res) => {
       id: partnersTable.id,
       name: partnersTable.name,
       email: partnersTable.email,
+      cnpj: partnersTable.cnpj,
+      phone: partnersTable.phone,
+      asaasWalletId: partnersTable.asaasWalletId,
       userId: partnersTable.userId,
       createdAt: partnersTable.createdAt,
     })
@@ -41,7 +54,7 @@ router.post("/admin/partners", async (req, res) => {
     return;
   }
 
-  const { name, email, password } = parsed.data;
+  const { name, email, password, cnpj, phone } = parsed.data;
 
   const superAdminUser = await db
     .select({ tenantId: usersTable.tenantId })
@@ -76,13 +89,42 @@ router.post("/admin/partners", async (req, res) => {
 
     const [partner] = await db
       .insert(partnersTable)
-      .values({ name, email, userId: user.id })
+      .values({ name, email, cnpj, phone, userId: user.id })
       .returning();
 
-    res.status(201).json({ partner, user });
+    // ── Criar subconta Asaas para o parceiro ────────────────────────────────
+    if (isAsaasConfigured()) {
+      try {
+        const subaccount = await createSubaccount({
+          name,
+          email,
+          cpfCnpj: cnpj.replace(/\D/g, ""),
+          mobilePhone: phone.replace(/\D/g, ""),
+          companyType: "LIMITED",
+        });
+
+        const [updated] = await db
+          .update(partnersTable)
+          .set({
+            asaasAccountId: subaccount.id,
+            asaasWalletId: subaccount.walletId,
+          })
+          .where(eq(partnersTable.id, partner.id))
+          .returning();
+
+        res.status(201).json({ partner: updated, user, asaasSubconta: true });
+        return;
+      } catch (err) {
+        req.log.warn({ err, partnerId: partner.id }, "Asaas subaccount creation failed — partner created without walletId");
+      }
+    } else {
+      req.log.warn({ partnerId: partner.id }, "ASAAS_API_KEY not configured — skipping subaccount creation");
+    }
+
+    res.status(201).json({ partner, user, asaasSubconta: false });
   } catch (err: unknown) {
     if (isUniqueViolation(err)) {
-      res.status(409).json({ error: "Email already exists" });
+      res.status(409).json({ error: "Email or CNPJ already exists" });
       return;
     }
     throw err;
@@ -91,12 +133,8 @@ router.post("/admin/partners", async (req, res) => {
 
 router.patch("/admin/partners/:id", async (req, res) => {
   const partnerId = String(req.params["id"]);
-  const updateSchema = z.object({
-    name: z.string().min(1).optional(),
-    email: z.email().optional(),
-  });
 
-  const parsed = updateSchema.safeParse(req.body);
+  const parsed = updatePartnerSchema.safeParse(req.body);
   if (!parsed.success) {
     res.status(422).json({ error: parsed.error.message });
     return;
@@ -117,7 +155,7 @@ router.patch("/admin/partners/:id", async (req, res) => {
     res.json(partner);
   } catch (err: unknown) {
     if (isUniqueViolation(err)) {
-      res.status(409).json({ error: "Email already exists" });
+      res.status(409).json({ error: "Email or CNPJ already exists" });
       return;
     }
     throw err;

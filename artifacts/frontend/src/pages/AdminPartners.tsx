@@ -6,9 +6,8 @@ import { useQueryClient } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { cn } from "@/lib/utils";
 import {
-  RefreshCw, AlertTriangle, Building2, UserPlus, Users, Link, Check, Pencil, X,
+  RefreshCw, AlertTriangle, Building2, UserPlus, Users, Link, Check, Pencil, X, Wallet,
 } from "lucide-react";
 import {
   useListPartners,
@@ -34,11 +33,14 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { Badge } from "@/components/ui/badge";
 
 const createPartnerSchema = z.object({
   name: z.string().min(1, "Nome obrigatório"),
   email: z.string().email("E-mail inválido"),
   password: z.string().min(8, "Mínimo 8 caracteres"),
+  cnpj: z.string().min(14, "CNPJ inválido (mín. 14 dígitos)"),
+  phone: z.string().min(10, "Telefone inválido (mín. 10 dígitos)"),
 });
 
 type CreatePartnerForm = z.infer<typeof createPartnerSchema>;
@@ -62,10 +64,16 @@ export default function AdminPartners() {
 
   const createPartner = useCreatePartner({
     mutation: {
-      onSuccess: () => {
+      onSuccess: (data) => {
         queryClient.invalidateQueries({ queryKey: getListPartnersQueryKey() });
         form.reset();
-        toast({ title: "Parceiro criado com sucesso." });
+        const asaasOk = (data as any).asaasSubconta === true;
+        toast({
+          title: "Parceiro criado com sucesso.",
+          description: asaasOk
+            ? "Subconta Asaas criada e walletId salvo."
+            : "Parceiro criado. Subconta Asaas não configurada — configure ASAAS_API_KEY para ativar splits.",
+        });
       },
       onError: (err: any) => {
         const msg = err?.response?.data?.error ?? "Erro ao criar parceiro.";
@@ -102,7 +110,7 @@ export default function AdminPartners() {
 
   const form = useForm<CreatePartnerForm>({
     resolver: zodResolver(createPartnerSchema),
-    defaultValues: { name: "", email: "", password: "" },
+    defaultValues: { name: "", email: "", password: "", cnpj: "", phone: "" },
   });
 
   function onSubmit(values: CreatePartnerForm) {
@@ -130,7 +138,7 @@ export default function AdminPartners() {
       <div>
         <h1 className="text-2xl font-bold tracking-tight">Parceiros / Revendedores</h1>
         <p className="text-muted-foreground text-sm mt-1">
-          Gerencie parceiros e vincule tenants às suas contas.
+          Gerencie parceiros e vincule tenants às suas contas. Ao criar um parceiro, uma subconta Asaas é criada automaticamente para splits de pagamento.
         </p>
       </div>
 
@@ -165,6 +173,32 @@ export default function AdminPartners() {
                     <FormLabel>E-mail</FormLabel>
                     <FormControl>
                       <Input type="email" placeholder="parceiro@empresa.com" {...field} />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+              <FormField
+                control={form.control}
+                name="cnpj"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>CNPJ</FormLabel>
+                    <FormControl>
+                      <Input placeholder="00.000.000/0000-00" {...field} />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+              <FormField
+                control={form.control}
+                name="phone"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Telefone celular</FormLabel>
+                    <FormControl>
+                      <Input type="tel" placeholder="(11) 99999-9999" {...field} />
                     </FormControl>
                     <FormMessage />
                   </FormItem>
@@ -266,9 +300,19 @@ export default function AdminPartners() {
                         <div className="space-y-0.5 min-w-0">
                           <p className="text-sm font-medium">{partner.name}</p>
                           <p className="text-xs text-muted-foreground">{partner.email}</p>
-                          <p className="text-xs text-muted-foreground/60">
-                            ID: <code className="font-mono">{partner.id}</code>
-                          </p>
+                          <p className="text-xs text-muted-foreground/70">CNPJ: {partner.cnpj}</p>
+                          <div className="flex items-center gap-1 mt-1">
+                            {partner.asaasWalletId ? (
+                              <Badge variant="secondary" className="text-[10px] gap-1 py-0">
+                                <Wallet className="h-2.5 w-2.5" />
+                                Asaas vinculado
+                              </Badge>
+                            ) : (
+                              <Badge variant="outline" className="text-[10px] py-0 text-muted-foreground">
+                                Sem walletId Asaas
+                              </Badge>
+                            )}
+                          </div>
                         </div>
                         <Button
                           variant="ghost"
@@ -296,7 +340,7 @@ export default function AdminPartners() {
           Vincular Tenant a Parceiro
         </h2>
         <p className="text-sm text-muted-foreground">
-          Selecione um tenant e associe-o a um parceiro. Use "Sem parceiro" para desvincular.
+          Selecione um tenant e associe-o a um parceiro. Ao ganhar um deal, a cobrança será dividida 50/50 automaticamente via Asaas.
         </p>
 
         {tenantsQuery.isPending || partnersQuery.isPending ? (
@@ -316,8 +360,14 @@ export default function AdminPartners() {
                     <p className="text-sm font-medium truncate">{tenant.name}</p>
                     <p className="text-xs text-muted-foreground">
                       {currentPartner ? (
-                        <span className="text-blue-600 dark:text-blue-400">
+                        <span className="text-blue-600 dark:text-blue-400 flex items-center gap-1">
+                          <Building2 className="h-3 w-3" />
                           Parceiro: {currentPartner.name}
+                          {currentPartner.asaasWalletId && (
+                            <span title="Split Asaas ativo">
+                              <Wallet className="h-3 w-3 text-green-500" />
+                            </span>
+                          )}
                         </span>
                       ) : (
                         "Sem parceiro"

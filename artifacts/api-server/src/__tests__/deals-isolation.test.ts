@@ -35,8 +35,9 @@ vi.mock("@workspace/db", () => ({
     leadId: "leadId",
     assignedTo: "assignedTo",
   },
-  leadsTable: { id: "id", tenantId: "tenantId", email: "email" },
-  tenantsTable: { id: "id", name: "name", webhookEstoqueUrl: "webhookEstoqueUrl" },
+  leadsTable: { id: "id", tenantId: "tenantId", email: "email", nome: "nome", telefone: "telefone" },
+  tenantsTable: { id: "id", name: "name", webhookEstoqueUrl: "webhookEstoqueUrl", partnerId: "partnerId" },
+  partnersTable: { id: "id", asaasWalletId: "asaasWalletId" },
   tenantInvitesTable: {
     id: "id",
     tenantId: "tenantId",
@@ -73,6 +74,12 @@ vi.mock("../routes/invites.js", () => ({
 
 vi.mock("../lib/email.js", () => ({
   sendInviteEmail: vi.fn().mockResolvedValue(true),
+}));
+
+vi.mock("../lib/asaas.js", () => ({
+  isAsaasConfigured: vi.fn().mockReturnValue(false),
+  createOrGetCustomer: vi.fn(),
+  createCharge: vi.fn(),
 }));
 
 import express from "express";

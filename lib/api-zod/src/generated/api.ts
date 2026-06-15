@@ -1012,7 +1012,10 @@ export const UpdateDealResponse = zod.object({
 }).and(zod.object({
   "inviteSent": zod.boolean().optional().describe('Whether an onboarding invite was automatically sent on deal win'),
   "inviteEmail": zod.string().nullish().describe('The email address the invite was sent to'),
-  "inviteSkipReason": zod.string().nullish().describe('Why the invite was not sent (e.g. no_email, not_won)')
+  "inviteSkipReason": zod.string().nullish().describe('Why the invite was not sent (e.g. no_email, not_won)'),
+  "chargeId": zod.string().nullish().describe('Asaas charge ID created on deal win'),
+  "chargeLink": zod.string().nullish().describe('Payment link (Pix\/boleto) for the charge'),
+  "chargeSkipReason": zod.string().nullish().describe('Why the charge was not created (e.g. asaas_not_configured, no_valor, asaas_error)')
 }))
 
 
@@ -4404,6 +4407,9 @@ export const ListPartnersResponseItem = zod.object({
   "id": zod.string(),
   "name": zod.string(),
   "email": zod.string(),
+  "cnpj": zod.string(),
+  "phone": zod.string(),
+  "asaasWalletId": zod.string().nullish(),
   "userId": zod.string(),
   "createdAt": zod.coerce.date()
 })
@@ -4421,7 +4427,9 @@ export const createPartnerBodyPasswordMin = 8;
 export const CreatePartnerBody = zod.object({
   "name": zod.string(),
   "email": zod.string().email(),
-  "password": zod.string().min(createPartnerBodyPasswordMin)
+  "password": zod.string().min(createPartnerBodyPasswordMin),
+  "cnpj": zod.string().describe('CNPJ do parceiro (obrigatório para criar subconta Asaas)'),
+  "phone": zod.string().describe('Telefone celular do parceiro')
 })
 
 
@@ -4435,13 +4443,18 @@ export const UpdatePartnerParams = zod.object({
 
 export const UpdatePartnerBody = zod.object({
   "name": zod.string().optional(),
-  "email": zod.string().email().optional()
+  "email": zod.string().email().optional(),
+  "cnpj": zod.string().optional(),
+  "phone": zod.string().optional()
 })
 
 export const UpdatePartnerResponse = zod.object({
   "id": zod.string(),
   "name": zod.string(),
   "email": zod.string(),
+  "cnpj": zod.string(),
+  "phone": zod.string(),
+  "asaasWalletId": zod.string().nullish(),
   "userId": zod.string(),
   "createdAt": zod.coerce.date()
 })

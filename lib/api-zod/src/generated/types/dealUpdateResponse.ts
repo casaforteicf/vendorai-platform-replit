@@ -14,4 +14,10 @@ export type DealUpdateResponse = Deal & ({
   inviteEmail?: string | null;
   /** Why the invite was not sent (e.g. no_email, not_won) */
   inviteSkipReason?: string | null;
+  /** Asaas charge ID created on deal win */
+  chargeId?: string | null;
+  /** Payment link (Pix/boleto) for the charge */
+  chargeLink?: string | null;
+  /** Why the charge was not created (e.g. asaas_not_configured, no_valor, asaas_error) */
+  chargeSkipReason?: string | null;
 });

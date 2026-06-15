@@ -11,4 +11,6 @@ import type { Partner } from './partner';
 export interface CreatePartnerResponse {
   partner: Partner;
   user: CreatePartnerResponseUser;
+  /** Whether an Asaas subaccount was successfully created for this partner */
+  asaasSubconta: boolean;
 }

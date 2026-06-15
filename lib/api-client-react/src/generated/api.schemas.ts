@@ -1093,6 +1093,12 @@ export type DealUpdateResponse = Deal & ({
   inviteEmail?: string | null;
   /** Why the invite was not sent (e.g. no_email, not_won) */
   inviteSkipReason?: string | null;
+  /** Asaas charge ID created on deal win */
+  chargeId?: string | null;
+  /** Payment link (Pix/boleto) for the charge */
+  chargeLink?: string | null;
+  /** Why the charge was not created (e.g. asaas_not_configured, no_valor, asaas_error) */
+  chargeSkipReason?: string | null;
 });
 
 export interface CreateDealBody {
@@ -1397,6 +1403,9 @@ export interface Partner {
   id: string;
   name: string;
   email: string;
+  cnpj: string;
+  phone: string;
+  asaasWalletId?: string | null;
   userId: string;
   createdAt: string;
 }
@@ -1432,6 +1441,10 @@ export interface CreatePartnerBody {
   email: string;
   /** @minLength 8 */
   password: string;
+  /** CNPJ do parceiro (obrigatório para criar subconta Asaas) */
+  cnpj: string;
+  /** Telefone celular do parceiro */
+  phone: string;
 }
 
 export type CreatePartnerResponseUser = {
@@ -1444,11 +1457,15 @@ export type CreatePartnerResponseUser = {
 export interface CreatePartnerResponse {
   partner: Partner;
   user: CreatePartnerResponseUser;
+  /** Whether an Asaas subaccount was successfully created for this partner */
+  asaasSubconta: boolean;
 }
 
 export interface UpdatePartnerBody {
   name?: string;
   email?: string;
+  cnpj?: string;
+  phone?: string;
 }
 
 export interface LinkTenantPartnerBody {
