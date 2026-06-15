@@ -15,6 +15,8 @@ export function SidebarLayout({ children }: { children: React.ReactNode }) {
   const [location] = useLocation();
   const [mobileOpen, setMobileOpen] = useState(false);
 
+  const isSuperAdmin = user?.platformRole === "super_admin";
+
   const navigation = [
     { name: "Dashboard",     href: "/",             icon: LayoutDashboard },
     { name: "Leads",         href: "/leads",         icon: Users },
@@ -26,14 +28,15 @@ export function SidebarLayout({ children }: { children: React.ReactNode }) {
     { name: "Conteúdo",      href: "/content",       icon: Sparkles },
     { name: "Campanhas",     href: "/campanhas",     icon: Megaphone },
     { name: "Faturamento",   href: "/faturamento",   icon: Receipt },
-    { name: "Marketplace",   href: "/marketplace",   icon: Store },
     { name: "Configurações", href: "/configuracoes", icon: Settings },
   ];
 
-  const adminNavigation =
-    user?.platformRole === "super_admin"
-      ? [{ name: "AI Usage", href: "/admin/ai-usage", icon: BrainCircuit }]
-      : [];
+  const adminNavigation = isSuperAdmin
+    ? [
+        { name: "Marketplace", href: "/marketplace", icon: Store },
+        { name: "AI Usage",    href: "/admin/ai-usage", icon: BrainCircuit },
+      ]
+    : [];
 
   function NavLinks({ onNavigate }: { onNavigate?: () => void }) {
     return (
