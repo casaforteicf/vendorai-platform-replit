@@ -1046,6 +1046,18 @@ export const DealEtapa = {
   perdido: 'perdido',
 } as const;
 
+/**
+ * Define o comportamento ao marcar o negócio como Ganho. 'pedido' gera apenas uma confirmação simples (sem assinatura). 'contrato' inicia o fluxo completo de assinatura eletrônica.
+
+ */
+export type TipoFechamento = typeof TipoFechamento[keyof typeof TipoFechamento];
+
+
+export const TipoFechamento = {
+  pedido: 'pedido',
+  contrato: 'contrato',
+} as const;
+
 export interface Funil {
   id: string;
   tenantId: string;
@@ -1082,6 +1094,8 @@ export interface Deal {
   probabilidade?: number | null;
   dataFechamentoPrevista?: string | null;
   motivoPerda?: string | null;
+  /** Tipo de fechamento do negócio. Null herda o padrão do tenant. */
+  tipoFechamento?: TipoFechamento | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -1115,6 +1129,7 @@ export interface CreateDealBody {
   probabilidade?: number;
   dataFechamentoPrevista?: string;
   motivoPerda?: string;
+  tipoFechamento?: TipoFechamento;
 }
 
 export interface UpdateDealBody {
@@ -1130,6 +1145,7 @@ export interface UpdateDealBody {
   probabilidade?: number;
   dataFechamentoPrevista?: string;
   motivoPerda?: string;
+  tipoFechamento?: TipoFechamento;
 }
 
 export interface IncrementBody {
@@ -1325,6 +1341,8 @@ export interface Tenant {
      * @nullable
      */
   maxAnalysesPerHour?: number | null;
+  /** Tipo de fechamento padrão para novos deals deste tenant. Null significa 'pedido'. */
+  tipoFechamentoDefault?: TipoFechamento | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -1393,6 +1411,8 @@ export interface UpdateTenantBody {
      * @nullable
      */
   maxAnalysesPerHour?: number | null;
+  /** Tipo de fechamento padrão para novos deals deste tenant. */
+  tipoFechamentoDefault?: TipoFechamento | null;
 }
 
 export interface ErrorResponse {

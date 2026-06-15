@@ -6,6 +6,7 @@
  * OpenAPI spec version: 0.1.0
  */
 import type { TenantStatus } from './tenantStatus';
+import type { TipoFechamento } from './tipoFechamento';
 import type { UpdateTenantBodyAgentsEnabled } from './updateTenantBodyAgentsEnabled';
 
 export interface UpdateTenantBody {
@@ -38,4 +39,6 @@ export interface UpdateTenantBody {
      * @nullable
      */
   maxAnalysesPerHour?: number | null;
+  /** Tipo de fechamento padrão para novos deals deste tenant. */
+  tipoFechamentoDefault?: TipoFechamento | null;
 }

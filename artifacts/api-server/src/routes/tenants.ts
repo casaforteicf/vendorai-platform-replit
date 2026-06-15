@@ -17,8 +17,14 @@ router.post("/tenants", requireRole("super_admin"), async (req, res) => {
     return;
   }
 
+  type TipoFechamento = "pedido" | "contrato";
+  const insertData = {
+    ...parsed.data,
+    tipoFechamentoDefault: parsed.data.tipoFechamentoDefault as TipoFechamento | null | undefined,
+  };
+
   try {
-    const [tenant] = await db.insert(tenantsTable).values(parsed.data).returning();
+    const [tenant] = await db.insert(tenantsTable).values(insertData).returning();
     res.status(201).json(tenant);
   } catch (err: unknown) {
     if (isUniqueViolation(err)) {
@@ -57,10 +63,17 @@ router.patch("/tenants/:id", requireSameTenanOrSuperAdmin(), async (req, res) =>
     return;
   }
 
+  type TipoFechamento = "pedido" | "contrato";
+  const updateData = {
+    ...parsed.data,
+    tipoFechamentoDefault: parsed.data.tipoFechamentoDefault as TipoFechamento | null | undefined,
+    updatedAt: new Date(),
+  };
+
   try {
     const [tenant] = await db
       .update(tenantsTable)
-      .set({ ...parsed.data, updatedAt: new Date() })
+      .set(updateData)
       .where(eq(tenantsTable.id, String(req.params.id)))
       .returning();
 

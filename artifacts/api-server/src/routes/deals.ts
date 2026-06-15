@@ -132,6 +132,7 @@ router.patch("/deals/:id", async (req, res) => {
             name: tenantsTable.name,
             webhookEstoqueUrl: tenantsTable.webhookEstoqueUrl,
             partnerId: tenantsTable.partnerId,
+            tipoFechamentoDefault: tenantsTable.tipoFechamentoDefault,
           })
           .from(tenantsTable)
           .where(eq(tenantsTable.id, existing.tenantId))
@@ -190,6 +191,15 @@ router.patch("/deals/:id", async (req, res) => {
         inviteSent = await sendInviteEmail(email, inviteUrl, tenant?.name ?? "");
         inviteEmail = email;
         req.log.info({ dealId: deal.id, inviteId: invite.id, inviteSent }, "auto-invite processed");
+      }
+
+      // ── Tipo de fechamento: branching de automação ────────────────────────────
+      const tipoFechamento = deal.tipoFechamento ?? tenant?.tipoFechamentoDefault ?? "pedido";
+
+      if (tipoFechamento === "pedido") {
+        req.log.info({ dealId: deal.id }, "deal-ganho: tipo=pedido — confirmação simples");
+      } else {
+        req.log.info({ dealId: deal.id }, "deal-ganho: tipo=contrato — fluxo ZapSign pendente de integração");
       }
 
       // ── Cobrança Asaas ─────────────────────────────────────────────────────

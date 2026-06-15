@@ -6,6 +6,7 @@
  * OpenAPI spec version: 0.1.0
  */
 import type { DealEtapa } from './dealEtapa';
+import type { TipoFechamento } from './tipoFechamento';
 
 export interface Deal {
   id: string;
@@ -23,6 +24,8 @@ export interface Deal {
   probabilidade?: number | null;
   dataFechamentoPrevista?: Date | null;
   motivoPerda?: string | null;
+  /** Tipo de fechamento do negócio. Null herda o padrão do tenant. */
+  tipoFechamento?: TipoFechamento | null;
   createdAt: Date;
   updatedAt: Date;
 }

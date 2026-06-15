@@ -195,6 +195,7 @@ export * from './tenantDashboardFaturasAtrasada';
 export * from './tenantDashboardFaturasPendente';
 export * from './tenantDashboardLeads';
 export * from './tenantStatus';
+export * from './tipoFechamento';
 export * from './updateActivityBody';
 export * from './updateAgendamentoBody';
 export * from './updateAgentActionLogBody';

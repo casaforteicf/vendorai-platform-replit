@@ -6,6 +6,7 @@
  * OpenAPI spec version: 0.1.0
  */
 import type { DealEtapa } from './dealEtapa';
+import type { TipoFechamento } from './tipoFechamento';
 
 export interface UpdateDealBody {
   leadId?: string;
@@ -20,4 +21,5 @@ export interface UpdateDealBody {
   probabilidade?: number;
   dataFechamentoPrevista?: Date;
   motivoPerda?: string;
+  tipoFechamento?: TipoFechamento;
 }

@@ -15,6 +15,11 @@ export const dealEtapaEnum = pgEnum("deal_etapa", [
   "perdido",
 ]);
 
+export const dealTipoFechamentoEnum = pgEnum("deal_tipo_fechamento", [
+  "pedido",
+  "contrato",
+]);
+
 export const dealsTable = pgTable("deals", {
   id: text("id")
     .primaryKey()
@@ -31,6 +36,7 @@ export const dealsTable = pgTable("deals", {
   dataFechamentoPrevista: timestamp("data_fechamento_prevista"),
   motivoPerda: text("motivo_perda"),
   assignedTo: text("assigned_to").references(() => usersTable.id, { onDelete: "set null" }),
+  tipoFechamento: dealTipoFechamentoEnum("tipo_fechamento"),
   asaasChargeId: text("asaas_charge_id"),
   chargeLink: text("charge_link"),
   chargeStatus: text("charge_status"),

@@ -37,6 +37,7 @@ export const tenantsTable = pgTable(
     maxAnalysesPerHour: integer("max_analyses_per_hour"),
     webhookEstoqueUrl: text("webhook_estoque_url"),
     apiKeyEstoque: text("api_key_estoque"),
+    tipoFechamentoDefault: text("tipo_fechamento_default").$type<"pedido" | "contrato">(),
     partnerId: text("partner_id").references(() => partnersTable.id, { onDelete: "set null" }),
     createdAt: timestamp("created_at").notNull().defaultNow(),
     updatedAt: timestamp("updated_at").notNull().defaultNow(),

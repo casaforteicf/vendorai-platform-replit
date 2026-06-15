@@ -34,6 +34,7 @@ import {
   getListTenantUsersQueryKey,
   useInviteTenantSeller,
   useDeleteUser,
+  TipoFechamento,
 } from "@workspace/api-client-react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
@@ -92,6 +93,7 @@ import {
   Trash2,
   UserPlus,
   Link,
+  FileText,
 } from "lucide-react";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
@@ -700,6 +702,27 @@ export default function Configuracoes() {
     );
   }
 
+  // ── Tipo de Fechamento Padrão ─────────────────────────────────────────────
+  const [tipoFechamentoDefaultLocal, setTipoFechamentoDefaultLocal] = useState<TipoFechamento>("pedido");
+  const [syncedTipo, setSyncedTipo] = useState(false);
+  if (tenantQuery.data !== undefined && !syncedTipo) {
+    setTipoFechamentoDefaultLocal((tenantQuery.data.tipoFechamentoDefault as TipoFechamento | null) ?? "pedido");
+    setSyncedTipo(true);
+  }
+
+  function onSaveTipoFechamento() {
+    updateTenant.mutate(
+      { id: tenantId, data: { tipoFechamentoDefault: tipoFechamentoDefaultLocal } },
+      {
+        onSuccess: () => {
+          queryClient.invalidateQueries({ queryKey: getGetTenantQueryKey(tenantId) });
+          toast({ title: "Tipo de fechamento padrão atualizado." });
+        },
+        onError: () => toast({ title: "Erro ao salvar configuração.", variant: "destructive" }),
+      }
+    );
+  }
+
   // ── Site Config ───────────────────────────────────────────────────────────
   const siteQuery      = useGetSiteConfigByTenant(tenantId, { query: { queryKey: getGetSiteConfigByTenantQueryKey(tenantId), enabled: !!tenantId } });
   const createSite     = useCreateSiteConfig();
@@ -975,6 +998,50 @@ export default function Configuracoes() {
               </Form>
             )}
           </div>
+
+          {/* Tipo de Fechamento Padrão — admin only */}
+          {(user?.platformRole === "tenant_admin" || user?.platformRole === "super_admin") && (
+            <div className="rounded-xl border bg-card p-6 space-y-4">
+              <div>
+                <h2 className="font-semibold text-base flex items-center gap-2">
+                  <FileText className="h-4 w-4 text-primary" />
+                  Tipo de Fechamento Padrão
+                </h2>
+                <p className="text-sm text-muted-foreground mt-0.5">
+                  Define o comportamento padrão ao marcar um negócio como Ganho. Pode ser alterado em cada negócio individualmente.
+                </p>
+              </div>
+
+              {tenantQuery.isLoading ? (
+                <div className="h-10 w-full animate-pulse bg-muted rounded" />
+              ) : (
+                <div className="flex items-end gap-3">
+                  <div className="flex-1 space-y-1.5">
+                    <Select
+                      value={tipoFechamentoDefaultLocal}
+                      onValueChange={(v) => setTipoFechamentoDefaultLocal(v as TipoFechamento)}
+                    >
+                      <SelectTrigger>
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="pedido">Pedido — confirmação simples, sem assinatura</SelectItem>
+                        <SelectItem value="contrato">Contrato — assinatura eletrônica obrigatória</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <Button
+                    onClick={onSaveTipoFechamento}
+                    disabled={updateTenant.isPending}
+                    className="gap-2 shrink-0"
+                  >
+                    <Save className="h-4 w-4" />
+                    {updateTenant.isPending ? "Salvando..." : "Salvar"}
+                  </Button>
+                </div>
+              )}
+            </div>
+          )}
         </TabsContent>
 
         {/* ── Tab: Agentes de IA ──────────────────────────────────────────── */}

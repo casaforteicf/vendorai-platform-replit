@@ -7,6 +7,7 @@
  */
 import type { TenantAgentsEnabled } from './tenantAgentsEnabled';
 import type { TenantStatus } from './tenantStatus';
+import type { TipoFechamento } from './tipoFechamento';
 
 export interface Tenant {
   id: string;
@@ -39,6 +40,8 @@ export interface Tenant {
      * @nullable
      */
   maxAnalysesPerHour?: number | null;
+  /** Tipo de fechamento padrão para novos deals deste tenant. Null significa 'pedido'. */
+  tipoFechamentoDefault?: TipoFechamento | null;
   createdAt: Date;
   updatedAt: Date;
 }

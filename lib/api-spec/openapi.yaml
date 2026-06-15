@@ -6900,6 +6900,14 @@ components:
       type: string
       enum: [novo, qualificado, proposta, negociacao, ganho, perdido]
 
+    TipoFechamento:
+      type: string
+      enum: [pedido, contrato]
+      description: >
+        Define o comportamento ao marcar o negócio como Ganho.
+        'pedido' gera apenas uma confirmação simples (sem assinatura).
+        'contrato' inicia o fluxo completo de assinatura eletrônica.
+
     Funil:
       type: object
       properties:
@@ -6977,6 +6985,10 @@ components:
         motivoPerda:
           type: string
           nullable: true
+        tipoFechamento:
+          $ref: "#/components/schemas/TipoFechamento"
+          nullable: true
+          description: Tipo de fechamento do negócio. Null herda o padrão do tenant.
         createdAt:
           type: string
           format: date-time
@@ -7038,6 +7050,8 @@ components:
           format: date-time
         motivoPerda:
           type: string
+        tipoFechamento:
+          $ref: "#/components/schemas/TipoFechamento"
       required: [tenantId, titulo]
 
     UpdateDealBody:
@@ -7062,6 +7076,8 @@ components:
           format: date-time
         motivoPerda:
           type: string
+        tipoFechamento:
+          $ref: "#/components/schemas/TipoFechamento"
 
     IncrementBody:
       type: object
@@ -7498,6 +7514,10 @@ components:
           description: >
             Per-tenant override for the maximum number of AI analyses allowed per rolling
             hour window. Null means fall back to the global MAX_ANALYSES_PER_TENANT_PER_HOUR env var.
+        tipoFechamentoDefault:
+          $ref: "#/components/schemas/TipoFechamento"
+          nullable: true
+          description: Tipo de fechamento padrão para novos deals deste tenant. Null significa 'pedido'.
         createdAt:
           type: string
           format: date-time
@@ -7610,6 +7630,10 @@ components:
           description: >
             Per-tenant override for the maximum number of AI analyses allowed per rolling
             hour window. Null falls back to the global MAX_ANALYSES_PER_TENANT_PER_HOUR env var.
+        tipoFechamentoDefault:
+          $ref: "#/components/schemas/TipoFechamento"
+          nullable: true
+          description: Tipo de fechamento padrão para novos deals deste tenant.
 
     ErrorResponse:
       type: object

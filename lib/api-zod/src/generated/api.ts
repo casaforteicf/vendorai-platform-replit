@@ -901,7 +901,8 @@ export const CreateDealBody = zod.object({
   "funilId": zod.string().optional(),
   "probabilidade": zod.number().min(createDealBodyProbabilidadeMin).max(createDealBodyProbabilidadeMax).optional(),
   "dataFechamentoPrevista": zod.coerce.date().optional(),
-  "motivoPerda": zod.string().optional()
+  "motivoPerda": zod.string().optional(),
+  "tipoFechamento": zod.enum(['pedido', 'contrato']).optional().describe('Define o comportamento ao marcar o negócio como Ganho. \'pedido\' gera apenas uma confirmação simples (sem assinatura). \'contrato\' inicia o fluxo completo de assinatura eletrônica.\n')
 })
 
 
@@ -934,6 +935,7 @@ export const ListDealsResponseItem = zod.object({
   "probabilidade": zod.number().min(listDealsResponseProbabilidadeMin).max(listDealsResponseProbabilidadeMax).nullish(),
   "dataFechamentoPrevista": zod.coerce.date().nullish(),
   "motivoPerda": zod.string().nullish(),
+  "tipoFechamento": zod.enum(['pedido', 'contrato']).nullish().describe('Tipo de fechamento do negócio. Null herda o padrão do tenant.'),
   "createdAt": zod.coerce.date(),
   "updatedAt": zod.coerce.date()
 })
@@ -963,6 +965,7 @@ export const GetDealResponse = zod.object({
   "probabilidade": zod.number().min(getDealResponseProbabilidadeMin).max(getDealResponseProbabilidadeMax).nullish(),
   "dataFechamentoPrevista": zod.coerce.date().nullish(),
   "motivoPerda": zod.string().nullish(),
+  "tipoFechamento": zod.enum(['pedido', 'contrato']).nullish().describe('Tipo de fechamento do negócio. Null herda o padrão do tenant.'),
   "createdAt": zod.coerce.date(),
   "updatedAt": zod.coerce.date()
 })
@@ -988,7 +991,8 @@ export const UpdateDealBody = zod.object({
   "funilId": zod.string().optional(),
   "probabilidade": zod.number().min(updateDealBodyProbabilidadeMin).max(updateDealBodyProbabilidadeMax).optional(),
   "dataFechamentoPrevista": zod.coerce.date().optional(),
-  "motivoPerda": zod.string().optional()
+  "motivoPerda": zod.string().optional(),
+  "tipoFechamento": zod.enum(['pedido', 'contrato']).optional().describe('Define o comportamento ao marcar o negócio como Ganho. \'pedido\' gera apenas uma confirmação simples (sem assinatura). \'contrato\' inicia o fluxo completo de assinatura eletrônica.\n')
 })
 
 export const updateDealResponseOneProbabilidadeMin = 0;
@@ -1007,6 +1011,7 @@ export const UpdateDealResponse = zod.object({
   "probabilidade": zod.number().min(updateDealResponseOneProbabilidadeMin).max(updateDealResponseOneProbabilidadeMax).nullish(),
   "dataFechamentoPrevista": zod.coerce.date().nullish(),
   "motivoPerda": zod.string().nullish(),
+  "tipoFechamento": zod.enum(['pedido', 'contrato']).nullish().describe('Tipo de fechamento do negócio. Null herda o padrão do tenant.'),
   "createdAt": zod.coerce.date(),
   "updatedAt": zod.coerce.date()
 }).and(zod.object({
@@ -3143,6 +3148,7 @@ export const ListTenantsResponseItem = zod.object({
   "analysisStalenessHours": zod.number().nullish().describe('Per-tenant override for how many hours must pass before a lead is considered stale and auto-reanalyzed. Null means fall back to the global ANALYSIS_STALENESS_HOURS env var.\n'),
   "analysisMessageThreshold": zod.number().nullish().describe('Per-tenant override for how many new messages since the last analysis trigger an automatic re-analysis. Null means fall back to the global ANALYSIS_MESSAGE_THRESHOLD env var.\n'),
   "maxAnalysesPerHour": zod.number().nullish().describe('Per-tenant override for the maximum number of AI analyses allowed per rolling hour window. Null means fall back to the global MAX_ANALYSES_PER_TENANT_PER_HOUR env var.\n'),
+  "tipoFechamentoDefault": zod.enum(['pedido', 'contrato']).nullish().describe('Tipo de fechamento padrão para novos deals deste tenant. Null significa \'pedido\'.'),
   "createdAt": zod.coerce.date(),
   "updatedAt": zod.coerce.date()
 })
@@ -3191,6 +3197,7 @@ export const GetTenantResponse = zod.object({
   "analysisStalenessHours": zod.number().nullish().describe('Per-tenant override for how many hours must pass before a lead is considered stale and auto-reanalyzed. Null means fall back to the global ANALYSIS_STALENESS_HOURS env var.\n'),
   "analysisMessageThreshold": zod.number().nullish().describe('Per-tenant override for how many new messages since the last analysis trigger an automatic re-analysis. Null means fall back to the global ANALYSIS_MESSAGE_THRESHOLD env var.\n'),
   "maxAnalysesPerHour": zod.number().nullish().describe('Per-tenant override for the maximum number of AI analyses allowed per rolling hour window. Null means fall back to the global MAX_ANALYSES_PER_TENANT_PER_HOUR env var.\n'),
+  "tipoFechamentoDefault": zod.enum(['pedido', 'contrato']).nullish().describe('Tipo de fechamento padrão para novos deals deste tenant. Null significa \'pedido\'.'),
   "createdAt": zod.coerce.date(),
   "updatedAt": zod.coerce.date()
 })
@@ -3217,7 +3224,8 @@ export const UpdateTenantBody = zod.object({
   "messagesSentToday": zod.number().optional(),
   "analysisStalenessHours": zod.number().nullish().describe('Per-tenant override for how many hours before a lead is considered stale. Null falls back to the global ANALYSIS_STALENESS_HOURS env var.\n'),
   "analysisMessageThreshold": zod.number().nullish().describe('Per-tenant override for new-message count that triggers auto re-analysis. Null falls back to the global ANALYSIS_MESSAGE_THRESHOLD env var.\n'),
-  "maxAnalysesPerHour": zod.number().nullish().describe('Per-tenant override for the maximum number of AI analyses allowed per rolling hour window. Null falls back to the global MAX_ANALYSES_PER_TENANT_PER_HOUR env var.\n')
+  "maxAnalysesPerHour": zod.number().nullish().describe('Per-tenant override for the maximum number of AI analyses allowed per rolling hour window. Null falls back to the global MAX_ANALYSES_PER_TENANT_PER_HOUR env var.\n'),
+  "tipoFechamentoDefault": zod.enum(['pedido', 'contrato']).nullish().describe('Tipo de fechamento padrão para novos deals deste tenant.')
 })
 
 export const UpdateTenantResponse = zod.object({
@@ -3236,6 +3244,7 @@ export const UpdateTenantResponse = zod.object({
   "analysisStalenessHours": zod.number().nullish().describe('Per-tenant override for how many hours must pass before a lead is considered stale and auto-reanalyzed. Null means fall back to the global ANALYSIS_STALENESS_HOURS env var.\n'),
   "analysisMessageThreshold": zod.number().nullish().describe('Per-tenant override for how many new messages since the last analysis trigger an automatic re-analysis. Null means fall back to the global ANALYSIS_MESSAGE_THRESHOLD env var.\n'),
   "maxAnalysesPerHour": zod.number().nullish().describe('Per-tenant override for the maximum number of AI analyses allowed per rolling hour window. Null means fall back to the global MAX_ANALYSES_PER_TENANT_PER_HOUR env var.\n'),
+  "tipoFechamentoDefault": zod.enum(['pedido', 'contrato']).nullish().describe('Tipo de fechamento padrão para novos deals deste tenant. Null significa \'pedido\'.'),
   "createdAt": zod.coerce.date(),
   "updatedAt": zod.coerce.date()
 })
@@ -4488,6 +4497,7 @@ export const LinkTenantPartnerResponse = zod.object({
   "analysisStalenessHours": zod.number().nullish().describe('Per-tenant override for how many hours must pass before a lead is considered stale and auto-reanalyzed. Null means fall back to the global ANALYSIS_STALENESS_HOURS env var.\n'),
   "analysisMessageThreshold": zod.number().nullish().describe('Per-tenant override for how many new messages since the last analysis trigger an automatic re-analysis. Null means fall back to the global ANALYSIS_MESSAGE_THRESHOLD env var.\n'),
   "maxAnalysesPerHour": zod.number().nullish().describe('Per-tenant override for the maximum number of AI analyses allowed per rolling hour window. Null means fall back to the global MAX_ANALYSES_PER_TENANT_PER_HOUR env var.\n'),
+  "tipoFechamentoDefault": zod.enum(['pedido', 'contrato']).nullish().describe('Tipo de fechamento padrão para novos deals deste tenant. Null significa \'pedido\'.'),
   "createdAt": zod.coerce.date(),
   "updatedAt": zod.coerce.date()
 })

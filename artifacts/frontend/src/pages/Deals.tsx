@@ -7,8 +7,11 @@ import {
   useUpdateDeal,
   useListTenantLeads,
   getListTenantLeadsQueryKey,
+  useGetTenant,
+  getGetTenantQueryKey,
   Deal,
   DealEtapa,
+  TipoFechamento,
 } from "@workspace/api-client-react";
 import { useQueryClient } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
@@ -144,6 +147,19 @@ function DealCard({
           <span>{deal.probabilidade}% de chance</span>
         </div>
       )}
+
+      {/* Tipo de fechamento */}
+      {deal.tipoFechamento && (
+        <div className="pl-6">
+          <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-semibold ${
+            deal.tipoFechamento === "contrato"
+              ? "bg-violet-100 text-violet-700"
+              : "bg-slate-100 text-slate-600"
+          }`}>
+            {deal.tipoFechamento === "contrato" ? "Contrato" : "Pedido"}
+          </span>
+        </div>
+      )}
     </div>
   );
 }
@@ -223,12 +239,18 @@ function KanbanColumn({
 
 // ─── Create Deal Form ─────────────────────────────────────────────────────────
 
+const TIPOS_FECHAMENTO: { value: TipoFechamento; label: string; description: string }[] = [
+  { value: "pedido",   label: "Pedido",   description: "Confirmação simples, sem assinatura formal" },
+  { value: "contrato", label: "Contrato", description: "Contrato formal com assinatura eletrônica" },
+];
+
 const createSchema = z.object({
   titulo: z.string().min(2, "Título obrigatório"),
   valor: z.coerce.number().min(0).optional(),
   leadId: z.string().optional().or(z.literal("")),
   etapa: z.string().min(1, "Etapa obrigatória"),
   probabilidade: z.coerce.number().min(0).max(100).optional(),
+  tipoFechamento: z.enum(["pedido", "contrato"]).optional(),
 });
 
 // ─── Edit Deal Sheet ──────────────────────────────────────────────────────────
@@ -238,11 +260,13 @@ function EditDealSheet({
   leadMap,
   open,
   onClose,
+  tenantDefault,
 }: {
   deal: Deal | null;
   leadMap: Map<string, string>;
   open: boolean;
   onClose: () => void;
+  tenantDefault?: TipoFechamento | null;
 }) {
   const { toast } = useToast();
   const updateDeal = useUpdateDeal();
@@ -259,8 +283,9 @@ function EditDealSheet({
           leadId: deal.leadId ?? "",
           etapa: deal.etapa,
           probabilidade: deal.probabilidade ?? undefined,
+          tipoFechamento: (deal.tipoFechamento as TipoFechamento | undefined) ?? tenantDefault ?? "pedido",
         }
-      : { titulo: "", etapa: "novo" },
+      : { titulo: "", etapa: "novo", tipoFechamento: tenantDefault ?? "pedido" },
   });
 
   function onSubmit(values: z.infer<typeof createSchema>) {
@@ -274,6 +299,7 @@ function EditDealSheet({
           etapa: values.etapa as DealEtapa,
           leadId: values.leadId || undefined,
           probabilidade: values.probabilidade,
+          tipoFechamento: values.tipoFechamento as TipoFechamento | undefined,
         },
       },
       {
@@ -408,6 +434,33 @@ function EditDealSheet({
                 </FormItem>
               )}
             />
+            <FormField
+              control={form.control}
+              name="tipoFechamento"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Tipo de fechamento</FormLabel>
+                  <Select onValueChange={field.onChange} value={field.value}>
+                    <FormControl>
+                      <SelectTrigger data-testid="select-edit-tipo-fechamento">
+                        <SelectValue />
+                      </SelectTrigger>
+                    </FormControl>
+                    <SelectContent>
+                      {TIPOS_FECHAMENTO.map((t) => (
+                        <SelectItem key={t.value} value={t.value}>
+                          {t.label}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <p className="text-xs text-muted-foreground">
+                    {TIPOS_FECHAMENTO.find((t) => t.value === field.value)?.description}
+                  </p>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
             <Button
               type="submit"
               className="w-full"
@@ -450,6 +503,11 @@ export default function Deals() {
     },
   });
 
+  const { data: tenantData } = useGetTenant(tenantId, {
+    query: { enabled: !!tenantId, queryKey: getGetTenantQueryKey(tenantId) },
+  });
+  const tenantDefault = (tenantData?.tipoFechamentoDefault as TipoFechamento | null | undefined) ?? null;
+
   const leadMap = new Map(leads.map((l) => [l.id, l.nome]));
 
   const updateDeal = useUpdateDeal();
@@ -458,7 +516,7 @@ export default function Deals() {
 
   const createForm = useForm<z.infer<typeof createSchema>>({
     resolver: zodResolver(createSchema),
-    defaultValues: { titulo: "", valor: undefined, leadId: "", etapa: "novo", probabilidade: undefined },
+    defaultValues: { titulo: "", valor: undefined, leadId: "", etapa: "novo", probabilidade: undefined, tipoFechamento: tenantDefault ?? "pedido" },
   });
 
   function onCreateSubmit(values: z.infer<typeof createSchema>) {
@@ -471,6 +529,7 @@ export default function Deals() {
           etapa: values.etapa as DealEtapa,
           leadId: values.leadId || undefined,
           probabilidade: values.probabilidade,
+          tipoFechamento: values.tipoFechamento as TipoFechamento | undefined,
         },
       },
       {
@@ -678,6 +737,33 @@ export default function Deals() {
                     </FormItem>
                   )}
                 />
+                <FormField
+                  control={createForm.control}
+                  name="tipoFechamento"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Tipo de fechamento</FormLabel>
+                      <Select onValueChange={field.onChange} value={field.value}>
+                        <FormControl>
+                          <SelectTrigger data-testid="select-tipo-fechamento">
+                            <SelectValue />
+                          </SelectTrigger>
+                        </FormControl>
+                        <SelectContent>
+                          {TIPOS_FECHAMENTO.map((t) => (
+                            <SelectItem key={t.value} value={t.value}>
+                              {t.label}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      <p className="text-xs text-muted-foreground">
+                        {TIPOS_FECHAMENTO.find((t) => t.value === field.value)?.description}
+                      </p>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
                 <Button
                   type="submit"
                   className="w-full"
@@ -740,6 +826,7 @@ export default function Deals() {
         leadMap={leadMap}
         open={!!editDeal}
         onClose={() => setEditDeal(null)}
+        tenantDefault={tenantDefault}
       />
     </div>
   );
