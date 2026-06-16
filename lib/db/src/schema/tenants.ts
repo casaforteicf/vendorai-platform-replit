@@ -39,6 +39,7 @@ export const tenantsTable = pgTable(
     apiKeyEstoque: text("api_key_estoque"),
     tipoFechamentoDefault: text("tipo_fechamento_default").$type<"pedido" | "contrato" | "pedido_e_contrato">(),
     mensalidadeValor: numeric("mensalidade_valor", { precision: 10, scale: 2 }),
+    tokenCredits: integer("token_credits").notNull().default(0),
     partnerId: text("partner_id").references(() => partnersTable.id, { onDelete: "set null" }),
     createdAt: timestamp("created_at").notNull().defaultNow(),
     updatedAt: timestamp("updated_at").notNull().defaultNow(),

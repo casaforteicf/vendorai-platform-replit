@@ -121,6 +121,16 @@ export async function createOrGetCustomer(
   return asaasRequest<AsaasCustomerOutput>("POST", "/customers", data);
 }
 
+export interface AsaasPixQrCode {
+  encodedImage: string;
+  payload: string;
+  expirationDate: string;
+}
+
+export async function getPixQrCode(chargeId: string): Promise<AsaasPixQrCode> {
+  return asaasRequest<AsaasPixQrCode>("GET", `/payments/${chargeId}/pixQrCode`);
+}
+
 export function isAsaasConfigured(): boolean {
   return !!getApiKey();
 }

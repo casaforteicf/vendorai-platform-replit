@@ -37,6 +37,7 @@ import contentRouter from "./content";
 import partnerRouter from "./partner";
 import adminPartnersRouter from "./admin_partners";
 import billingEventsRouter from "./billing_events";
+import tokenPurchasesRouter from "./token_purchases";
 import { intakeRouter } from "./intake";
 import { authenticate, blockPartnerFromCRM, blockSuspendedTenants, requireRole, requireSameTenanOrSuperAdmin } from "../middlewares/auth";
 
@@ -108,6 +109,7 @@ router.use(agendamentosRouter);
 router.use(subscriptionsRouter);
 router.use(invoicesRouter);
 router.use(billingEventsRouter);
+router.use(tokenPurchasesRouter);
 
 // Executive Intelligence Hub
 router.use(dashboardRouter);

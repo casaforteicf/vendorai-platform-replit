@@ -8,6 +8,7 @@ import {
   messagesTable,
   tenantsTable,
   billingEventsTable,
+  tokenPurchasesTable,
 } from "@workspace/db";
 import { z } from "zod";
 import { verifyToken } from "../lib/jwt.js";
@@ -590,6 +591,34 @@ router.post("/webhooks/asaas", async (req, res) => {
   }
 
   if (event === "PAYMENT_RECEIVED" || event === "PAYMENT_CONFIRMED") {
+    // ── Token top-up: credit tokens to tenant ──────────────────────────────
+    if (payment.externalReference?.startsWith("token_topup:")) {
+      const parts = payment.externalReference.split(":");
+      const purchaseId = parts[2] ?? null;
+      if (purchaseId) {
+        const [purchase] = await db
+          .select({ id: tokenPurchasesTable.id, credits: tokenPurchasesTable.credits, status: tokenPurchasesTable.status })
+          .from(tokenPurchasesTable)
+          .where(eq(tokenPurchasesTable.id, purchaseId));
+
+        if (purchase && purchase.status !== "paid") {
+          await db
+            .update(tokenPurchasesTable)
+            .set({ status: "paid", paidAt: new Date() })
+            .where(eq(tokenPurchasesTable.id, purchase.id));
+
+          await db
+            .update(tenantsTable)
+            .set({ tokenCredits: sql`token_credits + ${purchase.credits}`, updatedAt: new Date() })
+            .where(eq(tenantsTable.id, tenantId));
+
+          req.log.info({ tenantId, purchaseId, credits: purchase.credits }, "asaas-webhook: token top-up credited");
+        }
+      }
+      res.status(200).json({ ok: true });
+      return;
+    }
+
     // Mark billing_event paid
     if (billingEvent) {
       await db
