@@ -94,6 +94,12 @@ async function sendInstagramMessage(
   log.info({ recipientIgsid }, "omnichannel: instagram message sent");
 }
 
+function normalizePhoneBR(raw: string): string {
+  const digits = raw.replace(/\D/g, "");
+  if (digits.startsWith("55") && digits.length >= 12) return digits;
+  return "55" + digits;
+}
+
 async function sendZapiWhatsAppMessage(
   instanceId: string,
   token: string,
@@ -103,6 +109,7 @@ async function sendZapiWhatsAppMessage(
   log: Logger
 ): Promise<void> {
   const url = `https://api.z-api.io/instances/${instanceId}/token/${token}/send-text`;
+  const normalizedPhone = normalizePhoneBR(phone);
 
   const res = await fetch(url, {
     method: "POST",
@@ -110,7 +117,7 @@ async function sendZapiWhatsAppMessage(
       "Content-Type": "application/json",
       "Client-Token": clientToken,
     },
-    body: JSON.stringify({ phone, message }),
+    body: JSON.stringify({ phone: normalizedPhone, message }),
   });
 
   if (!res.ok) {
