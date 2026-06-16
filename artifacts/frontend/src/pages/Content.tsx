@@ -1,4 +1,5 @@
 import { useState, useRef } from "react";
+import { useLocation } from "wouter";
 import { useAuth } from "@/contexts/AuthContext";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
@@ -9,6 +10,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
+import { ToastAction } from "@/components/ui/toast";
 import { useListProdutosCatalogo, getListProdutosCatalogoQueryKey } from "@workspace/api-client-react";
 import {
   Sparkles, Copy, Trash2, Loader2, Instagram, Clapperboard, Image,
@@ -193,6 +195,7 @@ function PublishInstagramButton({
   tenantId: string;
 }) {
   const { toast } = useToast();
+  const [, navigate] = useLocation();
   const [publishing, setPublishing] = useState(false);
 
   async function handlePublish() {
@@ -216,7 +219,20 @@ function PublishInstagramButton({
       });
       const data = (await res.json()) as { error?: string };
       if (!res.ok) {
-        toast({ title: "Falha ao publicar", description: data.error ?? "Erro desconhecido", variant: "destructive" });
+        const isNotConnected = data.error?.toLowerCase().includes("não conectado") ||
+          data.error?.toLowerCase().includes("page access");
+        toast({
+          title: isNotConnected ? "Instagram não configurado" : "Falha ao publicar",
+          description: isNotConnected
+            ? "Configure o Page Access Token e o Page ID em Configurações para publicar no Instagram."
+            : (data.error ?? "Erro desconhecido"),
+          variant: "destructive",
+          action: isNotConnected ? (
+            <ToastAction altText="Ir para Configurações" onClick={() => navigate("/configuracoes")}>
+              Configurar agora
+            </ToastAction>
+          ) : undefined,
+        });
       } else {
         toast({ title: "Publicado no Instagram!", description: "Post publicado com sucesso." });
       }
