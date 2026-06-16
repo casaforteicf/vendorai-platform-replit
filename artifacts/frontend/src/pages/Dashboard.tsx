@@ -22,6 +22,7 @@ import {
   Award,
   Package,
   Swords,
+  Heart,
 } from "lucide-react";
 import {
   useGetTenantDashboard,
