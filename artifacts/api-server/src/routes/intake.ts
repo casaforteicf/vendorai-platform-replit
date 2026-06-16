@@ -9,10 +9,28 @@ const intakeSchema = z.object({
   nome: z.string().min(1),
   email: z.string().optional(),
   telefone: z.string().optional(),
-  empresa: z.string().optional(),
   cargo: z.string().optional(),
-  objetivo: z.string().optional(),
-  observacoes: z.string().optional(),
+  empresa: z.string().optional(),
+  segmento: z.string().optional(),
+  descricaoNegocio: z.string().optional(),
+  produtos: z.string().optional(),
+  diferenciais: z.string().optional(),
+  publicoAlvo: z.string().optional(),
+  concorrentes: z.string().optional(),
+  temSite: z.string().optional(),
+  urlSite: z.string().optional(),
+  precisaCriar: z.array(z.string()).optional(),
+  redesSociais: z.array(z.string()).optional(),
+  canaisVenda: z.array(z.string()).optional(),
+  temCrm: z.string().optional(),
+  qualCrm: z.string().optional(),
+  tamanhoEquipe: z.string().optional(),
+  ticketMedio: z.string().optional(),
+  leadsPerMes: z.string().optional(),
+  desafioPrincipal: z.string().optional(),
+  objetivo6meses: z.string().optional(),
+  urgencia: z.string().optional(),
+  orcamento: z.string().optional(),
 });
 
 intakeRouter.get("/public/:tenantSlug/intake", async (req, res) => {
@@ -49,23 +67,43 @@ intakeRouter.post("/public/:tenantSlug/intake", async (req, res) => {
     return;
   }
 
-  const { nome, email, telefone, empresa, objetivo, observacoes, cargo } = parsed.data;
+  const d = parsed.data;
 
-  const obs = [cargo ? `Cargo: ${cargo}` : null, observacoes ?? null]
-    .filter(Boolean)
-    .join("\n");
+  const discoveryData: Record<string, unknown> = {
+    segmento: d.segmento,
+    descricaoNegocio: d.descricaoNegocio,
+    produtos: d.produtos,
+    diferenciais: d.diferenciais,
+    publicoAlvo: d.publicoAlvo,
+    concorrentes: d.concorrentes,
+    temSite: d.temSite,
+    urlSite: d.urlSite,
+    precisaCriar: d.precisaCriar,
+    redesSociais: d.redesSociais,
+    canaisVenda: d.canaisVenda,
+    temCrm: d.temCrm,
+    qualCrm: d.qualCrm,
+    leadsPerMes: d.leadsPerMes,
+    ticketMedio: d.ticketMedio,
+    objetivo6meses: d.objetivo6meses,
+    cargo: d.cargo,
+  };
 
   const [lead] = await db
     .insert(leadsTable)
     .values({
       tenantId: tenant.id,
-      nome,
-      email: email || null,
-      telefone: telefone || null,
-      empresa: empresa || null,
-      objetivo: objetivo || null,
-      dorPrincipal: obs || null,
+      nome: d.nome,
+      email: d.email || null,
+      telefone: d.telefone || null,
+      empresa: d.empresa || null,
+      objetivo: d.objetivo6meses || null,
+      dorPrincipal: d.desafioPrincipal || null,
+      urgencia: d.urgencia || null,
+      orcamento: d.orcamento || null,
+      tamanhoEquipe: d.tamanhoEquipe || null,
       status: "novo",
+      discoveryData,
     })
     .returning({ id: leadsTable.id });
 

@@ -32,6 +32,7 @@ export const leadsTable = pgTable("leads", {
   conjugeTelefone: text("conjuge_telefone"),
   conjugeEmail: text("conjuge_email"),
   filhos: jsonb("filhos").$type<Array<{ nome: string; dataNascimento: string }>>(),
+  discoveryData: jsonb("discovery_data").$type<Record<string, unknown>>(),
   createdAt: timestamp("created_at").notNull().defaultNow(),
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
 });
