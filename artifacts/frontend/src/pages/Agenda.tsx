@@ -614,7 +614,10 @@ export default function AgendaPage() {
           setPendingCreate(null);
           form.reset();
         },
-        onError: () => toast({ title: "Erro ao criar agendamento", variant: "destructive" }),
+        onError: (err: unknown) => {
+          const msg = (err as { response?: { data?: { error?: string } } })?.response?.data?.error;
+          toast({ title: "Erro ao criar agendamento", description: msg ?? undefined, variant: "destructive" });
+        },
       }
     );
   }

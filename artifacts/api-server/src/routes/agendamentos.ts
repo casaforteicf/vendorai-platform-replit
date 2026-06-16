@@ -20,7 +20,8 @@ const router: IRouter = Router();
 router.post("/agendamentos", async (req, res) => {
   const parsed = insertAgendamentoSchema.safeParse(req.body);
   if (!parsed.success) {
-    res.status(422).json({ error: parsed.error.message });
+    req.log.warn({ errors: parsed.error.issues, body: req.body }, "agendamento validation failed");
+    res.status(422).json({ error: parsed.error.message, issues: parsed.error.issues });
     return;
   }
 
@@ -35,10 +36,19 @@ router.post("/agendamentos", async (req, res) => {
     return;
   }
 
-  const [agendamento] = await db
-    .insert(agendamentosTable)
-    .values(parsed.data)
-    .returning();
+  let agendamento: typeof agendamentosTable.$inferSelect;
+  try {
+    const rows = await db
+      .insert(agendamentosTable)
+      .values(parsed.data)
+      .returning();
+    agendamento = rows[0];
+  } catch (err: unknown) {
+    req.log.error({ err, body: req.body }, "agendamento insert failed");
+    const msg = err instanceof Error ? err.message : String(err);
+    res.status(500).json({ error: msg });
+    return;
+  }
 
   res.status(201).json(agendamento);
 
