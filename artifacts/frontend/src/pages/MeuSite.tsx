@@ -1,6 +1,5 @@
 import { useState, useEffect, useCallback } from "react";
 import { useAuth } from "@/contexts/AuthContext";
-import { SidebarLayout } from "@/components/layout/SidebarLayout";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -115,8 +114,7 @@ export default function MeuSite() {
   const primaryColor = cores?.primaria ?? siteConfig?.corPrimaria ?? "#1e3a5f";
 
   return (
-    <SidebarLayout>
-      <div className="p-6 max-w-3xl mx-auto space-y-6">
+    <div className="p-6 max-w-3xl mx-auto space-y-6">
         {/* Header */}
         <div>
           <h1 className="text-2xl font-bold flex items-center gap-2">
@@ -297,6 +295,6 @@ export default function MeuSite() {
           </div>
         )}
       </div>
-    </SidebarLayout>
+    </div>
   );
 }
