@@ -151,13 +151,21 @@ async function sendZapiWhatsAppMessage(
     body: JSON.stringify({ phone: normalizedPhone, message }),
   });
 
+  const body = await res.json().catch(() => ({})) as Record<string, unknown>;
+
   if (!res.ok) {
-    const err = await res.json().catch(() => ({}));
-    log.error({ err, phone }, "omnichannel: zapi send failed");
-    throw new Error(`Z-API error: ${JSON.stringify(err)}`);
+    log.error({ body, phone }, "omnichannel: zapi send failed (non-2xx)");
+    throw new Error(`Z-API error ${res.status}: ${JSON.stringify(body)}`);
   }
 
-  log.info({ phone }, "omnichannel: whatsapp message sent via z-api");
+  // Z-API returns HTTP 200 with {"value": false} when the instance is not connected
+  // or the phone number is invalid — treat this as a hard failure.
+  if (body.value === false) {
+    log.error({ body, phone }, "omnichannel: zapi returned value=false (instance not connected or invalid phone)");
+    throw new Error(`Z-API rejected message: ${JSON.stringify(body)}`);
+  }
+
+  log.info({ phone, zaapId: body.zaapId ?? body.id }, "omnichannel: whatsapp message sent via z-api");
 }
 
 export async function sendOutgoingMessage(
