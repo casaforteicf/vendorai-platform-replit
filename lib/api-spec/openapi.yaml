@@ -7691,6 +7691,18 @@ components:
           type: string
           nullable: true
           description: Instagram username for display purposes.
+        zapiInstanceId:
+          type: string
+          nullable: true
+          description: Z-API instance ID for outbound WhatsApp messages.
+        zapiToken:
+          type: string
+          nullable: true
+          description: Z-API instance token for outbound WhatsApp messages.
+        zapiClientToken:
+          type: string
+          nullable: true
+          description: Z-API client token (Security Token) for outbound WhatsApp messages.
         createdAt:
           type: string
           format: date-time
@@ -7764,6 +7776,18 @@ components:
         instagramUsername:
           type: string
           nullable: true
+        zapiInstanceId:
+          type: string
+          nullable: true
+          description: Z-API instance ID for outbound WhatsApp messages.
+        zapiToken:
+          type: string
+          nullable: true
+          description: Z-API instance token for outbound WhatsApp messages.
+        zapiClientToken:
+          type: string
+          nullable: true
+          description: Z-API client token (Security Token) for outbound WhatsApp messages.
 
     Product:
       type: object

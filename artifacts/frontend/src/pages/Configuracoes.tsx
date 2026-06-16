@@ -795,6 +795,72 @@ export default function Configuracoes() {
     setSyncedIntegration(true);
   }
 
+  // ── Z-API (WhatsApp outbound) connection state ────────────────────────────
+  const [zapiInstanceInput, setZapiInstanceInput] = useState<string>("");
+  const [zapiTokenInput, setZapiTokenInput] = useState<string>("");
+  const [zapiClientTokenInput, setZapiClientTokenInput] = useState<string>("");
+  const [zapiSaving, setZapiSaving] = useState(false);
+  const [syncedZapi, setSyncedZapi] = useState(false);
+  if (agentQuery.data && !syncedZapi) {
+    setZapiInstanceInput(agentQuery.data.zapiInstanceId ?? "");
+    setZapiTokenInput(agentQuery.data.zapiToken ?? "");
+    setZapiClientTokenInput(agentQuery.data.zapiClientToken ?? "");
+    setSyncedZapi(true);
+  }
+
+  function onSaveZapi() {
+    if (!agentQuery.data?.id) return;
+    setZapiSaving(true);
+    updateAgentConf.mutate(
+      {
+        id: agentQuery.data.id,
+        data: {
+          zapiInstanceId: zapiInstanceInput.trim() || null,
+          zapiToken: zapiTokenInput.trim() || null,
+          zapiClientToken: zapiClientTokenInput.trim() || null,
+        },
+      },
+      {
+        onSuccess: (updated) => {
+          queryClient.setQueryData(getGetAgentConfigByTenantQueryKey(tenantId ?? ""), updated);
+          setSyncedZapi(false);
+          setZapiSaving(false);
+          toast({ title: "Conexão Z-API salva com sucesso." });
+        },
+        onError: () => {
+          setZapiSaving(false);
+          toast({ title: "Erro ao salvar Z-API.", variant: "destructive" });
+        },
+      }
+    );
+  }
+
+  function onDisconnectZapi() {
+    if (!agentQuery.data?.id) return;
+    setZapiSaving(true);
+    updateAgentConf.mutate(
+      {
+        id: agentQuery.data.id,
+        data: { zapiInstanceId: null, zapiToken: null, zapiClientToken: null },
+      },
+      {
+        onSuccess: (updated) => {
+          queryClient.setQueryData(getGetAgentConfigByTenantQueryKey(tenantId ?? ""), updated);
+          setZapiInstanceInput("");
+          setZapiTokenInput("");
+          setZapiClientTokenInput("");
+          setSyncedZapi(false);
+          setZapiSaving(false);
+          toast({ title: "Z-API desconectado." });
+        },
+        onError: () => {
+          setZapiSaving(false);
+          toast({ title: "Erro ao desconectar Z-API.", variant: "destructive" });
+        },
+      }
+    );
+  }
+
   // ── Instagram connection state ─────────────────────────────────────────────
   const [igTokenInput, setIgTokenInput] = useState<string>("");
   const [igPageIdInput, setIgPageIdInput] = useState<string>("");
@@ -1706,6 +1772,110 @@ Body:
                   </pre>
                 </div>
               </div>
+            </div>
+
+            {/* Z-API — WhatsApp outbound */}
+            <div className="rounded-xl border bg-card p-6 space-y-5">
+              <div className="flex items-start justify-between gap-4">
+                <div>
+                  <h2 className="font-semibold text-base flex items-center gap-2">
+                    <MessageCircle className="h-4 w-4 text-green-500" />
+                    WhatsApp — Z-API (envio de mensagens)
+                  </h2>
+                  <p className="text-sm text-muted-foreground mt-1">
+                    Configure as credenciais da Z-API para que os agentes e ações manuais consigam
+                    enviar mensagens diretamente pelo WhatsApp. Encontre as credenciais em{" "}
+                    <strong>app.z-api.io → sua instância → Tokens</strong>.
+                  </p>
+                </div>
+                {agentQuery.data?.zapiInstanceId && agentQuery.data?.zapiToken && agentQuery.data?.zapiClientToken && (
+                  <div className="shrink-0">
+                    <span className="inline-flex items-center gap-1.5 text-xs font-medium bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400 px-2.5 py-1 rounded-full">
+                      <CheckCircle2 className="h-3 w-3" /> Conectado
+                    </span>
+                  </div>
+                )}
+              </div>
+
+              {agentQuery.isLoading ? (
+                <div className="space-y-2">
+                  <div className="h-10 bg-muted rounded-md animate-pulse" />
+                  <div className="h-10 bg-muted rounded-md animate-pulse" />
+                  <div className="h-10 bg-muted rounded-md animate-pulse" />
+                </div>
+              ) : (
+                <div className="space-y-4">
+                  <div className="grid grid-cols-2 gap-3">
+                    <div className="space-y-1.5">
+                      <label className="text-sm font-medium">Instance ID</label>
+                      <Input
+                        placeholder="xxxxxxxxxxxxxxxxxxxxxxxx"
+                        value={zapiInstanceInput}
+                        onChange={(e) => setZapiInstanceInput(e.target.value)}
+                        className="font-mono text-sm"
+                      />
+                      <p className="text-xs text-muted-foreground">ID da instância Z-API.</p>
+                    </div>
+                    <div className="space-y-1.5">
+                      <label className="text-sm font-medium">Token da instância</label>
+                      <Input
+                        type="password"
+                        placeholder="xxxxxxxxxxxxxxxxxxxxxxxx"
+                        value={zapiTokenInput}
+                        onChange={(e) => setZapiTokenInput(e.target.value)}
+                        className="font-mono text-sm"
+                      />
+                      <p className="text-xs text-muted-foreground">Token gerado pela instância.</p>
+                    </div>
+                  </div>
+
+                  <div className="space-y-1.5">
+                    <label className="text-sm font-medium">Client Token (Security Token)</label>
+                    <Input
+                      type="password"
+                      placeholder="Fxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+                      value={zapiClientTokenInput}
+                      onChange={(e) => setZapiClientTokenInput(e.target.value)}
+                      className="font-mono text-sm"
+                    />
+                    <p className="text-xs text-muted-foreground">
+                      Security Token da sua conta Z-API — encontrado em <strong>Conta → Security Token</strong>.
+                    </p>
+                  </div>
+
+                  <div className="flex items-center gap-3">
+                    <Button
+                      onClick={onSaveZapi}
+                      disabled={zapiSaving || !agentQuery.data?.id || !zapiInstanceInput.trim() || !zapiTokenInput.trim() || !zapiClientTokenInput.trim()}
+                      className="gap-2"
+                    >
+                      <Save className="h-4 w-4" />
+                      {zapiSaving ? "Salvando…" : agentQuery.data?.zapiInstanceId ? "Atualizar conexão" : "Conectar Z-API"}
+                    </Button>
+                    {agentQuery.data?.zapiInstanceId && (
+                      <Button
+                        variant="outline"
+                        onClick={onDisconnectZapi}
+                        disabled={zapiSaving}
+                        className="gap-2 text-destructive hover:text-destructive"
+                      >
+                        <Trash2 className="h-4 w-4" />
+                        Desconectar
+                      </Button>
+                    )}
+                  </div>
+
+                  {!agentQuery.data?.zapiInstanceId && (
+                    <div className="rounded-lg bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 p-3">
+                      <p className="text-xs text-amber-700 dark:text-amber-400 flex items-start gap-2">
+                        <AlertTriangle className="h-3.5 w-3.5 shrink-0 mt-0.5" />
+                        Sem a Z-API configurada, mensagens WhatsApp enviadas pelos agentes ficam salvas
+                        no sistema mas <strong>não chegam ao destinatário</strong>.
+                      </p>
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
 
             {/* Instagram DM — conexão direta via Graph API */}

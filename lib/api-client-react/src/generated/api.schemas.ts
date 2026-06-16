@@ -1344,6 +1344,12 @@ export interface AgentConfig {
   instagramPageId?: string | null;
   /** Instagram username for display purposes. */
   instagramUsername?: string | null;
+  /** Z-API instance ID for outbound WhatsApp messages. */
+  zapiInstanceId?: string | null;
+  /** Z-API instance token for outbound WhatsApp messages. */
+  zapiToken?: string | null;
+  /** Z-API client token (Security Token) for outbound WhatsApp messages. */
+  zapiClientToken?: string | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -1372,6 +1378,12 @@ export interface UpdateAgentConfigBody {
   instagramPageAccessToken?: string | null;
   instagramPageId?: string | null;
   instagramUsername?: string | null;
+  /** Z-API instance ID for outbound WhatsApp messages. */
+  zapiInstanceId?: string | null;
+  /** Z-API instance token for outbound WhatsApp messages. */
+  zapiToken?: string | null;
+  /** Z-API client token (Security Token) for outbound WhatsApp messages. */
+  zapiClientToken?: string | null;
 }
 
 export interface Product {

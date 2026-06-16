@@ -47,6 +47,22 @@ export class InstagramScopedIdMissingError extends Error {
   }
 }
 
+export class WhatsAppNotConnectedError extends Error {
+  readonly statusCode = 422;
+  constructor() {
+    super("WhatsApp não conectado. Configure as credenciais Z-API em Configurações > Integrações.");
+    this.name = "WhatsAppNotConnectedError";
+  }
+}
+
+export class WhatsAppPhoneMissingError extends Error {
+  readonly statusCode = 422;
+  constructor(leadId: string) {
+    super(`Lead "${leadId}" não tem número de telefone cadastrado.`);
+    this.name = "WhatsAppPhoneMissingError";
+  }
+}
+
 async function sendInstagramMessage(
   pageAccessToken: string,
   recipientIgsid: string,
@@ -78,6 +94,34 @@ async function sendInstagramMessage(
   log.info({ recipientIgsid }, "omnichannel: instagram message sent");
 }
 
+async function sendZapiWhatsAppMessage(
+  instanceId: string,
+  token: string,
+  clientToken: string,
+  phone: string,
+  message: string,
+  log: Logger
+): Promise<void> {
+  const url = `https://api.z-api.io/instances/${instanceId}/token/${token}/send-text`;
+
+  const res = await fetch(url, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "Client-Token": clientToken,
+    },
+    body: JSON.stringify({ phone, message }),
+  });
+
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    log.error({ err, phone }, "omnichannel: zapi send failed");
+    throw new Error(`Z-API error: ${JSON.stringify(err)}`);
+  }
+
+  log.info({ phone }, "omnichannel: whatsapp message sent via z-api");
+}
+
 export async function sendOutgoingMessage(
   input: SendOutgoingMessageInput,
   log: Logger
@@ -93,7 +137,37 @@ export async function sendOutgoingMessage(
 
   if (!lead) throw new LeadNotFoundError(leadId);
 
-  // ── 2. Instagram: validate credentials + actually send ─────────────────────
+  // ── 2. WhatsApp: validate Z-API credentials + actually send ───────────────
+  if (canal === "whatsapp") {
+    const [config] = await db
+      .select({
+        zapiInstanceId: agentConfigsTable.zapiInstanceId,
+        zapiToken: agentConfigsTable.zapiToken,
+        zapiClientToken: agentConfigsTable.zapiClientToken,
+      })
+      .from(agentConfigsTable)
+      .where(eq(agentConfigsTable.tenantId, tenantId))
+      .limit(1);
+
+    if (!config?.zapiInstanceId || !config?.zapiToken || !config?.zapiClientToken) {
+      throw new WhatsAppNotConnectedError();
+    }
+
+    if (!lead.telefone) {
+      throw new WhatsAppPhoneMissingError(leadId);
+    }
+
+    await sendZapiWhatsAppMessage(
+      config.zapiInstanceId,
+      config.zapiToken,
+      config.zapiClientToken,
+      lead.telefone,
+      conteudo,
+      log
+    );
+  }
+
+  // ── 3. Instagram: validate credentials + actually send ─────────────────────
   if (canal === "instagram") {
     const [config] = await db
       .select({
@@ -120,7 +194,7 @@ export async function sendOutgoingMessage(
     );
   }
 
-  // ── 3. Find or create conversation for leadId + canal ─────────────────────
+  // ── 4. Find or create conversation for leadId + canal ─────────────────────
   let [conversation] = await db
     .select()
     .from(conversationsTable)
@@ -144,7 +218,7 @@ export async function sendOutgoingMessage(
     );
   }
 
-  // ── 4. Insert outgoing message ─────────────────────────────────────────────
+  // ── 5. Insert outgoing message ─────────────────────────────────────────────
   const enviadoPor: "humano" | "agente_ia" = agentName ? "agente_ia" : "humano";
 
   const [message] = await db
@@ -168,7 +242,7 @@ export async function sendOutgoingMessage(
     "omnichannel: outgoing message inserted"
   );
 
-  // ── 5. Update conversation: ultimaMensagemEm ───────────────────────────────
+  // ── 6. Update conversation: ultimaMensagemEm ───────────────────────────────
   await db
     .update(conversationsTable)
     .set({ ultimaMensagemEm: new Date(), updatedAt: new Date() })
