@@ -1097,6 +1097,7 @@ export default function Configuracoes() {
                       <SelectContent>
                         <SelectItem value="pedido">Pedido — confirmação simples, sem assinatura</SelectItem>
                         <SelectItem value="contrato">Contrato — assinatura eletrônica obrigatória</SelectItem>
+                        <SelectItem value="pedido_e_contrato">Pedido e Contrato — escolhido em cada negócio</SelectItem>
                       </SelectContent>
                     </Select>
                   </div>

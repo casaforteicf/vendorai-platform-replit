@@ -267,7 +267,7 @@ function EditDealSheet({
   leadMap: Map<string, string>;
   open: boolean;
   onClose: () => void;
-  tenantDefault?: TipoFechamento | null;
+  tenantDefault?: "pedido" | "contrato" | null;
   tenantSlug?: string;
 }) {
   const { toast } = useToast();
@@ -315,7 +315,8 @@ function EditDealSheet({
     }
   }
 
-  const form = useForm<z.infer<typeof createSchema>>({
+  type DealFormValues = z.infer<typeof createSchema>;
+  const form = useForm<DealFormValues, any, DealFormValues>({
     resolver: zodResolver(createSchema),
     values: deal
       ? {
@@ -324,7 +325,7 @@ function EditDealSheet({
           leadId: deal.leadId ?? "",
           etapa: deal.etapa,
           probabilidade: deal.probabilidade ?? undefined,
-          tipoFechamento: (deal.tipoFechamento as TipoFechamento | undefined) ?? tenantDefault ?? "pedido",
+          tipoFechamento: (deal.tipoFechamento as "pedido" | "contrato" | undefined) ?? tenantDefault ?? "pedido",
         }
       : { titulo: "", etapa: "novo", tipoFechamento: tenantDefault ?? "pedido" },
   });
@@ -648,7 +649,9 @@ export default function Deals() {
   const { data: tenantData } = useGetTenant(tenantId, {
     query: { enabled: !!tenantId, queryKey: getGetTenantQueryKey(tenantId) },
   });
-  const tenantDefault = (tenantData?.tipoFechamentoDefault as TipoFechamento | null | undefined) ?? null;
+  const rawTenantDefault = (tenantData?.tipoFechamentoDefault as TipoFechamento | null | undefined) ?? null;
+  const tenantDefault: "pedido" | "contrato" | null =
+    rawTenantDefault === "pedido_e_contrato" ? null : rawTenantDefault;
 
   const leadMap = new Map(leads.map((l) => [l.id, l.nome]));
 
@@ -686,7 +689,8 @@ export default function Deals() {
     }
   }
 
-  const createForm = useForm<z.infer<typeof createSchema>>({
+  type DealFormValues = z.infer<typeof createSchema>;
+  const createForm = useForm<DealFormValues, any, DealFormValues>({
     resolver: zodResolver(createSchema),
     defaultValues: { titulo: "", valor: undefined, leadId: "", etapa: "novo", probabilidade: undefined, tipoFechamento: tenantDefault ?? "pedido" },
   });

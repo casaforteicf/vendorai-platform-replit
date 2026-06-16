@@ -8,8 +8,11 @@
 import type { DashboardLeadEntry } from './dashboardLeadEntry';
 import type { TenantDashboardChurnRiskDistribuicao } from './tenantDashboardChurnRiskDistribuicao';
 import type { TenantDashboardDeals } from './tenantDashboardDeals';
+import type { TenantDashboardDealsPorTipoFechamento } from './tenantDashboardDealsPorTipoFechamento';
 import type { TenantDashboardFaturas } from './tenantDashboardFaturas';
+import type { TenantDashboardGanhosMes } from './tenantDashboardGanhosMes';
 import type { TenantDashboardLeads } from './tenantDashboardLeads';
+import type { TenantDashboardPropostas } from './tenantDashboardPropostas';
 
 export interface TenantDashboard {
   leads: TenantDashboardLeads;
@@ -20,4 +23,10 @@ export interface TenantDashboard {
   churnRiskDistribuicao: TenantDashboardChurnRiskDistribuicao;
   /** Top 5 leads ordered by churnRisk descending */
   top5ChurnRisk: DashboardLeadEntry[];
+  ganhosMes: TenantDashboardGanhosMes;
+  /** Average valor of ganho deals as decimal string, or null if none */
+  ticketMedio?: string | null;
+  propostas: TenantDashboardPropostas;
+  /** Map of tipoFechamento → count for all deals */
+  dealsPorTipoFechamento: TenantDashboardDealsPorTipoFechamento;
 }

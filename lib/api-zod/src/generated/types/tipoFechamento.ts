@@ -7,7 +7,7 @@
  */
 
 /**
- * Define o comportamento ao marcar o negócio como Ganho. 'pedido' gera apenas uma confirmação simples (sem assinatura). 'contrato' inicia o fluxo completo de assinatura eletrônica.
+ * Define o comportamento ao marcar o negócio como Ganho. 'pedido' gera apenas uma confirmação simples (sem assinatura). 'contrato' inicia o fluxo completo de assinatura eletrônica. 'pedido_e_contrato' significa que o tenant usa ambos os modelos — o tipo é escolhido por negócio.
 
  */
 export type TipoFechamento = typeof TipoFechamento[keyof typeof TipoFechamento];
@@ -16,4 +16,5 @@ export type TipoFechamento = typeof TipoFechamento[keyof typeof TipoFechamento];
 export const TipoFechamento = {
   pedido: 'pedido',
   contrato: 'contrato',
+  pedido_e_contrato: 'pedido_e_contrato',
 } as const;

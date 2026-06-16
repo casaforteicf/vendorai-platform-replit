@@ -9,6 +9,12 @@ import {
   AlertTriangle,
   FileWarning,
   Clock,
+  Trophy,
+  FileText,
+  BarChart3,
+  ShoppingCart,
+  FileSignature,
+  Layers,
 } from "lucide-react";
 import {
   useGetTenantDashboard,
@@ -22,29 +28,44 @@ import {
   Tooltip,
   ResponsiveContainer,
   Cell,
+  PieChart,
+  Pie,
+  Legend,
 } from "recharts";
 
 const ETAPA_LABELS: Record<string, string> = {
-  prospeccao: "Prospecção",
-  qualificacao: "Qualificação",
+  novo: "Novo",
+  qualificado: "Qualificado",
   proposta: "Proposta",
   negociacao: "Negociação",
-  fechado_ganho: "Ganho",
-  fechado_perdido: "Perdido",
+  ganho: "Ganho",
+  perdido: "Perdido",
 };
 
 const ETAPA_COLORS: Record<string, string> = {
-  prospeccao: "#60A5FA",
-  qualificacao: "#818CF8",
+  novo: "#60A5FA",
+  qualificado: "#818CF8",
   proposta: "#A78BFA",
   negociacao: "#F59E0B",
-  fechado_ganho: "#10B981",
-  fechado_perdido: "#EF4444",
+  ganho: "#10B981",
+  perdido: "#EF4444",
 };
 
-function formatCurrency(value: string | undefined): string {
-  if (!value) return "R$ 0,00";
-  const num = parseFloat(value);
+const TIPO_LABELS: Record<string, string> = {
+  pedido: "Pedido",
+  contrato: "Contrato",
+  pedido_e_contrato: "Pedido e Contrato",
+};
+
+const TIPO_COLORS: Record<string, string> = {
+  pedido: "#60A5FA",
+  contrato: "#A78BFA",
+  pedido_e_contrato: "#F59E0B",
+};
+
+function formatCurrency(value: string | number | undefined | null): string {
+  if (value === null || value === undefined || value === "") return "R$ 0,00";
+  const num = typeof value === "number" ? value : parseFloat(String(value));
   if (isNaN(num)) return "R$ 0,00";
   return num.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 }
@@ -102,12 +123,22 @@ export default function Dashboard() {
 
   const etapaChartData = dashboard
     ? Object.entries(dashboard.deals.porEtapa)
-        .filter(([key]) => key !== "fechado_perdido")
+        .filter(([key]) => key !== "perdido")
         .map(([etapa, count]) => ({
           etapa,
           label: ETAPA_LABELS[etapa] ?? etapa,
           count: count as number,
           color: ETAPA_COLORS[etapa] ?? "#94A3B8",
+        }))
+    : [];
+
+  const tipoChartData = dashboard?.dealsPorTipoFechamento
+    ? Object.entries(dashboard.dealsPorTipoFechamento)
+        .filter(([, v]) => (v as number) > 0)
+        .map(([tipo, count]) => ({
+          name: TIPO_LABELS[tipo] ?? tipo,
+          value: count as number,
+          color: TIPO_COLORS[tipo] ?? "#94A3B8",
         }))
     : [];
 
@@ -120,7 +151,7 @@ export default function Dashboard() {
         </p>
       </div>
 
-      {/* KPI Cards */}
+      {/* KPI Row 1 — Pipeline e conversão */}
       <div className="grid gap-3 grid-cols-2 lg:grid-cols-4">
         {isLoading ? (
           Array.from({ length: 4 }).map((_, i) => <StatCardSkeleton key={i} />)
@@ -143,23 +174,6 @@ export default function Dashboard() {
               </CardContent>
             </Card>
 
-            <Card data-testid="card-novos-leads">
-              <CardHeader className="flex flex-row items-center justify-between pb-2 space-y-0">
-                <CardTitle className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
-                  Novos (30 dias)
-                </CardTitle>
-                <div className="p-1.5 rounded-md bg-indigo-500/10">
-                  <TrendingUp className="h-4 w-4 text-indigo-500" />
-                </div>
-              </CardHeader>
-              <CardContent>
-                <p className="text-2xl font-bold">
-                  {dashboard?.leads.novosUltimos30Dias ?? 0}
-                </p>
-                <p className="text-xs text-muted-foreground mt-0.5">leads criados</p>
-              </CardContent>
-            </Card>
-
             <Card data-testid="card-valor-negociacao">
               <CardHeader className="flex flex-row items-center justify-between pb-2 space-y-0">
                 <CardTitle className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
@@ -179,6 +193,26 @@ export default function Dashboard() {
               </CardContent>
             </Card>
 
+            <Card data-testid="card-ganhos-mes">
+              <CardHeader className="flex flex-row items-center justify-between pb-2 space-y-0">
+                <CardTitle className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
+                  Ganhos este mês
+                </CardTitle>
+                <div className="p-1.5 rounded-md bg-teal-500/10">
+                  <Trophy className="h-4 w-4 text-teal-500" />
+                </div>
+              </CardHeader>
+              <CardContent>
+                <p className="text-2xl font-bold text-teal-600">
+                  {formatCurrency(dashboard?.ganhosMes?.somaValor)}
+                </p>
+                <p className="text-xs text-muted-foreground mt-0.5">
+                  {dashboard?.ganhosMes?.count ?? 0}{" "}
+                  {(dashboard?.ganhosMes?.count ?? 0) === 1 ? "negócio fechado" : "negócios fechados"}
+                </p>
+              </CardContent>
+            </Card>
+
             <Card data-testid="card-taxa-conversao">
               <CardHeader className="flex flex-row items-center justify-between pb-2 space-y-0">
                 <CardTitle className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
@@ -192,15 +226,96 @@ export default function Dashboard() {
                 <p className="text-2xl font-bold">
                   {formatPercent(dashboard?.deals.taxaConversao)}
                 </p>
-                <p className="text-xs text-muted-foreground mt-0.5">ganhos / total</p>
+                <p className="text-xs text-muted-foreground mt-0.5">ganhos / total de deals</p>
               </CardContent>
             </Card>
           </>
         )}
       </div>
 
+      {/* KPI Row 2 — Operacional */}
+      <div className="grid gap-3 grid-cols-2 lg:grid-cols-4">
+        {isLoading ? (
+          Array.from({ length: 4 }).map((_, i) => <StatCardSkeleton key={i} />)
+        ) : (
+          <>
+            <Card data-testid="card-ticket-medio">
+              <CardHeader className="flex flex-row items-center justify-between pb-2 space-y-0">
+                <CardTitle className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
+                  Ticket Médio
+                </CardTitle>
+                <div className="p-1.5 rounded-md bg-indigo-500/10">
+                  <BarChart3 className="h-4 w-4 text-indigo-500" />
+                </div>
+              </CardHeader>
+              <CardContent>
+                <p className="text-2xl font-bold">
+                  {dashboard?.ticketMedio ? formatCurrency(dashboard.ticketMedio) : "—"}
+                </p>
+                <p className="text-xs text-muted-foreground mt-0.5">média dos deals ganhos</p>
+              </CardContent>
+            </Card>
+
+            <Card data-testid="card-propostas-ativas">
+              <CardHeader className="flex flex-row items-center justify-between pb-2 space-y-0">
+                <CardTitle className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
+                  Propostas Ativas
+                </CardTitle>
+                <div className="p-1.5 rounded-md bg-orange-500/10">
+                  <FileText className="h-4 w-4 text-orange-500" />
+                </div>
+              </CardHeader>
+              <CardContent>
+                <p className="text-2xl font-bold">{dashboard?.propostas?.ativas?.count ?? 0}</p>
+                <p className="text-xs text-muted-foreground mt-0.5">
+                  {formatCurrency(dashboard?.propostas?.ativas?.somaValor)} em aberto
+                </p>
+              </CardContent>
+            </Card>
+
+            <Card data-testid="card-atividades-atrasadas">
+              <CardHeader className="flex flex-row items-center justify-between pb-2 space-y-0">
+                <CardTitle className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
+                  Atividades Atrasadas
+                </CardTitle>
+                <div className="p-1.5 rounded-md bg-red-500/10">
+                  <Clock className="h-4 w-4 text-red-500" />
+                </div>
+              </CardHeader>
+              <CardContent>
+                <p className="text-2xl font-bold text-red-500">
+                  {dashboard?.atividadesAtrasadas ?? 0}
+                </p>
+                <p className="text-xs text-muted-foreground mt-0.5">
+                  {(dashboard?.atividadesAtrasadas ?? 0) === 1
+                    ? "pendente vencida"
+                    : "pendentes vencidas"}
+                </p>
+              </CardContent>
+            </Card>
+
+            <Card data-testid="card-novos-leads">
+              <CardHeader className="flex flex-row items-center justify-between pb-2 space-y-0">
+                <CardTitle className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
+                  Novos Leads (30d)
+                </CardTitle>
+                <div className="p-1.5 rounded-md bg-sky-500/10">
+                  <TrendingUp className="h-4 w-4 text-sky-500" />
+                </div>
+              </CardHeader>
+              <CardContent>
+                <p className="text-2xl font-bold">
+                  {dashboard?.leads.novosUltimos30Dias ?? 0}
+                </p>
+                <p className="text-xs text-muted-foreground mt-0.5">leads criados</p>
+              </CardContent>
+            </Card>
+          </>
+        )}
+      </div>
+
+      {/* Funil + Modelo Comercial */}
       <div className="grid gap-6 lg:grid-cols-3">
-        {/* Funil de Negócios */}
         <Card className="lg:col-span-2" data-testid="card-funil">
           <CardHeader>
             <CardTitle className="text-sm font-semibold">Funil de Negócios</CardTitle>
@@ -250,28 +365,65 @@ export default function Dashboard() {
           </CardContent>
         </Card>
 
-        {/* Atividades Atrasadas */}
-        <Card data-testid="card-atividades-atrasadas">
-          <CardHeader className="flex flex-row items-center justify-between pb-2 space-y-0">
-            <CardTitle className="text-sm font-semibold">Atividades Atrasadas</CardTitle>
-            <div className="p-1.5 rounded-md bg-red-500/10">
-              <Clock className="h-4 w-4 text-red-500" />
-            </div>
+        {/* Modelo Comercial */}
+        <Card data-testid="card-modelo-comercial">
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm font-semibold">Modelo Comercial</CardTitle>
+            <p className="text-xs text-muted-foreground">Distribuição por tipo de fechamento</p>
           </CardHeader>
           <CardContent>
             {isLoading ? (
-              <div className="h-16 bg-muted animate-pulse rounded" />
+              <div className="h-40 bg-muted animate-pulse rounded" />
+            ) : tipoChartData.length === 0 ? (
+              <div className="h-40 flex flex-col items-center justify-center gap-3 text-center">
+                <p className="text-sm text-muted-foreground">
+                  Nenhum deal com tipo de fechamento definido.
+                </p>
+                <div className="space-y-1">
+                  <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                    <ShoppingCart className="h-3.5 w-3.5 text-blue-500" /> Pedido
+                  </div>
+                  <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                    <FileSignature className="h-3.5 w-3.5 text-violet-500" /> Contrato
+                  </div>
+                  <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                    <Layers className="h-3.5 w-3.5 text-amber-500" /> Pedido e Contrato
+                  </div>
+                </div>
+              </div>
             ) : (
-              <>
-                <p className="text-4xl font-bold text-red-500">
-                  {dashboard?.atividadesAtrasadas ?? 0}
-                </p>
-                <p className="text-xs text-muted-foreground mt-1">
-                  {(dashboard?.atividadesAtrasadas ?? 0) === 1
-                    ? "atividade pendente vencida"
-                    : "atividades pendentes vencidas"}
-                </p>
-              </>
+              <ResponsiveContainer width="100%" height={160}>
+                <PieChart>
+                  <Pie
+                    data={tipoChartData}
+                    cx="50%"
+                    cy="50%"
+                    innerRadius={45}
+                    outerRadius={65}
+                    paddingAngle={3}
+                    dataKey="value"
+                  >
+                    {tipoChartData.map((entry, index) => (
+                      <Cell key={index} fill={entry.color} />
+                    ))}
+                  </Pie>
+                  <Tooltip
+                    formatter={(value: number, name: string) => [value, name]}
+                    contentStyle={{
+                      fontSize: 12,
+                      border: "1px solid hsl(var(--border))",
+                      borderRadius: 6,
+                      background: "hsl(var(--card))",
+                      color: "hsl(var(--foreground))",
+                    }}
+                  />
+                  <Legend
+                    iconType="circle"
+                    iconSize={8}
+                    wrapperStyle={{ fontSize: 11 }}
+                  />
+                </PieChart>
+              </ResponsiveContainer>
             )}
           </CardContent>
         </Card>

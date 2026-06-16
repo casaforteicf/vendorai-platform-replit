@@ -7,6 +7,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import {
   useListSegmentTemplates,
   useCompleteOnboarding,
+  useUpdateTenant,
   getGetTenantQueryKey,
 } from "@workspace/api-client-react";
 import { useAuth } from "@/contexts/AuthContext";
@@ -142,6 +143,7 @@ const formSchema = z.object({
   canaisVenda: z.array(z.string()).optional(),
 
   // Step 11 – Processo de Vendas
+  tipoFechamentoDefault: z.enum(["pedido", "contrato", "pedido_e_contrato"]).default("pedido"),
   ticketMedio: z.string().optional(),
   cicloVendas: z.string().optional(),
   metodoVendas: z.string().optional(),
@@ -358,6 +360,7 @@ export default function Onboarding() {
 
   const { data: segments = [], isLoading: segmentsLoading } = useListSegmentTemplates();
   const completeMutation = useCompleteOnboarding();
+  const updateTenantMutation = useUpdateTenant();
 
   const form = useForm<WizardForm>({
     resolver: zodResolver(formSchema),
@@ -399,6 +402,7 @@ export default function Onboarding() {
       objecoesComuns: [{ value: "" }],
       motivadoresCompra: [{ value: "" }],
       canaisVenda: [],
+      tipoFechamentoDefault: "pedido" as const,
       ticketMedio: "",
       cicloVendas: "",
       metodoVendas: "",
@@ -740,6 +744,9 @@ export default function Onboarding() {
       },
       {
         onSuccess: (result) => {
+          if (values.tipoFechamentoDefault) {
+            updateTenantMutation.mutate({ id: tenantId, data: { tipoFechamentoDefault: values.tipoFechamentoDefault } });
+          }
           queryClient.invalidateQueries({ queryKey: getGetTenantQueryKey(tenantId) });
           setSubmitting(false);
           setConfigResult({
@@ -1636,6 +1643,24 @@ export default function Onboarding() {
                   <p className="text-sm text-muted-foreground mt-1">
                     Como funciona o seu processo comercial hoje.
                   </p>
+                </div>
+
+                <div className="space-y-2">
+                  <Label>Modelo comercial</Label>
+                  <p className="text-xs text-muted-foreground">Como seus negócios são fechados? Define o padrão para novos deals.</p>
+                  <Select
+                    value={form.watch("tipoFechamentoDefault")}
+                    onValueChange={(v) => form.setValue("tipoFechamentoDefault", v as "pedido" | "contrato" | "pedido_e_contrato")}
+                  >
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="pedido">Pedido — confirmação simples, sem assinatura</SelectItem>
+                      <SelectItem value="contrato">Contrato — assinatura eletrônica obrigatória</SelectItem>
+                      <SelectItem value="pedido_e_contrato">Pedido e Contrato — escolhido em cada negócio</SelectItem>
+                    </SelectContent>
+                  </Select>
                 </div>
 
                 <div className="grid grid-cols-2 gap-4">

@@ -5665,6 +5665,35 @@ components:
           description: Top 5 leads ordered by churnRisk descending
           items:
             $ref: "#/components/schemas/DashboardLeadEntry"
+        ganhosMes:
+          type: object
+          properties:
+            count:
+              type: integer
+            somaValor:
+              type: string
+          required: [count, somaValor]
+        ticketMedio:
+          type: string
+          nullable: true
+          description: Average valor of ganho deals as decimal string, or null if none
+        propostas:
+          type: object
+          properties:
+            ativas:
+              type: object
+              properties:
+                count:
+                  type: integer
+                somaValor:
+                  type: string
+              required: [count, somaValor]
+          required: [ativas]
+        dealsPorTipoFechamento:
+          type: object
+          additionalProperties:
+            type: integer
+          description: Map of tipoFechamento → count for all deals
       required:
         - leads
         - deals
@@ -5672,6 +5701,9 @@ components:
         - atividadesAtrasadas
         - churnRiskDistribuicao
         - top5ChurnRisk
+        - ganhosMes
+        - propostas
+        - dealsPorTipoFechamento
 
     SubscriptionPlano:
       type: string
@@ -6958,11 +6990,12 @@ components:
 
     TipoFechamento:
       type: string
-      enum: [pedido, contrato]
+      enum: [pedido, contrato, pedido_e_contrato]
       description: >
         Define o comportamento ao marcar o negócio como Ganho.
         'pedido' gera apenas uma confirmação simples (sem assinatura).
         'contrato' inicia o fluxo completo de assinatura eletrônica.
+        'pedido_e_contrato' significa que o tenant usa ambos os modelos — o tipo é escolhido por negócio.
 
     Funil:
       type: object

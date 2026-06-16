@@ -6,6 +6,7 @@ import {
   activitiesTable,
   invoicesTable,
   customerIntelligenceTable,
+  propostasTable,
 } from "@workspace/db";
 import {
   eq,
@@ -16,13 +17,15 @@ import {
   lt,
   count,
   sum,
+  avg,
   sql,
   desc,
+  gte,
 } from "drizzle-orm";
 
 const router: IRouter = Router();
 
-// Explicit row shapes so TypeScript doesn't lose inference inside Promise.all<7>
+// Explicit row shapes so TypeScript doesn't lose inference inside Promise.all
 type LeadsSummaryRow = { total: number; novosUltimos30Dias: number };
 type DealsByStageRow = { etapa: string; total: number };
 type OpenDealsValueRow = { totalValor: string | null };
@@ -36,13 +39,20 @@ type Top5ChurnRow = {
   email: string | null;
   telefone: string | null;
 };
+type GanhosMesRow = { count: number; somaValor: string | null };
+type TicketMedioRow = { ticketMedio: string | null };
+type PropostasAtivasRow = { count: number; somaValor: string | null };
+type DealsByTipoRow = { tipoFechamento: string | null; total: number };
 
 router.get("/tenants/:tenantId/dashboard", async (req, res) => {
   const tenantId = String(req.params.tenantId);
   const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
   const now = new Date();
 
-  // Run all 7 aggregate queries in parallel
+  // Start of current month
+  const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+
+  // Run all queries in parallel
   const [
     leadsRows,
     dealsByStageRows,
@@ -51,6 +61,10 @@ router.get("/tenants/:tenantId/dashboard", async (req, res) => {
     overdueActivitiesRows,
     churnDistRows,
     top5ChurnRows,
+    ganhosMesRows,
+    ticketMedioRows,
+    propostasAtivasRows,
+    dealsByTipoRows,
   ] = (await Promise.all([
     // 1. Leads: total + novos nos últimos 30 dias
     db
@@ -145,6 +159,59 @@ router.get("/tenants/:tenantId/dashboard", async (req, res) => {
       )
       .orderBy(desc(customerIntelligenceTable.churnRisk))
       .limit(5),
+
+    // 8. Deals ganhos este mês: etapa=ganho + updatedAt >= startOfMonth
+    db
+      .select({
+        count: sql<number>`count(*)`.mapWith(Number),
+        somaValor: sum(dealsTable.valor),
+      })
+      .from(dealsTable)
+      .where(
+        and(
+          eq(dealsTable.tenantId, tenantId),
+          eq(dealsTable.etapa, "ganho"),
+          gte(dealsTable.updatedAt, startOfMonth),
+        ),
+      ),
+
+    // 9. Ticket médio: avg(valor) de todos os deals ganhos
+    db
+      .select({
+        ticketMedio: sql<string | null>`avg(${dealsTable.valor})::text`,
+      })
+      .from(dealsTable)
+      .where(
+        and(
+          eq(dealsTable.tenantId, tenantId),
+          eq(dealsTable.etapa, "ganho"),
+          isNotNull(dealsTable.valor),
+        ),
+      ),
+
+    // 10. Propostas ativas (rascunho + enviada): count + soma valorTotal
+    db
+      .select({
+        count: sql<number>`count(*)`.mapWith(Number),
+        somaValor: sum(propostasTable.valorTotal),
+      })
+      .from(propostasTable)
+      .where(
+        and(
+          eq(propostasTable.tenantId, tenantId),
+          inArray(propostasTable.status, ["rascunho", "enviada"]),
+        ),
+      ),
+
+    // 11. Deals por tipo de fechamento
+    db
+      .select({
+        tipoFechamento: sql<string | null>`${dealsTable.tipoFechamento}`,
+        total: count(),
+      })
+      .from(dealsTable)
+      .where(eq(dealsTable.tenantId, tenantId))
+      .groupBy(dealsTable.tipoFechamento),
   ])) as [
     LeadsSummaryRow[],
     DealsByStageRow[],
@@ -153,6 +220,10 @@ router.get("/tenants/:tenantId/dashboard", async (req, res) => {
     OverdueActivitiesRow[],
     ChurnDistRow[],
     Top5ChurnRow[],
+    GanhosMesRow[],
+    TicketMedioRow[],
+    PropostasAtivasRow[],
+    DealsByTipoRow[],
   ];
 
   // --- Deriva métricas de deals ---
@@ -169,6 +240,14 @@ router.get("/tenants/:tenantId/dashboard", async (req, res) => {
   // --- Faturas por status ---
   const fPendente = invoicesRows.find((r) => r.status === "pendente");
   const fAtrasada = invoicesRows.find((r) => r.status === "atrasada");
+
+  // --- Deals por tipo de fechamento ---
+  const dealsPorTipoFechamento: Record<string, number> = {};
+  for (const row of dealsByTipoRows) {
+    if (row.tipoFechamento) {
+      dealsPorTipoFechamento[row.tipoFechamento] = Number(row.total);
+    }
+  }
 
   res.json({
     leads: {
@@ -204,6 +283,18 @@ router.get("/tenants/:tenantId/dashboard", async (req, res) => {
       telefone: r.telefone,
       churnRisk: r.churnRisk,
     })),
+    ganhosMes: {
+      count: ganhosMesRows[0]?.count ?? 0,
+      somaValor: ganhosMesRows[0]?.somaValor ?? "0",
+    },
+    ticketMedio: ticketMedioRows[0]?.ticketMedio ?? null,
+    propostas: {
+      ativas: {
+        count: propostasAtivasRows[0]?.count ?? 0,
+        somaValor: propostasAtivasRows[0]?.somaValor ?? "0",
+      },
+    },
+    dealsPorTipoFechamento,
   });
 });
 

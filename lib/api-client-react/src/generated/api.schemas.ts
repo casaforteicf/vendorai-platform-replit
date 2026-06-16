@@ -198,6 +198,25 @@ export type TenantDashboardChurnRiskDistribuicao = {
   alto: number;
 };
 
+export type TenantDashboardGanhosMes = {
+  count: number;
+  somaValor: string;
+};
+
+export type TenantDashboardPropostasAtivas = {
+  count: number;
+  somaValor: string;
+};
+
+export type TenantDashboardPropostas = {
+  ativas: TenantDashboardPropostasAtivas;
+};
+
+/**
+ * Map of tipoFechamento → count for all deals
+ */
+export type TenantDashboardDealsPorTipoFechamento = {[key: string]: number};
+
 export interface TenantDashboard {
   leads: TenantDashboardLeads;
   deals: TenantDashboardDeals;
@@ -207,6 +226,12 @@ export interface TenantDashboard {
   churnRiskDistribuicao: TenantDashboardChurnRiskDistribuicao;
   /** Top 5 leads ordered by churnRisk descending */
   top5ChurnRisk: DashboardLeadEntry[];
+  ganhosMes: TenantDashboardGanhosMes;
+  /** Average valor of ganho deals as decimal string, or null if none */
+  ticketMedio?: string | null;
+  propostas: TenantDashboardPropostas;
+  /** Map of tipoFechamento → count for all deals */
+  dealsPorTipoFechamento: TenantDashboardDealsPorTipoFechamento;
 }
 
 export type SubscriptionPlano = typeof SubscriptionPlano[keyof typeof SubscriptionPlano];
@@ -1047,7 +1072,7 @@ export const DealEtapa = {
 } as const;
 
 /**
- * Define o comportamento ao marcar o negócio como Ganho. 'pedido' gera apenas uma confirmação simples (sem assinatura). 'contrato' inicia o fluxo completo de assinatura eletrônica.
+ * Define o comportamento ao marcar o negócio como Ganho. 'pedido' gera apenas uma confirmação simples (sem assinatura). 'contrato' inicia o fluxo completo de assinatura eletrônica. 'pedido_e_contrato' significa que o tenant usa ambos os modelos — o tipo é escolhido por negócio.
 
  */
 export type TipoFechamento = typeof TipoFechamento[keyof typeof TipoFechamento];
@@ -1056,6 +1081,7 @@ export type TipoFechamento = typeof TipoFechamento[keyof typeof TipoFechamento];
 export const TipoFechamento = {
   pedido: 'pedido',
   contrato: 'contrato',
+  pedido_e_contrato: 'pedido_e_contrato',
 } as const;
 
 export interface Funil {
