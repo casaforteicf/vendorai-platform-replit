@@ -5,11 +5,13 @@ import {
   db,
   propostasTable,
   produtosCatalogoTable,
+  businessProfilesTable,
   insertPropostaSchema,
   updatePropostaSchema,
   tenantsTable,
 } from "@workspace/db";
 import { dispatchVendaWebhook } from "../services/erp-webhook.js";
+import { getOpenAI } from "../lib/agent-engine.js";
 
 const router: IRouter = Router();
 
@@ -287,6 +289,95 @@ router.post(
     res.status(201).json(proposta);
   }
 );
+
+// ─── AI item suggestion ───────────────────────────────────────────────────────
+const suggestBodySchema = z.object({
+  titulo: z.string().min(1),
+  leadNome: z.string().optional(),
+  contexto: z.string().optional(),
+});
+
+router.post("/tenants/:tenantId/propostas/suggest-items", async (req, res) => {
+  const tenantId = String(req.params.tenantId);
+
+  if (req.user?.platformRole !== "super_admin" && req.user?.tenantId !== tenantId) {
+    res.status(403).json({ error: "Access denied" });
+    return;
+  }
+
+  const parsed = suggestBodySchema.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(422).json({ error: parsed.error.message });
+    return;
+  }
+
+  const [profile] = await db
+    .select()
+    .from(businessProfilesTable)
+    .where(eq(businessProfilesTable.tenantId, tenantId));
+
+  const catalog = await db
+    .select({
+      nome: produtosCatalogoTable.nome,
+      precoBase: produtosCatalogoTable.precoBase,
+      unidade: produtosCatalogoTable.unidade,
+      categoria: produtosCatalogoTable.categoria,
+    })
+    .from(produtosCatalogoTable)
+    .where(and(eq(produtosCatalogoTable.tenantId, tenantId), eq(produtosCatalogoTable.ativo, true)))
+    .limit(20);
+
+  const contextParts: string[] = [`Título do orçamento: ${parsed.data.titulo}`];
+  if (parsed.data.leadNome) contextParts.push(`Cliente: ${parsed.data.leadNome}`);
+  if (parsed.data.contexto) contextParts.push(`Contexto adicional: ${parsed.data.contexto}`);
+  if (profile?.nomeFantasia) contextParts.push(`Empresa vendedora: ${profile.nomeFantasia}`);
+  if (profile?.vertical) contextParts.push(`Segmento: ${profile.vertical}`);
+  if ((profile?.produtos as unknown[])?.length) {
+    contextParts.push(
+      `Produtos da empresa: ${(profile.produtos as Array<{ nome: string; preco?: number }>)
+        .map((p) => `${p.nome}${p.preco ? ` (R$ ${p.preco})` : ""}`)
+        .join(", ")}`
+    );
+  }
+  if (catalog.length > 0) {
+    contextParts.push(
+      `Catálogo disponível: ${catalog
+        .map((c) => `${c.nome} · R$ ${c.precoBase}/${c.unidade}${c.categoria ? ` (${c.categoria})` : ""}`)
+        .join("; ")}`
+    );
+  }
+
+  try {
+    const openai = getOpenAI();
+    const response = await openai.chat.completions.create({
+      model: "gpt-4o-mini",
+      messages: [
+        {
+          role: "system",
+          content: `Você é um assistente especializado em criar orçamentos comerciais brasileiros.
+Com base nas informações fornecidas, sugira uma lista de itens para o orçamento.
+Retorne APENAS JSON válido:
+{"itens":[{"nome":"nome do item","quantidade":número,"valorUnitario":número_decimal}]}
+Regras:
+- Sugira entre 3 e 7 itens relevantes ao contexto
+- Valores coerentes com mercado brasileiro em R$
+- Prefira itens do catálogo disponível quando relevante
+- Retorne SOMENTE o JSON, sem texto extra`,
+        },
+        { role: "user", content: contextParts.join("\n") },
+      ],
+      response_format: { type: "json_object" },
+      max_tokens: 800,
+      temperature: 0.7,
+    });
+
+    const raw = response.choices[0]?.message?.content ?? "{}";
+    res.json(JSON.parse(raw));
+  } catch (err) {
+    req.log.error({ err }, "suggest-items: OpenAI error");
+    res.status(500).json({ error: "Erro ao gerar sugestão" });
+  }
+});
 
 router.delete("/propostas/:id", async (req, res) => {
   const [existing] = await db

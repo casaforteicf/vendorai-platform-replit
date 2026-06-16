@@ -3,6 +3,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import {
   useListPropostas,
   getListPropostasQueryKey,
+  useCreateProposta,
   useCreatePropostaFromCatalogo,
   useUpdatePropostaStatus,
   useDeleteProposta,
@@ -96,6 +97,7 @@ import {
   XCircle,
   BookOpen,
   X,
+  Sparkles,
 } from "lucide-react";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
@@ -353,10 +355,8 @@ function CatalogoModal({
 }
 
 // ── Proposta Modal (Nova Proposta) ────────────────────────────────────────────
-interface CartLine {
-  produtoId: string;
-  quantidade: number;
-}
+interface CartLine { produtoId: string; quantidade: number; }
+interface FreeItem  { id: string; nome: string; quantidade: number; valorUnitario: number; }
 
 const propostaFormSchema = z.object({
   leadId: z.string().min(1, "Selecione um lead"),
@@ -365,6 +365,10 @@ const propostaFormSchema = z.object({
   observacoes: z.string().optional(),
 });
 type PropostaFormValues = z.infer<typeof propostaFormSchema>;
+
+function newFreeItem(): FreeItem {
+  return { id: Math.random().toString(36).slice(2), nome: "", quantidade: 1, valorUnitario: 0 };
+}
 
 function PropostaModal({
   open,
@@ -379,8 +383,20 @@ function PropostaModal({
 }) {
   const { toast } = useToast();
   const qc = useQueryClient();
+
+  // mode
+  const [mode, setMode] = useState<"catalogo" | "livre">("catalogo");
+
+  // catalog mode
   const [cartLines, setCartLines] = useState<CartLine[]>([{ produtoId: "", quantidade: 1 }]);
   const [cartError, setCartError] = useState("");
+
+  // livre mode
+  const [freeItems, setFreeItems] = useState<FreeItem[]>([newFreeItem()]);
+  const [freeError, setFreeError] = useState("");
+  const [suggesting, setSuggesting] = useState(false);
+  const [contextoIA, setContextoIA] = useState("");
+  const [showIAPanel, setShowIAPanel] = useState(false);
 
   const form = useForm<PropostaFormValues>({
     resolver: zodResolver(propostaFormSchema),
@@ -391,65 +407,106 @@ function PropostaModal({
     query: { queryKey: getListTenantLeadsQueryKey(tenantId), enabled: !!tenantId },
   });
 
-  const createMut = useCreatePropostaFromCatalogo();
+  const createFromCatMut  = useCreatePropostaFromCatalogo();
+  const createLivreMut    = useCreateProposta();
+  const activeCatalog     = catalog.filter((p) => p.ativo);
 
-  const activeCatalog = catalog.filter((p) => p.ativo);
-
-  // Calculate grand total
-  const grandTotal = cartLines.reduce((sum, line) => {
-    const prod = activeCatalog.find((p) => p.id === line.produtoId);
-    if (!prod || !line.produtoId) return sum;
-    return sum + line.quantidade * parseFloat(prod.precoBase);
+  // totals
+  const catTotal = cartLines.reduce((s, l) => {
+    const p = activeCatalog.find((p) => p.id === l.produtoId);
+    return s + (p ? l.quantidade * parseFloat(p.precoBase) : 0);
   }, 0);
-
-  function addLine() {
-    setCartLines((prev) => [...prev, { produtoId: "", quantidade: 1 }]);
-  }
-
-  function removeLine(idx: number) {
-    setCartLines((prev) => prev.filter((_, i) => i !== idx));
-  }
-
-  function updateLine(idx: number, patch: Partial<CartLine>) {
-    setCartLines((prev) => prev.map((l, i) => (i === idx ? { ...l, ...patch } : l)));
-  }
+  const freeTotal = freeItems.reduce((s, i) => s + i.quantidade * i.valorUnitario, 0);
 
   function handleClose() {
     form.reset();
+    setMode("catalogo");
     setCartLines([{ produtoId: "", quantidade: 1 }]);
     setCartError("");
+    setFreeItems([newFreeItem()]);
+    setFreeError("");
+    setContextoIA("");
+    setShowIAPanel(false);
     onClose();
   }
 
-  function onSubmit(vals: PropostaFormValues) {
-    const validLines = cartLines.filter((l) => l.produtoId);
-    if (validLines.length === 0) {
-      setCartError("Adicione pelo menos um produto ao orçamento.");
-      return;
-    }
-    setCartError("");
-
-    createMut.mutate(
-      {
-        tenantId,
-        data: {
-          leadId: vals.leadId,
-          titulo: vals.titulo,
-          validadeAte: vals.validadeAte || undefined,
-          observacoes: vals.observacoes || undefined,
-          itens: validLines.map((l) => ({ produtoId: l.produtoId, quantidade: l.quantidade })),
-        },
-      },
-      {
-        onSuccess: () => {
-          toast({ title: "Proposta criada com sucesso" });
-          qc.invalidateQueries({ queryKey: getListPropostasQueryKey(tenantId) });
-          handleClose();
-        },
-        onError: () => toast({ title: "Erro ao criar proposta", variant: "destructive" }),
-      }
-    );
+  // ── catalog helpers ───────────────────────────────────────────────────────
+  function addCatLine()    { setCartLines((p) => [...p, { produtoId: "", quantidade: 1 }]); }
+  function removeCatLine(i: number) { setCartLines((p) => p.filter((_, j) => j !== i)); }
+  function updateCatLine(i: number, patch: Partial<CartLine>) {
+    setCartLines((p) => p.map((l, j) => (j === i ? { ...l, ...patch } : l)));
   }
+
+  // ── livre helpers ─────────────────────────────────────────────────────────
+  function addFreeItem()    { setFreeItems((p) => [...p, newFreeItem()]); }
+  function removeFreeItem(id: string) { setFreeItems((p) => p.filter((i) => i.id !== id)); }
+  function updateFreeItem(id: string, patch: Partial<FreeItem>) {
+    setFreeItems((p) => p.map((i) => (i.id === id ? { ...i, ...patch } : i)));
+  }
+
+  // ── AI suggestion ─────────────────────────────────────────────────────────
+  async function suggestItems() {
+    setSuggesting(true);
+    try {
+      const titulo   = form.getValues("titulo") || "orçamento";
+      const leadId   = form.getValues("leadId");
+      const leadNome = leads.find((l) => l.id === leadId)?.nome;
+      const res = await fetch(`/api/tenants/${tenantId}/propostas/suggest-items`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${localStorage.getItem("vendorai_token")}`,
+        },
+        body: JSON.stringify({ titulo, leadNome, contexto: contextoIA }),
+      });
+      if (!res.ok) throw new Error("Falha");
+      const data = await res.json();
+      if (data.itens?.length) {
+        setFreeItems(
+          data.itens.map((item: { nome: string; quantidade?: number; valorUnitario?: number }) => ({
+            id: Math.random().toString(36).slice(2),
+            nome: item.nome ?? "",
+            quantidade: item.quantidade ?? 1,
+            valorUnitario: item.valorUnitario ?? 0,
+          }))
+        );
+        toast({ title: `${data.itens.length} itens sugeridos pela IA` });
+      }
+    } catch {
+      toast({ title: "Erro ao gerar sugestão", variant: "destructive" });
+    } finally {
+      setSuggesting(false);
+    }
+  }
+
+  // ── submit ────────────────────────────────────────────────────────────────
+  function onSubmit(vals: PropostaFormValues) {
+    if (mode === "catalogo") {
+      const valid = cartLines.filter((l) => l.produtoId);
+      if (!valid.length) { setCartError("Adicione pelo menos um produto."); return; }
+      setCartError("");
+      createFromCatMut.mutate(
+        { tenantId, data: { leadId: vals.leadId, titulo: vals.titulo, validadeAte: vals.validadeAte || undefined, observacoes: vals.observacoes || undefined, itens: valid.map((l) => ({ produtoId: l.produtoId, quantidade: l.quantidade })) } },
+        {
+          onSuccess: () => { toast({ title: "Proposta criada com sucesso" }); qc.invalidateQueries({ queryKey: getListPropostasQueryKey(tenantId) }); handleClose(); },
+          onError: () => toast({ title: "Erro ao criar proposta", variant: "destructive" }),
+        }
+      );
+    } else {
+      const valid = freeItems.filter((i) => i.nome.trim());
+      if (!valid.length) { setFreeError("Adicione pelo menos um item."); return; }
+      setFreeError("");
+      createLivreMut.mutate(
+        { data: { tenantId, leadId: vals.leadId, titulo: vals.titulo, validadeAte: vals.validadeAte || undefined, observacoes: vals.observacoes || undefined, itens: valid.map((i) => ({ nome: i.nome, quantidade: i.quantidade, valorUnitario: i.valorUnitario })), valorTotal: freeTotal } },
+        {
+          onSuccess: () => { toast({ title: "Proposta criada com sucesso" }); qc.invalidateQueries({ queryKey: getListPropostasQueryKey(tenantId) }); handleClose(); },
+          onError: () => toast({ title: "Erro ao criar proposta", variant: "destructive" }),
+        }
+      );
+    }
+  }
+
+  const isPending = createFromCatMut.isPending || createLivreMut.isPending;
 
   return (
     <Dialog open={open} onOpenChange={(o) => !o && handleClose()}>
@@ -483,92 +540,201 @@ function PropostaModal({
               )} />
             </div>
 
-            {/* Items table */}
-            <div>
-              <div className="flex items-center justify-between mb-2">
-                <p className="text-sm font-medium">Itens do Orçamento</p>
-                <Button type="button" variant="outline" size="sm" onClick={addLine}>
-                  <Plus className="h-3.5 w-3.5 mr-1" /> Adicionar item
-                </Button>
-              </div>
-
-              <div className="rounded-md border overflow-hidden">
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead className="text-xs py-2">Produto</TableHead>
-                      <TableHead className="text-xs py-2 w-24">Qtd</TableHead>
-                      <TableHead className="text-xs py-2 w-28 text-right">Preço unit.</TableHead>
-                      <TableHead className="text-xs py-2 w-28 text-right">Subtotal</TableHead>
-                      <TableHead className="w-8 py-2" />
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {cartLines.map((line, idx) => {
-                      const prod = activeCatalog.find((p) => p.id === line.produtoId);
-                      const subtotal = prod ? line.quantidade * parseFloat(prod.precoBase) : 0;
-                      return (
-                        <TableRow key={idx}>
-                          <TableCell className="py-1.5">
-                            <Select
-                              value={line.produtoId}
-                              onValueChange={(v) => updateLine(idx, { produtoId: v })}
-                            >
-                              <SelectTrigger className="h-8 text-sm">
-                                <SelectValue placeholder="Selecione…" />
-                              </SelectTrigger>
-                              <SelectContent>
-                                {activeCatalog.map((p) => (
-                                  <SelectItem key={p.id} value={p.id}>
-                                    {p.nome}
-                                    {p.categoria ? ` · ${p.categoria}` : ""}
-                                  </SelectItem>
-                                ))}
-                              </SelectContent>
-                            </Select>
-                          </TableCell>
-                          <TableCell className="py-1.5">
-                            <Input
-                              type="number"
-                              min={1}
-                              className="h-8 text-sm w-20"
-                              value={line.quantidade}
-                              onChange={(e) => updateLine(idx, { quantidade: Math.max(1, parseInt(e.target.value) || 1) })}
-                            />
-                          </TableCell>
-                          <TableCell className="py-1.5 text-right font-mono text-sm text-muted-foreground">
-                            {prod ? fmtCurrency(prod.precoBase) : "—"}
-                            {prod ? <span className="text-xs ml-1">/{prod.unidade}</span> : ""}
-                          </TableCell>
-                          <TableCell className="py-1.5 text-right font-mono text-sm font-medium">
-                            {prod ? fmtCurrency(subtotal) : "—"}
-                          </TableCell>
-                          <TableCell className="py-1.5">
-                            <Button
-                              type="button"
-                              variant="ghost"
-                              size="icon"
-                              className="h-7 w-7 text-muted-foreground hover:text-destructive"
-                              onClick={() => removeLine(idx)}
-                              disabled={cartLines.length === 1}
-                            >
-                              <X className="h-3.5 w-3.5" />
-                            </Button>
-                          </TableCell>
-                        </TableRow>
-                      );
-                    })}
-                  </TableBody>
-                </Table>
-              </div>
-
-              {/* Grand total */}
-              <div className="flex items-center justify-end gap-3 mt-2 pr-2">
-                <span className="text-sm text-muted-foreground">Total estimado:</span>
-                <span className="text-lg font-bold text-foreground">{fmtCurrency(grandTotal)}</span>
-              </div>
-              {cartError && <p className="text-sm text-destructive mt-1">{cartError}</p>}
+            {/* Mode tabs */}
+            <div className="flex rounded-lg border overflow-hidden text-sm">
+              <button
+                type="button"
+                onClick={() => setMode("catalogo")}
+                className={`flex-1 py-2 font-medium transition-colors ${mode === "catalogo" ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:bg-muted"}`}
+              >
+                Do Catálogo
+              </button>
+              <button
+                type="button"
+                onClick={() => setMode("livre")}
+                className={`flex-1 py-2 font-medium transition-colors ${mode === "livre" ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:bg-muted"}`}
+              >
+                Itens Livres
+              </button>
             </div>
+
+            {/* ── CATALOG MODE ──────────────────────────────────────────────── */}
+            {mode === "catalogo" && (
+              <div>
+                <div className="flex items-center justify-between mb-2">
+                  <p className="text-sm font-medium">Itens do Orçamento</p>
+                  <Button type="button" variant="outline" size="sm" onClick={addCatLine}>
+                    <Plus className="h-3.5 w-3.5 mr-1" /> Adicionar item
+                  </Button>
+                </div>
+                <div className="rounded-md border overflow-hidden">
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead className="text-xs py-2">Produto</TableHead>
+                        <TableHead className="text-xs py-2 w-24">Qtd</TableHead>
+                        <TableHead className="text-xs py-2 w-28 text-right">Preço unit.</TableHead>
+                        <TableHead className="text-xs py-2 w-28 text-right">Subtotal</TableHead>
+                        <TableHead className="w-8 py-2" />
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {cartLines.map((line, idx) => {
+                        const prod = activeCatalog.find((p) => p.id === line.produtoId);
+                        const subtotal = prod ? line.quantidade * parseFloat(prod.precoBase) : 0;
+                        return (
+                          <TableRow key={idx}>
+                            <TableCell className="py-1.5">
+                              <Select value={line.produtoId} onValueChange={(v) => updateCatLine(idx, { produtoId: v })}>
+                                <SelectTrigger className="h-8 text-sm"><SelectValue placeholder="Selecione…" /></SelectTrigger>
+                                <SelectContent>
+                                  {activeCatalog.map((p) => (
+                                    <SelectItem key={p.id} value={p.id}>{p.nome}{p.categoria ? ` · ${p.categoria}` : ""}</SelectItem>
+                                  ))}
+                                </SelectContent>
+                              </Select>
+                            </TableCell>
+                            <TableCell className="py-1.5">
+                              <Input type="number" min={1} className="h-8 text-sm w-20" value={line.quantidade} onChange={(e) => updateCatLine(idx, { quantidade: Math.max(1, parseInt(e.target.value) || 1) })} />
+                            </TableCell>
+                            <TableCell className="py-1.5 text-right font-mono text-sm text-muted-foreground">
+                              {prod ? <>{fmtCurrency(prod.precoBase)}<span className="text-xs ml-1">/{prod.unidade}</span></> : "—"}
+                            </TableCell>
+                            <TableCell className="py-1.5 text-right font-mono text-sm font-medium">{prod ? fmtCurrency(subtotal) : "—"}</TableCell>
+                            <TableCell className="py-1.5">
+                              <Button type="button" variant="ghost" size="icon" className="h-7 w-7 text-muted-foreground hover:text-destructive" onClick={() => removeCatLine(idx)} disabled={cartLines.length === 1}>
+                                <X className="h-3.5 w-3.5" />
+                              </Button>
+                            </TableCell>
+                          </TableRow>
+                        );
+                      })}
+                    </TableBody>
+                  </Table>
+                </div>
+                <div className="flex items-center justify-end gap-3 mt-2 pr-2">
+                  <span className="text-sm text-muted-foreground">Total estimado:</span>
+                  <span className="text-lg font-bold">{fmtCurrency(catTotal)}</span>
+                </div>
+                {cartError && <p className="text-sm text-destructive mt-1">{cartError}</p>}
+              </div>
+            )}
+
+            {/* ── LIVRE MODE ────────────────────────────────────────────────── */}
+            {mode === "livre" && (
+              <div className="space-y-3">
+                {/* AI suggestion panel */}
+                <div className="rounded-lg border border-violet-200 bg-violet-50/60 p-3 space-y-2">
+                  <button
+                    type="button"
+                    className="flex items-center gap-2 text-sm font-medium text-violet-800 w-full"
+                    onClick={() => setShowIAPanel((p) => !p)}
+                  >
+                    <Sparkles className="h-4 w-4" />
+                    Sugerir itens com IA
+                    <span className="ml-auto text-violet-500 text-xs">{showIAPanel ? "▲" : "▼"}</span>
+                  </button>
+                  {showIAPanel && (
+                    <div className="space-y-2 pt-1">
+                      <Textarea
+                        placeholder="Descreva o que o cliente precisa (opcional)…  Ex: instalação de câmeras de segurança para escritório de 200m²"
+                        className="resize-none text-sm h-20 bg-white"
+                        value={contextoIA}
+                        onChange={(e) => setContextoIA(e.target.value)}
+                      />
+                      <Button
+                        type="button"
+                        size="sm"
+                        className="w-full gap-2 bg-violet-700 hover:bg-violet-800 text-white"
+                        disabled={suggesting}
+                        onClick={suggestItems}
+                      >
+                        {suggesting ? (
+                          <><Loader2 className="h-4 w-4 animate-spin" />Gerando itens...</>
+                        ) : (
+                          <><Sparkles className="h-4 w-4" />Gerar sugestão de itens</>
+                        )}
+                      </Button>
+                      <p className="text-[11px] text-violet-600">A IA usa o título, lead e perfil do seu negócio para sugerir itens relevantes e preços de mercado.</p>
+                    </div>
+                  )}
+                </div>
+
+                {/* Editable items table */}
+                <div>
+                  <div className="flex items-center justify-between mb-2">
+                    <p className="text-sm font-medium">Itens do Orçamento</p>
+                    <Button type="button" variant="outline" size="sm" onClick={addFreeItem}>
+                      <Plus className="h-3.5 w-3.5 mr-1" /> Adicionar item
+                    </Button>
+                  </div>
+                  <div className="rounded-md border overflow-hidden">
+                    <Table>
+                      <TableHeader>
+                        <TableRow>
+                          <TableHead className="text-xs py-2">Descrição do item</TableHead>
+                          <TableHead className="text-xs py-2 w-20">Qtd</TableHead>
+                          <TableHead className="text-xs py-2 w-32">Valor unit. (R$)</TableHead>
+                          <TableHead className="text-xs py-2 w-28 text-right">Subtotal</TableHead>
+                          <TableHead className="w-8 py-2" />
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {freeItems.map((item) => {
+                          const subtotal = item.quantidade * item.valorUnitario;
+                          return (
+                            <TableRow key={item.id}>
+                              <TableCell className="py-1.5">
+                                <Input
+                                  className="h-8 text-sm"
+                                  placeholder="Ex: Instalação de câmera"
+                                  value={item.nome}
+                                  onChange={(e) => updateFreeItem(item.id, { nome: e.target.value })}
+                                />
+                              </TableCell>
+                              <TableCell className="py-1.5">
+                                <Input
+                                  type="number"
+                                  min={1}
+                                  step={1}
+                                  className="h-8 text-sm w-16"
+                                  value={item.quantidade}
+                                  onChange={(e) => updateFreeItem(item.id, { quantidade: Math.max(1, parseFloat(e.target.value) || 1) })}
+                                />
+                              </TableCell>
+                              <TableCell className="py-1.5">
+                                <Input
+                                  type="number"
+                                  min={0}
+                                  step={0.01}
+                                  className="h-8 text-sm w-28"
+                                  value={item.valorUnitario || ""}
+                                  placeholder="0,00"
+                                  onChange={(e) => updateFreeItem(item.id, { valorUnitario: parseFloat(e.target.value) || 0 })}
+                                />
+                              </TableCell>
+                              <TableCell className="py-1.5 text-right font-mono text-sm font-medium">
+                                {item.nome ? fmtCurrency(subtotal) : "—"}
+                              </TableCell>
+                              <TableCell className="py-1.5">
+                                <Button type="button" variant="ghost" size="icon" className="h-7 w-7 text-muted-foreground hover:text-destructive" onClick={() => removeFreeItem(item.id)} disabled={freeItems.length === 1}>
+                                  <X className="h-3.5 w-3.5" />
+                                </Button>
+                              </TableCell>
+                            </TableRow>
+                          );
+                        })}
+                      </TableBody>
+                    </Table>
+                  </div>
+                  <div className="flex items-center justify-end gap-3 mt-2 pr-2">
+                    <span className="text-sm text-muted-foreground">Total:</span>
+                    <span className="text-lg font-bold">{fmtCurrency(freeTotal)}</span>
+                  </div>
+                  {freeError && <p className="text-sm text-destructive mt-1">{freeError}</p>}
+                </div>
+              </div>
+            )}
 
             {/* Validade + Observações */}
             <div className="grid grid-cols-2 gap-3">
@@ -590,8 +756,8 @@ function PropostaModal({
 
             <div className="flex gap-2">
               <Button type="button" variant="outline" className="flex-1" onClick={handleClose}>Cancelar</Button>
-              <Button type="submit" className="flex-1" disabled={createMut.isPending}>
-                {createMut.isPending && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
+              <Button type="submit" className="flex-1" disabled={isPending}>
+                {isPending && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
                 Criar Proposta
               </Button>
             </div>
