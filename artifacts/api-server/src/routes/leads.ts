@@ -1,5 +1,6 @@
 import { Router, type IRouter } from "express";
 import { and, eq } from "drizzle-orm";
+import { z } from "zod/v4";
 import { db, leadsTable, insertLeadSchema, updateLeadSchema } from "@workspace/db";
 
 const router: IRouter = Router();
@@ -26,6 +27,56 @@ router.post("/leads", async (req, res) => {
 
   const [lead] = await db.insert(leadsTable).values(parsed.data).returning();
   res.status(201).json(lead);
+});
+
+const importLeadRowSchema = z.object({
+  nome: z.string().min(1, "Nome obrigatório"),
+  telefone: z.string().optional().nullable(),
+  endereco: z.string().optional().nullable(),
+  email: z.string().optional().nullable(),
+  instagram: z.string().optional().nullable(),
+});
+
+const importLeadsBodySchema = z.object({
+  leads: z.array(importLeadRowSchema).min(1).max(500),
+});
+
+router.post("/tenants/:tenantId/leads/import", async (req, res) => {
+  const tenantId = String(req.params["tenantId"]);
+
+  if (req.user?.platformRole !== "super_admin" && req.user?.tenantId !== tenantId) {
+    res.status(403).json({ error: "Acesso negado" });
+    return;
+  }
+
+  const parsed = importLeadsBodySchema.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(422).json({ error: parsed.error.message });
+    return;
+  }
+
+  const { leads } = parsed.data;
+  let imported = 0;
+  const errors: Array<{ row: number; message: string }> = [];
+
+  for (let i = 0; i < leads.length; i++) {
+    const row = leads[i]!;
+    try {
+      await db.insert(leadsTable).values({
+        tenantId,
+        nome: row.nome,
+        telefone: row.telefone || null,
+        email: row.email || null,
+        endereco: row.endereco || null,
+        instagramHandle: row.instagram || null,
+      });
+      imported++;
+    } catch (err) {
+      errors.push({ row: i + 1, message: String(err) });
+    }
+  }
+
+  res.json({ imported, errors });
 });
 
 router.get("/tenants/:tenantId/leads", async (req, res) => {

@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useRef, useCallback } from "react";
 import { useLocation } from "wouter";
 import { useAuth } from "@/contexts/AuthContext";
 import {
@@ -11,7 +11,7 @@ import {
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Plus, Search, ChevronRight, AlertTriangle, ArrowDown, ArrowUp, ArrowUpDown } from "lucide-react";
+import { Plus, Search, ChevronRight, AlertTriangle, ArrowDown, ArrowUp, ArrowUpDown, Upload, FileDown, CheckCircle2, XCircle } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import {
   Select,
@@ -124,8 +124,43 @@ const formSchema = z.object({
   objetivo: z.string().optional().or(z.literal("")),
 });
 
+interface ParsedLeadRow {
+  nome: string;
+  telefone: string;
+  endereco: string;
+  email: string;
+  instagram: string;
+}
+
+const CSV_TEMPLATE = "nome,telefone,endereco,email,instagram\nJoão Silva,(11) 99999-1111,Rua das Flores 123 São Paulo SP,joao@email.com,@joaosilva\nMaria Souza,(21) 98888-2222,,maria@empresa.com.br,";
+
+function parseCsvRows(text: string): ParsedLeadRow[] {
+  const lines = text.split(/\r?\n/).filter((l) => l.trim());
+  if (lines.length < 2) return [];
+
+  const header = lines[0]!.split(",").map((h) => h.trim().toLowerCase());
+  const idx = {
+    nome: header.indexOf("nome"),
+    telefone: header.indexOf("telefone"),
+    endereco: header.indexOf("endereco"),
+    email: header.indexOf("email"),
+    instagram: header.indexOf("instagram"),
+  };
+
+  return lines.slice(1).map((line) => {
+    const cols = line.split(",");
+    return {
+      nome: (idx.nome >= 0 ? cols[idx.nome] : cols[0] ?? "").trim(),
+      telefone: (idx.telefone >= 0 ? cols[idx.telefone] : cols[1] ?? "").trim(),
+      endereco: (idx.endereco >= 0 ? cols[idx.endereco] : cols[2] ?? "").trim(),
+      email: (idx.email >= 0 ? cols[idx.email] : cols[3] ?? "").trim(),
+      instagram: (idx.instagram >= 0 ? cols[idx.instagram] : cols[4] ?? "").trim(),
+    };
+  }).filter((r) => r.nome.length > 0);
+}
+
 export default function Leads() {
-  const { user } = useAuth();
+  const { user, token } = useAuth();
   const tenantId = user?.tenantId ?? "";
   const queryClient = useQueryClient();
   const { toast } = useToast();
@@ -134,6 +169,70 @@ export default function Leads() {
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState<string>("all");
   const [churnSort, setChurnSort] = useState<"desc" | "asc" | null>(null);
+
+  const [isImportOpen, setIsImportOpen] = useState(false);
+  const [parsedRows, setParsedRows] = useState<ParsedLeadRow[]>([]);
+  const [importing, setImporting] = useState(false);
+  const [importResult, setImportResult] = useState<{ imported: number; errors: { row: number; message: string }[] } | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const base = (import.meta.env.BASE_URL ?? "/").replace(/\/$/, "");
+
+  const handleFileChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (ev) => {
+      const text = ev.target?.result as string;
+      setParsedRows(parseCsvRows(text));
+      setImportResult(null);
+    };
+    reader.readAsText(file, "UTF-8");
+  }, []);
+
+  function downloadTemplate() {
+    const blob = new Blob([CSV_TEMPLATE], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = "template_leads.csv";
+    a.click();
+    URL.revokeObjectURL(url);
+  }
+
+  async function handleImport() {
+    if (!parsedRows.length || !tenantId) return;
+    setImporting(true);
+    setImportResult(null);
+    try {
+      const r = await fetch(`${base}/api/tenants/${tenantId}/leads/import`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+        body: JSON.stringify({ leads: parsedRows }),
+      });
+      const data = await r.json();
+      if (!r.ok) {
+        toast({ title: data.error ?? "Erro na importação", variant: "destructive" });
+        return;
+      }
+      setImportResult(data);
+      if (data.imported > 0) {
+        queryClient.invalidateQueries({ queryKey: getListTenantLeadsQueryKey(tenantId) });
+        toast({ title: `${data.imported} lead(s) importado(s) com sucesso!` });
+      }
+    } finally {
+      setImporting(false);
+    }
+  }
+
+  function resetImport() {
+    setParsedRows([]);
+    setImportResult(null);
+    if (fileInputRef.current) fileInputRef.current.value = "";
+  }
 
   const { data: leads, isLoading: leadsLoading } = useListTenantLeads(tenantId, {
     query: {
@@ -223,13 +322,132 @@ export default function Leads() {
           </p>
         </div>
 
-        <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
-          <DialogTrigger asChild>
-            <Button data-testid="button-novo-lead">
-              <Plus className="h-4 w-4 mr-2" />
-              Novo Lead
-            </Button>
-          </DialogTrigger>
+        <div className="flex gap-2 flex-wrap">
+          {/* Import button + dialog */}
+          <Dialog open={isImportOpen} onOpenChange={(v) => { setIsImportOpen(v); if (!v) resetImport(); }}>
+            <DialogTrigger asChild>
+              <Button variant="outline">
+                <Upload className="h-4 w-4 mr-2" />
+                Importar CSV
+              </Button>
+            </DialogTrigger>
+            <DialogContent className="max-w-2xl">
+              <DialogHeader>
+                <DialogTitle>Importar Leads via CSV</DialogTitle>
+              </DialogHeader>
+
+              {!importResult ? (
+                <div className="space-y-4">
+                  {/* Instructions */}
+                  <div className="bg-muted/50 rounded-lg p-4 text-sm space-y-1">
+                    <p className="font-medium">Formato esperado (colunas em ordem):</p>
+                    <p className="font-mono text-xs text-muted-foreground">nome, telefone, endereco, email, instagram</p>
+                    <p className="text-xs text-muted-foreground">A primeira linha deve ser o cabeçalho. Máximo 500 leads por importação.</p>
+                  </div>
+
+                  {/* Template download */}
+                  <Button variant="ghost" size="sm" className="gap-2 text-primary" onClick={downloadTemplate}>
+                    <FileDown className="h-4 w-4" />
+                    Baixar planilha modelo
+                  </Button>
+
+                  {/* File upload */}
+                  <div
+                    className="border-2 border-dashed border-muted-foreground/30 rounded-xl p-8 text-center cursor-pointer hover:border-primary/50 hover:bg-primary/5 transition-colors"
+                    onClick={() => fileInputRef.current?.click()}
+                  >
+                    <Upload className="h-8 w-8 mx-auto mb-2 text-muted-foreground/50" />
+                    <p className="text-sm font-medium">Clique para selecionar o arquivo CSV</p>
+                    <p className="text-xs text-muted-foreground mt-1">ou arraste e solte aqui</p>
+                    <input
+                      ref={fileInputRef}
+                      type="file"
+                      accept=".csv,text/csv"
+                      className="hidden"
+                      onChange={handleFileChange}
+                    />
+                  </div>
+
+                  {/* Preview table */}
+                  {parsedRows.length > 0 && (
+                    <div className="space-y-2">
+                      <p className="text-sm font-medium text-emerald-700">
+                        {parsedRows.length} lead(s) detectado(s) — prévia (primeiros 5):
+                      </p>
+                      <div className="overflow-x-auto rounded-lg border text-xs">
+                        <table className="w-full">
+                          <thead className="bg-muted/50">
+                            <tr>
+                              {["Nome", "Telefone", "Endereço", "Email", "Instagram"].map((h) => (
+                                <th key={h} className="px-3 py-2 text-left font-medium">{h}</th>
+                              ))}
+                            </tr>
+                          </thead>
+                          <tbody className="divide-y">
+                            {parsedRows.slice(0, 5).map((row, i) => (
+                              <tr key={i} className="hover:bg-muted/30">
+                                <td className="px-3 py-1.5 font-medium">{row.nome}</td>
+                                <td className="px-3 py-1.5 text-muted-foreground">{row.telefone || "—"}</td>
+                                <td className="px-3 py-1.5 text-muted-foreground max-w-[120px] truncate">{row.endereco || "—"}</td>
+                                <td className="px-3 py-1.5 text-muted-foreground">{row.email || "—"}</td>
+                                <td className="px-3 py-1.5 text-muted-foreground">{row.instagram || "—"}</td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                      {parsedRows.length > 5 && (
+                        <p className="text-xs text-muted-foreground text-center">… e mais {parsedRows.length - 5} lead(s)</p>
+                      )}
+                      <Button className="w-full gap-2" onClick={handleImport} disabled={importing}>
+                        {importing ? (
+                          <><Upload className="h-4 w-4 animate-bounce" /> Importando…</>
+                        ) : (
+                          <><Upload className="h-4 w-4" /> Importar {parsedRows.length} lead(s)</>
+                        )}
+                      </Button>
+                    </div>
+                  )}
+                </div>
+              ) : (
+                /* Result screen */
+                <div className="space-y-4 py-2">
+                  <div className="flex items-center gap-3 p-4 bg-emerald-50 rounded-lg border border-emerald-200">
+                    <CheckCircle2 className="h-6 w-6 text-emerald-600 shrink-0" />
+                    <div>
+                      <p className="font-semibold text-emerald-800">{importResult.imported} lead(s) importado(s)</p>
+                      {importResult.errors.length > 0 && (
+                        <p className="text-xs text-emerald-700">{importResult.errors.length} linha(s) com erro ignorada(s)</p>
+                      )}
+                    </div>
+                  </div>
+                  {importResult.errors.length > 0 && (
+                    <div className="space-y-1">
+                      <p className="text-sm font-medium flex items-center gap-1.5 text-red-600">
+                        <XCircle className="h-4 w-4" /> Erros:
+                      </p>
+                      {importResult.errors.map((e) => (
+                        <p key={e.row} className="text-xs text-muted-foreground">Linha {e.row}: {e.message}</p>
+                      ))}
+                    </div>
+                  )}
+                  <div className="flex gap-2">
+                    <Button variant="outline" className="flex-1" onClick={resetImport}>Importar outro arquivo</Button>
+                    <Button className="flex-1" onClick={() => { setIsImportOpen(false); resetImport(); }}>Fechar</Button>
+                  </div>
+                </div>
+              )}
+            </DialogContent>
+          </Dialog>
+
+          {/* New lead button + dialog */}
+          <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
+            <DialogTrigger asChild>
+              <Button data-testid="button-novo-lead">
+                <Plus className="h-4 w-4 mr-2" />
+                Novo Lead
+              </Button>
+            </DialogTrigger>
           <DialogContent>
             <DialogHeader>
               <DialogTitle>Criar Novo Lead</DialogTitle>
@@ -315,6 +533,7 @@ export default function Leads() {
             </Form>
           </DialogContent>
         </Dialog>
+        </div>
       </div>
 
       <Card>

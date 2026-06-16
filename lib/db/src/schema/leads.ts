@@ -26,6 +26,8 @@ export const leadsTable = pgTable("leads", {
   activeAgentLock: text("active_agent_lock"),
   assignedTo: text("assigned_to").references(() => usersTable.id, { onDelete: "set null" }),
   instagramScopedId: text("instagram_scoped_id"),
+  instagramHandle: text("instagram_handle"),
+  endereco: text("endereco"),
   dataNascimento: text("data_nascimento"),
   estadoCivil: text("estado_civil"),
   conjugeNome: text("conjuge_nome"),
