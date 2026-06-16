@@ -7,11 +7,14 @@ import { funisTable } from "./funis";
 import { usersTable } from "./users";
 
 export const dealEtapaEnum = pgEnum("deal_etapa", [
+  "em_aquecimento",
   "novo",
   "qualificado",
   "proposta",
   "negociacao",
   "ganho",
+  "em_execucao",
+  "entregue",
   "perdido",
 ]);
 

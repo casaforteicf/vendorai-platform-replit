@@ -71,21 +71,27 @@ import {
 // ─── Constants ───────────────────────────────────────────────────────────────
 
 const ETAPAS: { value: DealEtapa; label: string; color: string; bg: string }[] = [
-  { value: "novo",        label: "Novo",        color: "text-slate-600",   bg: "bg-slate-100" },
-  { value: "qualificado", label: "Qualificado", color: "text-blue-600",    bg: "bg-blue-100" },
-  { value: "proposta",    label: "Proposta",    color: "text-violet-600",  bg: "bg-violet-100" },
-  { value: "negociacao",  label: "Negociação",  color: "text-amber-600",   bg: "bg-amber-100" },
-  { value: "ganho",       label: "Ganho",       color: "text-emerald-600", bg: "bg-emerald-100" },
-  { value: "perdido",     label: "Perdido",     color: "text-red-600",     bg: "bg-red-100" },
+  { value: "em_aquecimento", label: "Em Aquecimento", color: "text-orange-600",  bg: "bg-orange-100" },
+  { value: "novo",           label: "Novo",           color: "text-slate-600",   bg: "bg-slate-100" },
+  { value: "qualificado",    label: "Qualificado",    color: "text-blue-600",    bg: "bg-blue-100" },
+  { value: "proposta",       label: "Proposta",       color: "text-violet-600",  bg: "bg-violet-100" },
+  { value: "negociacao",     label: "Negociação",     color: "text-amber-600",   bg: "bg-amber-100" },
+  { value: "ganho",          label: "Ganho",          color: "text-emerald-600", bg: "bg-emerald-100" },
+  { value: "em_execucao",    label: "Em Execução",    color: "text-cyan-600",    bg: "bg-cyan-100" },
+  { value: "entregue",       label: "Entregue",       color: "text-teal-600",    bg: "bg-teal-100" },
+  { value: "perdido",        label: "Perdido",        color: "text-red-600",     bg: "bg-red-100" },
 ];
 
 const ETAPA_PROBABILIDADE: Record<DealEtapa, number> = {
-  novo:        10,
-  qualificado: 25,
-  proposta:    50,
-  negociacao:  75,
-  ganho:       100,
-  perdido:     0,
+  em_aquecimento: 5,
+  novo:           10,
+  qualificado:    25,
+  proposta:       50,
+  negociacao:     75,
+  ganho:          100,
+  em_execucao:    100,
+  entregue:       100,
+  perdido:        0,
 };
 
 const ETAPAS_SAAS: { value: DealEtapaSaas; label: string; color: string; bg: string; icon: React.ElementType }[] = [

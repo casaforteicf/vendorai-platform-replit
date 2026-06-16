@@ -1067,7 +1067,7 @@ export const CreateDealBody = zod.object({
   "leadId": zod.string().optional(),
   "titulo": zod.string(),
   "valor": zod.number().optional(),
-  "etapa": zod.enum(['novo', 'qualificado', 'proposta', 'negociacao', 'ganho', 'perdido']).optional(),
+  "etapa": zod.enum(['em_aquecimento', 'novo', 'qualificado', 'proposta', 'negociacao', 'ganho', 'em_execucao', 'entregue', 'perdido']).optional(),
   "funilId": zod.string().optional(),
   "probabilidade": zod.number().min(createDealBodyProbabilidadeMin).max(createDealBodyProbabilidadeMax).optional(),
   "dataFechamentoPrevista": zod.coerce.date().optional(),
@@ -1091,7 +1091,7 @@ export const ListDealsParams = zod.object({
 })
 
 export const ListDealsQueryParams = zod.object({
-  "etapa": zod.enum(['novo', 'qualificado', 'proposta', 'negociacao', 'ganho', 'perdido']).optional(),
+  "etapa": zod.enum(['em_aquecimento', 'novo', 'qualificado', 'proposta', 'negociacao', 'ganho', 'em_execucao', 'entregue', 'perdido']).optional(),
   "funilId": zod.coerce.string().optional(),
   "leadId": zod.coerce.string().optional()
 })
@@ -1110,7 +1110,7 @@ export const ListDealsResponseItem = zod.object({
   "leadId": zod.string().nullish(),
   "titulo": zod.string(),
   "valor": zod.string().nullish().describe('Decimal stored as string (Postgres numeric)'),
-  "etapa": zod.enum(['novo', 'qualificado', 'proposta', 'negociacao', 'ganho', 'perdido']),
+  "etapa": zod.enum(['em_aquecimento', 'novo', 'qualificado', 'proposta', 'negociacao', 'ganho', 'em_execucao', 'entregue', 'perdido']),
   "funilId": zod.string().nullish(),
   "probabilidade": zod.number().min(listDealsResponseProbabilidadeMin).max(listDealsResponseProbabilidadeMax).nullish(),
   "dataFechamentoPrevista": zod.coerce.date().nullish(),
@@ -1151,7 +1151,7 @@ export const GetDealResponse = zod.object({
   "leadId": zod.string().nullish(),
   "titulo": zod.string(),
   "valor": zod.string().nullish().describe('Decimal stored as string (Postgres numeric)'),
-  "etapa": zod.enum(['novo', 'qualificado', 'proposta', 'negociacao', 'ganho', 'perdido']),
+  "etapa": zod.enum(['em_aquecimento', 'novo', 'qualificado', 'proposta', 'negociacao', 'ganho', 'em_execucao', 'entregue', 'perdido']),
   "funilId": zod.string().nullish(),
   "probabilidade": zod.number().min(getDealResponseProbabilidadeMin).max(getDealResponseProbabilidadeMax).nullish(),
   "dataFechamentoPrevista": zod.coerce.date().nullish(),
@@ -1191,7 +1191,7 @@ export const UpdateDealBody = zod.object({
   "leadId": zod.string().optional(),
   "titulo": zod.string().optional(),
   "valor": zod.number().optional(),
-  "etapa": zod.enum(['novo', 'qualificado', 'proposta', 'negociacao', 'ganho', 'perdido']).optional(),
+  "etapa": zod.enum(['em_aquecimento', 'novo', 'qualificado', 'proposta', 'negociacao', 'ganho', 'em_execucao', 'entregue', 'perdido']).optional(),
   "funilId": zod.string().optional(),
   "probabilidade": zod.number().min(updateDealBodyProbabilidadeMin).max(updateDealBodyProbabilidadeMax).optional(),
   "dataFechamentoPrevista": zod.coerce.date().optional(),
@@ -1221,7 +1221,7 @@ export const UpdateDealResponse = zod.object({
   "leadId": zod.string().nullish(),
   "titulo": zod.string(),
   "valor": zod.string().nullish().describe('Decimal stored as string (Postgres numeric)'),
-  "etapa": zod.enum(['novo', 'qualificado', 'proposta', 'negociacao', 'ganho', 'perdido']),
+  "etapa": zod.enum(['em_aquecimento', 'novo', 'qualificado', 'proposta', 'negociacao', 'ganho', 'em_execucao', 'entregue', 'perdido']),
   "funilId": zod.string().nullish(),
   "probabilidade": zod.number().min(updateDealResponseOneProbabilidadeMin).max(updateDealResponseOneProbabilidadeMax).nullish(),
   "dataFechamentoPrevista": zod.coerce.date().nullish(),

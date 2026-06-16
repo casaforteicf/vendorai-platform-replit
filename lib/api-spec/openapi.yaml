@@ -7526,7 +7526,7 @@ components:
 
     DealEtapa:
       type: string
-      enum: [novo, qualificado, proposta, negociacao, ganho, perdido]
+      enum: [em_aquecimento, novo, qualificado, proposta, negociacao, ganho, em_execucao, entregue, perdido]
 
     DealEtapaSaas:
       type: string
