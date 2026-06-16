@@ -50,7 +50,7 @@ import {
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
-import { Plus, GripVertical, DollarSign, User, TrendingUp, Link2, Copy, CheckCheck, FileUp, Loader2, Sparkles, BarChart3, RefreshCw, Users, Package, AlertTriangle } from "lucide-react";
+import { Plus, GripVertical, DollarSign, User, TrendingUp, Link2, Copy, CheckCheck, FileUp, Loader2, Sparkles, BarChart3, RefreshCw, Users, Package, AlertTriangle, Paperclip } from "lucide-react";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import {
   DealEtapaSaas,
@@ -827,6 +827,7 @@ function EditDealSheet({
           leadId: values.leadId || undefined,
           probabilidade: values.probabilidade,
           tipoFechamento: values.tipoFechamento as TipoFechamento | undefined,
+          ...(quoteFileUrl !== deal.quoteFileUrl ? { quoteFileUrl } : {}),
         },
       },
       {
@@ -1075,6 +1076,27 @@ function EditDealSheet({
             </Button>
           </form>
         </Form>
+
+        {/* ── Quote attachment ──────────────────────────────────── */}
+        {quoteFileUrl && (
+          <div className="mt-4 rounded-lg border border-slate-200 bg-slate-50 p-3 space-y-1.5">
+            <p className="text-xs font-medium text-slate-700 flex items-center gap-1.5">
+              <Paperclip className="h-3.5 w-3.5 text-slate-500" />
+              Orçamento importado
+            </p>
+            <a
+              href={`/api/storage/objects${quoteFileUrl.replace(/^\/objects/, "")}`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="flex items-center gap-2 text-xs text-blue-600 hover:text-blue-800 hover:underline truncate"
+            >
+              <FileUp className="h-3.5 w-3.5 shrink-0" />
+              <span className="truncate">
+                {quoteFileName ?? quoteFileUrl.split("/").pop() ?? "Orçamento"}
+              </span>
+            </a>
+          </div>
+        )}
 
         {deal?.etapa === "ganho" && tenantSlug && (
           <div className="mt-4 rounded-lg border border-emerald-200 bg-emerald-50 p-3 space-y-2">
