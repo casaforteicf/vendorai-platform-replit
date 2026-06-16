@@ -7,6 +7,10 @@ import { logger } from "./logger";
 const SCOPES = ["https://www.googleapis.com/auth/calendar.events"];
 
 function getRedirectUri(): string {
+  // Allow explicit override via env var (most reliable for production)
+  const explicit = process.env["GOOGLE_REDIRECT_URI"];
+  if (explicit) return explicit;
+
   const domain = (process.env["REPLIT_DOMAINS"] ?? "").split(",")[0]?.trim();
   if (domain) return `https://${domain}/api/auth/google/calendar/callback`;
   return `http://localhost:${process.env["PORT"] ?? 5000}/api/auth/google/calendar/callback`;
