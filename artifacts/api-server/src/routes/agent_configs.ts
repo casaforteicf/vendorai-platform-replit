@@ -315,6 +315,55 @@ router.delete("/agent-configs/:id", async (req, res) => {
   res.status(204).send();
 });
 
+router.get("/agent-configs/:id/zapi-status", async (req, res) => {
+  const [config] = await db
+    .select({
+      id: agentConfigsTable.id,
+      tenantId: agentConfigsTable.tenantId,
+      zapiInstanceId: agentConfigsTable.zapiInstanceId,
+      zapiToken: agentConfigsTable.zapiToken,
+      zapiClientToken: agentConfigsTable.zapiClientToken,
+    })
+    .from(agentConfigsTable)
+    .where(eq(agentConfigsTable.id, String(req.params.id)));
+
+  if (!config) {
+    res.status(404).json({ error: "Agent config not found" });
+    return;
+  }
+
+  if (req.user?.platformRole !== "super_admin" && config.tenantId !== req.user?.tenantId) {
+    res.status(403).json({ error: "Access denied" });
+    return;
+  }
+
+  if (!config.zapiInstanceId || !config.zapiToken || !config.zapiClientToken) {
+    res.json({ configured: false, connected: false, session: false });
+    return;
+  }
+
+  try {
+    const zapiRes = await fetch(
+      `https://api.z-api.io/instances/${config.zapiInstanceId}/token/${config.zapiToken}/status`,
+      { headers: { "Client-Token": config.zapiClientToken } }
+    );
+    if (!zapiRes.ok) {
+      res.json({ configured: true, connected: false, session: false, error: `Z-API HTTP ${zapiRes.status}` });
+      return;
+    }
+    const data = (await zapiRes.json()) as { connected?: boolean; session?: boolean; smartphoneConnected?: boolean };
+    res.json({
+      configured: true,
+      connected: data.connected ?? false,
+      session: data.session ?? false,
+      smartphoneConnected: data.smartphoneConnected ?? false,
+    });
+  } catch (err) {
+    req.log.warn({ err }, "zapi-status check failed");
+    res.json({ configured: true, connected: false, session: false, error: "fetch failed" });
+  }
+});
+
 function isPgCode(err: unknown, code: string): boolean {
   if (typeof err !== "object" || err === null) return false;
   if ("code" in err && (err as { code: string }).code === code) return true;

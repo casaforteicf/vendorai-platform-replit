@@ -835,6 +835,15 @@ function EditDealSheet({
                 description: "Envie o convite manualmente após adicionar o e-mail do lead.",
               });
             }
+            if ((data as any).whatsappSent) {
+              toast({ title: "WhatsApp enviado ao lead." });
+            } else if ((data as any).whatsappSkipReason === "no_phone") {
+              toast({ title: "WhatsApp não enviado — lead sem telefone.", variant: "destructive" });
+            } else if ((data as any).whatsappSkipReason === "zapi_not_configured") {
+              toast({ title: "WhatsApp não enviado — Z-API não configurada.", variant: "destructive" });
+            } else if ((data as any).whatsappSkipReason === "send_error") {
+              toast({ title: "WhatsApp não enviado — erro ao contatar Z-API.", description: "Verifique a conexão em Configurações → WhatsApp.", variant: "destructive" });
+            }
           }
           queryClient.invalidateQueries({ queryKey: getListDealsQueryKey(tenantId) });
           onClose();
@@ -1260,6 +1269,15 @@ export default function Deals() {
                   description: "Envie o convite manualmente após adicionar o e-mail do lead.",
                   variant: "default",
                 });
+              }
+              if ((data as any).whatsappSent) {
+                toast({ title: "WhatsApp enviado ao lead." });
+              } else if ((data as any).whatsappSkipReason === "no_phone") {
+                toast({ title: "WhatsApp não enviado — lead sem telefone.", variant: "destructive" });
+              } else if ((data as any).whatsappSkipReason === "zapi_not_configured") {
+                toast({ title: "WhatsApp não enviado — Z-API não configurada.", variant: "destructive" });
+              } else if ((data as any).whatsappSkipReason === "send_error") {
+                toast({ title: "WhatsApp não enviado — erro ao contatar Z-API.", description: "Verifique a conexão em Configurações → WhatsApp.", variant: "destructive" });
               }
             }
           },

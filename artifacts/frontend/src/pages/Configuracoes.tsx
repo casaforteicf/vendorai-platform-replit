@@ -801,6 +801,27 @@ export default function Configuracoes() {
   const [zapiClientTokenInput, setZapiClientTokenInput] = useState<string>("");
   const [zapiSaving, setZapiSaving] = useState(false);
   const [syncedZapi, setSyncedZapi] = useState(false);
+  const [zapiStatusChecking, setZapiStatusChecking] = useState(false);
+  const [zapiStatus, setZapiStatus] = useState<{ connected: boolean; session: boolean } | null>(null);
+
+  async function checkZapiStatus() {
+    if (!agentQuery.data?.id) return;
+    setZapiStatusChecking(true);
+    setZapiStatus(null);
+    try {
+      const res = await fetch(`/api/agent-configs/${agentQuery.data.id}/zapi-status`, {
+        headers: { Authorization: `Bearer ${localStorage.getItem("vendorai_token")}` },
+      });
+      if (res.ok) {
+        const data = await res.json() as { connected: boolean; session: boolean };
+        setZapiStatus(data);
+      }
+    } catch {
+      // ignore
+    } finally {
+      setZapiStatusChecking(false);
+    }
+  }
   if (agentQuery.data && !syncedZapi) {
     setZapiInstanceInput(agentQuery.data.zapiInstanceId ?? "");
     setZapiTokenInput(agentQuery.data.zapiToken ?? "");
@@ -1789,10 +1810,24 @@ Body:
                   </p>
                 </div>
                 {agentQuery.data?.zapiInstanceId && agentQuery.data?.zapiToken && agentQuery.data?.zapiClientToken && (
-                  <div className="shrink-0">
-                    <span className="inline-flex items-center gap-1.5 text-xs font-medium bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400 px-2.5 py-1 rounded-full">
-                      <CheckCircle2 className="h-3 w-3" /> Conectado
-                    </span>
+                  <div className="shrink-0 flex items-center gap-2">
+                    {zapiStatus === null ? (
+                      <button
+                        onClick={checkZapiStatus}
+                        disabled={zapiStatusChecking}
+                        className="inline-flex items-center gap-1.5 text-xs font-medium bg-muted text-muted-foreground hover:bg-muted/80 px-2.5 py-1 rounded-full cursor-pointer border border-border transition-colors"
+                      >
+                        {zapiStatusChecking ? "Verificando…" : "Testar conexão"}
+                      </button>
+                    ) : zapiStatus.connected ? (
+                      <span className="inline-flex items-center gap-1.5 text-xs font-medium bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400 px-2.5 py-1 rounded-full">
+                        <CheckCircle2 className="h-3 w-3" /> WhatsApp ativo
+                      </span>
+                    ) : (
+                      <span className="inline-flex items-center gap-1.5 text-xs font-medium bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400 px-2.5 py-1 rounded-full">
+                        <AlertTriangle className="h-3 w-3" /> Sessão expirada
+                      </span>
+                    )}
                   </div>
                 )}
               </div>
