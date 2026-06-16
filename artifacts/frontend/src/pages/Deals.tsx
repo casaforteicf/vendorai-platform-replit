@@ -79,6 +79,15 @@ const ETAPAS: { value: DealEtapa; label: string; color: string; bg: string }[] =
   { value: "perdido",     label: "Perdido",     color: "text-red-600",     bg: "bg-red-100" },
 ];
 
+const ETAPA_PROBABILIDADE: Record<DealEtapa, number> = {
+  novo:        10,
+  qualificado: 25,
+  proposta:    50,
+  negociacao:  75,
+  ganho:       100,
+  perdido:     0,
+};
+
 const ETAPAS_SAAS: { value: DealEtapaSaas; label: string; color: string; bg: string; icon: React.ElementType }[] = [
   { value: "lead_qualificado",  label: "Lead Qualificado",  color: "text-slate-600",   bg: "bg-slate-50",    icon: User },
   { value: "demo_agendada",     label: "Demo Agendada",     color: "text-blue-600",    bg: "bg-blue-50",     icon: BarChart3 },
@@ -88,6 +97,16 @@ const ETAPAS_SAAS: { value: DealEtapaSaas; label: string; color: string; bg: str
   { value: "onboarding",        label: "Onboarding",        color: "text-emerald-600", bg: "bg-emerald-50",  icon: Users },
   { value: "expansao",          label: "Expansão",          color: "text-indigo-600",  bg: "bg-indigo-50",   icon: Sparkles },
 ];
+
+const ETAPA_SAAS_PROBABILIDADE: Record<DealEtapaSaas, number> = {
+  lead_qualificado: 10,
+  demo_agendada:    25,
+  trial_ativo:      40,
+  proposta_enviada: 60,
+  fechamento:       80,
+  onboarding:       90,
+  expansao:         95,
+};
 
 function formatCurrency(value: string | null | undefined): string {
   if (!value) return "—";
@@ -1217,17 +1236,19 @@ export default function Deals() {
       if (!draggedDeal || !targetEtapa) return;
       if (draggedDeal.etapa === targetEtapa.value) return;
 
+      const novaProb = ETAPA_PROBABILIDADE[targetEtapa.value];
+
       // Optimistic update
       queryClient.setQueryData(
         getListDealsQueryKey(tenantId),
         (old: Deal[] | undefined) =>
           (old ?? []).map((d) =>
-            d.id === draggedDeal.id ? { ...d, etapa: targetEtapa.value } : d
+            d.id === draggedDeal.id ? { ...d, etapa: targetEtapa.value, probabilidade: novaProb } : d
           )
       );
 
       updateDeal.mutate(
-        { id: draggedDeal.id, data: { etapa: targetEtapa.value } },
+        { id: draggedDeal.id, data: { etapa: targetEtapa.value, probabilidade: novaProb } },
         {
           onSuccess: (data) => {
             if (targetEtapa.value === "ganho") {
@@ -1286,16 +1307,18 @@ export default function Deals() {
       if (!draggedDeal || !targetEtapa) return;
       if (draggedDeal.etapaSaas === targetEtapa.value) return;
 
+      const novaProb = ETAPA_SAAS_PROBABILIDADE[targetEtapa.value];
+
       queryClient.setQueryData(
         getListDealsQueryKey(tenantId),
         (old: Deal[] | undefined) =>
           (old ?? []).map((d) =>
-            d.id === dealId ? { ...d, etapaSaas: targetEtapa.value } : d
+            d.id === dealId ? { ...d, etapaSaas: targetEtapa.value, probabilidade: novaProb } : d
           )
       );
 
       updateDeal.mutate(
-        { id: dealId, data: { etapaSaas: targetEtapa.value as DealEtapaSaas } },
+        { id: dealId, data: { etapaSaas: targetEtapa.value as DealEtapaSaas, probabilidade: novaProb } },
         {
           onError: () => {
             toast({ title: "Erro ao mover negócio SaaS", variant: "destructive" });
