@@ -117,33 +117,55 @@ async function getAuthForAgenda(agendaId: string) {
 export async function createGoogleEvent(
   agendaId: string,
   agendamento: Agendamento,
-  leadName?: string
+  leadName?: string,
+  gerarMeet?: boolean
 ): Promise<string | null> {
   const auth = await getAuthForAgenda(agendaId);
   if (!auth) return null;
 
   const cal = google.calendar({ version: "v3", auth: auth.oauth2 });
+
+  const requestBody: Parameters<typeof cal.events.insert>[0]["requestBody"] = {
+    summary: agendamento.titulo,
+    description: [
+      leadName ? `Cliente: ${leadName}` : null,
+      agendamento.observacoes,
+    ]
+      .filter(Boolean)
+      .join("\n"),
+    location: agendamento.local ?? undefined,
+    start: { dateTime: agendamento.dataHoraInicio.toISOString() },
+    end: { dateTime: agendamento.dataHoraFim.toISOString() },
+  };
+
+  if (gerarMeet) {
+    requestBody.conferenceData = {
+      createRequest: {
+        requestId: crypto.randomUUID(),
+        conferenceSolutionKey: { type: "hangoutsMeet" },
+      },
+    };
+  }
+
   const event = await cal.events.insert({
     calendarId: auth.calendarId,
-    requestBody: {
-      summary: agendamento.titulo,
-      description: [
-        leadName ? `Cliente: ${leadName}` : null,
-        agendamento.observacoes,
-      ]
-        .filter(Boolean)
-        .join("\n"),
-      location: agendamento.local ?? undefined,
-      start: { dateTime: agendamento.dataHoraInicio.toISOString() },
-      end: { dateTime: agendamento.dataHoraFim.toISOString() },
-    },
+    conferenceDataVersion: gerarMeet ? 1 : 0,
+    requestBody,
   });
 
   const googleEventId = event.data.id ?? null;
-  if (googleEventId) {
+  const meetLink =
+    event.data.conferenceData?.entryPoints?.find((ep) => ep.entryPointType === "video")
+      ?.uri ?? null;
+
+  if (googleEventId || meetLink) {
     await db
       .update(agendamentosTable)
-      .set({ googleEventId, updatedAt: new Date() })
+      .set({
+        ...(googleEventId ? { googleEventId } : {}),
+        ...(meetLink ? { meetLink } : {}),
+        updatedAt: new Date(),
+      })
       .where(eq(agendamentosTable.id, agendamento.id));
   }
   return googleEventId;

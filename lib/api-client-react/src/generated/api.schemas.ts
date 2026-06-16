@@ -547,6 +547,10 @@ export interface Agendamento {
   responsavelId?: string | null;
   observacoes?: string | null;
   googleEventId?: string | null;
+  /** Google Meet link gerado ao criar o evento no Google Calendar */
+  meetLink?: string | null;
+  /** Se verdadeiro, gera um link Google Meet ao exportar para o Google Calendar */
+  gerarMeet?: boolean;
   createdAt: string;
   updatedAt: string;
 }
@@ -564,6 +568,8 @@ export interface CreateAgendamentoBody {
   status?: AgendamentoStatus;
   responsavelId?: string;
   observacoes?: string;
+  /** Se verdadeiro, gera link Google Meet ao exportar para o Google Calendar */
+  gerarMeet?: boolean;
 }
 
 export interface UpdateAgendamentoBody {
@@ -577,6 +583,8 @@ export interface UpdateAgendamentoBody {
   responsavelId?: string;
   observacoes?: string;
   dealId?: string;
+  /** Se verdadeiro, gera link Google Meet ao exportar para o Google Calendar */
+  gerarMeet?: boolean;
 }
 
 export interface AgendamentoDisponibilidade {

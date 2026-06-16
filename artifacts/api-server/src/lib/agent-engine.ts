@@ -375,13 +375,17 @@ export function buildReactivationPrompt(customPrompt: string | undefined, ctx: A
 export function buildSchedulerPrompt(
   customPrompt: string | undefined,
   ctx: AgentContext,
-  agendamento?: { tipo: string; dataHoraInicio: Date; dataHoraFim: Date; local?: string }
+  agendamento?: { tipo: string; dataHoraInicio: Date; dataHoraFim: Date; local?: string; meetLink?: string | null }
 ): string {
   const { lead, ci } = ctx;
 
+  const meetInfo = agendamento?.meetLink
+    ? ` Um link Google Meet foi gerado para esta reunião: ${agendamento.meetLink} — INCLUA ESTE LINK NA MENSAGEM ao lead.`
+    : "";
+
   const agendadoInfo = agendamento
     ? `Um agendamento já foi criado para ${agendamento.dataHoraInicio.toLocaleString("pt-BR")} ` +
-      `(${agendamento.tipo}${agendamento.local ? ` — ${agendamento.local}` : ""}). Confirme os detalhes ao lead.`
+      `(${agendamento.tipo}${agendamento.local ? ` — ${agendamento.local}` : ""}).${meetInfo} Confirme os detalhes ao lead.`
     : "Nenhum horário foi definido ainda. Sugira ao lead um próximo passo para confirmar data e formato da reunião.";
 
   const parts: string[] = [];

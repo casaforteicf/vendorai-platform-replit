@@ -1,4 +1,4 @@
-import { pgTable, text, timestamp, pgEnum } from "drizzle-orm/pg-core";
+import { pgTable, text, timestamp, pgEnum, boolean } from "drizzle-orm/pg-core";
 import { createInsertSchema, createSelectSchema } from "drizzle-zod";
 import { z } from "zod/v4";
 import { tenantsTable } from "./tenants";
@@ -49,6 +49,8 @@ export const agendamentosTable = pgTable("agendamentos", {
   }),
   observacoes: text("observacoes"),
   googleEventId: text("google_event_id"),
+  meetLink: text("meet_link"),
+  gerarMeet: boolean("gerar_meet").default(false),
   createdAt: timestamp("created_at").notNull().defaultNow(),
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
 });
@@ -56,13 +58,13 @@ export const agendamentosTable = pgTable("agendamentos", {
 export const insertAgendamentoSchema = createInsertSchema(agendamentosTable, {
   dataHoraInicio: z.coerce.date(),
   dataHoraFim: z.coerce.date(),
-}).omit({ id: true, createdAt: true, updatedAt: true, googleEventId: true });
+}).omit({ id: true, createdAt: true, updatedAt: true, googleEventId: true, meetLink: true });
 
 export const updateAgendamentoSchema = createSelectSchema(agendamentosTable, {
   dataHoraInicio: z.coerce.date().optional(),
   dataHoraFim: z.coerce.date().optional(),
 })
-  .omit({ id: true, tenantId: true, leadId: true, createdAt: true, updatedAt: true, googleEventId: true })
+  .omit({ id: true, tenantId: true, leadId: true, createdAt: true, updatedAt: true, googleEventId: true, meetLink: true })
   .partial();
 
 export type InsertAgendamento = z.infer<typeof insertAgendamentoSchema>;

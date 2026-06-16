@@ -56,7 +56,7 @@ router.post("/agendamentos", async (req, res) => {
           .from(leadsTable)
           .where(eq(leadsTable.id, agendamento.leadId));
 
-        await createGoogleEvent(agendamento.agendaId, agendamento, lead?.nome ?? undefined);
+        await createGoogleEvent(agendamento.agendaId, agendamento, lead?.nome ?? undefined, agendamento.gerarMeet ?? false);
       }
     } catch (err) {
       req.log.warn({ err }, "Google Calendar sync failed on create");

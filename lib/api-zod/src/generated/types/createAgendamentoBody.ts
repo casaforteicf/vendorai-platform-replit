@@ -21,4 +21,6 @@ export interface CreateAgendamentoBody {
   status?: AgendamentoStatus;
   responsavelId?: string;
   observacoes?: string;
+  /** Se verdadeiro, gera link Google Meet ao exportar para o Google Calendar */
+  gerarMeet?: boolean;
 }

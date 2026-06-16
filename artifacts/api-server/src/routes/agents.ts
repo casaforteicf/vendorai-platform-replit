@@ -14,8 +14,9 @@
 import { Router, type Request, type Response, type IRouter } from "express";
 import { eq } from "drizzle-orm";
 import { z } from "zod";
-import { db, agentConfigsTable, agendamentosTable } from "@workspace/db";
+import { db, agentConfigsTable, agendamentosTable, agendasTable } from "@workspace/db";
 import type { Agendamento } from "@workspace/db";
+import { createGoogleEvent } from "../lib/google-calendar.js";
 import {
   loadContext,
   computeLimits,
@@ -51,6 +52,8 @@ const schedulerBodySchema = processBodySchema.extend({
     dataHoraFim:    z.coerce.date(),
     local:          z.string().optional(),
     observacoes:    z.string().optional(),
+    agendaId:       z.string().optional(),
+    gerarMeet:      z.boolean().optional(),
   }).optional(),
 });
 
@@ -149,6 +152,8 @@ async function handleSchedulerProcess(req: Request, res: Response): Promise<void
   if (!ctx) { res.status(404).json({ error: `Lead "${leadId}" not found in this tenant` }); return; }
 
   let agendamentoCriado: Agendamento | null = null;
+  let meetLinkGerado: string | null = null;
+
   if (agendamentoInput) {
     const titulo = agendamentoInput.titulo ?? `Reunião com ${ctx.lead.nome}`;
     const [ag] = await db
@@ -162,18 +167,56 @@ async function handleSchedulerProcess(req: Request, res: Response): Promise<void
         dataHoraFim:    agendamentoInput.dataHoraFim,
         local:          agendamentoInput.local,
         observacoes:    agendamentoInput.observacoes,
+        agendaId:       agendamentoInput.agendaId,
+        gerarMeet:      agendamentoInput.gerarMeet ?? false,
         status:         "agendado",
       })
       .returning();
     agendamentoCriado = ag;
     req.log.info({ agendamentoId: ag.id, leadId }, "scheduler: agendamento created");
+
+    // Sync to Google Calendar + optionally generate Meet link
+    if (agendamentoInput.agendaId) {
+      try {
+        const [agenda] = await db
+          .select({ googleRefreshToken: agendasTable.googleRefreshToken })
+          .from(agendasTable)
+          .where(eq(agendasTable.id, agendamentoInput.agendaId));
+
+        if (agenda?.googleRefreshToken) {
+          await createGoogleEvent(
+            agendamentoInput.agendaId,
+            ag,
+            ctx.lead.nome,
+            agendamentoInput.gerarMeet ?? false
+          );
+          // Re-fetch updated record to get meetLink
+          const [updated] = await db
+            .select({ meetLink: agendamentosTable.meetLink })
+            .from(agendamentosTable)
+            .where(eq(agendamentosTable.id, ag.id));
+          meetLinkGerado = updated?.meetLink ?? null;
+          if (meetLinkGerado) {
+            req.log.info({ agendamentoId: ag.id, meetLink: meetLinkGerado }, "scheduler: Meet link generated");
+          }
+        }
+      } catch (err) {
+        req.log.warn({ err }, "scheduler: Google Calendar sync failed");
+      }
+    }
   }
 
   const systemPrompt = buildSchedulerPrompt(
     agentCfg.prompt,
     ctx,
     agendamentoInput
-      ? { tipo: agendamentoInput.tipo, dataHoraInicio: agendamentoInput.dataHoraInicio, dataHoraFim: agendamentoInput.dataHoraFim, local: agendamentoInput.local }
+      ? {
+          tipo:           agendamentoInput.tipo,
+          dataHoraInicio: agendamentoInput.dataHoraInicio,
+          dataHoraFim:    agendamentoInput.dataHoraFim,
+          local:          agendamentoInput.local,
+          meetLink:       meetLinkGerado,
+        }
       : undefined
   );
 

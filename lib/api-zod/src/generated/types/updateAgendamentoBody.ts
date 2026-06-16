@@ -19,4 +19,6 @@ export interface UpdateAgendamentoBody {
   responsavelId?: string;
   observacoes?: string;
   dealId?: string;
+  /** Se verdadeiro, gera link Google Meet ao exportar para o Google Calendar */
+  gerarMeet?: boolean;
 }

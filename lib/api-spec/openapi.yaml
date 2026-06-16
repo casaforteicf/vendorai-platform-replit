@@ -6445,6 +6445,13 @@ components:
         googleEventId:
           type: string
           nullable: true
+        meetLink:
+          type: string
+          nullable: true
+          description: Google Meet link gerado ao criar o evento no Google Calendar
+        gerarMeet:
+          type: boolean
+          description: Se verdadeiro, gera um link Google Meet ao exportar para o Google Calendar
         createdAt:
           type: string
           format: date-time
@@ -6482,6 +6489,9 @@ components:
           type: string
         observacoes:
           type: string
+        gerarMeet:
+          type: boolean
+          description: Se verdadeiro, gera link Google Meet ao exportar para o Google Calendar
       required: [tenantId, leadId, tipo, titulo, dataHoraInicio, dataHoraFim]
 
     UpdateAgendamentoBody:
@@ -6509,6 +6519,9 @@ components:
           type: string
         dealId:
           type: string
+        gerarMeet:
+          type: boolean
+          description: Se verdadeiro, gera link Google Meet ao exportar para o Google Calendar
 
     AgendamentoDisponibilidade:
       type: object

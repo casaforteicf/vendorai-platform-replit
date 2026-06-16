@@ -87,7 +87,10 @@ import {
   CalendarCheck,
   CalendarX,
   Loader2,
+  Video,
+  Copy,
 } from "lucide-react";
+import { Switch } from "@/components/ui/switch";
 import {
   format,
   startOfWeek,
@@ -238,6 +241,12 @@ function AgendamentoRow({
               <CalendarCheck className="h-3 w-3" />
             </span>
           )}
+          {ag.meetLink && (
+            <span className="text-[10px] text-blue-600 flex items-center gap-0.5 font-medium">
+              <Video className="h-3 w-3" />
+              Meet
+            </span>
+          )}
         </div>
         <p className="text-sm font-medium leading-tight line-clamp-1">{ag.titulo}</p>
         <div className="flex items-center gap-3 text-xs text-muted-foreground flex-wrap">
@@ -260,6 +269,30 @@ function AgendamentoRow({
             )} min
           </span>
         </div>
+        {ag.meetLink && (
+          <div className="flex items-center gap-1 mt-1 pt-1 border-t border-border/50">
+            <a
+              href={ag.meetLink}
+              target="_blank"
+              rel="noopener noreferrer"
+              onClick={(e) => e.stopPropagation()}
+              className="flex items-center gap-1 text-xs text-blue-600 hover:text-blue-700 hover:underline font-medium transition-colors"
+            >
+              <Video className="h-3 w-3 shrink-0" />
+              Entrar no Google Meet
+            </a>
+            <button
+              title="Copiar link"
+              onClick={(e) => {
+                e.stopPropagation();
+                navigator.clipboard.writeText(ag.meetLink!);
+              }}
+              className="p-0.5 rounded hover:bg-muted text-muted-foreground hover:text-foreground transition-colors ml-0.5"
+            >
+              <Copy className="h-3 w-3" />
+            </button>
+          </div>
+        )}
       </div>
 
       {/* Quick actions */}
@@ -414,6 +447,7 @@ const createFormSchema = z.object({
   local: z.string().optional(),
   responsavelId: z.string().optional(),
   observacoes: z.string().optional(),
+  gerarMeet: z.boolean().optional(),
 });
 type CreateForm = z.infer<typeof createFormSchema>;
 
@@ -524,6 +558,7 @@ export default function AgendaPage() {
       local: "",
       responsavelId: "",
       observacoes: "",
+      gerarMeet: false,
     },
   });
 
@@ -568,6 +603,7 @@ export default function AgendaPage() {
           local: values.local || undefined,
           responsavelId: values.responsavelId || undefined,
           observacoes: values.observacoes || undefined,
+          gerarMeet: values.gerarMeet ?? false,
         },
       },
       {
@@ -757,6 +793,7 @@ export default function AgendaPage() {
                   local: "",
                   responsavelId: "",
                   observacoes: "",
+                  gerarMeet: false,
                 });
               }
             }}
@@ -949,6 +986,36 @@ export default function AgendaPage() {
                       </FormItem>
                     )}
                   />
+
+                  {/* Google Meet toggle — only useful when an agenda with Google is selected */}
+                  {agendas.some((a) => a.googleEmail && (!form.watch("agendaId") || a.id === form.watch("agendaId"))) && (
+                    <FormField
+                      control={form.control}
+                      name="gerarMeet"
+                      render={({ field }) => (
+                        <FormItem>
+                          <div className="flex items-center justify-between rounded-lg border border-border px-3 py-2.5 bg-muted/30">
+                            <div className="flex items-center gap-2">
+                              <Video className="h-4 w-4 text-blue-500" />
+                              <div>
+                                <p className="text-sm font-medium leading-tight">Gerar link Google Meet</p>
+                                <p className="text-[11px] text-muted-foreground">
+                                  Cria reunião e envia o link para o cliente
+                                </p>
+                              </div>
+                            </div>
+                            <FormControl>
+                              <Switch
+                                data-testid="switch-gerar-meet"
+                                checked={field.value ?? false}
+                                onCheckedChange={field.onChange}
+                              />
+                            </FormControl>
+                          </div>
+                        </FormItem>
+                      )}
+                    />
+                  )}
 
                   <Button
                     type="submit"

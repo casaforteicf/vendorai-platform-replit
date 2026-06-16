@@ -23,6 +23,10 @@ export interface Agendamento {
   responsavelId?: string | null;
   observacoes?: string | null;
   googleEventId?: string | null;
+  /** Google Meet link gerado ao criar o evento no Google Calendar */
+  meetLink?: string | null;
+  /** Se verdadeiro, gera um link Google Meet ao exportar para o Google Calendar */
+  gerarMeet?: boolean;
   createdAt: Date;
   updatedAt: Date;
 }

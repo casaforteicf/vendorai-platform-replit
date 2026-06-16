@@ -2350,7 +2350,8 @@ export const CreateAgendamentoBody = zod.object({
   "local": zod.string().optional(),
   "status": zod.enum(['agendado', 'confirmado', 'concluido', 'cancelado', 'no_show']).optional(),
   "responsavelId": zod.string().optional(),
-  "observacoes": zod.string().optional()
+  "observacoes": zod.string().optional(),
+  "gerarMeet": zod.boolean().optional().describe('Se verdadeiro, gera link Google Meet ao exportar para o Google Calendar')
 })
 
 
@@ -2385,6 +2386,8 @@ export const ListAgendamentosResponseItem = zod.object({
   "responsavelId": zod.string().nullish(),
   "observacoes": zod.string().nullish(),
   "googleEventId": zod.string().nullish(),
+  "meetLink": zod.string().nullish().describe('Google Meet link gerado ao criar o evento no Google Calendar'),
+  "gerarMeet": zod.boolean().optional().describe('Se verdadeiro, gera um link Google Meet ao exportar para o Google Calendar'),
   "createdAt": zod.coerce.date(),
   "updatedAt": zod.coerce.date()
 })
@@ -2426,6 +2429,8 @@ export const CheckAgendamentoDisponibilidadeResponse = zod.object({
   "responsavelId": zod.string().nullish(),
   "observacoes": zod.string().nullish(),
   "googleEventId": zod.string().nullish(),
+  "meetLink": zod.string().nullish().describe('Google Meet link gerado ao criar o evento no Google Calendar'),
+  "gerarMeet": zod.boolean().optional().describe('Se verdadeiro, gera um link Google Meet ao exportar para o Google Calendar'),
   "createdAt": zod.coerce.date(),
   "updatedAt": zod.coerce.date()
 })).describe('Overlapping agendamentos found for this responsavel')
@@ -2454,6 +2459,8 @@ export const GetAgendamentoResponse = zod.object({
   "responsavelId": zod.string().nullish(),
   "observacoes": zod.string().nullish(),
   "googleEventId": zod.string().nullish(),
+  "meetLink": zod.string().nullish().describe('Google Meet link gerado ao criar o evento no Google Calendar'),
+  "gerarMeet": zod.boolean().optional().describe('Se verdadeiro, gera um link Google Meet ao exportar para o Google Calendar'),
   "createdAt": zod.coerce.date(),
   "updatedAt": zod.coerce.date()
 })
@@ -2476,7 +2483,8 @@ export const UpdateAgendamentoBody = zod.object({
   "status": zod.enum(['agendado', 'confirmado', 'concluido', 'cancelado', 'no_show']).optional(),
   "responsavelId": zod.string().optional(),
   "observacoes": zod.string().optional(),
-  "dealId": zod.string().optional()
+  "dealId": zod.string().optional(),
+  "gerarMeet": zod.boolean().optional().describe('Se verdadeiro, gera link Google Meet ao exportar para o Google Calendar')
 })
 
 export const UpdateAgendamentoResponse = zod.object({
@@ -2494,6 +2502,8 @@ export const UpdateAgendamentoResponse = zod.object({
   "responsavelId": zod.string().nullish(),
   "observacoes": zod.string().nullish(),
   "googleEventId": zod.string().nullish(),
+  "meetLink": zod.string().nullish().describe('Google Meet link gerado ao criar o evento no Google Calendar'),
+  "gerarMeet": zod.boolean().optional().describe('Se verdadeiro, gera um link Google Meet ao exportar para o Google Calendar'),
   "createdAt": zod.coerce.date(),
   "updatedAt": zod.coerce.date()
 })
