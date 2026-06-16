@@ -100,6 +100,36 @@ function normalizePhoneBR(raw: string): string {
   return "55" + digits;
 }
 
+export async function sendDirectWhatsAppMessage(
+  tenantId: string,
+  phone: string,
+  message: string,
+  log: Logger
+): Promise<void> {
+  const [config] = await db
+    .select({
+      zapiInstanceId: agentConfigsTable.zapiInstanceId,
+      zapiToken: agentConfigsTable.zapiToken,
+      zapiClientToken: agentConfigsTable.zapiClientToken,
+    })
+    .from(agentConfigsTable)
+    .where(eq(agentConfigsTable.tenantId, tenantId))
+    .limit(1);
+
+  if (!config?.zapiInstanceId || !config?.zapiToken || !config?.zapiClientToken) {
+    throw new WhatsAppNotConnectedError();
+  }
+
+  await sendZapiWhatsAppMessage(
+    config.zapiInstanceId,
+    config.zapiToken,
+    config.zapiClientToken,
+    phone,
+    message,
+    log
+  );
+}
+
 async function sendZapiWhatsAppMessage(
   instanceId: string,
   token: string,

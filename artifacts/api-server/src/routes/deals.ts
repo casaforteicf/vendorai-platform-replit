@@ -12,6 +12,7 @@ import {
   partnersTable,
 } from "@workspace/db";
 import { dispatchVendaWebhook } from "../services/erp-webhook.js";
+import { sendDirectWhatsAppMessage, WhatsAppNotConnectedError } from "../services/omnichannel.js";
 import { buildInviteUrl } from "./invites.js";
 import { sendInviteEmail } from "../lib/email.js";
 import {
@@ -131,6 +132,8 @@ router.patch("/deals/:id", async (req, res) => {
   let inviteSent = false;
   let inviteEmail: string | undefined;
   let inviteSkipReason: string | undefined;
+  let whatsappSent = false;
+  let whatsappSkipReason: string | undefined;
   let chargeId: string | null = null;
   let chargeLink: string | null = null;
   let chargeSkipReason: string | undefined;
@@ -203,6 +206,26 @@ router.patch("/deals/:id", async (req, res) => {
         inviteSent = await sendInviteEmail(email, inviteUrl, tenant?.name ?? "");
         inviteEmail = email;
         req.log.info({ dealId: deal.id, inviteId: invite.id, inviteSent }, "auto-invite processed");
+
+        // ── WhatsApp invite ───────────────────────────────────────────────────
+        if (!lead.telefone) {
+          whatsappSkipReason = "no_phone";
+          req.log.info({ dealId: deal.id }, "whatsapp invite skipped: lead has no phone");
+        } else {
+          try {
+            const whatsappMessage =
+              `Olá, ${lead.nome ?? ""}! 🎉\n\n` +
+              `Seu acesso à plataforma ${tenant?.name ?? "VendorAI"} foi liberado.\n\n` +
+              `Clique no link abaixo para criar sua senha e acessar:\n${inviteUrl}`;
+            await sendDirectWhatsAppMessage(existing.tenantId, lead.telefone, whatsappMessage, req.log);
+            whatsappSent = true;
+            req.log.info({ dealId: deal.id }, "whatsapp invite sent");
+          } catch (err) {
+            whatsappSkipReason =
+              err instanceof WhatsAppNotConnectedError ? "zapi_not_configured" : "send_error";
+            req.log.warn({ dealId: deal.id, err }, "whatsapp invite failed");
+          }
+        }
       }
 
       // ── Copiar valor → mensalidadeValor do tenant ─────────────────────────
@@ -363,7 +386,7 @@ router.patch("/deals/:id", async (req, res) => {
     }
   }
 
-  res.json({ ...deal, inviteSent, inviteEmail, inviteSkipReason, chargeId, chargeLink, chargeSkipReason });
+  res.json({ ...deal, inviteSent, inviteEmail, inviteSkipReason, whatsappSent, whatsappSkipReason, chargeId, chargeLink, chargeSkipReason });
 });
 
 // ─── Quote extraction ─────────────────────────────────────────────────────────

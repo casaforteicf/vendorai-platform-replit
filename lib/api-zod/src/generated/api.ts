@@ -1239,7 +1239,9 @@ export const UpdateDealResponse = zod.object({
   "inviteSkipReason": zod.string().nullish().describe('Why the invite was not sent (e.g. no_email, not_won)'),
   "chargeId": zod.string().nullish().describe('Asaas charge ID created on deal win'),
   "chargeLink": zod.string().nullish().describe('Payment link (Pix\/boleto) for the charge'),
-  "chargeSkipReason": zod.string().nullish().describe('Why the charge was not created (e.g. asaas_not_configured, no_valor, asaas_error)')
+  "chargeSkipReason": zod.string().nullish().describe('Why the charge was not created (e.g. asaas_not_configured, no_valor, asaas_error)'),
+  "whatsappSent": zod.boolean().optional().describe('Whether a WhatsApp invite message was sent on deal win'),
+  "whatsappSkipReason": zod.string().nullish().describe('Why WhatsApp was not sent (e.g. no_phone, zapi_not_configured, send_error)')
 }))
 
 

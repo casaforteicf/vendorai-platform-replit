@@ -7595,6 +7595,13 @@ components:
               type: string
               nullable: true
               description: Why the charge was not created (e.g. asaas_not_configured, no_valor, asaas_error)
+            whatsappSent:
+              type: boolean
+              description: Whether a WhatsApp invite message was sent on deal win
+            whatsappSkipReason:
+              type: string
+              nullable: true
+              description: Why WhatsApp was not sent (e.g. no_phone, zapi_not_configured, send_error)
 
     CreateDealBody:
       type: object

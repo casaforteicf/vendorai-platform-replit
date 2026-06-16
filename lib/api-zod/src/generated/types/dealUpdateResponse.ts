@@ -20,4 +20,8 @@ export type DealUpdateResponse = Deal & ({
   chargeLink?: string | null;
   /** Why the charge was not created (e.g. asaas_not_configured, no_valor, asaas_error) */
   chargeSkipReason?: string | null;
+  /** Whether a WhatsApp invite message was sent on deal win */
+  whatsappSent?: boolean;
+  /** Why WhatsApp was not sent (e.g. no_phone, zapi_not_configured, send_error) */
+  whatsappSkipReason?: string | null;
 });
