@@ -193,8 +193,8 @@ async function startMetro(expoPublicDomain, expoPublicReplId) {
 
 async function downloadFile(url, outputPath) {
   const controller = new AbortController();
-  const fiveMinMS = 5 * 60 * 1_000;
-  const timeoutId = setTimeout(() => controller.abort(), fiveMinMS);
+  const timeoutMs = 15 * 60 * 1_000; // 15 minutes per bundle — Metro can be slow in prod
+  const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
 
   try {
     console.log(`Downloading: ${url}`);
@@ -219,7 +219,7 @@ async function downloadFile(url, outputPath) {
     }
 
     if (error.name === "AbortError") {
-      throw new Error(`Download timeout after 5m: ${url}`);
+      throw new Error(`Download timeout after 15m: ${url}`);
     }
     throw error;
   } finally {
@@ -520,13 +520,13 @@ async function main() {
 
   await startMetro(domain, expoPublicReplId);
 
-  const downloadTimeout = 600000;
+  const downloadTimeout = 40 * 60 * 1000; // 40 min: 15m iOS + 15m Android + buffer
   const downloadPromise = downloadBundlesAndManifests(timestamp);
   const timeoutPromise = new Promise((_, reject) => {
     setTimeout(() => {
       reject(
         new Error(
-          `Overall download timeout after ${downloadTimeout / 1000} seconds. ` +
+          `Overall download timeout after ${downloadTimeout / 60000} minutes. ` +
             "Metro may be struggling to generate bundles. Check Metro logs above.",
         ),
       );
