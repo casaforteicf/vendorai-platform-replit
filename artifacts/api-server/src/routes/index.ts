@@ -39,6 +39,7 @@ import adminPartnersRouter from "./admin_partners";
 import billingEventsRouter from "./billing_events";
 import tokenPurchasesRouter from "./token_purchases";
 import { intakeRouter } from "./intake";
+import construcaoRouter from "./construcao";
 import { authenticate, blockPartnerFromCRM, blockSuspendedTenants, requireRole, requireSameTenanOrSuperAdmin } from "../middlewares/auth";
 
 const router: IRouter = Router();
@@ -143,6 +144,9 @@ router.use(partnerRouter);
 
 // Admin Partners Hub (super_admin management)
 router.use(adminPartnersRouter);
+
+// Construção Civil Hub
+router.use(construcaoRouter);
 
 export { requireRole, requireSameTenanOrSuperAdmin };
 export default router;

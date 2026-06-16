@@ -3,7 +3,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import {
   LayoutDashboard, Users, Briefcase, MessageSquare, Calendar,
   Settings, LogOut, Megaphone, FileText, Receipt, BrainCircuit,
-  Store, Package, Menu, X, Sparkles, Globe, BookOpen,
+  Store, Package, Menu, X, Sparkles, Globe, BookOpen, HardHat, Layers,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
@@ -19,77 +19,77 @@ export function SidebarLayout({ children }: { children: React.ReactNode }) {
   const isSeller = user?.platformRole === "tenant_seller";
 
   const allNavItems = [
-    { name: "Dashboard",     href: "/",             icon: LayoutDashboard, sellerHidden: false },
-    { name: "Leads",         href: "/leads",         icon: Users,           sellerHidden: false },
-    { name: "Negócios",      href: "/deals",         icon: Briefcase,       sellerHidden: false },
-    { name: "Conversas",     href: "/conversations", icon: MessageSquare,   sellerHidden: false },
-    { name: "Agenda",        href: "/agenda",        icon: Calendar,        sellerHidden: false },
-    { name: "Propostas",     href: "/propostas",     icon: FileText,        sellerHidden: false },
-    { name: "Estoque",       href: "/estoque",       icon: Package,         sellerHidden: false },
-    { name: "Conteúdo",      href: "/content",       icon: Sparkles,        sellerHidden: false },
-    { name: "Meu Site",      href: "/meu-site",      icon: Globe,           sellerHidden: true  },
-    { name: "Campanhas",     href: "/campanhas",     icon: Megaphone,       sellerHidden: true  },
-    { name: "Faturamento",   href: "/faturamento",   icon: Receipt,         sellerHidden: true  },
-    { name: "Configurações", href: "/configuracoes", icon: Settings,        sellerHidden: true  },
-    { name: "Guia de Setup",  href: "/guia-implantacao", icon: BookOpen,    sellerHidden: true  },
+    { name: "Dashboard",     href: "/",             icon: LayoutDashboard, sellerHidden: false, section: "crm" },
+    { name: "Leads",         href: "/leads",         icon: Users,           sellerHidden: false, section: "crm" },
+    { name: "Negócios",      href: "/deals",         icon: Briefcase,       sellerHidden: false, section: "crm" },
+    { name: "Conversas",     href: "/conversations", icon: MessageSquare,   sellerHidden: false, section: "crm" },
+    { name: "Agenda",        href: "/agenda",        icon: Calendar,        sellerHidden: false, section: "crm" },
+    { name: "Propostas",     href: "/propostas",     icon: FileText,        sellerHidden: false, section: "crm" },
+    { name: "Estoque",       href: "/estoque",       icon: Package,         sellerHidden: false, section: "crm" },
+    { name: "Conteúdo",      href: "/content",       icon: Sparkles,        sellerHidden: false, section: "crm" },
+    { name: "Meu Site",      href: "/meu-site",      icon: Globe,           sellerHidden: true,  section: "crm" },
+    { name: "Campanhas",     href: "/campanhas",     icon: Megaphone,       sellerHidden: true,  section: "crm" },
+    { name: "Faturamento",   href: "/faturamento",   icon: Receipt,         sellerHidden: true,  section: "crm" },
+    { name: "Configurações", href: "/configuracoes", icon: Settings,        sellerHidden: true,  section: "crm" },
+    { name: "Guia de Setup", href: "/guia-implantacao", icon: BookOpen,     sellerHidden: true,  section: "crm" },
+    { name: "Obras",         href: "/obras",         icon: HardHat,         sellerHidden: false, section: "construcao" },
+    { name: "Insumos",       href: "/insumos",       icon: Package,         sellerHidden: false, section: "construcao" },
+    { name: "Composições",   href: "/composicoes",   icon: Layers,          sellerHidden: false, section: "construcao" },
   ];
 
   const navigation = allNavItems.filter(item => !(isSeller && item.sellerHidden));
 
   const adminNavigation = isSuperAdmin
     ? [
-        { name: "Marketplace", href: "/marketplace",    icon: Store       },
-        { name: "AI Usage",    href: "/admin/ai-usage", icon: BrainCircuit },
-        { name: "Parceiros",   href: "/admin/partners", icon: Users       },
+        { name: "Marketplace", href: "/marketplace",    icon: Store,        sellerHidden: false, section: "admin" },
+        { name: "AI Usage",    href: "/admin/ai-usage", icon: BrainCircuit, sellerHidden: false, section: "admin" },
+        { name: "Parceiros",   href: "/admin/partners", icon: Users,        sellerHidden: false, section: "admin" },
       ]
     : [];
+
+  const crmNav = navigation.filter((i) => i.section === "crm");
+  const construcaoNav = navigation.filter((i) => i.section === "construcao");
+
+  function NavItem({ item, onNavigate }: { item: (typeof allNavItems)[0]; onNavigate?: () => void }) {
+    const isActive = location === item.href || (item.href !== "/" && location.startsWith(item.href));
+    return (
+      <Link
+        href={item.href}
+        onClick={onNavigate}
+        className={cn(
+          "flex items-center gap-3 px-3 py-2.5 rounded-md text-sm font-medium transition-colors min-h-[44px]",
+          isActive
+            ? "bg-primary text-primary-foreground"
+            : "text-muted-foreground hover:bg-muted hover:text-foreground"
+        )}
+      >
+        <item.icon className="h-4 w-4 shrink-0" />
+        {item.name}
+      </Link>
+    );
+  }
 
   function NavLinks({ onNavigate }: { onNavigate?: () => void }) {
     return (
       <>
-        {navigation.map((item) => {
-          const isActive = location === item.href;
-          return (
-            <Link
-              key={item.name}
-              href={item.href}
-              onClick={onNavigate}
-              className={cn(
-                "flex items-center gap-3 px-3 py-2.5 rounded-md text-sm font-medium transition-colors min-h-[44px]",
-                isActive
-                  ? "bg-primary text-primary-foreground"
-                  : "text-muted-foreground hover:bg-muted hover:text-foreground"
-              )}
-            >
-              <item.icon className="h-4 w-4 shrink-0" />
-              {item.name}
-            </Link>
-          );
-        })}
+        {crmNav.map((item) => <NavItem key={item.name} item={item} onNavigate={onNavigate} />)}
+
+        {construcaoNav.length > 0 && (
+          <div className="mt-3 pt-3 border-t">
+            <p className="px-3 mb-1 text-[10px] font-semibold uppercase tracking-widest text-muted-foreground/60 flex items-center gap-1.5">
+              <HardHat className="h-3 w-3" />
+              Construção Civil
+            </p>
+            {construcaoNav.map((item) => <NavItem key={item.name} item={item} onNavigate={onNavigate} />)}
+          </div>
+        )}
+
         {adminNavigation.length > 0 && (
           <div className="mt-3 pt-3 border-t">
             <p className="px-3 mb-1 text-[10px] font-semibold uppercase tracking-widest text-muted-foreground/60">
               Super Admin
             </p>
-            {adminNavigation.map((item) => {
-              const isActive = location === item.href;
-              return (
-                <Link
-                  key={item.name}
-                  href={item.href}
-                  onClick={onNavigate}
-                  className={cn(
-                    "flex items-center gap-3 px-3 py-2.5 rounded-md text-sm font-medium transition-colors min-h-[44px]",
-                    isActive
-                      ? "bg-primary text-primary-foreground"
-                      : "text-muted-foreground hover:bg-muted hover:text-foreground"
-                  )}
-                >
-                  <item.icon className="h-4 w-4 shrink-0" />
-                  {item.name}
-                </Link>
-              );
-            })}
+            {adminNavigation.map((item) => <NavItem key={item.name} item={item} onNavigate={onNavigate} />)}
           </div>
         )}
       </>

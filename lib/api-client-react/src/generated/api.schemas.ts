@@ -2371,6 +2371,392 @@ export interface UploadUrlResponse {
   metadata?: UploadUrlRequest;
 }
 
+export interface Obra {
+  id: string;
+  tenantId: string;
+  nome: string;
+  /** @nullable */
+  descricao?: string | null;
+  /** @nullable */
+  clienteNome?: string | null;
+  /** @nullable */
+  clienteContato?: string | null;
+  /** @nullable */
+  endereco?: string | null;
+  status: string;
+  /** @nullable */
+  dataInicio?: string | null;
+  /** @nullable */
+  dataFimPrevista?: string | null;
+  /** @nullable */
+  dataFimReal?: string | null;
+  /** @nullable */
+  orcamentoTotal?: string | null;
+  custoRealizado: string;
+  /** @nullable */
+  responsavelId?: string | null;
+  /** @nullable */
+  linkCliente?: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface ObraEtapa {
+  id: string;
+  obraId: string;
+  nome: string;
+  /** @nullable */
+  descricao?: string | null;
+  ordem: number;
+  /** @nullable */
+  dataInicioPrevista?: string | null;
+  /** @nullable */
+  dataFimPrevista?: string | null;
+  /** @nullable */
+  dataInicioReal?: string | null;
+  /** @nullable */
+  dataFimReal?: string | null;
+  status: string;
+  percentualExecutado: string;
+  /** @nullable */
+  responsavel?: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export type ObraDetalhe = Obra & {
+  etapas?: ObraEtapa[];
+  percentualGeral?: number;
+};
+
+export interface ObraInput {
+  nome: string;
+  descricao?: string;
+  clienteNome?: string;
+  clienteContato?: string;
+  endereco?: string;
+  status?: string;
+  dataInicio?: string;
+  dataFimPrevista?: string;
+  orcamentoTotal?: string;
+  responsavelId?: string;
+}
+
+export interface ObraUpdate {
+  nome?: string;
+  descricao?: string;
+  clienteNome?: string;
+  clienteContato?: string;
+  endereco?: string;
+  status?: string;
+  dataInicio?: string;
+  dataFimPrevista?: string;
+  dataFimReal?: string;
+  orcamentoTotal?: string;
+  custoRealizado?: string;
+  responsavelId?: string;
+  linkCliente?: string;
+}
+
+export interface ObraEtapaInput {
+  nome: string;
+  descricao?: string;
+  ordem?: number;
+  dataInicioPrevista?: string;
+  dataFimPrevista?: string;
+  status?: string;
+  responsavel?: string;
+}
+
+export interface ObraEtapaUpdate {
+  nome?: string;
+  descricao?: string;
+  ordem?: number;
+  dataInicioPrevista?: string;
+  dataFimPrevista?: string;
+  dataInicioReal?: string;
+  dataFimReal?: string;
+  status?: string;
+  percentualExecutado?: string;
+  responsavel?: string;
+}
+
+export interface ObraEtapaMedicao {
+  id: string;
+  etapaId: string;
+  data: string;
+  percentualAnterior: string;
+  percentualNovo: string;
+  /** @nullable */
+  responsavelId?: string | null;
+  /** @nullable */
+  observacao?: string | null;
+  createdAt: string;
+}
+
+export interface ObraEtapaMedicaoInput {
+  data: string;
+  percentualNovo: string;
+  observacao?: string;
+}
+
+export interface ObraDiario {
+  id: string;
+  obraId: string;
+  data: string;
+  conteudo: string;
+  /** @nullable */
+  responsavelId?: string | null;
+  /** @nullable */
+  responsavelNome?: string | null;
+  status: string;
+  /** @nullable */
+  aprovadoPorId?: string | null;
+  /** @nullable */
+  aprovadoEm?: string | null;
+  /** @nullable */
+  climaTempo?: string | null;
+  /** @nullable */
+  maoDeObra?: number | null;
+  /** @nullable */
+  observacoes?: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface ObraDiarioInput {
+  data: string;
+  conteudo: string;
+  responsavelNome?: string;
+  climaTempo?: string;
+  maoDeObra?: number;
+  observacoes?: string;
+}
+
+export interface ObraDiarioUpdate {
+  conteudo?: string;
+  status?: string;
+  climaTempo?: string;
+  maoDeObra?: number;
+  observacoes?: string;
+}
+
+export interface Insumo {
+  id: string;
+  tenantId: string;
+  nome: string;
+  /** @nullable */
+  descricao?: string | null;
+  unidade: string;
+  /** @nullable */
+  precoUnitario?: string | null;
+  /** @nullable */
+  categoria?: string | null;
+  /** @nullable */
+  codigo?: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface InsumoInput {
+  nome: string;
+  descricao?: string;
+  unidade: string;
+  precoUnitario?: string;
+  categoria?: string;
+  codigo?: string;
+}
+
+export interface InsumoUpdate {
+  nome?: string;
+  descricao?: string;
+  unidade?: string;
+  precoUnitario?: string;
+  categoria?: string;
+  codigo?: string;
+}
+
+export interface EstoqueObraItem {
+  id: string;
+  obraId: string;
+  insumoId: string;
+  quantidadeAtual: string;
+  quantidadeMinima: string;
+  updatedAt?: string;
+  insumo?: Insumo;
+}
+
+export interface EstoqueCentralItem {
+  id: string;
+  tenantId: string;
+  insumoId: string;
+  quantidadeAtual: string;
+  quantidadeMinima: string;
+  /** @nullable */
+  localizacao?: string | null;
+  updatedAt?: string;
+  insumo?: Insumo;
+}
+
+export type MovimentacaoEstoqueInputTipo = typeof MovimentacaoEstoqueInputTipo[keyof typeof MovimentacaoEstoqueInputTipo];
+
+
+export const MovimentacaoEstoqueInputTipo = {
+  entrada: 'entrada',
+  saida: 'saida',
+  alocacao: 'alocacao',
+  devolucao: 'devolucao',
+  transferencia: 'transferencia',
+} as const;
+
+export type MovimentacaoEstoqueInputOrigemTipo = typeof MovimentacaoEstoqueInputOrigemTipo[keyof typeof MovimentacaoEstoqueInputOrigemTipo];
+
+
+export const MovimentacaoEstoqueInputOrigemTipo = {
+  central: 'central',
+  obra: 'obra',
+} as const;
+
+export type MovimentacaoEstoqueInputDestinoTipo = typeof MovimentacaoEstoqueInputDestinoTipo[keyof typeof MovimentacaoEstoqueInputDestinoTipo];
+
+
+export const MovimentacaoEstoqueInputDestinoTipo = {
+  central: 'central',
+  obra: 'obra',
+} as const;
+
+export interface MovimentacaoEstoqueInput {
+  insumoId: string;
+  tipo: MovimentacaoEstoqueInputTipo;
+  quantia: string;
+  origemTipo?: MovimentacaoEstoqueInputOrigemTipo;
+  origemObraId?: string;
+  destinoTipo?: MovimentacaoEstoqueInputDestinoTipo;
+  destinoObraId?: string;
+  observacao?: string;
+}
+
+export interface MovimentacaoEstoque {
+  id: string;
+  tenantId: string;
+  insumoId: string;
+  tipo: string;
+  quantia: string;
+  /** @nullable */
+  origemTipo?: string | null;
+  /** @nullable */
+  origemObraId?: string | null;
+  /** @nullable */
+  destinoTipo?: string | null;
+  /** @nullable */
+  destinoObraId?: string | null;
+  /** @nullable */
+  responsavelId?: string | null;
+  /** @nullable */
+  observacao?: string | null;
+  createdAt: string;
+}
+
+export interface Composicao {
+  id: string;
+  tenantId: string;
+  nome: string;
+  /** @nullable */
+  descricao?: string | null;
+  unidade: string;
+  /** @nullable */
+  custoTotal?: string | null;
+  /** @nullable */
+  codigo?: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export type ComposicaoDetalheItensItem = {
+  id?: string;
+  insumoId?: string;
+  quantidade?: string;
+  /** @nullable */
+  precoUnitario?: string | null;
+  insumo?: Insumo;
+};
+
+export type ComposicaoDetalhe = Composicao & {
+  itens?: ComposicaoDetalheItensItem[];
+};
+
+export type ComposicaoInputItensItem = {
+  insumoId: string;
+  quantidade: string;
+  precoUnitario?: string;
+};
+
+export interface ComposicaoInput {
+  nome: string;
+  descricao?: string;
+  unidade: string;
+  codigo?: string;
+  itens?: ComposicaoInputItensItem[];
+}
+
+export interface ComposicaoUpdate {
+  nome?: string;
+  descricao?: string;
+  unidade?: string;
+  codigo?: string;
+}
+
+export interface CompraObra {
+  id: string;
+  tenantId: string;
+  /** @nullable */
+  obraId?: string | null;
+  /** @nullable */
+  insumoId?: string | null;
+  descricao: string;
+  /** @nullable */
+  fornecedor?: string | null;
+  /** @nullable */
+  quantidade?: string | null;
+  /** @nullable */
+  valorUnitario?: string | null;
+  /** @nullable */
+  valorTotal?: string | null;
+  status: string;
+  /** @nullable */
+  dataPrevista?: string | null;
+  /** @nullable */
+  dataEfetuada?: string | null;
+  /** @nullable */
+  observacoes?: string | null;
+  createdAt: string;
+  updatedAt: string;
+  insumo?: Insumo;
+}
+
+export interface CompraObraInput {
+  descricao: string;
+  insumoId?: string;
+  fornecedor?: string;
+  quantidade?: string;
+  valorUnitario?: string;
+  valorTotal?: string;
+  dataPrevista?: string;
+  observacoes?: string;
+}
+
+export interface CompraObraUpdate {
+  descricao?: string;
+  fornecedor?: string;
+  quantidade?: string;
+  valorUnitario?: string;
+  valorTotal?: string;
+  status?: string;
+  dataPrevista?: string;
+  dataEfetuada?: string;
+  observacoes?: string;
+}
+
 export type ListDealsParams = {
 etapa?: DealEtapa;
 funilId?: string;
@@ -2504,5 +2890,18 @@ inventoryItemId?: string;
 
 export type DeleteContentGeneration200 = {
   success: boolean;
+};
+
+export type ListObrasParams = {
+status?: string;
+};
+
+export type ListInsumosParams = {
+q?: string;
+categoria?: string;
+};
+
+export type ListComposicoesParams = {
+q?: string;
 };
 

@@ -38,6 +38,13 @@ import type {
   ChangePasswordBody,
   CheckAgendamentoDisponibilidadeParams,
   CompleteOnboarding200,
+  Composicao,
+  ComposicaoDetalhe,
+  ComposicaoInput,
+  ComposicaoUpdate,
+  CompraObra,
+  CompraObraInput,
+  CompraObraUpdate,
   Consent,
   ContentGeneration,
   Conversation,
@@ -79,6 +86,8 @@ import type {
   DeleteContentGeneration200,
   DocumentExtractionResult,
   ErrorResponse,
+  EstoqueCentralItem,
+  EstoqueObraItem,
   ExportIntelligenceAnalysisLogParams,
   ForgotPasswordBody,
   Funil,
@@ -89,6 +98,9 @@ import type {
   ImportInventoryBody,
   ImportInventoryResult,
   IncrementBody,
+  Insumo,
+  InsumoInput,
+  InsumoUpdate,
   IntegrationSettings,
   IntelligenceAnalysisLogPage,
   InventoryItem,
@@ -103,17 +115,34 @@ import type {
   LinkTenantPartnerBody,
   ListActivitiesParams,
   ListAgendamentosParams,
+  ListComposicoesParams,
   ListContentResponse,
   ListDealsParams,
+  ListInsumosParams,
   ListIntelligenceAnalysisLogParams,
   ListInventoryMovementsParams,
   ListInvoicesParams,
   ListKnowledgeBaseParams,
   ListMessagesParams,
+  ListObrasParams,
   ListPropostasParams,
   ListRulesParams,
   LoginBody,
   Message,
+  MovimentacaoEstoque,
+  MovimentacaoEstoqueInput,
+  Obra,
+  ObraDetalhe,
+  ObraDiario,
+  ObraDiarioInput,
+  ObraDiarioUpdate,
+  ObraEtapa,
+  ObraEtapaInput,
+  ObraEtapaMedicao,
+  ObraEtapaMedicaoInput,
+  ObraEtapaUpdate,
+  ObraInput,
+  ObraUpdate,
   OkResponse,
   OnboardingCompleteBody,
   Partner,
@@ -14483,5 +14512,2326 @@ export const useLinkTenantPartner = <TError = ErrorType<ErrorResponse>,
         TContext
       > => {
       return useMutation(getLinkTenantPartnerMutationOptions(options));
+    }
+
+export const getListObrasUrl = (tenantId: string,
+    params?: ListObrasParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : value.toString())
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/api/tenants/${tenantId}/obras?${stringifiedParams}` : `/api/tenants/${tenantId}/obras`
+}
+
+/**
+ * @summary List obras
+ */
+export const listObras = async (tenantId: string,
+    params?: ListObrasParams, options?: RequestInit): Promise<Obra[]> => {
+
+  return customFetch<Obra[]>(getListObrasUrl(tenantId,params),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getListObrasQueryKey = (tenantId: string,
+    params?: ListObrasParams,) => {
+    return [
+    `/api/tenants/${tenantId}/obras`, ...(params ? [params] : [])
+    ] as const;
+    }
+
+
+export const getListObrasQueryOptions = <TData = Awaited<ReturnType<typeof listObras>>, TError = ErrorType<void>>(tenantId: string,
+    params?: ListObrasParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listObras>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getListObrasQueryKey(tenantId,params);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof listObras>>> = ({ signal }) => listObras(tenantId,params, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, enabled: !!(tenantId), ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof listObras>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type ListObrasQueryResult = NonNullable<Awaited<ReturnType<typeof listObras>>>
+export type ListObrasQueryError = ErrorType<void>
+
+
+/**
+ * @summary List obras
+ */
+
+export function useListObras<TData = Awaited<ReturnType<typeof listObras>>, TError = ErrorType<void>>(
+ tenantId: string,
+    params?: ListObrasParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listObras>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getListObrasQueryOptions(tenantId,params,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+
+
+
+
+
+
+export const getCreateObraUrl = (tenantId: string,) => {
+
+
+
+
+  return `/api/tenants/${tenantId}/obras`
+}
+
+/**
+ * @summary Create obra
+ */
+export const createObra = async (tenantId: string,
+    obraInput: ObraInput, options?: RequestInit): Promise<Obra> => {
+
+  return customFetch<Obra>(getCreateObraUrl(tenantId),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(
+      obraInput,)
+  }
+);}
+
+
+
+
+export const getCreateObraMutationOptions = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createObra>>, TError,{tenantId: string;data: BodyType<ObraInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof createObra>>, TError,{tenantId: string;data: BodyType<ObraInput>}, TContext> => {
+
+const mutationKey = ['createObra'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof createObra>>, {tenantId: string;data: BodyType<ObraInput>}> = (props) => {
+          const {tenantId,data} = props ?? {};
+
+          return  createObra(tenantId,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type CreateObraMutationResult = NonNullable<Awaited<ReturnType<typeof createObra>>>
+    export type CreateObraMutationBody = BodyType<ObraInput>
+    export type CreateObraMutationError = ErrorType<void>
+
+    /**
+ * @summary Create obra
+ */
+export const useCreateObra = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createObra>>, TError,{tenantId: string;data: BodyType<ObraInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof createObra>>,
+        TError,
+        {tenantId: string;data: BodyType<ObraInput>},
+        TContext
+      > => {
+      return useMutation(getCreateObraMutationOptions(options));
+    }
+
+export const getGetObraUrl = (tenantId: string,
+    obraId: string,) => {
+
+
+
+
+  return `/api/tenants/${tenantId}/obras/${obraId}`
+}
+
+/**
+ * @summary Get obra by ID
+ */
+export const getObra = async (tenantId: string,
+    obraId: string, options?: RequestInit): Promise<ObraDetalhe> => {
+
+  return customFetch<ObraDetalhe>(getGetObraUrl(tenantId,obraId),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetObraQueryKey = (tenantId: string,
+    obraId: string,) => {
+    return [
+    `/api/tenants/${tenantId}/obras/${obraId}`
+    ] as const;
+    }
+
+
+export const getGetObraQueryOptions = <TData = Awaited<ReturnType<typeof getObra>>, TError = ErrorType<void>>(tenantId: string,
+    obraId: string, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getObra>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetObraQueryKey(tenantId,obraId);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getObra>>> = ({ signal }) => getObra(tenantId,obraId, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, enabled: !!(tenantId && obraId), ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getObra>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetObraQueryResult = NonNullable<Awaited<ReturnType<typeof getObra>>>
+export type GetObraQueryError = ErrorType<void>
+
+
+/**
+ * @summary Get obra by ID
+ */
+
+export function useGetObra<TData = Awaited<ReturnType<typeof getObra>>, TError = ErrorType<void>>(
+ tenantId: string,
+    obraId: string, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getObra>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetObraQueryOptions(tenantId,obraId,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+
+
+
+
+
+
+export const getUpdateObraUrl = (tenantId: string,
+    obraId: string,) => {
+
+
+
+
+  return `/api/tenants/${tenantId}/obras/${obraId}`
+}
+
+/**
+ * @summary Update obra
+ */
+export const updateObra = async (tenantId: string,
+    obraId: string,
+    obraUpdate: ObraUpdate, options?: RequestInit): Promise<Obra> => {
+
+  return customFetch<Obra>(getUpdateObraUrl(tenantId,obraId),
+  {
+    ...options,
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(
+      obraUpdate,)
+  }
+);}
+
+
+
+
+export const getUpdateObraMutationOptions = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updateObra>>, TError,{tenantId: string;obraId: string;data: BodyType<ObraUpdate>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof updateObra>>, TError,{tenantId: string;obraId: string;data: BodyType<ObraUpdate>}, TContext> => {
+
+const mutationKey = ['updateObra'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof updateObra>>, {tenantId: string;obraId: string;data: BodyType<ObraUpdate>}> = (props) => {
+          const {tenantId,obraId,data} = props ?? {};
+
+          return  updateObra(tenantId,obraId,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type UpdateObraMutationResult = NonNullable<Awaited<ReturnType<typeof updateObra>>>
+    export type UpdateObraMutationBody = BodyType<ObraUpdate>
+    export type UpdateObraMutationError = ErrorType<void>
+
+    /**
+ * @summary Update obra
+ */
+export const useUpdateObra = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updateObra>>, TError,{tenantId: string;obraId: string;data: BodyType<ObraUpdate>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof updateObra>>,
+        TError,
+        {tenantId: string;obraId: string;data: BodyType<ObraUpdate>},
+        TContext
+      > => {
+      return useMutation(getUpdateObraMutationOptions(options));
+    }
+
+export const getDeleteObraUrl = (tenantId: string,
+    obraId: string,) => {
+
+
+
+
+  return `/api/tenants/${tenantId}/obras/${obraId}`
+}
+
+/**
+ * @summary Delete obra
+ */
+export const deleteObra = async (tenantId: string,
+    obraId: string, options?: RequestInit): Promise<void> => {
+
+  return customFetch<void>(getDeleteObraUrl(tenantId,obraId),
+  {
+    ...options,
+    method: 'DELETE'
+
+
+  }
+);}
+
+
+
+
+export const getDeleteObraMutationOptions = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof deleteObra>>, TError,{tenantId: string;obraId: string}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof deleteObra>>, TError,{tenantId: string;obraId: string}, TContext> => {
+
+const mutationKey = ['deleteObra'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof deleteObra>>, {tenantId: string;obraId: string}> = (props) => {
+          const {tenantId,obraId} = props ?? {};
+
+          return  deleteObra(tenantId,obraId,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type DeleteObraMutationResult = NonNullable<Awaited<ReturnType<typeof deleteObra>>>
+
+    export type DeleteObraMutationError = ErrorType<void>
+
+    /**
+ * @summary Delete obra
+ */
+export const useDeleteObra = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof deleteObra>>, TError,{tenantId: string;obraId: string}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof deleteObra>>,
+        TError,
+        {tenantId: string;obraId: string},
+        TContext
+      > => {
+      return useMutation(getDeleteObraMutationOptions(options));
+    }
+
+export const getListObraEtapasUrl = (tenantId: string,
+    obraId: string,) => {
+
+
+
+
+  return `/api/tenants/${tenantId}/obras/${obraId}/etapas`
+}
+
+/**
+ * @summary List obra etapas
+ */
+export const listObraEtapas = async (tenantId: string,
+    obraId: string, options?: RequestInit): Promise<ObraEtapa[]> => {
+
+  return customFetch<ObraEtapa[]>(getListObraEtapasUrl(tenantId,obraId),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getListObraEtapasQueryKey = (tenantId: string,
+    obraId: string,) => {
+    return [
+    `/api/tenants/${tenantId}/obras/${obraId}/etapas`
+    ] as const;
+    }
+
+
+export const getListObraEtapasQueryOptions = <TData = Awaited<ReturnType<typeof listObraEtapas>>, TError = ErrorType<unknown>>(tenantId: string,
+    obraId: string, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listObraEtapas>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getListObraEtapasQueryKey(tenantId,obraId);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof listObraEtapas>>> = ({ signal }) => listObraEtapas(tenantId,obraId, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, enabled: !!(tenantId && obraId), ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof listObraEtapas>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type ListObraEtapasQueryResult = NonNullable<Awaited<ReturnType<typeof listObraEtapas>>>
+export type ListObraEtapasQueryError = ErrorType<unknown>
+
+
+/**
+ * @summary List obra etapas
+ */
+
+export function useListObraEtapas<TData = Awaited<ReturnType<typeof listObraEtapas>>, TError = ErrorType<unknown>>(
+ tenantId: string,
+    obraId: string, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listObraEtapas>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getListObraEtapasQueryOptions(tenantId,obraId,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+
+
+
+
+
+
+export const getCreateObraEtapaUrl = (tenantId: string,
+    obraId: string,) => {
+
+
+
+
+  return `/api/tenants/${tenantId}/obras/${obraId}/etapas`
+}
+
+/**
+ * @summary Create etapa
+ */
+export const createObraEtapa = async (tenantId: string,
+    obraId: string,
+    obraEtapaInput: ObraEtapaInput, options?: RequestInit): Promise<ObraEtapa> => {
+
+  return customFetch<ObraEtapa>(getCreateObraEtapaUrl(tenantId,obraId),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(
+      obraEtapaInput,)
+  }
+);}
+
+
+
+
+export const getCreateObraEtapaMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createObraEtapa>>, TError,{tenantId: string;obraId: string;data: BodyType<ObraEtapaInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof createObraEtapa>>, TError,{tenantId: string;obraId: string;data: BodyType<ObraEtapaInput>}, TContext> => {
+
+const mutationKey = ['createObraEtapa'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof createObraEtapa>>, {tenantId: string;obraId: string;data: BodyType<ObraEtapaInput>}> = (props) => {
+          const {tenantId,obraId,data} = props ?? {};
+
+          return  createObraEtapa(tenantId,obraId,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type CreateObraEtapaMutationResult = NonNullable<Awaited<ReturnType<typeof createObraEtapa>>>
+    export type CreateObraEtapaMutationBody = BodyType<ObraEtapaInput>
+    export type CreateObraEtapaMutationError = ErrorType<unknown>
+
+    /**
+ * @summary Create etapa
+ */
+export const useCreateObraEtapa = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createObraEtapa>>, TError,{tenantId: string;obraId: string;data: BodyType<ObraEtapaInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof createObraEtapa>>,
+        TError,
+        {tenantId: string;obraId: string;data: BodyType<ObraEtapaInput>},
+        TContext
+      > => {
+      return useMutation(getCreateObraEtapaMutationOptions(options));
+    }
+
+export const getUpdateObraEtapaUrl = (tenantId: string,
+    obraId: string,
+    etapaId: string,) => {
+
+
+
+
+  return `/api/tenants/${tenantId}/obras/${obraId}/etapas/${etapaId}`
+}
+
+/**
+ * @summary Update etapa
+ */
+export const updateObraEtapa = async (tenantId: string,
+    obraId: string,
+    etapaId: string,
+    obraEtapaUpdate: ObraEtapaUpdate, options?: RequestInit): Promise<ObraEtapa> => {
+
+  return customFetch<ObraEtapa>(getUpdateObraEtapaUrl(tenantId,obraId,etapaId),
+  {
+    ...options,
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(
+      obraEtapaUpdate,)
+  }
+);}
+
+
+
+
+export const getUpdateObraEtapaMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updateObraEtapa>>, TError,{tenantId: string;obraId: string;etapaId: string;data: BodyType<ObraEtapaUpdate>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof updateObraEtapa>>, TError,{tenantId: string;obraId: string;etapaId: string;data: BodyType<ObraEtapaUpdate>}, TContext> => {
+
+const mutationKey = ['updateObraEtapa'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof updateObraEtapa>>, {tenantId: string;obraId: string;etapaId: string;data: BodyType<ObraEtapaUpdate>}> = (props) => {
+          const {tenantId,obraId,etapaId,data} = props ?? {};
+
+          return  updateObraEtapa(tenantId,obraId,etapaId,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type UpdateObraEtapaMutationResult = NonNullable<Awaited<ReturnType<typeof updateObraEtapa>>>
+    export type UpdateObraEtapaMutationBody = BodyType<ObraEtapaUpdate>
+    export type UpdateObraEtapaMutationError = ErrorType<unknown>
+
+    /**
+ * @summary Update etapa
+ */
+export const useUpdateObraEtapa = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updateObraEtapa>>, TError,{tenantId: string;obraId: string;etapaId: string;data: BodyType<ObraEtapaUpdate>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof updateObraEtapa>>,
+        TError,
+        {tenantId: string;obraId: string;etapaId: string;data: BodyType<ObraEtapaUpdate>},
+        TContext
+      > => {
+      return useMutation(getUpdateObraEtapaMutationOptions(options));
+    }
+
+export const getDeleteObraEtapaUrl = (tenantId: string,
+    obraId: string,
+    etapaId: string,) => {
+
+
+
+
+  return `/api/tenants/${tenantId}/obras/${obraId}/etapas/${etapaId}`
+}
+
+/**
+ * @summary Delete etapa
+ */
+export const deleteObraEtapa = async (tenantId: string,
+    obraId: string,
+    etapaId: string, options?: RequestInit): Promise<void> => {
+
+  return customFetch<void>(getDeleteObraEtapaUrl(tenantId,obraId,etapaId),
+  {
+    ...options,
+    method: 'DELETE'
+
+
+  }
+);}
+
+
+
+
+export const getDeleteObraEtapaMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof deleteObraEtapa>>, TError,{tenantId: string;obraId: string;etapaId: string}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof deleteObraEtapa>>, TError,{tenantId: string;obraId: string;etapaId: string}, TContext> => {
+
+const mutationKey = ['deleteObraEtapa'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof deleteObraEtapa>>, {tenantId: string;obraId: string;etapaId: string}> = (props) => {
+          const {tenantId,obraId,etapaId} = props ?? {};
+
+          return  deleteObraEtapa(tenantId,obraId,etapaId,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type DeleteObraEtapaMutationResult = NonNullable<Awaited<ReturnType<typeof deleteObraEtapa>>>
+
+    export type DeleteObraEtapaMutationError = ErrorType<unknown>
+
+    /**
+ * @summary Delete etapa
+ */
+export const useDeleteObraEtapa = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof deleteObraEtapa>>, TError,{tenantId: string;obraId: string;etapaId: string}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof deleteObraEtapa>>,
+        TError,
+        {tenantId: string;obraId: string;etapaId: string},
+        TContext
+      > => {
+      return useMutation(getDeleteObraEtapaMutationOptions(options));
+    }
+
+export const getListObraEtapaMedicoesUrl = (tenantId: string,
+    obraId: string,
+    etapaId: string,) => {
+
+
+
+
+  return `/api/tenants/${tenantId}/obras/${obraId}/etapas/${etapaId}/medicoes`
+}
+
+/**
+ * @summary List medicoes of an etapa
+ */
+export const listObraEtapaMedicoes = async (tenantId: string,
+    obraId: string,
+    etapaId: string, options?: RequestInit): Promise<ObraEtapaMedicao[]> => {
+
+  return customFetch<ObraEtapaMedicao[]>(getListObraEtapaMedicoesUrl(tenantId,obraId,etapaId),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getListObraEtapaMedicoesQueryKey = (tenantId: string,
+    obraId: string,
+    etapaId: string,) => {
+    return [
+    `/api/tenants/${tenantId}/obras/${obraId}/etapas/${etapaId}/medicoes`
+    ] as const;
+    }
+
+
+export const getListObraEtapaMedicoesQueryOptions = <TData = Awaited<ReturnType<typeof listObraEtapaMedicoes>>, TError = ErrorType<unknown>>(tenantId: string,
+    obraId: string,
+    etapaId: string, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listObraEtapaMedicoes>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getListObraEtapaMedicoesQueryKey(tenantId,obraId,etapaId);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof listObraEtapaMedicoes>>> = ({ signal }) => listObraEtapaMedicoes(tenantId,obraId,etapaId, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, enabled: !!(tenantId && obraId && etapaId), ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof listObraEtapaMedicoes>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type ListObraEtapaMedicoesQueryResult = NonNullable<Awaited<ReturnType<typeof listObraEtapaMedicoes>>>
+export type ListObraEtapaMedicoesQueryError = ErrorType<unknown>
+
+
+/**
+ * @summary List medicoes of an etapa
+ */
+
+export function useListObraEtapaMedicoes<TData = Awaited<ReturnType<typeof listObraEtapaMedicoes>>, TError = ErrorType<unknown>>(
+ tenantId: string,
+    obraId: string,
+    etapaId: string, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listObraEtapaMedicoes>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getListObraEtapaMedicoesQueryOptions(tenantId,obraId,etapaId,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+
+
+
+
+
+
+export const getCreateObraEtapaMedicaoUrl = (tenantId: string,
+    obraId: string,
+    etapaId: string,) => {
+
+
+
+
+  return `/api/tenants/${tenantId}/obras/${obraId}/etapas/${etapaId}/medicoes`
+}
+
+/**
+ * @summary Register medicao
+ */
+export const createObraEtapaMedicao = async (tenantId: string,
+    obraId: string,
+    etapaId: string,
+    obraEtapaMedicaoInput: ObraEtapaMedicaoInput, options?: RequestInit): Promise<ObraEtapaMedicao> => {
+
+  return customFetch<ObraEtapaMedicao>(getCreateObraEtapaMedicaoUrl(tenantId,obraId,etapaId),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(
+      obraEtapaMedicaoInput,)
+  }
+);}
+
+
+
+
+export const getCreateObraEtapaMedicaoMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createObraEtapaMedicao>>, TError,{tenantId: string;obraId: string;etapaId: string;data: BodyType<ObraEtapaMedicaoInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof createObraEtapaMedicao>>, TError,{tenantId: string;obraId: string;etapaId: string;data: BodyType<ObraEtapaMedicaoInput>}, TContext> => {
+
+const mutationKey = ['createObraEtapaMedicao'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof createObraEtapaMedicao>>, {tenantId: string;obraId: string;etapaId: string;data: BodyType<ObraEtapaMedicaoInput>}> = (props) => {
+          const {tenantId,obraId,etapaId,data} = props ?? {};
+
+          return  createObraEtapaMedicao(tenantId,obraId,etapaId,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type CreateObraEtapaMedicaoMutationResult = NonNullable<Awaited<ReturnType<typeof createObraEtapaMedicao>>>
+    export type CreateObraEtapaMedicaoMutationBody = BodyType<ObraEtapaMedicaoInput>
+    export type CreateObraEtapaMedicaoMutationError = ErrorType<unknown>
+
+    /**
+ * @summary Register medicao
+ */
+export const useCreateObraEtapaMedicao = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createObraEtapaMedicao>>, TError,{tenantId: string;obraId: string;etapaId: string;data: BodyType<ObraEtapaMedicaoInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof createObraEtapaMedicao>>,
+        TError,
+        {tenantId: string;obraId: string;etapaId: string;data: BodyType<ObraEtapaMedicaoInput>},
+        TContext
+      > => {
+      return useMutation(getCreateObraEtapaMedicaoMutationOptions(options));
+    }
+
+export const getListObraDiarioUrl = (tenantId: string,
+    obraId: string,) => {
+
+
+
+
+  return `/api/tenants/${tenantId}/obras/${obraId}/diario`
+}
+
+/**
+ * @summary List diary entries
+ */
+export const listObraDiario = async (tenantId: string,
+    obraId: string, options?: RequestInit): Promise<ObraDiario[]> => {
+
+  return customFetch<ObraDiario[]>(getListObraDiarioUrl(tenantId,obraId),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getListObraDiarioQueryKey = (tenantId: string,
+    obraId: string,) => {
+    return [
+    `/api/tenants/${tenantId}/obras/${obraId}/diario`
+    ] as const;
+    }
+
+
+export const getListObraDiarioQueryOptions = <TData = Awaited<ReturnType<typeof listObraDiario>>, TError = ErrorType<unknown>>(tenantId: string,
+    obraId: string, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listObraDiario>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getListObraDiarioQueryKey(tenantId,obraId);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof listObraDiario>>> = ({ signal }) => listObraDiario(tenantId,obraId, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, enabled: !!(tenantId && obraId), ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof listObraDiario>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type ListObraDiarioQueryResult = NonNullable<Awaited<ReturnType<typeof listObraDiario>>>
+export type ListObraDiarioQueryError = ErrorType<unknown>
+
+
+/**
+ * @summary List diary entries
+ */
+
+export function useListObraDiario<TData = Awaited<ReturnType<typeof listObraDiario>>, TError = ErrorType<unknown>>(
+ tenantId: string,
+    obraId: string, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listObraDiario>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getListObraDiarioQueryOptions(tenantId,obraId,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+
+
+
+
+
+
+export const getCreateObraDiarioUrl = (tenantId: string,
+    obraId: string,) => {
+
+
+
+
+  return `/api/tenants/${tenantId}/obras/${obraId}/diario`
+}
+
+/**
+ * @summary Create diary entry
+ */
+export const createObraDiario = async (tenantId: string,
+    obraId: string,
+    obraDiarioInput: ObraDiarioInput, options?: RequestInit): Promise<ObraDiario> => {
+
+  return customFetch<ObraDiario>(getCreateObraDiarioUrl(tenantId,obraId),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(
+      obraDiarioInput,)
+  }
+);}
+
+
+
+
+export const getCreateObraDiarioMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createObraDiario>>, TError,{tenantId: string;obraId: string;data: BodyType<ObraDiarioInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof createObraDiario>>, TError,{tenantId: string;obraId: string;data: BodyType<ObraDiarioInput>}, TContext> => {
+
+const mutationKey = ['createObraDiario'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof createObraDiario>>, {tenantId: string;obraId: string;data: BodyType<ObraDiarioInput>}> = (props) => {
+          const {tenantId,obraId,data} = props ?? {};
+
+          return  createObraDiario(tenantId,obraId,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type CreateObraDiarioMutationResult = NonNullable<Awaited<ReturnType<typeof createObraDiario>>>
+    export type CreateObraDiarioMutationBody = BodyType<ObraDiarioInput>
+    export type CreateObraDiarioMutationError = ErrorType<unknown>
+
+    /**
+ * @summary Create diary entry
+ */
+export const useCreateObraDiario = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createObraDiario>>, TError,{tenantId: string;obraId: string;data: BodyType<ObraDiarioInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof createObraDiario>>,
+        TError,
+        {tenantId: string;obraId: string;data: BodyType<ObraDiarioInput>},
+        TContext
+      > => {
+      return useMutation(getCreateObraDiarioMutationOptions(options));
+    }
+
+export const getUpdateObraDiarioUrl = (tenantId: string,
+    obraId: string,
+    diarioId: string,) => {
+
+
+
+
+  return `/api/tenants/${tenantId}/obras/${obraId}/diario/${diarioId}`
+}
+
+/**
+ * @summary Update/approve diary entry
+ */
+export const updateObraDiario = async (tenantId: string,
+    obraId: string,
+    diarioId: string,
+    obraDiarioUpdate: ObraDiarioUpdate, options?: RequestInit): Promise<ObraDiario> => {
+
+  return customFetch<ObraDiario>(getUpdateObraDiarioUrl(tenantId,obraId,diarioId),
+  {
+    ...options,
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(
+      obraDiarioUpdate,)
+  }
+);}
+
+
+
+
+export const getUpdateObraDiarioMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updateObraDiario>>, TError,{tenantId: string;obraId: string;diarioId: string;data: BodyType<ObraDiarioUpdate>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof updateObraDiario>>, TError,{tenantId: string;obraId: string;diarioId: string;data: BodyType<ObraDiarioUpdate>}, TContext> => {
+
+const mutationKey = ['updateObraDiario'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof updateObraDiario>>, {tenantId: string;obraId: string;diarioId: string;data: BodyType<ObraDiarioUpdate>}> = (props) => {
+          const {tenantId,obraId,diarioId,data} = props ?? {};
+
+          return  updateObraDiario(tenantId,obraId,diarioId,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type UpdateObraDiarioMutationResult = NonNullable<Awaited<ReturnType<typeof updateObraDiario>>>
+    export type UpdateObraDiarioMutationBody = BodyType<ObraDiarioUpdate>
+    export type UpdateObraDiarioMutationError = ErrorType<unknown>
+
+    /**
+ * @summary Update/approve diary entry
+ */
+export const useUpdateObraDiario = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updateObraDiario>>, TError,{tenantId: string;obraId: string;diarioId: string;data: BodyType<ObraDiarioUpdate>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof updateObraDiario>>,
+        TError,
+        {tenantId: string;obraId: string;diarioId: string;data: BodyType<ObraDiarioUpdate>},
+        TContext
+      > => {
+      return useMutation(getUpdateObraDiarioMutationOptions(options));
+    }
+
+export const getDeleteObraDiarioUrl = (tenantId: string,
+    obraId: string,
+    diarioId: string,) => {
+
+
+
+
+  return `/api/tenants/${tenantId}/obras/${obraId}/diario/${diarioId}`
+}
+
+/**
+ * @summary Delete diary entry
+ */
+export const deleteObraDiario = async (tenantId: string,
+    obraId: string,
+    diarioId: string, options?: RequestInit): Promise<void> => {
+
+  return customFetch<void>(getDeleteObraDiarioUrl(tenantId,obraId,diarioId),
+  {
+    ...options,
+    method: 'DELETE'
+
+
+  }
+);}
+
+
+
+
+export const getDeleteObraDiarioMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof deleteObraDiario>>, TError,{tenantId: string;obraId: string;diarioId: string}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof deleteObraDiario>>, TError,{tenantId: string;obraId: string;diarioId: string}, TContext> => {
+
+const mutationKey = ['deleteObraDiario'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof deleteObraDiario>>, {tenantId: string;obraId: string;diarioId: string}> = (props) => {
+          const {tenantId,obraId,diarioId} = props ?? {};
+
+          return  deleteObraDiario(tenantId,obraId,diarioId,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type DeleteObraDiarioMutationResult = NonNullable<Awaited<ReturnType<typeof deleteObraDiario>>>
+
+    export type DeleteObraDiarioMutationError = ErrorType<unknown>
+
+    /**
+ * @summary Delete diary entry
+ */
+export const useDeleteObraDiario = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof deleteObraDiario>>, TError,{tenantId: string;obraId: string;diarioId: string}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof deleteObraDiario>>,
+        TError,
+        {tenantId: string;obraId: string;diarioId: string},
+        TContext
+      > => {
+      return useMutation(getDeleteObraDiarioMutationOptions(options));
+    }
+
+export const getGetObraEstoqueUrl = (tenantId: string,
+    obraId: string,) => {
+
+
+
+
+  return `/api/tenants/${tenantId}/obras/${obraId}/estoque`
+}
+
+/**
+ * @summary Get obra inventory
+ */
+export const getObraEstoque = async (tenantId: string,
+    obraId: string, options?: RequestInit): Promise<EstoqueObraItem[]> => {
+
+  return customFetch<EstoqueObraItem[]>(getGetObraEstoqueUrl(tenantId,obraId),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetObraEstoqueQueryKey = (tenantId: string,
+    obraId: string,) => {
+    return [
+    `/api/tenants/${tenantId}/obras/${obraId}/estoque`
+    ] as const;
+    }
+
+
+export const getGetObraEstoqueQueryOptions = <TData = Awaited<ReturnType<typeof getObraEstoque>>, TError = ErrorType<unknown>>(tenantId: string,
+    obraId: string, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getObraEstoque>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetObraEstoqueQueryKey(tenantId,obraId);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getObraEstoque>>> = ({ signal }) => getObraEstoque(tenantId,obraId, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, enabled: !!(tenantId && obraId), ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getObraEstoque>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetObraEstoqueQueryResult = NonNullable<Awaited<ReturnType<typeof getObraEstoque>>>
+export type GetObraEstoqueQueryError = ErrorType<unknown>
+
+
+/**
+ * @summary Get obra inventory
+ */
+
+export function useGetObraEstoque<TData = Awaited<ReturnType<typeof getObraEstoque>>, TError = ErrorType<unknown>>(
+ tenantId: string,
+    obraId: string, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getObraEstoque>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetObraEstoqueQueryOptions(tenantId,obraId,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+
+
+
+
+
+
+export const getListObraComprasUrl = (tenantId: string,
+    obraId: string,) => {
+
+
+
+
+  return `/api/tenants/${tenantId}/obras/${obraId}/compras`
+}
+
+/**
+ * @summary List compras for obra
+ */
+export const listObraCompras = async (tenantId: string,
+    obraId: string, options?: RequestInit): Promise<CompraObra[]> => {
+
+  return customFetch<CompraObra[]>(getListObraComprasUrl(tenantId,obraId),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getListObraComprasQueryKey = (tenantId: string,
+    obraId: string,) => {
+    return [
+    `/api/tenants/${tenantId}/obras/${obraId}/compras`
+    ] as const;
+    }
+
+
+export const getListObraComprasQueryOptions = <TData = Awaited<ReturnType<typeof listObraCompras>>, TError = ErrorType<unknown>>(tenantId: string,
+    obraId: string, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listObraCompras>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getListObraComprasQueryKey(tenantId,obraId);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof listObraCompras>>> = ({ signal }) => listObraCompras(tenantId,obraId, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, enabled: !!(tenantId && obraId), ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof listObraCompras>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type ListObraComprasQueryResult = NonNullable<Awaited<ReturnType<typeof listObraCompras>>>
+export type ListObraComprasQueryError = ErrorType<unknown>
+
+
+/**
+ * @summary List compras for obra
+ */
+
+export function useListObraCompras<TData = Awaited<ReturnType<typeof listObraCompras>>, TError = ErrorType<unknown>>(
+ tenantId: string,
+    obraId: string, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listObraCompras>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getListObraComprasQueryOptions(tenantId,obraId,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+
+
+
+
+
+
+export const getCreateObraCompraUrl = (tenantId: string,
+    obraId: string,) => {
+
+
+
+
+  return `/api/tenants/${tenantId}/obras/${obraId}/compras`
+}
+
+/**
+ * @summary Create compra for obra
+ */
+export const createObraCompra = async (tenantId: string,
+    obraId: string,
+    compraObraInput: CompraObraInput, options?: RequestInit): Promise<CompraObra> => {
+
+  return customFetch<CompraObra>(getCreateObraCompraUrl(tenantId,obraId),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(
+      compraObraInput,)
+  }
+);}
+
+
+
+
+export const getCreateObraCompraMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createObraCompra>>, TError,{tenantId: string;obraId: string;data: BodyType<CompraObraInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof createObraCompra>>, TError,{tenantId: string;obraId: string;data: BodyType<CompraObraInput>}, TContext> => {
+
+const mutationKey = ['createObraCompra'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof createObraCompra>>, {tenantId: string;obraId: string;data: BodyType<CompraObraInput>}> = (props) => {
+          const {tenantId,obraId,data} = props ?? {};
+
+          return  createObraCompra(tenantId,obraId,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type CreateObraCompraMutationResult = NonNullable<Awaited<ReturnType<typeof createObraCompra>>>
+    export type CreateObraCompraMutationBody = BodyType<CompraObraInput>
+    export type CreateObraCompraMutationError = ErrorType<unknown>
+
+    /**
+ * @summary Create compra for obra
+ */
+export const useCreateObraCompra = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createObraCompra>>, TError,{tenantId: string;obraId: string;data: BodyType<CompraObraInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof createObraCompra>>,
+        TError,
+        {tenantId: string;obraId: string;data: BodyType<CompraObraInput>},
+        TContext
+      > => {
+      return useMutation(getCreateObraCompraMutationOptions(options));
+    }
+
+export const getUpdateCompraObraUrl = (tenantId: string,
+    compraId: string,) => {
+
+
+
+
+  return `/api/tenants/${tenantId}/compras-obras/${compraId}`
+}
+
+/**
+ * @summary Update compra status
+ */
+export const updateCompraObra = async (tenantId: string,
+    compraId: string,
+    compraObraUpdate: CompraObraUpdate, options?: RequestInit): Promise<CompraObra> => {
+
+  return customFetch<CompraObra>(getUpdateCompraObraUrl(tenantId,compraId),
+  {
+    ...options,
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(
+      compraObraUpdate,)
+  }
+);}
+
+
+
+
+export const getUpdateCompraObraMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updateCompraObra>>, TError,{tenantId: string;compraId: string;data: BodyType<CompraObraUpdate>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof updateCompraObra>>, TError,{tenantId: string;compraId: string;data: BodyType<CompraObraUpdate>}, TContext> => {
+
+const mutationKey = ['updateCompraObra'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof updateCompraObra>>, {tenantId: string;compraId: string;data: BodyType<CompraObraUpdate>}> = (props) => {
+          const {tenantId,compraId,data} = props ?? {};
+
+          return  updateCompraObra(tenantId,compraId,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type UpdateCompraObraMutationResult = NonNullable<Awaited<ReturnType<typeof updateCompraObra>>>
+    export type UpdateCompraObraMutationBody = BodyType<CompraObraUpdate>
+    export type UpdateCompraObraMutationError = ErrorType<unknown>
+
+    /**
+ * @summary Update compra status
+ */
+export const useUpdateCompraObra = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updateCompraObra>>, TError,{tenantId: string;compraId: string;data: BodyType<CompraObraUpdate>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof updateCompraObra>>,
+        TError,
+        {tenantId: string;compraId: string;data: BodyType<CompraObraUpdate>},
+        TContext
+      > => {
+      return useMutation(getUpdateCompraObraMutationOptions(options));
+    }
+
+export const getListInsumosUrl = (tenantId: string,
+    params?: ListInsumosParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : value.toString())
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/api/tenants/${tenantId}/insumos?${stringifiedParams}` : `/api/tenants/${tenantId}/insumos`
+}
+
+/**
+ * @summary List insumos
+ */
+export const listInsumos = async (tenantId: string,
+    params?: ListInsumosParams, options?: RequestInit): Promise<Insumo[]> => {
+
+  return customFetch<Insumo[]>(getListInsumosUrl(tenantId,params),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getListInsumosQueryKey = (tenantId: string,
+    params?: ListInsumosParams,) => {
+    return [
+    `/api/tenants/${tenantId}/insumos`, ...(params ? [params] : [])
+    ] as const;
+    }
+
+
+export const getListInsumosQueryOptions = <TData = Awaited<ReturnType<typeof listInsumos>>, TError = ErrorType<unknown>>(tenantId: string,
+    params?: ListInsumosParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listInsumos>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getListInsumosQueryKey(tenantId,params);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof listInsumos>>> = ({ signal }) => listInsumos(tenantId,params, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, enabled: !!(tenantId), ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof listInsumos>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type ListInsumosQueryResult = NonNullable<Awaited<ReturnType<typeof listInsumos>>>
+export type ListInsumosQueryError = ErrorType<unknown>
+
+
+/**
+ * @summary List insumos
+ */
+
+export function useListInsumos<TData = Awaited<ReturnType<typeof listInsumos>>, TError = ErrorType<unknown>>(
+ tenantId: string,
+    params?: ListInsumosParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listInsumos>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getListInsumosQueryOptions(tenantId,params,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+
+
+
+
+
+
+export const getCreateInsumoUrl = (tenantId: string,) => {
+
+
+
+
+  return `/api/tenants/${tenantId}/insumos`
+}
+
+/**
+ * @summary Create insumo
+ */
+export const createInsumo = async (tenantId: string,
+    insumoInput: InsumoInput, options?: RequestInit): Promise<Insumo> => {
+
+  return customFetch<Insumo>(getCreateInsumoUrl(tenantId),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(
+      insumoInput,)
+  }
+);}
+
+
+
+
+export const getCreateInsumoMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createInsumo>>, TError,{tenantId: string;data: BodyType<InsumoInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof createInsumo>>, TError,{tenantId: string;data: BodyType<InsumoInput>}, TContext> => {
+
+const mutationKey = ['createInsumo'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof createInsumo>>, {tenantId: string;data: BodyType<InsumoInput>}> = (props) => {
+          const {tenantId,data} = props ?? {};
+
+          return  createInsumo(tenantId,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type CreateInsumoMutationResult = NonNullable<Awaited<ReturnType<typeof createInsumo>>>
+    export type CreateInsumoMutationBody = BodyType<InsumoInput>
+    export type CreateInsumoMutationError = ErrorType<unknown>
+
+    /**
+ * @summary Create insumo
+ */
+export const useCreateInsumo = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createInsumo>>, TError,{tenantId: string;data: BodyType<InsumoInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof createInsumo>>,
+        TError,
+        {tenantId: string;data: BodyType<InsumoInput>},
+        TContext
+      > => {
+      return useMutation(getCreateInsumoMutationOptions(options));
+    }
+
+export const getUpdateInsumoUrl = (tenantId: string,
+    insumoId: string,) => {
+
+
+
+
+  return `/api/tenants/${tenantId}/insumos/${insumoId}`
+}
+
+/**
+ * @summary Update insumo
+ */
+export const updateInsumo = async (tenantId: string,
+    insumoId: string,
+    insumoUpdate: InsumoUpdate, options?: RequestInit): Promise<Insumo> => {
+
+  return customFetch<Insumo>(getUpdateInsumoUrl(tenantId,insumoId),
+  {
+    ...options,
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(
+      insumoUpdate,)
+  }
+);}
+
+
+
+
+export const getUpdateInsumoMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updateInsumo>>, TError,{tenantId: string;insumoId: string;data: BodyType<InsumoUpdate>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof updateInsumo>>, TError,{tenantId: string;insumoId: string;data: BodyType<InsumoUpdate>}, TContext> => {
+
+const mutationKey = ['updateInsumo'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof updateInsumo>>, {tenantId: string;insumoId: string;data: BodyType<InsumoUpdate>}> = (props) => {
+          const {tenantId,insumoId,data} = props ?? {};
+
+          return  updateInsumo(tenantId,insumoId,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type UpdateInsumoMutationResult = NonNullable<Awaited<ReturnType<typeof updateInsumo>>>
+    export type UpdateInsumoMutationBody = BodyType<InsumoUpdate>
+    export type UpdateInsumoMutationError = ErrorType<unknown>
+
+    /**
+ * @summary Update insumo
+ */
+export const useUpdateInsumo = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updateInsumo>>, TError,{tenantId: string;insumoId: string;data: BodyType<InsumoUpdate>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof updateInsumo>>,
+        TError,
+        {tenantId: string;insumoId: string;data: BodyType<InsumoUpdate>},
+        TContext
+      > => {
+      return useMutation(getUpdateInsumoMutationOptions(options));
+    }
+
+export const getDeleteInsumoUrl = (tenantId: string,
+    insumoId: string,) => {
+
+
+
+
+  return `/api/tenants/${tenantId}/insumos/${insumoId}`
+}
+
+/**
+ * @summary Delete insumo
+ */
+export const deleteInsumo = async (tenantId: string,
+    insumoId: string, options?: RequestInit): Promise<void> => {
+
+  return customFetch<void>(getDeleteInsumoUrl(tenantId,insumoId),
+  {
+    ...options,
+    method: 'DELETE'
+
+
+  }
+);}
+
+
+
+
+export const getDeleteInsumoMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof deleteInsumo>>, TError,{tenantId: string;insumoId: string}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof deleteInsumo>>, TError,{tenantId: string;insumoId: string}, TContext> => {
+
+const mutationKey = ['deleteInsumo'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof deleteInsumo>>, {tenantId: string;insumoId: string}> = (props) => {
+          const {tenantId,insumoId} = props ?? {};
+
+          return  deleteInsumo(tenantId,insumoId,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type DeleteInsumoMutationResult = NonNullable<Awaited<ReturnType<typeof deleteInsumo>>>
+
+    export type DeleteInsumoMutationError = ErrorType<unknown>
+
+    /**
+ * @summary Delete insumo
+ */
+export const useDeleteInsumo = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof deleteInsumo>>, TError,{tenantId: string;insumoId: string}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof deleteInsumo>>,
+        TError,
+        {tenantId: string;insumoId: string},
+        TContext
+      > => {
+      return useMutation(getDeleteInsumoMutationOptions(options));
+    }
+
+export const getGetEstoqueCentralUrl = (tenantId: string,) => {
+
+
+
+
+  return `/api/tenants/${tenantId}/estoque-central-obras`
+}
+
+/**
+ * @summary Get central construction stock
+ */
+export const getEstoqueCentral = async (tenantId: string, options?: RequestInit): Promise<EstoqueCentralItem[]> => {
+
+  return customFetch<EstoqueCentralItem[]>(getGetEstoqueCentralUrl(tenantId),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetEstoqueCentralQueryKey = (tenantId: string,) => {
+    return [
+    `/api/tenants/${tenantId}/estoque-central-obras`
+    ] as const;
+    }
+
+
+export const getGetEstoqueCentralQueryOptions = <TData = Awaited<ReturnType<typeof getEstoqueCentral>>, TError = ErrorType<unknown>>(tenantId: string, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getEstoqueCentral>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetEstoqueCentralQueryKey(tenantId);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getEstoqueCentral>>> = ({ signal }) => getEstoqueCentral(tenantId, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, enabled: !!(tenantId), ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getEstoqueCentral>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetEstoqueCentralQueryResult = NonNullable<Awaited<ReturnType<typeof getEstoqueCentral>>>
+export type GetEstoqueCentralQueryError = ErrorType<unknown>
+
+
+/**
+ * @summary Get central construction stock
+ */
+
+export function useGetEstoqueCentral<TData = Awaited<ReturnType<typeof getEstoqueCentral>>, TError = ErrorType<unknown>>(
+ tenantId: string, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getEstoqueCentral>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetEstoqueCentralQueryOptions(tenantId,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+
+
+
+
+
+
+export const getCreateMovimentacaoEstoqueObraUrl = (tenantId: string,) => {
+
+
+
+
+  return `/api/tenants/${tenantId}/estoque-obras/movimentacoes`
+}
+
+/**
+ * @summary Register stock movement (allocation/return/transfer)
+ */
+export const createMovimentacaoEstoqueObra = async (tenantId: string,
+    movimentacaoEstoqueInput: MovimentacaoEstoqueInput, options?: RequestInit): Promise<MovimentacaoEstoque> => {
+
+  return customFetch<MovimentacaoEstoque>(getCreateMovimentacaoEstoqueObraUrl(tenantId),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(
+      movimentacaoEstoqueInput,)
+  }
+);}
+
+
+
+
+export const getCreateMovimentacaoEstoqueObraMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createMovimentacaoEstoqueObra>>, TError,{tenantId: string;data: BodyType<MovimentacaoEstoqueInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof createMovimentacaoEstoqueObra>>, TError,{tenantId: string;data: BodyType<MovimentacaoEstoqueInput>}, TContext> => {
+
+const mutationKey = ['createMovimentacaoEstoqueObra'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof createMovimentacaoEstoqueObra>>, {tenantId: string;data: BodyType<MovimentacaoEstoqueInput>}> = (props) => {
+          const {tenantId,data} = props ?? {};
+
+          return  createMovimentacaoEstoqueObra(tenantId,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type CreateMovimentacaoEstoqueObraMutationResult = NonNullable<Awaited<ReturnType<typeof createMovimentacaoEstoqueObra>>>
+    export type CreateMovimentacaoEstoqueObraMutationBody = BodyType<MovimentacaoEstoqueInput>
+    export type CreateMovimentacaoEstoqueObraMutationError = ErrorType<unknown>
+
+    /**
+ * @summary Register stock movement (allocation/return/transfer)
+ */
+export const useCreateMovimentacaoEstoqueObra = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createMovimentacaoEstoqueObra>>, TError,{tenantId: string;data: BodyType<MovimentacaoEstoqueInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof createMovimentacaoEstoqueObra>>,
+        TError,
+        {tenantId: string;data: BodyType<MovimentacaoEstoqueInput>},
+        TContext
+      > => {
+      return useMutation(getCreateMovimentacaoEstoqueObraMutationOptions(options));
+    }
+
+export const getListComposicoesUrl = (tenantId: string,
+    params?: ListComposicoesParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : value.toString())
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/api/tenants/${tenantId}/composicoes?${stringifiedParams}` : `/api/tenants/${tenantId}/composicoes`
+}
+
+/**
+ * @summary List composicoes
+ */
+export const listComposicoes = async (tenantId: string,
+    params?: ListComposicoesParams, options?: RequestInit): Promise<Composicao[]> => {
+
+  return customFetch<Composicao[]>(getListComposicoesUrl(tenantId,params),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getListComposicoesQueryKey = (tenantId: string,
+    params?: ListComposicoesParams,) => {
+    return [
+    `/api/tenants/${tenantId}/composicoes`, ...(params ? [params] : [])
+    ] as const;
+    }
+
+
+export const getListComposicoesQueryOptions = <TData = Awaited<ReturnType<typeof listComposicoes>>, TError = ErrorType<unknown>>(tenantId: string,
+    params?: ListComposicoesParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listComposicoes>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getListComposicoesQueryKey(tenantId,params);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof listComposicoes>>> = ({ signal }) => listComposicoes(tenantId,params, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, enabled: !!(tenantId), ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof listComposicoes>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type ListComposicoesQueryResult = NonNullable<Awaited<ReturnType<typeof listComposicoes>>>
+export type ListComposicoesQueryError = ErrorType<unknown>
+
+
+/**
+ * @summary List composicoes
+ */
+
+export function useListComposicoes<TData = Awaited<ReturnType<typeof listComposicoes>>, TError = ErrorType<unknown>>(
+ tenantId: string,
+    params?: ListComposicoesParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listComposicoes>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getListComposicoesQueryOptions(tenantId,params,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+
+
+
+
+
+
+export const getCreateComposicaoUrl = (tenantId: string,) => {
+
+
+
+
+  return `/api/tenants/${tenantId}/composicoes`
+}
+
+/**
+ * @summary Create composicao
+ */
+export const createComposicao = async (tenantId: string,
+    composicaoInput: ComposicaoInput, options?: RequestInit): Promise<Composicao> => {
+
+  return customFetch<Composicao>(getCreateComposicaoUrl(tenantId),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(
+      composicaoInput,)
+  }
+);}
+
+
+
+
+export const getCreateComposicaoMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createComposicao>>, TError,{tenantId: string;data: BodyType<ComposicaoInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof createComposicao>>, TError,{tenantId: string;data: BodyType<ComposicaoInput>}, TContext> => {
+
+const mutationKey = ['createComposicao'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof createComposicao>>, {tenantId: string;data: BodyType<ComposicaoInput>}> = (props) => {
+          const {tenantId,data} = props ?? {};
+
+          return  createComposicao(tenantId,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type CreateComposicaoMutationResult = NonNullable<Awaited<ReturnType<typeof createComposicao>>>
+    export type CreateComposicaoMutationBody = BodyType<ComposicaoInput>
+    export type CreateComposicaoMutationError = ErrorType<unknown>
+
+    /**
+ * @summary Create composicao
+ */
+export const useCreateComposicao = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createComposicao>>, TError,{tenantId: string;data: BodyType<ComposicaoInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof createComposicao>>,
+        TError,
+        {tenantId: string;data: BodyType<ComposicaoInput>},
+        TContext
+      > => {
+      return useMutation(getCreateComposicaoMutationOptions(options));
+    }
+
+export const getGetComposicaoUrl = (tenantId: string,
+    composicaoId: string,) => {
+
+
+
+
+  return `/api/tenants/${tenantId}/composicoes/${composicaoId}`
+}
+
+/**
+ * @summary Get composicao with insumos
+ */
+export const getComposicao = async (tenantId: string,
+    composicaoId: string, options?: RequestInit): Promise<ComposicaoDetalhe> => {
+
+  return customFetch<ComposicaoDetalhe>(getGetComposicaoUrl(tenantId,composicaoId),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetComposicaoQueryKey = (tenantId: string,
+    composicaoId: string,) => {
+    return [
+    `/api/tenants/${tenantId}/composicoes/${composicaoId}`
+    ] as const;
+    }
+
+
+export const getGetComposicaoQueryOptions = <TData = Awaited<ReturnType<typeof getComposicao>>, TError = ErrorType<unknown>>(tenantId: string,
+    composicaoId: string, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getComposicao>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetComposicaoQueryKey(tenantId,composicaoId);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getComposicao>>> = ({ signal }) => getComposicao(tenantId,composicaoId, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, enabled: !!(tenantId && composicaoId), ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getComposicao>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetComposicaoQueryResult = NonNullable<Awaited<ReturnType<typeof getComposicao>>>
+export type GetComposicaoQueryError = ErrorType<unknown>
+
+
+/**
+ * @summary Get composicao with insumos
+ */
+
+export function useGetComposicao<TData = Awaited<ReturnType<typeof getComposicao>>, TError = ErrorType<unknown>>(
+ tenantId: string,
+    composicaoId: string, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getComposicao>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetComposicaoQueryOptions(tenantId,composicaoId,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+
+
+
+
+
+
+export const getUpdateComposicaoUrl = (tenantId: string,
+    composicaoId: string,) => {
+
+
+
+
+  return `/api/tenants/${tenantId}/composicoes/${composicaoId}`
+}
+
+/**
+ * @summary Update composicao
+ */
+export const updateComposicao = async (tenantId: string,
+    composicaoId: string,
+    composicaoUpdate: ComposicaoUpdate, options?: RequestInit): Promise<Composicao> => {
+
+  return customFetch<Composicao>(getUpdateComposicaoUrl(tenantId,composicaoId),
+  {
+    ...options,
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(
+      composicaoUpdate,)
+  }
+);}
+
+
+
+
+export const getUpdateComposicaoMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updateComposicao>>, TError,{tenantId: string;composicaoId: string;data: BodyType<ComposicaoUpdate>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof updateComposicao>>, TError,{tenantId: string;composicaoId: string;data: BodyType<ComposicaoUpdate>}, TContext> => {
+
+const mutationKey = ['updateComposicao'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof updateComposicao>>, {tenantId: string;composicaoId: string;data: BodyType<ComposicaoUpdate>}> = (props) => {
+          const {tenantId,composicaoId,data} = props ?? {};
+
+          return  updateComposicao(tenantId,composicaoId,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type UpdateComposicaoMutationResult = NonNullable<Awaited<ReturnType<typeof updateComposicao>>>
+    export type UpdateComposicaoMutationBody = BodyType<ComposicaoUpdate>
+    export type UpdateComposicaoMutationError = ErrorType<unknown>
+
+    /**
+ * @summary Update composicao
+ */
+export const useUpdateComposicao = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updateComposicao>>, TError,{tenantId: string;composicaoId: string;data: BodyType<ComposicaoUpdate>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof updateComposicao>>,
+        TError,
+        {tenantId: string;composicaoId: string;data: BodyType<ComposicaoUpdate>},
+        TContext
+      > => {
+      return useMutation(getUpdateComposicaoMutationOptions(options));
+    }
+
+export const getDeleteComposicaoUrl = (tenantId: string,
+    composicaoId: string,) => {
+
+
+
+
+  return `/api/tenants/${tenantId}/composicoes/${composicaoId}`
+}
+
+/**
+ * @summary Delete composicao
+ */
+export const deleteComposicao = async (tenantId: string,
+    composicaoId: string, options?: RequestInit): Promise<void> => {
+
+  return customFetch<void>(getDeleteComposicaoUrl(tenantId,composicaoId),
+  {
+    ...options,
+    method: 'DELETE'
+
+
+  }
+);}
+
+
+
+
+export const getDeleteComposicaoMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof deleteComposicao>>, TError,{tenantId: string;composicaoId: string}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof deleteComposicao>>, TError,{tenantId: string;composicaoId: string}, TContext> => {
+
+const mutationKey = ['deleteComposicao'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof deleteComposicao>>, {tenantId: string;composicaoId: string}> = (props) => {
+          const {tenantId,composicaoId} = props ?? {};
+
+          return  deleteComposicao(tenantId,composicaoId,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type DeleteComposicaoMutationResult = NonNullable<Awaited<ReturnType<typeof deleteComposicao>>>
+
+    export type DeleteComposicaoMutationError = ErrorType<unknown>
+
+    /**
+ * @summary Delete composicao
+ */
+export const useDeleteComposicao = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof deleteComposicao>>, TError,{tenantId: string;composicaoId: string}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof deleteComposicao>>,
+        TError,
+        {tenantId: string;composicaoId: string},
+        TContext
+      > => {
+      return useMutation(getDeleteComposicaoMutationOptions(options));
     }
 

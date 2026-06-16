@@ -32,6 +32,10 @@ import GuiaImplantacao from "@/pages/GuiaImplantacao";
 import Suspended from "@/pages/Suspended";
 import Questionario from "@/pages/Questionario";
 import MeuSite from "@/pages/MeuSite";
+import Obras from "@/pages/Obras";
+import ObraDetalhe from "@/pages/ObraDetalhe";
+import Insumos from "@/pages/Insumos";
+import Composicoes from "@/pages/Composicoes";
 import { useEffect } from "react";
 import {
   useGetTenant,
@@ -256,6 +260,18 @@ function AppRoutes() {
       </Route>
       <Route path="/meu-site">
         {() => <ProtectedRoute component={MeuSite} />}
+      </Route>
+      <Route path="/obras">
+        {() => <ProtectedRoute component={Obras} />}
+      </Route>
+      <Route path="/obras/:obraId">
+        {() => <ProtectedRoute component={ObraDetalhe} />}
+      </Route>
+      <Route path="/insumos">
+        {() => <ProtectedRoute component={Insumos} />}
+      </Route>
+      <Route path="/composicoes">
+        {() => <ProtectedRoute component={Composicoes} />}
       </Route>
       <Route path="/invite/:token">
         <AcceptInvite />

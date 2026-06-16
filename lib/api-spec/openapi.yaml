@@ -5669,6 +5669,507 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
 
+  # ── Obras ──────────────────────────────────────────────────────────────────
+  /tenants/{tenantId}/obras:
+    get:
+      operationId: listObras
+      summary: List obras
+      tags: [Construcao]
+      parameters:
+        - { name: tenantId, in: path, required: true, schema: { type: string } }
+        - { name: status, in: query, schema: { type: string } }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/Obra" }
+        "401": { description: Unauthorized }
+    post:
+      operationId: createObra
+      summary: Create obra
+      tags: [Construcao]
+      parameters:
+        - { name: tenantId, in: path, required: true, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/ObraInput" }
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Obra" }
+        "401": { description: Unauthorized }
+
+  /tenants/{tenantId}/obras/{obraId}:
+    get:
+      operationId: getObra
+      summary: Get obra by ID
+      tags: [Construcao]
+      parameters:
+        - { name: tenantId, in: path, required: true, schema: { type: string } }
+        - { name: obraId, in: path, required: true, schema: { type: string } }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ObraDetalhe" }
+        "404": { description: Not found }
+    put:
+      operationId: updateObra
+      summary: Update obra
+      tags: [Construcao]
+      parameters:
+        - { name: tenantId, in: path, required: true, schema: { type: string } }
+        - { name: obraId, in: path, required: true, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/ObraUpdate" }
+      responses:
+        "200":
+          description: Updated
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Obra" }
+        "404": { description: Not found }
+    delete:
+      operationId: deleteObra
+      summary: Delete obra
+      tags: [Construcao]
+      parameters:
+        - { name: tenantId, in: path, required: true, schema: { type: string } }
+        - { name: obraId, in: path, required: true, schema: { type: string } }
+      responses:
+        "204": { description: Deleted }
+        "404": { description: Not found }
+
+  /tenants/{tenantId}/obras/{obraId}/etapas:
+    get:
+      operationId: listObraEtapas
+      summary: List obra etapas
+      tags: [Construcao]
+      parameters:
+        - { name: tenantId, in: path, required: true, schema: { type: string } }
+        - { name: obraId, in: path, required: true, schema: { type: string } }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/ObraEtapa" }
+    post:
+      operationId: createObraEtapa
+      summary: Create etapa
+      tags: [Construcao]
+      parameters:
+        - { name: tenantId, in: path, required: true, schema: { type: string } }
+        - { name: obraId, in: path, required: true, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/ObraEtapaInput" }
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ObraEtapa" }
+
+  /tenants/{tenantId}/obras/{obraId}/etapas/{etapaId}:
+    put:
+      operationId: updateObraEtapa
+      summary: Update etapa
+      tags: [Construcao]
+      parameters:
+        - { name: tenantId, in: path, required: true, schema: { type: string } }
+        - { name: obraId, in: path, required: true, schema: { type: string } }
+        - { name: etapaId, in: path, required: true, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/ObraEtapaUpdate" }
+      responses:
+        "200":
+          description: Updated
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ObraEtapa" }
+    delete:
+      operationId: deleteObraEtapa
+      summary: Delete etapa
+      tags: [Construcao]
+      parameters:
+        - { name: tenantId, in: path, required: true, schema: { type: string } }
+        - { name: obraId, in: path, required: true, schema: { type: string } }
+        - { name: etapaId, in: path, required: true, schema: { type: string } }
+      responses:
+        "204": { description: Deleted }
+
+  /tenants/{tenantId}/obras/{obraId}/etapas/{etapaId}/medicoes:
+    get:
+      operationId: listObraEtapaMedicoes
+      summary: List medicoes of an etapa
+      tags: [Construcao]
+      parameters:
+        - { name: tenantId, in: path, required: true, schema: { type: string } }
+        - { name: obraId, in: path, required: true, schema: { type: string } }
+        - { name: etapaId, in: path, required: true, schema: { type: string } }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/ObraEtapaMedicao" }
+    post:
+      operationId: createObraEtapaMedicao
+      summary: Register medicao
+      tags: [Construcao]
+      parameters:
+        - { name: tenantId, in: path, required: true, schema: { type: string } }
+        - { name: obraId, in: path, required: true, schema: { type: string } }
+        - { name: etapaId, in: path, required: true, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/ObraEtapaMedicaoInput" }
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ObraEtapaMedicao" }
+
+  /tenants/{tenantId}/obras/{obraId}/diario:
+    get:
+      operationId: listObraDiario
+      summary: List diary entries
+      tags: [Construcao]
+      parameters:
+        - { name: tenantId, in: path, required: true, schema: { type: string } }
+        - { name: obraId, in: path, required: true, schema: { type: string } }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/ObraDiario" }
+    post:
+      operationId: createObraDiario
+      summary: Create diary entry
+      tags: [Construcao]
+      parameters:
+        - { name: tenantId, in: path, required: true, schema: { type: string } }
+        - { name: obraId, in: path, required: true, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/ObraDiarioInput" }
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ObraDiario" }
+
+  /tenants/{tenantId}/obras/{obraId}/diario/{diarioId}:
+    put:
+      operationId: updateObraDiario
+      summary: Update/approve diary entry
+      tags: [Construcao]
+      parameters:
+        - { name: tenantId, in: path, required: true, schema: { type: string } }
+        - { name: obraId, in: path, required: true, schema: { type: string } }
+        - { name: diarioId, in: path, required: true, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/ObraDiarioUpdate" }
+      responses:
+        "200":
+          description: Updated
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ObraDiario" }
+    delete:
+      operationId: deleteObraDiario
+      summary: Delete diary entry
+      tags: [Construcao]
+      parameters:
+        - { name: tenantId, in: path, required: true, schema: { type: string } }
+        - { name: obraId, in: path, required: true, schema: { type: string } }
+        - { name: diarioId, in: path, required: true, schema: { type: string } }
+      responses:
+        "204": { description: Deleted }
+
+  /tenants/{tenantId}/obras/{obraId}/estoque:
+    get:
+      operationId: getObraEstoque
+      summary: Get obra inventory
+      tags: [Construcao]
+      parameters:
+        - { name: tenantId, in: path, required: true, schema: { type: string } }
+        - { name: obraId, in: path, required: true, schema: { type: string } }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/EstoqueObraItem" }
+
+  /tenants/{tenantId}/obras/{obraId}/compras:
+    get:
+      operationId: listObraCompras
+      summary: List compras for obra
+      tags: [Construcao]
+      parameters:
+        - { name: tenantId, in: path, required: true, schema: { type: string } }
+        - { name: obraId, in: path, required: true, schema: { type: string } }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/CompraObra" }
+    post:
+      operationId: createObraCompra
+      summary: Create compra for obra
+      tags: [Construcao]
+      parameters:
+        - { name: tenantId, in: path, required: true, schema: { type: string } }
+        - { name: obraId, in: path, required: true, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CompraObraInput" }
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/CompraObra" }
+
+  /tenants/{tenantId}/compras-obras/{compraId}:
+    put:
+      operationId: updateCompraObra
+      summary: Update compra status
+      tags: [Construcao]
+      parameters:
+        - { name: tenantId, in: path, required: true, schema: { type: string } }
+        - { name: compraId, in: path, required: true, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CompraObraUpdate" }
+      responses:
+        "200":
+          description: Updated
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/CompraObra" }
+
+  # ── Insumos ──────────────────────────────────────────────────────────────────
+  /tenants/{tenantId}/insumos:
+    get:
+      operationId: listInsumos
+      summary: List insumos
+      tags: [Construcao]
+      parameters:
+        - { name: tenantId, in: path, required: true, schema: { type: string } }
+        - { name: q, in: query, schema: { type: string } }
+        - { name: categoria, in: query, schema: { type: string } }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/Insumo" }
+    post:
+      operationId: createInsumo
+      summary: Create insumo
+      tags: [Construcao]
+      parameters:
+        - { name: tenantId, in: path, required: true, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/InsumoInput" }
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Insumo" }
+
+  /tenants/{tenantId}/insumos/{insumoId}:
+    put:
+      operationId: updateInsumo
+      summary: Update insumo
+      tags: [Construcao]
+      parameters:
+        - { name: tenantId, in: path, required: true, schema: { type: string } }
+        - { name: insumoId, in: path, required: true, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/InsumoUpdate" }
+      responses:
+        "200":
+          description: Updated
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Insumo" }
+    delete:
+      operationId: deleteInsumo
+      summary: Delete insumo
+      tags: [Construcao]
+      parameters:
+        - { name: tenantId, in: path, required: true, schema: { type: string } }
+        - { name: insumoId, in: path, required: true, schema: { type: string } }
+      responses:
+        "204": { description: Deleted }
+
+  # ── Estoque Central ────────────────────────────────────────────────────────
+  /tenants/{tenantId}/estoque-central-obras:
+    get:
+      operationId: getEstoqueCentral
+      summary: Get central construction stock
+      tags: [Construcao]
+      parameters:
+        - { name: tenantId, in: path, required: true, schema: { type: string } }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/EstoqueCentralItem" }
+
+  /tenants/{tenantId}/estoque-obras/movimentacoes:
+    post:
+      operationId: createMovimentacaoEstoqueObra
+      summary: Register stock movement (allocation/return/transfer)
+      tags: [Construcao]
+      parameters:
+        - { name: tenantId, in: path, required: true, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/MovimentacaoEstoqueInput" }
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/MovimentacaoEstoque" }
+
+  # ── Composições ───────────────────────────────────────────────────────────
+  /tenants/{tenantId}/composicoes:
+    get:
+      operationId: listComposicoes
+      summary: List composicoes
+      tags: [Construcao]
+      parameters:
+        - { name: tenantId, in: path, required: true, schema: { type: string } }
+        - { name: q, in: query, schema: { type: string } }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/Composicao" }
+    post:
+      operationId: createComposicao
+      summary: Create composicao
+      tags: [Construcao]
+      parameters:
+        - { name: tenantId, in: path, required: true, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/ComposicaoInput" }
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Composicao" }
+
+  /tenants/{tenantId}/composicoes/{composicaoId}:
+    get:
+      operationId: getComposicao
+      summary: Get composicao with insumos
+      tags: [Construcao]
+      parameters:
+        - { name: tenantId, in: path, required: true, schema: { type: string } }
+        - { name: composicaoId, in: path, required: true, schema: { type: string } }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ComposicaoDetalhe" }
+    put:
+      operationId: updateComposicao
+      summary: Update composicao
+      tags: [Construcao]
+      parameters:
+        - { name: tenantId, in: path, required: true, schema: { type: string } }
+        - { name: composicaoId, in: path, required: true, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/ComposicaoUpdate" }
+      responses:
+        "200":
+          description: Updated
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Composicao" }
+    delete:
+      operationId: deleteComposicao
+      summary: Delete composicao
+      tags: [Construcao]
+      parameters:
+        - { name: tenantId, in: path, required: true, schema: { type: string } }
+        - { name: composicaoId, in: path, required: true, schema: { type: string } }
+      responses:
+        "204": { description: Deleted }
+
 components:
   schemas:
     CreateInviteBody:
@@ -9945,3 +10446,369 @@ components:
           description: Normalized object path (e.g. /objects/uploads/uuid). Store in DB.
         metadata:
           $ref: '#/components/schemas/UploadUrlRequest'
+
+    # ── Construção Civil ──────────────────────────────────────────────────────
+
+    Obra:
+      type: object
+      required: [id, tenantId, nome, status, custoRealizado, createdAt, updatedAt]
+      properties:
+        id: { type: string }
+        tenantId: { type: string }
+        nome: { type: string }
+        descricao: { type: ["string", "null"] }
+        clienteNome: { type: ["string", "null"] }
+        clienteContato: { type: ["string", "null"] }
+        endereco: { type: ["string", "null"] }
+        status: { type: string }
+        dataInicio: { type: ["string", "null"] }
+        dataFimPrevista: { type: ["string", "null"] }
+        dataFimReal: { type: ["string", "null"] }
+        orcamentoTotal: { type: ["string", "null"] }
+        custoRealizado: { type: string }
+        responsavelId: { type: ["string", "null"] }
+        linkCliente: { type: ["string", "null"] }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+
+    ObraDetalhe:
+      allOf:
+        - $ref: "#/components/schemas/Obra"
+        - type: object
+          properties:
+            etapas:
+              type: array
+              items: { $ref: "#/components/schemas/ObraEtapa" }
+            percentualGeral:
+              type: number
+
+    ObraInput:
+      type: object
+      required: [nome]
+      properties:
+        nome: { type: string }
+        descricao: { type: string }
+        clienteNome: { type: string }
+        clienteContato: { type: string }
+        endereco: { type: string }
+        status: { type: string }
+        dataInicio: { type: string }
+        dataFimPrevista: { type: string }
+        orcamentoTotal: { type: string }
+        responsavelId: { type: string }
+
+    ObraUpdate:
+      type: object
+      properties:
+        nome: { type: string }
+        descricao: { type: string }
+        clienteNome: { type: string }
+        clienteContato: { type: string }
+        endereco: { type: string }
+        status: { type: string }
+        dataInicio: { type: string }
+        dataFimPrevista: { type: string }
+        dataFimReal: { type: string }
+        orcamentoTotal: { type: string }
+        custoRealizado: { type: string }
+        responsavelId: { type: string }
+        linkCliente: { type: string }
+
+    ObraEtapa:
+      type: object
+      required: [id, obraId, nome, ordem, status, percentualExecutado, createdAt, updatedAt]
+      properties:
+        id: { type: string }
+        obraId: { type: string }
+        nome: { type: string }
+        descricao: { type: ["string", "null"] }
+        ordem: { type: integer }
+        dataInicioPrevista: { type: ["string", "null"] }
+        dataFimPrevista: { type: ["string", "null"] }
+        dataInicioReal: { type: ["string", "null"] }
+        dataFimReal: { type: ["string", "null"] }
+        status: { type: string }
+        percentualExecutado: { type: string }
+        responsavel: { type: ["string", "null"] }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+
+    ObraEtapaInput:
+      type: object
+      required: [nome]
+      properties:
+        nome: { type: string }
+        descricao: { type: string }
+        ordem: { type: integer }
+        dataInicioPrevista: { type: string }
+        dataFimPrevista: { type: string }
+        status: { type: string }
+        responsavel: { type: string }
+
+    ObraEtapaUpdate:
+      type: object
+      properties:
+        nome: { type: string }
+        descricao: { type: string }
+        ordem: { type: integer }
+        dataInicioPrevista: { type: string }
+        dataFimPrevista: { type: string }
+        dataInicioReal: { type: string }
+        dataFimReal: { type: string }
+        status: { type: string }
+        percentualExecutado: { type: string }
+        responsavel: { type: string }
+
+    ObraEtapaMedicao:
+      type: object
+      required: [id, etapaId, data, percentualAnterior, percentualNovo, createdAt]
+      properties:
+        id: { type: string }
+        etapaId: { type: string }
+        data: { type: string }
+        percentualAnterior: { type: string }
+        percentualNovo: { type: string }
+        responsavelId: { type: ["string", "null"] }
+        observacao: { type: ["string", "null"] }
+        createdAt: { type: string, format: date-time }
+
+    ObraEtapaMedicaoInput:
+      type: object
+      required: [data, percentualNovo]
+      properties:
+        data: { type: string }
+        percentualNovo: { type: string }
+        observacao: { type: string }
+
+    ObraDiario:
+      type: object
+      required: [id, obraId, data, conteudo, status, createdAt, updatedAt]
+      properties:
+        id: { type: string }
+        obraId: { type: string }
+        data: { type: string }
+        conteudo: { type: string }
+        responsavelId: { type: ["string", "null"] }
+        responsavelNome: { type: ["string", "null"] }
+        status: { type: string }
+        aprovadoPorId: { type: ["string", "null"] }
+        aprovadoEm: { type: ["string", "null"] }
+        climaTempo: { type: ["string", "null"] }
+        maoDeObra: { type: ["integer", "null"] }
+        observacoes: { type: ["string", "null"] }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+
+    ObraDiarioInput:
+      type: object
+      required: [data, conteudo]
+      properties:
+        data: { type: string }
+        conteudo: { type: string }
+        responsavelNome: { type: string }
+        climaTempo: { type: string }
+        maoDeObra: { type: integer }
+        observacoes: { type: string }
+
+    ObraDiarioUpdate:
+      type: object
+      properties:
+        conteudo: { type: string }
+        status: { type: string }
+        climaTempo: { type: string }
+        maoDeObra: { type: integer }
+        observacoes: { type: string }
+
+    Insumo:
+      type: object
+      required: [id, tenantId, nome, unidade, createdAt, updatedAt]
+      properties:
+        id: { type: string }
+        tenantId: { type: string }
+        nome: { type: string }
+        descricao: { type: ["string", "null"] }
+        unidade: { type: string }
+        precoUnitario: { type: ["string", "null"] }
+        categoria: { type: ["string", "null"] }
+        codigo: { type: ["string", "null"] }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+
+    InsumoInput:
+      type: object
+      required: [nome, unidade]
+      properties:
+        nome: { type: string }
+        descricao: { type: string }
+        unidade: { type: string }
+        precoUnitario: { type: string }
+        categoria: { type: string }
+        codigo: { type: string }
+
+    InsumoUpdate:
+      type: object
+      properties:
+        nome: { type: string }
+        descricao: { type: string }
+        unidade: { type: string }
+        precoUnitario: { type: string }
+        categoria: { type: string }
+        codigo: { type: string }
+
+    EstoqueObraItem:
+      type: object
+      required: [id, obraId, insumoId, quantidadeAtual, quantidadeMinima]
+      properties:
+        id: { type: string }
+        obraId: { type: string }
+        insumoId: { type: string }
+        quantidadeAtual: { type: string }
+        quantidadeMinima: { type: string }
+        updatedAt: { type: string, format: date-time }
+        insumo: { $ref: "#/components/schemas/Insumo" }
+
+    EstoqueCentralItem:
+      type: object
+      required: [id, tenantId, insumoId, quantidadeAtual, quantidadeMinima]
+      properties:
+        id: { type: string }
+        tenantId: { type: string }
+        insumoId: { type: string }
+        quantidadeAtual: { type: string }
+        quantidadeMinima: { type: string }
+        localizacao: { type: ["string", "null"] }
+        updatedAt: { type: string, format: date-time }
+        insumo: { $ref: "#/components/schemas/Insumo" }
+
+    MovimentacaoEstoqueInput:
+      type: object
+      required: [insumoId, tipo, quantia]
+      properties:
+        insumoId: { type: string }
+        tipo: { type: string, enum: [entrada, saida, alocacao, devolucao, transferencia] }
+        quantia: { type: string }
+        origemTipo: { type: string, enum: [central, obra] }
+        origemObraId: { type: string }
+        destinoTipo: { type: string, enum: [central, obra] }
+        destinoObraId: { type: string }
+        observacao: { type: string }
+
+    MovimentacaoEstoque:
+      type: object
+      required: [id, tenantId, insumoId, tipo, quantia, createdAt]
+      properties:
+        id: { type: string }
+        tenantId: { type: string }
+        insumoId: { type: string }
+        tipo: { type: string }
+        quantia: { type: string }
+        origemTipo: { type: ["string", "null"] }
+        origemObraId: { type: ["string", "null"] }
+        destinoTipo: { type: ["string", "null"] }
+        destinoObraId: { type: ["string", "null"] }
+        responsavelId: { type: ["string", "null"] }
+        observacao: { type: ["string", "null"] }
+        createdAt: { type: string, format: date-time }
+
+    Composicao:
+      type: object
+      required: [id, tenantId, nome, unidade, createdAt, updatedAt]
+      properties:
+        id: { type: string }
+        tenantId: { type: string }
+        nome: { type: string }
+        descricao: { type: ["string", "null"] }
+        unidade: { type: string }
+        custoTotal: { type: ["string", "null"] }
+        codigo: { type: ["string", "null"] }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+
+    ComposicaoDetalhe:
+      allOf:
+        - $ref: "#/components/schemas/Composicao"
+        - type: object
+          properties:
+            itens:
+              type: array
+              items:
+                type: object
+                properties:
+                  id: { type: string }
+                  insumoId: { type: string }
+                  quantidade: { type: string }
+                  precoUnitario: { type: ["string", "null"] }
+                  insumo: { $ref: "#/components/schemas/Insumo" }
+
+    ComposicaoInput:
+      type: object
+      required: [nome, unidade]
+      properties:
+        nome: { type: string }
+        descricao: { type: string }
+        unidade: { type: string }
+        codigo: { type: string }
+        itens:
+          type: array
+          items:
+            type: object
+            required: [insumoId, quantidade]
+            properties:
+              insumoId: { type: string }
+              quantidade: { type: string }
+              precoUnitario: { type: string }
+
+    ComposicaoUpdate:
+      type: object
+      properties:
+        nome: { type: string }
+        descricao: { type: string }
+        unidade: { type: string }
+        codigo: { type: string }
+
+    CompraObra:
+      type: object
+      required: [id, tenantId, descricao, status, createdAt, updatedAt]
+      properties:
+        id: { type: string }
+        tenantId: { type: string }
+        obraId: { type: ["string", "null"] }
+        insumoId: { type: ["string", "null"] }
+        descricao: { type: string }
+        fornecedor: { type: ["string", "null"] }
+        quantidade: { type: ["string", "null"] }
+        valorUnitario: { type: ["string", "null"] }
+        valorTotal: { type: ["string", "null"] }
+        status: { type: string }
+        dataPrevista: { type: ["string", "null"] }
+        dataEfetuada: { type: ["string", "null"] }
+        observacoes: { type: ["string", "null"] }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+        insumo: { $ref: "#/components/schemas/Insumo" }
+
+    CompraObraInput:
+      type: object
+      required: [descricao]
+      properties:
+        descricao: { type: string }
+        insumoId: { type: string }
+        fornecedor: { type: string }
+        quantidade: { type: string }
+        valorUnitario: { type: string }
+        valorTotal: { type: string }
+        dataPrevista: { type: string }
+        observacoes: { type: string }
+
+    CompraObraUpdate:
+      type: object
+      properties:
+        descricao: { type: string }
+        fornecedor: { type: string }
+        quantidade: { type: string }
+        valorUnitario: { type: string }
+        valorTotal: { type: string }
+        status: { type: string }
+        dataPrevista: { type: string }
+        dataEfetuada: { type: string }
+        observacoes: { type: string }

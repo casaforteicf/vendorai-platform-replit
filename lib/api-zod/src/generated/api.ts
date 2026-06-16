@@ -5067,3 +5067,780 @@ export const LinkTenantPartnerResponse = zod.object({
 })
 
 
+/**
+ * @summary List obras
+ */
+export const ListObrasParams = zod.object({
+  "tenantId": zod.coerce.string()
+})
+
+export const ListObrasQueryParams = zod.object({
+  "status": zod.coerce.string().optional()
+})
+
+export const ListObrasResponseItem = zod.object({
+  "id": zod.string(),
+  "tenantId": zod.string(),
+  "nome": zod.string(),
+  "descricao": zod.string().nullish(),
+  "clienteNome": zod.string().nullish(),
+  "clienteContato": zod.string().nullish(),
+  "endereco": zod.string().nullish(),
+  "status": zod.string(),
+  "dataInicio": zod.string().nullish(),
+  "dataFimPrevista": zod.string().nullish(),
+  "dataFimReal": zod.string().nullish(),
+  "orcamentoTotal": zod.string().nullish(),
+  "custoRealizado": zod.string(),
+  "responsavelId": zod.string().nullish(),
+  "linkCliente": zod.string().nullish(),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date()
+})
+export const ListObrasResponse = zod.array(ListObrasResponseItem)
+
+
+/**
+ * @summary Create obra
+ */
+export const CreateObraParams = zod.object({
+  "tenantId": zod.coerce.string()
+})
+
+export const CreateObraBody = zod.object({
+  "nome": zod.string(),
+  "descricao": zod.string().optional(),
+  "clienteNome": zod.string().optional(),
+  "clienteContato": zod.string().optional(),
+  "endereco": zod.string().optional(),
+  "status": zod.string().optional(),
+  "dataInicio": zod.string().optional(),
+  "dataFimPrevista": zod.string().optional(),
+  "orcamentoTotal": zod.string().optional(),
+  "responsavelId": zod.string().optional()
+})
+
+
+/**
+ * @summary Get obra by ID
+ */
+export const GetObraParams = zod.object({
+  "tenantId": zod.coerce.string(),
+  "obraId": zod.coerce.string()
+})
+
+export const GetObraResponse = zod.object({
+  "id": zod.string(),
+  "tenantId": zod.string(),
+  "nome": zod.string(),
+  "descricao": zod.string().nullish(),
+  "clienteNome": zod.string().nullish(),
+  "clienteContato": zod.string().nullish(),
+  "endereco": zod.string().nullish(),
+  "status": zod.string(),
+  "dataInicio": zod.string().nullish(),
+  "dataFimPrevista": zod.string().nullish(),
+  "dataFimReal": zod.string().nullish(),
+  "orcamentoTotal": zod.string().nullish(),
+  "custoRealizado": zod.string(),
+  "responsavelId": zod.string().nullish(),
+  "linkCliente": zod.string().nullish(),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date()
+}).and(zod.object({
+  "etapas": zod.array(zod.object({
+  "id": zod.string(),
+  "obraId": zod.string(),
+  "nome": zod.string(),
+  "descricao": zod.string().nullish(),
+  "ordem": zod.number(),
+  "dataInicioPrevista": zod.string().nullish(),
+  "dataFimPrevista": zod.string().nullish(),
+  "dataInicioReal": zod.string().nullish(),
+  "dataFimReal": zod.string().nullish(),
+  "status": zod.string(),
+  "percentualExecutado": zod.string(),
+  "responsavel": zod.string().nullish(),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date()
+})).optional(),
+  "percentualGeral": zod.number().optional()
+}))
+
+
+/**
+ * @summary Update obra
+ */
+export const UpdateObraParams = zod.object({
+  "tenantId": zod.coerce.string(),
+  "obraId": zod.coerce.string()
+})
+
+export const UpdateObraBody = zod.object({
+  "nome": zod.string().optional(),
+  "descricao": zod.string().optional(),
+  "clienteNome": zod.string().optional(),
+  "clienteContato": zod.string().optional(),
+  "endereco": zod.string().optional(),
+  "status": zod.string().optional(),
+  "dataInicio": zod.string().optional(),
+  "dataFimPrevista": zod.string().optional(),
+  "dataFimReal": zod.string().optional(),
+  "orcamentoTotal": zod.string().optional(),
+  "custoRealizado": zod.string().optional(),
+  "responsavelId": zod.string().optional(),
+  "linkCliente": zod.string().optional()
+})
+
+export const UpdateObraResponse = zod.object({
+  "id": zod.string(),
+  "tenantId": zod.string(),
+  "nome": zod.string(),
+  "descricao": zod.string().nullish(),
+  "clienteNome": zod.string().nullish(),
+  "clienteContato": zod.string().nullish(),
+  "endereco": zod.string().nullish(),
+  "status": zod.string(),
+  "dataInicio": zod.string().nullish(),
+  "dataFimPrevista": zod.string().nullish(),
+  "dataFimReal": zod.string().nullish(),
+  "orcamentoTotal": zod.string().nullish(),
+  "custoRealizado": zod.string(),
+  "responsavelId": zod.string().nullish(),
+  "linkCliente": zod.string().nullish(),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date()
+})
+
+
+/**
+ * @summary Delete obra
+ */
+export const DeleteObraParams = zod.object({
+  "tenantId": zod.coerce.string(),
+  "obraId": zod.coerce.string()
+})
+
+
+/**
+ * @summary List obra etapas
+ */
+export const ListObraEtapasParams = zod.object({
+  "tenantId": zod.coerce.string(),
+  "obraId": zod.coerce.string()
+})
+
+export const ListObraEtapasResponseItem = zod.object({
+  "id": zod.string(),
+  "obraId": zod.string(),
+  "nome": zod.string(),
+  "descricao": zod.string().nullish(),
+  "ordem": zod.number(),
+  "dataInicioPrevista": zod.string().nullish(),
+  "dataFimPrevista": zod.string().nullish(),
+  "dataInicioReal": zod.string().nullish(),
+  "dataFimReal": zod.string().nullish(),
+  "status": zod.string(),
+  "percentualExecutado": zod.string(),
+  "responsavel": zod.string().nullish(),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date()
+})
+export const ListObraEtapasResponse = zod.array(ListObraEtapasResponseItem)
+
+
+/**
+ * @summary Create etapa
+ */
+export const CreateObraEtapaParams = zod.object({
+  "tenantId": zod.coerce.string(),
+  "obraId": zod.coerce.string()
+})
+
+export const CreateObraEtapaBody = zod.object({
+  "nome": zod.string(),
+  "descricao": zod.string().optional(),
+  "ordem": zod.number().optional(),
+  "dataInicioPrevista": zod.string().optional(),
+  "dataFimPrevista": zod.string().optional(),
+  "status": zod.string().optional(),
+  "responsavel": zod.string().optional()
+})
+
+
+/**
+ * @summary Update etapa
+ */
+export const UpdateObraEtapaParams = zod.object({
+  "tenantId": zod.coerce.string(),
+  "obraId": zod.coerce.string(),
+  "etapaId": zod.coerce.string()
+})
+
+export const UpdateObraEtapaBody = zod.object({
+  "nome": zod.string().optional(),
+  "descricao": zod.string().optional(),
+  "ordem": zod.number().optional(),
+  "dataInicioPrevista": zod.string().optional(),
+  "dataFimPrevista": zod.string().optional(),
+  "dataInicioReal": zod.string().optional(),
+  "dataFimReal": zod.string().optional(),
+  "status": zod.string().optional(),
+  "percentualExecutado": zod.string().optional(),
+  "responsavel": zod.string().optional()
+})
+
+export const UpdateObraEtapaResponse = zod.object({
+  "id": zod.string(),
+  "obraId": zod.string(),
+  "nome": zod.string(),
+  "descricao": zod.string().nullish(),
+  "ordem": zod.number(),
+  "dataInicioPrevista": zod.string().nullish(),
+  "dataFimPrevista": zod.string().nullish(),
+  "dataInicioReal": zod.string().nullish(),
+  "dataFimReal": zod.string().nullish(),
+  "status": zod.string(),
+  "percentualExecutado": zod.string(),
+  "responsavel": zod.string().nullish(),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date()
+})
+
+
+/**
+ * @summary Delete etapa
+ */
+export const DeleteObraEtapaParams = zod.object({
+  "tenantId": zod.coerce.string(),
+  "obraId": zod.coerce.string(),
+  "etapaId": zod.coerce.string()
+})
+
+
+/**
+ * @summary List medicoes of an etapa
+ */
+export const ListObraEtapaMedicoesParams = zod.object({
+  "tenantId": zod.coerce.string(),
+  "obraId": zod.coerce.string(),
+  "etapaId": zod.coerce.string()
+})
+
+export const ListObraEtapaMedicoesResponseItem = zod.object({
+  "id": zod.string(),
+  "etapaId": zod.string(),
+  "data": zod.string(),
+  "percentualAnterior": zod.string(),
+  "percentualNovo": zod.string(),
+  "responsavelId": zod.string().nullish(),
+  "observacao": zod.string().nullish(),
+  "createdAt": zod.coerce.date()
+})
+export const ListObraEtapaMedicoesResponse = zod.array(ListObraEtapaMedicoesResponseItem)
+
+
+/**
+ * @summary Register medicao
+ */
+export const CreateObraEtapaMedicaoParams = zod.object({
+  "tenantId": zod.coerce.string(),
+  "obraId": zod.coerce.string(),
+  "etapaId": zod.coerce.string()
+})
+
+export const CreateObraEtapaMedicaoBody = zod.object({
+  "data": zod.string(),
+  "percentualNovo": zod.string(),
+  "observacao": zod.string().optional()
+})
+
+
+/**
+ * @summary List diary entries
+ */
+export const ListObraDiarioParams = zod.object({
+  "tenantId": zod.coerce.string(),
+  "obraId": zod.coerce.string()
+})
+
+export const ListObraDiarioResponseItem = zod.object({
+  "id": zod.string(),
+  "obraId": zod.string(),
+  "data": zod.string(),
+  "conteudo": zod.string(),
+  "responsavelId": zod.string().nullish(),
+  "responsavelNome": zod.string().nullish(),
+  "status": zod.string(),
+  "aprovadoPorId": zod.string().nullish(),
+  "aprovadoEm": zod.string().nullish(),
+  "climaTempo": zod.string().nullish(),
+  "maoDeObra": zod.number().nullish(),
+  "observacoes": zod.string().nullish(),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date()
+})
+export const ListObraDiarioResponse = zod.array(ListObraDiarioResponseItem)
+
+
+/**
+ * @summary Create diary entry
+ */
+export const CreateObraDiarioParams = zod.object({
+  "tenantId": zod.coerce.string(),
+  "obraId": zod.coerce.string()
+})
+
+export const CreateObraDiarioBody = zod.object({
+  "data": zod.string(),
+  "conteudo": zod.string(),
+  "responsavelNome": zod.string().optional(),
+  "climaTempo": zod.string().optional(),
+  "maoDeObra": zod.number().optional(),
+  "observacoes": zod.string().optional()
+})
+
+
+/**
+ * @summary Update/approve diary entry
+ */
+export const UpdateObraDiarioParams = zod.object({
+  "tenantId": zod.coerce.string(),
+  "obraId": zod.coerce.string(),
+  "diarioId": zod.coerce.string()
+})
+
+export const UpdateObraDiarioBody = zod.object({
+  "conteudo": zod.string().optional(),
+  "status": zod.string().optional(),
+  "climaTempo": zod.string().optional(),
+  "maoDeObra": zod.number().optional(),
+  "observacoes": zod.string().optional()
+})
+
+export const UpdateObraDiarioResponse = zod.object({
+  "id": zod.string(),
+  "obraId": zod.string(),
+  "data": zod.string(),
+  "conteudo": zod.string(),
+  "responsavelId": zod.string().nullish(),
+  "responsavelNome": zod.string().nullish(),
+  "status": zod.string(),
+  "aprovadoPorId": zod.string().nullish(),
+  "aprovadoEm": zod.string().nullish(),
+  "climaTempo": zod.string().nullish(),
+  "maoDeObra": zod.number().nullish(),
+  "observacoes": zod.string().nullish(),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date()
+})
+
+
+/**
+ * @summary Delete diary entry
+ */
+export const DeleteObraDiarioParams = zod.object({
+  "tenantId": zod.coerce.string(),
+  "obraId": zod.coerce.string(),
+  "diarioId": zod.coerce.string()
+})
+
+
+/**
+ * @summary Get obra inventory
+ */
+export const GetObraEstoqueParams = zod.object({
+  "tenantId": zod.coerce.string(),
+  "obraId": zod.coerce.string()
+})
+
+export const GetObraEstoqueResponseItem = zod.object({
+  "id": zod.string(),
+  "obraId": zod.string(),
+  "insumoId": zod.string(),
+  "quantidadeAtual": zod.string(),
+  "quantidadeMinima": zod.string(),
+  "updatedAt": zod.coerce.date().optional(),
+  "insumo": zod.object({
+  "id": zod.string(),
+  "tenantId": zod.string(),
+  "nome": zod.string(),
+  "descricao": zod.string().nullish(),
+  "unidade": zod.string(),
+  "precoUnitario": zod.string().nullish(),
+  "categoria": zod.string().nullish(),
+  "codigo": zod.string().nullish(),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date()
+}).optional()
+})
+export const GetObraEstoqueResponse = zod.array(GetObraEstoqueResponseItem)
+
+
+/**
+ * @summary List compras for obra
+ */
+export const ListObraComprasParams = zod.object({
+  "tenantId": zod.coerce.string(),
+  "obraId": zod.coerce.string()
+})
+
+export const ListObraComprasResponseItem = zod.object({
+  "id": zod.string(),
+  "tenantId": zod.string(),
+  "obraId": zod.string().nullish(),
+  "insumoId": zod.string().nullish(),
+  "descricao": zod.string(),
+  "fornecedor": zod.string().nullish(),
+  "quantidade": zod.string().nullish(),
+  "valorUnitario": zod.string().nullish(),
+  "valorTotal": zod.string().nullish(),
+  "status": zod.string(),
+  "dataPrevista": zod.string().nullish(),
+  "dataEfetuada": zod.string().nullish(),
+  "observacoes": zod.string().nullish(),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date(),
+  "insumo": zod.object({
+  "id": zod.string(),
+  "tenantId": zod.string(),
+  "nome": zod.string(),
+  "descricao": zod.string().nullish(),
+  "unidade": zod.string(),
+  "precoUnitario": zod.string().nullish(),
+  "categoria": zod.string().nullish(),
+  "codigo": zod.string().nullish(),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date()
+}).optional()
+})
+export const ListObraComprasResponse = zod.array(ListObraComprasResponseItem)
+
+
+/**
+ * @summary Create compra for obra
+ */
+export const CreateObraCompraParams = zod.object({
+  "tenantId": zod.coerce.string(),
+  "obraId": zod.coerce.string()
+})
+
+export const CreateObraCompraBody = zod.object({
+  "descricao": zod.string(),
+  "insumoId": zod.string().optional(),
+  "fornecedor": zod.string().optional(),
+  "quantidade": zod.string().optional(),
+  "valorUnitario": zod.string().optional(),
+  "valorTotal": zod.string().optional(),
+  "dataPrevista": zod.string().optional(),
+  "observacoes": zod.string().optional()
+})
+
+
+/**
+ * @summary Update compra status
+ */
+export const UpdateCompraObraParams = zod.object({
+  "tenantId": zod.coerce.string(),
+  "compraId": zod.coerce.string()
+})
+
+export const UpdateCompraObraBody = zod.object({
+  "descricao": zod.string().optional(),
+  "fornecedor": zod.string().optional(),
+  "quantidade": zod.string().optional(),
+  "valorUnitario": zod.string().optional(),
+  "valorTotal": zod.string().optional(),
+  "status": zod.string().optional(),
+  "dataPrevista": zod.string().optional(),
+  "dataEfetuada": zod.string().optional(),
+  "observacoes": zod.string().optional()
+})
+
+export const UpdateCompraObraResponse = zod.object({
+  "id": zod.string(),
+  "tenantId": zod.string(),
+  "obraId": zod.string().nullish(),
+  "insumoId": zod.string().nullish(),
+  "descricao": zod.string(),
+  "fornecedor": zod.string().nullish(),
+  "quantidade": zod.string().nullish(),
+  "valorUnitario": zod.string().nullish(),
+  "valorTotal": zod.string().nullish(),
+  "status": zod.string(),
+  "dataPrevista": zod.string().nullish(),
+  "dataEfetuada": zod.string().nullish(),
+  "observacoes": zod.string().nullish(),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date(),
+  "insumo": zod.object({
+  "id": zod.string(),
+  "tenantId": zod.string(),
+  "nome": zod.string(),
+  "descricao": zod.string().nullish(),
+  "unidade": zod.string(),
+  "precoUnitario": zod.string().nullish(),
+  "categoria": zod.string().nullish(),
+  "codigo": zod.string().nullish(),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date()
+}).optional()
+})
+
+
+/**
+ * @summary List insumos
+ */
+export const ListInsumosParams = zod.object({
+  "tenantId": zod.coerce.string()
+})
+
+export const ListInsumosQueryParams = zod.object({
+  "q": zod.coerce.string().optional(),
+  "categoria": zod.coerce.string().optional()
+})
+
+export const ListInsumosResponseItem = zod.object({
+  "id": zod.string(),
+  "tenantId": zod.string(),
+  "nome": zod.string(),
+  "descricao": zod.string().nullish(),
+  "unidade": zod.string(),
+  "precoUnitario": zod.string().nullish(),
+  "categoria": zod.string().nullish(),
+  "codigo": zod.string().nullish(),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date()
+})
+export const ListInsumosResponse = zod.array(ListInsumosResponseItem)
+
+
+/**
+ * @summary Create insumo
+ */
+export const CreateInsumoParams = zod.object({
+  "tenantId": zod.coerce.string()
+})
+
+export const CreateInsumoBody = zod.object({
+  "nome": zod.string(),
+  "descricao": zod.string().optional(),
+  "unidade": zod.string(),
+  "precoUnitario": zod.string().optional(),
+  "categoria": zod.string().optional(),
+  "codigo": zod.string().optional()
+})
+
+
+/**
+ * @summary Update insumo
+ */
+export const UpdateInsumoParams = zod.object({
+  "tenantId": zod.coerce.string(),
+  "insumoId": zod.coerce.string()
+})
+
+export const UpdateInsumoBody = zod.object({
+  "nome": zod.string().optional(),
+  "descricao": zod.string().optional(),
+  "unidade": zod.string().optional(),
+  "precoUnitario": zod.string().optional(),
+  "categoria": zod.string().optional(),
+  "codigo": zod.string().optional()
+})
+
+export const UpdateInsumoResponse = zod.object({
+  "id": zod.string(),
+  "tenantId": zod.string(),
+  "nome": zod.string(),
+  "descricao": zod.string().nullish(),
+  "unidade": zod.string(),
+  "precoUnitario": zod.string().nullish(),
+  "categoria": zod.string().nullish(),
+  "codigo": zod.string().nullish(),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date()
+})
+
+
+/**
+ * @summary Delete insumo
+ */
+export const DeleteInsumoParams = zod.object({
+  "tenantId": zod.coerce.string(),
+  "insumoId": zod.coerce.string()
+})
+
+
+/**
+ * @summary Get central construction stock
+ */
+export const GetEstoqueCentralParams = zod.object({
+  "tenantId": zod.coerce.string()
+})
+
+export const GetEstoqueCentralResponseItem = zod.object({
+  "id": zod.string(),
+  "tenantId": zod.string(),
+  "insumoId": zod.string(),
+  "quantidadeAtual": zod.string(),
+  "quantidadeMinima": zod.string(),
+  "localizacao": zod.string().nullish(),
+  "updatedAt": zod.coerce.date().optional(),
+  "insumo": zod.object({
+  "id": zod.string(),
+  "tenantId": zod.string(),
+  "nome": zod.string(),
+  "descricao": zod.string().nullish(),
+  "unidade": zod.string(),
+  "precoUnitario": zod.string().nullish(),
+  "categoria": zod.string().nullish(),
+  "codigo": zod.string().nullish(),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date()
+}).optional()
+})
+export const GetEstoqueCentralResponse = zod.array(GetEstoqueCentralResponseItem)
+
+
+/**
+ * @summary Register stock movement (allocation/return/transfer)
+ */
+export const CreateMovimentacaoEstoqueObraParams = zod.object({
+  "tenantId": zod.coerce.string()
+})
+
+export const CreateMovimentacaoEstoqueObraBody = zod.object({
+  "insumoId": zod.string(),
+  "tipo": zod.enum(['entrada', 'saida', 'alocacao', 'devolucao', 'transferencia']),
+  "quantia": zod.string(),
+  "origemTipo": zod.enum(['central', 'obra']).optional(),
+  "origemObraId": zod.string().optional(),
+  "destinoTipo": zod.enum(['central', 'obra']).optional(),
+  "destinoObraId": zod.string().optional(),
+  "observacao": zod.string().optional()
+})
+
+
+/**
+ * @summary List composicoes
+ */
+export const ListComposicoesParams = zod.object({
+  "tenantId": zod.coerce.string()
+})
+
+export const ListComposicoesQueryParams = zod.object({
+  "q": zod.coerce.string().optional()
+})
+
+export const ListComposicoesResponseItem = zod.object({
+  "id": zod.string(),
+  "tenantId": zod.string(),
+  "nome": zod.string(),
+  "descricao": zod.string().nullish(),
+  "unidade": zod.string(),
+  "custoTotal": zod.string().nullish(),
+  "codigo": zod.string().nullish(),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date()
+})
+export const ListComposicoesResponse = zod.array(ListComposicoesResponseItem)
+
+
+/**
+ * @summary Create composicao
+ */
+export const CreateComposicaoParams = zod.object({
+  "tenantId": zod.coerce.string()
+})
+
+export const CreateComposicaoBody = zod.object({
+  "nome": zod.string(),
+  "descricao": zod.string().optional(),
+  "unidade": zod.string(),
+  "codigo": zod.string().optional(),
+  "itens": zod.array(zod.object({
+  "insumoId": zod.string(),
+  "quantidade": zod.string(),
+  "precoUnitario": zod.string().optional()
+})).optional()
+})
+
+
+/**
+ * @summary Get composicao with insumos
+ */
+export const GetComposicaoParams = zod.object({
+  "tenantId": zod.coerce.string(),
+  "composicaoId": zod.coerce.string()
+})
+
+export const GetComposicaoResponse = zod.object({
+  "id": zod.string(),
+  "tenantId": zod.string(),
+  "nome": zod.string(),
+  "descricao": zod.string().nullish(),
+  "unidade": zod.string(),
+  "custoTotal": zod.string().nullish(),
+  "codigo": zod.string().nullish(),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date()
+}).and(zod.object({
+  "itens": zod.array(zod.object({
+  "id": zod.string().optional(),
+  "insumoId": zod.string().optional(),
+  "quantidade": zod.string().optional(),
+  "precoUnitario": zod.string().nullish(),
+  "insumo": zod.object({
+  "id": zod.string(),
+  "tenantId": zod.string(),
+  "nome": zod.string(),
+  "descricao": zod.string().nullish(),
+  "unidade": zod.string(),
+  "precoUnitario": zod.string().nullish(),
+  "categoria": zod.string().nullish(),
+  "codigo": zod.string().nullish(),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date()
+}).optional()
+})).optional()
+}))
+
+
+/**
+ * @summary Update composicao
+ */
+export const UpdateComposicaoParams = zod.object({
+  "tenantId": zod.coerce.string(),
+  "composicaoId": zod.coerce.string()
+})
+
+export const UpdateComposicaoBody = zod.object({
+  "nome": zod.string().optional(),
+  "descricao": zod.string().optional(),
+  "unidade": zod.string().optional(),
+  "codigo": zod.string().optional()
+})
+
+export const UpdateComposicaoResponse = zod.object({
+  "id": zod.string(),
+  "tenantId": zod.string(),
+  "nome": zod.string(),
+  "descricao": zod.string().nullish(),
+  "unidade": zod.string(),
+  "custoTotal": zod.string().nullish(),
+  "codigo": zod.string().nullish(),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date()
+})
+
+
+/**
+ * @summary Delete composicao
+ */
+export const DeleteComposicaoParams = zod.object({
+  "tenantId": zod.coerce.string(),
+  "composicaoId": zod.coerce.string()
+})
+
+
