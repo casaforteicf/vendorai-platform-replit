@@ -161,7 +161,8 @@ router.patch("/deals/:id", async (req, res) => {
           : Promise.resolve(undefined),
       ]);
 
-      // ── Auto-invite ────────────────────────────────────────────────────────
+      // ── Auto-invite (e-mail) ───────────────────────────────────────────────
+      let inviteUrl: string | undefined;
       if (!lead?.email) {
         inviteSkipReason = "no_email";
         req.log.info({ dealId: deal.id }, "auto-invite skipped: lead has no email");
@@ -202,29 +203,30 @@ router.patch("/deals/:id", async (req, res) => {
             .returning({ id: tenantInvitesTable.id, token: tenantInvitesTable.token });
         }
 
-        const inviteUrl = buildInviteUrl(req, invite.token);
+        inviteUrl = buildInviteUrl(req, invite.token);
         inviteSent = await sendInviteEmail(email, inviteUrl, tenant?.name ?? "");
         inviteEmail = email;
         req.log.info({ dealId: deal.id, inviteId: invite.id, inviteSent }, "auto-invite processed");
+      }
 
-        // ── WhatsApp invite ───────────────────────────────────────────────────
-        if (!lead.telefone) {
-          whatsappSkipReason = "no_phone";
-          req.log.info({ dealId: deal.id }, "whatsapp invite skipped: lead has no phone");
-        } else {
-          try {
-            const whatsappMessage =
-              `Olá, ${lead.nome ?? ""}! 🎉\n\n` +
-              `Seu acesso à plataforma ${tenant?.name ?? "VendorAI"} foi liberado.\n\n` +
-              `Clique no link abaixo para criar sua senha e acessar:\n${inviteUrl}`;
-            await sendDirectWhatsAppMessage(existing.tenantId, lead.telefone, whatsappMessage, req.log);
-            whatsappSent = true;
-            req.log.info({ dealId: deal.id }, "whatsapp invite sent");
-          } catch (err) {
-            whatsappSkipReason =
-              err instanceof WhatsAppNotConnectedError ? "zapi_not_configured" : "send_error";
-            req.log.warn({ dealId: deal.id, err }, "whatsapp invite failed");
-          }
+      // ── WhatsApp invite (independente do e-mail) ──────────────────────────
+      if (!lead?.telefone) {
+        whatsappSkipReason = "no_phone";
+        req.log.info({ dealId: deal.id }, "whatsapp invite skipped: lead has no phone");
+      } else {
+        try {
+          const nome = lead.nome ?? "";
+          const plataforma = tenant?.name ?? "VendorAI";
+          const whatsappMessage = inviteUrl
+            ? `Olá, ${nome}! 🎉\n\nSeu acesso à plataforma ${plataforma} foi liberado.\n\nClique no link abaixo para criar sua senha e acessar:\n${inviteUrl}`
+            : `Olá, ${nome}! 🎉\n\nSeu negócio foi fechado com sucesso na plataforma ${plataforma}. Em breve nossa equipe entrará em contato com mais informações.`;
+          await sendDirectWhatsAppMessage(existing.tenantId, lead.telefone, whatsappMessage, req.log);
+          whatsappSent = true;
+          req.log.info({ dealId: deal.id }, "whatsapp invite sent");
+        } catch (err) {
+          whatsappSkipReason =
+            err instanceof WhatsAppNotConnectedError ? "zapi_not_configured" : "send_error";
+          req.log.warn({ dealId: deal.id, err }, "whatsapp invite failed");
         }
       }
 
