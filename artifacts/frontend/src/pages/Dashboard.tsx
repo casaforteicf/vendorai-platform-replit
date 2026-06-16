@@ -6,8 +6,6 @@ import {
   TrendingUp,
   DollarSign,
   Percent,
-  AlertTriangle,
-  FileWarning,
   Clock,
   Trophy,
   FileText,
@@ -15,6 +13,10 @@ import {
   ShoppingCart,
   FileSignature,
   Layers,
+  MapPin,
+  Target,
+  Building2,
+  Flame,
 } from "lucide-react";
 import {
   useGetTenantDashboard,
@@ -51,6 +53,13 @@ const ETAPA_COLORS: Record<string, string> = {
   perdido: "#EF4444",
 };
 
+const ETAPA_BADGE: Record<string, string> = {
+  novo: "bg-blue-100 text-blue-700",
+  qualificado: "bg-indigo-100 text-indigo-700",
+  proposta: "bg-violet-100 text-violet-700",
+  negociacao: "bg-amber-100 text-amber-700",
+};
+
 const TIPO_LABELS: Record<string, string> = {
   pedido: "Pedido",
   contrato: "Contrato",
@@ -63,6 +72,27 @@ const TIPO_COLORS: Record<string, string> = {
   pedido_e_contrato: "#F59E0B",
 };
 
+const FAIXA_LABELS: Record<string, string> = {
+  ate25: "Até 25",
+  de26a35: "26–35",
+  de36a45: "36–45",
+  de46a55: "46–55",
+  acima55: "55+",
+  naoInformado: "N/I",
+};
+
+const FAIXA_COLORS = ["#60A5FA", "#818CF8", "#A78BFA", "#F59E0B", "#10B981", "#94A3B8"];
+
+const DOW_LABELS: Record<string, string> = {
+  "0": "Dom",
+  "1": "Seg",
+  "2": "Ter",
+  "3": "Qua",
+  "4": "Qui",
+  "5": "Sex",
+  "6": "Sáb",
+};
+
 function formatCurrency(value: string | number | undefined | null): string {
   if (value === null || value === undefined || value === "") return "R$ 0,00";
   const num = typeof value === "number" ? value : parseFloat(String(value));
@@ -73,6 +103,12 @@ function formatCurrency(value: string | number | undefined | null): string {
 function formatPercent(value: number | undefined): string {
   if (value === undefined || value === null) return "0%";
   return (value * 100).toFixed(1) + "%";
+}
+
+function probColor(p: number) {
+  if (p >= 70) return "bg-emerald-500";
+  if (p >= 40) return "bg-amber-400";
+  return "bg-blue-400";
 }
 
 function churnBadge(risk: number | null | undefined) {
@@ -141,6 +177,26 @@ export default function Dashboard() {
           color: TIPO_COLORS[tipo] ?? "#94A3B8",
         }))
     : [];
+
+  const faixaChartData = dashboard?.faixaEtaria
+    ? Object.entries(dashboard.faixaEtaria)
+        .filter(([key]) => key !== "naoInformado")
+        .map(([key, count], i) => ({
+          name: FAIXA_LABELS[key] ?? key,
+          value: count as number,
+          color: FAIXA_COLORS[i] ?? "#94A3B8",
+        }))
+        .filter((d) => d.value > 0)
+    : [];
+
+  const diasChartData = dashboard?.diasSemanaGanhos
+    ? [0, 1, 2, 3, 4, 5, 6].map((dow) => ({
+        dia: DOW_LABELS[String(dow)],
+        total: (dashboard.diasSemanaGanhos as Record<string, number>)[String(dow)] ?? 0,
+      }))
+    : [];
+
+  const perfil = dashboard?.negocioPerfil;
 
   return (
     <div className="space-y-6 md:space-y-8">
@@ -314,6 +370,90 @@ export default function Dashboard() {
         )}
       </div>
 
+      {/* Oportunidades Quentes */}
+      <Card data-testid="card-oportunidades-quentes">
+        <CardHeader className="pb-3">
+          <div className="flex items-center gap-2">
+            <div className="p-1.5 rounded-md bg-amber-500/10">
+              <Flame className="h-4 w-4 text-amber-500" />
+            </div>
+            <div>
+              <CardTitle className="text-sm font-semibold">Oportunidades Quentes</CardTitle>
+              <p className="text-xs text-muted-foreground mt-0.5">
+                Negócios com maior probabilidade de fechar
+              </p>
+            </div>
+          </div>
+        </CardHeader>
+        <CardContent className="p-0">
+          {isLoading ? (
+            <div className="space-y-3 px-6 pb-4">
+              {Array.from({ length: 5 }).map((_, i) => (
+                <div key={i} className="h-10 bg-muted animate-pulse rounded" />
+              ))}
+            </div>
+          ) : !dashboard?.topOportunidades?.length ? (
+            <p className="text-sm text-muted-foreground px-6 pb-6 text-center">
+              Nenhum negócio aberto com probabilidade definida.
+            </p>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b border-border bg-muted/40">
+                    <th className="text-left text-xs font-medium text-muted-foreground px-6 py-2">#</th>
+                    <th className="text-left text-xs font-medium text-muted-foreground px-3 py-2">Lead</th>
+                    <th className="text-left text-xs font-medium text-muted-foreground px-3 py-2">Negócio</th>
+                    <th className="text-right text-xs font-medium text-muted-foreground px-3 py-2">Valor</th>
+                    <th className="text-center text-xs font-medium text-muted-foreground px-3 py-2">Prob.</th>
+                    <th className="text-center text-xs font-medium text-muted-foreground px-6 py-2">Etapa</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-border">
+                  {dashboard.topOportunidades.map((deal, idx) => {
+                    const prob = deal.probabilidade ?? 0;
+                    return (
+                      <tr key={deal.dealId} className="hover:bg-muted/30 transition-colors">
+                        <td className="px-6 py-3 text-xs text-muted-foreground w-8">{idx + 1}</td>
+                        <td className="px-3 py-3 min-w-[120px]">
+                          <p className="font-medium truncate max-w-[140px]">
+                            {deal.leadNome ?? "—"}
+                          </p>
+                        </td>
+                        <td className="px-3 py-3 min-w-[140px]">
+                          <p className="text-muted-foreground truncate max-w-[180px]">{deal.titulo}</p>
+                        </td>
+                        <td className="px-3 py-3 text-right font-medium whitespace-nowrap">
+                          {deal.valor ? formatCurrency(deal.valor) : "—"}
+                        </td>
+                        <td className="px-3 py-3 w-28">
+                          <div className="flex items-center gap-2">
+                            <div className="flex-1 h-1.5 rounded-full bg-muted overflow-hidden">
+                              <div
+                                className={`h-full rounded-full ${probColor(prob)}`}
+                                style={{ width: `${prob}%` }}
+                              />
+                            </div>
+                            <span className="text-xs font-medium w-8 text-right">{prob}%</span>
+                          </div>
+                        </td>
+                        <td className="px-6 py-3 text-center">
+                          <span
+                            className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${ETAPA_BADGE[deal.etapa] ?? "bg-muted text-muted-foreground"}`}
+                          >
+                            {ETAPA_LABELS[deal.etapa] ?? deal.etapa}
+                          </span>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
       {/* Funil + Modelo Comercial */}
       <div className="grid gap-6 lg:grid-cols-3">
         <Card className="lg:col-span-2" data-testid="card-funil">
@@ -365,7 +505,6 @@ export default function Dashboard() {
           </CardContent>
         </Card>
 
-        {/* Modelo Comercial */}
         <Card data-testid="card-modelo-comercial">
           <CardHeader className="pb-2">
             <CardTitle className="text-sm font-semibold">Modelo Comercial</CardTitle>
@@ -417,11 +556,7 @@ export default function Dashboard() {
                       color: "hsl(var(--foreground))",
                     }}
                   />
-                  <Legend
-                    iconType="circle"
-                    iconSize={8}
-                    wrapperStyle={{ fontSize: 11 }}
-                  />
+                  <Legend iconType="circle" iconSize={8} wrapperStyle={{ fontSize: 11 }} />
                 </PieChart>
               </ResponsiveContainer>
             )}
@@ -429,66 +564,213 @@ export default function Dashboard() {
         </Card>
       </div>
 
-      {/* Faturas */}
-      <div className="grid gap-4 md:grid-cols-2">
-        <Card data-testid="card-faturas-pendentes">
-          <CardHeader className="flex flex-row items-center justify-between pb-2 space-y-0">
-            <CardTitle className="text-sm font-semibold">Faturas Pendentes</CardTitle>
-            <div className="p-1.5 rounded-md bg-amber-500/10">
-              <FileWarning className="h-4 w-4 text-amber-500" />
-            </div>
-          </CardHeader>
-          <CardContent>
-            {isLoading ? (
-              <div className="h-12 bg-muted animate-pulse rounded" />
-            ) : (
-              <div className="flex items-end gap-4">
-                <div>
-                  <p className="text-3xl font-bold">
-                    {dashboard?.faturas.pendente.count ?? 0}
-                  </p>
-                  <p className="text-xs text-muted-foreground mt-0.5">faturas</p>
-                </div>
-                <div className="pb-0.5">
-                  <p className="text-lg font-semibold text-amber-600">
-                    {formatCurrency(dashboard?.faturas.pendente.somaValor)}
-                  </p>
-                  <p className="text-xs text-muted-foreground">valor total</p>
-                </div>
-              </div>
-            )}
-          </CardContent>
-        </Card>
+      {/* Perfil dos Clientes */}
+      <div>
+        <h2 className="text-base font-semibold mb-3">Perfil dos Clientes</h2>
+        <div className="grid gap-6 lg:grid-cols-2">
 
-        <Card data-testid="card-faturas-atrasadas">
-          <CardHeader className="flex flex-row items-center justify-between pb-2 space-y-0">
-            <CardTitle className="text-sm font-semibold">Faturas Atrasadas</CardTitle>
-            <div className="p-1.5 rounded-md bg-red-500/10">
-              <AlertTriangle className="h-4 w-4 text-red-500" />
-            </div>
+          {/* Faixa Etária */}
+          <Card data-testid="card-faixa-etaria">
+            <CardHeader className="pb-2">
+              <CardTitle className="text-sm font-semibold">Faixa Etária</CardTitle>
+              <p className="text-xs text-muted-foreground">
+                Distribuição de idade dos leads (via data de nascimento)
+              </p>
+            </CardHeader>
+            <CardContent>
+              {isLoading ? (
+                <div className="h-36 bg-muted animate-pulse rounded" />
+              ) : faixaChartData.length === 0 ? (
+                <div className="h-36 flex items-center justify-center">
+                  <p className="text-sm text-muted-foreground text-center">
+                    Nenhum lead com data de nascimento informada.
+                  </p>
+                </div>
+              ) : (
+                <ResponsiveContainer width="100%" height={150}>
+                  <BarChart
+                    data={faixaChartData}
+                    margin={{ top: 4, right: 8, bottom: 0, left: -20 }}
+                  >
+                    <XAxis
+                      dataKey="name"
+                      tick={{ fontSize: 11, fill: "hsl(var(--muted-foreground))" }}
+                      axisLine={false}
+                      tickLine={false}
+                    />
+                    <YAxis
+                      allowDecimals={false}
+                      tick={{ fontSize: 11, fill: "hsl(var(--muted-foreground))" }}
+                      axisLine={false}
+                      tickLine={false}
+                    />
+                    <Tooltip
+                      cursor={{ fill: "hsl(var(--muted))" }}
+                      formatter={(value: number) => [value, "leads"]}
+                      contentStyle={{
+                        fontSize: 12,
+                        border: "1px solid hsl(var(--border))",
+                        borderRadius: 6,
+                        background: "hsl(var(--card))",
+                        color: "hsl(var(--foreground))",
+                      }}
+                    />
+                    <Bar dataKey="value" radius={[4, 4, 0, 0]} maxBarSize={40}>
+                      {faixaChartData.map((entry, i) => (
+                        <Cell key={i} fill={entry.color} />
+                      ))}
+                    </Bar>
+                  </BarChart>
+                </ResponsiveContainer>
+              )}
+              {dashboard?.faixaEtaria?.naoInformado ? (
+                <p className="text-xs text-muted-foreground text-center mt-1">
+                  {dashboard.faixaEtaria.naoInformado} lead(s) sem data de nascimento informada
+                </p>
+              ) : null}
+            </CardContent>
+          </Card>
+
+          {/* Dias da semana com mais fechamentos */}
+          <Card data-testid="card-dias-semana">
+            <CardHeader className="pb-2">
+              <CardTitle className="text-sm font-semibold">Dias com Mais Fechamentos</CardTitle>
+              <p className="text-xs text-muted-foreground">
+                Deals ganhos por dia da semana (últimos 6 meses)
+              </p>
+            </CardHeader>
+            <CardContent>
+              {isLoading ? (
+                <div className="h-36 bg-muted animate-pulse rounded" />
+              ) : diasChartData.every((d) => d.total === 0) ? (
+                <div className="h-36 flex items-center justify-center">
+                  <p className="text-sm text-muted-foreground text-center">
+                    Nenhum deal fechado nos últimos 6 meses.
+                  </p>
+                </div>
+              ) : (
+                <ResponsiveContainer width="100%" height={150}>
+                  <BarChart
+                    data={diasChartData}
+                    margin={{ top: 4, right: 8, bottom: 0, left: -20 }}
+                  >
+                    <XAxis
+                      dataKey="dia"
+                      tick={{ fontSize: 11, fill: "hsl(var(--muted-foreground))" }}
+                      axisLine={false}
+                      tickLine={false}
+                    />
+                    <YAxis
+                      allowDecimals={false}
+                      tick={{ fontSize: 11, fill: "hsl(var(--muted-foreground))" }}
+                      axisLine={false}
+                      tickLine={false}
+                    />
+                    <Tooltip
+                      cursor={{ fill: "hsl(var(--muted))" }}
+                      formatter={(value: number) => [value, "fechamentos"]}
+                      contentStyle={{
+                        fontSize: 12,
+                        border: "1px solid hsl(var(--border))",
+                        borderRadius: 6,
+                        background: "hsl(var(--card))",
+                        color: "hsl(var(--foreground))",
+                      }}
+                    />
+                    <Bar dataKey="total" radius={[4, 4, 0, 0]} maxBarSize={40} fill="#818CF8" />
+                  </BarChart>
+                </ResponsiveContainer>
+              )}
+            </CardContent>
+          </Card>
+        </div>
+      </div>
+
+      {/* Sobre o Negócio */}
+      {(isLoading || perfil) && (
+        <Card data-testid="card-sobre-negocio">
+          <CardHeader className="pb-3">
+            <CardTitle className="text-sm font-semibold">Sobre o Negócio</CardTitle>
+            <p className="text-xs text-muted-foreground">
+              Informações do perfil comercial cadastrado
+            </p>
           </CardHeader>
           <CardContent>
             {isLoading ? (
-              <div className="h-12 bg-muted animate-pulse rounded" />
-            ) : (
-              <div className="flex items-end gap-4">
-                <div>
-                  <p className="text-3xl font-bold text-red-600">
-                    {dashboard?.faturas.atrasada.count ?? 0}
-                  </p>
-                  <p className="text-xs text-muted-foreground mt-0.5">faturas</p>
-                </div>
-                <div className="pb-0.5">
-                  <p className="text-lg font-semibold text-red-600">
-                    {formatCurrency(dashboard?.faturas.atrasada.somaValor)}
-                  </p>
-                  <p className="text-xs text-muted-foreground">valor total</p>
-                </div>
+              <div className="space-y-3">
+                {Array.from({ length: 3 }).map((_, i) => (
+                  <div key={i} className="h-5 bg-muted animate-pulse rounded w-3/4" />
+                ))}
               </div>
-            )}
+            ) : perfil ? (
+              <div className="grid gap-4 sm:grid-cols-2">
+                {perfil.endereco && (
+                  <div className="flex gap-3">
+                    <div className="mt-0.5 p-1.5 rounded-md bg-muted h-fit">
+                      <MapPin className="h-3.5 w-3.5 text-muted-foreground" />
+                    </div>
+                    <div>
+                      <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide mb-0.5">
+                        Endereço
+                      </p>
+                      <p className="text-sm">{perfil.endereco}</p>
+                    </div>
+                  </div>
+                )}
+                {perfil.vertical && (
+                  <div className="flex gap-3">
+                    <div className="mt-0.5 p-1.5 rounded-md bg-muted h-fit">
+                      <Building2 className="h-3.5 w-3.5 text-muted-foreground" />
+                    </div>
+                    <div>
+                      <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide mb-0.5">
+                        Segmento / Vertical
+                      </p>
+                      <p className="text-sm">{perfil.vertical}</p>
+                    </div>
+                  </div>
+                )}
+                {perfil.publicoAlvo && (
+                  <div className="flex gap-3 sm:col-span-2">
+                    <div className="mt-0.5 p-1.5 rounded-md bg-muted h-fit">
+                      <Target className="h-3.5 w-3.5 text-muted-foreground" />
+                    </div>
+                    <div>
+                      <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide mb-0.5">
+                        Público-alvo
+                      </p>
+                      <p className="text-sm text-muted-foreground">{perfil.publicoAlvo}</p>
+                    </div>
+                  </div>
+                )}
+                {perfil.canaisVenda && perfil.canaisVenda.length > 0 && (
+                  <div className="flex gap-3 sm:col-span-2">
+                    <div className="mt-0.5 p-1.5 rounded-md bg-muted h-fit">
+                      <TrendingUp className="h-3.5 w-3.5 text-muted-foreground" />
+                    </div>
+                    <div>
+                      <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide mb-1.5">
+                        Canais de Venda
+                      </p>
+                      <div className="flex flex-wrap gap-1.5">
+                        {perfil.canaisVenda.map((canal) => (
+                          <Badge
+                            key={canal}
+                            variant="secondary"
+                            className="text-xs"
+                          >
+                            {canal}
+                          </Badge>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </div>
+            ) : null}
           </CardContent>
         </Card>
-      </div>
+      )}
 
       {/* Leads em Risco */}
       <Card data-testid="card-leads-risco">

@@ -154,6 +154,16 @@ export interface DashboardLeadEntry {
   churnRisk: number | null;
 }
 
+export interface DashboardOportunidade {
+  dealId: string;
+  titulo: string;
+  valor?: string | null;
+  probabilidade?: number | null;
+  etapa: string;
+  leadId?: string | null;
+  leadNome?: string | null;
+}
+
 export type TenantDashboardLeads = {
   total: number;
   novosUltimos30Dias: number;
@@ -172,21 +182,6 @@ export type TenantDashboardDeals = {
   totalDeals: number;
   /** ganho / totalDeals (0–1 range, 4 decimal places) */
   taxaConversao: number;
-};
-
-export type TenantDashboardFaturasPendente = {
-  count: number;
-  somaValor: string;
-};
-
-export type TenantDashboardFaturasAtrasada = {
-  count: number;
-  somaValor: string;
-};
-
-export type TenantDashboardFaturas = {
-  pendente: TenantDashboardFaturasPendente;
-  atrasada: TenantDashboardFaturasAtrasada;
 };
 
 export type TenantDashboardChurnRiskDistribuicao = {
@@ -217,10 +212,30 @@ export type TenantDashboardPropostas = {
  */
 export type TenantDashboardDealsPorTipoFechamento = {[key: string]: number};
 
+export type TenantDashboardFaixaEtaria = {
+  naoInformado: number;
+  ate25: number;
+  de26a35: number;
+  de36a45: number;
+  de46a55: number;
+  acima55: number;
+};
+
+/**
+ * Map of dayOfWeek (0=Sun..6=Sat) to count of ganho deals in last 6 months
+ */
+export type TenantDashboardDiasSemanaGanhos = {[key: string]: number};
+
+export type TenantDashboardNegocioPerfil = {
+  endereco?: string | null;
+  publicoAlvo?: string | null;
+  vertical?: string | null;
+  canaisVenda?: string[] | null;
+} | null;
+
 export interface TenantDashboard {
   leads: TenantDashboardLeads;
   deals: TenantDashboardDeals;
-  faturas: TenantDashboardFaturas;
   /** Activities with status=pendente and dataVencimento in the past */
   atividadesAtrasadas: number;
   churnRiskDistribuicao: TenantDashboardChurnRiskDistribuicao;
@@ -232,6 +247,12 @@ export interface TenantDashboard {
   propostas: TenantDashboardPropostas;
   /** Map of tipoFechamento → count for all deals */
   dealsPorTipoFechamento: TenantDashboardDealsPorTipoFechamento;
+  /** Top 8 open deals ordered by probabilidade desc */
+  topOportunidades: DashboardOportunidade[];
+  faixaEtaria: TenantDashboardFaixaEtaria;
+  /** Map of dayOfWeek (0=Sun..6=Sat) to count of ganho deals in last 6 months */
+  diasSemanaGanhos: TenantDashboardDiasSemanaGanhos;
+  negocioPerfil?: TenantDashboardNegocioPerfil;
 }
 
 export type SubscriptionPlano = typeof SubscriptionPlano[keyof typeof SubscriptionPlano];

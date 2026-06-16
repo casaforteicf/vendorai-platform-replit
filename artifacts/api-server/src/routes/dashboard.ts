@@ -4,9 +4,9 @@ import {
   leadsTable,
   dealsTable,
   activitiesTable,
-  invoicesTable,
   customerIntelligenceTable,
   propostasTable,
+  businessProfilesTable,
 } from "@workspace/db";
 import {
   eq,
@@ -25,11 +25,9 @@ import {
 
 const router: IRouter = Router();
 
-// Explicit row shapes so TypeScript doesn't lose inference inside Promise.all
 type LeadsSummaryRow = { total: number; novosUltimos30Dias: number };
 type DealsByStageRow = { etapa: string; total: number };
 type OpenDealsValueRow = { totalValor: string | null };
-type InvoiceStatusRow = { status: string; total: number; somaValor: string | null };
 type OverdueActivitiesRow = { total: number };
 type ChurnDistRow = { baixo: number; medio: number; alto: number };
 type Top5ChurnRow = {
@@ -43,21 +41,42 @@ type GanhosMesRow = { count: number; somaValor: string | null };
 type TicketMedioRow = { ticketMedio: string | null };
 type PropostasAtivasRow = { count: number; somaValor: string | null };
 type DealsByTipoRow = { tipoFechamento: string | null; total: number };
+type TopOportunidadeRow = {
+  dealId: string;
+  titulo: string;
+  valor: string | null;
+  probabilidade: number | null;
+  etapa: string;
+  leadId: string | null;
+  leadNome: string | null;
+};
+type FaixaEtariaRow = {
+  naoInformado: number;
+  ate25: number;
+  de26a35: number;
+  de36a45: number;
+  de46a55: number;
+  acima55: number;
+};
+type DiaSemanaRow = { dow: number; total: number };
+type NegocioPerfilRow = {
+  endereco: string | null;
+  publicoAlvo: string | null;
+  vertical: string | null;
+  canaisVenda: string[] | null;
+};
 
 router.get("/tenants/:tenantId/dashboard", async (req, res) => {
   const tenantId = String(req.params.tenantId);
   const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
+  const sixMonthsAgo = new Date(Date.now() - 180 * 24 * 60 * 60 * 1000);
   const now = new Date();
-
-  // Start of current month
   const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
 
-  // Run all queries in parallel
   const [
     leadsRows,
     dealsByStageRows,
     openDealsValueRows,
-    invoicesRows,
     overdueActivitiesRows,
     churnDistRows,
     top5ChurnRows,
@@ -65,6 +84,10 @@ router.get("/tenants/:tenantId/dashboard", async (req, res) => {
     ticketMedioRows,
     propostasAtivasRows,
     dealsByTipoRows,
+    topOportunidadesRows,
+    faixaEtariaRows,
+    diasSemanaRows,
+    negocioPerfilRows,
   ] = (await Promise.all([
     // 1. Leads: total + novos nos últimos 30 dias
     db
@@ -96,23 +119,7 @@ router.get("/tenants/:tenantId/dashboard", async (req, res) => {
         ),
       ),
 
-    // 4. Faturas pendente + atrasada: count e soma por status
-    db
-      .select({
-        status: sql<string>`${invoicesTable.status}`,
-        total: count(),
-        somaValor: sum(invoicesTable.valor),
-      })
-      .from(invoicesTable)
-      .where(
-        and(
-          eq(invoicesTable.tenantId, tenantId),
-          inArray(invoicesTable.status, ["pendente", "atrasada"]),
-        ),
-      )
-      .groupBy(invoicesTable.status),
-
-    // 5. Atividades atrasadas: status=pendente + dataVencimento < now
+    // 4. Atividades atrasadas: status=pendente + dataVencimento < now
     db
       .select({ total: count() })
       .from(activitiesTable)
@@ -125,7 +132,7 @@ router.get("/tenants/:tenantId/dashboard", async (req, res) => {
         ),
       ),
 
-    // 6. Distribuição churnRisk: baixo (<30), médio (30–70), alto (>70)
+    // 5. Distribuição churnRisk
     db
       .select({
         baixo: sql<number>`count(*) filter (where ${customerIntelligenceTable.churnRisk} < 30)`.mapWith(Number),
@@ -140,7 +147,7 @@ router.get("/tenants/:tenantId/dashboard", async (req, res) => {
         ),
       ),
 
-    // 7. Top 5 leads por churnRisk decrescente
+    // 6. Top 5 leads por churnRisk
     db
       .select({
         leadId: customerIntelligenceTable.leadId,
@@ -160,7 +167,7 @@ router.get("/tenants/:tenantId/dashboard", async (req, res) => {
       .orderBy(desc(customerIntelligenceTable.churnRisk))
       .limit(5),
 
-    // 8. Deals ganhos este mês: etapa=ganho + updatedAt >= startOfMonth
+    // 7. Deals ganhos este mês
     db
       .select({
         count: sql<number>`count(*)`.mapWith(Number),
@@ -175,7 +182,7 @@ router.get("/tenants/:tenantId/dashboard", async (req, res) => {
         ),
       ),
 
-    // 9. Ticket médio: avg(valor) de todos os deals ganhos
+    // 8. Ticket médio
     db
       .select({
         ticketMedio: sql<string | null>`avg(${dealsTable.valor})::text`,
@@ -189,7 +196,7 @@ router.get("/tenants/:tenantId/dashboard", async (req, res) => {
         ),
       ),
 
-    // 10. Propostas ativas (rascunho + enviada): count + soma valorTotal
+    // 9. Propostas ativas (rascunho + enviada)
     db
       .select({
         count: sql<number>`count(*)`.mapWith(Number),
@@ -203,7 +210,7 @@ router.get("/tenants/:tenantId/dashboard", async (req, res) => {
         ),
       ),
 
-    // 11. Deals por tipo de fechamento
+    // 10. Deals por tipo de fechamento
     db
       .select({
         tipoFechamento: sql<string | null>`${dealsTable.tipoFechamento}`,
@@ -212,11 +219,74 @@ router.get("/tenants/:tenantId/dashboard", async (req, res) => {
       .from(dealsTable)
       .where(eq(dealsTable.tenantId, tenantId))
       .groupBy(dealsTable.tipoFechamento),
+
+    // 11. Top 8 oportunidades (não ganho/perdido) ordenadas por probabilidade
+    db
+      .select({
+        dealId: dealsTable.id,
+        titulo: dealsTable.titulo,
+        valor: dealsTable.valor,
+        probabilidade: dealsTable.probabilidade,
+        etapa: sql<string>`${dealsTable.etapa}`,
+        leadId: dealsTable.leadId,
+        leadNome: leadsTable.nome,
+      })
+      .from(dealsTable)
+      .leftJoin(leadsTable, eq(dealsTable.leadId, leadsTable.id))
+      .where(
+        and(
+          eq(dealsTable.tenantId, tenantId),
+          notInArray(dealsTable.etapa, ["ganho", "perdido"]),
+          isNotNull(dealsTable.probabilidade),
+        ),
+      )
+      .orderBy(desc(dealsTable.probabilidade))
+      .limit(8),
+
+    // 12. Faixa etária dos leads (via dataNascimento em formato YYYY-MM-DD)
+    db
+      .select({
+        naoInformado: sql<number>`count(*) filter (where ${leadsTable.dataNascimento} is null or ${leadsTable.dataNascimento} = '')`.mapWith(Number),
+        ate25: sql<number>`count(*) filter (where ${leadsTable.dataNascimento} ~ '^\\d{4}-\\d{2}-\\d{2}$' and extract(year from age(now(), to_date(${leadsTable.dataNascimento}, 'YYYY-MM-DD'))) <= 25)`.mapWith(Number),
+        de26a35: sql<number>`count(*) filter (where ${leadsTable.dataNascimento} ~ '^\\d{4}-\\d{2}-\\d{2}$' and extract(year from age(now(), to_date(${leadsTable.dataNascimento}, 'YYYY-MM-DD'))) between 26 and 35)`.mapWith(Number),
+        de36a45: sql<number>`count(*) filter (where ${leadsTable.dataNascimento} ~ '^\\d{4}-\\d{2}-\\d{2}$' and extract(year from age(now(), to_date(${leadsTable.dataNascimento}, 'YYYY-MM-DD'))) between 36 and 45)`.mapWith(Number),
+        de46a55: sql<number>`count(*) filter (where ${leadsTable.dataNascimento} ~ '^\\d{4}-\\d{2}-\\d{2}$' and extract(year from age(now(), to_date(${leadsTable.dataNascimento}, 'YYYY-MM-DD'))) between 46 and 55)`.mapWith(Number),
+        acima55: sql<number>`count(*) filter (where ${leadsTable.dataNascimento} ~ '^\\d{4}-\\d{2}-\\d{2}$' and extract(year from age(now(), to_date(${leadsTable.dataNascimento}, 'YYYY-MM-DD'))) > 55)`.mapWith(Number),
+      })
+      .from(leadsTable)
+      .where(eq(leadsTable.tenantId, tenantId)),
+
+    // 13. Dias da semana com mais fechamentos (últimos 6 meses)
+    db
+      .select({
+        dow: sql<number>`extract(dow from ${dealsTable.updatedAt})::integer`,
+        total: sql<number>`count(*)::integer`.mapWith(Number),
+      })
+      .from(dealsTable)
+      .where(
+        and(
+          eq(dealsTable.tenantId, tenantId),
+          eq(dealsTable.etapa, "ganho"),
+          gte(dealsTable.updatedAt, sixMonthsAgo),
+        ),
+      )
+      .groupBy(sql`extract(dow from ${dealsTable.updatedAt})`),
+
+    // 14. Perfil do negócio (endereco, publicoAlvo, vertical, canaisVenda)
+    db
+      .select({
+        endereco: businessProfilesTable.endereco,
+        publicoAlvo: businessProfilesTable.publicoAlvo,
+        vertical: businessProfilesTable.vertical,
+        canaisVenda: businessProfilesTable.canaisVenda,
+      })
+      .from(businessProfilesTable)
+      .where(eq(businessProfilesTable.tenantId, tenantId))
+      .limit(1),
   ])) as [
     LeadsSummaryRow[],
     DealsByStageRow[],
     OpenDealsValueRow[],
-    InvoiceStatusRow[],
     OverdueActivitiesRow[],
     ChurnDistRow[],
     Top5ChurnRow[],
@@ -224,9 +294,12 @@ router.get("/tenants/:tenantId/dashboard", async (req, res) => {
     TicketMedioRow[],
     PropostasAtivasRow[],
     DealsByTipoRow[],
+    TopOportunidadeRow[],
+    FaixaEtariaRow[],
+    DiaSemanaRow[],
+    NegocioPerfilRow[],
   ];
 
-  // --- Deriva métricas de deals ---
   const ganhoCount = Number(dealsByStageRows.find((r) => r.etapa === "ganho")?.total ?? 0);
   const totalDeals = dealsByStageRows.reduce((acc, r) => acc + Number(r.total), 0);
   const taxaConversao =
@@ -237,17 +310,19 @@ router.get("/tenants/:tenantId/dashboard", async (req, res) => {
     porEtapa[row.etapa] = Number(row.total);
   }
 
-  // --- Faturas por status ---
-  const fPendente = invoicesRows.find((r) => r.status === "pendente");
-  const fAtrasada = invoicesRows.find((r) => r.status === "atrasada");
-
-  // --- Deals por tipo de fechamento ---
   const dealsPorTipoFechamento: Record<string, number> = {};
   for (const row of dealsByTipoRows) {
     if (row.tipoFechamento) {
       dealsPorTipoFechamento[row.tipoFechamento] = Number(row.total);
     }
   }
+
+  const diasSemanaGanhos: Record<string, number> = {};
+  for (const row of diasSemanaRows) {
+    diasSemanaGanhos[String(row.dow)] = row.total;
+  }
+
+  const perfil = negocioPerfilRows[0] ?? null;
 
   res.json({
     leads: {
@@ -259,16 +334,6 @@ router.get("/tenants/:tenantId/dashboard", async (req, res) => {
       totalEmNegociacao: openDealsValueRows[0]?.totalValor ?? "0",
       totalDeals,
       taxaConversao,
-    },
-    faturas: {
-      pendente: {
-        count: Number(fPendente?.total ?? 0),
-        somaValor: fPendente?.somaValor ?? "0",
-      },
-      atrasada: {
-        count: Number(fAtrasada?.total ?? 0),
-        somaValor: fAtrasada?.somaValor ?? "0",
-      },
     },
     atividadesAtrasadas: Number(overdueActivitiesRows[0]?.total ?? 0),
     churnRiskDistribuicao: {
@@ -295,6 +360,32 @@ router.get("/tenants/:tenantId/dashboard", async (req, res) => {
       },
     },
     dealsPorTipoFechamento,
+    topOportunidades: topOportunidadesRows.map((r) => ({
+      dealId: r.dealId,
+      titulo: r.titulo,
+      valor: r.valor ?? null,
+      probabilidade: r.probabilidade ?? null,
+      etapa: r.etapa,
+      leadId: r.leadId ?? null,
+      leadNome: r.leadNome ?? null,
+    })),
+    faixaEtaria: {
+      naoInformado: faixaEtariaRows[0]?.naoInformado ?? 0,
+      ate25: faixaEtariaRows[0]?.ate25 ?? 0,
+      de26a35: faixaEtariaRows[0]?.de26a35 ?? 0,
+      de36a45: faixaEtariaRows[0]?.de36a45 ?? 0,
+      de46a55: faixaEtariaRows[0]?.de46a55 ?? 0,
+      acima55: faixaEtariaRows[0]?.acima55 ?? 0,
+    },
+    diasSemanaGanhos,
+    negocioPerfil: perfil
+      ? {
+          endereco: perfil.endereco ?? null,
+          publicoAlvo: perfil.publicoAlvo ?? null,
+          vertical: perfil.vertical ?? null,
+          canaisVenda: perfil.canaisVenda ?? null,
+        }
+      : null,
   });
 });
 

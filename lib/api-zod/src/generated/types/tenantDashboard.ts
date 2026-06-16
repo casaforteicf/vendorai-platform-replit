@@ -6,18 +6,20 @@
  * OpenAPI spec version: 0.1.0
  */
 import type { DashboardLeadEntry } from './dashboardLeadEntry';
+import type { DashboardOportunidade } from './dashboardOportunidade';
 import type { TenantDashboardChurnRiskDistribuicao } from './tenantDashboardChurnRiskDistribuicao';
 import type { TenantDashboardDeals } from './tenantDashboardDeals';
 import type { TenantDashboardDealsPorTipoFechamento } from './tenantDashboardDealsPorTipoFechamento';
-import type { TenantDashboardFaturas } from './tenantDashboardFaturas';
+import type { TenantDashboardDiasSemanaGanhos } from './tenantDashboardDiasSemanaGanhos';
+import type { TenantDashboardFaixaEtaria } from './tenantDashboardFaixaEtaria';
 import type { TenantDashboardGanhosMes } from './tenantDashboardGanhosMes';
 import type { TenantDashboardLeads } from './tenantDashboardLeads';
+import type { TenantDashboardNegocioPerfil } from './tenantDashboardNegocioPerfil';
 import type { TenantDashboardPropostas } from './tenantDashboardPropostas';
 
 export interface TenantDashboard {
   leads: TenantDashboardLeads;
   deals: TenantDashboardDeals;
-  faturas: TenantDashboardFaturas;
   /** Activities with status=pendente and dataVencimento in the past */
   atividadesAtrasadas: number;
   churnRiskDistribuicao: TenantDashboardChurnRiskDistribuicao;
@@ -29,4 +31,10 @@ export interface TenantDashboard {
   propostas: TenantDashboardPropostas;
   /** Map of tipoFechamento → count for all deals */
   dealsPorTipoFechamento: TenantDashboardDealsPorTipoFechamento;
+  /** Top 8 open deals ordered by probabilidade desc */
+  topOportunidades: DashboardOportunidade[];
+  faixaEtaria: TenantDashboardFaixaEtaria;
+  /** Map of dayOfWeek (0=Sun..6=Sat) to count of ganho deals in last 6 months */
+  diasSemanaGanhos: TenantDashboardDiasSemanaGanhos;
+  negocioPerfil?: TenantDashboardNegocioPerfil;
 }

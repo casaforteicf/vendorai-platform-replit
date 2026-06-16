@@ -1600,16 +1600,6 @@ export const GetTenantDashboardResponse = zod.object({
   "totalDeals": zod.number(),
   "taxaConversao": zod.number().describe('ganho \/ totalDeals (0–1 range, 4 decimal places)')
 }),
-  "faturas": zod.object({
-  "pendente": zod.object({
-  "count": zod.number(),
-  "somaValor": zod.string()
-}),
-  "atrasada": zod.object({
-  "count": zod.number(),
-  "somaValor": zod.string()
-})
-}),
   "atividadesAtrasadas": zod.number().describe('Activities with status=pendente and dataVencimento in the past'),
   "churnRiskDistribuicao": zod.object({
   "baixo": zod.number().describe('churnRisk < 30'),
@@ -1634,7 +1624,31 @@ export const GetTenantDashboardResponse = zod.object({
   "somaValor": zod.string()
 })
 }),
-  "dealsPorTipoFechamento": zod.record(zod.string(), zod.number()).describe('Map of tipoFechamento → count for all deals')
+  "dealsPorTipoFechamento": zod.record(zod.string(), zod.number()).describe('Map of tipoFechamento → count for all deals'),
+  "topOportunidades": zod.array(zod.object({
+  "dealId": zod.string(),
+  "titulo": zod.string(),
+  "valor": zod.string().nullish(),
+  "probabilidade": zod.number().nullish(),
+  "etapa": zod.string(),
+  "leadId": zod.string().nullish(),
+  "leadNome": zod.string().nullish()
+})).describe('Top 8 open deals ordered by probabilidade desc'),
+  "faixaEtaria": zod.object({
+  "naoInformado": zod.number(),
+  "ate25": zod.number(),
+  "de26a35": zod.number(),
+  "de36a45": zod.number(),
+  "de46a55": zod.number(),
+  "acima55": zod.number()
+}),
+  "diasSemanaGanhos": zod.record(zod.string(), zod.number()).describe('Map of dayOfWeek (0=Sun..6=Sat) to count of ganho deals in last 6 months'),
+  "negocioPerfil": zod.object({
+  "endereco": zod.string().nullish(),
+  "publicoAlvo": zod.string().nullish(),
+  "vertical": zod.string().nullish(),
+  "canaisVenda": zod.array(zod.string()).nullish()
+}).nullish()
 })
 
 

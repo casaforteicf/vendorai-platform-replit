@@ -5596,6 +5596,29 @@ components:
           nullable: true
       required: [leadId, churnRisk]
 
+    DashboardOportunidade:
+      type: object
+      properties:
+        dealId:
+          type: string
+        titulo:
+          type: string
+        valor:
+          type: string
+          nullable: true
+        probabilidade:
+          type: integer
+          nullable: true
+        etapa:
+          type: string
+        leadId:
+          type: string
+          nullable: true
+        leadNome:
+          type: string
+          nullable: true
+      required: [dealId, titulo, etapa]
+
     TenantDashboard:
       type: object
       properties:
@@ -5624,26 +5647,6 @@ components:
               type: number
               description: ganho / totalDeals (0–1 range, 4 decimal places)
           required: [porEtapa, totalEmNegociacao, totalDeals, taxaConversao]
-        faturas:
-          type: object
-          properties:
-            pendente:
-              type: object
-              properties:
-                count:
-                  type: integer
-                somaValor:
-                  type: string
-              required: [count, somaValor]
-            atrasada:
-              type: object
-              properties:
-                count:
-                  type: integer
-                somaValor:
-                  type: string
-              required: [count, somaValor]
-          required: [pendente, atrasada]
         atividadesAtrasadas:
           type: integer
           description: Activities with status=pendente and dataVencimento in the past
@@ -5694,16 +5697,62 @@ components:
           additionalProperties:
             type: integer
           description: Map of tipoFechamento → count for all deals
+        topOportunidades:
+          type: array
+          description: Top 8 open deals ordered by probabilidade desc
+          items:
+            $ref: "#/components/schemas/DashboardOportunidade"
+        faixaEtaria:
+          type: object
+          properties:
+            naoInformado:
+              type: integer
+            ate25:
+              type: integer
+            de26a35:
+              type: integer
+            de36a45:
+              type: integer
+            de46a55:
+              type: integer
+            acima55:
+              type: integer
+          required: [naoInformado, ate25, de26a35, de36a45, de46a55, acima55]
+        diasSemanaGanhos:
+          type: object
+          additionalProperties:
+            type: integer
+          description: Map of dayOfWeek (0=Sun..6=Sat) to count of ganho deals in last 6 months
+        negocioPerfil:
+          type: object
+          nullable: true
+          properties:
+            endereco:
+              type: string
+              nullable: true
+            publicoAlvo:
+              type: string
+              nullable: true
+            vertical:
+              type: string
+              nullable: true
+            canaisVenda:
+              type: array
+              nullable: true
+              items:
+                type: string
       required:
         - leads
         - deals
-        - faturas
         - atividadesAtrasadas
         - churnRiskDistribuicao
         - top5ChurnRisk
         - ganhosMes
         - propostas
         - dealsPorTipoFechamento
+        - topOportunidades
+        - faixaEtaria
+        - diasSemanaGanhos
 
     SubscriptionPlano:
       type: string
