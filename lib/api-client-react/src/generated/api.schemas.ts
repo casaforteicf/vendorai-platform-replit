@@ -62,6 +62,20 @@ export interface ChangePasswordBody {
   newPassword: string;
 }
 
+export interface OkResponse {
+  ok: boolean;
+}
+
+export interface ForgotPasswordBody {
+  email: string;
+}
+
+export interface ResetPasswordBody {
+  token: string;
+  /** @minLength 8 */
+  newPassword: string;
+}
+
 export interface LoginBody {
   email: string;
   password: string;

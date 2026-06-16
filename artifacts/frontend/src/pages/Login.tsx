@@ -93,6 +93,15 @@ export default function Login() {
               </Button>
             </form>
           </Form>
+
+          <div className="text-center">
+            <a
+              href="/esqueci-senha"
+              className="text-sm text-muted-foreground hover:text-foreground underline-offset-4 hover:underline transition-colors"
+            >
+              Esqueci minha senha
+            </a>
+          </div>
           
         </div>
       </div>

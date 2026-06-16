@@ -21,6 +21,8 @@ import AdminAIUsage from "@/pages/AdminAIUsage";
 import AdminPartners from "@/pages/AdminPartners";
 import PartnerDashboard from "@/pages/PartnerDashboard";
 import AcceptInvite from "@/pages/AcceptInvite";
+import ForgotPassword from "@/pages/ForgotPassword";
+import ResetPassword from "@/pages/ResetPassword";
 import SiteLandingPage from "@/pages/SiteLandingPage";
 import Marketplace from "@/pages/Marketplace";
 import Estoque from "@/pages/Estoque";
@@ -189,6 +191,12 @@ function AppRoutes() {
       </Route>
       <Route path="/register">
         <PublicRoute component={Register} />
+      </Route>
+      <Route path="/esqueci-senha">
+        <PublicRoute component={ForgotPassword} />
+      </Route>
+      <Route path="/redefinir-senha">
+        <PublicRoute component={ResetPassword} />
       </Route>
       <Route path="/onboarding">
         <OnboardingRoute />

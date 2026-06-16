@@ -1,10 +1,12 @@
 import { Router, type IRouter } from "express";
 import { eq } from "drizzle-orm";
 import bcrypt from "bcryptjs";
+import { createHash, randomBytes } from "crypto";
 import { z } from "zod/v4";
-import { db, usersTable, tenantsTable, partnersTable } from "@workspace/db";
+import { db, usersTable, tenantsTable, partnersTable, passwordResetTokensTable } from "@workspace/db";
 import { signToken } from "../lib/jwt.js";
 import { authenticate, requireRole } from "../middlewares/auth.js";
+import { sendPasswordResetEmail } from "../lib/email.js";
 
 const router: IRouter = Router();
 const protectedRouter: IRouter = Router();
@@ -182,6 +184,92 @@ protectedRouter.post("/auth/refresh", async (req, res) => {
   });
 
   res.json({ token, user });
+});
+
+// ── Forgot password ───────────────────────────────────────────────────────
+
+const forgotPasswordSchema = z.object({ email: z.email() });
+
+router.post("/auth/forgot-password", async (req, res) => {
+  const parsed = forgotPasswordSchema.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(422).json({ error: "Email inválido" });
+    return;
+  }
+
+  const { email } = parsed.data;
+
+  const [user] = await db
+    .select({ id: usersTable.id, email: usersTable.email, active: usersTable.active })
+    .from(usersTable)
+    .where(eq(usersTable.email, email));
+
+  // Always respond 200 to avoid user enumeration
+  if (!user || !user.active) {
+    res.json({ ok: true });
+    return;
+  }
+
+  const rawToken = randomBytes(32).toString("hex");
+  const tokenHash = createHash("sha256").update(rawToken).digest("hex");
+  const expiresAt = new Date(Date.now() + 60 * 60 * 1000); // 1 hour
+
+  await db.insert(passwordResetTokensTable).values({
+    userId: user.id,
+    tokenHash,
+    expiresAt,
+  });
+
+  const domain = (process.env["REPLIT_DOMAINS"] ?? "").split(",")[0]?.trim();
+  const appUrl = domain ? `https://${domain}` : `http://localhost:3000`;
+  const resetUrl = `${appUrl}/redefinir-senha?token=${rawToken}`;
+
+  await sendPasswordResetEmail(user.email, resetUrl);
+
+  res.json({ ok: true });
+});
+
+// ── Reset password ─────────────────────────────────────────────────────────
+
+const resetPasswordSchema = z.object({
+  token: z.string().min(1),
+  newPassword: z.string().min(8, "A senha deve ter pelo menos 8 caracteres"),
+});
+
+router.post("/auth/reset-password", async (req, res) => {
+  const parsed = resetPasswordSchema.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(422).json({ error: parsed.error.issues[0]?.message ?? "Dados inválidos" });
+    return;
+  }
+
+  const { token, newPassword } = parsed.data;
+  const tokenHash = createHash("sha256").update(token).digest("hex");
+  const now = new Date();
+
+  const [resetRecord] = await db
+    .select()
+    .from(passwordResetTokensTable)
+    .where(eq(passwordResetTokensTable.tokenHash, tokenHash));
+
+  if (!resetRecord || resetRecord.usedAt || resetRecord.expiresAt < now) {
+    res.status(400).json({ error: "Link inválido ou expirado. Solicite um novo link." });
+    return;
+  }
+
+  const hashed = await bcrypt.hash(newPassword, 12);
+
+  await db
+    .update(usersTable)
+    .set({ password: hashed, updatedAt: now })
+    .where(eq(usersTable.id, resetRecord.userId));
+
+  await db
+    .update(passwordResetTokensTable)
+    .set({ usedAt: now })
+    .where(eq(passwordResetTokensTable.id, resetRecord.id));
+
+  res.json({ ok: true });
 });
 
 function isUniqueViolation(err: unknown): boolean {

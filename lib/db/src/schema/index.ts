@@ -28,5 +28,6 @@ export * from "./inventory_movements";
 export * from "./site_config";
 export * from "./segment_templates";
 export * from "./tenant_invites";
+export * from "./password_reset_tokens";
 export * from "./content_generations";
 export * from "./billing_events";
