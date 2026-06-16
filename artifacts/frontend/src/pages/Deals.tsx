@@ -1,4 +1,4 @@
-import { useState, useCallback } from "react";
+import { useState, useCallback, useRef } from "react";
 import { useAuth } from "@/contexts/AuthContext";
 import {
   useListDeals,
@@ -50,7 +50,7 @@ import {
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
-import { Plus, GripVertical, DollarSign, User, TrendingUp, Link2, Copy, CheckCheck } from "lucide-react";
+import { Plus, GripVertical, DollarSign, User, TrendingUp, Link2, Copy, CheckCheck, FileUp, Loader2, Sparkles } from "lucide-react";
 import {
   DndContext,
   DragOverlay,
@@ -276,6 +276,44 @@ function EditDealSheet({
   const { user } = useAuth();
   const tenantId = user?.tenantId ?? "";
   const [copied, setCopied] = useState(false);
+  const [extracting, setExtracting] = useState(false);
+  const [extractedInfo, setExtractedInfo] = useState<{
+    itens?: Array<{ descricao: string; quantidade?: number | null; valorUnitario?: number | null; valorTotal?: number | null }>;
+    fornecedor?: string | null;
+    cliente?: string | null;
+    observacoes?: string | null;
+  } | null>(null);
+  const quoteFileRef = useRef<HTMLInputElement>(null);
+
+  async function handleQuoteUpload(file: File) {
+    setExtracting(true);
+    setExtractedInfo(null);
+    try {
+      const fd = new FormData();
+      fd.append("file", file);
+      const res = await fetch(`/api/tenants/${tenantId}/deals/extract-quote`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${localStorage.getItem("vendorai_token")}` },
+        body: fd,
+      });
+      if (!res.ok) throw new Error("Falha");
+      const data = await res.json();
+      if (data.valorTotal != null) form.setValue("valor", data.valorTotal);
+      if (data.titulo) {
+        const current = form.getValues("titulo");
+        if (!current || current.trim() === "") form.setValue("titulo", data.titulo);
+      }
+      if (data.itens?.length || data.fornecedor || data.cliente || data.observacoes) {
+        setExtractedInfo({ itens: data.itens, fornecedor: data.fornecedor, cliente: data.cliente, observacoes: data.observacoes });
+      }
+      const confianca = data.confianca ?? 0;
+      toast({ title: confianca >= 0.5 ? "Orçamento lido com sucesso!" : "Orçamento importado (leitura parcial)" });
+    } catch {
+      toast({ title: "Erro ao ler o orçamento", variant: "destructive" });
+    } finally {
+      setExtracting(false);
+    }
+  }
 
   const form = useForm<z.infer<typeof createSchema>>({
     resolver: zodResolver(createSchema),
@@ -338,6 +376,74 @@ function EditDealSheet({
         </SheetHeader>
         <Form {...form}>
           <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4 mt-6">
+
+            {/* ── Import Quote ─────────────────────────────────────── */}
+            <div className="rounded-lg border border-dashed border-muted-foreground/30 bg-muted/20 p-3 space-y-2">
+              <input
+                ref={quoteFileRef}
+                type="file"
+                accept=".pdf,.png,.jpg,.jpeg,.webp,.docx,.doc"
+                className="hidden"
+                onChange={(e) => {
+                  const file = e.target.files?.[0];
+                  if (file) handleQuoteUpload(file);
+                  e.target.value = "";
+                }}
+              />
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className="w-full gap-2 border-violet-300 text-violet-700 hover:bg-violet-50"
+                disabled={extracting}
+                onClick={() => quoteFileRef.current?.click()}
+              >
+                {extracting ? (
+                  <><Loader2 className="h-4 w-4 animate-spin" />Lendo orçamento...</>
+                ) : (
+                  <><FileUp className="h-4 w-4" />Importar Orçamento</>
+                )}
+              </Button>
+              <p className="text-[11px] text-muted-foreground text-center">
+                PDF, imagem ou Word — IA extrai o valor e itens automaticamente
+              </p>
+            </div>
+
+            {extractedInfo && (
+              <div className="rounded-lg border border-violet-200 bg-violet-50 p-3 space-y-1.5">
+                <p className="text-xs font-medium text-violet-800 flex items-center gap-1.5">
+                  <Sparkles className="h-3.5 w-3.5" />
+                  Dados extraídos do orçamento
+                </p>
+                {extractedInfo.fornecedor && (
+                  <p className="text-xs text-violet-700">Fornecedor: <span className="font-medium">{extractedInfo.fornecedor}</span></p>
+                )}
+                {extractedInfo.cliente && (
+                  <p className="text-xs text-violet-700">Cliente: <span className="font-medium">{extractedInfo.cliente}</span></p>
+                )}
+                {extractedInfo.itens && extractedInfo.itens.length > 0 && (
+                  <div className="space-y-1 mt-1">
+                    {extractedInfo.itens.slice(0, 4).map((item, i) => (
+                      <div key={i} className="flex justify-between text-[11px] text-violet-700 bg-white/60 rounded px-2 py-1">
+                        <span className="truncate flex-1">{item.descricao}</span>
+                        {item.valorTotal != null && (
+                          <span className="ml-2 font-medium whitespace-nowrap">
+                            R$ {item.valorTotal.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}
+                          </span>
+                        )}
+                      </div>
+                    ))}
+                    {extractedInfo.itens.length > 4 && (
+                      <p className="text-[10px] text-violet-500 text-center">+{extractedInfo.itens.length - 4} itens</p>
+                    )}
+                  </div>
+                )}
+                {extractedInfo.observacoes && (
+                  <p className="text-[11px] text-violet-600 italic leading-tight">{extractedInfo.observacoes.slice(0, 150)}</p>
+                )}
+              </div>
+            )}
+
             <FormField
               control={form.control}
               name="titulo"
@@ -516,6 +622,14 @@ export default function Deals() {
   const [editDeal, setEditDeal] = useState<Deal | null>(null);
   const [activeId, setActiveId] = useState<string | null>(null);
   const [overColumn, setOverColumn] = useState<DealEtapa | null>(null);
+  const [createExtracting, setCreateExtracting] = useState(false);
+  const [createExtractedInfo, setCreateExtractedInfo] = useState<{
+    itens?: Array<{ descricao: string; quantidade?: number | null; valorUnitario?: number | null; valorTotal?: number | null }>;
+    fornecedor?: string | null;
+    cliente?: string | null;
+    observacoes?: string | null;
+  } | null>(null);
+  const createQuoteFileRef = useRef<HTMLInputElement>(null);
 
   const { data: deals = [], isLoading } = useListDeals(tenantId, undefined, {
     query: {
@@ -541,6 +655,36 @@ export default function Deals() {
   const updateDeal = useUpdateDeal();
 
   const createDeal = useCreateDeal();
+
+  async function handleCreateQuoteUpload(file: File) {
+    setCreateExtracting(true);
+    setCreateExtractedInfo(null);
+    try {
+      const fd = new FormData();
+      fd.append("file", file);
+      const res = await fetch(`/api/tenants/${tenantId}/deals/extract-quote`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${localStorage.getItem("vendorai_token")}` },
+        body: fd,
+      });
+      if (!res.ok) throw new Error("Falha");
+      const data = await res.json();
+      if (data.valorTotal != null) createForm.setValue("valor", data.valorTotal);
+      if (data.titulo) {
+        const current = createForm.getValues("titulo");
+        if (!current || current.trim() === "") createForm.setValue("titulo", data.titulo);
+      }
+      if (data.itens?.length || data.fornecedor || data.cliente || data.observacoes) {
+        setCreateExtractedInfo({ itens: data.itens, fornecedor: data.fornecedor, cliente: data.cliente, observacoes: data.observacoes });
+      }
+      const confianca = data.confianca ?? 0;
+      toast({ title: confianca >= 0.5 ? "Orçamento lido com sucesso!" : "Orçamento importado (leitura parcial)" });
+    } catch {
+      toast({ title: "Erro ao ler o orçamento", variant: "destructive" });
+    } finally {
+      setCreateExtracting(false);
+    }
+  }
 
   const createForm = useForm<z.infer<typeof createSchema>>({
     resolver: zodResolver(createSchema),
@@ -666,6 +810,74 @@ export default function Deals() {
             </DialogHeader>
             <Form {...createForm}>
               <form onSubmit={createForm.handleSubmit(onCreateSubmit)} className="space-y-4">
+
+                {/* ── Import Quote ────────────────────────────────────── */}
+                <div className="rounded-lg border border-dashed border-muted-foreground/30 bg-muted/20 p-3 space-y-2">
+                  <input
+                    ref={createQuoteFileRef}
+                    type="file"
+                    accept=".pdf,.png,.jpg,.jpeg,.webp,.docx,.doc"
+                    className="hidden"
+                    onChange={(e) => {
+                      const file = e.target.files?.[0];
+                      if (file) handleCreateQuoteUpload(file);
+                      e.target.value = "";
+                    }}
+                  />
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    className="w-full gap-2 border-violet-300 text-violet-700 hover:bg-violet-50"
+                    disabled={createExtracting}
+                    onClick={() => createQuoteFileRef.current?.click()}
+                  >
+                    {createExtracting ? (
+                      <><Loader2 className="h-4 w-4 animate-spin" />Lendo orçamento...</>
+                    ) : (
+                      <><FileUp className="h-4 w-4" />Importar Orçamento</>
+                    )}
+                  </Button>
+                  <p className="text-[11px] text-muted-foreground text-center">
+                    PDF, imagem ou Word — IA extrai o valor e itens automaticamente
+                  </p>
+                </div>
+
+                {createExtractedInfo && (
+                  <div className="rounded-lg border border-violet-200 bg-violet-50 p-3 space-y-1.5">
+                    <p className="text-xs font-medium text-violet-800 flex items-center gap-1.5">
+                      <Sparkles className="h-3.5 w-3.5" />
+                      Dados extraídos do orçamento
+                    </p>
+                    {createExtractedInfo.fornecedor && (
+                      <p className="text-xs text-violet-700">Fornecedor: <span className="font-medium">{createExtractedInfo.fornecedor}</span></p>
+                    )}
+                    {createExtractedInfo.cliente && (
+                      <p className="text-xs text-violet-700">Cliente: <span className="font-medium">{createExtractedInfo.cliente}</span></p>
+                    )}
+                    {createExtractedInfo.itens && createExtractedInfo.itens.length > 0 && (
+                      <div className="space-y-1 mt-1">
+                        {createExtractedInfo.itens.slice(0, 4).map((item, i) => (
+                          <div key={i} className="flex justify-between text-[11px] text-violet-700 bg-white/60 rounded px-2 py-1">
+                            <span className="truncate flex-1">{item.descricao}</span>
+                            {item.valorTotal != null && (
+                              <span className="ml-2 font-medium whitespace-nowrap">
+                                R$ {item.valorTotal.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}
+                              </span>
+                            )}
+                          </div>
+                        ))}
+                        {createExtractedInfo.itens.length > 4 && (
+                          <p className="text-[10px] text-violet-500 text-center">+{createExtractedInfo.itens.length - 4} itens</p>
+                        )}
+                      </div>
+                    )}
+                    {createExtractedInfo.observacoes && (
+                      <p className="text-[11px] text-violet-600 italic leading-tight">{createExtractedInfo.observacoes.slice(0, 150)}</p>
+                    )}
+                  </div>
+                )}
+
                 <FormField
                   control={createForm.control}
                   name="titulo"

@@ -1,5 +1,6 @@
 import { Router, type IRouter } from "express";
 import { and, eq, isNull } from "drizzle-orm";
+import multer from "multer";
 import {
   db,
   dealsTable,
@@ -23,8 +24,14 @@ import {
   createDocument,
 } from "../lib/zapsign.js";
 import { billingEventsTable } from "@workspace/db";
+import { extractQuoteData } from "../lib/document-extraction.js";
 
 const router: IRouter = Router();
+
+const uploadQuote = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 10 * 1024 * 1024 },
+});
 
 router.post("/deals", async (req, res) => {
   const parsed = insertDealSchema.safeParse(req.body);
@@ -358,6 +365,42 @@ router.patch("/deals/:id", async (req, res) => {
 
   res.json({ ...deal, inviteSent, inviteEmail, inviteSkipReason, chargeId, chargeLink, chargeSkipReason });
 });
+
+// ─── Quote extraction ─────────────────────────────────────────────────────────
+router.post(
+  "/tenants/:tenantId/deals/extract-quote",
+  uploadQuote.single("file"),
+  async (req, res) => {
+    const tenantId = String(req.params.tenantId);
+
+    if (
+      req.user?.platformRole !== "super_admin" &&
+      req.user?.tenantId !== tenantId
+    ) {
+      res.status(403).json({ error: "Access denied" });
+      return;
+    }
+
+    if (!req.file) {
+      res.status(400).json({ error: "Nenhum arquivo enviado" });
+      return;
+    }
+
+    try {
+      const result = await extractQuoteData([
+        {
+          buffer: req.file.buffer,
+          mimeType: req.file.mimetype,
+          originalName: req.file.originalname,
+        },
+      ]);
+      res.json(result);
+    } catch (err) {
+      req.log.error({ err }, "Failed to extract quote data");
+      res.status(500).json({ error: "Erro ao processar o arquivo" });
+    }
+  }
+);
 
 router.delete("/deals/:id", async (req, res) => {
   const [existing] = await db
