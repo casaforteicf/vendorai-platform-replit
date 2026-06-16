@@ -142,6 +142,23 @@ function buildTenantContext(data: WizardData): string {
   lines.push(`Segmento: ${data.vertical}`);
 
   if (data.publicoAlvo) lines.push(`Público-alvo: ${data.publicoAlvo}`);
+
+  const extra = data.discoveryData ?? {};
+
+  // Structured audience segments (richer than publicoAlvo free text)
+  if (Array.isArray(extra["audienceSegments"]) && (extra["audienceSegments"] as unknown[]).length > 0) {
+    type Seg = { nome: string; descricao?: string; dores?: string; motivacoes?: string };
+    const segs = extra["audienceSegments"] as Seg[];
+    const segLines = segs.map((s) => {
+      const parts: string[] = [`• ${s.nome}`];
+      if (s.descricao) parts.push(`Perfil: ${s.descricao}`);
+      if (s.dores) parts.push(`Dores: ${s.dores}`);
+      if (s.motivacoes) parts.push(`Motivações: ${s.motivacoes}`);
+      return parts.join(" | ");
+    }).join("\n");
+    lines.push(`Segmentos de audiência:\n${segLines}`);
+  }
+
   if (data.diferenciais) lines.push(`Diferencial competitivo: ${data.diferenciais}`);
 
   const produtosValidos = (data.produtos ?? []).filter((p) => p.nome.trim());
@@ -162,7 +179,6 @@ function buildTenantContext(data: WizardData): string {
   if (data.canaisVenda?.length)
     lines.push(`Canais de atendimento: ${data.canaisVenda.join(", ")}`);
 
-  const extra = data.discoveryData ?? {};
   if (extra["missao"]) lines.push(`Missão: ${extra["missao"]}`);
   if (extra["visao"]) lines.push(`Visão: ${extra["visao"]}`);
   if (Array.isArray(extra["valores"]) && extra["valores"].length > 0)

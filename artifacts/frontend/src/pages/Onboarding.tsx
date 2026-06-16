@@ -83,6 +83,12 @@ const productSchema = z.object({
 const tagSchema = z.object({ value: z.string() });
 const faqSchema = z.object({ pergunta: z.string(), resposta: z.string() });
 const materialSchema = z.object({ titulo: z.string(), url: z.string() });
+const audienceSegmentSchema = z.object({
+  nome: z.string(),
+  descricao: z.string().optional(),
+  dores: z.string().optional(),
+  motivacoes: z.string().optional(),
+});
 
 const formSchema = z.object({
   // Step 1 – Identidade
@@ -113,7 +119,8 @@ const formSchema = z.object({
   produtos: z.array(productSchema).optional(),
   diferenciais: z.string().optional(),
 
-  // Step 6 – Perfil do Cliente Ideal
+  // Step 6 – Segmentos de Audiência
+  audienceSegments: z.array(audienceSegmentSchema).optional(),
   publicoAlvo: z.string().optional(),
   faixaEtaria: z.string().optional(),
   generoPredominante: z.string().optional(),
@@ -383,6 +390,7 @@ export default function Onboarding() {
       personalidadeMarca: [],
       produtos: [{ nome: "", descricao: "", preco: undefined }],
       diferenciais: "",
+      audienceSegments: [{ nome: "", descricao: "", dores: "", motivacoes: "" }],
       publicoAlvo: "",
       faixaEtaria: "",
       generoPredominante: "",
@@ -472,6 +480,12 @@ export default function Onboarding() {
     append: appendAmeaca,
     remove: removeAmeaca,
   } = useFieldArray({ control: form.control, name: "ameacas" });
+
+  const {
+    fields: audienceSegmentFields,
+    append: appendAudienceSegment,
+    remove: removeAudienceSegment,
+  } = useFieldArray({ control: form.control, name: "audienceSegments" });
 
   const {
     fields: objecoesFields,
@@ -678,7 +692,15 @@ export default function Onboarding() {
       historia: values.historia || undefined,
       anoFundacao: values.anoFundacao || undefined,
       personalidadeMarca: values.personalidadeMarca,
-      // Step 6
+      // Step 6 – Segmentos de Audiência
+      audienceSegments: (values.audienceSegments ?? [])
+        .filter((s) => s.nome.trim())
+        .map((s) => ({
+          nome: s.nome,
+          descricao: s.descricao || undefined,
+          dores: s.dores || undefined,
+          motivacoes: s.motivacoes || undefined,
+        })),
       faixaEtaria: values.faixaEtaria || undefined,
       generoPredominante: values.generoPredominante || undefined,
       rendaMensal: values.rendaMensal || undefined,
@@ -1278,84 +1300,147 @@ export default function Onboarding() {
             <Card>
               <CardContent className="pt-6 space-y-5">
                 <div>
-                  <h2 className="text-xl font-bold">Perfil do Cliente Ideal</h2>
+                  <h2 className="text-xl font-bold">Segmentos de Audiência</h2>
                   <p className="text-sm text-muted-foreground mt-1">
-                    Quem é o cliente perfeito para o seu negócio? (ICP — Ideal Customer Profile)
+                    Defina os perfis de clientes que a IA usará para personalizar abordagens e campanhas. Quanto mais detalhado, melhor.
                   </p>
                 </div>
 
-                <div className="space-y-2">
-                  <Label htmlFor="publicoAlvo">Descrição geral do público</Label>
-                  <Textarea
-                    id="publicoAlvo"
-                    placeholder="Quem é seu cliente ideal? Ex: Mulheres 25-45 anos, donas de pet, que buscam praticidade..."
-                    rows={2}
-                    {...form.register("publicoAlvo")}
-                  />
+                {/* Audience Segment Cards */}
+                <div className="space-y-3">
+                  {audienceSegmentFields.map((field, idx) => (
+                    <div key={field.id} className="rounded-lg border border-border bg-muted/20 p-4 space-y-3">
+                      <div className="flex items-center justify-between">
+                        <span className="text-sm font-semibold">Perfil {idx + 1}</span>
+                        {audienceSegmentFields.length > 1 && (
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => removeAudienceSegment(idx)}
+                            className="h-7 w-7 p-0 text-muted-foreground hover:text-destructive"
+                          >
+                            <X className="h-4 w-4" />
+                          </Button>
+                        )}
+                      </div>
+
+                      <div className="space-y-1.5">
+                        <Label>Nome do segmento *</Label>
+                        <Input
+                          placeholder="Ex: Empreendedores PME, Jovens 20-30, Donas de casa com filhos…"
+                          {...form.register(`audienceSegments.${idx}.nome`)}
+                        />
+                      </div>
+
+                      <div className="space-y-1.5">
+                        <Label>Quem são? (perfil)</Label>
+                        <Textarea
+                          placeholder="Descreva: faixa etária, profissão, estilo de vida, comportamento de compra…"
+                          rows={2}
+                          {...form.register(`audienceSegments.${idx}.descricao`)}
+                        />
+                      </div>
+
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                        <div className="space-y-1.5">
+                          <Label>Principais dores / problemas</Label>
+                          <Textarea
+                            placeholder="O que mais incomoda esse perfil? Que problema precisa resolver?"
+                            rows={2}
+                            {...form.register(`audienceSegments.${idx}.dores`)}
+                          />
+                        </div>
+                        <div className="space-y-1.5">
+                          <Label>O que busca / motivações</Label>
+                          <Textarea
+                            placeholder="O que esse cliente quer conquistar? O que o motiva a comprar?"
+                            rows={2}
+                            {...form.register(`audienceSegments.${idx}.motivacoes`)}
+                          />
+                        </div>
+                      </div>
+                    </div>
+                  ))}
                 </div>
 
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="space-y-2">
-                    <Label>Faixa etária predominante</Label>
-                    <Select
-                      value={form.watch("faixaEtaria")}
-                      onValueChange={(v) => form.setValue("faixaEtaria", v)}
-                    >
-                      <SelectTrigger>
-                        <SelectValue placeholder="Selecione..." />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="18-24">18–24 anos</SelectItem>
-                        <SelectItem value="25-34">25–34 anos</SelectItem>
-                        <SelectItem value="35-44">35–44 anos</SelectItem>
-                        <SelectItem value="45-54">45–54 anos</SelectItem>
-                        <SelectItem value="55+">55+ anos</SelectItem>
-                        <SelectItem value="variada">Variada</SelectItem>
-                      </SelectContent>
-                    </Select>
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="gap-2"
+                  onClick={() => appendAudienceSegment({ nome: "", descricao: "", dores: "", motivacoes: "" })}
+                >
+                  <Plus className="h-4 w-4" />
+                  Adicionar perfil de audiência
+                </Button>
+
+                {/* Demographic summary */}
+                <div className="pt-2 border-t space-y-4">
+                  <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">
+                    Dados Demográficos Gerais
+                  </p>
+
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="space-y-2">
+                      <Label>Faixa etária predominante</Label>
+                      <Select
+                        value={form.watch("faixaEtaria")}
+                        onValueChange={(v) => form.setValue("faixaEtaria", v)}
+                      >
+                        <SelectTrigger><SelectValue placeholder="Selecione..." /></SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="18-24">18–24 anos</SelectItem>
+                          <SelectItem value="25-34">25–34 anos</SelectItem>
+                          <SelectItem value="35-44">35–44 anos</SelectItem>
+                          <SelectItem value="45-54">45–54 anos</SelectItem>
+                          <SelectItem value="55+">55+ anos</SelectItem>
+                          <SelectItem value="variada">Variada</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+
+                    <div className="space-y-2">
+                      <Label>Gênero predominante</Label>
+                      <Select
+                        value={form.watch("generoPredominante")}
+                        onValueChange={(v) => form.setValue("generoPredominante", v)}
+                      >
+                        <SelectTrigger><SelectValue placeholder="Selecione..." /></SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="feminino">Feminino</SelectItem>
+                          <SelectItem value="masculino">Masculino</SelectItem>
+                          <SelectItem value="misto">Misto / Neutro</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
                   </div>
 
-                  <div className="space-y-2">
-                    <Label>Gênero predominante</Label>
-                    <Select
-                      value={form.watch("generoPredominante")}
-                      onValueChange={(v) => form.setValue("generoPredominante", v)}
-                    >
-                      <SelectTrigger>
-                        <SelectValue placeholder="Selecione..." />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="feminino">Feminino</SelectItem>
-                        <SelectItem value="masculino">Masculino</SelectItem>
-                        <SelectItem value="misto">Misto / Neutro</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-                </div>
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="space-y-2">
+                      <Label>Renda mensal média</Label>
+                      <Select
+                        value={form.watch("rendaMensal")}
+                        onValueChange={(v) => form.setValue("rendaMensal", v)}
+                      >
+                        <SelectTrigger><SelectValue placeholder="Selecione..." /></SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="ate2sm">Até 2 salários mínimos</SelectItem>
+                          <SelectItem value="2a5sm">2 a 5 salários mínimos</SelectItem>
+                          <SelectItem value="5a10sm">5 a 10 salários mínimos</SelectItem>
+                          <SelectItem value="acima10sm">Acima de 10 salários mínimos</SelectItem>
+                          <SelectItem value="variada">Variada</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
 
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="space-y-2">
-                    <Label>Renda mensal média</Label>
-                    <Select
-                      value={form.watch("rendaMensal")}
-                      onValueChange={(v) => form.setValue("rendaMensal", v)}
-                    >
-                      <SelectTrigger>
-                        <SelectValue placeholder="Selecione..." />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="ate2sm">Até 2 salários mínimos</SelectItem>
-                        <SelectItem value="2a5sm">2 a 5 salários mínimos</SelectItem>
-                        <SelectItem value="5a10sm">5 a 10 salários mínimos</SelectItem>
-                        <SelectItem value="acima10sm">Acima de 10 salários mínimos</SelectItem>
-                        <SelectItem value="variada">Variada</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-
-                  <div className="space-y-2">
-                    <Label htmlFor="localizacaoCliente">Localização principal</Label>
-                    <Input id="localizacaoCliente" placeholder="Ex: São Paulo capital" {...form.register("localizacaoCliente")} />
+                    <div className="space-y-2">
+                      <Label htmlFor="localizacaoCliente">Localização principal</Label>
+                      <Input
+                        id="localizacaoCliente"
+                        placeholder="Ex: São Paulo capital"
+                        {...form.register("localizacaoCliente")}
+                      />
+                    </div>
                   </div>
                 </div>
               </CardContent>
