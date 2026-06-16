@@ -7,6 +7,14 @@ import {
   updateMessageSchema,
 } from "@workspace/db";
 import { maybeReanalyze } from "../lib/analyze-intelligence.js";
+import {
+  sendOutgoingMessage,
+  WhatsAppNotConnectedError,
+  WhatsAppPhoneMissingError,
+  InstagramNotConnectedError,
+  InstagramScopedIdMissingError,
+  LeadNotFoundError,
+} from "../services/omnichannel.js";
 
 const router: IRouter = Router();
 
@@ -22,6 +30,48 @@ router.post("/messages", async (req, res): Promise<void> => {
     return;
   }
 
+  const { tenantId, leadId, canal, direcao, conteudo } = parsed.data;
+
+  // For outgoing WhatsApp / Instagram messages, dispatch via omnichannel
+  // (which handles actual delivery + DB insert in one step).
+  if (direcao === "saida" && (canal === "whatsapp" || canal === "instagram") && leadId) {
+    try {
+      const { message } = await sendOutgoingMessage(
+        { tenantId, leadId, conteudo, canal },
+        req.log
+      );
+      res.status(201).json(message);
+    } catch (err) {
+      if (err instanceof WhatsAppNotConnectedError) {
+        res.status(422).json({ error: "WhatsApp não configurado para este tenant. Configure as credenciais Z-API em Configurações." });
+        return;
+      }
+      if (err instanceof WhatsAppPhoneMissingError) {
+        res.status(422).json({ error: "Este lead não possui número de telefone cadastrado." });
+        return;
+      }
+      if (err instanceof InstagramNotConnectedError) {
+        res.status(422).json({ error: "Instagram não configurado para este tenant. Configure o token em Configurações." });
+        return;
+      }
+      if (err instanceof InstagramScopedIdMissingError) {
+        res.status(422).json({ error: "Este lead não possui ID do Instagram. A conversa deve ter sido iniciada pelo lead via webhook." });
+        return;
+      }
+      if (err instanceof LeadNotFoundError) {
+        res.status(404).json({ error: "Lead não encontrado." });
+        return;
+      }
+      req.log.error({ err }, "messages: unexpected error sending outgoing message");
+      res.status(500).json({ error: "Falha ao enviar mensagem. Verifique as configurações do canal." });
+      return;
+    }
+
+    maybeReanalyze({ tenantId, leadId, log: req.log });
+    return;
+  }
+
+  // All other cases (incoming, chat channel, agent inserts): plain DB insert.
   const [message] = await db
     .insert(messagesTable)
     .values(parsed.data)

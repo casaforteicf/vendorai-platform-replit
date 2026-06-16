@@ -272,8 +272,22 @@ function ChatPanel({
             queryKey: getListTenantConversationsQueryKey(tenantId),
           });
         },
-        onError: () => {
-          toast({ title: "Erro ao enviar mensagem", variant: "destructive" });
+        onError: (err: unknown) => {
+          const apiMsg =
+            err != null &&
+            typeof err === "object" &&
+            "data" in err &&
+            err.data != null &&
+            typeof err.data === "object" &&
+            "error" in err.data &&
+            typeof (err.data as Record<string, unknown>).error === "string"
+              ? (err.data as { error: string }).error
+              : null;
+          toast({
+            title: "Erro ao enviar mensagem",
+            description: apiMsg ?? undefined,
+            variant: "destructive",
+          });
         },
       }
     );
