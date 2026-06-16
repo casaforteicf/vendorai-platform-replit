@@ -298,6 +298,7 @@ function calcCredits(valor: number) {
 }
 
 function TokenCreditsSection({ tenantId }: { tenantId: string }) {
+  const { token } = useAuth();
   const [tokenCredits, setTokenCredits] = useState<number | null>(null);
   const [purchases, setPurchases] = useState<TokenPurchase[]>([]);
   const [loading, setLoading] = useState(true);
@@ -314,10 +315,16 @@ function TokenCreditsSection({ tenantId }: { tenantId: string }) {
 
   const base = (import.meta.env.BASE_URL ?? "/").replace(/\/$/, "");
 
+  function authH(extra: Record<string, string> = {}): Record<string, string> {
+    return { ...(token ? { Authorization: `Bearer ${token}` } : {}), ...extra };
+  }
+
   const fetchBalance = useCallback(async () => {
     if (!tenantId) return;
     try {
-      const r = await fetch(`${base}/api/tenants/${tenantId}/token-purchases`);
+      const r = await fetch(`${base}/api/tenants/${tenantId}/token-purchases`, {
+        headers: authH(),
+      });
       if (!r.ok) return;
       const data = await r.json();
       setTokenCredits(data.tokenCredits ?? 0);
@@ -325,7 +332,8 @@ function TokenCreditsSection({ tenantId }: { tenantId: string }) {
     } finally {
       setLoading(false);
     }
-  }, [tenantId, base]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tenantId, base, token]);
 
   useEffect(() => { fetchBalance(); }, [fetchBalance]);
 
@@ -344,7 +352,7 @@ function TokenCreditsSection({ tenantId }: { tenantId: string }) {
     try {
       const r = await fetch(`${base}/api/tenants/${tenantId}/token-purchases`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: authH({ "Content-Type": "application/json" }),
         body: JSON.stringify({ valor: efectivoValor }),
       });
       const data = await r.json();
@@ -355,7 +363,10 @@ function TokenCreditsSection({ tenantId }: { tenantId: string }) {
       setPixLoading(true);
       setPixModal(true);
       try {
-        const pixR = await fetch(`${base}/api/tenants/${tenantId}/token-purchases/${data.id}/pix`);
+        const pixR = await fetch(
+          `${base}/api/tenants/${tenantId}/token-purchases/${data.id}/pix`,
+          { headers: authH() },
+        );
         const pixJson = await pixR.json();
         setPixData({ ...pixJson, invoiceUrl: pixJson.invoiceUrl ?? data.invoiceUrl });
       } finally {

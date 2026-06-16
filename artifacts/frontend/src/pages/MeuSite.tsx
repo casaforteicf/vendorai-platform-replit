@@ -40,7 +40,7 @@ const TIPO_OPTIONS = [
 ];
 
 export default function MeuSite() {
-  const { user } = useAuth();
+  const { user, token } = useAuth();
   const tenantId = user?.tenantId;
   const tenantSlug = (user as any)?.tenantSlug ?? tenantId;
   const base = (import.meta.env.BASE_URL ?? "/").replace(/\/$/, "");
@@ -51,10 +51,16 @@ export default function MeuSite() {
   const [generating, setGenerating] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  function authHeaders(extra: Record<string, string> = {}): Record<string, string> {
+    return { ...(token ? { Authorization: `Bearer ${token}` } : {}), ...extra };
+  }
+
   const fetchConfig = useCallback(async () => {
     if (!tenantId) return;
     try {
-      const r = await fetch(`${base}/api/tenants/${tenantId}/site-config`);
+      const r = await fetch(`${base}/api/tenants/${tenantId}/site-config`, {
+        headers: authHeaders(),
+      });
       if (r.ok) {
         const data: SiteConfig = await r.json();
         setSiteConfig(data);
@@ -63,7 +69,8 @@ export default function MeuSite() {
     } finally {
       setLoading(false);
     }
-  }, [tenantId, base]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tenantId, base, token]);
 
   useEffect(() => { fetchConfig(); }, [fetchConfig]);
 
@@ -74,7 +81,7 @@ export default function MeuSite() {
     try {
       const r = await fetch(`${base}/api/tenants/${tenantId}/site-config/generate`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: authHeaders({ "Content-Type": "application/json" }),
         body: JSON.stringify({ tipo: selectedTipo }),
       });
       const data = await r.json();
@@ -92,7 +99,7 @@ export default function MeuSite() {
     if (!siteConfig) return;
     const r = await fetch(`${base}/api/site-config/${siteConfig.id}`, {
       method: "PATCH",
-      headers: { "Content-Type": "application/json" },
+      headers: authHeaders({ "Content-Type": "application/json" }),
       body: JSON.stringify({ ativo: !siteConfig.ativo }),
     });
     if (r.ok) {
