@@ -36,7 +36,34 @@ _Replace the heading above with the project's name, and this line with one sente
 
 ## Product
 
-- Multi-tenant backend API. Tenants represent client organizations with token/message usage limits and lifecycle status (active/suspended/cancelled).
+- Multi-tenant SaaS CRM com IA. Tenants representam organizações clientes com limites de uso de tokens/mensagens e ciclo de vida (active/suspended/cancelled).
+
+## Escala e limites
+
+**Não há limite fixo de tenants no código.** A capacidade real depende da infraestrutura:
+
+| Camada | Situação atual | Gargalo a partir de |
+|---|---|---|
+| PostgreSQL (Supabase) | Plano gratuito: ~500 MB | Planos pagos escalam para TB |
+| API (Express single process) | Centenas de req/s | Milhares de tenants ativos simultâneos |
+| OpenAI | Limitado pela cota da chave `OPENAI_API_KEY` | Dependente do plano da conta |
+
+**Limites por tenant (configuráveis individualmente via API):**
+
+| Campo na tabela `tenants` | Descrição |
+|---|---|
+| `monthlyTokenLimit` | Máx. de tokens OpenAI por mês (null = sem limite) |
+| `tokensUsedCurrentMonth` | Contador de uso atual (resetar mensalmente) |
+| `dailyMessageLimit` | Máx. de mensagens enviadas por dia (null = sem limite) |
+| `messagesSentToday` | Contador de mensagens do dia |
+| `maxAnalysesPerHour` | Máx. de análises de IA por hora |
+| `analysisStalenessHours` | Intervalo mínimo entre análises (horas) |
+| `analysisMessageThreshold` | Nº de mensagens para disparar nova análise |
+| `status` | `active` / `suspended` / `cancelled` |
+
+**Limites por agente** (tabela `agent_configs`):
+- `dailyMessageLimit` — padrão 100 mensagens/dia
+- `monthlyTokenLimit` — padrão 100.000 tokens/mês
 
 ## User preferences
 
