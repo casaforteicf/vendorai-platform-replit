@@ -83,6 +83,7 @@ import type {
   ForgotPasswordBody,
   Funil,
   GenerateContentBody,
+  GeneratePerfilInsight200,
   GetAgendaGoogleAuthUrl200,
   HealthStatus,
   ImportInventoryBody,
@@ -4355,6 +4356,78 @@ export function useGetTenantDashboard<TData = Awaited<ReturnType<typeof getTenan
 
 
 
+
+export const getGeneratePerfilInsightUrl = (tenantId: string,) => {
+
+
+
+
+  return `/api/tenants/${tenantId}/dashboard/perfil-insight`
+}
+
+/**
+ * Uses the tenant's aggregated purchase profile data to generate a concise AI-powered narrative analysis in Portuguese.
+
+ * @summary Generate AI narrative for customer purchase profile
+ */
+export const generatePerfilInsight = async (tenantId: string, options?: RequestInit): Promise<GeneratePerfilInsight200> => {
+
+  return customFetch<GeneratePerfilInsight200>(getGeneratePerfilInsightUrl(tenantId),
+  {
+    ...options,
+    method: 'POST'
+
+
+  }
+);}
+
+
+
+
+export const getGeneratePerfilInsightMutationOptions = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof generatePerfilInsight>>, TError,{tenantId: string}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof generatePerfilInsight>>, TError,{tenantId: string}, TContext> => {
+
+const mutationKey = ['generatePerfilInsight'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof generatePerfilInsight>>, {tenantId: string}> = (props) => {
+          const {tenantId} = props ?? {};
+
+          return  generatePerfilInsight(tenantId,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type GeneratePerfilInsightMutationResult = NonNullable<Awaited<ReturnType<typeof generatePerfilInsight>>>
+
+    export type GeneratePerfilInsightMutationError = ErrorType<ErrorResponse>
+
+    /**
+ * @summary Generate AI narrative for customer purchase profile
+ */
+export const useGeneratePerfilInsight = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof generatePerfilInsight>>, TError,{tenantId: string}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof generatePerfilInsight>>,
+        TError,
+        {tenantId: string},
+        TContext
+      > => {
+      return useMutation(getGeneratePerfilInsightMutationOptions(options));
+    }
 
 export const getAnalyzeOnboardingDocumentsUrl = (tenantId: string,) => {
 

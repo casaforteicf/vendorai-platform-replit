@@ -1769,7 +1769,40 @@ export const GetTenantDashboardResponse = zod.object({
   "descricao": zod.string().nullish(),
   "preco": zod.number().nullish()
 })).nullish()
-}).nullish()
+}).nullish(),
+  "perfilCompra": zod.object({
+  "doresPrincipais": zod.array(zod.object({
+  "valor": zod.string(),
+  "count": zod.number()
+})),
+  "urgenciaDistribuicao": zod.record(zod.string(), zod.number()),
+  "orcamentoDistribuicao": zod.record(zod.string(), zod.number()),
+  "b2bVsB2c": zod.object({
+  "b2b": zod.number(),
+  "b2c": zod.number()
+}),
+  "tempoMedioFechamentoDias": zod.number().nullish(),
+  "motivosPerda": zod.array(zod.object({
+  "valor": zod.string(),
+  "count": zod.number()
+})),
+  "planosRecomendados": zod.record(zod.string(), zod.number())
+}).describe('Aggregated purchase profile metrics for AI analysis')
+})
+
+
+/**
+ * Uses the tenant's aggregated purchase profile data to generate a concise AI-powered narrative analysis in Portuguese.
+
+ * @summary Generate AI narrative for customer purchase profile
+ */
+export const GeneratePerfilInsightParams = zod.object({
+  "tenantId": zod.coerce.string()
+})
+
+export const GeneratePerfilInsightResponse = zod.object({
+  "insight": zod.string(),
+  "generatedAt": zod.string()
 })
 
 

@@ -260,6 +260,40 @@ export type TenantDashboardNegocioPerfil = {
   produtos?: TenantDashboardNegocioPerfilProdutosItem[] | null;
 } | null;
 
+export type TenantDashboardPerfilCompraDoresPrincipaisItem = {
+  valor: string;
+  count: number;
+};
+
+export type TenantDashboardPerfilCompraUrgenciaDistribuicao = {[key: string]: number};
+
+export type TenantDashboardPerfilCompraOrcamentoDistribuicao = {[key: string]: number};
+
+export type TenantDashboardPerfilCompraB2bVsB2c = {
+  b2b: number;
+  b2c: number;
+};
+
+export type TenantDashboardPerfilCompraMotivosPerdaItem = {
+  valor: string;
+  count: number;
+};
+
+export type TenantDashboardPerfilCompraPlanosRecomendados = {[key: string]: number};
+
+/**
+ * Aggregated purchase profile metrics for AI analysis
+ */
+export type TenantDashboardPerfilCompra = {
+  doresPrincipais: TenantDashboardPerfilCompraDoresPrincipaisItem[];
+  urgenciaDistribuicao: TenantDashboardPerfilCompraUrgenciaDistribuicao;
+  orcamentoDistribuicao: TenantDashboardPerfilCompraOrcamentoDistribuicao;
+  b2bVsB2c: TenantDashboardPerfilCompraB2bVsB2c;
+  tempoMedioFechamentoDias?: number | null;
+  motivosPerda: TenantDashboardPerfilCompraMotivosPerdaItem[];
+  planosRecomendados: TenantDashboardPerfilCompraPlanosRecomendados;
+};
+
 export interface TenantDashboard {
   leads: TenantDashboardLeads;
   deals: TenantDashboardDeals;
@@ -280,6 +314,8 @@ export interface TenantDashboard {
   /** Map of dayOfWeek (0=Sun..6=Sat) to count of ganho deals in last 6 months */
   diasSemanaGanhos: TenantDashboardDiasSemanaGanhos;
   negocioPerfil?: TenantDashboardNegocioPerfil;
+  /** Aggregated purchase profile metrics for AI analysis */
+  perfilCompra: TenantDashboardPerfilCompra;
 }
 
 export type SubscriptionPlano = typeof SubscriptionPlano[keyof typeof SubscriptionPlano];
@@ -2334,6 +2370,11 @@ export type UpdatePropostaStatusBody = {
 export type ListMessagesParams = {
 conversationId?: string;
 leadId?: string;
+};
+
+export type GeneratePerfilInsight200 = {
+  insight: string;
+  generatedAt: string;
 };
 
 export type AnalyzeOnboardingDocumentsBody = {

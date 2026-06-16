@@ -1,6 +1,7 @@
 import { useAuth } from "@/contexts/AuthContext";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import {
   Users,
   TrendingUp,
@@ -23,10 +24,20 @@ import {
   Package,
   Swords,
   Heart,
+  BrainCircuit,
+  AlertTriangle,
+  Loader2,
+  Sparkles,
+  TrendingDown,
+  BarChart2,
+  UserCheck,
+  Timer,
 } from "lucide-react";
+import { useState } from "react";
 import {
   useGetTenantDashboard,
   getGetTenantDashboardQueryKey,
+  useGeneratePerfilInsight,
 } from "@workspace/api-client-react";
 import {
   BarChart,
@@ -183,6 +194,22 @@ export default function Dashboard() {
           color: TIPO_COLORS[tipo] ?? "#94A3B8",
         }))
     : [];
+
+  const [aiInsight, setAiInsight] = useState<string | null>(null);
+  const [aiGeneratedAt, setAiGeneratedAt] = useState<string | null>(null);
+  const generateInsight = useGeneratePerfilInsight();
+
+  const handleGenerateInsight = () => {
+    generateInsight.mutate(
+      { tenantId },
+      {
+        onSuccess: (data) => {
+          setAiInsight(data.insight);
+          setAiGeneratedAt(data.generatedAt);
+        },
+      },
+    );
+  };
 
   const faixaChartData = dashboard?.faixaEtaria
     ? Object.entries(dashboard.faixaEtaria)
@@ -691,6 +718,235 @@ export default function Dashboard() {
           </Card>
         </div>
       </div>
+
+      {/* Perfil Comportamental — B2B/B2C, dores, urgência */}
+      {(isLoading || dashboard?.perfilCompra) && (
+        <div className="grid gap-6 lg:grid-cols-3">
+
+          {/* B2B vs B2C */}
+          <Card data-testid="card-b2b-b2c">
+            <CardHeader className="pb-2">
+              <div className="flex items-center gap-2">
+                <div className="p-1.5 rounded-md bg-blue-500/10 shrink-0">
+                  <UserCheck className="h-4 w-4 text-blue-500" />
+                </div>
+                <CardTitle className="text-sm font-semibold">Tipo de Cliente</CardTitle>
+              </div>
+              <p className="text-xs text-muted-foreground">Pessoa jurídica vs pessoa física</p>
+            </CardHeader>
+            <CardContent>
+              {isLoading ? (
+                <div className="space-y-2">
+                  <div className="h-8 bg-muted animate-pulse rounded" />
+                  <div className="h-8 bg-muted animate-pulse rounded" />
+                </div>
+              ) : (
+                (() => {
+                  const b2b = dashboard?.perfilCompra?.b2bVsB2c?.b2b ?? 0;
+                  const b2c = dashboard?.perfilCompra?.b2bVsB2c?.b2c ?? 0;
+                  const total = b2b + b2c;
+                  const b2bPct = total > 0 ? Math.round((b2b / total) * 100) : 0;
+                  const b2cPct = total > 0 ? Math.round((b2c / total) * 100) : 0;
+                  return (
+                    <div className="space-y-3 mt-1">
+                      <div>
+                        <div className="flex justify-between text-sm mb-1">
+                          <span className="font-medium">B2B (Empresas)</span>
+                          <span className="text-muted-foreground">{b2b} — {b2bPct}%</span>
+                        </div>
+                        <div className="h-2 rounded-full bg-muted overflow-hidden">
+                          <div className="h-full rounded-full bg-blue-500" style={{ width: `${b2bPct}%` }} />
+                        </div>
+                      </div>
+                      <div>
+                        <div className="flex justify-between text-sm mb-1">
+                          <span className="font-medium">B2C (Pessoas)</span>
+                          <span className="text-muted-foreground">{b2c} — {b2cPct}%</span>
+                        </div>
+                        <div className="h-2 rounded-full bg-muted overflow-hidden">
+                          <div className="h-full rounded-full bg-violet-400" style={{ width: `${b2cPct}%` }} />
+                        </div>
+                      </div>
+                      {dashboard?.perfilCompra?.tempoMedioFechamentoDias != null && (
+                        <div className="pt-2 border-t border-border flex items-center justify-between">
+                          <div className="flex items-center gap-1.5 text-sm text-muted-foreground">
+                            <Timer className="h-3.5 w-3.5" />
+                            <span>Tempo médio de fechamento</span>
+                          </div>
+                          <span className="text-sm font-semibold">
+                            {dashboard.perfilCompra.tempoMedioFechamentoDias} dias
+                          </span>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })()
+              )}
+            </CardContent>
+          </Card>
+
+          {/* Dores Principais */}
+          <Card data-testid="card-dores-principais">
+            <CardHeader className="pb-2">
+              <div className="flex items-center gap-2">
+                <div className="p-1.5 rounded-md bg-amber-500/10 shrink-0">
+                  <Flame className="h-4 w-4 text-amber-500" />
+                </div>
+                <CardTitle className="text-sm font-semibold">Dores Principais</CardTitle>
+              </div>
+              <p className="text-xs text-muted-foreground">Necessidades mais frequentes dos leads</p>
+            </CardHeader>
+            <CardContent>
+              {isLoading ? (
+                <div className="space-y-2">
+                  {Array.from({ length: 3 }).map((_, i) => (
+                    <div key={i} className="h-7 bg-muted animate-pulse rounded" />
+                  ))}
+                </div>
+              ) : (dashboard?.perfilCompra?.doresPrincipais?.length ?? 0) === 0 ? (
+                <p className="text-sm text-muted-foreground text-center py-4">
+                  Nenhuma dor identificada ainda.
+                </p>
+              ) : (
+                <div className="space-y-2 mt-1">
+                  {(dashboard?.perfilCompra?.doresPrincipais ?? []).map((d) => (
+                    <div key={d.valor} className="flex items-center justify-between gap-2 text-sm">
+                      <span className="truncate text-foreground" title={d.valor}>{d.valor}</span>
+                      <Badge variant="secondary" className="shrink-0 text-xs">{d.count}x</Badge>
+                    </div>
+                  ))}
+                </div>
+              )}
+              {(dashboard?.perfilCompra?.urgenciaDistribuicao &&
+                Object.keys(dashboard.perfilCompra.urgenciaDistribuicao).length > 0) && (
+                <div className="mt-3 pt-3 border-t border-border">
+                  <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide mb-2">Urgência</p>
+                  <div className="flex flex-wrap gap-1.5">
+                    {Object.entries(dashboard.perfilCompra.urgenciaDistribuicao).map(([k, v]) => (
+                      <Badge key={k} variant="outline" className="text-xs">
+                        {k}: {v as number}
+                      </Badge>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+
+          {/* Motivos de Perda / Planos */}
+          <Card data-testid="card-motivos-perda">
+            <CardHeader className="pb-2">
+              <div className="flex items-center gap-2">
+                <div className="p-1.5 rounded-md bg-red-500/10 shrink-0">
+                  <TrendingDown className="h-4 w-4 text-red-500" />
+                </div>
+                <CardTitle className="text-sm font-semibold">Motivos de Perda</CardTitle>
+              </div>
+              <p className="text-xs text-muted-foreground">Por que os deals são perdidos</p>
+            </CardHeader>
+            <CardContent>
+              {isLoading ? (
+                <div className="space-y-2">
+                  {Array.from({ length: 3 }).map((_, i) => (
+                    <div key={i} className="h-7 bg-muted animate-pulse rounded" />
+                  ))}
+                </div>
+              ) : (dashboard?.perfilCompra?.motivosPerda?.length ?? 0) === 0 ? (
+                <p className="text-sm text-muted-foreground text-center py-4">
+                  Nenhum motivo de perda registrado.
+                </p>
+              ) : (
+                <div className="space-y-2 mt-1">
+                  {(dashboard?.perfilCompra?.motivosPerda ?? []).map((m) => (
+                    <div key={m.valor} className="flex items-center justify-between gap-2 text-sm">
+                      <span className="truncate text-foreground" title={m.valor}>{m.valor}</span>
+                      <Badge variant="secondary" className="shrink-0 text-xs bg-red-50 text-red-700 border-red-100">{m.count}x</Badge>
+                    </div>
+                  ))}
+                </div>
+              )}
+              {(dashboard?.perfilCompra?.planosRecomendados &&
+                Object.keys(dashboard.perfilCompra.planosRecomendados).length > 0) && (
+                <div className="mt-3 pt-3 border-t border-border">
+                  <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide mb-2">Planos Recomendados</p>
+                  <div className="flex flex-wrap gap-1.5">
+                    {Object.entries(dashboard.perfilCompra.planosRecomendados).map(([k, v]) => (
+                      <Badge key={k} variant="outline" className="text-xs">
+                        {k}: {v as number}
+                      </Badge>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        </div>
+      )}
+
+      {/* Análise de Perfil de Compra — IA */}
+      <Card data-testid="card-ai-perfil-insight" className="border-violet-200 dark:border-violet-800">
+        <CardHeader className="pb-3">
+          <div className="flex items-center justify-between gap-3">
+            <div className="flex items-center gap-2">
+              <div className="p-1.5 rounded-md bg-violet-500/10 shrink-0">
+                <BrainCircuit className="h-4 w-4 text-violet-500" />
+              </div>
+              <div>
+                <CardTitle className="text-sm font-semibold">Análise de Perfil de Compra — IA</CardTitle>
+                {aiGeneratedAt && (
+                  <p className="text-[11px] text-muted-foreground mt-0.5">
+                    Gerada em {new Date(aiGeneratedAt).toLocaleString("pt-BR")}
+                  </p>
+                )}
+              </div>
+            </div>
+            <Button
+              size="sm"
+              variant={aiInsight ? "outline" : "default"}
+              onClick={handleGenerateInsight}
+              disabled={generateInsight.isPending || !tenantId}
+              className={aiInsight ? "" : "bg-violet-600 hover:bg-violet-700 text-white"}
+              data-testid="btn-gerar-insight"
+            >
+              {generateInsight.isPending ? (
+                <>
+                  <Loader2 className="h-3.5 w-3.5 mr-1.5 animate-spin" />
+                  Analisando...
+                </>
+              ) : (
+                <>
+                  <Sparkles className="h-3.5 w-3.5 mr-1.5" />
+                  {aiInsight ? "Reanalisar" : "Gerar Análise"}
+                </>
+              )}
+            </Button>
+          </div>
+        </CardHeader>
+        <CardContent>
+          {generateInsight.isError && (
+            <div className="flex items-start gap-2 p-3 rounded-md bg-red-50 dark:bg-red-950/20 border border-red-100 dark:border-red-900 mb-3">
+              <AlertTriangle className="h-4 w-4 text-red-500 shrink-0 mt-0.5" />
+              <p className="text-sm text-red-700 dark:text-red-400">
+                Não foi possível gerar a análise. Adicione mais dados de leads e tente novamente.
+              </p>
+            </div>
+          )}
+          {aiInsight ? (
+            <div className="prose prose-sm dark:prose-invert max-w-none">
+              <div className="text-sm text-foreground leading-relaxed whitespace-pre-wrap">
+                {aiInsight}
+              </div>
+            </div>
+          ) : !generateInsight.isError ? (
+            <div className="text-center py-6 text-muted-foreground">
+              <BarChart2 className="h-8 w-8 mx-auto mb-2 text-violet-300" />
+              <p className="text-sm">
+                Clique em <span className="font-medium text-violet-600">Gerar Análise</span> para que a IA analise o perfil de compra dos seus clientes e gere recomendações práticas.
+              </p>
+            </div>
+          ) : null}
+        </CardContent>
+      </Card>
 
       {/* Sobre o Negócio */}
       {(isLoading || perfil) && (

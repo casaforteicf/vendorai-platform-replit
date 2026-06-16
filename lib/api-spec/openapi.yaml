@@ -1693,6 +1693,48 @@ paths:
               schema:
                 $ref: "#/components/schemas/TenantDashboard"
 
+  /tenants/{tenantId}/dashboard/perfil-insight:
+    post:
+      operationId: generatePerfilInsight
+      tags: [executive-intelligence]
+      summary: Generate AI narrative for customer purchase profile
+      description: >
+        Uses the tenant's aggregated purchase profile data to generate a
+        concise AI-powered narrative analysis in Portuguese.
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: tenantId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: AI-generated narrative
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  insight:
+                    type: string
+                  generatedAt:
+                    type: string
+                required: [insight, generatedAt]
+        "400":
+          description: Not enough data
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
   /tenants/{tenantId}/onboarding/analyze-documents:
     post:
       operationId: analyzeOnboardingDocuments
@@ -6055,6 +6097,60 @@ components:
                     type: number
                     nullable: true
                 required: [nome]
+        perfilCompra:
+          type: object
+          description: Aggregated purchase profile metrics for AI analysis
+          properties:
+            doresPrincipais:
+              type: array
+              items:
+                type: object
+                properties:
+                  valor:
+                    type: string
+                  count:
+                    type: integer
+                required: [valor, count]
+            urgenciaDistribuicao:
+              type: object
+              additionalProperties:
+                type: integer
+            orcamentoDistribuicao:
+              type: object
+              additionalProperties:
+                type: integer
+            b2bVsB2c:
+              type: object
+              properties:
+                b2b:
+                  type: integer
+                b2c:
+                  type: integer
+              required: [b2b, b2c]
+            tempoMedioFechamentoDias:
+              type: number
+              nullable: true
+            motivosPerda:
+              type: array
+              items:
+                type: object
+                properties:
+                  valor:
+                    type: string
+                  count:
+                    type: integer
+                required: [valor, count]
+            planosRecomendados:
+              type: object
+              additionalProperties:
+                type: integer
+          required:
+            - doresPrincipais
+            - urgenciaDistribuicao
+            - orcamentoDistribuicao
+            - b2bVsB2c
+            - motivosPerda
+            - planosRecomendados
       required:
         - leads
         - deals
@@ -6067,6 +6163,7 @@ components:
         - topOportunidades
         - faixaEtaria
         - diasSemanaGanhos
+        - perfilCompra
 
     SubscriptionPlano:
       type: string

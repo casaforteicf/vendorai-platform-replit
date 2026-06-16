@@ -15,6 +15,7 @@ import type { TenantDashboardFaixaEtaria } from './tenantDashboardFaixaEtaria';
 import type { TenantDashboardGanhosMes } from './tenantDashboardGanhosMes';
 import type { TenantDashboardLeads } from './tenantDashboardLeads';
 import type { TenantDashboardNegocioPerfil } from './tenantDashboardNegocioPerfil';
+import type { TenantDashboardPerfilCompra } from './tenantDashboardPerfilCompra';
 import type { TenantDashboardPropostas } from './tenantDashboardPropostas';
 
 export interface TenantDashboard {
@@ -37,4 +38,6 @@ export interface TenantDashboard {
   /** Map of dayOfWeek (0=Sun..6=Sat) to count of ganho deals in last 6 months */
   diasSemanaGanhos: TenantDashboardDiasSemanaGanhos;
   negocioPerfil?: TenantDashboardNegocioPerfil;
+  /** Aggregated purchase profile metrics for AI analysis */
+  perfilCompra: TenantDashboardPerfilCompra;
 }
