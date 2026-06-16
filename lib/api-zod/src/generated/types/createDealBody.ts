@@ -6,6 +6,7 @@
  * OpenAPI spec version: 0.1.0
  */
 import type { DealEtapa } from './dealEtapa';
+import type { DealEtapaSaas } from './dealEtapaSaas';
 import type { TipoFechamento } from './tipoFechamento';
 
 export interface CreateDealBody {
@@ -23,4 +24,16 @@ export interface CreateDealBody {
   dataFechamentoPrevista?: Date;
   motivoPerda?: string;
   tipoFechamento?: TipoFechamento;
+  etapaSaas?: DealEtapaSaas;
+  mrr?: number;
+  arr?: number;
+  /** @minimum 0 */
+  seats?: number;
+  planoContratado?: string;
+  dataRenovacao?: Date;
+  /**
+     * @minimum 0
+     * @maximum 100
+     */
+  probChurn?: number;
 }

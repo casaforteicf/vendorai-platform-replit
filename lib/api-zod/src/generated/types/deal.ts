@@ -6,6 +6,7 @@
  * OpenAPI spec version: 0.1.0
  */
 import type { DealEtapa } from './dealEtapa';
+import type { DealEtapaSaas } from './dealEtapaSaas';
 import type { TipoFechamento } from './tipoFechamento';
 
 export interface Deal {
@@ -26,6 +27,24 @@ export interface Deal {
   motivoPerda?: string | null;
   /** Tipo de fechamento do negócio. Null herda o padrão do tenant. */
   tipoFechamento?: TipoFechamento | null;
+  /** Etapa no funil SaaS/TI */
+  etapaSaas?: DealEtapaSaas | null;
+  /** Monthly Recurring Revenue (decimal como string) */
+  mrr?: string | null;
+  /** Annual Recurring Revenue (decimal como string) */
+  arr?: string | null;
+  /** Número de licenças/usuários contratados */
+  seats?: number | null;
+  /** Nome do plano SaaS (ex. Starter, Pro, Enterprise) */
+  planoContratado?: string | null;
+  /** Data de renovação do contrato */
+  dataRenovacao?: Date | null;
+  /**
+     * Probabilidade de churn (0-100%)
+     * @minimum 0
+     * @maximum 100
+     */
+  probChurn?: number | null;
   createdAt: Date;
   updatedAt: Date;
 }

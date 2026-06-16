@@ -1135,6 +1135,22 @@ export const DealEtapa = {
 } as const;
 
 /**
+ * Etapa no funil SaaS/TI
+ */
+export type DealEtapaSaas = typeof DealEtapaSaas[keyof typeof DealEtapaSaas];
+
+
+export const DealEtapaSaas = {
+  lead_qualificado: 'lead_qualificado',
+  demo_agendada: 'demo_agendada',
+  trial_ativo: 'trial_ativo',
+  proposta_enviada: 'proposta_enviada',
+  fechamento: 'fechamento',
+  onboarding: 'onboarding',
+  expansao: 'expansao',
+} as const;
+
+/**
  * Define o comportamento ao marcar o negócio como Ganho. 'pedido' gera apenas uma confirmação simples (sem assinatura). 'contrato' inicia o fluxo completo de assinatura eletrônica. 'pedido_e_contrato' significa que o tenant usa ambos os modelos — o tipo é escolhido por negócio.
 
  */
@@ -1185,6 +1201,24 @@ export interface Deal {
   motivoPerda?: string | null;
   /** Tipo de fechamento do negócio. Null herda o padrão do tenant. */
   tipoFechamento?: TipoFechamento | null;
+  /** Etapa no funil SaaS/TI */
+  etapaSaas?: DealEtapaSaas | null;
+  /** Monthly Recurring Revenue (decimal como string) */
+  mrr?: string | null;
+  /** Annual Recurring Revenue (decimal como string) */
+  arr?: string | null;
+  /** Número de licenças/usuários contratados */
+  seats?: number | null;
+  /** Nome do plano SaaS (ex. Starter, Pro, Enterprise) */
+  planoContratado?: string | null;
+  /** Data de renovação do contrato */
+  dataRenovacao?: string | null;
+  /**
+     * Probabilidade de churn (0-100%)
+     * @minimum 0
+     * @maximum 100
+     */
+  probChurn?: number | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -1219,6 +1253,18 @@ export interface CreateDealBody {
   dataFechamentoPrevista?: string;
   motivoPerda?: string;
   tipoFechamento?: TipoFechamento;
+  etapaSaas?: DealEtapaSaas;
+  mrr?: number;
+  arr?: number;
+  /** @minimum 0 */
+  seats?: number;
+  planoContratado?: string;
+  dataRenovacao?: string;
+  /**
+     * @minimum 0
+     * @maximum 100
+     */
+  probChurn?: number;
 }
 
 export interface UpdateDealBody {
@@ -1235,6 +1281,18 @@ export interface UpdateDealBody {
   dataFechamentoPrevista?: string;
   motivoPerda?: string;
   tipoFechamento?: TipoFechamento;
+  etapaSaas?: DealEtapaSaas;
+  mrr?: number;
+  arr?: number;
+  /** @minimum 0 */
+  seats?: number;
+  planoContratado?: string;
+  dataRenovacao?: string;
+  /**
+     * @minimum 0
+     * @maximum 100
+     */
+  probChurn?: number;
 }
 
 export interface IncrementBody {

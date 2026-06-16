@@ -104,6 +104,7 @@ export * from './dashboardLeadEntry';
 export * from './dashboardOportunidade';
 export * from './deal';
 export * from './dealEtapa';
+export * from './dealEtapaSaas';
 export * from './dealUpdateResponse';
 export * from './deleteContentGeneration200';
 export * from './documentExtractionResult';

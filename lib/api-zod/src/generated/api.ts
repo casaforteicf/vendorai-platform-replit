@@ -1001,6 +1001,11 @@ export const DeleteFunilParams = zod.object({
 export const createDealBodyProbabilidadeMin = 0;
 export const createDealBodyProbabilidadeMax = 100;
 
+export const createDealBodySeatsMin = 0;
+
+export const createDealBodyProbChurnMin = 0;
+export const createDealBodyProbChurnMax = 100;
+
 
 
 export const CreateDealBody = zod.object({
@@ -1013,7 +1018,14 @@ export const CreateDealBody = zod.object({
   "probabilidade": zod.number().min(createDealBodyProbabilidadeMin).max(createDealBodyProbabilidadeMax).optional(),
   "dataFechamentoPrevista": zod.coerce.date().optional(),
   "motivoPerda": zod.string().optional(),
-  "tipoFechamento": zod.enum(['pedido', 'contrato', 'pedido_e_contrato']).optional().describe('Define o comportamento ao marcar o negócio como Ganho. \'pedido\' gera apenas uma confirmação simples (sem assinatura). \'contrato\' inicia o fluxo completo de assinatura eletrônica. \'pedido_e_contrato\' significa que o tenant usa ambos os modelos — o tipo é escolhido por negócio.\n')
+  "tipoFechamento": zod.enum(['pedido', 'contrato', 'pedido_e_contrato']).optional().describe('Define o comportamento ao marcar o negócio como Ganho. \'pedido\' gera apenas uma confirmação simples (sem assinatura). \'contrato\' inicia o fluxo completo de assinatura eletrônica. \'pedido_e_contrato\' significa que o tenant usa ambos os modelos — o tipo é escolhido por negócio.\n'),
+  "etapaSaas": zod.enum(['lead_qualificado', 'demo_agendada', 'trial_ativo', 'proposta_enviada', 'fechamento', 'onboarding', 'expansao']).optional().describe('Etapa no funil SaaS\/TI'),
+  "mrr": zod.number().optional(),
+  "arr": zod.number().optional(),
+  "seats": zod.number().min(createDealBodySeatsMin).optional(),
+  "planoContratado": zod.string().optional(),
+  "dataRenovacao": zod.coerce.date().optional(),
+  "probChurn": zod.number().min(createDealBodyProbChurnMin).max(createDealBodyProbChurnMax).optional()
 })
 
 
@@ -1033,6 +1045,9 @@ export const ListDealsQueryParams = zod.object({
 export const listDealsResponseProbabilidadeMin = 0;
 export const listDealsResponseProbabilidadeMax = 100;
 
+export const listDealsResponseProbChurnMin = 0;
+export const listDealsResponseProbChurnMax = 100;
+
 
 
 export const ListDealsResponseItem = zod.object({
@@ -1047,6 +1062,13 @@ export const ListDealsResponseItem = zod.object({
   "dataFechamentoPrevista": zod.coerce.date().nullish(),
   "motivoPerda": zod.string().nullish(),
   "tipoFechamento": zod.enum(['pedido', 'contrato', 'pedido_e_contrato']).nullish().describe('Tipo de fechamento do negócio. Null herda o padrão do tenant.'),
+  "etapaSaas": zod.enum(['lead_qualificado', 'demo_agendada', 'trial_ativo', 'proposta_enviada', 'fechamento', 'onboarding', 'expansao']).nullish().describe('Etapa no funil SaaS\/TI'),
+  "mrr": zod.string().nullish().describe('Monthly Recurring Revenue (decimal como string)'),
+  "arr": zod.string().nullish().describe('Annual Recurring Revenue (decimal como string)'),
+  "seats": zod.number().nullish().describe('Número de licenças\/usuários contratados'),
+  "planoContratado": zod.string().nullish().describe('Nome do plano SaaS (ex. Starter, Pro, Enterprise)'),
+  "dataRenovacao": zod.coerce.date().nullish().describe('Data de renovação do contrato'),
+  "probChurn": zod.number().min(listDealsResponseProbChurnMin).max(listDealsResponseProbChurnMax).nullish().describe('Probabilidade de churn (0-100%)'),
   "createdAt": zod.coerce.date(),
   "updatedAt": zod.coerce.date()
 })
@@ -1063,6 +1085,9 @@ export const GetDealParams = zod.object({
 export const getDealResponseProbabilidadeMin = 0;
 export const getDealResponseProbabilidadeMax = 100;
 
+export const getDealResponseProbChurnMin = 0;
+export const getDealResponseProbChurnMax = 100;
+
 
 
 export const GetDealResponse = zod.object({
@@ -1077,6 +1102,13 @@ export const GetDealResponse = zod.object({
   "dataFechamentoPrevista": zod.coerce.date().nullish(),
   "motivoPerda": zod.string().nullish(),
   "tipoFechamento": zod.enum(['pedido', 'contrato', 'pedido_e_contrato']).nullish().describe('Tipo de fechamento do negócio. Null herda o padrão do tenant.'),
+  "etapaSaas": zod.enum(['lead_qualificado', 'demo_agendada', 'trial_ativo', 'proposta_enviada', 'fechamento', 'onboarding', 'expansao']).nullish().describe('Etapa no funil SaaS\/TI'),
+  "mrr": zod.string().nullish().describe('Monthly Recurring Revenue (decimal como string)'),
+  "arr": zod.string().nullish().describe('Annual Recurring Revenue (decimal como string)'),
+  "seats": zod.number().nullish().describe('Número de licenças\/usuários contratados'),
+  "planoContratado": zod.string().nullish().describe('Nome do plano SaaS (ex. Starter, Pro, Enterprise)'),
+  "dataRenovacao": zod.coerce.date().nullish().describe('Data de renovação do contrato'),
+  "probChurn": zod.number().min(getDealResponseProbChurnMin).max(getDealResponseProbChurnMax).nullish().describe('Probabilidade de churn (0-100%)'),
   "createdAt": zod.coerce.date(),
   "updatedAt": zod.coerce.date()
 })
@@ -1092,6 +1124,11 @@ export const UpdateDealParams = zod.object({
 export const updateDealBodyProbabilidadeMin = 0;
 export const updateDealBodyProbabilidadeMax = 100;
 
+export const updateDealBodySeatsMin = 0;
+
+export const updateDealBodyProbChurnMin = 0;
+export const updateDealBodyProbChurnMax = 100;
+
 
 
 export const UpdateDealBody = zod.object({
@@ -1103,11 +1140,21 @@ export const UpdateDealBody = zod.object({
   "probabilidade": zod.number().min(updateDealBodyProbabilidadeMin).max(updateDealBodyProbabilidadeMax).optional(),
   "dataFechamentoPrevista": zod.coerce.date().optional(),
   "motivoPerda": zod.string().optional(),
-  "tipoFechamento": zod.enum(['pedido', 'contrato', 'pedido_e_contrato']).optional().describe('Define o comportamento ao marcar o negócio como Ganho. \'pedido\' gera apenas uma confirmação simples (sem assinatura). \'contrato\' inicia o fluxo completo de assinatura eletrônica. \'pedido_e_contrato\' significa que o tenant usa ambos os modelos — o tipo é escolhido por negócio.\n')
+  "tipoFechamento": zod.enum(['pedido', 'contrato', 'pedido_e_contrato']).optional().describe('Define o comportamento ao marcar o negócio como Ganho. \'pedido\' gera apenas uma confirmação simples (sem assinatura). \'contrato\' inicia o fluxo completo de assinatura eletrônica. \'pedido_e_contrato\' significa que o tenant usa ambos os modelos — o tipo é escolhido por negócio.\n'),
+  "etapaSaas": zod.enum(['lead_qualificado', 'demo_agendada', 'trial_ativo', 'proposta_enviada', 'fechamento', 'onboarding', 'expansao']).optional().describe('Etapa no funil SaaS\/TI'),
+  "mrr": zod.number().optional(),
+  "arr": zod.number().optional(),
+  "seats": zod.number().min(updateDealBodySeatsMin).optional(),
+  "planoContratado": zod.string().optional(),
+  "dataRenovacao": zod.coerce.date().optional(),
+  "probChurn": zod.number().min(updateDealBodyProbChurnMin).max(updateDealBodyProbChurnMax).optional()
 })
 
 export const updateDealResponseOneProbabilidadeMin = 0;
 export const updateDealResponseOneProbabilidadeMax = 100;
+
+export const updateDealResponseOneProbChurnMin = 0;
+export const updateDealResponseOneProbChurnMax = 100;
 
 
 
@@ -1123,6 +1170,13 @@ export const UpdateDealResponse = zod.object({
   "dataFechamentoPrevista": zod.coerce.date().nullish(),
   "motivoPerda": zod.string().nullish(),
   "tipoFechamento": zod.enum(['pedido', 'contrato', 'pedido_e_contrato']).nullish().describe('Tipo de fechamento do negócio. Null herda o padrão do tenant.'),
+  "etapaSaas": zod.enum(['lead_qualificado', 'demo_agendada', 'trial_ativo', 'proposta_enviada', 'fechamento', 'onboarding', 'expansao']).nullish().describe('Etapa no funil SaaS\/TI'),
+  "mrr": zod.string().nullish().describe('Monthly Recurring Revenue (decimal como string)'),
+  "arr": zod.string().nullish().describe('Annual Recurring Revenue (decimal como string)'),
+  "seats": zod.number().nullish().describe('Número de licenças\/usuários contratados'),
+  "planoContratado": zod.string().nullish().describe('Nome do plano SaaS (ex. Starter, Pro, Enterprise)'),
+  "dataRenovacao": zod.coerce.date().nullish().describe('Data de renovação do contrato'),
+  "probChurn": zod.number().min(updateDealResponseOneProbChurnMin).max(updateDealResponseOneProbChurnMax).nullish().describe('Probabilidade de churn (0-100%)'),
   "createdAt": zod.coerce.date(),
   "updatedAt": zod.coerce.date()
 }).and(zod.object({

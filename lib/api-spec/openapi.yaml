@@ -7329,6 +7329,20 @@ components:
       type: string
       enum: [novo, qualificado, proposta, negociacao, ganho, perdido]
 
+    DealEtapaSaas:
+      type: string
+      enum:
+        [
+          lead_qualificado,
+          demo_agendada,
+          trial_ativo,
+          proposta_enviada,
+          fechamento,
+          onboarding,
+          expansao,
+        ]
+      description: Etapa no funil SaaS/TI
+
     TipoFechamento:
       type: string
       enum: [pedido, contrato, pedido_e_contrato]
@@ -7419,6 +7433,37 @@ components:
           $ref: "#/components/schemas/TipoFechamento"
           nullable: true
           description: Tipo de fechamento do negócio. Null herda o padrão do tenant.
+        etapaSaas:
+          $ref: "#/components/schemas/DealEtapaSaas"
+          nullable: true
+          description: Etapa no funil SaaS/TI
+        mrr:
+          type: string
+          nullable: true
+          description: Monthly Recurring Revenue (decimal como string)
+        arr:
+          type: string
+          nullable: true
+          description: Annual Recurring Revenue (decimal como string)
+        seats:
+          type: integer
+          nullable: true
+          description: Número de licenças/usuários contratados
+        planoContratado:
+          type: string
+          nullable: true
+          description: Nome do plano SaaS (ex. Starter, Pro, Enterprise)
+        dataRenovacao:
+          type: string
+          format: date-time
+          nullable: true
+          description: Data de renovação do contrato
+        probChurn:
+          type: integer
+          minimum: 0
+          maximum: 100
+          nullable: true
+          description: Probabilidade de churn (0-100%)
         createdAt:
           type: string
           format: date-time
@@ -7482,6 +7527,24 @@ components:
           type: string
         tipoFechamento:
           $ref: "#/components/schemas/TipoFechamento"
+        etapaSaas:
+          $ref: "#/components/schemas/DealEtapaSaas"
+        mrr:
+          type: number
+        arr:
+          type: number
+        seats:
+          type: integer
+          minimum: 0
+        planoContratado:
+          type: string
+        dataRenovacao:
+          type: string
+          format: date-time
+        probChurn:
+          type: integer
+          minimum: 0
+          maximum: 100
       required: [tenantId, titulo]
 
     UpdateDealBody:
@@ -7508,6 +7571,24 @@ components:
           type: string
         tipoFechamento:
           $ref: "#/components/schemas/TipoFechamento"
+        etapaSaas:
+          $ref: "#/components/schemas/DealEtapaSaas"
+        mrr:
+          type: number
+        arr:
+          type: number
+        seats:
+          type: integer
+          minimum: 0
+        planoContratado:
+          type: string
+        dataRenovacao:
+          type: string
+          format: date-time
+        probChurn:
+          type: integer
+          minimum: 0
+          maximum: 100
 
     IncrementBody:
       type: object

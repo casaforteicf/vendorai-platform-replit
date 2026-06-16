@@ -1,4 +1,4 @@
-import { useState, useCallback, useRef } from "react";
+import React, { useState, useCallback, useRef } from "react";
 import { useAuth } from "@/contexts/AuthContext";
 import {
   useListDeals,
@@ -50,7 +50,11 @@ import {
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
-import { Plus, GripVertical, DollarSign, User, TrendingUp, Link2, Copy, CheckCheck, FileUp, Loader2, Sparkles } from "lucide-react";
+import { Plus, GripVertical, DollarSign, User, TrendingUp, Link2, Copy, CheckCheck, FileUp, Loader2, Sparkles, BarChart3, RefreshCw, Users, Package, AlertTriangle } from "lucide-react";
+import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
+import {
+  DealEtapaSaas,
+} from "@workspace/api-client-react";
 import {
   DndContext,
   DragOverlay,
@@ -73,6 +77,16 @@ const ETAPAS: { value: DealEtapa; label: string; color: string; bg: string }[] =
   { value: "negociacao",  label: "Negociação",  color: "text-amber-600",   bg: "bg-amber-100" },
   { value: "ganho",       label: "Ganho",       color: "text-emerald-600", bg: "bg-emerald-100" },
   { value: "perdido",     label: "Perdido",     color: "text-red-600",     bg: "bg-red-100" },
+];
+
+const ETAPAS_SAAS: { value: DealEtapaSaas; label: string; color: string; bg: string; icon: React.ElementType }[] = [
+  { value: "lead_qualificado",  label: "Lead Qualificado",  color: "text-slate-600",   bg: "bg-slate-50",    icon: User },
+  { value: "demo_agendada",     label: "Demo Agendada",     color: "text-blue-600",    bg: "bg-blue-50",     icon: BarChart3 },
+  { value: "trial_ativo",       label: "Trial Ativo",       color: "text-cyan-600",    bg: "bg-cyan-50",     icon: RefreshCw },
+  { value: "proposta_enviada",  label: "Proposta Enviada",  color: "text-violet-600",  bg: "bg-violet-50",   icon: Package },
+  { value: "fechamento",        label: "Fechamento",        color: "text-amber-600",   bg: "bg-amber-50",    icon: TrendingUp },
+  { value: "onboarding",        label: "Onboarding",        color: "text-emerald-600", bg: "bg-emerald-50",  icon: Users },
+  { value: "expansao",          label: "Expansão",          color: "text-indigo-600",  bg: "bg-indigo-50",   icon: Sparkles },
 ];
 
 function formatCurrency(value: string | null | undefined): string {
@@ -233,6 +247,453 @@ function KanbanColumn({
         )}
       </div>
     </div>
+  );
+}
+
+// ─── SaaS Deal Card ───────────────────────────────────────────────────────────
+
+function SaasDealCard({
+  deal,
+  leadName,
+  onClick,
+  overlay = false,
+}: {
+  deal: Deal;
+  leadName: string | undefined;
+  onClick?: () => void;
+  overlay?: boolean;
+}) {
+  const { attributes, listeners, setNodeRef, isDragging } = useDraggable({
+    id: `saas-${deal.id}`,
+    data: { deal },
+  });
+
+  const etapaCfg = ETAPAS_SAAS.find((e) => e.value === deal.etapaSaas);
+
+  return (
+    <div
+      ref={setNodeRef}
+      {...attributes}
+      {...listeners}
+      style={{ opacity: isDragging && !overlay ? 0.4 : 1, touchAction: "none" }}
+      className={`group bg-card border border-border rounded-lg p-3 space-y-2 ${
+        overlay
+          ? "shadow-2xl rotate-1 cursor-grabbing"
+          : "cursor-grab active:cursor-grabbing hover:border-indigo-300 hover:shadow-sm transition-all"
+      }`}
+      onClick={onClick}
+    >
+      {/* Title */}
+      <div className="flex items-start gap-2">
+        <GripVertical className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground/30 group-hover:text-muted-foreground/60 transition-colors" />
+        <p className="text-sm font-medium leading-tight flex-1 line-clamp-2">{deal.titulo}</p>
+      </div>
+
+      {/* MRR / ARR */}
+      {(deal.mrr || deal.arr) && (
+        <div className="pl-6 flex flex-wrap gap-2">
+          {deal.mrr && (
+            <span className="inline-flex items-center gap-1 text-[11px] bg-indigo-50 text-indigo-700 font-semibold rounded-full px-2 py-0.5">
+              <DollarSign className="h-3 w-3" />
+              MRR {formatCurrency(deal.mrr)}
+            </span>
+          )}
+          {deal.arr && (
+            <span className="inline-flex items-center gap-1 text-[11px] bg-violet-50 text-violet-700 font-semibold rounded-full px-2 py-0.5">
+              <BarChart3 className="h-3 w-3" />
+              ARR {formatCurrency(deal.arr)}
+            </span>
+          )}
+        </div>
+      )}
+
+      {/* Plan + Seats */}
+      <div className="pl-6 flex flex-wrap gap-2">
+        {deal.planoContratado && (
+          <span className="inline-flex items-center gap-1 text-[11px] bg-slate-100 text-slate-600 rounded-full px-2 py-0.5">
+            <Package className="h-3 w-3" />
+            {deal.planoContratado}
+          </span>
+        )}
+        {deal.seats != null && (
+          <span className="inline-flex items-center gap-1 text-[11px] bg-slate-100 text-slate-600 rounded-full px-2 py-0.5">
+            <Users className="h-3 w-3" />
+            {deal.seats} seats
+          </span>
+        )}
+      </div>
+
+      {/* Lead + Churn */}
+      <div className="pl-6 flex items-center justify-between">
+        {leadName && (
+          <span className="flex items-center gap-1 text-xs text-muted-foreground truncate">
+            <User className="h-3 w-3 shrink-0" />
+            {leadName}
+          </span>
+        )}
+        {deal.probChurn != null && deal.probChurn > 0 && (
+          <span className={`inline-flex items-center gap-1 text-[10px] font-semibold rounded-full px-1.5 py-0.5 ml-auto ${
+            deal.probChurn >= 70 ? "bg-red-100 text-red-700" :
+            deal.probChurn >= 40 ? "bg-amber-100 text-amber-700" :
+            "bg-slate-100 text-slate-600"
+          }`}>
+            <AlertTriangle className="h-2.5 w-2.5" />
+            {deal.probChurn}% churn
+          </span>
+        )}
+      </div>
+
+      {/* Stage badge */}
+      {etapaCfg && (
+        <div className="pl-6">
+          <span className={`inline-block text-[10px] font-medium rounded-full px-2 py-0.5 ${etapaCfg.bg} ${etapaCfg.color}`}>
+            {etapaCfg.label}
+          </span>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ─── SaaS Kanban Column ────────────────────────────────────────────────────────
+
+function SaasKanbanColumn({
+  etapa,
+  deals,
+  leadMap,
+  isOver,
+  onCardClick,
+}: {
+  etapa: (typeof ETAPAS_SAAS)[number];
+  deals: Deal[];
+  leadMap: Map<string, string>;
+  isOver: boolean;
+  onCardClick: (deal: Deal) => void;
+}) {
+  const { setNodeRef } = useDroppable({ id: `saas-col-${etapa.value}` });
+
+  const totalMrr = deals.reduce((acc, d) => {
+    const v = parseFloat(d.mrr ?? "0");
+    return acc + (isNaN(v) ? 0 : v);
+  }, 0);
+
+  const Icon = etapa.icon;
+
+  return (
+    <div className="flex flex-col w-68 shrink-0" style={{ width: "272px" }}>
+      <div className="flex items-center justify-between mb-3 px-1">
+        <div className="flex items-center gap-2">
+          <Icon className={`h-3.5 w-3.5 ${etapa.color}`} />
+          <span className={`text-xs font-semibold uppercase tracking-wide ${etapa.color}`}>
+            {etapa.label}
+          </span>
+          <span className="text-xs text-muted-foreground bg-muted rounded-full px-1.5 py-0.5 font-medium">
+            {deals.length}
+          </span>
+        </div>
+        {totalMrr > 0 && (
+          <span className="text-[11px] text-muted-foreground font-mono">
+            {totalMrr.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}/mês
+          </span>
+        )}
+      </div>
+
+      <div
+        ref={setNodeRef}
+        className={`flex-1 min-h-[400px] rounded-lg p-2 space-y-2 transition-colors ${
+          isOver
+            ? "bg-indigo-50 border-2 border-dashed border-indigo-300"
+            : "bg-muted/30 border-2 border-transparent"
+        }`}
+      >
+        {deals.map((deal) => (
+          <SaasDealCard
+            key={deal.id}
+            deal={deal}
+            leadName={deal.leadId ? leadMap.get(deal.leadId) : undefined}
+            onClick={() => onCardClick(deal)}
+          />
+        ))}
+        {deals.length === 0 && (
+          <div className="flex items-center justify-center h-20 text-xs text-muted-foreground/50">
+            Solte aqui
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ─── Edit SaaS Deal Sheet ─────────────────────────────────────────────────────
+
+const saasDealSchema = z.object({
+  titulo: z.string().min(2, "Título obrigatório"),
+  etapaSaas: z.enum([
+    "lead_qualificado", "demo_agendada", "trial_ativo",
+    "proposta_enviada", "fechamento", "onboarding", "expansao",
+  ]),
+  mrr: z.coerce.number().min(0).optional(),
+  arr: z.coerce.number().min(0).optional(),
+  seats: z.coerce.number().int().min(0).optional(),
+  planoContratado: z.string().optional(),
+  dataRenovacao: z.string().optional(),
+  probChurn: z.coerce.number().int().min(0).max(100).optional(),
+  leadId: z.string().optional().or(z.literal("")),
+});
+
+function EditSaasDealSheet({
+  deal,
+  leadMap,
+  open,
+  onClose,
+}: {
+  deal: Deal | null;
+  leadMap: Map<string, string>;
+  open: boolean;
+  onClose: () => void;
+}) {
+  const { toast } = useToast();
+  const updateDeal = useUpdateDeal();
+  const queryClient = useQueryClient();
+  const { user } = useAuth();
+  const tenantId = user?.tenantId ?? "";
+
+  type SaasFormValues = z.infer<typeof saasDealSchema>;
+  const form = useForm<SaasFormValues, any, SaasFormValues>({
+    resolver: zodResolver(saasDealSchema),
+    values: deal
+      ? {
+          titulo: deal.titulo,
+          etapaSaas: (deal.etapaSaas as SaasFormValues["etapaSaas"]) ?? "lead_qualificado",
+          mrr: deal.mrr ? parseFloat(deal.mrr) : undefined,
+          arr: deal.arr ? parseFloat(deal.arr) : undefined,
+          seats: deal.seats ?? undefined,
+          planoContratado: deal.planoContratado ?? "",
+          dataRenovacao: deal.dataRenovacao
+            ? new Date(deal.dataRenovacao).toISOString().split("T")[0]
+            : "",
+          probChurn: deal.probChurn ?? undefined,
+          leadId: deal.leadId ?? "",
+        }
+      : {
+          titulo: "",
+          etapaSaas: "lead_qualificado",
+        },
+  });
+
+  function onSubmit(values: SaasFormValues) {
+    if (!deal) return;
+    updateDeal.mutate(
+      {
+        id: deal.id,
+        data: {
+          titulo: values.titulo,
+          etapaSaas: values.etapaSaas as DealEtapaSaas,
+          mrr: values.mrr,
+          arr: values.arr,
+          seats: values.seats,
+          planoContratado: values.planoContratado || undefined,
+          dataRenovacao: values.dataRenovacao
+            ? new Date(values.dataRenovacao).toISOString()
+            : undefined,
+          probChurn: values.probChurn,
+          leadId: values.leadId || undefined,
+        },
+      },
+      {
+        onSuccess: () => {
+          toast({ title: "Negócio SaaS atualizado." });
+          queryClient.invalidateQueries({ queryKey: getListDealsQueryKey(tenantId) });
+          onClose();
+        },
+        onError: () => {
+          toast({ title: "Erro ao atualizar", variant: "destructive" });
+        },
+      }
+    );
+  }
+
+  if (!deal) return null;
+
+  return (
+    <Sheet open={open} onOpenChange={(v) => !v && onClose()}>
+      <SheetContent className="w-[420px] overflow-y-auto">
+        <SheetHeader>
+          <SheetTitle className="text-base flex items-center gap-2">
+            <BarChart3 className="h-4 w-4 text-indigo-600" />
+            Pipeline SaaS — Editar Negócio
+          </SheetTitle>
+        </SheetHeader>
+        <Form {...form}>
+          <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4 mt-6">
+            <FormField
+              control={form.control}
+              name="titulo"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Título *</FormLabel>
+                  <FormControl><Input {...field} /></FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+
+            <FormField
+              control={form.control}
+              name="etapaSaas"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Etapa SaaS *</FormLabel>
+                  <Select onValueChange={field.onChange} value={field.value}>
+                    <FormControl>
+                      <SelectTrigger>
+                        <SelectValue />
+                      </SelectTrigger>
+                    </FormControl>
+                    <SelectContent>
+                      {ETAPAS_SAAS.map((e) => (
+                        <SelectItem key={e.value} value={e.value}>{e.label}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+
+            <div className="rounded-lg border border-indigo-100 bg-indigo-50/50 p-3 space-y-3">
+              <p className="text-xs font-semibold text-indigo-700 flex items-center gap-1.5">
+                <DollarSign className="h-3.5 w-3.5" />
+                Métricas de Receita
+              </p>
+              <div className="grid grid-cols-2 gap-3">
+                <FormField
+                  control={form.control}
+                  name="mrr"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel className="text-xs">MRR (R$/mês)</FormLabel>
+                      <FormControl>
+                        <Input type="number" step="0.01" placeholder="0,00" {...field} />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+                <FormField
+                  control={form.control}
+                  name="arr"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel className="text-xs">ARR (R$/ano)</FormLabel>
+                      <FormControl>
+                        <Input type="number" step="0.01" placeholder="0,00" {...field} />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 gap-3">
+              <FormField
+                control={form.control}
+                name="planoContratado"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Plano</FormLabel>
+                    <FormControl>
+                      <Input placeholder="Ex: Pro, Enterprise" {...field} />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+              <FormField
+                control={form.control}
+                name="seats"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Nº de Seats</FormLabel>
+                    <FormControl>
+                      <Input type="number" min={0} placeholder="10" {...field} />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+            </div>
+
+            <div className="grid grid-cols-2 gap-3">
+              <FormField
+                control={form.control}
+                name="dataRenovacao"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Data de Renovação</FormLabel>
+                    <FormControl>
+                      <Input type="date" {...field} />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+              <FormField
+                control={form.control}
+                name="probChurn"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Risco de Churn %</FormLabel>
+                    <FormControl>
+                      <Input type="number" min={0} max={100} placeholder="0" {...field} />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+            </div>
+
+            <FormField
+              control={form.control}
+              name="leadId"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Lead / Empresa</FormLabel>
+                  {leadMap.size > 0 ? (
+                    <Select
+                      onValueChange={(v) => field.onChange(v === "__none__" ? "" : v)}
+                      value={field.value || "__none__"}
+                    >
+                      <FormControl>
+                        <SelectTrigger>
+                          <SelectValue placeholder="Selecionar..." />
+                        </SelectTrigger>
+                      </FormControl>
+                      <SelectContent>
+                        <SelectItem value="__none__">Nenhum</SelectItem>
+                        {Array.from(leadMap.entries()).map(([id, nome]) => (
+                          <SelectItem key={id} value={id}>{nome}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  ) : (
+                    <FormControl>
+                      <Input placeholder="ID do lead" {...field} />
+                    </FormControl>
+                  )}
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+
+            <Button type="submit" className="w-full bg-indigo-600 hover:bg-indigo-700" disabled={updateDeal.isPending}>
+              {updateDeal.isPending ? "Salvando..." : "Salvar alterações"}
+            </Button>
+          </form>
+        </Form>
+      </SheetContent>
+    </Sheet>
   );
 }
 
@@ -622,6 +1083,11 @@ export default function Deals() {
   const [editDeal, setEditDeal] = useState<Deal | null>(null);
   const [activeId, setActiveId] = useState<string | null>(null);
   const [overColumn, setOverColumn] = useState<DealEtapa | null>(null);
+  // SaaS pipeline state
+  const [saasActiveId, setSaasActiveId] = useState<string | null>(null);
+  const [saasOverColumn, setSaasOverColumn] = useState<DealEtapaSaas | null>(null);
+  const [editSaasDeal, setEditSaasDeal] = useState<Deal | null>(null);
+  const [isCreateSaasOpen, setIsCreateSaasOpen] = useState(false);
   const [createExtracting, setCreateExtracting] = useState(false);
   const [createExtractedInfo, setCreateExtractedInfo] = useState<{
     itens?: Array<{ descricao: string; quantidade?: number | null; valorUnitario?: number | null; valorTotal?: number | null }>;
@@ -788,6 +1254,70 @@ export default function Deals() {
 
   const dealsByEtapa = (etapa: DealEtapa) =>
     deals.filter((d) => d.etapa === etapa);
+
+  // ─── SaaS DnD ────────────────────────────────────────────────────────────────
+
+  const saasDealsList = deals.filter((d) => d.etapaSaas != null);
+  const saasActiveDeal = saasActiveId
+    ? deals.find((d) => d.id === saasActiveId.replace("saas-", "")) ?? null
+    : null;
+
+  const handleSaasDragStart = useCallback((event: DragStartEvent) => {
+    setSaasActiveId(event.active.id as string);
+  }, []);
+
+  const handleSaasDragOver = useCallback((event: DragOverEvent) => {
+    const overId = event.over?.id as string | undefined;
+    const colId = overId?.replace("saas-col-", "");
+    const col = ETAPAS_SAAS.find((e) => e.value === colId);
+    setSaasOverColumn(col ? col.value : null);
+  }, []);
+
+  const handleSaasDragEnd = useCallback(
+    (event: DragEndEvent) => {
+      const { active, over } = event;
+      setSaasActiveId(null);
+      setSaasOverColumn(null);
+      if (!over) return;
+      const dealId = (active.id as string).replace("saas-", "");
+      const draggedDeal = deals.find((d) => d.id === dealId);
+      const targetColId = (over.id as string).replace("saas-col-", "");
+      const targetEtapa = ETAPAS_SAAS.find((e) => e.value === targetColId);
+      if (!draggedDeal || !targetEtapa) return;
+      if (draggedDeal.etapaSaas === targetEtapa.value) return;
+
+      queryClient.setQueryData(
+        getListDealsQueryKey(tenantId),
+        (old: Deal[] | undefined) =>
+          (old ?? []).map((d) =>
+            d.id === dealId ? { ...d, etapaSaas: targetEtapa.value } : d
+          )
+      );
+
+      updateDeal.mutate(
+        { id: dealId, data: { etapaSaas: targetEtapa.value as DealEtapaSaas } },
+        {
+          onError: () => {
+            toast({ title: "Erro ao mover negócio SaaS", variant: "destructive" });
+            queryClient.invalidateQueries({ queryKey: getListDealsQueryKey(tenantId) });
+          },
+        }
+      );
+    },
+    [deals, queryClient, tenantId, updateDeal, toast]
+  );
+
+  const dealsBySaasEtapa = (etapa: DealEtapaSaas) =>
+    saasDealsList.filter((d) => d.etapaSaas === etapa);
+
+  const totalMrrPipeline = saasDealsList.reduce((acc, d) => {
+    const v = parseFloat(d.mrr ?? "0");
+    return acc + (isNaN(v) ? 0 : v);
+  }, 0);
+
+  const saasSensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 8 } })
+  );
 
   return (
     <div className="flex flex-col h-full space-y-6">
@@ -1021,49 +1551,122 @@ export default function Deals() {
         </Dialog>
       </div>
 
-      {/* Kanban Board */}
-      {isLoading ? (
-        <div className="flex gap-4 overflow-x-auto pb-4">
-          {ETAPAS.map((e) => (
-            <div key={e.value} className="w-72 shrink-0 space-y-2">
-              <div className="h-5 bg-muted animate-pulse rounded w-24" />
-              <div className="h-[400px] bg-muted/30 animate-pulse rounded-lg" />
-            </div>
-          ))}
+      {/* ── Tabs: Clássico / SaaS ─────────────────────────────────────────── */}
+      <Tabs defaultValue="classico" className="flex-1 flex flex-col min-h-0">
+        <div className="flex items-center justify-between shrink-0">
+          <TabsList>
+            <TabsTrigger value="classico">Pipeline Clássico</TabsTrigger>
+            <TabsTrigger value="saas" className="flex items-center gap-1.5">
+              <BarChart3 className="h-3.5 w-3.5" />
+              Pipeline SaaS
+              {saasDealsList.length > 0 && (
+                <span className="ml-1 rounded-full bg-indigo-100 text-indigo-700 text-[10px] font-bold px-1.5 py-0.5">
+                  {saasDealsList.length}
+                </span>
+              )}
+            </TabsTrigger>
+          </TabsList>
+          {totalMrrPipeline > 0 && (
+            <span className="text-xs text-muted-foreground font-mono">
+              MRR total: <span className="font-semibold text-indigo-700">
+                {totalMrrPipeline.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}/mês
+              </span>
+            </span>
+          )}
         </div>
-      ) : (
-        <DndContext
-          sensors={sensors}
-          onDragStart={handleDragStart}
-          onDragOver={handleDragOver}
-          onDragEnd={handleDragEnd}
-        >
-          <div className="flex gap-4 overflow-x-auto pb-6 flex-1">
-            {ETAPAS.map((etapa) => (
-              <KanbanColumn
-                key={etapa.value}
-                etapa={etapa}
-                deals={dealsByEtapa(etapa.value)}
-                leadMap={leadMap}
-                isOver={overColumn === etapa.value}
-                onCardClick={setEditDeal}
-              />
-            ))}
-          </div>
 
-          <DragOverlay dropAnimation={null}>
-            {activeDeal ? (
-              <DealCard
-                deal={activeDeal}
-                leadName={activeDeal.leadId ? leadMap.get(activeDeal.leadId) : undefined}
-                overlay
-              />
-            ) : null}
-          </DragOverlay>
-        </DndContext>
-      )}
+        {/* ── Tab 1: Classic Kanban ─────────────────────────────────────────── */}
+        <TabsContent value="classico" className="flex-1 min-h-0 mt-4 data-[state=active]:flex data-[state=active]:flex-col">
+          {isLoading ? (
+            <div className="flex gap-4 overflow-x-auto pb-4">
+              {ETAPAS.map((e) => (
+                <div key={e.value} className="w-72 shrink-0 space-y-2">
+                  <div className="h-5 bg-muted animate-pulse rounded w-24" />
+                  <div className="h-[400px] bg-muted/30 animate-pulse rounded-lg" />
+                </div>
+              ))}
+            </div>
+          ) : (
+            <DndContext
+              sensors={sensors}
+              onDragStart={handleDragStart}
+              onDragOver={handleDragOver}
+              onDragEnd={handleDragEnd}
+            >
+              <div className="flex gap-4 overflow-x-auto pb-6 flex-1">
+                {ETAPAS.map((etapa) => (
+                  <KanbanColumn
+                    key={etapa.value}
+                    etapa={etapa}
+                    deals={dealsByEtapa(etapa.value)}
+                    leadMap={leadMap}
+                    isOver={overColumn === etapa.value}
+                    onCardClick={setEditDeal}
+                  />
+                ))}
+              </div>
+              <DragOverlay dropAnimation={null}>
+                {activeDeal ? (
+                  <DealCard
+                    deal={activeDeal}
+                    leadName={activeDeal.leadId ? leadMap.get(activeDeal.leadId) : undefined}
+                    overlay
+                  />
+                ) : null}
+              </DragOverlay>
+            </DndContext>
+          )}
+        </TabsContent>
 
-      {/* Edit Sheet */}
+        {/* ── Tab 2: SaaS Kanban ────────────────────────────────────────────── */}
+        <TabsContent value="saas" className="flex-1 min-h-0 mt-4 data-[state=active]:flex data-[state=active]:flex-col">
+          {saasDealsList.length === 0 && !isLoading ? (
+            <div className="flex flex-col items-center justify-center flex-1 gap-4 text-center py-16">
+              <div className="rounded-full bg-indigo-50 p-4">
+                <BarChart3 className="h-8 w-8 text-indigo-400" />
+              </div>
+              <div>
+                <p className="font-semibold text-foreground">Pipeline SaaS vazio</p>
+                <p className="text-sm text-muted-foreground mt-1">
+                  Abra um negócio existente e defina sua etapa SaaS para aparecer aqui,<br />
+                  ou crie um negócio novo e edite-o no Pipeline SaaS.
+                </p>
+              </div>
+            </div>
+          ) : (
+            <DndContext
+              sensors={saasSensors}
+              onDragStart={handleSaasDragStart}
+              onDragOver={handleSaasDragOver}
+              onDragEnd={handleSaasDragEnd}
+            >
+              <div className="flex gap-4 overflow-x-auto pb-6 flex-1">
+                {ETAPAS_SAAS.map((etapa) => (
+                  <SaasKanbanColumn
+                    key={etapa.value}
+                    etapa={etapa}
+                    deals={dealsBySaasEtapa(etapa.value)}
+                    leadMap={leadMap}
+                    isOver={saasOverColumn === etapa.value}
+                    onCardClick={setEditSaasDeal}
+                  />
+                ))}
+              </div>
+              <DragOverlay dropAnimation={null}>
+                {saasActiveDeal ? (
+                  <SaasDealCard
+                    deal={saasActiveDeal}
+                    leadName={saasActiveDeal.leadId ? leadMap.get(saasActiveDeal.leadId) : undefined}
+                    overlay
+                  />
+                ) : null}
+              </DragOverlay>
+            </DndContext>
+          )}
+        </TabsContent>
+      </Tabs>
+
+      {/* Edit Sheets */}
       <EditDealSheet
         deal={editDeal}
         leadMap={leadMap}
@@ -1071,6 +1674,12 @@ export default function Deals() {
         onClose={() => setEditDeal(null)}
         tenantDefault={tenantDefault}
         tenantSlug={tenantData?.slug}
+      />
+      <EditSaasDealSheet
+        deal={editSaasDeal}
+        leadMap={leadMap}
+        open={!!editSaasDeal}
+        onClose={() => setEditSaasDeal(null)}
       />
     </div>
   );
