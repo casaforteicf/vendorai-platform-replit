@@ -132,6 +132,7 @@ import type {
   SyncInventoryResponse,
   Tenant,
   TenantDashboard,
+  TenantSetupStatus,
   UpdateActivityBody,
   UpdateAgendaBody,
   UpdateAgendamentoBody,
@@ -9931,6 +9932,84 @@ export const useDeleteTenant = <TError = ErrorType<ErrorResponse>,
       > => {
       return useMutation(getDeleteTenantMutationOptions(options));
     }
+
+export const getGetTenantSetupStatusUrl = (id: string,) => {
+
+
+
+
+  return `/api/tenants/${id}/setup-status`
+}
+
+/**
+ * Returns a structured checklist of which setup steps are complete for the tenant.
+ * @summary Get setup completion status for a tenant
+ */
+export const getTenantSetupStatus = async (id: string, options?: RequestInit): Promise<TenantSetupStatus> => {
+
+  return customFetch<TenantSetupStatus>(getGetTenantSetupStatusUrl(id),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetTenantSetupStatusQueryKey = (id: string,) => {
+    return [
+    `/api/tenants/${id}/setup-status`
+    ] as const;
+    }
+
+
+export const getGetTenantSetupStatusQueryOptions = <TData = Awaited<ReturnType<typeof getTenantSetupStatus>>, TError = ErrorType<ErrorResponse>>(id: string, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getTenantSetupStatus>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetTenantSetupStatusQueryKey(id);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getTenantSetupStatus>>> = ({ signal }) => getTenantSetupStatus(id, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, enabled: !!(id), ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getTenantSetupStatus>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetTenantSetupStatusQueryResult = NonNullable<Awaited<ReturnType<typeof getTenantSetupStatus>>>
+export type GetTenantSetupStatusQueryError = ErrorType<ErrorResponse>
+
+
+/**
+ * @summary Get setup completion status for a tenant
+ */
+
+export function useGetTenantSetupStatus<TData = Awaited<ReturnType<typeof getTenantSetupStatus>>, TError = ErrorType<ErrorResponse>>(
+ id: string, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getTenantSetupStatus>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetTenantSetupStatusQueryOptions(id,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+
+
+
+
+
 
 export const getCreateTenantInviteUrl = (id: string,) => {
 

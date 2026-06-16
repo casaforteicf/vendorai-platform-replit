@@ -1554,6 +1554,21 @@ export interface DocumentExtractionResult {
   confianca?: number | null;
 }
 
+export interface TenantSetupStatus {
+  onboardingComplete: boolean;
+  businessProfileConfigured: boolean;
+  productsConfigured: boolean;
+  agentConfigured: boolean;
+  autonomyEnabled: boolean;
+  whatsappConnected: boolean;
+  instagramConnected: boolean;
+  webhookConfigured: boolean;
+  firstLeadAdded: boolean;
+  completedSteps: number;
+  totalSteps: number;
+  percentComplete: number;
+}
+
 export type TenantAgentsEnabled = { [key: string]: unknown };
 
 export interface Tenant {

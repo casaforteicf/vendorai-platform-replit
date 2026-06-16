@@ -28,6 +28,7 @@ import Marketplace from "@/pages/Marketplace";
 import Estoque from "@/pages/Estoque";
 import Onboarding from "@/pages/Onboarding";
 import Content from "@/pages/Content";
+import GuiaImplantacao from "@/pages/GuiaImplantacao";
 import Suspended from "@/pages/Suspended";
 import Questionario from "@/pages/Questionario";
 import MeuSite from "@/pages/MeuSite";
@@ -249,6 +250,9 @@ function AppRoutes() {
       </Route>
       <Route path="/content">
         {() => <ProtectedRoute component={Content} />}
+      </Route>
+      <Route path="/guia-implantacao">
+        {() => <ProtectedRoute component={GuiaImplantacao} />}
       </Route>
       <Route path="/meu-site">
         {() => <ProtectedRoute component={MeuSite} />}

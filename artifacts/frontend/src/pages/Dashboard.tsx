@@ -2,6 +2,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Progress } from "@/components/ui/progress";
 import {
   Users,
   TrendingUp,
@@ -29,12 +30,21 @@ import {
   BarChart2,
   UserCheck,
   Timer,
+  CheckCircle2,
+  Circle,
+  BookOpen,
+  ChevronDown,
+  ChevronUp,
+  X,
 } from "lucide-react";
 import { useState } from "react";
+import { Link } from "wouter";
 import {
   useGetTenantDashboard,
   getGetTenantDashboardQueryKey,
   useGeneratePerfilInsight,
+  useGetTenantSetupStatus,
+  getGetTenantSetupStatusQueryKey,
 } from "@workspace/api-client-react";
 import {
   BarChart,
@@ -134,6 +144,122 @@ function churnBadge(risk: number | null | undefined) {
   );
 }
 
+type SetupStatus = {
+  onboardingComplete: boolean;
+  businessProfileConfigured: boolean;
+  productsConfigured: boolean;
+  agentConfigured: boolean;
+  autonomyEnabled: boolean;
+  whatsappConnected: boolean;
+  instagramConnected: boolean;
+  webhookConfigured: boolean;
+  firstLeadAdded: boolean;
+  completedSteps: number;
+  totalSteps: number;
+  percentComplete: number;
+};
+
+const SETUP_ITEMS: { key: keyof SetupStatus; label: string; href: string }[] = [
+  { key: "onboardingComplete",        label: "Onboarding concluído",            href: "/onboarding" },
+  { key: "businessProfileConfigured", label: "Perfil da empresa configurado",   href: "/configuracoes" },
+  { key: "productsConfigured",        label: "Produtos/serviços cadastrados",   href: "/estoque" },
+  { key: "agentConfigured",           label: "Agentes de IA configurados",      href: "/configuracoes" },
+  { key: "whatsappConnected",         label: "WhatsApp conectado (Z-API)",      href: "/configuracoes" },
+  { key: "webhookConfigured",         label: "Webhook de entrada ativo",        href: "/configuracoes" },
+  { key: "instagramConnected",        label: "Instagram conectado",             href: "/configuracoes" },
+  { key: "firstLeadAdded",            label: "Primeiro lead cadastrado",        href: "/leads" },
+  { key: "autonomyEnabled",           label: "Autonomia dos agentes habilitada",href: "/configuracoes" },
+];
+
+function SetupChecklist({ tenantId }: { tenantId: string }) {
+  const [dismissed, setDismissed] = useState(false);
+  const [collapsed, setCollapsed] = useState(false);
+
+  const { data: status } = useGetTenantSetupStatus(tenantId, {
+    query: {
+      enabled: !!tenantId,
+      queryKey: getGetTenantSetupStatusQueryKey(tenantId),
+      staleTime: 60_000,
+    },
+  });
+
+  if (!status || dismissed || status.percentComplete === 100) return null;
+
+  const pendingItems = SETUP_ITEMS.filter((item) => !status[item.key as keyof SetupStatus]);
+
+  return (
+    <div className="rounded-xl border border-primary/20 bg-primary/5 overflow-hidden">
+      <div className="flex items-center justify-between px-5 py-4">
+        <div className="flex items-center gap-3">
+          <BookOpen className="h-5 w-5 text-primary shrink-0" />
+          <div>
+            <p className="font-semibold text-sm">
+              Configuração em andamento — {status.completedSteps}/{status.totalSteps} etapas concluídas
+            </p>
+            <p className="text-xs text-muted-foreground mt-0.5">
+              Complete o setup para ativar todos os recursos da plataforma.
+            </p>
+          </div>
+        </div>
+        <div className="flex items-center gap-2 shrink-0">
+          <button
+            onClick={() => setCollapsed((v) => !v)}
+            className="p-1 rounded hover:bg-muted/50 text-muted-foreground"
+          >
+            {collapsed ? <ChevronDown className="h-4 w-4" /> : <ChevronUp className="h-4 w-4" />}
+          </button>
+          <button
+            onClick={() => setDismissed(true)}
+            className="p-1 rounded hover:bg-muted/50 text-muted-foreground"
+          >
+            <X className="h-4 w-4" />
+          </button>
+        </div>
+      </div>
+
+      <div className="px-5 pb-1">
+        <Progress value={status.percentComplete} className="h-1.5" />
+      </div>
+
+      {!collapsed && (
+        <div className="px-5 py-4 space-y-2">
+          {SETUP_ITEMS.map((item) => {
+            const done = !!status[item.key as keyof SetupStatus];
+            return (
+              <div key={item.key} className="flex items-center gap-3">
+                {done ? (
+                  <CheckCircle2 className="h-4 w-4 text-emerald-500 shrink-0" />
+                ) : (
+                  <Circle className="h-4 w-4 text-muted-foreground/40 shrink-0" />
+                )}
+                {done ? (
+                  <span className="text-sm text-muted-foreground line-through">{item.label}</span>
+                ) : (
+                  <Link href={item.href} className="text-sm text-foreground hover:text-primary hover:underline">
+                    {item.label}
+                  </Link>
+                )}
+              </div>
+            );
+          })}
+
+          {pendingItems.length > 0 && (
+            <div className="pt-2">
+              <Link
+                href="/guia-implantacao"
+                className="inline-flex items-center gap-1.5 text-xs text-primary hover:underline font-medium"
+              >
+                <BookOpen className="h-3 w-3" />
+                Ver guia completo de implantação
+              </Link>
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function StatCardSkeleton() {
   return (
     <Card className="animate-pulse">
@@ -214,6 +340,9 @@ export default function Dashboard() {
           Bem-vindo de volta, {user?.name}.
         </p>
       </div>
+
+      {/* Setup checklist — shown while installation is incomplete */}
+      {tenantId && <SetupChecklist tenantId={tenantId} />}
 
       {/* KPI Row 1 — Pipeline e conversão */}
       <div className="grid gap-3 grid-cols-2 lg:grid-cols-4">

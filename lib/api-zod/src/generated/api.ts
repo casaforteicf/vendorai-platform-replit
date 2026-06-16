@@ -3707,6 +3707,30 @@ export const DeleteTenantParams = zod.object({
 
 
 /**
+ * Returns a structured checklist of which setup steps are complete for the tenant.
+ * @summary Get setup completion status for a tenant
+ */
+export const GetTenantSetupStatusParams = zod.object({
+  "id": zod.coerce.string()
+})
+
+export const GetTenantSetupStatusResponse = zod.object({
+  "onboardingComplete": zod.boolean(),
+  "businessProfileConfigured": zod.boolean(),
+  "productsConfigured": zod.boolean(),
+  "agentConfigured": zod.boolean(),
+  "autonomyEnabled": zod.boolean(),
+  "whatsappConnected": zod.boolean(),
+  "instagramConnected": zod.boolean(),
+  "webhookConfigured": zod.boolean(),
+  "firstLeadAdded": zod.boolean(),
+  "completedSteps": zod.number(),
+  "totalSteps": zod.number(),
+  "percentComplete": zod.number()
+})
+
+
+/**
  * Creates (or reuses a pending) tenant_admin invite and sends it via email. Requires tenant_admin or super_admin.
  * @summary Create an onboarding invite for a tenant
  */

@@ -1,6 +1,14 @@
 import { Router, type IRouter } from "express";
-import { eq } from "drizzle-orm";
-import { db, tenantsTable, insertTenantSchema, updateTenantSchema } from "@workspace/db";
+import { eq, count } from "drizzle-orm";
+import {
+  db,
+  tenantsTable,
+  insertTenantSchema,
+  updateTenantSchema,
+  agentConfigsTable,
+  businessProfilesTable,
+  leadsTable,
+} from "@workspace/db";
 import { requireRole, requireSameTenanOrSuperAdmin } from "../middlewares/auth";
 
 const router: IRouter = Router();
@@ -160,6 +168,56 @@ router.post("/tenants/:id/integration-settings/regenerate-key", requireSameTenan
   res.json({
     webhookEstoqueUrl: tenant.webhookEstoqueUrl ?? null,
     apiKeyEstoque: tenant.apiKeyEstoque ?? null,
+  });
+});
+
+router.get("/tenants/:id/setup-status", requireSameTenanOrSuperAdmin(), async (req, res) => {
+  const tenantId = String(req.params.id);
+
+  const [tenant] = await db.select().from(tenantsTable).where(eq(tenantsTable.id, tenantId));
+  if (!tenant) { res.status(404).json({ error: "Tenant not found" }); return; }
+
+  const [agentConfig] = await db.select().from(agentConfigsTable).where(eq(agentConfigsTable.tenantId, tenantId));
+  const [businessProfile] = await db.select().from(businessProfilesTable).where(eq(businessProfilesTable.tenantId, tenantId));
+  const [leadCountRow] = await db.select({ value: count() }).from(leadsTable).where(eq(leadsTable.tenantId, tenantId));
+
+  const onboardingComplete    = !!tenant.setupCompletedAt;
+  const businessProfileConfigured = !!businessProfile;
+  const productsConfigured    = Array.isArray(businessProfile?.produtos) && (businessProfile.produtos as unknown[]).length > 0;
+  const agentConfigured       = !!agentConfig?.setupCompletedAt;
+  const autonomyEnabled       = !!agentConfig?.autonomyEnabledAt;
+  const whatsappConnected     = !!(agentConfig?.zapiInstanceId && agentConfig?.zapiToken && agentConfig?.zapiClientToken);
+  const instagramConnected    = !!(agentConfig?.instagramPageId && agentConfig?.instagramPageAccessToken);
+  const webhookConfigured     = !!agentConfig?.webhookSecret;
+  const firstLeadAdded        = (leadCountRow?.value ?? 0) > 0;
+
+  const checks = [
+    onboardingComplete,
+    businessProfileConfigured,
+    productsConfigured,
+    agentConfigured,
+    autonomyEnabled,
+    whatsappConnected,
+    instagramConnected,
+    webhookConfigured,
+    firstLeadAdded,
+  ];
+  const completedSteps = checks.filter(Boolean).length;
+  const totalSteps = checks.length;
+
+  res.json({
+    onboardingComplete,
+    businessProfileConfigured,
+    productsConfigured,
+    agentConfigured,
+    autonomyEnabled,
+    whatsappConnected,
+    instagramConnected,
+    webhookConfigured,
+    firstLeadAdded,
+    completedSteps,
+    totalSteps,
+    percentComplete: Math.round((completedSteps / totalSteps) * 100),
   });
 });
 

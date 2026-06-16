@@ -1,12 +1,15 @@
 import { useState } from "react";
 import { useAuth } from "@/contexts/AuthContext";
 import { Button } from "@/components/ui/button";
+import { Progress } from "@/components/ui/progress";
 import { cn } from "@/lib/utils";
 import logoFull from "/logo-full-light.svg";
-import { LogOut, Building2, RefreshCw, AlertTriangle, ArrowLeft, Zap, MessageSquare } from "lucide-react";
+import { LogOut, Building2, RefreshCw, AlertTriangle, ArrowLeft, Zap, MessageSquare, CheckCircle2, Circle } from "lucide-react";
 import {
   useListPartnerTenants,
   useGetPartnerTenantUsage,
+  useGetTenantSetupStatus,
+  getGetTenantSetupStatusQueryKey,
 } from "@workspace/api-client-react";
 
 function StatusBadge({ status }: { status: string }) {
@@ -47,8 +50,23 @@ function UsageBar({ used, limit, label }: { used: number; limit?: number | null;
   );
 }
 
+const SETUP_CHECKS: { key: string; label: string }[] = [
+  { key: "onboardingComplete",        label: "Onboarding concluído" },
+  { key: "businessProfileConfigured", label: "Perfil da empresa" },
+  { key: "productsConfigured",        label: "Produtos cadastrados" },
+  { key: "agentConfigured",           label: "Agentes configurados" },
+  { key: "whatsappConnected",         label: "WhatsApp conectado" },
+  { key: "webhookConfigured",         label: "Webhook de entrada" },
+  { key: "instagramConnected",        label: "Instagram conectado" },
+  { key: "firstLeadAdded",            label: "Primeiro lead" },
+  { key: "autonomyEnabled",           label: "Autonomia ativada" },
+];
+
 function TenantDetail({ tenantId, onBack }: { tenantId: string; onBack: () => void }) {
   const { data, isLoading, isError } = useGetPartnerTenantUsage(tenantId);
+  const { data: setupStatus } = useGetTenantSetupStatus(tenantId, {
+    query: { enabled: !!tenantId, queryKey: getGetTenantSetupStatusQueryKey(tenantId) },
+  });
 
   return (
     <div className="space-y-6">
@@ -120,6 +138,58 @@ function TenantDetail({ tenantId, onBack }: { tenantId: string; onBack: () => vo
               </div>
             </div>
           </div>
+
+          {/* Setup status checklist */}
+          {setupStatus && (
+            <div className="rounded-xl border bg-card p-5 space-y-4">
+              <div className="flex items-center justify-between">
+                <h3 className="text-sm font-semibold">Progresso de implantação</h3>
+                <span className={cn(
+                  "text-xs font-semibold px-2 py-0.5 rounded-full",
+                  setupStatus.percentComplete === 100
+                    ? "bg-emerald-100 text-emerald-700"
+                    : setupStatus.percentComplete >= 50
+                    ? "bg-amber-100 text-amber-700"
+                    : "bg-red-100 text-red-700"
+                )}>
+                  {setupStatus.percentComplete}%
+                </span>
+              </div>
+
+              <div className="h-2 w-full rounded-full bg-muted overflow-hidden">
+                <div
+                  className={cn(
+                    "h-full rounded-full transition-all",
+                    setupStatus.percentComplete === 100 ? "bg-emerald-500"
+                    : setupStatus.percentComplete >= 50 ? "bg-amber-400"
+                    : "bg-red-500"
+                  )}
+                  style={{ width: `${setupStatus.percentComplete}%` }}
+                />
+              </div>
+
+              <div className="grid grid-cols-1 gap-1.5">
+                {SETUP_CHECKS.map((check) => {
+                  const done = !!(setupStatus as unknown as Record<string, unknown>)[check.key];
+                  return (
+                    <div key={check.key} className="flex items-center gap-2">
+                      {done
+                        ? <CheckCircle2 className="h-3.5 w-3.5 text-emerald-500 shrink-0" />
+                        : <Circle className="h-3.5 w-3.5 text-muted-foreground/40 shrink-0" />
+                      }
+                      <span className={cn("text-xs", done ? "text-muted-foreground line-through" : "text-foreground")}>
+                        {check.label}
+                      </span>
+                    </div>
+                  );
+                })}
+              </div>
+
+              <p className="text-xs text-muted-foreground">
+                {setupStatus.completedSteps}/{setupStatus.totalSteps} etapas concluídas
+              </p>
+            </div>
+          )}
         </div>
       )}
     </div>

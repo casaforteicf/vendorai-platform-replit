@@ -3949,6 +3949,34 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
 
+  /tenants/{id}/setup-status:
+    get:
+      operationId: getTenantSetupStatus
+      tags: [tenants]
+      summary: Get setup completion status for a tenant
+      description: Returns a structured checklist of which setup steps are complete for the tenant.
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Setup status
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TenantSetupStatus"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
   /tenants/{id}/invites:
     post:
       operationId: createTenantInvite
@@ -8244,6 +8272,47 @@ components:
         confianca:
           type: number
           nullable: true
+
+    TenantSetupStatus:
+      type: object
+      properties:
+        onboardingComplete:
+          type: boolean
+        businessProfileConfigured:
+          type: boolean
+        productsConfigured:
+          type: boolean
+        agentConfigured:
+          type: boolean
+        autonomyEnabled:
+          type: boolean
+        whatsappConnected:
+          type: boolean
+        instagramConnected:
+          type: boolean
+        webhookConfigured:
+          type: boolean
+        firstLeadAdded:
+          type: boolean
+        completedSteps:
+          type: integer
+        totalSteps:
+          type: integer
+        percentComplete:
+          type: integer
+      required:
+        - onboardingComplete
+        - businessProfileConfigured
+        - productsConfigured
+        - agentConfigured
+        - autonomyEnabled
+        - whatsappConnected
+        - instagramConnected
+        - webhookConfigured
+        - firstLeadAdded
+        - completedSteps
+        - totalSteps
+        - percentComplete
 
     Tenant:
       type: object

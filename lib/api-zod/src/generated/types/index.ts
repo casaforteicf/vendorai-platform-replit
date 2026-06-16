@@ -220,6 +220,7 @@ export * from './tenantDashboardPerfilCompraPlanosRecomendados';
 export * from './tenantDashboardPerfilCompraUrgenciaDistribuicao';
 export * from './tenantDashboardPropostas';
 export * from './tenantDashboardPropostasAtivas';
+export * from './tenantSetupStatus';
 export * from './tenantStatus';
 export * from './tipoFechamento';
 export * from './updateActivityBody';
