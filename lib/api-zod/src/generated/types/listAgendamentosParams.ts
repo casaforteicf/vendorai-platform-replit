@@ -18,4 +18,8 @@ from?: Date;
  * ISO 8601 datetime — filter dataHoraInicio <= to
  */
 to?: Date;
+/**
+ * Filter by agenda ID
+ */
+agendaId?: string;
 };

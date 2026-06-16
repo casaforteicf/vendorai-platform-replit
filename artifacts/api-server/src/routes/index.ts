@@ -19,6 +19,7 @@ import customerIntelligenceRouter from "./customer_intelligence";
 import agentTasksRouter from "./agent_tasks";
 import campaignsRouter from "./campaigns";
 import produtosCatalogoRouter from "./produtos_catalogo";
+import agendasRouter, { googleCallbackRouter } from "./agendas";
 import agendamentosRouter from "./agendamentos";
 import subscriptionsRouter from "./subscriptions";
 import invoicesRouter from "./invoices";
@@ -51,6 +52,7 @@ router.use(publicSiteRouter);
 router.use(publicSegmentTemplatesRouter);
 router.use(inventorySyncRouter);
 router.use(intakeRouter);
+router.use(googleCallbackRouter);
 
 // Protected — all routes below require a valid JWT
 router.use(authenticate);
@@ -99,6 +101,7 @@ router.use(campaignsRouter);
 router.use(produtosCatalogoRouter);
 
 // Schedule Hub
+router.use(agendasRouter);
 router.use(agendamentosRouter);
 
 // Billing Hub

@@ -11,6 +11,7 @@ import type { AgendamentoTipo } from './agendamentoTipo';
 export interface Agendamento {
   id: string;
   tenantId: string;
+  agendaId?: string | null;
   leadId: string;
   dealId?: string | null;
   tipo: AgendamentoTipo;
@@ -21,6 +22,7 @@ export interface Agendamento {
   status: AgendamentoStatus;
   responsavelId?: string | null;
   observacoes?: string | null;
+  googleEventId?: string | null;
   createdAt: Date;
   updatedAt: Date;
 }

@@ -37,6 +37,8 @@ tags:
     description: Object storage upload and serving endpoints.
   - name: content
     description: Instagram Content Generation — Feed, Stories, and Reels scripts
+  - name: schedule-hub
+    description: Scheduling — agendas and agendamentos
 paths:
   /auth/register:
     post:
@@ -2276,6 +2278,197 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
 
+  /tenants/{tenantId}/agendas:
+    get:
+      operationId: listAgendas
+      tags: [schedule-hub]
+      summary: List agendas for a tenant
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: tenantId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: List of agendas
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Agenda"
+    post:
+      operationId: createAgenda
+      tags: [schedule-hub]
+      summary: Create a named agenda (calendar)
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: tenantId
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateAgendaBody"
+      responses:
+        "201":
+          description: Agenda created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Agenda"
+        "422":
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /agendas/{id}:
+    get:
+      operationId: getAgenda
+      tags: [schedule-hub]
+      summary: Get agenda by ID
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Agenda found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Agenda"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+    patch:
+      operationId: updateAgenda
+      tags: [schedule-hub]
+      summary: Update agenda (nome, cor, isDefault)
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateAgendaBody"
+      responses:
+        "200":
+          description: Updated agenda
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Agenda"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+    delete:
+      operationId: deleteAgenda
+      tags: [schedule-hub]
+      summary: Delete agenda
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "204":
+          description: Deleted
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /agendas/{id}/google-auth-url:
+    get:
+      operationId: getAgendaGoogleAuthUrl
+      tags: [schedule-hub]
+      summary: Get Google OAuth URL to connect this agenda to Google Calendar
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: OAuth authorization URL
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  url:
+                    type: string
+                required: [url]
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /agendas/{id}/google/disconnect:
+    post:
+      operationId: disconnectAgendaGoogle
+      tags: [schedule-hub]
+      summary: Disconnect Google Calendar from this agenda
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Disconnected
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Agenda"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
   /agendamentos:
     post:
       operationId: createAgendamento
@@ -2338,6 +2531,11 @@ paths:
           schema:
             type: string
             format: date-time
+        - name: agendaId
+          in: query
+          description: Filter by agenda ID
+          schema:
+            type: string
       responses:
         "200":
           description: List of agendamentos
@@ -6158,6 +6356,56 @@ components:
       type: string
       enum: [agendado, confirmado, concluido, cancelado, no_show]
 
+    Agenda:
+      type: object
+      properties:
+        id:
+          type: string
+        tenantId:
+          type: string
+        nome:
+          type: string
+        cor:
+          type: string
+        isDefault:
+          type: boolean
+        googleCalendarId:
+          type: string
+          nullable: true
+        googleEmail:
+          type: string
+          nullable: true
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+      required: [id, tenantId, nome, cor, isDefault, createdAt, updatedAt]
+
+    CreateAgendaBody:
+      type: object
+      properties:
+        tenantId:
+          type: string
+        nome:
+          type: string
+        cor:
+          type: string
+        isDefault:
+          type: boolean
+      required: [tenantId, nome]
+
+    UpdateAgendaBody:
+      type: object
+      properties:
+        nome:
+          type: string
+        cor:
+          type: string
+        isDefault:
+          type: boolean
+
     Agendamento:
       type: object
       properties:
@@ -6165,6 +6413,9 @@ components:
           type: string
         tenantId:
           type: string
+        agendaId:
+          type: string
+          nullable: true
         leadId:
           type: string
         dealId:
@@ -6191,6 +6442,9 @@ components:
         observacoes:
           type: string
           nullable: true
+        googleEventId:
+          type: string
+          nullable: true
         createdAt:
           type: string
           format: date-time
@@ -6203,6 +6457,8 @@ components:
       type: object
       properties:
         tenantId:
+          type: string
+        agendaId:
           type: string
         leadId:
           type: string
@@ -6231,6 +6487,8 @@ components:
     UpdateAgendamentoBody:
       type: object
       properties:
+        agendaId:
+          type: string
         tipo:
           $ref: "#/components/schemas/AgendamentoTipo"
         titulo:

@@ -22,6 +22,7 @@ import type {
 import type {
   AcceptInviteBody,
   Activity,
+  Agenda,
   Agendamento,
   AgendamentoDisponibilidade,
   AgentActionLog,
@@ -41,6 +42,7 @@ import type {
   ContentGeneration,
   Conversation,
   CreateActivityBody,
+  CreateAgendaBody,
   CreateAgendamentoBody,
   CreateAgentActionLogBody,
   CreateAgentConfigBody,
@@ -80,6 +82,7 @@ import type {
   ExportIntelligenceAnalysisLogParams,
   Funil,
   GenerateContentBody,
+  GetAgendaGoogleAuthUrl200,
   HealthStatus,
   ImportInventoryBody,
   ImportInventoryResult,
@@ -126,6 +129,7 @@ import type {
   Tenant,
   TenantDashboard,
   UpdateActivityBody,
+  UpdateAgendaBody,
   UpdateAgendamentoBody,
   UpdateAgentActionLogBody,
   UpdateAgentConfigBody,
@@ -5788,6 +5792,521 @@ export const useDeleteRule = <TError = ErrorType<ErrorResponse>,
         TContext
       > => {
       return useMutation(getDeleteRuleMutationOptions(options));
+    }
+
+export const getListAgendasUrl = (tenantId: string,) => {
+
+
+
+
+  return `/api/tenants/${tenantId}/agendas`
+}
+
+/**
+ * @summary List agendas for a tenant
+ */
+export const listAgendas = async (tenantId: string, options?: RequestInit): Promise<Agenda[]> => {
+
+  return customFetch<Agenda[]>(getListAgendasUrl(tenantId),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getListAgendasQueryKey = (tenantId: string,) => {
+    return [
+    `/api/tenants/${tenantId}/agendas`
+    ] as const;
+    }
+
+
+export const getListAgendasQueryOptions = <TData = Awaited<ReturnType<typeof listAgendas>>, TError = ErrorType<unknown>>(tenantId: string, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listAgendas>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getListAgendasQueryKey(tenantId);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof listAgendas>>> = ({ signal }) => listAgendas(tenantId, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, enabled: !!(tenantId), ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof listAgendas>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type ListAgendasQueryResult = NonNullable<Awaited<ReturnType<typeof listAgendas>>>
+export type ListAgendasQueryError = ErrorType<unknown>
+
+
+/**
+ * @summary List agendas for a tenant
+ */
+
+export function useListAgendas<TData = Awaited<ReturnType<typeof listAgendas>>, TError = ErrorType<unknown>>(
+ tenantId: string, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listAgendas>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getListAgendasQueryOptions(tenantId,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+
+
+
+
+
+
+export const getCreateAgendaUrl = (tenantId: string,) => {
+
+
+
+
+  return `/api/tenants/${tenantId}/agendas`
+}
+
+/**
+ * @summary Create a named agenda (calendar)
+ */
+export const createAgenda = async (tenantId: string,
+    createAgendaBody: CreateAgendaBody, options?: RequestInit): Promise<Agenda> => {
+
+  return customFetch<Agenda>(getCreateAgendaUrl(tenantId),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(
+      createAgendaBody,)
+  }
+);}
+
+
+
+
+export const getCreateAgendaMutationOptions = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createAgenda>>, TError,{tenantId: string;data: BodyType<CreateAgendaBody>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof createAgenda>>, TError,{tenantId: string;data: BodyType<CreateAgendaBody>}, TContext> => {
+
+const mutationKey = ['createAgenda'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof createAgenda>>, {tenantId: string;data: BodyType<CreateAgendaBody>}> = (props) => {
+          const {tenantId,data} = props ?? {};
+
+          return  createAgenda(tenantId,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type CreateAgendaMutationResult = NonNullable<Awaited<ReturnType<typeof createAgenda>>>
+    export type CreateAgendaMutationBody = BodyType<CreateAgendaBody>
+    export type CreateAgendaMutationError = ErrorType<ErrorResponse>
+
+    /**
+ * @summary Create a named agenda (calendar)
+ */
+export const useCreateAgenda = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createAgenda>>, TError,{tenantId: string;data: BodyType<CreateAgendaBody>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof createAgenda>>,
+        TError,
+        {tenantId: string;data: BodyType<CreateAgendaBody>},
+        TContext
+      > => {
+      return useMutation(getCreateAgendaMutationOptions(options));
+    }
+
+export const getGetAgendaUrl = (id: string,) => {
+
+
+
+
+  return `/api/agendas/${id}`
+}
+
+/**
+ * @summary Get agenda by ID
+ */
+export const getAgenda = async (id: string, options?: RequestInit): Promise<Agenda> => {
+
+  return customFetch<Agenda>(getGetAgendaUrl(id),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetAgendaQueryKey = (id: string,) => {
+    return [
+    `/api/agendas/${id}`
+    ] as const;
+    }
+
+
+export const getGetAgendaQueryOptions = <TData = Awaited<ReturnType<typeof getAgenda>>, TError = ErrorType<ErrorResponse>>(id: string, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getAgenda>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetAgendaQueryKey(id);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getAgenda>>> = ({ signal }) => getAgenda(id, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, enabled: !!(id), ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getAgenda>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetAgendaQueryResult = NonNullable<Awaited<ReturnType<typeof getAgenda>>>
+export type GetAgendaQueryError = ErrorType<ErrorResponse>
+
+
+/**
+ * @summary Get agenda by ID
+ */
+
+export function useGetAgenda<TData = Awaited<ReturnType<typeof getAgenda>>, TError = ErrorType<ErrorResponse>>(
+ id: string, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getAgenda>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetAgendaQueryOptions(id,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+
+
+
+
+
+
+export const getUpdateAgendaUrl = (id: string,) => {
+
+
+
+
+  return `/api/agendas/${id}`
+}
+
+/**
+ * @summary Update agenda (nome, cor, isDefault)
+ */
+export const updateAgenda = async (id: string,
+    updateAgendaBody: UpdateAgendaBody, options?: RequestInit): Promise<Agenda> => {
+
+  return customFetch<Agenda>(getUpdateAgendaUrl(id),
+  {
+    ...options,
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(
+      updateAgendaBody,)
+  }
+);}
+
+
+
+
+export const getUpdateAgendaMutationOptions = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updateAgenda>>, TError,{id: string;data: BodyType<UpdateAgendaBody>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof updateAgenda>>, TError,{id: string;data: BodyType<UpdateAgendaBody>}, TContext> => {
+
+const mutationKey = ['updateAgenda'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof updateAgenda>>, {id: string;data: BodyType<UpdateAgendaBody>}> = (props) => {
+          const {id,data} = props ?? {};
+
+          return  updateAgenda(id,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type UpdateAgendaMutationResult = NonNullable<Awaited<ReturnType<typeof updateAgenda>>>
+    export type UpdateAgendaMutationBody = BodyType<UpdateAgendaBody>
+    export type UpdateAgendaMutationError = ErrorType<ErrorResponse>
+
+    /**
+ * @summary Update agenda (nome, cor, isDefault)
+ */
+export const useUpdateAgenda = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updateAgenda>>, TError,{id: string;data: BodyType<UpdateAgendaBody>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof updateAgenda>>,
+        TError,
+        {id: string;data: BodyType<UpdateAgendaBody>},
+        TContext
+      > => {
+      return useMutation(getUpdateAgendaMutationOptions(options));
+    }
+
+export const getDeleteAgendaUrl = (id: string,) => {
+
+
+
+
+  return `/api/agendas/${id}`
+}
+
+/**
+ * @summary Delete agenda
+ */
+export const deleteAgenda = async (id: string, options?: RequestInit): Promise<void> => {
+
+  return customFetch<void>(getDeleteAgendaUrl(id),
+  {
+    ...options,
+    method: 'DELETE'
+
+
+  }
+);}
+
+
+
+
+export const getDeleteAgendaMutationOptions = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof deleteAgenda>>, TError,{id: string}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof deleteAgenda>>, TError,{id: string}, TContext> => {
+
+const mutationKey = ['deleteAgenda'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof deleteAgenda>>, {id: string}> = (props) => {
+          const {id} = props ?? {};
+
+          return  deleteAgenda(id,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type DeleteAgendaMutationResult = NonNullable<Awaited<ReturnType<typeof deleteAgenda>>>
+
+    export type DeleteAgendaMutationError = ErrorType<ErrorResponse>
+
+    /**
+ * @summary Delete agenda
+ */
+export const useDeleteAgenda = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof deleteAgenda>>, TError,{id: string}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof deleteAgenda>>,
+        TError,
+        {id: string},
+        TContext
+      > => {
+      return useMutation(getDeleteAgendaMutationOptions(options));
+    }
+
+export const getGetAgendaGoogleAuthUrlUrl = (id: string,) => {
+
+
+
+
+  return `/api/agendas/${id}/google-auth-url`
+}
+
+/**
+ * @summary Get Google OAuth URL to connect this agenda to Google Calendar
+ */
+export const getAgendaGoogleAuthUrl = async (id: string, options?: RequestInit): Promise<GetAgendaGoogleAuthUrl200> => {
+
+  return customFetch<GetAgendaGoogleAuthUrl200>(getGetAgendaGoogleAuthUrlUrl(id),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetAgendaGoogleAuthUrlQueryKey = (id: string,) => {
+    return [
+    `/api/agendas/${id}/google-auth-url`
+    ] as const;
+    }
+
+
+export const getGetAgendaGoogleAuthUrlQueryOptions = <TData = Awaited<ReturnType<typeof getAgendaGoogleAuthUrl>>, TError = ErrorType<ErrorResponse>>(id: string, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getAgendaGoogleAuthUrl>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetAgendaGoogleAuthUrlQueryKey(id);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getAgendaGoogleAuthUrl>>> = ({ signal }) => getAgendaGoogleAuthUrl(id, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, enabled: !!(id), ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getAgendaGoogleAuthUrl>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetAgendaGoogleAuthUrlQueryResult = NonNullable<Awaited<ReturnType<typeof getAgendaGoogleAuthUrl>>>
+export type GetAgendaGoogleAuthUrlQueryError = ErrorType<ErrorResponse>
+
+
+/**
+ * @summary Get Google OAuth URL to connect this agenda to Google Calendar
+ */
+
+export function useGetAgendaGoogleAuthUrl<TData = Awaited<ReturnType<typeof getAgendaGoogleAuthUrl>>, TError = ErrorType<ErrorResponse>>(
+ id: string, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getAgendaGoogleAuthUrl>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetAgendaGoogleAuthUrlQueryOptions(id,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+
+
+
+
+
+
+export const getDisconnectAgendaGoogleUrl = (id: string,) => {
+
+
+
+
+  return `/api/agendas/${id}/google/disconnect`
+}
+
+/**
+ * @summary Disconnect Google Calendar from this agenda
+ */
+export const disconnectAgendaGoogle = async (id: string, options?: RequestInit): Promise<Agenda> => {
+
+  return customFetch<Agenda>(getDisconnectAgendaGoogleUrl(id),
+  {
+    ...options,
+    method: 'POST'
+
+
+  }
+);}
+
+
+
+
+export const getDisconnectAgendaGoogleMutationOptions = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof disconnectAgendaGoogle>>, TError,{id: string}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof disconnectAgendaGoogle>>, TError,{id: string}, TContext> => {
+
+const mutationKey = ['disconnectAgendaGoogle'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof disconnectAgendaGoogle>>, {id: string}> = (props) => {
+          const {id} = props ?? {};
+
+          return  disconnectAgendaGoogle(id,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type DisconnectAgendaGoogleMutationResult = NonNullable<Awaited<ReturnType<typeof disconnectAgendaGoogle>>>
+
+    export type DisconnectAgendaGoogleMutationError = ErrorType<ErrorResponse>
+
+    /**
+ * @summary Disconnect Google Calendar from this agenda
+ */
+export const useDisconnectAgendaGoogle = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof disconnectAgendaGoogle>>, TError,{id: string}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof disconnectAgendaGoogle>>,
+        TError,
+        {id: string},
+        TContext
+      > => {
+      return useMutation(getDisconnectAgendaGoogleMutationOptions(options));
     }
 
 export const getCreateAgendamentoUrl = () => {

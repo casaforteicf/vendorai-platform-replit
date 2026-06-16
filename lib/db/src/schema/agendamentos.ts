@@ -5,6 +5,7 @@ import { tenantsTable } from "./tenants";
 import { leadsTable } from "./leads";
 import { dealsTable } from "./deals";
 import { usersTable } from "./users";
+import { agendasTable } from "./agendas";
 
 export const agendamentoTipoEnum = pgEnum("agendamento_tipo", [
   "reuniao",
@@ -28,6 +29,9 @@ export const agendamentosTable = pgTable("agendamentos", {
   tenantId: text("tenant_id")
     .notNull()
     .references(() => tenantsTable.id, { onDelete: "cascade" }),
+  agendaId: text("agenda_id").references(() => agendasTable.id, {
+    onDelete: "set null",
+  }),
   leadId: text("lead_id")
     .notNull()
     .references(() => leadsTable.id, { onDelete: "cascade" }),
@@ -44,6 +48,7 @@ export const agendamentosTable = pgTable("agendamentos", {
     onDelete: "set null",
   }),
   observacoes: text("observacoes"),
+  googleEventId: text("google_event_id"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
 });
@@ -51,13 +56,13 @@ export const agendamentosTable = pgTable("agendamentos", {
 export const insertAgendamentoSchema = createInsertSchema(agendamentosTable, {
   dataHoraInicio: z.coerce.date(),
   dataHoraFim: z.coerce.date(),
-}).omit({ id: true, createdAt: true, updatedAt: true });
+}).omit({ id: true, createdAt: true, updatedAt: true, googleEventId: true });
 
 export const updateAgendamentoSchema = createSelectSchema(agendamentosTable, {
   dataHoraInicio: z.coerce.date().optional(),
   dataHoraFim: z.coerce.date().optional(),
 })
-  .omit({ id: true, tenantId: true, leadId: true, createdAt: true, updatedAt: true })
+  .omit({ id: true, tenantId: true, leadId: true, createdAt: true, updatedAt: true, googleEventId: true })
   .partial();
 
 export type InsertAgendamento = z.infer<typeof insertAgendamentoSchema>;

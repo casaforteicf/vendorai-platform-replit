@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useAuth } from "@/contexts/AuthContext";
 import {
   useListAgendamentos,
@@ -6,11 +6,18 @@ import {
   useCreateAgendamento,
   useUpdateAgendamento,
   useListTenantLeads,
-  getListTenantLeadsQueryKey,
   checkAgendamentoDisponibilidade,
+  useListAgendas,
+  getListAgendasQueryKey,
+  useCreateAgenda,
+  useUpdateAgenda,
+  useDeleteAgenda,
+  getAgendaGoogleAuthUrl,
+  useDisconnectAgendaGoogle,
   Agendamento,
   AgendamentoTipo,
   AgendamentoStatus,
+  Agenda,
 } from "@workspace/api-client-react";
 import { useQueryClient } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
@@ -49,6 +56,13 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
@@ -67,6 +81,12 @@ import {
   Briefcase,
   Wrench,
   Eye,
+  Settings2,
+  Trash2,
+  Pencil,
+  CalendarCheck,
+  CalendarX,
+  Loader2,
 } from "lucide-react";
 import {
   format,
@@ -103,6 +123,11 @@ const STATUS_CONFIG: Record<
   cancelado:  { label: "Cancelado",  className: "bg-red-100 text-red-600 border-red-200" },
   no_show:    { label: "No-show",    className: "border-amber-300 text-amber-600 bg-amber-50" },
 };
+
+const AGENDA_COLORS = [
+  "#3B82F6", "#10B981", "#8B5CF6", "#F59E0B",
+  "#EF4444", "#EC4899", "#06B6D4", "#F97316",
+];
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -171,16 +196,18 @@ function StatusActions({
 function AgendamentoRow({
   ag,
   leadName,
+  agendaColor,
   onUpdate,
 }: {
   ag: Agendamento;
   leadName: string | undefined;
+  agendaColor?: string;
   onUpdate: (id: string, status: AgendamentoStatus) => void;
 }) {
   const tipo = TIPO_CONFIG[ag.tipo];
   const statusCfg = STATUS_CONFIG[ag.status];
   const isDone = ag.status === "concluido" || ag.status === "cancelado";
-  const colorBar = tipo.color.replace("text-", "bg-");
+  const colorBar = agendaColor ?? "#3B82F6";
 
   return (
     <div
@@ -193,8 +220,8 @@ function AgendamentoRow({
         <p className="text-[10px] text-muted-foreground mt-0.5">{formatHour(ag.dataHoraFim)}</p>
       </div>
 
-      {/* Color bar */}
-      <div className={`w-0.5 self-stretch rounded-full shrink-0 ${colorBar}`} />
+      {/* Color bar from agenda */}
+      <div className="w-0.5 self-stretch rounded-full shrink-0" style={{ backgroundColor: colorBar }} />
 
       {/* Content */}
       <div className="flex-1 min-w-0 space-y-1.5">
@@ -206,6 +233,11 @@ function AgendamentoRow({
           <Badge className={`text-[10px] px-2 py-0 h-4 border font-medium ${statusCfg.className}`}>
             {statusCfg.label}
           </Badge>
+          {ag.googleEventId && (
+            <span title="Sincronizado com Google Calendar" className="text-[10px] text-green-600 flex items-center gap-0.5">
+              <CalendarCheck className="h-3 w-3" />
+            </span>
+          )}
         </div>
         <p className="text-sm font-medium leading-tight line-clamp-1">{ag.titulo}</p>
         <div className="flex items-center gap-3 text-xs text-muted-foreground flex-wrap">
@@ -279,92 +311,199 @@ function WeekDayBtn({
   );
 }
 
-// ─── Form schema ──────────────────────────────────────────────────────────────
+// ─── Agenda sidebar item ──────────────────────────────────────────────────────
 
-const createSchema = z.object({
-  titulo: z.string().min(2, "Título obrigatório"),
+function AgendaSidebarItem({
+  agenda,
+  selected,
+  onSelect,
+  onEdit,
+  onDelete,
+  onConnectGoogle,
+  onDisconnectGoogle,
+  isGoogleLoading,
+}: {
+  agenda: Agenda;
+  selected: boolean;
+  onSelect: () => void;
+  onEdit: () => void;
+  onDelete: () => void;
+  onConnectGoogle: () => void;
+  onDisconnectGoogle: () => void;
+  isGoogleLoading: boolean;
+}) {
+  return (
+    <div
+      className={`flex items-center gap-2 px-2 py-1.5 rounded-md cursor-pointer group transition-colors ${
+        selected ? "bg-primary/10" : "hover:bg-muted"
+      }`}
+      onClick={onSelect}
+      data-testid={`agenda-item-${agenda.id}`}
+    >
+      <span
+        className="w-2.5 h-2.5 rounded-full shrink-0"
+        style={{ backgroundColor: agenda.cor }}
+      />
+      <span className={`flex-1 text-sm truncate ${selected ? "font-semibold text-primary" : ""}`}>
+        {agenda.nome}
+      </span>
+      {agenda.googleEmail && (
+        <span title={`Google: ${agenda.googleEmail}`}>
+          <CalendarCheck className="h-3 w-3 text-green-500 shrink-0" />
+        </span>
+      )}
+      <DropdownMenu>
+        <DropdownMenuTrigger asChild>
+          <button
+            className="opacity-0 group-hover:opacity-100 p-0.5 rounded hover:bg-muted-foreground/10 transition-opacity"
+            onClick={(e) => e.stopPropagation()}
+            data-testid={`agenda-settings-${agenda.id}`}
+          >
+            <Settings2 className="h-3.5 w-3.5 text-muted-foreground" />
+          </button>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="end" className="w-48">
+          <DropdownMenuItem onClick={(e) => { e.stopPropagation(); onEdit(); }}>
+            <Pencil className="h-3.5 w-3.5 mr-2" />
+            Renomear / cor
+          </DropdownMenuItem>
+          {agenda.googleEmail ? (
+            <DropdownMenuItem
+              onClick={(e) => { e.stopPropagation(); onDisconnectGoogle(); }}
+              disabled={isGoogleLoading}
+            >
+              <CalendarX className="h-3.5 w-3.5 mr-2 text-red-500" />
+              Desconectar Google
+            </DropdownMenuItem>
+          ) : (
+            <DropdownMenuItem
+              onClick={(e) => { e.stopPropagation(); onConnectGoogle(); }}
+              disabled={isGoogleLoading}
+            >
+              {isGoogleLoading ? (
+                <Loader2 className="h-3.5 w-3.5 mr-2 animate-spin" />
+              ) : (
+                <CalendarCheck className="h-3.5 w-3.5 mr-2 text-green-600" />
+              )}
+              Conectar Google Calendar
+            </DropdownMenuItem>
+          )}
+          <DropdownMenuSeparator />
+          <DropdownMenuItem
+            className="text-destructive focus:text-destructive"
+            onClick={(e) => { e.stopPropagation(); onDelete(); }}
+          >
+            <Trash2 className="h-3.5 w-3.5 mr-2" />
+            Excluir agenda
+          </DropdownMenuItem>
+        </DropdownMenuContent>
+      </DropdownMenu>
+    </div>
+  );
+}
+
+// ─── Form schemas ─────────────────────────────────────────────────────────────
+
+const createFormSchema = z.object({
+  titulo: z.string().min(1, "Título obrigatório"),
   tipo: z.string().min(1),
-  leadId: z.string().min(1, "Selecione um lead"),
-  dataHoraInicio: z.string().min(1, "Obrigatório"),
-  dataHoraFim: z.string().min(1, "Obrigatório"),
-  local: z.string().optional().or(z.literal("")),
-  responsavelId: z.string().optional().or(z.literal("")),
-  observacoes: z.string().optional().or(z.literal("")),
+  leadId: z.string().min(1, "Lead obrigatório"),
+  agendaId: z.string().optional(),
+  dataHoraInicio: z.string().min(1),
+  dataHoraFim: z.string().min(1),
+  local: z.string().optional(),
+  responsavelId: z.string().optional(),
+  observacoes: z.string().optional(),
 });
-type CreateForm = z.infer<typeof createSchema>;
+type CreateForm = z.infer<typeof createFormSchema>;
+
+const agendaFormSchema = z.object({
+  nome: z.string().min(1, "Nome obrigatório"),
+  cor: z.string().min(1),
+});
+type AgendaForm = z.infer<typeof agendaFormSchema>;
 
 // ─── Main page ────────────────────────────────────────────────────────────────
 
-export default function Agenda() {
+export default function AgendaPage() {
   const { user } = useAuth();
   const tenantId = user?.tenantId ?? "";
   const queryClient = useQueryClient();
   const { toast } = useToast();
 
-  const [weekStart, setWeekStart] = useState<Date>(() =>
+  const [weekStart, setWeekStart] = useState(() =>
     startOfWeek(new Date(), { weekStartsOn: 1 })
   );
-  const [selectedDay, setSelectedDay] = useState<Date>(new Date());
+  const weekEnd = endOfWeek(weekStart, { weekStartsOn: 1 });
+  const weekDays = eachDayOfInterval({ start: weekStart, end: weekEnd });
+
+  const [selectedDay, setSelectedDay] = useState(new Date());
+  const [selectedAgendaId, setSelectedAgendaId] = useState<string | null>(null);
+
+  // Agendamento create dialog
   const [isCreateOpen, setIsCreateOpen] = useState(false);
   const [pendingCreate, setPendingCreate] = useState<CreateForm | null>(null);
   const [conflictMsg, setConflictMsg] = useState("");
 
-  const weekEnd = endOfWeek(weekStart, { weekStartsOn: 1 });
-  const weekDays = eachDayOfInterval({ start: weekStart, end: weekEnd });
+  // Agenda management dialogs
+  const [isNewAgendaOpen, setIsNewAgendaOpen] = useState(false);
+  const [editTarget, setEditTarget] = useState<Agenda | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<Agenda | null>(null);
+  const [googleLoadingId, setGoogleLoadingId] = useState<string | null>(null);
 
-  const qKey = getListAgendamentosQueryKey(tenantId, {
-    from: weekStart.toISOString(),
-    to: weekEnd.toISOString(),
-  });
+  // Handle Google OAuth callback params
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    if (params.get("googleConnected")) {
+      toast({ title: "Google Calendar conectado com sucesso!" });
+      queryClient.invalidateQueries({ queryKey: getListAgendasQueryKey(tenantId) });
+      window.history.replaceState({}, "", window.location.pathname);
+    }
+    if (params.get("googleError")) {
+      const err = params.get("googleError");
+      toast({
+        title: "Não foi possível conectar ao Google Calendar",
+        description: err === "access_denied" ? "Acesso negado." : "Tente novamente.",
+        variant: "destructive",
+      });
+      window.history.replaceState({}, "", window.location.pathname);
+    }
+  }, []);
+
+  // Agendamentos query key
+  const qKey = getListAgendamentosQueryKey(tenantId, selectedAgendaId ? { agendaId: selectedAgendaId } : undefined);
 
   const { data: agendamentos = [], isLoading } = useListAgendamentos(
     tenantId,
-    { from: weekStart.toISOString(), to: weekEnd.toISOString() },
-    {
-      query: {
-        enabled: !!tenantId,
-        queryKey: qKey,
-      },
-    }
+    selectedAgendaId ? { agendaId: selectedAgendaId } : undefined
   );
 
-  const { data: leads = [] } = useListTenantLeads(tenantId, {
-    query: {
-      enabled: !!tenantId,
-      queryKey: getListTenantLeadsQueryKey(tenantId),
-    },
-  });
+  const { data: leads = [] } = useListTenantLeads(tenantId);
+  const { data: agendas = [] } = useListAgendas(tenantId);
 
-  const leadMap = new Map(leads.map((l) => [l.id, l.nome]));
   const createAg = useCreateAgendamento();
   const updateAg = useUpdateAgendamento();
+  const createAgendaMut = useCreateAgenda();
+  const updateAgendaMut = useUpdateAgenda();
+  const deleteAgendaMut = useDeleteAgenda();
+  const disconnectGoogleMut = useDisconnectAgendaGoogle();
 
-  // Group + sort by day
-  const byDay = new Map<string, Agendamento[]>();
-  for (const ag of agendamentos) {
-    const key = ag.dataHoraInicio.slice(0, 10);
-    if (!byDay.has(key)) byDay.set(key, []);
-    byDay.get(key)!.push(ag);
-  }
-  for (const [k, list] of byDay) {
-    byDay.set(k, list.sort((a, b) => a.dataHoraInicio.localeCompare(b.dataHoraInicio)));
-  }
+  const leadMap = new Map(leads.map((l) => [l.id, l.nome]));
+  const agendaMap = new Map(agendas.map((a) => [a.id, a]));
 
-  const selectedKey = format(selectedDay, "yyyy-MM-dd");
-  const selectedAgs = byDay.get(selectedKey) ?? [];
+  // Week filtering
+  const selectedAgs = agendamentos.filter((a) =>
+    isSameDay(parseISO(a.dataHoraInicio), selectedDay)
+  );
+  const countDay = (d: Date) =>
+    agendamentos.filter((a) => isSameDay(parseISO(a.dataHoraInicio), d)).length;
 
-  function countDay(d: Date) {
-    return byDay.get(format(d, "yyyy-MM-dd"))?.length ?? 0;
-  }
-
-  // ── Status update ──
-
+  // Status update
   function handleUpdate(id: string, status: AgendamentoStatus) {
     updateAg.mutate(
       { id, data: { status } },
       {
         onSuccess: () => {
-          toast({ title: "Status atualizado." });
           queryClient.invalidateQueries({ queryKey: qKey });
         },
         onError: () => toast({ title: "Erro ao atualizar", variant: "destructive" }),
@@ -372,14 +511,14 @@ export default function Agenda() {
     );
   }
 
-  // ── Create form ──
-
+  // Create agendamento form
   const form = useForm<CreateForm>({
-    resolver: zodResolver(createSchema),
+    resolver: zodResolver(createFormSchema),
     defaultValues: {
       titulo: "",
       tipo: "reuniao",
       leadId: "",
+      agendaId: selectedAgendaId ?? "",
       dataHoraInicio: format(selectedDay, "yyyy-MM-dd") + "T09:00",
       dataHoraFim: format(selectedDay, "yyyy-MM-dd") + "T10:00",
       local: "",
@@ -389,7 +528,6 @@ export default function Agenda() {
   });
 
   async function onSubmit(values: CreateForm) {
-    // Availability check only when responsavelId is provided
     if (values.responsavelId) {
       try {
         const result = await checkAgendamentoDisponibilidade(tenantId, {
@@ -424,6 +562,7 @@ export default function Agenda() {
           titulo: values.titulo,
           tipo: values.tipo as AgendamentoTipo,
           leadId: values.leadId,
+          agendaId: values.agendaId || undefined,
           dataHoraInicio: fromLocalDateTimeInput(values.dataHoraInicio),
           dataHoraFim: fromLocalDateTimeInput(values.dataHoraFim),
           local: values.local || undefined,
@@ -444,284 +583,467 @@ export default function Agenda() {
     );
   }
 
+  // Agenda management
+  const agendaForm = useForm<AgendaForm>({
+    resolver: zodResolver(agendaFormSchema),
+    defaultValues: { nome: "", cor: "#3B82F6" },
+  });
+
+  function openNewAgenda() {
+    agendaForm.reset({ nome: "", cor: "#3B82F6" });
+    setEditTarget(null);
+    setIsNewAgendaOpen(true);
+  }
+
+  function openEditAgenda(a: Agenda) {
+    agendaForm.reset({ nome: a.nome, cor: a.cor });
+    setEditTarget(a);
+    setIsNewAgendaOpen(true);
+  }
+
+  function onAgendaSubmit(values: AgendaForm) {
+    if (editTarget) {
+      updateAgendaMut.mutate(
+        { id: editTarget.id, data: { nome: values.nome, cor: values.cor } },
+        {
+          onSuccess: () => {
+            toast({ title: "Agenda atualizada." });
+            queryClient.invalidateQueries({ queryKey: getListAgendasQueryKey(tenantId) });
+            setIsNewAgendaOpen(false);
+          },
+          onError: () => toast({ title: "Erro ao atualizar", variant: "destructive" }),
+        }
+      );
+    } else {
+      createAgendaMut.mutate(
+        { tenantId, data: { tenantId, nome: values.nome, cor: values.cor } },
+        {
+          onSuccess: () => {
+            toast({ title: "Agenda criada." });
+            queryClient.invalidateQueries({ queryKey: getListAgendasQueryKey(tenantId) });
+            setIsNewAgendaOpen(false);
+          },
+          onError: () => toast({ title: "Erro ao criar agenda", variant: "destructive" }),
+        }
+      );
+    }
+  }
+
+  function confirmDeleteAgenda() {
+    if (!deleteTarget) return;
+    deleteAgendaMut.mutate(
+      { id: deleteTarget.id },
+      {
+        onSuccess: () => {
+          toast({ title: "Agenda excluída." });
+          if (selectedAgendaId === deleteTarget.id) setSelectedAgendaId(null);
+          queryClient.invalidateQueries({ queryKey: getListAgendasQueryKey(tenantId) });
+          setDeleteTarget(null);
+        },
+        onError: () => toast({ title: "Erro ao excluir", variant: "destructive" }),
+      }
+    );
+  }
+
+  async function handleConnectGoogle(agenda: Agenda) {
+    setGoogleLoadingId(agenda.id);
+    try {
+      const result = await getAgendaGoogleAuthUrl(agenda.id);
+      if (result?.url) {
+        window.location.href = result.url;
+      } else {
+        toast({
+          title: "Google Calendar não configurado",
+          description: "Configure GOOGLE_CLIENT_ID e GOOGLE_CLIENT_SECRET no servidor.",
+          variant: "destructive",
+        });
+      }
+    } catch {
+      toast({ title: "Erro ao obter URL do Google", variant: "destructive" });
+    } finally {
+      setGoogleLoadingId(null);
+    }
+  }
+
+  function handleDisconnectGoogle(agenda: Agenda) {
+    disconnectGoogleMut.mutate(
+      { id: agenda.id },
+      {
+        onSuccess: () => {
+          toast({ title: "Google Calendar desconectado." });
+          queryClient.invalidateQueries({ queryKey: getListAgendasQueryKey(tenantId) });
+        },
+        onError: () => toast({ title: "Erro ao desconectar", variant: "destructive" }),
+      }
+    );
+  }
+
   return (
-    <div className="flex flex-col space-y-5">
-      {/* ── Header ── */}
-      <div className="flex justify-between items-center">
-        <div>
-          <h1 className="text-2xl font-bold tracking-tight">Agenda</h1>
-          <p className="text-sm text-muted-foreground mt-1">
-            {agendamentos.length} agendamento{agendamentos.length !== 1 ? "s" : ""} esta semana
-          </p>
+    <div className="flex gap-5 h-full">
+      {/* ── Agendas sidebar ── */}
+      <aside className="w-52 shrink-0 flex flex-col gap-1">
+        <div className="flex items-center justify-between mb-1 px-1">
+          <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Agendas</span>
+          <button
+            onClick={openNewAgenda}
+            className="p-0.5 rounded hover:bg-muted transition-colors"
+            title="Nova agenda"
+            data-testid="button-nova-agenda"
+          >
+            <Plus className="h-3.5 w-3.5 text-muted-foreground" />
+          </button>
         </div>
 
-        <Dialog
-          open={isCreateOpen}
-          onOpenChange={(v) => {
-            setIsCreateOpen(v);
-            if (v) {
-              form.reset({
-                titulo: "",
-                tipo: "reuniao",
-                leadId: leads[0]?.id ?? "",
-                dataHoraInicio: format(selectedDay, "yyyy-MM-dd") + "T09:00",
-                dataHoraFim: format(selectedDay, "yyyy-MM-dd") + "T10:00",
-                local: "",
-                responsavelId: "",
-                observacoes: "",
-              });
-            }
-          }}
+        {/* "Todas" option */}
+        <div
+          className={`flex items-center gap-2 px-2 py-1.5 rounded-md cursor-pointer transition-colors ${
+            selectedAgendaId === null ? "bg-primary/10 font-semibold text-primary" : "hover:bg-muted"
+          }`}
+          onClick={() => setSelectedAgendaId(null)}
+          data-testid="agenda-filter-todas"
         >
-          <DialogTrigger asChild>
-            <Button data-testid="button-novo-agendamento">
-              <Plus className="h-4 w-4 mr-2" />
-              Novo Agendamento
-            </Button>
-          </DialogTrigger>
-          <DialogContent className="max-w-md">
-            <DialogHeader>
-              <DialogTitle>Novo Agendamento</DialogTitle>
-            </DialogHeader>
-            <Form {...form}>
-              <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
-                <FormField
-                  control={form.control}
-                  name="titulo"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Título *</FormLabel>
-                      <FormControl>
-                        <Input data-testid="input-titulo" placeholder="Ex: Reunião de apresentação" {...field} />
-                      </FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
+          <span className="w-2.5 h-2.5 rounded-full shrink-0 bg-muted-foreground/30" />
+          <span className="text-sm">Todas</span>
+        </div>
 
-                <div className="grid grid-cols-2 gap-3">
+        {agendas.map((a) => (
+          <AgendaSidebarItem
+            key={a.id}
+            agenda={a}
+            selected={selectedAgendaId === a.id}
+            onSelect={() => setSelectedAgendaId(a.id)}
+            onEdit={() => openEditAgenda(a)}
+            onDelete={() => setDeleteTarget(a)}
+            onConnectGoogle={() => handleConnectGoogle(a)}
+            onDisconnectGoogle={() => handleDisconnectGoogle(a)}
+            isGoogleLoading={googleLoadingId === a.id}
+          />
+        ))}
+
+        {agendas.length === 0 && (
+          <p className="text-xs text-muted-foreground px-2 py-2">
+            Nenhuma agenda. Crie uma acima.
+          </p>
+        )}
+      </aside>
+
+      {/* ── Main content ── */}
+      <div className="flex-1 min-w-0 flex flex-col space-y-5">
+        {/* Header */}
+        <div className="flex justify-between items-center">
+          <div>
+            <h1 className="text-2xl font-bold tracking-tight">
+              {selectedAgendaId
+                ? (agendaMap.get(selectedAgendaId)?.nome ?? "Agenda")
+                : "Agenda"}
+            </h1>
+            <p className="text-sm text-muted-foreground mt-1">
+              {agendamentos.length} agendamento{agendamentos.length !== 1 ? "s" : ""} esta semana
+            </p>
+          </div>
+
+          <Dialog
+            open={isCreateOpen}
+            onOpenChange={(v) => {
+              setIsCreateOpen(v);
+              if (v) {
+                form.reset({
+                  titulo: "",
+                  tipo: "reuniao",
+                  leadId: leads[0]?.id ?? "",
+                  agendaId: selectedAgendaId ?? (agendas[0]?.id ?? ""),
+                  dataHoraInicio: format(selectedDay, "yyyy-MM-dd") + "T09:00",
+                  dataHoraFim: format(selectedDay, "yyyy-MM-dd") + "T10:00",
+                  local: "",
+                  responsavelId: "",
+                  observacoes: "",
+                });
+              }
+            }}
+          >
+            <DialogTrigger asChild>
+              <Button data-testid="button-novo-agendamento">
+                <Plus className="h-4 w-4 mr-2" />
+                Novo Agendamento
+              </Button>
+            </DialogTrigger>
+            <DialogContent className="max-w-md">
+              <DialogHeader>
+                <DialogTitle>Novo Agendamento</DialogTitle>
+              </DialogHeader>
+              <Form {...form}>
+                <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
                   <FormField
                     control={form.control}
-                    name="tipo"
+                    name="titulo"
                     render={({ field }) => (
                       <FormItem>
-                        <FormLabel>Tipo *</FormLabel>
-                        <Select onValueChange={field.onChange} value={field.value}>
-                          <FormControl>
-                            <SelectTrigger data-testid="select-tipo">
-                              <SelectValue />
-                            </SelectTrigger>
-                          </FormControl>
-                          <SelectContent>
-                            {(Object.keys(TIPO_CONFIG) as AgendamentoTipo[]).map((v) => (
-                              <SelectItem key={v} value={v}>
-                                {TIPO_CONFIG[v].label}
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
+                        <FormLabel>Título *</FormLabel>
+                        <FormControl>
+                          <Input data-testid="input-titulo" placeholder="Ex: Reunião de apresentação" {...field} />
+                        </FormControl>
                         <FormMessage />
                       </FormItem>
                     )}
                   />
 
-                  <FormField
-                    control={form.control}
-                    name="leadId"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>Lead *</FormLabel>
-                        {leads.length > 0 ? (
+                  <div className="grid grid-cols-2 gap-3">
+                    <FormField
+                      control={form.control}
+                      name="tipo"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>Tipo *</FormLabel>
                           <Select onValueChange={field.onChange} value={field.value}>
                             <FormControl>
-                              <SelectTrigger data-testid="select-lead">
-                                <SelectValue placeholder="Selecionar..." />
+                              <SelectTrigger data-testid="select-tipo">
+                                <SelectValue />
                               </SelectTrigger>
                             </FormControl>
                             <SelectContent>
-                              {leads.map((l) => (
-                                <SelectItem key={l.id} value={l.id}>
-                                  {l.nome}
+                              {(Object.keys(TIPO_CONFIG) as AgendamentoTipo[]).map((v) => (
+                                <SelectItem key={v} value={v}>
+                                  {TIPO_CONFIG[v].label}
                                 </SelectItem>
                               ))}
                             </SelectContent>
                           </Select>
-                        ) : (
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+
+                    <FormField
+                      control={form.control}
+                      name="leadId"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>Lead *</FormLabel>
+                          {leads.length > 0 ? (
+                            <Select onValueChange={field.onChange} value={field.value}>
+                              <FormControl>
+                                <SelectTrigger data-testid="select-lead">
+                                  <SelectValue placeholder="Selecionar..." />
+                                </SelectTrigger>
+                              </FormControl>
+                              <SelectContent>
+                                {leads.map((l) => (
+                                  <SelectItem key={l.id} value={l.id}>
+                                    {l.nome}
+                                  </SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
+                          ) : (
+                            <FormControl>
+                              <Input data-testid="input-leadId" placeholder="ID do lead" {...field} />
+                            </FormControl>
+                          )}
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+                  </div>
+
+                  {agendas.length > 0 && (
+                    <FormField
+                      control={form.control}
+                      name="agendaId"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>Agenda</FormLabel>
+                          <Select onValueChange={field.onChange} value={field.value ?? ""}>
+                            <FormControl>
+                              <SelectTrigger data-testid="select-agenda">
+                                <SelectValue placeholder="Selecionar agenda..." />
+                              </SelectTrigger>
+                            </FormControl>
+                            <SelectContent>
+                              {agendas.map((a) => (
+                                <SelectItem key={a.id} value={a.id}>
+                                  <span className="flex items-center gap-2">
+                                    <span
+                                      className="inline-block w-2 h-2 rounded-full"
+                                      style={{ backgroundColor: a.cor }}
+                                    />
+                                    {a.nome}
+                                  </span>
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        </FormItem>
+                      )}
+                    />
+                  )}
+
+                  <div className="grid grid-cols-2 gap-3">
+                    <FormField
+                      control={form.control}
+                      name="dataHoraInicio"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>Início *</FormLabel>
                           <FormControl>
-                            <Input data-testid="input-leadId" placeholder="ID do lead" {...field} />
+                            <Input type="datetime-local" data-testid="input-inicio" {...field} />
                           </FormControl>
-                        )}
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-                </div>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+                    <FormField
+                      control={form.control}
+                      name="dataHoraFim"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>Fim *</FormLabel>
+                          <FormControl>
+                            <Input type="datetime-local" data-testid="input-fim" {...field} />
+                          </FormControl>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+                  </div>
 
-                <div className="grid grid-cols-2 gap-3">
                   <FormField
                     control={form.control}
-                    name="dataHoraInicio"
+                    name="local"
                     render={({ field }) => (
                       <FormItem>
-                        <FormLabel>Início *</FormLabel>
+                        <FormLabel>Local</FormLabel>
                         <FormControl>
-                          <Input type="datetime-local" data-testid="input-inicio" {...field} />
+                          <Input data-testid="input-local" placeholder="Endereço ou link de reunião" {...field} />
                         </FormControl>
-                        <FormMessage />
                       </FormItem>
                     )}
                   />
+
                   <FormField
                     control={form.control}
-                    name="dataHoraFim"
+                    name="responsavelId"
                     render={({ field }) => (
                       <FormItem>
-                        <FormLabel>Fim *</FormLabel>
+                        <FormLabel>
+                          Responsável{" "}
+                          <span className="text-[11px] text-muted-foreground font-normal">
+                            (ID — verifica disponibilidade)
+                          </span>
+                        </FormLabel>
                         <FormControl>
-                          <Input type="datetime-local" data-testid="input-fim" {...field} />
+                          <Input data-testid="input-responsavel" placeholder="UUID do responsável" {...field} />
                         </FormControl>
-                        <FormMessage />
                       </FormItem>
                     )}
                   />
-                </div>
 
-                <FormField
-                  control={form.control}
-                  name="local"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Local</FormLabel>
-                      <FormControl>
-                        <Input data-testid="input-local" placeholder="Endereço ou link de reunião" {...field} />
-                      </FormControl>
-                    </FormItem>
-                  )}
-                />
+                  <FormField
+                    control={form.control}
+                    name="observacoes"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Observações</FormLabel>
+                        <FormControl>
+                          <Input data-testid="input-obs" placeholder="Notas adicionais" {...field} />
+                        </FormControl>
+                      </FormItem>
+                    )}
+                  />
 
-                <FormField
-                  control={form.control}
-                  name="responsavelId"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>
-                        Responsável{" "}
-                        <span className="text-[11px] text-muted-foreground font-normal">
-                          (ID — verifica disponibilidade)
-                        </span>
-                      </FormLabel>
-                      <FormControl>
-                        <Input data-testid="input-responsavel" placeholder="UUID do responsável" {...field} />
-                      </FormControl>
-                    </FormItem>
-                  )}
-                />
-
-                <FormField
-                  control={form.control}
-                  name="observacoes"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Observações</FormLabel>
-                      <FormControl>
-                        <Input data-testid="input-obs" placeholder="Notas adicionais" {...field} />
-                      </FormControl>
-                    </FormItem>
-                  )}
-                />
-
-                <Button
-                  type="submit"
-                  className="w-full"
-                  disabled={createAg.isPending}
-                  data-testid="button-submit-agendamento"
-                >
-                  {createAg.isPending ? "Criando..." : "Criar Agendamento"}
-                </Button>
-              </form>
-            </Form>
-          </DialogContent>
-        </Dialog>
-      </div>
-
-      {/* ── Week strip ── */}
-      <div className="bg-card border border-border rounded-xl p-3">
-        <div className="flex items-center gap-2 mb-3">
-          <button
-            onClick={() => setWeekStart((w) => subWeeks(w, 1))}
-            className="p-1.5 rounded hover:bg-muted transition-colors"
-            data-testid="week-prev"
-          >
-            <ChevronLeft className="h-4 w-4" />
-          </button>
-          <span className="text-sm font-semibold flex-1 text-center">
-            {format(weekStart, "d 'de' MMM", { locale: ptBR })}
-            {" – "}
-            {format(weekEnd, "d 'de' MMM yyyy", { locale: ptBR })}
-          </span>
-          <button
-            onClick={() => setWeekStart((w) => addWeeks(w, 1))}
-            className="p-1.5 rounded hover:bg-muted transition-colors"
-            data-testid="week-next"
-          >
-            <ChevronRight className="h-4 w-4" />
-          </button>
+                  <Button
+                    type="submit"
+                    className="w-full"
+                    disabled={createAg.isPending}
+                    data-testid="button-submit-agendamento"
+                  >
+                    {createAg.isPending ? "Criando..." : "Criar Agendamento"}
+                  </Button>
+                </form>
+              </Form>
+            </DialogContent>
+          </Dialog>
         </div>
 
-        <div className="flex gap-1">
-          {weekDays.map((d) => (
-            <WeekDayBtn
-              key={d.toISOString()}
-              date={d}
-              count={countDay(d)}
-              selected={isSameDay(d, selectedDay)}
-              onClick={() => setSelectedDay(d)}
-            />
-          ))}
-        </div>
-      </div>
-
-      {/* ── Day list ── */}
-      <div className="space-y-3">
-        <div className="flex items-center gap-2">
-          <Calendar className="h-4 w-4 text-muted-foreground" />
-          <h2 className="text-sm font-semibold capitalize">
-            {isToday(selectedDay)
-              ? "Hoje"
-              : format(selectedDay, "EEEE, d 'de' MMMM", { locale: ptBR })}
-          </h2>
-          <span className="text-xs text-muted-foreground">
-            — {selectedAgs.length} agendamento{selectedAgs.length !== 1 ? "s" : ""}
-          </span>
-        </div>
-
-        {isLoading ? (
-          <div className="space-y-2">
-            {[...Array(3)].map((_, i) => (
-              <div key={i} className="h-20 bg-muted animate-pulse rounded-lg" />
-            ))}
+        {/* Week strip */}
+        <div className="bg-card border border-border rounded-xl p-3">
+          <div className="flex items-center gap-2 mb-3">
+            <button
+              onClick={() => setWeekStart((w) => subWeeks(w, 1))}
+              className="p-1.5 rounded hover:bg-muted transition-colors"
+              data-testid="week-prev"
+            >
+              <ChevronLeft className="h-4 w-4" />
+            </button>
+            <span className="text-sm font-semibold flex-1 text-center">
+              {format(weekStart, "d 'de' MMM", { locale: ptBR })}
+              {" – "}
+              {format(weekEnd, "d 'de' MMM yyyy", { locale: ptBR })}
+            </span>
+            <button
+              onClick={() => setWeekStart((w) => addWeeks(w, 1))}
+              className="p-1.5 rounded hover:bg-muted transition-colors"
+              data-testid="week-next"
+            >
+              <ChevronRight className="h-4 w-4" />
+            </button>
           </div>
-        ) : selectedAgs.length === 0 ? (
-          <div className="flex flex-col items-center justify-center py-16 gap-2 text-muted-foreground">
-            <Calendar className="h-10 w-10 opacity-20" />
-            <p className="text-sm">Nenhum agendamento neste dia</p>
-            <Button variant="outline" size="sm" className="mt-1" onClick={() => setIsCreateOpen(true)}>
-              <Plus className="h-3.5 w-3.5 mr-1.5" />
-              Criar agendamento
-            </Button>
-          </div>
-        ) : (
-          <div className="space-y-2">
-            {selectedAgs.map((ag) => (
-              <AgendamentoRow
-                key={ag.id}
-                ag={ag}
-                leadName={leadMap.get(ag.leadId)}
-                onUpdate={handleUpdate}
+
+          <div className="flex gap-1">
+            {weekDays.map((d) => (
+              <WeekDayBtn
+                key={d.toISOString()}
+                date={d}
+                count={countDay(d)}
+                selected={isSameDay(d, selectedDay)}
+                onClick={() => setSelectedDay(d)}
               />
             ))}
           </div>
-        )}
+        </div>
+
+        {/* Day list */}
+        <div className="space-y-3">
+          <div className="flex items-center gap-2">
+            <Calendar className="h-4 w-4 text-muted-foreground" />
+            <h2 className="text-sm font-semibold capitalize">
+              {isToday(selectedDay)
+                ? "Hoje"
+                : format(selectedDay, "EEEE, d 'de' MMMM", { locale: ptBR })}
+            </h2>
+            <span className="text-xs text-muted-foreground">
+              — {selectedAgs.length} agendamento{selectedAgs.length !== 1 ? "s" : ""}
+            </span>
+          </div>
+
+          {isLoading ? (
+            <div className="space-y-2">
+              {[...Array(3)].map((_, i) => (
+                <div key={i} className="h-20 bg-muted animate-pulse rounded-lg" />
+              ))}
+            </div>
+          ) : selectedAgs.length === 0 ? (
+            <div className="flex flex-col items-center justify-center py-16 gap-2 text-muted-foreground">
+              <Calendar className="h-10 w-10 opacity-20" />
+              <p className="text-sm">Nenhum agendamento neste dia</p>
+              <Button variant="outline" size="sm" className="mt-1" onClick={() => setIsCreateOpen(true)}>
+                <Plus className="h-3.5 w-3.5 mr-1.5" />
+                Criar agendamento
+              </Button>
+            </div>
+          ) : (
+            <div className="space-y-2">
+              {selectedAgs.map((ag) => (
+                <AgendamentoRow
+                  key={ag.id}
+                  ag={ag}
+                  leadName={leadMap.get(ag.leadId)}
+                  agendaColor={ag.agendaId ? agendaMap.get(ag.agendaId)?.cor : undefined}
+                  onUpdate={handleUpdate}
+                />
+              ))}
+            </div>
+          )}
+        </div>
       </div>
 
       {/* ── Conflict dialog ── */}
@@ -750,6 +1072,87 @@ export default function Agenda() {
               data-testid="button-confirm-conflict"
             >
               Criar mesmo assim
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* ── Create / Edit Agenda dialog ── */}
+      <Dialog open={isNewAgendaOpen} onOpenChange={setIsNewAgendaOpen}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle>{editTarget ? "Editar Agenda" : "Nova Agenda"}</DialogTitle>
+          </DialogHeader>
+          <Form {...agendaForm}>
+            <form onSubmit={agendaForm.handleSubmit(onAgendaSubmit)} className="space-y-4">
+              <FormField
+                control={agendaForm.control}
+                name="nome"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Nome *</FormLabel>
+                    <FormControl>
+                      <Input placeholder="Ex: Agenda Marcos" data-testid="input-agenda-nome" {...field} />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+              <FormField
+                control={agendaForm.control}
+                name="cor"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Cor</FormLabel>
+                    <div className="flex gap-2 flex-wrap">
+                      {AGENDA_COLORS.map((c) => (
+                        <button
+                          key={c}
+                          type="button"
+                          onClick={() => field.onChange(c)}
+                          className={`w-7 h-7 rounded-full border-2 transition-all ${
+                            field.value === c ? "border-foreground scale-110" : "border-transparent"
+                          }`}
+                          style={{ backgroundColor: c }}
+                          data-testid={`color-${c}`}
+                        />
+                      ))}
+                    </div>
+                  </FormItem>
+                )}
+              />
+              <Button
+                type="submit"
+                className="w-full"
+                disabled={createAgendaMut.isPending || updateAgendaMut.isPending}
+                data-testid="button-submit-agenda"
+              >
+                {editTarget ? "Salvar" : "Criar Agenda"}
+              </Button>
+            </form>
+          </Form>
+        </DialogContent>
+      </Dialog>
+
+      {/* ── Delete Agenda confirmation ── */}
+      <AlertDialog open={!!deleteTarget} onOpenChange={(v) => { if (!v) setDeleteTarget(null); }}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Excluir agenda "{deleteTarget?.nome}"?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Os agendamentos associados não serão excluídos, mas perderão a referência a esta agenda.
+              Esta ação não pode ser desfeita.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancelar</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-destructive hover:bg-destructive/90 text-destructive-foreground"
+              onClick={confirmDeleteAgenda}
+              disabled={deleteAgendaMut.isPending}
+              data-testid="button-confirm-delete-agenda"
+            >
+              Excluir
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

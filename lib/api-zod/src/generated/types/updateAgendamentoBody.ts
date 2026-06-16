@@ -9,6 +9,7 @@ import type { AgendamentoStatus } from './agendamentoStatus';
 import type { AgendamentoTipo } from './agendamentoTipo';
 
 export interface UpdateAgendamentoBody {
+  agendaId?: string;
   tipo?: AgendamentoTipo;
   titulo?: string;
   dataHoraInicio?: Date;

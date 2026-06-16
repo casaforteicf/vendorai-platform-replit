@@ -4,9 +4,16 @@ import { z } from "zod/v4";
 import {
   db,
   agendamentosTable,
+  agendasTable,
+  leadsTable,
   insertAgendamentoSchema,
   updateAgendamentoSchema,
 } from "@workspace/db";
+import {
+  createGoogleEvent,
+  updateGoogleEvent,
+  deleteGoogleEvent,
+} from "../lib/google-calendar";
 
 const router: IRouter = Router();
 
@@ -24,9 +31,7 @@ router.post("/agendamentos", async (req, res) => {
 
   const { dataHoraInicio, dataHoraFim } = parsed.data;
   if (dataHoraFim <= dataHoraInicio) {
-    res
-      .status(422)
-      .json({ error: "dataHoraFim must be after dataHoraInicio" });
+    res.status(422).json({ error: "dataHoraFim must be after dataHoraInicio" });
     return;
   }
 
@@ -34,11 +39,33 @@ router.post("/agendamentos", async (req, res) => {
     .insert(agendamentosTable)
     .values(parsed.data)
     .returning();
+
   res.status(201).json(agendamento);
+
+  // Async Google Calendar sync — after response sent
+  if (agendamento.agendaId) {
+    try {
+      const [agenda] = await db
+        .select({ googleRefreshToken: agendasTable.googleRefreshToken })
+        .from(agendasTable)
+        .where(eq(agendasTable.id, agendamento.agendaId));
+
+      if (agenda?.googleRefreshToken) {
+        const [lead] = await db
+          .select({ nome: leadsTable.nome })
+          .from(leadsTable)
+          .where(eq(leadsTable.id, agendamento.leadId));
+
+        await createGoogleEvent(agendamento.agendaId, agendamento, lead?.nome ?? undefined);
+      }
+    } catch (err) {
+      req.log.warn({ err }, "Google Calendar sync failed on create");
+    }
+  }
 });
 
 router.get("/tenants/:tenantId/agendamentos", async (req, res) => {
-  const { leadId, status, from, to } = req.query as Record<
+  const { leadId, status, from, to, agendaId } = req.query as Record<
     string,
     string | undefined
   >;
@@ -48,6 +75,7 @@ router.get("/tenants/:tenantId/agendamentos", async (req, res) => {
   ];
 
   if (leadId) conditions.push(eq(agendamentosTable.leadId, leadId));
+  if (agendaId) conditions.push(eq(agendamentosTable.agendaId, agendaId));
   if (status)
     conditions.push(
       eq(agendamentosTable.status, status as typeof agendamentosTable.status._.data)
@@ -138,7 +166,7 @@ router.patch("/agendamentos/:id", async (req, res) => {
   }
 
   const [existing] = await db
-    .select({ id: agendamentosTable.id, tenantId: agendamentosTable.tenantId })
+    .select()
     .from(agendamentosTable)
     .where(eq(agendamentosTable.id, String(req.params.id)));
 
@@ -158,9 +186,7 @@ router.patch("/agendamentos/:id", async (req, res) => {
     data.dataHoraFim &&
     data.dataHoraFim <= data.dataHoraInicio
   ) {
-    res
-      .status(422)
-      .json({ error: "dataHoraFim must be after dataHoraInicio" });
+    res.status(422).json({ error: "dataHoraFim must be after dataHoraInicio" });
     return;
   }
 
@@ -171,11 +197,33 @@ router.patch("/agendamentos/:id", async (req, res) => {
     .returning();
 
   res.json(agendamento);
+
+  // Async Google Calendar sync
+  const agendaId = agendamento.agendaId ?? existing.agendaId;
+  if (agendaId && agendamento.googleEventId) {
+    try {
+      const [agenda] = await db
+        .select({ googleRefreshToken: agendasTable.googleRefreshToken })
+        .from(agendasTable)
+        .where(eq(agendasTable.id, agendaId));
+
+      if (agenda?.googleRefreshToken) {
+        const [lead] = await db
+          .select({ nome: leadsTable.nome })
+          .from(leadsTable)
+          .where(eq(leadsTable.id, agendamento.leadId));
+
+        await updateGoogleEvent(agendaId, agendamento, lead?.nome ?? undefined);
+      }
+    } catch (err) {
+      req.log.warn({ err }, "Google Calendar sync failed on update");
+    }
+  }
 });
 
 router.delete("/agendamentos/:id", async (req, res) => {
   const [existing] = await db
-    .select({ id: agendamentosTable.id, tenantId: agendamentosTable.tenantId })
+    .select()
     .from(agendamentosTable)
     .where(eq(agendamentosTable.id, String(req.params.id)));
 
@@ -190,8 +238,23 @@ router.delete("/agendamentos/:id", async (req, res) => {
   }
 
   await db.delete(agendamentosTable).where(eq(agendamentosTable.id, existing.id));
-
   res.status(204).send();
+
+  // Async Google Calendar delete
+  if (existing.agendaId && existing.googleEventId) {
+    try {
+      const [agenda] = await db
+        .select({ googleRefreshToken: agendasTable.googleRefreshToken })
+        .from(agendasTable)
+        .where(eq(agendasTable.id, existing.agendaId));
+
+      if (agenda?.googleRefreshToken) {
+        await deleteGoogleEvent(existing.agendaId, existing.googleEventId);
+      }
+    } catch (err) {
+      req.log.warn({ err }, "Google Calendar sync failed on delete");
+    }
+  }
 });
 
 export default router;

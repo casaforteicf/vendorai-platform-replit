@@ -507,9 +507,35 @@ export const AgendamentoStatus = {
   no_show: 'no_show',
 } as const;
 
+export interface Agenda {
+  id: string;
+  tenantId: string;
+  nome: string;
+  cor: string;
+  isDefault: boolean;
+  googleCalendarId?: string | null;
+  googleEmail?: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface CreateAgendaBody {
+  tenantId: string;
+  nome: string;
+  cor?: string;
+  isDefault?: boolean;
+}
+
+export interface UpdateAgendaBody {
+  nome?: string;
+  cor?: string;
+  isDefault?: boolean;
+}
+
 export interface Agendamento {
   id: string;
   tenantId: string;
+  agendaId?: string | null;
   leadId: string;
   dealId?: string | null;
   tipo: AgendamentoTipo;
@@ -520,12 +546,14 @@ export interface Agendamento {
   status: AgendamentoStatus;
   responsavelId?: string | null;
   observacoes?: string | null;
+  googleEventId?: string | null;
   createdAt: string;
   updatedAt: string;
 }
 
 export interface CreateAgendamentoBody {
   tenantId: string;
+  agendaId?: string;
   leadId: string;
   dealId?: string;
   tipo: AgendamentoTipo;
@@ -539,6 +567,7 @@ export interface CreateAgendamentoBody {
 }
 
 export interface UpdateAgendamentoBody {
+  agendaId?: string;
   tipo?: AgendamentoTipo;
   titulo?: string;
   dataHoraInicio?: string;
@@ -2251,6 +2280,10 @@ export const ListRulesAtivo = {
   false: 'false',
 } as const;
 
+export type GetAgendaGoogleAuthUrl200 = {
+  url: string;
+};
+
 export type ListAgendamentosParams = {
 leadId?: string;
 status?: AgendamentoStatus;
@@ -2262,6 +2295,10 @@ from?: string;
  * ISO 8601 datetime — filter dataHoraInicio <= to
  */
 to?: string;
+/**
+ * Filter by agenda ID
+ */
+agendaId?: string;
 };
 
 export type CheckAgendamentoDisponibilidadeParams = {

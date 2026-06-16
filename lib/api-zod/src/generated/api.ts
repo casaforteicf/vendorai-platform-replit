@@ -2159,11 +2159,134 @@ export const DeleteRuleParams = zod.object({
 
 
 /**
+ * @summary List agendas for a tenant
+ */
+export const ListAgendasParams = zod.object({
+  "tenantId": zod.coerce.string()
+})
+
+export const ListAgendasResponseItem = zod.object({
+  "id": zod.string(),
+  "tenantId": zod.string(),
+  "nome": zod.string(),
+  "cor": zod.string(),
+  "isDefault": zod.boolean(),
+  "googleCalendarId": zod.string().nullish(),
+  "googleEmail": zod.string().nullish(),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date()
+})
+export const ListAgendasResponse = zod.array(ListAgendasResponseItem)
+
+
+/**
+ * @summary Create a named agenda (calendar)
+ */
+export const CreateAgendaParams = zod.object({
+  "tenantId": zod.coerce.string()
+})
+
+export const CreateAgendaBody = zod.object({
+  "tenantId": zod.string(),
+  "nome": zod.string(),
+  "cor": zod.string().optional(),
+  "isDefault": zod.boolean().optional()
+})
+
+
+/**
+ * @summary Get agenda by ID
+ */
+export const GetAgendaParams = zod.object({
+  "id": zod.coerce.string()
+})
+
+export const GetAgendaResponse = zod.object({
+  "id": zod.string(),
+  "tenantId": zod.string(),
+  "nome": zod.string(),
+  "cor": zod.string(),
+  "isDefault": zod.boolean(),
+  "googleCalendarId": zod.string().nullish(),
+  "googleEmail": zod.string().nullish(),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date()
+})
+
+
+/**
+ * @summary Update agenda (nome, cor, isDefault)
+ */
+export const UpdateAgendaParams = zod.object({
+  "id": zod.coerce.string()
+})
+
+export const UpdateAgendaBody = zod.object({
+  "nome": zod.string().optional(),
+  "cor": zod.string().optional(),
+  "isDefault": zod.boolean().optional()
+})
+
+export const UpdateAgendaResponse = zod.object({
+  "id": zod.string(),
+  "tenantId": zod.string(),
+  "nome": zod.string(),
+  "cor": zod.string(),
+  "isDefault": zod.boolean(),
+  "googleCalendarId": zod.string().nullish(),
+  "googleEmail": zod.string().nullish(),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date()
+})
+
+
+/**
+ * @summary Delete agenda
+ */
+export const DeleteAgendaParams = zod.object({
+  "id": zod.coerce.string()
+})
+
+
+/**
+ * @summary Get Google OAuth URL to connect this agenda to Google Calendar
+ */
+export const GetAgendaGoogleAuthUrlParams = zod.object({
+  "id": zod.coerce.string()
+})
+
+export const GetAgendaGoogleAuthUrlResponse = zod.object({
+  "url": zod.string()
+})
+
+
+/**
+ * @summary Disconnect Google Calendar from this agenda
+ */
+export const DisconnectAgendaGoogleParams = zod.object({
+  "id": zod.coerce.string()
+})
+
+export const DisconnectAgendaGoogleResponse = zod.object({
+  "id": zod.string(),
+  "tenantId": zod.string(),
+  "nome": zod.string(),
+  "cor": zod.string(),
+  "isDefault": zod.boolean(),
+  "googleCalendarId": zod.string().nullish(),
+  "googleEmail": zod.string().nullish(),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date()
+})
+
+
+/**
  * dataHoraFim must be after dataHoraInicio.
  * @summary Create agendamento
  */
 export const CreateAgendamentoBody = zod.object({
   "tenantId": zod.string(),
+  "agendaId": zod.string().optional(),
   "leadId": zod.string(),
   "dealId": zod.string().optional(),
   "tipo": zod.enum(['reuniao', 'visita', 'consulta', 'instalacao']),
@@ -2189,12 +2312,14 @@ export const ListAgendamentosQueryParams = zod.object({
   "leadId": zod.coerce.string().optional(),
   "status": zod.enum(['agendado', 'confirmado', 'concluido', 'cancelado', 'no_show']).optional(),
   "from": zod.date().optional().describe('ISO 8601 datetime — filter dataHoraInicio >= from'),
-  "to": zod.date().optional().describe('ISO 8601 datetime — filter dataHoraInicio <= to')
+  "to": zod.date().optional().describe('ISO 8601 datetime — filter dataHoraInicio <= to'),
+  "agendaId": zod.coerce.string().optional().describe('Filter by agenda ID')
 })
 
 export const ListAgendamentosResponseItem = zod.object({
   "id": zod.string(),
   "tenantId": zod.string(),
+  "agendaId": zod.string().nullish(),
   "leadId": zod.string(),
   "dealId": zod.string().nullish(),
   "tipo": zod.enum(['reuniao', 'visita', 'consulta', 'instalacao']),
@@ -2205,6 +2330,7 @@ export const ListAgendamentosResponseItem = zod.object({
   "status": zod.enum(['agendado', 'confirmado', 'concluido', 'cancelado', 'no_show']),
   "responsavelId": zod.string().nullish(),
   "observacoes": zod.string().nullish(),
+  "googleEventId": zod.string().nullish(),
   "createdAt": zod.coerce.date(),
   "updatedAt": zod.coerce.date()
 })
@@ -2234,6 +2360,7 @@ export const CheckAgendamentoDisponibilidadeResponse = zod.object({
   "conflitos": zod.array(zod.object({
   "id": zod.string(),
   "tenantId": zod.string(),
+  "agendaId": zod.string().nullish(),
   "leadId": zod.string(),
   "dealId": zod.string().nullish(),
   "tipo": zod.enum(['reuniao', 'visita', 'consulta', 'instalacao']),
@@ -2244,6 +2371,7 @@ export const CheckAgendamentoDisponibilidadeResponse = zod.object({
   "status": zod.enum(['agendado', 'confirmado', 'concluido', 'cancelado', 'no_show']),
   "responsavelId": zod.string().nullish(),
   "observacoes": zod.string().nullish(),
+  "googleEventId": zod.string().nullish(),
   "createdAt": zod.coerce.date(),
   "updatedAt": zod.coerce.date()
 })).describe('Overlapping agendamentos found for this responsavel')
@@ -2260,6 +2388,7 @@ export const GetAgendamentoParams = zod.object({
 export const GetAgendamentoResponse = zod.object({
   "id": zod.string(),
   "tenantId": zod.string(),
+  "agendaId": zod.string().nullish(),
   "leadId": zod.string(),
   "dealId": zod.string().nullish(),
   "tipo": zod.enum(['reuniao', 'visita', 'consulta', 'instalacao']),
@@ -2270,6 +2399,7 @@ export const GetAgendamentoResponse = zod.object({
   "status": zod.enum(['agendado', 'confirmado', 'concluido', 'cancelado', 'no_show']),
   "responsavelId": zod.string().nullish(),
   "observacoes": zod.string().nullish(),
+  "googleEventId": zod.string().nullish(),
   "createdAt": zod.coerce.date(),
   "updatedAt": zod.coerce.date()
 })
@@ -2283,6 +2413,7 @@ export const UpdateAgendamentoParams = zod.object({
 })
 
 export const UpdateAgendamentoBody = zod.object({
+  "agendaId": zod.string().optional(),
   "tipo": zod.enum(['reuniao', 'visita', 'consulta', 'instalacao']).optional(),
   "titulo": zod.string().optional(),
   "dataHoraInicio": zod.coerce.date().optional(),
@@ -2297,6 +2428,7 @@ export const UpdateAgendamentoBody = zod.object({
 export const UpdateAgendamentoResponse = zod.object({
   "id": zod.string(),
   "tenantId": zod.string(),
+  "agendaId": zod.string().nullish(),
   "leadId": zod.string(),
   "dealId": zod.string().nullish(),
   "tipo": zod.enum(['reuniao', 'visita', 'consulta', 'instalacao']),
@@ -2307,6 +2439,7 @@ export const UpdateAgendamentoResponse = zod.object({
   "status": zod.enum(['agendado', 'confirmado', 'concluido', 'cancelado', 'no_show']),
   "responsavelId": zod.string().nullish(),
   "observacoes": zod.string().nullish(),
+  "googleEventId": zod.string().nullish(),
   "createdAt": zod.coerce.date(),
   "updatedAt": zod.coerce.date()
 })

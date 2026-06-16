@@ -10,6 +10,7 @@ import type { AgendamentoTipo } from './agendamentoTipo';
 
 export interface CreateAgendamentoBody {
   tenantId: string;
+  agendaId?: string;
   leadId: string;
   dealId?: string;
   tipo: AgendamentoTipo;
