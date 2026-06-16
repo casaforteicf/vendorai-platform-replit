@@ -215,6 +215,161 @@ router.post("/tenants/:tenantId/webhooks/whatsapp", async (req, res) => {
   });
 });
 
+// ── POST /tenants/:tenantId/webhooks/zapi ────────────────────────────────────
+// Receives incoming WhatsApp messages directly from Z-API (native payload).
+// Auth: ?secret=<webhookSecret> query param (Z-API doesn't support custom headers).
+// Only processes: isMessage=true, fromMe=false, direct messages (not groups).
+const zapiNativeBody = z.object({
+  isMessage: z.boolean().optional(),
+  fromMe: z.boolean().optional(),
+  phone: z.string().optional(),
+  participantPhone: z.string().nullable().optional(),
+  chatName: z.string().optional(),
+  senderName: z.string().optional(),
+  text: z.object({ message: z.string() }).optional(),
+  body: z.string().optional(),  // older Z-API format
+  type: z.string().optional(),
+}).passthrough();
+
+function normalizeZapiPhone(raw: string): string {
+  // Strip WhatsApp suffixes: @c.us, @s.whatsapp.net, etc.
+  return raw.replace(/@.*$/, "").replace(/\D/g, "");
+}
+
+router.post("/tenants/:tenantId/webhooks/zapi", async (req, res) => {
+  const { tenantId } = req.params;
+  const secret = req.query["secret"];
+
+  // ── 1. Auth via secret query param ────────────────────────────────────────
+  if (!secret || typeof secret !== "string") {
+    res.status(401).json({ error: "Missing secret query param" });
+    return;
+  }
+
+  const [agentConfig] = await db
+    .select({ webhookSecret: agentConfigsTable.webhookSecret, tenantId: agentConfigsTable.tenantId })
+    .from(agentConfigsTable)
+    .where(eq(agentConfigsTable.tenantId, tenantId));
+
+  if (!agentConfig || agentConfig.webhookSecret !== secret) {
+    res.status(401).json({ error: "Invalid secret" });
+    return;
+  }
+
+  // ── 2. Parse payload ───────────────────────────────────────────────────────
+  const parsed = zapiNativeBody.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(200).json({ ignored: true, reason: "invalid_payload" });
+    return;
+  }
+
+  const payload = parsed.data;
+
+  // ── 3. Filter — only incoming messages from direct chats ──────────────────
+  if (payload.isMessage === false || payload.fromMe === true) {
+    res.status(200).json({ ignored: true, reason: "outgoing_or_non_message" });
+    return;
+  }
+  if (!payload.phone) {
+    res.status(200).json({ ignored: true, reason: "no_phone" });
+    return;
+  }
+  // Ignore group messages (participantPhone is set for groups)
+  if (payload.participantPhone) {
+    res.status(200).json({ ignored: true, reason: "group_message" });
+    return;
+  }
+  // Ignore group chat IDs (contain @g.us)
+  if (payload.phone.includes("@g.us")) {
+    res.status(200).json({ ignored: true, reason: "group_chat" });
+    return;
+  }
+
+  const mensagem = payload.text?.message ?? payload.body ?? "";
+  if (!mensagem.trim()) {
+    res.status(200).json({ ignored: true, reason: "empty_message" });
+    return;
+  }
+
+  const telefone = normalizeZapiPhone(payload.phone);
+  const nome = payload.chatName ?? payload.senderName ?? telefone;
+
+  req.log.info({ telefone, nome }, "zapi-webhook: incoming message received");
+
+  // ── 4. Find or create lead ─────────────────────────────────────────────────
+  let [lead] = await db
+    .select()
+    .from(leadsTable)
+    .where(and(eq(leadsTable.tenantId, tenantId), eq(leadsTable.telefone, telefone)))
+    .limit(1);
+
+  if (!lead) {
+    [lead] = await db
+      .insert(leadsTable)
+      .values({ tenantId, nome, telefone, status: "novo" })
+      .returning();
+    req.log.info({ leadId: lead.id, telefone }, "zapi-webhook: new lead created");
+  }
+
+  // ── 5. Find or create whatsapp conversation ────────────────────────────────
+  let [conversation] = await db
+    .select()
+    .from(conversationsTable)
+    .where(
+      and(
+        eq(conversationsTable.tenantId, tenantId),
+        eq(conversationsTable.leadId, lead.id),
+        eq(conversationsTable.channel, "whatsapp")
+      )
+    )
+    .limit(1);
+
+  if (!conversation) {
+    [conversation] = await db
+      .insert(conversationsTable)
+      .values({ tenantId, leadId: lead.id, channel: "whatsapp", status: "open", naoLidas: 0 })
+      .returning();
+  }
+
+  // ── 6. Insert incoming message ─────────────────────────────────────────────
+  const [message] = await db
+    .insert(messagesTable)
+    .values({
+      tenantId,
+      conversationId: conversation.id,
+      leadId: lead.id,
+      direcao: "entrada",
+      canal: "whatsapp",
+      conteudo: mensagem,
+      enviadoPor: "lead",
+      tipoConteudo: "texto",
+      status: "entregue",
+    })
+    .returning();
+
+  // ── 7. Update conversation counters ───────────────────────────────────────
+  await db
+    .update(conversationsTable)
+    .set({
+      ultimaMensagemEm: new Date(),
+      naoLidas: sql`${conversationsTable.naoLidas} + 1`,
+      updatedAt: new Date(),
+    })
+    .where(eq(conversationsTable.id, conversation.id));
+
+  // ── 8. Dispatch AI agent in background ────────────────────────────────────
+  dispatchAgentBackground({ tenantId, leadId: lead.id, mensagem, log: req.log });
+
+  req.log.info({ messageId: message.id, leadId: lead.id }, "zapi-webhook: message processed");
+
+  res.status(200).json({
+    leadId: lead.id,
+    conversationId: conversation.id,
+    messageId: message.id,
+    agentDispatched: true,
+  });
+});
+
 // ── POST /tenants/:tenantId/webhooks/instagram ───────────────────────────────
 // Receives Instagram DM events forwarded by Meta webhook (via n8n or directly).
 // Payload shape mirrors Meta's Messenger/Instagram webhook format.

@@ -96,6 +96,7 @@ import {
   Link,
   FileText,
   MessageCircle,
+  Loader2,
 } from "lucide-react";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
@@ -803,6 +804,33 @@ export default function Configuracoes() {
   const [syncedZapi, setSyncedZapi] = useState(false);
   const [zapiStatusChecking, setZapiStatusChecking] = useState(false);
   const [zapiStatus, setZapiStatus] = useState<{ connected: boolean; session: boolean } | null>(null);
+  const [zapiWebhookSetting, setZapiWebhookSetting] = useState(false);
+  const [zapiWebhookResult, setZapiWebhookResult] = useState<{ ok: boolean; webhookUrl?: string; error?: string } | null>(null);
+
+  async function onSetupZapiWebhook() {
+    if (!agentQuery.data?.id) return;
+    setZapiWebhookSetting(true);
+    setZapiWebhookResult(null);
+    try {
+      const res = await fetch(`/api/agent-configs/${agentQuery.data.id}/zapi-setup-webhook`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${localStorage.getItem("vendorai_token")}` },
+      });
+      const data = await res.json() as { ok?: boolean; webhookUrl?: string; error?: string };
+      if (res.ok) {
+        setZapiWebhookResult({ ok: true, webhookUrl: data.webhookUrl });
+        toast({ title: "Webhook registrado! Mensagens do WhatsApp chegarão automaticamente." });
+      } else {
+        setZapiWebhookResult({ ok: false, error: data.error ?? "Erro desconhecido" });
+        toast({ title: data.error ?? "Erro ao registrar webhook", variant: "destructive" });
+      }
+    } catch {
+      setZapiWebhookResult({ ok: false, error: "Falha de conexão" });
+      toast({ title: "Falha ao conectar ao servidor", variant: "destructive" });
+    } finally {
+      setZapiWebhookSetting(false);
+    }
+  }
 
   async function checkZapiStatus() {
     if (!agentQuery.data?.id) return;
@@ -1907,6 +1935,64 @@ Body:
                         Sem a Z-API configurada, mensagens WhatsApp enviadas pelos agentes ficam salvas
                         no sistema mas <strong>não chegam ao destinatário</strong>.
                       </p>
+                    </div>
+                  )}
+
+                  {/* Recebimento de mensagens (webhook Z-API nativo) */}
+                  {agentQuery.data?.zapiInstanceId && (
+                    <div className="rounded-lg border bg-muted/30 p-4 space-y-3">
+                      <div className="flex items-start justify-between gap-3">
+                        <div>
+                          <p className="text-sm font-semibold flex items-center gap-1.5">
+                            <span className="text-base">📥</span>
+                            Recebimento de mensagens (entrada)
+                          </p>
+                          <p className="text-xs text-muted-foreground mt-0.5">
+                            Registra automaticamente o webhook no Z-API para que respostas dos clientes
+                            cheguem ao VendorAI e disparem o agente de IA.
+                          </p>
+                        </div>
+                        {zapiWebhookResult?.ok && (
+                          <span className="shrink-0 inline-flex items-center gap-1.5 text-xs font-medium bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400 px-2.5 py-1 rounded-full">
+                            <CheckCircle2 className="h-3 w-3" /> Ativo
+                          </span>
+                        )}
+                      </div>
+
+                      {agentQuery.data?.webhookSecret ? (
+                        <>
+                          <Button
+                            size="sm"
+                            onClick={onSetupZapiWebhook}
+                            disabled={zapiWebhookSetting}
+                            className="gap-2 h-8 text-xs"
+                          >
+                            {zapiWebhookSetting
+                              ? <><Loader2 className="h-3 w-3 animate-spin" /> Registrando…</>
+                              : zapiWebhookResult?.ok
+                              ? <><RefreshCw className="h-3 w-3" /> Reativar webhook</>
+                              : "Ativar recebimento de mensagens"}
+                          </Button>
+
+                          {zapiWebhookResult?.ok && zapiWebhookResult.webhookUrl && (
+                            <div className="rounded-md bg-muted border p-2.5 space-y-1">
+                              <p className="text-xs text-muted-foreground font-medium">URL registrada no Z-API:</p>
+                              <code className="text-xs break-all text-foreground/80">{zapiWebhookResult.webhookUrl}</code>
+                            </div>
+                          )}
+                          {zapiWebhookResult?.ok === false && (
+                            <p className="text-xs text-destructive flex items-center gap-1">
+                              <AlertTriangle className="h-3 w-3 shrink-0" />
+                              {zapiWebhookResult.error}
+                            </p>
+                          )}
+                        </>
+                      ) : (
+                        <p className="text-xs text-amber-600 dark:text-amber-400 flex items-start gap-1.5">
+                          <AlertTriangle className="h-3.5 w-3.5 shrink-0 mt-0.5" />
+                          Gere um Webhook Secret na seção acima antes de ativar o recebimento.
+                        </p>
+                      )}
                     </div>
                   )}
                 </div>

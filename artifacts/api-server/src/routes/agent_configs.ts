@@ -315,6 +315,71 @@ router.delete("/agent-configs/:id", async (req, res) => {
   res.status(204).send();
 });
 
+// ── POST /agent-configs/:id/zapi-setup-webhook ────────────────────────────────
+// Registers the VendorAI Z-API native webhook URL in the Z-API instance so
+// incoming messages are forwarded automatically.
+router.post("/agent-configs/:id/zapi-setup-webhook", async (req, res) => {
+  const [config] = await db
+    .select()
+    .from(agentConfigsTable)
+    .where(eq(agentConfigsTable.id, String(req.params.id)));
+
+  if (!config) {
+    res.status(404).json({ error: "Agent config not found" });
+    return;
+  }
+
+  if (req.user?.platformRole !== "super_admin" && config.tenantId !== req.user?.tenantId) {
+    res.status(403).json({ error: "Access denied" });
+    return;
+  }
+
+  if (!config.zapiInstanceId || !config.zapiToken || !config.zapiClientToken) {
+    res.status(422).json({ error: "Z-API credentials not configured" });
+    return;
+  }
+
+  if (!config.webhookSecret) {
+    res.status(422).json({ error: "Webhook secret not generated — regenerate it first" });
+    return;
+  }
+
+  const domain = (process.env["REPLIT_DOMAINS"] ?? "").split(",")[0]?.trim();
+  if (!domain) {
+    res.status(500).json({ error: "Cannot determine public domain (REPLIT_DOMAINS not set)" });
+    return;
+  }
+
+  const webhookUrl = `https://${domain}/api/tenants/${config.tenantId}/webhooks/zapi?secret=${config.webhookSecret}`;
+
+  try {
+    const zapiRes = await fetch(
+      `https://api.z-api.io/instances/${config.zapiInstanceId}/token/${config.zapiToken}/update-webhook-received`,
+      {
+        method: "PUT",
+        headers: {
+          "Content-Type": "application/json",
+          "Client-Token": config.zapiClientToken,
+        },
+        body: JSON.stringify({ value: webhookUrl }),
+      }
+    );
+
+    if (!zapiRes.ok) {
+      const body = await zapiRes.text();
+      req.log.warn({ status: zapiRes.status, body }, "zapi-setup-webhook: Z-API error");
+      res.status(502).json({ error: `Z-API returned ${zapiRes.status}: ${body}` });
+      return;
+    }
+
+    req.log.info({ webhookUrl }, "zapi-setup-webhook: webhook registered successfully");
+    res.json({ ok: true, webhookUrl });
+  } catch (err) {
+    req.log.error({ err }, "zapi-setup-webhook: fetch failed");
+    res.status(502).json({ error: "Failed to reach Z-API" });
+  }
+});
+
 router.get("/agent-configs/:id/zapi-status", async (req, res) => {
   const [config] = await db
     .select({
