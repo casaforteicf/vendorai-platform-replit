@@ -294,7 +294,6 @@ export default function MeuSite() {
             <p className="text-sm">Seu site ainda não foi gerado. Clique em "Gerar site agora" acima.</p>
           </div>
         )}
-      </div>
     </div>
   );
 }
