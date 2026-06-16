@@ -4,7 +4,11 @@ import { eq } from "drizzle-orm";
 import type { Agendamento } from "@workspace/db";
 import { logger } from "./logger";
 
-const SCOPES = ["https://www.googleapis.com/auth/calendar.events"];
+const SCOPES = [
+  "https://www.googleapis.com/auth/calendar.events",
+  "https://www.googleapis.com/auth/userinfo.email",
+  "openid",
+];
 
 function getRedirectUri(): string {
   // Allow explicit override via env var (most reliable for production)

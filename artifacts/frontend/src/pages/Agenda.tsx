@@ -380,8 +380,8 @@ function AgendaSidebarItem({
       <span className={`flex-1 text-sm truncate ${selected ? "font-semibold text-primary" : ""}`}>
         {agenda.nome}
       </span>
-      {agenda.googleEmail && (
-        <span title={`Google: ${agenda.googleEmail}`}>
+      {agenda.googleCalendarId && (
+        <span title={agenda.googleEmail ? `Google: ${agenda.googleEmail}` : "Google Calendar conectado"}>
           <CalendarCheck className="h-3 w-3 text-green-500 shrink-0" />
         </span>
       )}
@@ -400,7 +400,7 @@ function AgendaSidebarItem({
             <Pencil className="h-3.5 w-3.5 mr-2" />
             Renomear / cor
           </DropdownMenuItem>
-          {agenda.googleEmail ? (
+          {agenda.googleCalendarId ? (
             <DropdownMenuItem
               onClick={(e) => { e.stopPropagation(); onDisconnectGoogle(); }}
               disabled={isGoogleLoading}
@@ -991,7 +991,7 @@ export default function AgendaPage() {
                   />
 
                   {/* Google Meet toggle — only useful when an agenda with Google is selected */}
-                  {agendas.some((a) => a.googleEmail && (!form.watch("agendaId") || a.id === form.watch("agendaId"))) && (
+                  {agendas.some((a) => a.googleCalendarId && (!form.watch("agendaId") || a.id === form.watch("agendaId"))) && (
                     <FormField
                       control={form.control}
                       name="gerarMeet"
