@@ -30,6 +30,7 @@ import Onboarding from "@/pages/Onboarding";
 import Content from "@/pages/Content";
 import Suspended from "@/pages/Suspended";
 import Questionario from "@/pages/Questionario";
+import MeuSite from "@/pages/MeuSite";
 import { useEffect } from "react";
 import {
   useGetTenant,
@@ -248,6 +249,9 @@ function AppRoutes() {
       </Route>
       <Route path="/content">
         {() => <ProtectedRoute component={Content} />}
+      </Route>
+      <Route path="/meu-site">
+        {() => <ProtectedRoute component={MeuSite} />}
       </Route>
       <Route path="/invite/:token">
         <AcceptInvite />

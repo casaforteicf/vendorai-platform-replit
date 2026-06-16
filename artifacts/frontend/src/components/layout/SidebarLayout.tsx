@@ -3,7 +3,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import {
   LayoutDashboard, Users, Briefcase, MessageSquare, Calendar,
   Settings, LogOut, Megaphone, FileText, Receipt, BrainCircuit,
-  Store, Package, Menu, X, Sparkles,
+  Store, Package, Menu, X, Sparkles, Globe,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
@@ -27,6 +27,7 @@ export function SidebarLayout({ children }: { children: React.ReactNode }) {
     { name: "Propostas",     href: "/propostas",     icon: FileText,        sellerHidden: false },
     { name: "Estoque",       href: "/estoque",       icon: Package,         sellerHidden: false },
     { name: "Conteúdo",      href: "/content",       icon: Sparkles,        sellerHidden: false },
+    { name: "Meu Site",      href: "/meu-site",      icon: Globe,           sellerHidden: true  },
     { name: "Campanhas",     href: "/campanhas",     icon: Megaphone,       sellerHidden: true  },
     { name: "Faturamento",   href: "/faturamento",   icon: Receipt,         sellerHidden: true  },
     { name: "Configurações", href: "/configuracoes", icon: Settings,        sellerHidden: true  },

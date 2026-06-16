@@ -1,14 +1,51 @@
-import { pgTable, text, timestamp, boolean, pgEnum } from "drizzle-orm/pg-core";
+import { pgTable, text, timestamp, boolean, jsonb } from "drizzle-orm/pg-core";
 import { createInsertSchema, createSelectSchema } from "drizzle-zod";
 import { z } from "zod/v4";
 import { tenantsTable } from "./tenants";
 
-export const siteTemplateEnum = pgEnum("site_template", [
-  "padrao",
-  "moderno",
-  "minimalista",
-]);
+// ── Generated content shape ────────────────────────────────────────────────────
+export interface SiteServico {
+  titulo: string;
+  descricao: string;
+  emoji: string;
+}
+export interface SiteDiferencial {
+  titulo: string;
+  texto: string;
+  icone: string;
+}
+export interface SiteDepoimento {
+  nome: string;
+  cargo: string;
+  empresa: string;
+  texto: string;
+  estrelas: number;
+}
+export interface SiteFaq {
+  pergunta: string;
+  resposta: string;
+}
+export interface GeneratedSiteContent {
+  hero: { headline: string; subheadline: string; cta: string; cta2?: string };
+  sobre: { titulo: string; texto: string };
+  servicos: SiteServico[];
+  diferenciais: SiteDiferencial[];
+  depoimentos: SiteDepoimento[];
+  faq: SiteFaq[];
+  cta_final: { titulo: string; texto: string; botao: string };
+  cores: { primaria: string; secundaria: string; acento: string };
+  ecommerce?: {
+    titulo: string;
+    descricao: string;
+    frete: string;
+    pagamento: string;
+    garantia: string;
+  };
+  imageKeyword: string;
+  slogan: string;
+}
 
+// ── Table ──────────────────────────────────────────────────────────────────────
 export const siteConfigTable = pgTable("site_config", {
   id: text("id")
     .primaryKey()
@@ -17,12 +54,16 @@ export const siteConfigTable = pgTable("site_config", {
     .notNull()
     .unique()
     .references(() => tenantsTable.id, { onDelete: "cascade" }),
-  template: siteTemplateEnum("template").notNull().default("padrao"),
+  tipo: text("tipo").notNull().default("landing_page"),
+  template: text("template").notNull().default("padrao"),
   corPrimaria: text("cor_primaria"),
   tagline: text("tagline"),
   sobreEmpresa: text("sobre_empresa"),
   whatsappContato: text("whatsapp_contato"),
   ativo: boolean("ativo").notNull().default(true),
+  status: text("status").notNull().default("draft"),
+  generatedContent: jsonb("generated_content").$type<GeneratedSiteContent>(),
+  heroImageUrl: text("hero_image_url"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
 });
