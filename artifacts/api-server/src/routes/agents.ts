@@ -240,13 +240,15 @@ async function handleSchedulerProcess(req: Request, res: Response): Promise<void
   const now = new Date();
   await updateCounters(config, limits, tokensUsed, now);
 
-  const isAutonomous = !!config.autonomyEnabledAt;
+  // Scheduler is always manually triggered by the user via the UI — send immediately
+  // regardless of the autonomy setting (which only controls background automation).
+  const isAutonomous = true;
   const finalTask    = await insertAndRun({
     tenantId, leadId, agentName: "scheduler", actionType: "enviar_whatsapp", resposta, isAutonomous, now, log: req.log,
     ...(agendamentoCriado && { extraPayload: { agendamentoId: agendamentoCriado.id } }),
   });
 
-  req.log.info({ taskId: finalTask.id, status: finalTask.status, leadId, tokensUsed, isAutonomous }, "scheduler: process complete");
+  req.log.info({ taskId: finalTask.id, status: finalTask.status, leadId, tokensUsed }, "scheduler: process complete");
   res.status(201).json({ task: finalTask, resposta, tokensUsed, isAutonomous, agendamento: agendamentoCriado ?? undefined });
 }
 
