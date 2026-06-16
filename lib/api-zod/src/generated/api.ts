@@ -1644,10 +1644,21 @@ export const GetTenantDashboardResponse = zod.object({
 }),
   "diasSemanaGanhos": zod.record(zod.string(), zod.number()).describe('Map of dayOfWeek (0=Sun..6=Sat) to count of ganho deals in last 6 months'),
   "negocioPerfil": zod.object({
+  "razaoSocial": zod.string().optional(),
+  "nomeFantasia": zod.string().nullish(),
   "endereco": zod.string().nullish(),
+  "telefone": zod.string().nullish(),
+  "email": zod.string().nullish(),
   "publicoAlvo": zod.string().nullish(),
   "vertical": zod.string().nullish(),
-  "canaisVenda": zod.array(zod.string()).nullish()
+  "canaisVenda": zod.array(zod.string()).nullish(),
+  "diferenciais": zod.string().nullish(),
+  "concorrentes": zod.array(zod.string()).nullish(),
+  "produtos": zod.array(zod.object({
+  "nome": zod.string(),
+  "descricao": zod.string().nullish(),
+  "preco": zod.number().nullish()
+})).nullish()
 }).nullish()
 })
 

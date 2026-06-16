@@ -226,11 +226,24 @@ export type TenantDashboardFaixaEtaria = {
  */
 export type TenantDashboardDiasSemanaGanhos = {[key: string]: number};
 
+export type TenantDashboardNegocioPerfilProdutosItem = {
+  nome: string;
+  descricao?: string | null;
+  preco?: number | null;
+};
+
 export type TenantDashboardNegocioPerfil = {
+  razaoSocial?: string;
+  nomeFantasia?: string | null;
   endereco?: string | null;
+  telefone?: string | null;
+  email?: string | null;
   publicoAlvo?: string | null;
   vertical?: string | null;
   canaisVenda?: string[] | null;
+  diferenciais?: string | null;
+  concorrentes?: string[] | null;
+  produtos?: TenantDashboardNegocioPerfilProdutosItem[] | null;
 } | null;
 
 export interface TenantDashboard {

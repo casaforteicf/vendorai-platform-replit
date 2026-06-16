@@ -5727,7 +5727,18 @@ components:
           type: object
           nullable: true
           properties:
+            razaoSocial:
+              type: string
+            nomeFantasia:
+              type: string
+              nullable: true
             endereco:
+              type: string
+              nullable: true
+            telefone:
+              type: string
+              nullable: true
+            email:
               type: string
               nullable: true
             publicoAlvo:
@@ -5741,6 +5752,29 @@ components:
               nullable: true
               items:
                 type: string
+            diferenciais:
+              type: string
+              nullable: true
+            concorrentes:
+              type: array
+              nullable: true
+              items:
+                type: string
+            produtos:
+              type: array
+              nullable: true
+              items:
+                type: object
+                properties:
+                  nome:
+                    type: string
+                  descricao:
+                    type: string
+                    nullable: true
+                  preco:
+                    type: number
+                    nullable: true
+                required: [nome]
       required:
         - leads
         - deals

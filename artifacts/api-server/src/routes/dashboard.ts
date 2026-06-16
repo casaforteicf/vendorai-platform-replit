@@ -60,10 +60,17 @@ type FaixaEtariaRow = {
 };
 type DiaSemanaRow = { dow: number; total: number };
 type NegocioPerfilRow = {
+  razaoSocial: string;
+  nomeFantasia: string | null;
   endereco: string | null;
+  telefone: string | null;
+  email: string | null;
   publicoAlvo: string | null;
   vertical: string | null;
   canaisVenda: string[] | null;
+  diferenciais: string | null;
+  concorrentes: string[] | null;
+  produtos: Array<{ nome: string; descricao?: string; preco?: number }> | null;
 };
 
 router.get("/tenants/:tenantId/dashboard", async (req, res) => {
@@ -272,13 +279,20 @@ router.get("/tenants/:tenantId/dashboard", async (req, res) => {
       )
       .groupBy(sql`extract(dow from ${dealsTable.updatedAt})`),
 
-    // 14. Perfil do negócio (endereco, publicoAlvo, vertical, canaisVenda)
+    // 14. Perfil completo do negócio
     db
       .select({
+        razaoSocial: businessProfilesTable.razaoSocial,
+        nomeFantasia: businessProfilesTable.nomeFantasia,
         endereco: businessProfilesTable.endereco,
+        telefone: businessProfilesTable.telefone,
+        email: businessProfilesTable.email,
         publicoAlvo: businessProfilesTable.publicoAlvo,
         vertical: businessProfilesTable.vertical,
         canaisVenda: businessProfilesTable.canaisVenda,
+        diferenciais: businessProfilesTable.diferenciais,
+        concorrentes: businessProfilesTable.concorrentes,
+        produtos: businessProfilesTable.produtos,
       })
       .from(businessProfilesTable)
       .where(eq(businessProfilesTable.tenantId, tenantId))
@@ -380,10 +394,17 @@ router.get("/tenants/:tenantId/dashboard", async (req, res) => {
     diasSemanaGanhos,
     negocioPerfil: perfil
       ? {
+          razaoSocial: perfil.razaoSocial,
+          nomeFantasia: perfil.nomeFantasia ?? null,
           endereco: perfil.endereco ?? null,
+          telefone: perfil.telefone ?? null,
+          email: perfil.email ?? null,
           publicoAlvo: perfil.publicoAlvo ?? null,
           vertical: perfil.vertical ?? null,
           canaisVenda: perfil.canaisVenda ?? null,
+          diferenciais: perfil.diferenciais ?? null,
+          concorrentes: perfil.concorrentes ?? null,
+          produtos: perfil.produtos ?? null,
         }
       : null,
   });

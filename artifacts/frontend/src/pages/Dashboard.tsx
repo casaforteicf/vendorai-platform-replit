@@ -17,6 +17,11 @@ import {
   Target,
   Building2,
   Flame,
+  Phone,
+  Mail,
+  Award,
+  Package,
+  Swords,
 } from "lucide-react";
 import {
   useGetTenantDashboard,
@@ -690,83 +695,170 @@ export default function Dashboard() {
       {(isLoading || perfil) && (
         <Card data-testid="card-sobre-negocio">
           <CardHeader className="pb-3">
-            <CardTitle className="text-sm font-semibold">Sobre o Negócio</CardTitle>
-            <p className="text-xs text-muted-foreground">
-              Informações do perfil comercial cadastrado
-            </p>
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                {isLoading ? (
+                  <div className="h-5 bg-muted animate-pulse rounded w-40 mb-1" />
+                ) : (
+                  <CardTitle className="text-base font-semibold">
+                    {perfil?.nomeFantasia ?? perfil?.razaoSocial ?? "Sobre o Negócio"}
+                  </CardTitle>
+                )}
+                <p className="text-xs text-muted-foreground mt-0.5">
+                  Perfil comercial do tenant
+                </p>
+              </div>
+              {perfil?.vertical && (
+                <Badge variant="secondary" className="text-xs shrink-0 mt-0.5">
+                  {perfil.vertical}
+                </Badge>
+              )}
+            </div>
           </CardHeader>
-          <CardContent>
+          <CardContent className="space-y-5">
             {isLoading ? (
               <div className="space-y-3">
-                {Array.from({ length: 3 }).map((_, i) => (
+                {Array.from({ length: 4 }).map((_, i) => (
                   <div key={i} className="h-5 bg-muted animate-pulse rounded w-3/4" />
                 ))}
               </div>
             ) : perfil ? (
-              <div className="grid gap-4 sm:grid-cols-2">
-                {perfil.endereco && (
-                  <div className="flex gap-3">
-                    <div className="mt-0.5 p-1.5 rounded-md bg-muted h-fit">
-                      <MapPin className="h-3.5 w-3.5 text-muted-foreground" />
-                    </div>
-                    <div>
-                      <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide mb-0.5">
-                        Endereço
-                      </p>
-                      <p className="text-sm">{perfil.endereco}</p>
-                    </div>
+              <>
+                {/* Contato e localização */}
+                {(perfil.telefone || perfil.email || perfil.endereco) && (
+                  <div className="flex flex-wrap gap-x-6 gap-y-2">
+                    {perfil.telefone && (
+                      <div className="flex items-center gap-1.5 text-sm text-muted-foreground">
+                        <Phone className="h-3.5 w-3.5 shrink-0" />
+                        <span>{perfil.telefone}</span>
+                      </div>
+                    )}
+                    {perfil.email && (
+                      <div className="flex items-center gap-1.5 text-sm text-muted-foreground">
+                        <Mail className="h-3.5 w-3.5 shrink-0" />
+                        <span>{perfil.email}</span>
+                      </div>
+                    )}
+                    {perfil.endereco && (
+                      <div className="flex items-center gap-1.5 text-sm text-muted-foreground">
+                        <MapPin className="h-3.5 w-3.5 shrink-0" />
+                        <span>{perfil.endereco}</span>
+                      </div>
+                    )}
                   </div>
                 )}
-                {perfil.vertical && (
-                  <div className="flex gap-3">
-                    <div className="mt-0.5 p-1.5 rounded-md bg-muted h-fit">
-                      <Building2 className="h-3.5 w-3.5 text-muted-foreground" />
-                    </div>
-                    <div>
-                      <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide mb-0.5">
-                        Segmento / Vertical
-                      </p>
-                      <p className="text-sm">{perfil.vertical}</p>
-                    </div>
-                  </div>
-                )}
+
+                {/* Público-alvo */}
                 {perfil.publicoAlvo && (
-                  <div className="flex gap-3 sm:col-span-2">
-                    <div className="mt-0.5 p-1.5 rounded-md bg-muted h-fit">
-                      <Target className="h-3.5 w-3.5 text-muted-foreground" />
+                  <div className="flex gap-3">
+                    <div className="mt-0.5 p-1.5 rounded-md bg-violet-500/10 h-fit shrink-0">
+                      <Target className="h-3.5 w-3.5 text-violet-500" />
                     </div>
                     <div>
                       <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide mb-0.5">
                         Público-alvo
                       </p>
-                      <p className="text-sm text-muted-foreground">{perfil.publicoAlvo}</p>
+                      <p className="text-sm">{perfil.publicoAlvo}</p>
                     </div>
                   </div>
                 )}
-                {perfil.canaisVenda && perfil.canaisVenda.length > 0 && (
-                  <div className="flex gap-3 sm:col-span-2">
-                    <div className="mt-0.5 p-1.5 rounded-md bg-muted h-fit">
-                      <TrendingUp className="h-3.5 w-3.5 text-muted-foreground" />
+
+                {/* Diferenciais competitivos */}
+                {perfil.diferenciais && (
+                  <div className="flex gap-3">
+                    <div className="mt-0.5 p-1.5 rounded-md bg-amber-500/10 h-fit shrink-0">
+                      <Award className="h-3.5 w-3.5 text-amber-500" />
                     </div>
                     <div>
-                      <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide mb-1.5">
-                        Canais de Venda
+                      <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide mb-0.5">
+                        Diferenciais Competitivos
                       </p>
-                      <div className="flex flex-wrap gap-1.5">
-                        {perfil.canaisVenda.map((canal) => (
-                          <Badge
-                            key={canal}
-                            variant="secondary"
-                            className="text-xs"
+                      <p className="text-sm text-muted-foreground">{perfil.diferenciais}</p>
+                    </div>
+                  </div>
+                )}
+
+                {/* Canais de venda + Concorrentes em linha */}
+                <div className="grid gap-4 sm:grid-cols-2">
+                  {perfil.canaisVenda && perfil.canaisVenda.length > 0 && (
+                    <div className="flex gap-3">
+                      <div className="mt-0.5 p-1.5 rounded-md bg-emerald-500/10 h-fit shrink-0">
+                        <TrendingUp className="h-3.5 w-3.5 text-emerald-500" />
+                      </div>
+                      <div>
+                        <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide mb-1.5">
+                          Canais de Venda
+                        </p>
+                        <div className="flex flex-wrap gap-1.5">
+                          {perfil.canaisVenda.map((canal) => (
+                            <Badge key={canal} variant="secondary" className="text-xs capitalize">
+                              {canal}
+                            </Badge>
+                          ))}
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                  {perfil.concorrentes && perfil.concorrentes.length > 0 && (
+                    <div className="flex gap-3">
+                      <div className="mt-0.5 p-1.5 rounded-md bg-red-500/10 h-fit shrink-0">
+                        <Swords className="h-3.5 w-3.5 text-red-500" />
+                      </div>
+                      <div>
+                        <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide mb-1.5">
+                          Concorrentes
+                        </p>
+                        <div className="flex flex-wrap gap-1.5">
+                          {perfil.concorrentes.map((c) => (
+                            <Badge key={c} variant="outline" className="text-xs">
+                              {c}
+                            </Badge>
+                          ))}
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                {/* Produtos / Serviços */}
+                {perfil.produtos && perfil.produtos.length > 0 && (
+                  <div className="flex gap-3">
+                    <div className="mt-0.5 p-1.5 rounded-md bg-blue-500/10 h-fit shrink-0">
+                      <Package className="h-3.5 w-3.5 text-blue-500" />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide mb-2">
+                        Produtos / Serviços ({perfil.produtos.length})
+                      </p>
+                      <div className="grid gap-2 sm:grid-cols-2">
+                        {perfil.produtos.map((p, i) => (
+                          <div
+                            key={i}
+                            className="rounded-md border border-border bg-muted/30 p-2.5"
                           >
-                            {canal}
-                          </Badge>
+                            <div className="flex items-start justify-between gap-2">
+                              <p className="text-sm font-medium leading-tight">{p.nome}</p>
+                              {p.preco != null && (
+                                <span className="text-xs font-semibold text-emerald-600 whitespace-nowrap">
+                                  {p.preco.toLocaleString("pt-BR", {
+                                    style: "currency",
+                                    currency: "BRL",
+                                  })}
+                                </span>
+                              )}
+                            </div>
+                            {p.descricao && (
+                              <p className="text-xs text-muted-foreground mt-1 leading-relaxed">
+                                {p.descricao}
+                              </p>
+                            )}
+                          </div>
                         ))}
                       </div>
                     </div>
                   </div>
                 )}
-              </div>
+              </>
             ) : null}
           </CardContent>
         </Card>

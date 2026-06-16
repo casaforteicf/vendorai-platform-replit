@@ -202,6 +202,7 @@ export * from './tenantDashboardFaixaEtaria';
 export * from './tenantDashboardGanhosMes';
 export * from './tenantDashboardLeads';
 export * from './tenantDashboardNegocioPerfil';
+export * from './tenantDashboardNegocioPerfilProdutosItem';
 export * from './tenantDashboardPropostas';
 export * from './tenantDashboardPropostasAtivas';
 export * from './tenantStatus';
