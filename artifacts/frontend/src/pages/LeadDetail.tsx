@@ -19,6 +19,8 @@ import {
   useListConversationMessages,
   getListConversationMessagesQueryKey,
   useUpdateLead,
+  useListTenantUsers,
+  getListTenantUsersQueryKey,
 } from "@workspace/api-client-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -473,6 +475,11 @@ export default function LeadDetail() {
   const [newActivityTitulo, setNewActivityTitulo] = useState("");
   const [newActivityDescricao, setNewActivityDescricao] = useState("");
   const [newActivityData, setNewActivityData] = useState("");
+  const [newActivityResponsavelId, setNewActivityResponsavelId] = useState<string>("__ia__");
+
+  const { data: tenantUsers } = useListTenantUsers(tenantId, {
+    query: { enabled: !!tenantId, queryKey: getListTenantUsersQueryKey(tenantId) },
+  });
 
   const { mutate: createActivity, isPending: isCreatingActivity } = useCreateActivity({
     mutation: {
@@ -483,6 +490,7 @@ export default function LeadDetail() {
         setNewActivityDescricao("");
         setNewActivityData("");
         setNewActivityTipo("tarefa");
+        setNewActivityResponsavelId("__ia__");
         toast({ title: "Atividade criada." });
       },
       onError: () => {
@@ -496,11 +504,13 @@ export default function LeadDetail() {
     setNewActivityDescricao("");
     setNewActivityData("");
     setNewActivityTipo("tarefa");
+    setNewActivityResponsavelId("__ia__");
     setIsNewActivityOpen(true);
   }
 
   function handleCreateActivity() {
     if (!tenantId || !id || !newActivityTitulo.trim()) return;
+    const responsavelId = newActivityResponsavelId === "__ia__" ? undefined : newActivityResponsavelId;
     createActivity({
       data: {
         tenantId,
@@ -510,6 +520,7 @@ export default function LeadDetail() {
         descricao: newActivityDescricao.trim() || undefined,
         dataVencimento: newActivityData || undefined,
         status: "pendente",
+        responsavelId,
       },
     });
   }
@@ -1700,6 +1711,27 @@ export default function LeadDetail() {
                 <SelectContent>
                   {Object.entries(ACTIVITY_TIPO_LABELS).map(([value, label]) => (
                     <SelectItem key={value} value={value}>{label}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            {/* Responsável */}
+            <div className="space-y-1.5">
+              <label className="text-sm font-medium">Responsável</label>
+              <Select
+                value={newActivityResponsavelId}
+                onValueChange={setNewActivityResponsavelId}
+              >
+                <SelectTrigger data-testid="select-activity-responsavel">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="__ia__">🤖 IA</SelectItem>
+                  {(tenantUsers ?? []).map((u) => (
+                    <SelectItem key={u.id} value={u.id}>
+                      {u.name || u.email}
+                    </SelectItem>
                   ))}
                 </SelectContent>
               </Select>
