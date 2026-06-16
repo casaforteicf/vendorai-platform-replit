@@ -12,6 +12,7 @@ import {
   messagesTable,
   activitiesTable,
   tenantsTable,
+  dealsTable,
 } from "@workspace/db";
 import { evaluateForLead } from "../routes/rules.js";
 
@@ -204,6 +205,22 @@ export async function analyzeLeadIntelligence(params: {
     .orderBy(desc(activitiesTable.createdAt))
     .limit(10);
 
+  // 3b. Load active deals for the lead
+  const activeDeals = await db
+    .select({
+      titulo:                dealsTable.titulo,
+      valor:                 dealsTable.valor,
+      etapa:                 dealsTable.etapa,
+      etapaSaas:             dealsTable.etapaSaas,
+      probabilidade:         dealsTable.probabilidade,
+      dataFechamentoPrevista: dealsTable.dataFechamentoPrevista,
+      updatedAt:             dealsTable.updatedAt,
+    })
+    .from(dealsTable)
+    .where(and(eq(dealsTable.leadId, leadId), eq(dealsTable.tenantId, tenantId)))
+    .orderBy(desc(dealsTable.updatedAt))
+    .limit(5);
+
   // 4. Build prompt
   const leadSection = [
     `Nome: ${lead.nome}`,
@@ -229,12 +246,35 @@ export async function analyzeLeadIntelligence(params: {
         .join("\n")
     : "Nenhuma atividade registrada.";
 
+  const ETAPA_LABELS: Record<string, string> = {
+    novo:        "Novo",
+    qualificado: "Qualificado",
+    proposta:    "Proposta enviada",
+    negociacao:  "Em negociação",
+    ganho:       "Ganho",
+    perdido:     "Perdido",
+  };
+
+  const dealsSection = activeDeals.length > 0
+    ? activeDeals.map((d) => {
+        const etapaLabel = ETAPA_LABELS[d.etapa] ?? d.etapa;
+        const saasLabel  = d.etapaSaas ? ` / SaaS: ${d.etapaSaas}` : "";
+        const valorLabel = d.valor ? ` — R$ ${Number(d.valor).toLocaleString("pt-BR")}` : "";
+        const probLabel  = d.probabilidade != null ? ` (${d.probabilidade}% de chance)` : "";
+        const fechamento = d.dataFechamentoPrevista
+          ? ` — Previsão: ${new Date(d.dataFechamentoPrevista).toLocaleDateString("pt-BR")}`
+          : "";
+        const atualizado = `(atualizado ${new Date(d.updatedAt).toLocaleDateString("pt-BR")})`;
+        return `- "${d.titulo}": estágio ${etapaLabel}${saasLabel}${valorLabel}${probLabel}${fechamento} ${atualizado}`;
+      }).join("\n")
+    : "Nenhum negócio registrado.";
+
   const diasSemContato = conversation?.ultimaMensagemEm
     ? Math.floor((Date.now() - new Date(conversation.ultimaMensagemEm).getTime()) / (1000 * 60 * 60 * 24))
     : null;
 
   const systemPrompt = `Você é um especialista em Customer Success e análise de risco de churn B2B SaaS.
-Analise os dados do lead abaixo — perfil, histórico de conversas e atividades recentes — e retorne um objeto JSON com os seguintes campos:
+Analise os dados do lead abaixo — perfil, pipeline de negócios, histórico de conversas e atividades — e retorne um objeto JSON com os seguintes campos:
 
 {
   "churnRisk": <0-100, inteiro — probabilidade de churn/cancelamento>,
@@ -248,14 +288,19 @@ Analise os dados do lead abaixo — perfil, histórico de conversas e atividades
 
 Regras:
 - Responda SOMENTE com o JSON, sem texto adicional
-- churnRisk deve refletir sinais reais: inatividade, objeções, redução de engajamento, falta de progresso
+- churnRisk deve refletir a SITUAÇÃO REAL COMBINADA: considere o pipeline de negócios como sinal prioritário de engajamento
+- Um lead com negócio ativo em estágios avançados (Proposta, Negociação, Ganho) tem engajamento confirmado — penalize o churnRisk com base nisso
+- Um negócio recentemente avançado no pipeline é sinal forte de intenção positiva e REDUZ o churnRisk, mesmo com baixa atividade de mensagens
+- Negócios em estágio "Ganho" = cliente ativo → churnRisk deve refletir risco de cancelamento pós-venda, não de conversão
+- Negócios em "Proposta" ou "Negociação" = lead em fase ativa → churnRisk deve ser moderado mesmo com inatividade no chat
+- churnReasons deve listar APENAS fatores reais negativos observados; não mencione falta de atividade no chat se houver negócio ativo no pipeline
 - journeyStage deve ser um valor curto descritivo
 - opportunities são upsell, expansão, ou resolução de problemas identificados
 - nextBestAction deve ser específica e executável pela equipe de vendas/CS
 - O canal de comunicação preferido é SEMPRE WhatsApp — nunca sugira e-mail como canal de follow-up; use "Enviar mensagem de WhatsApp" ou "Ligar via WhatsApp"
-- Se o lead precisa ser reativado ou está em risco, a ação deve ser um contato proativo por WhatsApp${diasSemContato !== null ? `\n- O lead está sem contato há ${diasSemContato} dia${diasSemContato !== 1 ? "s" : ""}` : ""}`;
+- Se o lead precisa ser reativado ou está em risco, a ação deve ser um contato proativo por WhatsApp${diasSemContato !== null ? `\n- O lead está sem contato via mensagens há ${diasSemContato} dia${diasSemContato !== 1 ? "s" : ""} — mas verifique o pipeline antes de considerar como inatividade real` : ""}`;
 
-  const userContent = `## PERFIL DO LEAD\n${leadSection}\n\n## HISTÓRICO DE MENSAGENS (últimas ${recentMessages.length})\n${messagesSection}\n\n## ATIVIDADES RECENTES\n${activitiesSection}`;
+  const userContent = `## PERFIL DO LEAD\n${leadSection}\n\n## NEGÓCIOS NO PIPELINE (${activeDeals.length} negócio${activeDeals.length !== 1 ? "s" : ""})\n${dealsSection}\n\n## HISTÓRICO DE MENSAGENS (últimas ${recentMessages.length})\n${messagesSection}\n\n## ATIVIDADES RECENTES\n${activitiesSection}`;
 
   // 5. Call GPT-4o-mini
   let rawJson: string;
