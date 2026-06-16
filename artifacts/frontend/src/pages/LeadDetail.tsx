@@ -225,6 +225,7 @@ export default function LeadDetail() {
   const tenantId = user?.tenantId ?? "";
   const [, setLocation] = useLocation();
   const [openConvId, setOpenConvId] = useState<string | null>(null);
+  const [openActivityId, setOpenActivityId] = useState<string | null>(null);
   const queryClient = useQueryClient();
 
   const [editingChurnRisk, setEditingChurnRisk] = useState(false);
@@ -1212,54 +1213,92 @@ export default function LeadDetail() {
                 </p>
               ) : (
                 <div className="divide-y divide-border">
-                  {[...pendingActivities, ...doneActivities].map((activity) => (
-                    <div
-                      key={activity.id}
-                      className="flex items-start gap-3 py-3"
-                      data-testid={`activity-${activity.id}`}
-                    >
-                      <div className="mt-0.5 shrink-0">
-                        {activity.status === "pendente" ? (
-                          <AlertTriangle className="h-4 w-4 text-amber-500" />
-                        ) : (
-                          <CheckCircle2 className="h-4 w-4 text-emerald-500" />
-                        )}
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <p className="text-sm font-medium leading-tight">{activity.titulo}</p>
-                        <div className="flex items-center gap-2 mt-1">
-                          <span className="text-xs text-muted-foreground">
-                            {ACTIVITY_TIPO_LABELS[activity.tipo] ?? activity.tipo}
-                          </span>
-                          {activity.dataVencimento && (
-                            <>
-                              <span className="text-muted-foreground">·</span>
+                  {[...pendingActivities, ...doneActivities].map((activity) => {
+                    const isActivityOpen = openActivityId === activity.id;
+                    return (
+                      <div key={activity.id} data-testid={`activity-${activity.id}`}>
+                        <button
+                          className="w-full flex items-start gap-3 py-3 text-left hover:bg-muted/30 rounded transition-colors px-1"
+                          onClick={() => setOpenActivityId(isActivityOpen ? null : activity.id)}
+                        >
+                          <div className="mt-0.5 shrink-0">
+                            {activity.status === "pendente" ? (
+                              <AlertTriangle className="h-4 w-4 text-amber-500" />
+                            ) : (
+                              <CheckCircle2 className="h-4 w-4 text-emerald-500" />
+                            )}
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <p className="text-sm font-medium leading-tight">{activity.titulo}</p>
+                            <div className="flex items-center gap-2 mt-1">
                               <span className="text-xs text-muted-foreground">
-                                Vence {formatDate(activity.dataVencimento)}
+                                {ACTIVITY_TIPO_LABELS[activity.tipo] ?? activity.tipo}
                               </span>
-                            </>
-                          )}
-                        </div>
-                        {activity.descricao && (
-                          <p className="text-xs text-muted-foreground mt-1 leading-snug">
-                            {activity.descricao}
-                          </p>
+                              {activity.dataVencimento && (
+                                <>
+                                  <span className="text-muted-foreground">·</span>
+                                  <span className="text-xs text-muted-foreground">
+                                    Vence {formatDate(activity.dataVencimento)}
+                                  </span>
+                                </>
+                              )}
+                            </div>
+                            {!isActivityOpen && activity.descricao && (
+                              <p className="text-xs text-muted-foreground mt-1 leading-snug line-clamp-1">
+                                {activity.descricao}
+                              </p>
+                            )}
+                          </div>
+                          <div className="flex items-center gap-2 shrink-0">
+                            <Badge
+                              variant="outline"
+                              className={
+                                activity.status === "pendente"
+                                  ? "bg-amber-100 text-amber-700 border-amber-200 text-xs"
+                                  : activity.status === "concluida"
+                                  ? "bg-emerald-100 text-emerald-700 border-emerald-200 text-xs"
+                                  : "bg-zinc-100 text-zinc-600 border-zinc-200 text-xs"
+                              }
+                            >
+                              {activity.status}
+                            </Badge>
+                            {isActivityOpen ? (
+                              <ChevronUp className="h-4 w-4 text-muted-foreground" />
+                            ) : (
+                              <ChevronDown className="h-4 w-4 text-muted-foreground" />
+                            )}
+                          </div>
+                        </button>
+
+                        {isActivityOpen && (
+                          <div className="pb-4 px-1 space-y-3">
+                            <div className="rounded-md bg-muted/40 border border-border/60 p-3 space-y-2.5 text-sm">
+                              <div className="flex items-center justify-between gap-2">
+                                <span className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Tipo</span>
+                                <span className="text-foreground">{ACTIVITY_TIPO_LABELS[activity.tipo] ?? activity.tipo}</span>
+                              </div>
+                              <div className="flex items-center justify-between gap-2">
+                                <span className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Criado em</span>
+                                <span className="text-foreground">{formatDateTime(activity.createdAt)}</span>
+                              </div>
+                              {activity.dataVencimento && (
+                                <div className="flex items-center justify-between gap-2">
+                                  <span className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Vencimento</span>
+                                  <span className="text-foreground">{formatDate(activity.dataVencimento)}</span>
+                                </div>
+                              )}
+                              {activity.descricao && (
+                                <div className="space-y-1 pt-1 border-t border-border/40">
+                                  <span className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Descrição</span>
+                                  <p className="text-foreground leading-snug">{activity.descricao}</p>
+                                </div>
+                              )}
+                            </div>
+                          </div>
                         )}
                       </div>
-                      <Badge
-                        variant="outline"
-                        className={
-                          activity.status === "pendente"
-                            ? "bg-amber-100 text-amber-700 border-amber-200 text-xs shrink-0"
-                            : activity.status === "concluida"
-                            ? "bg-emerald-100 text-emerald-700 border-emerald-200 text-xs shrink-0"
-                            : "bg-zinc-100 text-zinc-600 border-zinc-200 text-xs shrink-0"
-                        }
-                      >
-                        {activity.status}
-                      </Badge>
-                    </div>
-                  ))}
+                    );
+                  })}
                 </div>
               )}
             </CardContent>
@@ -1333,11 +1372,20 @@ export default function LeadDetail() {
                           </div>
                         </button>
                         {isOpen && (
-                          <div className="pb-3 px-1">
+                          <div className="pb-3 px-1 space-y-2">
                             <ConversationMessages
                               tenantId={tenantId}
                               conversationId={conv.id}
                             />
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              className="w-full gap-2 mt-2"
+                              onClick={() => setLocation(`/conversations?conv=${conv.id}`)}
+                            >
+                              <MessageSquare className="h-3.5 w-3.5" />
+                              Abrir conversa completa
+                            </Button>
                           </div>
                         )}
                       </div>

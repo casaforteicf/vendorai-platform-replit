@@ -408,8 +408,9 @@ export default function Conversations() {
   const tenantId = user?.tenantId ?? "";
   const queryClient = useQueryClient();
 
-  const [selectedId, setSelectedId] = useState<string | null>(null);
-  const [showMobileChat, setShowMobileChat] = useState(false);
+  const initialConvId = new URLSearchParams(window.location.search).get("conv");
+  const [selectedId, setSelectedId] = useState<string | null>(initialConvId);
+  const [showMobileChat, setShowMobileChat] = useState(!!initialConvId);
 
   const { data: conversations = [], isLoading: convsLoading } =
     useListTenantConversations(tenantId, {
