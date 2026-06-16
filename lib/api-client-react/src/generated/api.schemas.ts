@@ -1135,6 +1135,7 @@ export type ActivityStatus = typeof ActivityStatus[keyof typeof ActivityStatus];
 
 export const ActivityStatus = {
   pendente: 'pendente',
+  planejado: 'planejado',
   concluida: 'concluida',
   cancelada: 'cancelada',
 } as const;
@@ -1150,6 +1151,7 @@ export interface Activity {
   status: ActivityStatus;
   dataVencimento?: string | null;
   concluidaEm?: string | null;
+  resultadoExecucao?: string | null;
   responsavelId?: string | null;
   createdAt: string;
   updatedAt: string;
@@ -1165,6 +1167,7 @@ export interface CreateActivityBody {
   status?: ActivityStatus;
   dataVencimento?: string;
   concluidaEm?: string;
+  resultadoExecucao?: string;
   responsavelId?: string;
 }
 
@@ -1177,6 +1180,7 @@ export interface UpdateActivityBody {
   status?: ActivityStatus;
   dataVencimento?: string;
   concluidaEm?: string;
+  resultadoExecucao?: string;
   responsavelId?: string;
 }
 

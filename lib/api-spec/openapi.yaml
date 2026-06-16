@@ -7424,7 +7424,7 @@ components:
 
     ActivityStatus:
       type: string
-      enum: [pendente, concluida, cancelada]
+      enum: [pendente, planejado, concluida, cancelada]
 
     Activity:
       type: object
@@ -7454,6 +7454,9 @@ components:
         concluidaEm:
           type: string
           format: date-time
+          nullable: true
+        resultadoExecucao:
+          type: string
           nullable: true
         responsavelId:
           type: string
@@ -7489,6 +7492,8 @@ components:
         concluidaEm:
           type: string
           format: date-time
+        resultadoExecucao:
+          type: string
         responsavelId:
           type: string
       required: [tenantId, leadId, tipo, titulo]
@@ -7514,6 +7519,8 @@ components:
         concluidaEm:
           type: string
           format: date-time
+        resultadoExecucao:
+          type: string
         responsavelId:
           type: string
 

@@ -17,5 +17,6 @@ export interface UpdateActivityBody {
   status?: ActivityStatus;
   dataVencimento?: Date;
   concluidaEm?: Date;
+  resultadoExecucao?: string;
   responsavelId?: string;
 }

@@ -18,6 +18,7 @@ export const activityStatusEnum = pgEnum("activity_status", [
   "pendente",
   "concluida",
   "cancelada",
+  "planejado",
 ]);
 
 export const activitiesTable = pgTable("activities", {
@@ -37,6 +38,7 @@ export const activitiesTable = pgTable("activities", {
   status: activityStatusEnum("status").notNull().default("pendente"),
   dataVencimento: timestamp("data_vencimento"),
   concluidaEm: timestamp("concluida_em"),
+  resultadoExecucao: text("resultado_execucao"),
   responsavelId: text("responsavel_id").references(() => usersTable.id, {
     onDelete: "set null",
   }),

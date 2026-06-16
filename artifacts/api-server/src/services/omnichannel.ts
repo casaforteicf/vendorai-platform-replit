@@ -5,6 +5,7 @@ import {
   conversationsTable,
   messagesTable,
   agentConfigsTable,
+  activitiesTable,
 } from "@workspace/db";
 import type { Message, Conversation } from "@workspace/db";
 import type { Logger } from "pino";
@@ -284,6 +285,54 @@ export async function sendOutgoingMessage(
     .update(conversationsTable)
     .set({ ultimaMensagemEm: new Date(), updatedAt: new Date() })
     .where(eq(conversationsTable.id, conversation.id));
+
+  // ── 7. Auto-complete pending activities when AI sends a message ────────────
+  if (agentName) {
+    const tipoMap: Partial<Record<typeof canal, typeof activitiesTable.tipo._.data>> = {
+      whatsapp: "whatsapp",
+      email: "email",
+    };
+    const matchingTipo = tipoMap[canal];
+    if (matchingTipo) {
+      const pending = await db
+        .select({ id: activitiesTable.id })
+        .from(activitiesTable)
+        .where(
+          and(
+            eq(activitiesTable.tenantId, tenantId),
+            eq(activitiesTable.leadId, leadId),
+            eq(activitiesTable.status, "pendente"),
+            eq(activitiesTable.tipo, matchingTipo)
+          )
+        )
+        .limit(5);
+
+      if (pending.length > 0) {
+        const preview = conteudo.length > 120 ? conteudo.slice(0, 120) + "…" : conteudo;
+        const resultado = `Mensagem enviada pelo agente IA (${agentName}): "${preview}"`;
+        await db
+          .update(activitiesTable)
+          .set({
+            status: "concluida",
+            concluidaEm: new Date(),
+            resultadoExecucao: resultado,
+            updatedAt: new Date(),
+          })
+          .where(
+            and(
+              eq(activitiesTable.tenantId, tenantId),
+              eq(activitiesTable.leadId, leadId),
+              eq(activitiesTable.status, "pendente"),
+              eq(activitiesTable.tipo, matchingTipo)
+            )
+          );
+        log.info(
+          { count: pending.length, tipo: matchingTipo, agentName },
+          "omnichannel: auto-completed pending activities after AI message"
+        );
+      }
+    }
+  }
 
   return { message, conversation, telefoneDestino: lead.telefone ?? null };
 }

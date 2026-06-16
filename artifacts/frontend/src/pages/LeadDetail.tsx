@@ -14,6 +14,7 @@ import {
   useListActivities,
   getListActivitiesQueryKey,
   useCreateActivity,
+  useUpdateActivity,
   useListTenantConversations,
   getListTenantConversationsQueryKey,
   useListConversationMessages,
@@ -469,6 +470,45 @@ export default function LeadDetail() {
     }
   );
 
+  // ── Edição de status de atividade ─────────────────────────────────────────
+  const [activityStatusEditId, setActivityStatusEditId] = useState<string | null>(null);
+  const [activityStatusDraft, setActivityStatusDraft] = useState<string>("");
+  const [activityResultadoDraft, setActivityResultadoDraft] = useState("");
+
+  const { mutate: updateActivity, isPending: isUpdatingActivity } = useUpdateActivity({
+    mutation: {
+      onSuccess: () => {
+        void queryClient.invalidateQueries({ queryKey: getListActivitiesQueryKey(tenantId, { leadId: id }) });
+        setActivityStatusEditId(null);
+        setActivityResultadoDraft("");
+        toast({ title: "Status da atividade atualizado." });
+      },
+      onError: () => {
+        toast({ title: "Erro ao atualizar atividade", variant: "destructive" });
+      },
+    },
+  });
+
+  function handleActivityStatusClick(activityId: string, newStatus: string) {
+    if (newStatus === "concluida") {
+      setActivityStatusEditId(activityId);
+      setActivityStatusDraft("concluida");
+      setActivityResultadoDraft("");
+    } else {
+      updateActivity({ id: activityId, data: { status: newStatus as "pendente" | "planejado" | "cancelada" } });
+    }
+  }
+
+  function confirmActivityStatusSave(activityId: string) {
+    updateActivity({
+      id: activityId,
+      data: {
+        status: "concluida",
+        resultadoExecucao: activityResultadoDraft.trim() || undefined,
+      },
+    });
+  }
+
   // ── Nova Atividade ────────────────────────────────────────────────────────
   const [isNewActivityOpen, setIsNewActivityOpen] = useState(false);
   const [newActivityTipo, setNewActivityTipo] = useState<"ligacao" | "whatsapp" | "email" | "visita" | "tarefa">("tarefa");
@@ -572,8 +612,8 @@ export default function LeadDetail() {
     );
   }
 
-  const pendingActivities = activities?.filter((a) => a.status === "pendente") ?? [];
-  const doneActivities = activities?.filter((a) => a.status !== "pendente") ?? [];
+  const pendingActivities = activities?.filter((a) => a.status === "pendente" || a.status === "planejado") ?? [];
+  const doneActivities = activities?.filter((a) => a.status !== "pendente" && a.status !== "planejado") ?? [];
   const opportunities = Array.isArray(intelligence?.opportunities)
     ? (intelligence.opportunities as string[])
     : [];
@@ -1367,10 +1407,14 @@ export default function LeadDetail() {
                           onClick={() => setOpenActivityId(isActivityOpen ? null : activity.id)}
                         >
                           <div className="mt-0.5 shrink-0">
-                            {activity.status === "pendente" ? (
-                              <AlertTriangle className="h-4 w-4 text-amber-500" />
-                            ) : (
+                            {activity.status === "concluida" ? (
                               <CheckCircle2 className="h-4 w-4 text-emerald-500" />
+                            ) : activity.status === "planejado" ? (
+                              <Clock className="h-4 w-4 text-blue-500" />
+                            ) : activity.status === "cancelada" ? (
+                              <X className="h-4 w-4 text-zinc-400" />
+                            ) : (
+                              <AlertTriangle className="h-4 w-4 text-amber-500" />
                             )}
                           </div>
                           <div className="flex-1 min-w-0">
@@ -1400,12 +1444,20 @@ export default function LeadDetail() {
                               className={
                                 activity.status === "pendente"
                                   ? "bg-amber-100 text-amber-700 border-amber-200 text-xs"
+                                  : activity.status === "planejado"
+                                  ? "bg-blue-100 text-blue-700 border-blue-200 text-xs"
                                   : activity.status === "concluida"
                                   ? "bg-emerald-100 text-emerald-700 border-emerald-200 text-xs"
                                   : "bg-zinc-100 text-zinc-600 border-zinc-200 text-xs"
                               }
                             >
-                              {activity.status}
+                              {activity.status === "concluida"
+                                ? "Executada"
+                                : activity.status === "pendente"
+                                ? "Pendente"
+                                : activity.status === "planejado"
+                                ? "Planejada"
+                                : "Cancelada"}
                             </Badge>
                             {isActivityOpen ? (
                               <ChevronUp className="h-4 w-4 text-muted-foreground" />
@@ -1436,6 +1488,75 @@ export default function LeadDetail() {
                                 <div className="space-y-1 pt-1 border-t border-border/40">
                                   <span className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Descrição</span>
                                   <p className="text-foreground leading-snug">{activity.descricao}</p>
+                                </div>
+                              )}
+                              {activity.resultadoExecucao && activityStatusEditId !== activity.id && (
+                                <div className="space-y-1 pt-1 border-t border-border/40">
+                                  <span className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Resultado</span>
+                                  <p className="text-foreground leading-snug">{activity.resultadoExecucao}</p>
+                                </div>
+                              )}
+                            </div>
+
+                            {/* Status change section */}
+                            <div className="space-y-2">
+                              <span className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                                Alterar status
+                              </span>
+                              <div className="flex flex-wrap gap-1.5">
+                                {(
+                                  [
+                                    { value: "planejado", label: "Planejado", cls: "bg-blue-100 text-blue-700 border-blue-200" },
+                                    { value: "pendente", label: "Pendente", cls: "bg-amber-100 text-amber-700 border-amber-200" },
+                                    { value: "concluida", label: "Executada", cls: "bg-emerald-100 text-emerald-700 border-emerald-200" },
+                                    { value: "cancelada", label: "Cancelada", cls: "bg-zinc-100 text-zinc-600 border-zinc-200" },
+                                  ] as const
+                                ).map(({ value, label, cls }) => (
+                                  <button
+                                    key={value}
+                                    disabled={activity.status === value || isUpdatingActivity}
+                                    onClick={(e) => { e.stopPropagation(); handleActivityStatusClick(activity.id, value); }}
+                                    className={`px-2.5 py-1 text-xs rounded border font-medium transition-colors ${
+                                      activity.status === value
+                                        ? `${cls} cursor-default`
+                                        : "border-border text-muted-foreground hover:bg-muted disabled:opacity-50"
+                                    }`}
+                                  >
+                                    {activity.status === value && <span className="mr-1">✓</span>}
+                                    {label}
+                                  </button>
+                                ))}
+                              </div>
+
+                              {activityStatusEditId === activity.id && activityStatusDraft === "concluida" && (
+                                <div className="space-y-2 pt-1">
+                                  <Textarea
+                                    placeholder="Descreva o resultado desta execução... (opcional)"
+                                    value={activityResultadoDraft}
+                                    onChange={(e) => setActivityResultadoDraft(e.target.value)}
+                                    rows={2}
+                                    className="text-sm resize-none"
+                                    onClick={(e) => e.stopPropagation()}
+                                  />
+                                  <div className="flex gap-2">
+                                    <Button
+                                      size="sm"
+                                      className="h-7 text-xs"
+                                      disabled={isUpdatingActivity}
+                                      onClick={(e) => { e.stopPropagation(); confirmActivityStatusSave(activity.id); }}
+                                    >
+                                      {isUpdatingActivity ? <Loader2 className="h-3 w-3 animate-spin" /> : <Check className="h-3 w-3 mr-1" />}
+                                      Salvar
+                                    </Button>
+                                    <Button
+                                      size="sm"
+                                      variant="ghost"
+                                      className="h-7 text-xs"
+                                      onClick={(e) => { e.stopPropagation(); setActivityStatusEditId(null); setActivityResultadoDraft(""); }}
+                                    >
+                                      Cancelar
+                                    </Button>
+                                  </div>
                                 </div>
                               )}
                             </div>

@@ -19,6 +19,7 @@ export interface Activity {
   status: ActivityStatus;
   dataVencimento?: Date | null;
   concluidaEm?: Date | null;
+  resultadoExecucao?: string | null;
   responsavelId?: string | null;
   createdAt: Date;
   updatedAt: Date;

@@ -1263,9 +1263,10 @@ export const CreateActivityBody = zod.object({
   "tipo": zod.enum(['ligacao', 'whatsapp', 'email', 'visita', 'tarefa']),
   "titulo": zod.string(),
   "descricao": zod.string().optional(),
-  "status": zod.enum(['pendente', 'concluida', 'cancelada']).optional(),
+  "status": zod.enum(['pendente', 'planejado', 'concluida', 'cancelada']).optional(),
   "dataVencimento": zod.coerce.date().optional(),
   "concluidaEm": zod.coerce.date().optional(),
+  "resultadoExecucao": zod.string().optional(),
   "responsavelId": zod.string().optional()
 })
 
@@ -1286,9 +1287,10 @@ export const ListOverdueActivitiesResponseItem = zod.object({
   "tipo": zod.enum(['ligacao', 'whatsapp', 'email', 'visita', 'tarefa']),
   "titulo": zod.string(),
   "descricao": zod.string().nullish(),
-  "status": zod.enum(['pendente', 'concluida', 'cancelada']),
+  "status": zod.enum(['pendente', 'planejado', 'concluida', 'cancelada']),
   "dataVencimento": zod.coerce.date().nullish(),
   "concluidaEm": zod.coerce.date().nullish(),
+  "resultadoExecucao": zod.string().nullish(),
   "responsavelId": zod.string().nullish(),
   "createdAt": zod.coerce.date(),
   "updatedAt": zod.coerce.date()
@@ -1306,7 +1308,7 @@ export const ListActivitiesParams = zod.object({
 export const ListActivitiesQueryParams = zod.object({
   "leadId": zod.coerce.string().optional(),
   "dealId": zod.coerce.string().optional(),
-  "status": zod.enum(['pendente', 'concluida', 'cancelada']).optional()
+  "status": zod.enum(['pendente', 'planejado', 'concluida', 'cancelada']).optional()
 })
 
 export const ListActivitiesResponseItem = zod.object({
@@ -1317,9 +1319,10 @@ export const ListActivitiesResponseItem = zod.object({
   "tipo": zod.enum(['ligacao', 'whatsapp', 'email', 'visita', 'tarefa']),
   "titulo": zod.string(),
   "descricao": zod.string().nullish(),
-  "status": zod.enum(['pendente', 'concluida', 'cancelada']),
+  "status": zod.enum(['pendente', 'planejado', 'concluida', 'cancelada']),
   "dataVencimento": zod.coerce.date().nullish(),
   "concluidaEm": zod.coerce.date().nullish(),
+  "resultadoExecucao": zod.string().nullish(),
   "responsavelId": zod.string().nullish(),
   "createdAt": zod.coerce.date(),
   "updatedAt": zod.coerce.date()
@@ -1342,9 +1345,10 @@ export const GetActivityResponse = zod.object({
   "tipo": zod.enum(['ligacao', 'whatsapp', 'email', 'visita', 'tarefa']),
   "titulo": zod.string(),
   "descricao": zod.string().nullish(),
-  "status": zod.enum(['pendente', 'concluida', 'cancelada']),
+  "status": zod.enum(['pendente', 'planejado', 'concluida', 'cancelada']),
   "dataVencimento": zod.coerce.date().nullish(),
   "concluidaEm": zod.coerce.date().nullish(),
+  "resultadoExecucao": zod.string().nullish(),
   "responsavelId": zod.string().nullish(),
   "createdAt": zod.coerce.date(),
   "updatedAt": zod.coerce.date()
@@ -1365,9 +1369,10 @@ export const UpdateActivityBody = zod.object({
   "tipo": zod.enum(['ligacao', 'whatsapp', 'email', 'visita', 'tarefa']).optional(),
   "titulo": zod.string().optional(),
   "descricao": zod.string().optional(),
-  "status": zod.enum(['pendente', 'concluida', 'cancelada']).optional(),
+  "status": zod.enum(['pendente', 'planejado', 'concluida', 'cancelada']).optional(),
   "dataVencimento": zod.coerce.date().optional(),
   "concluidaEm": zod.coerce.date().optional(),
+  "resultadoExecucao": zod.string().optional(),
   "responsavelId": zod.string().optional()
 })
 
@@ -1379,9 +1384,10 @@ export const UpdateActivityResponse = zod.object({
   "tipo": zod.enum(['ligacao', 'whatsapp', 'email', 'visita', 'tarefa']),
   "titulo": zod.string(),
   "descricao": zod.string().nullish(),
-  "status": zod.enum(['pendente', 'concluida', 'cancelada']),
+  "status": zod.enum(['pendente', 'planejado', 'concluida', 'cancelada']),
   "dataVencimento": zod.coerce.date().nullish(),
   "concluidaEm": zod.coerce.date().nullish(),
+  "resultadoExecucao": zod.string().nullish(),
   "responsavelId": zod.string().nullish(),
   "createdAt": zod.coerce.date(),
   "updatedAt": zod.coerce.date()

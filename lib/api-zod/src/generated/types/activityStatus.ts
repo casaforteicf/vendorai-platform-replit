@@ -11,6 +11,7 @@ export type ActivityStatus = typeof ActivityStatus[keyof typeof ActivityStatus];
 
 export const ActivityStatus = {
   pendente: 'pendente',
+  planejado: 'planejado',
   concluida: 'concluida',
   cancelada: 'cancelada',
 } as const;
