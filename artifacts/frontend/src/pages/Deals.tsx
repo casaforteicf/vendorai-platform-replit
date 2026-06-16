@@ -104,23 +104,22 @@ function DealCard({
     <div
       ref={setNodeRef}
       {...attributes}
-      style={{ opacity: isDragging && !overlay ? 0.4 : 1 }}
+      {...listeners}
+      style={{ opacity: isDragging && !overlay ? 0.4 : 1, touchAction: "none" }}
       className={`group bg-card border border-border rounded-lg p-3 space-y-2 ${
-        overlay ? "shadow-2xl rotate-1 cursor-grabbing" : "cursor-pointer hover:border-primary/40 hover:shadow-sm transition-all"
+        overlay
+          ? "shadow-2xl rotate-1 cursor-grabbing"
+          : "cursor-grab active:cursor-grabbing hover:border-primary/40 hover:shadow-sm transition-all"
       }`}
       onClick={onClick}
       data-testid={`deal-card-${deal.id}`}
     >
-      {/* Drag handle + title */}
+      {/* Handle visual + title */}
       <div className="flex items-start gap-2">
-        <button
-          {...listeners}
-          className="mt-0.5 shrink-0 cursor-grab active:cursor-grabbing text-muted-foreground/40 hover:text-muted-foreground transition-colors"
-          onClick={(e) => e.stopPropagation()}
+        <GripVertical
+          className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground/30 group-hover:text-muted-foreground/60 transition-colors"
           data-testid={`deal-drag-${deal.id}`}
-        >
-          <GripVertical className="h-4 w-4" />
-        </button>
+        />
         <p className="text-sm font-medium leading-tight flex-1 line-clamp-2">
           {deal.titulo}
         </p>
