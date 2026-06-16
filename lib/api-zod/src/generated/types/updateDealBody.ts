@@ -35,4 +35,5 @@ export interface UpdateDealBody {
      * @maximum 100
      */
   probChurn?: number;
+  quoteFileUrl?: string | null;
 }

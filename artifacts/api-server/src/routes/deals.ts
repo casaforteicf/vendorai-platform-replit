@@ -26,8 +26,10 @@ import {
 } from "../lib/zapsign.js";
 import { billingEventsTable } from "@workspace/db";
 import { extractQuoteData } from "../lib/document-extraction.js";
+import { ObjectStorageService } from "../lib/objectStorage.js";
 
 const router: IRouter = Router();
+const objectStorageService = new ObjectStorageService();
 
 const uploadQuote = multer({
   storage: multer.memoryStorage(),
@@ -412,14 +414,24 @@ router.post(
     }
 
     try {
-      const result = await extractQuoteData([
-        {
-          buffer: req.file.buffer,
-          mimeType: req.file.mimetype,
-          originalName: req.file.originalname,
-        },
+      const [result, quoteFileUrl] = await Promise.all([
+        extractQuoteData([
+          {
+            buffer: req.file.buffer,
+            mimeType: req.file.mimetype,
+            originalName: req.file.originalname,
+          },
+        ]),
+        objectStorageService.savePrivateBuffer(
+          req.file.buffer,
+          req.file.mimetype,
+          req.file.originalname
+        ).catch((err) => {
+          req.log.warn({ err }, "extract-quote: failed to save file to storage, continuing without it");
+          return null;
+        }),
       ]);
-      res.json(result);
+      res.json({ ...result, quoteFileUrl, originalName: req.file.originalname });
     } catch (err) {
       req.log.error({ err }, "Failed to extract quote data");
       res.status(500).json({ error: "Erro ao processar o arquivo" });

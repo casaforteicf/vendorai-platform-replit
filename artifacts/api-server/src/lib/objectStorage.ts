@@ -175,6 +175,23 @@ export class ObjectStorageService {
     return `/objects/${entityId}`;
   }
 
+  async savePrivateBuffer(
+    buffer: Buffer,
+    contentType: string,
+    originalName: string
+  ): Promise<string> {
+    const privateDir = this.getPrivateObjectDir();
+    const objectId = randomUUID();
+    const ext = originalName.split(".").pop()?.toLowerCase() ?? "bin";
+    const safeName = `${objectId}.${ext}`;
+    const fullPath = `${privateDir}/quotes/${safeName}`;
+    const { bucketName, objectName } = parseObjectPath(fullPath);
+    const bucket = objectStorageClient.bucket(bucketName);
+    const file = bucket.file(objectName);
+    await file.save(buffer, { contentType, resumable: false });
+    return `/objects/quotes/${safeName}`;
+  }
+
   async trySetObjectEntityAclPolicy(
     rawPath: string,
     aclPolicy: ObjectAclPolicy

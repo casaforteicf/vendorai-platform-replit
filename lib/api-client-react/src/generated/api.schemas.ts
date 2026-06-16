@@ -1281,6 +1281,8 @@ export interface Deal {
      * @maximum 100
      */
   probChurn?: number | null;
+  /** Path of the imported quote file stored in object storage (/objects/...) */
+  quoteFileUrl?: string | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -1359,6 +1361,7 @@ export interface UpdateDealBody {
      * @maximum 100
      */
   probChurn?: number;
+  quoteFileUrl?: string | null;
 }
 
 export interface IncrementBody {

@@ -7663,6 +7663,10 @@ components:
           maximum: 100
           nullable: true
           description: Probabilidade de churn (0-100%)
+        quoteFileUrl:
+          type: string
+          nullable: true
+          description: Path of the imported quote file stored in object storage (/objects/...)
         createdAt:
           type: string
           format: date-time
@@ -7795,6 +7799,9 @@ components:
           type: integer
           minimum: 0
           maximum: 100
+        quoteFileUrl:
+          type: string
+          nullable: true
 
     IncrementBody:
       type: object

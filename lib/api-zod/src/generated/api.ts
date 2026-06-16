@@ -1123,6 +1123,7 @@ export const ListDealsResponseItem = zod.object({
   "planoContratado": zod.string().nullish().describe('Nome do plano SaaS (ex. Starter, Pro, Enterprise)'),
   "dataRenovacao": zod.coerce.date().nullish().describe('Data de renovação do contrato'),
   "probChurn": zod.number().min(listDealsResponseProbChurnMin).max(listDealsResponseProbChurnMax).nullish().describe('Probabilidade de churn (0-100%)'),
+  "quoteFileUrl": zod.string().nullish().describe('Path of the imported quote file stored in object storage (\/objects\/...)'),
   "createdAt": zod.coerce.date(),
   "updatedAt": zod.coerce.date()
 })
@@ -1163,6 +1164,7 @@ export const GetDealResponse = zod.object({
   "planoContratado": zod.string().nullish().describe('Nome do plano SaaS (ex. Starter, Pro, Enterprise)'),
   "dataRenovacao": zod.coerce.date().nullish().describe('Data de renovação do contrato'),
   "probChurn": zod.number().min(getDealResponseProbChurnMin).max(getDealResponseProbChurnMax).nullish().describe('Probabilidade de churn (0-100%)'),
+  "quoteFileUrl": zod.string().nullish().describe('Path of the imported quote file stored in object storage (\/objects\/...)'),
   "createdAt": zod.coerce.date(),
   "updatedAt": zod.coerce.date()
 })
@@ -1201,7 +1203,8 @@ export const UpdateDealBody = zod.object({
   "seats": zod.number().min(updateDealBodySeatsMin).optional(),
   "planoContratado": zod.string().optional(),
   "dataRenovacao": zod.coerce.date().optional(),
-  "probChurn": zod.number().min(updateDealBodyProbChurnMin).max(updateDealBodyProbChurnMax).optional()
+  "probChurn": zod.number().min(updateDealBodyProbChurnMin).max(updateDealBodyProbChurnMax).optional(),
+  "quoteFileUrl": zod.string().nullish()
 })
 
 export const updateDealResponseOneProbabilidadeMin = 0;
@@ -1231,6 +1234,7 @@ export const UpdateDealResponse = zod.object({
   "planoContratado": zod.string().nullish().describe('Nome do plano SaaS (ex. Starter, Pro, Enterprise)'),
   "dataRenovacao": zod.coerce.date().nullish().describe('Data de renovação do contrato'),
   "probChurn": zod.number().min(updateDealResponseOneProbChurnMin).max(updateDealResponseOneProbChurnMax).nullish().describe('Probabilidade de churn (0-100%)'),
+  "quoteFileUrl": zod.string().nullish().describe('Path of the imported quote file stored in object storage (\/objects\/...)'),
   "createdAt": zod.coerce.date(),
   "updatedAt": zod.coerce.date()
 }).and(zod.object({

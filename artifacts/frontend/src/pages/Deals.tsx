@@ -762,6 +762,8 @@ function EditDealSheet({
     cliente?: string | null;
     observacoes?: string | null;
   } | null>(null);
+  const [quoteFileUrl, setQuoteFileUrl] = useState<string | null>(deal?.quoteFileUrl ?? null);
+  const [quoteFileName, setQuoteFileName] = useState<string | null>(null);
   const quoteFileRef = useRef<HTMLInputElement>(null);
 
   async function handleQuoteUpload(file: File) {
@@ -784,6 +786,10 @@ function EditDealSheet({
       }
       if (data.itens?.length || data.fornecedor || data.cliente || data.observacoes) {
         setExtractedInfo({ itens: data.itens, fornecedor: data.fornecedor, cliente: data.cliente, observacoes: data.observacoes });
+      }
+      if (data.quoteFileUrl) {
+        setQuoteFileUrl(data.quoteFileUrl);
+        setQuoteFileName(data.originalName ?? null);
       }
       const confianca = data.confianca ?? 0;
       toast({ title: confianca >= 0.5 ? "Orçamento lido com sucesso!" : "Orçamento importado (leitura parcial)" });
