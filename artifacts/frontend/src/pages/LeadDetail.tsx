@@ -13,6 +13,7 @@ import {
   useAnalyzeLeadIntelligence,
   useListActivities,
   getListActivitiesQueryKey,
+  useCreateActivity,
   useListTenantConversations,
   getListTenantConversationsQueryKey,
   useListConversationMessages,
@@ -465,6 +466,53 @@ export default function LeadDetail() {
       },
     }
   );
+
+  // ── Nova Atividade ────────────────────────────────────────────────────────
+  const [isNewActivityOpen, setIsNewActivityOpen] = useState(false);
+  const [newActivityTipo, setNewActivityTipo] = useState<"ligacao" | "whatsapp" | "email" | "visita" | "tarefa">("tarefa");
+  const [newActivityTitulo, setNewActivityTitulo] = useState("");
+  const [newActivityDescricao, setNewActivityDescricao] = useState("");
+  const [newActivityData, setNewActivityData] = useState("");
+
+  const { mutate: createActivity, isPending: isCreatingActivity } = useCreateActivity({
+    mutation: {
+      onSuccess: () => {
+        void queryClient.invalidateQueries({ queryKey: getListActivitiesQueryKey(tenantId, { leadId: id }) });
+        setIsNewActivityOpen(false);
+        setNewActivityTitulo("");
+        setNewActivityDescricao("");
+        setNewActivityData("");
+        setNewActivityTipo("tarefa");
+        toast({ title: "Atividade criada." });
+      },
+      onError: () => {
+        toast({ title: "Erro ao criar atividade", variant: "destructive" });
+      },
+    },
+  });
+
+  function openNewActivityDialog(prefillTitulo?: string) {
+    setNewActivityTitulo(prefillTitulo ?? "");
+    setNewActivityDescricao("");
+    setNewActivityData("");
+    setNewActivityTipo("tarefa");
+    setIsNewActivityOpen(true);
+  }
+
+  function handleCreateActivity() {
+    if (!tenantId || !id || !newActivityTitulo.trim()) return;
+    createActivity({
+      data: {
+        tenantId,
+        leadId: id,
+        tipo: newActivityTipo,
+        titulo: newActivityTitulo.trim(),
+        descricao: newActivityDescricao.trim() || undefined,
+        dataVencimento: newActivityData || undefined,
+        status: "pendente",
+      },
+    });
+  }
 
   const { data: conversations, isLoading: convsLoading } = useListTenantConversations(
     tenantId,
@@ -1184,8 +1232,84 @@ export default function LeadDetail() {
           </Card>
         </div>
 
-        {/* Right column — Activities + Conversations */}
+        {/* Right column — AI Suggestion + Activities + Conversations */}
         <div className="lg:col-span-2 space-y-4">
+
+          {/* ── Sugestão da IA ─────────────────────────────────────── */}
+          <Card data-testid="card-ai-suggestion" className="border-primary/20 bg-primary/[0.03]">
+            <CardHeader className="pb-2">
+              <CardTitle className="text-sm font-semibold flex items-center justify-between">
+                <div className="flex items-center gap-2 text-primary">
+                  <Sparkles className="h-4 w-4" />
+                  <span>Sugestão da IA</span>
+                </div>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="h-7 text-xs gap-1.5 border-primary/30 text-primary hover:bg-primary/10"
+                  onClick={handleAnalyze}
+                  disabled={isAnalyzing || serverAnalysisRunning || ciRefetching}
+                  data-testid="btn-analyze-ia-suggestion"
+                >
+                  {(isAnalyzing || serverAnalysisRunning) ? (
+                    <Loader2 className="h-3 w-3 animate-spin" />
+                  ) : (
+                    <Brain className="h-3 w-3" />
+                  )}
+                  {(isAnalyzing || serverAnalysisRunning) ? "Analisando…" : "Analisar com IA"}
+                </Button>
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              {ciLoading ? (
+                <div className="space-y-2">
+                  <div className="h-4 bg-muted animate-pulse rounded w-3/4" />
+                  <div className="h-3 bg-muted animate-pulse rounded w-1/2" />
+                </div>
+              ) : intelligence?.nextBestAction ? (
+                <>
+                  <div className="space-y-1">
+                    <div className="flex items-start gap-2">
+                      <Zap className="h-4 w-4 text-primary shrink-0 mt-0.5" />
+                      <p className="text-sm font-medium leading-snug">{intelligence.nextBestAction}</p>
+                    </div>
+                    {intelligence.nextBestActionReason && (
+                      <p className="text-xs text-muted-foreground leading-snug pl-6">
+                        {intelligence.nextBestActionReason}
+                      </p>
+                    )}
+                  </div>
+                  <div className="flex items-center gap-2 pt-1">
+                    <Button
+                      size="sm"
+                      className="h-7 text-xs gap-1.5"
+                      onClick={() => openNewActivityDialog(intelligence.nextBestAction ?? "")}
+                      data-testid="btn-criar-atividade-nba"
+                    >
+                      <Plus className="h-3 w-3" />
+                      Criar como Atividade
+                    </Button>
+                    {intelligence.lastAnalyzedAt && (
+                      <span className="text-xs text-muted-foreground">
+                        Atualizado {lastAnalyzedRelative}
+                      </span>
+                    )}
+                  </div>
+                </>
+              ) : (
+                <div className="flex items-center gap-3 py-1">
+                  <Brain className="h-8 w-8 text-muted-foreground/30 shrink-0" />
+                  <div>
+                    <p className="text-sm text-muted-foreground">Nenhuma sugestão disponível ainda.</p>
+                    <p className="text-xs text-muted-foreground/70">
+                      Clique em "Analisar com IA" para gerar uma recomendação de próxima ação.
+                    </p>
+                  </div>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+
           {/* Activities */}
           <Card data-testid="card-activities">
             <CardHeader className="pb-3">
@@ -1197,6 +1321,16 @@ export default function LeadDetail() {
                       {pendingActivities.length} pendente{pendingActivities.length > 1 ? "s" : ""}
                     </Badge>
                   )}
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="h-7 text-xs gap-1"
+                    onClick={() => openNewActivityDialog()}
+                    data-testid="btn-nova-atividade"
+                  >
+                    <Plus className="h-3 w-3" />
+                    Nova
+                  </Button>
                 </div>
               </CardTitle>
             </CardHeader>
@@ -1541,6 +1675,83 @@ export default function LeadDetail() {
             <Button onClick={savePessoal} disabled={isUpdatingLead}>
               {isUpdatingLead && <Loader2 className="h-4 w-4 animate-spin mr-2" />}
               Salvar
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* ── Nova Atividade Dialog ────────────────────────────────────── */}
+      <Dialog open={isNewActivityOpen} onOpenChange={setIsNewActivityOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Nova Atividade</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            {/* Tipo */}
+            <div className="space-y-1.5">
+              <label className="text-sm font-medium">Tipo</label>
+              <Select
+                value={newActivityTipo}
+                onValueChange={(v) => setNewActivityTipo(v as typeof newActivityTipo)}
+              >
+                <SelectTrigger data-testid="select-activity-tipo">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {Object.entries(ACTIVITY_TIPO_LABELS).map(([value, label]) => (
+                    <SelectItem key={value} value={value}>{label}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            {/* Título */}
+            <div className="space-y-1.5">
+              <label className="text-sm font-medium">Título <span className="text-destructive">*</span></label>
+              <Input
+                placeholder="Ex: Ligar para o cliente amanhã às 10h"
+                value={newActivityTitulo}
+                onChange={(e) => setNewActivityTitulo(e.target.value)}
+                maxLength={200}
+                data-testid="input-activity-titulo"
+                autoFocus
+              />
+            </div>
+
+            {/* Descrição */}
+            <div className="space-y-1.5">
+              <label className="text-sm font-medium">Descrição <span className="text-xs text-muted-foreground">(opcional)</span></label>
+              <Textarea
+                placeholder="Detalhes da atividade…"
+                value={newActivityDescricao}
+                onChange={(e) => setNewActivityDescricao(e.target.value)}
+                rows={3}
+                data-testid="input-activity-descricao"
+              />
+            </div>
+
+            {/* Data de vencimento */}
+            <div className="space-y-1.5">
+              <label className="text-sm font-medium">Vencimento <span className="text-xs text-muted-foreground">(opcional)</span></label>
+              <Input
+                type="date"
+                value={newActivityData}
+                onChange={(e) => setNewActivityData(e.target.value)}
+                data-testid="input-activity-data"
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setIsNewActivityOpen(false)}>
+              Cancelar
+            </Button>
+            <Button
+              onClick={handleCreateActivity}
+              disabled={isCreatingActivity || !newActivityTitulo.trim()}
+              data-testid="btn-salvar-atividade"
+            >
+              {isCreatingActivity && <Loader2 className="h-4 w-4 animate-spin mr-2" />}
+              Criar Atividade
             </Button>
           </DialogFooter>
         </DialogContent>
