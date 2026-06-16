@@ -97,6 +97,8 @@ import {
   FileText,
   MessageCircle,
   Loader2,
+  Lock,
+  ShieldCheck,
 } from "lucide-react";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
@@ -784,6 +786,36 @@ export default function Configuracoes() {
   const updateIntegration   = useUpdateIntegrationSettings();
   const regenerateKey       = useRegenerateIntegrationApiKey();
 
+  // ── Integrações — bloqueio por senha ────────────────────────────────────
+  const [integracoesUnlocked, setIntegracoesUnlocked] = useState(false);
+  const [integracoesPasswordInput, setIntegracoesPasswordInput] = useState("");
+  const [integracoesUnlocking, setIntegracoesUnlocking] = useState(false);
+  const [integracoesUnlockError, setIntegracoesUnlockError] = useState("");
+
+  async function verifyIntegrationPassword(e: React.FormEvent) {
+    e.preventDefault();
+    if (!user?.email) return;
+    setIntegracoesUnlocking(true);
+    setIntegracoesUnlockError("");
+    try {
+      const res = await fetch("/api/auth/login", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email: user.email, password: integracoesPasswordInput }),
+      });
+      if (res.ok) {
+        setIntegracoesUnlocked(true);
+        setIntegracoesPasswordInput("");
+      } else {
+        setIntegracoesUnlockError("Senha incorreta. Tente novamente.");
+      }
+    } catch {
+      setIntegracoesUnlockError("Erro ao verificar senha. Tente novamente.");
+    } finally {
+      setIntegracoesUnlocking(false);
+    }
+  }
+
   const [webhookUrlInput, setWebhookUrlInput] = useState<string>("");
   const [showApiKey, setShowApiKey] = useState(false);
   const [showWebhookSecret, setShowWebhookSecret] = useState(false);
@@ -1017,7 +1049,11 @@ export default function Configuracoes() {
         <p className="text-muted-foreground text-sm mt-1">Gerencie o perfil da empresa e os agentes de IA.</p>
       </div>
 
-      <Tabs defaultValue="perfil" className="space-y-6">
+      <Tabs
+        defaultValue="perfil"
+        className="space-y-6"
+        onValueChange={(tab) => { if (tab !== "integracoes") setIntegracoesUnlocked(false); }}
+      >
         <TabsList className={cn("grid w-full max-w-2xl", isTenantAdmin ? "grid-cols-6" : "grid-cols-5")}>
           <TabsTrigger value="perfil" className="gap-1.5">
             <Building2 className="h-4 w-4" />
@@ -1686,6 +1722,59 @@ export default function Configuracoes() {
         </TabsContent>
         {/* ── Tab: Integrações ERP ────────────────────────────────────────── */}
         <TabsContent value="integracoes">
+          {/* ── Lock screen ─────────────────────────────────────────────── */}
+          {!integracoesUnlocked ? (
+            <div className="flex items-center justify-center py-16">
+              <div className="w-full max-w-sm">
+                <form onSubmit={verifyIntegrationPassword} className="rounded-xl border bg-card p-8 space-y-6 shadow-sm">
+                  <div className="flex flex-col items-center gap-3 text-center">
+                    <div className="rounded-full bg-muted p-4">
+                      <Lock className="h-7 w-7 text-muted-foreground" />
+                    </div>
+                    <div>
+                      <h3 className="font-semibold text-base">Área protegida</h3>
+                      <p className="text-sm text-muted-foreground mt-1">
+                        Confirme sua senha para acessar as integrações e chaves de API.
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="space-y-2">
+                    <label className="text-sm font-medium">Sua senha</label>
+                    <Input
+                      type="password"
+                      placeholder="••••••••"
+                      value={integracoesPasswordInput}
+                      onChange={(e) => {
+                        setIntegracoesPasswordInput(e.target.value);
+                        setIntegracoesUnlockError("");
+                      }}
+                      autoFocus
+                    />
+                    {integracoesUnlockError && (
+                      <p className="text-xs text-destructive flex items-center gap-1">
+                        <AlertTriangle className="h-3 w-3 shrink-0" />
+                        {integracoesUnlockError}
+                      </p>
+                    )}
+                  </div>
+
+                  <Button
+                    type="submit"
+                    className="w-full gap-2"
+                    disabled={integracoesUnlocking || !integracoesPasswordInput}
+                  >
+                    {integracoesUnlocking ? (
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                    ) : (
+                      <ShieldCheck className="h-4 w-4" />
+                    )}
+                    {integracoesUnlocking ? "Verificando…" : "Desbloquear"}
+                  </Button>
+                </form>
+              </div>
+            </div>
+          ) : (
           <div className="space-y-6">
 
             {/* Webhook de entrada — WhatsApp Omnichannel */}
@@ -2266,6 +2355,7 @@ Body:
             </div>
 
           </div>
+          )}
         </TabsContent>
 
         {/* ── Tab: Equipe ─────────────────────────────────────────────────── */}
