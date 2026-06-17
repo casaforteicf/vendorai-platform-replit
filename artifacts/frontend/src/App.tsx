@@ -267,6 +267,20 @@ function PublicRoute({ component: Component }: any) {
   return <Component />;
 }
 
+function RegisterRoute() {
+  const { token, user, isLoading } = useAuth();
+  const [, setLocation] = useLocation();
+
+  useEffect(() => {
+    if (!isLoading && token && user?.platformRole !== "super_admin") {
+      setLocation("/");
+    }
+  }, [token, isLoading, user, setLocation]);
+
+  if (isLoading) return <Spinner />;
+  return <Register />;
+}
+
 function AppRoutes() {
   return (
     <Switch>
@@ -274,7 +288,7 @@ function AppRoutes() {
         <PublicRoute component={Login} />
       </Route>
       <Route path="/register">
-        <PublicRoute component={Register} />
+        <RegisterRoute />
       </Route>
       <Route path="/esqueci-senha">
         <PublicRoute component={ForgotPassword} />
