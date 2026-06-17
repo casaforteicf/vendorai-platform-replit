@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useAuth } from "@/contexts/AuthContext";
 import {
   useListPropostas,
@@ -115,6 +115,7 @@ import {
   Mail,
   MapPin,
   User,
+  MessageCircle,
 } from "lucide-react";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
@@ -1160,8 +1161,68 @@ function PropostaViewer({
   const propNum = proposta.id.slice(-8).toUpperCase();
   const statusCfg = STATUS_CONFIG[proposta.status] ?? STATUS_CONFIG.rascunho;
 
+  // Inject print CSS so only #proposta-print renders when Ctrl+P / Save as PDF
+  useEffect(() => {
+    const style = document.createElement("style");
+    style.id = "__proposta-print-css";
+    style.textContent = `
+      @media print {
+        body * { visibility: hidden !important; }
+        #proposta-print, #proposta-print * { visibility: visible !important; }
+        #proposta-print {
+          position: fixed !important;
+          inset: 0 !important;
+          padding: 32px !important;
+          overflow: visible !important;
+          background: white !important;
+        }
+      }
+    `;
+    document.head.appendChild(style);
+    return () => { document.getElementById("__proposta-print-css")?.remove(); };
+  }, []);
+
   function handlePrint() {
     window.print();
+  }
+
+  function buildText() {
+    const empresa = biz?.nomeFantasia || biz?.razaoSocial || "";
+    const lines: string[] = [];
+    lines.push(`*${proposta.titulo}*`);
+    if (empresa) lines.push(`*${empresa}*`);
+    lines.push(`Nº ${propNum}`);
+    lines.push(`Data: ${fmtDate(proposta.createdAt)}`);
+    if (proposta.validadeAte) lines.push(`Válida até: ${fmtDate(proposta.validadeAte)}`);
+    lines.push("");
+    if (lead?.nome) lines.push(`Cliente: ${lead.nome}`);
+    lines.push("");
+    lines.push("*Itens:*");
+    proposta.itens.forEach((it) => {
+      lines.push(`• ${it.nome} × ${it.quantidade} — ${fmtCurrency(it.valorUnitario)}`);
+    });
+    lines.push(`\n*Total: ${fmtCurrency(total)}*`);
+    if (proposta.condPagamento) lines.push(`\nPagamento: ${proposta.condPagamento}`);
+    if (proposta.prazoEntrega)  lines.push(`Entrega: ${proposta.prazoEntrega}`);
+    if (proposta.observacoes)   lines.push(`\n${proposta.observacoes}`);
+    if (sellerName) lines.push(`\nVendedor: ${sellerName}`);
+    return lines.join("\n");
+  }
+
+  function handleWhatsApp() {
+    const phone = lead?.telefone?.replace(/\D/g, "") ?? "";
+    const text  = encodeURIComponent(buildText());
+    const url   = phone
+      ? `https://wa.me/55${phone}?text=${text}`
+      : `https://wa.me/?text=${text}`;
+    window.open(url, "_blank", "noopener");
+  }
+
+  function handleEmail() {
+    const subject = encodeURIComponent(`Proposta Comercial — ${proposta.titulo}`);
+    const body = encodeURIComponent(buildText().replace(/\*/g, ""));
+    const to = lead?.email ?? "";
+    window.open(`mailto:${to}?subject=${subject}&body=${body}`, "_self");
   }
 
   return (
@@ -1174,10 +1235,30 @@ function PropostaViewer({
             <span className="text-sm font-medium">Modelo da Proposta</span>
             <Badge variant="outline" className={`text-xs ${statusCfg.className}`}>{statusCfg.label}</Badge>
           </div>
-          <div className="flex items-center gap-2">
-            <Button variant="outline" size="sm" onClick={handlePrint}>
-              <Printer className="h-4 w-4 mr-1.5" /> Imprimir
+          <div className="flex items-center gap-1.5">
+            <Button variant="outline" size="sm" onClick={handleWhatsApp} className="text-emerald-700 border-emerald-300 hover:bg-emerald-50 hidden sm:inline-flex">
+              <MessageCircle className="h-4 w-4 mr-1.5" /> WhatsApp
             </Button>
+            <Button variant="outline" size="sm" onClick={handleEmail} className="hidden sm:inline-flex">
+              <Mail className="h-4 w-4 mr-1.5" /> E-mail
+            </Button>
+            <Button variant="outline" size="sm" onClick={handlePrint}>
+              <Printer className="h-4 w-4 mr-1.5" /> <span className="hidden sm:inline">Imprimir / </span>PDF
+            </Button>
+            {/* Mobile: dropdown */}
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="ghost" size="icon" className="h-8 w-8 sm:hidden">
+                  <MoreHorizontal className="h-4 w-4" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end">
+                <DropdownMenuItem onClick={handleWhatsApp}><MessageCircle className="h-4 w-4 mr-2 text-emerald-600" />Enviar WhatsApp</DropdownMenuItem>
+                <DropdownMenuItem onClick={handleEmail}><Mail className="h-4 w-4 mr-2" />Enviar E-mail</DropdownMenuItem>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem onClick={handlePrint}><Printer className="h-4 w-4 mr-2" />Imprimir / PDF</DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
             <Button variant="ghost" size="icon" className="h-8 w-8" onClick={onClose}>
               <X className="h-4 w-4" />
             </Button>
