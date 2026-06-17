@@ -11,7 +11,16 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
 import { ToastAction } from "@/components/ui/toast";
-import { useListProdutosCatalogo, getListProdutosCatalogoQueryKey } from "@workspace/api-client-react";
+import {
+  useListProdutosCatalogo,
+  getListProdutosCatalogoQueryKey,
+  useListVarejoProdutos,
+  getListVarejoProdutosQueryKey,
+  useListSupermercadoProdutos,
+  getListSupermercadoProdutosQueryKey,
+  useListInsumos,
+  getListInsumosQueryKey,
+} from "@workspace/api-client-react";
 import {
   Sparkles, Copy, Trash2, Loader2, Instagram, Clapperboard, Image,
   CheckCircle2, AlertCircle, ChevronDown, ChevronUp, ExternalLink, Upload,
@@ -20,6 +29,7 @@ import {
 import { cn } from "@/lib/utils";
 
 type ContentType = "feed" | "stories" | "reels";
+type ProductSource = "catalog" | "varejo" | "supermercado" | "insumo";
 
 interface FeedVariation { caption: string; hashtags: string[]; imageUrl?: string }
 interface StoriesVariation { text: string; cta: string; imageUrl?: string }
@@ -65,6 +75,24 @@ const TYPE_CONFIG = {
     icon: Clapperboard,
     description: "Roteiro completo com cenas, falas e sugestão de trilha",
     placeholder: "Ex: Mostrar bastidores do processo de produção de forma dinâmica e envolvente",
+  },
+};
+
+const VERTICAL_PLACEHOLDERS: Record<string, Record<ContentType, string>> = {
+  "Varejo de Roupas & Acessórios": {
+    feed: "Ex: Nova coleção de inverno chegou — looks exclusivos para arrasar na temporada",
+    stories: "Ex: Grade completa de tamanhos P ao GG disponível — corre que vai esgotar!",
+    reels: "Ex: Mostrar um unboxing da nova coleção com transição de looks do dia a dia",
+  },
+  Supermercado: {
+    feed: "Ex: Oferta da semana no filé mignon — qualidade premium com preço imbatível",
+    stories: "Ex: Hortifrúti fresquinho todo dia — direto do produtor para a sua mesa",
+    reels: "Ex: Receita rápida usando produtos em promoção desta semana",
+  },
+  "Construção & Reforma": {
+    feed: "Ex: Lançamento da linha premium de porcelanato — acabamento de alto padrão para sua obra",
+    stories: "Ex: Entrega expressa de materiais na sua obra — peça hoje e receba amanhã",
+    reels: "Ex: Antes e depois de uma reforma com nossos materiais — transformação incrível",
   },
 };
 
@@ -715,11 +743,27 @@ function HistoryItem({
   );
 }
 
+function verticalToSource(vertical: string | null | undefined): ProductSource {
+  if (vertical?.includes("Varejo") || vertical?.includes("Roupa")) return "varejo";
+  if (vertical?.includes("Supermercado") || vertical?.includes("Mercado")) return "supermercado";
+  if (vertical?.includes("Construção") || vertical?.includes("Reforma")) return "insumo";
+  return "catalog";
+}
+
+function verticalProductLabel(vertical: string | null | undefined): string {
+  if (vertical?.includes("Varejo") || vertical?.includes("Roupa")) return "Produto do catálogo de moda";
+  if (vertical?.includes("Supermercado") || vertical?.includes("Mercado")) return "Produto do supermercado";
+  if (vertical?.includes("Construção") || vertical?.includes("Reforma")) return "Insumo / material";
+  return "Produto do catálogo";
+}
+
 export default function Content() {
   const { user } = useAuth();
   const { toast } = useToast();
   const qc = useQueryClient();
   const tenantId = user?.tenantId ?? "";
+  const vertical = user?.tenantVertical ?? null;
+  const productSource = verticalToSource(vertical);
 
   const [activeTab, setActiveTab] = useState<ContentType>("feed");
   const [theme, setTheme] = useState("");
@@ -730,12 +774,31 @@ export default function Content() {
   const [preImageUploading, setPreImageUploading] = useState(false);
   const preImageInputRef = useRef<HTMLInputElement>(null);
 
-  const { data: products } = useListProdutosCatalogo(tenantId, {
-    query: {
-      enabled: !!tenantId,
-      queryKey: getListProdutosCatalogoQueryKey(tenantId),
-    },
+  const isVarejo = productSource === "varejo";
+  const isSupermercado = productSource === "supermercado";
+  const isInsumo = productSource === "insumo";
+  const isCatalog = productSource === "catalog";
+
+  const { data: catalogProducts } = useListProdutosCatalogo(tenantId, {
+    query: { enabled: !!tenantId && isCatalog, queryKey: getListProdutosCatalogoQueryKey(tenantId) },
   });
+  const { data: varejoProducts } = useListVarejoProdutos(tenantId, undefined, {
+    query: { enabled: !!tenantId && isVarejo, queryKey: getListVarejoProdutosQueryKey(tenantId) },
+  });
+  const { data: supermercadoProducts } = useListSupermercadoProdutos(tenantId, undefined, {
+    query: { enabled: !!tenantId && isSupermercado, queryKey: getListSupermercadoProdutosQueryKey(tenantId) },
+  });
+  const { data: insumosProducts } = useListInsumos(tenantId, undefined, {
+    query: { enabled: !!tenantId && isInsumo, queryKey: getListInsumosQueryKey(tenantId) },
+  });
+
+  const products: { id: string; nome: string }[] | undefined = isVarejo
+    ? varejoProducts?.map((p) => ({ id: p.id, nome: p.nome }))
+    : isSupermercado
+    ? supermercadoProducts?.map((p) => ({ id: p.id, nome: p.nome }))
+    : isInsumo
+    ? insumosProducts?.map((p) => ({ id: p.id, nome: p.nome }))
+    : catalogProducts?.map((p) => ({ id: p.id, nome: p.nome }));
 
   const { data: history, isLoading: historyLoading } = useQuery<ListContentResponse>({
     queryKey: ["content", tenantId],
@@ -749,7 +812,7 @@ export default function Content() {
     enabled: !!tenantId,
   });
 
-  const generateMutation = useMutation<ContentGeneration, Error, { type: ContentType; theme: string; productId?: string; variations: number }>({
+  const generateMutation = useMutation<ContentGeneration, Error, { type: ContentType; theme: string; productId?: string; productSource?: ProductSource; variations: number; imageUrl?: string }>({
     mutationFn: async (body) => {
       const res = await fetch(`/api/tenants/${tenantId}/content/generate`, {
         method: "POST",
@@ -830,9 +893,10 @@ export default function Content() {
       type: activeTab,
       theme: theme.trim(),
       productId: productId !== "none" ? productId : undefined,
+      productSource,
       variations,
       imageUrl: preImageUrl ?? undefined,
-    } as any);
+    });
   }
 
   const monthlyUsed = history?.monthlyUsed ?? 0;
@@ -895,7 +959,7 @@ export default function Content() {
                   </CardHeader>
                   <CardContent className="space-y-4">
                     <div className="space-y-1.5">
-                      <Label>Produto (opcional)</Label>
+                      <Label>{verticalProductLabel(vertical)} (opcional)</Label>
                       <Select value={productId} onValueChange={setProductId}>
                         <SelectTrigger>
                           <SelectValue placeholder="Selecione um produto" />
@@ -912,7 +976,10 @@ export default function Content() {
                     <div className="space-y-1.5">
                       <Label>Tema / contexto da publicação <span className="text-destructive">*</span></Label>
                       <Textarea
-                        placeholder={TYPE_CONFIG[key].placeholder}
+                        placeholder={
+                          (vertical && VERTICAL_PLACEHOLDERS[vertical]?.[key as ContentType]) ??
+                          TYPE_CONFIG[key].placeholder
+                        }
                         value={theme}
                         onChange={(e) => setTheme(e.target.value)}
                         rows={4}

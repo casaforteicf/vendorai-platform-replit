@@ -34,6 +34,20 @@ function buildBrandContext(profile: TenantProfile): string {
   return lines.join("\n") || "Empresa sem contexto definido.";
 }
 
+function verticalHints(vertical: string | null | undefined): string {
+  const v = vertical ?? "";
+  if (v.includes("Varejo") || v.includes("Moda") || v.includes("Roupa") || v.includes("Acessório")) {
+    return `CONTEXTO VERTICAL — MODA & VAREJO: Use linguagem voltada a moda, estilo e tendências. Mencione quando relevante: coleções sazonais, grade de tamanhos disponíveis (P/M/G/GG), looks, combinações, estilo de vida, tendências da estação. Utilize emojis de moda (👗👠👜✨) e hashtags como #moda #estilo #ootd #look #tendência #novacoleção.`;
+  }
+  if (v.includes("Supermercado") || v.includes("Mercado") || v.includes("Atacado")) {
+    return `CONTEXTO VERTICAL — SUPERMERCADO: Use linguagem de conveniência, economia e qualidade. Destaque preços promocionais, produtos frescos, hortifrúti, ofertas relâmpago, combos e variedade. Sugira receitas ou utilizações do produto quando pertinente. Use emojis de alimentação (🛒🥩🥦🍎💰) e hashtags como #oferta #economize #fresquinho #supermercado #promoção.`;
+  }
+  if (v.includes("Construção") || v.includes("Reforma") || v.includes("Civil")) {
+    return `CONTEXTO VERTICAL — CONSTRUÇÃO & REFORMA: Use linguagem técnica mas acessível. Enfatize qualidade dos materiais, durabilidade, acabamento, prazo de entrega e suporte técnico. Mencione quando relevante: tipo de obra, área de aplicação, normas técnicas. Use emojis de construção (🏗️🔨⚙️🏠✅) e hashtags como #construção #reforma #materiais #obra #engenharia #acabamento.`;
+  }
+  return "";
+}
+
 async function generateImageForContent(
   profile: TenantProfile,
   theme: string,
@@ -45,10 +59,19 @@ async function generateImageForContent(
     const brand = profile.nomeFantasia || "a empresa";
     const subject = productName ? `${productName} — ${theme}` : theme;
     const ratio = format === "stories" ? "1024x1792" : "1024x1024";
+    const v = profile.vertical ?? "";
+    let styleHint = "clean, modern, professional marketing photography";
+    if (v.includes("Varejo") || v.includes("Moda") || v.includes("Roupa")) {
+      styleHint = "fashion editorial photography, stylish, trendy, well-lit studio or lifestyle setting";
+    } else if (v.includes("Supermercado") || v.includes("Mercado")) {
+      styleHint = "bright food photography, fresh produce, appetizing, commercial supermarket style";
+    } else if (v.includes("Construção") || v.includes("Reforma")) {
+      styleHint = "professional construction/renovation photography, high quality materials, clean workspace";
+    }
 
     const imagePrompt = `Professional marketing image for the Instagram ${format === "stories" ? "Stories (vertical 9:16 format)" : "Feed (square format)"} of the brand "${brand}". 
 Theme: ${subject}.
-Style: clean, modern, professional marketing photography. High quality, visually appealing, suitable for a business Instagram profile. 
+Style: ${styleHint}. High quality, visually appealing, suitable for a business Instagram profile. 
 No text overlays. No watermarks. Bright, well-lit, commercial photography aesthetic.`;
 
     const response = await openai.images.generate({
@@ -70,20 +93,29 @@ export async function generateFeedContent(
   profile: TenantProfile,
   theme: string,
   productName: string | undefined,
-  variationsCount: number
+  variationsCount: number,
+  productExtra?: string
 ): Promise<{ result: ContentGenerationResult; tokensUsed: number }> {
   const openai = getOpenAI();
   const brand = profile.nomeFantasia || "a empresa";
   const context = buildBrandContext(profile);
-  const subject = productName
-    ? `Produto/serviço: ${productName}\nTema/ângulo da publicação: ${theme}`
-    : `Tema da publicação: ${theme}`;
+  const hints = verticalHints(profile.vertical);
+
+  let subjectLines: string[] = [];
+  if (productName) {
+    subjectLines.push(`Produto/serviço: ${productName}`);
+    if (productExtra) subjectLines.push(productExtra);
+    subjectLines.push(`Tema/ângulo da publicação: ${theme}`);
+  } else {
+    subjectLines.push(`Tema da publicação: ${theme}`);
+  }
+  const subject = subjectLines.join("\n");
 
   const prompt = `Você é um copywriter especialista em Instagram para a marca "${brand}".
 
 Contexto da marca:
 ${context}
-
+${hints ? `\n${hints}\n` : ""}
 ${subject}
 
 Crie ${variationsCount} variações distintas de legenda para o Feed do Instagram. Cada variação deve ter:
@@ -123,20 +155,29 @@ export async function generateStoriesContent(
   profile: TenantProfile,
   theme: string,
   productName: string | undefined,
-  variationsCount: number
+  variationsCount: number,
+  productExtra?: string
 ): Promise<{ result: ContentGenerationResult; tokensUsed: number }> {
   const openai = getOpenAI();
   const brand = profile.nomeFantasia || "a empresa";
   const context = buildBrandContext(profile);
-  const subject = productName
-    ? `Produto/serviço: ${productName}\nTema: ${theme}`
-    : `Tema: ${theme}`;
+  const hints = verticalHints(profile.vertical);
+
+  let subjectLines: string[] = [];
+  if (productName) {
+    subjectLines.push(`Produto/serviço: ${productName}`);
+    if (productExtra) subjectLines.push(productExtra);
+    subjectLines.push(`Tema: ${theme}`);
+  } else {
+    subjectLines.push(`Tema: ${theme}`);
+  }
+  const subject = subjectLines.join("\n");
 
   const prompt = `Você é um copywriter especialista em Instagram Stories para a marca "${brand}".
 
 Contexto da marca:
 ${context}
-
+${hints ? `\n${hints}\n` : ""}
 ${subject}
 
 Crie ${variationsCount} variações distintas de conteúdo para Stories do Instagram. Cada variação deve ter:
@@ -176,20 +217,29 @@ export async function generateReelsScript(
   profile: TenantProfile,
   theme: string,
   productName: string | undefined,
-  variationsCount: number
+  variationsCount: number,
+  productExtra?: string
 ): Promise<{ result: ContentGenerationResult; tokensUsed: number }> {
   const openai = getOpenAI();
   const brand = profile.nomeFantasia || "a empresa";
   const context = buildBrandContext(profile);
-  const subject = productName
-    ? `Produto/serviço: ${productName}\nTema: ${theme}`
-    : `Tema: ${theme}`;
+  const hints = verticalHints(profile.vertical);
+
+  let subjectLines: string[] = [];
+  if (productName) {
+    subjectLines.push(`Produto/serviço: ${productName}`);
+    if (productExtra) subjectLines.push(productExtra);
+    subjectLines.push(`Tema: ${theme}`);
+  } else {
+    subjectLines.push(`Tema: ${theme}`);
+  }
+  const subject = subjectLines.join("\n");
 
   const prompt = `Você é um roteirista especialista em Reels do Instagram para a marca "${brand}".
 
 Contexto da marca:
 ${context}
-
+${hints ? `\n${hints}\n` : ""}
 ${subject}
 
 Crie ${variationsCount} roteiros distintos para Reels do Instagram (vídeos de 15-60 segundos). Cada roteiro deve ter:

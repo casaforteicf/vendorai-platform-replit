@@ -7,6 +7,9 @@ import {
   agentConfigsTable,
   businessProfilesTable,
   produtosCatalogoTable,
+  varejoProdutoTable,
+  supermercadoProdutoTable,
+  insumosTable,
   subscriptionsTable,
 } from "@workspace/db";
 import {
@@ -29,6 +32,7 @@ const generateBodySchema = z.object({
   type: z.enum(["feed", "stories", "reels"]),
   theme: z.string().min(3, "Descreva o tema (mín. 3 caracteres)"),
   productId: z.string().optional().nullable(),
+  productSource: z.enum(["catalog", "varejo", "supermercado", "insumo"]).optional().default("catalog"),
   variations: z.coerce.number().int().min(1).max(3).default(2),
   imageUrl: z.string().optional().nullable(),
 });
@@ -87,7 +91,7 @@ router.post("/tenants/:tenantId/content/generate", async (req, res) => {
     return;
   }
 
-  const { type, theme, productId, variations, imageUrl } = parsed.data;
+  const { type, theme, productId, productSource, variations, imageUrl } = parsed.data;
 
   const { used, limit, configId } = await getMonthlyUsage(tenantId);
   if (used >= limit) {
@@ -105,27 +109,59 @@ router.post("/tenants/:tenantId/content/generate", async (req, res) => {
     .where(eq(businessProfilesTable.tenantId, tenantId));
 
   let productName: string | undefined;
+  let productExtra: string | undefined;
   if (productId) {
-    const [product] = await db
-      .select({ nome: produtosCatalogoTable.nome })
-      .from(produtosCatalogoTable)
-      .where(
-        and(
-          eq(produtosCatalogoTable.id, String(productId)),
-          eq(produtosCatalogoTable.tenantId, tenantId)
-        )
-      );
-    productName = product?.nome;
+    const src = productSource ?? "catalog";
+    if (src === "varejo") {
+      const [p] = await db
+        .select({ nome: varejoProdutoTable.nome, categoria: varejoProdutoTable.categoria, genero: varejoProdutoTable.genero })
+        .from(varejoProdutoTable)
+        .where(and(eq(varejoProdutoTable.id, productId), eq(varejoProdutoTable.tenantId, tenantId)));
+      if (p) {
+        productName = p.nome;
+        const extras: string[] = [];
+        if (p.categoria) extras.push(`Categoria: ${p.categoria}`);
+        if (p.genero) extras.push(`Gênero: ${p.genero}`);
+        if (extras.length) productExtra = extras.join(" | ");
+      }
+    } else if (src === "supermercado") {
+      const [p] = await db
+        .select({ nome: supermercadoProdutoTable.nome, categoria: supermercadoProdutoTable.categoria })
+        .from(supermercadoProdutoTable)
+        .where(and(eq(supermercadoProdutoTable.id, productId), eq(supermercadoProdutoTable.tenantId, tenantId)));
+      if (p) {
+        productName = p.nome;
+        if (p.categoria) productExtra = `Categoria: ${p.categoria}`;
+      }
+    } else if (src === "insumo") {
+      const [p] = await db
+        .select({ nome: insumosTable.nome, categoria: insumosTable.categoria, unidade: insumosTable.unidade })
+        .from(insumosTable)
+        .where(and(eq(insumosTable.id, productId), eq(insumosTable.tenantId, tenantId)));
+      if (p) {
+        productName = p.nome;
+        const extras: string[] = [];
+        if (p.categoria) extras.push(`Categoria: ${p.categoria}`);
+        if (p.unidade) extras.push(`Unidade: ${p.unidade}`);
+        if (extras.length) productExtra = extras.join(" | ");
+      }
+    } else {
+      const [p] = await db
+        .select({ nome: produtosCatalogoTable.nome })
+        .from(produtosCatalogoTable)
+        .where(and(eq(produtosCatalogoTable.id, productId), eq(produtosCatalogoTable.tenantId, tenantId)));
+      productName = p?.nome;
+    }
   }
 
   let result: { result: { variations: unknown[] }; tokensUsed: number };
   try {
     if (type === "feed") {
-      result = await generateFeedContent(profile ?? {}, theme, productName, variations);
+      result = await generateFeedContent(profile ?? {}, theme, productName, variations, productExtra);
     } else if (type === "stories") {
-      result = await generateStoriesContent(profile ?? {}, theme, productName, variations);
+      result = await generateStoriesContent(profile ?? {}, theme, productName, variations, productExtra);
     } else {
-      result = await generateReelsScript(profile ?? {}, theme, productName, variations);
+      result = await generateReelsScript(profile ?? {}, theme, productName, variations, productExtra);
     }
   } catch (err) {
     req.log.error({ err }, "content generation failed");
