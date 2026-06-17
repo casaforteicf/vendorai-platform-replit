@@ -99,7 +99,9 @@ import {
   Loader2,
   Lock,
   ShieldCheck,
+  Wand2,
 } from "lucide-react";
+import { SiteGeneratorTab } from "./SiteGenerator";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { cn } from "@/lib/utils";
@@ -1037,7 +1039,7 @@ export default function Configuracoes() {
         className="space-y-6"
         onValueChange={(tab) => { if (tab !== "integracoes") setIntegracoesUnlocked(false); }}
       >
-        <TabsList className={cn("grid w-full max-w-2xl", isTenantAdmin ? "grid-cols-6" : "grid-cols-5")}>
+        <TabsList className={cn("grid w-full max-w-3xl", isTenantAdmin ? "grid-cols-7" : "grid-cols-6")}>
           <TabsTrigger value="perfil" className="gap-1.5">
             <Building2 className="h-4 w-4" />
             Perfil
@@ -1053,6 +1055,10 @@ export default function Configuracoes() {
           <TabsTrigger value="site" className="gap-1.5">
             <Globe className="h-4 w-4" />
             Site
+          </TabsTrigger>
+          <TabsTrigger value="gerador" className="gap-1.5">
+            <Wand2 className="h-4 w-4" />
+            Gerador
           </TabsTrigger>
           <TabsTrigger value="integracoes" className="gap-1.5">
             <Webhook className="h-4 w-4" />
@@ -1703,6 +1709,23 @@ export default function Configuracoes() {
             )}
           </div>
         </TabsContent>
+
+        {/* ── Tab: Gerador de Sites ────────────────────────────────────────── */}
+        <TabsContent value="gerador">
+          <div className="rounded-xl border bg-card p-6 space-y-4">
+            <div>
+              <h2 className="font-semibold text-base flex items-center gap-2">
+                <Wand2 className="h-4 w-4 text-primary" />
+                Gerador de Sites com IA
+              </h2>
+              <p className="text-sm text-muted-foreground mt-0.5">
+                Crie landing pages, e-commerces e sites institucionais em segundos.
+              </p>
+            </div>
+            <SiteGeneratorTab />
+          </div>
+        </TabsContent>
+
         {/* ── Tab: Integrações ERP ────────────────────────────────────────── */}
         <TabsContent value="integracoes">
           {/* ── Lock screen ─────────────────────────────────────────────── */}

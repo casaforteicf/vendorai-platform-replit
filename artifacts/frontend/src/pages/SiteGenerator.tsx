@@ -490,12 +490,9 @@ function RefinementChat({
   );
 }
 
-// ── Main Component ─────────────────────────────────────────────────────────────
+// ── Shared inner content (used by both standalone page and embedded tab) ────────
 
-export default function SiteGenerator() {
-  const { user, token } = useAuth();
-  const tenantId = user?.tenantId ?? "";
-
+function SiteGeneratorInner({ tenantId, token }: { tenantId: string; token: string | null }) {
   const [activeTab, setActiveTab] = useState("config");
   const { status, html, error, generate, refine, download, reset } = useSiteGenerator(tenantId, token);
 
@@ -508,18 +505,11 @@ export default function SiteGenerator() {
   const canRefine = status === "ready";
 
   return (
-    <div className="max-w-3xl mx-auto flex flex-col gap-6 p-6">
-      {/* Header */}
-      <div className="flex items-start justify-between gap-4 flex-wrap">
-        <div>
-          <div className="flex items-center gap-2 mb-1">
-            <Globe className="h-5 w-5 text-primary" />
-            <h1 className="text-2xl font-semibold tracking-tight">Gerador de Sites</h1>
-          </div>
-          <p className="text-sm text-muted-foreground">
-            Crie landing pages, e-commerces e sites institucionais com IA em segundos.
-          </p>
-        </div>
+    <div className="flex flex-col gap-4">
+      <div className="flex items-center justify-between flex-wrap gap-2">
+        <p className="text-sm text-muted-foreground">
+          Crie landing pages, e-commerces e sites institucionais com IA em segundos.
+        </p>
         {status === "ready" && (
           <Button
             variant="outline"
@@ -532,7 +522,6 @@ export default function SiteGenerator() {
         )}
       </div>
 
-      {/* Tabs */}
       <Tabs value={activeTab} onValueChange={setActiveTab}>
         <TabsList className="w-full">
           <TabsTrigger value="config" className="flex-1">
@@ -579,6 +568,29 @@ export default function SiteGenerator() {
           </CardContent>
         </Card>
       </Tabs>
+    </div>
+  );
+}
+
+// ── Embedded tab (used inside Configurações) ────────────────────────────────────
+
+export function SiteGeneratorTab() {
+  const { user, token } = useAuth();
+  return <SiteGeneratorInner tenantId={user?.tenantId ?? ""} token={token} />;
+}
+
+// ── Main Component (standalone page — kept for direct navigation) ───────────────
+
+export default function SiteGenerator() {
+  const { user, token } = useAuth();
+
+  return (
+    <div className="max-w-3xl mx-auto flex flex-col gap-6 p-6">
+      <div className="flex items-center gap-2">
+        <Globe className="h-5 w-5 text-primary" />
+        <h1 className="text-2xl font-semibold tracking-tight">Gerador de Sites</h1>
+      </div>
+      <SiteGeneratorInner tenantId={user?.tenantId ?? ""} token={token} />
     </div>
   );
 }
