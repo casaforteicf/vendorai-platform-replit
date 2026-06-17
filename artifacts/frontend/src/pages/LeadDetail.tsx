@@ -22,6 +22,10 @@ import {
   useUpdateLead,
   useListTenantUsers,
   getListTenantUsersQueryKey,
+  useCreateConversation,
+  useCreateDeal,
+  useCreateMessage,
+  getListDealsQueryKey,
 } from "@workspace/api-client-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -350,6 +354,62 @@ export default function LeadDetail() {
         urgencia: leadDadosDraft.urgencia || null,
       },
     });
+  }
+
+  // ── WhatsApp conversation starter ─────────────────────────────────────────
+  const [whatsappDialogOpen, setWhatsappDialogOpen] = useState(false);
+  const [whatsappMessage, setWhatsappMessage] = useState("");
+  const [whatsappEtapa, setWhatsappEtapa] = useState<string>("novo");
+  const [isStartingConversation, setIsStartingConversation] = useState(false);
+
+  const { mutateAsync: createConversation } = useCreateConversation();
+  const { mutateAsync: createDeal } = useCreateDeal();
+  const { mutateAsync: createMessage } = useCreateMessage();
+
+  function openWhatsappDialog() {
+    setWhatsappMessage(`Olá, ${lead?.nome ?? ""}! Tudo bem?`);
+    setWhatsappEtapa("novo");
+    setWhatsappDialogOpen(true);
+  }
+
+  async function handleStartWhatsappConversation() {
+    if (!lead || !id) return;
+    setIsStartingConversation(true);
+    try {
+      const conv = await createConversation({
+        data: { tenantId: lead.tenantId, leadId: id, channel: "whatsapp" },
+      });
+      await Promise.all([
+        createDeal({
+          data: {
+            tenantId: lead.tenantId,
+            titulo: lead.nome,
+            leadId: id,
+            etapa: whatsappEtapa as "em_aquecimento" | "novo" | "qualificado" | "proposta" | "negociacao",
+          },
+        }),
+        createMessage({
+          data: {
+            tenantId: lead.tenantId,
+            conversationId: conv.id,
+            leadId: id,
+            canal: "whatsapp",
+            direcao: "saida",
+            conteudo: whatsappMessage,
+            enviadoPor: "humano",
+          },
+        }),
+      ]);
+      void queryClient.invalidateQueries({ queryKey: getListTenantConversationsQueryKey(lead.tenantId) });
+      void queryClient.invalidateQueries({ queryKey: getListDealsQueryKey(lead.tenantId) });
+      setWhatsappDialogOpen(false);
+      toast({ title: "Conversa iniciada e card criado no pipeline!" });
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : "Erro ao iniciar conversa";
+      toast({ title: msg, variant: "destructive" });
+    } finally {
+      setIsStartingConversation(false);
+    }
   }
 
   const [editingPessoal, setEditingPessoal] = useState(false);
@@ -749,13 +809,26 @@ export default function LeadDetail() {
             </p>
           )}
         </div>
-        <Badge
-          variant="outline"
-          className={STATUS_STYLES[lead.status] ?? ""}
-          data-testid="badge-lead-status"
-        >
-          {STATUS_LABELS[lead.status] ?? lead.status}
-        </Badge>
+        <div className="flex items-center gap-2">
+          {lead.telefone && (
+            <Button
+              size="sm"
+              className="bg-[#25D366] hover:bg-[#1ebe5d] text-white gap-1.5"
+              onClick={openWhatsappDialog}
+              data-testid="btn-start-whatsapp"
+            >
+              <MessageSquare className="h-4 w-4" />
+              Iniciar no WhatsApp
+            </Button>
+          )}
+          <Badge
+            variant="outline"
+            className={STATUS_STYLES[lead.status] ?? ""}
+            data-testid="badge-lead-status"
+          >
+            {STATUS_LABELS[lead.status] ?? lead.status}
+          </Badge>
+        </div>
       </div>
 
       <div className="grid gap-6 lg:grid-cols-3">
@@ -2164,6 +2237,66 @@ export default function LeadDetail() {
             >
               {isCreatingActivity && <Loader2 className="h-4 w-4 animate-spin mr-2" />}
               Criar Atividade
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* WhatsApp conversation starter dialog */}
+      <Dialog open={whatsappDialogOpen} onOpenChange={setWhatsappDialogOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <MessageSquare className="h-5 w-5 text-[#25D366]" />
+              Iniciar conversa no WhatsApp
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 py-2">
+            <div className="space-y-1.5">
+              <label className="text-sm font-medium">Primeira mensagem</label>
+              <Textarea
+                rows={3}
+                value={whatsappMessage}
+                onChange={(e) => setWhatsappMessage(e.target.value)}
+                placeholder="Digite a mensagem inicial..."
+              />
+            </div>
+            <div className="space-y-1.5">
+              <label className="text-sm font-medium">Etapa no pipeline</label>
+              <Select value={whatsappEtapa} onValueChange={setWhatsappEtapa}>
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="em_aquecimento">Em aquecimento</SelectItem>
+                  <SelectItem value="novo">Novo</SelectItem>
+                  <SelectItem value="qualificado">Qualificado</SelectItem>
+                  <SelectItem value="proposta">Proposta</SelectItem>
+                  <SelectItem value="negociacao">Negociação</SelectItem>
+                </SelectContent>
+              </Select>
+              <p className="text-xs text-muted-foreground">
+                Um card será criado automaticamente no pipeline com esta etapa.
+              </p>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => setWhatsappDialogOpen(false)}
+              disabled={isStartingConversation}
+            >
+              Cancelar
+            </Button>
+            <Button
+              className="bg-[#25D366] hover:bg-[#1ebe5d] text-white"
+              onClick={() => void handleStartWhatsappConversation()}
+              disabled={isStartingConversation || !whatsappMessage.trim()}
+            >
+              {isStartingConversation
+                ? <><Loader2 className="h-4 w-4 animate-spin mr-2" />Iniciando…</>
+                : <><MessageSquare className="h-4 w-4 mr-2" />Enviar e criar card</>
+              }
             </Button>
           </DialogFooter>
         </DialogContent>
