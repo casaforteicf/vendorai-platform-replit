@@ -48,6 +48,7 @@ import SupermercadoProdutos from "@/pages/supermercado/SupermercadoProdutos";
 import SupermercadoPedidos from "@/pages/supermercado/SupermercadoPedidos";
 import SupermercadoCampanhas from "@/pages/supermercado/SupermercadoCampanhas";
 import SupermercadoConfig from "@/pages/supermercado/SupermercadoConfig";
+import SiteGenerator from "@/pages/SiteGenerator";
 import { useEffect } from "react";
 import {
   useGetTenant,
@@ -338,6 +339,9 @@ function AppRoutes() {
       </Route>
       <Route path="/meu-site">
         {() => <ProtectedRoute component={MeuSite} />}
+      </Route>
+      <Route path="/site-generator">
+        {() => <ProtectedRoute component={SiteGenerator} />}
       </Route>
       <Route path="/obras">
         {() => <ConstrucaoRoute component={Obras} />}

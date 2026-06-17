@@ -9,6 +9,7 @@
     "cleanup-duplicates": "tsx ./src/cleanup-duplicate-activities.ts",
     "migrate-supermercado": "tsx ./src/migrate-supermercado.ts",
     "migrate-varejo": "tsx ./src/migrate-varejo.ts",
+    "migrate-site-generator": "tsx ./src/migrate-site-generator.ts",
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {

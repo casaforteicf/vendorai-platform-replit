@@ -42,6 +42,7 @@ import { intakeRouter } from "./intake";
 import construcaoRouter from "./construcao";
 import varejoRouter from "./varejo";
 import supermercadoRouter from "./supermercado";
+import siteGeneratorRouter from "./site_generator";
 import { authenticate, blockPartnerFromCRM, blockSuspendedTenants, requireRole, requireSameTenanOrSuperAdmin } from "../middlewares/auth";
 
 const router: IRouter = Router();
@@ -155,6 +156,9 @@ router.use(varejoRouter);
 
 // Supermercado Hub
 router.use(supermercadoRouter);
+
+// Site Generator Hub
+router.use(siteGeneratorRouter);
 
 export { requireRole, requireSameTenanOrSuperAdmin };
 export default router;
