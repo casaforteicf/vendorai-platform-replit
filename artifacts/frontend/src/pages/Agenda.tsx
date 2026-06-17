@@ -89,6 +89,7 @@ import {
   Loader2,
   Video,
   Copy,
+  MoreVertical,
 } from "lucide-react";
 import { Switch } from "@/components/ui/switch";
 import {
@@ -142,9 +143,9 @@ function fromLocalDateTimeInput(local: string) {
   return new Date(local).toISOString();
 }
 
-// ─── Quick status actions ─────────────────────────────────────────────────────
+// ─── Quick status actions — desktop inline ────────────────────────────────────
 
-function StatusActions({
+function StatusActionsDesktop({
   ag,
   onUpdate,
 }: {
@@ -155,7 +156,7 @@ function StatusActions({
   if (done) return null;
 
   return (
-    <div className="flex items-center gap-0.5 shrink-0">
+    <div className="hidden md:flex items-center gap-0.5 shrink-0">
       {ag.status !== "confirmado" && (
         <button
           title="Confirmar"
@@ -194,7 +195,69 @@ function StatusActions({
   );
 }
 
-// ─── Agendamento row ──────────────────────────────────────────────────────────
+// ─── Quick status actions — mobile dropdown ───────────────────────────────────
+
+function StatusActionsMobile({
+  ag,
+  onUpdate,
+}: {
+  ag: Agendamento;
+  onUpdate: (id: string, status: AgendamentoStatus) => void;
+}) {
+  const done = ag.status === "concluido" || ag.status === "cancelado";
+  if (done) return null;
+
+  return (
+    <div className="md:hidden shrink-0">
+      <DropdownMenu>
+        <DropdownMenuTrigger asChild>
+          <button
+            className="p-2 rounded-lg hover:bg-muted text-muted-foreground transition-colors"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <MoreVertical className="h-4 w-4" />
+          </button>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="end" className="w-44">
+          {ag.status !== "confirmado" && (
+            <DropdownMenuItem
+              onClick={(e) => { e.stopPropagation(); onUpdate(ag.id, AgendamentoStatus.confirmado); }}
+              data-testid={`confirm-${ag.id}`}
+            >
+              <CheckCircle2 className="h-4 w-4 mr-2 text-emerald-600" />
+              Confirmar
+            </DropdownMenuItem>
+          )}
+          <DropdownMenuItem
+            onClick={(e) => { e.stopPropagation(); onUpdate(ag.id, AgendamentoStatus.concluido); }}
+            data-testid={`conclude-${ag.id}`}
+          >
+            <CheckCircle2 className="h-4 w-4 mr-2 text-slate-500 opacity-60" />
+            Concluir
+          </DropdownMenuItem>
+          <DropdownMenuItem
+            onClick={(e) => { e.stopPropagation(); onUpdate(ag.id, AgendamentoStatus.no_show); }}
+            data-testid={`noshow-${ag.id}`}
+          >
+            <AlertTriangle className="h-4 w-4 mr-2 text-amber-500" />
+            No-show
+          </DropdownMenuItem>
+          <DropdownMenuSeparator />
+          <DropdownMenuItem
+            className="text-destructive focus:text-destructive"
+            onClick={(e) => { e.stopPropagation(); onUpdate(ag.id, AgendamentoStatus.cancelado); }}
+            data-testid={`cancel-${ag.id}`}
+          >
+            <XCircle className="h-4 w-4 mr-2" />
+            Cancelar
+          </DropdownMenuItem>
+        </DropdownMenuContent>
+      </DropdownMenu>
+    </div>
+  );
+}
+
+// ─── Agendamento card ─────────────────────────────────────────────────────────
 
 function AgendamentoRow({
   ag,
@@ -215,51 +278,56 @@ function AgendamentoRow({
   return (
     <div
       data-testid={`ag-row-${ag.id}`}
-      className={`flex items-start gap-3 px-4 py-3 rounded-lg border border-border bg-card hover:border-primary/30 transition-colors ${isDone ? "opacity-50" : ""}`}
+      className={`flex items-start gap-3 px-3 py-3 md:px-4 rounded-xl border border-border bg-card hover:border-primary/30 transition-colors ${isDone ? "opacity-50" : ""}`}
     >
-      {/* Time */}
-      <div className="w-11 shrink-0 text-center pt-0.5">
+      {/* Time column */}
+      <div className="w-10 shrink-0 text-center pt-0.5">
         <p className="text-xs font-bold text-foreground leading-tight">{formatHour(ag.dataHoraInicio)}</p>
         <p className="text-[10px] text-muted-foreground mt-0.5">{formatHour(ag.dataHoraFim)}</p>
       </div>
 
-      {/* Color bar from agenda */}
+      {/* Color bar */}
       <div className="w-0.5 self-stretch rounded-full shrink-0" style={{ backgroundColor: colorBar }} />
 
       {/* Content */}
-      <div className="flex-1 min-w-0 space-y-1.5">
-        <div className="flex items-center gap-2 flex-wrap">
-          <span className={`flex items-center gap-1 text-xs font-semibold ${tipo.color}`}>
+      <div className="flex-1 min-w-0 space-y-1">
+        {/* Title row */}
+        <p className="text-sm font-semibold leading-tight line-clamp-1">{ag.titulo}</p>
+
+        {/* Badges row */}
+        <div className="flex items-center gap-1.5 flex-wrap">
+          <span className={`flex items-center gap-1 text-xs font-medium ${tipo.color}`}>
             {tipo.icon}
-            {tipo.label}
+            <span className="hidden sm:inline">{tipo.label}</span>
           </span>
-          <Badge className={`text-[10px] px-2 py-0 h-4 border font-medium ${statusCfg.className}`}>
+          <Badge className={`text-[10px] px-1.5 py-0 h-4 border font-medium ${statusCfg.className}`}>
             {statusCfg.label}
           </Badge>
           {ag.googleEventId && (
-            <span title="Sincronizado com Google Calendar" className="text-[10px] text-green-600 flex items-center gap-0.5">
-              <CalendarCheck className="h-3 w-3" />
+            <span title="Sincronizado com Google Calendar">
+              <CalendarCheck className="h-3 w-3 text-green-500" />
             </span>
           )}
           {ag.meetLink && (
             <span className="text-[10px] text-blue-600 flex items-center gap-0.5 font-medium">
               <Video className="h-3 w-3" />
-              Meet
+              <span className="hidden sm:inline">Meet</span>
             </span>
           )}
         </div>
-        <p className="text-sm font-medium leading-tight line-clamp-1">{ag.titulo}</p>
-        <div className="flex items-center gap-3 text-xs text-muted-foreground flex-wrap">
+
+        {/* Meta row */}
+        <div className="flex items-center gap-2 text-xs text-muted-foreground flex-wrap">
           {leadName && (
             <span className="flex items-center gap-1">
               <User className="h-3 w-3 shrink-0" />
-              {leadName}
+              <span className="truncate max-w-[120px] md:max-w-[180px]">{leadName}</span>
             </span>
           )}
           {ag.local && (
             <span className="flex items-center gap-1">
               <MapPin className="h-3 w-3 shrink-0" />
-              <span className="truncate max-w-[160px]">{ag.local}</span>
+              <span className="truncate max-w-[100px] md:max-w-[160px]">{ag.local}</span>
             </span>
           )}
           <span className="flex items-center gap-1">
@@ -269,6 +337,8 @@ function AgendamentoRow({
             )} min
           </span>
         </div>
+
+        {/* Meet link */}
         {ag.meetLink && (
           <div className="flex items-center gap-1 mt-1 pt-1 border-t border-border/50">
             <a
@@ -295,8 +365,9 @@ function AgendamentoRow({
         )}
       </div>
 
-      {/* Quick actions */}
-      <StatusActions ag={ag} onUpdate={onUpdate} />
+      {/* Actions */}
+      <StatusActionsDesktop ag={ag} onUpdate={onUpdate} />
+      <StatusActionsMobile ag={ag} onUpdate={onUpdate} />
     </div>
   );
 }
@@ -318,9 +389,9 @@ function WeekDayBtn({
   return (
     <button
       onClick={onClick}
-      className={`flex flex-col items-center py-2 px-1 rounded-lg transition-colors flex-1 min-w-0 ${
+      className={`flex flex-col items-center py-2 px-1 rounded-xl transition-colors flex-1 min-w-0 ${
         selected
-          ? "bg-primary text-primary-foreground"
+          ? "bg-primary text-primary-foreground shadow-sm"
           : today
           ? "bg-primary/10 text-primary"
           : "hover:bg-muted text-foreground"
@@ -344,7 +415,7 @@ function WeekDayBtn({
   );
 }
 
-// ─── Agenda sidebar item ──────────────────────────────────────────────────────
+// ─── Agenda sidebar item (desktop) ────────────────────────────────────────────
 
 function AgendaSidebarItem({
   agenda,
@@ -435,6 +506,42 @@ function AgendaSidebarItem({
   );
 }
 
+// ─── Agenda chip (mobile horizontal filter) ───────────────────────────────────
+
+function AgendaChip({
+  label,
+  color,
+  selected,
+  hasGoogle,
+  onClick,
+}: {
+  label: string;
+  color?: string;
+  selected: boolean;
+  hasGoogle?: boolean;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      onClick={onClick}
+      className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium whitespace-nowrap border transition-all shrink-0 ${
+        selected
+          ? "bg-primary text-primary-foreground border-primary shadow-sm"
+          : "bg-card text-foreground border-border hover:border-primary/40"
+      }`}
+    >
+      {color && (
+        <span
+          className="w-2 h-2 rounded-full shrink-0"
+          style={{ backgroundColor: selected ? "white" : color }}
+        />
+      )}
+      {label}
+      {hasGoogle && !selected && <CalendarCheck className="h-2.5 w-2.5 text-green-500 ml-0.5" />}
+    </button>
+  );
+}
+
 // ─── Form schemas ─────────────────────────────────────────────────────────────
 
 const createFormSchema = z.object({
@@ -504,7 +611,6 @@ export default function AgendaPage() {
     }
   }, []);
 
-  // Agendamentos query key
   const qKey = getListAgendamentosQueryKey(tenantId, selectedAgendaId ? { agendaId: selectedAgendaId } : undefined);
 
   const { data: agendamentos = [], isLoading } = useListAgendamentos(
@@ -525,14 +631,12 @@ export default function AgendaPage() {
   const leadMap = new Map(leads.map((l) => [l.id, l.nome]));
   const agendaMap = new Map(agendas.map((a) => [a.id, a]));
 
-  // Week filtering
   const selectedAgs = agendamentos.filter((a) =>
     isSameDay(parseISO(a.dataHoraInicio), selectedDay)
   );
   const countDay = (d: Date) =>
     agendamentos.filter((a) => isSameDay(parseISO(a.dataHoraInicio), d)).length;
 
-  // Status update
   function handleUpdate(id: string, status: AgendamentoStatus) {
     updateAg.mutate(
       { id, data: { status } },
@@ -545,7 +649,6 @@ export default function AgendaPage() {
     );
   }
 
-  // Create agendamento form
   const form = useForm<CreateForm>({
     resolver: zodResolver(createFormSchema),
     defaultValues: {
@@ -622,7 +725,6 @@ export default function AgendaPage() {
     );
   }
 
-  // Agenda management
   const agendaForm = useForm<AgendaForm>({
     resolver: zodResolver(agendaFormSchema),
     defaultValues: { nome: "", cor: "#3B82F6" },
@@ -649,6 +751,7 @@ export default function AgendaPage() {
             toast({ title: "Agenda atualizada." });
             queryClient.invalidateQueries({ queryKey: getListAgendasQueryKey(tenantId) });
             setIsNewAgendaOpen(false);
+            setEditTarget(null);
           },
           onError: () => toast({ title: "Erro ao atualizar", variant: "destructive" }),
         }
@@ -687,16 +790,8 @@ export default function AgendaPage() {
   async function handleConnectGoogle(agenda: Agenda) {
     setGoogleLoadingId(agenda.id);
     try {
-      const result = await getAgendaGoogleAuthUrl(agenda.id);
-      if (result?.url) {
-        window.location.href = result.url;
-      } else {
-        toast({
-          title: "Google Calendar não configurado",
-          description: "Configure GOOGLE_CLIENT_ID e GOOGLE_CLIENT_SECRET no servidor.",
-          variant: "destructive",
-        });
-      }
+      const { url } = await getAgendaGoogleAuthUrl(agenda.id);
+      window.location.href = url;
     } catch {
       toast({ title: "Erro ao obter URL do Google", variant: "destructive" });
     } finally {
@@ -717,10 +812,28 @@ export default function AgendaPage() {
     );
   }
 
+  // ── Create dialog trigger shared between header button and FAB ──────────────
+  function openCreate() {
+    form.reset({
+      titulo: "",
+      tipo: "reuniao",
+      leadId: leads[0]?.id ?? "",
+      agendaId: selectedAgendaId ?? (agendas[0]?.id ?? ""),
+      dataHoraInicio: format(selectedDay, "yyyy-MM-dd") + "T09:00",
+      dataHoraFim: format(selectedDay, "yyyy-MM-dd") + "T10:00",
+      local: "",
+      responsavelId: "",
+      observacoes: "",
+      gerarMeet: false,
+    });
+    setIsCreateOpen(true);
+  }
+
   return (
-    <div className="flex gap-5 h-full">
-      {/* ── Agendas sidebar ── */}
-      <aside className="w-52 shrink-0 flex flex-col gap-1">
+    <div className="flex flex-col md:flex-row gap-4 md:gap-5 h-full">
+
+      {/* ── Agendas sidebar — desktop only ── */}
+      <aside className="hidden md:flex w-52 shrink-0 flex-col gap-1">
         <div className="flex items-center justify-between mb-1 px-1">
           <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Agendas</span>
           <button
@@ -733,7 +846,6 @@ export default function AgendaPage() {
           </button>
         </div>
 
-        {/* "Todas" option */}
         <div
           className={`flex items-center gap-2 px-2 py-1.5 rounded-md cursor-pointer transition-colors ${
             selectedAgendaId === null ? "bg-primary/10 font-semibold text-primary" : "hover:bg-muted"
@@ -767,42 +879,29 @@ export default function AgendaPage() {
       </aside>
 
       {/* ── Main content ── */}
-      <div className="flex-1 min-w-0 flex flex-col space-y-5">
-        {/* Header */}
-        <div className="flex justify-between items-center">
-          <div>
-            <h1 className="text-2xl font-bold tracking-tight">
+      <div className="flex-1 min-w-0 flex flex-col space-y-4">
+
+        {/* ── Header ── */}
+        <div className="flex items-center justify-between gap-2">
+          <div className="min-w-0">
+            <h1 className="text-xl md:text-2xl font-bold tracking-tight truncate">
               {selectedAgendaId
                 ? (agendaMap.get(selectedAgendaId)?.nome ?? "Agenda")
                 : "Agenda"}
             </h1>
-            <p className="text-sm text-muted-foreground mt-1">
+            <p className="text-xs md:text-sm text-muted-foreground mt-0.5">
               {agendamentos.length} agendamento{agendamentos.length !== 1 ? "s" : ""} esta semana
             </p>
           </div>
 
-          <Dialog
-            open={isCreateOpen}
-            onOpenChange={(v) => {
-              setIsCreateOpen(v);
-              if (v) {
-                form.reset({
-                  titulo: "",
-                  tipo: "reuniao",
-                  leadId: leads[0]?.id ?? "",
-                  agendaId: selectedAgendaId ?? (agendas[0]?.id ?? ""),
-                  dataHoraInicio: format(selectedDay, "yyyy-MM-dd") + "T09:00",
-                  dataHoraFim: format(selectedDay, "yyyy-MM-dd") + "T10:00",
-                  local: "",
-                  responsavelId: "",
-                  observacoes: "",
-                  gerarMeet: false,
-                });
-              }
-            }}
-          >
+          {/* Desktop: full button */}
+          <Dialog open={isCreateOpen} onOpenChange={setIsCreateOpen}>
             <DialogTrigger asChild>
-              <Button data-testid="button-novo-agendamento">
+              <Button
+                className="hidden md:flex"
+                onClick={openCreate}
+                data-testid="button-novo-agendamento"
+              >
                 <Plus className="h-4 w-4 mr-2" />
                 Novo Agendamento
               </Button>
@@ -811,247 +910,88 @@ export default function AgendaPage() {
               <DialogHeader>
                 <DialogTitle>Novo Agendamento</DialogTitle>
               </DialogHeader>
-              <Form {...form}>
-                <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
-                  <FormField
-                    control={form.control}
-                    name="titulo"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>Título *</FormLabel>
-                        <FormControl>
-                          <Input data-testid="input-titulo" placeholder="Ex: Reunião de apresentação" {...field} />
-                        </FormControl>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
+              <AgendamentoForm
+                form={form}
+                onSubmit={onSubmit}
+                leads={leads}
+                agendas={agendas}
+                isPending={createAg.isPending}
+              />
+            </DialogContent>
+          </Dialog>
 
-                  <div className="grid grid-cols-2 gap-3">
-                    <FormField
-                      control={form.control}
-                      name="tipo"
-                      render={({ field }) => (
-                        <FormItem>
-                          <FormLabel>Tipo *</FormLabel>
-                          <Select onValueChange={field.onChange} value={field.value}>
-                            <FormControl>
-                              <SelectTrigger data-testid="select-tipo">
-                                <SelectValue />
-                              </SelectTrigger>
-                            </FormControl>
-                            <SelectContent>
-                              {(Object.keys(TIPO_CONFIG) as AgendamentoTipo[]).map((v) => (
-                                <SelectItem key={v} value={v}>
-                                  {TIPO_CONFIG[v].label}
-                                </SelectItem>
-                              ))}
-                            </SelectContent>
-                          </Select>
-                          <FormMessage />
-                        </FormItem>
-                      )}
-                    />
-
-                    <FormField
-                      control={form.control}
-                      name="leadId"
-                      render={({ field }) => (
-                        <FormItem>
-                          <FormLabel>Lead *</FormLabel>
-                          {leads.length > 0 ? (
-                            <Select onValueChange={field.onChange} value={field.value}>
-                              <FormControl>
-                                <SelectTrigger data-testid="select-lead">
-                                  <SelectValue placeholder="Selecionar..." />
-                                </SelectTrigger>
-                              </FormControl>
-                              <SelectContent>
-                                {leads.map((l) => (
-                                  <SelectItem key={l.id} value={l.id}>
-                                    {l.nome}
-                                  </SelectItem>
-                                ))}
-                              </SelectContent>
-                            </Select>
-                          ) : (
-                            <FormControl>
-                              <Input data-testid="input-leadId" placeholder="ID do lead" {...field} />
-                            </FormControl>
-                          )}
-                          <FormMessage />
-                        </FormItem>
-                      )}
-                    />
-                  </div>
-
-                  {agendas.length > 0 && (
-                    <FormField
-                      control={form.control}
-                      name="agendaId"
-                      render={({ field }) => (
-                        <FormItem>
-                          <FormLabel>Agenda</FormLabel>
-                          <Select onValueChange={field.onChange} value={field.value ?? ""}>
-                            <FormControl>
-                              <SelectTrigger data-testid="select-agenda">
-                                <SelectValue placeholder="Selecionar agenda..." />
-                              </SelectTrigger>
-                            </FormControl>
-                            <SelectContent>
-                              {agendas.map((a) => (
-                                <SelectItem key={a.id} value={a.id}>
-                                  <span className="flex items-center gap-2">
-                                    <span
-                                      className="inline-block w-2 h-2 rounded-full"
-                                      style={{ backgroundColor: a.cor }}
-                                    />
-                                    {a.nome}
-                                  </span>
-                                </SelectItem>
-                              ))}
-                            </SelectContent>
-                          </Select>
-                        </FormItem>
-                      )}
-                    />
-                  )}
-
-                  <div className="grid grid-cols-2 gap-3">
-                    <FormField
-                      control={form.control}
-                      name="dataHoraInicio"
-                      render={({ field }) => (
-                        <FormItem>
-                          <FormLabel>Início *</FormLabel>
-                          <FormControl>
-                            <Input type="datetime-local" data-testid="input-inicio" {...field} />
-                          </FormControl>
-                          <FormMessage />
-                        </FormItem>
-                      )}
-                    />
-                    <FormField
-                      control={form.control}
-                      name="dataHoraFim"
-                      render={({ field }) => (
-                        <FormItem>
-                          <FormLabel>Fim *</FormLabel>
-                          <FormControl>
-                            <Input type="datetime-local" data-testid="input-fim" {...field} />
-                          </FormControl>
-                          <FormMessage />
-                        </FormItem>
-                      )}
-                    />
-                  </div>
-
-                  <FormField
-                    control={form.control}
-                    name="local"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>Local</FormLabel>
-                        <FormControl>
-                          <Input data-testid="input-local" placeholder="Endereço ou link de reunião" {...field} />
-                        </FormControl>
-                      </FormItem>
-                    )}
-                  />
-
-                  <FormField
-                    control={form.control}
-                    name="responsavelId"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>
-                          Responsável{" "}
-                          <span className="text-[11px] text-muted-foreground font-normal">
-                            (ID — verifica disponibilidade)
-                          </span>
-                        </FormLabel>
-                        <FormControl>
-                          <Input data-testid="input-responsavel" placeholder="UUID do responsável" {...field} />
-                        </FormControl>
-                      </FormItem>
-                    )}
-                  />
-
-                  <FormField
-                    control={form.control}
-                    name="observacoes"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>Observações</FormLabel>
-                        <FormControl>
-                          <Input data-testid="input-obs" placeholder="Notas adicionais" {...field} />
-                        </FormControl>
-                      </FormItem>
-                    )}
-                  />
-
-                  {/* Google Meet toggle — only useful when an agenda with Google is selected */}
-                  {agendas.some((a) => a.googleCalendarId && (!form.watch("agendaId") || a.id === form.watch("agendaId"))) && (
-                    <FormField
-                      control={form.control}
-                      name="gerarMeet"
-                      render={({ field }) => (
-                        <FormItem>
-                          <div className="flex items-center justify-between rounded-lg border border-border px-3 py-2.5 bg-muted/30">
-                            <div className="flex items-center gap-2">
-                              <Video className="h-4 w-4 text-blue-500" />
-                              <div>
-                                <p className="text-sm font-medium leading-tight">Gerar link Google Meet</p>
-                                <p className="text-[11px] text-muted-foreground">
-                                  Cria reunião e envia o link para o cliente
-                                </p>
-                              </div>
-                            </div>
-                            <FormControl>
-                              <Switch
-                                data-testid="switch-gerar-meet"
-                                checked={field.value ?? false}
-                                onCheckedChange={field.onChange}
-                              />
-                            </FormControl>
-                          </div>
-                        </FormItem>
-                      )}
-                    />
-                  )}
-
-                  <Button
-                    type="submit"
-                    className="w-full"
-                    disabled={createAg.isPending}
-                    data-testid="button-submit-agendamento"
-                  >
-                    {createAg.isPending ? "Criando..." : "Criar Agendamento"}
-                  </Button>
-                </form>
-              </Form>
+          {/* Mobile: icon button */}
+          <Dialog open={isCreateOpen} onOpenChange={setIsCreateOpen}>
+            <DialogTrigger asChild>
+              <Button
+                size="icon"
+                className="md:hidden shrink-0 rounded-xl"
+                onClick={openCreate}
+                data-testid="button-novo-agendamento-mobile"
+              >
+                <Plus className="h-4 w-4" />
+              </Button>
+            </DialogTrigger>
+            <DialogContent className="max-w-md">
+              <DialogHeader>
+                <DialogTitle>Novo Agendamento</DialogTitle>
+              </DialogHeader>
+              <AgendamentoForm
+                form={form}
+                onSubmit={onSubmit}
+                leads={leads}
+                agendas={agendas}
+                isPending={createAg.isPending}
+              />
             </DialogContent>
           </Dialog>
         </div>
 
-        {/* Week strip */}
+        {/* ── Agenda filter chips — mobile only ── */}
+        <div className="flex md:hidden gap-2 overflow-x-auto pb-1 -mx-1 px-1 scrollbar-none">
+          <AgendaChip
+            label="Todas"
+            selected={selectedAgendaId === null}
+            onClick={() => setSelectedAgendaId(null)}
+          />
+          {agendas.map((a) => (
+            <AgendaChip
+              key={a.id}
+              label={a.nome}
+              color={a.cor}
+              selected={selectedAgendaId === a.id}
+              hasGoogle={!!a.googleCalendarId}
+              onClick={() => setSelectedAgendaId(a.id)}
+            />
+          ))}
+          <button
+            onClick={openNewAgenda}
+            className="flex items-center gap-1 px-3 py-1.5 rounded-full text-xs font-medium whitespace-nowrap border border-dashed border-border text-muted-foreground hover:border-primary/40 hover:text-primary transition-colors shrink-0"
+            data-testid="button-nova-agenda"
+          >
+            <Plus className="h-3 w-3" />
+            Nova
+          </button>
+        </div>
+
+        {/* ── Week strip ── */}
         <div className="bg-card border border-border rounded-xl p-3">
           <div className="flex items-center gap-2 mb-3">
             <button
               onClick={() => setWeekStart((w) => subWeeks(w, 1))}
-              className="p-1.5 rounded hover:bg-muted transition-colors"
+              className="p-1.5 rounded-lg hover:bg-muted transition-colors"
               data-testid="week-prev"
             >
               <ChevronLeft className="h-4 w-4" />
             </button>
-            <span className="text-sm font-semibold flex-1 text-center">
+            <span className="text-xs md:text-sm font-semibold flex-1 text-center">
               {format(weekStart, "d 'de' MMM", { locale: ptBR })}
               {" – "}
               {format(weekEnd, "d 'de' MMM yyyy", { locale: ptBR })}
             </span>
             <button
               onClick={() => setWeekStart((w) => addWeeks(w, 1))}
-              className="p-1.5 rounded hover:bg-muted transition-colors"
+              className="p-1.5 rounded-lg hover:bg-muted transition-colors"
               data-testid="week-next"
             >
               <ChevronRight className="h-4 w-4" />
@@ -1071,7 +1011,7 @@ export default function AgendaPage() {
           </div>
         </div>
 
-        {/* Day list */}
+        {/* ── Day list ── */}
         <div className="space-y-3">
           <div className="flex items-center gap-2">
             <Calendar className="h-4 w-4 text-muted-foreground" />
@@ -1088,14 +1028,14 @@ export default function AgendaPage() {
           {isLoading ? (
             <div className="space-y-2">
               {[...Array(3)].map((_, i) => (
-                <div key={i} className="h-20 bg-muted animate-pulse rounded-lg" />
+                <div key={i} className="h-20 bg-muted animate-pulse rounded-xl" />
               ))}
             </div>
           ) : selectedAgs.length === 0 ? (
-            <div className="flex flex-col items-center justify-center py-16 gap-2 text-muted-foreground">
+            <div className="flex flex-col items-center justify-center py-14 gap-3 text-muted-foreground">
               <Calendar className="h-10 w-10 opacity-20" />
               <p className="text-sm">Nenhum agendamento neste dia</p>
-              <Button variant="outline" size="sm" className="mt-1" onClick={() => setIsCreateOpen(true)}>
+              <Button variant="outline" size="sm" onClick={() => setIsCreateOpen(true)}>
                 <Plus className="h-3.5 w-3.5 mr-1.5" />
                 Criar agendamento
               </Button>
@@ -1228,5 +1168,242 @@ export default function AgendaPage() {
         </AlertDialogContent>
       </AlertDialog>
     </div>
+  );
+}
+
+// ─── Agendamento form (shared between desktop + mobile dialogs) ───────────────
+
+function AgendamentoForm({
+  form,
+  onSubmit,
+  leads,
+  agendas,
+  isPending,
+}: {
+  form: ReturnType<typeof useForm<CreateForm>>;
+  onSubmit: (values: CreateForm) => void;
+  leads: { id: string; nome: string }[];
+  agendas: Agenda[];
+  isPending: boolean;
+}) {
+  return (
+    <Form {...form}>
+      <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
+        <FormField
+          control={form.control}
+          name="titulo"
+          render={({ field }) => (
+            <FormItem>
+              <FormLabel>Título *</FormLabel>
+              <FormControl>
+                <Input data-testid="input-titulo" placeholder="Ex: Reunião de apresentação" {...field} />
+              </FormControl>
+              <FormMessage />
+            </FormItem>
+          )}
+        />
+
+        <div className="grid grid-cols-2 gap-3">
+          <FormField
+            control={form.control}
+            name="tipo"
+            render={({ field }) => (
+              <FormItem>
+                <FormLabel>Tipo *</FormLabel>
+                <Select onValueChange={field.onChange} value={field.value}>
+                  <FormControl>
+                    <SelectTrigger data-testid="select-tipo">
+                      <SelectValue />
+                    </SelectTrigger>
+                  </FormControl>
+                  <SelectContent>
+                    {(Object.keys(TIPO_CONFIG) as AgendamentoTipo[]).map((v) => (
+                      <SelectItem key={v} value={v}>
+                        {TIPO_CONFIG[v].label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <FormMessage />
+              </FormItem>
+            )}
+          />
+
+          <FormField
+            control={form.control}
+            name="leadId"
+            render={({ field }) => (
+              <FormItem>
+                <FormLabel>Lead *</FormLabel>
+                {leads.length > 0 ? (
+                  <Select onValueChange={field.onChange} value={field.value}>
+                    <FormControl>
+                      <SelectTrigger data-testid="select-lead">
+                        <SelectValue placeholder="Selecionar..." />
+                      </SelectTrigger>
+                    </FormControl>
+                    <SelectContent>
+                      {leads.map((l) => (
+                        <SelectItem key={l.id} value={l.id}>
+                          {l.nome}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                ) : (
+                  <FormControl>
+                    <Input data-testid="input-leadId" placeholder="ID do lead" {...field} />
+                  </FormControl>
+                )}
+                <FormMessage />
+              </FormItem>
+            )}
+          />
+        </div>
+
+        {agendas.length > 0 && (
+          <FormField
+            control={form.control}
+            name="agendaId"
+            render={({ field }) => (
+              <FormItem>
+                <FormLabel>Agenda</FormLabel>
+                <Select onValueChange={field.onChange} value={field.value ?? ""}>
+                  <FormControl>
+                    <SelectTrigger data-testid="select-agenda">
+                      <SelectValue placeholder="Selecionar agenda..." />
+                    </SelectTrigger>
+                  </FormControl>
+                  <SelectContent>
+                    {agendas.map((a) => (
+                      <SelectItem key={a.id} value={a.id}>
+                        <span className="flex items-center gap-2">
+                          <span
+                            className="inline-block w-2 h-2 rounded-full"
+                            style={{ backgroundColor: a.cor }}
+                          />
+                          {a.nome}
+                        </span>
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </FormItem>
+            )}
+          />
+        )}
+
+        <div className="grid grid-cols-2 gap-3">
+          <FormField
+            control={form.control}
+            name="dataHoraInicio"
+            render={({ field }) => (
+              <FormItem>
+                <FormLabel>Início *</FormLabel>
+                <FormControl>
+                  <Input type="datetime-local" data-testid="input-inicio" {...field} />
+                </FormControl>
+                <FormMessage />
+              </FormItem>
+            )}
+          />
+          <FormField
+            control={form.control}
+            name="dataHoraFim"
+            render={({ field }) => (
+              <FormItem>
+                <FormLabel>Fim *</FormLabel>
+                <FormControl>
+                  <Input type="datetime-local" data-testid="input-fim" {...field} />
+                </FormControl>
+                <FormMessage />
+              </FormItem>
+            )}
+          />
+        </div>
+
+        <FormField
+          control={form.control}
+          name="local"
+          render={({ field }) => (
+            <FormItem>
+              <FormLabel>Local</FormLabel>
+              <FormControl>
+                <Input data-testid="input-local" placeholder="Endereço ou link de reunião" {...field} />
+              </FormControl>
+            </FormItem>
+          )}
+        />
+
+        <FormField
+          control={form.control}
+          name="responsavelId"
+          render={({ field }) => (
+            <FormItem>
+              <FormLabel>
+                Responsável{" "}
+                <span className="text-[11px] text-muted-foreground font-normal">
+                  (ID — verifica disponibilidade)
+                </span>
+              </FormLabel>
+              <FormControl>
+                <Input data-testid="input-responsavel" placeholder="UUID do responsável" {...field} />
+              </FormControl>
+            </FormItem>
+          )}
+        />
+
+        <FormField
+          control={form.control}
+          name="observacoes"
+          render={({ field }) => (
+            <FormItem>
+              <FormLabel>Observações</FormLabel>
+              <FormControl>
+                <Input data-testid="input-obs" placeholder="Notas adicionais" {...field} />
+              </FormControl>
+            </FormItem>
+          )}
+        />
+
+        {agendas.some((a) => a.googleCalendarId) && (
+          <FormField
+            control={form.control}
+            name="gerarMeet"
+            render={({ field }) => (
+              <FormItem>
+                <div className="flex items-center justify-between rounded-lg border border-border p-3 gap-3">
+                  <div className="flex items-center gap-2">
+                    <Video className="h-4 w-4 text-blue-500" />
+                    <div>
+                      <p className="text-sm font-medium leading-tight">Gerar link Google Meet</p>
+                      <p className="text-[11px] text-muted-foreground">
+                        Cria reunião e envia o link para o cliente
+                      </p>
+                    </div>
+                  </div>
+                  <FormControl>
+                    <Switch
+                      data-testid="switch-gerar-meet"
+                      checked={field.value ?? false}
+                      onCheckedChange={field.onChange}
+                    />
+                  </FormControl>
+                </div>
+              </FormItem>
+            )}
+          />
+        )}
+
+        <Button
+          type="submit"
+          className="w-full"
+          disabled={isPending}
+          data-testid="button-submit-agendamento"
+        >
+          {isPending ? "Criando..." : "Criar Agendamento"}
+        </Button>
+      </form>
+    </Form>
   );
 }
