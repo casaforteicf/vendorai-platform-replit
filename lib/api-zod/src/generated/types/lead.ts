@@ -32,6 +32,8 @@ export interface Lead {
   conjugeNome?: string | null;
   conjugeTelefone?: string | null;
   conjugeEmail?: string | null;
+  /** Data de nascimento do cônjuge no formato YYYY-MM-DD. */
+  conjugeDataNascimento?: string | null;
   filhos?: LeadFilhosItem[] | null;
   createdAt: Date;
   updatedAt: Date;

@@ -10414,6 +10414,10 @@ components:
         conjugeEmail:
           type: string
           nullable: true
+        conjugeDataNascimento:
+          type: string
+          nullable: true
+          description: "Data de nascimento do cônjuge no formato YYYY-MM-DD."
         filhos:
           type: array
           nullable: true
@@ -10497,6 +10501,10 @@ components:
         conjugeEmail:
           type: string
           nullable: true
+        conjugeDataNascimento:
+          type: string
+          nullable: true
+          description: "Data de nascimento do cônjuge no formato YYYY-MM-DD."
         filhos:
           type: array
           nullable: true
@@ -10568,6 +10576,10 @@ components:
         conjugeEmail:
           type: string
           nullable: true
+        conjugeDataNascimento:
+          type: string
+          nullable: true
+          description: "Data de nascimento do cônjuge no formato YYYY-MM-DD."
         filhos:
           type: array
           nullable: true

@@ -359,6 +359,7 @@ export default function LeadDetail() {
     conjugeNome: "",
     conjugeTelefone: "",
     conjugeEmail: "",
+    conjugeDataNascimento: "",
     filhos: [] as Array<{ nome: string; dataNascimento: string }>,
   });
 
@@ -383,6 +384,7 @@ export default function LeadDetail() {
       conjugeNome: lead.conjugeNome ?? "",
       conjugeTelefone: lead.conjugeTelefone ?? "",
       conjugeEmail: lead.conjugeEmail ?? "",
+      conjugeDataNascimento: lead.conjugeDataNascimento ?? "",
       filhos: (lead.filhos ?? []).map((f) => ({
         nome: f.nome ?? "",
         dataNascimento: f.dataNascimento ?? "",
@@ -401,6 +403,7 @@ export default function LeadDetail() {
         conjugeNome: pessoalDraft.conjugeNome || null,
         conjugeTelefone: pessoalDraft.conjugeTelefone || null,
         conjugeEmail: pessoalDraft.conjugeEmail || null,
+        conjugeDataNascimento: pessoalDraft.conjugeDataNascimento || null,
         filhos: pessoalDraft.filhos.filter((f) => f.nome.trim()).length > 0
           ? pessoalDraft.filhos.filter((f) => f.nome.trim())
           : null,
@@ -878,6 +881,12 @@ export default function LeadDetail() {
                         <div className="flex items-center gap-1.5 text-muted-foreground text-xs">
                           <Mail className="h-3 w-3" />
                           <span>{lead.conjugeEmail}</span>
+                        </div>
+                      )}
+                      {lead.conjugeDataNascimento && (
+                        <div className="flex items-center gap-1.5 text-muted-foreground text-xs">
+                          <CalendarDays className="h-3 w-3" />
+                          <span>{formatDate(lead.conjugeDataNascimento)} · {calcularIdade(lead.conjugeDataNascimento)}</span>
                         </div>
                       )}
                     </div>
@@ -1969,6 +1978,21 @@ export default function LeadDetail() {
                       }
                     />
                   </div>
+                </div>
+                <div className="space-y-1.5">
+                  <label className="text-sm font-medium">Data de Nascimento</label>
+                  <Input
+                    type="date"
+                    value={pessoalDraft.conjugeDataNascimento}
+                    onChange={(e) =>
+                      setPessoalDraft((d) => ({ ...d, conjugeDataNascimento: e.target.value }))
+                    }
+                  />
+                  {pessoalDraft.conjugeDataNascimento && (
+                    <p className="text-xs text-muted-foreground">
+                      {calcularIdade(pessoalDraft.conjugeDataNascimento)}
+                    </p>
+                  )}
                 </div>
               </div>
             )}

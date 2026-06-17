@@ -4281,6 +4281,7 @@ export const ListLeadsResponseItem = zod.object({
   "conjugeNome": zod.string().nullish(),
   "conjugeTelefone": zod.string().nullish(),
   "conjugeEmail": zod.string().nullish(),
+  "conjugeDataNascimento": zod.string().nullish().describe('Data de nascimento do cônjuge no formato YYYY-MM-DD.'),
   "filhos": zod.array(zod.object({
   "nome": zod.string(),
   "dataNascimento": zod.string().optional()
@@ -4314,6 +4315,7 @@ export const CreateLeadBody = zod.object({
   "conjugeNome": zod.string().nullish(),
   "conjugeTelefone": zod.string().nullish(),
   "conjugeEmail": zod.string().nullish(),
+  "conjugeDataNascimento": zod.string().nullish().describe('Data de nascimento do cônjuge no formato YYYY-MM-DD.'),
   "filhos": zod.array(zod.object({
   "nome": zod.string(),
   "dataNascimento": zod.string().optional()
@@ -4350,6 +4352,7 @@ export const ListTenantLeadsResponseItem = zod.object({
   "conjugeNome": zod.string().nullish(),
   "conjugeTelefone": zod.string().nullish(),
   "conjugeEmail": zod.string().nullish(),
+  "conjugeDataNascimento": zod.string().nullish().describe('Data de nascimento do cônjuge no formato YYYY-MM-DD.'),
   "filhos": zod.array(zod.object({
   "nome": zod.string(),
   "dataNascimento": zod.string().optional()
@@ -4389,6 +4392,7 @@ export const GetLeadResponse = zod.object({
   "conjugeNome": zod.string().nullish(),
   "conjugeTelefone": zod.string().nullish(),
   "conjugeEmail": zod.string().nullish(),
+  "conjugeDataNascimento": zod.string().nullish().describe('Data de nascimento do cônjuge no formato YYYY-MM-DD.'),
   "filhos": zod.array(zod.object({
   "nome": zod.string(),
   "dataNascimento": zod.string().optional()
@@ -4424,6 +4428,7 @@ export const UpdateLeadBody = zod.object({
   "conjugeNome": zod.string().nullish(),
   "conjugeTelefone": zod.string().nullish(),
   "conjugeEmail": zod.string().nullish(),
+  "conjugeDataNascimento": zod.string().nullish().describe('Data de nascimento do cônjuge no formato YYYY-MM-DD.'),
   "filhos": zod.array(zod.object({
   "nome": zod.string(),
   "dataNascimento": zod.string().optional()
@@ -4452,6 +4457,7 @@ export const UpdateLeadResponse = zod.object({
   "conjugeNome": zod.string().nullish(),
   "conjugeTelefone": zod.string().nullish(),
   "conjugeEmail": zod.string().nullish(),
+  "conjugeDataNascimento": zod.string().nullish().describe('Data de nascimento do cônjuge no formato YYYY-MM-DD.'),
   "filhos": zod.array(zod.object({
   "nome": zod.string(),
   "dataNascimento": zod.string().optional()
