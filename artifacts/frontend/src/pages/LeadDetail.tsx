@@ -720,7 +720,7 @@ export default function LeadDetail() {
         titulo: newActivityTitulo.trim(),
         descricao: newActivityDescricao.trim() || undefined,
         dataVencimento: newActivityData || undefined,
-        status: "pendente",
+        status: "planejado",
         responsavelId,
       },
     });
