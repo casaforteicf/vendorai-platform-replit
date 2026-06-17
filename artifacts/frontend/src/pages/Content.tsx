@@ -24,7 +24,7 @@ import {
 import {
   Sparkles, Copy, Trash2, Loader2, Instagram, Clapperboard, Image,
   CheckCircle2, AlertCircle, ChevronDown, ChevronUp, ExternalLink, Upload,
-  Pencil, Check, X,
+  Pencil, Check, X, Wand2,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -478,6 +478,59 @@ function MediaUploadButton({
   );
 }
 
+function GenerateAIImageButton({
+  contentId,
+  variationIndex,
+  tenantId,
+  onGenerated,
+}: {
+  contentId: string;
+  variationIndex: number;
+  tenantId: string;
+  onGenerated: (imageUrl: string) => void;
+}) {
+  const { toast } = useToast();
+  const [loading, setLoading] = useState(false);
+
+  async function handleGenerate() {
+    setLoading(true);
+    try {
+      const res = await fetch(
+        `/api/tenants/${tenantId}/content/${contentId}/variations/${variationIndex}/generate-image`,
+        {
+          method: "POST",
+          headers: { Authorization: `Bearer ${localStorage.getItem("vendorai_token")}` },
+        }
+      );
+      const data = (await res.json()) as { imageUrl?: string; error?: string };
+      if (!res.ok || !data.imageUrl) {
+        toast({ title: "Erro ao gerar imagem", description: data.error ?? "Tente novamente.", variant: "destructive" });
+        return;
+      }
+      onGenerated(data.imageUrl);
+      toast({ title: "Imagem gerada!", description: "Imagem criada pela IA e associada à variação." });
+    } catch {
+      toast({ title: "Erro ao gerar imagem", description: "Verifique sua conexão e tente novamente.", variant: "destructive" });
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  return (
+    <Button
+      variant="outline"
+      size="sm"
+      onClick={handleGenerate}
+      disabled={loading}
+      title="Gerar imagem com IA (DALL-E)"
+      className="h-7 px-2 text-xs gap-1"
+    >
+      {loading ? <Loader2 className="h-3 w-3 animate-spin" /> : <Wand2 className="h-3 w-3" />}
+      {loading ? "Gerando…" : "Imagem IA"}
+    </Button>
+  );
+}
+
 function VariationCard({
   index,
   type,
@@ -618,6 +671,14 @@ function VariationCard({
                     <Pencil className="h-3 w-3" />
                     Editar
                   </Button>
+                )}
+                {type !== "reels" && contentId && tenantId && (
+                  <GenerateAIImageButton
+                    contentId={contentId}
+                    variationIndex={index}
+                    tenantId={tenantId}
+                    onGenerated={setLocalImageUrl}
+                  />
                 )}
                 {contentId && tenantId && (
                   <MediaUploadButton

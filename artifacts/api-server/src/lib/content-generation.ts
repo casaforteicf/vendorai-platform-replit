@@ -48,7 +48,7 @@ function verticalHints(vertical: string | null | undefined): string {
   return "";
 }
 
-async function generateImageForContent(
+export async function generateImageForContent(
   profile: TenantProfile,
   theme: string,
   productName: string | undefined,

@@ -16,6 +16,7 @@ import {
   generateFeedContent,
   generateStoriesContent,
   generateReelsScript,
+  generateImageForContent,
 } from "../lib/content-generation.js";
 import { publishFeedPost, publishStoriesPost } from "../lib/instagram-publish.js";
 import type { FeedVariation, StoriesVariation } from "@workspace/db";
@@ -234,6 +235,63 @@ const publishBodySchema = z.object({
 const patchMediaBodySchema = z.object({
   objectPath: z.string().min(1),
   field: z.enum(["imageUrl", "videoUrl"]).default("imageUrl"),
+});
+
+// POST .../variations/:idx/generate-image — gera imagem via DALL-E 3 e salva na variação
+router.post("/tenants/:tenantId/content/:contentId/variations/:idx/generate-image", async (req, res) => {
+  const tenantId = String(req.params["tenantId"]);
+  const contentId = String(req.params["contentId"]);
+  const idx = parseInt(String(req.params["idx"]), 10);
+
+  if (req.user?.platformRole !== "super_admin" && req.user?.tenantId !== tenantId) {
+    res.status(403).json({ error: "Acesso negado" });
+    return;
+  }
+
+  const [gen] = await db
+    .select()
+    .from(contentGenerationsTable)
+    .where(and(eq(contentGenerationsTable.id, contentId), eq(contentGenerationsTable.tenantId, tenantId)))
+    .limit(1);
+
+  if (!gen) { res.status(404).json({ error: "Conteúdo não encontrado" }); return; }
+  if (gen.type === "reels") { res.status(400).json({ error: "Reels não suportam geração de imagem" }); return; }
+
+  const [profile] = await db
+    .select()
+    .from(businessProfilesTable)
+    .where(eq(businessProfilesTable.tenantId, tenantId));
+
+  const format = gen.type === "stories" ? "stories" : "feed";
+  let imageUrl: string | undefined;
+  try {
+    imageUrl = await generateImageForContent(
+      profile ?? {},
+      gen.theme,
+      gen.productName ?? undefined,
+      format,
+    );
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : "Falha ao gerar imagem";
+    res.status(502).json({ error: `Erro ao gerar imagem: ${msg}` });
+    return;
+  }
+
+  if (!imageUrl) {
+    res.status(502).json({ error: "DALL-E não retornou imagem. Tente novamente." });
+    return;
+  }
+
+  const variations = [...gen.result.variations] as (typeof gen.result.variations[number] & { imageUrl?: string })[];
+  if (!variations[idx]) { res.status(400).json({ error: "Variação inválida" }); return; }
+  variations[idx] = { ...variations[idx], imageUrl };
+
+  await db
+    .update(contentGenerationsTable)
+    .set({ result: { variations } })
+    .where(eq(contentGenerationsTable.id, contentId));
+
+  res.json({ success: true, imageUrl });
 });
 
 router.patch("/tenants/:tenantId/content/:contentId/variations/:idx/image", async (req, res) => {
