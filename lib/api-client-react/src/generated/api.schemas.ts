@@ -1543,6 +1543,7 @@ export interface BusinessProfile {
   email?: string | null;
   vertical?: string | null;
   logoUrl?: string | null;
+  faviconUrl?: string | null;
   produtos?: Product[] | null;
   diferenciais?: string | null;
   publicoAlvo?: string | null;
@@ -1566,6 +1567,7 @@ export interface CreateBusinessProfileBody {
   email?: string;
   vertical?: string;
   logoUrl?: string;
+  faviconUrl?: string;
   produtos?: Product[];
   diferenciais?: string;
   publicoAlvo?: string;
@@ -1586,6 +1588,7 @@ export interface UpdateBusinessProfileBody {
   email?: string;
   vertical?: string;
   logoUrl?: string;
+  faviconUrl?: string;
   produtos?: Product[];
   diferenciais?: string;
   publicoAlvo?: string;

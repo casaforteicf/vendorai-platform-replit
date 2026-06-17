@@ -18,6 +18,7 @@ export interface CreateBusinessProfileBody {
   email?: string;
   vertical?: string;
   logoUrl?: string;
+  faviconUrl?: string;
   produtos?: Product[];
   diferenciais?: string;
   publicoAlvo?: string;

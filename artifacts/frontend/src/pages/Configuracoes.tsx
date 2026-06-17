@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useRef } from "react";
 import { useAuth } from "@/contexts/AuthContext";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -36,6 +36,7 @@ import {
   useInviteTenantSeller,
   useDeleteUser,
   TipoFechamento,
+  useRequestUploadUrl,
 } from "@workspace/api-client-react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
@@ -100,6 +101,9 @@ import {
   Lock,
   ShieldCheck,
   Wand2,
+  Upload,
+  ImageIcon,
+  X,
 } from "lucide-react";
 import { SiteGeneratorTab } from "./SiteGenerator";
 import { format } from "date-fns";
@@ -530,6 +534,40 @@ export default function Configuracoes() {
     },
   });
 
+  // ── Image Upload ───────────────────────────────────────────────────────────
+  const requestUploadUrl = useRequestUploadUrl();
+  const logoInputRef    = useRef<HTMLInputElement>(null);
+  const faviconInputRef = useRef<HTMLInputElement>(null);
+  const [logoUploading,    setLogoUploading]    = useState(false);
+  const [faviconUploading, setFaviconUploading] = useState(false);
+
+  async function uploadImageFile(
+    file: File,
+    onDone: (objectPath: string) => void,
+    setUploading: (v: boolean) => void,
+  ) {
+    setUploading(true);
+    try {
+      const result = await new Promise<{ uploadURL: string; objectPath: string }>((resolve, reject) => {
+        requestUploadUrl.mutate(
+          { data: { name: file.name, size: file.size, contentType: file.type } },
+          { onSuccess: resolve, onError: reject },
+        );
+      });
+      const uploadRes = await fetch(result.uploadURL, {
+        method: "PUT",
+        body: file,
+        headers: { "Content-Type": file.type },
+      });
+      if (!uploadRes.ok) throw new Error("Upload para GCS falhou");
+      onDone(result.objectPath);
+    } catch {
+      toast({ title: "Erro no upload. Tente novamente.", variant: "destructive" });
+    } finally {
+      setUploading(false);
+    }
+  }
+
   // ── Business Profile ───────────────────────────────────────────────────────
   const profileQuery   = useGetBusinessProfileByTenant(tenantId, { query: { queryKey: getGetBusinessProfileByTenantQueryKey(tenantId), enabled: !!tenantId, retry: false } });
   const createProfile  = useCreateBusinessProfile();
@@ -583,6 +621,34 @@ export default function Configuracoes() {
             toast({ title: "Perfil criado com sucesso." });
           },
           onError: () => toast({ title: "Erro ao criar perfil.", variant: "destructive" }),
+        }
+      );
+    }
+  }
+
+  function saveImageUrl(field: "logoUrl" | "faviconUrl", value: string) {
+    const profileExists = !!profileQuery.data?.id;
+    const data = { [field]: value };
+    if (profileExists) {
+      updateProfile.mutate(
+        { id: profileQuery.data!.id, data },
+        {
+          onSuccess: () => {
+            queryClient.invalidateQueries({ queryKey: profileQuery.queryKey });
+            toast({ title: field === "logoUrl" ? "Logo salvo com sucesso." : "Favicon salvo com sucesso." });
+          },
+          onError: () => toast({ title: "Erro ao salvar imagem.", variant: "destructive" }),
+        }
+      );
+    } else {
+      createProfile.mutate(
+        { data: { tenantId, razaoSocial: profileForm.getValues("razaoSocial") || "Empresa", ...data } },
+        {
+          onSuccess: () => {
+            queryClient.invalidateQueries({ queryKey: profileQuery.queryKey });
+            toast({ title: field === "logoUrl" ? "Logo salvo com sucesso." : "Favicon salvo com sucesso." });
+          },
+          onError: () => toast({ title: "Erro ao salvar imagem.", variant: "destructive" }),
         }
       );
     }

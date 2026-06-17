@@ -3516,6 +3516,7 @@ export const CreateBusinessProfileBody = zod.object({
   "email": zod.string().optional(),
   "vertical": zod.string().optional(),
   "logoUrl": zod.string().optional(),
+  "faviconUrl": zod.string().optional(),
   "produtos": zod.array(zod.object({
   "nome": zod.string(),
   "descricao": zod.string().nullish(),
@@ -3548,6 +3549,7 @@ export const GetBusinessProfileByTenantResponse = zod.object({
   "email": zod.string().nullish(),
   "vertical": zod.string().nullish(),
   "logoUrl": zod.string().nullish(),
+  "faviconUrl": zod.string().nullish(),
   "produtos": zod.array(zod.object({
   "nome": zod.string(),
   "descricao": zod.string().nullish(),
@@ -3582,6 +3584,7 @@ export const GetBusinessProfileResponse = zod.object({
   "email": zod.string().nullish(),
   "vertical": zod.string().nullish(),
   "logoUrl": zod.string().nullish(),
+  "faviconUrl": zod.string().nullish(),
   "produtos": zod.array(zod.object({
   "nome": zod.string(),
   "descricao": zod.string().nullish(),
@@ -3614,6 +3617,7 @@ export const UpdateBusinessProfileBody = zod.object({
   "email": zod.string().optional(),
   "vertical": zod.string().optional(),
   "logoUrl": zod.string().optional(),
+  "faviconUrl": zod.string().optional(),
   "produtos": zod.array(zod.object({
   "nome": zod.string(),
   "descricao": zod.string().nullish(),
@@ -3638,6 +3642,7 @@ export const UpdateBusinessProfileResponse = zod.object({
   "email": zod.string().nullish(),
   "vertical": zod.string().nullish(),
   "logoUrl": zod.string().nullish(),
+  "faviconUrl": zod.string().nullish(),
   "produtos": zod.array(zod.object({
   "nome": zod.string(),
   "descricao": zod.string().nullish(),

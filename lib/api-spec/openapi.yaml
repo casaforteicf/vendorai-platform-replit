@@ -9637,6 +9637,9 @@ components:
         logoUrl:
           type: string
           nullable: true
+        faviconUrl:
+          type: string
+          nullable: true
         produtos:
           type: array
           items:
@@ -9700,6 +9703,8 @@ components:
           type: string
         logoUrl:
           type: string
+        faviconUrl:
+          type: string
         produtos:
           type: array
           items:
@@ -9744,6 +9749,8 @@ components:
         vertical:
           type: string
         logoUrl:
+          type: string
+        faviconUrl:
           type: string
         produtos:
           type: array

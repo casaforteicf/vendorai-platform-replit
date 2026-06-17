@@ -26,6 +26,7 @@ export const businessProfilesTable = pgTable(
     email: text("email"),
     vertical: text("vertical"),
     logoUrl: text("logo_url"),
+    faviconUrl: text("favicon_url"),
     produtos: jsonb("produtos").$type<z.infer<typeof productSchema>[]>(),
     diferenciais: text("diferenciais"),
     publicoAlvo: text("publico_alvo"),

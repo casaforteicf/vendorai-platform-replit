@@ -19,6 +19,7 @@ export interface BusinessProfile {
   email?: string | null;
   vertical?: string | null;
   logoUrl?: string | null;
+  faviconUrl?: string | null;
   produtos?: Product[] | null;
   diferenciais?: string | null;
   publicoAlvo?: string | null;
