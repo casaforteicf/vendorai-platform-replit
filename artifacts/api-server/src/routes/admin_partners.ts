@@ -8,8 +8,6 @@ import { createSubaccount, isAsaasConfigured } from "../lib/asaas.js";
 
 const router: IRouter = Router();
 
-router.use(requireRole("super_admin"));
-
 const createPartnerSchema = z.object({
   name: z.string().min(1),
   email: z.email(),
@@ -29,7 +27,7 @@ const linkTenantSchema = z.object({
   partnerId: z.string().nullable(),
 });
 
-router.get("/admin/partners", async (req, res) => {
+router.get("/admin/partners", requireRole("super_admin"), async (req, res) => {
   const partners = await db
     .select({
       id: partnersTable.id,
@@ -47,7 +45,7 @@ router.get("/admin/partners", async (req, res) => {
   res.json(partners);
 });
 
-router.post("/admin/partners", async (req, res) => {
+router.post("/admin/partners", requireRole("super_admin"), async (req, res) => {
   const parsed = createPartnerSchema.safeParse(req.body);
   if (!parsed.success) {
     res.status(422).json({ error: parsed.error.message });
@@ -131,7 +129,7 @@ router.post("/admin/partners", async (req, res) => {
   }
 });
 
-router.patch("/admin/partners/:id", async (req, res) => {
+router.patch("/admin/partners/:id", requireRole("super_admin"), async (req, res) => {
   const partnerId = String(req.params["id"]);
 
   const parsed = updatePartnerSchema.safeParse(req.body);
@@ -162,7 +160,7 @@ router.patch("/admin/partners/:id", async (req, res) => {
   }
 });
 
-router.patch("/admin/tenants/:id/partner", async (req, res) => {
+router.patch("/admin/tenants/:id/partner", requireRole("super_admin"), async (req, res) => {
   const parsed = linkTenantSchema.safeParse(req.body);
   if (!parsed.success) {
     res.status(422).json({ error: parsed.error.message });

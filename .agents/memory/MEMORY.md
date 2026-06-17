@@ -7,3 +7,4 @@
 - [Drizzle jsonb default type](drizzle-jsonb-default.md) — `.default({})` em coluna com `.$type<T>()` causa TS2345; remover `.default({})` do schema TS (manter DEFAULT na SQL) resolve.
 - [Anthropic integration template cp danger](anthropic-template-cp.md) — `cp -r` do skill sobrescreve conversations.ts e messages.ts existentes; restaurar via `git show HEAD:lib/db/src/schema/<file> > <file>` após o cp.
 - [Meta WhatsApp Cloud API](meta-whatsapp-cloud-api.md) — substituição da Z-API; dispatchAgentBackground exige `mensagem` + `log` dentro do objeto (não 2º argumento); enviadoPor="lead" para entrada; `canal` não existe no leadsTable insert.
+- [Express router.use wildcard blocks downstream](express-router-use-wildcard.md) — router.use(requireRole) sem path bloqueia TODA request; sempre colocar guard em cada rota individualmente.

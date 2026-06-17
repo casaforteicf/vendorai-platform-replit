@@ -5,9 +5,7 @@ import { requireRole } from "../middlewares/auth.js";
 
 const router: IRouter = Router();
 
-router.use(requireRole("partner"));
-
-router.get("/partner/tenants", async (req, res) => {
+router.get("/partner/tenants", requireRole("partner"), async (req, res) => {
   const partnerId = req.user!.partnerId;
   if (!partnerId) {
     res.status(403).json({ error: "No partner record associated with this account" });
@@ -34,7 +32,7 @@ router.get("/partner/tenants", async (req, res) => {
   res.json(tenants);
 });
 
-router.get("/partner/tenants/:id/usage", async (req, res) => {
+router.get("/partner/tenants/:id/usage", requireRole("partner"), async (req, res) => {
   const partnerId = req.user!.partnerId;
   if (!partnerId) {
     res.status(403).json({ error: "No partner record associated with this account" });
