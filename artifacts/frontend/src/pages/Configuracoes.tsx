@@ -1156,6 +1156,134 @@ export default function Configuracoes() {
             ) : (
               <Form {...profileForm}>
                 <form onSubmit={profileForm.handleSubmit(onSaveProfile)} className="space-y-5">
+
+                  {/* ── Logo + Favicon ─────────────────────────────────── */}
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    {/* Logo */}
+                    <div className="space-y-2">
+                      <label className="text-sm font-medium">Logo da empresa</label>
+                      <input
+                        ref={logoInputRef}
+                        type="file"
+                        accept="image/*"
+                        className="hidden"
+                        onChange={(e) => {
+                          const file = e.target.files?.[0];
+                          if (!file) return;
+                          uploadImageFile(
+                            file,
+                            (path) => saveImageUrl("logoUrl", path),
+                            setLogoUploading,
+                          );
+                          e.target.value = "";
+                        }}
+                      />
+                      {profileQuery.data?.logoUrl ? (
+                        <div className="flex items-center gap-3 p-3 rounded-lg border bg-muted/30">
+                          <img
+                            src={
+                              profileQuery.data.logoUrl.startsWith("/objects/")
+                                ? `/api/storage${profileQuery.data.logoUrl}`
+                                : profileQuery.data.logoUrl
+                            }
+                            alt="Logo"
+                            className="h-12 w-auto max-w-[160px] rounded object-contain"
+                            onError={(e) => ((e.target as HTMLImageElement).style.display = "none")}
+                          />
+                          <div className="flex-1 min-w-0">
+                            <p className="text-xs text-muted-foreground">Logo atual</p>
+                          </div>
+                          <Button
+                            type="button"
+                            variant="outline"
+                            size="sm"
+                            onClick={() => logoInputRef.current?.click()}
+                            disabled={logoUploading}
+                            className="gap-1.5 text-xs shrink-0"
+                          >
+                            {logoUploading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Upload className="h-3.5 w-3.5" />}
+                            Trocar
+                          </Button>
+                        </div>
+                      ) : (
+                        <button
+                          type="button"
+                          onClick={() => logoInputRef.current?.click()}
+                          disabled={logoUploading}
+                          className="w-full flex flex-col items-center gap-2 p-5 rounded-lg border-2 border-dashed border-muted-foreground/30 hover:border-primary/50 hover:bg-muted/30 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                        >
+                          {logoUploading ? (
+                            <><Loader2 className="h-7 w-7 text-primary animate-spin" /><span className="text-sm text-muted-foreground">Enviando...</span></>
+                          ) : (
+                            <><ImageIcon className="h-7 w-7 text-muted-foreground/50" /><span className="text-sm font-medium">Selecionar logo</span><span className="text-xs text-muted-foreground">PNG, JPG, SVG ou WebP</span></>
+                          )}
+                        </button>
+                      )}
+                    </div>
+
+                    {/* Favicon */}
+                    <div className="space-y-2">
+                      <label className="text-sm font-medium">Favicon</label>
+                      <input
+                        ref={faviconInputRef}
+                        type="file"
+                        accept="image/*"
+                        className="hidden"
+                        onChange={(e) => {
+                          const file = e.target.files?.[0];
+                          if (!file) return;
+                          uploadImageFile(
+                            file,
+                            (path) => saveImageUrl("faviconUrl", path),
+                            setFaviconUploading,
+                          );
+                          e.target.value = "";
+                        }}
+                      />
+                      {profileQuery.data?.faviconUrl ? (
+                        <div className="flex items-center gap-3 p-3 rounded-lg border bg-muted/30">
+                          <img
+                            src={
+                              profileQuery.data.faviconUrl.startsWith("/objects/")
+                                ? `/api/storage${profileQuery.data.faviconUrl}`
+                                : profileQuery.data.faviconUrl
+                            }
+                            alt="Favicon"
+                            className="h-10 w-10 rounded object-contain"
+                            onError={(e) => ((e.target as HTMLImageElement).style.display = "none")}
+                          />
+                          <div className="flex-1 min-w-0">
+                            <p className="text-xs text-muted-foreground">Favicon atual</p>
+                          </div>
+                          <Button
+                            type="button"
+                            variant="outline"
+                            size="sm"
+                            onClick={() => faviconInputRef.current?.click()}
+                            disabled={faviconUploading}
+                            className="gap-1.5 text-xs shrink-0"
+                          >
+                            {faviconUploading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Upload className="h-3.5 w-3.5" />}
+                            Trocar
+                          </Button>
+                        </div>
+                      ) : (
+                        <button
+                          type="button"
+                          onClick={() => faviconInputRef.current?.click()}
+                          disabled={faviconUploading}
+                          className="w-full flex flex-col items-center gap-2 p-5 rounded-lg border-2 border-dashed border-muted-foreground/30 hover:border-primary/50 hover:bg-muted/30 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                        >
+                          {faviconUploading ? (
+                            <><Loader2 className="h-7 w-7 text-primary animate-spin" /><span className="text-sm text-muted-foreground">Enviando...</span></>
+                          ) : (
+                            <><ImageIcon className="h-7 w-7 text-muted-foreground/50" /><span className="text-sm font-medium">Selecionar favicon</span><span className="text-xs text-muted-foreground">PNG ou ICO · 32×32 px</span></>
+                          )}
+                        </button>
+                      )}
+                    </div>
+                  </div>
+
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                     <FormField
                       control={profileForm.control}

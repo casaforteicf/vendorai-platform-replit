@@ -9,6 +9,7 @@ import {
   useCompleteOnboarding,
   useUpdateTenant,
   getGetTenantQueryKey,
+  useRequestUploadUrl,
 } from "@workspace/api-client-react";
 import { useAuth } from "@/contexts/AuthContext";
 import { useToast } from "@/hooks/use-toast";
@@ -54,6 +55,8 @@ import {
   MessageSquare,
   FolderOpen,
   Zap,
+  Upload,
+  ImageIcon,
 } from "lucide-react";
 import logoLight from "/logo-full-light.svg";
 
@@ -363,11 +366,42 @@ export default function Onboarding() {
   const [extraction, setExtraction] = useState<DocumentExtractionResult | null>(null);
   const [extraDocData, setExtraDocData] = useState<Record<string, unknown>>({});
   const [isDragging, setIsDragging] = useState(false);
-  const fileInputRef = useRef<HTMLInputElement>(null);
+  const fileInputRef    = useRef<HTMLInputElement>(null);
+  const logoInputRef    = useRef<HTMLInputElement>(null);
+  const [logoUploading, setLogoUploading] = useState(false);
 
   const { data: segments = [], isLoading: segmentsLoading } = useListSegmentTemplates();
-  const completeMutation = useCompleteOnboarding();
+  const completeMutation   = useCompleteOnboarding();
   const updateTenantMutation = useUpdateTenant();
+  const requestUploadUrl   = useRequestUploadUrl();
+
+  async function handleLogoUpload(file: File) {
+    if (!file.type.startsWith("image/")) {
+      toast({ title: "Selecione um arquivo de imagem (PNG, JPG, SVG, etc.)", variant: "destructive" });
+      return;
+    }
+    setLogoUploading(true);
+    try {
+      const result = await new Promise<{ uploadURL: string; objectPath: string }>((resolve, reject) => {
+        requestUploadUrl.mutate(
+          { data: { name: file.name, size: file.size, contentType: file.type } },
+          { onSuccess: resolve, onError: reject },
+        );
+      });
+      const uploadRes = await fetch(result.uploadURL, {
+        method: "PUT",
+        body: file,
+        headers: { "Content-Type": file.type },
+      });
+      if (!uploadRes.ok) throw new Error("Upload falhou");
+      form.setValue("logoUrl", result.objectPath, { shouldValidate: true });
+      toast({ title: "Logo carregada com sucesso!" });
+    } catch {
+      toast({ title: "Erro no upload. Tente novamente.", variant: "destructive" });
+    } finally {
+      setLogoUploading(false);
+    }
+  }
 
   const form = useForm<WizardForm>({
     resolver: zodResolver(formSchema),
@@ -1052,16 +1086,80 @@ export default function Onboarding() {
                 </div>
 
                 <div className="space-y-2">
-                  <Label htmlFor="logoUrl">URL da logo</Label>
-                  <Input id="logoUrl" placeholder="https://seusite.com/logo.png" {...form.register("logoUrl")} />
-                  <p className="text-xs text-muted-foreground">Opcional. Cole o link público da sua logo.</p>
-                  {form.watch("logoUrl") && (
-                    <img
-                      src={form.watch("logoUrl")}
-                      alt="Preview"
-                      className="h-12 w-auto rounded border object-contain"
-                      onError={(e) => ((e.target as HTMLImageElement).style.display = "none")}
-                    />
+                  <Label>Logo da empresa</Label>
+                  {/* hidden file input */}
+                  <input
+                    ref={logoInputRef}
+                    type="file"
+                    accept="image/*"
+                    className="hidden"
+                    onChange={(e) => {
+                      const file = e.target.files?.[0];
+                      if (file) handleLogoUpload(file);
+                      e.target.value = "";
+                    }}
+                  />
+
+                  {form.watch("logoUrl") ? (
+                    /* Preview + remove */
+                    <div className="flex items-center gap-3 p-3 rounded-lg border bg-muted/30">
+                      <img
+                        src={
+                          form.watch("logoUrl")!.startsWith("/objects/")
+                            ? `/api/storage${form.watch("logoUrl")}`
+                            : form.watch("logoUrl")!
+                        }
+                        alt="Logo preview"
+                        className="h-14 w-auto max-w-[180px] rounded object-contain"
+                        onError={(e) => ((e.target as HTMLImageElement).style.display = "none")}
+                      />
+                      <div className="flex-1 min-w-0">
+                        <p className="text-xs text-muted-foreground truncate">Logo carregada</p>
+                      </div>
+                      <div className="flex gap-1.5 shrink-0">
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          onClick={() => logoInputRef.current?.click()}
+                          disabled={logoUploading}
+                          className="gap-1.5 text-xs"
+                        >
+                          <Upload className="h-3.5 w-3.5" />
+                          Trocar
+                        </Button>
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => form.setValue("logoUrl", "")}
+                          className="text-muted-foreground hover:text-destructive"
+                        >
+                          <X className="h-3.5 w-3.5" />
+                        </Button>
+                      </div>
+                    </div>
+                  ) : (
+                    /* Upload area */
+                    <button
+                      type="button"
+                      onClick={() => logoInputRef.current?.click()}
+                      disabled={logoUploading}
+                      className="w-full flex flex-col items-center gap-2 p-6 rounded-lg border-2 border-dashed border-muted-foreground/30 hover:border-primary/50 hover:bg-muted/30 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                      {logoUploading ? (
+                        <>
+                          <Loader2 className="h-8 w-8 text-primary animate-spin" />
+                          <span className="text-sm text-muted-foreground">Enviando...</span>
+                        </>
+                      ) : (
+                        <>
+                          <ImageIcon className="h-8 w-8 text-muted-foreground/50" />
+                          <span className="text-sm font-medium">Clique para selecionar a logo</span>
+                          <span className="text-xs text-muted-foreground">PNG, JPG, SVG ou WebP · recomendado 200×60 px</span>
+                        </>
+                      )}
+                    </button>
                   )}
                 </div>
               </CardContent>
