@@ -2221,6 +2221,7 @@ export default function LeadDetail() {
               <Input
                 type="date"
                 value={newActivityData}
+                min={new Date().toISOString().split("T")[0]}
                 onChange={(e) => setNewActivityData(e.target.value)}
                 data-testid="input-activity-data"
               />
