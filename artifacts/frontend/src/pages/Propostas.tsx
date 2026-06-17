@@ -26,6 +26,7 @@ import type {
   Proposta,
   PropostaStatus,
   ProdutoCatalogo,
+  FormaPagamentoProposta,
 } from "@workspace/api-client-react";
 import { useQueryClient } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
@@ -579,11 +580,22 @@ function CatalogoModal({
 interface CartLine { produtoId: string; quantidade: number; }
 interface FreeItem  { id: string; nome: string; quantidade: number; valorUnitario: number; }
 
+const FORMA_PAGAMENTO_LABELS: Record<string, string> = {
+  pix: "PIX",
+  boleto: "Boleto Bancário",
+  cartao_credito: "Cartão de Crédito",
+  cartao_debito: "Cartão de Débito",
+  transferencia: "Transferência Bancária",
+  dinheiro: "Dinheiro",
+  a_combinar: "A Combinar",
+};
+
 const propostaFormSchema = z.object({
   leadId: z.string().min(1, "Selecione um lead"),
   titulo: z.string().min(1, "Título é obrigatório"),
   validadeAte: z.string().optional(),
   observacoes: z.string().optional(),
+  formaPagamento: z.string().optional(),
   condPagamento: z.string().optional(),
   prazoEntrega: z.string().optional(),
 });
@@ -623,7 +635,7 @@ function PropostaModal({
 
   const form = useForm<PropostaFormValues>({
     resolver: zodResolver(propostaFormSchema),
-    defaultValues: { leadId: "", titulo: "", validadeAte: "", observacoes: "", condPagamento: "", prazoEntrega: "" },
+    defaultValues: { leadId: "", titulo: "", validadeAte: "", observacoes: "", formaPagamento: "", condPagamento: "", prazoEntrega: "" },
   });
 
   const { data: leads = [] } = useListTenantLeads(tenantId, {
@@ -710,7 +722,7 @@ function PropostaModal({
       if (!valid.length) { setCartError("Adicione pelo menos um produto."); return; }
       setCartError("");
       createFromCatMut.mutate(
-        { tenantId, data: { leadId: vals.leadId, titulo: vals.titulo, validadeAte: vals.validadeAte || undefined, observacoes: vals.observacoes || undefined, condPagamento: vals.condPagamento || undefined, prazoEntrega: vals.prazoEntrega || undefined, itens: valid.map((l) => ({ produtoId: l.produtoId, quantidade: l.quantidade })) } },
+        { tenantId, data: { leadId: vals.leadId, titulo: vals.titulo, validadeAte: vals.validadeAte || undefined, observacoes: vals.observacoes || undefined, formaPagamento: (vals.formaPagamento || undefined) as FormaPagamentoProposta | undefined, condPagamento: vals.condPagamento || undefined, prazoEntrega: vals.prazoEntrega || undefined, itens: valid.map((l) => ({ produtoId: l.produtoId, quantidade: l.quantidade })) } },
         {
           onSuccess: () => {
             toast({ title: "Proposta criada com sucesso" });
@@ -729,7 +741,7 @@ function PropostaModal({
       if (!valid.length) { setFreeError("Adicione pelo menos um item."); return; }
       setFreeError("");
       createLivreMut.mutate(
-        { data: { tenantId, leadId: vals.leadId, titulo: vals.titulo, validadeAte: vals.validadeAte || undefined, observacoes: vals.observacoes || undefined, condPagamento: vals.condPagamento || undefined, prazoEntrega: vals.prazoEntrega || undefined, itens: valid.map((i) => ({ nome: i.nome, quantidade: i.quantidade, valorUnitario: i.valorUnitario })), valorTotal: freeTotal } },
+        { data: { tenantId, leadId: vals.leadId, titulo: vals.titulo, validadeAte: vals.validadeAte || undefined, observacoes: vals.observacoes || undefined, formaPagamento: (vals.formaPagamento || undefined) as FormaPagamentoProposta | undefined, condPagamento: vals.condPagamento || undefined, prazoEntrega: vals.prazoEntrega || undefined, itens: valid.map((i) => ({ nome: i.nome, quantidade: i.quantidade, valorUnitario: i.valorUnitario })), valorTotal: freeTotal } },
         {
           onSuccess: () => {
             toast({ title: "Proposta criada com sucesso" });
@@ -995,11 +1007,27 @@ function PropostaModal({
             </div>
 
             {/* Condições Comerciais */}
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-3 gap-3">
+              <FormField control={form.control} name="formaPagamento" render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Forma de Pagamento <span className="text-muted-foreground text-xs">(opcional)</span></FormLabel>
+                  <Select onValueChange={field.onChange} value={field.value ?? ""}>
+                    <FormControl>
+                      <SelectTrigger><SelectValue placeholder="Selecione…" /></SelectTrigger>
+                    </FormControl>
+                    <SelectContent>
+                      {Object.entries(FORMA_PAGAMENTO_LABELS).map(([val, label]) => (
+                        <SelectItem key={val} value={val}>{label}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <FormMessage />
+                </FormItem>
+              )} />
               <FormField control={form.control} name="condPagamento" render={({ field }) => (
                 <FormItem>
                   <FormLabel>Condição de Pagamento <span className="text-muted-foreground text-xs">(opcional)</span></FormLabel>
-                  <FormControl><Input placeholder="Ex: 30/60/90 dias, à vista" {...field} value={field.value ?? ""} /></FormControl>
+                  <FormControl><Input placeholder="Ex: 30/60/90 dias" {...field} value={field.value ?? ""} /></FormControl>
                   <FormMessage />
                 </FormItem>
               )} />
@@ -1100,10 +1128,16 @@ function PropostaDetailSheet({
             )}
           </div>
 
-          {(proposta.condPagamento || proposta.prazoEntrega) && (
+          {(proposta.formaPagamento || proposta.condPagamento || proposta.prazoEntrega) && (
             <>
               <Separator />
-              <div className="grid grid-cols-2 gap-4 text-sm">
+              <div className="grid grid-cols-3 gap-4 text-sm">
+                {proposta.formaPagamento && (
+                  <div>
+                    <p className="text-xs text-muted-foreground uppercase tracking-wide mb-0.5">Forma de Pagamento</p>
+                    <p className="font-medium">{FORMA_PAGAMENTO_LABELS[proposta.formaPagamento] ?? proposta.formaPagamento}</p>
+                  </div>
+                )}
                 {proposta.condPagamento && (
                   <div>
                     <p className="text-xs text-muted-foreground uppercase tracking-wide mb-0.5">Condição Pagamento</p>
@@ -1202,8 +1236,9 @@ function PropostaViewer({
       lines.push(`• ${it.nome} × ${it.quantidade} — ${fmtCurrency(it.valorUnitario)}`);
     });
     lines.push(`\n*Total: ${fmtCurrency(total)}*`);
-    if (proposta.condPagamento) lines.push(`\nPagamento: ${proposta.condPagamento}`);
-    if (proposta.prazoEntrega)  lines.push(`Entrega: ${proposta.prazoEntrega}`);
+    if (proposta.formaPagamento) lines.push(`\nForma de Pagamento: ${FORMA_PAGAMENTO_LABELS[proposta.formaPagamento] ?? proposta.formaPagamento}`);
+    if (proposta.condPagamento)  lines.push(`Condição: ${proposta.condPagamento}`);
+    if (proposta.prazoEntrega)   lines.push(`Entrega: ${proposta.prazoEntrega}`);
     if (proposta.observacoes)   lines.push(`\n${proposta.observacoes}`);
     if (sellerName) lines.push(`\nVendedor: ${sellerName}`);
     return lines.join("\n");
@@ -1375,10 +1410,16 @@ function PropostaViewer({
           </div>
 
           {/* Condições comerciais */}
-          {(proposta.condPagamento || proposta.prazoEntrega) && (
+          {(proposta.formaPagamento || proposta.condPagamento || proposta.prazoEntrega) && (
             <div className="border border-gray-200 rounded-lg p-5">
               <p className="text-xs font-semibold uppercase tracking-widest text-gray-400 mb-3">Condições Comerciais</p>
-              <div className="grid grid-cols-2 gap-6 text-sm">
+              <div className="grid grid-cols-3 gap-6 text-sm">
+                {proposta.formaPagamento && (
+                  <div>
+                    <p className="text-xs text-gray-500 mb-0.5">Forma de Pagamento</p>
+                    <p className="font-medium text-gray-800">{FORMA_PAGAMENTO_LABELS[proposta.formaPagamento] ?? proposta.formaPagamento}</p>
+                  </div>
+                )}
                 {proposta.condPagamento && (
                   <div>
                     <p className="text-xs text-gray-500 mb-0.5">Condição de Pagamento</p>

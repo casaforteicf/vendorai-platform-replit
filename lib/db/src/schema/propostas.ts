@@ -13,6 +13,16 @@ export const propostaStatusEnum = pgEnum("proposta_status", [
   "expirada",
 ]);
 
+export const formaPagamentoPropostaEnum = pgEnum("forma_pagamento_proposta", [
+  "pix",
+  "boleto",
+  "cartao_credito",
+  "cartao_debito",
+  "transferencia",
+  "dinheiro",
+  "a_combinar",
+]);
+
 export const propostaItemSchema = z.object({
   nome: z.string().min(1),
   quantidade: z.number().positive(),
@@ -43,6 +53,7 @@ export const propostasTable = pgTable("propostas", {
   status: propostaStatusEnum("status").notNull().default("rascunho"),
   validadeAte: timestamp("validade_ate"),
   observacoes: text("observacoes"),
+  formaPagamento: formaPagamentoPropostaEnum("forma_pagamento"),
   condPagamento: text("cond_pagamento"),
   prazoEntrega: text("prazo_entrega"),
   createdAt: timestamp("created_at").notNull().defaultNow(),

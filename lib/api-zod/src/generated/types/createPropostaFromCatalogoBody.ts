@@ -6,6 +6,7 @@
  * OpenAPI spec version: 0.1.0
  */
 import type { CreatePropostaFromCatalogoBodyItensItem } from './createPropostaFromCatalogoBodyItensItem';
+import type { FormaPagamentoProposta } from './formaPagamentoProposta';
 
 export interface CreatePropostaFromCatalogoBody {
   leadId: string;
@@ -13,6 +14,7 @@ export interface CreatePropostaFromCatalogoBody {
   dealId?: string;
   validadeAte?: Date;
   observacoes?: string;
+  formaPagamento?: FormaPagamentoProposta;
   /** Condição de pagamento (ex: 30/60/90 dias, à vista). */
   condPagamento?: string;
   /** Prazo de entrega (ex: 7 dias úteis). */

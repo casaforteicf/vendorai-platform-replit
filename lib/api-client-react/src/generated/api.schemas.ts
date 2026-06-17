@@ -710,12 +710,26 @@ export type CreatePropostaFromCatalogoBodyItensItem = {
   quantidade: number;
 };
 
+export type FormaPagamentoProposta = typeof FormaPagamentoProposta[keyof typeof FormaPagamentoProposta];
+
+
+export const FormaPagamentoProposta = {
+  pix: 'pix',
+  boleto: 'boleto',
+  cartao_credito: 'cartao_credito',
+  cartao_debito: 'cartao_debito',
+  transferencia: 'transferencia',
+  dinheiro: 'dinheiro',
+  a_combinar: 'a_combinar',
+} as const;
+
 export interface CreatePropostaFromCatalogoBody {
   leadId: string;
   titulo: string;
   dealId?: string;
   validadeAte?: string;
   observacoes?: string;
+  formaPagamento?: FormaPagamentoProposta;
   /** Condição de pagamento (ex: 30/60/90 dias, à vista). */
   condPagamento?: string;
   /** Prazo de entrega (ex: 7 dias úteis). */
@@ -1121,6 +1135,7 @@ export interface Proposta {
   status: PropostaStatus;
   validadeAte?: string | null;
   observacoes?: string | null;
+  formaPagamento?: FormaPagamentoProposta | null;
   /** Condição de pagamento (ex: 30/60/90 dias, à vista). */
   condPagamento?: string | null;
   /** Prazo de entrega (ex: 7 dias úteis). */
@@ -1139,6 +1154,7 @@ export interface CreatePropostaBody {
   status?: PropostaStatus;
   validadeAte?: string;
   observacoes?: string;
+  formaPagamento?: FormaPagamentoProposta;
   /** Condição de pagamento (ex: 30/60/90 dias, à vista). */
   condPagamento?: string;
   /** Prazo de entrega (ex: 7 dias úteis). */
@@ -1154,6 +1170,7 @@ export interface UpdatePropostaBody {
   status?: PropostaStatus;
   validadeAte?: string;
   observacoes?: string;
+  formaPagamento?: FormaPagamentoProposta;
   /** Condição de pagamento (ex: 30/60/90 dias, à vista). */
   condPagamento?: string;
   /** Prazo de entrega (ex: 7 dias úteis). */

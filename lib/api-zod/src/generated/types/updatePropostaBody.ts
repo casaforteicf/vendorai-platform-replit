@@ -5,6 +5,7 @@
  * API specification
  * OpenAPI spec version: 0.1.0
  */
+import type { FormaPagamentoProposta } from './formaPagamentoProposta';
 import type { PropostaItem } from './propostaItem';
 import type { PropostaStatus } from './propostaStatus';
 
@@ -17,6 +18,7 @@ export interface UpdatePropostaBody {
   status?: PropostaStatus;
   validadeAte?: Date;
   observacoes?: string;
+  formaPagamento?: FormaPagamentoProposta;
   /** Condição de pagamento (ex: 30/60/90 dias, à vista). */
   condPagamento?: string;
   /** Prazo de entrega (ex: 7 dias úteis). */

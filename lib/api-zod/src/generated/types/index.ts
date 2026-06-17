@@ -143,6 +143,7 @@ export * from './estoqueCentralItem';
 export * from './estoqueObraItem';
 export * from './exportIntelligenceAnalysisLogParams';
 export * from './forgotPasswordBody';
+export * from './formaPagamentoProposta';
 export * from './funil';
 export * from './generateContentBody';
 export * from './generateContentBodyType';
