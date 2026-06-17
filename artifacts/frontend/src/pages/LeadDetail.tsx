@@ -290,6 +290,57 @@ export default function LeadDetail() {
 
   const { toast } = useToast();
 
+  const [editingLeadDados, setEditingLeadDados] = useState(false);
+  const [leadDadosDraft, setLeadDadosDraft] = useState({
+    nome: "",
+    telefone: "",
+    email: "",
+    empresa: "",
+    objetivo: "",
+    urgencia: "",
+  });
+
+  function openLeadDadosEdit() {
+    if (!lead) return;
+    setLeadDadosDraft({
+      nome: lead.nome ?? "",
+      telefone: lead.telefone ?? "",
+      email: lead.email ?? "",
+      empresa: lead.empresa ?? "",
+      objetivo: lead.objetivo ?? "",
+      urgencia: lead.urgencia ?? "",
+    });
+    setEditingLeadDados(true);
+  }
+
+  const { mutate: updateLeadDados, isPending: isUpdatingLeadDados } = useUpdateLead({
+    mutation: {
+      onSuccess: () => {
+        void queryClient.invalidateQueries({ queryKey: getGetLeadQueryKey(id) });
+        setEditingLeadDados(false);
+        toast({ title: "Informações do lead atualizadas." });
+      },
+      onError: () => {
+        toast({ title: "Erro ao salvar informações", variant: "destructive" });
+      },
+    },
+  });
+
+  function saveLeadDados() {
+    if (!id) return;
+    updateLeadDados({
+      id,
+      data: {
+        nome: leadDadosDraft.nome || undefined,
+        telefone: leadDadosDraft.telefone || null,
+        email: leadDadosDraft.email || null,
+        empresa: leadDadosDraft.empresa || null,
+        objetivo: leadDadosDraft.objetivo || null,
+        urgencia: leadDadosDraft.urgencia || null,
+      },
+    });
+  }
+
   const [editingPessoal, setEditingPessoal] = useState(false);
   const [pessoalDraft, setPessoalDraft] = useState({
     dataNascimento: "",
@@ -636,7 +687,11 @@ export default function LeadDetail() {
 
       <div className="flex flex-col sm:flex-row sm:items-center gap-3">
         <div className="flex-1">
-          <h1 className="text-2xl font-bold tracking-tight">{lead.nome}</h1>
+          <h1 className="text-2xl font-bold tracking-tight">
+            {lead.nome || lead.empresa || lead.email || (
+              <span className="text-muted-foreground italic font-normal">Sem nome</span>
+            )}
+          </h1>
           {lead.empresa && (
             <p className="text-sm text-muted-foreground mt-0.5 flex items-center gap-1">
               <Building2 className="h-3.5 w-3.5" />
@@ -659,7 +714,16 @@ export default function LeadDetail() {
           {/* Contact data */}
           <Card data-testid="card-lead-dados">
             <CardHeader className="pb-3">
-              <CardTitle className="text-sm font-semibold">Dados do Lead</CardTitle>
+              <CardTitle className="text-sm font-semibold flex items-center justify-between">
+                <span>Dados do Lead</span>
+                <button
+                  onClick={openLeadDadosEdit}
+                  className="text-muted-foreground hover:text-foreground"
+                  data-testid="btn-edit-lead-dados"
+                >
+                  <Pencil className="h-3 w-3" />
+                </button>
+              </CardTitle>
             </CardHeader>
             <CardContent className="text-sm">
               <dl className="space-y-2.5">
@@ -1686,6 +1750,91 @@ export default function LeadDetail() {
           </Card>
         </div>
       </div>
+
+      {/* Dados do Lead — edit dialog */}
+      <Dialog open={editingLeadDados} onOpenChange={setEditingLeadDados}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Editar Dados do Lead</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 py-2">
+            <div className="space-y-1.5">
+              <label className="text-sm font-medium">Nome *</label>
+              <Input
+                placeholder="Nome completo"
+                value={leadDadosDraft.nome}
+                onChange={(e) => setLeadDadosDraft((d) => ({ ...d, nome: e.target.value }))}
+              />
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1.5">
+                <label className="text-sm font-medium">Telefone</label>
+                <Input
+                  placeholder="(11) 99999-9999"
+                  value={leadDadosDraft.telefone}
+                  onChange={(e) => setLeadDadosDraft((d) => ({ ...d, telefone: e.target.value }))}
+                />
+              </div>
+              <div className="space-y-1.5">
+                <label className="text-sm font-medium">E-mail</label>
+                <Input
+                  placeholder="email@..."
+                  value={leadDadosDraft.email}
+                  onChange={(e) => setLeadDadosDraft((d) => ({ ...d, email: e.target.value }))}
+                />
+              </div>
+            </div>
+            <div className="space-y-1.5">
+              <label className="text-sm font-medium">Empresa</label>
+              <Input
+                placeholder="Nome da empresa"
+                value={leadDadosDraft.empresa}
+                onChange={(e) => setLeadDadosDraft((d) => ({ ...d, empresa: e.target.value }))}
+              />
+            </div>
+            <div className="space-y-1.5">
+              <label className="text-sm font-medium">Urgência</label>
+              <Select
+                value={leadDadosDraft.urgencia || "__none__"}
+                onValueChange={(v) =>
+                  setLeadDadosDraft((d) => ({ ...d, urgencia: v === "__none__" ? "" : v }))
+                }
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Selecione..." />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="__none__">Não informado</SelectItem>
+                  <SelectItem value="baixa">Baixa</SelectItem>
+                  <SelectItem value="media">Média</SelectItem>
+                  <SelectItem value="alta">Alta</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-1.5">
+              <label className="text-sm font-medium">Objetivo</label>
+              <Textarea
+                placeholder="Objetivo ou necessidade do lead..."
+                value={leadDadosDraft.objetivo}
+                onChange={(e) => setLeadDadosDraft((d) => ({ ...d, objetivo: e.target.value }))}
+                rows={3}
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setEditingLeadDados(false)}>
+              Cancelar
+            </Button>
+            <Button
+              onClick={saveLeadDados}
+              disabled={!leadDadosDraft.nome.trim() || isUpdatingLeadDados}
+            >
+              {isUpdatingLeadDados && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
+              Salvar
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* Dados Pessoais — edit dialog */}
       <Dialog open={editingPessoal} onOpenChange={setEditingPessoal}>
