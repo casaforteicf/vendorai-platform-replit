@@ -115,11 +115,18 @@ router.post("/tenants/:tenantId/site-generator/generate", async (req, res) => {
 
   const prompt = buildGeneratePrompt(config);
 
-  const response = await openai.chat.completions.create({
-    model: "gpt-4o",
-    max_tokens: 8192,
-    messages: [{ role: "user", content: prompt }],
-  });
+  let response;
+  try {
+    response = await openai.chat.completions.create({
+      model: "gpt-4o-mini",
+      max_tokens: 8192,
+      messages: [{ role: "user", content: prompt }],
+    });
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : "Falha ao chamar a IA";
+    res.status(502).json({ error: `Erro na geração: ${msg}` });
+    return;
+  }
 
   const rawText = response.choices[0]?.message?.content ?? "";
   const html = extractHtml(rawText);
@@ -174,11 +181,18 @@ router.post("/tenants/:tenantId/site-generator/:siteId/refine", async (req, res)
     { role: "user", content: refinePrompt },
   ];
 
-  const response = await openai.chat.completions.create({
-    model: "gpt-4o",
-    max_tokens: 8192,
-    messages: refineMessages,
-  });
+  let response;
+  try {
+    response = await openai.chat.completions.create({
+      model: "gpt-4o-mini",
+      max_tokens: 8192,
+      messages: refineMessages,
+    });
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : "Falha ao chamar a IA";
+    res.status(502).json({ error: `Erro no refinamento: ${msg}` });
+    return;
+  }
 
   const rawText = response.choices[0]?.message?.content ?? "";
   const html = extractHtml(rawText);
