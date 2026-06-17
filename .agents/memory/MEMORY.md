@@ -2,3 +2,4 @@
 - [Drizzle push silent failure](drizzle-push-silent-fail.md) — push reports "No changes detected" mesmo com colunas novas; aplicar via ALTER TABLE + executeSql como fallback.
 - [ERP Integration](erp-integration.md) — outbound webhook on sale won + inbound inventory sync; inventorySyncRouter must be registered before authenticate middleware.
 - [Instagram integration pattern](instagram-integration.md) — credenciais em agent_configs; IGSID em leads; webhook /tenants/:id/webhooks/instagram; envio via Graph API v19.
+- [Varejo vertical pattern](varejo-vertical.md) — módulo gated por tenantVertical; enums de select precisam de `as typeof f.campo` no onChange para satisfazer TS.

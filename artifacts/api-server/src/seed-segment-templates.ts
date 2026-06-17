@@ -371,6 +371,39 @@ const EXTRA_TEMPLATES = [
       "Mercearia e Grãos",
     ],
   },
+  {
+    nome: "Varejo de Roupas & Acessórios",
+    descricao:
+      "Para lojas de moda feminina, masculina, infantil, multimarcas e acessórios. Foco em grade de tamanho × cor, coleções sazonais, fidelização de clientes e combos/looks.",
+    promptsSugeridos: {
+      sdr: `Você é consultor de moda. Ao abordar um lead, pergunte sobre o estilo que a pessoa gosta (casual, social, esportivo), as marcas favoritas e se está buscando algo para uma ocasião especial. Identifique gênero e faixa de tamanho. Seu objetivo é convidar para uma visita à loja ou apresentar os destaques da nova coleção.`,
+      closer: `Você é especialista em fechamento de vendas no varejo de moda. Apresente os produtos que combinam com o estilo do cliente, destaque as promoções de coleções anteriores e os combos/looks prontos. Mostre as opções de pagamento parcelado e o programa de fidelidade com acúmulo de pontos. Convide para experimentar e feche com agendamento de visita ou pedido via mensagem.`,
+      followup: `Lembre o cliente sobre o lançamento da nova coleção, liquidações sazonais e looks novos que chegaram. Pergunte se ficou satisfeito com a última compra e sugira peças que complementam o que já adquiriu.`,
+      reactivation: `Contate clientes que não compram há mais de 60 dias. Informe sobre a nova coleção e eventuais descontos exclusivos para clientes fiéis. Pergunte se precisa repor algum básico do guarda-roupa.`,
+      service: `Atenda dúvidas sobre tamanho, disponibilidade de cor, prazo de entrega e trocas. Informe sobre o saldo de pontos no programa de fidelidade. Registre preferências do cliente para personalizar o atendimento futuro.`,
+      onboarding: `Boas-vindas ao novo cliente! Explique como funciona o programa de fidelidade (pontos a cada compra, níveis Bronze→Diamante), os canais de atendimento e como receber em primeira mão as novidades de coleção.`,
+      scheduler: `Agende visitas à loja, sessões de personal shopper ou reserva de peças para experimentação. Confirme horário e informe que as peças serão separadas. Envie lembrete no dia anterior.`,
+    },
+    funilPadrao: [
+      "Primeiro Contato",
+      "Interesse Identificado",
+      "Apresentação de Produtos",
+      "Prova / Experimentação",
+      "Proposta / Pedido",
+      "Venda Realizada",
+      "Pós-venda & Fidelização",
+    ],
+    categoriasProdutoSugeridas: [
+      "Camisetas e Blusas",
+      "Calças e Jeans",
+      "Vestidos e Saias",
+      "Jaquetas e Casacos",
+      "Calçados",
+      "Bolsas e Acessórios",
+      "Roupas Íntimas e Pijamas",
+      "Moda Infantil",
+    ],
+  },
 ];
 
 async function seed() {

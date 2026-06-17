@@ -2759,6 +2759,512 @@ export interface CompraObraUpdate {
   observacoes?: string;
 }
 
+export type VarejoColecaoTemporada = typeof VarejoColecaoTemporada[keyof typeof VarejoColecaoTemporada];
+
+
+export const VarejoColecaoTemporada = {
+  verao: 'verao',
+  inverno: 'inverno',
+  outono: 'outono',
+  primavera: 'primavera',
+  especial: 'especial',
+} as const;
+
+export type VarejoColecaoStatus = typeof VarejoColecaoStatus[keyof typeof VarejoColecaoStatus];
+
+
+export const VarejoColecaoStatus = {
+  planejamento: 'planejamento',
+  ativa: 'ativa',
+  encerrada: 'encerrada',
+} as const;
+
+export interface VarejoColecao {
+  id: string;
+  tenantId: string;
+  nome: string;
+  temporada: VarejoColecaoTemporada;
+  ano: number;
+  status: VarejoColecaoStatus;
+  /** @nullable */
+  descricao?: string | null;
+  ativo: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export type CreateVarejoColecaoBodyTemporada = typeof CreateVarejoColecaoBodyTemporada[keyof typeof CreateVarejoColecaoBodyTemporada];
+
+
+export const CreateVarejoColecaoBodyTemporada = {
+  verao: 'verao',
+  inverno: 'inverno',
+  outono: 'outono',
+  primavera: 'primavera',
+  especial: 'especial',
+} as const;
+
+export type CreateVarejoColecaoBodyStatus = typeof CreateVarejoColecaoBodyStatus[keyof typeof CreateVarejoColecaoBodyStatus];
+
+
+export const CreateVarejoColecaoBodyStatus = {
+  planejamento: 'planejamento',
+  ativa: 'ativa',
+  encerrada: 'encerrada',
+} as const;
+
+export interface CreateVarejoColecaoBody {
+  tenantId: string;
+  nome: string;
+  temporada: CreateVarejoColecaoBodyTemporada;
+  ano: number;
+  status?: CreateVarejoColecaoBodyStatus;
+  descricao?: string;
+  ativo?: boolean;
+}
+
+export type UpdateVarejoColecaoBodyTemporada = typeof UpdateVarejoColecaoBodyTemporada[keyof typeof UpdateVarejoColecaoBodyTemporada];
+
+
+export const UpdateVarejoColecaoBodyTemporada = {
+  verao: 'verao',
+  inverno: 'inverno',
+  outono: 'outono',
+  primavera: 'primavera',
+  especial: 'especial',
+} as const;
+
+export type UpdateVarejoColecaoBodyStatus = typeof UpdateVarejoColecaoBodyStatus[keyof typeof UpdateVarejoColecaoBodyStatus];
+
+
+export const UpdateVarejoColecaoBodyStatus = {
+  planejamento: 'planejamento',
+  ativa: 'ativa',
+  encerrada: 'encerrada',
+} as const;
+
+export interface UpdateVarejoColecaoBody {
+  nome?: string;
+  temporada?: UpdateVarejoColecaoBodyTemporada;
+  ano?: number;
+  status?: UpdateVarejoColecaoBodyStatus;
+  descricao?: string;
+  ativo?: boolean;
+}
+
+export interface VarejoFornecedor {
+  id: string;
+  tenantId: string;
+  nome: string;
+  /** @nullable */
+  marca?: string | null;
+  /** @nullable */
+  contato?: string | null;
+  /** @nullable */
+  email?: string | null;
+  /** @nullable */
+  telefone?: string | null;
+  /** @nullable */
+  cnpj?: string | null;
+  /** @nullable */
+  condicoesPagamento?: string | null;
+  /** @nullable */
+  prazoEntregaDias?: number | null;
+  /** @nullable */
+  observacoes?: string | null;
+  ativo: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface CreateVarejoFornecedorBody {
+  tenantId: string;
+  nome: string;
+  marca?: string;
+  contato?: string;
+  email?: string;
+  telefone?: string;
+  cnpj?: string;
+  condicoesPagamento?: string;
+  prazoEntregaDias?: number;
+  observacoes?: string;
+  ativo?: boolean;
+}
+
+export interface UpdateVarejoFornecedorBody {
+  nome?: string;
+  marca?: string;
+  contato?: string;
+  email?: string;
+  telefone?: string;
+  cnpj?: string;
+  condicoesPagamento?: string;
+  prazoEntregaDias?: number;
+  observacoes?: string;
+  ativo?: boolean;
+}
+
+/**
+ * @nullable
+ */
+export type VarejoProdutoCategoria = typeof VarejoProdutoCategoria[keyof typeof VarejoProdutoCategoria] | null;
+
+
+export const VarejoProdutoCategoria = {
+  camiseta: 'camiseta',
+  calca: 'calca',
+  vestido: 'vestido',
+  short: 'short',
+  jaqueta: 'jaqueta',
+  blazer: 'blazer',
+  saia: 'saia',
+  acessorio: 'acessorio',
+  calcado: 'calcado',
+  bolsa: 'bolsa',
+  outro: 'outro',
+} as const;
+
+/**
+ * @nullable
+ */
+export type VarejoProdutoGenero = typeof VarejoProdutoGenero[keyof typeof VarejoProdutoGenero] | null;
+
+
+export const VarejoProdutoGenero = {
+  masculino: 'masculino',
+  feminino: 'feminino',
+  unissex: 'unissex',
+  infantil: 'infantil',
+} as const;
+
+export interface VarejoGrade {
+  id: string;
+  tenantId: string;
+  produtoId: string;
+  tamanho: string;
+  cor: string;
+  estoque: number;
+  estoqueMinimo: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface VarejoProduto {
+  id: string;
+  tenantId: string;
+  /** @nullable */
+  fornecedorId?: string | null;
+  /** @nullable */
+  colecaoId?: string | null;
+  nome: string;
+  /** @nullable */
+  codigo?: string | null;
+  /** @nullable */
+  descricao?: string | null;
+  /** @nullable */
+  categoria?: VarejoProdutoCategoria;
+  /** @nullable */
+  genero?: VarejoProdutoGenero;
+  /** @nullable */
+  precoCompra?: string | null;
+  precoVenda: string;
+  ativo: boolean;
+  createdAt: string;
+  updatedAt: string;
+  grades?: VarejoGrade[];
+  fornecedor?: VarejoFornecedor;
+  colecao?: VarejoColecao;
+}
+
+export type CreateVarejoProdutoBodyCategoria = typeof CreateVarejoProdutoBodyCategoria[keyof typeof CreateVarejoProdutoBodyCategoria];
+
+
+export const CreateVarejoProdutoBodyCategoria = {
+  camiseta: 'camiseta',
+  calca: 'calca',
+  vestido: 'vestido',
+  short: 'short',
+  jaqueta: 'jaqueta',
+  blazer: 'blazer',
+  saia: 'saia',
+  acessorio: 'acessorio',
+  calcado: 'calcado',
+  bolsa: 'bolsa',
+  outro: 'outro',
+} as const;
+
+export type CreateVarejoProdutoBodyGenero = typeof CreateVarejoProdutoBodyGenero[keyof typeof CreateVarejoProdutoBodyGenero];
+
+
+export const CreateVarejoProdutoBodyGenero = {
+  masculino: 'masculino',
+  feminino: 'feminino',
+  unissex: 'unissex',
+  infantil: 'infantil',
+} as const;
+
+export interface CreateVarejoProdutoBody {
+  tenantId: string;
+  fornecedorId?: string;
+  colecaoId?: string;
+  nome: string;
+  codigo?: string;
+  descricao?: string;
+  categoria?: CreateVarejoProdutoBodyCategoria;
+  genero?: CreateVarejoProdutoBodyGenero;
+  precoCompra?: string;
+  precoVenda: string;
+  ativo?: boolean;
+}
+
+export type UpdateVarejoProdutoBodyCategoria = typeof UpdateVarejoProdutoBodyCategoria[keyof typeof UpdateVarejoProdutoBodyCategoria];
+
+
+export const UpdateVarejoProdutoBodyCategoria = {
+  camiseta: 'camiseta',
+  calca: 'calca',
+  vestido: 'vestido',
+  short: 'short',
+  jaqueta: 'jaqueta',
+  blazer: 'blazer',
+  saia: 'saia',
+  acessorio: 'acessorio',
+  calcado: 'calcado',
+  bolsa: 'bolsa',
+  outro: 'outro',
+} as const;
+
+export type UpdateVarejoProdutoBodyGenero = typeof UpdateVarejoProdutoBodyGenero[keyof typeof UpdateVarejoProdutoBodyGenero];
+
+
+export const UpdateVarejoProdutoBodyGenero = {
+  masculino: 'masculino',
+  feminino: 'feminino',
+  unissex: 'unissex',
+  infantil: 'infantil',
+} as const;
+
+export interface UpdateVarejoProdutoBody {
+  fornecedorId?: string;
+  colecaoId?: string;
+  nome?: string;
+  codigo?: string;
+  descricao?: string;
+  categoria?: UpdateVarejoProdutoBodyCategoria;
+  genero?: UpdateVarejoProdutoBodyGenero;
+  precoCompra?: string;
+  precoVenda?: string;
+  ativo?: boolean;
+}
+
+export interface CreateVarejoGradeBody {
+  tenantId: string;
+  produtoId: string;
+  tamanho: string;
+  cor: string;
+  estoque?: number;
+  estoqueMinimo?: number;
+}
+
+export interface UpdateVarejoGradeBody {
+  tamanho?: string;
+  cor?: string;
+  estoque?: number;
+  estoqueMinimo?: number;
+}
+
+export type VarejoPedidoCompraStatus = typeof VarejoPedidoCompraStatus[keyof typeof VarejoPedidoCompraStatus];
+
+
+export const VarejoPedidoCompraStatus = {
+  rascunho: 'rascunho',
+  enviado: 'enviado',
+  confirmado: 'confirmado',
+  entregue: 'entregue',
+  cancelado: 'cancelado',
+} as const;
+
+export interface VarejoPedidoCompraItem {
+  id: string;
+  pedidoId: string;
+  /** @nullable */
+  produtoId?: string | null;
+  tamanho: string;
+  cor: string;
+  quantidade: number;
+  precoUnitario: string;
+  createdAt: string;
+  produto?: VarejoProduto;
+}
+
+export interface VarejoPedidoCompra {
+  id: string;
+  tenantId: string;
+  /** @nullable */
+  fornecedorId?: string | null;
+  /** @nullable */
+  colecaoId?: string | null;
+  status: VarejoPedidoCompraStatus;
+  dataEmissao: string;
+  /** @nullable */
+  dataPrevista?: string | null;
+  /** @nullable */
+  valorTotal?: string | null;
+  /** @nullable */
+  observacoes?: string | null;
+  createdAt: string;
+  updatedAt: string;
+  fornecedor?: VarejoFornecedor;
+  colecao?: VarejoColecao;
+  itens?: VarejoPedidoCompraItem[];
+}
+
+export type CreateVarejoPedidoCompraBodyStatus = typeof CreateVarejoPedidoCompraBodyStatus[keyof typeof CreateVarejoPedidoCompraBodyStatus];
+
+
+export const CreateVarejoPedidoCompraBodyStatus = {
+  rascunho: 'rascunho',
+  enviado: 'enviado',
+  confirmado: 'confirmado',
+  entregue: 'entregue',
+  cancelado: 'cancelado',
+} as const;
+
+export interface CreateVarejoPedidoCompraBody {
+  tenantId: string;
+  fornecedorId?: string;
+  colecaoId?: string;
+  status?: CreateVarejoPedidoCompraBodyStatus;
+  dataEmissao: string;
+  dataPrevista?: string;
+  valorTotal?: string;
+  observacoes?: string;
+}
+
+export type UpdateVarejoPedidoCompraBodyStatus = typeof UpdateVarejoPedidoCompraBodyStatus[keyof typeof UpdateVarejoPedidoCompraBodyStatus];
+
+
+export const UpdateVarejoPedidoCompraBodyStatus = {
+  rascunho: 'rascunho',
+  enviado: 'enviado',
+  confirmado: 'confirmado',
+  entregue: 'entregue',
+  cancelado: 'cancelado',
+} as const;
+
+export interface UpdateVarejoPedidoCompraBody {
+  fornecedorId?: string;
+  colecaoId?: string;
+  status?: UpdateVarejoPedidoCompraBodyStatus;
+  dataEmissao?: string;
+  dataPrevista?: string;
+  valorTotal?: string;
+  observacoes?: string;
+}
+
+export interface CreateVarejoPedidoCompraItemBody {
+  produtoId?: string;
+  tamanho: string;
+  cor: string;
+  quantidade: number;
+  precoUnitario: string;
+}
+
+export type VarejoFidelidadeNivel = typeof VarejoFidelidadeNivel[keyof typeof VarejoFidelidadeNivel];
+
+
+export const VarejoFidelidadeNivel = {
+  bronze: 'bronze',
+  prata: 'prata',
+  ouro: 'ouro',
+  diamante: 'diamante',
+} as const;
+
+export interface VarejoFidelidade {
+  id: string;
+  tenantId: string;
+  leadId: string;
+  pontos: number;
+  totalGasto: string;
+  nivel: VarejoFidelidadeNivel;
+  /** @nullable */
+  ultimaCompra?: string | null;
+  /** @nullable */
+  observacoes?: string | null;
+  createdAt: string;
+  updatedAt: string;
+  leadNome?: string;
+  leadTelefone?: string;
+}
+
+export type UpsertVarejoFidelidadeBodyNivel = typeof UpsertVarejoFidelidadeBodyNivel[keyof typeof UpsertVarejoFidelidadeBodyNivel];
+
+
+export const UpsertVarejoFidelidadeBodyNivel = {
+  bronze: 'bronze',
+  prata: 'prata',
+  ouro: 'ouro',
+  diamante: 'diamante',
+} as const;
+
+export interface UpsertVarejoFidelidadeBody {
+  pontos?: number;
+  totalGasto?: string;
+  nivel?: UpsertVarejoFidelidadeBodyNivel;
+  ultimaCompra?: string;
+  observacoes?: string;
+}
+
+export interface VarejoComboItem {
+  id: string;
+  comboId: string;
+  /** @nullable */
+  produtoId?: string | null;
+  /** @nullable */
+  tamanho?: string | null;
+  /** @nullable */
+  cor?: string | null;
+  quantidade: number;
+  createdAt: string;
+  produto?: VarejoProduto;
+}
+
+export interface VarejoCombo {
+  id: string;
+  tenantId: string;
+  nome: string;
+  /** @nullable */
+  descricao?: string | null;
+  /** @nullable */
+  preco?: string | null;
+  ativo: boolean;
+  createdAt: string;
+  updatedAt: string;
+  itens?: VarejoComboItem[];
+}
+
+export interface CreateVarejoComboBody {
+  tenantId: string;
+  nome: string;
+  descricao?: string;
+  preco?: string;
+  ativo?: boolean;
+}
+
+export interface UpdateVarejoComboBody {
+  nome?: string;
+  descricao?: string;
+  preco?: string;
+  ativo?: boolean;
+}
+
+export interface CreateVarejoComboItemBody {
+  produtoId?: string;
+  tamanho?: string;
+  cor?: string;
+  quantidade: number;
+}
+
 export type ListDealsParams = {
 etapa?: DealEtapa;
 funilId?: string;
@@ -2905,5 +3411,22 @@ categoria?: string;
 
 export type ListComposicoesParams = {
 q?: string;
+};
+
+export type ListVarejoProdutosParams = {
+colecaoId?: string;
+fornecedorId?: string;
+categoria?: string;
+genero?: string;
+};
+
+export type ListVarejoPedidosCompraParams = {
+status?: string;
+fornecedorId?: string;
+};
+
+export type ListVarejoFidelidadeParams = {
+nivel?: string;
+search?: string;
 };
 

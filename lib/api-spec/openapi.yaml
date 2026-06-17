@@ -6170,6 +6170,600 @@ paths:
       responses:
         "204": { description: Deleted }
 
+  # ── Varejo ─────────────────────────────────────────────────────────────────
+
+  /tenants/{tenantId}/varejo/colecoes:
+    get:
+      operationId: listVarejoColecoes
+      summary: List coleções
+      tags: [Varejo]
+      parameters:
+        - { name: tenantId, in: path, required: true, schema: { type: string } }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/VarejoColecao" }
+    post:
+      operationId: createVarejoColecao
+      summary: Create coleção
+      tags: [Varejo]
+      parameters:
+        - { name: tenantId, in: path, required: true, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CreateVarejoColecaoBody" }
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/VarejoColecao" }
+
+  /tenants/{tenantId}/varejo/colecoes/{colecaoId}:
+    get:
+      operationId: getVarejoColecao
+      summary: Get coleção
+      tags: [Varejo]
+      parameters:
+        - { name: tenantId, in: path, required: true, schema: { type: string } }
+        - { name: colecaoId, in: path, required: true, schema: { type: string } }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/VarejoColecao" }
+    put:
+      operationId: updateVarejoColecao
+      summary: Update coleção
+      tags: [Varejo]
+      parameters:
+        - { name: tenantId, in: path, required: true, schema: { type: string } }
+        - { name: colecaoId, in: path, required: true, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/UpdateVarejoColecaoBody" }
+      responses:
+        "200":
+          description: Updated
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/VarejoColecao" }
+    delete:
+      operationId: deleteVarejoColecao
+      summary: Delete coleção
+      tags: [Varejo]
+      parameters:
+        - { name: tenantId, in: path, required: true, schema: { type: string } }
+        - { name: colecaoId, in: path, required: true, schema: { type: string } }
+      responses:
+        "204": { description: Deleted }
+
+  /tenants/{tenantId}/varejo/fornecedores:
+    get:
+      operationId: listVarejoFornecedores
+      summary: List fornecedores
+      tags: [Varejo]
+      parameters:
+        - { name: tenantId, in: path, required: true, schema: { type: string } }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/VarejoFornecedor" }
+    post:
+      operationId: createVarejoFornecedor
+      summary: Create fornecedor
+      tags: [Varejo]
+      parameters:
+        - { name: tenantId, in: path, required: true, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CreateVarejoFornecedorBody" }
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/VarejoFornecedor" }
+
+  /tenants/{tenantId}/varejo/fornecedores/{fornecedorId}:
+    get:
+      operationId: getVarejoFornecedor
+      summary: Get fornecedor
+      tags: [Varejo]
+      parameters:
+        - { name: tenantId, in: path, required: true, schema: { type: string } }
+        - { name: fornecedorId, in: path, required: true, schema: { type: string } }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/VarejoFornecedor" }
+    put:
+      operationId: updateVarejoFornecedor
+      summary: Update fornecedor
+      tags: [Varejo]
+      parameters:
+        - { name: tenantId, in: path, required: true, schema: { type: string } }
+        - { name: fornecedorId, in: path, required: true, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/UpdateVarejoFornecedorBody" }
+      responses:
+        "200":
+          description: Updated
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/VarejoFornecedor" }
+    delete:
+      operationId: deleteVarejoFornecedor
+      summary: Delete fornecedor
+      tags: [Varejo]
+      parameters:
+        - { name: tenantId, in: path, required: true, schema: { type: string } }
+        - { name: fornecedorId, in: path, required: true, schema: { type: string } }
+      responses:
+        "204": { description: Deleted }
+
+  /tenants/{tenantId}/varejo/produtos:
+    get:
+      operationId: listVarejoProdutos
+      summary: List produtos
+      tags: [Varejo]
+      parameters:
+        - { name: tenantId, in: path, required: true, schema: { type: string } }
+        - { name: colecaoId, in: query, schema: { type: string } }
+        - { name: fornecedorId, in: query, schema: { type: string } }
+        - { name: categoria, in: query, schema: { type: string } }
+        - { name: genero, in: query, schema: { type: string } }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/VarejoProduto" }
+    post:
+      operationId: createVarejoProduto
+      summary: Create produto
+      tags: [Varejo]
+      parameters:
+        - { name: tenantId, in: path, required: true, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CreateVarejoProdutoBody" }
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/VarejoProduto" }
+
+  /tenants/{tenantId}/varejo/produtos/{produtoId}:
+    get:
+      operationId: getVarejoProduto
+      summary: Get produto
+      tags: [Varejo]
+      parameters:
+        - { name: tenantId, in: path, required: true, schema: { type: string } }
+        - { name: produtoId, in: path, required: true, schema: { type: string } }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/VarejoProduto" }
+    put:
+      operationId: updateVarejoProduto
+      summary: Update produto
+      tags: [Varejo]
+      parameters:
+        - { name: tenantId, in: path, required: true, schema: { type: string } }
+        - { name: produtoId, in: path, required: true, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/UpdateVarejoProdutoBody" }
+      responses:
+        "200":
+          description: Updated
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/VarejoProduto" }
+    delete:
+      operationId: deleteVarejoProduto
+      summary: Delete produto
+      tags: [Varejo]
+      parameters:
+        - { name: tenantId, in: path, required: true, schema: { type: string } }
+        - { name: produtoId, in: path, required: true, schema: { type: string } }
+      responses:
+        "204": { description: Deleted }
+
+  /tenants/{tenantId}/varejo/produtos/{produtoId}/grades:
+    get:
+      operationId: listVarejoGrades
+      summary: List grades de um produto
+      tags: [Varejo]
+      parameters:
+        - { name: tenantId, in: path, required: true, schema: { type: string } }
+        - { name: produtoId, in: path, required: true, schema: { type: string } }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/VarejoGrade" }
+    post:
+      operationId: createVarejoGrade
+      summary: Create grade entry
+      tags: [Varejo]
+      parameters:
+        - { name: tenantId, in: path, required: true, schema: { type: string } }
+        - { name: produtoId, in: path, required: true, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CreateVarejoGradeBody" }
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/VarejoGrade" }
+
+  /tenants/{tenantId}/varejo/produtos/{produtoId}/grades/{gradeId}:
+    put:
+      operationId: updateVarejoGrade
+      summary: Update grade entry
+      tags: [Varejo]
+      parameters:
+        - { name: tenantId, in: path, required: true, schema: { type: string } }
+        - { name: produtoId, in: path, required: true, schema: { type: string } }
+        - { name: gradeId, in: path, required: true, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/UpdateVarejoGradeBody" }
+      responses:
+        "200":
+          description: Updated
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/VarejoGrade" }
+    delete:
+      operationId: deleteVarejoGrade
+      summary: Delete grade entry
+      tags: [Varejo]
+      parameters:
+        - { name: tenantId, in: path, required: true, schema: { type: string } }
+        - { name: produtoId, in: path, required: true, schema: { type: string } }
+        - { name: gradeId, in: path, required: true, schema: { type: string } }
+      responses:
+        "204": { description: Deleted }
+
+  /tenants/{tenantId}/varejo/pedidos-compra:
+    get:
+      operationId: listVarejoPedidosCompra
+      summary: List pedidos de compra
+      tags: [Varejo]
+      parameters:
+        - { name: tenantId, in: path, required: true, schema: { type: string } }
+        - { name: status, in: query, schema: { type: string } }
+        - { name: fornecedorId, in: query, schema: { type: string } }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/VarejoPedidoCompra" }
+    post:
+      operationId: createVarejoPedidoCompra
+      summary: Create pedido de compra
+      tags: [Varejo]
+      parameters:
+        - { name: tenantId, in: path, required: true, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CreateVarejoPedidoCompraBody" }
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/VarejoPedidoCompra" }
+
+  /tenants/{tenantId}/varejo/pedidos-compra/{pedidoId}:
+    get:
+      operationId: getVarejoPedidoCompra
+      summary: Get pedido de compra
+      tags: [Varejo]
+      parameters:
+        - { name: tenantId, in: path, required: true, schema: { type: string } }
+        - { name: pedidoId, in: path, required: true, schema: { type: string } }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/VarejoPedidoCompra" }
+    put:
+      operationId: updateVarejoPedidoCompra
+      summary: Update pedido de compra
+      tags: [Varejo]
+      parameters:
+        - { name: tenantId, in: path, required: true, schema: { type: string } }
+        - { name: pedidoId, in: path, required: true, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/UpdateVarejoPedidoCompraBody" }
+      responses:
+        "200":
+          description: Updated
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/VarejoPedidoCompra" }
+    delete:
+      operationId: deleteVarejoPedidoCompra
+      summary: Delete pedido de compra
+      tags: [Varejo]
+      parameters:
+        - { name: tenantId, in: path, required: true, schema: { type: string } }
+        - { name: pedidoId, in: path, required: true, schema: { type: string } }
+      responses:
+        "204": { description: Deleted }
+
+  /tenants/{tenantId}/varejo/pedidos-compra/{pedidoId}/itens:
+    get:
+      operationId: listVarejoPedidoCompraItens
+      summary: List itens de pedido de compra
+      tags: [Varejo]
+      parameters:
+        - { name: tenantId, in: path, required: true, schema: { type: string } }
+        - { name: pedidoId, in: path, required: true, schema: { type: string } }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/VarejoPedidoCompraItem" }
+    post:
+      operationId: createVarejoPedidoCompraItem
+      summary: Add item ao pedido de compra
+      tags: [Varejo]
+      parameters:
+        - { name: tenantId, in: path, required: true, schema: { type: string } }
+        - { name: pedidoId, in: path, required: true, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CreateVarejoPedidoCompraItemBody" }
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/VarejoPedidoCompraItem" }
+
+  /tenants/{tenantId}/varejo/pedidos-compra/{pedidoId}/itens/{itemId}:
+    delete:
+      operationId: deleteVarejoPedidoCompraItem
+      summary: Remove item do pedido de compra
+      tags: [Varejo]
+      parameters:
+        - { name: tenantId, in: path, required: true, schema: { type: string } }
+        - { name: pedidoId, in: path, required: true, schema: { type: string } }
+        - { name: itemId, in: path, required: true, schema: { type: string } }
+      responses:
+        "204": { description: Deleted }
+
+  /tenants/{tenantId}/varejo/fidelidade:
+    get:
+      operationId: listVarejoFidelidade
+      summary: List programa de fidelidade
+      tags: [Varejo]
+      parameters:
+        - { name: tenantId, in: path, required: true, schema: { type: string } }
+        - { name: nivel, in: query, schema: { type: string } }
+        - { name: search, in: query, schema: { type: string } }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/VarejoFidelidade" }
+
+  /tenants/{tenantId}/varejo/fidelidade/{leadId}:
+    get:
+      operationId: getVarejoFidelidade
+      summary: Get fidelidade de um lead
+      tags: [Varejo]
+      parameters:
+        - { name: tenantId, in: path, required: true, schema: { type: string } }
+        - { name: leadId, in: path, required: true, schema: { type: string } }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/VarejoFidelidade" }
+    put:
+      operationId: upsertVarejoFidelidade
+      summary: Upsert fidelidade de um lead
+      tags: [Varejo]
+      parameters:
+        - { name: tenantId, in: path, required: true, schema: { type: string } }
+        - { name: leadId, in: path, required: true, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/UpsertVarejoFidelidadeBody" }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/VarejoFidelidade" }
+
+  /tenants/{tenantId}/varejo/combos:
+    get:
+      operationId: listVarejoCombos
+      summary: List combos/looks
+      tags: [Varejo]
+      parameters:
+        - { name: tenantId, in: path, required: true, schema: { type: string } }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/VarejoCombo" }
+    post:
+      operationId: createVarejoCombo
+      summary: Create combo/look
+      tags: [Varejo]
+      parameters:
+        - { name: tenantId, in: path, required: true, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CreateVarejoComboBody" }
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/VarejoCombo" }
+
+  /tenants/{tenantId}/varejo/combos/{comboId}:
+    get:
+      operationId: getVarejoCombo
+      summary: Get combo/look
+      tags: [Varejo]
+      parameters:
+        - { name: tenantId, in: path, required: true, schema: { type: string } }
+        - { name: comboId, in: path, required: true, schema: { type: string } }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/VarejoCombo" }
+    put:
+      operationId: updateVarejoCombo
+      summary: Update combo/look
+      tags: [Varejo]
+      parameters:
+        - { name: tenantId, in: path, required: true, schema: { type: string } }
+        - { name: comboId, in: path, required: true, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/UpdateVarejoComboBody" }
+      responses:
+        "200":
+          description: Updated
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/VarejoCombo" }
+    delete:
+      operationId: deleteVarejoCombo
+      summary: Delete combo/look
+      tags: [Varejo]
+      parameters:
+        - { name: tenantId, in: path, required: true, schema: { type: string } }
+        - { name: comboId, in: path, required: true, schema: { type: string } }
+      responses:
+        "204": { description: Deleted }
+
+  /tenants/{tenantId}/varejo/combos/{comboId}/itens:
+    get:
+      operationId: listVarejoComboItens
+      summary: List itens de combo
+      tags: [Varejo]
+      parameters:
+        - { name: tenantId, in: path, required: true, schema: { type: string } }
+        - { name: comboId, in: path, required: true, schema: { type: string } }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/VarejoComboItem" }
+    post:
+      operationId: createVarejoComboItem
+      summary: Add item ao combo
+      tags: [Varejo]
+      parameters:
+        - { name: tenantId, in: path, required: true, schema: { type: string } }
+        - { name: comboId, in: path, required: true, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CreateVarejoComboItemBody" }
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/VarejoComboItem" }
+
+  /tenants/{tenantId}/varejo/combos/{comboId}/itens/{itemId}:
+    delete:
+      operationId: deleteVarejoComboItem
+      summary: Remove item do combo
+      tags: [Varejo]
+      parameters:
+        - { name: tenantId, in: path, required: true, schema: { type: string } }
+        - { name: comboId, in: path, required: true, schema: { type: string } }
+        - { name: itemId, in: path, required: true, schema: { type: string } }
+      responses:
+        "204": { description: Deleted }
+
 components:
   schemas:
     CreateInviteBody:
@@ -10816,3 +11410,329 @@ components:
         dataPrevista: { type: string }
         dataEfetuada: { type: string }
         observacoes: { type: string }
+
+    # ── Varejo schemas ─────────────────────────────────────────────────────
+
+    VarejoColecao:
+      type: object
+      required: [id, tenantId, nome, temporada, ano, status, ativo, createdAt, updatedAt]
+      properties:
+        id: { type: string }
+        tenantId: { type: string }
+        nome: { type: string }
+        temporada: { type: string, enum: [verao, inverno, outono, primavera, especial] }
+        ano: { type: integer }
+        status: { type: string, enum: [planejamento, ativa, encerrada] }
+        descricao: { type: ["string", "null"] }
+        ativo: { type: boolean }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+
+    CreateVarejoColecaoBody:
+      type: object
+      required: [tenantId, nome, temporada, ano]
+      properties:
+        tenantId: { type: string }
+        nome: { type: string }
+        temporada: { type: string, enum: [verao, inverno, outono, primavera, especial] }
+        ano: { type: integer }
+        status: { type: string, enum: [planejamento, ativa, encerrada] }
+        descricao: { type: string }
+        ativo: { type: boolean }
+
+    UpdateVarejoColecaoBody:
+      type: object
+      properties:
+        nome: { type: string }
+        temporada: { type: string, enum: [verao, inverno, outono, primavera, especial] }
+        ano: { type: integer }
+        status: { type: string, enum: [planejamento, ativa, encerrada] }
+        descricao: { type: string }
+        ativo: { type: boolean }
+
+    VarejoFornecedor:
+      type: object
+      required: [id, tenantId, nome, ativo, createdAt, updatedAt]
+      properties:
+        id: { type: string }
+        tenantId: { type: string }
+        nome: { type: string }
+        marca: { type: ["string", "null"] }
+        contato: { type: ["string", "null"] }
+        email: { type: ["string", "null"] }
+        telefone: { type: ["string", "null"] }
+        cnpj: { type: ["string", "null"] }
+        condicoesPagamento: { type: ["string", "null"] }
+        prazoEntregaDias: { type: ["integer", "null"] }
+        observacoes: { type: ["string", "null"] }
+        ativo: { type: boolean }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+
+    CreateVarejoFornecedorBody:
+      type: object
+      required: [tenantId, nome]
+      properties:
+        tenantId: { type: string }
+        nome: { type: string }
+        marca: { type: string }
+        contato: { type: string }
+        email: { type: string }
+        telefone: { type: string }
+        cnpj: { type: string }
+        condicoesPagamento: { type: string }
+        prazoEntregaDias: { type: integer }
+        observacoes: { type: string }
+        ativo: { type: boolean }
+
+    UpdateVarejoFornecedorBody:
+      type: object
+      properties:
+        nome: { type: string }
+        marca: { type: string }
+        contato: { type: string }
+        email: { type: string }
+        telefone: { type: string }
+        cnpj: { type: string }
+        condicoesPagamento: { type: string }
+        prazoEntregaDias: { type: integer }
+        observacoes: { type: string }
+        ativo: { type: boolean }
+
+    VarejoProduto:
+      type: object
+      required: [id, tenantId, nome, precoVenda, ativo, createdAt, updatedAt]
+      properties:
+        id: { type: string }
+        tenantId: { type: string }
+        fornecedorId: { type: ["string", "null"] }
+        colecaoId: { type: ["string", "null"] }
+        nome: { type: string }
+        codigo: { type: ["string", "null"] }
+        descricao: { type: ["string", "null"] }
+        categoria: { type: ["string", "null"], enum: [camiseta, calca, vestido, short, jaqueta, blazer, saia, acessorio, calcado, bolsa, outro, null] }
+        genero: { type: ["string", "null"], enum: [masculino, feminino, unissex, infantil, null] }
+        precoCompra: { type: ["string", "null"] }
+        precoVenda: { type: string }
+        ativo: { type: boolean }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+        grades:
+          type: array
+          items: { $ref: "#/components/schemas/VarejoGrade" }
+        fornecedor: { $ref: "#/components/schemas/VarejoFornecedor" }
+        colecao: { $ref: "#/components/schemas/VarejoColecao" }
+
+    CreateVarejoProdutoBody:
+      type: object
+      required: [tenantId, nome, precoVenda]
+      properties:
+        tenantId: { type: string }
+        fornecedorId: { type: string }
+        colecaoId: { type: string }
+        nome: { type: string }
+        codigo: { type: string }
+        descricao: { type: string }
+        categoria: { type: string, enum: [camiseta, calca, vestido, short, jaqueta, blazer, saia, acessorio, calcado, bolsa, outro] }
+        genero: { type: string, enum: [masculino, feminino, unissex, infantil] }
+        precoCompra: { type: string }
+        precoVenda: { type: string }
+        ativo: { type: boolean }
+
+    UpdateVarejoProdutoBody:
+      type: object
+      properties:
+        fornecedorId: { type: string }
+        colecaoId: { type: string }
+        nome: { type: string }
+        codigo: { type: string }
+        descricao: { type: string }
+        categoria: { type: string, enum: [camiseta, calca, vestido, short, jaqueta, blazer, saia, acessorio, calcado, bolsa, outro] }
+        genero: { type: string, enum: [masculino, feminino, unissex, infantil] }
+        precoCompra: { type: string }
+        precoVenda: { type: string }
+        ativo: { type: boolean }
+
+    VarejoGrade:
+      type: object
+      required: [id, tenantId, produtoId, tamanho, cor, estoque, estoqueMinimo, createdAt, updatedAt]
+      properties:
+        id: { type: string }
+        tenantId: { type: string }
+        produtoId: { type: string }
+        tamanho: { type: string }
+        cor: { type: string }
+        estoque: { type: integer }
+        estoqueMinimo: { type: integer }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+
+    CreateVarejoGradeBody:
+      type: object
+      required: [tenantId, produtoId, tamanho, cor]
+      properties:
+        tenantId: { type: string }
+        produtoId: { type: string }
+        tamanho: { type: string }
+        cor: { type: string }
+        estoque: { type: integer }
+        estoqueMinimo: { type: integer }
+
+    UpdateVarejoGradeBody:
+      type: object
+      properties:
+        tamanho: { type: string }
+        cor: { type: string }
+        estoque: { type: integer }
+        estoqueMinimo: { type: integer }
+
+    VarejoPedidoCompra:
+      type: object
+      required: [id, tenantId, status, dataEmissao, createdAt, updatedAt]
+      properties:
+        id: { type: string }
+        tenantId: { type: string }
+        fornecedorId: { type: ["string", "null"] }
+        colecaoId: { type: ["string", "null"] }
+        status: { type: string, enum: [rascunho, enviado, confirmado, entregue, cancelado] }
+        dataEmissao: { type: string }
+        dataPrevista: { type: ["string", "null"] }
+        valorTotal: { type: ["string", "null"] }
+        observacoes: { type: ["string", "null"] }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+        fornecedor: { $ref: "#/components/schemas/VarejoFornecedor" }
+        colecao: { $ref: "#/components/schemas/VarejoColecao" }
+        itens:
+          type: array
+          items: { $ref: "#/components/schemas/VarejoPedidoCompraItem" }
+
+    CreateVarejoPedidoCompraBody:
+      type: object
+      required: [tenantId, dataEmissao]
+      properties:
+        tenantId: { type: string }
+        fornecedorId: { type: string }
+        colecaoId: { type: string }
+        status: { type: string, enum: [rascunho, enviado, confirmado, entregue, cancelado] }
+        dataEmissao: { type: string }
+        dataPrevista: { type: string }
+        valorTotal: { type: string }
+        observacoes: { type: string }
+
+    UpdateVarejoPedidoCompraBody:
+      type: object
+      properties:
+        fornecedorId: { type: string }
+        colecaoId: { type: string }
+        status: { type: string, enum: [rascunho, enviado, confirmado, entregue, cancelado] }
+        dataEmissao: { type: string }
+        dataPrevista: { type: string }
+        valorTotal: { type: string }
+        observacoes: { type: string }
+
+    VarejoPedidoCompraItem:
+      type: object
+      required: [id, pedidoId, tamanho, cor, quantidade, precoUnitario, createdAt]
+      properties:
+        id: { type: string }
+        pedidoId: { type: string }
+        produtoId: { type: ["string", "null"] }
+        tamanho: { type: string }
+        cor: { type: string }
+        quantidade: { type: integer }
+        precoUnitario: { type: string }
+        createdAt: { type: string, format: date-time }
+        produto: { $ref: "#/components/schemas/VarejoProduto" }
+
+    CreateVarejoPedidoCompraItemBody:
+      type: object
+      required: [tamanho, cor, quantidade, precoUnitario]
+      properties:
+        produtoId: { type: string }
+        tamanho: { type: string }
+        cor: { type: string }
+        quantidade: { type: integer }
+        precoUnitario: { type: string }
+
+    VarejoFidelidade:
+      type: object
+      required: [id, tenantId, leadId, pontos, totalGasto, nivel, createdAt, updatedAt]
+      properties:
+        id: { type: string }
+        tenantId: { type: string }
+        leadId: { type: string }
+        pontos: { type: integer }
+        totalGasto: { type: string }
+        nivel: { type: string, enum: [bronze, prata, ouro, diamante] }
+        ultimaCompra: { type: ["string", "null"] }
+        observacoes: { type: ["string", "null"] }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+        leadNome: { type: string }
+        leadTelefone: { type: string }
+
+    UpsertVarejoFidelidadeBody:
+      type: object
+      properties:
+        pontos: { type: integer }
+        totalGasto: { type: string }
+        nivel: { type: string, enum: [bronze, prata, ouro, diamante] }
+        ultimaCompra: { type: string }
+        observacoes: { type: string }
+
+    VarejoCombo:
+      type: object
+      required: [id, tenantId, nome, ativo, createdAt, updatedAt]
+      properties:
+        id: { type: string }
+        tenantId: { type: string }
+        nome: { type: string }
+        descricao: { type: ["string", "null"] }
+        preco: { type: ["string", "null"] }
+        ativo: { type: boolean }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+        itens:
+          type: array
+          items: { $ref: "#/components/schemas/VarejoComboItem" }
+
+    CreateVarejoComboBody:
+      type: object
+      required: [tenantId, nome]
+      properties:
+        tenantId: { type: string }
+        nome: { type: string }
+        descricao: { type: string }
+        preco: { type: string }
+        ativo: { type: boolean }
+
+    UpdateVarejoComboBody:
+      type: object
+      properties:
+        nome: { type: string }
+        descricao: { type: string }
+        preco: { type: string }
+        ativo: { type: boolean }
+
+    VarejoComboItem:
+      type: object
+      required: [id, comboId, quantidade, createdAt]
+      properties:
+        id: { type: string }
+        comboId: { type: string }
+        produtoId: { type: ["string", "null"] }
+        tamanho: { type: ["string", "null"] }
+        cor: { type: ["string", "null"] }
+        quantidade: { type: integer }
+        createdAt: { type: string, format: date-time }
+        produto: { $ref: "#/components/schemas/VarejoProduto" }
+
+    CreateVarejoComboItemBody:
+      type: object
+      required: [quantidade]
+      properties:
+        produtoId: { type: string }
+        tamanho: { type: string }
+        cor: { type: string }
+        quantidade: { type: integer }

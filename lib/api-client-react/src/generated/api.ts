@@ -80,6 +80,14 @@ import type {
   CreateTenantBody,
   CreateTenantInviteBody,
   CreateUserBody,
+  CreateVarejoColecaoBody,
+  CreateVarejoComboBody,
+  CreateVarejoComboItemBody,
+  CreateVarejoFornecedorBody,
+  CreateVarejoGradeBody,
+  CreateVarejoPedidoCompraBody,
+  CreateVarejoPedidoCompraItemBody,
+  CreateVarejoProdutoBody,
   CustomerIntelligence,
   Deal,
   DealUpdateResponse,
@@ -127,6 +135,9 @@ import type {
   ListObrasParams,
   ListPropostasParams,
   ListRulesParams,
+  ListVarejoFidelidadeParams,
+  ListVarejoPedidosCompraParams,
+  ListVarejoProdutosParams,
   LoginBody,
   Message,
   MovimentacaoEstoque,
@@ -189,10 +200,26 @@ import type {
   UpdateSubscriptionBody,
   UpdateTenantBody,
   UpdateUserBody,
+  UpdateVarejoColecaoBody,
+  UpdateVarejoComboBody,
+  UpdateVarejoFornecedorBody,
+  UpdateVarejoGradeBody,
+  UpdateVarejoPedidoCompraBody,
+  UpdateVarejoProdutoBody,
   UploadUrlRequest,
   UploadUrlResponse,
+  UpsertVarejoFidelidadeBody,
   UsageSummary,
-  User
+  User,
+  VarejoColecao,
+  VarejoCombo,
+  VarejoComboItem,
+  VarejoFidelidade,
+  VarejoFornecedor,
+  VarejoGrade,
+  VarejoPedidoCompra,
+  VarejoPedidoCompraItem,
+  VarejoProduto
 } from './api.schemas';
 
 import { customFetch } from '../custom-fetch';
@@ -16833,5 +16860,2925 @@ export const useDeleteComposicao = <TError = ErrorType<unknown>,
         TContext
       > => {
       return useMutation(getDeleteComposicaoMutationOptions(options));
+    }
+
+export const getListVarejoColecoesUrl = (tenantId: string,) => {
+
+
+
+
+  return `/api/tenants/${tenantId}/varejo/colecoes`
+}
+
+/**
+ * @summary List coleções
+ */
+export const listVarejoColecoes = async (tenantId: string, options?: RequestInit): Promise<VarejoColecao[]> => {
+
+  return customFetch<VarejoColecao[]>(getListVarejoColecoesUrl(tenantId),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getListVarejoColecoesQueryKey = (tenantId: string,) => {
+    return [
+    `/api/tenants/${tenantId}/varejo/colecoes`
+    ] as const;
+    }
+
+
+export const getListVarejoColecoesQueryOptions = <TData = Awaited<ReturnType<typeof listVarejoColecoes>>, TError = ErrorType<unknown>>(tenantId: string, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listVarejoColecoes>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getListVarejoColecoesQueryKey(tenantId);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof listVarejoColecoes>>> = ({ signal }) => listVarejoColecoes(tenantId, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, enabled: !!(tenantId), ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof listVarejoColecoes>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type ListVarejoColecoesQueryResult = NonNullable<Awaited<ReturnType<typeof listVarejoColecoes>>>
+export type ListVarejoColecoesQueryError = ErrorType<unknown>
+
+
+/**
+ * @summary List coleções
+ */
+
+export function useListVarejoColecoes<TData = Awaited<ReturnType<typeof listVarejoColecoes>>, TError = ErrorType<unknown>>(
+ tenantId: string, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listVarejoColecoes>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getListVarejoColecoesQueryOptions(tenantId,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+
+
+
+
+
+
+export const getCreateVarejoColecaoUrl = (tenantId: string,) => {
+
+
+
+
+  return `/api/tenants/${tenantId}/varejo/colecoes`
+}
+
+/**
+ * @summary Create coleção
+ */
+export const createVarejoColecao = async (tenantId: string,
+    createVarejoColecaoBody: CreateVarejoColecaoBody, options?: RequestInit): Promise<VarejoColecao> => {
+
+  return customFetch<VarejoColecao>(getCreateVarejoColecaoUrl(tenantId),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(
+      createVarejoColecaoBody,)
+  }
+);}
+
+
+
+
+export const getCreateVarejoColecaoMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createVarejoColecao>>, TError,{tenantId: string;data: BodyType<CreateVarejoColecaoBody>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof createVarejoColecao>>, TError,{tenantId: string;data: BodyType<CreateVarejoColecaoBody>}, TContext> => {
+
+const mutationKey = ['createVarejoColecao'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof createVarejoColecao>>, {tenantId: string;data: BodyType<CreateVarejoColecaoBody>}> = (props) => {
+          const {tenantId,data} = props ?? {};
+
+          return  createVarejoColecao(tenantId,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type CreateVarejoColecaoMutationResult = NonNullable<Awaited<ReturnType<typeof createVarejoColecao>>>
+    export type CreateVarejoColecaoMutationBody = BodyType<CreateVarejoColecaoBody>
+    export type CreateVarejoColecaoMutationError = ErrorType<unknown>
+
+    /**
+ * @summary Create coleção
+ */
+export const useCreateVarejoColecao = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createVarejoColecao>>, TError,{tenantId: string;data: BodyType<CreateVarejoColecaoBody>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof createVarejoColecao>>,
+        TError,
+        {tenantId: string;data: BodyType<CreateVarejoColecaoBody>},
+        TContext
+      > => {
+      return useMutation(getCreateVarejoColecaoMutationOptions(options));
+    }
+
+export const getGetVarejoColecaoUrl = (tenantId: string,
+    colecaoId: string,) => {
+
+
+
+
+  return `/api/tenants/${tenantId}/varejo/colecoes/${colecaoId}`
+}
+
+/**
+ * @summary Get coleção
+ */
+export const getVarejoColecao = async (tenantId: string,
+    colecaoId: string, options?: RequestInit): Promise<VarejoColecao> => {
+
+  return customFetch<VarejoColecao>(getGetVarejoColecaoUrl(tenantId,colecaoId),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetVarejoColecaoQueryKey = (tenantId: string,
+    colecaoId: string,) => {
+    return [
+    `/api/tenants/${tenantId}/varejo/colecoes/${colecaoId}`
+    ] as const;
+    }
+
+
+export const getGetVarejoColecaoQueryOptions = <TData = Awaited<ReturnType<typeof getVarejoColecao>>, TError = ErrorType<unknown>>(tenantId: string,
+    colecaoId: string, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getVarejoColecao>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetVarejoColecaoQueryKey(tenantId,colecaoId);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getVarejoColecao>>> = ({ signal }) => getVarejoColecao(tenantId,colecaoId, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, enabled: !!(tenantId && colecaoId), ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getVarejoColecao>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetVarejoColecaoQueryResult = NonNullable<Awaited<ReturnType<typeof getVarejoColecao>>>
+export type GetVarejoColecaoQueryError = ErrorType<unknown>
+
+
+/**
+ * @summary Get coleção
+ */
+
+export function useGetVarejoColecao<TData = Awaited<ReturnType<typeof getVarejoColecao>>, TError = ErrorType<unknown>>(
+ tenantId: string,
+    colecaoId: string, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getVarejoColecao>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetVarejoColecaoQueryOptions(tenantId,colecaoId,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+
+
+
+
+
+
+export const getUpdateVarejoColecaoUrl = (tenantId: string,
+    colecaoId: string,) => {
+
+
+
+
+  return `/api/tenants/${tenantId}/varejo/colecoes/${colecaoId}`
+}
+
+/**
+ * @summary Update coleção
+ */
+export const updateVarejoColecao = async (tenantId: string,
+    colecaoId: string,
+    updateVarejoColecaoBody: UpdateVarejoColecaoBody, options?: RequestInit): Promise<VarejoColecao> => {
+
+  return customFetch<VarejoColecao>(getUpdateVarejoColecaoUrl(tenantId,colecaoId),
+  {
+    ...options,
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(
+      updateVarejoColecaoBody,)
+  }
+);}
+
+
+
+
+export const getUpdateVarejoColecaoMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updateVarejoColecao>>, TError,{tenantId: string;colecaoId: string;data: BodyType<UpdateVarejoColecaoBody>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof updateVarejoColecao>>, TError,{tenantId: string;colecaoId: string;data: BodyType<UpdateVarejoColecaoBody>}, TContext> => {
+
+const mutationKey = ['updateVarejoColecao'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof updateVarejoColecao>>, {tenantId: string;colecaoId: string;data: BodyType<UpdateVarejoColecaoBody>}> = (props) => {
+          const {tenantId,colecaoId,data} = props ?? {};
+
+          return  updateVarejoColecao(tenantId,colecaoId,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type UpdateVarejoColecaoMutationResult = NonNullable<Awaited<ReturnType<typeof updateVarejoColecao>>>
+    export type UpdateVarejoColecaoMutationBody = BodyType<UpdateVarejoColecaoBody>
+    export type UpdateVarejoColecaoMutationError = ErrorType<unknown>
+
+    /**
+ * @summary Update coleção
+ */
+export const useUpdateVarejoColecao = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updateVarejoColecao>>, TError,{tenantId: string;colecaoId: string;data: BodyType<UpdateVarejoColecaoBody>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof updateVarejoColecao>>,
+        TError,
+        {tenantId: string;colecaoId: string;data: BodyType<UpdateVarejoColecaoBody>},
+        TContext
+      > => {
+      return useMutation(getUpdateVarejoColecaoMutationOptions(options));
+    }
+
+export const getDeleteVarejoColecaoUrl = (tenantId: string,
+    colecaoId: string,) => {
+
+
+
+
+  return `/api/tenants/${tenantId}/varejo/colecoes/${colecaoId}`
+}
+
+/**
+ * @summary Delete coleção
+ */
+export const deleteVarejoColecao = async (tenantId: string,
+    colecaoId: string, options?: RequestInit): Promise<void> => {
+
+  return customFetch<void>(getDeleteVarejoColecaoUrl(tenantId,colecaoId),
+  {
+    ...options,
+    method: 'DELETE'
+
+
+  }
+);}
+
+
+
+
+export const getDeleteVarejoColecaoMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof deleteVarejoColecao>>, TError,{tenantId: string;colecaoId: string}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof deleteVarejoColecao>>, TError,{tenantId: string;colecaoId: string}, TContext> => {
+
+const mutationKey = ['deleteVarejoColecao'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof deleteVarejoColecao>>, {tenantId: string;colecaoId: string}> = (props) => {
+          const {tenantId,colecaoId} = props ?? {};
+
+          return  deleteVarejoColecao(tenantId,colecaoId,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type DeleteVarejoColecaoMutationResult = NonNullable<Awaited<ReturnType<typeof deleteVarejoColecao>>>
+
+    export type DeleteVarejoColecaoMutationError = ErrorType<unknown>
+
+    /**
+ * @summary Delete coleção
+ */
+export const useDeleteVarejoColecao = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof deleteVarejoColecao>>, TError,{tenantId: string;colecaoId: string}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof deleteVarejoColecao>>,
+        TError,
+        {tenantId: string;colecaoId: string},
+        TContext
+      > => {
+      return useMutation(getDeleteVarejoColecaoMutationOptions(options));
+    }
+
+export const getListVarejoFornecedoresUrl = (tenantId: string,) => {
+
+
+
+
+  return `/api/tenants/${tenantId}/varejo/fornecedores`
+}
+
+/**
+ * @summary List fornecedores
+ */
+export const listVarejoFornecedores = async (tenantId: string, options?: RequestInit): Promise<VarejoFornecedor[]> => {
+
+  return customFetch<VarejoFornecedor[]>(getListVarejoFornecedoresUrl(tenantId),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getListVarejoFornecedoresQueryKey = (tenantId: string,) => {
+    return [
+    `/api/tenants/${tenantId}/varejo/fornecedores`
+    ] as const;
+    }
+
+
+export const getListVarejoFornecedoresQueryOptions = <TData = Awaited<ReturnType<typeof listVarejoFornecedores>>, TError = ErrorType<unknown>>(tenantId: string, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listVarejoFornecedores>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getListVarejoFornecedoresQueryKey(tenantId);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof listVarejoFornecedores>>> = ({ signal }) => listVarejoFornecedores(tenantId, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, enabled: !!(tenantId), ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof listVarejoFornecedores>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type ListVarejoFornecedoresQueryResult = NonNullable<Awaited<ReturnType<typeof listVarejoFornecedores>>>
+export type ListVarejoFornecedoresQueryError = ErrorType<unknown>
+
+
+/**
+ * @summary List fornecedores
+ */
+
+export function useListVarejoFornecedores<TData = Awaited<ReturnType<typeof listVarejoFornecedores>>, TError = ErrorType<unknown>>(
+ tenantId: string, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listVarejoFornecedores>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getListVarejoFornecedoresQueryOptions(tenantId,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+
+
+
+
+
+
+export const getCreateVarejoFornecedorUrl = (tenantId: string,) => {
+
+
+
+
+  return `/api/tenants/${tenantId}/varejo/fornecedores`
+}
+
+/**
+ * @summary Create fornecedor
+ */
+export const createVarejoFornecedor = async (tenantId: string,
+    createVarejoFornecedorBody: CreateVarejoFornecedorBody, options?: RequestInit): Promise<VarejoFornecedor> => {
+
+  return customFetch<VarejoFornecedor>(getCreateVarejoFornecedorUrl(tenantId),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(
+      createVarejoFornecedorBody,)
+  }
+);}
+
+
+
+
+export const getCreateVarejoFornecedorMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createVarejoFornecedor>>, TError,{tenantId: string;data: BodyType<CreateVarejoFornecedorBody>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof createVarejoFornecedor>>, TError,{tenantId: string;data: BodyType<CreateVarejoFornecedorBody>}, TContext> => {
+
+const mutationKey = ['createVarejoFornecedor'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof createVarejoFornecedor>>, {tenantId: string;data: BodyType<CreateVarejoFornecedorBody>}> = (props) => {
+          const {tenantId,data} = props ?? {};
+
+          return  createVarejoFornecedor(tenantId,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type CreateVarejoFornecedorMutationResult = NonNullable<Awaited<ReturnType<typeof createVarejoFornecedor>>>
+    export type CreateVarejoFornecedorMutationBody = BodyType<CreateVarejoFornecedorBody>
+    export type CreateVarejoFornecedorMutationError = ErrorType<unknown>
+
+    /**
+ * @summary Create fornecedor
+ */
+export const useCreateVarejoFornecedor = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createVarejoFornecedor>>, TError,{tenantId: string;data: BodyType<CreateVarejoFornecedorBody>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof createVarejoFornecedor>>,
+        TError,
+        {tenantId: string;data: BodyType<CreateVarejoFornecedorBody>},
+        TContext
+      > => {
+      return useMutation(getCreateVarejoFornecedorMutationOptions(options));
+    }
+
+export const getGetVarejoFornecedorUrl = (tenantId: string,
+    fornecedorId: string,) => {
+
+
+
+
+  return `/api/tenants/${tenantId}/varejo/fornecedores/${fornecedorId}`
+}
+
+/**
+ * @summary Get fornecedor
+ */
+export const getVarejoFornecedor = async (tenantId: string,
+    fornecedorId: string, options?: RequestInit): Promise<VarejoFornecedor> => {
+
+  return customFetch<VarejoFornecedor>(getGetVarejoFornecedorUrl(tenantId,fornecedorId),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetVarejoFornecedorQueryKey = (tenantId: string,
+    fornecedorId: string,) => {
+    return [
+    `/api/tenants/${tenantId}/varejo/fornecedores/${fornecedorId}`
+    ] as const;
+    }
+
+
+export const getGetVarejoFornecedorQueryOptions = <TData = Awaited<ReturnType<typeof getVarejoFornecedor>>, TError = ErrorType<unknown>>(tenantId: string,
+    fornecedorId: string, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getVarejoFornecedor>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetVarejoFornecedorQueryKey(tenantId,fornecedorId);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getVarejoFornecedor>>> = ({ signal }) => getVarejoFornecedor(tenantId,fornecedorId, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, enabled: !!(tenantId && fornecedorId), ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getVarejoFornecedor>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetVarejoFornecedorQueryResult = NonNullable<Awaited<ReturnType<typeof getVarejoFornecedor>>>
+export type GetVarejoFornecedorQueryError = ErrorType<unknown>
+
+
+/**
+ * @summary Get fornecedor
+ */
+
+export function useGetVarejoFornecedor<TData = Awaited<ReturnType<typeof getVarejoFornecedor>>, TError = ErrorType<unknown>>(
+ tenantId: string,
+    fornecedorId: string, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getVarejoFornecedor>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetVarejoFornecedorQueryOptions(tenantId,fornecedorId,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+
+
+
+
+
+
+export const getUpdateVarejoFornecedorUrl = (tenantId: string,
+    fornecedorId: string,) => {
+
+
+
+
+  return `/api/tenants/${tenantId}/varejo/fornecedores/${fornecedorId}`
+}
+
+/**
+ * @summary Update fornecedor
+ */
+export const updateVarejoFornecedor = async (tenantId: string,
+    fornecedorId: string,
+    updateVarejoFornecedorBody: UpdateVarejoFornecedorBody, options?: RequestInit): Promise<VarejoFornecedor> => {
+
+  return customFetch<VarejoFornecedor>(getUpdateVarejoFornecedorUrl(tenantId,fornecedorId),
+  {
+    ...options,
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(
+      updateVarejoFornecedorBody,)
+  }
+);}
+
+
+
+
+export const getUpdateVarejoFornecedorMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updateVarejoFornecedor>>, TError,{tenantId: string;fornecedorId: string;data: BodyType<UpdateVarejoFornecedorBody>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof updateVarejoFornecedor>>, TError,{tenantId: string;fornecedorId: string;data: BodyType<UpdateVarejoFornecedorBody>}, TContext> => {
+
+const mutationKey = ['updateVarejoFornecedor'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof updateVarejoFornecedor>>, {tenantId: string;fornecedorId: string;data: BodyType<UpdateVarejoFornecedorBody>}> = (props) => {
+          const {tenantId,fornecedorId,data} = props ?? {};
+
+          return  updateVarejoFornecedor(tenantId,fornecedorId,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type UpdateVarejoFornecedorMutationResult = NonNullable<Awaited<ReturnType<typeof updateVarejoFornecedor>>>
+    export type UpdateVarejoFornecedorMutationBody = BodyType<UpdateVarejoFornecedorBody>
+    export type UpdateVarejoFornecedorMutationError = ErrorType<unknown>
+
+    /**
+ * @summary Update fornecedor
+ */
+export const useUpdateVarejoFornecedor = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updateVarejoFornecedor>>, TError,{tenantId: string;fornecedorId: string;data: BodyType<UpdateVarejoFornecedorBody>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof updateVarejoFornecedor>>,
+        TError,
+        {tenantId: string;fornecedorId: string;data: BodyType<UpdateVarejoFornecedorBody>},
+        TContext
+      > => {
+      return useMutation(getUpdateVarejoFornecedorMutationOptions(options));
+    }
+
+export const getDeleteVarejoFornecedorUrl = (tenantId: string,
+    fornecedorId: string,) => {
+
+
+
+
+  return `/api/tenants/${tenantId}/varejo/fornecedores/${fornecedorId}`
+}
+
+/**
+ * @summary Delete fornecedor
+ */
+export const deleteVarejoFornecedor = async (tenantId: string,
+    fornecedorId: string, options?: RequestInit): Promise<void> => {
+
+  return customFetch<void>(getDeleteVarejoFornecedorUrl(tenantId,fornecedorId),
+  {
+    ...options,
+    method: 'DELETE'
+
+
+  }
+);}
+
+
+
+
+export const getDeleteVarejoFornecedorMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof deleteVarejoFornecedor>>, TError,{tenantId: string;fornecedorId: string}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof deleteVarejoFornecedor>>, TError,{tenantId: string;fornecedorId: string}, TContext> => {
+
+const mutationKey = ['deleteVarejoFornecedor'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof deleteVarejoFornecedor>>, {tenantId: string;fornecedorId: string}> = (props) => {
+          const {tenantId,fornecedorId} = props ?? {};
+
+          return  deleteVarejoFornecedor(tenantId,fornecedorId,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type DeleteVarejoFornecedorMutationResult = NonNullable<Awaited<ReturnType<typeof deleteVarejoFornecedor>>>
+
+    export type DeleteVarejoFornecedorMutationError = ErrorType<unknown>
+
+    /**
+ * @summary Delete fornecedor
+ */
+export const useDeleteVarejoFornecedor = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof deleteVarejoFornecedor>>, TError,{tenantId: string;fornecedorId: string}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof deleteVarejoFornecedor>>,
+        TError,
+        {tenantId: string;fornecedorId: string},
+        TContext
+      > => {
+      return useMutation(getDeleteVarejoFornecedorMutationOptions(options));
+    }
+
+export const getListVarejoProdutosUrl = (tenantId: string,
+    params?: ListVarejoProdutosParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : value.toString())
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/api/tenants/${tenantId}/varejo/produtos?${stringifiedParams}` : `/api/tenants/${tenantId}/varejo/produtos`
+}
+
+/**
+ * @summary List produtos
+ */
+export const listVarejoProdutos = async (tenantId: string,
+    params?: ListVarejoProdutosParams, options?: RequestInit): Promise<VarejoProduto[]> => {
+
+  return customFetch<VarejoProduto[]>(getListVarejoProdutosUrl(tenantId,params),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getListVarejoProdutosQueryKey = (tenantId: string,
+    params?: ListVarejoProdutosParams,) => {
+    return [
+    `/api/tenants/${tenantId}/varejo/produtos`, ...(params ? [params] : [])
+    ] as const;
+    }
+
+
+export const getListVarejoProdutosQueryOptions = <TData = Awaited<ReturnType<typeof listVarejoProdutos>>, TError = ErrorType<unknown>>(tenantId: string,
+    params?: ListVarejoProdutosParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listVarejoProdutos>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getListVarejoProdutosQueryKey(tenantId,params);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof listVarejoProdutos>>> = ({ signal }) => listVarejoProdutos(tenantId,params, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, enabled: !!(tenantId), ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof listVarejoProdutos>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type ListVarejoProdutosQueryResult = NonNullable<Awaited<ReturnType<typeof listVarejoProdutos>>>
+export type ListVarejoProdutosQueryError = ErrorType<unknown>
+
+
+/**
+ * @summary List produtos
+ */
+
+export function useListVarejoProdutos<TData = Awaited<ReturnType<typeof listVarejoProdutos>>, TError = ErrorType<unknown>>(
+ tenantId: string,
+    params?: ListVarejoProdutosParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listVarejoProdutos>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getListVarejoProdutosQueryOptions(tenantId,params,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+
+
+
+
+
+
+export const getCreateVarejoProdutoUrl = (tenantId: string,) => {
+
+
+
+
+  return `/api/tenants/${tenantId}/varejo/produtos`
+}
+
+/**
+ * @summary Create produto
+ */
+export const createVarejoProduto = async (tenantId: string,
+    createVarejoProdutoBody: CreateVarejoProdutoBody, options?: RequestInit): Promise<VarejoProduto> => {
+
+  return customFetch<VarejoProduto>(getCreateVarejoProdutoUrl(tenantId),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(
+      createVarejoProdutoBody,)
+  }
+);}
+
+
+
+
+export const getCreateVarejoProdutoMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createVarejoProduto>>, TError,{tenantId: string;data: BodyType<CreateVarejoProdutoBody>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof createVarejoProduto>>, TError,{tenantId: string;data: BodyType<CreateVarejoProdutoBody>}, TContext> => {
+
+const mutationKey = ['createVarejoProduto'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof createVarejoProduto>>, {tenantId: string;data: BodyType<CreateVarejoProdutoBody>}> = (props) => {
+          const {tenantId,data} = props ?? {};
+
+          return  createVarejoProduto(tenantId,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type CreateVarejoProdutoMutationResult = NonNullable<Awaited<ReturnType<typeof createVarejoProduto>>>
+    export type CreateVarejoProdutoMutationBody = BodyType<CreateVarejoProdutoBody>
+    export type CreateVarejoProdutoMutationError = ErrorType<unknown>
+
+    /**
+ * @summary Create produto
+ */
+export const useCreateVarejoProduto = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createVarejoProduto>>, TError,{tenantId: string;data: BodyType<CreateVarejoProdutoBody>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof createVarejoProduto>>,
+        TError,
+        {tenantId: string;data: BodyType<CreateVarejoProdutoBody>},
+        TContext
+      > => {
+      return useMutation(getCreateVarejoProdutoMutationOptions(options));
+    }
+
+export const getGetVarejoProdutoUrl = (tenantId: string,
+    produtoId: string,) => {
+
+
+
+
+  return `/api/tenants/${tenantId}/varejo/produtos/${produtoId}`
+}
+
+/**
+ * @summary Get produto
+ */
+export const getVarejoProduto = async (tenantId: string,
+    produtoId: string, options?: RequestInit): Promise<VarejoProduto> => {
+
+  return customFetch<VarejoProduto>(getGetVarejoProdutoUrl(tenantId,produtoId),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetVarejoProdutoQueryKey = (tenantId: string,
+    produtoId: string,) => {
+    return [
+    `/api/tenants/${tenantId}/varejo/produtos/${produtoId}`
+    ] as const;
+    }
+
+
+export const getGetVarejoProdutoQueryOptions = <TData = Awaited<ReturnType<typeof getVarejoProduto>>, TError = ErrorType<unknown>>(tenantId: string,
+    produtoId: string, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getVarejoProduto>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetVarejoProdutoQueryKey(tenantId,produtoId);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getVarejoProduto>>> = ({ signal }) => getVarejoProduto(tenantId,produtoId, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, enabled: !!(tenantId && produtoId), ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getVarejoProduto>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetVarejoProdutoQueryResult = NonNullable<Awaited<ReturnType<typeof getVarejoProduto>>>
+export type GetVarejoProdutoQueryError = ErrorType<unknown>
+
+
+/**
+ * @summary Get produto
+ */
+
+export function useGetVarejoProduto<TData = Awaited<ReturnType<typeof getVarejoProduto>>, TError = ErrorType<unknown>>(
+ tenantId: string,
+    produtoId: string, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getVarejoProduto>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetVarejoProdutoQueryOptions(tenantId,produtoId,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+
+
+
+
+
+
+export const getUpdateVarejoProdutoUrl = (tenantId: string,
+    produtoId: string,) => {
+
+
+
+
+  return `/api/tenants/${tenantId}/varejo/produtos/${produtoId}`
+}
+
+/**
+ * @summary Update produto
+ */
+export const updateVarejoProduto = async (tenantId: string,
+    produtoId: string,
+    updateVarejoProdutoBody: UpdateVarejoProdutoBody, options?: RequestInit): Promise<VarejoProduto> => {
+
+  return customFetch<VarejoProduto>(getUpdateVarejoProdutoUrl(tenantId,produtoId),
+  {
+    ...options,
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(
+      updateVarejoProdutoBody,)
+  }
+);}
+
+
+
+
+export const getUpdateVarejoProdutoMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updateVarejoProduto>>, TError,{tenantId: string;produtoId: string;data: BodyType<UpdateVarejoProdutoBody>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof updateVarejoProduto>>, TError,{tenantId: string;produtoId: string;data: BodyType<UpdateVarejoProdutoBody>}, TContext> => {
+
+const mutationKey = ['updateVarejoProduto'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof updateVarejoProduto>>, {tenantId: string;produtoId: string;data: BodyType<UpdateVarejoProdutoBody>}> = (props) => {
+          const {tenantId,produtoId,data} = props ?? {};
+
+          return  updateVarejoProduto(tenantId,produtoId,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type UpdateVarejoProdutoMutationResult = NonNullable<Awaited<ReturnType<typeof updateVarejoProduto>>>
+    export type UpdateVarejoProdutoMutationBody = BodyType<UpdateVarejoProdutoBody>
+    export type UpdateVarejoProdutoMutationError = ErrorType<unknown>
+
+    /**
+ * @summary Update produto
+ */
+export const useUpdateVarejoProduto = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updateVarejoProduto>>, TError,{tenantId: string;produtoId: string;data: BodyType<UpdateVarejoProdutoBody>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof updateVarejoProduto>>,
+        TError,
+        {tenantId: string;produtoId: string;data: BodyType<UpdateVarejoProdutoBody>},
+        TContext
+      > => {
+      return useMutation(getUpdateVarejoProdutoMutationOptions(options));
+    }
+
+export const getDeleteVarejoProdutoUrl = (tenantId: string,
+    produtoId: string,) => {
+
+
+
+
+  return `/api/tenants/${tenantId}/varejo/produtos/${produtoId}`
+}
+
+/**
+ * @summary Delete produto
+ */
+export const deleteVarejoProduto = async (tenantId: string,
+    produtoId: string, options?: RequestInit): Promise<void> => {
+
+  return customFetch<void>(getDeleteVarejoProdutoUrl(tenantId,produtoId),
+  {
+    ...options,
+    method: 'DELETE'
+
+
+  }
+);}
+
+
+
+
+export const getDeleteVarejoProdutoMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof deleteVarejoProduto>>, TError,{tenantId: string;produtoId: string}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof deleteVarejoProduto>>, TError,{tenantId: string;produtoId: string}, TContext> => {
+
+const mutationKey = ['deleteVarejoProduto'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof deleteVarejoProduto>>, {tenantId: string;produtoId: string}> = (props) => {
+          const {tenantId,produtoId} = props ?? {};
+
+          return  deleteVarejoProduto(tenantId,produtoId,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type DeleteVarejoProdutoMutationResult = NonNullable<Awaited<ReturnType<typeof deleteVarejoProduto>>>
+
+    export type DeleteVarejoProdutoMutationError = ErrorType<unknown>
+
+    /**
+ * @summary Delete produto
+ */
+export const useDeleteVarejoProduto = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof deleteVarejoProduto>>, TError,{tenantId: string;produtoId: string}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof deleteVarejoProduto>>,
+        TError,
+        {tenantId: string;produtoId: string},
+        TContext
+      > => {
+      return useMutation(getDeleteVarejoProdutoMutationOptions(options));
+    }
+
+export const getListVarejoGradesUrl = (tenantId: string,
+    produtoId: string,) => {
+
+
+
+
+  return `/api/tenants/${tenantId}/varejo/produtos/${produtoId}/grades`
+}
+
+/**
+ * @summary List grades de um produto
+ */
+export const listVarejoGrades = async (tenantId: string,
+    produtoId: string, options?: RequestInit): Promise<VarejoGrade[]> => {
+
+  return customFetch<VarejoGrade[]>(getListVarejoGradesUrl(tenantId,produtoId),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getListVarejoGradesQueryKey = (tenantId: string,
+    produtoId: string,) => {
+    return [
+    `/api/tenants/${tenantId}/varejo/produtos/${produtoId}/grades`
+    ] as const;
+    }
+
+
+export const getListVarejoGradesQueryOptions = <TData = Awaited<ReturnType<typeof listVarejoGrades>>, TError = ErrorType<unknown>>(tenantId: string,
+    produtoId: string, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listVarejoGrades>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getListVarejoGradesQueryKey(tenantId,produtoId);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof listVarejoGrades>>> = ({ signal }) => listVarejoGrades(tenantId,produtoId, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, enabled: !!(tenantId && produtoId), ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof listVarejoGrades>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type ListVarejoGradesQueryResult = NonNullable<Awaited<ReturnType<typeof listVarejoGrades>>>
+export type ListVarejoGradesQueryError = ErrorType<unknown>
+
+
+/**
+ * @summary List grades de um produto
+ */
+
+export function useListVarejoGrades<TData = Awaited<ReturnType<typeof listVarejoGrades>>, TError = ErrorType<unknown>>(
+ tenantId: string,
+    produtoId: string, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listVarejoGrades>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getListVarejoGradesQueryOptions(tenantId,produtoId,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+
+
+
+
+
+
+export const getCreateVarejoGradeUrl = (tenantId: string,
+    produtoId: string,) => {
+
+
+
+
+  return `/api/tenants/${tenantId}/varejo/produtos/${produtoId}/grades`
+}
+
+/**
+ * @summary Create grade entry
+ */
+export const createVarejoGrade = async (tenantId: string,
+    produtoId: string,
+    createVarejoGradeBody: CreateVarejoGradeBody, options?: RequestInit): Promise<VarejoGrade> => {
+
+  return customFetch<VarejoGrade>(getCreateVarejoGradeUrl(tenantId,produtoId),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(
+      createVarejoGradeBody,)
+  }
+);}
+
+
+
+
+export const getCreateVarejoGradeMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createVarejoGrade>>, TError,{tenantId: string;produtoId: string;data: BodyType<CreateVarejoGradeBody>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof createVarejoGrade>>, TError,{tenantId: string;produtoId: string;data: BodyType<CreateVarejoGradeBody>}, TContext> => {
+
+const mutationKey = ['createVarejoGrade'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof createVarejoGrade>>, {tenantId: string;produtoId: string;data: BodyType<CreateVarejoGradeBody>}> = (props) => {
+          const {tenantId,produtoId,data} = props ?? {};
+
+          return  createVarejoGrade(tenantId,produtoId,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type CreateVarejoGradeMutationResult = NonNullable<Awaited<ReturnType<typeof createVarejoGrade>>>
+    export type CreateVarejoGradeMutationBody = BodyType<CreateVarejoGradeBody>
+    export type CreateVarejoGradeMutationError = ErrorType<unknown>
+
+    /**
+ * @summary Create grade entry
+ */
+export const useCreateVarejoGrade = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createVarejoGrade>>, TError,{tenantId: string;produtoId: string;data: BodyType<CreateVarejoGradeBody>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof createVarejoGrade>>,
+        TError,
+        {tenantId: string;produtoId: string;data: BodyType<CreateVarejoGradeBody>},
+        TContext
+      > => {
+      return useMutation(getCreateVarejoGradeMutationOptions(options));
+    }
+
+export const getUpdateVarejoGradeUrl = (tenantId: string,
+    produtoId: string,
+    gradeId: string,) => {
+
+
+
+
+  return `/api/tenants/${tenantId}/varejo/produtos/${produtoId}/grades/${gradeId}`
+}
+
+/**
+ * @summary Update grade entry
+ */
+export const updateVarejoGrade = async (tenantId: string,
+    produtoId: string,
+    gradeId: string,
+    updateVarejoGradeBody: UpdateVarejoGradeBody, options?: RequestInit): Promise<VarejoGrade> => {
+
+  return customFetch<VarejoGrade>(getUpdateVarejoGradeUrl(tenantId,produtoId,gradeId),
+  {
+    ...options,
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(
+      updateVarejoGradeBody,)
+  }
+);}
+
+
+
+
+export const getUpdateVarejoGradeMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updateVarejoGrade>>, TError,{tenantId: string;produtoId: string;gradeId: string;data: BodyType<UpdateVarejoGradeBody>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof updateVarejoGrade>>, TError,{tenantId: string;produtoId: string;gradeId: string;data: BodyType<UpdateVarejoGradeBody>}, TContext> => {
+
+const mutationKey = ['updateVarejoGrade'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof updateVarejoGrade>>, {tenantId: string;produtoId: string;gradeId: string;data: BodyType<UpdateVarejoGradeBody>}> = (props) => {
+          const {tenantId,produtoId,gradeId,data} = props ?? {};
+
+          return  updateVarejoGrade(tenantId,produtoId,gradeId,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type UpdateVarejoGradeMutationResult = NonNullable<Awaited<ReturnType<typeof updateVarejoGrade>>>
+    export type UpdateVarejoGradeMutationBody = BodyType<UpdateVarejoGradeBody>
+    export type UpdateVarejoGradeMutationError = ErrorType<unknown>
+
+    /**
+ * @summary Update grade entry
+ */
+export const useUpdateVarejoGrade = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updateVarejoGrade>>, TError,{tenantId: string;produtoId: string;gradeId: string;data: BodyType<UpdateVarejoGradeBody>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof updateVarejoGrade>>,
+        TError,
+        {tenantId: string;produtoId: string;gradeId: string;data: BodyType<UpdateVarejoGradeBody>},
+        TContext
+      > => {
+      return useMutation(getUpdateVarejoGradeMutationOptions(options));
+    }
+
+export const getDeleteVarejoGradeUrl = (tenantId: string,
+    produtoId: string,
+    gradeId: string,) => {
+
+
+
+
+  return `/api/tenants/${tenantId}/varejo/produtos/${produtoId}/grades/${gradeId}`
+}
+
+/**
+ * @summary Delete grade entry
+ */
+export const deleteVarejoGrade = async (tenantId: string,
+    produtoId: string,
+    gradeId: string, options?: RequestInit): Promise<void> => {
+
+  return customFetch<void>(getDeleteVarejoGradeUrl(tenantId,produtoId,gradeId),
+  {
+    ...options,
+    method: 'DELETE'
+
+
+  }
+);}
+
+
+
+
+export const getDeleteVarejoGradeMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof deleteVarejoGrade>>, TError,{tenantId: string;produtoId: string;gradeId: string}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof deleteVarejoGrade>>, TError,{tenantId: string;produtoId: string;gradeId: string}, TContext> => {
+
+const mutationKey = ['deleteVarejoGrade'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof deleteVarejoGrade>>, {tenantId: string;produtoId: string;gradeId: string}> = (props) => {
+          const {tenantId,produtoId,gradeId} = props ?? {};
+
+          return  deleteVarejoGrade(tenantId,produtoId,gradeId,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type DeleteVarejoGradeMutationResult = NonNullable<Awaited<ReturnType<typeof deleteVarejoGrade>>>
+
+    export type DeleteVarejoGradeMutationError = ErrorType<unknown>
+
+    /**
+ * @summary Delete grade entry
+ */
+export const useDeleteVarejoGrade = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof deleteVarejoGrade>>, TError,{tenantId: string;produtoId: string;gradeId: string}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof deleteVarejoGrade>>,
+        TError,
+        {tenantId: string;produtoId: string;gradeId: string},
+        TContext
+      > => {
+      return useMutation(getDeleteVarejoGradeMutationOptions(options));
+    }
+
+export const getListVarejoPedidosCompraUrl = (tenantId: string,
+    params?: ListVarejoPedidosCompraParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : value.toString())
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/api/tenants/${tenantId}/varejo/pedidos-compra?${stringifiedParams}` : `/api/tenants/${tenantId}/varejo/pedidos-compra`
+}
+
+/**
+ * @summary List pedidos de compra
+ */
+export const listVarejoPedidosCompra = async (tenantId: string,
+    params?: ListVarejoPedidosCompraParams, options?: RequestInit): Promise<VarejoPedidoCompra[]> => {
+
+  return customFetch<VarejoPedidoCompra[]>(getListVarejoPedidosCompraUrl(tenantId,params),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getListVarejoPedidosCompraQueryKey = (tenantId: string,
+    params?: ListVarejoPedidosCompraParams,) => {
+    return [
+    `/api/tenants/${tenantId}/varejo/pedidos-compra`, ...(params ? [params] : [])
+    ] as const;
+    }
+
+
+export const getListVarejoPedidosCompraQueryOptions = <TData = Awaited<ReturnType<typeof listVarejoPedidosCompra>>, TError = ErrorType<unknown>>(tenantId: string,
+    params?: ListVarejoPedidosCompraParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listVarejoPedidosCompra>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getListVarejoPedidosCompraQueryKey(tenantId,params);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof listVarejoPedidosCompra>>> = ({ signal }) => listVarejoPedidosCompra(tenantId,params, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, enabled: !!(tenantId), ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof listVarejoPedidosCompra>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type ListVarejoPedidosCompraQueryResult = NonNullable<Awaited<ReturnType<typeof listVarejoPedidosCompra>>>
+export type ListVarejoPedidosCompraQueryError = ErrorType<unknown>
+
+
+/**
+ * @summary List pedidos de compra
+ */
+
+export function useListVarejoPedidosCompra<TData = Awaited<ReturnType<typeof listVarejoPedidosCompra>>, TError = ErrorType<unknown>>(
+ tenantId: string,
+    params?: ListVarejoPedidosCompraParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listVarejoPedidosCompra>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getListVarejoPedidosCompraQueryOptions(tenantId,params,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+
+
+
+
+
+
+export const getCreateVarejoPedidoCompraUrl = (tenantId: string,) => {
+
+
+
+
+  return `/api/tenants/${tenantId}/varejo/pedidos-compra`
+}
+
+/**
+ * @summary Create pedido de compra
+ */
+export const createVarejoPedidoCompra = async (tenantId: string,
+    createVarejoPedidoCompraBody: CreateVarejoPedidoCompraBody, options?: RequestInit): Promise<VarejoPedidoCompra> => {
+
+  return customFetch<VarejoPedidoCompra>(getCreateVarejoPedidoCompraUrl(tenantId),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(
+      createVarejoPedidoCompraBody,)
+  }
+);}
+
+
+
+
+export const getCreateVarejoPedidoCompraMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createVarejoPedidoCompra>>, TError,{tenantId: string;data: BodyType<CreateVarejoPedidoCompraBody>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof createVarejoPedidoCompra>>, TError,{tenantId: string;data: BodyType<CreateVarejoPedidoCompraBody>}, TContext> => {
+
+const mutationKey = ['createVarejoPedidoCompra'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof createVarejoPedidoCompra>>, {tenantId: string;data: BodyType<CreateVarejoPedidoCompraBody>}> = (props) => {
+          const {tenantId,data} = props ?? {};
+
+          return  createVarejoPedidoCompra(tenantId,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type CreateVarejoPedidoCompraMutationResult = NonNullable<Awaited<ReturnType<typeof createVarejoPedidoCompra>>>
+    export type CreateVarejoPedidoCompraMutationBody = BodyType<CreateVarejoPedidoCompraBody>
+    export type CreateVarejoPedidoCompraMutationError = ErrorType<unknown>
+
+    /**
+ * @summary Create pedido de compra
+ */
+export const useCreateVarejoPedidoCompra = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createVarejoPedidoCompra>>, TError,{tenantId: string;data: BodyType<CreateVarejoPedidoCompraBody>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof createVarejoPedidoCompra>>,
+        TError,
+        {tenantId: string;data: BodyType<CreateVarejoPedidoCompraBody>},
+        TContext
+      > => {
+      return useMutation(getCreateVarejoPedidoCompraMutationOptions(options));
+    }
+
+export const getGetVarejoPedidoCompraUrl = (tenantId: string,
+    pedidoId: string,) => {
+
+
+
+
+  return `/api/tenants/${tenantId}/varejo/pedidos-compra/${pedidoId}`
+}
+
+/**
+ * @summary Get pedido de compra
+ */
+export const getVarejoPedidoCompra = async (tenantId: string,
+    pedidoId: string, options?: RequestInit): Promise<VarejoPedidoCompra> => {
+
+  return customFetch<VarejoPedidoCompra>(getGetVarejoPedidoCompraUrl(tenantId,pedidoId),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetVarejoPedidoCompraQueryKey = (tenantId: string,
+    pedidoId: string,) => {
+    return [
+    `/api/tenants/${tenantId}/varejo/pedidos-compra/${pedidoId}`
+    ] as const;
+    }
+
+
+export const getGetVarejoPedidoCompraQueryOptions = <TData = Awaited<ReturnType<typeof getVarejoPedidoCompra>>, TError = ErrorType<unknown>>(tenantId: string,
+    pedidoId: string, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getVarejoPedidoCompra>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetVarejoPedidoCompraQueryKey(tenantId,pedidoId);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getVarejoPedidoCompra>>> = ({ signal }) => getVarejoPedidoCompra(tenantId,pedidoId, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, enabled: !!(tenantId && pedidoId), ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getVarejoPedidoCompra>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetVarejoPedidoCompraQueryResult = NonNullable<Awaited<ReturnType<typeof getVarejoPedidoCompra>>>
+export type GetVarejoPedidoCompraQueryError = ErrorType<unknown>
+
+
+/**
+ * @summary Get pedido de compra
+ */
+
+export function useGetVarejoPedidoCompra<TData = Awaited<ReturnType<typeof getVarejoPedidoCompra>>, TError = ErrorType<unknown>>(
+ tenantId: string,
+    pedidoId: string, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getVarejoPedidoCompra>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetVarejoPedidoCompraQueryOptions(tenantId,pedidoId,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+
+
+
+
+
+
+export const getUpdateVarejoPedidoCompraUrl = (tenantId: string,
+    pedidoId: string,) => {
+
+
+
+
+  return `/api/tenants/${tenantId}/varejo/pedidos-compra/${pedidoId}`
+}
+
+/**
+ * @summary Update pedido de compra
+ */
+export const updateVarejoPedidoCompra = async (tenantId: string,
+    pedidoId: string,
+    updateVarejoPedidoCompraBody: UpdateVarejoPedidoCompraBody, options?: RequestInit): Promise<VarejoPedidoCompra> => {
+
+  return customFetch<VarejoPedidoCompra>(getUpdateVarejoPedidoCompraUrl(tenantId,pedidoId),
+  {
+    ...options,
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(
+      updateVarejoPedidoCompraBody,)
+  }
+);}
+
+
+
+
+export const getUpdateVarejoPedidoCompraMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updateVarejoPedidoCompra>>, TError,{tenantId: string;pedidoId: string;data: BodyType<UpdateVarejoPedidoCompraBody>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof updateVarejoPedidoCompra>>, TError,{tenantId: string;pedidoId: string;data: BodyType<UpdateVarejoPedidoCompraBody>}, TContext> => {
+
+const mutationKey = ['updateVarejoPedidoCompra'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof updateVarejoPedidoCompra>>, {tenantId: string;pedidoId: string;data: BodyType<UpdateVarejoPedidoCompraBody>}> = (props) => {
+          const {tenantId,pedidoId,data} = props ?? {};
+
+          return  updateVarejoPedidoCompra(tenantId,pedidoId,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type UpdateVarejoPedidoCompraMutationResult = NonNullable<Awaited<ReturnType<typeof updateVarejoPedidoCompra>>>
+    export type UpdateVarejoPedidoCompraMutationBody = BodyType<UpdateVarejoPedidoCompraBody>
+    export type UpdateVarejoPedidoCompraMutationError = ErrorType<unknown>
+
+    /**
+ * @summary Update pedido de compra
+ */
+export const useUpdateVarejoPedidoCompra = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updateVarejoPedidoCompra>>, TError,{tenantId: string;pedidoId: string;data: BodyType<UpdateVarejoPedidoCompraBody>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof updateVarejoPedidoCompra>>,
+        TError,
+        {tenantId: string;pedidoId: string;data: BodyType<UpdateVarejoPedidoCompraBody>},
+        TContext
+      > => {
+      return useMutation(getUpdateVarejoPedidoCompraMutationOptions(options));
+    }
+
+export const getDeleteVarejoPedidoCompraUrl = (tenantId: string,
+    pedidoId: string,) => {
+
+
+
+
+  return `/api/tenants/${tenantId}/varejo/pedidos-compra/${pedidoId}`
+}
+
+/**
+ * @summary Delete pedido de compra
+ */
+export const deleteVarejoPedidoCompra = async (tenantId: string,
+    pedidoId: string, options?: RequestInit): Promise<void> => {
+
+  return customFetch<void>(getDeleteVarejoPedidoCompraUrl(tenantId,pedidoId),
+  {
+    ...options,
+    method: 'DELETE'
+
+
+  }
+);}
+
+
+
+
+export const getDeleteVarejoPedidoCompraMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof deleteVarejoPedidoCompra>>, TError,{tenantId: string;pedidoId: string}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof deleteVarejoPedidoCompra>>, TError,{tenantId: string;pedidoId: string}, TContext> => {
+
+const mutationKey = ['deleteVarejoPedidoCompra'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof deleteVarejoPedidoCompra>>, {tenantId: string;pedidoId: string}> = (props) => {
+          const {tenantId,pedidoId} = props ?? {};
+
+          return  deleteVarejoPedidoCompra(tenantId,pedidoId,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type DeleteVarejoPedidoCompraMutationResult = NonNullable<Awaited<ReturnType<typeof deleteVarejoPedidoCompra>>>
+
+    export type DeleteVarejoPedidoCompraMutationError = ErrorType<unknown>
+
+    /**
+ * @summary Delete pedido de compra
+ */
+export const useDeleteVarejoPedidoCompra = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof deleteVarejoPedidoCompra>>, TError,{tenantId: string;pedidoId: string}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof deleteVarejoPedidoCompra>>,
+        TError,
+        {tenantId: string;pedidoId: string},
+        TContext
+      > => {
+      return useMutation(getDeleteVarejoPedidoCompraMutationOptions(options));
+    }
+
+export const getListVarejoPedidoCompraItensUrl = (tenantId: string,
+    pedidoId: string,) => {
+
+
+
+
+  return `/api/tenants/${tenantId}/varejo/pedidos-compra/${pedidoId}/itens`
+}
+
+/**
+ * @summary List itens de pedido de compra
+ */
+export const listVarejoPedidoCompraItens = async (tenantId: string,
+    pedidoId: string, options?: RequestInit): Promise<VarejoPedidoCompraItem[]> => {
+
+  return customFetch<VarejoPedidoCompraItem[]>(getListVarejoPedidoCompraItensUrl(tenantId,pedidoId),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getListVarejoPedidoCompraItensQueryKey = (tenantId: string,
+    pedidoId: string,) => {
+    return [
+    `/api/tenants/${tenantId}/varejo/pedidos-compra/${pedidoId}/itens`
+    ] as const;
+    }
+
+
+export const getListVarejoPedidoCompraItensQueryOptions = <TData = Awaited<ReturnType<typeof listVarejoPedidoCompraItens>>, TError = ErrorType<unknown>>(tenantId: string,
+    pedidoId: string, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listVarejoPedidoCompraItens>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getListVarejoPedidoCompraItensQueryKey(tenantId,pedidoId);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof listVarejoPedidoCompraItens>>> = ({ signal }) => listVarejoPedidoCompraItens(tenantId,pedidoId, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, enabled: !!(tenantId && pedidoId), ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof listVarejoPedidoCompraItens>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type ListVarejoPedidoCompraItensQueryResult = NonNullable<Awaited<ReturnType<typeof listVarejoPedidoCompraItens>>>
+export type ListVarejoPedidoCompraItensQueryError = ErrorType<unknown>
+
+
+/**
+ * @summary List itens de pedido de compra
+ */
+
+export function useListVarejoPedidoCompraItens<TData = Awaited<ReturnType<typeof listVarejoPedidoCompraItens>>, TError = ErrorType<unknown>>(
+ tenantId: string,
+    pedidoId: string, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listVarejoPedidoCompraItens>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getListVarejoPedidoCompraItensQueryOptions(tenantId,pedidoId,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+
+
+
+
+
+
+export const getCreateVarejoPedidoCompraItemUrl = (tenantId: string,
+    pedidoId: string,) => {
+
+
+
+
+  return `/api/tenants/${tenantId}/varejo/pedidos-compra/${pedidoId}/itens`
+}
+
+/**
+ * @summary Add item ao pedido de compra
+ */
+export const createVarejoPedidoCompraItem = async (tenantId: string,
+    pedidoId: string,
+    createVarejoPedidoCompraItemBody: CreateVarejoPedidoCompraItemBody, options?: RequestInit): Promise<VarejoPedidoCompraItem> => {
+
+  return customFetch<VarejoPedidoCompraItem>(getCreateVarejoPedidoCompraItemUrl(tenantId,pedidoId),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(
+      createVarejoPedidoCompraItemBody,)
+  }
+);}
+
+
+
+
+export const getCreateVarejoPedidoCompraItemMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createVarejoPedidoCompraItem>>, TError,{tenantId: string;pedidoId: string;data: BodyType<CreateVarejoPedidoCompraItemBody>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof createVarejoPedidoCompraItem>>, TError,{tenantId: string;pedidoId: string;data: BodyType<CreateVarejoPedidoCompraItemBody>}, TContext> => {
+
+const mutationKey = ['createVarejoPedidoCompraItem'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof createVarejoPedidoCompraItem>>, {tenantId: string;pedidoId: string;data: BodyType<CreateVarejoPedidoCompraItemBody>}> = (props) => {
+          const {tenantId,pedidoId,data} = props ?? {};
+
+          return  createVarejoPedidoCompraItem(tenantId,pedidoId,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type CreateVarejoPedidoCompraItemMutationResult = NonNullable<Awaited<ReturnType<typeof createVarejoPedidoCompraItem>>>
+    export type CreateVarejoPedidoCompraItemMutationBody = BodyType<CreateVarejoPedidoCompraItemBody>
+    export type CreateVarejoPedidoCompraItemMutationError = ErrorType<unknown>
+
+    /**
+ * @summary Add item ao pedido de compra
+ */
+export const useCreateVarejoPedidoCompraItem = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createVarejoPedidoCompraItem>>, TError,{tenantId: string;pedidoId: string;data: BodyType<CreateVarejoPedidoCompraItemBody>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof createVarejoPedidoCompraItem>>,
+        TError,
+        {tenantId: string;pedidoId: string;data: BodyType<CreateVarejoPedidoCompraItemBody>},
+        TContext
+      > => {
+      return useMutation(getCreateVarejoPedidoCompraItemMutationOptions(options));
+    }
+
+export const getDeleteVarejoPedidoCompraItemUrl = (tenantId: string,
+    pedidoId: string,
+    itemId: string,) => {
+
+
+
+
+  return `/api/tenants/${tenantId}/varejo/pedidos-compra/${pedidoId}/itens/${itemId}`
+}
+
+/**
+ * @summary Remove item do pedido de compra
+ */
+export const deleteVarejoPedidoCompraItem = async (tenantId: string,
+    pedidoId: string,
+    itemId: string, options?: RequestInit): Promise<void> => {
+
+  return customFetch<void>(getDeleteVarejoPedidoCompraItemUrl(tenantId,pedidoId,itemId),
+  {
+    ...options,
+    method: 'DELETE'
+
+
+  }
+);}
+
+
+
+
+export const getDeleteVarejoPedidoCompraItemMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof deleteVarejoPedidoCompraItem>>, TError,{tenantId: string;pedidoId: string;itemId: string}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof deleteVarejoPedidoCompraItem>>, TError,{tenantId: string;pedidoId: string;itemId: string}, TContext> => {
+
+const mutationKey = ['deleteVarejoPedidoCompraItem'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof deleteVarejoPedidoCompraItem>>, {tenantId: string;pedidoId: string;itemId: string}> = (props) => {
+          const {tenantId,pedidoId,itemId} = props ?? {};
+
+          return  deleteVarejoPedidoCompraItem(tenantId,pedidoId,itemId,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type DeleteVarejoPedidoCompraItemMutationResult = NonNullable<Awaited<ReturnType<typeof deleteVarejoPedidoCompraItem>>>
+
+    export type DeleteVarejoPedidoCompraItemMutationError = ErrorType<unknown>
+
+    /**
+ * @summary Remove item do pedido de compra
+ */
+export const useDeleteVarejoPedidoCompraItem = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof deleteVarejoPedidoCompraItem>>, TError,{tenantId: string;pedidoId: string;itemId: string}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof deleteVarejoPedidoCompraItem>>,
+        TError,
+        {tenantId: string;pedidoId: string;itemId: string},
+        TContext
+      > => {
+      return useMutation(getDeleteVarejoPedidoCompraItemMutationOptions(options));
+    }
+
+export const getListVarejoFidelidadeUrl = (tenantId: string,
+    params?: ListVarejoFidelidadeParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : value.toString())
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/api/tenants/${tenantId}/varejo/fidelidade?${stringifiedParams}` : `/api/tenants/${tenantId}/varejo/fidelidade`
+}
+
+/**
+ * @summary List programa de fidelidade
+ */
+export const listVarejoFidelidade = async (tenantId: string,
+    params?: ListVarejoFidelidadeParams, options?: RequestInit): Promise<VarejoFidelidade[]> => {
+
+  return customFetch<VarejoFidelidade[]>(getListVarejoFidelidadeUrl(tenantId,params),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getListVarejoFidelidadeQueryKey = (tenantId: string,
+    params?: ListVarejoFidelidadeParams,) => {
+    return [
+    `/api/tenants/${tenantId}/varejo/fidelidade`, ...(params ? [params] : [])
+    ] as const;
+    }
+
+
+export const getListVarejoFidelidadeQueryOptions = <TData = Awaited<ReturnType<typeof listVarejoFidelidade>>, TError = ErrorType<unknown>>(tenantId: string,
+    params?: ListVarejoFidelidadeParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listVarejoFidelidade>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getListVarejoFidelidadeQueryKey(tenantId,params);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof listVarejoFidelidade>>> = ({ signal }) => listVarejoFidelidade(tenantId,params, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, enabled: !!(tenantId), ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof listVarejoFidelidade>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type ListVarejoFidelidadeQueryResult = NonNullable<Awaited<ReturnType<typeof listVarejoFidelidade>>>
+export type ListVarejoFidelidadeQueryError = ErrorType<unknown>
+
+
+/**
+ * @summary List programa de fidelidade
+ */
+
+export function useListVarejoFidelidade<TData = Awaited<ReturnType<typeof listVarejoFidelidade>>, TError = ErrorType<unknown>>(
+ tenantId: string,
+    params?: ListVarejoFidelidadeParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listVarejoFidelidade>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getListVarejoFidelidadeQueryOptions(tenantId,params,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+
+
+
+
+
+
+export const getGetVarejoFidelidadeUrl = (tenantId: string,
+    leadId: string,) => {
+
+
+
+
+  return `/api/tenants/${tenantId}/varejo/fidelidade/${leadId}`
+}
+
+/**
+ * @summary Get fidelidade de um lead
+ */
+export const getVarejoFidelidade = async (tenantId: string,
+    leadId: string, options?: RequestInit): Promise<VarejoFidelidade> => {
+
+  return customFetch<VarejoFidelidade>(getGetVarejoFidelidadeUrl(tenantId,leadId),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetVarejoFidelidadeQueryKey = (tenantId: string,
+    leadId: string,) => {
+    return [
+    `/api/tenants/${tenantId}/varejo/fidelidade/${leadId}`
+    ] as const;
+    }
+
+
+export const getGetVarejoFidelidadeQueryOptions = <TData = Awaited<ReturnType<typeof getVarejoFidelidade>>, TError = ErrorType<unknown>>(tenantId: string,
+    leadId: string, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getVarejoFidelidade>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetVarejoFidelidadeQueryKey(tenantId,leadId);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getVarejoFidelidade>>> = ({ signal }) => getVarejoFidelidade(tenantId,leadId, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, enabled: !!(tenantId && leadId), ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getVarejoFidelidade>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetVarejoFidelidadeQueryResult = NonNullable<Awaited<ReturnType<typeof getVarejoFidelidade>>>
+export type GetVarejoFidelidadeQueryError = ErrorType<unknown>
+
+
+/**
+ * @summary Get fidelidade de um lead
+ */
+
+export function useGetVarejoFidelidade<TData = Awaited<ReturnType<typeof getVarejoFidelidade>>, TError = ErrorType<unknown>>(
+ tenantId: string,
+    leadId: string, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getVarejoFidelidade>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetVarejoFidelidadeQueryOptions(tenantId,leadId,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+
+
+
+
+
+
+export const getUpsertVarejoFidelidadeUrl = (tenantId: string,
+    leadId: string,) => {
+
+
+
+
+  return `/api/tenants/${tenantId}/varejo/fidelidade/${leadId}`
+}
+
+/**
+ * @summary Upsert fidelidade de um lead
+ */
+export const upsertVarejoFidelidade = async (tenantId: string,
+    leadId: string,
+    upsertVarejoFidelidadeBody: UpsertVarejoFidelidadeBody, options?: RequestInit): Promise<VarejoFidelidade> => {
+
+  return customFetch<VarejoFidelidade>(getUpsertVarejoFidelidadeUrl(tenantId,leadId),
+  {
+    ...options,
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(
+      upsertVarejoFidelidadeBody,)
+  }
+);}
+
+
+
+
+export const getUpsertVarejoFidelidadeMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof upsertVarejoFidelidade>>, TError,{tenantId: string;leadId: string;data: BodyType<UpsertVarejoFidelidadeBody>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof upsertVarejoFidelidade>>, TError,{tenantId: string;leadId: string;data: BodyType<UpsertVarejoFidelidadeBody>}, TContext> => {
+
+const mutationKey = ['upsertVarejoFidelidade'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof upsertVarejoFidelidade>>, {tenantId: string;leadId: string;data: BodyType<UpsertVarejoFidelidadeBody>}> = (props) => {
+          const {tenantId,leadId,data} = props ?? {};
+
+          return  upsertVarejoFidelidade(tenantId,leadId,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type UpsertVarejoFidelidadeMutationResult = NonNullable<Awaited<ReturnType<typeof upsertVarejoFidelidade>>>
+    export type UpsertVarejoFidelidadeMutationBody = BodyType<UpsertVarejoFidelidadeBody>
+    export type UpsertVarejoFidelidadeMutationError = ErrorType<unknown>
+
+    /**
+ * @summary Upsert fidelidade de um lead
+ */
+export const useUpsertVarejoFidelidade = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof upsertVarejoFidelidade>>, TError,{tenantId: string;leadId: string;data: BodyType<UpsertVarejoFidelidadeBody>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof upsertVarejoFidelidade>>,
+        TError,
+        {tenantId: string;leadId: string;data: BodyType<UpsertVarejoFidelidadeBody>},
+        TContext
+      > => {
+      return useMutation(getUpsertVarejoFidelidadeMutationOptions(options));
+    }
+
+export const getListVarejoCombosUrl = (tenantId: string,) => {
+
+
+
+
+  return `/api/tenants/${tenantId}/varejo/combos`
+}
+
+/**
+ * @summary List combos/looks
+ */
+export const listVarejoCombos = async (tenantId: string, options?: RequestInit): Promise<VarejoCombo[]> => {
+
+  return customFetch<VarejoCombo[]>(getListVarejoCombosUrl(tenantId),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getListVarejoCombosQueryKey = (tenantId: string,) => {
+    return [
+    `/api/tenants/${tenantId}/varejo/combos`
+    ] as const;
+    }
+
+
+export const getListVarejoCombosQueryOptions = <TData = Awaited<ReturnType<typeof listVarejoCombos>>, TError = ErrorType<unknown>>(tenantId: string, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listVarejoCombos>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getListVarejoCombosQueryKey(tenantId);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof listVarejoCombos>>> = ({ signal }) => listVarejoCombos(tenantId, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, enabled: !!(tenantId), ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof listVarejoCombos>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type ListVarejoCombosQueryResult = NonNullable<Awaited<ReturnType<typeof listVarejoCombos>>>
+export type ListVarejoCombosQueryError = ErrorType<unknown>
+
+
+/**
+ * @summary List combos/looks
+ */
+
+export function useListVarejoCombos<TData = Awaited<ReturnType<typeof listVarejoCombos>>, TError = ErrorType<unknown>>(
+ tenantId: string, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listVarejoCombos>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getListVarejoCombosQueryOptions(tenantId,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+
+
+
+
+
+
+export const getCreateVarejoComboUrl = (tenantId: string,) => {
+
+
+
+
+  return `/api/tenants/${tenantId}/varejo/combos`
+}
+
+/**
+ * @summary Create combo/look
+ */
+export const createVarejoCombo = async (tenantId: string,
+    createVarejoComboBody: CreateVarejoComboBody, options?: RequestInit): Promise<VarejoCombo> => {
+
+  return customFetch<VarejoCombo>(getCreateVarejoComboUrl(tenantId),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(
+      createVarejoComboBody,)
+  }
+);}
+
+
+
+
+export const getCreateVarejoComboMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createVarejoCombo>>, TError,{tenantId: string;data: BodyType<CreateVarejoComboBody>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof createVarejoCombo>>, TError,{tenantId: string;data: BodyType<CreateVarejoComboBody>}, TContext> => {
+
+const mutationKey = ['createVarejoCombo'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof createVarejoCombo>>, {tenantId: string;data: BodyType<CreateVarejoComboBody>}> = (props) => {
+          const {tenantId,data} = props ?? {};
+
+          return  createVarejoCombo(tenantId,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type CreateVarejoComboMutationResult = NonNullable<Awaited<ReturnType<typeof createVarejoCombo>>>
+    export type CreateVarejoComboMutationBody = BodyType<CreateVarejoComboBody>
+    export type CreateVarejoComboMutationError = ErrorType<unknown>
+
+    /**
+ * @summary Create combo/look
+ */
+export const useCreateVarejoCombo = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createVarejoCombo>>, TError,{tenantId: string;data: BodyType<CreateVarejoComboBody>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof createVarejoCombo>>,
+        TError,
+        {tenantId: string;data: BodyType<CreateVarejoComboBody>},
+        TContext
+      > => {
+      return useMutation(getCreateVarejoComboMutationOptions(options));
+    }
+
+export const getGetVarejoComboUrl = (tenantId: string,
+    comboId: string,) => {
+
+
+
+
+  return `/api/tenants/${tenantId}/varejo/combos/${comboId}`
+}
+
+/**
+ * @summary Get combo/look
+ */
+export const getVarejoCombo = async (tenantId: string,
+    comboId: string, options?: RequestInit): Promise<VarejoCombo> => {
+
+  return customFetch<VarejoCombo>(getGetVarejoComboUrl(tenantId,comboId),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetVarejoComboQueryKey = (tenantId: string,
+    comboId: string,) => {
+    return [
+    `/api/tenants/${tenantId}/varejo/combos/${comboId}`
+    ] as const;
+    }
+
+
+export const getGetVarejoComboQueryOptions = <TData = Awaited<ReturnType<typeof getVarejoCombo>>, TError = ErrorType<unknown>>(tenantId: string,
+    comboId: string, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getVarejoCombo>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetVarejoComboQueryKey(tenantId,comboId);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getVarejoCombo>>> = ({ signal }) => getVarejoCombo(tenantId,comboId, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, enabled: !!(tenantId && comboId), ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getVarejoCombo>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetVarejoComboQueryResult = NonNullable<Awaited<ReturnType<typeof getVarejoCombo>>>
+export type GetVarejoComboQueryError = ErrorType<unknown>
+
+
+/**
+ * @summary Get combo/look
+ */
+
+export function useGetVarejoCombo<TData = Awaited<ReturnType<typeof getVarejoCombo>>, TError = ErrorType<unknown>>(
+ tenantId: string,
+    comboId: string, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getVarejoCombo>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetVarejoComboQueryOptions(tenantId,comboId,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+
+
+
+
+
+
+export const getUpdateVarejoComboUrl = (tenantId: string,
+    comboId: string,) => {
+
+
+
+
+  return `/api/tenants/${tenantId}/varejo/combos/${comboId}`
+}
+
+/**
+ * @summary Update combo/look
+ */
+export const updateVarejoCombo = async (tenantId: string,
+    comboId: string,
+    updateVarejoComboBody: UpdateVarejoComboBody, options?: RequestInit): Promise<VarejoCombo> => {
+
+  return customFetch<VarejoCombo>(getUpdateVarejoComboUrl(tenantId,comboId),
+  {
+    ...options,
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(
+      updateVarejoComboBody,)
+  }
+);}
+
+
+
+
+export const getUpdateVarejoComboMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updateVarejoCombo>>, TError,{tenantId: string;comboId: string;data: BodyType<UpdateVarejoComboBody>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof updateVarejoCombo>>, TError,{tenantId: string;comboId: string;data: BodyType<UpdateVarejoComboBody>}, TContext> => {
+
+const mutationKey = ['updateVarejoCombo'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof updateVarejoCombo>>, {tenantId: string;comboId: string;data: BodyType<UpdateVarejoComboBody>}> = (props) => {
+          const {tenantId,comboId,data} = props ?? {};
+
+          return  updateVarejoCombo(tenantId,comboId,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type UpdateVarejoComboMutationResult = NonNullable<Awaited<ReturnType<typeof updateVarejoCombo>>>
+    export type UpdateVarejoComboMutationBody = BodyType<UpdateVarejoComboBody>
+    export type UpdateVarejoComboMutationError = ErrorType<unknown>
+
+    /**
+ * @summary Update combo/look
+ */
+export const useUpdateVarejoCombo = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updateVarejoCombo>>, TError,{tenantId: string;comboId: string;data: BodyType<UpdateVarejoComboBody>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof updateVarejoCombo>>,
+        TError,
+        {tenantId: string;comboId: string;data: BodyType<UpdateVarejoComboBody>},
+        TContext
+      > => {
+      return useMutation(getUpdateVarejoComboMutationOptions(options));
+    }
+
+export const getDeleteVarejoComboUrl = (tenantId: string,
+    comboId: string,) => {
+
+
+
+
+  return `/api/tenants/${tenantId}/varejo/combos/${comboId}`
+}
+
+/**
+ * @summary Delete combo/look
+ */
+export const deleteVarejoCombo = async (tenantId: string,
+    comboId: string, options?: RequestInit): Promise<void> => {
+
+  return customFetch<void>(getDeleteVarejoComboUrl(tenantId,comboId),
+  {
+    ...options,
+    method: 'DELETE'
+
+
+  }
+);}
+
+
+
+
+export const getDeleteVarejoComboMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof deleteVarejoCombo>>, TError,{tenantId: string;comboId: string}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof deleteVarejoCombo>>, TError,{tenantId: string;comboId: string}, TContext> => {
+
+const mutationKey = ['deleteVarejoCombo'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof deleteVarejoCombo>>, {tenantId: string;comboId: string}> = (props) => {
+          const {tenantId,comboId} = props ?? {};
+
+          return  deleteVarejoCombo(tenantId,comboId,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type DeleteVarejoComboMutationResult = NonNullable<Awaited<ReturnType<typeof deleteVarejoCombo>>>
+
+    export type DeleteVarejoComboMutationError = ErrorType<unknown>
+
+    /**
+ * @summary Delete combo/look
+ */
+export const useDeleteVarejoCombo = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof deleteVarejoCombo>>, TError,{tenantId: string;comboId: string}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof deleteVarejoCombo>>,
+        TError,
+        {tenantId: string;comboId: string},
+        TContext
+      > => {
+      return useMutation(getDeleteVarejoComboMutationOptions(options));
+    }
+
+export const getListVarejoComboItensUrl = (tenantId: string,
+    comboId: string,) => {
+
+
+
+
+  return `/api/tenants/${tenantId}/varejo/combos/${comboId}/itens`
+}
+
+/**
+ * @summary List itens de combo
+ */
+export const listVarejoComboItens = async (tenantId: string,
+    comboId: string, options?: RequestInit): Promise<VarejoComboItem[]> => {
+
+  return customFetch<VarejoComboItem[]>(getListVarejoComboItensUrl(tenantId,comboId),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getListVarejoComboItensQueryKey = (tenantId: string,
+    comboId: string,) => {
+    return [
+    `/api/tenants/${tenantId}/varejo/combos/${comboId}/itens`
+    ] as const;
+    }
+
+
+export const getListVarejoComboItensQueryOptions = <TData = Awaited<ReturnType<typeof listVarejoComboItens>>, TError = ErrorType<unknown>>(tenantId: string,
+    comboId: string, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listVarejoComboItens>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getListVarejoComboItensQueryKey(tenantId,comboId);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof listVarejoComboItens>>> = ({ signal }) => listVarejoComboItens(tenantId,comboId, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, enabled: !!(tenantId && comboId), ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof listVarejoComboItens>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type ListVarejoComboItensQueryResult = NonNullable<Awaited<ReturnType<typeof listVarejoComboItens>>>
+export type ListVarejoComboItensQueryError = ErrorType<unknown>
+
+
+/**
+ * @summary List itens de combo
+ */
+
+export function useListVarejoComboItens<TData = Awaited<ReturnType<typeof listVarejoComboItens>>, TError = ErrorType<unknown>>(
+ tenantId: string,
+    comboId: string, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listVarejoComboItens>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getListVarejoComboItensQueryOptions(tenantId,comboId,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+
+
+
+
+
+
+export const getCreateVarejoComboItemUrl = (tenantId: string,
+    comboId: string,) => {
+
+
+
+
+  return `/api/tenants/${tenantId}/varejo/combos/${comboId}/itens`
+}
+
+/**
+ * @summary Add item ao combo
+ */
+export const createVarejoComboItem = async (tenantId: string,
+    comboId: string,
+    createVarejoComboItemBody: CreateVarejoComboItemBody, options?: RequestInit): Promise<VarejoComboItem> => {
+
+  return customFetch<VarejoComboItem>(getCreateVarejoComboItemUrl(tenantId,comboId),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(
+      createVarejoComboItemBody,)
+  }
+);}
+
+
+
+
+export const getCreateVarejoComboItemMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createVarejoComboItem>>, TError,{tenantId: string;comboId: string;data: BodyType<CreateVarejoComboItemBody>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof createVarejoComboItem>>, TError,{tenantId: string;comboId: string;data: BodyType<CreateVarejoComboItemBody>}, TContext> => {
+
+const mutationKey = ['createVarejoComboItem'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof createVarejoComboItem>>, {tenantId: string;comboId: string;data: BodyType<CreateVarejoComboItemBody>}> = (props) => {
+          const {tenantId,comboId,data} = props ?? {};
+
+          return  createVarejoComboItem(tenantId,comboId,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type CreateVarejoComboItemMutationResult = NonNullable<Awaited<ReturnType<typeof createVarejoComboItem>>>
+    export type CreateVarejoComboItemMutationBody = BodyType<CreateVarejoComboItemBody>
+    export type CreateVarejoComboItemMutationError = ErrorType<unknown>
+
+    /**
+ * @summary Add item ao combo
+ */
+export const useCreateVarejoComboItem = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createVarejoComboItem>>, TError,{tenantId: string;comboId: string;data: BodyType<CreateVarejoComboItemBody>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof createVarejoComboItem>>,
+        TError,
+        {tenantId: string;comboId: string;data: BodyType<CreateVarejoComboItemBody>},
+        TContext
+      > => {
+      return useMutation(getCreateVarejoComboItemMutationOptions(options));
+    }
+
+export const getDeleteVarejoComboItemUrl = (tenantId: string,
+    comboId: string,
+    itemId: string,) => {
+
+
+
+
+  return `/api/tenants/${tenantId}/varejo/combos/${comboId}/itens/${itemId}`
+}
+
+/**
+ * @summary Remove item do combo
+ */
+export const deleteVarejoComboItem = async (tenantId: string,
+    comboId: string,
+    itemId: string, options?: RequestInit): Promise<void> => {
+
+  return customFetch<void>(getDeleteVarejoComboItemUrl(tenantId,comboId,itemId),
+  {
+    ...options,
+    method: 'DELETE'
+
+
+  }
+);}
+
+
+
+
+export const getDeleteVarejoComboItemMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof deleteVarejoComboItem>>, TError,{tenantId: string;comboId: string;itemId: string}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof deleteVarejoComboItem>>, TError,{tenantId: string;comboId: string;itemId: string}, TContext> => {
+
+const mutationKey = ['deleteVarejoComboItem'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof deleteVarejoComboItem>>, {tenantId: string;comboId: string;itemId: string}> = (props) => {
+          const {tenantId,comboId,itemId} = props ?? {};
+
+          return  deleteVarejoComboItem(tenantId,comboId,itemId,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type DeleteVarejoComboItemMutationResult = NonNullable<Awaited<ReturnType<typeof deleteVarejoComboItem>>>
+
+    export type DeleteVarejoComboItemMutationError = ErrorType<unknown>
+
+    /**
+ * @summary Remove item do combo
+ */
+export const useDeleteVarejoComboItem = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof deleteVarejoComboItem>>, TError,{tenantId: string;comboId: string;itemId: string}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof deleteVarejoComboItem>>,
+        TError,
+        {tenantId: string;comboId: string;itemId: string},
+        TContext
+      > => {
+      return useMutation(getDeleteVarejoComboItemMutationOptions(options));
     }
 

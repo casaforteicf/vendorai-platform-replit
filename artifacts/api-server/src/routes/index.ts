@@ -40,6 +40,7 @@ import billingEventsRouter from "./billing_events";
 import tokenPurchasesRouter from "./token_purchases";
 import { intakeRouter } from "./intake";
 import construcaoRouter from "./construcao";
+import varejoRouter from "./varejo";
 import { authenticate, blockPartnerFromCRM, blockSuspendedTenants, requireRole, requireSameTenanOrSuperAdmin } from "../middlewares/auth";
 
 const router: IRouter = Router();
@@ -147,6 +148,9 @@ router.use(adminPartnersRouter);
 
 // Construção Civil Hub
 router.use(construcaoRouter);
+
+// Varejo de Roupas & Acessórios Hub
+router.use(varejoRouter);
 
 export { requireRole, requireSameTenanOrSuperAdmin };
 export default router;

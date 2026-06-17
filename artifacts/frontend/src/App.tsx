@@ -36,6 +36,13 @@ import Obras from "@/pages/Obras";
 import ObraDetalhe from "@/pages/ObraDetalhe";
 import Insumos from "@/pages/Insumos";
 import Composicoes from "@/pages/Composicoes";
+import VarejoProdutos from "@/pages/VarejoProdutos";
+import VarejoProdutoDetalhe from "@/pages/VarejoProdutoDetalhe";
+import VarejoColecoes from "@/pages/VarejoColecoes";
+import VarejoFornecedores from "@/pages/VarejoFornecedores";
+import VarejoCompras from "@/pages/VarejoCompras";
+import VarejoFidelidade from "@/pages/VarejoFidelidade";
+import VarejoCombos from "@/pages/VarejoCombos";
 import { useEffect } from "react";
 import {
   useGetTenant,
@@ -174,6 +181,28 @@ function OnboardingRoute() {
   return <Onboarding />;
 }
 
+function VarejoRoute({ component: Component, ...rest }: any) {
+  const { token, user, isLoading } = useAuth();
+  const [, setLocation] = useLocation();
+
+  useEffect(() => {
+    if (!isLoading && !token) {
+      setLocation("/login");
+    } else if (!isLoading && user && user.tenantVertical !== "Varejo de Roupas & Acessórios") {
+      setLocation("/");
+    }
+  }, [token, user, isLoading, setLocation]);
+
+  if (isLoading || !token || !user) return <Spinner />;
+  if (user.tenantVertical !== "Varejo de Roupas & Acessórios") return null;
+
+  return (
+    <SidebarLayout>
+      <Component {...rest} />
+    </SidebarLayout>
+  );
+}
+
 function ConstrucaoRoute({ component: Component, ...rest }: any) {
   const { token, user, isLoading } = useAuth();
   const [, setLocation] = useLocation();
@@ -294,6 +323,27 @@ function AppRoutes() {
       </Route>
       <Route path="/composicoes">
         {() => <ConstrucaoRoute component={Composicoes} />}
+      </Route>
+      <Route path="/varejo/produtos">
+        {() => <VarejoRoute component={VarejoProdutos} />}
+      </Route>
+      <Route path="/varejo/produtos/:produtoId">
+        {() => <VarejoRoute component={VarejoProdutoDetalhe} />}
+      </Route>
+      <Route path="/varejo/colecoes">
+        {() => <VarejoRoute component={VarejoColecoes} />}
+      </Route>
+      <Route path="/varejo/fornecedores">
+        {() => <VarejoRoute component={VarejoFornecedores} />}
+      </Route>
+      <Route path="/varejo/compras">
+        {() => <VarejoRoute component={VarejoCompras} />}
+      </Route>
+      <Route path="/varejo/fidelidade">
+        {() => <VarejoRoute component={VarejoFidelidade} />}
+      </Route>
+      <Route path="/varejo/combos">
+        {() => <VarejoRoute component={VarejoCombos} />}
       </Route>
       <Route path="/invite/:token">
         <AcceptInvite />

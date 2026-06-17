@@ -5852,3 +5852,1516 @@ export const DeleteComposicaoParams = zod.object({
 })
 
 
+/**
+ * @summary List coleções
+ */
+export const ListVarejoColecoesParams = zod.object({
+  "tenantId": zod.coerce.string()
+})
+
+export const ListVarejoColecoesResponseItem = zod.object({
+  "id": zod.string(),
+  "tenantId": zod.string(),
+  "nome": zod.string(),
+  "temporada": zod.enum(['verao', 'inverno', 'outono', 'primavera', 'especial']),
+  "ano": zod.number(),
+  "status": zod.enum(['planejamento', 'ativa', 'encerrada']),
+  "descricao": zod.string().nullish(),
+  "ativo": zod.boolean(),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date()
+})
+export const ListVarejoColecoesResponse = zod.array(ListVarejoColecoesResponseItem)
+
+
+/**
+ * @summary Create coleção
+ */
+export const CreateVarejoColecaoParams = zod.object({
+  "tenantId": zod.coerce.string()
+})
+
+export const CreateVarejoColecaoBody = zod.object({
+  "tenantId": zod.string(),
+  "nome": zod.string(),
+  "temporada": zod.enum(['verao', 'inverno', 'outono', 'primavera', 'especial']),
+  "ano": zod.number(),
+  "status": zod.enum(['planejamento', 'ativa', 'encerrada']).optional(),
+  "descricao": zod.string().optional(),
+  "ativo": zod.boolean().optional()
+})
+
+
+/**
+ * @summary Get coleção
+ */
+export const GetVarejoColecaoParams = zod.object({
+  "tenantId": zod.coerce.string(),
+  "colecaoId": zod.coerce.string()
+})
+
+export const GetVarejoColecaoResponse = zod.object({
+  "id": zod.string(),
+  "tenantId": zod.string(),
+  "nome": zod.string(),
+  "temporada": zod.enum(['verao', 'inverno', 'outono', 'primavera', 'especial']),
+  "ano": zod.number(),
+  "status": zod.enum(['planejamento', 'ativa', 'encerrada']),
+  "descricao": zod.string().nullish(),
+  "ativo": zod.boolean(),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date()
+})
+
+
+/**
+ * @summary Update coleção
+ */
+export const UpdateVarejoColecaoParams = zod.object({
+  "tenantId": zod.coerce.string(),
+  "colecaoId": zod.coerce.string()
+})
+
+export const UpdateVarejoColecaoBody = zod.object({
+  "nome": zod.string().optional(),
+  "temporada": zod.enum(['verao', 'inverno', 'outono', 'primavera', 'especial']).optional(),
+  "ano": zod.number().optional(),
+  "status": zod.enum(['planejamento', 'ativa', 'encerrada']).optional(),
+  "descricao": zod.string().optional(),
+  "ativo": zod.boolean().optional()
+})
+
+export const UpdateVarejoColecaoResponse = zod.object({
+  "id": zod.string(),
+  "tenantId": zod.string(),
+  "nome": zod.string(),
+  "temporada": zod.enum(['verao', 'inverno', 'outono', 'primavera', 'especial']),
+  "ano": zod.number(),
+  "status": zod.enum(['planejamento', 'ativa', 'encerrada']),
+  "descricao": zod.string().nullish(),
+  "ativo": zod.boolean(),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date()
+})
+
+
+/**
+ * @summary Delete coleção
+ */
+export const DeleteVarejoColecaoParams = zod.object({
+  "tenantId": zod.coerce.string(),
+  "colecaoId": zod.coerce.string()
+})
+
+
+/**
+ * @summary List fornecedores
+ */
+export const ListVarejoFornecedoresParams = zod.object({
+  "tenantId": zod.coerce.string()
+})
+
+export const ListVarejoFornecedoresResponseItem = zod.object({
+  "id": zod.string(),
+  "tenantId": zod.string(),
+  "nome": zod.string(),
+  "marca": zod.string().nullish(),
+  "contato": zod.string().nullish(),
+  "email": zod.string().nullish(),
+  "telefone": zod.string().nullish(),
+  "cnpj": zod.string().nullish(),
+  "condicoesPagamento": zod.string().nullish(),
+  "prazoEntregaDias": zod.number().nullish(),
+  "observacoes": zod.string().nullish(),
+  "ativo": zod.boolean(),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date()
+})
+export const ListVarejoFornecedoresResponse = zod.array(ListVarejoFornecedoresResponseItem)
+
+
+/**
+ * @summary Create fornecedor
+ */
+export const CreateVarejoFornecedorParams = zod.object({
+  "tenantId": zod.coerce.string()
+})
+
+export const CreateVarejoFornecedorBody = zod.object({
+  "tenantId": zod.string(),
+  "nome": zod.string(),
+  "marca": zod.string().optional(),
+  "contato": zod.string().optional(),
+  "email": zod.string().optional(),
+  "telefone": zod.string().optional(),
+  "cnpj": zod.string().optional(),
+  "condicoesPagamento": zod.string().optional(),
+  "prazoEntregaDias": zod.number().optional(),
+  "observacoes": zod.string().optional(),
+  "ativo": zod.boolean().optional()
+})
+
+
+/**
+ * @summary Get fornecedor
+ */
+export const GetVarejoFornecedorParams = zod.object({
+  "tenantId": zod.coerce.string(),
+  "fornecedorId": zod.coerce.string()
+})
+
+export const GetVarejoFornecedorResponse = zod.object({
+  "id": zod.string(),
+  "tenantId": zod.string(),
+  "nome": zod.string(),
+  "marca": zod.string().nullish(),
+  "contato": zod.string().nullish(),
+  "email": zod.string().nullish(),
+  "telefone": zod.string().nullish(),
+  "cnpj": zod.string().nullish(),
+  "condicoesPagamento": zod.string().nullish(),
+  "prazoEntregaDias": zod.number().nullish(),
+  "observacoes": zod.string().nullish(),
+  "ativo": zod.boolean(),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date()
+})
+
+
+/**
+ * @summary Update fornecedor
+ */
+export const UpdateVarejoFornecedorParams = zod.object({
+  "tenantId": zod.coerce.string(),
+  "fornecedorId": zod.coerce.string()
+})
+
+export const UpdateVarejoFornecedorBody = zod.object({
+  "nome": zod.string().optional(),
+  "marca": zod.string().optional(),
+  "contato": zod.string().optional(),
+  "email": zod.string().optional(),
+  "telefone": zod.string().optional(),
+  "cnpj": zod.string().optional(),
+  "condicoesPagamento": zod.string().optional(),
+  "prazoEntregaDias": zod.number().optional(),
+  "observacoes": zod.string().optional(),
+  "ativo": zod.boolean().optional()
+})
+
+export const UpdateVarejoFornecedorResponse = zod.object({
+  "id": zod.string(),
+  "tenantId": zod.string(),
+  "nome": zod.string(),
+  "marca": zod.string().nullish(),
+  "contato": zod.string().nullish(),
+  "email": zod.string().nullish(),
+  "telefone": zod.string().nullish(),
+  "cnpj": zod.string().nullish(),
+  "condicoesPagamento": zod.string().nullish(),
+  "prazoEntregaDias": zod.number().nullish(),
+  "observacoes": zod.string().nullish(),
+  "ativo": zod.boolean(),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date()
+})
+
+
+/**
+ * @summary Delete fornecedor
+ */
+export const DeleteVarejoFornecedorParams = zod.object({
+  "tenantId": zod.coerce.string(),
+  "fornecedorId": zod.coerce.string()
+})
+
+
+/**
+ * @summary List produtos
+ */
+export const ListVarejoProdutosParams = zod.object({
+  "tenantId": zod.coerce.string()
+})
+
+export const ListVarejoProdutosQueryParams = zod.object({
+  "colecaoId": zod.coerce.string().optional(),
+  "fornecedorId": zod.coerce.string().optional(),
+  "categoria": zod.coerce.string().optional(),
+  "genero": zod.coerce.string().optional()
+})
+
+export const ListVarejoProdutosResponseItem = zod.object({
+  "id": zod.string(),
+  "tenantId": zod.string(),
+  "fornecedorId": zod.string().nullish(),
+  "colecaoId": zod.string().nullish(),
+  "nome": zod.string(),
+  "codigo": zod.string().nullish(),
+  "descricao": zod.string().nullish(),
+  "categoria": zod.union([zod.literal('camiseta'),zod.literal('calca'),zod.literal('vestido'),zod.literal('short'),zod.literal('jaqueta'),zod.literal('blazer'),zod.literal('saia'),zod.literal('acessorio'),zod.literal('calcado'),zod.literal('bolsa'),zod.literal('outro'),zod.literal(null)]).nullish(),
+  "genero": zod.union([zod.literal('masculino'),zod.literal('feminino'),zod.literal('unissex'),zod.literal('infantil'),zod.literal(null)]).nullish(),
+  "precoCompra": zod.string().nullish(),
+  "precoVenda": zod.string(),
+  "ativo": zod.boolean(),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date(),
+  "grades": zod.array(zod.object({
+  "id": zod.string(),
+  "tenantId": zod.string(),
+  "produtoId": zod.string(),
+  "tamanho": zod.string(),
+  "cor": zod.string(),
+  "estoque": zod.number(),
+  "estoqueMinimo": zod.number(),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date()
+})).optional(),
+  "fornecedor": zod.object({
+  "id": zod.string(),
+  "tenantId": zod.string(),
+  "nome": zod.string(),
+  "marca": zod.string().nullish(),
+  "contato": zod.string().nullish(),
+  "email": zod.string().nullish(),
+  "telefone": zod.string().nullish(),
+  "cnpj": zod.string().nullish(),
+  "condicoesPagamento": zod.string().nullish(),
+  "prazoEntregaDias": zod.number().nullish(),
+  "observacoes": zod.string().nullish(),
+  "ativo": zod.boolean(),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date()
+}).optional(),
+  "colecao": zod.object({
+  "id": zod.string(),
+  "tenantId": zod.string(),
+  "nome": zod.string(),
+  "temporada": zod.enum(['verao', 'inverno', 'outono', 'primavera', 'especial']),
+  "ano": zod.number(),
+  "status": zod.enum(['planejamento', 'ativa', 'encerrada']),
+  "descricao": zod.string().nullish(),
+  "ativo": zod.boolean(),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date()
+}).optional()
+})
+export const ListVarejoProdutosResponse = zod.array(ListVarejoProdutosResponseItem)
+
+
+/**
+ * @summary Create produto
+ */
+export const CreateVarejoProdutoParams = zod.object({
+  "tenantId": zod.coerce.string()
+})
+
+export const CreateVarejoProdutoBody = zod.object({
+  "tenantId": zod.string(),
+  "fornecedorId": zod.string().optional(),
+  "colecaoId": zod.string().optional(),
+  "nome": zod.string(),
+  "codigo": zod.string().optional(),
+  "descricao": zod.string().optional(),
+  "categoria": zod.enum(['camiseta', 'calca', 'vestido', 'short', 'jaqueta', 'blazer', 'saia', 'acessorio', 'calcado', 'bolsa', 'outro']).optional(),
+  "genero": zod.enum(['masculino', 'feminino', 'unissex', 'infantil']).optional(),
+  "precoCompra": zod.string().optional(),
+  "precoVenda": zod.string(),
+  "ativo": zod.boolean().optional()
+})
+
+
+/**
+ * @summary Get produto
+ */
+export const GetVarejoProdutoParams = zod.object({
+  "tenantId": zod.coerce.string(),
+  "produtoId": zod.coerce.string()
+})
+
+export const GetVarejoProdutoResponse = zod.object({
+  "id": zod.string(),
+  "tenantId": zod.string(),
+  "fornecedorId": zod.string().nullish(),
+  "colecaoId": zod.string().nullish(),
+  "nome": zod.string(),
+  "codigo": zod.string().nullish(),
+  "descricao": zod.string().nullish(),
+  "categoria": zod.union([zod.literal('camiseta'),zod.literal('calca'),zod.literal('vestido'),zod.literal('short'),zod.literal('jaqueta'),zod.literal('blazer'),zod.literal('saia'),zod.literal('acessorio'),zod.literal('calcado'),zod.literal('bolsa'),zod.literal('outro'),zod.literal(null)]).nullish(),
+  "genero": zod.union([zod.literal('masculino'),zod.literal('feminino'),zod.literal('unissex'),zod.literal('infantil'),zod.literal(null)]).nullish(),
+  "precoCompra": zod.string().nullish(),
+  "precoVenda": zod.string(),
+  "ativo": zod.boolean(),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date(),
+  "grades": zod.array(zod.object({
+  "id": zod.string(),
+  "tenantId": zod.string(),
+  "produtoId": zod.string(),
+  "tamanho": zod.string(),
+  "cor": zod.string(),
+  "estoque": zod.number(),
+  "estoqueMinimo": zod.number(),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date()
+})).optional(),
+  "fornecedor": zod.object({
+  "id": zod.string(),
+  "tenantId": zod.string(),
+  "nome": zod.string(),
+  "marca": zod.string().nullish(),
+  "contato": zod.string().nullish(),
+  "email": zod.string().nullish(),
+  "telefone": zod.string().nullish(),
+  "cnpj": zod.string().nullish(),
+  "condicoesPagamento": zod.string().nullish(),
+  "prazoEntregaDias": zod.number().nullish(),
+  "observacoes": zod.string().nullish(),
+  "ativo": zod.boolean(),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date()
+}).optional(),
+  "colecao": zod.object({
+  "id": zod.string(),
+  "tenantId": zod.string(),
+  "nome": zod.string(),
+  "temporada": zod.enum(['verao', 'inverno', 'outono', 'primavera', 'especial']),
+  "ano": zod.number(),
+  "status": zod.enum(['planejamento', 'ativa', 'encerrada']),
+  "descricao": zod.string().nullish(),
+  "ativo": zod.boolean(),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date()
+}).optional()
+})
+
+
+/**
+ * @summary Update produto
+ */
+export const UpdateVarejoProdutoParams = zod.object({
+  "tenantId": zod.coerce.string(),
+  "produtoId": zod.coerce.string()
+})
+
+export const UpdateVarejoProdutoBody = zod.object({
+  "fornecedorId": zod.string().optional(),
+  "colecaoId": zod.string().optional(),
+  "nome": zod.string().optional(),
+  "codigo": zod.string().optional(),
+  "descricao": zod.string().optional(),
+  "categoria": zod.enum(['camiseta', 'calca', 'vestido', 'short', 'jaqueta', 'blazer', 'saia', 'acessorio', 'calcado', 'bolsa', 'outro']).optional(),
+  "genero": zod.enum(['masculino', 'feminino', 'unissex', 'infantil']).optional(),
+  "precoCompra": zod.string().optional(),
+  "precoVenda": zod.string().optional(),
+  "ativo": zod.boolean().optional()
+})
+
+export const UpdateVarejoProdutoResponse = zod.object({
+  "id": zod.string(),
+  "tenantId": zod.string(),
+  "fornecedorId": zod.string().nullish(),
+  "colecaoId": zod.string().nullish(),
+  "nome": zod.string(),
+  "codigo": zod.string().nullish(),
+  "descricao": zod.string().nullish(),
+  "categoria": zod.union([zod.literal('camiseta'),zod.literal('calca'),zod.literal('vestido'),zod.literal('short'),zod.literal('jaqueta'),zod.literal('blazer'),zod.literal('saia'),zod.literal('acessorio'),zod.literal('calcado'),zod.literal('bolsa'),zod.literal('outro'),zod.literal(null)]).nullish(),
+  "genero": zod.union([zod.literal('masculino'),zod.literal('feminino'),zod.literal('unissex'),zod.literal('infantil'),zod.literal(null)]).nullish(),
+  "precoCompra": zod.string().nullish(),
+  "precoVenda": zod.string(),
+  "ativo": zod.boolean(),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date(),
+  "grades": zod.array(zod.object({
+  "id": zod.string(),
+  "tenantId": zod.string(),
+  "produtoId": zod.string(),
+  "tamanho": zod.string(),
+  "cor": zod.string(),
+  "estoque": zod.number(),
+  "estoqueMinimo": zod.number(),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date()
+})).optional(),
+  "fornecedor": zod.object({
+  "id": zod.string(),
+  "tenantId": zod.string(),
+  "nome": zod.string(),
+  "marca": zod.string().nullish(),
+  "contato": zod.string().nullish(),
+  "email": zod.string().nullish(),
+  "telefone": zod.string().nullish(),
+  "cnpj": zod.string().nullish(),
+  "condicoesPagamento": zod.string().nullish(),
+  "prazoEntregaDias": zod.number().nullish(),
+  "observacoes": zod.string().nullish(),
+  "ativo": zod.boolean(),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date()
+}).optional(),
+  "colecao": zod.object({
+  "id": zod.string(),
+  "tenantId": zod.string(),
+  "nome": zod.string(),
+  "temporada": zod.enum(['verao', 'inverno', 'outono', 'primavera', 'especial']),
+  "ano": zod.number(),
+  "status": zod.enum(['planejamento', 'ativa', 'encerrada']),
+  "descricao": zod.string().nullish(),
+  "ativo": zod.boolean(),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date()
+}).optional()
+})
+
+
+/**
+ * @summary Delete produto
+ */
+export const DeleteVarejoProdutoParams = zod.object({
+  "tenantId": zod.coerce.string(),
+  "produtoId": zod.coerce.string()
+})
+
+
+/**
+ * @summary List grades de um produto
+ */
+export const ListVarejoGradesParams = zod.object({
+  "tenantId": zod.coerce.string(),
+  "produtoId": zod.coerce.string()
+})
+
+export const ListVarejoGradesResponseItem = zod.object({
+  "id": zod.string(),
+  "tenantId": zod.string(),
+  "produtoId": zod.string(),
+  "tamanho": zod.string(),
+  "cor": zod.string(),
+  "estoque": zod.number(),
+  "estoqueMinimo": zod.number(),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date()
+})
+export const ListVarejoGradesResponse = zod.array(ListVarejoGradesResponseItem)
+
+
+/**
+ * @summary Create grade entry
+ */
+export const CreateVarejoGradeParams = zod.object({
+  "tenantId": zod.coerce.string(),
+  "produtoId": zod.coerce.string()
+})
+
+export const CreateVarejoGradeBody = zod.object({
+  "tenantId": zod.string(),
+  "produtoId": zod.string(),
+  "tamanho": zod.string(),
+  "cor": zod.string(),
+  "estoque": zod.number().optional(),
+  "estoqueMinimo": zod.number().optional()
+})
+
+
+/**
+ * @summary Update grade entry
+ */
+export const UpdateVarejoGradeParams = zod.object({
+  "tenantId": zod.coerce.string(),
+  "produtoId": zod.coerce.string(),
+  "gradeId": zod.coerce.string()
+})
+
+export const UpdateVarejoGradeBody = zod.object({
+  "tamanho": zod.string().optional(),
+  "cor": zod.string().optional(),
+  "estoque": zod.number().optional(),
+  "estoqueMinimo": zod.number().optional()
+})
+
+export const UpdateVarejoGradeResponse = zod.object({
+  "id": zod.string(),
+  "tenantId": zod.string(),
+  "produtoId": zod.string(),
+  "tamanho": zod.string(),
+  "cor": zod.string(),
+  "estoque": zod.number(),
+  "estoqueMinimo": zod.number(),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date()
+})
+
+
+/**
+ * @summary Delete grade entry
+ */
+export const DeleteVarejoGradeParams = zod.object({
+  "tenantId": zod.coerce.string(),
+  "produtoId": zod.coerce.string(),
+  "gradeId": zod.coerce.string()
+})
+
+
+/**
+ * @summary List pedidos de compra
+ */
+export const ListVarejoPedidosCompraParams = zod.object({
+  "tenantId": zod.coerce.string()
+})
+
+export const ListVarejoPedidosCompraQueryParams = zod.object({
+  "status": zod.coerce.string().optional(),
+  "fornecedorId": zod.coerce.string().optional()
+})
+
+export const ListVarejoPedidosCompraResponseItem = zod.object({
+  "id": zod.string(),
+  "tenantId": zod.string(),
+  "fornecedorId": zod.string().nullish(),
+  "colecaoId": zod.string().nullish(),
+  "status": zod.enum(['rascunho', 'enviado', 'confirmado', 'entregue', 'cancelado']),
+  "dataEmissao": zod.string(),
+  "dataPrevista": zod.string().nullish(),
+  "valorTotal": zod.string().nullish(),
+  "observacoes": zod.string().nullish(),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date(),
+  "fornecedor": zod.object({
+  "id": zod.string(),
+  "tenantId": zod.string(),
+  "nome": zod.string(),
+  "marca": zod.string().nullish(),
+  "contato": zod.string().nullish(),
+  "email": zod.string().nullish(),
+  "telefone": zod.string().nullish(),
+  "cnpj": zod.string().nullish(),
+  "condicoesPagamento": zod.string().nullish(),
+  "prazoEntregaDias": zod.number().nullish(),
+  "observacoes": zod.string().nullish(),
+  "ativo": zod.boolean(),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date()
+}).optional(),
+  "colecao": zod.object({
+  "id": zod.string(),
+  "tenantId": zod.string(),
+  "nome": zod.string(),
+  "temporada": zod.enum(['verao', 'inverno', 'outono', 'primavera', 'especial']),
+  "ano": zod.number(),
+  "status": zod.enum(['planejamento', 'ativa', 'encerrada']),
+  "descricao": zod.string().nullish(),
+  "ativo": zod.boolean(),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date()
+}).optional(),
+  "itens": zod.array(zod.object({
+  "id": zod.string(),
+  "pedidoId": zod.string(),
+  "produtoId": zod.string().nullish(),
+  "tamanho": zod.string(),
+  "cor": zod.string(),
+  "quantidade": zod.number(),
+  "precoUnitario": zod.string(),
+  "createdAt": zod.coerce.date(),
+  "produto": zod.object({
+  "id": zod.string(),
+  "tenantId": zod.string(),
+  "fornecedorId": zod.string().nullish(),
+  "colecaoId": zod.string().nullish(),
+  "nome": zod.string(),
+  "codigo": zod.string().nullish(),
+  "descricao": zod.string().nullish(),
+  "categoria": zod.union([zod.literal('camiseta'),zod.literal('calca'),zod.literal('vestido'),zod.literal('short'),zod.literal('jaqueta'),zod.literal('blazer'),zod.literal('saia'),zod.literal('acessorio'),zod.literal('calcado'),zod.literal('bolsa'),zod.literal('outro'),zod.literal(null)]).nullish(),
+  "genero": zod.union([zod.literal('masculino'),zod.literal('feminino'),zod.literal('unissex'),zod.literal('infantil'),zod.literal(null)]).nullish(),
+  "precoCompra": zod.string().nullish(),
+  "precoVenda": zod.string(),
+  "ativo": zod.boolean(),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date(),
+  "grades": zod.array(zod.object({
+  "id": zod.string(),
+  "tenantId": zod.string(),
+  "produtoId": zod.string(),
+  "tamanho": zod.string(),
+  "cor": zod.string(),
+  "estoque": zod.number(),
+  "estoqueMinimo": zod.number(),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date()
+})).optional(),
+  "fornecedor": zod.object({
+  "id": zod.string(),
+  "tenantId": zod.string(),
+  "nome": zod.string(),
+  "marca": zod.string().nullish(),
+  "contato": zod.string().nullish(),
+  "email": zod.string().nullish(),
+  "telefone": zod.string().nullish(),
+  "cnpj": zod.string().nullish(),
+  "condicoesPagamento": zod.string().nullish(),
+  "prazoEntregaDias": zod.number().nullish(),
+  "observacoes": zod.string().nullish(),
+  "ativo": zod.boolean(),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date()
+}).optional(),
+  "colecao": zod.object({
+  "id": zod.string(),
+  "tenantId": zod.string(),
+  "nome": zod.string(),
+  "temporada": zod.enum(['verao', 'inverno', 'outono', 'primavera', 'especial']),
+  "ano": zod.number(),
+  "status": zod.enum(['planejamento', 'ativa', 'encerrada']),
+  "descricao": zod.string().nullish(),
+  "ativo": zod.boolean(),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date()
+}).optional()
+}).optional()
+})).optional()
+})
+export const ListVarejoPedidosCompraResponse = zod.array(ListVarejoPedidosCompraResponseItem)
+
+
+/**
+ * @summary Create pedido de compra
+ */
+export const CreateVarejoPedidoCompraParams = zod.object({
+  "tenantId": zod.coerce.string()
+})
+
+export const CreateVarejoPedidoCompraBody = zod.object({
+  "tenantId": zod.string(),
+  "fornecedorId": zod.string().optional(),
+  "colecaoId": zod.string().optional(),
+  "status": zod.enum(['rascunho', 'enviado', 'confirmado', 'entregue', 'cancelado']).optional(),
+  "dataEmissao": zod.string(),
+  "dataPrevista": zod.string().optional(),
+  "valorTotal": zod.string().optional(),
+  "observacoes": zod.string().optional()
+})
+
+
+/**
+ * @summary Get pedido de compra
+ */
+export const GetVarejoPedidoCompraParams = zod.object({
+  "tenantId": zod.coerce.string(),
+  "pedidoId": zod.coerce.string()
+})
+
+export const GetVarejoPedidoCompraResponse = zod.object({
+  "id": zod.string(),
+  "tenantId": zod.string(),
+  "fornecedorId": zod.string().nullish(),
+  "colecaoId": zod.string().nullish(),
+  "status": zod.enum(['rascunho', 'enviado', 'confirmado', 'entregue', 'cancelado']),
+  "dataEmissao": zod.string(),
+  "dataPrevista": zod.string().nullish(),
+  "valorTotal": zod.string().nullish(),
+  "observacoes": zod.string().nullish(),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date(),
+  "fornecedor": zod.object({
+  "id": zod.string(),
+  "tenantId": zod.string(),
+  "nome": zod.string(),
+  "marca": zod.string().nullish(),
+  "contato": zod.string().nullish(),
+  "email": zod.string().nullish(),
+  "telefone": zod.string().nullish(),
+  "cnpj": zod.string().nullish(),
+  "condicoesPagamento": zod.string().nullish(),
+  "prazoEntregaDias": zod.number().nullish(),
+  "observacoes": zod.string().nullish(),
+  "ativo": zod.boolean(),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date()
+}).optional(),
+  "colecao": zod.object({
+  "id": zod.string(),
+  "tenantId": zod.string(),
+  "nome": zod.string(),
+  "temporada": zod.enum(['verao', 'inverno', 'outono', 'primavera', 'especial']),
+  "ano": zod.number(),
+  "status": zod.enum(['planejamento', 'ativa', 'encerrada']),
+  "descricao": zod.string().nullish(),
+  "ativo": zod.boolean(),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date()
+}).optional(),
+  "itens": zod.array(zod.object({
+  "id": zod.string(),
+  "pedidoId": zod.string(),
+  "produtoId": zod.string().nullish(),
+  "tamanho": zod.string(),
+  "cor": zod.string(),
+  "quantidade": zod.number(),
+  "precoUnitario": zod.string(),
+  "createdAt": zod.coerce.date(),
+  "produto": zod.object({
+  "id": zod.string(),
+  "tenantId": zod.string(),
+  "fornecedorId": zod.string().nullish(),
+  "colecaoId": zod.string().nullish(),
+  "nome": zod.string(),
+  "codigo": zod.string().nullish(),
+  "descricao": zod.string().nullish(),
+  "categoria": zod.union([zod.literal('camiseta'),zod.literal('calca'),zod.literal('vestido'),zod.literal('short'),zod.literal('jaqueta'),zod.literal('blazer'),zod.literal('saia'),zod.literal('acessorio'),zod.literal('calcado'),zod.literal('bolsa'),zod.literal('outro'),zod.literal(null)]).nullish(),
+  "genero": zod.union([zod.literal('masculino'),zod.literal('feminino'),zod.literal('unissex'),zod.literal('infantil'),zod.literal(null)]).nullish(),
+  "precoCompra": zod.string().nullish(),
+  "precoVenda": zod.string(),
+  "ativo": zod.boolean(),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date(),
+  "grades": zod.array(zod.object({
+  "id": zod.string(),
+  "tenantId": zod.string(),
+  "produtoId": zod.string(),
+  "tamanho": zod.string(),
+  "cor": zod.string(),
+  "estoque": zod.number(),
+  "estoqueMinimo": zod.number(),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date()
+})).optional(),
+  "fornecedor": zod.object({
+  "id": zod.string(),
+  "tenantId": zod.string(),
+  "nome": zod.string(),
+  "marca": zod.string().nullish(),
+  "contato": zod.string().nullish(),
+  "email": zod.string().nullish(),
+  "telefone": zod.string().nullish(),
+  "cnpj": zod.string().nullish(),
+  "condicoesPagamento": zod.string().nullish(),
+  "prazoEntregaDias": zod.number().nullish(),
+  "observacoes": zod.string().nullish(),
+  "ativo": zod.boolean(),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date()
+}).optional(),
+  "colecao": zod.object({
+  "id": zod.string(),
+  "tenantId": zod.string(),
+  "nome": zod.string(),
+  "temporada": zod.enum(['verao', 'inverno', 'outono', 'primavera', 'especial']),
+  "ano": zod.number(),
+  "status": zod.enum(['planejamento', 'ativa', 'encerrada']),
+  "descricao": zod.string().nullish(),
+  "ativo": zod.boolean(),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date()
+}).optional()
+}).optional()
+})).optional()
+})
+
+
+/**
+ * @summary Update pedido de compra
+ */
+export const UpdateVarejoPedidoCompraParams = zod.object({
+  "tenantId": zod.coerce.string(),
+  "pedidoId": zod.coerce.string()
+})
+
+export const UpdateVarejoPedidoCompraBody = zod.object({
+  "fornecedorId": zod.string().optional(),
+  "colecaoId": zod.string().optional(),
+  "status": zod.enum(['rascunho', 'enviado', 'confirmado', 'entregue', 'cancelado']).optional(),
+  "dataEmissao": zod.string().optional(),
+  "dataPrevista": zod.string().optional(),
+  "valorTotal": zod.string().optional(),
+  "observacoes": zod.string().optional()
+})
+
+export const UpdateVarejoPedidoCompraResponse = zod.object({
+  "id": zod.string(),
+  "tenantId": zod.string(),
+  "fornecedorId": zod.string().nullish(),
+  "colecaoId": zod.string().nullish(),
+  "status": zod.enum(['rascunho', 'enviado', 'confirmado', 'entregue', 'cancelado']),
+  "dataEmissao": zod.string(),
+  "dataPrevista": zod.string().nullish(),
+  "valorTotal": zod.string().nullish(),
+  "observacoes": zod.string().nullish(),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date(),
+  "fornecedor": zod.object({
+  "id": zod.string(),
+  "tenantId": zod.string(),
+  "nome": zod.string(),
+  "marca": zod.string().nullish(),
+  "contato": zod.string().nullish(),
+  "email": zod.string().nullish(),
+  "telefone": zod.string().nullish(),
+  "cnpj": zod.string().nullish(),
+  "condicoesPagamento": zod.string().nullish(),
+  "prazoEntregaDias": zod.number().nullish(),
+  "observacoes": zod.string().nullish(),
+  "ativo": zod.boolean(),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date()
+}).optional(),
+  "colecao": zod.object({
+  "id": zod.string(),
+  "tenantId": zod.string(),
+  "nome": zod.string(),
+  "temporada": zod.enum(['verao', 'inverno', 'outono', 'primavera', 'especial']),
+  "ano": zod.number(),
+  "status": zod.enum(['planejamento', 'ativa', 'encerrada']),
+  "descricao": zod.string().nullish(),
+  "ativo": zod.boolean(),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date()
+}).optional(),
+  "itens": zod.array(zod.object({
+  "id": zod.string(),
+  "pedidoId": zod.string(),
+  "produtoId": zod.string().nullish(),
+  "tamanho": zod.string(),
+  "cor": zod.string(),
+  "quantidade": zod.number(),
+  "precoUnitario": zod.string(),
+  "createdAt": zod.coerce.date(),
+  "produto": zod.object({
+  "id": zod.string(),
+  "tenantId": zod.string(),
+  "fornecedorId": zod.string().nullish(),
+  "colecaoId": zod.string().nullish(),
+  "nome": zod.string(),
+  "codigo": zod.string().nullish(),
+  "descricao": zod.string().nullish(),
+  "categoria": zod.union([zod.literal('camiseta'),zod.literal('calca'),zod.literal('vestido'),zod.literal('short'),zod.literal('jaqueta'),zod.literal('blazer'),zod.literal('saia'),zod.literal('acessorio'),zod.literal('calcado'),zod.literal('bolsa'),zod.literal('outro'),zod.literal(null)]).nullish(),
+  "genero": zod.union([zod.literal('masculino'),zod.literal('feminino'),zod.literal('unissex'),zod.literal('infantil'),zod.literal(null)]).nullish(),
+  "precoCompra": zod.string().nullish(),
+  "precoVenda": zod.string(),
+  "ativo": zod.boolean(),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date(),
+  "grades": zod.array(zod.object({
+  "id": zod.string(),
+  "tenantId": zod.string(),
+  "produtoId": zod.string(),
+  "tamanho": zod.string(),
+  "cor": zod.string(),
+  "estoque": zod.number(),
+  "estoqueMinimo": zod.number(),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date()
+})).optional(),
+  "fornecedor": zod.object({
+  "id": zod.string(),
+  "tenantId": zod.string(),
+  "nome": zod.string(),
+  "marca": zod.string().nullish(),
+  "contato": zod.string().nullish(),
+  "email": zod.string().nullish(),
+  "telefone": zod.string().nullish(),
+  "cnpj": zod.string().nullish(),
+  "condicoesPagamento": zod.string().nullish(),
+  "prazoEntregaDias": zod.number().nullish(),
+  "observacoes": zod.string().nullish(),
+  "ativo": zod.boolean(),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date()
+}).optional(),
+  "colecao": zod.object({
+  "id": zod.string(),
+  "tenantId": zod.string(),
+  "nome": zod.string(),
+  "temporada": zod.enum(['verao', 'inverno', 'outono', 'primavera', 'especial']),
+  "ano": zod.number(),
+  "status": zod.enum(['planejamento', 'ativa', 'encerrada']),
+  "descricao": zod.string().nullish(),
+  "ativo": zod.boolean(),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date()
+}).optional()
+}).optional()
+})).optional()
+})
+
+
+/**
+ * @summary Delete pedido de compra
+ */
+export const DeleteVarejoPedidoCompraParams = zod.object({
+  "tenantId": zod.coerce.string(),
+  "pedidoId": zod.coerce.string()
+})
+
+
+/**
+ * @summary List itens de pedido de compra
+ */
+export const ListVarejoPedidoCompraItensParams = zod.object({
+  "tenantId": zod.coerce.string(),
+  "pedidoId": zod.coerce.string()
+})
+
+export const ListVarejoPedidoCompraItensResponseItem = zod.object({
+  "id": zod.string(),
+  "pedidoId": zod.string(),
+  "produtoId": zod.string().nullish(),
+  "tamanho": zod.string(),
+  "cor": zod.string(),
+  "quantidade": zod.number(),
+  "precoUnitario": zod.string(),
+  "createdAt": zod.coerce.date(),
+  "produto": zod.object({
+  "id": zod.string(),
+  "tenantId": zod.string(),
+  "fornecedorId": zod.string().nullish(),
+  "colecaoId": zod.string().nullish(),
+  "nome": zod.string(),
+  "codigo": zod.string().nullish(),
+  "descricao": zod.string().nullish(),
+  "categoria": zod.union([zod.literal('camiseta'),zod.literal('calca'),zod.literal('vestido'),zod.literal('short'),zod.literal('jaqueta'),zod.literal('blazer'),zod.literal('saia'),zod.literal('acessorio'),zod.literal('calcado'),zod.literal('bolsa'),zod.literal('outro'),zod.literal(null)]).nullish(),
+  "genero": zod.union([zod.literal('masculino'),zod.literal('feminino'),zod.literal('unissex'),zod.literal('infantil'),zod.literal(null)]).nullish(),
+  "precoCompra": zod.string().nullish(),
+  "precoVenda": zod.string(),
+  "ativo": zod.boolean(),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date(),
+  "grades": zod.array(zod.object({
+  "id": zod.string(),
+  "tenantId": zod.string(),
+  "produtoId": zod.string(),
+  "tamanho": zod.string(),
+  "cor": zod.string(),
+  "estoque": zod.number(),
+  "estoqueMinimo": zod.number(),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date()
+})).optional(),
+  "fornecedor": zod.object({
+  "id": zod.string(),
+  "tenantId": zod.string(),
+  "nome": zod.string(),
+  "marca": zod.string().nullish(),
+  "contato": zod.string().nullish(),
+  "email": zod.string().nullish(),
+  "telefone": zod.string().nullish(),
+  "cnpj": zod.string().nullish(),
+  "condicoesPagamento": zod.string().nullish(),
+  "prazoEntregaDias": zod.number().nullish(),
+  "observacoes": zod.string().nullish(),
+  "ativo": zod.boolean(),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date()
+}).optional(),
+  "colecao": zod.object({
+  "id": zod.string(),
+  "tenantId": zod.string(),
+  "nome": zod.string(),
+  "temporada": zod.enum(['verao', 'inverno', 'outono', 'primavera', 'especial']),
+  "ano": zod.number(),
+  "status": zod.enum(['planejamento', 'ativa', 'encerrada']),
+  "descricao": zod.string().nullish(),
+  "ativo": zod.boolean(),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date()
+}).optional()
+}).optional()
+})
+export const ListVarejoPedidoCompraItensResponse = zod.array(ListVarejoPedidoCompraItensResponseItem)
+
+
+/**
+ * @summary Add item ao pedido de compra
+ */
+export const CreateVarejoPedidoCompraItemParams = zod.object({
+  "tenantId": zod.coerce.string(),
+  "pedidoId": zod.coerce.string()
+})
+
+export const CreateVarejoPedidoCompraItemBody = zod.object({
+  "produtoId": zod.string().optional(),
+  "tamanho": zod.string(),
+  "cor": zod.string(),
+  "quantidade": zod.number(),
+  "precoUnitario": zod.string()
+})
+
+
+/**
+ * @summary Remove item do pedido de compra
+ */
+export const DeleteVarejoPedidoCompraItemParams = zod.object({
+  "tenantId": zod.coerce.string(),
+  "pedidoId": zod.coerce.string(),
+  "itemId": zod.coerce.string()
+})
+
+
+/**
+ * @summary List programa de fidelidade
+ */
+export const ListVarejoFidelidadeParams = zod.object({
+  "tenantId": zod.coerce.string()
+})
+
+export const ListVarejoFidelidadeQueryParams = zod.object({
+  "nivel": zod.coerce.string().optional(),
+  "search": zod.coerce.string().optional()
+})
+
+export const ListVarejoFidelidadeResponseItem = zod.object({
+  "id": zod.string(),
+  "tenantId": zod.string(),
+  "leadId": zod.string(),
+  "pontos": zod.number(),
+  "totalGasto": zod.string(),
+  "nivel": zod.enum(['bronze', 'prata', 'ouro', 'diamante']),
+  "ultimaCompra": zod.string().nullish(),
+  "observacoes": zod.string().nullish(),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date(),
+  "leadNome": zod.string().optional(),
+  "leadTelefone": zod.string().optional()
+})
+export const ListVarejoFidelidadeResponse = zod.array(ListVarejoFidelidadeResponseItem)
+
+
+/**
+ * @summary Get fidelidade de um lead
+ */
+export const GetVarejoFidelidadeParams = zod.object({
+  "tenantId": zod.coerce.string(),
+  "leadId": zod.coerce.string()
+})
+
+export const GetVarejoFidelidadeResponse = zod.object({
+  "id": zod.string(),
+  "tenantId": zod.string(),
+  "leadId": zod.string(),
+  "pontos": zod.number(),
+  "totalGasto": zod.string(),
+  "nivel": zod.enum(['bronze', 'prata', 'ouro', 'diamante']),
+  "ultimaCompra": zod.string().nullish(),
+  "observacoes": zod.string().nullish(),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date(),
+  "leadNome": zod.string().optional(),
+  "leadTelefone": zod.string().optional()
+})
+
+
+/**
+ * @summary Upsert fidelidade de um lead
+ */
+export const UpsertVarejoFidelidadeParams = zod.object({
+  "tenantId": zod.coerce.string(),
+  "leadId": zod.coerce.string()
+})
+
+export const UpsertVarejoFidelidadeBody = zod.object({
+  "pontos": zod.number().optional(),
+  "totalGasto": zod.string().optional(),
+  "nivel": zod.enum(['bronze', 'prata', 'ouro', 'diamante']).optional(),
+  "ultimaCompra": zod.string().optional(),
+  "observacoes": zod.string().optional()
+})
+
+export const UpsertVarejoFidelidadeResponse = zod.object({
+  "id": zod.string(),
+  "tenantId": zod.string(),
+  "leadId": zod.string(),
+  "pontos": zod.number(),
+  "totalGasto": zod.string(),
+  "nivel": zod.enum(['bronze', 'prata', 'ouro', 'diamante']),
+  "ultimaCompra": zod.string().nullish(),
+  "observacoes": zod.string().nullish(),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date(),
+  "leadNome": zod.string().optional(),
+  "leadTelefone": zod.string().optional()
+})
+
+
+/**
+ * @summary List combos/looks
+ */
+export const ListVarejoCombosParams = zod.object({
+  "tenantId": zod.coerce.string()
+})
+
+export const ListVarejoCombosResponseItem = zod.object({
+  "id": zod.string(),
+  "tenantId": zod.string(),
+  "nome": zod.string(),
+  "descricao": zod.string().nullish(),
+  "preco": zod.string().nullish(),
+  "ativo": zod.boolean(),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date(),
+  "itens": zod.array(zod.object({
+  "id": zod.string(),
+  "comboId": zod.string(),
+  "produtoId": zod.string().nullish(),
+  "tamanho": zod.string().nullish(),
+  "cor": zod.string().nullish(),
+  "quantidade": zod.number(),
+  "createdAt": zod.coerce.date(),
+  "produto": zod.object({
+  "id": zod.string(),
+  "tenantId": zod.string(),
+  "fornecedorId": zod.string().nullish(),
+  "colecaoId": zod.string().nullish(),
+  "nome": zod.string(),
+  "codigo": zod.string().nullish(),
+  "descricao": zod.string().nullish(),
+  "categoria": zod.union([zod.literal('camiseta'),zod.literal('calca'),zod.literal('vestido'),zod.literal('short'),zod.literal('jaqueta'),zod.literal('blazer'),zod.literal('saia'),zod.literal('acessorio'),zod.literal('calcado'),zod.literal('bolsa'),zod.literal('outro'),zod.literal(null)]).nullish(),
+  "genero": zod.union([zod.literal('masculino'),zod.literal('feminino'),zod.literal('unissex'),zod.literal('infantil'),zod.literal(null)]).nullish(),
+  "precoCompra": zod.string().nullish(),
+  "precoVenda": zod.string(),
+  "ativo": zod.boolean(),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date(),
+  "grades": zod.array(zod.object({
+  "id": zod.string(),
+  "tenantId": zod.string(),
+  "produtoId": zod.string(),
+  "tamanho": zod.string(),
+  "cor": zod.string(),
+  "estoque": zod.number(),
+  "estoqueMinimo": zod.number(),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date()
+})).optional(),
+  "fornecedor": zod.object({
+  "id": zod.string(),
+  "tenantId": zod.string(),
+  "nome": zod.string(),
+  "marca": zod.string().nullish(),
+  "contato": zod.string().nullish(),
+  "email": zod.string().nullish(),
+  "telefone": zod.string().nullish(),
+  "cnpj": zod.string().nullish(),
+  "condicoesPagamento": zod.string().nullish(),
+  "prazoEntregaDias": zod.number().nullish(),
+  "observacoes": zod.string().nullish(),
+  "ativo": zod.boolean(),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date()
+}).optional(),
+  "colecao": zod.object({
+  "id": zod.string(),
+  "tenantId": zod.string(),
+  "nome": zod.string(),
+  "temporada": zod.enum(['verao', 'inverno', 'outono', 'primavera', 'especial']),
+  "ano": zod.number(),
+  "status": zod.enum(['planejamento', 'ativa', 'encerrada']),
+  "descricao": zod.string().nullish(),
+  "ativo": zod.boolean(),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date()
+}).optional()
+}).optional()
+})).optional()
+})
+export const ListVarejoCombosResponse = zod.array(ListVarejoCombosResponseItem)
+
+
+/**
+ * @summary Create combo/look
+ */
+export const CreateVarejoComboParams = zod.object({
+  "tenantId": zod.coerce.string()
+})
+
+export const CreateVarejoComboBody = zod.object({
+  "tenantId": zod.string(),
+  "nome": zod.string(),
+  "descricao": zod.string().optional(),
+  "preco": zod.string().optional(),
+  "ativo": zod.boolean().optional()
+})
+
+
+/**
+ * @summary Get combo/look
+ */
+export const GetVarejoComboParams = zod.object({
+  "tenantId": zod.coerce.string(),
+  "comboId": zod.coerce.string()
+})
+
+export const GetVarejoComboResponse = zod.object({
+  "id": zod.string(),
+  "tenantId": zod.string(),
+  "nome": zod.string(),
+  "descricao": zod.string().nullish(),
+  "preco": zod.string().nullish(),
+  "ativo": zod.boolean(),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date(),
+  "itens": zod.array(zod.object({
+  "id": zod.string(),
+  "comboId": zod.string(),
+  "produtoId": zod.string().nullish(),
+  "tamanho": zod.string().nullish(),
+  "cor": zod.string().nullish(),
+  "quantidade": zod.number(),
+  "createdAt": zod.coerce.date(),
+  "produto": zod.object({
+  "id": zod.string(),
+  "tenantId": zod.string(),
+  "fornecedorId": zod.string().nullish(),
+  "colecaoId": zod.string().nullish(),
+  "nome": zod.string(),
+  "codigo": zod.string().nullish(),
+  "descricao": zod.string().nullish(),
+  "categoria": zod.union([zod.literal('camiseta'),zod.literal('calca'),zod.literal('vestido'),zod.literal('short'),zod.literal('jaqueta'),zod.literal('blazer'),zod.literal('saia'),zod.literal('acessorio'),zod.literal('calcado'),zod.literal('bolsa'),zod.literal('outro'),zod.literal(null)]).nullish(),
+  "genero": zod.union([zod.literal('masculino'),zod.literal('feminino'),zod.literal('unissex'),zod.literal('infantil'),zod.literal(null)]).nullish(),
+  "precoCompra": zod.string().nullish(),
+  "precoVenda": zod.string(),
+  "ativo": zod.boolean(),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date(),
+  "grades": zod.array(zod.object({
+  "id": zod.string(),
+  "tenantId": zod.string(),
+  "produtoId": zod.string(),
+  "tamanho": zod.string(),
+  "cor": zod.string(),
+  "estoque": zod.number(),
+  "estoqueMinimo": zod.number(),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date()
+})).optional(),
+  "fornecedor": zod.object({
+  "id": zod.string(),
+  "tenantId": zod.string(),
+  "nome": zod.string(),
+  "marca": zod.string().nullish(),
+  "contato": zod.string().nullish(),
+  "email": zod.string().nullish(),
+  "telefone": zod.string().nullish(),
+  "cnpj": zod.string().nullish(),
+  "condicoesPagamento": zod.string().nullish(),
+  "prazoEntregaDias": zod.number().nullish(),
+  "observacoes": zod.string().nullish(),
+  "ativo": zod.boolean(),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date()
+}).optional(),
+  "colecao": zod.object({
+  "id": zod.string(),
+  "tenantId": zod.string(),
+  "nome": zod.string(),
+  "temporada": zod.enum(['verao', 'inverno', 'outono', 'primavera', 'especial']),
+  "ano": zod.number(),
+  "status": zod.enum(['planejamento', 'ativa', 'encerrada']),
+  "descricao": zod.string().nullish(),
+  "ativo": zod.boolean(),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date()
+}).optional()
+}).optional()
+})).optional()
+})
+
+
+/**
+ * @summary Update combo/look
+ */
+export const UpdateVarejoComboParams = zod.object({
+  "tenantId": zod.coerce.string(),
+  "comboId": zod.coerce.string()
+})
+
+export const UpdateVarejoComboBody = zod.object({
+  "nome": zod.string().optional(),
+  "descricao": zod.string().optional(),
+  "preco": zod.string().optional(),
+  "ativo": zod.boolean().optional()
+})
+
+export const UpdateVarejoComboResponse = zod.object({
+  "id": zod.string(),
+  "tenantId": zod.string(),
+  "nome": zod.string(),
+  "descricao": zod.string().nullish(),
+  "preco": zod.string().nullish(),
+  "ativo": zod.boolean(),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date(),
+  "itens": zod.array(zod.object({
+  "id": zod.string(),
+  "comboId": zod.string(),
+  "produtoId": zod.string().nullish(),
+  "tamanho": zod.string().nullish(),
+  "cor": zod.string().nullish(),
+  "quantidade": zod.number(),
+  "createdAt": zod.coerce.date(),
+  "produto": zod.object({
+  "id": zod.string(),
+  "tenantId": zod.string(),
+  "fornecedorId": zod.string().nullish(),
+  "colecaoId": zod.string().nullish(),
+  "nome": zod.string(),
+  "codigo": zod.string().nullish(),
+  "descricao": zod.string().nullish(),
+  "categoria": zod.union([zod.literal('camiseta'),zod.literal('calca'),zod.literal('vestido'),zod.literal('short'),zod.literal('jaqueta'),zod.literal('blazer'),zod.literal('saia'),zod.literal('acessorio'),zod.literal('calcado'),zod.literal('bolsa'),zod.literal('outro'),zod.literal(null)]).nullish(),
+  "genero": zod.union([zod.literal('masculino'),zod.literal('feminino'),zod.literal('unissex'),zod.literal('infantil'),zod.literal(null)]).nullish(),
+  "precoCompra": zod.string().nullish(),
+  "precoVenda": zod.string(),
+  "ativo": zod.boolean(),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date(),
+  "grades": zod.array(zod.object({
+  "id": zod.string(),
+  "tenantId": zod.string(),
+  "produtoId": zod.string(),
+  "tamanho": zod.string(),
+  "cor": zod.string(),
+  "estoque": zod.number(),
+  "estoqueMinimo": zod.number(),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date()
+})).optional(),
+  "fornecedor": zod.object({
+  "id": zod.string(),
+  "tenantId": zod.string(),
+  "nome": zod.string(),
+  "marca": zod.string().nullish(),
+  "contato": zod.string().nullish(),
+  "email": zod.string().nullish(),
+  "telefone": zod.string().nullish(),
+  "cnpj": zod.string().nullish(),
+  "condicoesPagamento": zod.string().nullish(),
+  "prazoEntregaDias": zod.number().nullish(),
+  "observacoes": zod.string().nullish(),
+  "ativo": zod.boolean(),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date()
+}).optional(),
+  "colecao": zod.object({
+  "id": zod.string(),
+  "tenantId": zod.string(),
+  "nome": zod.string(),
+  "temporada": zod.enum(['verao', 'inverno', 'outono', 'primavera', 'especial']),
+  "ano": zod.number(),
+  "status": zod.enum(['planejamento', 'ativa', 'encerrada']),
+  "descricao": zod.string().nullish(),
+  "ativo": zod.boolean(),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date()
+}).optional()
+}).optional()
+})).optional()
+})
+
+
+/**
+ * @summary Delete combo/look
+ */
+export const DeleteVarejoComboParams = zod.object({
+  "tenantId": zod.coerce.string(),
+  "comboId": zod.coerce.string()
+})
+
+
+/**
+ * @summary List itens de combo
+ */
+export const ListVarejoComboItensParams = zod.object({
+  "tenantId": zod.coerce.string(),
+  "comboId": zod.coerce.string()
+})
+
+export const ListVarejoComboItensResponseItem = zod.object({
+  "id": zod.string(),
+  "comboId": zod.string(),
+  "produtoId": zod.string().nullish(),
+  "tamanho": zod.string().nullish(),
+  "cor": zod.string().nullish(),
+  "quantidade": zod.number(),
+  "createdAt": zod.coerce.date(),
+  "produto": zod.object({
+  "id": zod.string(),
+  "tenantId": zod.string(),
+  "fornecedorId": zod.string().nullish(),
+  "colecaoId": zod.string().nullish(),
+  "nome": zod.string(),
+  "codigo": zod.string().nullish(),
+  "descricao": zod.string().nullish(),
+  "categoria": zod.union([zod.literal('camiseta'),zod.literal('calca'),zod.literal('vestido'),zod.literal('short'),zod.literal('jaqueta'),zod.literal('blazer'),zod.literal('saia'),zod.literal('acessorio'),zod.literal('calcado'),zod.literal('bolsa'),zod.literal('outro'),zod.literal(null)]).nullish(),
+  "genero": zod.union([zod.literal('masculino'),zod.literal('feminino'),zod.literal('unissex'),zod.literal('infantil'),zod.literal(null)]).nullish(),
+  "precoCompra": zod.string().nullish(),
+  "precoVenda": zod.string(),
+  "ativo": zod.boolean(),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date(),
+  "grades": zod.array(zod.object({
+  "id": zod.string(),
+  "tenantId": zod.string(),
+  "produtoId": zod.string(),
+  "tamanho": zod.string(),
+  "cor": zod.string(),
+  "estoque": zod.number(),
+  "estoqueMinimo": zod.number(),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date()
+})).optional(),
+  "fornecedor": zod.object({
+  "id": zod.string(),
+  "tenantId": zod.string(),
+  "nome": zod.string(),
+  "marca": zod.string().nullish(),
+  "contato": zod.string().nullish(),
+  "email": zod.string().nullish(),
+  "telefone": zod.string().nullish(),
+  "cnpj": zod.string().nullish(),
+  "condicoesPagamento": zod.string().nullish(),
+  "prazoEntregaDias": zod.number().nullish(),
+  "observacoes": zod.string().nullish(),
+  "ativo": zod.boolean(),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date()
+}).optional(),
+  "colecao": zod.object({
+  "id": zod.string(),
+  "tenantId": zod.string(),
+  "nome": zod.string(),
+  "temporada": zod.enum(['verao', 'inverno', 'outono', 'primavera', 'especial']),
+  "ano": zod.number(),
+  "status": zod.enum(['planejamento', 'ativa', 'encerrada']),
+  "descricao": zod.string().nullish(),
+  "ativo": zod.boolean(),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date()
+}).optional()
+}).optional()
+})
+export const ListVarejoComboItensResponse = zod.array(ListVarejoComboItensResponseItem)
+
+
+/**
+ * @summary Add item ao combo
+ */
+export const CreateVarejoComboItemParams = zod.object({
+  "tenantId": zod.coerce.string(),
+  "comboId": zod.coerce.string()
+})
+
+export const CreateVarejoComboItemBody = zod.object({
+  "produtoId": zod.string().optional(),
+  "tamanho": zod.string().optional(),
+  "cor": zod.string().optional(),
+  "quantidade": zod.number()
+})
+
+
+/**
+ * @summary Remove item do combo
+ */
+export const DeleteVarejoComboItemParams = zod.object({
+  "tenantId": zod.coerce.string(),
+  "comboId": zod.coerce.string(),
+  "itemId": zod.coerce.string()
+})
+
+

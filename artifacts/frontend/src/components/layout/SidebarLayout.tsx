@@ -4,6 +4,7 @@ import {
   LayoutDashboard, Users, Briefcase, MessageSquare, Calendar,
   Settings, LogOut, Megaphone, FileText, Receipt, BrainCircuit,
   Store, Package, Menu, X, Sparkles, Globe, BookOpen, HardHat, Layers,
+  Shirt, Tag, ShoppingCart, Heart, Gift, Truck,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
@@ -18,6 +19,7 @@ export function SidebarLayout({ children }: { children: React.ReactNode }) {
   const isSuperAdmin = user?.platformRole === "super_admin";
   const isSeller = user?.platformRole === "tenant_seller";
   const isConstrucao = user?.tenantVertical === "Construção & Reforma";
+  const isVarejo = user?.tenantVertical === "Varejo de Roupas & Acessórios";
 
   const allNavItems = [
     { name: "Dashboard",     href: "/",             icon: LayoutDashboard, sellerHidden: false, section: "crm" },
@@ -33,14 +35,21 @@ export function SidebarLayout({ children }: { children: React.ReactNode }) {
     { name: "Faturamento",   href: "/faturamento",   icon: Receipt,         sellerHidden: true,  section: "crm" },
     { name: "Configurações", href: "/configuracoes", icon: Settings,        sellerHidden: true,  section: "crm" },
     { name: "Guia de Setup", href: "/guia-implantacao", icon: BookOpen,     sellerHidden: true,  section: "crm" },
-    { name: "Obras",         href: "/obras",         icon: HardHat,         sellerHidden: false, section: "construcao" },
-    { name: "Insumos",       href: "/insumos",       icon: Package,         sellerHidden: false, section: "construcao" },
-    { name: "Composições",   href: "/composicoes",   icon: Layers,          sellerHidden: false, section: "construcao" },
+    { name: "Obras",         href: "/obras",                    icon: HardHat,     sellerHidden: false, section: "construcao" },
+    { name: "Insumos",       href: "/insumos",                  icon: Package,     sellerHidden: false, section: "construcao" },
+    { name: "Composições",   href: "/composicoes",              icon: Layers,      sellerHidden: false, section: "construcao" },
+    { name: "Produtos",      href: "/varejo/produtos",          icon: Shirt,       sellerHidden: false, section: "varejo" },
+    { name: "Coleções",      href: "/varejo/colecoes",          icon: Tag,         sellerHidden: false, section: "varejo" },
+    { name: "Fornecedores",  href: "/varejo/fornecedores",      icon: Truck,       sellerHidden: false, section: "varejo" },
+    { name: "Compras",       href: "/varejo/compras",           icon: ShoppingCart,sellerHidden: false, section: "varejo" },
+    { name: "Fidelidade",    href: "/varejo/fidelidade",        icon: Heart,       sellerHidden: false, section: "varejo" },
+    { name: "Combos & Looks",href: "/varejo/combos",            icon: Gift,        sellerHidden: false, section: "varejo" },
   ];
 
   const navigation = allNavItems.filter(item =>
     !(isSeller && item.sellerHidden) &&
-    (item.section !== "construcao" || isConstrucao)
+    (item.section !== "construcao" || isConstrucao) &&
+    (item.section !== "varejo" || isVarejo)
   );
 
   const adminNavigation = isSuperAdmin
@@ -53,6 +62,7 @@ export function SidebarLayout({ children }: { children: React.ReactNode }) {
 
   const crmNav = navigation.filter((i) => i.section === "crm");
   const construcaoNav = navigation.filter((i) => i.section === "construcao");
+  const varejoNav = navigation.filter((i) => i.section === "varejo");
 
   function NavItem({ item, onNavigate }: { item: (typeof allNavItems)[0]; onNavigate?: () => void }) {
     const isActive = location === item.href || (item.href !== "/" && location.startsWith(item.href));
@@ -85,6 +95,16 @@ export function SidebarLayout({ children }: { children: React.ReactNode }) {
               Construção Civil
             </p>
             {construcaoNav.map((item) => <NavItem key={item.name} item={item} onNavigate={onNavigate} />)}
+          </div>
+        )}
+
+        {varejoNav.length > 0 && (
+          <div className="mt-3 pt-3 border-t">
+            <p className="px-3 mb-1 text-[10px] font-semibold uppercase tracking-widest text-muted-foreground/60 flex items-center gap-1.5">
+              <Shirt className="h-3 w-3" />
+              Varejo de Moda
+            </p>
+            {varejoNav.map((item) => <NavItem key={item.name} item={item} onNavigate={onNavigate} />)}
           </div>
         )}
 
