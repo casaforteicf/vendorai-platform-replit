@@ -18,7 +18,7 @@ export const inventoryItemsTable = pgTable("inventory_items", {
     .references(() => tenantsTable.id, { onDelete: "cascade" }),
   produtoId: text("produto_id")
     .notNull()
-    .references(() => produtosCatalogoTable.id, { onDelete: "restrict" }),
+    .references(() => produtosCatalogoTable.id, { onDelete: "cascade" }),
   quantidadeAtual: numeric("quantidade_atual", { precision: 15, scale: 4 })
     .notNull()
     .default("0"),

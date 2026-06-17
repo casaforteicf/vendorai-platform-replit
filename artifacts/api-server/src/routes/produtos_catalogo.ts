@@ -5,6 +5,7 @@ import {
   produtosCatalogoTable,
   insertProdutoCatalogoSchema,
   updateProdutoCatalogoSchema,
+  inventoryItemsTable,
 } from "@workspace/db";
 
 const router: IRouter = Router();
@@ -98,6 +99,8 @@ router.delete("/produtos-catalogo/:id", async (req, res) => {
     return;
   }
 
+  // Delete inventory items first (FK restrict → cascade in DB not yet applied)
+  await db.delete(inventoryItemsTable).where(eq(inventoryItemsTable.produtoId, existing.id));
   await db.delete(produtosCatalogoTable).where(eq(produtosCatalogoTable.id, existing.id));
 
   res.status(204).send();
