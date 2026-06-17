@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { useLocation } from "wouter";
 import { useAuth } from "@/contexts/AuthContext";
 import {
   useListInventoryItems,
@@ -10,8 +11,12 @@ import {
   useListProdutosCatalogo,
   getListProdutosCatalogoQueryKey,
   useImportInventoryItemsCsv,
+  useListTenantLeads,
+  getListTenantLeadsQueryKey,
+  useCreatePropostaFromCatalogo,
+  getListPropostasQueryKey,
 } from "@workspace/api-client-react";
-import type { InventoryItem, InventoryMovement, ImportInventoryResult } from "@workspace/api-client-react";
+import type { InventoryItem, InventoryMovement, ImportInventoryResult, ProdutoCatalogo } from "@workspace/api-client-react";
 import { useQueryClient } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
 import { useForm } from "react-hook-form";
@@ -21,6 +26,9 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
+import { Separator } from "@/components/ui/separator";
+import { Textarea } from "@/components/ui/textarea";
 import {
   Table,
   TableBody,
@@ -68,6 +76,13 @@ import {
   Search,
   Filter,
   X,
+  Eye,
+  FileText,
+  Tag,
+  ShoppingCart,
+  ImageIcon,
+  Warehouse,
+  ChevronRight,
 } from "lucide-react";
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -182,16 +197,21 @@ export default function Estoque() {
   const tenantId = user?.tenantId ?? "";
   const qc = useQueryClient();
   const { toast } = useToast();
+  const [, setLocation] = useLocation();
 
   const [showNovoItem, setShowNovoItem]         = useState(false);
   const [movItem, setMovItem]                   = useState<InventoryItem | null>(null);
-  const [activeTab, setActiveTab]               = useState<"itens" | "historico">("itens");
+  const [activeTab, setActiveTab]               = useState<"itens" | "historico" | "catalogo">("itens");
   const [showImport, setShowImport]             = useState(false);
   const [csvRows, setCsvRows]                   = useState<CsvRow[]>([]);
   const [csvParseErrors, setCsvParseErrors]     = useState<string[]>([]);
   const [importResult, setImportResult]         = useState<ImportInventoryResult | null>(null);
   const [search, setSearch]                     = useState("");
   const [categoriaFilter, setCategoriaFilter]   = useState<string>("__all__");
+  // Catálogo
+  const [catalogSearch, setCatalogSearch]       = useState("");
+  const [viewProduto, setViewProduto]           = useState<ProdutoCatalogo | null>(null);
+  const [addToProposta, setAddToProposta]       = useState<ProdutoCatalogo | null>(null);
 
   // ── Queries ──────────────────────────────────────────────────────────────
   const { data: items = [], isLoading: loadingItems } = useListInventoryItems(tenantId, {
@@ -203,11 +223,15 @@ export default function Estoque() {
   const { data: movements = [], isLoading: loadingMovements } = useListInventoryMovements(tenantId, undefined, {
     query: { queryKey: getListInventoryMovementsQueryKey(tenantId), enabled: !!tenantId },
   });
+  const { data: leads = [] } = useListTenantLeads(tenantId, {
+    query: { queryKey: getListTenantLeadsQueryKey(tenantId), enabled: !!tenantId },
+  });
 
   // ── Mutations ─────────────────────────────────────────────────────────────
-  const createItem   = useCreateInventoryItem();
-  const registerMov  = useRegisterInventoryMovement();
-  const importCsv    = useImportInventoryItemsCsv();
+  const createItem       = useCreateInventoryItem();
+  const registerMov      = useRegisterInventoryMovement();
+  const importCsv        = useImportInventoryItemsCsv();
+  const createProposta   = useCreatePropostaFromCatalogo();
 
   // ── Forms ─────────────────────────────────────────────────────────────────
   const novoItemForm = useForm<NovoItemForm>({
@@ -358,15 +382,19 @@ export default function Estoque() {
       )}
 
       {/* Tabs */}
-      <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as "itens" | "historico")}>
+      <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as "itens" | "historico" | "catalogo")}>
         <TabsList className="mb-2">
           <TabsTrigger value="itens" className="gap-2">
             <Package className="h-4 w-4" />
             Itens em Estoque
           </TabsTrigger>
+          <TabsTrigger value="catalogo" className="gap-2">
+            <Eye className="h-4 w-4" />
+            Consultar Catálogo
+          </TabsTrigger>
           <TabsTrigger value="historico" className="gap-2">
             <SlidersHorizontal className="h-4 w-4" />
-            Histórico de Movimentações
+            Histórico
           </TabsTrigger>
         </TabsList>
 
@@ -554,6 +582,112 @@ export default function Estoque() {
               )}
             </CardContent>
           </Card>
+        </TabsContent>
+
+        {/* ── Tab: Catálogo ───────────────────────────────────────────── */}
+        <TabsContent value="catalogo">
+          {/* Search bar */}
+          <div className="relative mb-3">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none" />
+            <Input
+              placeholder="Buscar produto no catálogo…"
+              value={catalogSearch}
+              onChange={(e) => setCatalogSearch(e.target.value)}
+              className="pl-9 pr-9"
+            />
+            {catalogSearch && (
+              <button
+                onClick={() => setCatalogSearch("")}
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+              >
+                <X className="h-3.5 w-3.5" />
+              </button>
+            )}
+          </div>
+
+          {produtos.length === 0 ? (
+            <div className="flex flex-col items-center justify-center py-16 text-center gap-3">
+              <Package className="h-12 w-12 text-muted-foreground/40" />
+              <div>
+                <p className="font-medium text-muted-foreground">Nenhum produto no catálogo</p>
+                <p className="text-sm text-muted-foreground/70">Cadastre produtos em Configurações → Catálogo de Produtos</p>
+              </div>
+            </div>
+          ) : (
+            (() => {
+              const q = catalogSearch.toLowerCase().trim();
+              const filtered = produtos.filter((p) =>
+                !q || p.nome.toLowerCase().includes(q) || (p.sku ?? "").toLowerCase().includes(q) || (p.categoria ?? "").toLowerCase().includes(q)
+              );
+              if (filtered.length === 0) return (
+                <div className="flex flex-col items-center justify-center py-16 text-center gap-3">
+                  <Search className="h-12 w-12 text-muted-foreground/40" />
+                  <p className="font-medium text-muted-foreground">Nenhum produto encontrado</p>
+                </div>
+              );
+              // Map produtoId → inventoryItem for stock overlay
+              const stockByProduto: Record<string, InventoryItem> = {};
+              for (const item of items) {
+                if (!stockByProduto[item.produtoId]) stockByProduto[item.produtoId] = item;
+              }
+              return (
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                  {filtered.map((produto) => {
+                    const inv = stockByProduto[produto.id];
+                    const qty = inv ? parseFloat(inv.quantidadeAtual ?? "0") : null;
+                    const low = inv ? isLowStock(inv) : false;
+                    return (
+                      <button
+                        key={produto.id}
+                        onClick={() => setViewProduto(produto)}
+                        className="text-left group rounded-lg border bg-card hover:border-primary/60 hover:shadow-sm transition-all p-4 space-y-3"
+                      >
+                        {/* Image or placeholder */}
+                        <div className="aspect-video rounded-md bg-muted/50 overflow-hidden flex items-center justify-center">
+                          {produto.imagemUrl ? (
+                            <img src={produto.imagemUrl} alt={produto.nome} className="w-full h-full object-cover" />
+                          ) : (
+                            <ImageIcon className="h-8 w-8 text-muted-foreground/30" />
+                          )}
+                        </div>
+                        <div className="space-y-1.5">
+                          <div className="flex items-start justify-between gap-2">
+                            <p className="font-semibold text-sm leading-tight group-hover:text-primary transition-colors line-clamp-2">{produto.nome}</p>
+                            {!produto.ativo && <Badge variant="secondary" className="text-xs shrink-0">Inativo</Badge>}
+                          </div>
+                          {produto.sku && <p className="text-xs text-muted-foreground font-mono">SKU: {produto.sku}</p>}
+                          {produto.categoria && (
+                            <Badge variant="outline" className="text-xs gap-1 w-fit">
+                              <Tag className="h-2.5 w-2.5" />{produto.categoria}
+                            </Badge>
+                          )}
+                        </div>
+                        <Separator />
+                        <div className="flex items-center justify-between">
+                          <span className="font-bold text-sm tabular-nums">
+                            R$ {parseFloat(produto.precoBase).toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                            <span className="text-xs font-normal text-muted-foreground ml-1">/{produto.unidade}</span>
+                          </span>
+                          {qty !== null ? (
+                            <Badge variant={low ? "destructive" : "secondary"} className={`text-xs ${!low ? "text-emerald-700 bg-emerald-50 border-emerald-200" : ""}`}>
+                              <Warehouse className="h-3 w-3 mr-1" />
+                              {formatQty(inv?.quantidadeAtual)} {inv?.unidade}
+                            </Badge>
+                          ) : (
+                            <Badge variant="outline" className="text-xs text-muted-foreground">Sem estoque</Badge>
+                          )}
+                        </div>
+                        <div className="flex items-center gap-1 text-xs text-primary font-medium opacity-0 group-hover:opacity-100 transition-opacity">
+                          <Eye className="h-3 w-3" /> Ver detalhes
+                          <ChevronRight className="h-3 w-3 ml-auto" />
+                        </div>
+                      </button>
+                    );
+                  })}
+                </div>
+              );
+            })()
+          )}
         </TabsContent>
 
         {/* ── Tab: Histórico ──────────────────────────────────────────── */}
@@ -1025,6 +1159,346 @@ export default function Estoque() {
           </div>
         </DialogContent>
       </Dialog>
+
+      {/* ── Sheet: Detalhe do Produto ────────────────────────────────────────── */}
+      {viewProduto && (
+        <ProdutoDetailSheet
+          produto={viewProduto}
+          inventoryItem={items.find((i) => i.produtoId === viewProduto.id) ?? null}
+          movements={movements.filter((m) => {
+            const inv = items.find((i) => i.id === m.inventoryItemId);
+            return inv?.produtoId === viewProduto.id;
+          })}
+          onClose={() => setViewProduto(null)}
+          onAddToProposta={() => {
+            setAddToProposta(viewProduto);
+          }}
+        />
+      )}
+
+      {/* ── Dialog: Adicionar à Proposta ────────────────────────────────────── */}
+      {addToProposta && (
+        <AddToPropostaDialog
+          produto={addToProposta}
+          leads={leads}
+          tenantId={tenantId}
+          onClose={() => setAddToProposta(null)}
+          onSuccess={() => {
+            setAddToProposta(null);
+            setViewProduto(null);
+            setLocation("/propostas");
+          }}
+          createProposta={createProposta}
+          qc={qc}
+          toast={toast}
+        />
+      )}
     </div>
+  );
+}
+
+// ── ProdutoDetailSheet ────────────────────────────────────────────────────────
+
+function ProdutoDetailSheet({
+  produto,
+  inventoryItem,
+  movements,
+  onClose,
+  onAddToProposta,
+}: {
+  produto: ProdutoCatalogo;
+  inventoryItem: InventoryItem | null;
+  movements: InventoryMovement[];
+  onClose: () => void;
+  onAddToProposta: () => void;
+}) {
+  const qty = inventoryItem ? parseFloat(inventoryItem.quantidadeAtual ?? "0") : null;
+  const low = inventoryItem ? isLowStock(inventoryItem) : false;
+
+  return (
+    <Sheet open onOpenChange={(v) => !v && onClose()}>
+      <SheetContent className="w-full sm:max-w-lg overflow-y-auto">
+        <SheetHeader className="pb-2">
+          <SheetTitle className="flex items-center gap-2 text-base">
+            <Package className="h-4 w-4 text-primary" />
+            Detalhes do Produto
+          </SheetTitle>
+        </SheetHeader>
+
+        <div className="space-y-5 mt-2">
+          {/* Image */}
+          {produto.imagemUrl && (
+            <div className="rounded-lg overflow-hidden border aspect-video bg-muted flex items-center justify-center">
+              <img src={produto.imagemUrl} alt={produto.nome} className="w-full h-full object-contain" />
+            </div>
+          )}
+
+          {/* Header info */}
+          <div className="space-y-1">
+            <div className="flex items-start gap-2 justify-between">
+              <h2 className="text-lg font-bold leading-tight">{produto.nome}</h2>
+              {!produto.ativo && <Badge variant="secondary" className="shrink-0">Inativo</Badge>}
+            </div>
+            {produto.sku && <p className="text-xs text-muted-foreground font-mono">SKU: {produto.sku}</p>}
+            {produto.categoria && (
+              <Badge variant="outline" className="gap-1 w-fit text-xs">
+                <Tag className="h-2.5 w-2.5" />{produto.categoria}
+              </Badge>
+            )}
+          </div>
+
+          <Separator />
+
+          {/* Details grid */}
+          <div className="grid grid-cols-2 gap-3 text-sm">
+            <div className="space-y-0.5">
+              <p className="text-xs text-muted-foreground uppercase tracking-wide font-medium">Preço base</p>
+              <p className="font-bold text-base">
+                R$ {parseFloat(produto.precoBase).toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+              </p>
+            </div>
+            <div className="space-y-0.5">
+              <p className="text-xs text-muted-foreground uppercase tracking-wide font-medium">Unidade</p>
+              <p className="font-semibold">{produto.unidade}</p>
+            </div>
+          </div>
+
+          {produto.descricao && (
+            <div className="space-y-1">
+              <p className="text-xs text-muted-foreground uppercase tracking-wide font-medium">Descrição</p>
+              <p className="text-sm leading-relaxed">{produto.descricao}</p>
+            </div>
+          )}
+
+          <Separator />
+
+          {/* Stock section */}
+          <div className="space-y-3">
+            <p className="text-xs text-muted-foreground uppercase tracking-wide font-medium flex items-center gap-1.5">
+              <Warehouse className="h-3.5 w-3.5" /> Estoque atual
+            </p>
+            {inventoryItem ? (
+              <div className="rounded-lg border p-4 space-y-3">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className={`text-2xl font-bold tabular-nums ${low ? "text-red-600" : "text-emerald-600"}`}>
+                      {formatQty(inventoryItem.quantidadeAtual)}
+                      <span className="text-sm font-normal text-muted-foreground ml-1">{inventoryItem.unidade}</span>
+                    </p>
+                    <p className="text-xs text-muted-foreground mt-0.5">
+                      Mínimo: {formatQty(inventoryItem.quantidadeMinima)} {inventoryItem.unidade}
+                    </p>
+                  </div>
+                  {low ? (
+                    <Badge variant="destructive" className="gap-1">
+                      <AlertTriangle className="h-3 w-3" /> Estoque Baixo
+                    </Badge>
+                  ) : (
+                    <Badge variant="secondary" className="text-emerald-700 bg-emerald-50 border-emerald-200">
+                      Normal
+                    </Badge>
+                  )}
+                </div>
+                {inventoryItem.localizacao && (
+                  <p className="text-xs text-muted-foreground">
+                    📍 Localização: <span className="font-medium text-foreground">{inventoryItem.localizacao}</span>
+                  </p>
+                )}
+              </div>
+            ) : (
+              <div className="rounded-lg border border-dashed p-4 text-center text-sm text-muted-foreground">
+                Produto não cadastrado no estoque ainda
+              </div>
+            )}
+          </div>
+
+          {/* Recent movements */}
+          {movements.length > 0 && (
+            <div className="space-y-2">
+              <p className="text-xs text-muted-foreground uppercase tracking-wide font-medium flex items-center gap-1.5">
+                <SlidersHorizontal className="h-3.5 w-3.5" /> Últimas movimentações
+              </p>
+              <div className="divide-y rounded-lg border overflow-hidden">
+                {movements.slice(0, 8).map((mov) => {
+                  const cfg = tipoConfig[mov.tipo as keyof typeof tipoConfig] ?? tipoConfig.ajuste;
+                  const Icon = cfg.icon;
+                  return (
+                    <div key={mov.id} className="flex items-center justify-between px-3 py-2 text-xs">
+                      <div className="flex items-center gap-2">
+                        <span className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full border font-medium ${cfg.className}`}>
+                          <Icon className="h-2.5 w-2.5" />{cfg.label}
+                        </span>
+                        <span className="text-muted-foreground truncate max-w-[120px]">{mov.motivo}</span>
+                      </div>
+                      <span className={`font-bold tabular-nums ${mov.tipo === "saida" ? "text-red-600" : "text-emerald-600"}`}>
+                        {mov.tipo === "saida" ? "-" : "+"}{formatQty(mov.quantidade)}
+                      </span>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
+          <Separator />
+
+          {/* Actions */}
+          <div className="flex flex-col gap-2 pb-4">
+            <Button
+              className="w-full gap-2"
+              onClick={onAddToProposta}
+            >
+              <FileText className="h-4 w-4" />
+              Adicionar à Proposta
+            </Button>
+            <Button variant="outline" className="w-full" onClick={onClose}>
+              Fechar
+            </Button>
+          </div>
+        </div>
+      </SheetContent>
+    </Sheet>
+  );
+}
+
+// ── AddToPropostaDialog ───────────────────────────────────────────────────────
+
+const addPropostaSchema = z.object({
+  leadId:    z.string().min(1, "Selecione um cliente"),
+  titulo:    z.string().min(2, "Mínimo 2 caracteres"),
+  quantidade: z.coerce.number({ invalid_type_error: "Número inválido" }).positive("Deve ser > 0"),
+});
+
+type AddPropostaForm = z.infer<typeof addPropostaSchema>;
+
+function AddToPropostaDialog({
+  produto,
+  leads,
+  tenantId,
+  onClose,
+  onSuccess,
+  createProposta,
+  qc,
+  toast,
+}: {
+  produto: ProdutoCatalogo;
+  leads: Array<{ id: string; nome: string }>;
+  tenantId: string;
+  onClose: () => void;
+  onSuccess: () => void;
+  createProposta: ReturnType<typeof useCreatePropostaFromCatalogo>;
+  qc: ReturnType<typeof useQueryClient>;
+  toast: ReturnType<typeof useToast>["toast"];
+}) {
+  const form = useForm<AddPropostaForm>({
+    resolver: zodResolver(addPropostaSchema),
+    defaultValues: {
+      leadId: "",
+      titulo: `Proposta — ${produto.nome}`,
+      quantidade: 1,
+    },
+  });
+
+  function onSubmit(values: AddPropostaForm) {
+    createProposta.mutate(
+      {
+        tenantId,
+        data: {
+          leadId:    values.leadId,
+          titulo:    values.titulo,
+          itens:     [{ produtoId: produto.id, quantidade: values.quantidade }],
+        },
+      },
+      {
+        onSuccess: () => {
+          qc.invalidateQueries({ queryKey: getListPropostasQueryKey(tenantId) });
+          toast({ title: "Proposta criada!", description: "Você será redirecionado para Propostas." });
+          onSuccess();
+        },
+        onError: () => toast({ title: "Erro ao criar proposta", variant: "destructive" }),
+      }
+    );
+  }
+
+  return (
+    <Dialog open onOpenChange={(v) => !v && onClose()}>
+      <DialogContent className="sm:max-w-md">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2">
+            <ShoppingCart className="h-5 w-5 text-primary" />
+            Adicionar à Proposta
+          </DialogTitle>
+        </DialogHeader>
+        <div className="rounded-lg bg-muted/40 border p-3 text-sm mb-1">
+          <p className="font-semibold">{produto.nome}</p>
+          <p className="text-muted-foreground text-xs mt-0.5">
+            R$ {parseFloat(produto.precoBase).toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} / {produto.unidade}
+          </p>
+        </div>
+        <Form {...form}>
+          <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
+            <FormField
+              control={form.control}
+              name="leadId"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Cliente *</FormLabel>
+                  <Select onValueChange={field.onChange} value={field.value}>
+                    <FormControl>
+                      <SelectTrigger>
+                        <SelectValue placeholder="Selecione um cliente…" />
+                      </SelectTrigger>
+                    </FormControl>
+                    <SelectContent>
+                      {leads.length === 0 ? (
+                        <div className="py-3 text-center text-sm text-muted-foreground">Nenhum lead cadastrado</div>
+                      ) : (
+                        leads.map((l) => (
+                          <SelectItem key={l.id} value={l.id}>{l.nome}</SelectItem>
+                        ))
+                      )}
+                    </SelectContent>
+                  </Select>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+            <FormField
+              control={form.control}
+              name="titulo"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Título da proposta *</FormLabel>
+                  <FormControl>
+                    <Input placeholder="Ex: Proposta — Produto X" {...field} />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+            <FormField
+              control={form.control}
+              name="quantidade"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Quantidade *</FormLabel>
+                  <FormControl>
+                    <Input type="number" min="1" step="1" {...field} />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+            <div className="flex justify-end gap-2 pt-1">
+              <Button type="button" variant="outline" onClick={onClose}>Cancelar</Button>
+              <Button type="submit" disabled={createProposta.isPending} className="gap-2">
+                {createProposta.isPending && <Loader2 className="h-4 w-4 animate-spin" />}
+                Criar Proposta
+              </Button>
+            </div>
+          </form>
+        </Form>
+      </DialogContent>
+    </Dialog>
   );
 }
