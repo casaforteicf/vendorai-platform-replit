@@ -4,7 +4,7 @@ import {
   LayoutDashboard, Users, Briefcase, MessageSquare, Calendar,
   Settings, LogOut, Megaphone, FileText, Receipt, BrainCircuit,
   Store, Package, Menu, X, Sparkles, Globe, BookOpen, HardHat, Layers,
-  Shirt, Tag, ShoppingCart, Heart, Gift, Truck,
+  Shirt, Tag, ShoppingCart, Heart, Gift, Truck, UtensilsCrossed, Megaphone as MegaphoneIcon,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
@@ -20,6 +20,7 @@ export function SidebarLayout({ children }: { children: React.ReactNode }) {
   const isSeller = user?.platformRole === "tenant_seller";
   const isConstrucao = user?.tenantVertical === "Construção & Reforma";
   const isVarejo = user?.tenantVertical === "Varejo de Roupas & Acessórios";
+  const isSupermercado = user?.tenantVertical === "Supermercado";
 
   const allNavItems = [
     { name: "Dashboard",     href: "/",             icon: LayoutDashboard, sellerHidden: false, section: "crm" },
@@ -44,12 +45,18 @@ export function SidebarLayout({ children }: { children: React.ReactNode }) {
     { name: "Compras",       href: "/varejo/compras",           icon: ShoppingCart,sellerHidden: false, section: "varejo" },
     { name: "Fidelidade",    href: "/varejo/fidelidade",        icon: Heart,       sellerHidden: false, section: "varejo" },
     { name: "Combos & Looks",href: "/varejo/combos",            icon: Gift,        sellerHidden: false, section: "varejo" },
+    { name: "Dashboard",     href: "/supermercado",             icon: ShoppingCart,sellerHidden: false, section: "supermercado" },
+    { name: "Produtos",      href: "/supermercado/produtos",    icon: Package,     sellerHidden: false, section: "supermercado" },
+    { name: "Pedidos",       href: "/supermercado/pedidos",     icon: UtensilsCrossed, sellerHidden: false, section: "supermercado" },
+    { name: "Campanhas",     href: "/supermercado/campanhas",   icon: MegaphoneIcon, sellerHidden: false, section: "supermercado" },
+    { name: "Configurações", href: "/supermercado/config",      icon: Settings,    sellerHidden: false, section: "supermercado" },
   ];
 
   const navigation = allNavItems.filter(item =>
     !(isSeller && item.sellerHidden) &&
     (item.section !== "construcao" || isConstrucao) &&
-    (item.section !== "varejo" || isVarejo)
+    (item.section !== "varejo" || isVarejo) &&
+    (item.section !== "supermercado" || isSupermercado)
   );
 
   const adminNavigation = isSuperAdmin
@@ -63,6 +70,7 @@ export function SidebarLayout({ children }: { children: React.ReactNode }) {
   const crmNav = navigation.filter((i) => i.section === "crm");
   const construcaoNav = navigation.filter((i) => i.section === "construcao");
   const varejoNav = navigation.filter((i) => i.section === "varejo");
+  const supermercadoNav = navigation.filter((i) => i.section === "supermercado");
 
   function NavItem({ item, onNavigate }: { item: (typeof allNavItems)[0]; onNavigate?: () => void }) {
     const isActive = location === item.href || (item.href !== "/" && location.startsWith(item.href));
@@ -105,6 +113,16 @@ export function SidebarLayout({ children }: { children: React.ReactNode }) {
               Varejo de Moda
             </p>
             {varejoNav.map((item) => <NavItem key={item.name} item={item} onNavigate={onNavigate} />)}
+          </div>
+        )}
+
+        {supermercadoNav.length > 0 && (
+          <div className="mt-3 pt-3 border-t">
+            <p className="px-3 mb-1 text-[10px] font-semibold uppercase tracking-widest text-muted-foreground/60 flex items-center gap-1.5">
+              <ShoppingCart className="h-3 w-3" />
+              Supermercado
+            </p>
+            {supermercadoNav.map((item) => <NavItem key={item.name} item={item} onNavigate={onNavigate} />)}
           </div>
         )}
 

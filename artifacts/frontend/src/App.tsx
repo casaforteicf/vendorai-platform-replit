@@ -43,6 +43,11 @@ import VarejoFornecedores from "@/pages/VarejoFornecedores";
 import VarejoCompras from "@/pages/VarejoCompras";
 import VarejoFidelidade from "@/pages/VarejoFidelidade";
 import VarejoCombos from "@/pages/VarejoCombos";
+import SupermercadoDashboard from "@/pages/supermercado/SupermercadoDashboard";
+import SupermercadoProdutos from "@/pages/supermercado/SupermercadoProdutos";
+import SupermercadoPedidos from "@/pages/supermercado/SupermercadoPedidos";
+import SupermercadoCampanhas from "@/pages/supermercado/SupermercadoCampanhas";
+import SupermercadoConfig from "@/pages/supermercado/SupermercadoConfig";
 import { useEffect } from "react";
 import {
   useGetTenant,
@@ -203,6 +208,28 @@ function VarejoRoute({ component: Component, ...rest }: any) {
   );
 }
 
+function SupermercadoRoute({ component: Component, ...rest }: any) {
+  const { token, user, isLoading } = useAuth();
+  const [, setLocation] = useLocation();
+
+  useEffect(() => {
+    if (!isLoading && !token) {
+      setLocation("/login");
+    } else if (!isLoading && user && user.tenantVertical !== "Supermercado") {
+      setLocation("/");
+    }
+  }, [token, user, isLoading, setLocation]);
+
+  if (isLoading || !token || !user) return <Spinner />;
+  if (user.tenantVertical !== "Supermercado") return null;
+
+  return (
+    <SidebarLayout>
+      <Component {...rest} />
+    </SidebarLayout>
+  );
+}
+
 function ConstrucaoRoute({ component: Component, ...rest }: any) {
   const { token, user, isLoading } = useAuth();
   const [, setLocation] = useLocation();
@@ -344,6 +371,21 @@ function AppRoutes() {
       </Route>
       <Route path="/varejo/combos">
         {() => <VarejoRoute component={VarejoCombos} />}
+      </Route>
+      <Route path="/supermercado">
+        {() => <SupermercadoRoute component={SupermercadoDashboard} />}
+      </Route>
+      <Route path="/supermercado/produtos">
+        {() => <SupermercadoRoute component={SupermercadoProdutos} />}
+      </Route>
+      <Route path="/supermercado/pedidos">
+        {() => <SupermercadoRoute component={SupermercadoPedidos} />}
+      </Route>
+      <Route path="/supermercado/campanhas">
+        {() => <SupermercadoRoute component={SupermercadoCampanhas} />}
+      </Route>
+      <Route path="/supermercado/config">
+        {() => <SupermercadoRoute component={SupermercadoConfig} />}
       </Route>
       <Route path="/invite/:token">
         <AcceptInvite />

@@ -41,6 +41,7 @@ import tokenPurchasesRouter from "./token_purchases";
 import { intakeRouter } from "./intake";
 import construcaoRouter from "./construcao";
 import varejoRouter from "./varejo";
+import supermercadoRouter from "./supermercado";
 import { authenticate, blockPartnerFromCRM, blockSuspendedTenants, requireRole, requireSameTenanOrSuperAdmin } from "../middlewares/auth";
 
 const router: IRouter = Router();
@@ -151,6 +152,9 @@ router.use(construcaoRouter);
 
 // Varejo de Roupas & Acessórios Hub
 router.use(varejoRouter);
+
+// Supermercado Hub
+router.use(supermercadoRouter);
 
 export { requireRole, requireSameTenanOrSuperAdmin };
 export default router;

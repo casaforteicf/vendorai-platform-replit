@@ -118,7 +118,7 @@ export default function SupermercadoProdutos() {
   function onSubmit(values: ProdutoForm) {
     const payload = { ...values, tenantId };
     if (editTarget) {
-      updateMut.mutate({ tenantId, produtoId: editTarget.id, data: values }, {
+      updateMut.mutate({ tenantId, produtoId: editTarget.id, data: values as any }, {
         onSuccess: () => {
           toast({ title: "Produto atualizado." });
           qc.invalidateQueries({ queryKey: qKey });
@@ -127,7 +127,7 @@ export default function SupermercadoProdutos() {
         onError: () => toast({ title: "Erro ao atualizar", variant: "destructive" }),
       });
     } else {
-      createMut.mutate({ tenantId, data: payload }, {
+      createMut.mutate({ tenantId, data: payload as any }, {
         onSuccess: () => {
           toast({ title: "Produto criado." });
           qc.invalidateQueries({ queryKey: qKey });

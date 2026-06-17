@@ -101,6 +101,71 @@ const TEMPLATES = [
       "Frota Empresarial",
     ],
   },
+  {
+    nome: "Varejo de Roupas & Acessórios",
+    descricao:
+      "Para lojas de moda, vestuário e acessórios. Gestão de produtos com grade (tamanho × cor), coleções por temporada, fornecedores, pedidos de compra, programa de fidelidade e combos/looks.",
+    promptsSugeridos: {
+      sdr: `Você é consultor de moda especialista em Varejo de Roupas & Acessórios. Ao contatar um lead, identifique o estilo preferido, ocasião de uso e faixa de preço. Pergunte sobre preferências de cor e tamanho. Apresente as coleções disponíveis e agende uma visita à loja ou sessão de consultoria online.`,
+      closer: `Você é vendedor sênior de moda. Com o lead qualificado, apresente os itens mais alinhados ao estilo e necessidade dele. Sugira combinações de peças (looks completos) e destaque os benefícios do programa de fidelidade. Ofereça parcelamento e mencione promoções de coleções anteriores.`,
+      followup: `Entre em contato com o cliente sobre novidades de coleção, peças que chegaram nas cores/tamanhos que ele buscava anteriormente, ou promoções de queima de estoque. Personalize com base no histórico de compras.`,
+      reactivation: `Entre em contato com clientes que não compram há mais de 30 dias. Apresente a nova coleção, itens em oferta e atualize sobre o saldo de pontos no programa de fidelidade.`,
+      service: `Atenda dúvidas sobre troca, tamanho, disponibilidade de produto e prazo de entrega. Registre solicitações de troca ou devolução e acione o time responsável quando necessário.`,
+      onboarding: `Boas-vindas ao programa de fidelidade! Explique como acumular e resgatar pontos, apresente as vantagens para cada nível (Bronze, Prata, Ouro, Diamante) e compartilhe o catálogo digital da coleção atual.`,
+      scheduler: `Agende a visita à loja ou sessão de consultoria de moda. Confirme data, horário e lembre o cliente de trazer peças-referência ou referências de estilo para melhor atendimento.`,
+    },
+    funilPadrao: [
+      "Primeiro Contato",
+      "Consultoria de Estilo",
+      "Apresentação de Produtos",
+      "Proposta / Orçamento",
+      "Negociação",
+      "Venda Concluída",
+      "Pós-venda & Fidelização",
+    ],
+    categoriasProdutoSugeridas: [
+      "Camisetas e Blusas",
+      "Calças e Shorts",
+      "Vestidos e Saias",
+      "Jaquetas e Casacos",
+      "Acessórios",
+      "Calçados",
+      "Bolsas e Mochilas",
+      "Coleções Especiais",
+    ],
+  },
+  {
+    nome: "Supermercado",
+    descricao:
+      "Para supermercados e mercados de bairro. Pedidos via WhatsApp, campanhas automáticas 3x/semana (promoções, receitas, dicas), sync de produtos com ERP e fidelização.",
+    promptsSugeridos: {
+      sdr: `Você é atendente de supermercado ágil e prestativo. Identifique rapidamente a necessidade: consulta de preço, produto ou montagem de lista de compras. Responda de forma objetiva. Se o cliente quiser montar o pedido, peça a lista completa de uma vez.`,
+      closer: `Você é especialista em conversão de pedidos do supermercado. Confirme cada item da lista, sugira substituições quando houver falta e informe promoções ativas. Destaque o programa de fidelidade e feche com confirmação de pagamento e delivery.`,
+      followup: `Lembre o cliente que costuma comprar semanalmente quando estiver próximo do próximo ciclo. Informe as ofertas da semana e pergunte se deseja repetir o último pedido.`,
+      reactivation: `Entre em contato com clientes que não compram há mais de 15 dias. Apresente promoções, produtos novos e informe sobre pontos de fidelidade que podem estar próximos de expirar.`,
+      service: `Atenda solicitações de troca de produtos incorretos, itens vencidos ou dúvidas sobre status de entrega. Registre reclamações e acione o responsável quando necessário.`,
+      onboarding: `Boas-vindas! Confirme o endereço de entrega, explique o valor mínimo para delivery, prazo estimado e horário de funcionamento. Cadastre no programa de fidelidade.`,
+      scheduler: `Agende o delivery confirmando o endereço, horário preferido e prazo estimado. Informe taxa de entrega e valor mínimo do pedido.`,
+    },
+    funilPadrao: [
+      "Consulta de Produto / Preço",
+      "Montagem de Lista / Pedido",
+      "Pedido Confirmado",
+      "Agendamento de Delivery",
+      "Entrega Realizada",
+      "Pós-compra & Fidelização",
+    ],
+    categoriasProdutoSugeridas: [
+      "Hortifrúti",
+      "Carnes e Aves",
+      "Padaria e Confeitaria",
+      "Laticínios e Frios",
+      "Bebidas",
+      "Limpeza e Higiene",
+      "Congelados",
+      "Mercearia e Grãos",
+    ],
+  },
 ];
 
 async function seed() {

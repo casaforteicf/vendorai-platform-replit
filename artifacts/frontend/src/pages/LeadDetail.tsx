@@ -661,32 +661,55 @@ export default function LeadDetail() {
             <CardHeader className="pb-3">
               <CardTitle className="text-sm font-semibold">Dados do Lead</CardTitle>
             </CardHeader>
-            <CardContent className="space-y-3 text-sm">
-              {lead.telefone && (
-                <div className="flex items-center gap-2 text-muted-foreground">
-                  <Phone className="h-3.5 w-3.5 shrink-0" />
-                  <span className="font-mono">{lead.telefone}</span>
-                </div>
-              )}
-              {lead.email && (
-                <div className="flex items-center gap-2 text-muted-foreground">
-                  <Mail className="h-3.5 w-3.5 shrink-0" />
-                  <span className="truncate">{lead.email}</span>
-                </div>
-              )}
-              {lead.objetivo && (
-                <div className="flex items-start gap-2 text-muted-foreground">
-                  <Target className="h-3.5 w-3.5 shrink-0 mt-0.5" />
-                  <span>{lead.objetivo}</span>
-                </div>
-              )}
-              {lead.urgencia && (
-                <div className="flex items-center gap-2 text-muted-foreground">
-                  <Clock className="h-3.5 w-3.5 shrink-0" />
-                  <span>Urgência: {lead.urgencia}</span>
-                </div>
-              )}
-              <div className="pt-1 border-t">
+            <CardContent className="text-sm">
+              <dl className="space-y-2.5">
+                {lead.telefone && (
+                  <div className="grid grid-cols-[7rem_1fr] gap-x-2 items-start">
+                    <dt className="flex items-center gap-1.5 text-muted-foreground shrink-0 pt-px">
+                      <Phone className="h-3.5 w-3.5 shrink-0" />
+                      <span className="text-xs">Telefone</span>
+                    </dt>
+                    <dd className="font-mono text-foreground break-all">{lead.telefone}</dd>
+                  </div>
+                )}
+                {lead.email && (
+                  <div className="grid grid-cols-[7rem_1fr] gap-x-2 items-start">
+                    <dt className="flex items-center gap-1.5 text-muted-foreground shrink-0 pt-px">
+                      <Mail className="h-3.5 w-3.5 shrink-0" />
+                      <span className="text-xs">E-mail</span>
+                    </dt>
+                    <dd className="text-foreground break-all">{lead.email}</dd>
+                  </div>
+                )}
+                {lead.empresa && (
+                  <div className="grid grid-cols-[7rem_1fr] gap-x-2 items-start">
+                    <dt className="flex items-center gap-1.5 text-muted-foreground shrink-0 pt-px">
+                      <Building2 className="h-3.5 w-3.5 shrink-0" />
+                      <span className="text-xs">Empresa</span>
+                    </dt>
+                    <dd className="text-foreground">{lead.empresa}</dd>
+                  </div>
+                )}
+                {lead.urgencia && (
+                  <div className="grid grid-cols-[7rem_1fr] gap-x-2 items-start">
+                    <dt className="flex items-center gap-1.5 text-muted-foreground shrink-0 pt-px">
+                      <Clock className="h-3.5 w-3.5 shrink-0" />
+                      <span className="text-xs">Urgência</span>
+                    </dt>
+                    <dd className="text-foreground capitalize">{lead.urgencia}</dd>
+                  </div>
+                )}
+                {lead.objetivo && (
+                  <div className="grid grid-cols-[7rem_1fr] gap-x-2 items-start">
+                    <dt className="flex items-center gap-1.5 text-muted-foreground shrink-0 pt-px">
+                      <Target className="h-3.5 w-3.5 shrink-0" />
+                      <span className="text-xs">Objetivo</span>
+                    </dt>
+                    <dd className="text-foreground leading-snug">{lead.objetivo}</dd>
+                  </div>
+                )}
+              </dl>
+              <div className="mt-3 pt-2.5 border-t">
                 <p className="text-xs text-muted-foreground">
                   Criado em {formatDate(lead.createdAt)}
                 </p>

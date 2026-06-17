@@ -22,6 +22,7 @@ import {
   Sparkles,
   Shirt,
   HardHat,
+  ShoppingCart,
 } from "lucide-react";
 import { useState } from "react";
 
@@ -35,6 +36,11 @@ const VERTICAL_MODULES: Record<string, { label: string; icon: React.ElementType;
     label: "Módulo Vertical",
     icon: Shirt,
     color: "bg-purple-50 text-purple-700 border-purple-200",
+  },
+  "Supermercado": {
+    label: "Módulo Vertical",
+    icon: ShoppingCart,
+    color: "bg-green-50 text-green-700 border-green-200",
   },
 };
 

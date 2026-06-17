@@ -7,6 +7,8 @@
     "hello": "tsx ./src/hello.ts",
     "seed-segment-templates": "tsx ./src/seed-segment-templates.ts",
     "cleanup-duplicates": "tsx ./src/cleanup-duplicate-activities.ts",
+    "migrate-supermercado": "tsx ./src/migrate-supermercado.ts",
+    "migrate-varejo": "tsx ./src/migrate-varejo.ts",
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {

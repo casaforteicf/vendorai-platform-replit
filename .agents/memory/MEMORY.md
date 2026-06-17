@@ -3,3 +3,4 @@
 - [ERP Integration](erp-integration.md) — outbound webhook on sale won + inbound inventory sync; inventorySyncRouter must be registered before authenticate middleware.
 - [Instagram integration pattern](instagram-integration.md) — credenciais em agent_configs; IGSID em leads; webhook /tenants/:id/webhooks/instagram; envio via Graph API v19.
 - [Varejo vertical pattern](varejo-vertical.md) — módulo gated por tenantVertical; enums de select precisam de `as typeof f.campo` no onChange para satisfazer TS.
+- [Express route TS7030 fix](express-ts7030-fix.md) — handlers com `return res.xxx()` early-return E final `res.xxx()` sem return causam TS7030; fix: sed `s/^  res\./  return res./g` no arquivo de rotas.

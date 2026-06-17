@@ -372,6 +372,38 @@ const EXTRA_TEMPLATES = [
     ],
   },
   {
+    nome: "Supermercado",
+    descricao:
+      "Para supermercados e mercados de bairro. Pedidos via WhatsApp, campanhas automáticas 3x/semana (promoções, receitas, dicas), sync de produtos com ERP e fidelização.",
+    promptsSugeridos: {
+      sdr: `Você é atendente de supermercado ágil e prestativo. Identifique rapidamente a necessidade: consulta de preço, produto ou montagem de lista de compras. Responda de forma objetiva. Se o cliente quiser montar o pedido, peça a lista completa de uma vez.`,
+      closer: `Você é especialista em conversão de pedidos do supermercado. Confirme cada item da lista, sugira substituições quando houver falta e informe promoções ativas. Destaque o programa de fidelidade e feche com confirmação de pagamento e delivery.`,
+      followup: `Lembre o cliente que costuma comprar semanalmente quando estiver próximo do próximo ciclo. Informe as ofertas da semana e pergunte se deseja repetir o último pedido.`,
+      reactivation: `Entre em contato com clientes que não compram há mais de 15 dias. Apresente promoções, produtos novos e informe sobre pontos de fidelidade que podem estar próximos de expirar.`,
+      service: `Atenda solicitações de troca de produtos incorretos, itens vencidos ou dúvidas sobre status de entrega. Registre reclamações e acione o responsável quando necessário.`,
+      onboarding: `Boas-vindas! Confirme o endereço de entrega, explique o valor mínimo para delivery, prazo estimado e horário de funcionamento. Cadastre no programa de fidelidade.`,
+      scheduler: `Agende o delivery confirmando o endereço, horário preferido e prazo estimado. Informe taxa de entrega e valor mínimo do pedido.`,
+    },
+    funilPadrao: [
+      "Consulta de Produto / Preço",
+      "Montagem de Lista / Pedido",
+      "Pedido Confirmado",
+      "Agendamento de Delivery",
+      "Entrega Realizada",
+      "Pós-compra & Fidelização",
+    ],
+    categoriasProdutoSugeridas: [
+      "Hortifrúti",
+      "Carnes e Aves",
+      "Padaria e Confeitaria",
+      "Laticínios e Frios",
+      "Bebidas",
+      "Limpeza e Higiene",
+      "Congelados",
+      "Mercearia e Grãos",
+    ],
+  },
+  {
     nome: "Varejo de Roupas & Acessórios",
     descricao:
       "Para lojas de moda feminina, masculina, infantil, multimarcas e acessórios. Foco em grade de tamanho × cor, coleções sazonais, fidelização de clientes e combos/looks.",

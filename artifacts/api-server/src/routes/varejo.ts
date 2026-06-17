@@ -39,7 +39,7 @@ router.get("/tenants/:tenantId/varejo/colecoes", async (req, res) => {
     .from(varejoColecaoTable)
     .where(eq(varejoColecaoTable.tenantId, tenantId))
     .orderBy(desc(varejoColecaoTable.ano), desc(varejoColecaoTable.createdAt));
-  res.json(rows);
+  return res.json(rows);
 });
 
 router.post("/tenants/:tenantId/varejo/colecoes", async (req, res) => {
@@ -47,7 +47,7 @@ router.post("/tenants/:tenantId/varejo/colecoes", async (req, res) => {
   if (!canAccess(req, tenantId)) return res.status(403).json({ error: "Forbidden" });
 
   const [row] = await db.insert(varejoColecaoTable).values({ ...req.body, tenantId } as any).returning();
-  res.status(201).json(row);
+  return res.status(201).json(row);
 });
 
 router.get("/tenants/:tenantId/varejo/colecoes/:colecaoId", async (req, res) => {
@@ -57,7 +57,7 @@ router.get("/tenants/:tenantId/varejo/colecoes/:colecaoId", async (req, res) => 
   const [row] = await db.select().from(varejoColecaoTable)
     .where(and(eq(varejoColecaoTable.id, colecaoId), eq(varejoColecaoTable.tenantId, tenantId)));
   if (!row) return res.status(404).json({ error: "Coleção not found" });
-  res.json(row);
+  return res.json(row);
 });
 
 router.put("/tenants/:tenantId/varejo/colecoes/:colecaoId", async (req, res) => {
@@ -69,7 +69,7 @@ router.put("/tenants/:tenantId/varejo/colecoes/:colecaoId", async (req, res) => 
     .where(and(eq(varejoColecaoTable.id, colecaoId), eq(varejoColecaoTable.tenantId, tenantId)))
     .returning();
   if (!row) return res.status(404).json({ error: "Coleção not found" });
-  res.json(row);
+  return res.json(row);
 });
 
 router.delete("/tenants/:tenantId/varejo/colecoes/:colecaoId", async (req, res) => {
@@ -78,7 +78,7 @@ router.delete("/tenants/:tenantId/varejo/colecoes/:colecaoId", async (req, res) 
 
   await db.delete(varejoColecaoTable)
     .where(and(eq(varejoColecaoTable.id, colecaoId), eq(varejoColecaoTable.tenantId, tenantId)));
-  res.status(204).send();
+  return res.status(204).send();
 });
 
 // ─── Fornecedores ─────────────────────────────────────────────────────────────
@@ -92,7 +92,7 @@ router.get("/tenants/:tenantId/varejo/fornecedores", async (req, res) => {
     .from(varejoFornecedorTable)
     .where(eq(varejoFornecedorTable.tenantId, tenantId))
     .orderBy(desc(varejoFornecedorTable.createdAt));
-  res.json(rows);
+  return res.json(rows);
 });
 
 router.post("/tenants/:tenantId/varejo/fornecedores", async (req, res) => {
@@ -100,7 +100,7 @@ router.post("/tenants/:tenantId/varejo/fornecedores", async (req, res) => {
   if (!canAccess(req, tenantId)) return res.status(403).json({ error: "Forbidden" });
 
   const [row] = await db.insert(varejoFornecedorTable).values({ ...req.body, tenantId } as any).returning();
-  res.status(201).json(row);
+  return res.status(201).json(row);
 });
 
 router.get("/tenants/:tenantId/varejo/fornecedores/:fornecedorId", async (req, res) => {
@@ -110,7 +110,7 @@ router.get("/tenants/:tenantId/varejo/fornecedores/:fornecedorId", async (req, r
   const [row] = await db.select().from(varejoFornecedorTable)
     .where(and(eq(varejoFornecedorTable.id, fornecedorId), eq(varejoFornecedorTable.tenantId, tenantId)));
   if (!row) return res.status(404).json({ error: "Fornecedor not found" });
-  res.json(row);
+  return res.json(row);
 });
 
 router.put("/tenants/:tenantId/varejo/fornecedores/:fornecedorId", async (req, res) => {
@@ -122,7 +122,7 @@ router.put("/tenants/:tenantId/varejo/fornecedores/:fornecedorId", async (req, r
     .where(and(eq(varejoFornecedorTable.id, fornecedorId), eq(varejoFornecedorTable.tenantId, tenantId)))
     .returning();
   if (!row) return res.status(404).json({ error: "Fornecedor not found" });
-  res.json(row);
+  return res.json(row);
 });
 
 router.delete("/tenants/:tenantId/varejo/fornecedores/:fornecedorId", async (req, res) => {
@@ -131,7 +131,7 @@ router.delete("/tenants/:tenantId/varejo/fornecedores/:fornecedorId", async (req
 
   await db.delete(varejoFornecedorTable)
     .where(and(eq(varejoFornecedorTable.id, fornecedorId), eq(varejoFornecedorTable.tenantId, tenantId)));
-  res.status(204).send();
+  return res.status(204).send();
 });
 
 // ─── Produtos ─────────────────────────────────────────────────────────────────
@@ -172,7 +172,7 @@ router.get("/tenants/:tenantId/varejo/produtos", async (req, res) => {
     colecao: p.colecaoId ? colMap[p.colecaoId] ?? null : null,
   }));
 
-  res.json(result);
+  return res.json(result);
 });
 
 router.post("/tenants/:tenantId/varejo/produtos", async (req, res) => {
@@ -180,7 +180,7 @@ router.post("/tenants/:tenantId/varejo/produtos", async (req, res) => {
   if (!canAccess(req, tenantId)) return res.status(403).json({ error: "Forbidden" });
 
   const [row] = await db.insert(varejoProdutoTable).values({ ...req.body, tenantId } as any).returning();
-  res.status(201).json(row);
+  return res.status(201).json(row);
 });
 
 router.get("/tenants/:tenantId/varejo/produtos/:produtoId", async (req, res) => {
@@ -200,7 +200,7 @@ router.get("/tenants/:tenantId/varejo/produtos/:produtoId", async (req, res) => 
     ? (await db.select().from(varejoColecaoTable).where(eq(varejoColecaoTable.id, produto.colecaoId)))[0] ?? null
     : null;
 
-  res.json({ ...produto, grades, fornecedor, colecao });
+  return res.json({ ...produto, grades, fornecedor, colecao });
 });
 
 router.put("/tenants/:tenantId/varejo/produtos/:produtoId", async (req, res) => {
@@ -212,7 +212,7 @@ router.put("/tenants/:tenantId/varejo/produtos/:produtoId", async (req, res) => 
     .where(and(eq(varejoProdutoTable.id, produtoId), eq(varejoProdutoTable.tenantId, tenantId)))
     .returning();
   if (!row) return res.status(404).json({ error: "Produto not found" });
-  res.json(row);
+  return res.json(row);
 });
 
 router.delete("/tenants/:tenantId/varejo/produtos/:produtoId", async (req, res) => {
@@ -221,7 +221,7 @@ router.delete("/tenants/:tenantId/varejo/produtos/:produtoId", async (req, res) 
 
   await db.delete(varejoProdutoTable)
     .where(and(eq(varejoProdutoTable.id, produtoId), eq(varejoProdutoTable.tenantId, tenantId)));
-  res.status(204).send();
+  return res.status(204).send();
 });
 
 // ─── Grades ───────────────────────────────────────────────────────────────────
@@ -232,7 +232,7 @@ router.get("/tenants/:tenantId/varejo/produtos/:produtoId/grades", async (req, r
 
   const rows = await db.select().from(varejoGradeTable)
     .where(and(eq(varejoGradeTable.produtoId, produtoId), eq(varejoGradeTable.tenantId, tenantId)));
-  res.json(rows);
+  return res.json(rows);
 });
 
 router.post("/tenants/:tenantId/varejo/produtos/:produtoId/grades", async (req, res) => {
@@ -242,7 +242,7 @@ router.post("/tenants/:tenantId/varejo/produtos/:produtoId/grades", async (req, 
   const [row] = await db.insert(varejoGradeTable)
     .values({ ...req.body, tenantId, produtoId } as any)
     .returning();
-  res.status(201).json(row);
+  return res.status(201).json(row);
 });
 
 router.put("/tenants/:tenantId/varejo/produtos/:produtoId/grades/:gradeId", async (req, res) => {
@@ -258,7 +258,7 @@ router.put("/tenants/:tenantId/varejo/produtos/:produtoId/grades/:gradeId", asyn
     ))
     .returning();
   if (!row) return res.status(404).json({ error: "Grade not found" });
-  res.json(row);
+  return res.json(row);
 });
 
 router.delete("/tenants/:tenantId/varejo/produtos/:produtoId/grades/:gradeId", async (req, res) => {
@@ -271,7 +271,7 @@ router.delete("/tenants/:tenantId/varejo/produtos/:produtoId/grades/:gradeId", a
       eq(varejoGradeTable.produtoId, produtoId),
       eq(varejoGradeTable.tenantId, tenantId),
     ));
-  res.status(204).send();
+  return res.status(204).send();
 });
 
 // ─── Pedidos de Compra ────────────────────────────────────────────────────────
@@ -293,7 +293,7 @@ router.get("/tenants/:tenantId/varejo/pedidos-compra", async (req, res) => {
   const fornMap = Object.fromEntries(fornecedores.map((f) => [f.id, f]));
   const colMap = Object.fromEntries(colecoes.map((c) => [c.id, c]));
 
-  res.json(pedidos.map((p) => ({
+  return res.json(pedidos.map((p) => ({
     ...p,
     fornecedor: p.fornecedorId ? fornMap[p.fornecedorId] ?? null : null,
     colecao: p.colecaoId ? colMap[p.colecaoId] ?? null : null,
@@ -305,7 +305,7 @@ router.post("/tenants/:tenantId/varejo/pedidos-compra", async (req, res) => {
   if (!canAccess(req, tenantId)) return res.status(403).json({ error: "Forbidden" });
 
   const [row] = await db.insert(varejoPedidoCompraTable).values({ ...req.body, tenantId } as any).returning();
-  res.status(201).json(row);
+  return res.status(201).json(row);
 });
 
 router.get("/tenants/:tenantId/varejo/pedidos-compra/:pedidoId", async (req, res) => {
@@ -331,7 +331,7 @@ router.get("/tenants/:tenantId/varejo/pedidos-compra/:pedidoId", async (req, res
     ? (await db.select().from(varejoColecaoTable).where(eq(varejoColecaoTable.id, pedido.colecaoId)))[0] ?? null
     : null;
 
-  res.json({
+  return res.json({
     ...pedido,
     fornecedor,
     colecao,
@@ -348,7 +348,7 @@ router.put("/tenants/:tenantId/varejo/pedidos-compra/:pedidoId", async (req, res
     .where(and(eq(varejoPedidoCompraTable.id, pedidoId), eq(varejoPedidoCompraTable.tenantId, tenantId)))
     .returning();
   if (!row) return res.status(404).json({ error: "Pedido not found" });
-  res.json(row);
+  return res.json(row);
 });
 
 router.delete("/tenants/:tenantId/varejo/pedidos-compra/:pedidoId", async (req, res) => {
@@ -357,7 +357,7 @@ router.delete("/tenants/:tenantId/varejo/pedidos-compra/:pedidoId", async (req, 
 
   await db.delete(varejoPedidoCompraTable)
     .where(and(eq(varejoPedidoCompraTable.id, pedidoId), eq(varejoPedidoCompraTable.tenantId, tenantId)));
-  res.status(204).send();
+  return res.status(204).send();
 });
 
 router.get("/tenants/:tenantId/varejo/pedidos-compra/:pedidoId/itens", async (req, res) => {
@@ -366,7 +366,7 @@ router.get("/tenants/:tenantId/varejo/pedidos-compra/:pedidoId/itens", async (re
 
   const rows = await db.select().from(varejoPedidoCompraItemTable)
     .where(eq(varejoPedidoCompraItemTable.pedidoId, pedidoId));
-  res.json(rows);
+  return res.json(rows);
 });
 
 router.post("/tenants/:tenantId/varejo/pedidos-compra/:pedidoId/itens", async (req, res) => {
@@ -376,7 +376,7 @@ router.post("/tenants/:tenantId/varejo/pedidos-compra/:pedidoId/itens", async (r
   const [row] = await db.insert(varejoPedidoCompraItemTable)
     .values({ ...req.body, pedidoId } as any)
     .returning();
-  res.status(201).json(row);
+  return res.status(201).json(row);
 });
 
 router.delete("/tenants/:tenantId/varejo/pedidos-compra/:pedidoId/itens/:itemId", async (req, res) => {
@@ -385,7 +385,7 @@ router.delete("/tenants/:tenantId/varejo/pedidos-compra/:pedidoId/itens/:itemId"
   if (!canAccess(req, tenantId)) return res.status(403).json({ error: "Forbidden" });
 
   await db.delete(varejoPedidoCompraItemTable).where(eq(varejoPedidoCompraItemTable.id, itemId));
-  res.status(204).send();
+  return res.status(204).send();
 });
 
 // ─── Fidelidade ───────────────────────────────────────────────────────────────
@@ -421,7 +421,7 @@ router.get("/tenants/:tenantId/varejo/fidelidade", async (req, res) => {
     return res.json(rows.filter((r) => r.leadNome?.toLowerCase().includes(q) || r.leadTelefone?.includes(q)));
   }
 
-  res.json(rows);
+  return res.json(rows);
 });
 
 router.get("/tenants/:tenantId/varejo/fidelidade/:leadId", async (req, res) => {
@@ -447,7 +447,7 @@ router.get("/tenants/:tenantId/varejo/fidelidade/:leadId", async (req, res) => {
     .where(and(eq(varejoFidelidadeTable.leadId, leadId), eq(varejoFidelidadeTable.tenantId, tenantId)));
 
   if (!row) return res.status(404).json({ error: "Fidelidade not found" });
-  res.json(row);
+  return res.json(row);
 });
 
 router.put("/tenants/:tenantId/varejo/fidelidade/:leadId", async (req, res) => {
@@ -470,7 +470,7 @@ router.put("/tenants/:tenantId/varejo/fidelidade/:leadId", async (req, res) => {
       .returning();
   }
 
-  res.json(row);
+  return res.json(row);
 });
 
 // ─── Combos / Looks ───────────────────────────────────────────────────────────
@@ -489,7 +489,7 @@ router.get("/tenants/:tenantId/varejo/combos", async (req, res) => {
         .where(sql`${varejoComboItemTable.comboId} IN (${sql.join(comboIds.map((id) => sql`${id}`), sql`, `)})`)
     : [];
 
-  res.json(combos.map((c) => ({
+  return res.json(combos.map((c) => ({
     ...c,
     itens: itens.filter((i) => i.comboId === c.id),
   })));
@@ -500,7 +500,7 @@ router.post("/tenants/:tenantId/varejo/combos", async (req, res) => {
   if (!canAccess(req, tenantId)) return res.status(403).json({ error: "Forbidden" });
 
   const [row] = await db.insert(varejoComboTable).values({ ...req.body, tenantId } as any).returning();
-  res.status(201).json(row);
+  return res.status(201).json(row);
 });
 
 router.get("/tenants/:tenantId/varejo/combos/:comboId", async (req, res) => {
@@ -518,7 +518,7 @@ router.get("/tenants/:tenantId/varejo/combos/:comboId", async (req, res) => {
     : [];
   const prodMap = Object.fromEntries(produtos.map((p) => [p.id, p]));
 
-  res.json({
+  return res.json({
     ...combo,
     itens: itens.map((i) => ({ ...i, produto: i.produtoId ? prodMap[i.produtoId] ?? null : null })),
   });
@@ -533,7 +533,7 @@ router.put("/tenants/:tenantId/varejo/combos/:comboId", async (req, res) => {
     .where(and(eq(varejoComboTable.id, comboId), eq(varejoComboTable.tenantId, tenantId)))
     .returning();
   if (!row) return res.status(404).json({ error: "Combo not found" });
-  res.json(row);
+  return res.json(row);
 });
 
 router.delete("/tenants/:tenantId/varejo/combos/:comboId", async (req, res) => {
@@ -542,7 +542,7 @@ router.delete("/tenants/:tenantId/varejo/combos/:comboId", async (req, res) => {
 
   await db.delete(varejoComboTable)
     .where(and(eq(varejoComboTable.id, comboId), eq(varejoComboTable.tenantId, tenantId)));
-  res.status(204).send();
+  return res.status(204).send();
 });
 
 router.get("/tenants/:tenantId/varejo/combos/:comboId/itens", async (req, res) => {
@@ -550,7 +550,7 @@ router.get("/tenants/:tenantId/varejo/combos/:comboId/itens", async (req, res) =
   if (!canAccess(req, tenantId)) return res.status(403).json({ error: "Forbidden" });
 
   const rows = await db.select().from(varejoComboItemTable).where(eq(varejoComboItemTable.comboId, comboId));
-  res.json(rows);
+  return res.json(rows);
 });
 
 router.post("/tenants/:tenantId/varejo/combos/:comboId/itens", async (req, res) => {
@@ -560,7 +560,7 @@ router.post("/tenants/:tenantId/varejo/combos/:comboId/itens", async (req, res) 
   const [row] = await db.insert(varejoComboItemTable)
     .values({ ...req.body, comboId } as any)
     .returning();
-  res.status(201).json(row);
+  return res.status(201).json(row);
 });
 
 router.delete("/tenants/:tenantId/varejo/combos/:comboId/itens/:itemId", async (req, res) => {
@@ -568,7 +568,7 @@ router.delete("/tenants/:tenantId/varejo/combos/:comboId/itens/:itemId", async (
   if (!canAccess(req, tenantId)) return res.status(403).json({ error: "Forbidden" });
 
   await db.delete(varejoComboItemTable).where(eq(varejoComboItemTable.id, itemId));
-  res.status(204).send();
+  return res.status(204).send();
 });
 
 export default router;
