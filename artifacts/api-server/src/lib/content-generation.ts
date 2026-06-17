@@ -72,10 +72,11 @@ export async function generateImageForContent(
     const imagePrompt = `Professional marketing image for the Instagram ${formatLabel} of the brand "${brand}". Theme: ${subject}. Style: ${styleHint}. High quality, visually appealing, suitable for a business Instagram profile. No text overlays. No watermarks. Bright, well-lit, commercial photography aesthetic.`;
 
     const response = await openai.images.generate({
-      model: "dall-e-2",
+      model: "dall-e-3",
       prompt: imagePrompt,
       n: 1,
       size: "1024x1024",
+      quality: "standard",
     });
 
     return response.data?.[0]?.url ?? undefined;
