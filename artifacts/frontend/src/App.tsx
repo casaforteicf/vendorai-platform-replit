@@ -174,6 +174,28 @@ function OnboardingRoute() {
   return <Onboarding />;
 }
 
+function ConstrucaoRoute({ component: Component, ...rest }: any) {
+  const { token, user, isLoading } = useAuth();
+  const [, setLocation] = useLocation();
+
+  useEffect(() => {
+    if (!isLoading && !token) {
+      setLocation("/login");
+    } else if (!isLoading && user && user.tenantVertical !== "Construção & Reforma") {
+      setLocation("/");
+    }
+  }, [token, user, isLoading, setLocation]);
+
+  if (isLoading || !token || !user) return <Spinner />;
+  if (user.tenantVertical !== "Construção & Reforma") return null;
+
+  return (
+    <SidebarLayout>
+      <Component {...rest} />
+    </SidebarLayout>
+  );
+}
+
 function PublicRoute({ component: Component }: any) {
   const { token, isLoading } = useAuth();
   const [, setLocation] = useLocation();
@@ -262,16 +284,16 @@ function AppRoutes() {
         {() => <ProtectedRoute component={MeuSite} />}
       </Route>
       <Route path="/obras">
-        {() => <ProtectedRoute component={Obras} />}
+        {() => <ConstrucaoRoute component={Obras} />}
       </Route>
       <Route path="/obras/:obraId">
-        {() => <ProtectedRoute component={ObraDetalhe} />}
+        {() => <ConstrucaoRoute component={ObraDetalhe} />}
       </Route>
       <Route path="/insumos">
-        {() => <ProtectedRoute component={Insumos} />}
+        {() => <ConstrucaoRoute component={Insumos} />}
       </Route>
       <Route path="/composicoes">
-        {() => <ProtectedRoute component={Composicoes} />}
+        {() => <ConstrucaoRoute component={Composicoes} />}
       </Route>
       <Route path="/invite/:token">
         <AcceptInvite />

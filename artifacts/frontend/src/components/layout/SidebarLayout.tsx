@@ -17,6 +17,7 @@ export function SidebarLayout({ children }: { children: React.ReactNode }) {
 
   const isSuperAdmin = user?.platformRole === "super_admin";
   const isSeller = user?.platformRole === "tenant_seller";
+  const isConstrucao = user?.tenantVertical === "Construção & Reforma";
 
   const allNavItems = [
     { name: "Dashboard",     href: "/",             icon: LayoutDashboard, sellerHidden: false, section: "crm" },
@@ -37,7 +38,10 @@ export function SidebarLayout({ children }: { children: React.ReactNode }) {
     { name: "Composições",   href: "/composicoes",   icon: Layers,          sellerHidden: false, section: "construcao" },
   ];
 
-  const navigation = allNavItems.filter(item => !(isSeller && item.sellerHidden));
+  const navigation = allNavItems.filter(item =>
+    !(isSeller && item.sellerHidden) &&
+    (item.section !== "construcao" || isConstrucao)
+  );
 
   const adminNavigation = isSuperAdmin
     ? [

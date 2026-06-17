@@ -141,17 +141,18 @@ router.post("/auth/register", authenticate, requireRole("super_admin"), async (r
 });
 
 protectedRouter.get("/auth/me", async (req, res) => {
-  const [user] = await db
-    .select(PUBLIC_FIELDS)
+  const [row] = await db
+    .select({ ...PUBLIC_FIELDS, tenantVertical: tenantsTable.vertical })
     .from(usersTable)
+    .leftJoin(tenantsTable, eq(usersTable.tenantId, tenantsTable.id))
     .where(eq(usersTable.id, req.user!.sub));
 
-  if (!user || !user.active) {
+  if (!row || !row.active) {
     res.status(401).json({ error: "User not found or inactive" });
     return;
   }
 
-  res.json(user);
+  res.json(row);
 });
 
 protectedRouter.post("/auth/refresh", async (req, res) => {

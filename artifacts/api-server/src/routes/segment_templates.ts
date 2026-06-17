@@ -6,6 +6,7 @@ import {
   agentConfigsTable,
   funisTable,
   businessProfilesTable,
+  tenantsTable,
   AGENT_TYPES,
   type AgentsMap,
 } from "@workspace/db";
@@ -134,7 +135,7 @@ router.post(
       }
     }
 
-    // ── 3. Update business_profile.vertical ──────────────────────────────────
+    // ── 3. Update business_profile.vertical + tenants.vertical ───────────────
     let businessProfileUpdated = false;
 
     const [profile] = await db
@@ -149,6 +150,11 @@ router.post(
         .where(eq(businessProfilesTable.id, profile.id));
       businessProfileUpdated = true;
     }
+
+    await db
+      .update(tenantsTable)
+      .set({ vertical: template.nome, updatedAt: new Date() })
+      .where(eq(tenantsTable.id, tenantId));
 
     res.json({
       agentConfigUpdated,

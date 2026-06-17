@@ -117,6 +117,8 @@ export interface User {
   role: UserRole;
   platformRole: PlatformRole;
   active: boolean;
+  /** Segment/vertical of the tenant (e.g. "Construção & Reforma") */
+  tenantVertical?: string | null;
   createdAt: string;
   updatedAt: string;
 }

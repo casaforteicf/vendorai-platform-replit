@@ -37,6 +37,7 @@ export const GetMeResponse = zod.object({
   "role": zod.enum(['admin', 'member']),
   "platformRole": zod.enum(['super_admin', 'tenant_admin', 'tenant_seller', 'partner', 'member']),
   "active": zod.boolean(),
+  "tenantVertical": zod.string().nullish().describe('Segment\/vertical of the tenant (e.g. \"Construção & Reforma\")'),
   "createdAt": zod.coerce.date(),
   "updatedAt": zod.coerce.date()
 })
@@ -56,6 +57,7 @@ export const RefreshTokenResponse = zod.object({
   "role": zod.enum(['admin', 'member']),
   "platformRole": zod.enum(['super_admin', 'tenant_admin', 'tenant_seller', 'partner', 'member']),
   "active": zod.boolean(),
+  "tenantVertical": zod.string().nullish().describe('Segment\/vertical of the tenant (e.g. \"Construção & Reforma\")'),
   "createdAt": zod.coerce.date(),
   "updatedAt": zod.coerce.date()
 })
@@ -80,6 +82,7 @@ export const LoginResponse = zod.object({
   "role": zod.enum(['admin', 'member']),
   "platformRole": zod.enum(['super_admin', 'tenant_admin', 'tenant_seller', 'partner', 'member']),
   "active": zod.boolean(),
+  "tenantVertical": zod.string().nullish().describe('Segment\/vertical of the tenant (e.g. \"Construção & Reforma\")'),
   "createdAt": zod.coerce.date(),
   "updatedAt": zod.coerce.date()
 })
@@ -201,6 +204,7 @@ export const ListUsersResponseItem = zod.object({
   "role": zod.enum(['admin', 'member']),
   "platformRole": zod.enum(['super_admin', 'tenant_admin', 'tenant_seller', 'partner', 'member']),
   "active": zod.boolean(),
+  "tenantVertical": zod.string().nullish().describe('Segment\/vertical of the tenant (e.g. \"Construção & Reforma\")'),
   "createdAt": zod.coerce.date(),
   "updatedAt": zod.coerce.date()
 })
@@ -246,6 +250,7 @@ export const ChangePasswordResponse = zod.object({
   "role": zod.enum(['admin', 'member']),
   "platformRole": zod.enum(['super_admin', 'tenant_admin', 'tenant_seller', 'partner', 'member']),
   "active": zod.boolean(),
+  "tenantVertical": zod.string().nullish().describe('Segment\/vertical of the tenant (e.g. \"Construção & Reforma\")'),
   "createdAt": zod.coerce.date(),
   "updatedAt": zod.coerce.date()
 })
@@ -266,6 +271,7 @@ export const GetUserResponse = zod.object({
   "role": zod.enum(['admin', 'member']),
   "platformRole": zod.enum(['super_admin', 'tenant_admin', 'tenant_seller', 'partner', 'member']),
   "active": zod.boolean(),
+  "tenantVertical": zod.string().nullish().describe('Segment\/vertical of the tenant (e.g. \"Construção & Reforma\")'),
   "createdAt": zod.coerce.date(),
   "updatedAt": zod.coerce.date()
 })
@@ -295,6 +301,7 @@ export const UpdateUserResponse = zod.object({
   "role": zod.enum(['admin', 'member']),
   "platformRole": zod.enum(['super_admin', 'tenant_admin', 'tenant_seller', 'partner', 'member']),
   "active": zod.boolean(),
+  "tenantVertical": zod.string().nullish().describe('Segment\/vertical of the tenant (e.g. \"Construção & Reforma\")'),
   "createdAt": zod.coerce.date(),
   "updatedAt": zod.coerce.date()
 })
@@ -4166,6 +4173,7 @@ export const ListTenantUsersResponseItem = zod.object({
   "role": zod.enum(['admin', 'member']),
   "platformRole": zod.enum(['super_admin', 'tenant_admin', 'tenant_seller', 'partner', 'member']),
   "active": zod.boolean(),
+  "tenantVertical": zod.string().nullish().describe('Segment\/vertical of the tenant (e.g. \"Construção & Reforma\")'),
   "createdAt": zod.coerce.date(),
   "updatedAt": zod.coerce.date()
 })

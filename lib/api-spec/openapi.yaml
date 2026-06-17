@@ -9253,6 +9253,10 @@ components:
           $ref: "#/components/schemas/PlatformRole"
         active:
           type: boolean
+        tenantVertical:
+          type: string
+          nullable: true
+          description: Segment/vertical of the tenant (e.g. "Construção & Reforma")
         createdAt:
           type: string
           format: date-time
