@@ -20,6 +20,10 @@ export interface Proposta {
   status: PropostaStatus;
   validadeAte?: Date | null;
   observacoes?: string | null;
+  /** Condição de pagamento (ex: 30/60/90 dias, à vista). */
+  condPagamento?: string | null;
+  /** Prazo de entrega (ex: 7 dias úteis). */
+  prazoEntrega?: string | null;
   createdAt: Date;
   updatedAt: Date;
 }

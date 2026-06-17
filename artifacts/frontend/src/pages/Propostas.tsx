@@ -17,6 +17,10 @@ import {
   useImportProdutosCatalogo,
   useCreateDeal,
   getListDealsQueryKey,
+  useGetBusinessProfileByTenant,
+  getGetBusinessProfileByTenantQueryKey,
+  useGetLead,
+  getGetLeadQueryKey,
 } from "@workspace/api-client-react";
 import type {
   Proposta,
@@ -105,6 +109,12 @@ import {
   Download,
   AlertTriangle,
   Image as ImageIcon,
+  Printer,
+  Building2,
+  Phone,
+  Mail,
+  MapPin,
+  User,
 } from "lucide-react";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
@@ -573,6 +583,8 @@ const propostaFormSchema = z.object({
   titulo: z.string().min(1, "Título é obrigatório"),
   validadeAte: z.string().optional(),
   observacoes: z.string().optional(),
+  condPagamento: z.string().optional(),
+  prazoEntrega: z.string().optional(),
 });
 type PropostaFormValues = z.infer<typeof propostaFormSchema>;
 
@@ -610,7 +622,7 @@ function PropostaModal({
 
   const form = useForm<PropostaFormValues>({
     resolver: zodResolver(propostaFormSchema),
-    defaultValues: { leadId: "", titulo: "", validadeAte: "", observacoes: "" },
+    defaultValues: { leadId: "", titulo: "", validadeAte: "", observacoes: "", condPagamento: "", prazoEntrega: "" },
   });
 
   const { data: leads = [] } = useListTenantLeads(tenantId, {
@@ -697,7 +709,7 @@ function PropostaModal({
       if (!valid.length) { setCartError("Adicione pelo menos um produto."); return; }
       setCartError("");
       createFromCatMut.mutate(
-        { tenantId, data: { leadId: vals.leadId, titulo: vals.titulo, validadeAte: vals.validadeAte || undefined, observacoes: vals.observacoes || undefined, itens: valid.map((l) => ({ produtoId: l.produtoId, quantidade: l.quantidade })) } },
+        { tenantId, data: { leadId: vals.leadId, titulo: vals.titulo, validadeAte: vals.validadeAte || undefined, observacoes: vals.observacoes || undefined, condPagamento: vals.condPagamento || undefined, prazoEntrega: vals.prazoEntrega || undefined, itens: valid.map((l) => ({ produtoId: l.produtoId, quantidade: l.quantidade })) } },
         {
           onSuccess: () => {
             toast({ title: "Proposta criada com sucesso" });
@@ -716,7 +728,7 @@ function PropostaModal({
       if (!valid.length) { setFreeError("Adicione pelo menos um item."); return; }
       setFreeError("");
       createLivreMut.mutate(
-        { data: { tenantId, leadId: vals.leadId, titulo: vals.titulo, validadeAte: vals.validadeAte || undefined, observacoes: vals.observacoes || undefined, itens: valid.map((i) => ({ nome: i.nome, quantidade: i.quantidade, valorUnitario: i.valorUnitario })), valorTotal: freeTotal } },
+        { data: { tenantId, leadId: vals.leadId, titulo: vals.titulo, validadeAte: vals.validadeAte || undefined, observacoes: vals.observacoes || undefined, condPagamento: vals.condPagamento || undefined, prazoEntrega: vals.prazoEntrega || undefined, itens: valid.map((i) => ({ nome: i.nome, quantidade: i.quantidade, valorUnitario: i.valorUnitario })), valorTotal: freeTotal } },
         {
           onSuccess: () => {
             toast({ title: "Proposta criada com sucesso" });
@@ -981,6 +993,24 @@ function PropostaModal({
               )} />
             </div>
 
+            {/* Condições Comerciais */}
+            <div className="grid grid-cols-2 gap-3">
+              <FormField control={form.control} name="condPagamento" render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Condição de Pagamento <span className="text-muted-foreground text-xs">(opcional)</span></FormLabel>
+                  <FormControl><Input placeholder="Ex: 30/60/90 dias, à vista" {...field} value={field.value ?? ""} /></FormControl>
+                  <FormMessage />
+                </FormItem>
+              )} />
+              <FormField control={form.control} name="prazoEntrega" render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Prazo de Entrega <span className="text-muted-foreground text-xs">(opcional)</span></FormLabel>
+                  <FormControl><Input placeholder="Ex: 7 dias úteis" {...field} value={field.value ?? ""} /></FormControl>
+                  <FormMessage />
+                </FormItem>
+              )} />
+            </div>
+
             <div className="flex gap-2">
               <Button type="button" variant="outline" className="flex-1" onClick={handleClose}>Cancelar</Button>
               <Button type="submit" className="flex-1" disabled={isPending}>
@@ -1069,6 +1099,26 @@ function PropostaDetailSheet({
             )}
           </div>
 
+          {(proposta.condPagamento || proposta.prazoEntrega) && (
+            <>
+              <Separator />
+              <div className="grid grid-cols-2 gap-4 text-sm">
+                {proposta.condPagamento && (
+                  <div>
+                    <p className="text-xs text-muted-foreground uppercase tracking-wide mb-0.5">Condição Pagamento</p>
+                    <p className="font-medium">{proposta.condPagamento}</p>
+                  </div>
+                )}
+                {proposta.prazoEntrega && (
+                  <div>
+                    <p className="text-xs text-muted-foreground uppercase tracking-wide mb-0.5">Prazo Entrega</p>
+                    <p className="font-medium">{proposta.prazoEntrega}</p>
+                  </div>
+                )}
+              </div>
+            </>
+          )}
+
           {proposta.observacoes && (
             <>
               <Separator />
@@ -1084,6 +1134,205 @@ function PropostaDetailSheet({
   );
 }
 
+// ── Proposta Viewer (modelo print-ready) ─────────────────────────────────────
+function PropostaViewer({
+  proposta,
+  tenantId,
+  sellerName,
+  sellerEmail,
+  onClose,
+}: {
+  proposta: Proposta;
+  tenantId: string;
+  sellerName: string;
+  sellerEmail: string;
+  onClose: () => void;
+}) {
+  const { data: biz } = useGetBusinessProfileByTenant(tenantId, {
+    query: { queryKey: getGetBusinessProfileByTenantQueryKey(tenantId), enabled: !!tenantId },
+  });
+  const { data: lead } = useGetLead(proposta.leadId, {
+    query: { queryKey: getGetLeadQueryKey(proposta.leadId), enabled: !!proposta.leadId },
+  });
+
+  const total = proposta.valorTotal
+    ?? proposta.itens.reduce((s, i) => s + i.quantidade * i.valorUnitario, 0);
+  const propNum = proposta.id.slice(-8).toUpperCase();
+  const statusCfg = STATUS_CONFIG[proposta.status] ?? STATUS_CONFIG.rascunho;
+
+  function handlePrint() {
+    window.print();
+  }
+
+  return (
+    <Dialog open onOpenChange={(o) => !o && onClose()}>
+      <DialogContent className="max-w-3xl max-h-[95vh] overflow-y-auto p-0">
+        {/* Toolbar */}
+        <div className="flex items-center justify-between px-5 py-3 border-b bg-muted/30 print:hidden">
+          <div className="flex items-center gap-2">
+            <FileText className="h-4 w-4 text-muted-foreground" />
+            <span className="text-sm font-medium">Modelo da Proposta</span>
+            <Badge variant="outline" className={`text-xs ${statusCfg.className}`}>{statusCfg.label}</Badge>
+          </div>
+          <div className="flex items-center gap-2">
+            <Button variant="outline" size="sm" onClick={handlePrint}>
+              <Printer className="h-4 w-4 mr-1.5" /> Imprimir
+            </Button>
+            <Button variant="ghost" size="icon" className="h-8 w-8" onClick={onClose}>
+              <X className="h-4 w-4" />
+            </Button>
+          </div>
+        </div>
+
+        {/* Document */}
+        <div id="proposta-print" className="bg-white text-gray-900 p-8 md:p-12 space-y-8 min-h-[800px]">
+
+          {/* Header: logo + company */}
+          <div className="flex items-start justify-between gap-6 pb-6 border-b-2 border-gray-900">
+            <div className="flex items-center gap-4">
+              {biz?.logoUrl ? (
+                <img src={biz.logoUrl} alt="Logo" className="h-14 w-auto object-contain max-w-[120px]" />
+              ) : (
+                <div className="h-14 w-14 rounded-lg bg-gray-100 flex items-center justify-center">
+                  <Building2 className="h-7 w-7 text-gray-400" />
+                </div>
+              )}
+              <div>
+                <h2 className="text-xl font-bold leading-tight">
+                  {biz?.nomeFantasia || biz?.razaoSocial || "Empresa"}
+                </h2>
+                {biz?.razaoSocial && biz.nomeFantasia && biz.razaoSocial !== biz.nomeFantasia && (
+                  <p className="text-xs text-gray-500">{biz.razaoSocial}</p>
+                )}
+                {biz?.cnpj && <p className="text-xs text-gray-500">CNPJ: {biz.cnpj}</p>}
+              </div>
+            </div>
+            <div className="text-right text-xs text-gray-500 space-y-0.5">
+              {biz?.endereco && <p className="flex items-center gap-1 justify-end"><MapPin className="h-3 w-3" />{biz.endereco}</p>}
+              {biz?.telefone && <p className="flex items-center gap-1 justify-end"><Phone className="h-3 w-3" />{biz.telefone}</p>}
+              {biz?.email && <p className="flex items-center gap-1 justify-end"><Mail className="h-3 w-3" />{biz.email}</p>}
+            </div>
+          </div>
+
+          {/* Title + meta */}
+          <div className="space-y-1">
+            <div className="flex items-baseline justify-between gap-4">
+              <h1 className="text-2xl font-bold tracking-tight">{proposta.titulo}</h1>
+              <span className="text-sm text-gray-500 whitespace-nowrap">Nº {propNum}</span>
+            </div>
+            <div className="flex flex-wrap gap-4 text-sm text-gray-500">
+              <span>Data: <strong className="text-gray-700">{fmtDate(proposta.createdAt)}</strong></span>
+              {proposta.validadeAte && (
+                <span>Válida até: <strong className="text-gray-700">{fmtDate(proposta.validadeAte)}</strong></span>
+              )}
+            </div>
+          </div>
+
+          {/* Para / Vendedor */}
+          <div className="grid grid-cols-2 gap-6 bg-gray-50 rounded-lg p-5 border border-gray-200">
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-widest text-gray-400 mb-2">Cliente</p>
+              <p className="font-semibold text-base">{lead?.nome ?? "—"}</p>
+              {lead?.empresa && <p className="text-sm text-gray-600">{lead.empresa}</p>}
+              {lead?.telefone && (
+                <p className="text-sm text-gray-500 flex items-center gap-1 mt-0.5">
+                  <Phone className="h-3 w-3" /> {lead.telefone}
+                </p>
+              )}
+              {lead?.email && (
+                <p className="text-sm text-gray-500 flex items-center gap-1">
+                  <Mail className="h-3 w-3" /> {lead.email}
+                </p>
+              )}
+            </div>
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-widest text-gray-400 mb-2">Vendedor</p>
+              <p className="font-semibold text-base flex items-center gap-1.5">
+                <User className="h-4 w-4 text-gray-400" /> {sellerName || "—"}
+              </p>
+              {sellerEmail && (
+                <p className="text-sm text-gray-500 flex items-center gap-1 mt-0.5">
+                  <Mail className="h-3 w-3" /> {sellerEmail}
+                </p>
+              )}
+            </div>
+          </div>
+
+          {/* Items table */}
+          <div>
+            <p className="text-xs font-semibold uppercase tracking-widest text-gray-400 mb-3">Itens</p>
+            <table className="w-full border-collapse text-sm">
+              <thead>
+                <tr className="border-b-2 border-gray-900">
+                  <th className="text-left py-2 font-semibold text-gray-700">Descrição</th>
+                  <th className="text-center py-2 font-semibold text-gray-700 w-20">Qtd</th>
+                  <th className="text-right py-2 font-semibold text-gray-700 w-28">Valor Unit.</th>
+                  <th className="text-right py-2 font-semibold text-gray-700 w-28">Subtotal</th>
+                </tr>
+              </thead>
+              <tbody>
+                {proposta.itens.map((item, i) => (
+                  <tr key={i} className={i % 2 === 0 ? "bg-white" : "bg-gray-50/60"}>
+                    <td className="py-2.5 pr-4 text-gray-800">{item.nome}</td>
+                    <td className="py-2.5 text-center text-gray-600">{item.quantidade}</td>
+                    <td className="py-2.5 text-right font-mono text-gray-600">{fmtCurrency(item.valorUnitario)}</td>
+                    <td className="py-2.5 text-right font-mono font-medium">{fmtCurrency(item.quantidade * item.valorUnitario)}</td>
+                  </tr>
+                ))}
+              </tbody>
+              <tfoot>
+                <tr className="border-t-2 border-gray-900">
+                  <td colSpan={3} className="pt-3 pr-4 text-right text-sm font-semibold text-gray-700 uppercase tracking-wide">
+                    Total
+                  </td>
+                  <td className="pt-3 text-right font-mono text-lg font-bold text-gray-900">
+                    {fmtCurrency(total)}
+                  </td>
+                </tr>
+              </tfoot>
+            </table>
+          </div>
+
+          {/* Condições comerciais */}
+          {(proposta.condPagamento || proposta.prazoEntrega) && (
+            <div className="border border-gray-200 rounded-lg p-5">
+              <p className="text-xs font-semibold uppercase tracking-widest text-gray-400 mb-3">Condições Comerciais</p>
+              <div className="grid grid-cols-2 gap-6 text-sm">
+                {proposta.condPagamento && (
+                  <div>
+                    <p className="text-xs text-gray-500 mb-0.5">Condição de Pagamento</p>
+                    <p className="font-medium text-gray-800">{proposta.condPagamento}</p>
+                  </div>
+                )}
+                {proposta.prazoEntrega && (
+                  <div>
+                    <p className="text-xs text-gray-500 mb-0.5">Prazo de Entrega</p>
+                    <p className="font-medium text-gray-800">{proposta.prazoEntrega}</p>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* Observações */}
+          {proposta.observacoes && (
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-widest text-gray-400 mb-2">Observações</p>
+              <p className="text-sm text-gray-700 leading-relaxed whitespace-pre-line">{proposta.observacoes}</p>
+            </div>
+          )}
+
+          {/* Footer */}
+          <div className="pt-6 border-t border-gray-200 flex items-center justify-between text-xs text-gray-400">
+            <span>{biz?.nomeFantasia || biz?.razaoSocial || ""}</span>
+            <span>Proposta #{propNum}</span>
+          </div>
+        </div>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
 // ── Main Page ─────────────────────────────────────────────────────────────────
 export default function Propostas() {
   const { user } = useAuth();
@@ -1095,6 +1344,7 @@ export default function Propostas() {
   const [catOpen, setCatOpen] = useState(false);
   const [detailProposta, setDetailProposta] = useState<Proposta | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<Proposta | null>(null);
+  const [viewProposta, setViewProposta] = useState<Proposta | null>(null);
 
   const { data: propostas = [], isLoading } = useListPropostas(tenantId, undefined, {
     query: { queryKey: getListPropostasQueryKey(tenantId), enabled: !!tenantId },
@@ -1231,6 +1481,7 @@ export default function Propostas() {
                           </DropdownMenuTrigger>
                           <DropdownMenuContent align="end">
                             <DropdownMenuItem onClick={() => setDetailProposta(p)}><Eye className="h-4 w-4 mr-2" />Ver detalhes</DropdownMenuItem>
+                            <DropdownMenuItem onClick={(e) => { e.stopPropagation(); setViewProposta(p); }}><Printer className="h-4 w-4 mr-2" />Visualizar modelo</DropdownMenuItem>
                             {canSend && <DropdownMenuItem onClick={() => changeStatus(p, "enviada")}><Send className="h-4 w-4 mr-2" />Enviar proposta</DropdownMenuItem>}
                             {canAccept && <DropdownMenuItem onClick={() => changeStatus(p, "aceita")}><CheckCircle2 className="h-4 w-4 mr-2 text-emerald-600" />Marcar aceita</DropdownMenuItem>}
                             {canReject && <DropdownMenuItem onClick={() => changeStatus(p, "rejeitada")}><XCircle className="h-4 w-4 mr-2 text-red-500" />Marcar rejeitada</DropdownMenuItem>}
@@ -1302,6 +1553,9 @@ export default function Propostas() {
                             <DropdownMenuItem onClick={() => setDetailProposta(p)}>
                               <Eye className="h-4 w-4 mr-2" /> Ver detalhes
                             </DropdownMenuItem>
+                            <DropdownMenuItem onClick={(e) => { e.stopPropagation(); setViewProposta(p); }}>
+                              <Printer className="h-4 w-4 mr-2" /> Visualizar modelo
+                            </DropdownMenuItem>
                             {canSend && (
                               <DropdownMenuItem onClick={() => changeStatus(p, "enviada")}>
                                 <Send className="h-4 w-4 mr-2" /> Enviar proposta
@@ -1354,6 +1608,15 @@ export default function Propostas() {
         leadName={detailProposta ? (leadMap[detailProposta.leadId] ?? "—") : ""}
         onClose={() => setDetailProposta(null)}
       />
+      {viewProposta && (
+        <PropostaViewer
+          proposta={viewProposta}
+          tenantId={tenantId}
+          sellerName={user?.name ?? user?.email ?? ""}
+          sellerEmail={user?.email ?? ""}
+          onClose={() => setViewProposta(null)}
+        />
+      )}
 
       {/* Delete confirmation */}
       <AlertDialog open={!!deleteTarget} onOpenChange={(o) => !o && setDeleteTarget(null)}>

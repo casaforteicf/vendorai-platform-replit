@@ -1461,7 +1461,9 @@ export const CreatePropostaBody = zod.object({
   "valorTotal": zod.number().optional(),
   "status": zod.enum(['rascunho', 'enviada', 'aceita', 'rejeitada', 'expirada']).optional(),
   "validadeAte": zod.coerce.date().optional(),
-  "observacoes": zod.string().optional()
+  "observacoes": zod.string().optional(),
+  "condPagamento": zod.string().optional().describe('Condição de pagamento (ex: 30\/60\/90 dias, à vista).'),
+  "prazoEntrega": zod.string().optional().describe('Prazo de entrega (ex: 7 dias úteis).')
 })
 
 
@@ -1492,6 +1494,8 @@ export const ListPropostasResponseItem = zod.object({
   "status": zod.enum(['rascunho', 'enviada', 'aceita', 'rejeitada', 'expirada']),
   "validadeAte": zod.coerce.date().nullish(),
   "observacoes": zod.string().nullish(),
+  "condPagamento": zod.string().nullish().describe('Condição de pagamento (ex: 30\/60\/90 dias, à vista).'),
+  "prazoEntrega": zod.string().nullish().describe('Prazo de entrega (ex: 7 dias úteis).'),
   "createdAt": zod.coerce.date(),
   "updatedAt": zod.coerce.date()
 })
@@ -1529,6 +1533,8 @@ export const UpdatePropostaStatusResponse = zod.object({
   "status": zod.enum(['rascunho', 'enviada', 'aceita', 'rejeitada', 'expirada']),
   "validadeAte": zod.coerce.date().nullish(),
   "observacoes": zod.string().nullish(),
+  "condPagamento": zod.string().nullish().describe('Condição de pagamento (ex: 30\/60\/90 dias, à vista).'),
+  "prazoEntrega": zod.string().nullish().describe('Prazo de entrega (ex: 7 dias úteis).'),
   "createdAt": zod.coerce.date(),
   "updatedAt": zod.coerce.date()
 })
@@ -1556,6 +1562,8 @@ export const GetPropostaResponse = zod.object({
   "status": zod.enum(['rascunho', 'enviada', 'aceita', 'rejeitada', 'expirada']),
   "validadeAte": zod.coerce.date().nullish(),
   "observacoes": zod.string().nullish(),
+  "condPagamento": zod.string().nullish().describe('Condição de pagamento (ex: 30\/60\/90 dias, à vista).'),
+  "prazoEntrega": zod.string().nullish().describe('Prazo de entrega (ex: 7 dias úteis).'),
   "createdAt": zod.coerce.date(),
   "updatedAt": zod.coerce.date()
 })
@@ -1580,7 +1588,9 @@ export const UpdatePropostaBody = zod.object({
   "valorTotal": zod.number().optional(),
   "status": zod.enum(['rascunho', 'enviada', 'aceita', 'rejeitada', 'expirada']).optional(),
   "validadeAte": zod.coerce.date().optional(),
-  "observacoes": zod.string().optional()
+  "observacoes": zod.string().optional(),
+  "condPagamento": zod.string().optional().describe('Condição de pagamento (ex: 30\/60\/90 dias, à vista).'),
+  "prazoEntrega": zod.string().optional().describe('Prazo de entrega (ex: 7 dias úteis).')
 })
 
 export const UpdatePropostaResponse = zod.object({
@@ -1598,6 +1608,8 @@ export const UpdatePropostaResponse = zod.object({
   "status": zod.enum(['rascunho', 'enviada', 'aceita', 'rejeitada', 'expirada']),
   "validadeAte": zod.coerce.date().nullish(),
   "observacoes": zod.string().nullish(),
+  "condPagamento": zod.string().nullish().describe('Condição de pagamento (ex: 30\/60\/90 dias, à vista).'),
+  "prazoEntrega": zod.string().nullish().describe('Prazo de entrega (ex: 7 dias úteis).'),
   "createdAt": zod.coerce.date(),
   "updatedAt": zod.coerce.date()
 })
@@ -2802,6 +2814,8 @@ export const CreatePropostaFromCatalogoBody = zod.object({
   "dealId": zod.string().optional(),
   "validadeAte": zod.coerce.date().optional(),
   "observacoes": zod.string().optional(),
+  "condPagamento": zod.string().optional().describe('Condição de pagamento (ex: 30\/60\/90 dias, à vista).'),
+  "prazoEntrega": zod.string().optional().describe('Prazo de entrega (ex: 7 dias úteis).'),
   "itens": zod.array(zod.object({
   "produtoId": zod.string(),
   "quantidade": zod.number().gt(createPropostaFromCatalogoBodyItensItemQuantidadeExclusiveMin)

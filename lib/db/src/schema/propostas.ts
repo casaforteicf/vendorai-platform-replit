@@ -43,6 +43,8 @@ export const propostasTable = pgTable("propostas", {
   status: propostaStatusEnum("status").notNull().default("rascunho"),
   validadeAte: timestamp("validade_ate"),
   observacoes: text("observacoes"),
+  condPagamento: text("cond_pagamento"),
+  prazoEntrega: text("prazo_entrega"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
 });

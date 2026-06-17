@@ -8333,6 +8333,12 @@ components:
           format: date-time
         observacoes:
           type: string
+        condPagamento:
+          type: string
+          description: "Condição de pagamento (ex: 30/60/90 dias, à vista)."
+        prazoEntrega:
+          type: string
+          description: "Prazo de entrega (ex: 7 dias úteis)."
         itens:
           type: array
           minItems: 1
@@ -8894,6 +8900,14 @@ components:
         observacoes:
           type: string
           nullable: true
+        condPagamento:
+          type: string
+          nullable: true
+          description: "Condição de pagamento (ex: 30/60/90 dias, à vista)."
+        prazoEntrega:
+          type: string
+          nullable: true
+          description: "Prazo de entrega (ex: 7 dias úteis)."
         createdAt:
           type: string
           format: date-time
@@ -8926,6 +8940,12 @@ components:
           format: date-time
         observacoes:
           type: string
+        condPagamento:
+          type: string
+          description: "Condição de pagamento (ex: 30/60/90 dias, à vista)."
+        prazoEntrega:
+          type: string
+          description: "Prazo de entrega (ex: 7 dias úteis)."
       required: [tenantId, leadId, titulo]
 
     UpdatePropostaBody:
@@ -8950,6 +8970,12 @@ components:
           format: date-time
         observacoes:
           type: string
+        condPagamento:
+          type: string
+          description: "Condição de pagamento (ex: 30/60/90 dias, à vista)."
+        prazoEntrega:
+          type: string
+          description: "Prazo de entrega (ex: 7 dias úteis)."
 
     ActivityTipo:
       type: string

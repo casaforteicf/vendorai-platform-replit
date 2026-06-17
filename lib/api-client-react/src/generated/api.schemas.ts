@@ -716,6 +716,10 @@ export interface CreatePropostaFromCatalogoBody {
   dealId?: string;
   validadeAte?: string;
   observacoes?: string;
+  /** Condição de pagamento (ex: 30/60/90 dias, à vista). */
+  condPagamento?: string;
+  /** Prazo de entrega (ex: 7 dias úteis). */
+  prazoEntrega?: string;
   /** @minItems 1 */
   itens: CreatePropostaFromCatalogoBodyItensItem[];
 }
@@ -1117,6 +1121,10 @@ export interface Proposta {
   status: PropostaStatus;
   validadeAte?: string | null;
   observacoes?: string | null;
+  /** Condição de pagamento (ex: 30/60/90 dias, à vista). */
+  condPagamento?: string | null;
+  /** Prazo de entrega (ex: 7 dias úteis). */
+  prazoEntrega?: string | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -1131,6 +1139,10 @@ export interface CreatePropostaBody {
   status?: PropostaStatus;
   validadeAte?: string;
   observacoes?: string;
+  /** Condição de pagamento (ex: 30/60/90 dias, à vista). */
+  condPagamento?: string;
+  /** Prazo de entrega (ex: 7 dias úteis). */
+  prazoEntrega?: string;
 }
 
 export interface UpdatePropostaBody {
@@ -1142,6 +1154,10 @@ export interface UpdatePropostaBody {
   status?: PropostaStatus;
   validadeAte?: string;
   observacoes?: string;
+  /** Condição de pagamento (ex: 30/60/90 dias, à vista). */
+  condPagamento?: string;
+  /** Prazo de entrega (ex: 7 dias úteis). */
+  prazoEntrega?: string;
 }
 
 export type ActivityTipo = typeof ActivityTipo[keyof typeof ActivityTipo];

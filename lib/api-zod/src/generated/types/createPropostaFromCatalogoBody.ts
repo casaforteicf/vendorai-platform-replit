@@ -13,6 +13,10 @@ export interface CreatePropostaFromCatalogoBody {
   dealId?: string;
   validadeAte?: Date;
   observacoes?: string;
+  /** Condição de pagamento (ex: 30/60/90 dias, à vista). */
+  condPagamento?: string;
+  /** Prazo de entrega (ex: 7 dias úteis). */
+  prazoEntrega?: string;
   /** @minItems 1 */
   itens: CreatePropostaFromCatalogoBodyItensItem[];
 }

@@ -17,4 +17,8 @@ export interface UpdatePropostaBody {
   status?: PropostaStatus;
   validadeAte?: Date;
   observacoes?: string;
+  /** Condição de pagamento (ex: 30/60/90 dias, à vista). */
+  condPagamento?: string;
+  /** Prazo de entrega (ex: 7 dias úteis). */
+  prazoEntrega?: string;
 }
