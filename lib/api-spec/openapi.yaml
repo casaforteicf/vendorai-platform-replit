@@ -6764,6 +6764,342 @@ paths:
       responses:
         "204": { description: Deleted }
 
+  /tenants/{tenantId}/supermercado/config:
+    get:
+      operationId: getSupermercadoConfig
+      tags: [Supermercado]
+      parameters:
+        - { name: tenantId, in: path, required: true, schema: { type: string } }
+      responses:
+        "200":
+          description: Config do supermercado
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/SupermercadoConfig" }
+        "404":
+          description: Não encontrado
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+    put:
+      operationId: upsertSupermercadoConfig
+      tags: [Supermercado]
+      parameters:
+        - { name: tenantId, in: path, required: true, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/UpsertSupermercadoConfigBody" }
+      responses:
+        "200":
+          description: Config atualizado
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/SupermercadoConfig" }
+
+  /tenants/{tenantId}/supermercado/produtos:
+    get:
+      operationId: listSupermercadoProdutos
+      tags: [Supermercado]
+      parameters:
+        - { name: tenantId, in: path, required: true, schema: { type: string } }
+        - { name: categoria, in: query, schema: { type: string } }
+        - { name: destaque, in: query, schema: { type: boolean } }
+        - { name: q, in: query, schema: { type: string } }
+      responses:
+        "200":
+          description: Lista de produtos
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/SupermercadoProduto" }
+    post:
+      operationId: createSupermercadoProduto
+      tags: [Supermercado]
+      parameters:
+        - { name: tenantId, in: path, required: true, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CreateSupermercadoProdutoBody" }
+      responses:
+        "201":
+          description: Produto criado
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/SupermercadoProduto" }
+
+  /tenants/{tenantId}/supermercado/produtos/{produtoId}:
+    get:
+      operationId: getSupermercadoProduto
+      tags: [Supermercado]
+      parameters:
+        - { name: tenantId, in: path, required: true, schema: { type: string } }
+        - { name: produtoId, in: path, required: true, schema: { type: string } }
+      responses:
+        "200":
+          description: Produto
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/SupermercadoProduto" }
+        "404":
+          description: Não encontrado
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+    put:
+      operationId: updateSupermercadoProduto
+      tags: [Supermercado]
+      parameters:
+        - { name: tenantId, in: path, required: true, schema: { type: string } }
+        - { name: produtoId, in: path, required: true, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/UpdateSupermercadoProdutoBody" }
+      responses:
+        "200":
+          description: Produto atualizado
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/SupermercadoProduto" }
+    delete:
+      operationId: deleteSupermercadoProduto
+      tags: [Supermercado]
+      parameters:
+        - { name: tenantId, in: path, required: true, schema: { type: string } }
+        - { name: produtoId, in: path, required: true, schema: { type: string } }
+      responses:
+        "204":
+          description: Removido
+
+  /tenants/{tenantId}/supermercado/sync-produtos:
+    post:
+      operationId: syncSupermercadoProdutos
+      tags: [Supermercado]
+      parameters:
+        - { name: tenantId, in: path, required: true, schema: { type: string } }
+      responses:
+        "200":
+          description: Resultado da sincronização
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [sincronizados, erros]
+                properties:
+                  sincronizados: { type: integer }
+                  erros: { type: integer }
+
+  /tenants/{tenantId}/supermercado/pedidos:
+    get:
+      operationId: listSupermercadoPedidos
+      tags: [Supermercado]
+      parameters:
+        - { name: tenantId, in: path, required: true, schema: { type: string } }
+        - { name: status, in: query, schema: { type: string } }
+        - { name: origem, in: query, schema: { type: string } }
+      responses:
+        "200":
+          description: Lista de pedidos
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/SupermercadoPedido" }
+    post:
+      operationId: createSupermercadoPedido
+      tags: [Supermercado]
+      parameters:
+        - { name: tenantId, in: path, required: true, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CreateSupermercadoPedidoBody" }
+      responses:
+        "201":
+          description: Pedido criado
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/SupermercadoPedido" }
+
+  /tenants/{tenantId}/supermercado/pedidos/{pedidoId}:
+    get:
+      operationId: getSupermercadoPedido
+      tags: [Supermercado]
+      parameters:
+        - { name: tenantId, in: path, required: true, schema: { type: string } }
+        - { name: pedidoId, in: path, required: true, schema: { type: string } }
+      responses:
+        "200":
+          description: Pedido com itens
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/SupermercadoPedidoDetalhe" }
+        "404":
+          description: Não encontrado
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+    put:
+      operationId: updateSupermercadoPedido
+      tags: [Supermercado]
+      parameters:
+        - { name: tenantId, in: path, required: true, schema: { type: string } }
+        - { name: pedidoId, in: path, required: true, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/UpdateSupermercadoPedidoBody" }
+      responses:
+        "200":
+          description: Pedido atualizado
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/SupermercadoPedido" }
+
+  /tenants/{tenantId}/supermercado/campanhas:
+    get:
+      operationId: listSupermercadoCampanhas
+      tags: [Supermercado]
+      parameters:
+        - { name: tenantId, in: path, required: true, schema: { type: string } }
+        - { name: tipo, in: query, schema: { type: string } }
+        - { name: status, in: query, schema: { type: string } }
+      responses:
+        "200":
+          description: Lista de campanhas
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/SupermercadoCampanha" }
+    post:
+      operationId: createSupermercadoCampanha
+      tags: [Supermercado]
+      parameters:
+        - { name: tenantId, in: path, required: true, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CreateSupermercadoCampanhaBody" }
+      responses:
+        "201":
+          description: Campanha criada
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/SupermercadoCampanha" }
+
+  /tenants/{tenantId}/supermercado/campanhas/{campanhaId}:
+    get:
+      operationId: getSupermercadoCampanha
+      tags: [Supermercado]
+      parameters:
+        - { name: tenantId, in: path, required: true, schema: { type: string } }
+        - { name: campanhaId, in: path, required: true, schema: { type: string } }
+      responses:
+        "200":
+          description: Campanha
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/SupermercadoCampanha" }
+    put:
+      operationId: updateSupermercadoCampanha
+      tags: [Supermercado]
+      parameters:
+        - { name: tenantId, in: path, required: true, schema: { type: string } }
+        - { name: campanhaId, in: path, required: true, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/UpdateSupermercadoCampanhaBody" }
+      responses:
+        "200":
+          description: Campanha atualizada
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/SupermercadoCampanha" }
+    delete:
+      operationId: deleteSupermercadoCampanha
+      tags: [Supermercado]
+      parameters:
+        - { name: tenantId, in: path, required: true, schema: { type: string } }
+        - { name: campanhaId, in: path, required: true, schema: { type: string } }
+      responses:
+        "204":
+          description: Removida
+
+  /tenants/{tenantId}/supermercado/campanhas/{campanhaId}/disparar:
+    post:
+      operationId: dispararSupermercadoCampanha
+      tags: [Supermercado]
+      parameters:
+        - { name: tenantId, in: path, required: true, schema: { type: string } }
+        - { name: campanhaId, in: path, required: true, schema: { type: string } }
+      responses:
+        "200":
+          description: Disparo iniciado
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [ok, total]
+                properties:
+                  ok: { type: boolean }
+                  total: { type: integer }
+
+  /tenants/{tenantId}/supermercado/campanhas/gerar-conteudo:
+    post:
+      operationId: gerarConteudoSupermercadoCampanha
+      tags: [Supermercado]
+      parameters:
+        - { name: tenantId, in: path, required: true, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [tipo]
+              properties:
+                tipo:
+                  type: string
+                  enum: [promocao, receita, dica, data_comemorativa, reativacao]
+                contexto: { type: string }
+      responses:
+        "200":
+          description: Conteúdo gerado
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [conteudo, titulo]
+                properties:
+                  titulo: { type: string }
+                  conteudo: { type: string }
+
+  /tenants/{tenantId}/supermercado/dashboard:
+    get:
+      operationId: getSupermercadoDashboard
+      tags: [Supermercado]
+      parameters:
+        - { name: tenantId, in: path, required: true, schema: { type: string } }
+      responses:
+        "200":
+          description: KPIs do supermercado
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/SupermercadoDashboard" }
+
+
 components:
   schemas:
     CreateInviteBody:
@@ -11736,3 +12072,242 @@ components:
         tamanho: { type: string }
         cor: { type: string }
         quantidade: { type: integer }
+
+    SupermercadoConfig:
+      type: object
+      required: [id, tenantId, erpSyncEnabled, botAtivo, campanhasAtivas, contatosPorRodada, horarioEnvio, createdAt, updatedAt]
+      properties:
+        id: { type: string }
+        tenantId: { type: string }
+        erpApiUrl: { type: ["string", "null"] }
+        erpApiKey: { type: ["string", "null"] }
+        erpSyncEnabled: { type: boolean }
+        zapiInstanceId: { type: ["string", "null"] }
+        zapiToken: { type: ["string", "null"] }
+        botAtivo: { type: boolean }
+        mensagemBoasVindas: { type: ["string", "null"] }
+        campanhasAtivas: { type: boolean }
+        contatosPorRodada: { type: integer }
+        diasSemana: { type: ["array", "null"], items: { type: string } }
+        horarioEnvio: { type: string }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+
+    UpsertSupermercadoConfigBody:
+      type: object
+      properties:
+        erpApiUrl: { type: string }
+        erpApiKey: { type: string }
+        erpSyncEnabled: { type: boolean }
+        zapiInstanceId: { type: string }
+        zapiToken: { type: string }
+        botAtivo: { type: boolean }
+        mensagemBoasVindas: { type: string }
+        campanhasAtivas: { type: boolean }
+        contatosPorRodada: { type: integer }
+        diasSemana:
+          type: array
+          items: { type: string }
+        horarioEnvio: { type: string }
+
+    SupermercadoProduto:
+      type: object
+      required: [id, tenantId, nome, unidade, precoVenda, estoque, ativo, destaqueWhatsapp, createdAt, updatedAt]
+      properties:
+        id: { type: string }
+        tenantId: { type: string }
+        erpId: { type: ["string", "null"] }
+        nome: { type: string }
+        descricao: { type: ["string", "null"] }
+        categoria:
+          type: ["string", "null"]
+          enum: [hortifruti, carnes, frios_laticinios, padaria, bebidas, limpeza, higiene, mercearia, congelados, petshop, outros, "null"]
+        unidade: { type: string }
+        precoVenda: { type: string }
+        precoPromocional: { type: ["string", "null"] }
+        estoque: { type: integer }
+        imagemUrl: { type: ["string", "null"] }
+        ativo: { type: boolean }
+        destaqueWhatsapp: { type: boolean }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+
+    CreateSupermercadoProdutoBody:
+      type: object
+      required: [tenantId, nome, precoVenda]
+      properties:
+        tenantId: { type: string }
+        erpId: { type: string }
+        nome: { type: string }
+        descricao: { type: string }
+        categoria:
+          type: string
+          enum: [hortifruti, carnes, frios_laticinios, padaria, bebidas, limpeza, higiene, mercearia, congelados, petshop, outros]
+        unidade: { type: string }
+        precoVenda: { type: string }
+        precoPromocional: { type: string }
+        estoque: { type: integer }
+        imagemUrl: { type: string }
+        ativo: { type: boolean }
+        destaqueWhatsapp: { type: boolean }
+
+    UpdateSupermercadoProdutoBody:
+      type: object
+      properties:
+        erpId: { type: string }
+        nome: { type: string }
+        descricao: { type: string }
+        categoria:
+          type: string
+          enum: [hortifruti, carnes, frios_laticinios, padaria, bebidas, limpeza, higiene, mercearia, congelados, petshop, outros]
+        unidade: { type: string }
+        precoVenda: { type: string }
+        precoPromocional: { type: string }
+        estoque: { type: integer }
+        imagemUrl: { type: string }
+        ativo: { type: boolean }
+        destaqueWhatsapp: { type: boolean }
+
+    SupermercadoPedido:
+      type: object
+      required: [id, tenantId, origem, status, valorTotal, createdAt, updatedAt]
+      properties:
+        id: { type: string }
+        tenantId: { type: string }
+        leadId: { type: ["string", "null"] }
+        origem:
+          type: string
+          enum: [whatsapp, app, balcao]
+        status:
+          type: string
+          enum: [aguardando_confirmacao, confirmado, em_separacao, saiu_para_entrega, entregue, cancelado]
+        enderecoEntrega: { type: ["string", "null"] }
+        observacoes: { type: ["string", "null"] }
+        valorTotal: { type: string }
+        erpPedidoId: { type: ["string", "null"] }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+
+    SupermercadoPedidoItem:
+      type: object
+      required: [id, pedidoId, nomeProduto, quantidade, precoUnitario, subtotal]
+      properties:
+        id: { type: string }
+        pedidoId: { type: string }
+        produtoId: { type: ["string", "null"] }
+        nomeProduto: { type: string }
+        quantidade: { type: string }
+        precoUnitario: { type: string }
+        subtotal: { type: string }
+
+    SupermercadoPedidoDetalhe:
+      allOf:
+        - $ref: "#/components/schemas/SupermercadoPedido"
+        - type: object
+          required: [itens]
+          properties:
+            itens:
+              type: array
+              items: { $ref: "#/components/schemas/SupermercadoPedidoItem" }
+            leadNome: { type: ["string", "null"] }
+
+    CreateSupermercadoPedidoBody:
+      type: object
+      required: [tenantId]
+      properties:
+        tenantId: { type: string }
+        leadId: { type: string }
+        origem:
+          type: string
+          enum: [whatsapp, app, balcao]
+        enderecoEntrega: { type: string }
+        observacoes: { type: string }
+        itens:
+          type: array
+          items:
+            type: object
+            required: [nomeProduto, quantidade, precoUnitario]
+            properties:
+              produtoId: { type: string }
+              nomeProduto: { type: string }
+              quantidade: { type: string }
+              precoUnitario: { type: string }
+
+    UpdateSupermercadoPedidoBody:
+      type: object
+      properties:
+        status:
+          type: string
+          enum: [aguardando_confirmacao, confirmado, em_separacao, saiu_para_entrega, entregue, cancelado]
+        enderecoEntrega: { type: string }
+        observacoes: { type: string }
+        erpPedidoId: { type: string }
+
+    SupermercadoCampanha:
+      type: object
+      required: [id, tenantId, titulo, tipo, status, conteudo, geradoPorIa, totalEnviados, totalFalhas, createdAt, updatedAt]
+      properties:
+        id: { type: string }
+        tenantId: { type: string }
+        titulo: { type: string }
+        tipo:
+          type: string
+          enum: [promocao, receita, dica, data_comemorativa, reativacao]
+        status:
+          type: string
+          enum: [rascunho, agendada, enviando, concluida, pausada]
+        conteudo: { type: string }
+        imagemUrl: { type: ["string", "null"] }
+        agendadoPara: { type: ["string", "null"], format: date-time }
+        enviadoEm: { type: ["string", "null"], format: date-time }
+        totalEnviados: { type: integer }
+        totalFalhas: { type: integer }
+        geradoPorIa: { type: boolean }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+
+    CreateSupermercadoCampanhaBody:
+      type: object
+      required: [tenantId, titulo, tipo, conteudo]
+      properties:
+        tenantId: { type: string }
+        titulo: { type: string }
+        tipo:
+          type: string
+          enum: [promocao, receita, dica, data_comemorativa, reativacao]
+        conteudo: { type: string }
+        imagemUrl: { type: string }
+        agendadoPara: { type: string, format: date-time }
+        geradoPorIa: { type: boolean }
+
+    UpdateSupermercadoCampanhaBody:
+      type: object
+      properties:
+        titulo: { type: string }
+        tipo:
+          type: string
+          enum: [promocao, receita, dica, data_comemorativa, reativacao]
+        status:
+          type: string
+          enum: [rascunho, agendada, enviando, concluida, pausada]
+        conteudo: { type: string }
+        imagemUrl: { type: string }
+        agendadoPara: { type: string, format: date-time }
+
+    SupermercadoDashboard:
+      type: object
+      required: [pedidosHoje, pedidosSemana, receitaHoje, receitaSemana, produtosAtivos, campanhasEnviadas, clientesAtivos]
+      properties:
+        pedidosHoje: { type: integer }
+        pedidosSemana: { type: integer }
+        receitaHoje: { type: string }
+        receitaSemana: { type: string }
+        produtosAtivos: { type: integer }
+        campanhasEnviadas: { type: integer }
+        clientesAtivos: { type: integer }
+        ultimasCampanhas:
+          type: array
+          items: { $ref: "#/components/schemas/SupermercadoCampanha" }
+        ultimosPedidos:
+          type: array
+          items: { $ref: "#/components/schemas/SupermercadoPedido" }

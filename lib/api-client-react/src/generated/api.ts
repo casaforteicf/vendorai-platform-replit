@@ -77,6 +77,9 @@ import type {
   CreateSellerInviteBody,
   CreateSiteConfigBody,
   CreateSubscriptionBody,
+  CreateSupermercadoCampanhaBody,
+  CreateSupermercadoPedidoBody,
+  CreateSupermercadoProdutoBody,
   CreateTenantBody,
   CreateTenantInviteBody,
   CreateUserBody,
@@ -92,6 +95,7 @@ import type {
   Deal,
   DealUpdateResponse,
   DeleteContentGeneration200,
+  DispararSupermercadoCampanha200,
   DocumentExtractionResult,
   ErrorResponse,
   EstoqueCentralItem,
@@ -101,6 +105,8 @@ import type {
   Funil,
   GenerateContentBody,
   GeneratePerfilInsight200,
+  GerarConteudoSupermercadoCampanha200,
+  GerarConteudoSupermercadoCampanhaBody,
   GetAgendaGoogleAuthUrl200,
   HealthStatus,
   ImportInventoryBody,
@@ -135,6 +141,9 @@ import type {
   ListObrasParams,
   ListPropostasParams,
   ListRulesParams,
+  ListSupermercadoCampanhasParams,
+  ListSupermercadoPedidosParams,
+  ListSupermercadoProdutosParams,
   ListVarejoFidelidadeParams,
   ListVarejoPedidosCompraParams,
   ListVarejoProdutosParams,
@@ -168,8 +177,15 @@ import type {
   SegmentTemplate,
   SiteConfig,
   Subscription,
+  SupermercadoCampanha,
+  SupermercadoConfig,
+  SupermercadoDashboard,
+  SupermercadoPedido,
+  SupermercadoPedidoDetalhe,
+  SupermercadoProduto,
   SyncInventoryBody,
   SyncInventoryResponse,
+  SyncSupermercadoProdutos200,
   Tenant,
   TenantDashboard,
   TenantSetupStatus,
@@ -198,6 +214,9 @@ import type {
   UpdateRuleBody,
   UpdateSiteConfigBody,
   UpdateSubscriptionBody,
+  UpdateSupermercadoCampanhaBody,
+  UpdateSupermercadoPedidoBody,
+  UpdateSupermercadoProdutoBody,
   UpdateTenantBody,
   UpdateUserBody,
   UpdateVarejoColecaoBody,
@@ -208,6 +227,7 @@ import type {
   UpdateVarejoProdutoBody,
   UploadUrlRequest,
   UploadUrlResponse,
+  UpsertSupermercadoConfigBody,
   UpsertVarejoFidelidadeBody,
   UsageSummary,
   User,
@@ -19781,4 +19801,1419 @@ export const useDeleteVarejoComboItem = <TError = ErrorType<unknown>,
       > => {
       return useMutation(getDeleteVarejoComboItemMutationOptions(options));
     }
+
+export const getGetSupermercadoConfigUrl = (tenantId: string,) => {
+
+
+
+
+  return `/api/tenants/${tenantId}/supermercado/config`
+}
+
+export const getSupermercadoConfig = async (tenantId: string, options?: RequestInit): Promise<SupermercadoConfig> => {
+
+  return customFetch<SupermercadoConfig>(getGetSupermercadoConfigUrl(tenantId),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetSupermercadoConfigQueryKey = (tenantId: string,) => {
+    return [
+    `/api/tenants/${tenantId}/supermercado/config`
+    ] as const;
+    }
+
+
+export const getGetSupermercadoConfigQueryOptions = <TData = Awaited<ReturnType<typeof getSupermercadoConfig>>, TError = ErrorType<ErrorResponse>>(tenantId: string, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getSupermercadoConfig>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetSupermercadoConfigQueryKey(tenantId);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getSupermercadoConfig>>> = ({ signal }) => getSupermercadoConfig(tenantId, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, enabled: !!(tenantId), ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getSupermercadoConfig>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetSupermercadoConfigQueryResult = NonNullable<Awaited<ReturnType<typeof getSupermercadoConfig>>>
+export type GetSupermercadoConfigQueryError = ErrorType<ErrorResponse>
+
+
+
+export function useGetSupermercadoConfig<TData = Awaited<ReturnType<typeof getSupermercadoConfig>>, TError = ErrorType<ErrorResponse>>(
+ tenantId: string, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getSupermercadoConfig>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetSupermercadoConfigQueryOptions(tenantId,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+
+
+
+
+
+
+export const getUpsertSupermercadoConfigUrl = (tenantId: string,) => {
+
+
+
+
+  return `/api/tenants/${tenantId}/supermercado/config`
+}
+
+export const upsertSupermercadoConfig = async (tenantId: string,
+    upsertSupermercadoConfigBody: UpsertSupermercadoConfigBody, options?: RequestInit): Promise<SupermercadoConfig> => {
+
+  return customFetch<SupermercadoConfig>(getUpsertSupermercadoConfigUrl(tenantId),
+  {
+    ...options,
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(
+      upsertSupermercadoConfigBody,)
+  }
+);}
+
+
+
+
+export const getUpsertSupermercadoConfigMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof upsertSupermercadoConfig>>, TError,{tenantId: string;data: BodyType<UpsertSupermercadoConfigBody>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof upsertSupermercadoConfig>>, TError,{tenantId: string;data: BodyType<UpsertSupermercadoConfigBody>}, TContext> => {
+
+const mutationKey = ['upsertSupermercadoConfig'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof upsertSupermercadoConfig>>, {tenantId: string;data: BodyType<UpsertSupermercadoConfigBody>}> = (props) => {
+          const {tenantId,data} = props ?? {};
+
+          return  upsertSupermercadoConfig(tenantId,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type UpsertSupermercadoConfigMutationResult = NonNullable<Awaited<ReturnType<typeof upsertSupermercadoConfig>>>
+    export type UpsertSupermercadoConfigMutationBody = BodyType<UpsertSupermercadoConfigBody>
+    export type UpsertSupermercadoConfigMutationError = ErrorType<unknown>
+
+    export const useUpsertSupermercadoConfig = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof upsertSupermercadoConfig>>, TError,{tenantId: string;data: BodyType<UpsertSupermercadoConfigBody>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof upsertSupermercadoConfig>>,
+        TError,
+        {tenantId: string;data: BodyType<UpsertSupermercadoConfigBody>},
+        TContext
+      > => {
+      return useMutation(getUpsertSupermercadoConfigMutationOptions(options));
+    }
+
+export const getListSupermercadoProdutosUrl = (tenantId: string,
+    params?: ListSupermercadoProdutosParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : value.toString())
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/api/tenants/${tenantId}/supermercado/produtos?${stringifiedParams}` : `/api/tenants/${tenantId}/supermercado/produtos`
+}
+
+export const listSupermercadoProdutos = async (tenantId: string,
+    params?: ListSupermercadoProdutosParams, options?: RequestInit): Promise<SupermercadoProduto[]> => {
+
+  return customFetch<SupermercadoProduto[]>(getListSupermercadoProdutosUrl(tenantId,params),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getListSupermercadoProdutosQueryKey = (tenantId: string,
+    params?: ListSupermercadoProdutosParams,) => {
+    return [
+    `/api/tenants/${tenantId}/supermercado/produtos`, ...(params ? [params] : [])
+    ] as const;
+    }
+
+
+export const getListSupermercadoProdutosQueryOptions = <TData = Awaited<ReturnType<typeof listSupermercadoProdutos>>, TError = ErrorType<unknown>>(tenantId: string,
+    params?: ListSupermercadoProdutosParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listSupermercadoProdutos>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getListSupermercadoProdutosQueryKey(tenantId,params);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof listSupermercadoProdutos>>> = ({ signal }) => listSupermercadoProdutos(tenantId,params, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, enabled: !!(tenantId), ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof listSupermercadoProdutos>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type ListSupermercadoProdutosQueryResult = NonNullable<Awaited<ReturnType<typeof listSupermercadoProdutos>>>
+export type ListSupermercadoProdutosQueryError = ErrorType<unknown>
+
+
+
+export function useListSupermercadoProdutos<TData = Awaited<ReturnType<typeof listSupermercadoProdutos>>, TError = ErrorType<unknown>>(
+ tenantId: string,
+    params?: ListSupermercadoProdutosParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listSupermercadoProdutos>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getListSupermercadoProdutosQueryOptions(tenantId,params,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+
+
+
+
+
+
+export const getCreateSupermercadoProdutoUrl = (tenantId: string,) => {
+
+
+
+
+  return `/api/tenants/${tenantId}/supermercado/produtos`
+}
+
+export const createSupermercadoProduto = async (tenantId: string,
+    createSupermercadoProdutoBody: CreateSupermercadoProdutoBody, options?: RequestInit): Promise<SupermercadoProduto> => {
+
+  return customFetch<SupermercadoProduto>(getCreateSupermercadoProdutoUrl(tenantId),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(
+      createSupermercadoProdutoBody,)
+  }
+);}
+
+
+
+
+export const getCreateSupermercadoProdutoMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createSupermercadoProduto>>, TError,{tenantId: string;data: BodyType<CreateSupermercadoProdutoBody>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof createSupermercadoProduto>>, TError,{tenantId: string;data: BodyType<CreateSupermercadoProdutoBody>}, TContext> => {
+
+const mutationKey = ['createSupermercadoProduto'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof createSupermercadoProduto>>, {tenantId: string;data: BodyType<CreateSupermercadoProdutoBody>}> = (props) => {
+          const {tenantId,data} = props ?? {};
+
+          return  createSupermercadoProduto(tenantId,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type CreateSupermercadoProdutoMutationResult = NonNullable<Awaited<ReturnType<typeof createSupermercadoProduto>>>
+    export type CreateSupermercadoProdutoMutationBody = BodyType<CreateSupermercadoProdutoBody>
+    export type CreateSupermercadoProdutoMutationError = ErrorType<unknown>
+
+    export const useCreateSupermercadoProduto = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createSupermercadoProduto>>, TError,{tenantId: string;data: BodyType<CreateSupermercadoProdutoBody>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof createSupermercadoProduto>>,
+        TError,
+        {tenantId: string;data: BodyType<CreateSupermercadoProdutoBody>},
+        TContext
+      > => {
+      return useMutation(getCreateSupermercadoProdutoMutationOptions(options));
+    }
+
+export const getGetSupermercadoProdutoUrl = (tenantId: string,
+    produtoId: string,) => {
+
+
+
+
+  return `/api/tenants/${tenantId}/supermercado/produtos/${produtoId}`
+}
+
+export const getSupermercadoProduto = async (tenantId: string,
+    produtoId: string, options?: RequestInit): Promise<SupermercadoProduto> => {
+
+  return customFetch<SupermercadoProduto>(getGetSupermercadoProdutoUrl(tenantId,produtoId),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetSupermercadoProdutoQueryKey = (tenantId: string,
+    produtoId: string,) => {
+    return [
+    `/api/tenants/${tenantId}/supermercado/produtos/${produtoId}`
+    ] as const;
+    }
+
+
+export const getGetSupermercadoProdutoQueryOptions = <TData = Awaited<ReturnType<typeof getSupermercadoProduto>>, TError = ErrorType<ErrorResponse>>(tenantId: string,
+    produtoId: string, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getSupermercadoProduto>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetSupermercadoProdutoQueryKey(tenantId,produtoId);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getSupermercadoProduto>>> = ({ signal }) => getSupermercadoProduto(tenantId,produtoId, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, enabled: !!(tenantId && produtoId), ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getSupermercadoProduto>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetSupermercadoProdutoQueryResult = NonNullable<Awaited<ReturnType<typeof getSupermercadoProduto>>>
+export type GetSupermercadoProdutoQueryError = ErrorType<ErrorResponse>
+
+
+
+export function useGetSupermercadoProduto<TData = Awaited<ReturnType<typeof getSupermercadoProduto>>, TError = ErrorType<ErrorResponse>>(
+ tenantId: string,
+    produtoId: string, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getSupermercadoProduto>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetSupermercadoProdutoQueryOptions(tenantId,produtoId,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+
+
+
+
+
+
+export const getUpdateSupermercadoProdutoUrl = (tenantId: string,
+    produtoId: string,) => {
+
+
+
+
+  return `/api/tenants/${tenantId}/supermercado/produtos/${produtoId}`
+}
+
+export const updateSupermercadoProduto = async (tenantId: string,
+    produtoId: string,
+    updateSupermercadoProdutoBody: UpdateSupermercadoProdutoBody, options?: RequestInit): Promise<SupermercadoProduto> => {
+
+  return customFetch<SupermercadoProduto>(getUpdateSupermercadoProdutoUrl(tenantId,produtoId),
+  {
+    ...options,
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(
+      updateSupermercadoProdutoBody,)
+  }
+);}
+
+
+
+
+export const getUpdateSupermercadoProdutoMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updateSupermercadoProduto>>, TError,{tenantId: string;produtoId: string;data: BodyType<UpdateSupermercadoProdutoBody>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof updateSupermercadoProduto>>, TError,{tenantId: string;produtoId: string;data: BodyType<UpdateSupermercadoProdutoBody>}, TContext> => {
+
+const mutationKey = ['updateSupermercadoProduto'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof updateSupermercadoProduto>>, {tenantId: string;produtoId: string;data: BodyType<UpdateSupermercadoProdutoBody>}> = (props) => {
+          const {tenantId,produtoId,data} = props ?? {};
+
+          return  updateSupermercadoProduto(tenantId,produtoId,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type UpdateSupermercadoProdutoMutationResult = NonNullable<Awaited<ReturnType<typeof updateSupermercadoProduto>>>
+    export type UpdateSupermercadoProdutoMutationBody = BodyType<UpdateSupermercadoProdutoBody>
+    export type UpdateSupermercadoProdutoMutationError = ErrorType<unknown>
+
+    export const useUpdateSupermercadoProduto = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updateSupermercadoProduto>>, TError,{tenantId: string;produtoId: string;data: BodyType<UpdateSupermercadoProdutoBody>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof updateSupermercadoProduto>>,
+        TError,
+        {tenantId: string;produtoId: string;data: BodyType<UpdateSupermercadoProdutoBody>},
+        TContext
+      > => {
+      return useMutation(getUpdateSupermercadoProdutoMutationOptions(options));
+    }
+
+export const getDeleteSupermercadoProdutoUrl = (tenantId: string,
+    produtoId: string,) => {
+
+
+
+
+  return `/api/tenants/${tenantId}/supermercado/produtos/${produtoId}`
+}
+
+export const deleteSupermercadoProduto = async (tenantId: string,
+    produtoId: string, options?: RequestInit): Promise<void> => {
+
+  return customFetch<void>(getDeleteSupermercadoProdutoUrl(tenantId,produtoId),
+  {
+    ...options,
+    method: 'DELETE'
+
+
+  }
+);}
+
+
+
+
+export const getDeleteSupermercadoProdutoMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof deleteSupermercadoProduto>>, TError,{tenantId: string;produtoId: string}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof deleteSupermercadoProduto>>, TError,{tenantId: string;produtoId: string}, TContext> => {
+
+const mutationKey = ['deleteSupermercadoProduto'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof deleteSupermercadoProduto>>, {tenantId: string;produtoId: string}> = (props) => {
+          const {tenantId,produtoId} = props ?? {};
+
+          return  deleteSupermercadoProduto(tenantId,produtoId,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type DeleteSupermercadoProdutoMutationResult = NonNullable<Awaited<ReturnType<typeof deleteSupermercadoProduto>>>
+
+    export type DeleteSupermercadoProdutoMutationError = ErrorType<unknown>
+
+    export const useDeleteSupermercadoProduto = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof deleteSupermercadoProduto>>, TError,{tenantId: string;produtoId: string}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof deleteSupermercadoProduto>>,
+        TError,
+        {tenantId: string;produtoId: string},
+        TContext
+      > => {
+      return useMutation(getDeleteSupermercadoProdutoMutationOptions(options));
+    }
+
+export const getSyncSupermercadoProdutosUrl = (tenantId: string,) => {
+
+
+
+
+  return `/api/tenants/${tenantId}/supermercado/sync-produtos`
+}
+
+export const syncSupermercadoProdutos = async (tenantId: string, options?: RequestInit): Promise<SyncSupermercadoProdutos200> => {
+
+  return customFetch<SyncSupermercadoProdutos200>(getSyncSupermercadoProdutosUrl(tenantId),
+  {
+    ...options,
+    method: 'POST'
+
+
+  }
+);}
+
+
+
+
+export const getSyncSupermercadoProdutosMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof syncSupermercadoProdutos>>, TError,{tenantId: string}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof syncSupermercadoProdutos>>, TError,{tenantId: string}, TContext> => {
+
+const mutationKey = ['syncSupermercadoProdutos'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof syncSupermercadoProdutos>>, {tenantId: string}> = (props) => {
+          const {tenantId} = props ?? {};
+
+          return  syncSupermercadoProdutos(tenantId,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type SyncSupermercadoProdutosMutationResult = NonNullable<Awaited<ReturnType<typeof syncSupermercadoProdutos>>>
+
+    export type SyncSupermercadoProdutosMutationError = ErrorType<unknown>
+
+    export const useSyncSupermercadoProdutos = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof syncSupermercadoProdutos>>, TError,{tenantId: string}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof syncSupermercadoProdutos>>,
+        TError,
+        {tenantId: string},
+        TContext
+      > => {
+      return useMutation(getSyncSupermercadoProdutosMutationOptions(options));
+    }
+
+export const getListSupermercadoPedidosUrl = (tenantId: string,
+    params?: ListSupermercadoPedidosParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : value.toString())
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/api/tenants/${tenantId}/supermercado/pedidos?${stringifiedParams}` : `/api/tenants/${tenantId}/supermercado/pedidos`
+}
+
+export const listSupermercadoPedidos = async (tenantId: string,
+    params?: ListSupermercadoPedidosParams, options?: RequestInit): Promise<SupermercadoPedido[]> => {
+
+  return customFetch<SupermercadoPedido[]>(getListSupermercadoPedidosUrl(tenantId,params),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getListSupermercadoPedidosQueryKey = (tenantId: string,
+    params?: ListSupermercadoPedidosParams,) => {
+    return [
+    `/api/tenants/${tenantId}/supermercado/pedidos`, ...(params ? [params] : [])
+    ] as const;
+    }
+
+
+export const getListSupermercadoPedidosQueryOptions = <TData = Awaited<ReturnType<typeof listSupermercadoPedidos>>, TError = ErrorType<unknown>>(tenantId: string,
+    params?: ListSupermercadoPedidosParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listSupermercadoPedidos>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getListSupermercadoPedidosQueryKey(tenantId,params);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof listSupermercadoPedidos>>> = ({ signal }) => listSupermercadoPedidos(tenantId,params, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, enabled: !!(tenantId), ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof listSupermercadoPedidos>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type ListSupermercadoPedidosQueryResult = NonNullable<Awaited<ReturnType<typeof listSupermercadoPedidos>>>
+export type ListSupermercadoPedidosQueryError = ErrorType<unknown>
+
+
+
+export function useListSupermercadoPedidos<TData = Awaited<ReturnType<typeof listSupermercadoPedidos>>, TError = ErrorType<unknown>>(
+ tenantId: string,
+    params?: ListSupermercadoPedidosParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listSupermercadoPedidos>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getListSupermercadoPedidosQueryOptions(tenantId,params,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+
+
+
+
+
+
+export const getCreateSupermercadoPedidoUrl = (tenantId: string,) => {
+
+
+
+
+  return `/api/tenants/${tenantId}/supermercado/pedidos`
+}
+
+export const createSupermercadoPedido = async (tenantId: string,
+    createSupermercadoPedidoBody: CreateSupermercadoPedidoBody, options?: RequestInit): Promise<SupermercadoPedido> => {
+
+  return customFetch<SupermercadoPedido>(getCreateSupermercadoPedidoUrl(tenantId),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(
+      createSupermercadoPedidoBody,)
+  }
+);}
+
+
+
+
+export const getCreateSupermercadoPedidoMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createSupermercadoPedido>>, TError,{tenantId: string;data: BodyType<CreateSupermercadoPedidoBody>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof createSupermercadoPedido>>, TError,{tenantId: string;data: BodyType<CreateSupermercadoPedidoBody>}, TContext> => {
+
+const mutationKey = ['createSupermercadoPedido'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof createSupermercadoPedido>>, {tenantId: string;data: BodyType<CreateSupermercadoPedidoBody>}> = (props) => {
+          const {tenantId,data} = props ?? {};
+
+          return  createSupermercadoPedido(tenantId,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type CreateSupermercadoPedidoMutationResult = NonNullable<Awaited<ReturnType<typeof createSupermercadoPedido>>>
+    export type CreateSupermercadoPedidoMutationBody = BodyType<CreateSupermercadoPedidoBody>
+    export type CreateSupermercadoPedidoMutationError = ErrorType<unknown>
+
+    export const useCreateSupermercadoPedido = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createSupermercadoPedido>>, TError,{tenantId: string;data: BodyType<CreateSupermercadoPedidoBody>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof createSupermercadoPedido>>,
+        TError,
+        {tenantId: string;data: BodyType<CreateSupermercadoPedidoBody>},
+        TContext
+      > => {
+      return useMutation(getCreateSupermercadoPedidoMutationOptions(options));
+    }
+
+export const getGetSupermercadoPedidoUrl = (tenantId: string,
+    pedidoId: string,) => {
+
+
+
+
+  return `/api/tenants/${tenantId}/supermercado/pedidos/${pedidoId}`
+}
+
+export const getSupermercadoPedido = async (tenantId: string,
+    pedidoId: string, options?: RequestInit): Promise<SupermercadoPedidoDetalhe> => {
+
+  return customFetch<SupermercadoPedidoDetalhe>(getGetSupermercadoPedidoUrl(tenantId,pedidoId),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetSupermercadoPedidoQueryKey = (tenantId: string,
+    pedidoId: string,) => {
+    return [
+    `/api/tenants/${tenantId}/supermercado/pedidos/${pedidoId}`
+    ] as const;
+    }
+
+
+export const getGetSupermercadoPedidoQueryOptions = <TData = Awaited<ReturnType<typeof getSupermercadoPedido>>, TError = ErrorType<ErrorResponse>>(tenantId: string,
+    pedidoId: string, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getSupermercadoPedido>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetSupermercadoPedidoQueryKey(tenantId,pedidoId);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getSupermercadoPedido>>> = ({ signal }) => getSupermercadoPedido(tenantId,pedidoId, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, enabled: !!(tenantId && pedidoId), ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getSupermercadoPedido>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetSupermercadoPedidoQueryResult = NonNullable<Awaited<ReturnType<typeof getSupermercadoPedido>>>
+export type GetSupermercadoPedidoQueryError = ErrorType<ErrorResponse>
+
+
+
+export function useGetSupermercadoPedido<TData = Awaited<ReturnType<typeof getSupermercadoPedido>>, TError = ErrorType<ErrorResponse>>(
+ tenantId: string,
+    pedidoId: string, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getSupermercadoPedido>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetSupermercadoPedidoQueryOptions(tenantId,pedidoId,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+
+
+
+
+
+
+export const getUpdateSupermercadoPedidoUrl = (tenantId: string,
+    pedidoId: string,) => {
+
+
+
+
+  return `/api/tenants/${tenantId}/supermercado/pedidos/${pedidoId}`
+}
+
+export const updateSupermercadoPedido = async (tenantId: string,
+    pedidoId: string,
+    updateSupermercadoPedidoBody: UpdateSupermercadoPedidoBody, options?: RequestInit): Promise<SupermercadoPedido> => {
+
+  return customFetch<SupermercadoPedido>(getUpdateSupermercadoPedidoUrl(tenantId,pedidoId),
+  {
+    ...options,
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(
+      updateSupermercadoPedidoBody,)
+  }
+);}
+
+
+
+
+export const getUpdateSupermercadoPedidoMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updateSupermercadoPedido>>, TError,{tenantId: string;pedidoId: string;data: BodyType<UpdateSupermercadoPedidoBody>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof updateSupermercadoPedido>>, TError,{tenantId: string;pedidoId: string;data: BodyType<UpdateSupermercadoPedidoBody>}, TContext> => {
+
+const mutationKey = ['updateSupermercadoPedido'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof updateSupermercadoPedido>>, {tenantId: string;pedidoId: string;data: BodyType<UpdateSupermercadoPedidoBody>}> = (props) => {
+          const {tenantId,pedidoId,data} = props ?? {};
+
+          return  updateSupermercadoPedido(tenantId,pedidoId,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type UpdateSupermercadoPedidoMutationResult = NonNullable<Awaited<ReturnType<typeof updateSupermercadoPedido>>>
+    export type UpdateSupermercadoPedidoMutationBody = BodyType<UpdateSupermercadoPedidoBody>
+    export type UpdateSupermercadoPedidoMutationError = ErrorType<unknown>
+
+    export const useUpdateSupermercadoPedido = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updateSupermercadoPedido>>, TError,{tenantId: string;pedidoId: string;data: BodyType<UpdateSupermercadoPedidoBody>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof updateSupermercadoPedido>>,
+        TError,
+        {tenantId: string;pedidoId: string;data: BodyType<UpdateSupermercadoPedidoBody>},
+        TContext
+      > => {
+      return useMutation(getUpdateSupermercadoPedidoMutationOptions(options));
+    }
+
+export const getListSupermercadoCampanhasUrl = (tenantId: string,
+    params?: ListSupermercadoCampanhasParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : value.toString())
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/api/tenants/${tenantId}/supermercado/campanhas?${stringifiedParams}` : `/api/tenants/${tenantId}/supermercado/campanhas`
+}
+
+export const listSupermercadoCampanhas = async (tenantId: string,
+    params?: ListSupermercadoCampanhasParams, options?: RequestInit): Promise<SupermercadoCampanha[]> => {
+
+  return customFetch<SupermercadoCampanha[]>(getListSupermercadoCampanhasUrl(tenantId,params),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getListSupermercadoCampanhasQueryKey = (tenantId: string,
+    params?: ListSupermercadoCampanhasParams,) => {
+    return [
+    `/api/tenants/${tenantId}/supermercado/campanhas`, ...(params ? [params] : [])
+    ] as const;
+    }
+
+
+export const getListSupermercadoCampanhasQueryOptions = <TData = Awaited<ReturnType<typeof listSupermercadoCampanhas>>, TError = ErrorType<unknown>>(tenantId: string,
+    params?: ListSupermercadoCampanhasParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listSupermercadoCampanhas>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getListSupermercadoCampanhasQueryKey(tenantId,params);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof listSupermercadoCampanhas>>> = ({ signal }) => listSupermercadoCampanhas(tenantId,params, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, enabled: !!(tenantId), ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof listSupermercadoCampanhas>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type ListSupermercadoCampanhasQueryResult = NonNullable<Awaited<ReturnType<typeof listSupermercadoCampanhas>>>
+export type ListSupermercadoCampanhasQueryError = ErrorType<unknown>
+
+
+
+export function useListSupermercadoCampanhas<TData = Awaited<ReturnType<typeof listSupermercadoCampanhas>>, TError = ErrorType<unknown>>(
+ tenantId: string,
+    params?: ListSupermercadoCampanhasParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listSupermercadoCampanhas>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getListSupermercadoCampanhasQueryOptions(tenantId,params,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+
+
+
+
+
+
+export const getCreateSupermercadoCampanhaUrl = (tenantId: string,) => {
+
+
+
+
+  return `/api/tenants/${tenantId}/supermercado/campanhas`
+}
+
+export const createSupermercadoCampanha = async (tenantId: string,
+    createSupermercadoCampanhaBody: CreateSupermercadoCampanhaBody, options?: RequestInit): Promise<SupermercadoCampanha> => {
+
+  return customFetch<SupermercadoCampanha>(getCreateSupermercadoCampanhaUrl(tenantId),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(
+      createSupermercadoCampanhaBody,)
+  }
+);}
+
+
+
+
+export const getCreateSupermercadoCampanhaMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createSupermercadoCampanha>>, TError,{tenantId: string;data: BodyType<CreateSupermercadoCampanhaBody>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof createSupermercadoCampanha>>, TError,{tenantId: string;data: BodyType<CreateSupermercadoCampanhaBody>}, TContext> => {
+
+const mutationKey = ['createSupermercadoCampanha'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof createSupermercadoCampanha>>, {tenantId: string;data: BodyType<CreateSupermercadoCampanhaBody>}> = (props) => {
+          const {tenantId,data} = props ?? {};
+
+          return  createSupermercadoCampanha(tenantId,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type CreateSupermercadoCampanhaMutationResult = NonNullable<Awaited<ReturnType<typeof createSupermercadoCampanha>>>
+    export type CreateSupermercadoCampanhaMutationBody = BodyType<CreateSupermercadoCampanhaBody>
+    export type CreateSupermercadoCampanhaMutationError = ErrorType<unknown>
+
+    export const useCreateSupermercadoCampanha = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createSupermercadoCampanha>>, TError,{tenantId: string;data: BodyType<CreateSupermercadoCampanhaBody>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof createSupermercadoCampanha>>,
+        TError,
+        {tenantId: string;data: BodyType<CreateSupermercadoCampanhaBody>},
+        TContext
+      > => {
+      return useMutation(getCreateSupermercadoCampanhaMutationOptions(options));
+    }
+
+export const getGetSupermercadoCampanhaUrl = (tenantId: string,
+    campanhaId: string,) => {
+
+
+
+
+  return `/api/tenants/${tenantId}/supermercado/campanhas/${campanhaId}`
+}
+
+export const getSupermercadoCampanha = async (tenantId: string,
+    campanhaId: string, options?: RequestInit): Promise<SupermercadoCampanha> => {
+
+  return customFetch<SupermercadoCampanha>(getGetSupermercadoCampanhaUrl(tenantId,campanhaId),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetSupermercadoCampanhaQueryKey = (tenantId: string,
+    campanhaId: string,) => {
+    return [
+    `/api/tenants/${tenantId}/supermercado/campanhas/${campanhaId}`
+    ] as const;
+    }
+
+
+export const getGetSupermercadoCampanhaQueryOptions = <TData = Awaited<ReturnType<typeof getSupermercadoCampanha>>, TError = ErrorType<unknown>>(tenantId: string,
+    campanhaId: string, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getSupermercadoCampanha>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetSupermercadoCampanhaQueryKey(tenantId,campanhaId);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getSupermercadoCampanha>>> = ({ signal }) => getSupermercadoCampanha(tenantId,campanhaId, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, enabled: !!(tenantId && campanhaId), ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getSupermercadoCampanha>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetSupermercadoCampanhaQueryResult = NonNullable<Awaited<ReturnType<typeof getSupermercadoCampanha>>>
+export type GetSupermercadoCampanhaQueryError = ErrorType<unknown>
+
+
+
+export function useGetSupermercadoCampanha<TData = Awaited<ReturnType<typeof getSupermercadoCampanha>>, TError = ErrorType<unknown>>(
+ tenantId: string,
+    campanhaId: string, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getSupermercadoCampanha>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetSupermercadoCampanhaQueryOptions(tenantId,campanhaId,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+
+
+
+
+
+
+export const getUpdateSupermercadoCampanhaUrl = (tenantId: string,
+    campanhaId: string,) => {
+
+
+
+
+  return `/api/tenants/${tenantId}/supermercado/campanhas/${campanhaId}`
+}
+
+export const updateSupermercadoCampanha = async (tenantId: string,
+    campanhaId: string,
+    updateSupermercadoCampanhaBody: UpdateSupermercadoCampanhaBody, options?: RequestInit): Promise<SupermercadoCampanha> => {
+
+  return customFetch<SupermercadoCampanha>(getUpdateSupermercadoCampanhaUrl(tenantId,campanhaId),
+  {
+    ...options,
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(
+      updateSupermercadoCampanhaBody,)
+  }
+);}
+
+
+
+
+export const getUpdateSupermercadoCampanhaMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updateSupermercadoCampanha>>, TError,{tenantId: string;campanhaId: string;data: BodyType<UpdateSupermercadoCampanhaBody>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof updateSupermercadoCampanha>>, TError,{tenantId: string;campanhaId: string;data: BodyType<UpdateSupermercadoCampanhaBody>}, TContext> => {
+
+const mutationKey = ['updateSupermercadoCampanha'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof updateSupermercadoCampanha>>, {tenantId: string;campanhaId: string;data: BodyType<UpdateSupermercadoCampanhaBody>}> = (props) => {
+          const {tenantId,campanhaId,data} = props ?? {};
+
+          return  updateSupermercadoCampanha(tenantId,campanhaId,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type UpdateSupermercadoCampanhaMutationResult = NonNullable<Awaited<ReturnType<typeof updateSupermercadoCampanha>>>
+    export type UpdateSupermercadoCampanhaMutationBody = BodyType<UpdateSupermercadoCampanhaBody>
+    export type UpdateSupermercadoCampanhaMutationError = ErrorType<unknown>
+
+    export const useUpdateSupermercadoCampanha = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updateSupermercadoCampanha>>, TError,{tenantId: string;campanhaId: string;data: BodyType<UpdateSupermercadoCampanhaBody>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof updateSupermercadoCampanha>>,
+        TError,
+        {tenantId: string;campanhaId: string;data: BodyType<UpdateSupermercadoCampanhaBody>},
+        TContext
+      > => {
+      return useMutation(getUpdateSupermercadoCampanhaMutationOptions(options));
+    }
+
+export const getDeleteSupermercadoCampanhaUrl = (tenantId: string,
+    campanhaId: string,) => {
+
+
+
+
+  return `/api/tenants/${tenantId}/supermercado/campanhas/${campanhaId}`
+}
+
+export const deleteSupermercadoCampanha = async (tenantId: string,
+    campanhaId: string, options?: RequestInit): Promise<void> => {
+
+  return customFetch<void>(getDeleteSupermercadoCampanhaUrl(tenantId,campanhaId),
+  {
+    ...options,
+    method: 'DELETE'
+
+
+  }
+);}
+
+
+
+
+export const getDeleteSupermercadoCampanhaMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof deleteSupermercadoCampanha>>, TError,{tenantId: string;campanhaId: string}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof deleteSupermercadoCampanha>>, TError,{tenantId: string;campanhaId: string}, TContext> => {
+
+const mutationKey = ['deleteSupermercadoCampanha'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof deleteSupermercadoCampanha>>, {tenantId: string;campanhaId: string}> = (props) => {
+          const {tenantId,campanhaId} = props ?? {};
+
+          return  deleteSupermercadoCampanha(tenantId,campanhaId,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type DeleteSupermercadoCampanhaMutationResult = NonNullable<Awaited<ReturnType<typeof deleteSupermercadoCampanha>>>
+
+    export type DeleteSupermercadoCampanhaMutationError = ErrorType<unknown>
+
+    export const useDeleteSupermercadoCampanha = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof deleteSupermercadoCampanha>>, TError,{tenantId: string;campanhaId: string}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof deleteSupermercadoCampanha>>,
+        TError,
+        {tenantId: string;campanhaId: string},
+        TContext
+      > => {
+      return useMutation(getDeleteSupermercadoCampanhaMutationOptions(options));
+    }
+
+export const getDispararSupermercadoCampanhaUrl = (tenantId: string,
+    campanhaId: string,) => {
+
+
+
+
+  return `/api/tenants/${tenantId}/supermercado/campanhas/${campanhaId}/disparar`
+}
+
+export const dispararSupermercadoCampanha = async (tenantId: string,
+    campanhaId: string, options?: RequestInit): Promise<DispararSupermercadoCampanha200> => {
+
+  return customFetch<DispararSupermercadoCampanha200>(getDispararSupermercadoCampanhaUrl(tenantId,campanhaId),
+  {
+    ...options,
+    method: 'POST'
+
+
+  }
+);}
+
+
+
+
+export const getDispararSupermercadoCampanhaMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof dispararSupermercadoCampanha>>, TError,{tenantId: string;campanhaId: string}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof dispararSupermercadoCampanha>>, TError,{tenantId: string;campanhaId: string}, TContext> => {
+
+const mutationKey = ['dispararSupermercadoCampanha'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof dispararSupermercadoCampanha>>, {tenantId: string;campanhaId: string}> = (props) => {
+          const {tenantId,campanhaId} = props ?? {};
+
+          return  dispararSupermercadoCampanha(tenantId,campanhaId,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type DispararSupermercadoCampanhaMutationResult = NonNullable<Awaited<ReturnType<typeof dispararSupermercadoCampanha>>>
+
+    export type DispararSupermercadoCampanhaMutationError = ErrorType<unknown>
+
+    export const useDispararSupermercadoCampanha = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof dispararSupermercadoCampanha>>, TError,{tenantId: string;campanhaId: string}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof dispararSupermercadoCampanha>>,
+        TError,
+        {tenantId: string;campanhaId: string},
+        TContext
+      > => {
+      return useMutation(getDispararSupermercadoCampanhaMutationOptions(options));
+    }
+
+export const getGerarConteudoSupermercadoCampanhaUrl = (tenantId: string,) => {
+
+
+
+
+  return `/api/tenants/${tenantId}/supermercado/campanhas/gerar-conteudo`
+}
+
+export const gerarConteudoSupermercadoCampanha = async (tenantId: string,
+    gerarConteudoSupermercadoCampanhaBody: GerarConteudoSupermercadoCampanhaBody, options?: RequestInit): Promise<GerarConteudoSupermercadoCampanha200> => {
+
+  return customFetch<GerarConteudoSupermercadoCampanha200>(getGerarConteudoSupermercadoCampanhaUrl(tenantId),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(
+      gerarConteudoSupermercadoCampanhaBody,)
+  }
+);}
+
+
+
+
+export const getGerarConteudoSupermercadoCampanhaMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof gerarConteudoSupermercadoCampanha>>, TError,{tenantId: string;data: BodyType<GerarConteudoSupermercadoCampanhaBody>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof gerarConteudoSupermercadoCampanha>>, TError,{tenantId: string;data: BodyType<GerarConteudoSupermercadoCampanhaBody>}, TContext> => {
+
+const mutationKey = ['gerarConteudoSupermercadoCampanha'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof gerarConteudoSupermercadoCampanha>>, {tenantId: string;data: BodyType<GerarConteudoSupermercadoCampanhaBody>}> = (props) => {
+          const {tenantId,data} = props ?? {};
+
+          return  gerarConteudoSupermercadoCampanha(tenantId,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type GerarConteudoSupermercadoCampanhaMutationResult = NonNullable<Awaited<ReturnType<typeof gerarConteudoSupermercadoCampanha>>>
+    export type GerarConteudoSupermercadoCampanhaMutationBody = BodyType<GerarConteudoSupermercadoCampanhaBody>
+    export type GerarConteudoSupermercadoCampanhaMutationError = ErrorType<unknown>
+
+    export const useGerarConteudoSupermercadoCampanha = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof gerarConteudoSupermercadoCampanha>>, TError,{tenantId: string;data: BodyType<GerarConteudoSupermercadoCampanhaBody>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof gerarConteudoSupermercadoCampanha>>,
+        TError,
+        {tenantId: string;data: BodyType<GerarConteudoSupermercadoCampanhaBody>},
+        TContext
+      > => {
+      return useMutation(getGerarConteudoSupermercadoCampanhaMutationOptions(options));
+    }
+
+export const getGetSupermercadoDashboardUrl = (tenantId: string,) => {
+
+
+
+
+  return `/api/tenants/${tenantId}/supermercado/dashboard`
+}
+
+export const getSupermercadoDashboard = async (tenantId: string, options?: RequestInit): Promise<SupermercadoDashboard> => {
+
+  return customFetch<SupermercadoDashboard>(getGetSupermercadoDashboardUrl(tenantId),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetSupermercadoDashboardQueryKey = (tenantId: string,) => {
+    return [
+    `/api/tenants/${tenantId}/supermercado/dashboard`
+    ] as const;
+    }
+
+
+export const getGetSupermercadoDashboardQueryOptions = <TData = Awaited<ReturnType<typeof getSupermercadoDashboard>>, TError = ErrorType<unknown>>(tenantId: string, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getSupermercadoDashboard>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetSupermercadoDashboardQueryKey(tenantId);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getSupermercadoDashboard>>> = ({ signal }) => getSupermercadoDashboard(tenantId, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, enabled: !!(tenantId), ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getSupermercadoDashboard>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetSupermercadoDashboardQueryResult = NonNullable<Awaited<ReturnType<typeof getSupermercadoDashboard>>>
+export type GetSupermercadoDashboardQueryError = ErrorType<unknown>
+
+
+
+export function useGetSupermercadoDashboard<TData = Awaited<ReturnType<typeof getSupermercadoDashboard>>, TError = ErrorType<unknown>>(
+ tenantId: string, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getSupermercadoDashboard>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetSupermercadoDashboardQueryOptions(tenantId,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+
+
+
+
+
 

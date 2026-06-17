@@ -3265,6 +3265,357 @@ export interface CreateVarejoComboItemBody {
   quantidade: number;
 }
 
+export interface SupermercadoConfig {
+  id: string;
+  tenantId: string;
+  /** @nullable */
+  erpApiUrl?: string | null;
+  /** @nullable */
+  erpApiKey?: string | null;
+  erpSyncEnabled: boolean;
+  /** @nullable */
+  zapiInstanceId?: string | null;
+  /** @nullable */
+  zapiToken?: string | null;
+  botAtivo: boolean;
+  /** @nullable */
+  mensagemBoasVindas?: string | null;
+  campanhasAtivas: boolean;
+  contatosPorRodada: number;
+  /** @nullable */
+  diasSemana?: string[] | null;
+  horarioEnvio: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface UpsertSupermercadoConfigBody {
+  erpApiUrl?: string;
+  erpApiKey?: string;
+  erpSyncEnabled?: boolean;
+  zapiInstanceId?: string;
+  zapiToken?: string;
+  botAtivo?: boolean;
+  mensagemBoasVindas?: string;
+  campanhasAtivas?: boolean;
+  contatosPorRodada?: number;
+  diasSemana?: string[];
+  horarioEnvio?: string;
+}
+
+/**
+ * @nullable
+ */
+export type SupermercadoProdutoCategoria = typeof SupermercadoProdutoCategoria[keyof typeof SupermercadoProdutoCategoria] | null;
+
+
+export const SupermercadoProdutoCategoria = {
+  hortifruti: 'hortifruti',
+  carnes: 'carnes',
+  frios_laticinios: 'frios_laticinios',
+  padaria: 'padaria',
+  bebidas: 'bebidas',
+  limpeza: 'limpeza',
+  higiene: 'higiene',
+  mercearia: 'mercearia',
+  congelados: 'congelados',
+  petshop: 'petshop',
+  outros: 'outros',
+  null: 'null',
+} as const;
+
+export interface SupermercadoProduto {
+  id: string;
+  tenantId: string;
+  /** @nullable */
+  erpId?: string | null;
+  nome: string;
+  /** @nullable */
+  descricao?: string | null;
+  /** @nullable */
+  categoria?: SupermercadoProdutoCategoria;
+  unidade: string;
+  precoVenda: string;
+  /** @nullable */
+  precoPromocional?: string | null;
+  estoque: number;
+  /** @nullable */
+  imagemUrl?: string | null;
+  ativo: boolean;
+  destaqueWhatsapp: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export type CreateSupermercadoProdutoBodyCategoria = typeof CreateSupermercadoProdutoBodyCategoria[keyof typeof CreateSupermercadoProdutoBodyCategoria];
+
+
+export const CreateSupermercadoProdutoBodyCategoria = {
+  hortifruti: 'hortifruti',
+  carnes: 'carnes',
+  frios_laticinios: 'frios_laticinios',
+  padaria: 'padaria',
+  bebidas: 'bebidas',
+  limpeza: 'limpeza',
+  higiene: 'higiene',
+  mercearia: 'mercearia',
+  congelados: 'congelados',
+  petshop: 'petshop',
+  outros: 'outros',
+} as const;
+
+export interface CreateSupermercadoProdutoBody {
+  tenantId: string;
+  erpId?: string;
+  nome: string;
+  descricao?: string;
+  categoria?: CreateSupermercadoProdutoBodyCategoria;
+  unidade?: string;
+  precoVenda: string;
+  precoPromocional?: string;
+  estoque?: number;
+  imagemUrl?: string;
+  ativo?: boolean;
+  destaqueWhatsapp?: boolean;
+}
+
+export type UpdateSupermercadoProdutoBodyCategoria = typeof UpdateSupermercadoProdutoBodyCategoria[keyof typeof UpdateSupermercadoProdutoBodyCategoria];
+
+
+export const UpdateSupermercadoProdutoBodyCategoria = {
+  hortifruti: 'hortifruti',
+  carnes: 'carnes',
+  frios_laticinios: 'frios_laticinios',
+  padaria: 'padaria',
+  bebidas: 'bebidas',
+  limpeza: 'limpeza',
+  higiene: 'higiene',
+  mercearia: 'mercearia',
+  congelados: 'congelados',
+  petshop: 'petshop',
+  outros: 'outros',
+} as const;
+
+export interface UpdateSupermercadoProdutoBody {
+  erpId?: string;
+  nome?: string;
+  descricao?: string;
+  categoria?: UpdateSupermercadoProdutoBodyCategoria;
+  unidade?: string;
+  precoVenda?: string;
+  precoPromocional?: string;
+  estoque?: number;
+  imagemUrl?: string;
+  ativo?: boolean;
+  destaqueWhatsapp?: boolean;
+}
+
+export type SupermercadoPedidoOrigem = typeof SupermercadoPedidoOrigem[keyof typeof SupermercadoPedidoOrigem];
+
+
+export const SupermercadoPedidoOrigem = {
+  whatsapp: 'whatsapp',
+  app: 'app',
+  balcao: 'balcao',
+} as const;
+
+export type SupermercadoPedidoStatus = typeof SupermercadoPedidoStatus[keyof typeof SupermercadoPedidoStatus];
+
+
+export const SupermercadoPedidoStatus = {
+  aguardando_confirmacao: 'aguardando_confirmacao',
+  confirmado: 'confirmado',
+  em_separacao: 'em_separacao',
+  saiu_para_entrega: 'saiu_para_entrega',
+  entregue: 'entregue',
+  cancelado: 'cancelado',
+} as const;
+
+export interface SupermercadoPedido {
+  id: string;
+  tenantId: string;
+  /** @nullable */
+  leadId?: string | null;
+  origem: SupermercadoPedidoOrigem;
+  status: SupermercadoPedidoStatus;
+  /** @nullable */
+  enderecoEntrega?: string | null;
+  /** @nullable */
+  observacoes?: string | null;
+  valorTotal: string;
+  /** @nullable */
+  erpPedidoId?: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface SupermercadoPedidoItem {
+  id: string;
+  pedidoId: string;
+  /** @nullable */
+  produtoId?: string | null;
+  nomeProduto: string;
+  quantidade: string;
+  precoUnitario: string;
+  subtotal: string;
+}
+
+export type SupermercadoPedidoDetalhe = SupermercadoPedido & ({
+  itens: SupermercadoPedidoItem[];
+  /** @nullable */
+  leadNome?: string | null;
+});
+
+export type CreateSupermercadoPedidoBodyOrigem = typeof CreateSupermercadoPedidoBodyOrigem[keyof typeof CreateSupermercadoPedidoBodyOrigem];
+
+
+export const CreateSupermercadoPedidoBodyOrigem = {
+  whatsapp: 'whatsapp',
+  app: 'app',
+  balcao: 'balcao',
+} as const;
+
+export type CreateSupermercadoPedidoBodyItensItem = {
+  produtoId?: string;
+  nomeProduto: string;
+  quantidade: string;
+  precoUnitario: string;
+};
+
+export interface CreateSupermercadoPedidoBody {
+  tenantId: string;
+  leadId?: string;
+  origem?: CreateSupermercadoPedidoBodyOrigem;
+  enderecoEntrega?: string;
+  observacoes?: string;
+  itens?: CreateSupermercadoPedidoBodyItensItem[];
+}
+
+export type UpdateSupermercadoPedidoBodyStatus = typeof UpdateSupermercadoPedidoBodyStatus[keyof typeof UpdateSupermercadoPedidoBodyStatus];
+
+
+export const UpdateSupermercadoPedidoBodyStatus = {
+  aguardando_confirmacao: 'aguardando_confirmacao',
+  confirmado: 'confirmado',
+  em_separacao: 'em_separacao',
+  saiu_para_entrega: 'saiu_para_entrega',
+  entregue: 'entregue',
+  cancelado: 'cancelado',
+} as const;
+
+export interface UpdateSupermercadoPedidoBody {
+  status?: UpdateSupermercadoPedidoBodyStatus;
+  enderecoEntrega?: string;
+  observacoes?: string;
+  erpPedidoId?: string;
+}
+
+export type SupermercadoCampanhaTipo = typeof SupermercadoCampanhaTipo[keyof typeof SupermercadoCampanhaTipo];
+
+
+export const SupermercadoCampanhaTipo = {
+  promocao: 'promocao',
+  receita: 'receita',
+  dica: 'dica',
+  data_comemorativa: 'data_comemorativa',
+  reativacao: 'reativacao',
+} as const;
+
+export type SupermercadoCampanhaStatus = typeof SupermercadoCampanhaStatus[keyof typeof SupermercadoCampanhaStatus];
+
+
+export const SupermercadoCampanhaStatus = {
+  rascunho: 'rascunho',
+  agendada: 'agendada',
+  enviando: 'enviando',
+  concluida: 'concluida',
+  pausada: 'pausada',
+} as const;
+
+export interface SupermercadoCampanha {
+  id: string;
+  tenantId: string;
+  titulo: string;
+  tipo: SupermercadoCampanhaTipo;
+  status: SupermercadoCampanhaStatus;
+  conteudo: string;
+  /** @nullable */
+  imagemUrl?: string | null;
+  /** @nullable */
+  agendadoPara?: string | null;
+  /** @nullable */
+  enviadoEm?: string | null;
+  totalEnviados: number;
+  totalFalhas: number;
+  geradoPorIa: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export type CreateSupermercadoCampanhaBodyTipo = typeof CreateSupermercadoCampanhaBodyTipo[keyof typeof CreateSupermercadoCampanhaBodyTipo];
+
+
+export const CreateSupermercadoCampanhaBodyTipo = {
+  promocao: 'promocao',
+  receita: 'receita',
+  dica: 'dica',
+  data_comemorativa: 'data_comemorativa',
+  reativacao: 'reativacao',
+} as const;
+
+export interface CreateSupermercadoCampanhaBody {
+  tenantId: string;
+  titulo: string;
+  tipo: CreateSupermercadoCampanhaBodyTipo;
+  conteudo: string;
+  imagemUrl?: string;
+  agendadoPara?: string;
+  geradoPorIa?: boolean;
+}
+
+export type UpdateSupermercadoCampanhaBodyTipo = typeof UpdateSupermercadoCampanhaBodyTipo[keyof typeof UpdateSupermercadoCampanhaBodyTipo];
+
+
+export const UpdateSupermercadoCampanhaBodyTipo = {
+  promocao: 'promocao',
+  receita: 'receita',
+  dica: 'dica',
+  data_comemorativa: 'data_comemorativa',
+  reativacao: 'reativacao',
+} as const;
+
+export type UpdateSupermercadoCampanhaBodyStatus = typeof UpdateSupermercadoCampanhaBodyStatus[keyof typeof UpdateSupermercadoCampanhaBodyStatus];
+
+
+export const UpdateSupermercadoCampanhaBodyStatus = {
+  rascunho: 'rascunho',
+  agendada: 'agendada',
+  enviando: 'enviando',
+  concluida: 'concluida',
+  pausada: 'pausada',
+} as const;
+
+export interface UpdateSupermercadoCampanhaBody {
+  titulo?: string;
+  tipo?: UpdateSupermercadoCampanhaBodyTipo;
+  status?: UpdateSupermercadoCampanhaBodyStatus;
+  conteudo?: string;
+  imagemUrl?: string;
+  agendadoPara?: string;
+}
+
+export interface SupermercadoDashboard {
+  pedidosHoje: number;
+  pedidosSemana: number;
+  receitaHoje: string;
+  receitaSemana: string;
+  produtosAtivos: number;
+  campanhasEnviadas: number;
+  clientesAtivos: number;
+  ultimasCampanhas?: SupermercadoCampanha[];
+  ultimosPedidos?: SupermercadoPedido[];
+}
+
 export type ListDealsParams = {
 etapa?: DealEtapa;
 funilId?: string;
@@ -3428,5 +3779,52 @@ fornecedorId?: string;
 export type ListVarejoFidelidadeParams = {
 nivel?: string;
 search?: string;
+};
+
+export type ListSupermercadoProdutosParams = {
+categoria?: string;
+destaque?: boolean;
+q?: string;
+};
+
+export type SyncSupermercadoProdutos200 = {
+  sincronizados: number;
+  erros: number;
+};
+
+export type ListSupermercadoPedidosParams = {
+status?: string;
+origem?: string;
+};
+
+export type ListSupermercadoCampanhasParams = {
+tipo?: string;
+status?: string;
+};
+
+export type DispararSupermercadoCampanha200 = {
+  ok: boolean;
+  total: number;
+};
+
+export type GerarConteudoSupermercadoCampanhaBodyTipo = typeof GerarConteudoSupermercadoCampanhaBodyTipo[keyof typeof GerarConteudoSupermercadoCampanhaBodyTipo];
+
+
+export const GerarConteudoSupermercadoCampanhaBodyTipo = {
+  promocao: 'promocao',
+  receita: 'receita',
+  dica: 'dica',
+  data_comemorativa: 'data_comemorativa',
+  reativacao: 'reativacao',
+} as const;
+
+export type GerarConteudoSupermercadoCampanhaBody = {
+  tipo: GerarConteudoSupermercadoCampanhaBodyTipo;
+  contexto?: string;
+};
+
+export type GerarConteudoSupermercadoCampanha200 = {
+  titulo: string;
+  conteudo: string;
 };
 

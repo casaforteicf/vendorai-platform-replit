@@ -7365,3 +7365,467 @@ export const DeleteVarejoComboItemParams = zod.object({
 })
 
 
+export const GetSupermercadoConfigParams = zod.object({
+  "tenantId": zod.coerce.string()
+})
+
+export const GetSupermercadoConfigResponse = zod.object({
+  "id": zod.string(),
+  "tenantId": zod.string(),
+  "erpApiUrl": zod.string().nullish(),
+  "erpApiKey": zod.string().nullish(),
+  "erpSyncEnabled": zod.boolean(),
+  "zapiInstanceId": zod.string().nullish(),
+  "zapiToken": zod.string().nullish(),
+  "botAtivo": zod.boolean(),
+  "mensagemBoasVindas": zod.string().nullish(),
+  "campanhasAtivas": zod.boolean(),
+  "contatosPorRodada": zod.number(),
+  "diasSemana": zod.array(zod.string()).nullish(),
+  "horarioEnvio": zod.string(),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date()
+})
+
+
+export const UpsertSupermercadoConfigParams = zod.object({
+  "tenantId": zod.coerce.string()
+})
+
+export const UpsertSupermercadoConfigBody = zod.object({
+  "erpApiUrl": zod.string().optional(),
+  "erpApiKey": zod.string().optional(),
+  "erpSyncEnabled": zod.boolean().optional(),
+  "zapiInstanceId": zod.string().optional(),
+  "zapiToken": zod.string().optional(),
+  "botAtivo": zod.boolean().optional(),
+  "mensagemBoasVindas": zod.string().optional(),
+  "campanhasAtivas": zod.boolean().optional(),
+  "contatosPorRodada": zod.number().optional(),
+  "diasSemana": zod.array(zod.string()).optional(),
+  "horarioEnvio": zod.string().optional()
+})
+
+export const UpsertSupermercadoConfigResponse = zod.object({
+  "id": zod.string(),
+  "tenantId": zod.string(),
+  "erpApiUrl": zod.string().nullish(),
+  "erpApiKey": zod.string().nullish(),
+  "erpSyncEnabled": zod.boolean(),
+  "zapiInstanceId": zod.string().nullish(),
+  "zapiToken": zod.string().nullish(),
+  "botAtivo": zod.boolean(),
+  "mensagemBoasVindas": zod.string().nullish(),
+  "campanhasAtivas": zod.boolean(),
+  "contatosPorRodada": zod.number(),
+  "diasSemana": zod.array(zod.string()).nullish(),
+  "horarioEnvio": zod.string(),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date()
+})
+
+
+export const ListSupermercadoProdutosParams = zod.object({
+  "tenantId": zod.coerce.string()
+})
+
+export const ListSupermercadoProdutosQueryParams = zod.object({
+  "categoria": zod.coerce.string().optional(),
+  "destaque": zod.coerce.boolean().optional(),
+  "q": zod.coerce.string().optional()
+})
+
+export const ListSupermercadoProdutosResponseItem = zod.object({
+  "id": zod.string(),
+  "tenantId": zod.string(),
+  "erpId": zod.string().nullish(),
+  "nome": zod.string(),
+  "descricao": zod.string().nullish(),
+  "categoria": zod.enum(['hortifruti', 'carnes', 'frios_laticinios', 'padaria', 'bebidas', 'limpeza', 'higiene', 'mercearia', 'congelados', 'petshop', 'outros', 'null']).nullish(),
+  "unidade": zod.string(),
+  "precoVenda": zod.string(),
+  "precoPromocional": zod.string().nullish(),
+  "estoque": zod.number(),
+  "imagemUrl": zod.string().nullish(),
+  "ativo": zod.boolean(),
+  "destaqueWhatsapp": zod.boolean(),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date()
+})
+export const ListSupermercadoProdutosResponse = zod.array(ListSupermercadoProdutosResponseItem)
+
+
+export const CreateSupermercadoProdutoParams = zod.object({
+  "tenantId": zod.coerce.string()
+})
+
+export const CreateSupermercadoProdutoBody = zod.object({
+  "tenantId": zod.string(),
+  "erpId": zod.string().optional(),
+  "nome": zod.string(),
+  "descricao": zod.string().optional(),
+  "categoria": zod.enum(['hortifruti', 'carnes', 'frios_laticinios', 'padaria', 'bebidas', 'limpeza', 'higiene', 'mercearia', 'congelados', 'petshop', 'outros']).optional(),
+  "unidade": zod.string().optional(),
+  "precoVenda": zod.string(),
+  "precoPromocional": zod.string().optional(),
+  "estoque": zod.number().optional(),
+  "imagemUrl": zod.string().optional(),
+  "ativo": zod.boolean().optional(),
+  "destaqueWhatsapp": zod.boolean().optional()
+})
+
+
+export const GetSupermercadoProdutoParams = zod.object({
+  "tenantId": zod.coerce.string(),
+  "produtoId": zod.coerce.string()
+})
+
+export const GetSupermercadoProdutoResponse = zod.object({
+  "id": zod.string(),
+  "tenantId": zod.string(),
+  "erpId": zod.string().nullish(),
+  "nome": zod.string(),
+  "descricao": zod.string().nullish(),
+  "categoria": zod.enum(['hortifruti', 'carnes', 'frios_laticinios', 'padaria', 'bebidas', 'limpeza', 'higiene', 'mercearia', 'congelados', 'petshop', 'outros', 'null']).nullish(),
+  "unidade": zod.string(),
+  "precoVenda": zod.string(),
+  "precoPromocional": zod.string().nullish(),
+  "estoque": zod.number(),
+  "imagemUrl": zod.string().nullish(),
+  "ativo": zod.boolean(),
+  "destaqueWhatsapp": zod.boolean(),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date()
+})
+
+
+export const UpdateSupermercadoProdutoParams = zod.object({
+  "tenantId": zod.coerce.string(),
+  "produtoId": zod.coerce.string()
+})
+
+export const UpdateSupermercadoProdutoBody = zod.object({
+  "erpId": zod.string().optional(),
+  "nome": zod.string().optional(),
+  "descricao": zod.string().optional(),
+  "categoria": zod.enum(['hortifruti', 'carnes', 'frios_laticinios', 'padaria', 'bebidas', 'limpeza', 'higiene', 'mercearia', 'congelados', 'petshop', 'outros']).optional(),
+  "unidade": zod.string().optional(),
+  "precoVenda": zod.string().optional(),
+  "precoPromocional": zod.string().optional(),
+  "estoque": zod.number().optional(),
+  "imagemUrl": zod.string().optional(),
+  "ativo": zod.boolean().optional(),
+  "destaqueWhatsapp": zod.boolean().optional()
+})
+
+export const UpdateSupermercadoProdutoResponse = zod.object({
+  "id": zod.string(),
+  "tenantId": zod.string(),
+  "erpId": zod.string().nullish(),
+  "nome": zod.string(),
+  "descricao": zod.string().nullish(),
+  "categoria": zod.enum(['hortifruti', 'carnes', 'frios_laticinios', 'padaria', 'bebidas', 'limpeza', 'higiene', 'mercearia', 'congelados', 'petshop', 'outros', 'null']).nullish(),
+  "unidade": zod.string(),
+  "precoVenda": zod.string(),
+  "precoPromocional": zod.string().nullish(),
+  "estoque": zod.number(),
+  "imagemUrl": zod.string().nullish(),
+  "ativo": zod.boolean(),
+  "destaqueWhatsapp": zod.boolean(),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date()
+})
+
+
+export const DeleteSupermercadoProdutoParams = zod.object({
+  "tenantId": zod.coerce.string(),
+  "produtoId": zod.coerce.string()
+})
+
+
+export const SyncSupermercadoProdutosParams = zod.object({
+  "tenantId": zod.coerce.string()
+})
+
+export const SyncSupermercadoProdutosResponse = zod.object({
+  "sincronizados": zod.number(),
+  "erros": zod.number()
+})
+
+
+export const ListSupermercadoPedidosParams = zod.object({
+  "tenantId": zod.coerce.string()
+})
+
+export const ListSupermercadoPedidosQueryParams = zod.object({
+  "status": zod.coerce.string().optional(),
+  "origem": zod.coerce.string().optional()
+})
+
+export const ListSupermercadoPedidosResponseItem = zod.object({
+  "id": zod.string(),
+  "tenantId": zod.string(),
+  "leadId": zod.string().nullish(),
+  "origem": zod.enum(['whatsapp', 'app', 'balcao']),
+  "status": zod.enum(['aguardando_confirmacao', 'confirmado', 'em_separacao', 'saiu_para_entrega', 'entregue', 'cancelado']),
+  "enderecoEntrega": zod.string().nullish(),
+  "observacoes": zod.string().nullish(),
+  "valorTotal": zod.string(),
+  "erpPedidoId": zod.string().nullish(),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date()
+})
+export const ListSupermercadoPedidosResponse = zod.array(ListSupermercadoPedidosResponseItem)
+
+
+export const CreateSupermercadoPedidoParams = zod.object({
+  "tenantId": zod.coerce.string()
+})
+
+export const CreateSupermercadoPedidoBody = zod.object({
+  "tenantId": zod.string(),
+  "leadId": zod.string().optional(),
+  "origem": zod.enum(['whatsapp', 'app', 'balcao']).optional(),
+  "enderecoEntrega": zod.string().optional(),
+  "observacoes": zod.string().optional(),
+  "itens": zod.array(zod.object({
+  "produtoId": zod.string().optional(),
+  "nomeProduto": zod.string(),
+  "quantidade": zod.string(),
+  "precoUnitario": zod.string()
+})).optional()
+})
+
+
+export const GetSupermercadoPedidoParams = zod.object({
+  "tenantId": zod.coerce.string(),
+  "pedidoId": zod.coerce.string()
+})
+
+export const GetSupermercadoPedidoResponse = zod.object({
+  "id": zod.string(),
+  "tenantId": zod.string(),
+  "leadId": zod.string().nullish(),
+  "origem": zod.enum(['whatsapp', 'app', 'balcao']),
+  "status": zod.enum(['aguardando_confirmacao', 'confirmado', 'em_separacao', 'saiu_para_entrega', 'entregue', 'cancelado']),
+  "enderecoEntrega": zod.string().nullish(),
+  "observacoes": zod.string().nullish(),
+  "valorTotal": zod.string(),
+  "erpPedidoId": zod.string().nullish(),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date()
+}).and(zod.object({
+  "itens": zod.array(zod.object({
+  "id": zod.string(),
+  "pedidoId": zod.string(),
+  "produtoId": zod.string().nullish(),
+  "nomeProduto": zod.string(),
+  "quantidade": zod.string(),
+  "precoUnitario": zod.string(),
+  "subtotal": zod.string()
+})),
+  "leadNome": zod.string().nullish()
+}))
+
+
+export const UpdateSupermercadoPedidoParams = zod.object({
+  "tenantId": zod.coerce.string(),
+  "pedidoId": zod.coerce.string()
+})
+
+export const UpdateSupermercadoPedidoBody = zod.object({
+  "status": zod.enum(['aguardando_confirmacao', 'confirmado', 'em_separacao', 'saiu_para_entrega', 'entregue', 'cancelado']).optional(),
+  "enderecoEntrega": zod.string().optional(),
+  "observacoes": zod.string().optional(),
+  "erpPedidoId": zod.string().optional()
+})
+
+export const UpdateSupermercadoPedidoResponse = zod.object({
+  "id": zod.string(),
+  "tenantId": zod.string(),
+  "leadId": zod.string().nullish(),
+  "origem": zod.enum(['whatsapp', 'app', 'balcao']),
+  "status": zod.enum(['aguardando_confirmacao', 'confirmado', 'em_separacao', 'saiu_para_entrega', 'entregue', 'cancelado']),
+  "enderecoEntrega": zod.string().nullish(),
+  "observacoes": zod.string().nullish(),
+  "valorTotal": zod.string(),
+  "erpPedidoId": zod.string().nullish(),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date()
+})
+
+
+export const ListSupermercadoCampanhasParams = zod.object({
+  "tenantId": zod.coerce.string()
+})
+
+export const ListSupermercadoCampanhasQueryParams = zod.object({
+  "tipo": zod.coerce.string().optional(),
+  "status": zod.coerce.string().optional()
+})
+
+export const ListSupermercadoCampanhasResponseItem = zod.object({
+  "id": zod.string(),
+  "tenantId": zod.string(),
+  "titulo": zod.string(),
+  "tipo": zod.enum(['promocao', 'receita', 'dica', 'data_comemorativa', 'reativacao']),
+  "status": zod.enum(['rascunho', 'agendada', 'enviando', 'concluida', 'pausada']),
+  "conteudo": zod.string(),
+  "imagemUrl": zod.string().nullish(),
+  "agendadoPara": zod.coerce.date().nullish(),
+  "enviadoEm": zod.coerce.date().nullish(),
+  "totalEnviados": zod.number(),
+  "totalFalhas": zod.number(),
+  "geradoPorIa": zod.boolean(),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date()
+})
+export const ListSupermercadoCampanhasResponse = zod.array(ListSupermercadoCampanhasResponseItem)
+
+
+export const CreateSupermercadoCampanhaParams = zod.object({
+  "tenantId": zod.coerce.string()
+})
+
+export const CreateSupermercadoCampanhaBody = zod.object({
+  "tenantId": zod.string(),
+  "titulo": zod.string(),
+  "tipo": zod.enum(['promocao', 'receita', 'dica', 'data_comemorativa', 'reativacao']),
+  "conteudo": zod.string(),
+  "imagemUrl": zod.string().optional(),
+  "agendadoPara": zod.coerce.date().optional(),
+  "geradoPorIa": zod.boolean().optional()
+})
+
+
+export const GetSupermercadoCampanhaParams = zod.object({
+  "tenantId": zod.coerce.string(),
+  "campanhaId": zod.coerce.string()
+})
+
+export const GetSupermercadoCampanhaResponse = zod.object({
+  "id": zod.string(),
+  "tenantId": zod.string(),
+  "titulo": zod.string(),
+  "tipo": zod.enum(['promocao', 'receita', 'dica', 'data_comemorativa', 'reativacao']),
+  "status": zod.enum(['rascunho', 'agendada', 'enviando', 'concluida', 'pausada']),
+  "conteudo": zod.string(),
+  "imagemUrl": zod.string().nullish(),
+  "agendadoPara": zod.coerce.date().nullish(),
+  "enviadoEm": zod.coerce.date().nullish(),
+  "totalEnviados": zod.number(),
+  "totalFalhas": zod.number(),
+  "geradoPorIa": zod.boolean(),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date()
+})
+
+
+export const UpdateSupermercadoCampanhaParams = zod.object({
+  "tenantId": zod.coerce.string(),
+  "campanhaId": zod.coerce.string()
+})
+
+export const UpdateSupermercadoCampanhaBody = zod.object({
+  "titulo": zod.string().optional(),
+  "tipo": zod.enum(['promocao', 'receita', 'dica', 'data_comemorativa', 'reativacao']).optional(),
+  "status": zod.enum(['rascunho', 'agendada', 'enviando', 'concluida', 'pausada']).optional(),
+  "conteudo": zod.string().optional(),
+  "imagemUrl": zod.string().optional(),
+  "agendadoPara": zod.coerce.date().optional()
+})
+
+export const UpdateSupermercadoCampanhaResponse = zod.object({
+  "id": zod.string(),
+  "tenantId": zod.string(),
+  "titulo": zod.string(),
+  "tipo": zod.enum(['promocao', 'receita', 'dica', 'data_comemorativa', 'reativacao']),
+  "status": zod.enum(['rascunho', 'agendada', 'enviando', 'concluida', 'pausada']),
+  "conteudo": zod.string(),
+  "imagemUrl": zod.string().nullish(),
+  "agendadoPara": zod.coerce.date().nullish(),
+  "enviadoEm": zod.coerce.date().nullish(),
+  "totalEnviados": zod.number(),
+  "totalFalhas": zod.number(),
+  "geradoPorIa": zod.boolean(),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date()
+})
+
+
+export const DeleteSupermercadoCampanhaParams = zod.object({
+  "tenantId": zod.coerce.string(),
+  "campanhaId": zod.coerce.string()
+})
+
+
+export const DispararSupermercadoCampanhaParams = zod.object({
+  "tenantId": zod.coerce.string(),
+  "campanhaId": zod.coerce.string()
+})
+
+export const DispararSupermercadoCampanhaResponse = zod.object({
+  "ok": zod.boolean(),
+  "total": zod.number()
+})
+
+
+export const GerarConteudoSupermercadoCampanhaParams = zod.object({
+  "tenantId": zod.coerce.string()
+})
+
+export const GerarConteudoSupermercadoCampanhaBody = zod.object({
+  "tipo": zod.enum(['promocao', 'receita', 'dica', 'data_comemorativa', 'reativacao']),
+  "contexto": zod.string().optional()
+})
+
+export const GerarConteudoSupermercadoCampanhaResponse = zod.object({
+  "titulo": zod.string(),
+  "conteudo": zod.string()
+})
+
+
+export const GetSupermercadoDashboardParams = zod.object({
+  "tenantId": zod.coerce.string()
+})
+
+export const GetSupermercadoDashboardResponse = zod.object({
+  "pedidosHoje": zod.number(),
+  "pedidosSemana": zod.number(),
+  "receitaHoje": zod.string(),
+  "receitaSemana": zod.string(),
+  "produtosAtivos": zod.number(),
+  "campanhasEnviadas": zod.number(),
+  "clientesAtivos": zod.number(),
+  "ultimasCampanhas": zod.array(zod.object({
+  "id": zod.string(),
+  "tenantId": zod.string(),
+  "titulo": zod.string(),
+  "tipo": zod.enum(['promocao', 'receita', 'dica', 'data_comemorativa', 'reativacao']),
+  "status": zod.enum(['rascunho', 'agendada', 'enviando', 'concluida', 'pausada']),
+  "conteudo": zod.string(),
+  "imagemUrl": zod.string().nullish(),
+  "agendadoPara": zod.coerce.date().nullish(),
+  "enviadoEm": zod.coerce.date().nullish(),
+  "totalEnviados": zod.number(),
+  "totalFalhas": zod.number(),
+  "geradoPorIa": zod.boolean(),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date()
+})).optional(),
+  "ultimosPedidos": zod.array(zod.object({
+  "id": zod.string(),
+  "tenantId": zod.string(),
+  "leadId": zod.string().nullish(),
+  "origem": zod.enum(['whatsapp', 'app', 'balcao']),
+  "status": zod.enum(['aguardando_confirmacao', 'confirmado', 'em_separacao', 'saiu_para_entrega', 'entregue', 'cancelado']),
+  "enderecoEntrega": zod.string().nullish(),
+  "observacoes": zod.string().nullish(),
+  "valorTotal": zod.string(),
+  "erpPedidoId": zod.string().nullish(),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date()
+})).optional()
+})
+
+

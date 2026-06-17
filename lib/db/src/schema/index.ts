@@ -45,3 +45,7 @@ export * from "./varejo_pedidos_compra_itens";
 export * from "./varejo_fidelidade";
 export * from "./varejo_combos";
 export * from "./varejo_combo_itens";
+export * from "./supermercado_configuracoes";
+export * from "./supermercado_produtos";
+export * from "./supermercado_pedidos";
+export * from "./supermercado_campanhas";
