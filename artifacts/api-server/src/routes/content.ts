@@ -186,7 +186,10 @@ router.get("/tenants/:tenantId/content", async (req, res) => {
   });
 });
 
-const publishBodySchema = z.object({ variationIndex: z.number().int().min(0) });
+const publishBodySchema = z.object({
+  variationIndex: z.number().int().min(0),
+  captionOverride: z.string().optional(),
+});
 const patchMediaBodySchema = z.object({
   objectPath: z.string().min(1),
   field: z.enum(["imageUrl", "videoUrl"]).default("imageUrl"),
@@ -286,7 +289,7 @@ router.post("/tenants/:tenantId/content/:contentId/publish-instagram", async (re
     let postId: string;
     if (gen.type === "feed") {
       const v = variation as FeedVariation;
-      const caption = `${v.caption}\n\n${v.hashtags.join(" ")}`;
+      const caption = body.data.captionOverride ?? `${v.caption}\n\n${v.hashtags.join(" ")}`;
       postId = await publishFeedPost(config.instagramPageId, config.instagramPageAccessToken, caption, imageUrl, req.log);
     } else {
       postId = await publishStoriesPost(config.instagramPageId, config.instagramPageAccessToken, imageUrl, req.log);

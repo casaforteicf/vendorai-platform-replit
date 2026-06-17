@@ -15,6 +15,7 @@ import { useListProdutosCatalogo, getListProdutosCatalogoQueryKey } from "@works
 import {
   Sparkles, Copy, Trash2, Loader2, Instagram, Clapperboard, Image,
   CheckCircle2, AlertCircle, ChevronDown, ChevronUp, ExternalLink, Upload,
+  Pencil, Check, X,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -86,8 +87,24 @@ function CopyButton({ text }: { text: string }) {
   );
 }
 
-function FeedCard({ v }: { v: FeedVariation }) {
-  const fullText = `${v.caption}\n\n${v.hashtags.join(" ")}`;
+function FeedCard({
+  v,
+  editing = false,
+  editedCaption = "",
+  editedHashtags = "",
+  onChangeCaption,
+  onChangeHashtags,
+}: {
+  v: FeedVariation;
+  editing?: boolean;
+  editedCaption?: string;
+  editedHashtags?: string;
+  onChangeCaption?: (val: string) => void;
+  onChangeHashtags?: (val: string) => void;
+}) {
+  const displayCaption = editing ? editedCaption : v.caption;
+  const displayHashtagsStr = editing ? editedHashtags : v.hashtags.join(" ");
+  const fullText = `${displayCaption}\n\n${displayHashtagsStr}`;
   return (
     <div className="space-y-3">
       {v.imageUrl && (
@@ -101,19 +118,58 @@ function FeedCard({ v }: { v: FeedVariation }) {
         </div>
       )}
       <div className="flex items-start justify-between gap-2">
-        <p className="text-sm leading-relaxed whitespace-pre-wrap flex-1">{v.caption}</p>
-        <CopyButton text={fullText} />
+        {editing ? (
+          <Textarea
+            value={editedCaption}
+            onChange={(e) => onChangeCaption?.(e.target.value)}
+            className="text-sm flex-1 min-h-[120px] resize-y"
+            placeholder="Legenda do post…"
+          />
+        ) : (
+          <>
+            <p className="text-sm leading-relaxed whitespace-pre-wrap flex-1">{v.caption}</p>
+            <CopyButton text={fullText} />
+          </>
+        )}
       </div>
-      <div className="flex flex-wrap gap-1">
-        {v.hashtags.map((h) => (
-          <span key={h} className="text-xs text-primary bg-primary/10 px-2 py-0.5 rounded-full">{h}</span>
-        ))}
-      </div>
+      {editing ? (
+        <div className="space-y-1">
+          <Label className="text-xs text-muted-foreground">Hashtags (separadas por espaço)</Label>
+          <input
+            value={editedHashtags}
+            onChange={(e) => onChangeHashtags?.(e.target.value)}
+            className="w-full text-xs border rounded-md px-2 py-1.5 bg-background focus:outline-none focus:ring-1 focus:ring-ring"
+            placeholder="#hashtag1 #hashtag2 #hashtag3"
+          />
+        </div>
+      ) : (
+        <div className="flex flex-wrap gap-1">
+          {v.hashtags.map((h) => (
+            <span key={h} className="text-xs text-primary bg-primary/10 px-2 py-0.5 rounded-full">{h}</span>
+          ))}
+        </div>
+      )}
     </div>
   );
 }
 
-function StoriesCard({ v }: { v: StoriesVariation }) {
+function StoriesCard({
+  v,
+  editing = false,
+  editedText = "",
+  editedCta = "",
+  onChangeText,
+  onChangeCta,
+}: {
+  v: StoriesVariation;
+  editing?: boolean;
+  editedText?: string;
+  editedCta?: string;
+  onChangeText?: (val: string) => void;
+  onChangeCta?: (val: string) => void;
+}) {
+  const displayText = editing ? editedText : v.text;
+  const displayCta = editing ? editedCta : v.cta;
   return (
     <div className="space-y-3">
       {v.imageUrl && (
@@ -128,13 +184,31 @@ function StoriesCard({ v }: { v: StoriesVariation }) {
       )}
       <div className="flex items-start justify-between gap-2">
         <div className="flex-1 space-y-2">
-          <p className="text-sm font-medium leading-relaxed">{v.text}</p>
+          {editing ? (
+            <Textarea
+              value={editedText}
+              onChange={(e) => onChangeText?.(e.target.value)}
+              className="text-sm min-h-[80px] resize-y"
+              placeholder="Texto do Stories…"
+            />
+          ) : (
+            <p className="text-sm font-medium leading-relaxed">{displayText}</p>
+          )}
           <div className="flex items-center gap-2">
             <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">CTA:</span>
-            <span className="text-xs bg-muted px-2 py-1 rounded font-medium">{v.cta}</span>
+            {editing ? (
+              <input
+                value={editedCta}
+                onChange={(e) => onChangeCta?.(e.target.value)}
+                className="flex-1 text-xs border rounded-md px-2 py-1 bg-background focus:outline-none focus:ring-1 focus:ring-ring"
+                placeholder="Ex: Arrasta pra cima"
+              />
+            ) : (
+              <span className="text-xs bg-muted px-2 py-1 rounded font-medium">{displayCta}</span>
+            )}
           </div>
         </div>
-        <CopyButton text={`${v.text}\n\n${v.cta}`} />
+        {!editing && <CopyButton text={`${displayText}\n\n${displayCta}`} />}
       </div>
     </div>
   );
@@ -188,11 +262,13 @@ function PublishInstagramButton({
   variationIndex,
   hasImage,
   tenantId,
+  captionOverride,
 }: {
   contentId: string;
   variationIndex: number;
   hasImage: boolean;
   tenantId: string;
+  captionOverride?: string;
 }) {
   const { toast } = useToast();
   const [, navigate] = useLocation();
@@ -209,13 +285,15 @@ function PublishInstagramButton({
     }
     setPublishing(true);
     try {
+      const body: Record<string, unknown> = { variationIndex };
+      if (captionOverride !== undefined) body["captionOverride"] = captionOverride;
       const res = await fetch(`/api/tenants/${tenantId}/content/${contentId}/publish-instagram`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
           Authorization: `Bearer ${localStorage.getItem("vendorai_token")}`,
         },
-        body: JSON.stringify({ variationIndex }),
+        body: JSON.stringify(body),
       });
       const data = (await res.json()) as { error?: string };
       if (!res.ok) {
@@ -395,37 +473,168 @@ function VariationCard({
 
   const hasImage = !!(effectiveVariation as { imageUrl?: string }).imageUrl;
 
+  const [editing, setEditing] = useState(false);
+  const [editCaption, setEditCaption] = useState("");
+  const [editHashtags, setEditHashtags] = useState("");
+  const [editText, setEditText] = useState("");
+  const [editCta, setEditCta] = useState("");
+  const [savedCaption, setSavedCaption] = useState<string | undefined>(undefined);
+  const [savedHashtags, setSavedHashtags] = useState<string | undefined>(undefined);
+  const [savedText, setSavedText] = useState<string | undefined>(undefined);
+  const [savedCta, setSavedCta] = useState<string | undefined>(undefined);
+
+  const hasEdits =
+    savedCaption !== undefined || savedHashtags !== undefined ||
+    savedText !== undefined || savedCta !== undefined;
+
+  const displayVariation: ContentVariation = (() => {
+    if (type === "feed") {
+      const v = effectiveVariation as FeedVariation;
+      return {
+        ...v,
+        caption: savedCaption ?? v.caption,
+        hashtags: savedHashtags !== undefined
+          ? savedHashtags.split(/\s+/).filter(Boolean)
+          : v.hashtags,
+      };
+    }
+    if (type === "stories") {
+      const v = effectiveVariation as StoriesVariation;
+      return { ...v, text: savedText ?? v.text, cta: savedCta ?? v.cta };
+    }
+    return effectiveVariation;
+  })();
+
+  const captionOverride: string | undefined = (() => {
+    if (!hasEdits) return undefined;
+    if (type === "feed") {
+      const v = displayVariation as FeedVariation;
+      return `${v.caption}\n\n${v.hashtags.join(" ")}`;
+    }
+    return undefined;
+  })();
+
+  function startEdit() {
+    if (type === "feed") {
+      const v = displayVariation as FeedVariation;
+      setEditCaption(v.caption);
+      setEditHashtags(v.hashtags.join(" "));
+    } else if (type === "stories") {
+      const v = displayVariation as StoriesVariation;
+      setEditText(v.text);
+      setEditCta(v.cta);
+    }
+    setEditing(true);
+  }
+
+  function saveEdit() {
+    if (type === "feed") {
+      setSavedCaption(editCaption);
+      setSavedHashtags(editHashtags);
+    } else if (type === "stories") {
+      setSavedText(editText);
+      setSavedCta(editCta);
+    }
+    setEditing(false);
+  }
+
+  function cancelEdit() {
+    setEditing(false);
+  }
+
+  const canEdit = type !== "reels";
+
   return (
     <Card>
       <CardHeader className="pb-3 pt-4 px-4">
         <div className="flex items-center justify-between gap-2">
-          <CardTitle className="text-sm font-semibold text-muted-foreground">
-            Variação {index + 1}
-          </CardTitle>
-          {contentId && tenantId && (
-            <div className="flex items-center gap-1">
-              <MediaUploadButton
-                contentId={contentId}
-                variationIndex={index}
-                tenantId={tenantId}
-                mediaType={type === "reels" ? "video" : "image"}
-                onUploaded={type === "reels" ? setLocalVideoUrl : setLocalImageUrl}
-              />
-              {type !== "reels" && (
-                <PublishInstagramButton
-                  contentId={contentId}
-                  variationIndex={index}
-                  hasImage={hasImage}
-                  tenantId={tenantId}
-                />
-              )}
-            </div>
-          )}
+          <div className="flex items-center gap-1.5">
+            <CardTitle className="text-sm font-semibold text-muted-foreground">
+              Variação {index + 1}
+            </CardTitle>
+            {hasEdits && !editing && (
+              <Badge variant="secondary" className="text-xs px-1.5 py-0">editado</Badge>
+            )}
+          </div>
+          <div className="flex items-center gap-1">
+            {editing ? (
+              <>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={cancelEdit}
+                  className="h-7 px-2 text-xs gap-1 text-muted-foreground"
+                >
+                  <X className="h-3 w-3" />
+                  Cancelar
+                </Button>
+                <Button
+                  size="sm"
+                  onClick={saveEdit}
+                  className="h-7 px-2 text-xs gap-1"
+                >
+                  <Check className="h-3 w-3" />
+                  Salvar
+                </Button>
+              </>
+            ) : (
+              <>
+                {canEdit && contentId && (
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={startEdit}
+                    className="h-7 px-2 text-xs gap-1 text-muted-foreground"
+                    title="Editar texto antes de publicar"
+                  >
+                    <Pencil className="h-3 w-3" />
+                    Editar
+                  </Button>
+                )}
+                {contentId && tenantId && (
+                  <MediaUploadButton
+                    contentId={contentId}
+                    variationIndex={index}
+                    tenantId={tenantId}
+                    mediaType={type === "reels" ? "video" : "image"}
+                    onUploaded={type === "reels" ? setLocalVideoUrl : setLocalImageUrl}
+                  />
+                )}
+                {type !== "reels" && contentId && tenantId && (
+                  <PublishInstagramButton
+                    contentId={contentId}
+                    variationIndex={index}
+                    hasImage={hasImage}
+                    tenantId={tenantId}
+                    captionOverride={captionOverride}
+                  />
+                )}
+              </>
+            )}
+          </div>
         </div>
       </CardHeader>
       <CardContent className="px-4 pb-4">
-        {type === "feed" && <FeedCard v={effectiveVariation as FeedVariation} />}
-        {type === "stories" && <StoriesCard v={effectiveVariation as StoriesVariation} />}
+        {type === "feed" && (
+          <FeedCard
+            v={displayVariation as FeedVariation}
+            editing={editing}
+            editedCaption={editCaption}
+            editedHashtags={editHashtags}
+            onChangeCaption={setEditCaption}
+            onChangeHashtags={setEditHashtags}
+          />
+        )}
+        {type === "stories" && (
+          <StoriesCard
+            v={displayVariation as StoriesVariation}
+            editing={editing}
+            editedText={editText}
+            editedCta={editCta}
+            onChangeText={setEditText}
+            onChangeCta={setEditCta}
+          />
+        )}
         {type === "reels" && <ReelsCard v={effectiveVariation as ReelsVariation} />}
       </CardContent>
     </Card>
