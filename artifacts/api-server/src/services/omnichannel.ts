@@ -131,14 +131,31 @@ export async function sendDirectWhatsAppMessage(
   );
 }
 
+// ── Anti-ban: typing delay ────────────────────────────────────────────────────
+// Simula o tempo que um humano levaria para digitar a mensagem.
+// Só é chamado em respostas de IA (agentName definido).
+// Fórmula: base 3s + 40 ms/char + jitter 0–3s, limitado a 12s.
+async function simulateTypingDelay(message: string, log: Logger): Promise<void> {
+  const baseMs    = 3000;
+  const perChar   = 40;
+  const jitterMs  = Math.floor(Math.random() * 3000);
+  const totalMs   = Math.min(baseMs + message.length * perChar + jitterMs, 12000);
+  log.debug({ totalMs, chars: message.length }, "omnichannel: typing delay");
+  await new Promise<void>((r) => setTimeout(r, totalMs));
+}
+
 async function sendZapiWhatsAppMessage(
   instanceId: string,
   token: string,
   clientToken: string,
   phone: string,
   message: string,
-  log: Logger
+  log: Logger,
+  isAiResponse = false
 ): Promise<void> {
+  // ── Anti-ban: typing delay para respostas de IA ──────────────────────────
+  if (isAiResponse) await simulateTypingDelay(message, log);
+
   const url = `https://api.z-api.io/instances/${instanceId}/token/${token}/send-text`;
   const normalizedPhone = normalizePhoneBR(phone);
 
@@ -203,13 +220,15 @@ export async function sendOutgoingMessage(
       throw new WhatsAppPhoneMissingError(leadId);
     }
 
+    // agentName definido = resposta do IA → aplica typing delay anti-ban
     await sendZapiWhatsAppMessage(
       config.zapiInstanceId,
       config.zapiToken,
       config.zapiClientToken,
       lead.telefone,
       conteudo,
-      log
+      log,
+      !!agentName
     );
   }
 

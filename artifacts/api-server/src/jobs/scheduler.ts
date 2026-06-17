@@ -304,6 +304,13 @@ async function dispatchDueCampaigns(log: Logger): Promise<void> {
             // Execute immediately — import inline to avoid circular dep at module load
             const { executeTaskAction } = await import("../routes/agent_tasks.js");
             await executeTaskAction(task, log);
+
+            // ── Anti-ban: delay entre disparos de campanha ──────────────────
+            // Intervalo aleatório de 4–9 s para imitar cadência humana e evitar
+            // que a conta seja sinalizada por envio em rajada pelo Z-API.
+            const delayMs = 4000 + Math.floor(Math.random() * 5000);
+            log.debug({ delayMs, leadId }, "scheduler/campaigns: anti-ban delay");
+            await new Promise<void>((r) => setTimeout(r, delayMs));
           }
 
           enviados++;

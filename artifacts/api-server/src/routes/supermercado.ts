@@ -33,7 +33,7 @@ router.get("/tenants/:tenantId/supermercado/config", async (req, res) => {
   const [row] = await db.select().from(supermercadoConfigTable)
     .where(eq(supermercadoConfigTable.tenantId, tenantId));
   if (!row) return res.status(404).json({ error: "Config not found" });
-  res.json(row);
+  return res.json(row);
 });
 
 router.put("/tenants/:tenantId/supermercado/config", async (req, res) => {
@@ -55,7 +55,7 @@ router.put("/tenants/:tenantId/supermercado/config", async (req, res) => {
       .values({ ...req.body, tenantId })
       .returning();
   }
-  res.json(row);
+  return res.json(row);
 });
 
 // ─── Produtos ─────────────────────────────────────────────────────────────────
@@ -74,7 +74,7 @@ router.get("/tenants/:tenantId/supermercado/produtos", async (req, res) => {
   const rows = await db.select().from(supermercadoProdutoTable)
     .where(and(...conditions))
     .orderBy(supermercadoProdutoTable.nome);
-  res.json(rows);
+  return res.json(rows);
 });
 
 router.post("/tenants/:tenantId/supermercado/produtos", async (req, res) => {
@@ -84,7 +84,7 @@ router.post("/tenants/:tenantId/supermercado/produtos", async (req, res) => {
   const [row] = await db.insert(supermercadoProdutoTable)
     .values({ ...req.body, tenantId })
     .returning();
-  res.status(201).json(row);
+  return res.status(201).json(row);
 });
 
 router.get("/tenants/:tenantId/supermercado/produtos/:produtoId", async (req, res) => {
@@ -94,7 +94,7 @@ router.get("/tenants/:tenantId/supermercado/produtos/:produtoId", async (req, re
   const [row] = await db.select().from(supermercadoProdutoTable)
     .where(and(eq(supermercadoProdutoTable.id, produtoId), eq(supermercadoProdutoTable.tenantId, tenantId)));
   if (!row) return res.status(404).json({ error: "Produto not found" });
-  res.json(row);
+  return res.json(row);
 });
 
 router.put("/tenants/:tenantId/supermercado/produtos/:produtoId", async (req, res) => {
@@ -106,7 +106,7 @@ router.put("/tenants/:tenantId/supermercado/produtos/:produtoId", async (req, re
     .where(and(eq(supermercadoProdutoTable.id, produtoId), eq(supermercadoProdutoTable.tenantId, tenantId)))
     .returning();
   if (!row) return res.status(404).json({ error: "Produto not found" });
-  res.json(row);
+  return res.json(row);
 });
 
 router.delete("/tenants/:tenantId/supermercado/produtos/:produtoId", async (req, res) => {
@@ -115,7 +115,7 @@ router.delete("/tenants/:tenantId/supermercado/produtos/:produtoId", async (req,
 
   await db.delete(supermercadoProdutoTable)
     .where(and(eq(supermercadoProdutoTable.id, produtoId), eq(supermercadoProdutoTable.tenantId, tenantId)));
-  res.status(204).send();
+  return res.status(204).send();
 });
 
 // ─── ERP Sync ─────────────────────────────────────────────────────────────────
@@ -182,7 +182,7 @@ router.post("/tenants/:tenantId/supermercado/sync-produtos", async (req, res) =>
     return res.status(502).json({ error: "Falha ao conectar ao ERP", sincronizados, erros });
   }
 
-  res.json({ sincronizados, erros });
+  return res.json({ sincronizados, erros });
 });
 
 // ─── Pedidos ──────────────────────────────────────────────────────────────────
@@ -198,7 +198,7 @@ router.get("/tenants/:tenantId/supermercado/pedidos", async (req, res) => {
   const rows = await db.select().from(supermercadoPedidoTable)
     .where(and(...conditions))
     .orderBy(desc(supermercadoPedidoTable.createdAt));
-  res.json(rows);
+  return res.json(rows);
 });
 
 router.post("/tenants/:tenantId/supermercado/pedidos", async (req, res) => {
@@ -224,7 +224,7 @@ router.post("/tenants/:tenantId/supermercado/pedidos", async (req, res) => {
       .values(itensMapped.map((i: any) => ({ ...i, pedidoId: pedido.id })));
   }
 
-  res.status(201).json(pedido);
+  return res.status(201).json(pedido);
 });
 
 router.get("/tenants/:tenantId/supermercado/pedidos/:pedidoId", async (req, res) => {
@@ -245,7 +245,7 @@ router.get("/tenants/:tenantId/supermercado/pedidos/:pedidoId", async (req, res)
     leadNome = lead?.nome ?? null;
   }
 
-  res.json({ ...pedido, itens, leadNome });
+  return res.json({ ...pedido, itens, leadNome });
 });
 
 router.put("/tenants/:tenantId/supermercado/pedidos/:pedidoId", async (req, res) => {
@@ -257,7 +257,7 @@ router.put("/tenants/:tenantId/supermercado/pedidos/:pedidoId", async (req, res)
     .where(and(eq(supermercadoPedidoTable.id, pedidoId), eq(supermercadoPedidoTable.tenantId, tenantId)))
     .returning();
   if (!row) return res.status(404).json({ error: "Pedido not found" });
-  res.json(row);
+  return res.json(row);
 });
 
 // ─── Campanhas ────────────────────────────────────────────────────────────────
@@ -273,7 +273,7 @@ router.get("/tenants/:tenantId/supermercado/campanhas", async (req, res) => {
   const rows = await db.select().from(supermercadoCampanhaTable)
     .where(and(...conditions))
     .orderBy(desc(supermercadoCampanhaTable.createdAt));
-  res.json(rows);
+  return res.json(rows);
 });
 
 router.post("/tenants/:tenantId/supermercado/campanhas", async (req, res) => {
@@ -283,7 +283,7 @@ router.post("/tenants/:tenantId/supermercado/campanhas", async (req, res) => {
   const [row] = await db.insert(supermercadoCampanhaTable)
     .values({ ...req.body, tenantId })
     .returning();
-  res.status(201).json(row);
+  return res.status(201).json(row);
 });
 
 router.get("/tenants/:tenantId/supermercado/campanhas/:campanhaId", async (req, res) => {
@@ -293,7 +293,7 @@ router.get("/tenants/:tenantId/supermercado/campanhas/:campanhaId", async (req, 
   const [row] = await db.select().from(supermercadoCampanhaTable)
     .where(and(eq(supermercadoCampanhaTable.id, campanhaId), eq(supermercadoCampanhaTable.tenantId, tenantId)));
   if (!row) return res.status(404).json({ error: "Campanha not found" });
-  res.json(row);
+  return res.json(row);
 });
 
 router.put("/tenants/:tenantId/supermercado/campanhas/:campanhaId", async (req, res) => {
@@ -305,7 +305,7 @@ router.put("/tenants/:tenantId/supermercado/campanhas/:campanhaId", async (req, 
     .where(and(eq(supermercadoCampanhaTable.id, campanhaId), eq(supermercadoCampanhaTable.tenantId, tenantId)))
     .returning();
   if (!row) return res.status(404).json({ error: "Campanha not found" });
-  res.json(row);
+  return res.json(row);
 });
 
 router.delete("/tenants/:tenantId/supermercado/campanhas/:campanhaId", async (req, res) => {
@@ -314,7 +314,7 @@ router.delete("/tenants/:tenantId/supermercado/campanhas/:campanhaId", async (re
 
   await db.delete(supermercadoCampanhaTable)
     .where(and(eq(supermercadoCampanhaTable.id, campanhaId), eq(supermercadoCampanhaTable.tenantId, tenantId)));
-  res.status(204).send();
+  return res.status(204).send();
 });
 
 // ─── Disparar campanha ────────────────────────────────────────────────────────
@@ -396,7 +396,7 @@ router.post("/tenants/:tenantId/supermercado/campanhas/:campanhaId/disparar", as
 
   dispatch().catch((err) => req.log.error({ err }, "supermercado disparar: dispatch error"));
 
-  res.json({ ok: true, total: leads.length });
+  return res.json({ ok: true, total: leads.length });
 });
 
 // ─── Gerar conteúdo via IA ────────────────────────────────────────────────────
@@ -441,7 +441,7 @@ router.post("/tenants/:tenantId/supermercado/campanhas/gerar-conteudo", async (r
   };
   const titulo = `${tipoLabel[tipo] ?? "Mensagem"} — ${new Date().toLocaleDateString("pt-BR")}`;
 
-  res.json({ titulo, conteudo });
+  return res.json({ titulo, conteudo });
 });
 
 // ─── Dashboard ────────────────────────────────────────────────────────────────
@@ -488,7 +488,7 @@ router.get("/tenants/:tenantId/supermercado/dashboard", async (req, res) => {
     .orderBy(desc(supermercadoPedidoTable.createdAt))
     .limit(5);
 
-  res.json({
+  return res.json({
     pedidosHoje: pedidosHojeRes.count,
     pedidosSemana: pedidosSemanaRes.count,
     receitaHoje: String(receitaHojeRes.total ?? "0"),
