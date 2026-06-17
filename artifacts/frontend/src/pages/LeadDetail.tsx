@@ -144,7 +144,11 @@ function churnProgressColor(risk: number | null | undefined): string {
 
 function formatDate(iso: string | null | undefined) {
   if (!iso) return "—";
-  return new Date(iso).toLocaleDateString("pt-BR", {
+  // Date-only strings (YYYY-MM-DD) must be parsed as local time, not UTC.
+  // new Date("1987-02-06") → UTC midnight → displays as 05/02 in UTC-3.
+  // Adding "T00:00:00" forces local-time interpretation.
+  const date = iso.length === 10 ? new Date(iso + "T00:00:00") : new Date(iso);
+  return date.toLocaleDateString("pt-BR", {
     day: "2-digit",
     month: "2-digit",
     year: "numeric",
