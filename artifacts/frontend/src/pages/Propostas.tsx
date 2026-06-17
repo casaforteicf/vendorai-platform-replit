@@ -15,6 +15,8 @@ import {
   useUpdateProdutoCatalogo,
   useDeleteProdutoCatalogo,
   useImportProdutosCatalogo,
+  useCreateDeal,
+  getListDealsQueryKey,
 } from "@workspace/api-client-react";
 import type {
   Proposta,
@@ -617,6 +619,7 @@ function PropostaModal({
 
   const createFromCatMut  = useCreatePropostaFromCatalogo();
   const createLivreMut    = useCreateProposta();
+  const { mutate: createDeal } = useCreateDeal();
   const activeCatalog     = catalog.filter((p) => p.ativo);
 
   // totals
@@ -696,7 +699,15 @@ function PropostaModal({
       createFromCatMut.mutate(
         { tenantId, data: { leadId: vals.leadId, titulo: vals.titulo, validadeAte: vals.validadeAte || undefined, observacoes: vals.observacoes || undefined, itens: valid.map((l) => ({ produtoId: l.produtoId, quantidade: l.quantidade })) } },
         {
-          onSuccess: () => { toast({ title: "Proposta criada com sucesso" }); qc.invalidateQueries({ queryKey: getListPropostasQueryKey(tenantId) }); handleClose(); },
+          onSuccess: () => {
+            toast({ title: "Proposta criada com sucesso" });
+            qc.invalidateQueries({ queryKey: getListPropostasQueryKey(tenantId) });
+            createDeal(
+              { data: { tenantId, titulo: vals.titulo, leadId: vals.leadId, etapa: "proposta", valor: catTotal || undefined } },
+              { onSuccess: () => qc.invalidateQueries({ queryKey: getListDealsQueryKey(tenantId) }) }
+            );
+            handleClose();
+          },
           onError: () => toast({ title: "Erro ao criar proposta", variant: "destructive" }),
         }
       );
@@ -707,7 +718,15 @@ function PropostaModal({
       createLivreMut.mutate(
         { data: { tenantId, leadId: vals.leadId, titulo: vals.titulo, validadeAte: vals.validadeAte || undefined, observacoes: vals.observacoes || undefined, itens: valid.map((i) => ({ nome: i.nome, quantidade: i.quantidade, valorUnitario: i.valorUnitario })), valorTotal: freeTotal } },
         {
-          onSuccess: () => { toast({ title: "Proposta criada com sucesso" }); qc.invalidateQueries({ queryKey: getListPropostasQueryKey(tenantId) }); handleClose(); },
+          onSuccess: () => {
+            toast({ title: "Proposta criada com sucesso" });
+            qc.invalidateQueries({ queryKey: getListPropostasQueryKey(tenantId) });
+            createDeal(
+              { data: { tenantId, titulo: vals.titulo, leadId: vals.leadId, etapa: "proposta", valor: freeTotal || undefined } },
+              { onSuccess: () => qc.invalidateQueries({ queryKey: getListDealsQueryKey(tenantId) }) }
+            );
+            handleClose();
+          },
           onError: () => toast({ title: "Erro ao criar proposta", variant: "destructive" }),
         }
       );
