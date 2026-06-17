@@ -62,7 +62,7 @@ import {
 const ETAPA_LABELS: Record<string, string> = {
   novo: "Novo",
   qualificado: "Qualificado",
-  proposta: "Proposta",
+  proposta: "Orçamento",
   negociacao: "Negociação",
   ganho: "Ganho",
   perdido: "Perdido",
@@ -452,7 +452,7 @@ export default function Dashboard() {
             <Card data-testid="card-propostas-ativas">
               <CardHeader className="flex flex-row items-center justify-between pb-2 space-y-0">
                 <CardTitle className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
-                  Propostas Ativas
+                  Orçamentos Ativos
                 </CardTitle>
                 <div className="p-1.5 rounded-md bg-orange-500/10">
                   <FileText className="h-4 w-4 text-orange-500" />

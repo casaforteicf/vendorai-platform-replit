@@ -725,7 +725,7 @@ function PropostaModal({
         { tenantId, data: { leadId: vals.leadId, titulo: vals.titulo, validadeAte: vals.validadeAte || undefined, observacoes: vals.observacoes || undefined, formaPagamento: (vals.formaPagamento || undefined) as FormaPagamentoProposta | undefined, condPagamento: vals.condPagamento || undefined, prazoEntrega: vals.prazoEntrega || undefined, itens: valid.map((l) => ({ produtoId: l.produtoId, quantidade: l.quantidade })) } },
         {
           onSuccess: () => {
-            toast({ title: "Proposta criada com sucesso" });
+            toast({ title: "Orçamento criado com sucesso" });
             qc.invalidateQueries({ queryKey: getListPropostasQueryKey(tenantId) });
             createDeal(
               { data: { tenantId, titulo: vals.titulo, leadId: vals.leadId, etapa: "proposta", valor: catTotal || undefined } },
@@ -744,7 +744,7 @@ function PropostaModal({
         { data: { tenantId, leadId: vals.leadId, titulo: vals.titulo, validadeAte: vals.validadeAte || undefined, observacoes: vals.observacoes || undefined, formaPagamento: (vals.formaPagamento || undefined) as FormaPagamentoProposta | undefined, condPagamento: vals.condPagamento || undefined, prazoEntrega: vals.prazoEntrega || undefined, itens: valid.map((i) => ({ nome: i.nome, quantidade: i.quantidade, valorUnitario: i.valorUnitario })), valorTotal: freeTotal } },
         {
           onSuccess: () => {
-            toast({ title: "Proposta criada com sucesso" });
+            toast({ title: "Orçamento criado com sucesso" });
             qc.invalidateQueries({ queryKey: getListPropostasQueryKey(tenantId) });
             createDeal(
               { data: { tenantId, titulo: vals.titulo, leadId: vals.leadId, etapa: "proposta", valor: freeTotal || undefined } },
@@ -1506,7 +1506,7 @@ export default function Propostas() {
       {
         onSuccess: () => {
           qc.invalidateQueries({ queryKey: getListPropostasQueryKey(tenantId) });
-          toast({ title: "Proposta excluída" });
+          toast({ title: "Orçamento excluído" });
           setDeleteTarget(null);
         },
         onError: () => toast({ title: "Erro ao excluir", variant: "destructive" }),
@@ -1527,7 +1527,7 @@ export default function Propostas() {
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center gap-3 sm:justify-between">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight">Propostas</h1>
+          <h1 className="text-2xl font-bold tracking-tight">Orçamentos</h1>
           <p className="text-muted-foreground text-sm mt-0.5">Gerencie orçamentos e propostas comerciais</p>
         </div>
         <div className="flex gap-2">
@@ -1537,7 +1537,7 @@ export default function Propostas() {
           </Button>
           <Button onClick={() => setModalOpen(true)} className="flex-1 sm:flex-none min-h-[44px]">
             <Plus className="h-4 w-4 mr-2" />
-            Nova Proposta
+            Novo Orçamento
           </Button>
         </div>
       </div>
@@ -1566,9 +1566,9 @@ export default function Propostas() {
           ) : propostas.length === 0 ? (
             <div className="flex flex-col items-center gap-3 py-20 text-muted-foreground">
               <FileText className="h-10 w-10 opacity-25" />
-              <p className="text-sm">Nenhuma proposta criada ainda</p>
+              <p className="text-sm">Nenhum orçamento criado ainda</p>
               <Button variant="outline" size="sm" onClick={() => setModalOpen(true)}>
-                <Plus className="h-4 w-4 mr-1.5" /> Criar primeira proposta
+                <Plus className="h-4 w-4 mr-1.5" /> Criar primeiro orçamento
               </Button>
             </div>
           ) : (
@@ -1680,7 +1680,7 @@ export default function Propostas() {
                             </DropdownMenuItem>
                             {canSend && (
                               <DropdownMenuItem onClick={() => changeStatus(p, "enviada")}>
-                                <Send className="h-4 w-4 mr-2" /> Enviar proposta
+                                <Send className="h-4 w-4 mr-2" /> Enviar orçamento
                               </DropdownMenuItem>
                             )}
                             {canAccept && (

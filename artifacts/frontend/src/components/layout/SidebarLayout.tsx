@@ -28,7 +28,7 @@ export function SidebarLayout({ children }: { children: React.ReactNode }) {
     { name: "Negócios",      href: "/deals",         icon: Briefcase,       sellerHidden: false, section: "crm" },
     { name: "Conversas",     href: "/conversations", icon: MessageSquare,   sellerHidden: false, section: "crm" },
     { name: "Agenda",        href: "/agenda",        icon: Calendar,        sellerHidden: false, section: "crm" },
-    { name: "Propostas",     href: "/propostas",     icon: FileText,        sellerHidden: false, section: "crm" },
+    { name: "Orçamentos",    href: "/propostas",     icon: FileText,        sellerHidden: false, section: "crm" },
     { name: "Estoque",       href: "/estoque",       icon: Package,         sellerHidden: false, section: "crm" },
     { name: "Conteúdo",      href: "/content",       icon: Sparkles,        sellerHidden: false, section: "crm" },
     { name: "Campanhas",     href: "/campanhas",     icon: Megaphone,       sellerHidden: true,  section: "crm" },

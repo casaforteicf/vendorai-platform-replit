@@ -1349,7 +1349,7 @@ function ProdutoDetailSheet({
               onClick={onAddToProposta}
             >
               <FileText className="h-4 w-4" />
-              Adicionar à Proposta
+              Adicionar ao Orçamento
             </Button>
             <Button variant="outline" className="w-full" onClick={onClose}>
               Fechar
@@ -1394,7 +1394,7 @@ function AddToPropostaDialog({
     resolver: zodResolver(addPropostaSchema),
     defaultValues: {
       leadId: "",
-      titulo: `Proposta — ${produto.nome}`,
+      titulo: `Orçamento — ${produto.nome}`,
       quantidade: 1,
     },
   });
@@ -1412,7 +1412,7 @@ function AddToPropostaDialog({
       {
         onSuccess: () => {
           qc.invalidateQueries({ queryKey: getListPropostasQueryKey(tenantId) });
-          toast({ title: "Proposta criada!", description: "Você será redirecionado para Propostas." });
+          toast({ title: "Orçamento criado!", description: "Você será redirecionado para Orçamentos." });
           onSuccess();
         },
         onError: () => toast({ title: "Erro ao criar proposta", variant: "destructive" }),
@@ -1426,7 +1426,7 @@ function AddToPropostaDialog({
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <ShoppingCart className="h-5 w-5 text-primary" />
-            Adicionar à Proposta
+            Adicionar ao Orçamento
           </DialogTitle>
         </DialogHeader>
         <div className="rounded-lg bg-muted/40 border p-3 text-sm mb-1">
@@ -1470,7 +1470,7 @@ function AddToPropostaDialog({
                 <FormItem>
                   <FormLabel>Título da proposta *</FormLabel>
                   <FormControl>
-                    <Input placeholder="Ex: Proposta — Produto X" {...field} />
+                    <Input placeholder="Ex: Orçamento — Produto X" {...field} />
                   </FormControl>
                   <FormMessage />
                 </FormItem>
@@ -1493,7 +1493,7 @@ function AddToPropostaDialog({
               <Button type="button" variant="outline" onClick={onClose}>Cancelar</Button>
               <Button type="submit" disabled={createProposta.isPending} className="gap-2">
                 {createProposta.isPending && <Loader2 className="h-4 w-4 animate-spin" />}
-                Criar Proposta
+                Criar Orçamento
               </Button>
             </div>
           </form>

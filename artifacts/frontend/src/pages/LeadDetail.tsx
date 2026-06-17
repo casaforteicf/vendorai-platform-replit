@@ -2272,7 +2272,7 @@ export default function LeadDetail() {
                   <SelectItem value="em_aquecimento">Em aquecimento</SelectItem>
                   <SelectItem value="novo">Novo</SelectItem>
                   <SelectItem value="qualificado">Qualificado</SelectItem>
-                  <SelectItem value="proposta">Proposta</SelectItem>
+                  <SelectItem value="proposta">Orçamento</SelectItem>
                   <SelectItem value="negociacao">Negociação</SelectItem>
                 </SelectContent>
               </Select>
