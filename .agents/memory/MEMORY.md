@@ -6,3 +6,4 @@
 - [Express route TS7030 fix](express-ts7030-fix.md) — handlers com `return res.xxx()` early-return E final `res.xxx()` sem return causam TS7030; fix: sed `s/^  res\./  return res./g` no arquivo de rotas.
 - [Drizzle jsonb default type](drizzle-jsonb-default.md) — `.default({})` em coluna com `.$type<T>()` causa TS2345; remover `.default({})` do schema TS (manter DEFAULT na SQL) resolve.
 - [Anthropic integration template cp danger](anthropic-template-cp.md) — `cp -r` do skill sobrescreve conversations.ts e messages.ts existentes; restaurar via `git show HEAD:lib/db/src/schema/<file> > <file>` após o cp.
+- [Meta WhatsApp Cloud API](meta-whatsapp-cloud-api.md) — substituição da Z-API; dispatchAgentBackground exige `mensagem` + `log` dentro do objeto (não 2º argumento); enviadoPor="lead" para entrada; `canal` não existe no leadsTable insert.

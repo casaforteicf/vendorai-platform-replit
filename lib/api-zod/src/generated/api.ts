@@ -433,9 +433,13 @@ export const GetAgentConfigByTenantResponse = zod.object({
   "instagramPageAccessToken": zod.string().nullish().describe('Long-lived Page Access Token for Instagram Graph API.'),
   "instagramPageId": zod.string().nullish().describe('Instagram Page ID used to send messages.'),
   "instagramUsername": zod.string().nullish().describe('Instagram username for display purposes.'),
-  "zapiInstanceId": zod.string().nullish().describe('Z-API instance ID for outbound WhatsApp messages.'),
-  "zapiToken": zod.string().nullish().describe('Z-API instance token for outbound WhatsApp messages.'),
-  "zapiClientToken": zod.string().nullish().describe('Z-API client token (Security Token) for outbound WhatsApp messages.'),
+  "zapiInstanceId": zod.string().nullish().describe('Z-API instance ID for outbound WhatsApp messages (legacy).'),
+  "zapiToken": zod.string().nullish().describe('Z-API instance token for outbound WhatsApp messages (legacy).'),
+  "zapiClientToken": zod.string().nullish().describe('Z-API client token (Security Token) for outbound WhatsApp messages (legacy).'),
+  "metaPhoneNumberId": zod.string().nullish().describe('Meta WhatsApp Cloud API — Phone Number ID.'),
+  "metaWabaId": zod.string().nullish().describe('Meta WhatsApp Cloud API — WhatsApp Business Account ID.'),
+  "metaAccessToken": zod.string().nullish().describe('Meta WhatsApp Cloud API — System User permanent access token.'),
+  "metaVerifyToken": zod.string().nullish().describe('Meta WhatsApp Cloud API — custom verify token for webhook URL verification.'),
   "createdAt": zod.coerce.date(),
   "updatedAt": zod.coerce.date()
 })
@@ -505,9 +509,13 @@ export const GetAgentConfigResponse = zod.object({
   "instagramPageAccessToken": zod.string().nullish().describe('Long-lived Page Access Token for Instagram Graph API.'),
   "instagramPageId": zod.string().nullish().describe('Instagram Page ID used to send messages.'),
   "instagramUsername": zod.string().nullish().describe('Instagram username for display purposes.'),
-  "zapiInstanceId": zod.string().nullish().describe('Z-API instance ID for outbound WhatsApp messages.'),
-  "zapiToken": zod.string().nullish().describe('Z-API instance token for outbound WhatsApp messages.'),
-  "zapiClientToken": zod.string().nullish().describe('Z-API client token (Security Token) for outbound WhatsApp messages.'),
+  "zapiInstanceId": zod.string().nullish().describe('Z-API instance ID for outbound WhatsApp messages (legacy).'),
+  "zapiToken": zod.string().nullish().describe('Z-API instance token for outbound WhatsApp messages (legacy).'),
+  "zapiClientToken": zod.string().nullish().describe('Z-API client token (Security Token) for outbound WhatsApp messages (legacy).'),
+  "metaPhoneNumberId": zod.string().nullish().describe('Meta WhatsApp Cloud API — Phone Number ID.'),
+  "metaWabaId": zod.string().nullish().describe('Meta WhatsApp Cloud API — WhatsApp Business Account ID.'),
+  "metaAccessToken": zod.string().nullish().describe('Meta WhatsApp Cloud API — System User permanent access token.'),
+  "metaVerifyToken": zod.string().nullish().describe('Meta WhatsApp Cloud API — custom verify token for webhook URL verification.'),
   "createdAt": zod.coerce.date(),
   "updatedAt": zod.coerce.date()
 })
@@ -569,9 +577,13 @@ export const UpdateAgentConfigBody = zod.object({
   "instagramPageAccessToken": zod.string().nullish(),
   "instagramPageId": zod.string().nullish(),
   "instagramUsername": zod.string().nullish(),
-  "zapiInstanceId": zod.string().nullish().describe('Z-API instance ID for outbound WhatsApp messages.'),
-  "zapiToken": zod.string().nullish().describe('Z-API instance token for outbound WhatsApp messages.'),
-  "zapiClientToken": zod.string().nullish().describe('Z-API client token (Security Token) for outbound WhatsApp messages.')
+  "zapiInstanceId": zod.string().nullish().describe('Z-API instance ID for outbound WhatsApp messages (legacy).'),
+  "zapiToken": zod.string().nullish().describe('Z-API instance token for outbound WhatsApp messages (legacy).'),
+  "zapiClientToken": zod.string().nullish().describe('Z-API client token (Security Token) for outbound WhatsApp messages (legacy).'),
+  "metaPhoneNumberId": zod.string().nullish().describe('Meta WhatsApp Cloud API — Phone Number ID.'),
+  "metaWabaId": zod.string().nullish().describe('Meta WhatsApp Cloud API — WhatsApp Business Account ID.'),
+  "metaAccessToken": zod.string().nullish().describe('Meta WhatsApp Cloud API — System User permanent access token.'),
+  "metaVerifyToken": zod.string().nullish().describe('Meta WhatsApp Cloud API — custom verify token for webhook URL verification.')
 })
 
 export const updateAgentConfigResponseAgentsSdrEnabledDefault = false;
@@ -631,9 +643,13 @@ export const UpdateAgentConfigResponse = zod.object({
   "instagramPageAccessToken": zod.string().nullish().describe('Long-lived Page Access Token for Instagram Graph API.'),
   "instagramPageId": zod.string().nullish().describe('Instagram Page ID used to send messages.'),
   "instagramUsername": zod.string().nullish().describe('Instagram username for display purposes.'),
-  "zapiInstanceId": zod.string().nullish().describe('Z-API instance ID for outbound WhatsApp messages.'),
-  "zapiToken": zod.string().nullish().describe('Z-API instance token for outbound WhatsApp messages.'),
-  "zapiClientToken": zod.string().nullish().describe('Z-API client token (Security Token) for outbound WhatsApp messages.'),
+  "zapiInstanceId": zod.string().nullish().describe('Z-API instance ID for outbound WhatsApp messages (legacy).'),
+  "zapiToken": zod.string().nullish().describe('Z-API instance token for outbound WhatsApp messages (legacy).'),
+  "zapiClientToken": zod.string().nullish().describe('Z-API client token (Security Token) for outbound WhatsApp messages (legacy).'),
+  "metaPhoneNumberId": zod.string().nullish().describe('Meta WhatsApp Cloud API — Phone Number ID.'),
+  "metaWabaId": zod.string().nullish().describe('Meta WhatsApp Cloud API — WhatsApp Business Account ID.'),
+  "metaAccessToken": zod.string().nullish().describe('Meta WhatsApp Cloud API — System User permanent access token.'),
+  "metaVerifyToken": zod.string().nullish().describe('Meta WhatsApp Cloud API — custom verify token for webhook URL verification.'),
   "createdAt": zod.coerce.date(),
   "updatedAt": zod.coerce.date()
 })
@@ -720,9 +736,13 @@ export const IncrementMessagesResponse = zod.object({
   "instagramPageAccessToken": zod.string().nullish().describe('Long-lived Page Access Token for Instagram Graph API.'),
   "instagramPageId": zod.string().nullish().describe('Instagram Page ID used to send messages.'),
   "instagramUsername": zod.string().nullish().describe('Instagram username for display purposes.'),
-  "zapiInstanceId": zod.string().nullish().describe('Z-API instance ID for outbound WhatsApp messages.'),
-  "zapiToken": zod.string().nullish().describe('Z-API instance token for outbound WhatsApp messages.'),
-  "zapiClientToken": zod.string().nullish().describe('Z-API client token (Security Token) for outbound WhatsApp messages.'),
+  "zapiInstanceId": zod.string().nullish().describe('Z-API instance ID for outbound WhatsApp messages (legacy).'),
+  "zapiToken": zod.string().nullish().describe('Z-API instance token for outbound WhatsApp messages (legacy).'),
+  "zapiClientToken": zod.string().nullish().describe('Z-API client token (Security Token) for outbound WhatsApp messages (legacy).'),
+  "metaPhoneNumberId": zod.string().nullish().describe('Meta WhatsApp Cloud API — Phone Number ID.'),
+  "metaWabaId": zod.string().nullish().describe('Meta WhatsApp Cloud API — WhatsApp Business Account ID.'),
+  "metaAccessToken": zod.string().nullish().describe('Meta WhatsApp Cloud API — System User permanent access token.'),
+  "metaVerifyToken": zod.string().nullish().describe('Meta WhatsApp Cloud API — custom verify token for webhook URL verification.'),
   "createdAt": zod.coerce.date(),
   "updatedAt": zod.coerce.date()
 })
@@ -801,9 +821,13 @@ export const IncrementTokensResponse = zod.object({
   "instagramPageAccessToken": zod.string().nullish().describe('Long-lived Page Access Token for Instagram Graph API.'),
   "instagramPageId": zod.string().nullish().describe('Instagram Page ID used to send messages.'),
   "instagramUsername": zod.string().nullish().describe('Instagram username for display purposes.'),
-  "zapiInstanceId": zod.string().nullish().describe('Z-API instance ID for outbound WhatsApp messages.'),
-  "zapiToken": zod.string().nullish().describe('Z-API instance token for outbound WhatsApp messages.'),
-  "zapiClientToken": zod.string().nullish().describe('Z-API client token (Security Token) for outbound WhatsApp messages.'),
+  "zapiInstanceId": zod.string().nullish().describe('Z-API instance ID for outbound WhatsApp messages (legacy).'),
+  "zapiToken": zod.string().nullish().describe('Z-API instance token for outbound WhatsApp messages (legacy).'),
+  "zapiClientToken": zod.string().nullish().describe('Z-API client token (Security Token) for outbound WhatsApp messages (legacy).'),
+  "metaPhoneNumberId": zod.string().nullish().describe('Meta WhatsApp Cloud API — Phone Number ID.'),
+  "metaWabaId": zod.string().nullish().describe('Meta WhatsApp Cloud API — WhatsApp Business Account ID.'),
+  "metaAccessToken": zod.string().nullish().describe('Meta WhatsApp Cloud API — System User permanent access token.'),
+  "metaVerifyToken": zod.string().nullish().describe('Meta WhatsApp Cloud API — custom verify token for webhook URL verification.'),
   "createdAt": zod.coerce.date(),
   "updatedAt": zod.coerce.date()
 })
@@ -900,9 +924,13 @@ export const RegenerateWebhookSecretResponse = zod.object({
   "instagramPageAccessToken": zod.string().nullish().describe('Long-lived Page Access Token for Instagram Graph API.'),
   "instagramPageId": zod.string().nullish().describe('Instagram Page ID used to send messages.'),
   "instagramUsername": zod.string().nullish().describe('Instagram username for display purposes.'),
-  "zapiInstanceId": zod.string().nullish().describe('Z-API instance ID for outbound WhatsApp messages.'),
-  "zapiToken": zod.string().nullish().describe('Z-API instance token for outbound WhatsApp messages.'),
-  "zapiClientToken": zod.string().nullish().describe('Z-API client token (Security Token) for outbound WhatsApp messages.'),
+  "zapiInstanceId": zod.string().nullish().describe('Z-API instance ID for outbound WhatsApp messages (legacy).'),
+  "zapiToken": zod.string().nullish().describe('Z-API instance token for outbound WhatsApp messages (legacy).'),
+  "zapiClientToken": zod.string().nullish().describe('Z-API client token (Security Token) for outbound WhatsApp messages (legacy).'),
+  "metaPhoneNumberId": zod.string().nullish().describe('Meta WhatsApp Cloud API — Phone Number ID.'),
+  "metaWabaId": zod.string().nullish().describe('Meta WhatsApp Cloud API — WhatsApp Business Account ID.'),
+  "metaAccessToken": zod.string().nullish().describe('Meta WhatsApp Cloud API — System User permanent access token.'),
+  "metaVerifyToken": zod.string().nullish().describe('Meta WhatsApp Cloud API — custom verify token for webhook URL verification.'),
   "createdAt": zod.coerce.date(),
   "updatedAt": zod.coerce.date()
 })
@@ -973,9 +1001,13 @@ export const CompleteAgentConfigSetupResponse = zod.object({
   "instagramPageAccessToken": zod.string().nullish().describe('Long-lived Page Access Token for Instagram Graph API.'),
   "instagramPageId": zod.string().nullish().describe('Instagram Page ID used to send messages.'),
   "instagramUsername": zod.string().nullish().describe('Instagram username for display purposes.'),
-  "zapiInstanceId": zod.string().nullish().describe('Z-API instance ID for outbound WhatsApp messages.'),
-  "zapiToken": zod.string().nullish().describe('Z-API instance token for outbound WhatsApp messages.'),
-  "zapiClientToken": zod.string().nullish().describe('Z-API client token (Security Token) for outbound WhatsApp messages.'),
+  "zapiInstanceId": zod.string().nullish().describe('Z-API instance ID for outbound WhatsApp messages (legacy).'),
+  "zapiToken": zod.string().nullish().describe('Z-API instance token for outbound WhatsApp messages (legacy).'),
+  "zapiClientToken": zod.string().nullish().describe('Z-API client token (Security Token) for outbound WhatsApp messages (legacy).'),
+  "metaPhoneNumberId": zod.string().nullish().describe('Meta WhatsApp Cloud API — Phone Number ID.'),
+  "metaWabaId": zod.string().nullish().describe('Meta WhatsApp Cloud API — WhatsApp Business Account ID.'),
+  "metaAccessToken": zod.string().nullish().describe('Meta WhatsApp Cloud API — System User permanent access token.'),
+  "metaVerifyToken": zod.string().nullish().describe('Meta WhatsApp Cloud API — custom verify token for webhook URL verification.'),
   "createdAt": zod.coerce.date(),
   "updatedAt": zod.coerce.date()
 })

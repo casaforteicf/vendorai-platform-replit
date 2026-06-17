@@ -19,10 +19,18 @@ export interface UpdateAgentConfigBody {
   instagramPageAccessToken?: string | null;
   instagramPageId?: string | null;
   instagramUsername?: string | null;
-  /** Z-API instance ID for outbound WhatsApp messages. */
+  /** Z-API instance ID for outbound WhatsApp messages (legacy). */
   zapiInstanceId?: string | null;
-  /** Z-API instance token for outbound WhatsApp messages. */
+  /** Z-API instance token for outbound WhatsApp messages (legacy). */
   zapiToken?: string | null;
-  /** Z-API client token (Security Token) for outbound WhatsApp messages. */
+  /** Z-API client token (Security Token) for outbound WhatsApp messages (legacy). */
   zapiClientToken?: string | null;
+  /** Meta WhatsApp Cloud API — Phone Number ID. */
+  metaPhoneNumberId?: string | null;
+  /** Meta WhatsApp Cloud API — WhatsApp Business Account ID. */
+  metaWabaId?: string | null;
+  /** Meta WhatsApp Cloud API — System User permanent access token. */
+  metaAccessToken?: string | null;
+  /** Meta WhatsApp Cloud API — custom verify token for webhook URL verification. */
+  metaVerifyToken?: string | null;
 }

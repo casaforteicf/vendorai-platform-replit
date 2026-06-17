@@ -51,7 +51,7 @@ export class InstagramScopedIdMissingError extends Error {
 export class WhatsAppNotConnectedError extends Error {
   readonly statusCode = 422;
   constructor() {
-    super("WhatsApp não conectado. Configure as credenciais Z-API em Configurações > Integrações.");
+    super("WhatsApp não conectado. Configure as credenciais Meta WhatsApp Cloud API em Configurações > Integrações.");
     this.name = "WhatsAppNotConnectedError";
   }
 }
@@ -101,6 +101,44 @@ function normalizePhoneBR(raw: string): string {
   return "55" + digits;
 }
 
+async function sendMetaWhatsAppMessage(
+  phoneNumberId: string,
+  accessToken: string,
+  phone: string,
+  message: string,
+  log: Logger,
+  isAiResponse = false
+): Promise<void> {
+  if (isAiResponse) await simulateTypingDelay(message, log);
+
+  // Meta requires international digits only, no "+"
+  const normalizedPhone = phone.replace(/\D/g, "").replace(/^0+/, "");
+  const url = `https://graph.facebook.com/v20.0/${phoneNumberId}/messages`;
+
+  const res = await fetch(url, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${accessToken}`,
+    },
+    body: JSON.stringify({
+      messaging_product: "whatsapp",
+      to: normalizedPhone,
+      type: "text",
+      text: { body: message },
+    }),
+  });
+
+  const body = await res.json().catch(() => ({})) as Record<string, unknown>;
+  if (!res.ok) {
+    log.error({ body, phone }, "omnichannel: meta send failed");
+    throw new Error(`Meta WhatsApp API error ${res.status}: ${JSON.stringify(body)}`);
+  }
+
+  const metaMessageId = (body.messages as Array<{ id: string }>)?.[0]?.id;
+  log.info({ phone, metaMessageId }, "omnichannel: whatsapp message sent via meta cloud api");
+}
+
 export async function sendDirectWhatsAppMessage(
   tenantId: string,
   phone: string,
@@ -109,6 +147,8 @@ export async function sendDirectWhatsAppMessage(
 ): Promise<void> {
   const [config] = await db
     .select({
+      metaPhoneNumberId: agentConfigsTable.metaPhoneNumberId,
+      metaAccessToken: agentConfigsTable.metaAccessToken,
       zapiInstanceId: agentConfigsTable.zapiInstanceId,
       zapiToken: agentConfigsTable.zapiToken,
       zapiClientToken: agentConfigsTable.zapiClientToken,
@@ -117,18 +157,14 @@ export async function sendDirectWhatsAppMessage(
     .where(eq(agentConfigsTable.tenantId, tenantId))
     .limit(1);
 
-  if (!config?.zapiInstanceId || !config?.zapiToken || !config?.zapiClientToken) {
+  // Prefer Meta Cloud API; fall back to Z-API if still configured
+  if (config?.metaPhoneNumberId && config?.metaAccessToken) {
+    await sendMetaWhatsAppMessage(config.metaPhoneNumberId, config.metaAccessToken, phone, message, log);
+  } else if (config?.zapiInstanceId && config?.zapiToken && config?.zapiClientToken) {
+    await sendZapiWhatsAppMessage(config.zapiInstanceId, config.zapiToken, config.zapiClientToken, phone, message, log);
+  } else {
     throw new WhatsAppNotConnectedError();
   }
-
-  await sendZapiWhatsAppMessage(
-    config.zapiInstanceId,
-    config.zapiToken,
-    config.zapiClientToken,
-    phone,
-    message,
-    log
-  );
 }
 
 // ── Anti-ban: typing delay ────────────────────────────────────────────────────
@@ -200,10 +236,12 @@ export async function sendOutgoingMessage(
 
   if (!lead) throw new LeadNotFoundError(leadId);
 
-  // ── 2. WhatsApp: validate Z-API credentials + actually send ───────────────
+  // ── 2. WhatsApp: validate credentials + actually send ─────────────────────
   if (canal === "whatsapp") {
     const [config] = await db
       .select({
+        metaPhoneNumberId: agentConfigsTable.metaPhoneNumberId,
+        metaAccessToken: agentConfigsTable.metaAccessToken,
         zapiInstanceId: agentConfigsTable.zapiInstanceId,
         zapiToken: agentConfigsTable.zapiToken,
         zapiClientToken: agentConfigsTable.zapiClientToken,
@@ -212,24 +250,33 @@ export async function sendOutgoingMessage(
       .where(eq(agentConfigsTable.tenantId, tenantId))
       .limit(1);
 
-    if (!config?.zapiInstanceId || !config?.zapiToken || !config?.zapiClientToken) {
-      throw new WhatsAppNotConnectedError();
-    }
-
     if (!lead.telefone) {
       throw new WhatsAppPhoneMissingError(leadId);
     }
 
     // agentName definido = resposta do IA → aplica typing delay anti-ban
-    await sendZapiWhatsAppMessage(
-      config.zapiInstanceId,
-      config.zapiToken,
-      config.zapiClientToken,
-      lead.telefone,
-      conteudo,
-      log,
-      !!agentName
-    );
+    if (config?.metaPhoneNumberId && config?.metaAccessToken) {
+      await sendMetaWhatsAppMessage(
+        config.metaPhoneNumberId,
+        config.metaAccessToken,
+        lead.telefone,
+        conteudo,
+        log,
+        !!agentName
+      );
+    } else if (config?.zapiInstanceId && config?.zapiToken && config?.zapiClientToken) {
+      await sendZapiWhatsAppMessage(
+        config.zapiInstanceId,
+        config.zapiToken,
+        config.zapiClientToken,
+        lead.telefone,
+        conteudo,
+        log,
+        !!agentName
+      );
+    } else {
+      throw new WhatsAppNotConnectedError();
+    }
   }
 
   // ── 3. Instagram: validate credentials + actually send ─────────────────────

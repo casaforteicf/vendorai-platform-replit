@@ -9353,15 +9353,31 @@ components:
         zapiInstanceId:
           type: string
           nullable: true
-          description: Z-API instance ID for outbound WhatsApp messages.
+          description: Z-API instance ID for outbound WhatsApp messages (legacy).
         zapiToken:
           type: string
           nullable: true
-          description: Z-API instance token for outbound WhatsApp messages.
+          description: Z-API instance token for outbound WhatsApp messages (legacy).
         zapiClientToken:
           type: string
           nullable: true
-          description: Z-API client token (Security Token) for outbound WhatsApp messages.
+          description: Z-API client token (Security Token) for outbound WhatsApp messages (legacy).
+        metaPhoneNumberId:
+          type: string
+          nullable: true
+          description: Meta WhatsApp Cloud API — Phone Number ID.
+        metaWabaId:
+          type: string
+          nullable: true
+          description: Meta WhatsApp Cloud API — WhatsApp Business Account ID.
+        metaAccessToken:
+          type: string
+          nullable: true
+          description: Meta WhatsApp Cloud API — System User permanent access token.
+        metaVerifyToken:
+          type: string
+          nullable: true
+          description: Meta WhatsApp Cloud API — custom verify token for webhook URL verification.
         createdAt:
           type: string
           format: date-time
@@ -9438,15 +9454,31 @@ components:
         zapiInstanceId:
           type: string
           nullable: true
-          description: Z-API instance ID for outbound WhatsApp messages.
+          description: Z-API instance ID for outbound WhatsApp messages (legacy).
         zapiToken:
           type: string
           nullable: true
-          description: Z-API instance token for outbound WhatsApp messages.
+          description: Z-API instance token for outbound WhatsApp messages (legacy).
         zapiClientToken:
           type: string
           nullable: true
-          description: Z-API client token (Security Token) for outbound WhatsApp messages.
+          description: Z-API client token (Security Token) for outbound WhatsApp messages (legacy).
+        metaPhoneNumberId:
+          type: string
+          nullable: true
+          description: Meta WhatsApp Cloud API — Phone Number ID.
+        metaWabaId:
+          type: string
+          nullable: true
+          description: Meta WhatsApp Cloud API — WhatsApp Business Account ID.
+        metaAccessToken:
+          type: string
+          nullable: true
+          description: Meta WhatsApp Cloud API — System User permanent access token.
+        metaVerifyToken:
+          type: string
+          nullable: true
+          description: Meta WhatsApp Cloud API — custom verify token for webhook URL verification.
 
     Product:
       type: object

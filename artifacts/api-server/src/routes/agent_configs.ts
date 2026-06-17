@@ -315,6 +315,52 @@ router.delete("/agent-configs/:id", async (req, res) => {
   res.status(204).send();
 });
 
+// ── GET /agent-configs/:id/meta-status ───────────────────────────────────────
+router.get("/agent-configs/:id/meta-status", async (req, res) => {
+  const [config] = await db
+    .select({
+      id: agentConfigsTable.id,
+      tenantId: agentConfigsTable.tenantId,
+      metaPhoneNumberId: agentConfigsTable.metaPhoneNumberId,
+      metaAccessToken: agentConfigsTable.metaAccessToken,
+    })
+    .from(agentConfigsTable)
+    .where(eq(agentConfigsTable.id, String(req.params.id)));
+
+  if (!config) {
+    return res.status(404).json({ error: "Agent config not found" });
+  }
+
+  if (req.user?.platformRole !== "super_admin" && config.tenantId !== req.user?.tenantId) {
+    return res.status(403).json({ error: "Access denied" });
+  }
+
+  if (!config.metaPhoneNumberId || !config.metaAccessToken) {
+    return res.json({ configured: false, verified: false });
+  }
+
+  try {
+    const metaRes = await fetch(
+      `https://graph.facebook.com/v20.0/${config.metaPhoneNumberId}?fields=id,display_phone_number,verified_name,quality_rating`,
+      { headers: { Authorization: `Bearer ${config.metaAccessToken}` } }
+    );
+    const data = await metaRes.json().catch(() => ({})) as Record<string, string>;
+    if (!metaRes.ok) {
+      return res.json({ configured: true, verified: false, error: `Meta API ${metaRes.status}`, details: data });
+    }
+    return res.json({
+      configured: true,
+      verified: true,
+      displayPhoneNumber: data["display_phone_number"] ?? null,
+      verifiedName: data["verified_name"] ?? null,
+      qualityRating: data["quality_rating"] ?? null,
+    });
+  } catch (err) {
+    req.log.warn({ err }, "meta-status check failed");
+    return res.json({ configured: true, verified: false, error: "fetch failed" });
+  }
+});
+
 // ── POST /agent-configs/:id/zapi-setup-webhook ────────────────────────────────
 // Registers the VendorAI Z-API native webhook URL in the Z-API instance so
 // incoming messages are forwarded automatically.

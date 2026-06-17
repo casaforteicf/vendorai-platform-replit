@@ -70,7 +70,7 @@ function useSiteGenerator(tenantId: string, token: string | null) {
   const [history, setHistory] = useState<Array<{ role: "user" | "assistant"; content: string }>>([]);
   const [error, setError] = useState<string | null>(null);
 
-  const authHeaders = token
+  const authHeaders: Record<string, string> = token
     ? { "Content-Type": "application/json", Authorization: `Bearer ${token}` }
     : { "Content-Type": "application/json" };
 

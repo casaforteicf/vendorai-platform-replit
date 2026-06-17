@@ -144,10 +144,10 @@ router.post("/tenants/:tenantId/supermercado/sync-produtos", async (req, res) =>
 
     if (!erpRes.ok) throw new Error(`ERP respondeu ${erpRes.status}`);
 
-    const produtos: Array<{
+    const produtos = (await erpRes.json()) as Array<{
       id: string; nome: string; preco: number; estoque: number;
       categoria?: string; descricao?: string; unidade?: string;
-    }> = await erpRes.json();
+    }>;
 
     for (const p of produtos) {
       try {

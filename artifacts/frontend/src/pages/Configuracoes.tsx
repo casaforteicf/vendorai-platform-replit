@@ -828,115 +828,98 @@ export default function Configuracoes() {
     setSyncedIntegration(true);
   }
 
-  // ── Z-API (WhatsApp outbound) connection state ────────────────────────────
-  const [zapiInstanceInput, setZapiInstanceInput] = useState<string>("");
-  const [zapiTokenInput, setZapiTokenInput] = useState<string>("");
-  const [zapiClientTokenInput, setZapiClientTokenInput] = useState<string>("");
-  const [zapiSaving, setZapiSaving] = useState(false);
-  const [syncedZapi, setSyncedZapi] = useState(false);
-  const [zapiStatusChecking, setZapiStatusChecking] = useState(false);
-  const [zapiStatus, setZapiStatus] = useState<{ connected: boolean; session: boolean } | null>(null);
-  const [zapiWebhookSetting, setZapiWebhookSetting] = useState(false);
-  const [zapiWebhookResult, setZapiWebhookResult] = useState<{ ok: boolean; webhookUrl?: string; error?: string } | null>(null);
+  // ── Meta WhatsApp Cloud API connection state ──────────────────────────────
+  const [metaPhoneNumberIdInput, setMetaPhoneNumberIdInput] = useState<string>("");
+  const [metaWabaIdInput, setMetaWabaIdInput] = useState<string>("");
+  const [metaAccessTokenInput, setMetaAccessTokenInput] = useState<string>("");
+  const [metaVerifyTokenInput, setMetaVerifyTokenInput] = useState<string>("");
+  const [metaSaving, setMetaSaving] = useState(false);
+  const [syncedMeta, setSyncedMeta] = useState(false);
+  const [metaStatusChecking, setMetaStatusChecking] = useState(false);
+  const [metaStatus, setMetaStatus] = useState<{
+    configured: boolean; verified: boolean;
+    displayPhoneNumber?: string; verifiedName?: string; qualityRating?: string; error?: string;
+  } | null>(null);
 
-  async function onSetupZapiWebhook() {
+  async function checkMetaStatus() {
     if (!agentQuery.data?.id) return;
-    setZapiWebhookSetting(true);
-    setZapiWebhookResult(null);
+    setMetaStatusChecking(true);
+    setMetaStatus(null);
     try {
-      const res = await fetch(`/api/agent-configs/${agentQuery.data.id}/zapi-setup-webhook`, {
-        method: "POST",
-        headers: { Authorization: `Bearer ${localStorage.getItem("vendorai_token")}` },
-      });
-      const data = await res.json() as { ok?: boolean; webhookUrl?: string; error?: string };
-      if (res.ok) {
-        setZapiWebhookResult({ ok: true, webhookUrl: data.webhookUrl });
-        toast({ title: "Webhook registrado! Mensagens do WhatsApp chegarão automaticamente." });
-      } else {
-        setZapiWebhookResult({ ok: false, error: data.error ?? "Erro desconhecido" });
-        toast({ title: data.error ?? "Erro ao registrar webhook", variant: "destructive" });
-      }
-    } catch {
-      setZapiWebhookResult({ ok: false, error: "Falha de conexão" });
-      toast({ title: "Falha ao conectar ao servidor", variant: "destructive" });
-    } finally {
-      setZapiWebhookSetting(false);
-    }
-  }
-
-  async function checkZapiStatus() {
-    if (!agentQuery.data?.id) return;
-    setZapiStatusChecking(true);
-    setZapiStatus(null);
-    try {
-      const res = await fetch(`/api/agent-configs/${agentQuery.data.id}/zapi-status`, {
+      const res = await fetch(`/api/agent-configs/${agentQuery.data.id}/meta-status`, {
         headers: { Authorization: `Bearer ${localStorage.getItem("vendorai_token")}` },
       });
       if (res.ok) {
-        const data = await res.json() as { connected: boolean; session: boolean };
-        setZapiStatus(data);
+        const data = await res.json() as typeof metaStatus;
+        setMetaStatus(data);
       }
     } catch {
       // ignore
     } finally {
-      setZapiStatusChecking(false);
+      setMetaStatusChecking(false);
     }
   }
-  if (agentQuery.data && !syncedZapi) {
-    setZapiInstanceInput(agentQuery.data.zapiInstanceId ?? "");
-    setZapiTokenInput(agentQuery.data.zapiToken ?? "");
-    setZapiClientTokenInput(agentQuery.data.zapiClientToken ?? "");
-    setSyncedZapi(true);
+
+  if (agentQuery.data && !syncedMeta) {
+    setMetaPhoneNumberIdInput(agentQuery.data.metaPhoneNumberId ?? "");
+    setMetaWabaIdInput(agentQuery.data.metaWabaId ?? "");
+    setMetaAccessTokenInput(agentQuery.data.metaAccessToken ?? "");
+    setMetaVerifyTokenInput(agentQuery.data.metaVerifyToken ?? "");
+    setSyncedMeta(true);
   }
 
-  function onSaveZapi() {
+  function onSaveMeta() {
     if (!agentQuery.data?.id) return;
-    setZapiSaving(true);
+    setMetaSaving(true);
     updateAgentConf.mutate(
       {
         id: agentQuery.data.id,
         data: {
-          zapiInstanceId: zapiInstanceInput.trim() || null,
-          zapiToken: zapiTokenInput.trim() || null,
-          zapiClientToken: zapiClientTokenInput.trim() || null,
+          metaPhoneNumberId: metaPhoneNumberIdInput.trim() || null,
+          metaWabaId: metaWabaIdInput.trim() || null,
+          metaAccessToken: metaAccessTokenInput.trim() || null,
+          metaVerifyToken: metaVerifyTokenInput.trim() || null,
         },
       },
       {
         onSuccess: (updated) => {
           queryClient.setQueryData(getGetAgentConfigByTenantQueryKey(tenantId ?? ""), updated);
-          setSyncedZapi(false);
-          setZapiSaving(false);
-          toast({ title: "Conexão Z-API salva com sucesso." });
+          setSyncedMeta(false);
+          setMetaSaving(false);
+          setMetaStatus(null);
+          toast({ title: "Credenciais Meta WhatsApp salvas com sucesso." });
         },
         onError: () => {
-          setZapiSaving(false);
-          toast({ title: "Erro ao salvar Z-API.", variant: "destructive" });
+          setMetaSaving(false);
+          toast({ title: "Erro ao salvar credenciais Meta.", variant: "destructive" });
         },
       }
     );
   }
 
-  function onDisconnectZapi() {
+  function onDisconnectMeta() {
     if (!agentQuery.data?.id) return;
-    setZapiSaving(true);
+    setMetaSaving(true);
     updateAgentConf.mutate(
       {
         id: agentQuery.data.id,
-        data: { zapiInstanceId: null, zapiToken: null, zapiClientToken: null },
+        data: { metaPhoneNumberId: null, metaWabaId: null, metaAccessToken: null, metaVerifyToken: null },
       },
       {
         onSuccess: (updated) => {
           queryClient.setQueryData(getGetAgentConfigByTenantQueryKey(tenantId ?? ""), updated);
-          setZapiInstanceInput("");
-          setZapiTokenInput("");
-          setZapiClientTokenInput("");
-          setSyncedZapi(false);
-          setZapiSaving(false);
-          toast({ title: "Z-API desconectado." });
+          setMetaPhoneNumberIdInput("");
+          setMetaWabaIdInput("");
+          setMetaAccessTokenInput("");
+          setMetaVerifyTokenInput("");
+          setSyncedMeta(false);
+          setMetaSaving(false);
+          setMetaStatus(null);
+          toast({ title: "Meta WhatsApp desconectado." });
         },
         onError: () => {
-          setZapiSaving(false);
-          toast({ title: "Erro ao desconectar Z-API.", variant: "destructive" });
+          setMetaSaving(false);
+          toast({ title: "Erro ao desconectar Meta WhatsApp.", variant: "destructive" });
         },
       }
     );
@@ -1912,37 +1895,38 @@ Body:
               </div>
             </div>
 
-            {/* Z-API — WhatsApp outbound */}
+            {/* Meta WhatsApp Cloud API */}
             <div className="rounded-xl border bg-card p-6 space-y-5">
               <div className="flex items-start justify-between gap-4">
                 <div>
                   <h2 className="font-semibold text-base flex items-center gap-2">
                     <MessageCircle className="h-4 w-4 text-green-500" />
-                    WhatsApp — Z-API (envio de mensagens)
+                    WhatsApp — Meta Cloud API (oficial)
                   </h2>
                   <p className="text-sm text-muted-foreground mt-1">
-                    Configure as credenciais da Z-API para que os agentes e ações manuais consigam
-                    enviar mensagens diretamente pelo WhatsApp. Encontre as credenciais em{" "}
-                    <strong>app.z-api.io → sua instância → Tokens</strong>.
+                    Integração oficial da Meta. Obtenha as credenciais em{" "}
+                    <strong>developers.facebook.com → seu app → WhatsApp → Configuração da API</strong>.
+                    Não requer instância ativa no celular.
                   </p>
                 </div>
-                {agentQuery.data?.zapiInstanceId && agentQuery.data?.zapiToken && agentQuery.data?.zapiClientToken && (
+                {agentQuery.data?.metaPhoneNumberId && agentQuery.data?.metaAccessToken && (
                   <div className="shrink-0 flex items-center gap-2">
-                    {zapiStatus === null ? (
+                    {metaStatus === null ? (
                       <button
-                        onClick={checkZapiStatus}
-                        disabled={zapiStatusChecking}
+                        onClick={checkMetaStatus}
+                        disabled={metaStatusChecking}
                         className="inline-flex items-center gap-1.5 text-xs font-medium bg-muted text-muted-foreground hover:bg-muted/80 px-2.5 py-1 rounded-full cursor-pointer border border-border transition-colors"
                       >
-                        {zapiStatusChecking ? "Verificando…" : "Testar conexão"}
+                        {metaStatusChecking ? "Verificando…" : "Testar conexão"}
                       </button>
-                    ) : zapiStatus.connected ? (
+                    ) : metaStatus?.verified ? (
                       <span className="inline-flex items-center gap-1.5 text-xs font-medium bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400 px-2.5 py-1 rounded-full">
-                        <CheckCircle2 className="h-3 w-3" /> WhatsApp ativo
+                        <CheckCircle2 className="h-3 w-3" />
+                        {metaStatus.displayPhoneNumber ?? "Verificado"}
                       </span>
                     ) : (
                       <span className="inline-flex items-center gap-1.5 text-xs font-medium bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400 px-2.5 py-1 rounded-full">
-                        <AlertTriangle className="h-3 w-3" /> Sessão expirada
+                        <AlertTriangle className="h-3 w-3" /> Credenciais inválidas
                       </span>
                     )}
                   </div>
@@ -1959,56 +1943,68 @@ Body:
                 <div className="space-y-4">
                   <div className="grid grid-cols-2 gap-3">
                     <div className="space-y-1.5">
-                      <label className="text-sm font-medium">Instance ID</label>
+                      <label className="text-sm font-medium">Phone Number ID</label>
                       <Input
-                        placeholder="xxxxxxxxxxxxxxxxxxxxxxxx"
-                        value={zapiInstanceInput}
-                        onChange={(e) => setZapiInstanceInput(e.target.value)}
+                        placeholder="123456789012345"
+                        value={metaPhoneNumberIdInput}
+                        onChange={(e) => setMetaPhoneNumberIdInput(e.target.value)}
                         className="font-mono text-sm"
                       />
-                      <p className="text-xs text-muted-foreground">ID da instância Z-API.</p>
+                      <p className="text-xs text-muted-foreground">ID do número no Meta Business Manager.</p>
                     </div>
                     <div className="space-y-1.5">
-                      <label className="text-sm font-medium">Token da instância</label>
+                      <label className="text-sm font-medium">WABA ID (opcional)</label>
                       <Input
-                        type="password"
-                        placeholder="xxxxxxxxxxxxxxxxxxxxxxxx"
-                        value={zapiTokenInput}
-                        onChange={(e) => setZapiTokenInput(e.target.value)}
+                        placeholder="123456789012345"
+                        value={metaWabaIdInput}
+                        onChange={(e) => setMetaWabaIdInput(e.target.value)}
                         className="font-mono text-sm"
                       />
-                      <p className="text-xs text-muted-foreground">Token gerado pela instância.</p>
+                      <p className="text-xs text-muted-foreground">WhatsApp Business Account ID.</p>
                     </div>
                   </div>
 
                   <div className="space-y-1.5">
-                    <label className="text-sm font-medium">Client Token (Security Token)</label>
+                    <label className="text-sm font-medium">Access Token (System User Token)</label>
                     <Input
                       type="password"
-                      placeholder="Fxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
-                      value={zapiClientTokenInput}
-                      onChange={(e) => setZapiClientTokenInput(e.target.value)}
+                      placeholder="EAAxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+                      value={metaAccessTokenInput}
+                      onChange={(e) => setMetaAccessTokenInput(e.target.value)}
                       className="font-mono text-sm"
                     />
                     <p className="text-xs text-muted-foreground">
-                      Security Token da sua conta Z-API — encontrado em <strong>Conta → Security Token</strong>.
+                      Token permanente de usuário do sistema — em <strong>Meta Business Suite → Configurações → Usuários do sistema</strong>.
+                    </p>
+                  </div>
+
+                  <div className="space-y-1.5">
+                    <label className="text-sm font-medium">Verify Token (webhook)</label>
+                    <Input
+                      placeholder="meu-token-secreto"
+                      value={metaVerifyTokenInput}
+                      onChange={(e) => setMetaVerifyTokenInput(e.target.value)}
+                      className="font-mono text-sm"
+                    />
+                    <p className="text-xs text-muted-foreground">
+                      Token livre escolhido por você — usado para verificar o webhook no painel Meta.
                     </p>
                   </div>
 
                   <div className="flex items-center gap-3">
                     <Button
-                      onClick={onSaveZapi}
-                      disabled={zapiSaving || !agentQuery.data?.id || !zapiInstanceInput.trim() || !zapiTokenInput.trim() || !zapiClientTokenInput.trim()}
+                      onClick={onSaveMeta}
+                      disabled={metaSaving || !agentQuery.data?.id || !metaPhoneNumberIdInput.trim() || !metaAccessTokenInput.trim()}
                       className="gap-2"
                     >
                       <Save className="h-4 w-4" />
-                      {zapiSaving ? "Salvando…" : agentQuery.data?.zapiInstanceId ? "Atualizar conexão" : "Conectar Z-API"}
+                      {metaSaving ? "Salvando…" : agentQuery.data?.metaPhoneNumberId ? "Atualizar credenciais" : "Conectar Meta WhatsApp"}
                     </Button>
-                    {agentQuery.data?.zapiInstanceId && (
+                    {agentQuery.data?.metaPhoneNumberId && (
                       <Button
                         variant="outline"
-                        onClick={onDisconnectZapi}
-                        disabled={zapiSaving}
+                        onClick={onDisconnectMeta}
+                        disabled={metaSaving}
                         className="gap-2 text-destructive hover:text-destructive"
                       >
                         <Trash2 className="h-4 w-4" />
@@ -2017,72 +2013,87 @@ Body:
                     )}
                   </div>
 
-                  {!agentQuery.data?.zapiInstanceId && (
+                  {!agentQuery.data?.metaPhoneNumberId && (
                     <div className="rounded-lg bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 p-3">
                       <p className="text-xs text-amber-700 dark:text-amber-400 flex items-start gap-2">
                         <AlertTriangle className="h-3.5 w-3.5 shrink-0 mt-0.5" />
-                        Sem a Z-API configurada, mensagens WhatsApp enviadas pelos agentes ficam salvas
+                        Sem a Meta Cloud API configurada, mensagens WhatsApp dos agentes ficam salvas
                         no sistema mas <strong>não chegam ao destinatário</strong>.
                       </p>
                     </div>
                   )}
 
-                  {/* Recebimento de mensagens (webhook Z-API nativo) */}
-                  {agentQuery.data?.zapiInstanceId && (
+                  {/* Webhook de entrada — instruções Meta */}
+                  {agentQuery.data?.metaPhoneNumberId && (
                     <div className="rounded-lg border bg-muted/30 p-4 space-y-3">
-                      <div className="flex items-start justify-between gap-3">
-                        <div>
-                          <p className="text-sm font-semibold flex items-center gap-1.5">
-                            <span className="text-base">📥</span>
-                            Recebimento de mensagens (entrada)
-                          </p>
-                          <p className="text-xs text-muted-foreground mt-0.5">
-                            Registra automaticamente o webhook no Z-API para que respostas dos clientes
-                            cheguem ao VendorAI e disparem o agente de IA.
-                          </p>
+                      <p className="text-sm font-semibold flex items-center gap-1.5">
+                        <span className="text-base">📥</span>
+                        Webhook de entrada (receber mensagens)
+                      </p>
+                      <p className="text-xs text-muted-foreground">
+                        No painel Meta Developers, vá em <strong>WhatsApp → Configuração</strong> e
+                        configure o webhook com a URL e o Verify Token abaixo.
+                      </p>
+                      <div className="space-y-2">
+                        <div className="space-y-1">
+                          <p className="text-xs text-muted-foreground font-medium">URL do webhook:</p>
+                          <div className="flex gap-2 items-center">
+                            <code className="flex-1 text-xs break-all bg-muted border rounded px-2 py-1.5 text-foreground/80">
+                              {`https://${window.location.hostname}/api/webhooks/meta/whatsapp`}
+                            </code>
+                            <Button
+                              variant="outline"
+                              size="icon"
+                              className="shrink-0 h-7 w-7"
+                              onClick={() => {
+                                navigator.clipboard.writeText(`https://${window.location.hostname}/api/webhooks/meta/whatsapp`);
+                                toast({ title: "URL copiada." });
+                              }}
+                            >
+                              <Copy className="h-3 w-3" />
+                            </Button>
+                          </div>
                         </div>
-                        {zapiWebhookResult?.ok && (
-                          <span className="shrink-0 inline-flex items-center gap-1.5 text-xs font-medium bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400 px-2.5 py-1 rounded-full">
-                            <CheckCircle2 className="h-3 w-3" /> Ativo
-                          </span>
-                        )}
-                      </div>
-
-                      {agentQuery.data?.webhookSecret ? (
-                        <>
-                          <Button
-                            size="sm"
-                            onClick={onSetupZapiWebhook}
-                            disabled={zapiWebhookSetting}
-                            className="gap-2 h-8 text-xs"
-                          >
-                            {zapiWebhookSetting
-                              ? <><Loader2 className="h-3 w-3 animate-spin" /> Registrando…</>
-                              : zapiWebhookResult?.ok
-                              ? <><RefreshCw className="h-3 w-3" /> Reativar webhook</>
-                              : "Ativar recebimento de mensagens"}
-                          </Button>
-
-                          {zapiWebhookResult?.ok && zapiWebhookResult.webhookUrl && (
-                            <div className="rounded-md bg-muted border p-2.5 space-y-1">
-                              <p className="text-xs text-muted-foreground font-medium">URL registrada no Z-API:</p>
-                              <code className="text-xs break-all text-foreground/80">{zapiWebhookResult.webhookUrl}</code>
+                        {agentQuery.data?.metaVerifyToken && (
+                          <div className="space-y-1">
+                            <p className="text-xs text-muted-foreground font-medium">Verify Token:</p>
+                            <div className="flex gap-2 items-center">
+                              <code className="flex-1 text-xs bg-muted border rounded px-2 py-1.5 text-foreground/80 font-mono">
+                                {agentQuery.data.metaVerifyToken}
+                              </code>
+                              <Button
+                                variant="outline"
+                                size="icon"
+                                className="shrink-0 h-7 w-7"
+                                onClick={() => {
+                                  navigator.clipboard.writeText(agentQuery.data?.metaVerifyToken ?? "");
+                                  toast({ title: "Verify Token copiado." });
+                                }}
+                              >
+                                <Copy className="h-3 w-3" />
+                              </Button>
                             </div>
-                          )}
-                          {zapiWebhookResult?.ok === false && (
-                            <p className="text-xs text-destructive flex items-center gap-1">
-                              <AlertTriangle className="h-3 w-3 shrink-0" />
-                              {zapiWebhookResult.error}
-                            </p>
-                          )}
-                        </>
-                      ) : (
-                        <p className="text-xs text-amber-600 dark:text-amber-400 flex items-start gap-1.5">
-                          <AlertTriangle className="h-3.5 w-3.5 shrink-0 mt-0.5" />
-                          Gere um Webhook Secret na seção acima antes de ativar o recebimento.
+                          </div>
+                        )}
+                        <p className="text-xs text-muted-foreground">
+                          Assine o campo <strong>messages</strong> no webhook para receber mensagens dos clientes.
                         </p>
-                      )}
+                      </div>
                     </div>
+                  )}
+
+                  {metaStatus?.verified && (
+                    <div className="rounded-lg bg-muted/30 border p-3 space-y-1">
+                      <p className="text-xs font-medium text-foreground/80">Número verificado pela Meta</p>
+                      {metaStatus.verifiedName && <p className="text-xs text-muted-foreground">Nome: <strong>{metaStatus.verifiedName}</strong></p>}
+                      {metaStatus.qualityRating && <p className="text-xs text-muted-foreground">Qualidade: <strong>{metaStatus.qualityRating}</strong></p>}
+                    </div>
+                  )}
+                  {metaStatus?.verified === false && metaStatus?.error && (
+                    <p className="text-xs text-destructive flex items-center gap-1">
+                      <AlertTriangle className="h-3 w-3 shrink-0" />
+                      {metaStatus.error}
+                    </p>
                   )}
                 </div>
               )}

@@ -40,7 +40,7 @@ router.get("/tenants/:tenantId/obras", async (req, res) => {
   if (req.query.status) filters.push(eq(obrasTable.status, req.query.status as string));
 
   const rows = await db.select().from(obrasTable).where(and(...filters)).orderBy(desc(obrasTable.createdAt));
-  res.json(rows);
+  return res.json(rows);
 });
 
 router.post("/tenants/:tenantId/obras", async (req, res) => {
@@ -49,7 +49,7 @@ router.post("/tenants/:tenantId/obras", async (req, res) => {
 
   const body = req.body as Record<string, unknown>;
   const [obra] = await db.insert(obrasTable).values({ ...body, tenantId: tid } as any).returning();
-  res.status(201).json(obra);
+  return res.status(201).json(obra);
 });
 
 router.get("/tenants/:tenantId/obras/:obraId", async (req, res) => {
@@ -66,7 +66,7 @@ router.get("/tenants/:tenantId/obras/:obraId", async (req, res) => {
     ? etapas.reduce((sum, e) => sum + parseFloat(e.percentualExecutado ?? "0"), 0) / totalEtapas
     : 0;
 
-  res.json({ ...obra, etapas, percentualGeral: Math.round(percentualGeral * 10) / 10 });
+  return res.json({ ...obra, etapas, percentualGeral: Math.round(percentualGeral * 10) / 10 });
 });
 
 router.put("/tenants/:tenantId/obras/:obraId", async (req, res) => {
@@ -78,7 +78,7 @@ router.put("/tenants/:tenantId/obras/:obraId", async (req, res) => {
     .where(and(eq(obrasTable.id, obraId), eq(obrasTable.tenantId, tid)))
     .returning();
   if (!obra) return res.status(404).json({ error: "Obra not found" });
-  res.json(obra);
+  return res.json(obra);
 });
 
 router.delete("/tenants/:tenantId/obras/:obraId", async (req, res) => {
@@ -86,7 +86,7 @@ router.delete("/tenants/:tenantId/obras/:obraId", async (req, res) => {
   if (!canAccessTenant(req, tid)) return res.status(403).json({ error: "Forbidden" });
 
   await db.delete(obrasTable).where(and(eq(obrasTable.id, obraId), eq(obrasTable.tenantId, tid)));
-  res.status(204).end();
+  return res.status(204).end();
 });
 
 // ─── Etapas ──────────────────────────────────────────────────────────────────
@@ -96,7 +96,7 @@ router.get("/tenants/:tenantId/obras/:obraId/etapas", async (req, res) => {
   if (!canAccessTenant(req, tid)) return res.status(403).json({ error: "Forbidden" });
 
   const rows = await db.select().from(obraEtapasTable).where(eq(obraEtapasTable.obraId, obraId)).orderBy(asc(obraEtapasTable.ordem));
-  res.json(rows);
+  return res.json(rows);
 });
 
 router.post("/tenants/:tenantId/obras/:obraId/etapas", async (req, res) => {
@@ -104,7 +104,7 @@ router.post("/tenants/:tenantId/obras/:obraId/etapas", async (req, res) => {
   if (!canAccessTenant(req, tid)) return res.status(403).json({ error: "Forbidden" });
 
   const [etapa] = await db.insert(obraEtapasTable).values({ ...req.body, obraId } as any).returning();
-  res.status(201).json(etapa);
+  return res.status(201).json(etapa);
 });
 
 router.put("/tenants/:tenantId/obras/:obraId/etapas/:etapaId", async (req, res) => {
@@ -116,7 +116,7 @@ router.put("/tenants/:tenantId/obras/:obraId/etapas/:etapaId", async (req, res) 
     .where(and(eq(obraEtapasTable.id, etapaId), eq(obraEtapasTable.obraId, obraId)))
     .returning();
   if (!etapa) return res.status(404).json({ error: "Etapa not found" });
-  res.json(etapa);
+  return res.json(etapa);
 });
 
 router.delete("/tenants/:tenantId/obras/:obraId/etapas/:etapaId", async (req, res) => {
@@ -124,7 +124,7 @@ router.delete("/tenants/:tenantId/obras/:obraId/etapas/:etapaId", async (req, re
   if (!canAccessTenant(req, tid)) return res.status(403).json({ error: "Forbidden" });
 
   await db.delete(obraEtapasTable).where(and(eq(obraEtapasTable.id, etapaId), eq(obraEtapasTable.obraId, obraId)));
-  res.status(204).end();
+  return res.status(204).end();
 });
 
 // ─── Medições ─────────────────────────────────────────────────────────────────
@@ -134,7 +134,7 @@ router.get("/tenants/:tenantId/obras/:obraId/etapas/:etapaId/medicoes", async (r
   if (!canAccessTenant(req, tid)) return res.status(403).json({ error: "Forbidden" });
 
   const rows = await db.select().from(obraEtapaMedicoesTable).where(eq(obraEtapaMedicoesTable.etapaId, etapaId)).orderBy(desc(obraEtapaMedicoesTable.createdAt));
-  res.json(rows);
+  return res.json(rows);
 });
 
 router.post("/tenants/:tenantId/obras/:obraId/etapas/:etapaId/medicoes", async (req, res) => {
@@ -158,7 +158,7 @@ router.post("/tenants/:tenantId/obras/:obraId/etapas/:etapaId/medicoes", async (
     .set({ percentualExecutado: percentualNovo, updatedAt: new Date() })
     .where(eq(obraEtapasTable.id, etapaId));
 
-  res.status(201).json(medicao);
+  return res.status(201).json(medicao);
 });
 
 // ─── Diário de Obra ───────────────────────────────────────────────────────────
@@ -168,7 +168,7 @@ router.get("/tenants/:tenantId/obras/:obraId/diario", async (req, res) => {
   if (!canAccessTenant(req, tid)) return res.status(403).json({ error: "Forbidden" });
 
   const rows = await db.select().from(obraDiarioTable).where(eq(obraDiarioTable.obraId, obraId)).orderBy(desc(obraDiarioTable.data));
-  res.json(rows);
+  return res.json(rows);
 });
 
 router.post("/tenants/:tenantId/obras/:obraId/diario", async (req, res) => {
@@ -180,7 +180,7 @@ router.post("/tenants/:tenantId/obras/:obraId/diario", async (req, res) => {
     obraId,
     responsavelId: (req as any).user?.id,
   } as any).returning();
-  res.status(201).json(entry);
+  return res.status(201).json(entry);
 });
 
 router.put("/tenants/:tenantId/obras/:obraId/diario/:diarioId", async (req, res) => {
@@ -198,7 +198,7 @@ router.put("/tenants/:tenantId/obras/:obraId/diario/:diarioId", async (req, res)
     .where(and(eq(obraDiarioTable.id, diarioId), eq(obraDiarioTable.obraId, obraId)))
     .returning();
   if (!entry) return res.status(404).json({ error: "Not found" });
-  res.json(entry);
+  return res.json(entry);
 });
 
 router.delete("/tenants/:tenantId/obras/:obraId/diario/:diarioId", async (req, res) => {
@@ -206,7 +206,7 @@ router.delete("/tenants/:tenantId/obras/:obraId/diario/:diarioId", async (req, r
   if (!canAccessTenant(req, tid)) return res.status(403).json({ error: "Forbidden" });
 
   await db.delete(obraDiarioTable).where(and(eq(obraDiarioTable.id, diarioId), eq(obraDiarioTable.obraId, obraId)));
-  res.status(204).end();
+  return res.status(204).end();
 });
 
 // ─── Estoque da Obra ──────────────────────────────────────────────────────────
@@ -228,7 +228,7 @@ router.get("/tenants/:tenantId/obras/:obraId/estoque", async (req, res) => {
     .from(estoqueObrasTable)
     .leftJoin(insumosTable, eq(estoqueObrasTable.insumoId, insumosTable.id))
     .where(eq(estoqueObrasTable.obraId, obraId));
-  res.json(rows);
+  return res.json(rows);
 });
 
 // ─── Compras da Obra ──────────────────────────────────────────────────────────
@@ -260,7 +260,7 @@ router.get("/tenants/:tenantId/obras/:obraId/compras", async (req, res) => {
     .leftJoin(insumosTable, eq(comprasObrasTable.insumoId, insumosTable.id))
     .where(and(eq(comprasObrasTable.tenantId, tid), eq(comprasObrasTable.obraId, obraId)))
     .orderBy(desc(comprasObrasTable.createdAt));
-  res.json(rows);
+  return res.json(rows);
 });
 
 router.post("/tenants/:tenantId/obras/:obraId/compras", async (req, res) => {
@@ -268,7 +268,7 @@ router.post("/tenants/:tenantId/obras/:obraId/compras", async (req, res) => {
   if (!canAccessTenant(req, tid)) return res.status(403).json({ error: "Forbidden" });
 
   const [compra] = await db.insert(comprasObrasTable).values({ ...req.body, tenantId: tid, obraId } as any).returning();
-  res.status(201).json(compra);
+  return res.status(201).json(compra);
 });
 
 router.put("/tenants/:tenantId/compras-obras/:compraId", async (req, res) => {
@@ -280,7 +280,7 @@ router.put("/tenants/:tenantId/compras-obras/:compraId", async (req, res) => {
     .where(and(eq(comprasObrasTable.id, compraId), eq(comprasObrasTable.tenantId, tid)))
     .returning();
   if (!compra) return res.status(404).json({ error: "Not found" });
-  res.json(compra);
+  return res.json(compra);
 });
 
 // ─── Insumos ──────────────────────────────────────────────────────────────────
@@ -294,7 +294,7 @@ router.get("/tenants/:tenantId/insumos", async (req, res) => {
   if (req.query.categoria) filters.push(eq(insumosTable.categoria, req.query.categoria as string));
 
   const rows = await db.select().from(insumosTable).where(and(...filters)).orderBy(asc(insumosTable.nome));
-  res.json(rows);
+  return res.json(rows);
 });
 
 router.post("/tenants/:tenantId/insumos", async (req, res) => {
@@ -302,7 +302,7 @@ router.post("/tenants/:tenantId/insumos", async (req, res) => {
   if (!canAccessTenant(req, tid)) return res.status(403).json({ error: "Forbidden" });
 
   const [insumo] = await db.insert(insumosTable).values({ ...req.body, tenantId: tid } as any).returning();
-  res.status(201).json(insumo);
+  return res.status(201).json(insumo);
 });
 
 router.put("/tenants/:tenantId/insumos/:insumoId", async (req, res) => {
@@ -314,7 +314,7 @@ router.put("/tenants/:tenantId/insumos/:insumoId", async (req, res) => {
     .where(and(eq(insumosTable.id, insumoId), eq(insumosTable.tenantId, tid)))
     .returning();
   if (!insumo) return res.status(404).json({ error: "Not found" });
-  res.json(insumo);
+  return res.json(insumo);
 });
 
 router.delete("/tenants/:tenantId/insumos/:insumoId", async (req, res) => {
@@ -322,7 +322,7 @@ router.delete("/tenants/:tenantId/insumos/:insumoId", async (req, res) => {
   if (!canAccessTenant(req, tid)) return res.status(403).json({ error: "Forbidden" });
 
   await db.delete(insumosTable).where(and(eq(insumosTable.id, insumoId), eq(insumosTable.tenantId, tid)));
-  res.status(204).end();
+  return res.status(204).end();
 });
 
 // ─── Estoque Central ──────────────────────────────────────────────────────────
@@ -345,7 +345,7 @@ router.get("/tenants/:tenantId/estoque-central-obras", async (req, res) => {
     .from(estoqueCentralObrasTable)
     .leftJoin(insumosTable, eq(estoqueCentralObrasTable.insumoId, insumosTable.id))
     .where(eq(estoqueCentralObrasTable.tenantId, tid));
-  res.json(rows);
+  return res.json(rows);
 });
 
 // ─── Movimentações de Estoque ─────────────────────────────────────────────────
@@ -420,7 +420,7 @@ router.post("/tenants/:tenantId/estoque-obras/movimentacoes", async (req, res) =
     observacao,
   }).returning();
 
-  res.status(201).json(mov);
+  return res.status(201).json(mov);
 });
 
 // ─── Composições ──────────────────────────────────────────────────────────────
@@ -433,7 +433,7 @@ router.get("/tenants/:tenantId/composicoes", async (req, res) => {
   if (req.query.q) filters.push(ilike(composicoesTable.nome, `%${req.query.q}%`));
 
   const rows = await db.select().from(composicoesTable).where(and(...filters)).orderBy(asc(composicoesTable.nome));
-  res.json(rows);
+  return res.json(rows);
 });
 
 router.post("/tenants/:tenantId/composicoes", async (req, res) => {
@@ -447,7 +447,7 @@ router.post("/tenants/:tenantId/composicoes", async (req, res) => {
     await db.insert(composicaoInsumosTable).values(itens.map((i) => ({ composicaoId: composicao.id, ...i })) as any);
   }
 
-  res.status(201).json(composicao);
+  return res.status(201).json(composicao);
 });
 
 router.get("/tenants/:tenantId/composicoes/:composicaoId", async (req, res) => {
@@ -469,7 +469,7 @@ router.get("/tenants/:tenantId/composicoes/:composicaoId", async (req, res) => {
     .leftJoin(insumosTable, eq(composicaoInsumosTable.insumoId, insumosTable.id))
     .where(eq(composicaoInsumosTable.composicaoId, composicaoId));
 
-  res.json({ ...composicao, itens });
+  return res.json({ ...composicao, itens });
 });
 
 router.put("/tenants/:tenantId/composicoes/:composicaoId", async (req, res) => {
@@ -481,7 +481,7 @@ router.put("/tenants/:tenantId/composicoes/:composicaoId", async (req, res) => {
     .where(and(eq(composicoesTable.id, composicaoId), eq(composicoesTable.tenantId, tid)))
     .returning();
   if (!composicao) return res.status(404).json({ error: "Not found" });
-  res.json(composicao);
+  return res.json(composicao);
 });
 
 router.delete("/tenants/:tenantId/composicoes/:composicaoId", async (req, res) => {
@@ -489,7 +489,7 @@ router.delete("/tenants/:tenantId/composicoes/:composicaoId", async (req, res) =
   if (!canAccessTenant(req, tid)) return res.status(403).json({ error: "Forbidden" });
 
   await db.delete(composicoesTable).where(and(eq(composicoesTable.id, composicaoId), eq(composicoesTable.tenantId, tid)));
-  res.status(204).end();
+  return res.status(204).end();
 });
 
 export default router;

@@ -664,4 +664,145 @@ router.post("/webhooks/asaas", async (req, res) => {
   res.status(200).json({ ok: true });
 });
 
+// ── GET /webhooks/meta/whatsapp — Meta webhook URL verification ──────────────
+router.get("/webhooks/meta/whatsapp", async (req, res) => {
+  const mode      = String(req.query["hub.mode"] ?? "");
+  const token     = String(req.query["hub.verify_token"] ?? "");
+  const challenge = String(req.query["hub.challenge"] ?? "");
+
+  if (mode !== "subscribe" || !token) {
+    res.status(400).json({ error: "Invalid verification request" });
+    return;
+  }
+
+  const [config] = await db
+    .select({ id: agentConfigsTable.id })
+    .from(agentConfigsTable)
+    .where(eq(agentConfigsTable.metaVerifyToken, token))
+    .limit(1);
+
+  if (!config) {
+    req.log.warn({ token }, "meta-webhook: verify_token not found in any agent config");
+    res.status(403).json({ error: "verify_token mismatch" });
+    return;
+  }
+
+  req.log.info("meta-webhook: webhook URL verified successfully");
+  res.status(200).send(challenge);
+});
+
+// ── POST /webhooks/meta/whatsapp — incoming Meta WhatsApp messages ───────────
+router.post("/webhooks/meta/whatsapp", async (req, res) => {
+  // ACK immediately — Meta retries if it doesn't get 200 within 20s
+  res.status(200).json({ status: "ok" });
+
+  try {
+    const body = req.body as Record<string, unknown>;
+    if (body.object !== "whatsapp_business_account") return;
+
+    const entries = (body.entry ?? []) as Array<Record<string, unknown>>;
+    for (const entry of entries) {
+      const changes = (entry.changes ?? []) as Array<Record<string, unknown>>;
+      for (const change of changes) {
+        if (change.field !== "messages") continue;
+
+        const value    = change.value as Record<string, unknown>;
+        const metadata = (value.metadata ?? {}) as Record<string, string>;
+        const phoneNumberId = metadata["phone_number_id"];
+        if (!phoneNumberId) continue;
+
+        // Resolve tenant from phoneNumberId
+        const [agentCfg] = await db
+          .select({ tenantId: agentConfigsTable.tenantId })
+          .from(agentConfigsTable)
+          .where(eq(agentConfigsTable.metaPhoneNumberId, phoneNumberId))
+          .limit(1);
+        if (!agentCfg) {
+          req.log.warn({ phoneNumberId }, "meta-webhook: no tenant found for phoneNumberId");
+          continue;
+        }
+        const { tenantId } = agentCfg;
+
+        const incomingMsgs = (value.messages ?? []) as Array<Record<string, unknown>>;
+        const contacts     = (value.contacts ?? []) as Array<Record<string, unknown>>;
+
+        for (const msg of incomingMsgs) {
+          if (msg["type"] !== "text") continue;
+
+          const phone      = String(msg["from"] ?? "");
+          const textBody   = ((msg["text"] as Record<string, string>)?.body) ?? "";
+          if (!phone || !textBody) continue;
+
+          const senderName = (contacts[0] as any)?.profile?.name as string | undefined;
+
+          // Find or create lead
+          let [lead] = await db
+            .select()
+            .from(leadsTable)
+            .where(and(eq(leadsTable.tenantId, tenantId), eq(leadsTable.telefone, phone)))
+            .limit(1);
+
+          if (!lead) {
+            [lead] = await db.insert(leadsTable).values({
+              tenantId,
+              nome: senderName ?? `WhatsApp ${phone}`,
+              telefone: phone,
+              status: "novo",
+            }).returning();
+            req.log.info({ phone, tenantId }, "meta-webhook: new lead created");
+          }
+
+          // Find or create conversation
+          let [conversation] = await db
+            .select()
+            .from(conversationsTable)
+            .where(and(
+              eq(conversationsTable.tenantId, tenantId),
+              eq(conversationsTable.leadId, lead.id),
+              eq(conversationsTable.channel, "whatsapp")
+            ))
+            .limit(1);
+
+          if (!conversation) {
+            [conversation] = await db.insert(conversationsTable).values({
+              tenantId,
+              leadId: lead.id,
+              channel: "whatsapp",
+              status: "open",
+              naoLidas: 0,
+            }).returning();
+          }
+
+          // Insert incoming message
+          const [message] = await db.insert(messagesTable).values({
+            tenantId,
+            conversationId: conversation.id,
+            leadId: lead.id,
+            direcao: "entrada",
+            canal: "whatsapp",
+            conteudo: textBody,
+            enviadoPor: "lead",
+            tipoConteudo: "texto",
+            status: "entregue",
+          }).returning();
+
+          // Update conversation counters
+          await db.update(conversationsTable).set({
+            naoLidas: sql`${conversationsTable.naoLidas} + 1`,
+            ultimaMensagemEm: new Date(),
+            updatedAt: new Date(),
+          }).where(eq(conversationsTable.id, conversation.id));
+
+          req.log.info({ messageId: message.id, tenantId, phone }, "meta-webhook: message processed");
+
+          // Dispatch AI agent
+          dispatchAgentBackground({ tenantId, leadId: lead.id, mensagem: textBody, log: req.log });
+        }
+      }
+    }
+  } catch (err) {
+    req.log.error({ err }, "meta-webhook: error processing incoming webhook");
+  }
+});
+
 export default router;
