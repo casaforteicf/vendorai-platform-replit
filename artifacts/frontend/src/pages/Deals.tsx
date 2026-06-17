@@ -1626,120 +1626,48 @@ export default function Deals() {
         </Dialog>
       </div>
 
-      {/* ── Tabs: Clássico / SaaS ─────────────────────────────────────────── */}
-      <Tabs defaultValue="classico" className="flex-1 flex flex-col min-h-0">
-        <div className="flex items-center justify-between shrink-0">
-          <TabsList>
-            <TabsTrigger value="classico">Pipeline Clássico</TabsTrigger>
-            <TabsTrigger value="saas" className="flex items-center gap-1.5">
-              <BarChart3 className="h-3.5 w-3.5" />
-              Pipeline SaaS
-              {saasDealsList.length > 0 && (
-                <span className="ml-1 rounded-full bg-indigo-100 text-indigo-700 text-[10px] font-bold px-1.5 py-0.5">
-                  {saasDealsList.length}
-                </span>
-              )}
-            </TabsTrigger>
-          </TabsList>
-          {totalMrrPipeline > 0 && (
-            <span className="text-xs text-muted-foreground font-mono">
-              MRR total: <span className="font-semibold text-indigo-700">
-                {totalMrrPipeline.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}/mês
-              </span>
-            </span>
-          )}
-        </div>
-
-        {/* ── Tab 1: Classic Kanban ─────────────────────────────────────────── */}
-        <TabsContent value="classico" className="flex-1 min-h-0 mt-4 data-[state=active]:flex data-[state=active]:flex-col">
-          {isLoading ? (
-            <div className="flex gap-4 overflow-x-auto pb-4">
-              {ETAPAS.map((e) => (
-                <div key={e.value} className="w-72 shrink-0 space-y-2">
-                  <div className="h-5 bg-muted animate-pulse rounded w-24" />
-                  <div className="h-[400px] bg-muted/30 animate-pulse rounded-lg" />
-                </div>
+      {/* ── Pipeline Clássico ─────────────────────────────────────────────── */}
+      <div className="flex-1 min-h-0 flex flex-col">
+        {isLoading ? (
+          <div className="flex gap-4 overflow-x-auto pb-4">
+            {ETAPAS.map((e) => (
+              <div key={e.value} className="w-72 shrink-0 space-y-2">
+                <div className="h-5 bg-muted animate-pulse rounded w-24" />
+                <div className="h-[400px] bg-muted/30 animate-pulse rounded-lg" />
+              </div>
+            ))}
+          </div>
+        ) : (
+          <DndContext
+            sensors={sensors}
+            onDragStart={handleDragStart}
+            onDragOver={handleDragOver}
+            onDragEnd={handleDragEnd}
+          >
+            <div className="flex gap-4 overflow-x-auto pb-6 flex-1">
+              {ETAPAS.map((etapa) => (
+                <KanbanColumn
+                  key={etapa.value}
+                  etapa={etapa}
+                  deals={dealsByEtapa(etapa.value)}
+                  leadMap={leadMap}
+                  isOver={overColumn === etapa.value}
+                  onCardClick={setEditDeal}
+                />
               ))}
             </div>
-          ) : (
-            <DndContext
-              sensors={sensors}
-              onDragStart={handleDragStart}
-              onDragOver={handleDragOver}
-              onDragEnd={handleDragEnd}
-            >
-              <div className="flex gap-4 overflow-x-auto pb-6 flex-1">
-                {ETAPAS.map((etapa) => (
-                  <KanbanColumn
-                    key={etapa.value}
-                    etapa={etapa}
-                    deals={dealsByEtapa(etapa.value)}
-                    leadMap={leadMap}
-                    isOver={overColumn === etapa.value}
-                    onCardClick={setEditDeal}
-                  />
-                ))}
-              </div>
-              <DragOverlay dropAnimation={null}>
-                {activeDeal ? (
-                  <DealCard
-                    deal={activeDeal}
-                    leadName={activeDeal.leadId ? leadMap.get(activeDeal.leadId) : undefined}
-                    overlay
-                  />
-                ) : null}
-              </DragOverlay>
-            </DndContext>
-          )}
-        </TabsContent>
-
-        {/* ── Tab 2: SaaS Kanban ────────────────────────────────────────────── */}
-        <TabsContent value="saas" className="flex-1 min-h-0 mt-4 data-[state=active]:flex data-[state=active]:flex-col">
-          {saasDealsList.length === 0 && !isLoading ? (
-            <div className="flex flex-col items-center justify-center flex-1 gap-4 text-center py-16">
-              <div className="rounded-full bg-indigo-50 p-4">
-                <BarChart3 className="h-8 w-8 text-indigo-400" />
-              </div>
-              <div>
-                <p className="font-semibold text-foreground">Pipeline SaaS vazio</p>
-                <p className="text-sm text-muted-foreground mt-1">
-                  Abra um negócio existente e defina sua etapa SaaS para aparecer aqui,<br />
-                  ou crie um negócio novo e edite-o no Pipeline SaaS.
-                </p>
-              </div>
-            </div>
-          ) : (
-            <DndContext
-              sensors={saasSensors}
-              onDragStart={handleSaasDragStart}
-              onDragOver={handleSaasDragOver}
-              onDragEnd={handleSaasDragEnd}
-            >
-              <div className="flex gap-4 overflow-x-auto pb-6 flex-1">
-                {ETAPAS_SAAS.map((etapa) => (
-                  <SaasKanbanColumn
-                    key={etapa.value}
-                    etapa={etapa}
-                    deals={dealsBySaasEtapa(etapa.value)}
-                    leadMap={leadMap}
-                    isOver={saasOverColumn === etapa.value}
-                    onCardClick={setEditSaasDeal}
-                  />
-                ))}
-              </div>
-              <DragOverlay dropAnimation={null}>
-                {saasActiveDeal ? (
-                  <SaasDealCard
-                    deal={saasActiveDeal}
-                    leadName={saasActiveDeal.leadId ? leadMap.get(saasActiveDeal.leadId) : undefined}
-                    overlay
-                  />
-                ) : null}
-              </DragOverlay>
-            </DndContext>
-          )}
-        </TabsContent>
-      </Tabs>
+            <DragOverlay dropAnimation={null}>
+              {activeDeal ? (
+                <DealCard
+                  deal={activeDeal}
+                  leadName={activeDeal.leadId ? leadMap.get(activeDeal.leadId) : undefined}
+                  overlay
+                />
+              ) : null}
+            </DragOverlay>
+          </DndContext>
+        )}
+      </div>
 
       {/* Edit Sheets */}
       <EditDealSheet
@@ -1749,12 +1677,6 @@ export default function Deals() {
         onClose={() => setEditDeal(null)}
         tenantDefault={tenantDefault}
         tenantSlug={tenantData?.slug}
-      />
-      <EditSaasDealSheet
-        deal={editSaasDeal}
-        leadMap={leadMap}
-        open={!!editSaasDeal}
-        onClose={() => setEditSaasDeal(null)}
       />
     </div>
   );
