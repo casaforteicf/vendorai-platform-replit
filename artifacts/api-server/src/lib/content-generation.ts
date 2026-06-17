@@ -58,7 +58,6 @@ export async function generateImageForContent(
     const openai = getOpenAI();
     const brand = profile.nomeFantasia || "a empresa";
     const subject = productName ? `${productName} — ${theme}` : theme;
-    const ratio = format === "stories" ? "1024x1792" : "1024x1024";
     const v = profile.vertical ?? "";
     let styleHint = "clean, modern, professional marketing photography";
     if (v.includes("Varejo") || v.includes("Moda") || v.includes("Roupa")) {
@@ -69,22 +68,19 @@ export async function generateImageForContent(
       styleHint = "professional construction/renovation photography, high quality materials, clean workspace";
     }
 
-    const imagePrompt = `Professional marketing image for the Instagram ${format === "stories" ? "Stories (vertical 9:16 format)" : "Feed (square format)"} of the brand "${brand}". 
-Theme: ${subject}.
-Style: ${styleHint}. High quality, visually appealing, suitable for a business Instagram profile. 
-No text overlays. No watermarks. Bright, well-lit, commercial photography aesthetic.`;
+    const formatLabel = format === "stories" ? "Stories (vertical format)" : "Feed (square format)";
+    const imagePrompt = `Professional marketing image for the Instagram ${formatLabel} of the brand "${brand}". Theme: ${subject}. Style: ${styleHint}. High quality, visually appealing, suitable for a business Instagram profile. No text overlays. No watermarks. Bright, well-lit, commercial photography aesthetic.`;
 
     const response = await openai.images.generate({
-      model: "dall-e-3",
+      model: "dall-e-2",
       prompt: imagePrompt,
       n: 1,
-      size: ratio as "1024x1024" | "1024x1792",
-      quality: "standard",
+      size: "1024x1024",
     });
 
     return response.data?.[0]?.url ?? undefined;
   } catch (err) {
-    console.error("[content-generation] DALL-E 3 image generation failed:", err instanceof Error ? err.message : err);
+    console.error("[content-generation] image generation failed:", err instanceof Error ? err.message : err);
     return undefined;
   }
 }
