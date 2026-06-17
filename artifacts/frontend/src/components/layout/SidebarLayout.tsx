@@ -32,7 +32,6 @@ export function SidebarLayout({ children }: { children: React.ReactNode }) {
     { name: "Propostas",     href: "/propostas",     icon: FileText,        sellerHidden: false, section: "crm" },
     { name: "Estoque",       href: "/estoque",       icon: Package,         sellerHidden: false, section: "crm" },
     { name: "Conteúdo",      href: "/content",       icon: Sparkles,        sellerHidden: false, section: "crm" },
-    { name: "Meu Site",      href: "/meu-site",      icon: Globe,           sellerHidden: true,  section: "crm" },
     { name: "Gerador de Sites", href: "/site-generator", icon: Wand2,        sellerHidden: true,  section: "crm" },
     { name: "Campanhas",     href: "/campanhas",     icon: Megaphone,       sellerHidden: true,  section: "crm" },
     { name: "Faturamento",   href: "/faturamento",   icon: Receipt,         sellerHidden: true,  section: "crm" },

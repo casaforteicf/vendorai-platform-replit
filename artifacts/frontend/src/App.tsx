@@ -31,7 +31,6 @@ import Content from "@/pages/Content";
 import GuiaImplantacao from "@/pages/GuiaImplantacao";
 import Suspended from "@/pages/Suspended";
 import Questionario from "@/pages/Questionario";
-import MeuSite from "@/pages/MeuSite";
 import Obras from "@/pages/Obras";
 import ObraDetalhe from "@/pages/ObraDetalhe";
 import Insumos from "@/pages/Insumos";
@@ -336,9 +335,6 @@ function AppRoutes() {
       </Route>
       <Route path="/guia-implantacao">
         {() => <ProtectedRoute component={GuiaImplantacao} />}
-      </Route>
-      <Route path="/meu-site">
-        {() => <ProtectedRoute component={MeuSite} />}
       </Route>
       <Route path="/site-generator">
         {() => <ProtectedRoute component={SiteGenerator} />}

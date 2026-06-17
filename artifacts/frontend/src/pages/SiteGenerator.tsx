@@ -63,12 +63,16 @@ interface ChatMessage { role: "user" | "assistant"; content: string; }
 
 // ── Hook ───────────────────────────────────────────────────────────────────────
 
-function useSiteGenerator(tenantId: string) {
+function useSiteGenerator(tenantId: string, token: string | null) {
   const [status, setStatus] = useState<GeneratorStatus>("idle");
   const [html, setHtml] = useState("");
   const [siteId, setSiteId] = useState<string | null>(null);
   const [history, setHistory] = useState<Array<{ role: "user" | "assistant"; content: string }>>([]);
   const [error, setError] = useState<string | null>(null);
+
+  const authHeaders = token
+    ? { "Content-Type": "application/json", Authorization: `Bearer ${token}` }
+    : { "Content-Type": "application/json" };
 
   const generate = useCallback(async (config: SiteConfig) => {
     setStatus("generating");
@@ -80,8 +84,7 @@ function useSiteGenerator(tenantId: string) {
     try {
       const res = await fetch(`/api/tenants/${tenantId}/site-generator/generate`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
-        credentials: "include",
+        headers: authHeaders,
         body: JSON.stringify(config),
       });
       if (!res.ok) {
@@ -100,15 +103,14 @@ function useSiteGenerator(tenantId: string) {
       setStatus("error");
       setError(err.message ?? "Erro desconhecido");
     }
-  }, [tenantId]);
+  }, [tenantId, token]);
 
   const refine = useCallback(async (message: string): Promise<string> => {
     if (!siteId) throw new Error("Nenhum site gerado");
 
     const res = await fetch(`/api/tenants/${tenantId}/site-generator/${siteId}/refine`, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
-      credentials: "include",
+      headers: authHeaders,
       body: JSON.stringify({ message, history }),
     });
     if (!res.ok) {
@@ -123,7 +125,7 @@ function useSiteGenerator(tenantId: string) {
       { role: "assistant", content: data.html },
     ]);
     return data.html;
-  }, [siteId, tenantId, history]);
+  }, [siteId, tenantId, token, history]);
 
   const download = useCallback((filename = "site") => {
     if (!html) return;
@@ -491,11 +493,11 @@ function RefinementChat({
 // ── Main Component ─────────────────────────────────────────────────────────────
 
 export default function SiteGenerator() {
-  const { user } = useAuth();
+  const { user, token } = useAuth();
   const tenantId = user?.tenantId ?? "";
 
   const [activeTab, setActiveTab] = useState("config");
-  const { status, html, error, generate, refine, download, reset } = useSiteGenerator(tenantId);
+  const { status, html, error, generate, refine, download, reset } = useSiteGenerator(tenantId, token);
 
   async function handleGenerate(config: SiteConfig) {
     setActiveTab("preview");
