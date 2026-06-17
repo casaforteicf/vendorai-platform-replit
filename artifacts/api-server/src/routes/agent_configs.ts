@@ -19,6 +19,60 @@ const incrementCountSchema = {
 
 const router: IRouter = Router();
 
+// ── Colunas sem Meta (compatível com prod onde essas colunas ainda não existem) ──
+const NON_META_COLS = {
+  id: agentConfigsTable.id,
+  tenantId: agentConfigsTable.tenantId,
+  agents: agentConfigsTable.agents,
+  dailyMessageLimit: agentConfigsTable.dailyMessageLimit,
+  messagesSentToday: agentConfigsTable.messagesSentToday,
+  monthlyTokenLimit: agentConfigsTable.monthlyTokenLimit,
+  tokensUsedCurrentMonth: agentConfigsTable.tokensUsedCurrentMonth,
+  webhookSecret: agentConfigsTable.webhookSecret,
+  setupCompletedAt: agentConfigsTable.setupCompletedAt,
+  autonomyEnabledAt: agentConfigsTable.autonomyEnabledAt,
+  messagesSentTodayResetAt: agentConfigsTable.messagesSentTodayResetAt,
+  tokensResetAt: agentConfigsTable.tokensResetAt,
+  contentGenerationsThisMonth: agentConfigsTable.contentGenerationsThisMonth,
+  contentGenerationsResetAt: agentConfigsTable.contentGenerationsResetAt,
+  churnAutoWhatsapp: agentConfigsTable.churnAutoWhatsapp,
+  instagramPageAccessToken: agentConfigsTable.instagramPageAccessToken,
+  instagramPageId: agentConfigsTable.instagramPageId,
+  instagramUsername: agentConfigsTable.instagramUsername,
+  zapiInstanceId: agentConfigsTable.zapiInstanceId,
+  zapiToken: agentConfigsTable.zapiToken,
+  zapiClientToken: agentConfigsTable.zapiClientToken,
+  createdAt: agentConfigsTable.createdAt,
+  updatedAt: agentConfigsTable.updatedAt,
+};
+const META_NULL = { metaPhoneNumberId: null, metaWabaId: null, metaAccessToken: null, metaVerifyToken: null };
+
+function isColMissingError(err: unknown): boolean {
+  return err instanceof Error && err.message.includes("does not exist");
+}
+
+async function selectConfigByTenantId(tenantId: string) {
+  try {
+    const [c] = await db.select().from(agentConfigsTable).where(eq(agentConfigsTable.tenantId, tenantId));
+    return c ?? null;
+  } catch (err) {
+    if (!isColMissingError(err)) throw err;
+    const [c] = await db.select(NON_META_COLS).from(agentConfigsTable).where(eq(agentConfigsTable.tenantId, tenantId));
+    return c ? { ...c, ...META_NULL } : null;
+  }
+}
+
+async function selectConfigById(id: string) {
+  try {
+    const [c] = await db.select().from(agentConfigsTable).where(eq(agentConfigsTable.id, id));
+    return c ?? null;
+  } catch (err) {
+    if (!isColMissingError(err)) throw err;
+    const [c] = await db.select(NON_META_COLS).from(agentConfigsTable).where(eq(agentConfigsTable.id, id));
+    return c ? { ...c, ...META_NULL } : null;
+  }
+}
+
 router.post("/agent-configs", async (req, res) => {
   const parsed = insertAgentConfigSchema.safeParse(req.body);
   if (!parsed.success) {
@@ -47,30 +101,14 @@ router.post("/agent-configs", async (req, res) => {
 });
 
 router.get("/tenants/:tenantId/agent-config", async (req, res) => {
-  const [config] = await db
-    .select()
-    .from(agentConfigsTable)
-    .where(eq(agentConfigsTable.tenantId, String(req.params.tenantId)));
-
-  if (!config) {
-    res.status(404).json({ error: "Agent config not found" });
-    return;
-  }
-
+  const config = await selectConfigByTenantId(String(req.params.tenantId));
+  if (!config) { res.status(404).json({ error: "Agent config not found" }); return; }
   res.json(config);
 });
 
 router.get("/agent-configs/:id", async (req, res) => {
-  const [config] = await db
-    .select()
-    .from(agentConfigsTable)
-    .where(eq(agentConfigsTable.id, String(req.params.id)));
-
-  if (!config) {
-    res.status(404).json({ error: "Agent config not found" });
-    return;
-  }
-
+  const config = await selectConfigById(String(req.params.id));
+  if (!config) { res.status(404).json({ error: "Agent config not found" }); return; }
   res.json(config);
 });
 
@@ -96,18 +134,39 @@ router.patch("/agent-configs/:id", async (req, res) => {
     return;
   }
 
-  const [config] = await db
-    .update(agentConfigsTable)
-    .set({ ...parsed.data, updatedAt: new Date() })
-    .where(eq(agentConfigsTable.id, existing.id))
-    .returning();
+  let config: typeof agentConfigsTable.$inferSelect | undefined;
+  try {
+    [config] = await db
+      .update(agentConfigsTable)
+      .set({ ...parsed.data, updatedAt: new Date() })
+      .where(eq(agentConfigsTable.id, existing.id))
+      .returning();
+  } catch (err) {
+    if (!isColMissingError(err)) throw err;
+    const metaFields = ["metaPhoneNumberId", "metaWabaId", "metaAccessToken", "metaVerifyToken"] as const;
+    const safeData = Object.fromEntries(
+      Object.entries(parsed.data).filter(([k]) => !metaFields.includes(k as typeof metaFields[number]))
+    );
+    const [partial] = await db
+      .update(agentConfigsTable)
+      .set({ ...safeData, updatedAt: new Date() })
+      .where(eq(agentConfigsTable.id, existing.id))
+      .returning(NON_META_COLS);
+    config = partial ? ({ ...partial, ...META_NULL } as typeof agentConfigsTable.$inferSelect) : undefined;
+  }
 
   res.json(config);
 });
 
 router.get("/agent-configs/:id/usage", async (req, res) => {
   const [config] = await db
-    .select()
+    .select({
+      id: agentConfigsTable.id,
+      dailyMessageLimit: agentConfigsTable.dailyMessageLimit,
+      messagesSentToday: agentConfigsTable.messagesSentToday,
+      monthlyTokenLimit: agentConfigsTable.monthlyTokenLimit,
+      tokensUsedCurrentMonth: agentConfigsTable.tokensUsedCurrentMonth,
+    })
     .from(agentConfigsTable)
     .where(eq(agentConfigsTable.id, String(req.params.id)));
 

@@ -37,7 +37,12 @@ async function getMonthlyUsage(
   tenantId: string
 ): Promise<{ used: number; limit: number; configId: string | null }> {
   const [config] = await db
-    .select()
+    .select({
+      id: agentConfigsTable.id,
+      tenantId: agentConfigsTable.tenantId,
+      contentGenerationsThisMonth: agentConfigsTable.contentGenerationsThisMonth,
+      contentGenerationsResetAt: agentConfigsTable.contentGenerationsResetAt,
+    })
     .from(agentConfigsTable)
     .where(eq(agentConfigsTable.tenantId, tenantId));
 

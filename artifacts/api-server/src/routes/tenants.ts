@@ -177,7 +177,20 @@ router.get("/tenants/:id/setup-status", requireSameTenanOrSuperAdmin(), async (r
   const [tenant] = await db.select().from(tenantsTable).where(eq(tenantsTable.id, tenantId));
   if (!tenant) { res.status(404).json({ error: "Tenant not found" }); return; }
 
-  const [agentConfig] = await db.select().from(agentConfigsTable).where(eq(agentConfigsTable.tenantId, tenantId));
+  const [agentConfig] = await db
+    .select({
+      id: agentConfigsTable.id,
+      setupCompletedAt: agentConfigsTable.setupCompletedAt,
+      autonomyEnabledAt: agentConfigsTable.autonomyEnabledAt,
+      zapiInstanceId: agentConfigsTable.zapiInstanceId,
+      zapiToken: agentConfigsTable.zapiToken,
+      zapiClientToken: agentConfigsTable.zapiClientToken,
+      instagramPageId: agentConfigsTable.instagramPageId,
+      instagramPageAccessToken: agentConfigsTable.instagramPageAccessToken,
+      webhookSecret: agentConfigsTable.webhookSecret,
+    })
+    .from(agentConfigsTable)
+    .where(eq(agentConfigsTable.tenantId, tenantId));
   const [businessProfile] = await db.select().from(businessProfilesTable).where(eq(businessProfilesTable.tenantId, tenantId));
   const [leadCountRow] = await db.select({ value: count() }).from(leadsTable).where(eq(leadsTable.tenantId, tenantId));
 

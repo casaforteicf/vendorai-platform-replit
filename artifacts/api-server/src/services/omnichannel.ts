@@ -145,17 +145,30 @@ export async function sendDirectWhatsAppMessage(
   message: string,
   log: Logger
 ): Promise<void> {
-  const [config] = await db
-    .select({
-      metaPhoneNumberId: agentConfigsTable.metaPhoneNumberId,
-      metaAccessToken: agentConfigsTable.metaAccessToken,
-      zapiInstanceId: agentConfigsTable.zapiInstanceId,
-      zapiToken: agentConfigsTable.zapiToken,
-      zapiClientToken: agentConfigsTable.zapiClientToken,
-    })
-    .from(agentConfigsTable)
-    .where(eq(agentConfigsTable.tenantId, tenantId))
-    .limit(1);
+  let config: { metaPhoneNumberId?: string | null; metaAccessToken?: string | null; zapiInstanceId?: string | null; zapiToken?: string | null; zapiClientToken?: string | null } | undefined;
+  try {
+    [config] = await db
+      .select({
+        metaPhoneNumberId: agentConfigsTable.metaPhoneNumberId,
+        metaAccessToken: agentConfigsTable.metaAccessToken,
+        zapiInstanceId: agentConfigsTable.zapiInstanceId,
+        zapiToken: agentConfigsTable.zapiToken,
+        zapiClientToken: agentConfigsTable.zapiClientToken,
+      })
+      .from(agentConfigsTable)
+      .where(eq(agentConfigsTable.tenantId, tenantId))
+      .limit(1);
+  } catch {
+    [config] = await db
+      .select({
+        zapiInstanceId: agentConfigsTable.zapiInstanceId,
+        zapiToken: agentConfigsTable.zapiToken,
+        zapiClientToken: agentConfigsTable.zapiClientToken,
+      })
+      .from(agentConfigsTable)
+      .where(eq(agentConfigsTable.tenantId, tenantId))
+      .limit(1);
+  }
 
   // Prefer Meta Cloud API; fall back to Z-API if still configured
   if (config?.metaPhoneNumberId && config?.metaAccessToken) {
@@ -238,17 +251,30 @@ export async function sendOutgoingMessage(
 
   // ── 2. WhatsApp: validate credentials + actually send ─────────────────────
   if (canal === "whatsapp") {
-    const [config] = await db
-      .select({
-        metaPhoneNumberId: agentConfigsTable.metaPhoneNumberId,
-        metaAccessToken: agentConfigsTable.metaAccessToken,
-        zapiInstanceId: agentConfigsTable.zapiInstanceId,
-        zapiToken: agentConfigsTable.zapiToken,
-        zapiClientToken: agentConfigsTable.zapiClientToken,
-      })
-      .from(agentConfigsTable)
-      .where(eq(agentConfigsTable.tenantId, tenantId))
-      .limit(1);
+    let config: { metaPhoneNumberId?: string | null; metaAccessToken?: string | null; zapiInstanceId?: string | null; zapiToken?: string | null; zapiClientToken?: string | null } | undefined;
+    try {
+      [config] = await db
+        .select({
+          metaPhoneNumberId: agentConfigsTable.metaPhoneNumberId,
+          metaAccessToken: agentConfigsTable.metaAccessToken,
+          zapiInstanceId: agentConfigsTable.zapiInstanceId,
+          zapiToken: agentConfigsTable.zapiToken,
+          zapiClientToken: agentConfigsTable.zapiClientToken,
+        })
+        .from(agentConfigsTable)
+        .where(eq(agentConfigsTable.tenantId, tenantId))
+        .limit(1);
+    } catch {
+      [config] = await db
+        .select({
+          zapiInstanceId: agentConfigsTable.zapiInstanceId,
+          zapiToken: agentConfigsTable.zapiToken,
+          zapiClientToken: agentConfigsTable.zapiClientToken,
+        })
+        .from(agentConfigsTable)
+        .where(eq(agentConfigsTable.tenantId, tenantId))
+        .limit(1);
+    }
 
     if (!lead.telefone) {
       throw new WhatsAppPhoneMissingError(leadId);

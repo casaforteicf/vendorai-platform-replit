@@ -125,7 +125,7 @@ router.post("/agent-tasks", async (req, res) => {
   const { tenantId, agentName } = parsed.data;
 
   const [config] = await db
-    .select()
+    .select({ id: agentConfigsTable.id, agents: agentConfigsTable.agents })
     .from(agentConfigsTable)
     .where(eq(agentConfigsTable.tenantId, tenantId));
 
@@ -211,7 +211,7 @@ router.post(
     }
 
     const [config] = await db
-      .select()
+      .select({ id: agentConfigsTable.id, autonomyEnabledAt: agentConfigsTable.autonomyEnabledAt })
       .from(agentConfigsTable)
       .where(eq(agentConfigsTable.tenantId, String(tenantId)));
 
