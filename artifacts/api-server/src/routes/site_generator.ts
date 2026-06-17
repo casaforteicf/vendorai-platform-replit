@@ -2,7 +2,7 @@ import { Router, type IRouter } from "express";
 import { desc, eq } from "drizzle-orm";
 import { db, generatedSitesTable } from "@workspace/db";
 import type { SiteGeneratorConfig } from "@workspace/db";
-import { getOpenAI } from "../lib/agent-engine.js";
+import { anthropic } from "@workspace/integrations-anthropic-ai";
 
 const router: IRouter = Router();
 
@@ -111,17 +111,16 @@ router.post("/tenants/:tenantId/site-generator/generate", async (req, res) => {
     return;
   }
 
-  const openai = getOpenAI();
   const prompt = buildGeneratePrompt(config);
 
-  const completion = await openai.chat.completions.create({
-    model: "gpt-4o",
-    max_tokens: 8000,
+  const response = await anthropic.messages.create({
+    model: "claude-sonnet-4-6",
+    max_tokens: 8192,
     messages: [{ role: "user", content: prompt }],
-    temperature: 0.7,
   });
 
-  const rawText = completion.choices[0]?.message?.content ?? "";
+  const block = response.content[0];
+  const rawText = block.type === "text" ? block.text : "";
   const html = extractHtml(rawText);
 
   if (!html || html.length < 500) {
@@ -167,22 +166,21 @@ router.post("/tenants/:tenantId/site-generator/:siteId/refine", async (req, res)
     return;
   }
 
-  const openai = getOpenAI();
   const refinePrompt = buildRefinePrompt(message);
 
-  const messages: Array<{ role: "user" | "assistant"; content: string }> = [
+  const claudeMessages: Array<{ role: "user" | "assistant"; content: string }> = [
     ...history,
     { role: "user", content: refinePrompt },
   ];
 
-  const completion = await openai.chat.completions.create({
-    model: "gpt-4o",
-    max_tokens: 8000,
-    messages,
-    temperature: 0.7,
+  const response = await anthropic.messages.create({
+    model: "claude-sonnet-4-6",
+    max_tokens: 8192,
+    messages: claudeMessages,
   });
 
-  const rawText = completion.choices[0]?.message?.content ?? "";
+  const block = response.content[0];
+  const rawText = block.type === "text" ? block.text : "";
   const html = extractHtml(rawText);
 
   if (!html || html.length < 500) {
