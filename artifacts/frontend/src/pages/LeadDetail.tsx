@@ -251,6 +251,8 @@ export default function LeadDetail() {
   // Snapshot of lastAnalyzedAt taken when the 409 was received, used to detect
   // when the in-flight analysis finishes (value changes → analysis done).
   const analysisSnapshotRef = useRef<string | null | undefined>(undefined);
+  // Guards against double-firing auto-analysis (StrictMode + fast re-renders)
+  const autoAnalyzeAttemptedRef = useRef(false);
 
   const { data: lead, isLoading: leadLoading } = useGetLead(id, {
     query: {
@@ -279,6 +281,11 @@ export default function LeadDetail() {
     { addSuffix: true }
   );
   const lastAnalyzedRelative = useRelativeTime(intelligence?.lastAnalyzedAt);
+
+  // Reset auto-analyze guard whenever the lead changes
+  useEffect(() => {
+    autoAnalyzeAttemptedRef.current = false;
+  }, [id]);
 
   // Detect when the in-flight server-side analysis finishes by watching lastAnalyzedAt
   useEffect(() => {
@@ -454,16 +461,52 @@ export default function LeadDetail() {
               title: "Análise em andamento",
               description: "Uma análise já está em execução. Aguarde o resultado.",
             });
+          } else if (status === 429) {
+            toast({
+              title: "Limite atingido",
+              description: "Limite de análises por hora atingido. Tente novamente em alguns minutos.",
+              variant: "destructive",
+            });
+          } else if (status === 502) {
+            toast({
+              title: "Serviço de IA indisponível",
+              description: "A OpenAI está com instabilidade. Tente novamente em instantes.",
+              variant: "destructive",
+            });
           } else {
+            const msg =
+              typeof error === "object" && error !== null && "message" in error
+                ? String((error as { message: unknown }).message)
+                : null;
             toast({
               title: "Falha na análise",
-              description: "Não foi possível conectar ao serviço de IA. Tente novamente.",
+              description: msg ?? "Não foi possível conectar ao serviço de IA. Tente novamente.",
               variant: "destructive",
             });
           }
         },
       },
     });
+
+  // ── Auto-analyze on first open ───────────────────────────────────────────
+  // Fires once per lead when: (a) never analyzed, or (b) last analysis >24 h ago.
+  // Uses a ref to prevent double-firing in React StrictMode.
+  useEffect(() => {
+    if (autoAnalyzeAttemptedRef.current) return;
+    if (!intelligence || !tenantId || !id || isAnalyzing || serverAnalysisRunning) return;
+
+    const STALE_MS = 24 * 60 * 60 * 1000; // 24 hours
+    const isNeverAnalyzed = !intelligence.lastAnalyzedAt;
+    const isStale =
+      !isNeverAnalyzed &&
+      Date.now() - new Date(intelligence.lastAnalyzedAt!).getTime() > STALE_MS;
+
+    if (isNeverAnalyzed || isStale) {
+      autoAnalyzeAttemptedRef.current = true;
+      analyzeIntelligence({ tenantId, leadId: id });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [intelligence?.id, intelligence?.lastAnalyzedAt]);
 
   function handleAnalyze() {
     if (!tenantId || !id) return;
@@ -1349,9 +1392,15 @@ export default function LeadDetail() {
                     !intelligence?.nextBestAction &&
                     intelligence?.churnRisk === null &&
                     opportunities.length === 0 && (
-                      <p className="text-muted-foreground text-xs py-2">
-                        Análise ainda não disponível. Clique em{" "}
-                        <span className="font-medium">Analisar com IA</span> para gerar insights automaticamente.
+                      <p className="text-muted-foreground text-xs py-2 flex items-center gap-1.5">
+                        {isAnalyzing || serverAnalysisRunning ? (
+                          <>
+                            <Loader2 className="h-3 w-3 animate-spin shrink-0" />
+                            Analisando lead automaticamente…
+                          </>
+                        ) : (
+                          "Análise ainda não disponível. Use o botão acima para gerar insights."
+                        )}
                       </p>
                     )}
 
@@ -1436,12 +1485,22 @@ export default function LeadDetail() {
                 </>
               ) : (
                 <div className="flex items-center gap-3 py-1">
-                  <Brain className="h-8 w-8 text-muted-foreground/30 shrink-0" />
+                  {isAnalyzing || serverAnalysisRunning ? (
+                    <Loader2 className="h-8 w-8 text-muted-foreground/30 shrink-0 animate-spin" />
+                  ) : (
+                    <Brain className="h-8 w-8 text-muted-foreground/30 shrink-0" />
+                  )}
                   <div>
-                    <p className="text-sm text-muted-foreground">Nenhuma sugestão disponível ainda.</p>
-                    <p className="text-xs text-muted-foreground/70">
-                      Clique em "Analisar com IA" para gerar uma recomendação de próxima ação.
+                    <p className="text-sm text-muted-foreground">
+                      {isAnalyzing || serverAnalysisRunning
+                        ? "Analisando lead automaticamente…"
+                        : "Nenhuma sugestão disponível ainda."}
                     </p>
+                    {!isAnalyzing && !serverAnalysisRunning && (
+                      <p className="text-xs text-muted-foreground/70">
+                        Use o botão "Analisar com IA" para gerar uma recomendação de próxima ação.
+                      </p>
+                    )}
                   </div>
                 </div>
               )}
