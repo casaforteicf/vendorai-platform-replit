@@ -111,6 +111,8 @@ import type {
   HealthStatus,
   ImportInventoryBody,
   ImportInventoryResult,
+  ImportProdutosCatalogoBody,
+  ImportProdutosCatalogoResult,
   IncrementBody,
   Insumo,
   InsumoInput,
@@ -7149,6 +7151,78 @@ export const useCreateProdutoCatalogo = <TError = ErrorType<ErrorResponse>,
         TContext
       > => {
       return useMutation(getCreateProdutoCatalogoMutationOptions(options));
+    }
+
+export const getImportProdutosCatalogoUrl = (tenantId: string,) => {
+
+
+
+
+  return `/api/tenants/${tenantId}/produtos-catalogo/import`
+}
+
+/**
+ * @summary Bulk import catalog products from CSV
+ */
+export const importProdutosCatalogo = async (tenantId: string,
+    importProdutosCatalogoBody: ImportProdutosCatalogoBody, options?: RequestInit): Promise<ImportProdutosCatalogoResult> => {
+
+  return customFetch<ImportProdutosCatalogoResult>(getImportProdutosCatalogoUrl(tenantId),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(
+      importProdutosCatalogoBody,)
+  }
+);}
+
+
+
+
+export const getImportProdutosCatalogoMutationOptions = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof importProdutosCatalogo>>, TError,{tenantId: string;data: BodyType<ImportProdutosCatalogoBody>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof importProdutosCatalogo>>, TError,{tenantId: string;data: BodyType<ImportProdutosCatalogoBody>}, TContext> => {
+
+const mutationKey = ['importProdutosCatalogo'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof importProdutosCatalogo>>, {tenantId: string;data: BodyType<ImportProdutosCatalogoBody>}> = (props) => {
+          const {tenantId,data} = props ?? {};
+
+          return  importProdutosCatalogo(tenantId,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type ImportProdutosCatalogoMutationResult = NonNullable<Awaited<ReturnType<typeof importProdutosCatalogo>>>
+    export type ImportProdutosCatalogoMutationBody = BodyType<ImportProdutosCatalogoBody>
+    export type ImportProdutosCatalogoMutationError = ErrorType<ErrorResponse>
+
+    /**
+ * @summary Bulk import catalog products from CSV
+ */
+export const useImportProdutosCatalogo = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof importProdutosCatalogo>>, TError,{tenantId: string;data: BodyType<ImportProdutosCatalogoBody>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof importProdutosCatalogo>>,
+        TError,
+        {tenantId: string;data: BodyType<ImportProdutosCatalogoBody>},
+        TContext
+      > => {
+      return useMutation(getImportProdutosCatalogoMutationOptions(options));
     }
 
 export const getListProdutosCatalogoUrl = (tenantId: string,) => {

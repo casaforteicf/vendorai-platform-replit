@@ -9,10 +9,13 @@
 export interface CreateProdutoCatalogoBody {
   tenantId: string;
   nome: string;
+  sku?: string;
   descricao?: string;
   categoria?: string;
   /** Decimal price (e.g. 99.90 or "99.90") */
   precoBase: string | number;
   unidade?: string;
   ativo?: boolean;
+  /** Product image URL */
+  imagemUrl?: string;
 }

@@ -8,9 +8,11 @@
 
 export interface UpdateProdutoCatalogoBody {
   nome?: string;
+  sku?: string;
   descricao?: string;
   categoria?: string;
   precoBase?: string | number;
   unidade?: string;
   ativo?: boolean;
+  imagemUrl?: string;
 }

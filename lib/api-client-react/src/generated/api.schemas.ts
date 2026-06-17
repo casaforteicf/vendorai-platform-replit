@@ -650,6 +650,7 @@ export interface ProdutoCatalogo {
   id: string;
   tenantId: string;
   nome: string;
+  sku?: string | null;
   descricao?: string | null;
   categoria?: string | null;
   /** Decimal price stored as string (e.g. "99.90") */
@@ -657,6 +658,8 @@ export interface ProdutoCatalogo {
   /** Unit of measure (e.g. "un", "m2", "kg") */
   unidade: string;
   ativo: boolean;
+  /** Product image URL */
+  imagemUrl?: string | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -664,21 +667,41 @@ export interface ProdutoCatalogo {
 export interface CreateProdutoCatalogoBody {
   tenantId: string;
   nome: string;
+  sku?: string;
   descricao?: string;
   categoria?: string;
   /** Decimal price (e.g. 99.90 or "99.90") */
   precoBase: string | number;
   unidade?: string;
   ativo?: boolean;
+  /** Product image URL */
+  imagemUrl?: string;
 }
 
 export interface UpdateProdutoCatalogoBody {
   nome?: string;
+  sku?: string;
   descricao?: string;
   categoria?: string;
   precoBase?: string | number;
   unidade?: string;
   ativo?: boolean;
+  imagemUrl?: string;
+}
+
+export interface ImportProdutosCatalogoBody {
+  /** CSV content UTF-8. Header row required. Columns: nome, sku, categoria, preco_base, unidade, descricao, imagem_url */
+  csv: string;
+}
+
+export type ImportProdutosCatalogoResultErrorsItem = {
+  row: number;
+  message: string;
+};
+
+export interface ImportProdutosCatalogoResult {
+  imported: number;
+  errors: ImportProdutosCatalogoResultErrorsItem[];
 }
 
 export type CreatePropostaFromCatalogoBodyItensItem = {

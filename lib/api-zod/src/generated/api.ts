@@ -2661,11 +2661,33 @@ export const DeleteAgendamentoParams = zod.object({
 export const CreateProdutoCatalogoBody = zod.object({
   "tenantId": zod.string(),
   "nome": zod.string(),
+  "sku": zod.string().optional(),
   "descricao": zod.string().optional(),
   "categoria": zod.string().optional(),
   "precoBase": zod.union([zod.string(),zod.number()]).describe('Decimal price (e.g. 99.90 or \"99.90\")'),
   "unidade": zod.string().optional(),
-  "ativo": zod.boolean().optional()
+  "ativo": zod.boolean().optional(),
+  "imagemUrl": zod.string().optional().describe('Product image URL')
+})
+
+
+/**
+ * @summary Bulk import catalog products from CSV
+ */
+export const ImportProdutosCatalogoParams = zod.object({
+  "tenantId": zod.coerce.string()
+})
+
+export const ImportProdutosCatalogoBody = zod.object({
+  "csv": zod.string().describe('CSV content UTF-8. Header row required. Columns: nome, sku, categoria, preco_base, unidade, descricao, imagem_url')
+})
+
+export const ImportProdutosCatalogoResponse = zod.object({
+  "imported": zod.number(),
+  "errors": zod.array(zod.object({
+  "row": zod.number(),
+  "message": zod.string()
+}))
 })
 
 
@@ -2680,11 +2702,13 @@ export const ListProdutosCatalogoResponseItem = zod.object({
   "id": zod.string(),
   "tenantId": zod.string(),
   "nome": zod.string(),
+  "sku": zod.string().nullish(),
   "descricao": zod.string().nullish(),
   "categoria": zod.string().nullish(),
   "precoBase": zod.string().describe('Decimal price stored as string (e.g. \"99.90\")'),
   "unidade": zod.string().describe('Unit of measure (e.g. \"un\", \"m2\", \"kg\")'),
   "ativo": zod.boolean(),
+  "imagemUrl": zod.string().nullish().describe('Product image URL'),
   "createdAt": zod.coerce.date(),
   "updatedAt": zod.coerce.date()
 })
@@ -2702,11 +2726,13 @@ export const GetProdutoCatalogoResponse = zod.object({
   "id": zod.string(),
   "tenantId": zod.string(),
   "nome": zod.string(),
+  "sku": zod.string().nullish(),
   "descricao": zod.string().nullish(),
   "categoria": zod.string().nullish(),
   "precoBase": zod.string().describe('Decimal price stored as string (e.g. \"99.90\")'),
   "unidade": zod.string().describe('Unit of measure (e.g. \"un\", \"m2\", \"kg\")'),
   "ativo": zod.boolean(),
+  "imagemUrl": zod.string().nullish().describe('Product image URL'),
   "createdAt": zod.coerce.date(),
   "updatedAt": zod.coerce.date()
 })
@@ -2721,22 +2747,26 @@ export const UpdateProdutoCatalogoParams = zod.object({
 
 export const UpdateProdutoCatalogoBody = zod.object({
   "nome": zod.string().optional(),
+  "sku": zod.string().optional(),
   "descricao": zod.string().optional(),
   "categoria": zod.string().optional(),
   "precoBase": zod.union([zod.string(),zod.number()]).optional(),
   "unidade": zod.string().optional(),
-  "ativo": zod.boolean().optional()
+  "ativo": zod.boolean().optional(),
+  "imagemUrl": zod.string().optional()
 })
 
 export const UpdateProdutoCatalogoResponse = zod.object({
   "id": zod.string(),
   "tenantId": zod.string(),
   "nome": zod.string(),
+  "sku": zod.string().nullish(),
   "descricao": zod.string().nullish(),
   "categoria": zod.string().nullish(),
   "precoBase": zod.string().describe('Decimal price stored as string (e.g. \"99.90\")'),
   "unidade": zod.string().describe('Unit of measure (e.g. \"un\", \"m2\", \"kg\")'),
   "ativo": zod.boolean(),
+  "imagemUrl": zod.string().nullish().describe('Product image URL'),
   "createdAt": zod.coerce.date(),
   "updatedAt": zod.coerce.date()
 })

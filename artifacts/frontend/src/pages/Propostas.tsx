@@ -14,6 +14,7 @@ import {
   useCreateProdutoCatalogo,
   useUpdateProdutoCatalogo,
   useDeleteProdutoCatalogo,
+  useImportProdutosCatalogo,
 } from "@workspace/api-client-react";
 import type {
   Proposta,
@@ -98,6 +99,10 @@ import {
   BookOpen,
   X,
   Sparkles,
+  Upload,
+  Download,
+  AlertTriangle,
+  Image as ImageIcon,
 } from "lucide-react";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
@@ -130,9 +135,33 @@ const catFormSchema = z.object({
   precoBase: z.coerce.number().min(0, "Preço inválido"),
   unidade: z.string().min(1, "Obrigatório"),
   descricao: z.string().optional(),
+  imagemUrl: z.string().url("URL inválida").optional().or(z.literal("")),
   ativo: z.boolean().default(true),
 });
 type CatFormValues = z.infer<typeof catFormSchema>;
+
+interface CsvPreviewRow {
+  nome: string;
+  sku?: string;
+  categoria?: string;
+  preco_base: string;
+  unidade?: string;
+  descricao?: string;
+  imagem_url?: string;
+}
+
+const CSV_TEMPLATE =
+  "nome,sku,categoria,preco_base,unidade,descricao,imagem_url\n" +
+  "Camiseta Básica,SKU001,Feminino,79.90,un,100% algodão,https://exemplo.com/img1.jpg\n" +
+  "Calça Jeans,SKU002,Masculino,199.90,un,Slim fit,,\n";
+
+function downloadTemplate() {
+  const blob = new Blob([CSV_TEMPLATE], { type: "text/csv;charset=utf-8;" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url; a.download = "modelo_catalogo.csv"; a.click();
+  URL.revokeObjectURL(url);
+}
 
 function CatalogoModal({
   open,
@@ -148,6 +177,10 @@ function CatalogoModal({
   const [editingProd, setEditingProd] = useState<ProdutoCatalogo | null>(null);
   const [formOpen, setFormOpen] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<ProdutoCatalogo | null>(null);
+  const [csvPreview, setCsvPreview] = useState<CsvPreviewRow[]>([]);
+  const [csvRaw, setCsvRaw] = useState("");
+  const [importPreviewOpen, setImportPreviewOpen] = useState(false);
+  const [importResult, setImportResult] = useState<{ imported: number; errors: { row: number; message: string }[] } | null>(null);
 
   const { data: catalog = [], isLoading } = useListProdutosCatalogo(tenantId, {
     query: { queryKey: getListProdutosCatalogoQueryKey(tenantId), enabled: !!tenantId },
@@ -156,15 +189,16 @@ function CatalogoModal({
   const createMut = useCreateProdutoCatalogo();
   const updateMut = useUpdateProdutoCatalogo();
   const deleteMut = useDeleteProdutoCatalogo();
+  const importMut = useImportProdutosCatalogo();
 
   const form = useForm<CatFormValues>({
     resolver: zodResolver(catFormSchema),
-    defaultValues: { nome: "", categoria: "", precoBase: 0, unidade: "un", descricao: "", ativo: true },
+    defaultValues: { nome: "", categoria: "", precoBase: 0, unidade: "un", descricao: "", imagemUrl: "", ativo: true },
   });
 
   function openCreate() {
     setEditingProd(null);
-    form.reset({ nome: "", categoria: "", precoBase: 0, unidade: "un", descricao: "", ativo: true });
+    form.reset({ nome: "", categoria: "", precoBase: 0, unidade: "un", descricao: "", imagemUrl: "", ativo: true });
     setFormOpen(true);
   }
 
@@ -176,6 +210,7 @@ function CatalogoModal({
       precoBase: parseFloat(p.precoBase),
       unidade: p.unidade,
       descricao: p.descricao ?? "",
+      imagemUrl: p.imagemUrl ?? "",
       ativo: p.ativo,
     });
     setFormOpen(true);
@@ -186,7 +221,11 @@ function CatalogoModal({
   }
 
   function onSubmit(vals: CatFormValues) {
-    const body = { ...vals, precoBase: vals.precoBase.toFixed(2) };
+    const body = {
+      ...vals,
+      precoBase: vals.precoBase.toFixed(2),
+      imagemUrl: vals.imagemUrl || undefined,
+    };
     if (editingProd) {
       updateMut.mutate(
         { id: editingProd.id, data: body },
@@ -217,6 +256,54 @@ function CatalogoModal({
     );
   }
 
+  function handleCsvFile(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (ev) => {
+      const text = ev.target?.result as string;
+      setCsvRaw(text);
+      const lines = text.split(/\r?\n/).filter((l) => l.trim());
+      if (lines.length < 2) { toast({ title: "CSV vazio ou sem dados", variant: "destructive" }); return; }
+      const headers = lines[0].split(",").map((h) => h.trim().toLowerCase().replace(/[^a-z0-9]/g, "_"));
+      const rows: CsvPreviewRow[] = [];
+      for (let i = 1; i < Math.min(lines.length, 6); i++) {
+        const cols = lines[i].split(",").map((c) => c.trim().replace(/^"|"$/g, ""));
+        const get = (aliases: string[]) => {
+          for (const a of aliases) { const idx = headers.indexOf(a); if (idx >= 0) return cols[idx] ?? ""; }
+          return "";
+        };
+        rows.push({
+          nome: get(["nome", "name", "produto"]),
+          sku: get(["sku", "codigo", "ref"]),
+          categoria: get(["categoria", "category"]),
+          preco_base: get(["preco_base", "precobase", "preco", "price", "valor"]),
+          unidade: get(["unidade", "un", "unit"]) || "un",
+          descricao: get(["descricao", "description"]),
+          imagem_url: get(["imagem_url", "imagem", "image", "foto"]),
+        });
+      }
+      setCsvPreview(rows);
+      setImportPreviewOpen(true);
+    };
+    reader.readAsText(file, "UTF-8");
+    e.target.value = "";
+  }
+
+  function confirmImport() {
+    importMut.mutate(
+      { tenantId, data: { csv: csvRaw } },
+      {
+        onSuccess: (result) => {
+          setImportPreviewOpen(false);
+          setImportResult(result);
+          invalidate();
+        },
+        onError: () => toast({ title: "Erro ao importar", variant: "destructive" }),
+      }
+    );
+  }
+
   const isSaving = createMut.isPending || updateMut.isPending;
 
   return (
@@ -224,12 +311,29 @@ function CatalogoModal({
       <Dialog open={open} onOpenChange={(o) => !o && onClose()}>
         <DialogContent className="max-w-3xl max-h-[85vh] overflow-y-auto">
           <DialogHeader>
-            <div className="flex items-center justify-between">
+            <div className="flex items-center justify-between gap-2">
               <DialogTitle>Catálogo de Produtos</DialogTitle>
-              <Button size="sm" onClick={openCreate}>
-                <Plus className="h-4 w-4 mr-1.5" />
-                Novo Produto
-              </Button>
+              <div className="flex items-center gap-2">
+                <input
+                  type="file"
+                  accept=".csv,text/csv"
+                  id="csv-import-input"
+                  className="hidden"
+                  onChange={handleCsvFile}
+                />
+                <Button size="sm" variant="outline" onClick={downloadTemplate}>
+                  <Download className="h-4 w-4 mr-1.5" />
+                  Modelo CSV
+                </Button>
+                <Button size="sm" variant="outline" onClick={() => document.getElementById("csv-import-input")?.click()}>
+                  <Upload className="h-4 w-4 mr-1.5" />
+                  Importar CSV
+                </Button>
+                <Button size="sm" onClick={openCreate}>
+                  <Plus className="h-4 w-4 mr-1.5" />
+                  Novo Produto
+                </Button>
+              </div>
             </div>
           </DialogHeader>
 
@@ -241,11 +345,13 @@ function CatalogoModal({
             <div className="flex flex-col items-center gap-3 py-12 text-muted-foreground">
               <Package className="h-10 w-10 opacity-25" />
               <p className="text-sm">Nenhum produto no catálogo ainda</p>
+              <p className="text-xs">Use "Importar CSV" para adicionar vários produtos de uma vez</p>
             </div>
           ) : (
             <Table>
               <TableHeader>
                 <TableRow>
+                  <TableHead className="w-10"></TableHead>
                   <TableHead>Nome</TableHead>
                   <TableHead>Categoria</TableHead>
                   <TableHead>Preço Base</TableHead>
@@ -257,7 +363,24 @@ function CatalogoModal({
               <TableBody>
                 {catalog.map((p) => (
                   <TableRow key={p.id}>
-                    <TableCell className="font-medium">{p.nome}</TableCell>
+                    <TableCell>
+                      {p.imagemUrl ? (
+                        <img
+                          src={p.imagemUrl}
+                          alt={p.nome}
+                          className="h-9 w-9 rounded object-cover border border-border"
+                          onError={(e) => { (e.target as HTMLImageElement).style.display = "none"; }}
+                        />
+                      ) : (
+                        <div className="h-9 w-9 rounded bg-muted flex items-center justify-center">
+                          <ImageIcon className="h-4 w-4 text-muted-foreground" />
+                        </div>
+                      )}
+                    </TableCell>
+                    <TableCell className="font-medium">
+                      <div>{p.nome}</div>
+                      {p.sku && <div className="text-xs text-muted-foreground">SKU: {p.sku}</div>}
+                    </TableCell>
                     <TableCell className="text-muted-foreground">{p.categoria ?? "—"}</TableCell>
                     <TableCell className="font-mono">{fmtCurrency(p.precoBase)}</TableCell>
                     <TableCell className="text-muted-foreground">{p.unidade}</TableCell>
@@ -321,6 +444,17 @@ function CatalogoModal({
                   <FormControl><Textarea rows={2} className="resize-none" {...field} value={field.value ?? ""} /></FormControl><FormMessage />
                 </FormItem>
               )} />
+              <FormField control={form.control} name="imagemUrl" render={({ field }) => (
+                <FormItem>
+                  <FormLabel>URL da Imagem <span className="text-muted-foreground text-xs">(opcional)</span></FormLabel>
+                  <FormControl><Input placeholder="https://…" {...field} value={field.value ?? ""} /></FormControl>
+                  <FormMessage />
+                  {field.value && (
+                    <img src={field.value} alt="preview" className="h-16 w-16 rounded object-cover border border-border mt-1"
+                      onError={(e) => { (e.target as HTMLImageElement).style.display = "none"; }} />
+                  )}
+                </FormItem>
+              )} />
               <div className="flex gap-2 pt-1">
                 <Button type="button" variant="outline" className="flex-1" onClick={() => setFormOpen(false)}>Cancelar</Button>
                 <Button type="submit" className="flex-1" disabled={isSaving}>
@@ -330,6 +464,80 @@ function CatalogoModal({
               </div>
             </form>
           </Form>
+        </DialogContent>
+      </Dialog>
+
+      {/* Import CSV preview dialog */}
+      <Dialog open={importPreviewOpen} onOpenChange={(o) => !o && setImportPreviewOpen(false)}>
+        <DialogContent className="max-w-2xl max-h-[85vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Pré-visualização da importação</DialogTitle>
+          </DialogHeader>
+          <p className="text-sm text-muted-foreground mb-2">
+            Mostrando até 5 linhas. Confirme para importar <strong>todos</strong> os produtos do arquivo.
+          </p>
+          {csvPreview.length > 0 && (
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Nome</TableHead>
+                  <TableHead>SKU</TableHead>
+                  <TableHead>Categoria</TableHead>
+                  <TableHead>Preço</TableHead>
+                  <TableHead>Un.</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {csvPreview.map((row, i) => (
+                  <TableRow key={i}>
+                    <TableCell className="font-medium">{row.nome || <span className="text-destructive text-xs">vazio!</span>}</TableCell>
+                    <TableCell className="text-muted-foreground text-xs">{row.sku || "—"}</TableCell>
+                    <TableCell className="text-muted-foreground text-xs">{row.categoria || "—"}</TableCell>
+                    <TableCell className="font-mono text-xs">{row.preco_base || <span className="text-destructive">inválido</span>}</TableCell>
+                    <TableCell className="text-xs">{row.unidade || "un"}</TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          )}
+          <div className="flex gap-2 mt-4">
+            <Button variant="outline" className="flex-1" onClick={() => setImportPreviewOpen(false)}>Cancelar</Button>
+            <Button className="flex-1" onClick={confirmImport} disabled={importMut.isPending}>
+              {importMut.isPending ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Upload className="h-4 w-4 mr-2" />}
+              Confirmar Importação
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Import result dialog */}
+      <Dialog open={!!importResult} onOpenChange={(o) => !o && setImportResult(null)}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Resultado da importação</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3">
+            <div className="flex items-center gap-3 p-3 rounded-lg bg-emerald-50 border border-emerald-200">
+              <CheckCircle2 className="h-5 w-5 text-emerald-600 shrink-0" />
+              <span className="text-sm text-emerald-800 font-medium">
+                {importResult?.imported ?? 0} produto{(importResult?.imported ?? 0) !== 1 ? "s" : ""} importado{(importResult?.imported ?? 0) !== 1 ? "s" : ""} com sucesso
+              </span>
+            </div>
+            {(importResult?.errors?.length ?? 0) > 0 && (
+              <div className="space-y-1">
+                <div className="flex items-center gap-2 text-sm text-amber-700">
+                  <AlertTriangle className="h-4 w-4" />
+                  <span>{importResult!.errors.length} linha{importResult!.errors.length !== 1 ? "s" : ""} ignorada{importResult!.errors.length !== 1 ? "s" : ""}:</span>
+                </div>
+                <ul className="text-xs text-muted-foreground space-y-0.5 ml-6 list-disc">
+                  {importResult!.errors.map((e) => (
+                    <li key={e.row}>Linha {e.row}: {e.message}</li>
+                  ))}
+                </ul>
+              </div>
+            )}
+          </div>
+          <Button className="w-full mt-2" onClick={() => setImportResult(null)}>Fechar</Button>
         </DialogContent>
       </Dialog>
 

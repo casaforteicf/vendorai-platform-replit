@@ -10,6 +10,7 @@ export interface ProdutoCatalogo {
   id: string;
   tenantId: string;
   nome: string;
+  sku?: string | null;
   descricao?: string | null;
   categoria?: string | null;
   /** Decimal price stored as string (e.g. "99.90") */
@@ -17,6 +18,8 @@ export interface ProdutoCatalogo {
   /** Unit of measure (e.g. "un", "m2", "kg") */
   unidade: string;
   ativo: boolean;
+  /** Product image URL */
+  imagemUrl?: string | null;
   createdAt: Date;
   updatedAt: Date;
 }

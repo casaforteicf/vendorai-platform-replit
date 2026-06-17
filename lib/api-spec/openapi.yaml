@@ -2808,6 +2808,39 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
 
+  /tenants/{tenantId}/produtos-catalogo/import:
+    post:
+      operationId: importProdutosCatalogo
+      tags: [sales-cpq]
+      summary: Bulk import catalog products from CSV
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: tenantId
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ImportProdutosCatalogoBody"
+      responses:
+        "200":
+          description: Import result
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ImportProdutosCatalogoResult"
+        "403":
+          description: Access denied
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
   /tenants/{tenantId}/produtos-catalogo:
     get:
       operationId: listProdutosCatalogo
@@ -8183,6 +8216,9 @@ components:
           type: string
         nome:
           type: string
+        sku:
+          type: string
+          nullable: true
         descricao:
           type: string
           nullable: true
@@ -8197,6 +8233,10 @@ components:
           description: 'Unit of measure (e.g. "un", "m2", "kg")'
         ativo:
           type: boolean
+        imagemUrl:
+          type: string
+          nullable: true
+          description: Product image URL
         createdAt:
           type: string
           format: date-time
@@ -8212,6 +8252,8 @@ components:
           type: string
         nome:
           type: string
+        sku:
+          type: string
         descricao:
           type: string
         categoria:
@@ -8225,12 +8267,17 @@ components:
           type: string
         ativo:
           type: boolean
+        imagemUrl:
+          type: string
+          description: Product image URL
       required: [tenantId, nome, precoBase]
 
     UpdateProdutoCatalogoBody:
       type: object
       properties:
         nome:
+          type: string
+        sku:
           type: string
         descricao:
           type: string
@@ -8244,6 +8291,33 @@ components:
           type: string
         ativo:
           type: boolean
+        imagemUrl:
+          type: string
+
+    ImportProdutosCatalogoBody:
+      type: object
+      properties:
+        csv:
+          type: string
+          description: "CSV content UTF-8. Header row required. Columns: nome, sku, categoria, preco_base, unidade, descricao, imagem_url"
+      required: [csv]
+
+    ImportProdutosCatalogoResult:
+      type: object
+      properties:
+        imported:
+          type: integer
+        errors:
+          type: array
+          items:
+            type: object
+            properties:
+              row:
+                type: integer
+              message:
+                type: string
+            required: [row, message]
+      required: [imported, errors]
 
     CreatePropostaFromCatalogoBody:
       type: object

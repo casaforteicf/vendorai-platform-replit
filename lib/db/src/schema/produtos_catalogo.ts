@@ -17,6 +17,7 @@ export const produtosCatalogoTable = pgTable("produtos_catalogo", {
   precoBase: numeric("preco_base", { precision: 12, scale: 2 }).notNull(),
   unidade: text("unidade").notNull().default("un"),
   ativo: boolean("ativo").notNull().default(true),
+  imagemUrl: text("imagem_url"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
 });
