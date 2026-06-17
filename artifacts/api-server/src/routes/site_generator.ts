@@ -2,7 +2,9 @@ import { Router, type IRouter } from "express";
 import { desc, eq } from "drizzle-orm";
 import { db, generatedSitesTable } from "@workspace/db";
 import type { SiteGeneratorConfig } from "@workspace/db";
-import { anthropic } from "@workspace/integrations-anthropic-ai";
+import OpenAI from "openai";
+
+const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
 const router: IRouter = Router();
 
@@ -113,14 +115,13 @@ router.post("/tenants/:tenantId/site-generator/generate", async (req, res) => {
 
   const prompt = buildGeneratePrompt(config);
 
-  const response = await anthropic.messages.create({
-    model: "claude-sonnet-4-6",
+  const response = await openai.chat.completions.create({
+    model: "gpt-4o",
     max_tokens: 8192,
     messages: [{ role: "user", content: prompt }],
   });
 
-  const block = response.content[0];
-  const rawText = block.type === "text" ? block.text : "";
+  const rawText = response.choices[0]?.message?.content ?? "";
   const html = extractHtml(rawText);
 
   if (!html || html.length < 500) {
@@ -168,19 +169,18 @@ router.post("/tenants/:tenantId/site-generator/:siteId/refine", async (req, res)
 
   const refinePrompt = buildRefinePrompt(message);
 
-  const claudeMessages: Array<{ role: "user" | "assistant"; content: string }> = [
+  const refineMessages: Array<{ role: "user" | "assistant"; content: string }> = [
     ...history,
     { role: "user", content: refinePrompt },
   ];
 
-  const response = await anthropic.messages.create({
-    model: "claude-sonnet-4-6",
+  const response = await openai.chat.completions.create({
+    model: "gpt-4o",
     max_tokens: 8192,
-    messages: claudeMessages,
+    messages: refineMessages,
   });
 
-  const block = response.content[0];
-  const rawText = block.type === "text" ? block.text : "";
+  const rawText = response.choices[0]?.message?.content ?? "";
   const html = extractHtml(rawText);
 
   if (!html || html.length < 500) {
