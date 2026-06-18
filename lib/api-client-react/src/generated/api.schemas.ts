@@ -1869,6 +1869,129 @@ export interface ErrorResponse {
   error: string;
 }
 
+export type TenantAnalyticsAgentsPeriodo = typeof TenantAnalyticsAgentsPeriodo[keyof typeof TenantAnalyticsAgentsPeriodo];
+
+
+export const TenantAnalyticsAgentsPeriodo = {
+  '30d': '30d',
+} as const;
+
+export type TenantAnalyticsAgentsAgentsItemActions = {
+  total: number;
+  executed: number;
+  approved: number;
+  rejected: number;
+  pending: number;
+};
+
+export type TenantAnalyticsAgentsAgentsItemTasks = {
+  total: number;
+  completed: number;
+  failed: number;
+  pending: number;
+};
+
+export type TenantAnalyticsAgentsAgentsItem = {
+  agentName: string;
+  actions: TenantAnalyticsAgentsAgentsItemActions;
+  tasks: TenantAnalyticsAgentsAgentsItemTasks;
+};
+
+export type TenantAnalyticsAgentsMessagesByChannelItem = {
+  canal: string;
+  total: number;
+};
+
+export type TenantAnalyticsAgentsDealConversionsBySourceItem = {
+  source: string;
+  total: number;
+  valor: string;
+};
+
+export interface TenantAnalyticsAgents {
+  periodo: TenantAnalyticsAgentsPeriodo;
+  agents: TenantAnalyticsAgentsAgentsItem[];
+  messagesByChannel: TenantAnalyticsAgentsMessagesByChannelItem[];
+  dealConversionsBySource: TenantAnalyticsAgentsDealConversionsBySourceItem[];
+}
+
+export type TenantAnalyticsChannelsPeriodo = typeof TenantAnalyticsChannelsPeriodo[keyof typeof TenantAnalyticsChannelsPeriodo];
+
+
+export const TenantAnalyticsChannelsPeriodo = {
+  '30d': '30d',
+} as const;
+
+export type TenantAnalyticsChannelsLeadsBySourceItem = {
+  source: string;
+  total: number;
+  novos: number;
+};
+
+export type TenantAnalyticsChannelsDealsBySourceItem = {
+  source: string;
+  total: number;
+  valor: string;
+};
+
+export type TenantAnalyticsChannelsMessagesByChannelItem = {
+  canal: string;
+  entrada: number;
+  saida: number;
+};
+
+export type TenantAnalyticsChannelsAvgResponseTimeSecondsItem = {
+  canal: string;
+  avgSeconds: number | null;
+};
+
+export interface TenantAnalyticsChannels {
+  periodo: TenantAnalyticsChannelsPeriodo;
+  leadsBySource: TenantAnalyticsChannelsLeadsBySourceItem[];
+  dealsBySource: TenantAnalyticsChannelsDealsBySourceItem[];
+  messagesByChannel: TenantAnalyticsChannelsMessagesByChannelItem[];
+  avgResponseTimeSeconds: TenantAnalyticsChannelsAvgResponseTimeSecondsItem[];
+}
+
+export type TenantAnalyticsIntelligenceChurnRisk = {
+  baixo: number;
+  medio: number;
+  alto: number;
+};
+
+export type TenantAnalyticsIntelligenceJourneyStageDistributionItem = {
+  stage: string;
+  total: number;
+};
+
+export type TenantAnalyticsIntelligenceBehaviorScore = {
+  avg: number | null;
+  max: number | null;
+  min: number | null;
+};
+
+export type TenantAnalyticsIntelligenceTopChurnRiskItem = {
+  leadId: string;
+  nome: string;
+  churnRisk: number;
+  journeyStage?: string | null;
+  nextBestAction?: string | null;
+};
+
+export type TenantAnalyticsIntelligenceIntentDistributionItem = {
+  intent: string;
+  total: number;
+};
+
+export interface TenantAnalyticsIntelligence {
+  churnRisk: TenantAnalyticsIntelligenceChurnRisk;
+  journeyStageDistribution: TenantAnalyticsIntelligenceJourneyStageDistributionItem[];
+  behaviorScore: TenantAnalyticsIntelligenceBehaviorScore;
+  topChurnRisk: TenantAnalyticsIntelligenceTopChurnRiskItem[];
+  intentDistribution: TenantAnalyticsIntelligenceIntentDistributionItem[];
+  totalAnalyzed: number;
+}
+
 export interface InstagramConnection {
   connected: boolean;
   id?: string;

@@ -2028,6 +2028,114 @@ export const GeneratePerfilInsightResponse = zod.object({
 
 
 /**
+ * Returns agent action counts, task completion rates, messages by channel, and deal conversions by source.
+ * @summary Agent performance analytics
+ */
+export const GetTenantAnalyticsAgentsParams = zod.object({
+  "tenantId": zod.coerce.string()
+})
+
+export const GetTenantAnalyticsAgentsResponse = zod.object({
+  "periodo": zod.enum(['30d']),
+  "agents": zod.array(zod.object({
+  "agentName": zod.string(),
+  "actions": zod.object({
+  "total": zod.number(),
+  "executed": zod.number(),
+  "approved": zod.number(),
+  "rejected": zod.number(),
+  "pending": zod.number()
+}),
+  "tasks": zod.object({
+  "total": zod.number(),
+  "completed": zod.number(),
+  "failed": zod.number(),
+  "pending": zod.number()
+})
+})),
+  "messagesByChannel": zod.array(zod.object({
+  "canal": zod.string(),
+  "total": zod.number()
+})),
+  "dealConversionsBySource": zod.array(zod.object({
+  "source": zod.string(),
+  "total": zod.number(),
+  "valor": zod.string()
+}))
+})
+
+
+/**
+ * Returns leads, deals, messages, and response time by channel.
+ * @summary Channel conversion analytics
+ */
+export const GetTenantAnalyticsChannelsParams = zod.object({
+  "tenantId": zod.coerce.string()
+})
+
+export const GetTenantAnalyticsChannelsResponse = zod.object({
+  "periodo": zod.enum(['30d']),
+  "leadsBySource": zod.array(zod.object({
+  "source": zod.string(),
+  "total": zod.number(),
+  "novos": zod.number()
+})),
+  "dealsBySource": zod.array(zod.object({
+  "source": zod.string(),
+  "total": zod.number(),
+  "valor": zod.string()
+})),
+  "messagesByChannel": zod.array(zod.object({
+  "canal": zod.string(),
+  "entrada": zod.number(),
+  "saida": zod.number()
+})),
+  "avgResponseTimeSeconds": zod.array(zod.object({
+  "canal": zod.string(),
+  "avgSeconds": zod.number().nullable()
+}))
+})
+
+
+/**
+ * Returns churn risk distribution, journey stages, behavior scores, top churn risks, and intent analysis.
+ * @summary Customer intelligence metrics
+ */
+export const GetTenantAnalyticsIntelligenceParams = zod.object({
+  "tenantId": zod.coerce.string()
+})
+
+export const GetTenantAnalyticsIntelligenceResponse = zod.object({
+  "churnRisk": zod.object({
+  "baixo": zod.number(),
+  "medio": zod.number(),
+  "alto": zod.number()
+}),
+  "journeyStageDistribution": zod.array(zod.object({
+  "stage": zod.string(),
+  "total": zod.number()
+})),
+  "behaviorScore": zod.object({
+  "avg": zod.number().nullable(),
+  "max": zod.number().nullable(),
+  "min": zod.number().nullable()
+}),
+  "topChurnRisk": zod.array(zod.object({
+  "leadId": zod.string(),
+  "nome": zod.string(),
+  "churnRisk": zod.number(),
+  "journeyStage": zod.string().nullish(),
+  "nextBestAction": zod.string().nullish()
+})),
+  "intentDistribution": zod.array(zod.object({
+  "intent": zod.string(),
+  "total": zod.number()
+})),
+  "totalAnalyzed": zod.number()
+})
+
+
+/**
  * @summary Extract business data from uploaded documents using AI
  */
 export const AnalyzeOnboardingDocumentsParams = zod.object({

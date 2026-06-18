@@ -26,6 +26,7 @@ import agendamentosRouter from "./agendamentos";
 import subscriptionsRouter from "./subscriptions";
 import invoicesRouter from "./invoices";
 import dashboardRouter from "./dashboard";
+import analyticsRouter from "./analytics";
 import knowledgeBaseRouter from "./knowledge_base";
 import rulesRouter from "./rules";
 import webhooksRouter from "./webhooks";
@@ -121,6 +122,7 @@ router.use(tokenPurchasesRouter);
 
 // Executive Intelligence Hub
 router.use(dashboardRouter);
+router.use(analyticsRouter);
 
 // Knowledge Hub
 router.use(knowledgeBaseRouter);

@@ -10,3 +10,4 @@
 - [Express router.use wildcard blocks downstream](express-router-use-wildcard.md) — router.use(requireRole) sem path bloqueia TODA request; sempre colocar guard em cada rota individualmente.
 - [executeSql vs Supabase](executesql-vs-supabase.md) — executeSql em code_execution conecta ao Postgres interno do Replit, NÃO ao Supabase; para produção usar pg com SUPABASE_DATABASE_URL diretamente.
 - [OpenAI image models](openai-image-models.md) — dall-e-2/3 não existem nesta conta; usar gpt-image-1 (retorna b64_json); upload → object storage → /api/storage/objects/*.
+- [Analytics dashboard](analytics-dashboard.md) — 3 rotas (/analytics/agents, /channels, /intelligence); frontend em /analytics com 3 tabs; usa count(*) filter para performance.

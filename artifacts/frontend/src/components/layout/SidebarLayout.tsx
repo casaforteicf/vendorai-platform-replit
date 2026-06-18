@@ -5,6 +5,7 @@ import {
   Settings, LogOut, Megaphone, FileText, Receipt, BrainCircuit,
   Store, Package, Menu, X, Sparkles, Globe, BookOpen, HardHat, Layers,
   Shirt, Tag, ShoppingCart, Heart, Gift, Truck, UtensilsCrossed, Megaphone as MegaphoneIcon,
+  BarChart3,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
@@ -33,6 +34,7 @@ export function SidebarLayout({ children }: { children: React.ReactNode }) {
     { name: "Conteúdo",      href: "/content",       icon: Sparkles,        sellerHidden: false, section: "crm" },
     { name: "Campanhas",     href: "/campanhas",     icon: Megaphone,       sellerHidden: true,  section: "crm" },
     { name: "Faturamento",   href: "/faturamento",   icon: Receipt,         sellerHidden: true,  section: "crm" },
+    { name: "Métricas de IA",href: "/analytics",     icon: BarChart3,     sellerHidden: true,  section: "crm" },
     { name: "Configurações", href: "/configuracoes", icon: Settings,        sellerHidden: true,  section: "crm" },
     { name: "Guia de Setup", href: "/guia-implantacao", icon: BookOpen,     sellerHidden: true,  section: "crm" },
     { name: "Obras",         href: "/obras",                    icon: HardHat,     sellerHidden: false, section: "construcao" },

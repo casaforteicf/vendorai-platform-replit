@@ -194,6 +194,9 @@ import type {
   SyncInventoryResponse,
   SyncSupermercadoProdutos200,
   Tenant,
+  TenantAnalyticsAgents,
+  TenantAnalyticsChannels,
+  TenantAnalyticsIntelligence,
   TenantDashboard,
   TenantSetupStatus,
   UpdateActivityBody,
@@ -5281,6 +5284,240 @@ export const useGeneratePerfilInsight = <TError = ErrorType<ErrorResponse>,
       > => {
       return useMutation(getGeneratePerfilInsightMutationOptions(options));
     }
+
+export const getGetTenantAnalyticsAgentsUrl = (tenantId: string,) => {
+
+
+
+
+  return `/api/tenants/${tenantId}/analytics/agents`
+}
+
+/**
+ * Returns agent action counts, task completion rates, messages by channel, and deal conversions by source.
+ * @summary Agent performance analytics
+ */
+export const getTenantAnalyticsAgents = async (tenantId: string, options?: RequestInit): Promise<TenantAnalyticsAgents> => {
+
+  return customFetch<TenantAnalyticsAgents>(getGetTenantAnalyticsAgentsUrl(tenantId),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetTenantAnalyticsAgentsQueryKey = (tenantId: string,) => {
+    return [
+    `/api/tenants/${tenantId}/analytics/agents`
+    ] as const;
+    }
+
+
+export const getGetTenantAnalyticsAgentsQueryOptions = <TData = Awaited<ReturnType<typeof getTenantAnalyticsAgents>>, TError = ErrorType<ErrorResponse>>(tenantId: string, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getTenantAnalyticsAgents>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetTenantAnalyticsAgentsQueryKey(tenantId);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getTenantAnalyticsAgents>>> = ({ signal }) => getTenantAnalyticsAgents(tenantId, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, enabled: !!(tenantId), ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getTenantAnalyticsAgents>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetTenantAnalyticsAgentsQueryResult = NonNullable<Awaited<ReturnType<typeof getTenantAnalyticsAgents>>>
+export type GetTenantAnalyticsAgentsQueryError = ErrorType<ErrorResponse>
+
+
+/**
+ * @summary Agent performance analytics
+ */
+
+export function useGetTenantAnalyticsAgents<TData = Awaited<ReturnType<typeof getTenantAnalyticsAgents>>, TError = ErrorType<ErrorResponse>>(
+ tenantId: string, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getTenantAnalyticsAgents>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetTenantAnalyticsAgentsQueryOptions(tenantId,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+
+
+
+
+
+
+export const getGetTenantAnalyticsChannelsUrl = (tenantId: string,) => {
+
+
+
+
+  return `/api/tenants/${tenantId}/analytics/channels`
+}
+
+/**
+ * Returns leads, deals, messages, and response time by channel.
+ * @summary Channel conversion analytics
+ */
+export const getTenantAnalyticsChannels = async (tenantId: string, options?: RequestInit): Promise<TenantAnalyticsChannels> => {
+
+  return customFetch<TenantAnalyticsChannels>(getGetTenantAnalyticsChannelsUrl(tenantId),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetTenantAnalyticsChannelsQueryKey = (tenantId: string,) => {
+    return [
+    `/api/tenants/${tenantId}/analytics/channels`
+    ] as const;
+    }
+
+
+export const getGetTenantAnalyticsChannelsQueryOptions = <TData = Awaited<ReturnType<typeof getTenantAnalyticsChannels>>, TError = ErrorType<ErrorResponse>>(tenantId: string, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getTenantAnalyticsChannels>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetTenantAnalyticsChannelsQueryKey(tenantId);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getTenantAnalyticsChannels>>> = ({ signal }) => getTenantAnalyticsChannels(tenantId, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, enabled: !!(tenantId), ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getTenantAnalyticsChannels>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetTenantAnalyticsChannelsQueryResult = NonNullable<Awaited<ReturnType<typeof getTenantAnalyticsChannels>>>
+export type GetTenantAnalyticsChannelsQueryError = ErrorType<ErrorResponse>
+
+
+/**
+ * @summary Channel conversion analytics
+ */
+
+export function useGetTenantAnalyticsChannels<TData = Awaited<ReturnType<typeof getTenantAnalyticsChannels>>, TError = ErrorType<ErrorResponse>>(
+ tenantId: string, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getTenantAnalyticsChannels>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetTenantAnalyticsChannelsQueryOptions(tenantId,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+
+
+
+
+
+
+export const getGetTenantAnalyticsIntelligenceUrl = (tenantId: string,) => {
+
+
+
+
+  return `/api/tenants/${tenantId}/analytics/intelligence`
+}
+
+/**
+ * Returns churn risk distribution, journey stages, behavior scores, top churn risks, and intent analysis.
+ * @summary Customer intelligence metrics
+ */
+export const getTenantAnalyticsIntelligence = async (tenantId: string, options?: RequestInit): Promise<TenantAnalyticsIntelligence> => {
+
+  return customFetch<TenantAnalyticsIntelligence>(getGetTenantAnalyticsIntelligenceUrl(tenantId),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetTenantAnalyticsIntelligenceQueryKey = (tenantId: string,) => {
+    return [
+    `/api/tenants/${tenantId}/analytics/intelligence`
+    ] as const;
+    }
+
+
+export const getGetTenantAnalyticsIntelligenceQueryOptions = <TData = Awaited<ReturnType<typeof getTenantAnalyticsIntelligence>>, TError = ErrorType<ErrorResponse>>(tenantId: string, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getTenantAnalyticsIntelligence>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetTenantAnalyticsIntelligenceQueryKey(tenantId);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getTenantAnalyticsIntelligence>>> = ({ signal }) => getTenantAnalyticsIntelligence(tenantId, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, enabled: !!(tenantId), ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getTenantAnalyticsIntelligence>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetTenantAnalyticsIntelligenceQueryResult = NonNullable<Awaited<ReturnType<typeof getTenantAnalyticsIntelligence>>>
+export type GetTenantAnalyticsIntelligenceQueryError = ErrorType<ErrorResponse>
+
+
+/**
+ * @summary Customer intelligence metrics
+ */
+
+export function useGetTenantAnalyticsIntelligence<TData = Awaited<ReturnType<typeof getTenantAnalyticsIntelligence>>, TError = ErrorType<ErrorResponse>>(
+ tenantId: string, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getTenantAnalyticsIntelligence>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetTenantAnalyticsIntelligenceQueryOptions(tenantId,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+
+
+
+
+
 
 export const getAnalyzeOnboardingDocumentsUrl = (tenantId: string,) => {
 

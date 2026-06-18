@@ -1,0 +1,350 @@
+import { Router, type IRouter, type Request } from "express";
+import {
+  and, eq, count, sql, desc, gte, isNotNull,
+} from "drizzle-orm";
+import {
+  db,
+  agentActionsLogTable,
+  leadsTable,
+  dealsTable,
+  messagesTable,
+  customerIntelligenceTable,
+  agentTasksTable,
+} from "@workspace/db";
+
+const router: IRouter = Router();
+
+function getTenantId(req: Request): string {
+  return (req as any).user?.tenantId as string;
+}
+function canAccess(req: Request, tid: string) {
+  const role = (req as any).user?.platformRole;
+  return role === "super_admin" || getTenantId(req) === tid;
+}
+
+// ─── Agent Performance ────────────────────────────────────────────────────────
+
+router.get("/tenants/:tenantId/analytics/agents", async (req, res) => {
+  const { tenantId: tid } = req.params;
+  if (!canAccess(req, tid)) { res.status(403).json({ error: "Forbidden" }); return; }
+
+  const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
+
+  const [agentActions, agentTasks, messagesByAgent, dealConversions] = await Promise.all([
+    // Ações por agente (últimos 30 dias)
+    db
+      .select({
+        agentName: agentActionsLogTable.agentName,
+        total: count(),
+        executed: sql<number>`count(*) filter (where ${agentActionsLogTable.status} = 'executed')`.mapWith(Number),
+        approved: sql<number>`count(*) filter (where ${agentActionsLogTable.status} = 'approved')`.mapWith(Number),
+        rejected: sql<number>`count(*) filter (where ${agentActionsLogTable.status} = 'rejected')`.mapWith(Number),
+        pending: sql<number>`count(*) filter (where ${agentActionsLogTable.status} = 'pending')`.mapWith(Number),
+      })
+      .from(agentActionsLogTable)
+      .where(and(eq(agentActionsLogTable.tenantId, tid), gte(agentActionsLogTable.createdAt, thirtyDaysAgo)))
+      .groupBy(agentActionsLogTable.agentName),
+
+    // Tarefas de agente por status
+    db
+      .select({
+        agentName: agentTasksTable.agentName,
+        total: count(),
+        completed: sql<number>`count(*) filter (where ${agentTasksTable.status} = 'concluido')`.mapWith(Number),
+        failed: sql<number>`count(*) filter (where ${agentTasksTable.status} in ('erro', 'rejeitado'))`.mapWith(Number),
+        pending: sql<number>`count(*) filter (where ${agentTasksTable.status} in ('pendente_aprovacao', 'aprovado', 'executando'))`.mapWith(Number),
+      })
+      .from(agentTasksTable)
+      .where(and(eq(agentTasksTable.tenantId, tid), gte(agentTasksTable.createdAt, thirtyDaysAgo)))
+      .groupBy(agentTasksTable.agentName),
+
+    // Mensagens enviadas por canal (inferindo agente)
+    db
+      .select({
+        canal: messagesTable.canal,
+        total: count(),
+      })
+      .from(messagesTable)
+      .where(
+        and(
+          eq(messagesTable.tenantId, tid),
+          eq(messagesTable.direcao, "saida"),
+          gte(messagesTable.createdAt, thirtyDaysAgo),
+        ),
+      )
+      .groupBy(messagesTable.canal),
+
+    // Deals convertidos por canal de origem do lead
+    db
+      .select({
+        source: leadsTable.source,
+        total: count(),
+        valor: sql<string>`sum(${dealsTable.valor})::text`,
+      })
+      .from(dealsTable)
+      .innerJoin(leadsTable, eq(dealsTable.leadId, leadsTable.id))
+      .where(
+        and(
+          eq(dealsTable.tenantId, tid),
+          eq(dealsTable.etapa, "ganho"),
+          gte(dealsTable.updatedAt, thirtyDaysAgo),
+        ),
+      )
+      .groupBy(leadsTable.source),
+  ]);
+
+  // Merge agent performance
+  const agentMap = new Map<string, Record<string, unknown>>();
+  for (const a of agentActions) {
+    agentMap.set(a.agentName, {
+      agentName: a.agentName,
+      actions: {
+        total: Number(a.total),
+        executed: Number(a.executed),
+        approved: Number(a.approved),
+        rejected: Number(a.rejected),
+        pending: Number(a.pending),
+      },
+      tasks: { total: 0, completed: 0, failed: 0, pending: 0 },
+    });
+  }
+  for (const t of agentTasks) {
+    const existing = agentMap.get(t.agentName) ?? {
+      agentName: t.agentName,
+      actions: { total: 0, executed: 0, approved: 0, rejected: 0, pending: 0 },
+      tasks: { total: 0, completed: 0, failed: 0, pending: 0 },
+    };
+    existing.tasks = {
+      total: Number(t.total),
+      completed: Number(t.completed),
+      failed: Number(t.failed),
+      pending: Number(t.pending),
+    };
+    agentMap.set(t.agentName, existing);
+  }
+
+  res.json({
+    periodo: "30d",
+    agents: Array.from(agentMap.values()),
+    messagesByChannel: messagesByAgent.map((m) => ({ canal: m.canal, total: Number(m.total) })),
+    dealConversionsBySource: dealConversions.map((d) => ({
+      source: d.source ?? "desconhecido",
+      total: Number(d.total),
+      valor: d.valor ?? "0",
+    })),
+  });
+});
+
+// ─── Channel Conversion Analytics ───────────────────────────────────────────
+
+router.get("/tenants/:tenantId/analytics/channels", async (req, res) => {
+  const { tenantId: tid } = req.params;
+  if (!canAccess(req, tid)) { res.status(403).json({ error: "Forbidden" }); return; }
+
+  const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
+
+  const [
+    leadsBySource,
+    dealsBySource,
+    messagesByChannel,
+    avgResponseTime,
+  ] = await Promise.all([
+    // Leads por canal
+    db
+      .select({
+        source: leadsTable.source,
+        total: count(),
+        novos: sql<number>`count(*) filter (where ${leadsTable.createdAt} >= ${thirtyDaysAgo})`.mapWith(Number),
+      })
+      .from(leadsTable)
+      .where(eq(leadsTable.tenantId, tid))
+      .groupBy(leadsTable.source),
+
+    // Deals ganhos por canal
+    db
+      .select({
+        source: leadsTable.source,
+        total: count(),
+        valor: sql<string>`sum(${dealsTable.valor})::text`,
+      })
+      .from(dealsTable)
+      .innerJoin(leadsTable, eq(dealsTable.leadId, leadsTable.id))
+      .where(
+        and(
+          eq(dealsTable.tenantId, tid),
+          eq(dealsTable.etapa, "ganho"),
+        ),
+      )
+      .groupBy(leadsTable.source),
+
+    // Mensagens por canal
+    db
+      .select({
+        canal: messagesTable.canal,
+        entrada: sql<number>`count(*) filter (where ${messagesTable.direcao} = 'entrada')`.mapWith(Number),
+        saida: sql<number>`count(*) filter (where ${messagesTable.direcao} = 'saida')`.mapWith(Number),
+      })
+      .from(messagesTable)
+      .where(
+        and(
+          eq(messagesTable.tenantId, tid),
+          gte(messagesTable.createdAt, thirtyDaysAgo),
+        ),
+      )
+      .groupBy(messagesTable.canal),
+
+    // Tempo médio de resposta (mensagens saída - entrada anterior)
+    db
+      .select({
+        canal: messagesTable.canal,
+        avgSeconds: sql<string>`avg(extract(epoch from (${messagesTable.createdAt} - lag(${messagesTable.createdAt}) over (partition by ${messagesTable.conversationId} order by ${messagesTable.createdAt}))))::text`,
+      })
+      .from(messagesTable)
+      .where(
+        and(
+          eq(messagesTable.tenantId, tid),
+          eq(messagesTable.direcao, "saida"),
+          gte(messagesTable.createdAt, thirtyDaysAgo),
+        ),
+      )
+      .groupBy(messagesTable.canal),
+  ]);
+
+  res.json({
+    periodo: "30d",
+    leadsBySource: leadsBySource.map((r) => ({
+      source: r.source ?? "desconhecido",
+      total: Number(r.total),
+      novos: Number(r.novos),
+    })),
+    dealsBySource: dealsBySource.map((r) => ({
+      source: r.source ?? "desconhecido",
+      total: Number(r.total),
+      valor: r.valor ?? "0",
+    })),
+    messagesByChannel: messagesByChannel.map((r) => ({
+      canal: r.canal ?? "desconhecido",
+      entrada: Number(r.entrada),
+      saida: Number(r.saida),
+    })),
+    avgResponseTimeSeconds: avgResponseTime.map((r) => ({
+      canal: r.canal ?? "desconhecido",
+      avgSeconds: r.avgSeconds ? Number(Number(r.avgSeconds).toFixed(0)) : null,
+    })),
+  });
+});
+
+// ─── Customer Intelligence Analytics ──────────────────────────────────────────
+
+router.get("/tenants/:tenantId/analytics/intelligence", async (req, res) => {
+  const { tenantId: tid } = req.params;
+  if (!canAccess(req, tid)) { res.status(403).json({ error: "Forbidden" }); return; }
+
+  const [
+    churnDist,
+    journeyStageDist,
+    behaviorScore,
+    topChurn,
+    intentAnalysis,
+    totalAnalyzed,
+  ] = await Promise.all([
+    // Distribuição de churn risk
+    db
+      .select({
+        baixo: sql<number>`count(*) filter (where ${customerIntelligenceTable.churnRisk} < 30)`.mapWith(Number),
+        medio: sql<number>`count(*) filter (where ${customerIntelligenceTable.churnRisk} >= 30 and ${customerIntelligenceTable.churnRisk} <= 70)`.mapWith(Number),
+        alto: sql<number>`count(*) filter (where ${customerIntelligenceTable.churnRisk} > 70)`.mapWith(Number),
+      })
+      .from(customerIntelligenceTable)
+      .where(and(eq(customerIntelligenceTable.tenantId, tid), isNotNull(customerIntelligenceTable.churnRisk))),
+
+    // Distribuição de journey stage
+    db
+      .select({
+        stage: customerIntelligenceTable.journeyStage,
+        total: count(),
+      })
+      .from(customerIntelligenceTable)
+      .where(and(eq(customerIntelligenceTable.tenantId, tid), isNotNull(customerIntelligenceTable.journeyStage)))
+      .groupBy(customerIntelligenceTable.journeyStage),
+
+    // Score médio de comportamento
+    db
+      .select({
+        avg: sql<string>`avg(${customerIntelligenceTable.behaviorScore})::text`,
+        max: sql<string>`max(${customerIntelligenceTable.behaviorScore})::text`,
+        min: sql<string>`min(${customerIntelligenceTable.behaviorScore})::text`,
+      })
+      .from(customerIntelligenceTable)
+      .where(and(eq(customerIntelligenceTable.tenantId, tid), isNotNull(customerIntelligenceTable.behaviorScore))),
+
+    // Top 10 leads em churn risk
+    db
+      .select({
+        leadId: customerIntelligenceTable.leadId,
+        nome: leadsTable.nome,
+        churnRisk: customerIntelligenceTable.churnRisk,
+        journeyStage: customerIntelligenceTable.journeyStage,
+        nextBestAction: customerIntelligenceTable.nextBestAction,
+      })
+      .from(customerIntelligenceTable)
+      .innerJoin(leadsTable, eq(customerIntelligenceTable.leadId, leadsTable.id))
+      .where(
+        and(
+          eq(customerIntelligenceTable.tenantId, tid),
+          isNotNull(customerIntelligenceTable.churnRisk),
+        ),
+      )
+      .orderBy(desc(customerIntelligenceTable.churnRisk))
+      .limit(10),
+
+    // Distribuição de intent analysis (top 10)
+    db
+      .select({
+        intent: customerIntelligenceTable.intentAnalysis,
+        total: count(),
+      })
+      .from(customerIntelligenceTable)
+      .where(and(eq(customerIntelligenceTable.tenantId, tid), isNotNull(customerIntelligenceTable.intentAnalysis)))
+      .groupBy(customerIntelligenceTable.intentAnalysis)
+      .orderBy(desc(sql`count(*)`))
+      .limit(10),
+
+    // Total de leads analisados
+    db
+      .select({ total: count() })
+      .from(customerIntelligenceTable)
+      .where(eq(customerIntelligenceTable.tenantId, tid)),
+  ]);
+
+  res.json({
+    churnRisk: {
+      baixo: churnDist[0]?.baixo ?? 0,
+      medio: churnDist[0]?.medio ?? 0,
+      alto: churnDist[0]?.alto ?? 0,
+    },
+    journeyStageDistribution: journeyStageDist.map((r) => ({
+      stage: r.stage,
+      total: Number(r.total),
+    })),
+    behaviorScore: {
+      avg: behaviorScore[0]?.avg ? Number(Number(behaviorScore[0].avg).toFixed(1)) : null,
+      max: behaviorScore[0]?.max ? Number(Number(behaviorScore[0].max).toFixed(1)) : null,
+      min: behaviorScore[0]?.min ? Number(Number(behaviorScore[0].min).toFixed(1)) : null,
+    },
+    topChurnRisk: topChurn.map((r) => ({
+      leadId: r.leadId,
+      nome: r.nome ?? "—",
+      churnRisk: r.churnRisk ?? 0,
+      journeyStage: r.journeyStage ?? null,
+      nextBestAction: r.nextBestAction ?? null,
+    })),
+    intentDistribution: intentAnalysis.map((r) => ({
+      intent: r.intent,
+      total: Number(r.total),
+    })),
+    totalAnalyzed: Number(totalAnalyzed[0]?.total ?? 0),
+  });
+});
+
+export default router;

@@ -2034,6 +2034,108 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
 
+  /tenants/{tenantId}/analytics/agents:
+    get:
+      operationId: getTenantAnalyticsAgents
+      tags: [executive-intelligence]
+      summary: Agent performance analytics
+      description: Returns agent action counts, task completion rates, messages by channel, and deal conversions by source.
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: tenantId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Analytics payload
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TenantAnalyticsAgents"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /tenants/{tenantId}/analytics/channels:
+    get:
+      operationId: getTenantAnalyticsChannels
+      tags: [executive-intelligence]
+      summary: Channel conversion analytics
+      description: Returns leads, deals, messages, and response time by channel.
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: tenantId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Analytics payload
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TenantAnalyticsChannels"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /tenants/{tenantId}/analytics/intelligence:
+    get:
+      operationId: getTenantAnalyticsIntelligence
+      tags: [executive-intelligence]
+      summary: Customer intelligence metrics
+      description: Returns churn risk distribution, journey stages, behavior scores, top churn risks, and intent analysis.
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: tenantId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Analytics payload
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TenantAnalyticsIntelligence"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
   /tenants/{tenantId}/onboarding/analyze-documents:
     post:
       operationId: analyzeOnboardingDocuments
@@ -10563,6 +10665,193 @@ components:
           type: string
       required:
         - error
+
+    TenantAnalyticsAgents:
+      type: object
+      required: [periodo, agents, messagesByChannel, dealConversionsBySource]
+      properties:
+        periodo:
+          type: string
+          enum: ["30d"]
+        agents:
+          type: array
+          items:
+            type: object
+            required: [agentName, actions, tasks]
+            properties:
+              agentName:
+                type: string
+              actions:
+                type: object
+                required: [total, executed, approved, rejected, pending]
+                properties:
+                  total:
+                    type: integer
+                  executed:
+                    type: integer
+                  approved:
+                    type: integer
+                  rejected:
+                    type: integer
+                  pending:
+                    type: integer
+              tasks:
+                type: object
+                required: [total, completed, failed, pending]
+                properties:
+                  total:
+                    type: integer
+                  completed:
+                    type: integer
+                  failed:
+                    type: integer
+                  pending:
+                    type: integer
+        messagesByChannel:
+          type: array
+          items:
+            type: object
+            required: [canal, total]
+            properties:
+              canal:
+                type: string
+              total:
+                type: integer
+        dealConversionsBySource:
+          type: array
+          items:
+            type: object
+            required: [source, total, valor]
+            properties:
+              source:
+                type: string
+              total:
+                type: integer
+              valor:
+                type: string
+
+    TenantAnalyticsChannels:
+      type: object
+      required: [periodo, leadsBySource, dealsBySource, messagesByChannel, avgResponseTimeSeconds]
+      properties:
+        periodo:
+          type: string
+          enum: ["30d"]
+        leadsBySource:
+          type: array
+          items:
+            type: object
+            required: [source, total, novos]
+            properties:
+              source:
+                type: string
+              total:
+                type: integer
+              novos:
+                type: integer
+        dealsBySource:
+          type: array
+          items:
+            type: object
+            required: [source, total, valor]
+            properties:
+              source:
+                type: string
+              total:
+                type: integer
+              valor:
+                type: string
+        messagesByChannel:
+          type: array
+          items:
+            type: object
+            required: [canal, entrada, saida]
+            properties:
+              canal:
+                type: string
+              entrada:
+                type: integer
+              saida:
+                type: integer
+        avgResponseTimeSeconds:
+          type: array
+          items:
+            type: object
+            required: [canal, avgSeconds]
+            properties:
+              canal:
+                type: string
+              avgSeconds:
+                type: integer
+                nullable: true
+
+    TenantAnalyticsIntelligence:
+      type: object
+      required: [churnRisk, journeyStageDistribution, behaviorScore, topChurnRisk, intentDistribution, totalAnalyzed]
+      properties:
+        churnRisk:
+          type: object
+          required: [baixo, medio, alto]
+          properties:
+            baixo:
+              type: integer
+            medio:
+              type: integer
+            alto:
+              type: integer
+        journeyStageDistribution:
+          type: array
+          items:
+            type: object
+            required: [stage, total]
+            properties:
+              stage:
+                type: string
+              total:
+                type: integer
+        behaviorScore:
+          type: object
+          required: [avg, max, min]
+          properties:
+            avg:
+              type: number
+              nullable: true
+            max:
+              type: number
+              nullable: true
+            min:
+              type: number
+              nullable: true
+        topChurnRisk:
+          type: array
+          items:
+            type: object
+            required: [leadId, nome, churnRisk]
+            properties:
+              leadId:
+                type: string
+              nome:
+                type: string
+              churnRisk:
+                type: number
+              journeyStage:
+                type: string
+                nullable: true
+              nextBestAction:
+                type: string
+                nullable: true
+        intentDistribution:
+          type: array
+          items:
+            type: object
+            required: [intent, total]
+            properties:
+              intent:
+                type: string
+              total:
+                type: integer
+        totalAnalyzed:
+          type: integer
 
     InstagramConnection:
       type: object
