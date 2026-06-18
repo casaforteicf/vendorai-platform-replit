@@ -6,8 +6,8 @@ import {
   getGetPropostaQueryKey,
   useGetLead,
   getGetLeadQueryKey,
-  useGetTenant,
-  getGetTenantQueryKey,
+  useGetBusinessProfileByTenant,
+  getGetBusinessProfileByTenantQueryKey,
 } from "@workspace/api-client-react";
 import { Loader2, Printer, MessageCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -58,8 +58,8 @@ export default function PropostaPrint() {
     query: { enabled: !!proposta?.leadId, queryKey: getGetLeadQueryKey(proposta?.leadId ?? "") },
   });
 
-  const { data: tenant } = useGetTenant(user?.tenantId ?? "", {
-    query: { enabled: !!user?.tenantId, queryKey: getGetTenantQueryKey(user?.tenantId ?? "") },
+  const { data: bp } = useGetBusinessProfileByTenant(user?.tenantId ?? "", {
+    query: { enabled: !!user?.tenantId, queryKey: getGetBusinessProfileByTenantQueryKey(user?.tenantId ?? "") },
   });
 
   useEffect(() => {
@@ -102,6 +102,9 @@ export default function PropostaPrint() {
     `\nEntre em contato para confirmar.`
   );
 
+  const nomeEmpresa = bp?.nomeFantasia || bp?.razaoSocial || "";
+  const logoUrl = bp?.logoUrl;
+
   return (
     <div className="min-h-screen bg-gray-50">
       {/* Action bar — hidden on print */}
@@ -134,17 +137,49 @@ export default function PropostaPrint() {
           className="max-w-[210mm] mx-auto bg-white shadow-lg my-6 p-12"
           style={{ minHeight: "297mm" }}
         >
-          {/* Header */}
-          <div className="flex items-start justify-between mb-8 pb-6 border-b-2 border-gray-200">
-            <div>
-              <h1 className="text-2xl font-bold text-gray-900">
-                {(tenant as any)?.nomeFantasia || (tenant as any)?.razaoSocial || "Empresa"}
-              </h1>
-              {(tenant as any)?.cnpj && (
-                <p className="text-sm text-gray-500 mt-0.5">CNPJ: {(tenant as any).cnpj}</p>
+          {/* ── Header: Empresa à esquerda | Nº orçamento à direita ── */}
+          <div className="flex items-start justify-between mb-8 pb-6 border-b-2 border-gray-200 gap-6">
+
+            {/* Lado esquerdo: logo + dados da empresa */}
+            <div className="flex items-start gap-4 min-w-0">
+              {logoUrl && (
+                <img
+                  src={logoUrl}
+                  alt={nomeEmpresa || "Logo"}
+                  className="h-16 w-auto object-contain shrink-0 rounded"
+                  style={{ maxWidth: "120px" }}
+                />
               )}
+              <div className="min-w-0">
+                {nomeEmpresa && (
+                  <h1 className="text-xl font-bold text-gray-900 leading-tight">
+                    {nomeEmpresa}
+                  </h1>
+                )}
+                {bp?.razaoSocial && bp.razaoSocial !== nomeEmpresa && (
+                  <p className="text-sm text-gray-500">{bp.razaoSocial}</p>
+                )}
+                {bp?.cnpj && (
+                  <p className="text-xs text-gray-500 mt-0.5">CNPJ: {bp.cnpj}</p>
+                )}
+                {bp?.endereco && (
+                  <p className="text-xs text-gray-500 mt-1 leading-snug">{bp.endereco}</p>
+                )}
+                {(bp?.telefone || bp?.email) && (
+                  <div className="flex flex-wrap gap-3 mt-1">
+                    {bp.telefone && (
+                      <p className="text-xs text-gray-500">{bp.telefone}</p>
+                    )}
+                    {bp.email && (
+                      <p className="text-xs text-gray-500">{bp.email}</p>
+                    )}
+                  </div>
+                )}
+              </div>
             </div>
-            <div className="text-right">
+
+            {/* Lado direito: número, datas e status */}
+            <div className="text-right shrink-0">
               <div className="inline-block bg-gray-100 rounded-lg px-4 py-2">
                 <p className="text-xs text-gray-500 uppercase tracking-wide font-medium">Orçamento</p>
                 <p className="text-lg font-bold text-gray-900 font-mono">
@@ -170,7 +205,7 @@ export default function PropostaPrint() {
             </div>
           </div>
 
-          {/* Cliente */}
+          {/* ── Para (cliente) ── */}
           <div className="mb-8">
             <h2 className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">
               Cliente
@@ -183,12 +218,12 @@ export default function PropostaPrint() {
             </div>
           </div>
 
-          {/* Título */}
+          {/* ── Título da proposta ── */}
           <div className="mb-6">
             <h2 className="text-xl font-bold text-gray-900">{proposta.titulo}</h2>
           </div>
 
-          {/* Itens */}
+          {/* ── Itens ── */}
           <div className="mb-6">
             <table className="w-full text-sm">
               <thead>
@@ -201,10 +236,7 @@ export default function PropostaPrint() {
               </thead>
               <tbody>
                 {proposta.itens.map((item, i) => (
-                  <tr
-                    key={i}
-                    className={i % 2 === 0 ? "bg-white" : "bg-gray-50"}
-                  >
+                  <tr key={i} className={i % 2 === 0 ? "bg-white" : "bg-gray-50"}>
                     <td className="px-4 py-2.5 text-gray-800 font-medium">{item.nome}</td>
                     <td className="px-4 py-2.5 text-center text-gray-600">{item.quantidade}</td>
                     <td className="px-4 py-2.5 text-right text-gray-600 font-mono">
@@ -229,7 +261,7 @@ export default function PropostaPrint() {
             </table>
           </div>
 
-          {/* Recorrência */}
+          {/* ── Recorrência ── */}
           {proposta.recorrente && proposta.valorMensal && (
             <div className="mb-6 bg-violet-50 border border-violet-200 rounded-lg p-4">
               <h3 className="text-sm font-semibold text-violet-800 mb-3">Cobrança Recorrente Mensal</h3>
@@ -256,7 +288,7 @@ export default function PropostaPrint() {
             </div>
           )}
 
-          {/* Condições Comerciais */}
+          {/* ── Condições Comerciais ── */}
           {(proposta.formaPagamento || proposta.condPagamento || proposta.prazoEntrega) && (
             <div className="mb-6">
               <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-3">
@@ -287,7 +319,7 @@ export default function PropostaPrint() {
             </div>
           )}
 
-          {/* Observações */}
+          {/* ── Observações ── */}
           {proposta.observacoes && (
             <div className="mb-6">
               <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">
@@ -299,11 +331,28 @@ export default function PropostaPrint() {
             </div>
           )}
 
-          {/* Footer */}
-          <div className="mt-12 pt-6 border-t border-gray-200 text-center">
-            <p className="text-xs text-gray-400">
-              Orçamento gerado em {fmtDateTime(proposta.createdAt)} · Número {proposta.numero ?? proposta.id.slice(0, 8).toUpperCase()}
-            </p>
+          {/* ── Footer: vendedor + número ── */}
+          <div className="mt-12 pt-6 border-t border-gray-200">
+            <div className="flex items-end justify-between">
+              {/* Vendedor */}
+              {user?.name && (
+                <div>
+                  <p className="text-xs text-gray-400 uppercase tracking-wide mb-0.5">Responsável / Vendedor</p>
+                  <p className="text-sm font-medium text-gray-700">{user.name}</p>
+                  {user.email && (
+                    <p className="text-xs text-gray-500">{user.email}</p>
+                  )}
+                </div>
+              )}
+              <div className="text-right">
+                <p className="text-xs text-gray-400">
+                  Emitido em {fmtDateTime(proposta.createdAt)}
+                </p>
+                <p className="text-xs text-gray-400 font-mono">
+                  Nº {proposta.numero ?? proposta.id.slice(0, 8).toUpperCase()}
+                </p>
+              </div>
+            </div>
           </div>
         </div>
       </div>
