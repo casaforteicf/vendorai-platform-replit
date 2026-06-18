@@ -37,6 +37,8 @@ tags:
     description: Object storage upload and serving endpoints.
   - name: content
     description: Instagram Content Generation — Feed, Stories, and Reels scripts
+  - name: instagram
+    description: Instagram Business OAuth connection and messaging
   - name: schedule-hub
     description: Scheduling — agendas and agendamentos
 paths:
@@ -333,6 +335,53 @@ paths:
                 $ref: "#/components/schemas/ErrorResponse"
         "422":
           description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /auth/instagram:
+    get:
+      operationId: instagramOAuthRedirect
+      tags: [instagram]
+      summary: Start Instagram OAuth flow
+      description: Redirects the user to Meta's Facebook OAuth dialog to authorize Instagram Business access.
+      security:
+        - bearerAuth: []
+      responses:
+        "302":
+          description: Redirect to Meta OAuth
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /auth/instagram/callback:
+    get:
+      operationId: instagramOAuthCallback
+      tags: [instagram]
+      summary: Instagram OAuth callback
+      description: Handles the OAuth callback from Meta, exchanges the code for tokens, and redirects to the frontend.
+      parameters:
+        - name: code
+          in: query
+          schema:
+            type: string
+        - name: state
+          in: query
+          schema:
+            type: string
+        - name: error
+          in: query
+          schema:
+            type: string
+      responses:
+        "302":
+          description: Redirect to frontend with success or error
+        "500":
+          description: Internal error
           content:
             application/json:
               schema:
@@ -783,6 +832,106 @@ paths:
                 $ref: "#/components/schemas/UsageSummary"
         "404":
           description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /tenants/{tenantId}/instagram-connection:
+    get:
+      operationId: getInstagramConnectionStatus
+      tags: [instagram]
+      summary: Get Instagram connection status
+      description: Returns whether the tenant has an active Instagram Business connection.
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: tenantId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Instagram connection status
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/InstagramConnection"
+        "403":
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "500":
+          description: Internal error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+    delete:
+      operationId: disconnectInstagram
+      tags: [instagram]
+      summary: Disconnect Instagram
+      description: Removes the Instagram connection for the tenant.
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: tenantId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Disconnected
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SuccessResponse"
+        "403":
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "500":
+          description: Internal error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /tenants/{tenantId}/instagram-connection/refresh:
+    post:
+      operationId: refreshInstagramToken
+      tags: [instagram]
+      summary: Refresh Instagram token
+      description: Renews the Instagram Page Access Token for the tenant.
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: tenantId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Token refreshed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/InstagramConnection"
+        "403":
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "500":
+          description: Internal error
           content:
             application/json:
               schema:
@@ -10220,6 +10369,36 @@ components:
           type: string
       required:
         - error
+
+    InstagramConnection:
+      type: object
+      required: [connected]
+      properties:
+        connected:
+          type: boolean
+        id:
+          type: string
+        username:
+          type: string
+        accountId:
+          type: string
+        pageId:
+          type: string
+        tokenExpiresAt:
+          type: string
+          format: date-time
+          nullable: true
+        connectedAt:
+          type: string
+          format: date-time
+          nullable: true
+
+    SuccessResponse:
+      type: object
+      required: [success]
+      properties:
+        success:
+          type: boolean
 
     Partner:
       type: object

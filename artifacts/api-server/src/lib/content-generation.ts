@@ -90,7 +90,7 @@ export async function generateImageForContent(
       } as Parameters<typeof openai.images.generate>[0]);
 
       // Some models (gpt-image-1) return b64_json — upload to object storage
-      const item = response.data?.[0];
+      const item = "data" in response && Array.isArray(response.data) ? response.data[0] : undefined;
       if (!item) continue;
 
       if ("url" in item && item.url) {

@@ -129,7 +129,7 @@ export async function createGoogleEvent(
 
   const cal = google.calendar({ version: "v3", auth: auth.oauth2 });
 
-  const requestBody: Parameters<typeof cal.events.insert>[0]["requestBody"] = {
+  const requestBody: any = {
     summary: agendamento.titulo,
     description: [
       leadName ? `Cliente: ${leadName}` : null,

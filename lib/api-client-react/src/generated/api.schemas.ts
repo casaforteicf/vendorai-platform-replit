@@ -1869,6 +1869,20 @@ export interface ErrorResponse {
   error: string;
 }
 
+export interface InstagramConnection {
+  connected: boolean;
+  id?: string;
+  username?: string;
+  accountId?: string;
+  pageId?: string;
+  tokenExpiresAt?: string | null;
+  connectedAt?: string | null;
+}
+
+export interface SuccessResponse {
+  success: boolean;
+}
+
 export interface Partner {
   id: string;
   name: string;
@@ -3803,6 +3817,12 @@ export interface SupermercadoDashboard {
   ultimasCampanhas?: SupermercadoCampanha[];
   ultimosPedidos?: SupermercadoPedido[];
 }
+
+export type InstagramOAuthCallbackParams = {
+code?: string;
+state?: string;
+error?: string;
+};
 
 export type ListDealsParams = {
 etapa?: DealEtapa;

@@ -1,10 +1,11 @@
-import { useState, useRef } from "react";
+import { useState, useRef, useEffect } from "react";
 import { useAuth } from "@/contexts/AuthContext";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
 import { useQueryClient } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
+import { useLocation } from "wouter";
 import {
   useGetBusinessProfileByTenant,
   getGetBusinessProfileByTenantQueryKey,
@@ -37,6 +38,10 @@ import {
   useDeleteUser,
   TipoFechamento,
   useRequestUploadUrl,
+  useGetInstagramConnectionStatus,
+  getGetInstagramConnectionStatusQueryKey,
+  useDisconnectInstagram,
+  useRefreshInstagramToken,
 } from "@workspace/api-client-react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
@@ -995,67 +1000,60 @@ export default function Configuracoes() {
     );
   }
 
-  // ── Instagram connection state ─────────────────────────────────────────────
-  const [igTokenInput, setIgTokenInput] = useState<string>("");
-  const [igPageIdInput, setIgPageIdInput] = useState<string>("");
-  const [igUsernameInput, setIgUsernameInput] = useState<string>("");
-  const [igSaving, setIgSaving] = useState(false);
-  const [syncedIg, setSyncedIg] = useState(false);
-  if (agentQuery.data && !syncedIg) {
-    setIgTokenInput(agentQuery.data.instagramPageAccessToken ?? "");
-    setIgPageIdInput(agentQuery.data.instagramPageId ?? "");
-    setIgUsernameInput(agentQuery.data.instagramUsername ?? "");
-    setSyncedIg(true);
-  }
+  // ── Instagram OAuth connection state ─────────────────────────────────────────────
+  const igConnection = useGetInstagramConnectionStatus(tenantId ?? "");
+  const disconnectIg = useDisconnectInstagram();
+  const refreshIg = useRefreshInstagramToken();
 
-  function onSaveInstagram() {
-    if (!agentQuery.data?.id) return;
-    setIgSaving(true);
-    updateAgentConf.mutate(
+  const [location] = useLocation();
+  useEffect(() => {
+    const url = new URL(window.location.href);
+    const connected = url.searchParams.get("instagramConnected");
+    const error = url.searchParams.get("instagramError");
+    if (connected === "1") {
+      toast({ title: "Instagram conectado com sucesso!" });
+      igConnection.refetch();
+      window.history.replaceState({}, "", window.location.pathname);
+    }
+    if (error) {
+      const messages: Record<string, string> = {
+        access_denied: "Permissão negada. Tente novamente.",
+        invalid_state: "Sessão inválida. Tente novamente.",
+        no_pages: "Nenhuma página encontrada. Verifique se sua conta tem uma página com Instagram Business.",
+        exchange_failed: "Erro ao conectar. Tente novamente.",
+      };
+      toast({ title: messages[error] ?? "Erro ao conectar Instagram.", variant: "destructive" });
+      window.history.replaceState({}, "", window.location.pathname);
+    }
+  }, [location]);
+
+  function onConnectInstagram() {
+    window.location.href = "/api/auth/instagram";
+  }
+  function onDisconnectInstagramOAuth() {
+    disconnectIg.mutate(
+      { tenantId: tenantId ?? "" },
       {
-        id: agentQuery.data.id,
-        data: {
-          instagramPageAccessToken: igTokenInput.trim() || null,
-          instagramPageId: igPageIdInput.trim() || null,
-          instagramUsername: igUsernameInput.trim() || null,
-        },
-      },
-      {
-        onSuccess: (updated) => {
-          queryClient.setQueryData(getGetAgentConfigByTenantQueryKey(tenantId ?? ""), updated);
-          setSyncedIg(false);
-          setIgSaving(false);
-          toast({ title: "Conexão Instagram salva com sucesso." });
+        onSuccess: () => {
+          queryClient.invalidateQueries({ queryKey: getGetInstagramConnectionStatusQueryKey(tenantId ?? "") });
+          toast({ title: "Instagram desconectado." });
         },
         onError: () => {
-          setIgSaving(false);
-          toast({ title: "Erro ao salvar Instagram.", variant: "destructive" });
+          toast({ title: "Erro ao desconectar Instagram.", variant: "destructive" });
         },
       }
     );
   }
-
-  function onDisconnectInstagram() {
-    if (!agentQuery.data?.id) return;
-    setIgSaving(true);
-    updateAgentConf.mutate(
+  function onRefreshInstagram() {
+    refreshIg.mutate(
+      { tenantId: tenantId ?? "" },
       {
-        id: agentQuery.data.id,
-        data: { instagramPageAccessToken: null, instagramPageId: null, instagramUsername: null },
-      },
-      {
-        onSuccess: (updated) => {
-          queryClient.setQueryData(getGetAgentConfigByTenantQueryKey(tenantId ?? ""), updated);
-          setIgTokenInput("");
-          setIgPageIdInput("");
-          setIgUsernameInput("");
-          setSyncedIg(false);
-          setIgSaving(false);
-          toast({ title: "Instagram desconectado." });
+        onSuccess: () => {
+          queryClient.invalidateQueries({ queryKey: getGetInstagramConnectionStatusQueryKey(tenantId ?? "") });
+          toast({ title: "Token renovado com sucesso." });
         },
         onError: () => {
-          setIgSaving(false);
-          toast({ title: "Erro ao desconectar Instagram.", variant: "destructive" });
+          toast({ title: "Erro ao renovar token.", variant: "destructive" });
         },
       }
     );
@@ -2328,7 +2326,7 @@ Body:
               )}
             </div>
 
-            {/* Instagram DM — conexão direta via Graph API */}
+            {/* Instagram DM — OAuth via Meta */}
             <div className="rounded-xl border bg-card p-6 space-y-5">
               <div className="flex items-start justify-between gap-4">
                 <div>
@@ -2339,11 +2337,10 @@ Body:
                     Instagram DM — Omnichannel
                   </h2>
                   <p className="text-sm text-muted-foreground mt-1">
-                    Conecte sua página do Instagram Business para enviar e receber DMs diretamente pelo VendorAI.
-                    Você precisará de um <strong>Page Access Token</strong> de longa duração (60 dias) e do <strong>Page ID</strong> da sua conta Business.
+                    Conecte sua página do Instagram Business via Meta OAuth para enviar e receber DMs diretamente pelo VendorAI.
                   </p>
                 </div>
-                {agentQuery.data?.instagramPageAccessToken && (
+                {igConnection.data?.connected && (
                   <div className="shrink-0">
                     <span className="inline-flex items-center gap-1.5 text-xs font-medium bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400 px-2.5 py-1 rounded-full">
                       <CheckCircle2 className="h-3 w-3" /> Conectado
@@ -2352,67 +2349,58 @@ Body:
                 )}
               </div>
 
-              {agentQuery.isLoading ? (
+              {igConnection.isLoading ? (
                 <div className="space-y-2">
                   <div className="h-10 bg-muted rounded-md animate-pulse" />
-                  <div className="h-10 bg-muted rounded-md animate-pulse" />
-                  <div className="h-10 bg-muted rounded-md animate-pulse" />
                 </div>
-              ) : (
+              ) : igConnection.data?.connected ? (
                 <div className="space-y-4">
-                  <div className="space-y-1.5">
-                    <label className="text-sm font-medium">Page Access Token</label>
-                    <Input
-                      type="password"
-                      placeholder="EAAxxxxxxxxxxxxxxx…"
-                      value={igTokenInput}
-                      onChange={(e) => setIgTokenInput(e.target.value)}
-                      className="font-mono text-sm"
-                    />
-                    <p className="text-xs text-muted-foreground">Token de acesso à página (longa duração, válido por ~60 dias). Gere em <strong>Meta for Developers → Graph API Explorer</strong>.</p>
-                  </div>
-
-                  <div className="grid grid-cols-2 gap-3">
-                    <div className="space-y-1.5">
-                      <label className="text-sm font-medium">Page ID</label>
-                      <Input
-                        placeholder="123456789012345"
-                        value={igPageIdInput}
-                        onChange={(e) => setIgPageIdInput(e.target.value)}
-                        className="font-mono text-sm"
-                      />
+                  <div className="rounded-lg bg-muted/30 border p-4 space-y-2">
+                    <div className="flex items-center gap-2">
+                      <span className="text-sm font-medium">Conta:</span>
+                      <span className="text-sm font-semibold text-foreground">@{igConnection.data.username}</span>
                     </div>
-                    <div className="space-y-1.5">
-                      <label className="text-sm font-medium">Username (para exibição)</label>
-                      <Input
-                        placeholder="@suamarca"
-                        value={igUsernameInput}
-                        onChange={(e) => setIgUsernameInput(e.target.value)}
-                        className="text-sm"
-                      />
+                    <div className="flex items-center gap-2">
+                      <span className="text-sm font-medium">Page ID:</span>
+                      <code className="text-sm font-mono text-muted-foreground">{igConnection.data.pageId}</code>
                     </div>
+                    {igConnection.data.tokenExpiresAt && (
+                      <div className="flex items-center gap-2">
+                        <span className="text-sm font-medium">Token expira em:</span>
+                        <span className="text-sm text-muted-foreground">
+                          {format(new Date(igConnection.data.tokenExpiresAt), "dd/MM/yyyy HH:mm")}
+                        </span>
+                      </div>
+                    )}
                   </div>
 
                   <div className="flex items-center gap-3">
                     <Button
-                      onClick={onSaveInstagram}
-                      disabled={igSaving || !agentQuery.data?.id || !igTokenInput.trim()}
+                      onClick={onConnectInstagram}
+                      variant="outline"
                       className="gap-2"
                     >
-                      <Save className="h-4 w-4" />
-                      {igSaving ? "Salvando…" : agentQuery.data?.instagramPageAccessToken ? "Atualizar conexão" : "Conectar Instagram"}
+                      <RefreshCw className="h-4 w-4" />
+                      Reconectar
                     </Button>
-                    {agentQuery.data?.instagramPageAccessToken && (
-                      <Button
-                        variant="outline"
-                        onClick={onDisconnectInstagram}
-                        disabled={igSaving}
-                        className="gap-2 text-destructive hover:text-destructive"
-                      >
-                        <Trash2 className="h-4 w-4" />
-                        Desconectar
-                      </Button>
-                    )}
+                    <Button
+                      onClick={onRefreshInstagram}
+                      variant="outline"
+                      disabled={refreshIg.isPending}
+                      className="gap-2"
+                    >
+                      <RefreshCw className="h-4 w-4" />
+                      {refreshIg.isPending ? "Renovando…" : "Renovar token"}
+                    </Button>
+                    <Button
+                      variant="outline"
+                      onClick={onDisconnectInstagramOAuth}
+                      disabled={disconnectIg.isPending}
+                      className="gap-2 text-destructive hover:text-destructive"
+                    >
+                      <Trash2 className="h-4 w-4" />
+                      {disconnectIg.isPending ? "Desconectando…" : "Desconectar"}
+                    </Button>
                   </div>
 
                   <div className="rounded-lg bg-muted/50 border p-4 space-y-2">
@@ -2434,6 +2422,21 @@ Body:
 }`}
                     </pre>
                   </div>
+                </div>
+              ) : (
+                <div className="space-y-4">
+                  <p className="text-sm text-muted-foreground">
+                    Clique no botão abaixo para autorizar a conexão com sua conta do Instagram Business via Meta.
+                  </p>
+                  <Button
+                    onClick={onConnectInstagram}
+                    className="gap-2"
+                  >
+                    <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                      <path d="M12 2.163c3.204 0 3.584.012 4.85.07 3.252.148 4.771 1.691 4.919 4.919.058 1.265.069 1.645.069 4.849 0 3.205-.012 3.584-.069 4.849-.149 3.225-1.664 4.771-4.919 4.919-1.266.058-1.644.07-4.85.07-3.204 0-3.584-.012-4.849-.07-3.26-.149-4.771-1.699-4.919-4.92-.058-1.265-.07-1.644-.07-4.849 0-3.204.013-3.583.07-4.849.149-3.227 1.664-4.771 4.919-4.919 1.266-.057 1.645-.069 4.849-.069zm0-2.163c-3.259 0-3.667.014-4.947.072-4.358.2-6.78 2.618-6.98 6.98-.059 1.281-.073 1.689-.073 4.948 0 3.259.014 3.668.072 4.948.2 4.358 2.618 6.78 6.98 6.98 1.281.058 1.689.072 4.948.072 3.259 0 3.668-.014 4.948-.072 4.354-.2 6.782-2.618 6.979-6.98.059-1.28.073-1.689.073-4.948 0-3.259-.014-3.667-.072-4.947-.196-4.354-2.617-6.78-6.979-6.98-1.281-.059-1.69-.073-4.949-.073zm0 5.838c-3.403 0-6.162 2.759-6.162 6.162s2.759 6.163 6.162 6.163 6.162-2.759 6.162-6.163c0-3.403-2.759-6.162-6.162-6.162zm0 10.162c-2.209 0-4-1.79-4-4 0-2.209 1.791-4 4-4s4 1.791 4 4c0 2.21-1.791 4-4 4zm6.406-11.845c-.796 0-1.441.645-1.441 1.44s.645 1.44 1.441 1.44c.795 0 1.439-.645 1.439-1.44s-.644-1.44-1.439-1.44z" fill="currentColor"/>
+                    </svg>
+                    Conectar Instagram
+                  </Button>
                 </div>
               )}
             </div>

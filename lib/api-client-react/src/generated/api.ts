@@ -114,6 +114,8 @@ import type {
   ImportProdutosCatalogoBody,
   ImportProdutosCatalogoResult,
   IncrementBody,
+  InstagramConnection,
+  InstagramOAuthCallbackParams,
   Insumo,
   InsumoInput,
   InsumoUpdate,
@@ -179,6 +181,7 @@ import type {
   SegmentTemplate,
   SiteConfig,
   Subscription,
+  SuccessResponse,
   SupermercadoCampanha,
   SupermercadoConfig,
   SupermercadoDashboard,
@@ -990,6 +993,169 @@ export const useAcceptInvite = <TError = ErrorType<ErrorResponse>,
       > => {
       return useMutation(getAcceptInviteMutationOptions(options));
     }
+
+export const getInstagramOAuthRedirectUrl = () => {
+
+
+
+
+  return `/api/auth/instagram`
+}
+
+/**
+ * Redirects the user to Meta's Facebook OAuth dialog to authorize Instagram Business access.
+ * @summary Start Instagram OAuth flow
+ */
+export const instagramOAuthRedirect = async ( options?: RequestInit): Promise<unknown> => {
+
+  return customFetch<unknown>(getInstagramOAuthRedirectUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getInstagramOAuthRedirectQueryKey = () => {
+    return [
+    `/api/auth/instagram`
+    ] as const;
+    }
+
+
+export const getInstagramOAuthRedirectQueryOptions = <TData = Awaited<ReturnType<typeof instagramOAuthRedirect>>, TError = ErrorType<void | ErrorResponse>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof instagramOAuthRedirect>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getInstagramOAuthRedirectQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof instagramOAuthRedirect>>> = ({ signal }) => instagramOAuthRedirect({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof instagramOAuthRedirect>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type InstagramOAuthRedirectQueryResult = NonNullable<Awaited<ReturnType<typeof instagramOAuthRedirect>>>
+export type InstagramOAuthRedirectQueryError = ErrorType<void | ErrorResponse>
+
+
+/**
+ * @summary Start Instagram OAuth flow
+ */
+
+export function useInstagramOAuthRedirect<TData = Awaited<ReturnType<typeof instagramOAuthRedirect>>, TError = ErrorType<void | ErrorResponse>>(
+  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof instagramOAuthRedirect>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getInstagramOAuthRedirectQueryOptions(options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+
+
+
+
+
+
+export const getInstagramOAuthCallbackUrl = (params?: InstagramOAuthCallbackParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : value.toString())
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/api/auth/instagram/callback?${stringifiedParams}` : `/api/auth/instagram/callback`
+}
+
+/**
+ * Handles the OAuth callback from Meta, exchanges the code for tokens, and redirects to the frontend.
+ * @summary Instagram OAuth callback
+ */
+export const instagramOAuthCallback = async (params?: InstagramOAuthCallbackParams, options?: RequestInit): Promise<unknown> => {
+
+  return customFetch<unknown>(getInstagramOAuthCallbackUrl(params),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getInstagramOAuthCallbackQueryKey = (params?: InstagramOAuthCallbackParams,) => {
+    return [
+    `/api/auth/instagram/callback`, ...(params ? [params] : [])
+    ] as const;
+    }
+
+
+export const getInstagramOAuthCallbackQueryOptions = <TData = Awaited<ReturnType<typeof instagramOAuthCallback>>, TError = ErrorType<void | ErrorResponse>>(params?: InstagramOAuthCallbackParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof instagramOAuthCallback>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getInstagramOAuthCallbackQueryKey(params);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof instagramOAuthCallback>>> = ({ signal }) => instagramOAuthCallback(params, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof instagramOAuthCallback>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type InstagramOAuthCallbackQueryResult = NonNullable<Awaited<ReturnType<typeof instagramOAuthCallback>>>
+export type InstagramOAuthCallbackQueryError = ErrorType<void | ErrorResponse>
+
+
+/**
+ * @summary Instagram OAuth callback
+ */
+
+export function useInstagramOAuthCallback<TData = Awaited<ReturnType<typeof instagramOAuthCallback>>, TError = ErrorType<void | ErrorResponse>>(
+ params?: InstagramOAuthCallbackParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof instagramOAuthCallback>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getInstagramOAuthCallbackQueryOptions(params,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+
+
+
+
+
 
 export const getHealthCheckUrl = () => {
 
@@ -2101,6 +2267,226 @@ export function useGetAgentConfigUsage<TData = Awaited<ReturnType<typeof getAgen
 
 
 
+
+export const getGetInstagramConnectionStatusUrl = (tenantId: string,) => {
+
+
+
+
+  return `/api/tenants/${tenantId}/instagram-connection`
+}
+
+/**
+ * Returns whether the tenant has an active Instagram Business connection.
+ * @summary Get Instagram connection status
+ */
+export const getInstagramConnectionStatus = async (tenantId: string, options?: RequestInit): Promise<InstagramConnection> => {
+
+  return customFetch<InstagramConnection>(getGetInstagramConnectionStatusUrl(tenantId),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetInstagramConnectionStatusQueryKey = (tenantId: string,) => {
+    return [
+    `/api/tenants/${tenantId}/instagram-connection`
+    ] as const;
+    }
+
+
+export const getGetInstagramConnectionStatusQueryOptions = <TData = Awaited<ReturnType<typeof getInstagramConnectionStatus>>, TError = ErrorType<ErrorResponse>>(tenantId: string, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getInstagramConnectionStatus>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetInstagramConnectionStatusQueryKey(tenantId);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getInstagramConnectionStatus>>> = ({ signal }) => getInstagramConnectionStatus(tenantId, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, enabled: !!(tenantId), ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getInstagramConnectionStatus>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetInstagramConnectionStatusQueryResult = NonNullable<Awaited<ReturnType<typeof getInstagramConnectionStatus>>>
+export type GetInstagramConnectionStatusQueryError = ErrorType<ErrorResponse>
+
+
+/**
+ * @summary Get Instagram connection status
+ */
+
+export function useGetInstagramConnectionStatus<TData = Awaited<ReturnType<typeof getInstagramConnectionStatus>>, TError = ErrorType<ErrorResponse>>(
+ tenantId: string, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getInstagramConnectionStatus>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetInstagramConnectionStatusQueryOptions(tenantId,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+
+
+
+
+
+
+export const getDisconnectInstagramUrl = (tenantId: string,) => {
+
+
+
+
+  return `/api/tenants/${tenantId}/instagram-connection`
+}
+
+/**
+ * Removes the Instagram connection for the tenant.
+ * @summary Disconnect Instagram
+ */
+export const disconnectInstagram = async (tenantId: string, options?: RequestInit): Promise<SuccessResponse> => {
+
+  return customFetch<SuccessResponse>(getDisconnectInstagramUrl(tenantId),
+  {
+    ...options,
+    method: 'DELETE'
+
+
+  }
+);}
+
+
+
+
+export const getDisconnectInstagramMutationOptions = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof disconnectInstagram>>, TError,{tenantId: string}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof disconnectInstagram>>, TError,{tenantId: string}, TContext> => {
+
+const mutationKey = ['disconnectInstagram'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof disconnectInstagram>>, {tenantId: string}> = (props) => {
+          const {tenantId} = props ?? {};
+
+          return  disconnectInstagram(tenantId,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type DisconnectInstagramMutationResult = NonNullable<Awaited<ReturnType<typeof disconnectInstagram>>>
+
+    export type DisconnectInstagramMutationError = ErrorType<ErrorResponse>
+
+    /**
+ * @summary Disconnect Instagram
+ */
+export const useDisconnectInstagram = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof disconnectInstagram>>, TError,{tenantId: string}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof disconnectInstagram>>,
+        TError,
+        {tenantId: string},
+        TContext
+      > => {
+      return useMutation(getDisconnectInstagramMutationOptions(options));
+    }
+
+export const getRefreshInstagramTokenUrl = (tenantId: string,) => {
+
+
+
+
+  return `/api/tenants/${tenantId}/instagram-connection/refresh`
+}
+
+/**
+ * Renews the Instagram Page Access Token for the tenant.
+ * @summary Refresh Instagram token
+ */
+export const refreshInstagramToken = async (tenantId: string, options?: RequestInit): Promise<InstagramConnection> => {
+
+  return customFetch<InstagramConnection>(getRefreshInstagramTokenUrl(tenantId),
+  {
+    ...options,
+    method: 'POST'
+
+
+  }
+);}
+
+
+
+
+export const getRefreshInstagramTokenMutationOptions = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof refreshInstagramToken>>, TError,{tenantId: string}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof refreshInstagramToken>>, TError,{tenantId: string}, TContext> => {
+
+const mutationKey = ['refreshInstagramToken'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof refreshInstagramToken>>, {tenantId: string}> = (props) => {
+          const {tenantId} = props ?? {};
+
+          return  refreshInstagramToken(tenantId,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type RefreshInstagramTokenMutationResult = NonNullable<Awaited<ReturnType<typeof refreshInstagramToken>>>
+
+    export type RefreshInstagramTokenMutationError = ErrorType<ErrorResponse>
+
+    /**
+ * @summary Refresh Instagram token
+ */
+export const useRefreshInstagramToken = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof refreshInstagramToken>>, TError,{tenantId: string}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof refreshInstagramToken>>,
+        TError,
+        {tenantId: string},
+        TContext
+      > => {
+      return useMutation(getRefreshInstagramTokenMutationOptions(options));
+    }
 
 export const getRegenerateWebhookSecretUrl = (id: string,) => {
 

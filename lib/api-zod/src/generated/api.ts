@@ -184,6 +184,17 @@ export const AcceptInviteBody = zod.object({
 
 
 /**
+ * Handles the OAuth callback from Meta, exchanges the code for tokens, and redirects to the frontend.
+ * @summary Instagram OAuth callback
+ */
+export const InstagramOAuthCallbackQueryParams = zod.object({
+  "code": zod.coerce.string().optional(),
+  "state": zod.coerce.string().optional(),
+  "error": zod.coerce.string().optional()
+})
+
+
+/**
  * Returns server health status
  * @summary Health check
  */
@@ -856,6 +867,57 @@ export const GetAgentConfigUsageResponse = zod.object({
   "nearLimit": zod.boolean(),
   "overLimit": zod.boolean()
 })
+})
+
+
+/**
+ * Returns whether the tenant has an active Instagram Business connection.
+ * @summary Get Instagram connection status
+ */
+export const GetInstagramConnectionStatusParams = zod.object({
+  "tenantId": zod.coerce.string()
+})
+
+export const GetInstagramConnectionStatusResponse = zod.object({
+  "connected": zod.boolean(),
+  "id": zod.string().optional(),
+  "username": zod.string().optional(),
+  "accountId": zod.string().optional(),
+  "pageId": zod.string().optional(),
+  "tokenExpiresAt": zod.coerce.date().nullish(),
+  "connectedAt": zod.coerce.date().nullish()
+})
+
+
+/**
+ * Removes the Instagram connection for the tenant.
+ * @summary Disconnect Instagram
+ */
+export const DisconnectInstagramParams = zod.object({
+  "tenantId": zod.coerce.string()
+})
+
+export const DisconnectInstagramResponse = zod.object({
+  "success": zod.boolean()
+})
+
+
+/**
+ * Renews the Instagram Page Access Token for the tenant.
+ * @summary Refresh Instagram token
+ */
+export const RefreshInstagramTokenParams = zod.object({
+  "tenantId": zod.coerce.string()
+})
+
+export const RefreshInstagramTokenResponse = zod.object({
+  "connected": zod.boolean(),
+  "id": zod.string().optional(),
+  "username": zod.string().optional(),
+  "accountId": zod.string().optional(),
+  "pageId": zod.string().optional(),
+  "tokenExpiresAt": zod.coerce.date().nullish(),
+  "connectedAt": zod.coerce.date().nullish()
 })
 
 
