@@ -15,7 +15,7 @@ import {
 } from "@workspace/api-client-react";
 import {
   Loader2, Printer, MessageCircle, Pencil, CheckCircle2,
-  Plus, Trash2, X,
+  Plus, Trash2, X, CalendarIcon, ExternalLink,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -67,6 +67,24 @@ function fmtDateTime(dateStr: string | null | undefined): string {
 function toDateInputValue(iso: string | null | undefined): string {
   if (!iso) return "";
   return iso.slice(0, 10);
+}
+
+function isIsoDate(value: string | null | undefined): boolean {
+  if (!value) return false;
+  return /^\d{4}-\d{2}-\d{2}/.test(value);
+}
+
+function buildGoogleCalendarUrl(title: string, dateIso: string, description: string): string {
+  const d = new Date(dateIso + "T12:00:00");
+  const pad = (n: number) => String(n).padStart(2, "0");
+  const ymd = `${d.getFullYear()}${pad(d.getMonth() + 1)}${pad(d.getDate())}`;
+  const params = new URLSearchParams({
+    action: "TEMPLATE",
+    text: `Entrega — ${title}`,
+    dates: `${ymd}/${ymd}`,
+    details: description,
+  });
+  return `https://calendar.google.com/calendar/render?${params.toString()}`;
 }
 
 interface ItemEdit {
@@ -512,7 +530,9 @@ export default function PropostaPrint() {
                 {proposta.prazoEntrega && (
                   <div>
                     <p className="text-xs text-gray-500 uppercase tracking-wide mb-0.5">Prazo de Entrega</p>
-                    <p className="font-medium text-gray-800">{proposta.prazoEntrega}</p>
+                    <p className="font-medium text-gray-800">
+                      {isIsoDate(proposta.prazoEntrega) ? fmtDate(proposta.prazoEntrega) : proposta.prazoEntrega}
+                    </p>
                   </div>
                 )}
               </div>
@@ -689,13 +709,36 @@ export default function PropostaPrint() {
                 </div>
                 <div className="space-y-1.5">
                   <Label htmlFor="e-prazo">Prazo de Entrega</Label>
-                  <Input
-                    id="e-prazo"
-                    value={ePrazoEntrega}
-                    onChange={(e) => setEPrazoEntrega(e.target.value)}
-                    placeholder="Ex: 7 dias úteis"
-                    className="h-9"
-                  />
+                  <div className="flex gap-1.5">
+                    <Input
+                      id="e-prazo"
+                      type="date"
+                      value={ePrazoEntrega}
+                      onChange={(e) => setEPrazoEntrega(e.target.value)}
+                      className="h-9 flex-1"
+                    />
+                    {ePrazoEntrega && isIsoDate(ePrazoEntrega) && (
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="outline"
+                        className="h-9 px-2.5 gap-1.5 text-xs whitespace-nowrap"
+                        onClick={() => {
+                          const desc = `Orçamento: ${eTitulo}\nLead: ${lead?.nome ?? ""}\nTotal: ${fmtCurrency(eItens.reduce((s, i) => s + i.quantidade * i.valorUnitario, 0))}`;
+                          window.open(buildGoogleCalendarUrl(eTitulo, ePrazoEntrega, desc), "_blank");
+                        }}
+                      >
+                        <CalendarIcon className="h-3.5 w-3.5 text-blue-600" />
+                        <span className="hidden sm:inline text-blue-600">Google Agenda</span>
+                        <ExternalLink className="h-3 w-3 text-blue-500" />
+                      </Button>
+                    )}
+                  </div>
+                  {ePrazoEntrega && isIsoDate(ePrazoEntrega) && (
+                    <p className="text-xs text-muted-foreground">
+                      {fmtDate(ePrazoEntrega)} · Clique em "Google Agenda" para criar o evento de entrega
+                    </p>
+                  )}
                 </div>
               </div>
 
