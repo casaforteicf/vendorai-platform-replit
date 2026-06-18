@@ -312,6 +312,9 @@ function AppRoutes() {
       <Route path="/deals">
         <ProtectedRoute component={Deals} />
       </Route>
+      <Route path="/negocios">
+        <ProtectedRoute component={Deals} />
+      </Route>
       <Route path="/conversations">
         <ProtectedRoute component={Conversations} />
       </Route>
