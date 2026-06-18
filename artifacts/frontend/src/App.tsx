@@ -327,6 +327,9 @@ function AppRoutes() {
       <Route path="/propostas/:id/print">
         {() => <ProtectedRoute component={PropostaPrint} />}
       </Route>
+      <Route path="/propostas/:id">
+        {() => <ProtectedRoute component={PropostaPrint} />}
+      </Route>
       <Route path="/campanhas">
         <ProtectedRoute component={Campanhas} />
       </Route>
