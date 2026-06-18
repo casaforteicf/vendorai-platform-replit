@@ -2409,13 +2409,31 @@ export interface ApplyTemplateResponse {
   promptsApplied: string[];
 }
 
+export type IntegrationSettingsIntegrationType = typeof IntegrationSettingsIntegrationType[keyof typeof IntegrationSettingsIntegrationType] | null;
+
+
+export const IntegrationSettingsIntegrationType = {
+  n8n: 'n8n',
+  api: 'api',
+} as const;
+
 export interface IntegrationSettings {
   webhookEstoqueUrl: string | null;
   apiKeyEstoque: string | null;
+  integrationType: IntegrationSettingsIntegrationType;
 }
+
+export type UpdateIntegrationSettingsBodyIntegrationType = typeof UpdateIntegrationSettingsBodyIntegrationType[keyof typeof UpdateIntegrationSettingsBodyIntegrationType] | null;
+
+
+export const UpdateIntegrationSettingsBodyIntegrationType = {
+  n8n: 'n8n',
+  api: 'api',
+} as const;
 
 export interface UpdateIntegrationSettingsBody {
   webhookEstoqueUrl?: string | null;
+  integrationType?: UpdateIntegrationSettingsBodyIntegrationType;
 }
 
 export type SyncInventoryBodyItemsItem = {

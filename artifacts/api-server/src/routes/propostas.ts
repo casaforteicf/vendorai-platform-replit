@@ -197,7 +197,7 @@ router.patch("/propostas/:id/status", async (req, res) => {
     void (async () => {
       try {
         const [tenant] = await db
-          .select({ webhookEstoqueUrl: tenantsTable.webhookEstoqueUrl })
+          .select({ webhookEstoqueUrl: tenantsTable.webhookEstoqueUrl, integrationType: tenantsTable.integrationType })
           .from(tenantsTable)
           .where(eq(tenantsTable.id, proposta.tenantId));
 
@@ -222,6 +222,7 @@ router.patch("/propostas/:id/status", async (req, res) => {
             tenantId: proposta.tenantId,
             vendaId: updated.id,
             tipo: "proposta",
+            integrationType: tenant.integrationType ?? undefined,
             produtos: itens.map((item) => ({
               nome: item.nome,
               sku: item.sku ?? null,

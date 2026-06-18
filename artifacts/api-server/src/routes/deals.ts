@@ -381,6 +381,7 @@ router.patch("/deals/:id", async (req, res) => {
             produtos: [],
             valorTotal: deal.valor ? Number(deal.valor) : null,
             realizadaEm: new Date().toISOString(),
+            integrationType: tenant.integrationType ?? undefined,
           },
           req.log,
         );

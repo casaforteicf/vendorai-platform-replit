@@ -18,6 +18,7 @@ export interface VendaWebhookPayload {
   }>;
   valorTotal: number | null;
   realizadaEm: string;
+  integrationType?: "n8n" | "api";
 }
 
 export function dispatchVendaWebhook(

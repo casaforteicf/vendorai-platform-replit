@@ -885,6 +885,7 @@ export default function Configuracoes() {
   }
 
   const [webhookUrlInput, setWebhookUrlInput] = useState<string>("");
+  const [integrationType, setIntegrationType] = useState<"n8n" | "api" | null>(null);
   const [showApiKey, setShowApiKey] = useState(false);
   const [showWebhookSecret, setShowWebhookSecret] = useState(false);
   const regenerateWebhookSecretMutation = useRegenerateWebhookSecret();
@@ -893,6 +894,7 @@ export default function Configuracoes() {
   const [syncedIntegration, setSyncedIntegration] = useState(false);
   if (integrationData !== undefined && !syncedIntegration) {
     setWebhookUrlInput(integrationData.webhookEstoqueUrl ?? "");
+    setIntegrationType(integrationData.integrationType ?? null);
     setSyncedIntegration(true);
   }
 
@@ -1061,14 +1063,14 @@ export default function Configuracoes() {
 
   function onSaveWebhookUrl() {
     updateIntegration.mutate(
-      { id: tenantId, data: { webhookEstoqueUrl: webhookUrlInput || null } },
+      { id: tenantId, data: { webhookEstoqueUrl: webhookUrlInput || null, integrationType: integrationType || null } },
       {
         onSuccess: () => {
           queryClient.invalidateQueries({ queryKey: getGetIntegrationSettingsQueryKey(tenantId) });
           setSyncedIntegration(false);
-          toast({ title: "URL do webhook salva." });
+          toast({ title: "Integração de estoque salva." });
         },
-        onError: () => toast({ title: "Erro ao salvar webhook.", variant: "destructive" }),
+        onError: () => toast({ title: "Erro ao salvar integração.", variant: "destructive" }),
       }
     );
   }
@@ -2445,17 +2447,30 @@ Body:
                 </h2>
                 <p className="text-sm text-muted-foreground mt-1">
                   Quando um orçamento for aceito ou um deal marcado como ganho, o sistema dispara
-                  um POST para esta URL com os dados da venda. Use para conectar ao n8n e
-                  atualizar automaticamente seu ERP (Bling, Tiny, Omie etc.).
+                  um POST para esta URL com os dados da venda. Escolha entre n8n (automação) ou API genérica (ERP).
                 </p>
               </div>
 
               <div className="space-y-3">
+                {/* Tipo de integração */}
                 <div className="space-y-1.5">
-                  <label className="text-sm font-medium">URL do webhook (n8n)</label>
+                  <label className="text-sm font-medium">Tipo de integração</label>
+                  <Select value={integrationType ?? ""} onValueChange={(v) => setIntegrationType(v as "n8n" | "api")}>
+                    <SelectTrigger className="w-[220px]">
+                      <SelectValue placeholder="Selecione…" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="n8n">n8n (automação)</SelectItem>
+                      <SelectItem value="api">API genérica (ERP)</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                <div className="space-y-1.5">
+                  <label className="text-sm font-medium">URL do webhook</label>
                   <div className="flex gap-2">
                     <Input
-                      placeholder="https://seu-n8n.app/webhook/xxxxxxxx"
+                      placeholder={integrationType === "api" ? "https://erp.seusite.com/api/vendas" : "https://seu-n8n.app/webhook/xxxxxxxx"}
                       value={webhookUrlInput}
                       onChange={(e) => setWebhookUrlInput(e.target.value)}
                       className="font-mono text-sm"
@@ -2472,7 +2487,7 @@ Body:
                   {integrationData?.webhookEstoqueUrl && (
                     <p className="text-xs text-muted-foreground flex items-center gap-1">
                       <CheckCircle2 className="h-3 w-3 text-green-500" />
-                      Webhook configurado e ativo.
+                      Webhook configurado e ativo ({integrationData.integrationType === "api" ? "API" : "n8n"}).
                     </p>
                   )}
                 </div>

@@ -3883,7 +3883,8 @@ export const GetIntegrationSettingsParams = zod.object({
 
 export const GetIntegrationSettingsResponse = zod.object({
   "webhookEstoqueUrl": zod.string().nullable(),
-  "apiKeyEstoque": zod.string().nullable()
+  "apiKeyEstoque": zod.string().nullable(),
+  "integrationType": zod.enum(['n8n', 'api']).nullable()
 })
 
 
@@ -3895,12 +3896,14 @@ export const UpdateIntegrationSettingsParams = zod.object({
 })
 
 export const UpdateIntegrationSettingsBody = zod.object({
-  "webhookEstoqueUrl": zod.string().nullish()
+  "webhookEstoqueUrl": zod.string().nullish(),
+  "integrationType": zod.enum(['n8n', 'api']).nullish()
 })
 
 export const UpdateIntegrationSettingsResponse = zod.object({
   "webhookEstoqueUrl": zod.string().nullable(),
-  "apiKeyEstoque": zod.string().nullable()
+  "apiKeyEstoque": zod.string().nullable(),
+  "integrationType": zod.enum(['n8n', 'api']).nullable()
 })
 
 
@@ -3913,7 +3916,8 @@ export const RegenerateIntegrationApiKeyParams = zod.object({
 
 export const RegenerateIntegrationApiKeyResponse = zod.object({
   "webhookEstoqueUrl": zod.string().nullable(),
-  "apiKeyEstoque": zod.string().nullable()
+  "apiKeyEstoque": zod.string().nullable(),
+  "integrationType": zod.enum(['n8n', 'api']).nullable()
 })
 
 

@@ -11446,15 +11446,24 @@ components:
         apiKeyEstoque:
           type: string
           nullable: true
+        integrationType:
+          type: string
+          enum: [n8n, api]
+          nullable: true
       required:
         - webhookEstoqueUrl
         - apiKeyEstoque
+        - integrationType
 
     UpdateIntegrationSettingsBody:
       type: object
       properties:
         webhookEstoqueUrl:
           type: string
+          nullable: true
+        integrationType:
+          type: string
+          enum: [n8n, api]
           nullable: true
 
     SyncInventoryBody:

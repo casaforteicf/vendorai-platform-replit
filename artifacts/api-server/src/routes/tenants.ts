@@ -119,22 +119,25 @@ router.get("/tenants/:id/integration-settings", requireSameTenanOrSuperAdmin(), 
   res.json({
     webhookEstoqueUrl: tenant.webhookEstoqueUrl ?? null,
     apiKeyEstoque: tenant.apiKeyEstoque ?? null,
+    integrationType: tenant.integrationType ?? null,
   });
 });
 
 router.patch("/tenants/:id/integration-settings", requireSameTenanOrSuperAdmin(), async (req, res) => {
-  const { webhookEstoqueUrl } = req.body as { webhookEstoqueUrl?: string | null };
+  const { webhookEstoqueUrl, integrationType } = req.body as { webhookEstoqueUrl?: string | null; integrationType?: "n8n" | "api" | null };
 
   const [tenant] = await db
     .update(tenantsTable)
     .set({
       webhookEstoqueUrl: webhookEstoqueUrl !== undefined ? (webhookEstoqueUrl || null) : undefined,
+      integrationType: integrationType !== undefined ? integrationType : undefined,
       updatedAt: new Date(),
     })
     .where(eq(tenantsTable.id, String(req.params.id)))
     .returning({
       webhookEstoqueUrl: tenantsTable.webhookEstoqueUrl,
       apiKeyEstoque: tenantsTable.apiKeyEstoque,
+      integrationType: tenantsTable.integrationType,
     });
 
   if (!tenant) {
@@ -145,6 +148,7 @@ router.patch("/tenants/:id/integration-settings", requireSameTenanOrSuperAdmin()
   res.json({
     webhookEstoqueUrl: tenant.webhookEstoqueUrl ?? null,
     apiKeyEstoque: tenant.apiKeyEstoque ?? null,
+    integrationType: tenant.integrationType ?? null,
   });
 });
 
@@ -158,6 +162,7 @@ router.post("/tenants/:id/integration-settings/regenerate-key", requireSameTenan
     .returning({
       webhookEstoqueUrl: tenantsTable.webhookEstoqueUrl,
       apiKeyEstoque: tenantsTable.apiKeyEstoque,
+      integrationType: tenantsTable.integrationType,
     });
 
   if (!tenant) {
@@ -168,6 +173,7 @@ router.post("/tenants/:id/integration-settings/regenerate-key", requireSameTenan
   res.json({
     webhookEstoqueUrl: tenant.webhookEstoqueUrl ?? null,
     apiKeyEstoque: tenant.apiKeyEstoque ?? null,
+    integrationType: tenant.integrationType ?? null,
   });
 });
 

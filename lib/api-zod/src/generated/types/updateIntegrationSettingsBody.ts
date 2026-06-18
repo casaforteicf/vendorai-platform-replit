@@ -5,7 +5,9 @@
  * API specification
  * OpenAPI spec version: 0.1.0
  */
+import type { UpdateIntegrationSettingsBodyIntegrationType } from './updateIntegrationSettingsBodyIntegrationType';
 
 export interface UpdateIntegrationSettingsBody {
   webhookEstoqueUrl?: string | null;
+  integrationType?: UpdateIntegrationSettingsBodyIntegrationType;
 }
