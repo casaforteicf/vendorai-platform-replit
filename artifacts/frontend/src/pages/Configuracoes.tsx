@@ -2444,7 +2444,7 @@ Body:
                   Webhook de saída — Venda realizada
                 </h2>
                 <p className="text-sm text-muted-foreground mt-1">
-                  Quando uma proposta for aceita ou um deal marcado como ganho, o sistema dispara
+                  Quando um orçamento for aceito ou um deal marcado como ganho, o sistema dispara
                   um POST para esta URL com os dados da venda. Use para conectar ao n8n e
                   atualizar automaticamente seu ERP (Bling, Tiny, Omie etc.).
                 </p>

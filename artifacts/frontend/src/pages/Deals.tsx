@@ -1493,7 +1493,7 @@ export default function Deals() {
                     <FormItem>
                       <FormLabel>Título *</FormLabel>
                       <FormControl>
-                        <Input data-testid="input-titulo" placeholder="Ex: Proposta Acme Corp" {...field} />
+                        <Input data-testid="input-titulo" placeholder="Ex: Orçamento Acme Corp" {...field} />
                       </FormControl>
                       <FormMessage />
                     </FormItem>

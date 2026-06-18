@@ -291,7 +291,7 @@ const STEPS: Step[] = [
     actions: [
       "Enviar mensagem pelo WhatsApp e verificar se o agente SDR responde automaticamente",
       "Verificar se o lead criado pelo WhatsApp aparece em Leads",
-      "Testar envio de proposta pelo módulo Propostas",
+      "Testar envio de orçamento pelo módulo Orçamentos",
       "Confirmar que o Dashboard mostra os KPIs corretamente",
       "Verificar Configurações → Análise IA para confirmar que as análises estão rodando",
       "Revisar limites de tokens/mensagens com o cliente e ajustar se necessário",

@@ -733,7 +733,7 @@ function PropostaModal({
             );
             handleClose();
           },
-          onError: () => toast({ title: "Erro ao criar proposta", variant: "destructive" }),
+          onError: () => toast({ title: "Erro ao criar orçamento", variant: "destructive" }),
         }
       );
     } else {
@@ -764,7 +764,7 @@ function PropostaModal({
     <Dialog open={open} onOpenChange={(o) => !o && handleClose()}>
       <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
         <DialogHeader>
-          <DialogTitle>Nova Proposta</DialogTitle>
+          <DialogTitle>Novo Orçamento</DialogTitle>
         </DialogHeader>
 
         <Form {...form}>
@@ -788,7 +788,7 @@ function PropostaModal({
                 </FormItem>
               )} />
               <FormField control={form.control} name="titulo" render={({ field }) => (
-                <FormItem><FormLabel>Título</FormLabel><FormControl><Input placeholder="Ex: Proposta Plano Pro" {...field} /></FormControl><FormMessage /></FormItem>
+                <FormItem><FormLabel>Título</FormLabel><FormControl><Input placeholder="Ex: Orçamento Plano Pro" {...field} /></FormControl><FormMessage /></FormItem>
               )} />
             </div>
 
@@ -1044,7 +1044,7 @@ function PropostaModal({
               <Button type="button" variant="outline" className="flex-1" onClick={handleClose}>Cancelar</Button>
               <Button type="submit" className="flex-1" disabled={isPending}>
                 {isPending && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
-                Criar Proposta
+                Criar Orçamento
               </Button>
             </div>
           </form>
@@ -1447,7 +1447,7 @@ function PropostaViewer({
           {/* Footer */}
           <div className="pt-6 border-t border-gray-200 flex items-center justify-between text-xs text-gray-400">
             <span>{biz?.nomeFantasia || biz?.razaoSocial || ""}</span>
-            <span>Proposta #{propNum}</span>
+            <span>Orçamento #{propNum}</span>
           </div>
         </div>
       </DialogContent>
@@ -1492,7 +1492,7 @@ export default function Propostas() {
       {
         onSuccess: () => {
           qc.invalidateQueries({ queryKey: getListPropostasQueryKey(tenantId) });
-          toast({ title: `Proposta marcada como "${STATUS_CONFIG[status]?.label ?? status}"` });
+          toast({ title: `Orçamento marcado como "${STATUS_CONFIG[status]?.label ?? status}"` });
         },
         onError: () => toast({ title: "Erro ao alterar status", variant: "destructive" }),
       }
@@ -1744,7 +1744,7 @@ export default function Propostas() {
       <AlertDialog open={!!deleteTarget} onOpenChange={(o) => !o && setDeleteTarget(null)}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Excluir proposta?</AlertDialogTitle>
+            <AlertDialogTitle>Excluir orçamento?</AlertDialogTitle>
             <AlertDialogDescription>
               <strong>{deleteTarget?.titulo}</strong> será excluída permanentemente.
             </AlertDialogDescription>

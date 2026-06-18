@@ -1468,7 +1468,7 @@ function AddToPropostaDialog({
               name="titulo"
               render={({ field }) => (
                 <FormItem>
-                  <FormLabel>Título da proposta *</FormLabel>
+                  <FormLabel>Título do orçamento *</FormLabel>
                   <FormControl>
                     <Input placeholder="Ex: Orçamento — Produto X" {...field} />
                   </FormControl>
