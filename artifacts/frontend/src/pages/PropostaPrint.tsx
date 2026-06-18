@@ -24,8 +24,8 @@ import { Textarea } from "@/components/ui/textarea";
 import { Switch } from "@/components/ui/switch";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import {
-  Sheet, SheetContent, SheetHeader, SheetTitle, SheetFooter,
-} from "@/components/ui/sheet";
+  Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter,
+} from "@/components/ui/dialog";
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
@@ -574,12 +574,12 @@ export default function PropostaPrint() {
         </div>
       </div>
 
-      {/* ── Edit Sheet ─────────────────────────────────────────────────────── */}
-      <Sheet open={editOpen} onOpenChange={setEditOpen}>
-        <SheetContent side="right" className="w-full sm:max-w-2xl p-0 flex flex-col">
-          <SheetHeader className="px-6 py-4 border-b shrink-0">
-            <SheetTitle>Editar Orçamento</SheetTitle>
-          </SheetHeader>
+      {/* ── Edit Dialog ────────────────────────────────────────────────────── */}
+      <Dialog open={editOpen} onOpenChange={setEditOpen}>
+        <DialogContent className="w-full sm:max-w-2xl p-0 flex flex-col max-h-[90vh] overflow-hidden">
+          <DialogHeader className="px-6 py-4 border-b shrink-0">
+            <DialogTitle>Editar Orçamento</DialogTitle>
+          </DialogHeader>
 
           <ScrollArea className="flex-1 min-h-0">
             <div className="px-6 py-5 space-y-6">
@@ -802,7 +802,7 @@ export default function PropostaPrint() {
             </div>
           </ScrollArea>
 
-          <SheetFooter className="px-6 py-4 border-t shrink-0 flex gap-2 justify-end">
+          <DialogFooter className="px-6 py-4 border-t shrink-0 flex gap-2 justify-end">
             <Button variant="outline" onClick={() => setEditOpen(false)} disabled={saving}>
               Cancelar
             </Button>
@@ -810,9 +810,9 @@ export default function PropostaPrint() {
               {saving && <Loader2 className="h-4 w-4 animate-spin" />}
               Salvar alterações
             </Button>
-          </SheetFooter>
-        </SheetContent>
-      </Sheet>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       <style>{`
         @media print {
