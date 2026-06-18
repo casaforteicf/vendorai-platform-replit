@@ -1,7 +1,7 @@
 import { type RequestHandler } from "express";
 import { verifyToken, type JwtPayload } from "../lib/jwt.js";
-import { db, tenantsTable } from "@workspace/db";
-import { eq } from "drizzle-orm";
+import { db, tenantsTable, invoicesTable } from "@workspace/db";
+import { eq, and } from "drizzle-orm";
 
 declare global {
   namespace Express {
@@ -58,7 +58,7 @@ export const blockPartnerFromCRM: RequestHandler = (req, res, next) => {
 };
 
 /**
- * Blocks suspended tenants from accessing the API.
+ * Blocks suspended tenants OR tenants with overdue invoices from accessing the API.
  * Super_admins and partners bypass this check.
  * Returns 402 Payment Required with a clear message.
  */
@@ -84,6 +84,26 @@ export const blockSuspendedTenants: RequestHandler = async (req, res, next) => {
       res.status(402).json({
         error: "Acesso suspenso por inadimplência. Regularize o pagamento pendente para restaurar o acesso.",
         code: "TENANT_SUSPENDED",
+      });
+      return;
+    }
+
+    // Check for overdue invoices (atrasada)
+    const [overdueInvoice] = await db
+      .select({ id: invoicesTable.id })
+      .from(invoicesTable)
+      .where(
+        and(
+          eq(invoicesTable.tenantId, user.tenantId),
+          eq(invoicesTable.status, "atrasada")
+        )
+      )
+      .limit(1);
+
+    if (overdueInvoice) {
+      res.status(402).json({
+        error: "Acesso suspenso por inadimplência. Você possui 1 fatura em atraso. Regularize o pagamento para restaurar o acesso.",
+        code: "TENANT_OVERDUE_INVOICE",
       });
       return;
     }

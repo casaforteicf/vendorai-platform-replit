@@ -53,6 +53,8 @@ import { useEffect } from "react";
 import {
   useGetTenant,
   getGetTenantQueryKey,
+  useListInvoices,
+  getListInvoicesQueryKey,
 } from "@workspace/api-client-react";
 
 const queryClient = new QueryClient({
@@ -90,6 +92,19 @@ function ProtectedRoute({ component: Component, ...rest }: any) {
     }
   );
 
+  const { data: invoices, isLoading: invoicesLoading } = useListInvoices(
+    user?.tenantId ?? "",
+    undefined,
+    {
+      query: {
+        enabled: !isLoading && !!token && isTenantAdmin && !!user?.tenantId,
+        queryKey: getListInvoicesQueryKey(user?.tenantId ?? ""),
+      },
+    }
+  );
+
+  const hasOverdueInvoice = invoices?.some((inv) => inv.status === "atrasada") ?? false;
+
   useEffect(() => {
     if (!isLoading && !token) {
       setLocation("/login");
@@ -98,14 +113,14 @@ function ProtectedRoute({ component: Component, ...rest }: any) {
 
   useEffect(() => {
     if (!isTenantAdmin || tenantLoading || !tenant) return;
-    if (tenant.status !== "suspended" && !tenant.setupCompletedAt) {
+    if (tenant.status !== "suspended" && !hasOverdueInvoice && !tenant.setupCompletedAt) {
       setLocation("/onboarding");
     }
-  }, [tenant, tenantLoading, isTenantAdmin, setLocation]);
+  }, [tenant, tenantLoading, isTenantAdmin, hasOverdueInvoice, setLocation]);
 
   if (isLoading || !token || !user) return <Spinner />;
-  if (isTenantAdmin && tenantLoading) return <Spinner />;
-  if (isTenantAdmin && tenant?.status === "suspended") return <Suspended />;
+  if (isTenantAdmin && (tenantLoading || invoicesLoading)) return <Spinner />;
+  if (isTenantAdmin && (tenant?.status === "suspended" || hasOverdueInvoice)) return <Suspended />;
 
   return (
     <SidebarLayout>
