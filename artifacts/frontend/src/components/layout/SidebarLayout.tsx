@@ -35,7 +35,7 @@ export function SidebarLayout({ children }: { children: React.ReactNode }) {
     { name: "Campanhas",     href: "/campanhas",     icon: Megaphone,       sellerHidden: true,  section: "crm" },
     { name: "Faturamento",   href: "/faturamento",   icon: Receipt,         sellerHidden: true,  section: "crm" },
     { name: "Métricas de IA",href: "/analytics",     icon: BarChart3,     sellerHidden: true,  section: "crm" },
-    { name: "Configurações", href: "/configuracoes", icon: Settings,        sellerHidden: true,  section: "crm" },
+    { name: "Configurações", href: "/configuracoes", icon: Settings,        sellerHidden: false, section: "crm" },
     { name: "Guia de Setup", href: "/guia-implantacao", icon: BookOpen,     sellerHidden: true,  section: "crm" },
     { name: "Obras",         href: "/obras",                    icon: HardHat,     sellerHidden: false, section: "construcao" },
     { name: "Insumos",       href: "/insumos",                  icon: Package,     sellerHidden: false, section: "construcao" },

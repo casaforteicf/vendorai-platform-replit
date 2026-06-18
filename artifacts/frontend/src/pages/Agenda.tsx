@@ -459,7 +459,7 @@ function AgendaSidebarItem({
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
           <button
-            className="opacity-0 group-hover:opacity-100 p-0.5 rounded hover:bg-muted-foreground/10 transition-opacity"
+            className="p-0.5 rounded hover:bg-muted-foreground/10 transition-opacity"
             onClick={(e) => e.stopPropagation()}
             data-testid={`agenda-settings-${agenda.id}`}
           >
@@ -972,6 +972,25 @@ export default function AgendaPage() {
             <Plus className="h-3 w-3" />
             Nova
           </button>
+          {/* Mobile: conectar Google quando agenda selecionada não tem Google */}
+          {selectedAgendaId && !agendaMap.get(selectedAgendaId)?.googleCalendarId && (
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                const a = agendaMap.get(selectedAgendaId);
+                if (a) handleConnectGoogle(a);
+              }}
+              disabled={googleLoadingId === selectedAgendaId}
+              className="flex items-center gap-1 px-3 py-1.5 rounded-full text-xs font-medium whitespace-nowrap border border-green-200 bg-green-50 text-green-700 hover:bg-green-100 transition-colors shrink-0 disabled:opacity-50"
+            >
+              {googleLoadingId === selectedAgendaId ? (
+                <Loader2 className="h-3 w-3 animate-spin" />
+              ) : (
+                <CalendarCheck className="h-3 w-3" />
+              )}
+              Conectar Google
+            </button>
+          )}
         </div>
 
         {/* ── Week strip ── */}
