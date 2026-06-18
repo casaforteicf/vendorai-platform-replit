@@ -1464,7 +1464,10 @@ export const CreatePropostaBody = zod.object({
   "observacoes": zod.string().optional(),
   "formaPagamento": zod.enum(['pix', 'boleto', 'cartao_credito', 'cartao_debito', 'transferencia', 'dinheiro', 'a_combinar']).optional(),
   "condPagamento": zod.string().optional().describe('Condição de pagamento (ex: 30\/60\/90 dias, à vista).'),
-  "prazoEntrega": zod.string().optional().describe('Prazo de entrega (ex: 7 dias úteis).')
+  "prazoEntrega": zod.string().optional().describe('Prazo de entrega (ex: 7 dias úteis).'),
+  "recorrente": zod.boolean().optional().describe('Whether this proposal has monthly recurring billing.'),
+  "valorMensal": zod.number().optional().describe('Monthly billing amount.'),
+  "prazoContratoMeses": zod.number().optional().describe('Contract term in months.')
 })
 
 
@@ -1498,6 +1501,9 @@ export const ListPropostasResponseItem = zod.object({
   "formaPagamento": zod.enum(['pix', 'boleto', 'cartao_credito', 'cartao_debito', 'transferencia', 'dinheiro', 'a_combinar']).nullish(),
   "condPagamento": zod.string().nullish().describe('Condição de pagamento (ex: 30\/60\/90 dias, à vista).'),
   "prazoEntrega": zod.string().nullish().describe('Prazo de entrega (ex: 7 dias úteis).'),
+  "recorrente": zod.boolean().nullish().describe('Whether this proposal has monthly recurring billing.'),
+  "valorMensal": zod.string().nullish().describe('Monthly billing amount stored as decimal string (e.g. \"1500.00\").'),
+  "prazoContratoMeses": zod.number().nullish().describe('Contract term in months.'),
   "createdAt": zod.coerce.date(),
   "updatedAt": zod.coerce.date()
 })
@@ -1538,6 +1544,9 @@ export const UpdatePropostaStatusResponse = zod.object({
   "formaPagamento": zod.enum(['pix', 'boleto', 'cartao_credito', 'cartao_debito', 'transferencia', 'dinheiro', 'a_combinar']).nullish(),
   "condPagamento": zod.string().nullish().describe('Condição de pagamento (ex: 30\/60\/90 dias, à vista).'),
   "prazoEntrega": zod.string().nullish().describe('Prazo de entrega (ex: 7 dias úteis).'),
+  "recorrente": zod.boolean().nullish().describe('Whether this proposal has monthly recurring billing.'),
+  "valorMensal": zod.string().nullish().describe('Monthly billing amount stored as decimal string (e.g. \"1500.00\").'),
+  "prazoContratoMeses": zod.number().nullish().describe('Contract term in months.'),
   "createdAt": zod.coerce.date(),
   "updatedAt": zod.coerce.date()
 })
@@ -1568,6 +1577,9 @@ export const GetPropostaResponse = zod.object({
   "formaPagamento": zod.enum(['pix', 'boleto', 'cartao_credito', 'cartao_debito', 'transferencia', 'dinheiro', 'a_combinar']).nullish(),
   "condPagamento": zod.string().nullish().describe('Condição de pagamento (ex: 30\/60\/90 dias, à vista).'),
   "prazoEntrega": zod.string().nullish().describe('Prazo de entrega (ex: 7 dias úteis).'),
+  "recorrente": zod.boolean().nullish().describe('Whether this proposal has monthly recurring billing.'),
+  "valorMensal": zod.string().nullish().describe('Monthly billing amount stored as decimal string (e.g. \"1500.00\").'),
+  "prazoContratoMeses": zod.number().nullish().describe('Contract term in months.'),
   "createdAt": zod.coerce.date(),
   "updatedAt": zod.coerce.date()
 })
@@ -1595,7 +1607,10 @@ export const UpdatePropostaBody = zod.object({
   "observacoes": zod.string().optional(),
   "formaPagamento": zod.enum(['pix', 'boleto', 'cartao_credito', 'cartao_debito', 'transferencia', 'dinheiro', 'a_combinar']).optional(),
   "condPagamento": zod.string().optional().describe('Condição de pagamento (ex: 30\/60\/90 dias, à vista).'),
-  "prazoEntrega": zod.string().optional().describe('Prazo de entrega (ex: 7 dias úteis).')
+  "prazoEntrega": zod.string().optional().describe('Prazo de entrega (ex: 7 dias úteis).'),
+  "recorrente": zod.boolean().optional().describe('Whether this proposal has monthly recurring billing.'),
+  "valorMensal": zod.number().optional().describe('Monthly billing amount.'),
+  "prazoContratoMeses": zod.number().optional().describe('Contract term in months.')
 })
 
 export const UpdatePropostaResponse = zod.object({
@@ -1616,6 +1631,9 @@ export const UpdatePropostaResponse = zod.object({
   "formaPagamento": zod.enum(['pix', 'boleto', 'cartao_credito', 'cartao_debito', 'transferencia', 'dinheiro', 'a_combinar']).nullish(),
   "condPagamento": zod.string().nullish().describe('Condição de pagamento (ex: 30\/60\/90 dias, à vista).'),
   "prazoEntrega": zod.string().nullish().describe('Prazo de entrega (ex: 7 dias úteis).'),
+  "recorrente": zod.boolean().nullish().describe('Whether this proposal has monthly recurring billing.'),
+  "valorMensal": zod.string().nullish().describe('Monthly billing amount stored as decimal string (e.g. \"1500.00\").'),
+  "prazoContratoMeses": zod.number().nullish().describe('Contract term in months.'),
   "createdAt": zod.coerce.date(),
   "updatedAt": zod.coerce.date()
 })
@@ -2833,6 +2851,9 @@ export const CreatePropostaFromCatalogoBody = zod.object({
   "formaPagamento": zod.enum(['pix', 'boleto', 'cartao_credito', 'cartao_debito', 'transferencia', 'dinheiro', 'a_combinar']).optional(),
   "condPagamento": zod.string().optional().describe('Condição de pagamento (ex: 30\/60\/90 dias, à vista).'),
   "prazoEntrega": zod.string().optional().describe('Prazo de entrega (ex: 7 dias úteis).'),
+  "recorrente": zod.boolean().optional().describe('Whether this proposal has monthly recurring billing.'),
+  "valorMensal": zod.number().optional().describe('Monthly billing amount.'),
+  "prazoContratoMeses": zod.number().optional().describe('Contract term in months.'),
   "itens": zod.array(zod.object({
   "produtoId": zod.string(),
   "quantidade": zod.number().gt(createPropostaFromCatalogoBodyItensItemQuantidadeExclusiveMin)

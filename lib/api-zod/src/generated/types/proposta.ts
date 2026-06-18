@@ -26,6 +26,12 @@ export interface Proposta {
   condPagamento?: string | null;
   /** Prazo de entrega (ex: 7 dias úteis). */
   prazoEntrega?: string | null;
+  /** Whether this proposal has monthly recurring billing. */
+  recorrente?: boolean | null;
+  /** Monthly billing amount stored as decimal string (e.g. "1500.00"). */
+  valorMensal?: string | null;
+  /** Contract term in months. */
+  prazoContratoMeses?: number | null;
   createdAt: Date;
   updatedAt: Date;
 }

@@ -665,6 +665,9 @@ const propostaFormSchema = z.object({
   formaPagamento: z.string().optional(),
   condPagamento: z.string().optional(),
   prazoEntrega: z.string().optional(),
+  recorrente: z.boolean().default(false),
+  valorMensal: z.coerce.number().min(0).optional(),
+  prazoContratoMeses: z.coerce.number().int().min(1).optional(),
 });
 type PropostaFormValues = z.infer<typeof propostaFormSchema>;
 
@@ -702,8 +705,13 @@ function PropostaModal({
 
   const form = useForm<PropostaFormValues>({
     resolver: zodResolver(propostaFormSchema),
-    defaultValues: { leadId: "", titulo: "", validadeAte: "", observacoes: "", formaPagamento: "", condPagamento: "", prazoEntrega: "" },
+    defaultValues: { leadId: "", titulo: "", validadeAte: "", observacoes: "", formaPagamento: "", condPagamento: "", prazoEntrega: "", recorrente: false, valorMensal: undefined, prazoContratoMeses: undefined },
   });
+
+  const watchRecorrente = form.watch("recorrente");
+  const watchValorMensal = form.watch("valorMensal");
+  const watchPrazoMeses = form.watch("prazoContratoMeses");
+  const totalContrato = (watchValorMensal ?? 0) * (watchPrazoMeses ?? 0);
 
   const { data: leads = [] } = useListTenantLeads(tenantId, {
     query: { queryKey: getListTenantLeadsQueryKey(tenantId), enabled: !!tenantId },
@@ -722,7 +730,7 @@ function PropostaModal({
   const freeTotal = freeItems.reduce((s, i) => s + i.quantidade * i.valorUnitario, 0);
 
   function handleClose() {
-    form.reset();
+    form.reset({ leadId: "", titulo: "", validadeAte: "", observacoes: "", formaPagamento: "", condPagamento: "", prazoEntrega: "", recorrente: false, valorMensal: undefined, prazoContratoMeses: undefined });
     setMode("catalogo");
     setCartLines([{ produtoId: "", quantidade: 1 }]);
     setCartError("");
@@ -784,18 +792,23 @@ function PropostaModal({
 
   // ── submit ────────────────────────────────────────────────────────────────
   function onSubmit(vals: PropostaFormValues) {
+    const recFields = vals.recorrente
+      ? { recorrente: true, valorMensal: vals.valorMensal, prazoContratoMeses: vals.prazoContratoMeses }
+      : { recorrente: false, valorMensal: undefined, prazoContratoMeses: undefined };
+
     if (mode === "catalogo") {
       const valid = cartLines.filter((l) => l.produtoId);
       if (!valid.length) { setCartError("Adicione pelo menos um produto."); return; }
       setCartError("");
       createFromCatMut.mutate(
-        { tenantId, data: { leadId: vals.leadId, titulo: vals.titulo, validadeAte: vals.validadeAte || undefined, observacoes: vals.observacoes || undefined, formaPagamento: (vals.formaPagamento || undefined) as FormaPagamentoProposta | undefined, condPagamento: vals.condPagamento || undefined, prazoEntrega: vals.prazoEntrega || undefined, itens: valid.map((l) => ({ produtoId: l.produtoId, quantidade: l.quantidade })) } },
+        { tenantId, data: { leadId: vals.leadId, titulo: vals.titulo, validadeAte: vals.validadeAte || undefined, observacoes: vals.observacoes || undefined, formaPagamento: (vals.formaPagamento || undefined) as FormaPagamentoProposta | undefined, condPagamento: vals.condPagamento || undefined, prazoEntrega: vals.prazoEntrega || undefined, ...recFields, itens: valid.map((l) => ({ produtoId: l.produtoId, quantidade: l.quantidade })) } },
         {
           onSuccess: () => {
             toast({ title: "Orçamento criado com sucesso" });
             qc.invalidateQueries({ queryKey: getListPropostasQueryKey(tenantId) });
+            const dealValor = vals.recorrente && totalContrato > 0 ? totalContrato : catTotal || undefined;
             createDeal(
-              { data: { tenantId, titulo: vals.titulo, leadId: vals.leadId, etapa: "proposta", valor: catTotal || undefined } },
+              { data: { tenantId, titulo: vals.titulo, leadId: vals.leadId, etapa: "proposta", valor: dealValor } },
               { onSuccess: () => qc.invalidateQueries({ queryKey: getListDealsQueryKey(tenantId) }) }
             );
             handleClose();
@@ -808,13 +821,14 @@ function PropostaModal({
       if (!valid.length) { setFreeError("Adicione pelo menos um item."); return; }
       setFreeError("");
       createLivreMut.mutate(
-        { data: { tenantId, leadId: vals.leadId, titulo: vals.titulo, validadeAte: vals.validadeAte || undefined, observacoes: vals.observacoes || undefined, formaPagamento: (vals.formaPagamento || undefined) as FormaPagamentoProposta | undefined, condPagamento: vals.condPagamento || undefined, prazoEntrega: vals.prazoEntrega || undefined, itens: valid.map((i) => ({ nome: i.nome, quantidade: i.quantidade, valorUnitario: i.valorUnitario })), valorTotal: freeTotal } },
+        { data: { tenantId, leadId: vals.leadId, titulo: vals.titulo, validadeAte: vals.validadeAte || undefined, observacoes: vals.observacoes || undefined, formaPagamento: (vals.formaPagamento || undefined) as FormaPagamentoProposta | undefined, condPagamento: vals.condPagamento || undefined, prazoEntrega: vals.prazoEntrega || undefined, ...recFields, itens: valid.map((i) => ({ nome: i.nome, quantidade: i.quantidade, valorUnitario: i.valorUnitario })), valorTotal: freeTotal } },
         {
           onSuccess: () => {
             toast({ title: "Orçamento criado com sucesso" });
             qc.invalidateQueries({ queryKey: getListPropostasQueryKey(tenantId) });
+            const dealValor = vals.recorrente && totalContrato > 0 ? totalContrato : freeTotal || undefined;
             createDeal(
-              { data: { tenantId, titulo: vals.titulo, leadId: vals.leadId, etapa: "proposta", valor: freeTotal || undefined } },
+              { data: { tenantId, titulo: vals.titulo, leadId: vals.leadId, etapa: "proposta", valor: dealValor } },
               { onSuccess: () => qc.invalidateQueries({ queryKey: getListDealsQueryKey(tenantId) }) }
             );
             handleClose();
@@ -1073,6 +1087,70 @@ function PropostaModal({
               )} />
             </div>
 
+            {/* Cobrança Recorrente Mensal */}
+            <div className="rounded-lg border border-border p-3 space-y-3">
+              <FormField control={form.control} name="recorrente" render={({ field }) => (
+                <FormItem>
+                  <div className="flex items-center justify-between gap-2">
+                    <div>
+                      <FormLabel className="text-sm font-medium">Cobrança recorrente mensal</FormLabel>
+                      <p className="text-xs text-muted-foreground mt-0.5">Ativar para serviços com mensalidade e prazo de contrato</p>
+                    </div>
+                    <FormControl>
+                      <Switch checked={field.value} onCheckedChange={field.onChange} />
+                    </FormControl>
+                  </div>
+                </FormItem>
+              )} />
+
+              {watchRecorrente && (
+                <div className="space-y-3 pt-1">
+                  <div className="grid grid-cols-2 gap-3">
+                    <FormField control={form.control} name="valorMensal" render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Valor Mensal (R$)</FormLabel>
+                        <FormControl>
+                          <Input
+                            type="number"
+                            step="0.01"
+                            min="0"
+                            placeholder="Ex: 1500,00"
+                            {...field}
+                            value={field.value ?? ""}
+                            onChange={(e) => field.onChange(e.target.value === "" ? undefined : parseFloat(e.target.value))}
+                          />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )} />
+                    <FormField control={form.control} name="prazoContratoMeses" render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Prazo do Contrato (meses)</FormLabel>
+                        <FormControl>
+                          <Input
+                            type="number"
+                            min="1"
+                            placeholder="Ex: 12"
+                            {...field}
+                            value={field.value ?? ""}
+                            onChange={(e) => field.onChange(e.target.value === "" ? undefined : parseInt(e.target.value, 10))}
+                          />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )} />
+                  </div>
+                  {totalContrato > 0 && (
+                    <div className="flex items-center gap-2 rounded-md bg-violet-50 border border-violet-200 px-3 py-2">
+                      <span className="text-xs text-violet-700 font-medium">Valor total do contrato:</span>
+                      <span className="text-sm font-bold text-violet-800">{fmtCurrency(totalContrato)}</span>
+                      <span className="text-xs text-violet-600 ml-auto">({watchPrazoMeses} × {fmtCurrency(watchValorMensal ?? 0)}/mês)</span>
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+
             {/* Condições Comerciais */}
             <div className="grid grid-cols-3 gap-3">
               <FormField control={form.control} name="formaPagamento" render={({ field }) => (
@@ -1194,6 +1272,39 @@ function PropostaDetailSheet({
               </div>
             )}
           </div>
+
+          {proposta.recorrente && (
+            <>
+              <Separator />
+              <div className="rounded-lg bg-violet-50 border border-violet-200 p-3 space-y-2">
+                <div className="flex items-center gap-2">
+                  <Badge variant="outline" className="bg-violet-100 text-violet-700 border-violet-300 text-xs">
+                    Recorrente Mensal
+                  </Badge>
+                </div>
+                <div className="grid grid-cols-3 gap-3 text-sm">
+                  {proposta.valorMensal && (
+                    <div>
+                      <p className="text-xs text-violet-600 uppercase tracking-wide mb-0.5">Mensalidade</p>
+                      <p className="font-semibold text-violet-900">{fmtCurrency(proposta.valorMensal)}</p>
+                    </div>
+                  )}
+                  {proposta.prazoContratoMeses && (
+                    <div>
+                      <p className="text-xs text-violet-600 uppercase tracking-wide mb-0.5">Prazo</p>
+                      <p className="font-semibold text-violet-900">{proposta.prazoContratoMeses} {proposta.prazoContratoMeses === 1 ? "mês" : "meses"}</p>
+                    </div>
+                  )}
+                  {proposta.valorMensal && proposta.prazoContratoMeses && (
+                    <div>
+                      <p className="text-xs text-violet-600 uppercase tracking-wide mb-0.5">Total Contrato</p>
+                      <p className="font-bold text-violet-900">{fmtCurrency(parseFloat(proposta.valorMensal) * proposta.prazoContratoMeses)}</p>
+                    </div>
+                  )}
+                </div>
+              </div>
+            </>
+          )}
 
           {(proposta.formaPagamento || proposta.condPagamento || proposta.prazoEntrega) && (
             <>

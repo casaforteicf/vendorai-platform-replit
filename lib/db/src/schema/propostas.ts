@@ -1,4 +1,4 @@
-import { pgTable, text, timestamp, numeric, pgEnum, jsonb } from "drizzle-orm/pg-core";
+import { pgTable, text, timestamp, numeric, pgEnum, jsonb, boolean, integer } from "drizzle-orm/pg-core";
 import { createInsertSchema, createSelectSchema } from "drizzle-zod";
 import { z } from "zod/v4";
 import { tenantsTable } from "./tenants";
@@ -56,6 +56,9 @@ export const propostasTable = pgTable("propostas", {
   formaPagamento: formaPagamentoPropostaEnum("forma_pagamento"),
   condPagamento: text("cond_pagamento"),
   prazoEntrega: text("prazo_entrega"),
+  recorrente: boolean("recorrente").default(false),
+  valorMensal: numeric("valor_mensal", { precision: 12, scale: 2 }),
+  prazoContratoMeses: integer("prazo_contrato_meses"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
 });

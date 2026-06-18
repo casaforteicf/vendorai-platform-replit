@@ -8368,6 +8368,15 @@ components:
         prazoEntrega:
           type: string
           description: "Prazo de entrega (ex: 7 dias úteis)."
+        recorrente:
+          type: boolean
+          description: Whether this proposal has monthly recurring billing.
+        valorMensal:
+          type: number
+          description: Monthly billing amount.
+        prazoContratoMeses:
+          type: integer
+          description: Contract term in months.
         itens:
           type: array
           minItems: 1
@@ -8944,6 +8953,18 @@ components:
           type: string
           nullable: true
           description: "Prazo de entrega (ex: 7 dias úteis)."
+        recorrente:
+          type: boolean
+          nullable: true
+          description: Whether this proposal has monthly recurring billing.
+        valorMensal:
+          type: string
+          nullable: true
+          description: Monthly billing amount stored as decimal string (e.g. "1500.00").
+        prazoContratoMeses:
+          type: integer
+          nullable: true
+          description: Contract term in months.
         createdAt:
           type: string
           format: date-time
@@ -8984,6 +9005,15 @@ components:
         prazoEntrega:
           type: string
           description: "Prazo de entrega (ex: 7 dias úteis)."
+        recorrente:
+          type: boolean
+          description: Whether this proposal has monthly recurring billing.
+        valorMensal:
+          type: number
+          description: Monthly billing amount.
+        prazoContratoMeses:
+          type: integer
+          description: Contract term in months.
       required: [tenantId, leadId, titulo]
 
     UpdatePropostaBody:
@@ -9016,6 +9046,15 @@ components:
         prazoEntrega:
           type: string
           description: "Prazo de entrega (ex: 7 dias úteis)."
+        recorrente:
+          type: boolean
+          description: Whether this proposal has monthly recurring billing.
+        valorMensal:
+          type: number
+          description: Monthly billing amount.
+        prazoContratoMeses:
+          type: integer
+          description: Contract term in months.
 
     ActivityTipo:
       type: string

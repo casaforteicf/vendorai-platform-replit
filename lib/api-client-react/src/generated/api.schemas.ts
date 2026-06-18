@@ -776,6 +776,12 @@ export interface CreatePropostaFromCatalogoBody {
   condPagamento?: string;
   /** Prazo de entrega (ex: 7 dias úteis). */
   prazoEntrega?: string;
+  /** Whether this proposal has monthly recurring billing. */
+  recorrente?: boolean;
+  /** Monthly billing amount. */
+  valorMensal?: number;
+  /** Contract term in months. */
+  prazoContratoMeses?: number;
   /** @minItems 1 */
   itens: CreatePropostaFromCatalogoBodyItensItem[];
 }
@@ -1182,6 +1188,12 @@ export interface Proposta {
   condPagamento?: string | null;
   /** Prazo de entrega (ex: 7 dias úteis). */
   prazoEntrega?: string | null;
+  /** Whether this proposal has monthly recurring billing. */
+  recorrente?: boolean | null;
+  /** Monthly billing amount stored as decimal string (e.g. "1500.00"). */
+  valorMensal?: string | null;
+  /** Contract term in months. */
+  prazoContratoMeses?: number | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -1201,6 +1213,12 @@ export interface CreatePropostaBody {
   condPagamento?: string;
   /** Prazo de entrega (ex: 7 dias úteis). */
   prazoEntrega?: string;
+  /** Whether this proposal has monthly recurring billing. */
+  recorrente?: boolean;
+  /** Monthly billing amount. */
+  valorMensal?: number;
+  /** Contract term in months. */
+  prazoContratoMeses?: number;
 }
 
 export interface UpdatePropostaBody {
@@ -1217,6 +1235,12 @@ export interface UpdatePropostaBody {
   condPagamento?: string;
   /** Prazo de entrega (ex: 7 dias úteis). */
   prazoEntrega?: string;
+  /** Whether this proposal has monthly recurring billing. */
+  recorrente?: boolean;
+  /** Monthly billing amount. */
+  valorMensal?: number;
+  /** Contract term in months. */
+  prazoContratoMeses?: number;
 }
 
 export type ActivityTipo = typeof ActivityTipo[keyof typeof ActivityTipo];

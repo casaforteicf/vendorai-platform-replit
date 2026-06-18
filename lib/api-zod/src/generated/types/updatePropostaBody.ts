@@ -23,4 +23,10 @@ export interface UpdatePropostaBody {
   condPagamento?: string;
   /** Prazo de entrega (ex: 7 dias úteis). */
   prazoEntrega?: string;
+  /** Whether this proposal has monthly recurring billing. */
+  recorrente?: boolean;
+  /** Monthly billing amount. */
+  valorMensal?: number;
+  /** Contract term in months. */
+  prazoContratoMeses?: number;
 }
