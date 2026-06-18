@@ -21,6 +21,7 @@ import {
 import { dispatchAgentBackground } from "../services/agent-dispatch.js";
 import { runAutoQuotePipeline } from "../services/auto-quote.js";
 import { transcribeAudio } from "../services/audio-transcription.js";
+import { interpretImage, interpretPdf } from "../services/media-interpretation.js";
 
 const router: IRouter = Router();
 
@@ -257,10 +258,24 @@ const zapiNativeBody = z.object({
   text: z.object({ message: z.string() }).optional(),
   body: z.string().optional(),  // older Z-API format
   type: z.string().optional(),
+  // Audio (type: "audio" | "ptt")
   audio: z.object({
     audioUrl: z.string().optional(),
     mimeType: z.string().optional(),
     seconds: z.number().optional(),
+  }).optional(),
+  // Image (type: "image")
+  image: z.object({
+    imageUrl: z.string().optional(),
+    caption: z.string().optional(),
+    mimeType: z.string().optional(),
+  }).optional(),
+  // Document / PDF (type: "document")
+  document: z.object({
+    documentUrl: z.string().optional(),
+    fileName: z.string().optional(),
+    mimeType: z.string().optional(),
+    caption: z.string().optional(),
   }).optional(),
 }).passthrough();
 
@@ -319,32 +334,70 @@ router.post("/tenants/:tenantId/webhooks/zapi", async (req, res) => {
   }
 
   let mensagem = "";
-  let isAudio = false;
-  let audioUrl: string | undefined;
+  let tipoConteudo: "texto" | "audio" | "imagem" | "documento" = "texto";
 
   const msgType = payload.type ?? "chat";
 
   if (msgType === "chat" || msgType === "text") {
     mensagem = payload.text?.message ?? payload.body ?? "";
+
   } else if (msgType === "audio" || msgType === "ptt") {
     const url = payload.audio?.audioUrl;
     if (!url) {
       res.status(200).json({ ignored: true, reason: "audio_without_url" });
       return;
     }
-    audioUrl = url;
-    isAudio = true;
-
-    // Transcribe audio
     try {
       mensagem = await transcribeAudio(url, req.log);
+      tipoConteudo = "audio";
     } catch (err) {
-      req.log.error({ err, audioUrl: url.slice(0, 60) }, "audio: transcription failed");
+      req.log.error({ err, url: url.slice(0, 60) }, "audio: transcription failed");
       res.status(200).json({ ignored: true, reason: "audio_transcription_failed" });
       return;
     }
+
+  } else if (msgType === "image") {
+    const url = payload.image?.imageUrl;
+    if (!url) {
+      res.status(200).json({ ignored: true, reason: "image_without_url" });
+      return;
+    }
+    try {
+      mensagem = await interpretImage(url, payload.image?.caption, req.log);
+      tipoConteudo = "imagem";
+    } catch (err) {
+      req.log.error({ err, url: url.slice(0, 60) }, "image: interpretation failed");
+      res.status(200).json({ ignored: true, reason: "image_interpretation_failed" });
+      return;
+    }
+
+  } else if (msgType === "document") {
+    const url = payload.document?.documentUrl;
+    if (!url) {
+      res.status(200).json({ ignored: true, reason: "document_without_url" });
+      return;
+    }
+    const mimeType = payload.document?.mimeType ?? "";
+    const fileName = payload.document?.fileName;
+    // Only interpret PDF and Word documents; skip other binary types
+    const isSupportedDoc = mimeType.includes("pdf") || mimeType.includes("word") ||
+      fileName?.endsWith(".pdf") || fileName?.endsWith(".doc") || fileName?.endsWith(".docx");
+    if (!isSupportedDoc) {
+      req.log.info({ mimeType, fileName }, "zapi-webhook: unsupported document type");
+      res.status(200).json({ ignored: true, reason: "unsupported_document_type" });
+      return;
+    }
+    try {
+      mensagem = await interpretPdf(url, fileName, req.log);
+      tipoConteudo = "documento";
+    } catch (err) {
+      req.log.error({ err, url: url.slice(0, 60) }, "document: extraction failed");
+      res.status(200).json({ ignored: true, reason: "document_extraction_failed" });
+      return;
+    }
+
   } else {
-    // Unsupported message type (image, video, sticker, etc.)
+    // Unsupported message type (video, sticker, location, etc.)
     req.log.info({ type: msgType }, "zapi-webhook: unsupported message type");
     res.status(200).json({ ignored: true, reason: `unsupported_type_${msgType}` });
     return;
@@ -358,7 +411,7 @@ router.post("/tenants/:tenantId/webhooks/zapi", async (req, res) => {
   const telefone = normalizeZapiPhone(payload.phone);
   const nome = payload.chatName ?? payload.senderName ?? telefone;
 
-  req.log.info({ telefone, nome, isAudio }, "zapi-webhook: incoming message received");
+  req.log.info({ telefone, nome, tipoConteudo }, "zapi-webhook: incoming message received");
 
   // ── 4. Find or create lead ─────────────────────────────────────────────────
   let [lead] = await db
@@ -406,7 +459,7 @@ router.post("/tenants/:tenantId/webhooks/zapi", async (req, res) => {
       canal: "whatsapp",
       conteudo: mensagem,
       enviadoPor: "lead",
-      tipoConteudo: isAudio ? "audio" : "texto",
+      tipoConteudo,
       status: "entregue",
     })
     .returning();
