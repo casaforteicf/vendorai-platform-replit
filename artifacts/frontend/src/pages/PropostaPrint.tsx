@@ -1,6 +1,7 @@
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { useParams, useLocation } from "wouter";
 import { useAuth } from "@/contexts/AuthContext";
+import { useQueryClient } from "@tanstack/react-query";
 import {
   useGetProposta,
   getGetPropostaQueryKey,
@@ -8,9 +9,12 @@ import {
   getGetLeadQueryKey,
   useGetBusinessProfileByTenant,
   getGetBusinessProfileByTenantQueryKey,
+  useUpdatePropostaStatus,
+  useUpdateDeal,
 } from "@workspace/api-client-react";
-import { Loader2, Printer, MessageCircle } from "lucide-react";
+import { Loader2, Printer, MessageCircle, Pencil, CheckCircle2, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { useToast } from "@/hooks/use-toast";
 
 const STATUS_LABELS: Record<string, string> = {
   rascunho: "Rascunho",
@@ -49,6 +53,10 @@ export default function PropostaPrint() {
   const { id } = useParams<{ id: string }>();
   const [, navigate] = useLocation();
   const { user } = useAuth();
+  const { toast } = useToast();
+  const qc = useQueryClient();
+  const [markingVendido, setMarkingVendido] = useState(false);
+  const [sendingWA, setSendingWA] = useState(false);
 
   const { data: proposta, isLoading: propostaLoading } = useGetProposta(id ?? "", {
     query: { enabled: !!id, queryKey: getGetPropostaQueryKey(id ?? "") },
@@ -62,11 +70,78 @@ export default function PropostaPrint() {
     query: { enabled: !!user?.tenantId, queryKey: getGetBusinessProfileByTenantQueryKey(user?.tenantId ?? "") },
   });
 
+  const updateStatus = useUpdatePropostaStatus();
+  const updateDeal = useUpdateDeal();
+
   useEffect(() => {
     if (proposta && lead && !propostaLoading && !leadLoading) {
       document.title = `Orçamento ${proposta.numero ?? proposta.id.slice(0, 8)} — ${proposta.titulo}`;
     }
   }, [proposta, lead, propostaLoading, leadLoading]);
+
+  async function handleMarcarVendido() {
+    if (!proposta) return;
+    setMarkingVendido(true);
+    try {
+      const isRascunho = proposta.status === "rascunho";
+
+      if (isRascunho) {
+        await updateStatus.mutateAsync({ id: proposta.id, data: { status: "enviada" } });
+      }
+
+      await updateStatus.mutateAsync({ id: proposta.id, data: { status: "aceita" } });
+
+      if (proposta.dealId) {
+        await updateDeal.mutateAsync({ id: proposta.dealId, data: { etapa: "ganho" } });
+      }
+
+      await qc.invalidateQueries({ queryKey: getGetPropostaQueryKey(proposta.id) });
+
+      toast({
+        title: "Negócio marcado como vendido!",
+        description: proposta.dealId ? "Proposta aceita e card movido para Ganho na pipeline." : "Proposta marcada como aceita.",
+      });
+    } catch {
+      toast({ title: "Erro ao marcar como vendido", variant: "destructive" });
+    } finally {
+      setMarkingVendido(false);
+    }
+  }
+
+  async function handleWhatsAppComPDF() {
+    if (!proposta) return;
+    setSendingWA(true);
+    try {
+      const { default: html2pdf } = await import("html2pdf.js");
+      const element = document.getElementById("proposta-print");
+      if (!element) return;
+
+      const filename = `orcamento-${(proposta.numero ?? proposta.id.slice(0, 8)).replace(/[^a-zA-Z0-9-]/g, "")}.pdf`;
+
+      await html2pdf()
+        .set({
+          margin: [10, 12, 10, 12],
+          filename,
+          image: { type: "jpeg", quality: 0.92 },
+          html2canvas: { scale: 2, useCORS: true, logging: false },
+          jsPDF: { unit: "mm", format: "a4", orientation: "portrait" },
+        })
+        .from(element)
+        .save();
+
+      toast({
+        title: "PDF salvo!",
+        description: "Agora anexe o PDF na conversa do WhatsApp.",
+      });
+
+      await new Promise((r) => setTimeout(r, 600));
+      window.open(`https://wa.me/?text=${whatsappText}`, "_blank");
+    } catch {
+      toast({ title: "Erro ao gerar PDF", variant: "destructive" });
+    } finally {
+      setSendingWA(false);
+    }
+  }
 
   if (propostaLoading || leadLoading) {
     return (
@@ -84,12 +159,8 @@ export default function PropostaPrint() {
     );
   }
 
-  const total = proposta.itens.reduce(
-    (s, i) => s + i.quantidade * i.valorUnitario,
-    0
-  );
+  const total = proposta.itens.reduce((s, i) => s + i.quantidade * i.valorUnitario, 0);
   const totalExibido = proposta.valorTotal ? parseFloat(proposta.valorTotal) : total;
-
   const recorrenteTotal =
     proposta.recorrente && proposta.valorMensal && proposta.prazoContratoMeses
       ? parseFloat(proposta.valorMensal) * proposta.prazoContratoMeses
@@ -104,60 +175,104 @@ export default function PropostaPrint() {
 
   const nomeEmpresa = bp?.nomeFantasia || bp?.razaoSocial || "";
   const logoUrl = bp?.logoUrl;
+  const jaVendido = proposta.status === "aceita";
+  const podeVender = proposta.status === "rascunho" || proposta.status === "enviada";
 
   return (
     <div className="min-h-screen bg-gray-50">
-      {/* Action bar — hidden on print */}
-      <div className="no-print fixed top-0 left-0 right-0 z-50 bg-white border-b px-6 py-3 flex items-center gap-3 shadow-sm">
-        <Button variant="outline" size="sm" onClick={() => navigate("/propostas")}>
+      {/* ── Action bar (hidden on print) ── */}
+      <div className="no-print fixed top-0 left-0 right-0 z-50 bg-white border-b px-3 sm:px-6 py-2.5 flex items-center gap-2 shadow-sm flex-wrap">
+        <Button variant="outline" size="sm" onClick={() => navigate(proposta.leadId ? `/leads/${proposta.leadId}` : "/propostas")}>
           ← Voltar
         </Button>
-        <div className="flex-1" />
+
         <Button
           variant="outline"
           size="sm"
-          className="gap-2 text-green-700 border-green-300 hover:bg-green-50"
-          asChild
+          className="gap-1.5"
+          onClick={() => navigate(proposta.leadId ? `/leads/${proposta.leadId}` : "/propostas")}
         >
-          <a href={`https://wa.me/?text=${whatsappText}`} target="_blank" rel="noopener noreferrer">
-            <MessageCircle className="h-4 w-4" />
-            Enviar por WhatsApp
-          </a>
+          <Pencil className="h-3.5 w-3.5" />
+          <span className="hidden sm:inline">Editar</span>
         </Button>
-        <Button size="sm" className="gap-2" onClick={() => window.print()}>
+
+        <div className="flex-1" />
+
+        {podeVender && (
+          <Button
+            size="sm"
+            variant="outline"
+            className="gap-1.5 text-emerald-700 border-emerald-300 hover:bg-emerald-50"
+            onClick={handleMarcarVendido}
+            disabled={markingVendido}
+          >
+            {markingVendido ? (
+              <Loader2 className="h-3.5 w-3.5 animate-spin" />
+            ) : (
+              <CheckCircle2 className="h-3.5 w-3.5" />
+            )}
+            <span className="hidden sm:inline">Marcar como Vendido</span>
+          </Button>
+        )}
+
+        {jaVendido && (
+          <span className="text-xs font-medium text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-md px-2.5 py-1.5 flex items-center gap-1">
+            <CheckCircle2 className="h-3.5 w-3.5" />
+            Vendido
+          </span>
+        )}
+
+        <Button
+          variant="outline"
+          size="sm"
+          className="gap-1.5 text-green-700 border-green-300 hover:bg-green-50"
+          onClick={handleWhatsAppComPDF}
+          disabled={sendingWA}
+        >
+          {sendingWA ? (
+            <Loader2 className="h-3.5 w-3.5 animate-spin" />
+          ) : (
+            <MessageCircle className="h-4 w-4" />
+          )}
+          <span className="hidden xs:inline">WhatsApp</span>
+        </Button>
+
+        <Button size="sm" className="gap-1.5" onClick={() => window.print()}>
           <Printer className="h-4 w-4" />
-          Imprimir / Salvar PDF
+          <span className="hidden sm:inline">Imprimir / PDF</span>
         </Button>
       </div>
 
-      {/* Print content */}
-      <div className="pt-20 no-print-padding">
+      {/* ── Print content ── */}
+      <div className="pt-16 sm:pt-20 no-print-padding px-0 sm:px-4">
         <div
           id="proposta-print"
-          className="max-w-[210mm] mx-auto bg-white shadow-lg my-6 p-12"
+          className="max-w-[210mm] mx-auto bg-white shadow-lg sm:my-6 p-6 sm:p-12"
           style={{ minHeight: "297mm" }}
         >
-          {/* ── Header: Empresa à esquerda | Nº orçamento à direita ── */}
-          <div className="flex items-start justify-between mb-8 pb-6 border-b-2 border-gray-200 gap-6">
 
-            {/* Lado esquerdo: logo + dados da empresa */}
-            <div className="flex items-start gap-4 min-w-0">
+          {/* ── Header ── */}
+          <div className="flex items-start justify-between mb-8 pb-6 border-b-2 border-gray-200 gap-4">
+
+            {/* Esquerda: logo + dados da empresa */}
+            <div className="flex items-start gap-3 min-w-0 flex-1">
               {logoUrl && (
                 <img
                   src={logoUrl}
                   alt={nomeEmpresa || "Logo"}
-                  className="h-16 w-auto object-contain shrink-0 rounded"
-                  style={{ maxWidth: "120px" }}
+                  className="h-14 w-auto object-contain shrink-0 rounded"
+                  style={{ maxWidth: "100px" }}
+                  onError={(e) => { (e.target as HTMLImageElement).style.display = "none"; }}
                 />
               )}
               <div className="min-w-0">
                 {nomeEmpresa && (
-                  <h1 className="text-xl font-bold text-gray-900 leading-tight">
+                  <h1 className="text-lg sm:text-xl font-bold text-gray-900 leading-tight">
                     {nomeEmpresa}
                   </h1>
                 )}
                 {bp?.razaoSocial && bp.razaoSocial !== nomeEmpresa && (
-                  <p className="text-sm text-gray-500">{bp.razaoSocial}</p>
+                  <p className="text-xs text-gray-500 mt-0.5">{bp.razaoSocial}</p>
                 )}
                 {bp?.cnpj && (
                   <p className="text-xs text-gray-500 mt-0.5">CNPJ: {bp.cnpj}</p>
@@ -166,23 +281,18 @@ export default function PropostaPrint() {
                   <p className="text-xs text-gray-500 mt-1 leading-snug">{bp.endereco}</p>
                 )}
                 {(bp?.telefone || bp?.email) && (
-                  <div className="flex flex-wrap gap-3 mt-1">
-                    {bp.telefone && (
-                      <p className="text-xs text-gray-500">{bp.telefone}</p>
-                    )}
-                    {bp.email && (
-                      <p className="text-xs text-gray-500">{bp.email}</p>
-                    )}
-                  </div>
+                  <p className="text-xs text-gray-500 mt-0.5">
+                    {[bp.telefone, bp.email].filter(Boolean).join("  ·  ")}
+                  </p>
                 )}
               </div>
             </div>
 
-            {/* Lado direito: número, datas e status */}
+            {/* Direita: número + datas + status */}
             <div className="text-right shrink-0">
-              <div className="inline-block bg-gray-100 rounded-lg px-4 py-2">
+              <div className="inline-block bg-gray-100 rounded-lg px-3 py-2">
                 <p className="text-xs text-gray-500 uppercase tracking-wide font-medium">Orçamento</p>
-                <p className="text-lg font-bold text-gray-900 font-mono">
+                <p className="text-base sm:text-lg font-bold text-gray-900 font-mono">
                   {proposta.numero ?? proposta.id.slice(0, 8).toUpperCase()}
                 </p>
               </div>
@@ -205,7 +315,7 @@ export default function PropostaPrint() {
             </div>
           </div>
 
-          {/* ── Para (cliente) ── */}
+          {/* ── Cliente ── */}
           <div className="mb-8">
             <h2 className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">
               Cliente
@@ -218,14 +328,14 @@ export default function PropostaPrint() {
             </div>
           </div>
 
-          {/* ── Título da proposta ── */}
+          {/* ── Título ── */}
           <div className="mb-6">
             <h2 className="text-xl font-bold text-gray-900">{proposta.titulo}</h2>
           </div>
 
           {/* ── Itens ── */}
-          <div className="mb-6">
-            <table className="w-full text-sm">
+          <div className="mb-6 -mx-6 sm:mx-0 overflow-x-auto">
+            <table className="w-full text-sm min-w-[480px]">
               <thead>
                 <tr className="bg-gray-900 text-white">
                   <th className="text-left px-4 py-2.5 rounded-tl-lg font-medium">Descrição</th>
@@ -265,14 +375,14 @@ export default function PropostaPrint() {
           {proposta.recorrente && proposta.valorMensal && (
             <div className="mb-6 bg-violet-50 border border-violet-200 rounded-lg p-4">
               <h3 className="text-sm font-semibold text-violet-800 mb-3">Cobrança Recorrente Mensal</h3>
-              <div className="grid grid-cols-3 gap-4 text-sm">
+              <div className="grid grid-cols-2 sm:grid-cols-3 gap-4 text-sm">
                 <div>
                   <p className="text-xs text-violet-600 uppercase tracking-wide mb-0.5">Mensalidade</p>
                   <p className="font-semibold text-violet-900">{fmtCurrency(proposta.valorMensal)}</p>
                 </div>
                 {proposta.prazoContratoMeses && (
                   <div>
-                    <p className="text-xs text-violet-600 uppercase tracking-wide mb-0.5">Prazo do Contrato</p>
+                    <p className="text-xs text-violet-600 uppercase tracking-wide mb-0.5">Prazo</p>
                     <p className="font-semibold text-violet-900">
                       {proposta.prazoContratoMeses} {proposta.prazoContratoMeses === 1 ? "mês" : "meses"}
                     </p>
@@ -294,7 +404,7 @@ export default function PropostaPrint() {
               <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-3">
                 Condições Comerciais
               </h3>
-              <div className="grid grid-cols-3 gap-4 text-sm">
+              <div className="grid grid-cols-2 sm:grid-cols-3 gap-4 text-sm">
                 {proposta.formaPagamento && (
                   <div>
                     <p className="text-xs text-gray-500 uppercase tracking-wide mb-0.5">Forma de Pagamento</p>
@@ -305,7 +415,7 @@ export default function PropostaPrint() {
                 )}
                 {proposta.condPagamento && (
                   <div>
-                    <p className="text-xs text-gray-500 uppercase tracking-wide mb-0.5">Condição de Pagamento</p>
+                    <p className="text-xs text-gray-500 uppercase tracking-wide mb-0.5">Condição</p>
                     <p className="font-medium text-gray-800">{proposta.condPagamento}</p>
                   </div>
                 )}
@@ -333,15 +443,12 @@ export default function PropostaPrint() {
 
           {/* ── Footer: vendedor + número ── */}
           <div className="mt-12 pt-6 border-t border-gray-200">
-            <div className="flex items-end justify-between">
-              {/* Vendedor */}
+            <div className="flex flex-col sm:flex-row items-start sm:items-end justify-between gap-3">
               {user?.name && (
                 <div>
                   <p className="text-xs text-gray-400 uppercase tracking-wide mb-0.5">Responsável / Vendedor</p>
                   <p className="text-sm font-medium text-gray-700">{user.name}</p>
-                  {user.email && (
-                    <p className="text-xs text-gray-500">{user.email}</p>
-                  )}
+                  {user.email && <p className="text-xs text-gray-500">{user.email}</p>}
                 </div>
               )}
               <div className="text-right">
@@ -368,6 +475,11 @@ export default function PropostaPrint() {
             padding: 8mm 12mm !important;
           }
           .no-print-padding { padding-top: 0 !important; }
+        }
+        @media (max-width: 480px) {
+          #proposta-print {
+            padding: 1rem !important;
+          }
         }
       `}</style>
     </div>
