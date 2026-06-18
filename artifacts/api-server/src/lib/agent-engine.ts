@@ -8,6 +8,7 @@
  */
 import { and, desc, eq } from "drizzle-orm";
 import OpenAI from "openai";
+import Anthropic from "@anthropic-ai/sdk";
 import type { Logger } from "pino";
 import {
   db,
@@ -53,6 +54,13 @@ export function getOpenAI(): OpenAI {
   const apiKey = process.env["OPENAI_API_KEY"];
   if (!apiKey) throw new Error("OPENAI_API_KEY environment variable is not set");
   return new OpenAI({ apiKey });
+}
+
+// ── Anthropic client (lazy) ──────────────────────────────────────────────────
+export function getAnthropic(): Anthropic {
+  const apiKey = process.env["ANTHROPIC_API_KEY"];
+  if (!apiKey) throw new Error("ANTHROPIC_API_KEY environment variable is not set");
+  return new Anthropic({ apiKey });
 }
 
 // ── Context loader ────────────────────────────────────────────────────────────
