@@ -4320,6 +4320,8 @@ export const InviteTenantSellerBody = zod.object({
 /**
  * @summary List all leads
  */
+export const listLeadsResponseTipoDefault = `cliente`;
+
 export const ListLeadsResponseItem = zod.object({
   "id": zod.string(),
   "tenantId": zod.string(),
@@ -4347,6 +4349,9 @@ export const ListLeadsResponseItem = zod.object({
   "nome": zod.string(),
   "dataNascimento": zod.string().optional()
 })).nullish(),
+  "tipo": zod.string().default(listLeadsResponseTipoDefault).describe('Tipo do lead: \'cliente\' (prospect que pode comprar) ou \'indicador\' (parceiro que gera indicações).'),
+  "indicadoPor": zod.string().nullish().describe('ID do lead indicador que referenciou este lead cliente.'),
+  "notasNutricao": zod.string().nullish().describe('Notas de nutrição para leads do tipo indicador.'),
   "createdAt": zod.coerce.date(),
   "updatedAt": zod.coerce.date()
 })
@@ -4380,7 +4385,10 @@ export const CreateLeadBody = zod.object({
   "filhos": zod.array(zod.object({
   "nome": zod.string(),
   "dataNascimento": zod.string().optional()
-})).nullish()
+})).nullish(),
+  "tipo": zod.string().optional().describe('\'cliente\' ou \'indicador\''),
+  "indicadoPor": zod.string().nullish(),
+  "notasNutricao": zod.string().nullish()
 })
 
 
@@ -4390,6 +4398,8 @@ export const CreateLeadBody = zod.object({
 export const ListTenantLeadsParams = zod.object({
   "tenantId": zod.coerce.string()
 })
+
+export const listTenantLeadsResponseTipoDefault = `cliente`;
 
 export const ListTenantLeadsResponseItem = zod.object({
   "id": zod.string(),
@@ -4418,6 +4428,9 @@ export const ListTenantLeadsResponseItem = zod.object({
   "nome": zod.string(),
   "dataNascimento": zod.string().optional()
 })).nullish(),
+  "tipo": zod.string().default(listTenantLeadsResponseTipoDefault).describe('Tipo do lead: \'cliente\' (prospect que pode comprar) ou \'indicador\' (parceiro que gera indicações).'),
+  "indicadoPor": zod.string().nullish().describe('ID do lead indicador que referenciou este lead cliente.'),
+  "notasNutricao": zod.string().nullish().describe('Notas de nutrição para leads do tipo indicador.'),
   "createdAt": zod.coerce.date(),
   "updatedAt": zod.coerce.date()
 })
@@ -4430,6 +4443,8 @@ export const ListTenantLeadsResponse = zod.array(ListTenantLeadsResponseItem)
 export const GetLeadParams = zod.object({
   "id": zod.coerce.string()
 })
+
+export const getLeadResponseTipoDefault = `cliente`;
 
 export const GetLeadResponse = zod.object({
   "id": zod.string(),
@@ -4458,6 +4473,9 @@ export const GetLeadResponse = zod.object({
   "nome": zod.string(),
   "dataNascimento": zod.string().optional()
 })).nullish(),
+  "tipo": zod.string().default(getLeadResponseTipoDefault).describe('Tipo do lead: \'cliente\' (prospect que pode comprar) ou \'indicador\' (parceiro que gera indicações).'),
+  "indicadoPor": zod.string().nullish().describe('ID do lead indicador que referenciou este lead cliente.'),
+  "notasNutricao": zod.string().nullish().describe('Notas de nutrição para leads do tipo indicador.'),
   "createdAt": zod.coerce.date(),
   "updatedAt": zod.coerce.date()
 })
@@ -4493,8 +4511,13 @@ export const UpdateLeadBody = zod.object({
   "filhos": zod.array(zod.object({
   "nome": zod.string(),
   "dataNascimento": zod.string().optional()
-})).nullish()
+})).nullish(),
+  "tipo": zod.string().optional().describe('\'cliente\' ou \'indicador\''),
+  "indicadoPor": zod.string().nullish(),
+  "notasNutricao": zod.string().nullish()
 })
+
+export const updateLeadResponseTipoDefault = `cliente`;
 
 export const UpdateLeadResponse = zod.object({
   "id": zod.string(),
@@ -4523,6 +4546,9 @@ export const UpdateLeadResponse = zod.object({
   "nome": zod.string(),
   "dataNascimento": zod.string().optional()
 })).nullish(),
+  "tipo": zod.string().default(updateLeadResponseTipoDefault).describe('Tipo do lead: \'cliente\' (prospect que pode comprar) ou \'indicador\' (parceiro que gera indicações).'),
+  "indicadoPor": zod.string().nullish().describe('ID do lead indicador que referenciou este lead cliente.'),
+  "notasNutricao": zod.string().nullish().describe('Notas de nutrição para leads do tipo indicador.'),
   "createdAt": zod.coerce.date(),
   "updatedAt": zod.coerce.date()
 })

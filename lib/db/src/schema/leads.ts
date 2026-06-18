@@ -36,6 +36,9 @@ export const leadsTable = pgTable("leads", {
   conjugeDataNascimento: text("conjuge_data_nascimento"),
   filhos: jsonb("filhos").$type<Array<{ nome: string; dataNascimento: string }>>(),
   discoveryData: jsonb("discovery_data").$type<Record<string, unknown>>(),
+  tipo: text("tipo").notNull().default("cliente"),
+  indicadoPor: text("indicado_por"),
+  notasNutricao: text("notas_nutricao"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
 });

@@ -10546,6 +10546,18 @@ components:
                 type: string
             required:
               - nome
+        tipo:
+          type: string
+          description: "Tipo do lead: 'cliente' (prospect que pode comprar) ou 'indicador' (parceiro que gera indicações)."
+          default: cliente
+        indicadoPor:
+          type: string
+          nullable: true
+          description: ID do lead indicador que referenciou este lead cliente.
+        notasNutricao:
+          type: string
+          nullable: true
+          description: Notas de nutrição para leads do tipo indicador.
         createdAt:
           type: string
           format: date-time
@@ -10633,6 +10645,15 @@ components:
                 type: string
             required:
               - nome
+        tipo:
+          type: string
+          description: "'cliente' ou 'indicador'"
+        indicadoPor:
+          type: string
+          nullable: true
+        notasNutricao:
+          type: string
+          nullable: true
       required:
         - tenantId
         - nome
@@ -10708,6 +10729,15 @@ components:
                 type: string
             required:
               - nome
+        tipo:
+          type: string
+          description: "'cliente' ou 'indicador'"
+        indicadoPor:
+          type: string
+          nullable: true
+        notasNutricao:
+          type: string
+          nullable: true
 
     Conversation:
       type: object

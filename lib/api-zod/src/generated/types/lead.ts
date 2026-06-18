@@ -35,6 +35,12 @@ export interface Lead {
   /** Data de nascimento do cônjuge no formato YYYY-MM-DD. */
   conjugeDataNascimento?: string | null;
   filhos?: LeadFilhosItem[] | null;
+  /** Tipo do lead: 'cliente' (prospect que pode comprar) ou 'indicador' (parceiro que gera indicações). */
+  tipo?: string;
+  /** ID do lead indicador que referenciou este lead cliente. */
+  indicadoPor?: string | null;
+  /** Notas de nutrição para leads do tipo indicador. */
+  notasNutricao?: string | null;
   createdAt: Date;
   updatedAt: Date;
 }

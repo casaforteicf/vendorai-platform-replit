@@ -1987,6 +1987,12 @@ export interface Lead {
   /** Data de nascimento do cônjuge no formato YYYY-MM-DD. */
   conjugeDataNascimento?: string | null;
   filhos?: LeadFilhosItem[] | null;
+  /** Tipo do lead: 'cliente' (prospect que pode comprar) ou 'indicador' (parceiro que gera indicações). */
+  tipo?: string;
+  /** ID do lead indicador que referenciou este lead cliente. */
+  indicadoPor?: string | null;
+  /** Notas de nutrição para leads do tipo indicador. */
+  notasNutricao?: string | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -2019,6 +2025,10 @@ export interface CreateLeadBody {
   /** Data de nascimento do cônjuge no formato YYYY-MM-DD. */
   conjugeDataNascimento?: string | null;
   filhos?: CreateLeadBodyFilhosItem[] | null;
+  /** 'cliente' ou 'indicador' */
+  tipo?: string;
+  indicadoPor?: string | null;
+  notasNutricao?: string | null;
 }
 
 export type UpdateLeadBodyFilhosItem = {
@@ -2048,6 +2058,10 @@ export interface UpdateLeadBody {
   /** Data de nascimento do cônjuge no formato YYYY-MM-DD. */
   conjugeDataNascimento?: string | null;
   filhos?: UpdateLeadBodyFilhosItem[] | null;
+  /** 'cliente' ou 'indicador' */
+  tipo?: string;
+  indicadoPor?: string | null;
+  notasNutricao?: string | null;
 }
 
 export type ConversationMetadata = { [key: string]: unknown } | null;

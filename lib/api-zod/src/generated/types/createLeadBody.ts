@@ -30,4 +30,8 @@ export interface CreateLeadBody {
   /** Data de nascimento do cônjuge no formato YYYY-MM-DD. */
   conjugeDataNascimento?: string | null;
   filhos?: CreateLeadBodyFilhosItem[] | null;
+  /** 'cliente' ou 'indicador' */
+  tipo?: string;
+  indicadoPor?: string | null;
+  notasNutricao?: string | null;
 }
