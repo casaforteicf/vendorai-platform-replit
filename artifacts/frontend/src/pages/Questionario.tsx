@@ -8,6 +8,7 @@ import { CheckCircle2, Loader2, ChevronRight, ChevronLeft } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 const SEGMENTOS = [
+  "Varejo de Roupas & Acessórios",
   "Varejo físico",
   "E-commerce",
   "Serviços B2B",
