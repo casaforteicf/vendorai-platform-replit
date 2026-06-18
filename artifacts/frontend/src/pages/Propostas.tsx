@@ -1673,11 +1673,16 @@ export default function Propostas() {
   const qc = useQueryClient();
   const tenantId = user?.tenantId ?? "";
 
+  const urlParams = new URLSearchParams(window.location.search);
+  const urlStatus = urlParams.get("status");
+  const defaultStatus = urlStatus === "ativa" ? "enviada" : undefined;
+
   const [modalOpen, setModalOpen] = useState(false);
   const [catOpen, setCatOpen] = useState(false);
   const [detailProposta, setDetailProposta] = useState<Proposta | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<Proposta | null>(null);
   const [viewProposta, setViewProposta] = useState<Proposta | null>(null);
+  const [statusFilter, setStatusFilter] = useState<string>(defaultStatus ?? "all");
 
   const { data: propostas = [], isLoading } = useListPropostas(tenantId, undefined, {
     query: { queryKey: getListPropostasQueryKey(tenantId), enabled: !!tenantId },
@@ -1757,7 +1762,7 @@ export default function Propostas() {
       {/* Stats */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
         {(["rascunho", "enviada", "pendente", "aceita", "rejeitada"] as const).map((k) => (
-          <Card key={k}>
+          <Card key={k} className={`cursor-pointer transition-shadow ${statusFilter === k ? "ring-2 ring-primary" : "hover:shadow-md"}`} onClick={() => setStatusFilter(statusFilter === k ? "all" : k)}>
             <CardContent className="pt-4 pb-3 px-4">
               <p className="text-xs text-muted-foreground uppercase tracking-wide">
                 {STATUS_CONFIG[k].label}s
@@ -1787,7 +1792,7 @@ export default function Propostas() {
             <>
             {/* Mobile card list */}
             <div className="md:hidden divide-y">
-              {propostas.map((p) => {
+              {propostas.filter((p) => statusFilter === "all" || p.status === statusFilter).map((p) => {
                 const statusCfg = STATUS_CONFIG[p.status] ?? STATUS_CONFIG.rascunho;
                 const canSend    = p.status === "rascunho";
                 const canPendente= p.status === "enviada";
@@ -1851,7 +1856,7 @@ export default function Propostas() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {propostas.map((p) => {
+                {propostas.filter((p) => statusFilter === "all" || p.status === statusFilter).map((p) => {
                   const statusCfg = STATUS_CONFIG[p.status] ?? STATUS_CONFIG.rascunho;
                   const canSend     = p.status === "rascunho";
                   const canPendente = p.status === "enviada";

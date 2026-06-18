@@ -368,7 +368,7 @@ export default function Dashboard() {
               </CardContent>
             </Card>
 
-            <Card data-testid="card-valor-negociacao" className="cursor-pointer hover:shadow-md transition-shadow" onClick={() => navigate("/negocios")}>
+            <Card data-testid="card-valor-negociacao" className="cursor-pointer hover:shadow-md transition-shadow" onClick={() => navigate("/deals")}>
               <CardHeader className="flex flex-row items-center justify-between pb-2 space-y-0">
                 <CardTitle className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
                   Valor em Pipeline
@@ -387,7 +387,7 @@ export default function Dashboard() {
               </CardContent>
             </Card>
 
-            <Card data-testid="card-ganhos-mes" className="cursor-pointer hover:shadow-md transition-shadow" onClick={() => navigate("/negocios")}>
+            <Card data-testid="card-ganhos-mes" className="cursor-pointer hover:shadow-md transition-shadow" onClick={() => navigate("/relatorios/ganhos-mes")}>
               <CardHeader className="flex flex-row items-center justify-between pb-2 space-y-0">
                 <CardTitle className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
                   Ganhos este mês
@@ -407,7 +407,7 @@ export default function Dashboard() {
               </CardContent>
             </Card>
 
-            <Card data-testid="card-taxa-conversao" className="cursor-pointer hover:shadow-md transition-shadow" onClick={() => navigate("/negocios")}>
+            <Card data-testid="card-taxa-conversao" className="cursor-pointer hover:shadow-md transition-shadow" onClick={() => navigate("/deals")}>
               <CardHeader className="flex flex-row items-center justify-between pb-2 space-y-0">
                 <CardTitle className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
                   Taxa de Conversão
@@ -433,7 +433,7 @@ export default function Dashboard() {
           Array.from({ length: 4 }).map((_, i) => <StatCardSkeleton key={i} />)
         ) : (
           <>
-            <Card data-testid="card-ticket-medio" className="cursor-pointer hover:shadow-md transition-shadow" onClick={() => navigate("/negocios")}>
+            <Card data-testid="card-ticket-medio" className="cursor-pointer hover:shadow-md transition-shadow" onClick={() => navigate("/deals")}>
               <CardHeader className="flex flex-row items-center justify-between pb-2 space-y-0">
                 <CardTitle className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
                   Ticket Médio
@@ -450,7 +450,7 @@ export default function Dashboard() {
               </CardContent>
             </Card>
 
-            <Card data-testid="card-propostas-ativas" className="cursor-pointer hover:shadow-md transition-shadow" onClick={() => navigate("/propostas")}>
+            <Card data-testid="card-propostas-ativas" className="cursor-pointer hover:shadow-md transition-shadow" onClick={() => navigate("/propostas?status=ativa")}>
               <CardHeader className="flex flex-row items-center justify-between pb-2 space-y-0">
                 <CardTitle className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
                   Orçamentos Ativos
@@ -515,7 +515,7 @@ export default function Dashboard() {
         ) : (
           <>
             {/* Tipo de Cliente */}
-            <Card data-testid="card-tipo-cliente" className="cursor-pointer hover:shadow-md transition-shadow" onClick={() => navigate("/leads")}>
+            <Card data-testid="card-tipo-cliente" className="cursor-pointer hover:shadow-md transition-shadow" onClick={() => navigate("/relatorios/tipo-cliente")}>
               <CardHeader className="flex flex-row items-center justify-between pb-2 space-y-0">
                 <CardTitle className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
                   Tipo de Cliente
@@ -550,7 +550,7 @@ export default function Dashboard() {
             </Card>
 
             {/* Dores Principais */}
-            <Card data-testid="card-dores" className="cursor-pointer hover:shadow-md transition-shadow" onClick={() => navigate("/leads")}>
+            <Card data-testid="card-dores" className="cursor-pointer hover:shadow-md transition-shadow" onClick={() => navigate("/relatorios/dores")}>
               <CardHeader className="flex flex-row items-center justify-between pb-2 space-y-0">
                 <CardTitle className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
                   Dores Principais
@@ -570,7 +570,7 @@ export default function Dashboard() {
             </Card>
 
             {/* Risco de Churn */}
-            <Card data-testid="card-churn" className="cursor-pointer hover:shadow-md transition-shadow" onClick={() => navigate("/leads")}>
+            <Card data-testid="card-churn" className="cursor-pointer hover:shadow-md transition-shadow" onClick={() => navigate("/leads?filtro=churn")}>
               <CardHeader className="flex flex-row items-center justify-between pb-2 space-y-0">
                 <CardTitle className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
                   Risco de Churn
@@ -590,7 +590,7 @@ export default function Dashboard() {
             </Card>
 
             {/* Leads Quentes */}
-            <Card data-testid="card-leads-quentes" className="cursor-pointer hover:shadow-md transition-shadow" onClick={() => navigate("/leads")}>
+            <Card data-testid="card-leads-quentes" className="cursor-pointer hover:shadow-md transition-shadow" onClick={() => navigate("/leads?filtro=quente")}>
               <CardHeader className="flex flex-row items-center justify-between pb-2 space-y-0">
                 <CardTitle className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
                   Leads Quentes

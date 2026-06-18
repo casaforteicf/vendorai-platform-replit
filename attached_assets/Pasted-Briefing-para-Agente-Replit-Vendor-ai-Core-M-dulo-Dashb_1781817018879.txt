@@ -1,0 +1,118 @@
+Briefing para Agente Replit — Vendor.ai Core
+Módulo: Dashboard — Cards Clicáveis com Navegação
+Objetivo
+Todos os cards do dashboard devem ser clicáveis e abrir a tela/relatório correspondente.
+Atualmente os cards mostram os números mas não navegam para lugar nenhum ao clicar.
+Cards a implementar (7 no total)
+Card
+O que abre ao clicar
+Valor em Pipeline
+Tela do Pipeline/Funil com todos os deals ativos
+Ganhos este mês
+Relatório de vendas ganhas no mês atual
+Orçamentos ativos
+Tela de propostas com filtro "ativas"
+Tipo de cliente
+Relatório de segmentação por tipo de cliente
+Dores principais
+Relatório de dores mapeadas nos leads
+Leads com risco de churn
+Lista de leads filtrada por risco de churn
+Leads quentes
+Lista de leads filtrada por classificação "quente"
+Implementação no Frontend
+Passo 1 — Localizar o componente do Dashboard
+Procurar por: Dashboard.tsx, DashboardPage.tsx ou similar em /client/src/pages/ ou /client/src/components/.
+Passo 2 — Tornar cada card clicável
+Envolver cada card em um elemento clicável com navegação via useNavigate do React Router:
+Tsx
+Passo 3 — Adicionar CSS para cursor e hover nos cards
+Css
+Telas a criar ou ajustar (Rotas)
+Rota 1 — /pipeline
+Já deve existir. Verificar se existe e se está registrada no router.
+Se não existir, criar página PipelinePage.tsx com:
+Kanban ou lista de deals por estágio (Novo → Qualificado → Proposta → Negociação → Ganho/Perdido)
+Filtro por responsável, período, valor
+Total do pipeline no topo
+Cards de deal com: nome do lead, empresa, valor, estágio, data de criação
+Rota 2 — /relatorios/ganhos-mes
+Criar página RelatorioGanhosMes.tsx com:
+Título: "Ganhos — [Mês Atual] [Ano]"
+KPIs no topo: total ganho, nº de deals fechados, ticket médio, meta atingida (%)
+Tabela com colunas: Lead, Empresa, Valor, Data fechamento, Responsável
+Filtro por período (mês atual como padrão, mas permitir mudar)
+Gráfico de barras por semana do mês (usar Recharts que já está instalado)
+Botão exportar CSV
+Tsx
+Rota 3 — /propostas?status=ativa
+Criar ou ajustar página PropostasPage.tsx com:
+Lista de propostas/orçamentos
+Filtro por status: Ativa / Enviada / Aprovada / Recusada / Expirada
+Quando aberta via dashboard, filtro "ativa" já deve estar selecionado (ler ?status=ativa da URL)
+Colunas: Cliente, Produto/Serviço, Valor, Data envio, Validade, Status, Ações
+Botão "Nova proposta"
+Tsx
+Rota 4 — /relatorios/tipo-cliente
+Criar página RelatorioTipoCliente.tsx com:
+Gráfico de pizza ou donut: distribuição por tipo (PF/PJ, segmento, porte)
+Gráfico de barras: receita por tipo de cliente
+Tabela resumo por segmento: quantidade, ticket médio, taxa de conversão
+Período selecionável
+Rota 5 — /relatorios/dores
+Criar página RelatorioDores.tsx com:
+Ranking das dores mais frequentes (horizontal bar chart)
+Dores identificadas pelo agente IA durante qualificação (campo dor_principal da tabela Leads)
+Tabela: Dor, Frequência, % do total, Leads associados
+Ao clicar em uma dor, abre lista de leads com aquela dor
+Tsx
+Rota 6 — /leads?filtro=churn
+Ajustar página existente de Leads para:
+Quando URL tiver ?filtro=churn, aplicar automaticamente o filtro de risco de churn
+Risco de churn = leads com dias_sem_resposta >= 7 OU classificacao = 'frio' OU status = 'inativo'
+Destacar esses leads em vermelho/laranja na lista
+Card de alerta no topo: "X leads precisam de atenção imediata"
+Botão de ação rápida: "Reativar via WhatsApp" (dispara agente de reativação)
+Rota 7 — /leads?filtro=quente
+Ajustar página existente de Leads para:
+Quando URL tiver ?filtro=quente, filtrar por classificacao = 'quente' OU score >= 70
+Destacar leads quentes com badge 🔥
+Ordenar por score decrescente
+Card no topo: "X leads quentes aguardando ação"
+Botão de ação rápida: "Iniciar abordagem" (dispara agente SDR/Closer)
+Endpoints de Backend necessários
+Verificar se já existem, criar se não existirem:
+Código
+Registrar as novas rotas no Router
+Localizar o arquivo de rotas (provavelmente App.tsx ou router.tsx) e adicionar:
+Tsx
+Menu lateral — adicionar itens se não existirem
+Verificar se o menu lateral (Sidebar.tsx ou similar) já tem links para:
+Pipeline ✓ (provavelmente já existe)
+Propostas ✓ (provavelmente já existe)
+Leads ✓ (provavelmente já existe)
+Relatórios (pode não existir) → adicionar com submenu:
+Ganhos do mês
+Tipo de cliente
+Dores dos leads
+Padrão visual das telas de relatório
+Todas as telas de relatório devem seguir o mesmo padrão:
+Tsx
+Ordem de execução recomendada
+Tornar todos os cards do dashboard clicáveis (CSS + useNavigate) — 30 min
+Registrar todas as rotas no router
+Criar/ajustar LeadsPage para ler ?filtro=churn e ?filtro=quente
+Criar RelatorioGanhosMes com tabela e gráfico Recharts
+Criar/ajustar PropostasPage para ler ?status=ativa
+Criar RelatorioDores com ranking e gráfico
+Criar RelatorioTipoCliente com gráfico de pizza
+Verificar/criar endpoints de backend necessários
+Adicionar itens de relatório no menu lateral
+Testar navegação completa: Dashboard → cada card → tela → botão Voltar
+Observações
+Usar useNavigate do React Router (não window.location.href)
+Ler parâmetros de URL com useSearchParams
+Todas as telas devem ter botão "← Voltar ao Dashboard"
+Recharts já está instalado no projeto — usar para todos os gráficos
+Multi-tenant: todos os endpoints DEVEM filtrar por tenant_id do usuário logado
+Não quebrar testes existentes

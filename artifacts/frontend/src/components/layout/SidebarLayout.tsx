@@ -1,16 +1,16 @@
 import { Link, useLocation } from "wouter";
 import { useAuth } from "@/contexts/AuthContext";
+import React, { useState } from "react";
 import {
   LayoutDashboard, Users, Briefcase, MessageSquare, Calendar,
   Settings, LogOut, Megaphone, FileText, Receipt, BrainCircuit,
   Store, Package, Menu, X, Sparkles, Globe, BookOpen, HardHat, Layers,
   Shirt, Tag, ShoppingCart, Heart, Gift, Truck, UtensilsCrossed, Megaphone as MegaphoneIcon,
-  BarChart3,
+  BarChart3, ChevronRight, ChevronDown, Target, Trophy,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import logoFull from "/logo-full-light.svg";
-import { useState } from "react";
 
 export function SidebarLayout({ children }: { children: React.ReactNode }) {
   const { user, logout } = useAuth();
@@ -93,9 +93,70 @@ export function SidebarLayout({ children }: { children: React.ReactNode }) {
   }
 
   function NavLinks({ onNavigate }: { onNavigate?: () => void }) {
+    const [relatoriosOpen, setRelatoriosOpen] = useState(false);
+    const isRelatorio = location.startsWith("/relatorios/");
     return (
       <>
         {crmNav.map((item) => <NavItem key={item.name} item={item} onNavigate={onNavigate} />)}
+
+        {/* Relatórios submenu */}
+        <div>
+          <button
+            onClick={() => setRelatoriosOpen((v) => !v)}
+            className={cn(
+              "w-full flex items-center justify-between px-3 py-2.5 rounded-md text-sm font-medium transition-colors min-h-[44px]",
+              isRelatorio
+                ? "bg-primary text-primary-foreground"
+                : "text-muted-foreground hover:bg-muted hover:text-foreground"
+            )}
+          >
+            <div className="flex items-center gap-3">
+              <BarChart3 className="h-4 w-4 shrink-0" />
+              Relatórios
+            </div>
+            {relatoriosOpen ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
+          </button>
+          {relatoriosOpen && (
+            <div className="ml-6 mt-1 space-y-1">
+              <Link
+                href="/relatorios/ganhos-mes"
+                onClick={onNavigate}
+                className={cn(
+                  "flex items-center gap-2 px-3 py-2 rounded-md text-sm transition-colors",
+                  location === "/relatorios/ganhos-mes"
+                    ? "bg-primary/10 text-primary font-medium"
+                    : "text-muted-foreground hover:bg-muted hover:text-foreground"
+                )}
+              >
+                <Trophy className="h-3.5 w-3.5" /> Ganhos do mês
+              </Link>
+              <Link
+                href="/relatorios/tipo-cliente"
+                onClick={onNavigate}
+                className={cn(
+                  "flex items-center gap-2 px-3 py-2 rounded-md text-sm transition-colors",
+                  location === "/relatorios/tipo-cliente"
+                    ? "bg-primary/10 text-primary font-medium"
+                    : "text-muted-foreground hover:bg-muted hover:text-foreground"
+                )}
+              >
+                <Users className="h-3.5 w-3.5" /> Tipo de cliente
+              </Link>
+              <Link
+                href="/relatorios/dores"
+                onClick={onNavigate}
+                className={cn(
+                  "flex items-center gap-2 px-3 py-2 rounded-md text-sm transition-colors",
+                  location === "/relatorios/dores"
+                    ? "bg-primary/10 text-primary font-medium"
+                    : "text-muted-foreground hover:bg-muted hover:text-foreground"
+                )}
+              >
+                <Target className="h-3.5 w-3.5" /> Dores dos leads
+              </Link>
+            </div>
+          )}
+        </div>
 
         {construcaoNav.length > 0 && (
           <div className="mt-3 pt-3 border-t">

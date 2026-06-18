@@ -50,6 +50,9 @@ import SupermercadoCampanhas from "@/pages/supermercado/SupermercadoCampanhas";
 import SupermercadoConfig from "@/pages/supermercado/SupermercadoConfig";
 import SiteGenerator from "@/pages/SiteGenerator";
 import Analytics from "@/pages/Analytics";
+import RelatorioGanhosMes from "@/pages/RelatorioGanhosMes";
+import RelatorioTipoCliente from "@/pages/RelatorioTipoCliente";
+import RelatorioDores from "@/pages/RelatorioDores";
 import { useEffect } from "react";
 import {
   useGetTenant,
@@ -378,6 +381,15 @@ function AppRoutes() {
       </Route>
       <Route path="/analytics">
         {() => <ProtectedRoute component={Analytics} />}
+      </Route>
+      <Route path="/relatorios/ganhos-mes">
+        {() => <ProtectedRoute component={RelatorioGanhosMes} />}
+      </Route>
+      <Route path="/relatorios/tipo-cliente">
+        {() => <ProtectedRoute component={RelatorioTipoCliente} />}
+      </Route>
+      <Route path="/relatorios/dores">
+        {() => <ProtectedRoute component={RelatorioDores} />}
       </Route>
       <Route path="/site-generator">
         {() => <ProtectedRoute component={SiteGenerator} />}

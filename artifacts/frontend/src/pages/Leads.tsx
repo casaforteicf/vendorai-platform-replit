@@ -63,6 +63,7 @@ const LEAD_STATUSES = [
   { value: "nao_qualificado", label: "Não qualificado" },
   { value: "convertido", label: "Convertido" },
   { value: "perdido", label: "Perdido" },
+  { value: "quente", label: "Quente" },
 ];
 
 const STATUS_STYLES: Record<string, string> = {
@@ -71,6 +72,7 @@ const STATUS_STYLES: Record<string, string> = {
   nao_qualificado: "bg-zinc-100 text-zinc-600 border-zinc-200",
   convertido: "bg-violet-100 text-violet-700 border-violet-200",
   perdido: "bg-red-100 text-red-600 border-red-200",
+  quente: "bg-amber-100 text-amber-700 border-amber-200",
 };
 
 function getFirstChurnReason(reasons: unknown[] | null | undefined): string | null {
@@ -168,9 +170,14 @@ export default function Leads() {
   const { toast } = useToast();
   const [, setLocation] = useLocation();
   const [isDialogOpen, setIsDialogOpen] = useState(false);
+  const urlParams = new URLSearchParams(window.location.search);
+  const urlFiltro = urlParams.get("filtro");
+  const isChurnUrl = urlFiltro === "churn";
+  const isQuenteUrl = urlFiltro === "quente";
+
   const [search, setSearch] = useState("");
-  const [statusFilter, setStatusFilter] = useState<string>("all");
-  const [churnSort, setChurnSort] = useState<"desc" | "asc" | null>(null);
+  const [statusFilter, setStatusFilter] = useState<string>(isChurnUrl ? "high_risk" : isQuenteUrl ? "quente" : "all");
+  const [churnSort, setChurnSort] = useState<"desc" | "asc" | null>(isChurnUrl ? "desc" : null);
 
   const [isImportOpen, setIsImportOpen] = useState(false);
   const [parsedRows, setParsedRows] = useState<ParsedLeadRow[]>([]);
@@ -315,16 +322,25 @@ export default function Leads() {
         lead.nome.toLowerCase().includes(search.toLowerCase()) ||
         lead.email?.toLowerCase().includes(search.toLowerCase()) ||
         lead.empresa?.toLowerCase().includes(search.toLowerCase());
+      const ci = ciMap.get(lead.id);
       const matchesStatus =
         statusFilter === "all"
           ? true
           : statusFilter === "high_risk"
-            ? typeof ciMap.get(lead.id)?.churnRisk === "number" &&
-              (ciMap.get(lead.id)?.churnRisk ?? 0) > 70
-            : lead.status === statusFilter;
+            ? typeof ci?.churnRisk === "number" &&
+              (ci?.churnRisk ?? 0) > 70
+            : statusFilter === "quente"
+              ? (lead.status === "qualificado" || lead.status === "novo")
+              : lead.status === statusFilter;
       return matchesSearch && matchesStatus;
     })
     .sort((a, b) => {
+      if (isQuenteUrl) {
+        // Quente leads: prioritize qualificado over novo
+        const scoreA = a.status === "qualificado" ? 2 : a.status === "novo" ? 1 : 0;
+        const scoreB = b.status === "qualificado" ? 2 : b.status === "novo" ? 1 : 0;
+        return scoreB - scoreA;
+      }
       if (!churnSort) return 0;
       const riskA = ciMap.get(a.id)?.churnRisk ?? null;
       const riskB = ciMap.get(b.id)?.churnRisk ?? null;
@@ -583,7 +599,10 @@ export default function Leads() {
               <SelectItem value="high_risk" data-testid="filter-high-risk">
                 Alto risco (&gt;70)
               </SelectItem>
-              {LEAD_STATUSES.map((s) => (
+              <SelectItem value="quente">
+                Quente
+              </SelectItem>
+              {LEAD_STATUSES.filter((s) => s.value !== "quente").map((s) => (
                 <SelectItem key={s.value} value={s.value}>
                   {s.label}
                 </SelectItem>
