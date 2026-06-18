@@ -39,6 +39,7 @@ export const leadsTable = pgTable("leads", {
   tipo: text("tipo").notNull().default("cliente"),
   indicadoPor: text("indicado_por"),
   notasNutricao: text("notas_nutricao"),
+  source: text("source").notNull().default("manual"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
 });

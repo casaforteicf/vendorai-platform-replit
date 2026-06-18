@@ -19,6 +19,7 @@ import {
   InstagramScopedIdMissingError,
 } from "../services/omnichannel.js";
 import { dispatchAgentBackground } from "../services/agent-dispatch.js";
+import { runAutoQuotePipeline } from "../services/auto-quote.js";
 
 const router: IRouter = Router();
 
@@ -137,7 +138,7 @@ router.post("/tenants/:tenantId/webhooks/whatsapp", async (req, res) => {
   if (!lead) {
     [lead] = await db
       .insert(leadsTable)
-      .values({ tenantId, nome: nome ?? telefone, telefone, status: "novo" })
+      .values({ tenantId, nome: nome ?? telefone, telefone, status: "novo", source: "whatsapp" })
       .returning();
     req.log.info({ leadId: lead.id, telefone }, "webhook: new lead created");
   }
@@ -194,18 +195,43 @@ router.post("/tenants/:tenantId/webhooks/whatsapp", async (req, res) => {
     })
     .where(eq(conversationsTable.id, conversation.id));
 
-  // ── 7. Respond immediately — dispatch AI agent in background ───────────
-  // The agent selection and OpenAI call happen asynchronously so the webhook
-  // response is always fast (< 200 ms). The n8n transport layer (or any caller)
-  // does not need to wait for the AI to generate and send the reply.
-  dispatchAgentBackground({
-    tenantId,
-    leadId: lead.id,
-    mensagem,
-    log: req.log,
-  });
+  // ── 7. Auto-quote pipeline for leads from WhatsApp channel ───────────
+  // Only for leads created by the channel (source === "whatsapp"), not manual leads.
+  if (lead.source === "whatsapp") {
+    const { generated, message: quoteMessage } = await runAutoQuotePipeline({
+      tenantId,
+      leadId: lead.id,
+      mensagem,
+      log: req.log,
+    });
 
-  req.log.info({ leadId: lead.id, conversationId: conversation.id }, "webhook: agent dispatch triggered");
+    if (generated) {
+      // Send the quote summary via WhatsApp
+      await sendOutgoingMessage(
+        { tenantId, leadId: lead.id, conteudo: quoteMessage, canal: "whatsapp", agentName: "auto-quote" },
+        req.log
+      );
+      req.log.info({ leadId: lead.id }, "webhook: auto-quote sent");
+    } else {
+      // No quote generated — dispatch AI agent to handle the conversation
+      dispatchAgentBackground({
+        tenantId,
+        leadId: lead.id,
+        mensagem,
+        log: req.log,
+      });
+      req.log.info({ leadId: lead.id, conversationId: conversation.id }, "webhook: agent dispatch triggered");
+    }
+  } else {
+    // Manual lead — dispatch AI agent normally (no auto-quote)
+    dispatchAgentBackground({
+      tenantId,
+      leadId: lead.id,
+      mensagem,
+      log: req.log,
+    });
+    req.log.info({ leadId: lead.id, conversationId: conversation.id }, "webhook: agent dispatch triggered");
+  }
 
   res.status(200).json({
     leadId: lead.id,
@@ -307,7 +333,7 @@ router.post("/tenants/:tenantId/webhooks/zapi", async (req, res) => {
   if (!lead) {
     [lead] = await db
       .insert(leadsTable)
-      .values({ tenantId, nome, telefone, status: "novo" })
+      .values({ tenantId, nome, telefone, status: "novo", source: "whatsapp" })
       .returning();
     req.log.info({ leadId: lead.id, telefone }, "zapi-webhook: new lead created");
   }
@@ -358,10 +384,29 @@ router.post("/tenants/:tenantId/webhooks/zapi", async (req, res) => {
     })
     .where(eq(conversationsTable.id, conversation.id));
 
-  // ── 8. Dispatch AI agent in background ────────────────────────────────────
-  dispatchAgentBackground({ tenantId, leadId: lead.id, mensagem, log: req.log });
+  // ── 8. Auto-quote pipeline for Z-API channel leads ─────────────────────────
+  if (lead.source === "whatsapp") {
+    const { generated, message: quoteMessage } = await runAutoQuotePipeline({
+      tenantId,
+      leadId: lead.id,
+      mensagem,
+      log: req.log,
+    });
 
-  req.log.info({ messageId: message.id, leadId: lead.id }, "zapi-webhook: message processed");
+    if (generated) {
+      await sendOutgoingMessage(
+        { tenantId, leadId: lead.id, conteudo: quoteMessage, canal: "whatsapp", agentName: "auto-quote" },
+        req.log
+      );
+      req.log.info({ leadId: lead.id }, "zapi-webhook: auto-quote sent");
+    } else {
+      dispatchAgentBackground({ tenantId, leadId: lead.id, mensagem, log: req.log });
+      req.log.info({ messageId: message.id, leadId: lead.id }, "zapi-webhook: agent dispatched");
+    }
+  } else {
+    dispatchAgentBackground({ tenantId, leadId: lead.id, mensagem, log: req.log });
+    req.log.info({ messageId: message.id, leadId: lead.id }, "zapi-webhook: agent dispatched");
+  }
 
   res.status(200).json({
     leadId: lead.id,
@@ -424,7 +469,7 @@ router.post("/tenants/:tenantId/webhooks/instagram", async (req, res) => {
   if (!lead) {
     [lead] = await db
       .insert(leadsTable)
-      .values({ tenantId, nome: nome ?? `Instagram @${igsid.slice(0, 8)}`, instagramScopedId: igsid, status: "novo" })
+      .values({ tenantId, nome: nome ?? `Instagram @${igsid.slice(0, 8)}`, instagramScopedId: igsid, status: "novo", source: "instagram" })
       .returning();
     req.log.info({ leadId: lead.id, igsid }, "webhook/instagram: new lead created");
   } else if (!lead.instagramScopedId) {
@@ -483,12 +528,29 @@ router.post("/tenants/:tenantId/webhooks/instagram", async (req, res) => {
     })
     .where(eq(conversationsTable.id, conversation.id));
 
-  dispatchAgentBackground({
-    tenantId,
-    leadId: lead.id,
-    mensagem,
-    log: req.log,
-  });
+  // Auto-quote pipeline for Instagram channel leads
+  if (lead.source === "instagram") {
+    const { generated, message: quoteMessage } = await runAutoQuotePipeline({
+      tenantId,
+      leadId: lead.id,
+      mensagem,
+      log: req.log,
+    });
+
+    if (generated) {
+      await sendOutgoingMessage(
+        { tenantId, leadId: lead.id, conteudo: quoteMessage, canal: "instagram", agentName: "auto-quote" },
+        req.log
+      );
+      req.log.info({ leadId: lead.id }, "webhook/instagram: auto-quote sent");
+    } else {
+      dispatchAgentBackground({ tenantId, leadId: lead.id, mensagem, log: req.log });
+      req.log.info({ messageId: message.id, leadId: lead.id }, "webhook/instagram: agent dispatched");
+    }
+  } else {
+    dispatchAgentBackground({ tenantId, leadId: lead.id, mensagem, log: req.log });
+    req.log.info({ messageId: message.id, leadId: lead.id }, "webhook/instagram: agent dispatched");
+  }
 
   res.status(200).json({
     leadId: lead.id,
