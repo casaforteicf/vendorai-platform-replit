@@ -1,4 +1,5 @@
 import React, { useState, useCallback, useRef } from "react";
+import { useLocation } from "wouter";
 import { useAuth } from "@/contexts/AuthContext";
 import {
   useListDeals,
@@ -9,6 +10,8 @@ import {
   getListTenantLeadsQueryKey,
   useGetTenant,
   getGetTenantQueryKey,
+  useListPropostas,
+  getListPropostasQueryKey,
   Deal,
   DealEtapa,
   TipoFechamento,
@@ -1141,14 +1144,13 @@ export default function Deals() {
   const queryClient = useQueryClient();
   const { toast } = useToast();
 
+  const [, navigate] = useLocation();
   const [isCreateOpen, setIsCreateOpen] = useState(false);
-  const [editDeal, setEditDeal] = useState<Deal | null>(null);
   const [activeId, setActiveId] = useState<string | null>(null);
   const [overColumn, setOverColumn] = useState<DealEtapa | null>(null);
   // SaaS pipeline state
   const [saasActiveId, setSaasActiveId] = useState<string | null>(null);
   const [saasOverColumn, setSaasOverColumn] = useState<DealEtapaSaas | null>(null);
-  const [editSaasDeal, setEditSaasDeal] = useState<Deal | null>(null);
   const [isCreateSaasOpen, setIsCreateSaasOpen] = useState(false);
   const [createExtracting, setCreateExtracting] = useState(false);
   const [createExtractedInfo, setCreateExtractedInfo] = useState<{
@@ -1181,6 +1183,23 @@ export default function Deals() {
     rawTenantDefault === "pedido_e_contrato" ? null : rawTenantDefault;
 
   const leadMap = new Map(leads.map((l) => [l.id, l.nome]));
+
+  const { data: propostas = [] } = useListPropostas(tenantId, undefined, {
+    query: { enabled: !!tenantId, queryKey: getListPropostasQueryKey(tenantId) },
+  });
+
+  const dealToPropostaId = new Map(
+    propostas.filter((p) => p.dealId).map((p) => [p.dealId!, p.id])
+  );
+
+  function handleCardClick(deal: Deal) {
+    const propostaId = dealToPropostaId.get(deal.id);
+    if (propostaId) {
+      navigate(`/propostas/${propostaId}`);
+    } else {
+      toast({ title: "Nenhum orçamento vinculado a este negócio.", description: "Crie um orçamento em Orçamentos e vincule este negócio." });
+    }
+  }
 
   const updateDeal = useUpdateDeal();
 
@@ -1652,7 +1671,7 @@ export default function Deals() {
                   deals={dealsByEtapa(etapa.value)}
                   leadMap={leadMap}
                   isOver={overColumn === etapa.value}
-                  onCardClick={setEditDeal}
+                  onCardClick={handleCardClick}
                 />
               ))}
             </div>
@@ -1669,15 +1688,6 @@ export default function Deals() {
         )}
       </div>
 
-      {/* Edit Sheets */}
-      <EditDealSheet
-        deal={editDeal}
-        leadMap={leadMap}
-        open={!!editDeal}
-        onClose={() => setEditDeal(null)}
-        tenantDefault={tenantDefault}
-        tenantSlug={tenantData?.slug}
-      />
     </div>
   );
 }
