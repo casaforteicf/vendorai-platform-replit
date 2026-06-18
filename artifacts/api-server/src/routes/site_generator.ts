@@ -3,8 +3,17 @@ import { desc, eq } from "drizzle-orm";
 import { db, generatedSitesTable } from "@workspace/db";
 import type { SiteGeneratorConfig } from "@workspace/db";
 import OpenAI from "openai";
+import Anthropic from "@anthropic-ai/sdk";
 
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+
+// Prefer Anthropic when available; fallback to OpenAI
+const anthropicApiKey = process.env.ANTHROPIC_API_KEY;
+const useAnthropic = !!anthropicApiKey;
+const anthropic = useAnthropic ? new Anthropic({ apiKey: anthropicApiKey }) : null;
+
+const AI_PROVIDER = useAnthropic ? "anthropic" : "openai";
+const AI_MODEL = useAnthropic ? "claude-sonnet-4-6" : "gpt-4o-mini";
 
 const router: IRouter = Router();
 
@@ -70,6 +79,43 @@ function extractHtml(text: string): string {
     .trim();
 }
 
+// Unified AI caller with provider logging
+type AiMessage = { role: "user" | "assistant"; content: string };
+
+async function callAI(
+  messages: AiMessage[],
+  log: { info: (obj: object, msg: string) => void }
+): Promise<{ content: string; provider: string; model: string }> {
+  if (useAnthropic && anthropic) {
+    log.info({ provider: "anthropic", model: AI_MODEL }, "Calling Anthropic for site generation");
+    const system = messages.find((m) => m.role === "assistant")?.content;
+    const userMessages = messages.filter((m) => m.role === "user");
+    const response = await anthropic.messages.create({
+      model: "claude-sonnet-4-6",
+      max_tokens: 8192,
+      messages: userMessages.map((m) => ({ role: m.role, content: m.content })),
+      ...(system ? { system } : {}),
+    });
+    const content = response.content
+      .filter((c) => c.type === "text")
+      .map((c) => (c as Anthropic.TextBlock).text)
+      .join("");
+    return { content, provider: "anthropic", model: "claude-sonnet-4-6" };
+  }
+
+  log.info({ provider: "openai", model: AI_MODEL }, "Calling OpenAI for site generation");
+  const response = await openai.chat.completions.create({
+    model: "gpt-4o-mini",
+    max_tokens: 8192,
+    messages: messages as Array<{ role: "user" | "assistant"; content: string }>,
+  });
+  return {
+    content: response.choices[0]?.message?.content ?? "",
+    provider: "openai",
+    model: "gpt-4o-mini",
+  };
+}
+
 // GET /tenants/:tenantId/site-generator — list generated sites
 router.get("/tenants/:tenantId/site-generator", async (req, res) => {
   const { tenantId } = req.params;
@@ -115,20 +161,19 @@ router.post("/tenants/:tenantId/site-generator/generate", async (req, res) => {
 
   const prompt = buildGeneratePrompt(config);
 
-  let response;
+  let result;
   try {
-    response = await openai.chat.completions.create({
-      model: "gpt-4o-mini",
-      max_tokens: 8192,
-      messages: [{ role: "user", content: prompt }],
-    });
+    result = await callAI([{ role: "user", content: prompt }], req.log);
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : "Falha ao chamar a IA";
+    req.log.error({ error: msg, provider: AI_PROVIDER }, "Site generation failed");
     res.status(502).json({ error: `Erro na geração: ${msg}` });
     return;
   }
 
-  const rawText = response.choices[0]?.message?.content ?? "";
+  req.log.info({ provider: result.provider, model: result.model, tenantId }, "Site generated successfully");
+
+  const rawText = result.content;
   const html = extractHtml(rawText);
 
   if (!html || html.length < 500) {
@@ -148,7 +193,7 @@ router.post("/tenants/:tenantId/site-generator/generate", async (req, res) => {
     })
     .returning();
 
-  return res.status(201).json(site);
+  return res.status(201).json({ ...site, _provider: result.provider, _model: result.model });
 });
 
 // POST /tenants/:tenantId/site-generator/:siteId/refine — refine via chat
@@ -176,25 +221,24 @@ router.post("/tenants/:tenantId/site-generator/:siteId/refine", async (req, res)
 
   const refinePrompt = buildRefinePrompt(message);
 
-  const refineMessages: Array<{ role: "user" | "assistant"; content: string }> = [
+  const refineMessages: AiMessage[] = [
     ...history,
     { role: "user", content: refinePrompt },
   ];
 
-  let response;
+  let result;
   try {
-    response = await openai.chat.completions.create({
-      model: "gpt-4o-mini",
-      max_tokens: 8192,
-      messages: refineMessages,
-    });
+    result = await callAI(refineMessages, req.log);
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : "Falha ao chamar a IA";
+    req.log.error({ error: msg, provider: AI_PROVIDER }, "Site refinement failed");
     res.status(502).json({ error: `Erro no refinamento: ${msg}` });
     return;
   }
 
-  const rawText = response.choices[0]?.message?.content ?? "";
+  req.log.info({ provider: result.provider, model: result.model, tenantId, siteId }, "Site refined successfully");
+
+  const rawText = result.content;
   const html = extractHtml(rawText);
 
   if (!html || html.length < 500) {
@@ -207,7 +251,7 @@ router.post("/tenants/:tenantId/site-generator/:siteId/refine", async (req, res)
     .set({ html, updatedAt: new Date() })
     .where(eq(generatedSitesTable.id, siteId));
 
-  return res.json({ html });
+  return res.json({ html, _provider: result.provider, _model: result.model });
 });
 
 // DELETE /tenants/:tenantId/site-generator/:siteId
