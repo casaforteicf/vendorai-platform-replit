@@ -466,15 +466,23 @@ export default function PropostaPrint() {
 
       <style>{`
         @media print {
-          .no-print { display: none !important; }
-          body { margin: 0; padding: 0; background: white; }
+          /* Esconde tudo — sidebar, header, action bar */
+          body * { visibility: hidden !important; }
+          /* Mostra apenas o conteúdo do orçamento */
+          #proposta-print,
+          #proposta-print * { visibility: visible !important; }
           #proposta-print {
-            box-shadow: none !important;
-            margin: 0 !important;
+            position: fixed !important;
+            inset: 0 !important;
+            width: 100% !important;
             max-width: 100% !important;
+            height: auto !important;
+            margin: 0 !important;
             padding: 8mm 12mm !important;
+            box-shadow: none !important;
+            background: white !important;
+            overflow: visible !important;
           }
-          .no-print-padding { padding-top: 0 !important; }
         }
         @media (max-width: 480px) {
           #proposta-print {
