@@ -1488,6 +1488,7 @@ export const ListPropostasResponseItem = zod.object({
   "tenantId": zod.string(),
   "leadId": zod.string(),
   "dealId": zod.string().nullish(),
+  "numero": zod.string().nullish().describe('Unique proposal number, e.g. ORC-20260618-1423-001.'),
   "titulo": zod.string(),
   "itens": zod.array(zod.object({
   "nome": zod.string(),
@@ -1531,6 +1532,7 @@ export const UpdatePropostaStatusResponse = zod.object({
   "tenantId": zod.string(),
   "leadId": zod.string(),
   "dealId": zod.string().nullish(),
+  "numero": zod.string().nullish().describe('Unique proposal number, e.g. ORC-20260618-1423-001.'),
   "titulo": zod.string(),
   "itens": zod.array(zod.object({
   "nome": zod.string(),
@@ -1564,6 +1566,7 @@ export const GetPropostaResponse = zod.object({
   "tenantId": zod.string(),
   "leadId": zod.string(),
   "dealId": zod.string().nullish(),
+  "numero": zod.string().nullish().describe('Unique proposal number, e.g. ORC-20260618-1423-001.'),
   "titulo": zod.string(),
   "itens": zod.array(zod.object({
   "nome": zod.string(),
@@ -1618,6 +1621,7 @@ export const UpdatePropostaResponse = zod.object({
   "tenantId": zod.string(),
   "leadId": zod.string(),
   "dealId": zod.string().nullish(),
+  "numero": zod.string().nullish().describe('Unique proposal number, e.g. ORC-20260618-1423-001.'),
   "titulo": zod.string(),
   "itens": zod.array(zod.object({
   "nome": zod.string(),

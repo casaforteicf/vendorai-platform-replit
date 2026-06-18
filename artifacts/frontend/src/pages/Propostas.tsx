@@ -1218,10 +1218,13 @@ function PropostaDetailSheet({
       <SheetContent className="w-[440px] overflow-y-auto">
         <SheetHeader>
           <SheetTitle>{proposta.titulo}</SheetTitle>
+          {proposta.numero && (
+            <p className="text-xs font-mono text-muted-foreground">{proposta.numero}</p>
+          )}
         </SheetHeader>
         <div className="mt-5 space-y-5">
-          {/* Status + meta */}
-          <div className="flex items-center gap-3">
+          {/* Status + meta + impressão */}
+          <div className="flex items-center gap-2 flex-wrap">
             <Badge variant="outline" className={`${statusCfg.className} text-xs`}>
               {statusCfg.label}
             </Badge>
@@ -1230,6 +1233,17 @@ function PropostaDetailSheet({
                 Válida até {fmtDate(proposta.validadeAte)}
               </span>
             )}
+            <div className="ml-auto">
+              <Button
+                size="sm"
+                variant="outline"
+                className="h-7 text-xs gap-1.5"
+                onClick={() => window.open(`/propostas/${proposta.id}/print`, "_blank")}
+              >
+                <Printer className="h-3 w-3" />
+                PDF / Imprimir
+              </Button>
+            </div>
           </div>
 
           <div className="grid grid-cols-2 gap-4 text-sm">
@@ -1805,6 +1819,7 @@ export default function Propostas() {
             <Table className="hidden md:table">
               <TableHeader>
                 <TableRow>
+                  <TableHead className="w-36">Número</TableHead>
                   <TableHead>Título</TableHead>
                   <TableHead>Lead</TableHead>
                   <TableHead>Status</TableHead>
@@ -1827,6 +1842,9 @@ export default function Propostas() {
                       className="cursor-pointer"
                       onClick={() => setDetailProposta(p)}
                     >
+                      <TableCell className="font-mono text-xs text-muted-foreground">
+                        {p.numero ?? "—"}
+                      </TableCell>
                       <TableCell className="font-medium">{p.titulo}</TableCell>
                       <TableCell className="text-muted-foreground">
                         {leadMap[p.leadId] ?? p.leadId.slice(0, 8) + "…"}

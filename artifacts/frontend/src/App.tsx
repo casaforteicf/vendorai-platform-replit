@@ -16,6 +16,7 @@ import Agenda from "@/pages/Agenda";
 import Configuracoes from "@/pages/Configuracoes";
 import Campanhas from "@/pages/Campanhas";
 import Propostas from "@/pages/Propostas";
+import PropostaPrint from "@/pages/PropostaPrint";
 import Faturamento from "@/pages/Faturamento";
 import AdminAIUsage from "@/pages/AdminAIUsage";
 import AdminPartners from "@/pages/AdminPartners";
@@ -322,6 +323,9 @@ function AppRoutes() {
       </Route>
       <Route path="/propostas">
         {() => <ProtectedRoute component={Propostas} />}
+      </Route>
+      <Route path="/propostas/:id/print">
+        {() => <ProtectedRoute component={PropostaPrint} />}
       </Route>
       <Route path="/campanhas">
         <ProtectedRoute component={Campanhas} />

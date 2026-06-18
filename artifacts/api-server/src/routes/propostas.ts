@@ -1,5 +1,5 @@
 import { Router, type IRouter } from "express";
-import { and, eq, inArray } from "drizzle-orm";
+import { and, eq, inArray, like, sql } from "drizzle-orm";
 import { z } from "zod/v4";
 import {
   db,
@@ -15,6 +15,32 @@ import { getOpenAI } from "../lib/agent-engine.js";
 
 const router: IRouter = Router();
 
+// ── Proposal number generation ────────────────────────────────────────────────
+async function generateNumero(tenantId: string): Promise<string> {
+  const now = new Date();
+  const pad2 = (n: number) => String(n).padStart(2, "0");
+  const datePart =
+    String(now.getFullYear()) +
+    pad2(now.getMonth() + 1) +
+    pad2(now.getDate());
+  const timePart = pad2(now.getHours()) + pad2(now.getMinutes());
+  const prefix = `ORC-${datePart}-${timePart}`;
+
+  // Count proposals created today for this tenant to get sequence number
+  const startOfDay = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  const result = await db
+    .select({ count: sql<number>`count(*)::int` })
+    .from(propostasTable)
+    .where(
+      and(
+        eq(propostasTable.tenantId, tenantId),
+        sql`${propostasTable.createdAt} >= ${startOfDay}`
+      )
+    );
+  const seq = ((result[0]?.count ?? 0) + 1).toString().padStart(3, "0");
+  return `${prefix}-${seq}`;
+}
+
 router.post("/propostas", async (req, res) => {
   const parsed = insertPropostaSchema.safeParse(req.body);
   if (!parsed.success) {
@@ -27,9 +53,11 @@ router.post("/propostas", async (req, res) => {
     return;
   }
 
+  const numero = await generateNumero(parsed.data.tenantId);
+
   const [proposta] = await db
     .insert(propostasTable)
-    .values(parsed.data)
+    .values({ ...parsed.data, numero })
     .returning();
   res.status(201).json(proposta);
 });
@@ -199,6 +227,12 @@ const fromCatalogoBodySchema = z.object({
   dealId: z.string().optional(),
   validadeAte: z.coerce.date().optional(),
   observacoes: z.string().optional(),
+  formaPagamento: z.string().optional(),
+  condPagamento: z.string().optional(),
+  prazoEntrega: z.string().optional(),
+  recorrente: z.boolean().optional(),
+  valorMensal: z.number().optional(),
+  prazoContratoMeses: z.number().int().optional(),
   itens: z
     .array(
       z.object({
@@ -225,8 +259,11 @@ router.post(
       return;
     }
 
-    const { leadId, titulo, dealId, validadeAte, observacoes, itens } =
-      parsed.data;
+    const {
+      leadId, titulo, dealId, validadeAte, observacoes, itens,
+      formaPagamento, condPagamento, prazoEntrega,
+      recorrente, valorMensal, prazoContratoMeses,
+    } = parsed.data;
 
     const produtoIds = itens.map((i) => i.produtoId);
 
@@ -272,15 +309,24 @@ router.post(
       };
     });
 
+    const numero = await generateNumero(tenantId);
+
     const [proposta] = await db
       .insert(propostasTable)
       .values({
         tenantId,
         leadId,
         titulo,
+        numero,
         ...(dealId ? { dealId } : {}),
         ...(validadeAte ? { validadeAte } : {}),
         ...(observacoes ? { observacoes } : {}),
+        ...(formaPagamento ? { formaPagamento: formaPagamento as typeof propostasTable.$inferInsert.formaPagamento } : {}),
+        ...(condPagamento ? { condPagamento } : {}),
+        ...(prazoEntrega ? { prazoEntrega } : {}),
+        ...(recorrente !== undefined ? { recorrente } : {}),
+        ...(valorMensal !== undefined ? { valorMensal: String(valorMensal) } : {}),
+        ...(prazoContratoMeses !== undefined ? { prazoContratoMeses } : {}),
         itens: propostaItens,
         valorTotal: valorTotal.toFixed(2),
       })

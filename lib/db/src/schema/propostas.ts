@@ -56,6 +56,7 @@ export const propostasTable = pgTable("propostas", {
   formaPagamento: formaPagamentoPropostaEnum("forma_pagamento"),
   condPagamento: text("cond_pagamento"),
   prazoEntrega: text("prazo_entrega"),
+  numero: text("numero"),
   recorrente: boolean("recorrente").default(false),
   valorMensal: numeric("valor_mensal", { precision: 12, scale: 2 }),
   prazoContratoMeses: integer("prazo_contrato_meses"),

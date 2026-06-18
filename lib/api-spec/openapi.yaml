@@ -8923,6 +8923,10 @@ components:
         dealId:
           type: string
           nullable: true
+        numero:
+          type: string
+          nullable: true
+          description: "Unique proposal number, e.g. ORC-20260618-1423-001."
         titulo:
           type: string
         itens:

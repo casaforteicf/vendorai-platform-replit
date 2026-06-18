@@ -14,6 +14,8 @@ export interface Proposta {
   tenantId: string;
   leadId: string;
   dealId?: string | null;
+  /** Unique proposal number, e.g. ORC-20260618-1423-001. */
+  numero?: string | null;
   titulo: string;
   itens: PropostaItem[];
   /** Decimal stored as string (Postgres numeric) */
