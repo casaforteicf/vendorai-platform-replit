@@ -1,0 +1,469 @@
+# Briefing para Agente Replit — Vendor.ai Core
+## Correções Críticas Pós-Auditoria — 4 Prioridades
+
+---
+
+## CONTEXTO
+
+Auditoria completa realizada em 18/06/2025 identificou 4 problemas críticos.
+Executar NESTA ORDEM. Não pular etapas. Rodar `pnpm test` após cada correção.
+
+---
+
+## PRIORIDADE 1 — Registrar Migration 0004 no Journal (URGENTE)
+
+### Problema
+O arquivo `0004_threshold_check_constraints` existe no filesystem mas NÃO está
+registrado no journal do Drizzle ORM. O banco de produção está com schema
+desatualizado — campos e constraints da migration 0004 não foram aplicados.
+
+### O que fazer
+
+**Passo 1 — Verificar o estado atual:**
+```bash
+cd artifacts/api-server
+cat drizzle/meta/_journal.json
+```
+Confirmar que 0004 está ausente do array `entries`.
+
+**Passo 2 — Verificar o que a migration 0004 contém:**
+```bash
+cat drizzle/0004_threshold_check_constraints.sql
+```
+Anotar quais tabelas e constraints ela adiciona.
+
+**Passo 3 — Aplicar a migration manualmente:**
+```bash
+pnpm --filter @workspace/api-server run db:push
+```
+Ou se usar migrate:
+```bash
+pnpm --filter @workspace/api-server run db:migrate
+```
+
+**Passo 4 — Se o comando acima falhar, registrar manualmente no journal:**
+
+Abrir `drizzle/meta/_journal.json` e adicionar a entrada da 0004 no array `entries`:
+```json
+{
+  "idx": 4,
+  "version": "7",
+  "when": [timestamp atual em ms],
+  "tag": "0004_threshold_check_constraints",
+  "breakpoints": true
+}
+```
+
+**Passo 5 — Verificar se o banco foi atualizado:**
+```bash
+pnpm --filter @workspace/api-server run db:studio
+```
+Confirmar que as constraints da 0004 existem nas tabelas afetadas.
+
+**Passo 6 — Rodar testes:**
+```bash
+pnpm --filter @workspace/api-server run test
+```
+Todos os 208 testes devem continuar passando.
+
+---
+
+## PRIORIDADE 2 — Completar Webhook Instagram (ALTO IMPACTO)
+
+### Problema
+O endpoint `POST /api/webhooks/meta/instagram` recebe mensagens do Instagram
+mas é um **esqueleto vazio** — não cria lead, não cria conversa, não processa
+a mensagem. Clientes que mandam DM no Instagram são ignorados pelo sistema.
+
+### Objetivo
+Replicar exatamente o mesmo fluxo do webhook WhatsApp, adaptado para Instagram.
+
+### O que fazer
+
+**Passo 1 — Localizar o webhook atual:**
+```
+Arquivo: provavelmente server/routes/webhooks.ts ou server/routes/meta.ts
+Buscar por: /webhooks/meta/instagram ou instagram_messaging
+```
+
+**Passo 2 — Entender o payload do Instagram (Meta Graph API)**
+
+Payload que chega do Instagram quando cliente manda DM:
+```json
+{
+  "object": "instagram",
+  "entry": [{
+    "id": "PAGE_ID",
+    "time": 1234567890,
+    "messaging": [{
+      "sender": { "id": "INSTAGRAM_SCOPED_USER_ID" },
+      "recipient": { "id": "PAGE_ID" },
+      "timestamp": 1234567890,
+      "message": {
+        "mid": "MESSAGE_ID",
+        "text": "Olá, quero saber sobre seus produtos"
+      }
+    }]
+  }]
+}
+```
+
+Para áudio/mídia:
+```json
+{
+  "message": {
+    "mid": "MESSAGE_ID",
+    "attachments": [{
+      "type": "audio",
+      "payload": { "url": "https://..." }
+    }]
+  }
+}
+```
+
+**Passo 3 — Implementar o handler completo**
+
+Substituir o esqueleto pelo handler completo:
+
+```typescript
+// POST /api/webhooks/meta/instagram
+async function handleInstagramWebhook(req: Request, res: Response) {
+  // Responder imediatamente para o Meta não reenviar
+  res.status(200).send('EVENT_RECEIVED');
+
+  try {
+    const body = req.body;
+    if (body.object !== 'instagram') return;
+
+    for (const entry of body.entry || []) {
+      for (const messagingEvent of entry.messaging || []) {
+        
+        const instagramScopedId = messagingEvent.sender?.id;
+        const recipientId = messagingEvent.recipient?.id; // PAGE_ID do tenant
+        const timestamp = messagingEvent.timestamp;
+        
+        if (!instagramScopedId || !messagingEvent.message) continue;
+        
+        // Ignorar mensagens enviadas pelo próprio bot (echo)
+        if (messagingEvent.message?.is_echo) continue;
+
+        // Descobrir qual tenant é dono desta page
+        const tenant = await db.query.agent_configs.findFirst({
+          where: eq(agentConfigs.instagramPageId, recipientId)
+        });
+        
+        // Fallback: buscar pelo instagram_access_token que contém este page
+        // (implementar lógica de lookup por tenant)
+        if (!tenant) {
+          console.warn(`Tenant não encontrado para Instagram page: ${recipientId}`);
+          continue;
+        }
+
+        const tenantId = tenant.tenantId;
+
+        // Extrair texto ou transcrever áudio
+        let textoMensagem = '';
+        let tipoConteudo = 'text';
+
+        if (messagingEvent.message.text) {
+          textoMensagem = messagingEvent.message.text;
+          tipoConteudo = 'text';
+        } else if (messagingEvent.message.attachments) {
+          const attachment = messagingEvent.message.attachments[0];
+          
+          if (attachment.type === 'audio') {
+            // Transcrever com Whisper (mesmo serviço do WhatsApp)
+            textoMensagem = await transcribeAudio(attachment.payload.url);
+            tipoConteudo = 'audio';
+          } else if (attachment.type === 'image') {
+            // Interpretar com GPT-4o Vision (mesmo serviço do WhatsApp)
+            textoMensagem = await interpretMedia(attachment.payload.url, 'image');
+            tipoConteudo = 'image';
+          } else {
+            textoMensagem = `[${attachment.type} recebido]`;
+            tipoConteudo = attachment.type;
+          }
+        }
+
+        if (!textoMensagem) continue;
+
+        // Buscar ou criar lead pelo instagram_scoped_id
+        let lead = await db.query.leads.findFirst({
+          where: and(
+            eq(leads.tenantId, tenantId),
+            eq(leads.instagramScopedId, instagramScopedId)
+          )
+        });
+
+        if (!lead) {
+          // Criar novo lead
+          const [novoLead] = await db.insert(leads).values({
+            tenantId,
+            nome: `Lead Instagram ${instagramScopedId.slice(-6)}`,
+            instagramScopedId,
+            source: 'instagram',
+            status: 'novo',
+            canal_preferido: 'instagram',
+            criadoEm: new Date()
+          }).returning();
+          lead = novoLead;
+        }
+
+        // Buscar ou criar conversa
+        let conversa = await db.query.conversations.findFirst({
+          where: and(
+            eq(conversations.tenantId, tenantId),
+            eq(conversations.leadId, lead.id),
+            eq(conversations.channel, 'instagram'),
+            eq(conversations.status, 'aberta')
+          )
+        });
+
+        if (!conversa) {
+          const [novaConversa] = await db.insert(conversations).values({
+            tenantId,
+            leadId: lead.id,
+            channel: 'instagram',
+            status: 'aberta',
+            ultimaMensagemEm: new Date()
+          }).returning();
+          conversa = novaConversa;
+        }
+
+        // Inserir mensagem
+        await db.insert(messages).values({
+          conversationId: conversa.id,
+          leadId: lead.id,
+          tenantId,
+          direcao: 'inbound',
+          canal: 'instagram',
+          conteudo: textoMensagem,
+          tipoConteudo,
+          enviadoPor: 'lead',
+          criadoEm: new Date(timestamp)
+        });
+
+        // Atualizar lead e conversa
+        await db.update(leads)
+          .set({ ultimaAtividadeEm: new Date() })
+          .where(eq(leads.id, lead.id));
+
+        await db.update(conversations)
+          .set({ 
+            ultimaMensagemEm: new Date(),
+            naoLidas: sql`${conversations.naoLidas} + 1`
+          })
+          .where(eq(conversations.id, conversa.id));
+
+        // Disparar agente IA em background (igual ao WhatsApp)
+        dispatchAgentBackground({
+          tenantId,
+          leadId: lead.id,
+          conversationId: conversa.id,
+          mensagem: textoMensagem,
+          canal: 'instagram'
+        }).catch(err => console.error('Agent dispatch error:', err));
+      }
+    }
+  } catch (error) {
+    console.error('Erro no webhook Instagram:', error);
+  }
+}
+```
+
+**Passo 4 — Garantir que o agente responde via Instagram**
+
+Verificar em `services/omnichannel.ts` a função `sendInstagramMessage()`:
+- Ela já existe conforme auditoria
+- Confirmar que `dispatchAgentBackground()` passa `canal: 'instagram'`
+- Confirmar que o agent engine usa o canal correto para enviar a resposta
+
+**Passo 5 — Adicionar campo `instagramPageId` em `agent_configs` se não existir:**
+```sql
+-- Verificar se coluna existe:
+SELECT column_name FROM information_schema.columns 
+WHERE table_name = 'agent_configs' AND column_name = 'instagram_page_id';
+
+-- Se não existir, adicionar via Drizzle schema + migration
+```
+
+**Passo 6 — Rodar testes:**
+```bash
+pnpm --filter @workspace/api-server run test
+```
+
+---
+
+## PRIORIDADE 3 — Instalar SDK Anthropic como Dependência Oficial
+
+### Problema
+O código em `lib/integrations-anthropic-ai` usa o SDK da Anthropic mas o pacote
+`@anthropic-ai/sdk` NÃO está listado em `package.json`. Isso vai causar erro
+em produção quando qualquer funcionalidade que usa Claude for invocada.
+
+### O que fazer
+
+**Passo 1 — Instalar o pacote:**
+```bash
+cd artifacts/api-server
+pnpm add @anthropic-ai/sdk
+```
+
+**Passo 2 — Verificar o arquivo existente:**
+```bash
+cat artifacts/api-server/src/lib/integrations-anthropic-ai.ts
+```
+Confirmar que o import está correto:
+```typescript
+import Anthropic from '@anthropic-ai/sdk';
+```
+
+**Passo 3 — Verificar se ANTHROPIC_API_KEY está nos Secrets do Replit**
+
+Se não estiver:
+- Acessar console.anthropic.com
+- API Keys → Create Key → nome: `vendor-ai-replit`
+- Adicionar no Replit Secrets: `ANTHROPIC_API_KEY=sk-ant-...`
+
+**Passo 4 — Atualizar o gerador de sites para usar Claude**
+
+Localizar `POST /api/tenants/:tenantId/site-generator/generate` e verificar
+qual modelo está sendo usado. Se usar OpenAI, migrar para Claude seguindo
+o padrão dual-provider (Claude quando ANTHROPIC_API_KEY disponível, 
+OpenAI como fallback):
+
+```typescript
+import Anthropic from '@anthropic-ai/sdk';
+import OpenAI from 'openai';
+
+export async function generateSiteHTML(params: SiteParams): Promise<string> {
+  if (process.env.ANTHROPIC_API_KEY) {
+    return await generateWithClaude(params);
+  }
+  return await generateWithOpenAI(params);
+}
+
+async function generateWithClaude(params: SiteParams): Promise<string> {
+  const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
+  
+  const message = await client.messages.create({
+    model: 'claude-sonnet-4-6',  // SEMPRE este modelo
+    max_tokens: 8192,
+    messages: [{
+      role: 'user',
+      content: buildSitePrompt(params)  // prompt detalhado existente
+    }]
+  });
+  
+  const text = message.content[0].type === 'text' ? message.content[0].text : '';
+  return extractHTML(text);
+}
+```
+
+**Passo 5 — Rodar testes:**
+```bash
+pnpm --filter @workspace/api-server run test
+```
+
+---
+
+## PRIORIDADE 4 — Completar Módulos Supermercado (FRONTEND)
+
+### Problema
+4 telas do módulo Supermercado estão com Skeleton UI — mostram loading infinito
+sem dados reais: Dashboard, Produtos, Pedidos e Campanhas.
+
+### O que fazer
+
+**Passo 1 — Verificar quais rotas de backend existem:**
+Conforme auditoria, as rotas JÁ existem:
+```
+GET /api/tenants/:tenantId/supermercado/produtos
+GET /api/tenants/:tenantId/supermercado/pedidos  
+GET /api/tenants/:tenantId/supermercado/campanhas
+POST /api/tenants/:tenantId/supermercado/config
+```
+
+O problema é no FRONTEND — as telas não estão chamando as APIs.
+
+**Passo 2 — Completar `SupermercadoDashboard.tsx`:**
+
+```tsx
+const SupermercadoDashboard = () => {
+  const { tenantId } = useAuth();
+  
+  const { data: produtos } = useQuery({
+    queryKey: ['supermercado-produtos', tenantId],
+    queryFn: () => api.get(`/tenants/${tenantId}/supermercado/produtos`)
+  });
+
+  const { data: pedidos } = useQuery({
+    queryKey: ['supermercado-pedidos', tenantId],
+    queryFn: () => api.get(`/tenants/${tenantId}/supermercado/pedidos`)
+  });
+
+  // KPIs calculados dos dados reais
+  const totalProdutos = produtos?.data?.length || 0;
+  const pedidosHoje = pedidos?.data?.filter(p => isToday(p.criadoEm)).length || 0;
+  const receitaHoje = pedidos?.data
+    ?.filter(p => isToday(p.criadoEm) && p.status === 'pago')
+    ?.reduce((acc, p) => acc + p.total, 0) || 0;
+
+  return (
+    <div className="page-container">
+      <h1>Supermercado</h1>
+      <div className="kpi-grid">
+        <KPICard label="Produtos ativos" value={totalProdutos} />
+        <KPICard label="Pedidos hoje" value={pedidosHoje} />
+        <KPICard label="Receita hoje" value={formatCurrency(receitaHoje)} />
+      </div>
+      {/* tabelas de pedidos recentes e produtos mais vendidos */}
+    </div>
+  );
+};
+```
+
+**Passo 3 — Completar `SupermercadoProdutos.tsx`:**
+- Tabela com: código de barras, nome, categoria, preço, estoque atual
+- Filtro por categoria
+- Busca por nome ou código de barras
+- Botão "Novo produto" com modal de cadastro
+- Botão "Importar CSV" para bulk import
+
+**Passo 4 — Completar `SupermercadoPedidos.tsx`:**
+- Lista de pedidos com: cliente, itens, total, status, data
+- Filtro por status: pendente / pago / cancelado
+- Detalhe do pedido ao clicar
+
+**Passo 5 — Completar `SupermercadoCampanhas.tsx`:**
+- Reusar componente de Campanhas existente
+- Filtrar por vertical supermercado
+- Segmentos específicos: clientes inativos 30d, aniversariantes, maior ticket
+
+**Passo 6 — Rodar testes:**
+```bash
+pnpm --filter @workspace/api-server run test
+```
+
+---
+
+## RESUMO DAS PRIORIDADES
+
+| # | Problema | Impacto | Esforço |
+|---|----------|---------|---------|
+| 1 | Migration 0004 pendente | 🔴 Crítico — schema desatualizado | 15 min |
+| 2 | Instagram webhook esqueleto | 🔴 Alto — leads perdidos | 2-3h |
+| 3 | SDK Anthropic não instalado | 🟡 Médio — Claude não funciona | 30 min |
+| 4 | Supermercado frontend parcial | 🟡 Médio — telas quebradas | 2-3h |
+
+---
+
+## REGRAS GERAIS
+
+- NÃO quebrar os 208 testes existentes
+- Rodar `pnpm --filter @workspace/api-server run test` após CADA prioridade
+- Multi-tenant: toda query DEVE filtrar por tenantId
+- Usar Drizzle ORM para todas as queries (não SQL raw)
+- Seguir o padrão de código existente no projeto
+- Em caso de dúvida sobre padrão, consultar como o webhook WhatsApp foi implementado
+  e replicar a mesma estrutura para o Instagram

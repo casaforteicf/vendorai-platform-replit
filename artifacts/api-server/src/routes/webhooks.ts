@@ -986,7 +986,6 @@ router.post("/webhooks/meta/instagram", async (req, res) => {
   );
 
   // Acknowledge immediately (200 OK)
-  // Background processing is done after response
   res.status(200).json({ status: "received" });
 
   try {
@@ -1007,11 +1006,116 @@ router.post("/webhooks/meta/instagram", async (req, res) => {
           const message = msg["message"] as Record<string, unknown> | undefined;
           if (!sender || !message) continue;
 
+          // Ignore echo messages (sent by the bot itself)
+          if (message["is_echo"] === true) continue;
+
           const igsid = sender.id;
           const text = (message["text"] as string) ?? "";
-          if (!igsid || !text) continue;
+          if (!igsid) continue;
 
-          req.log.info({ igsid, text: text.slice(0, 100) }, "meta/instagram: DM received");
+          // Resolve tenant by Instagram Page ID (recipient)
+          const recipient = (msg["recipient"] as Record<string, string>)?.id;
+          let tenantId: string | null = null;
+
+          if (recipient) {
+            const [agentCfg] = await db
+              .select({ tenantId: agentConfigsTable.tenantId })
+              .from(agentConfigsTable)
+              .where(eq(agentConfigsTable.instagramPageId, recipient))
+              .limit(1);
+            if (agentCfg) tenantId = agentCfg.tenantId;
+          }
+
+          if (!tenantId) {
+            req.log.warn({ igsid, recipient }, "meta/instagram: no tenant found for page");
+            continue;
+          }
+
+          // Find or create lead by Instagram Scoped ID
+          let [lead] = await db
+            .select()
+            .from(leadsTable)
+            .where(
+              and(eq(leadsTable.tenantId, tenantId), eq(leadsTable.instagramScopedId, igsid))
+            )
+            .limit(1);
+
+          if (!lead) {
+            [lead] = await db
+              .insert(leadsTable)
+              .values({
+                tenantId,
+                nome: `Instagram @${igsid.slice(0, 8)}`,
+                instagramScopedId: igsid,
+                status: "novo",
+                source: "instagram",
+              })
+              .returning();
+            req.log.info({ leadId: lead.id, igsid, tenantId }, "meta/instagram: new lead created");
+          }
+
+          // Find or create Instagram conversation
+          let [conversation] = await db
+            .select()
+            .from(conversationsTable)
+            .where(
+              and(
+                eq(conversationsTable.tenantId, tenantId),
+                eq(conversationsTable.leadId, lead.id),
+                eq(conversationsTable.channel, "instagram")
+              )
+            )
+            .limit(1);
+
+          if (!conversation) {
+            [conversation] = await db
+              .insert(conversationsTable)
+              .values({
+                tenantId,
+                leadId: lead.id,
+                channel: "instagram",
+                status: "open",
+                naoLidas: 0,
+              })
+              .returning();
+            req.log.info({ conversationId: conversation.id, tenantId }, "meta/instagram: new conversation created");
+          }
+
+          // Insert incoming message
+          const [dbMessage] = await db
+            .insert(messagesTable)
+            .values({
+              tenantId,
+              conversationId: conversation.id,
+              leadId: lead.id,
+              direcao: "entrada",
+              canal: "instagram",
+              conteudo: text,
+              enviadoPor: "lead",
+              tipoConteudo: "texto",
+              status: "entregue",
+            })
+            .returning();
+
+          // Update conversation counters
+          await db
+            .update(conversationsTable)
+            .set({
+              ultimaMensagemEm: new Date(),
+              naoLidas: sql`${conversationsTable.naoLidas} + 1`,
+              updatedAt: new Date(),
+            })
+            .where(eq(conversationsTable.id, conversation.id));
+
+          req.log.info({ messageId: dbMessage.id, leadId: lead.id, tenantId }, "meta/instagram: message processed");
+
+          // Dispatch AI agent in background
+          dispatchAgentBackground({
+            tenantId,
+            leadId: lead.id,
+            mensagem: text,
+            log: req.log,
+          });
         }
       }
     }
