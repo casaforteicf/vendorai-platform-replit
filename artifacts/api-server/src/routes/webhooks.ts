@@ -867,4 +867,67 @@ router.post("/webhooks/meta/whatsapp", async (req, res) => {
   }
 });
 
+// ── Meta Graph API Instagram Webhook ───────────────────────────────────────────
+// GET /api/webhooks/meta/instagram — Subscription verification
+// POST /api/webhooks/meta/instagram — Receive events
+
+router.get("/webhooks/meta/instagram", async (req, res) => {
+  const mode = req.query["hub.mode"];
+  const token = req.query["hub.verify_token"];
+  const challenge = req.query["hub.challenge"];
+
+  const verifyToken = process.env.WHATSAPP_VERIFY_TOKEN;
+
+  if (mode !== "subscribe" || token !== verifyToken) {
+    req.log.warn({ mode, tokenMatch: token === verifyToken }, "meta/instagram: verification failed");
+    return res.status(403).json({ error: "Forbidden" });
+  }
+
+  req.log.info("meta/instagram: webhook verified");
+  return res.status(200).send(challenge);
+});
+
+router.post("/webhooks/meta/instagram", async (req, res) => {
+  const body = req.body as Record<string, unknown>;
+
+  req.log.info(
+    { object: body.object, entries: (body.entry as any[])?.length },
+    "meta/instagram: webhook received"
+  );
+
+  // Acknowledge immediately (200 OK)
+  // Background processing is done after response
+  res.status(200).json({ status: "received" });
+
+  try {
+    if (body.object !== "instagram") {
+      req.log.warn({ object: body.object }, "meta/instagram: ignoring non-instagram object");
+      return;
+    }
+
+    const entries = (body.entry ?? []) as Array<Record<string, unknown>>;
+    for (const entry of entries) {
+      const changes = (entry.changes ?? []) as Array<Record<string, unknown>>;
+      for (const change of changes) {
+        const value = change.value as Record<string, unknown>;
+        const messaging = (value.messaging ?? []) as Array<Record<string, unknown>>;
+
+        for (const msg of messaging) {
+          const sender = msg["sender"] as Record<string, string> | undefined;
+          const message = msg["message"] as Record<string, unknown> | undefined;
+          if (!sender || !message) continue;
+
+          const igsid = sender.id;
+          const text = (message["text"] as string) ?? "";
+          if (!igsid || !text) continue;
+
+          req.log.info({ igsid, text: text.slice(0, 100) }, "meta/instagram: DM received");
+        }
+      }
+    }
+  } catch (err) {
+    req.log.error({ err }, "meta/instagram: error processing webhook");
+  }
+});
+
 export default router;
