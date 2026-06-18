@@ -1459,7 +1459,7 @@ export const CreatePropostaBody = zod.object({
   "valorUnitario": zod.number()
 })).optional(),
   "valorTotal": zod.number().optional(),
-  "status": zod.enum(['rascunho', 'enviada', 'aceita', 'rejeitada', 'expirada']).optional(),
+  "status": zod.enum(['rascunho', 'enviada', 'pendente', 'aceita', 'rejeitada', 'expirada']).optional(),
   "validadeAte": zod.coerce.date().optional(),
   "observacoes": zod.string().optional(),
   "formaPagamento": zod.enum(['pix', 'boleto', 'cartao_credito', 'cartao_debito', 'transferencia', 'dinheiro', 'a_combinar']).optional(),
@@ -1496,7 +1496,7 @@ export const ListPropostasResponseItem = zod.object({
   "valorUnitario": zod.number()
 })),
   "valorTotal": zod.string().nullish().describe('Decimal stored as string (Postgres numeric)'),
-  "status": zod.enum(['rascunho', 'enviada', 'aceita', 'rejeitada', 'expirada']),
+  "status": zod.enum(['rascunho', 'enviada', 'pendente', 'aceita', 'rejeitada', 'expirada']),
   "validadeAte": zod.coerce.date().nullish(),
   "observacoes": zod.string().nullish(),
   "formaPagamento": zod.enum(['pix', 'boleto', 'cartao_credito', 'cartao_debito', 'transferencia', 'dinheiro', 'a_combinar']).nullish(),
@@ -1514,7 +1514,8 @@ export const ListPropostasResponse = zod.array(ListPropostasResponseItem)
 /**
  * Enforces allowed transitions:
 - rascunho → enviada
-- enviada → aceita | rejeitada | expirada
+- enviada → pendente
+- pendente → aceita | rejeitada | expirada
 - aceita, rejeitada, expirada are terminal states.
 
  * @summary Transition proposal status
@@ -1524,7 +1525,7 @@ export const UpdatePropostaStatusParams = zod.object({
 })
 
 export const UpdatePropostaStatusBody = zod.object({
-  "status": zod.enum(['rascunho', 'enviada', 'aceita', 'rejeitada', 'expirada'])
+  "status": zod.enum(['rascunho', 'enviada', 'pendente', 'aceita', 'rejeitada', 'expirada'])
 })
 
 export const UpdatePropostaStatusResponse = zod.object({
@@ -1540,7 +1541,7 @@ export const UpdatePropostaStatusResponse = zod.object({
   "valorUnitario": zod.number()
 })),
   "valorTotal": zod.string().nullish().describe('Decimal stored as string (Postgres numeric)'),
-  "status": zod.enum(['rascunho', 'enviada', 'aceita', 'rejeitada', 'expirada']),
+  "status": zod.enum(['rascunho', 'enviada', 'pendente', 'aceita', 'rejeitada', 'expirada']),
   "validadeAte": zod.coerce.date().nullish(),
   "observacoes": zod.string().nullish(),
   "formaPagamento": zod.enum(['pix', 'boleto', 'cartao_credito', 'cartao_debito', 'transferencia', 'dinheiro', 'a_combinar']).nullish(),
@@ -1574,7 +1575,7 @@ export const GetPropostaResponse = zod.object({
   "valorUnitario": zod.number()
 })),
   "valorTotal": zod.string().nullish().describe('Decimal stored as string (Postgres numeric)'),
-  "status": zod.enum(['rascunho', 'enviada', 'aceita', 'rejeitada', 'expirada']),
+  "status": zod.enum(['rascunho', 'enviada', 'pendente', 'aceita', 'rejeitada', 'expirada']),
   "validadeAte": zod.coerce.date().nullish(),
   "observacoes": zod.string().nullish(),
   "formaPagamento": zod.enum(['pix', 'boleto', 'cartao_credito', 'cartao_debito', 'transferencia', 'dinheiro', 'a_combinar']).nullish(),
@@ -1605,7 +1606,7 @@ export const UpdatePropostaBody = zod.object({
   "valorUnitario": zod.number()
 })).optional(),
   "valorTotal": zod.number().optional(),
-  "status": zod.enum(['rascunho', 'enviada', 'aceita', 'rejeitada', 'expirada']).optional(),
+  "status": zod.enum(['rascunho', 'enviada', 'pendente', 'aceita', 'rejeitada', 'expirada']).optional(),
   "validadeAte": zod.coerce.date().optional(),
   "observacoes": zod.string().optional(),
   "formaPagamento": zod.enum(['pix', 'boleto', 'cartao_credito', 'cartao_debito', 'transferencia', 'dinheiro', 'a_combinar']).optional(),
@@ -1629,7 +1630,7 @@ export const UpdatePropostaResponse = zod.object({
   "valorUnitario": zod.number()
 })),
   "valorTotal": zod.string().nullish().describe('Decimal stored as string (Postgres numeric)'),
-  "status": zod.enum(['rascunho', 'enviada', 'aceita', 'rejeitada', 'expirada']),
+  "status": zod.enum(['rascunho', 'enviada', 'pendente', 'aceita', 'rejeitada', 'expirada']),
   "validadeAte": zod.coerce.date().nullish(),
   "observacoes": zod.string().nullish(),
   "formaPagamento": zod.enum(['pix', 'boleto', 'cartao_credito', 'cartao_debito', 'transferencia', 'dinheiro', 'a_combinar']).nullish(),

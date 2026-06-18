@@ -9,6 +9,7 @@ import {
   insertPropostaSchema,
   updatePropostaSchema,
   tenantsTable,
+  dealsTable,
 } from "@workspace/db";
 import { dispatchVendaWebhook } from "../services/erp-webhook.js";
 import { getOpenAI } from "../lib/agent-engine.js";
@@ -129,8 +130,9 @@ router.patch("/propostas/:id", async (req, res) => {
 });
 
 const PROPOSTA_TRANSITIONS: Record<string, string[]> = {
-  rascunho: ["enviada"],
-  enviada: ["aceita", "rejeitada", "expirada"],
+  rascunho: ["enviada", "pendente"],
+  enviada: ["pendente", "aceita", "rejeitada", "expirada"],
+  pendente: ["aceita", "rejeitada", "expirada"],
   aceita: [],
   rejeitada: [],
   expirada: [],
@@ -171,6 +173,24 @@ router.patch("/propostas/:id/status", async (req, res) => {
     .set({ status: status as typeof proposta.status, updatedAt: new Date() })
     .where(eq(propostasTable.id, String(req.params.id)))
     .returning();
+
+  // ── Auto-sync deal stage based on proposta status ──────────────────────────
+  if (proposta.dealId) {
+    const dealEtapaMap: Record<string, string> = {
+      pendente: "proposta",
+      aceita: "ganho",
+      rejeitada: "perdido",
+      expirada: "perdido",
+    };
+    const targetEtapa = dealEtapaMap[status];
+    if (targetEtapa) {
+      await db
+        .update(dealsTable)
+        .set({ etapa: targetEtapa as typeof dealsTable.$inferSelect.etapa, updatedAt: new Date() })
+        .where(eq(dealsTable.id, proposta.dealId));
+      req.log.info({ dealId: proposta.dealId, from: proposta.status, to: status, etapa: targetEtapa }, "proposta: auto-synced deal stage");
+    }
+  }
 
   // ── Webhook de saída: proposta aceita = venda realizada ───────────────────
   if (status === "aceita") {

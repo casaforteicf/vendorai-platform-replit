@@ -119,6 +119,7 @@ import {
   MapPin,
   User,
   MessageCircle,
+  Clock,
 } from "lucide-react";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
@@ -127,6 +128,7 @@ import { ptBR } from "date-fns/locale";
 const STATUS_CONFIG: Record<string, { label: string; className: string }> = {
   rascunho:  { label: "Rascunho",  className: "bg-zinc-100 text-zinc-600 border-zinc-200" },
   enviada:   { label: "Enviada",   className: "bg-blue-100 text-blue-700 border-blue-200" },
+  pendente:  { label: "Pendente",  className: "bg-violet-100 text-violet-700 border-violet-200" },
   aceita:    { label: "Aceita",    className: "bg-emerald-100 text-emerald-700 border-emerald-200" },
   rejeitada: { label: "Rejeitada", className: "bg-red-100 text-red-600 border-red-200" },
   expirada:  { label: "Expirada",  className: "bg-orange-100 text-orange-700 border-orange-200" },
@@ -1727,6 +1729,7 @@ export default function Propostas() {
   const counts = {
     rascunho: propostas.filter((p) => p.status === "rascunho").length,
     enviada:  propostas.filter((p) => p.status === "enviada").length,
+    pendente: propostas.filter((p) => p.status === "pendente").length,
     aceita:   propostas.filter((p) => p.status === "aceita").length,
     rejeitada:propostas.filter((p) => p.status === "rejeitada").length,
   };
@@ -1753,7 +1756,7 @@ export default function Propostas() {
 
       {/* Stats */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
-        {(["rascunho", "enviada", "aceita", "rejeitada"] as const).map((k) => (
+        {(["rascunho", "enviada", "pendente", "aceita", "rejeitada"] as const).map((k) => (
           <Card key={k}>
             <CardContent className="pt-4 pb-3 px-4">
               <p className="text-xs text-muted-foreground uppercase tracking-wide">
@@ -1786,10 +1789,11 @@ export default function Propostas() {
             <div className="md:hidden divide-y">
               {propostas.map((p) => {
                 const statusCfg = STATUS_CONFIG[p.status] ?? STATUS_CONFIG.rascunho;
-                const canSend   = p.status === "rascunho";
-                const canAccept = p.status === "enviada";
-                const canReject = p.status === "enviada";
-                const canDelete = p.status === "rascunho";
+                const canSend    = p.status === "rascunho";
+                const canPendente= p.status === "enviada";
+                const canAccept  = p.status === "pendente";
+                const canReject  = p.status === "pendente";
+                const canDelete  = p.status === "rascunho";
                 return (
                   <div
                     key={p.id}
@@ -1814,6 +1818,7 @@ export default function Propostas() {
                             <DropdownMenuItem onClick={() => setDetailProposta(p)}><Eye className="h-4 w-4 mr-2" />Ver detalhes</DropdownMenuItem>
                             <DropdownMenuItem onClick={(e) => { e.stopPropagation(); setViewProposta(p); }}><Printer className="h-4 w-4 mr-2" />Visualizar modelo</DropdownMenuItem>
                             {canSend && <DropdownMenuItem onClick={() => changeStatus(p, "enviada")}><Send className="h-4 w-4 mr-2" />Enviar proposta</DropdownMenuItem>}
+                            {canPendente && <DropdownMenuItem onClick={() => changeStatus(p, "pendente")}><Clock className="h-4 w-4 mr-2 text-violet-600" />Marcar pendente</DropdownMenuItem>}
                             {canAccept && <DropdownMenuItem onClick={() => changeStatus(p, "aceita")}><CheckCircle2 className="h-4 w-4 mr-2 text-emerald-600" />Marcar aceita</DropdownMenuItem>}
                             {canReject && <DropdownMenuItem onClick={() => changeStatus(p, "rejeitada")}><XCircle className="h-4 w-4 mr-2 text-red-500" />Marcar rejeitada</DropdownMenuItem>}
                             {canDelete && (<><DropdownMenuSeparator /><DropdownMenuItem className="text-destructive focus:text-destructive" onClick={() => setDeleteTarget(p)}><Trash2 className="h-4 w-4 mr-2" />Excluir</DropdownMenuItem></>)}
@@ -1848,10 +1853,11 @@ export default function Propostas() {
               <TableBody>
                 {propostas.map((p) => {
                   const statusCfg = STATUS_CONFIG[p.status] ?? STATUS_CONFIG.rascunho;
-                  const canSend    = p.status === "rascunho";
-                  const canAccept  = p.status === "enviada";
-                  const canReject  = p.status === "enviada";
-                  const canDelete  = p.status === "rascunho";
+                  const canSend     = p.status === "rascunho";
+                  const canPendente = p.status === "enviada";
+                  const canAccept   = p.status === "pendente";
+                  const canReject   = p.status === "pendente";
+                  const canDelete   = p.status === "rascunho";
 
                   return (
                     <TableRow
@@ -1894,6 +1900,11 @@ export default function Propostas() {
                             {canSend && (
                               <DropdownMenuItem onClick={() => changeStatus(p, "enviada")}>
                                 <Send className="h-4 w-4 mr-2" /> Enviar orçamento
+                              </DropdownMenuItem>
+                            )}
+                            {canPendente && (
+                              <DropdownMenuItem onClick={() => changeStatus(p, "pendente")}>
+                                <Clock className="h-4 w-4 mr-2 text-violet-600" /> Marcar pendente
                               </DropdownMenuItem>
                             )}
                             {canAccept && (

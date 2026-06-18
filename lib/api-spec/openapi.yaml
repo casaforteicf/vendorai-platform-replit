@@ -1364,7 +1364,8 @@ paths:
       description: |
         Enforces allowed transitions:
         - rascunho → enviada
-        - enviada → aceita | rejeitada | expirada
+        - enviada → pendente
+        - pendente → aceita | rejeitada | expirada
         - aceita, rejeitada, expirada are terminal states.
       security:
         - bearerAuth: []
@@ -8898,7 +8899,7 @@ components:
 
     PropostaStatus:
       type: string
-      enum: [rascunho, enviada, aceita, rejeitada, expirada]
+      enum: [rascunho, enviada, pendente, aceita, rejeitada, expirada]
 
     PropostaItem:
       type: object

@@ -1949,12 +1949,13 @@ export default function LeadDetail() {
                   const statusColors: Record<string, string> = {
                     rascunho: "bg-gray-100 text-gray-600 border-gray-200",
                     enviada:  "bg-blue-100 text-blue-700 border-blue-200",
+                    pendente: "bg-violet-100 text-violet-700 border-violet-200",
                     aceita:   "bg-emerald-100 text-emerald-700 border-emerald-200",
                     rejeitada:"bg-red-100 text-red-600 border-red-200",
                     expirada: "bg-orange-100 text-orange-700 border-orange-200",
                   };
                   const statusLabels: Record<string, string> = {
-                    rascunho: "Rascunho", enviada: "Enviada", aceita: "Aceita", rejeitada: "Rejeitada", expirada: "Expirada",
+                    rascunho: "Rascunho", enviada: "Enviada", pendente: "Pendente", aceita: "Aceita", rejeitada: "Rejeitada", expirada: "Expirada",
                   };
                   const total = p.valorTotal
                     ? parseFloat(p.valorTotal)

@@ -8,6 +8,7 @@ import { dealsTable } from "./deals";
 export const propostaStatusEnum = pgEnum("proposta_status", [
   "rascunho",
   "enviada",
+  "pendente",
   "aceita",
   "rejeitada",
   "expirada",

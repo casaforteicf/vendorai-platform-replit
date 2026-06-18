@@ -37,7 +37,7 @@ export async function transcribeAudio(audioUrl: string, log?: Logger): Promise<s
       response_format: "text",
     });
 
-    const text = (typeof transcription === "string" ? transcription : transcription.text ?? "").trim();
+    const text = (typeof transcription === "string" ? transcription : (transcription as any).text ?? "").trim();
     log?.info({ text: text.slice(0, 100) }, "audio: transcribed");
     return text;
   } finally {

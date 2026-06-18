@@ -12,6 +12,7 @@ export type PropostaStatus = typeof PropostaStatus[keyof typeof PropostaStatus];
 export const PropostaStatus = {
   rascunho: 'rascunho',
   enviada: 'enviada',
+  pendente: 'pendente',
   aceita: 'aceita',
   rejeitada: 'rejeitada',
   expirada: 'expirada',

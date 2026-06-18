@@ -34,6 +34,7 @@ import { useToast } from "@/hooks/use-toast";
 const STATUS_LABELS: Record<string, string> = {
   rascunho: "Rascunho",
   enviada: "Enviada",
+  pendente: "Pendente",
   aceita: "Aceita",
   rejeitada: "Rejeitada",
   expirada: "Expirada",
@@ -285,7 +286,7 @@ export default function PropostaPrint() {
   const nomeEmpresa = bp?.nomeFantasia || bp?.razaoSocial || "";
   const logoUrl = bp?.logoUrl;
   const jaVendido = proposta.status === "aceita";
-  const podeVender = proposta.status === "rascunho" || proposta.status === "enviada";
+  const podeVender = proposta.status === "rascunho" || proposta.status === "enviada" || proposta.status === "pendente";
 
   // ── Edit sheet totals (live) ──────────────────────────────────────────────
   const editTotal = eItens.reduce((s, i) => s + i.quantidade * i.valorUnitario, 0);
@@ -415,6 +416,7 @@ export default function PropostaPrint() {
               <span className={`inline-block mt-2 text-xs font-medium px-2 py-0.5 rounded-full ${
                 proposta.status === "aceita" ? "bg-green-100 text-green-700" :
                 proposta.status === "enviada" ? "bg-blue-100 text-blue-700" :
+                proposta.status === "pendente" ? "bg-violet-100 text-violet-700" :
                 proposta.status === "rejeitada" ? "bg-red-100 text-red-700" :
                 "bg-gray-100 text-gray-600"
               }`}>

@@ -3619,7 +3619,8 @@ export const getUpdatePropostaStatusUrl = (id: string,) => {
 /**
  * Enforces allowed transitions:
 - rascunho → enviada
-- enviada → aceita | rejeitada | expirada
+- enviada → pendente
+- pendente → aceita | rejeitada | expirada
 - aceita, rejeitada, expirada are terminal states.
 
  * @summary Transition proposal status
