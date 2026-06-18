@@ -508,6 +508,110 @@ export default function Dashboard() {
         )}
       </div>
 
+      {/* KPI Row 3 — Inteligência de Clientes */}
+      <div className="grid gap-3 grid-cols-2 lg:grid-cols-4">
+        {isLoading ? (
+          Array.from({ length: 4 }).map((_, i) => <StatCardSkeleton key={i} />)
+        ) : (
+          <>
+            {/* Tipo de Cliente */}
+            <Card data-testid="card-tipo-cliente" className="cursor-pointer hover:shadow-md transition-shadow" onClick={() => navigate("/leads")}>
+              <CardHeader className="flex flex-row items-center justify-between pb-2 space-y-0">
+                <CardTitle className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
+                  Tipo de Cliente
+                </CardTitle>
+                <div className="p-1.5 rounded-md bg-cyan-500/10">
+                  <UserCheck className="h-4 w-4 text-cyan-500" />
+                </div>
+              </CardHeader>
+              <CardContent>
+                {(() => {
+                  const b2b = dashboard?.perfilCompra?.b2bVsB2c?.b2b ?? 0;
+                  const b2c = dashboard?.perfilCompra?.b2bVsB2c?.b2c ?? 0;
+                  const total = b2b + b2c;
+                  if (total === 0) return (
+                    <>
+                      <p className="text-2xl font-bold">—</p>
+                      <p className="text-xs text-muted-foreground mt-0.5">nenhum lead tipado</p>
+                    </>
+                  );
+                  const b2bPct = Math.round((b2b / total) * 100);
+                  const b2cPct = Math.round((b2c / total) * 100);
+                  return (
+                    <>
+                      <p className="text-2xl font-bold">{b2bPct}% B2B</p>
+                      <p className="text-xs text-muted-foreground mt-0.5">
+                        {b2b} B2B · {b2c} B2C
+                      </p>
+                    </>
+                  );
+                })()}
+              </CardContent>
+            </Card>
+
+            {/* Dores Principais */}
+            <Card data-testid="card-dores" className="cursor-pointer hover:shadow-md transition-shadow" onClick={() => navigate("/leads")}>
+              <CardHeader className="flex flex-row items-center justify-between pb-2 space-y-0">
+                <CardTitle className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
+                  Dores Principais
+                </CardTitle>
+                <div className="p-1.5 rounded-md bg-rose-500/10">
+                  <Target className="h-4 w-4 text-rose-500" />
+                </div>
+              </CardHeader>
+              <CardContent>
+                <p className="text-2xl font-bold">
+                  {dashboard?.perfilCompra?.doresPrincipais?.length ?? 0}
+                </p>
+                <p className="text-xs text-muted-foreground mt-0.5">
+                  {dashboard?.perfilCompra?.doresPrincipais?.[0]?.valor ?? "Nenhuma identificada"}
+                </p>
+              </CardContent>
+            </Card>
+
+            {/* Risco de Churn */}
+            <Card data-testid="card-churn" className="cursor-pointer hover:shadow-md transition-shadow" onClick={() => navigate("/leads")}>
+              <CardHeader className="flex flex-row items-center justify-between pb-2 space-y-0">
+                <CardTitle className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
+                  Risco de Churn
+                </CardTitle>
+                <div className="p-1.5 rounded-md bg-red-500/10">
+                  <AlertTriangle className="h-4 w-4 text-red-500" />
+                </div>
+              </CardHeader>
+              <CardContent>
+                <p className="text-2xl font-bold text-red-500">
+                  {dashboard?.churnRiskDistribuicao?.alto ?? 0}
+                </p>
+                <p className="text-xs text-muted-foreground mt-0.5">
+                  {(dashboard?.churnRiskDistribuicao?.alto ?? 0) === 1 ? "lead em alto risco" : "leads em alto risco"}
+                </p>
+              </CardContent>
+            </Card>
+
+            {/* Leads Quentes */}
+            <Card data-testid="card-leads-quentes" className="cursor-pointer hover:shadow-md transition-shadow" onClick={() => navigate("/leads")}>
+              <CardHeader className="flex flex-row items-center justify-between pb-2 space-y-0">
+                <CardTitle className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
+                  Leads Quentes
+                </CardTitle>
+                <div className="p-1.5 rounded-md bg-amber-500/10">
+                  <Flame className="h-4 w-4 text-amber-500" />
+                </div>
+              </CardHeader>
+              <CardContent>
+                <p className="text-2xl font-bold text-amber-600">
+                  {dashboard?.top5ChurnRisk?.length ?? 0}
+                </p>
+                <p className="text-xs text-muted-foreground mt-0.5">
+                  top leads por risco de churn
+                </p>
+              </CardContent>
+            </Card>
+          </>
+        )}
+      </div>
+
       {/* Oportunidades Quentes */}
       <Card data-testid="card-oportunidades-quentes">
         <CardHeader className="pb-3">
