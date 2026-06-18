@@ -222,7 +222,7 @@ router.patch("/propostas/:id/status", async (req, res) => {
             tenantId: proposta.tenantId,
             vendaId: updated.id,
             tipo: "proposta",
-            integrationType: tenant.integrationType ?? undefined,
+            integrationType: (tenant.integrationType as "n8n" | "api" | undefined) ?? undefined,
             produtos: itens.map((item) => ({
               nome: item.nome,
               sku: item.sku ?? null,

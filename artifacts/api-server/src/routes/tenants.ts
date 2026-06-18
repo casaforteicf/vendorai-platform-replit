@@ -107,6 +107,7 @@ router.get("/tenants/:id/integration-settings", requireSameTenanOrSuperAdmin(), 
     .select({
       webhookEstoqueUrl: tenantsTable.webhookEstoqueUrl,
       apiKeyEstoque: tenantsTable.apiKeyEstoque,
+      integrationType: tenantsTable.integrationType,
     })
     .from(tenantsTable)
     .where(eq(tenantsTable.id, String(req.params.id)));

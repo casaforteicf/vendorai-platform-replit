@@ -150,6 +150,7 @@ router.patch("/deals/:id", async (req, res) => {
             webhookEstoqueUrl: tenantsTable.webhookEstoqueUrl,
             partnerId: tenantsTable.partnerId,
             tipoFechamentoDefault: tenantsTable.tipoFechamentoDefault,
+            integrationType: tenantsTable.integrationType,
           })
           .from(tenantsTable)
           .where(eq(tenantsTable.id, existing.tenantId))
@@ -381,7 +382,7 @@ router.patch("/deals/:id", async (req, res) => {
             produtos: [],
             valorTotal: deal.valor ? Number(deal.valor) : null,
             realizadaEm: new Date().toISOString(),
-            integrationType: tenant.integrationType ?? undefined,
+            integrationType: (tenant.integrationType as "n8n" | "api" | undefined) ?? undefined,
           },
           req.log,
         );

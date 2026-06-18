@@ -37,7 +37,7 @@ export const tenantsTable = pgTable(
     maxAnalysesPerHour: integer("max_analyses_per_hour"),
     webhookEstoqueUrl: text("webhook_estoque_url"),
     apiKeyEstoque: text("api_key_estoque"),
-    integrationType: text("integration_type").$type<"n8n" | "api">(),
+    integrationType: text("integration_type").default("api"),
     tipoFechamentoDefault: text("tipo_fechamento_default").$type<"pedido" | "contrato" | "pedido_e_contrato">(),
     mensalidadeValor: numeric("mensalidade_valor", { precision: 10, scale: 2 }),
     tokenCredits: integer("token_credits").notNull().default(0),

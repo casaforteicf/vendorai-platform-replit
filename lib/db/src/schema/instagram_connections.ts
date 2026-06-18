@@ -25,7 +25,7 @@ export const insertInstagramConnectionSchema = createInsertSchema(instagramConne
   connectedAt: z.coerce.date().optional(),
   updatedAt: z.coerce.date().optional(),
   disconnectedAt: z.coerce.date().optional(),
-}).omit({ id: true, createdAt: true });
+}).omit({ id: true });
 
 export const updateInstagramConnectionSchema = createSelectSchema(instagramConnectionsTable, {
   tokenExpiresAt: z.coerce.date().optional(),
@@ -33,7 +33,7 @@ export const updateInstagramConnectionSchema = createSelectSchema(instagramConne
   updatedAt: z.coerce.date().optional(),
   disconnectedAt: z.coerce.date().optional(),
 })
-  .omit({ id: true, tenantId: true, createdAt: true })
+  .omit({ id: true, tenantId: true })
   .partial();
 
 export type InsertInstagramConnection = z.infer<typeof insertInstagramConnectionSchema>;

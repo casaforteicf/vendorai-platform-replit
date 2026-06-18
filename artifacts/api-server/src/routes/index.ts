@@ -20,6 +20,7 @@ import agentTasksRouter from "./agent_tasks";
 import campaignsRouter from "./campaigns";
 import produtosCatalogoRouter from "./produtos_catalogo";
 import agendasRouter, { googleCallbackRouter } from "./agendas";
+import { instagramCallbackRouter } from "./instagram-auth";
 import agendamentosRouter from "./agendamentos";
 import subscriptionsRouter from "./subscriptions";
 import invoicesRouter from "./invoices";
@@ -58,6 +59,7 @@ router.use(publicSegmentTemplatesRouter);
 router.use(inventorySyncRouter);
 router.use(intakeRouter);
 router.use(googleCallbackRouter);
+router.use(instagramCallbackRouter);
 
 // Protected — all routes below require a valid JWT
 router.use(authenticate);
