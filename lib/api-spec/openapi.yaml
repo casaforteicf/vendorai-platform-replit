@@ -12264,6 +12264,15 @@ components:
         climaTempo: { type: ["string", "null"] }
         maoDeObra: { type: ["integer", "null"] }
         observacoes: { type: ["string", "null"] }
+        fotos:
+          type: array
+          nullable: true
+          items:
+            type: object
+            properties:
+              url: { type: string }
+              caption: { type: string }
+              uploadedAt: { type: string }
         createdAt: { type: string, format: date-time }
         updatedAt: { type: string, format: date-time }
 
@@ -12277,6 +12286,15 @@ components:
         climaTempo: { type: string }
         maoDeObra: { type: integer }
         observacoes: { type: string }
+        fotos:
+          type: array
+          nullable: true
+          items:
+            type: object
+            properties:
+              url: { type: string }
+              caption: { type: string }
+              uploadedAt: { type: string }
 
     ObraDiarioUpdate:
       type: object
@@ -12286,6 +12304,15 @@ components:
         climaTempo: { type: string }
         maoDeObra: { type: integer }
         observacoes: { type: string }
+        fotos:
+          type: array
+          nullable: true
+          items:
+            type: object
+            properties:
+              url: { type: string }
+              caption: { type: string }
+              uploadedAt: { type: string }
 
     Insumo:
       type: object

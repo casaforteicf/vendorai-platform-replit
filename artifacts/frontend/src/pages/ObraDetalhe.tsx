@@ -40,6 +40,7 @@ import {
   ClipboardList, Package, ShoppingCart, BarChart3,
   CheckCircle2, Clock, PauseCircle, Pencil, Trash2,
   ChevronDown, ChevronUp, BookOpen, User, Building2,
+  Upload, X, Image as ImageIcon,
 } from "lucide-react";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
@@ -426,7 +427,8 @@ function DiarioDeObra({ tenantId, obraId }: { tenantId: string; obraId: string }
   const qc = useQueryClient();
   const [addOpen, setAddOpen] = useState(false);
   const [expandedId, setExpandedId] = useState<string | null>(null);
-  const [form, setForm] = useState({ data: format(new Date(), "yyyy-MM-dd"), conteudo: "", responsavelNome: "", climaTempo: "", maoDeObra: "", observacoes: "" });
+  const [form, setForm] = useState({ data: format(new Date(), "yyyy-MM-dd"), conteudo: "", responsavelNome: "", climaTempo: "", maoDeObra: "", observacoes: "", fotos: [] as Array<{ url: string; caption?: string; uploadedAt: string }> });
+  const [uploadingFoto, setUploadingFoto] = useState(false);
 
   const { data: entradas = [], isLoading } = useListObraDiario(tenantId, obraId, {
     query: { enabled: !!obraId, queryKey: getListObraDiarioQueryKey(tenantId, obraId) },
@@ -435,15 +437,41 @@ function DiarioDeObra({ tenantId, obraId }: { tenantId: string; obraId: string }
   const { mutateAsync: updateEntry } = useUpdateObraDiario();
   const { mutateAsync: deleteEntry } = useDeleteObraDiario();
 
+  async function handleUploadFoto(file: File) {
+    setUploadingFoto(true);
+    try {
+      const metaRes = await fetch("/api/storage/uploads/request-url", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name: file.name, size: file.size, contentType: file.type }),
+      });
+      if (!metaRes.ok) throw new Error("Falha ao gerar URL de upload");
+      const { uploadURL, objectPath } = await metaRes.json() as { uploadURL: string; objectPath: string };
+      const putRes = await fetch(uploadURL, { method: "PUT", body: file, headers: { "Content-Type": file.type } });
+      if (!putRes.ok) throw new Error("Falha no upload");
+      const url = `/api/storage/public-objects/${objectPath}`;
+      setForm((f) => ({ ...f, fotos: [...f.fotos, { url, caption: file.name, uploadedAt: new Date().toISOString() }] }));
+    } catch (err) {
+      alert("Erro ao enviar foto: " + (err as Error).message);
+    } finally {
+      setUploadingFoto(false);
+    }
+  }
+
+  function removeFoto(index: number) {
+    setForm((f) => ({ ...f, fotos: f.fotos.filter((_, i) => i !== index) }));
+  }
+
   async function handleCreate(e: React.FormEvent) {
     e.preventDefault();
     const payload: Record<string, unknown> = { ...form };
     if (form.maoDeObra) payload.maoDeObra = parseInt(form.maoDeObra);
+    if (form.fotos.length === 0) delete payload.fotos;
     Object.keys(payload).forEach((k) => { if (payload[k] === "") delete payload[k]; });
     await createEntry({ tenantId, obraId, data: payload as any });
     await qc.invalidateQueries({ queryKey: getListObraDiarioQueryKey(tenantId, obraId) });
     setAddOpen(false);
-    setForm({ data: format(new Date(), "yyyy-MM-dd"), conteudo: "", responsavelNome: "", climaTempo: "", maoDeObra: "", observacoes: "" });
+    setForm({ data: format(new Date(), "yyyy-MM-dd"), conteudo: "", responsavelNome: "", climaTempo: "", maoDeObra: "", observacoes: "", fotos: [] });
   }
 
   async function handleApprove(entry: ObraDiario) {
@@ -488,6 +516,24 @@ function DiarioDeObra({ tenantId, obraId }: { tenantId: string; obraId: string }
               <div className="space-y-2">
                 <Label>Observações</Label>
                 <Textarea rows={2} value={form.observacoes} onChange={(e) => setForm((f) => ({ ...f, observacoes: e.target.value }))} />
+              </div>
+              {/* Upload de fotos */}
+              <div className="space-y-2">
+                <Label>Fotos</Label>
+                <div className="flex flex-wrap gap-2">
+                  {form.fotos.map((foto, idx) => (
+                    <div key={idx} className="relative group w-20 h-20 rounded-lg border overflow-hidden bg-muted">
+                      <img src={foto.url} alt={foto.caption} className="w-full h-full object-cover" />
+                      <button type="button" onClick={() => removeFoto(idx)} className="absolute top-0.5 right-0.5 bg-black/50 text-white rounded-full p-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
+                        <X className="h-3 w-3" />
+                      </button>
+                    </div>
+                  ))}
+                  <label className="flex flex-col items-center justify-center w-20 h-20 rounded-lg border border-dashed border-muted-foreground/30 cursor-pointer hover:bg-muted transition-colors">
+                    <input type="file" accept="image/*" className="hidden" onChange={(e) => { const f = e.target.files?.[0]; if (f) handleUploadFoto(f); e.target.value = ""; }} />
+                    {uploadingFoto ? <span className="text-xs text-muted-foreground">Enviando...</span> : <><ImageIcon className="h-4 w-4 text-muted-foreground mb-1" /><span className="text-[10px] text-muted-foreground">Adicionar</span></>}
+                  </label>
+                </div>
               </div>
               <div className="flex justify-end gap-2">
                 <Button type="button" variant="outline" onClick={() => setAddOpen(false)}>Cancelar</Button>
@@ -554,6 +600,15 @@ function DiarioDeObra({ tenantId, obraId }: { tenantId: string; obraId: string }
                       {entry.climaTempo && <span>🌤 {entry.climaTempo}</span>}
                       {entry.maoDeObra != null && <span>👷 {entry.maoDeObra} pessoas</span>}
                       {entry.observacoes && <span>📝 {entry.observacoes}</span>}
+                    </div>
+                  )}
+                  {isExpanded && (entry.fotos as any)?.length > 0 && (
+                    <div className="flex flex-wrap gap-2 pt-2">
+                      {(entry.fotos as any).map((foto: any, idx: number) => (
+                        <div key={idx} className="w-24 h-24 rounded-lg border overflow-hidden bg-muted cursor-pointer hover:ring-2 ring-primary transition-all" onClick={() => window.open(foto.url, "_blank")}>
+                          <img src={foto.url} alt={foto.caption || "Foto"} className="w-full h-full object-cover" />
+                        </div>
+                      ))}
                     </div>
                   )}
                 </CardContent>

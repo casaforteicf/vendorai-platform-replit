@@ -5714,6 +5714,11 @@ export const ListObraDiarioResponseItem = zod.object({
   "climaTempo": zod.string().nullish(),
   "maoDeObra": zod.number().nullish(),
   "observacoes": zod.string().nullish(),
+  "fotos": zod.array(zod.object({
+  "url": zod.string().optional(),
+  "caption": zod.string().optional(),
+  "uploadedAt": zod.string().optional()
+})).nullish(),
   "createdAt": zod.coerce.date(),
   "updatedAt": zod.coerce.date()
 })
@@ -5734,7 +5739,12 @@ export const CreateObraDiarioBody = zod.object({
   "responsavelNome": zod.string().optional(),
   "climaTempo": zod.string().optional(),
   "maoDeObra": zod.number().optional(),
-  "observacoes": zod.string().optional()
+  "observacoes": zod.string().optional(),
+  "fotos": zod.array(zod.object({
+  "url": zod.string().optional(),
+  "caption": zod.string().optional(),
+  "uploadedAt": zod.string().optional()
+})).nullish()
 })
 
 
@@ -5752,7 +5762,12 @@ export const UpdateObraDiarioBody = zod.object({
   "status": zod.string().optional(),
   "climaTempo": zod.string().optional(),
   "maoDeObra": zod.number().optional(),
-  "observacoes": zod.string().optional()
+  "observacoes": zod.string().optional(),
+  "fotos": zod.array(zod.object({
+  "url": zod.string().optional(),
+  "caption": zod.string().optional(),
+  "uploadedAt": zod.string().optional()
+})).nullish()
 })
 
 export const UpdateObraDiarioResponse = zod.object({
@@ -5768,6 +5783,11 @@ export const UpdateObraDiarioResponse = zod.object({
   "climaTempo": zod.string().nullish(),
   "maoDeObra": zod.number().nullish(),
   "observacoes": zod.string().nullish(),
+  "fotos": zod.array(zod.object({
+  "url": zod.string().optional(),
+  "caption": zod.string().optional(),
+  "uploadedAt": zod.string().optional()
+})).nullish(),
   "createdAt": zod.coerce.date(),
   "updatedAt": zod.coerce.date()
 })

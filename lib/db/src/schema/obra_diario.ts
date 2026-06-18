@@ -1,4 +1,4 @@
-import { pgTable, text, timestamp, integer, date } from "drizzle-orm/pg-core";
+import { pgTable, text, timestamp, integer, date, jsonb } from "drizzle-orm/pg-core";
 import { createInsertSchema, createSelectSchema } from "drizzle-zod";
 import { z } from "zod/v4";
 import { obrasTable } from "./obras";
@@ -21,6 +21,7 @@ export const obraDiarioTable = pgTable("obra_diario", {
   climaTempo: text("clima_tempo"),
   maoDeObra: integer("mao_de_obra"),
   observacoes: text("observacoes"),
+  fotos: jsonb("fotos").$type<Array<{ url: string; caption?: string; uploadedAt: string }>>(),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow().$onUpdate(() => new Date()),
 });

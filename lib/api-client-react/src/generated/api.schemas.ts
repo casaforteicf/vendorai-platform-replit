@@ -2743,6 +2743,12 @@ export interface ObraEtapaMedicaoInput {
   observacao?: string;
 }
 
+export type ObraDiarioFotosItem = {
+  url?: string;
+  caption?: string;
+  uploadedAt?: string;
+};
+
 export interface ObraDiario {
   id: string;
   obraId: string;
@@ -2763,9 +2769,16 @@ export interface ObraDiario {
   maoDeObra?: number | null;
   /** @nullable */
   observacoes?: string | null;
+  fotos?: ObraDiarioFotosItem[] | null;
   createdAt: string;
   updatedAt: string;
 }
+
+export type ObraDiarioInputFotosItem = {
+  url?: string;
+  caption?: string;
+  uploadedAt?: string;
+};
 
 export interface ObraDiarioInput {
   data: string;
@@ -2774,7 +2787,14 @@ export interface ObraDiarioInput {
   climaTempo?: string;
   maoDeObra?: number;
   observacoes?: string;
+  fotos?: ObraDiarioInputFotosItem[] | null;
 }
+
+export type ObraDiarioUpdateFotosItem = {
+  url?: string;
+  caption?: string;
+  uploadedAt?: string;
+};
 
 export interface ObraDiarioUpdate {
   conteudo?: string;
@@ -2782,6 +2802,7 @@ export interface ObraDiarioUpdate {
   climaTempo?: string;
   maoDeObra?: number;
   observacoes?: string;
+  fotos?: ObraDiarioUpdateFotosItem[] | null;
 }
 
 export interface Insumo {

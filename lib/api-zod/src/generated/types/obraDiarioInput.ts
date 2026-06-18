@@ -5,6 +5,7 @@
  * API specification
  * OpenAPI spec version: 0.1.0
  */
+import type { ObraDiarioInputFotosItem } from './obraDiarioInputFotosItem';
 
 export interface ObraDiarioInput {
   data: string;
@@ -13,4 +14,5 @@ export interface ObraDiarioInput {
   climaTempo?: string;
   maoDeObra?: number;
   observacoes?: string;
+  fotos?: ObraDiarioInputFotosItem[] | null;
 }

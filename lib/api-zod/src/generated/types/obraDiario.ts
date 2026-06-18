@@ -5,6 +5,7 @@
  * API specification
  * OpenAPI spec version: 0.1.0
  */
+import type { ObraDiarioFotosItem } from './obraDiarioFotosItem';
 
 export interface ObraDiario {
   id: string;
@@ -26,6 +27,7 @@ export interface ObraDiario {
   maoDeObra?: number | null;
   /** @nullable */
   observacoes?: string | null;
+  fotos?: ObraDiarioFotosItem[] | null;
   createdAt: Date;
   updatedAt: Date;
 }
