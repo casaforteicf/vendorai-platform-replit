@@ -262,7 +262,7 @@ router.post("/agendas/:id/google/disconnect", async (req, res) => {
 
 export const googleCallbackRouter: IRouter = Router();
 
-googleCallbackRouter.get("/auth/google/calendar/callback", async (req, res) => {
+googleCallbackRouter.get("/auth/google/callback", async (req, res) => {
   const { code, state, error } = req.query as Record<string, string>;
 
   // Determine the app URL for redirect
@@ -270,7 +270,7 @@ googleCallbackRouter.get("/auth/google/calendar/callback", async (req, res) => {
   const appUrl = domain ? `https://${domain}` : `http://localhost:3000`;
 
   if (error || !code || !state) {
-    res.redirect(`${appUrl}/agenda?googleError=access_denied`);
+    res.redirect(`${appUrl}/configuracoes?googleError=access_denied`);
     return;
   }
 
@@ -281,16 +281,16 @@ googleCallbackRouter.get("/auth/google/calendar/callback", async (req, res) => {
     ) as { agendaId: string };
     agendaId = decoded.agendaId;
   } catch {
-    res.redirect(`${appUrl}/agenda?googleError=invalid_state`);
+    res.redirect(`${appUrl}/configuracoes?googleError=invalid_state`);
     return;
   }
 
   try {
     await exchangeCodeAndStore(code, agendaId);
-    res.redirect(`${appUrl}/agenda?googleConnected=1`);
+    res.redirect(`${appUrl}/configuracoes?googleConnected=1`);
   } catch (err) {
     req.log.error({ err }, "Google Calendar OAuth exchange failed");
-    res.redirect(`${appUrl}/agenda?googleError=exchange_failed`);
+    res.redirect(`${appUrl}/configuracoes?googleError=exchange_failed`);
   }
 });
 

@@ -46,6 +46,10 @@ import {
   getGetWhatsappConnectionStatusQueryKey,
   useDisconnectWhatsapp,
   useRefreshWhatsappToken,
+  useListAgendas,
+  getListAgendasQueryKey,
+  useDisconnectAgendaGoogle,
+  getAgendaGoogleAuthUrl,
 } from "@workspace/api-client-react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
@@ -113,6 +117,9 @@ import {
   Upload,
   ImageIcon,
   X,
+  CalendarCheck,
+  CalendarX,
+  CalendarPlus,
 } from "lucide-react";
 import { SiteGeneratorTab } from "./SiteGenerator";
 import { format } from "date-fns";
@@ -1063,10 +1070,64 @@ export default function Configuracoes() {
     );
   }
 
+  // ── Google Calendar connection state ─────────────────────────────────────
+  const agendasQuery = useListAgendas(tenantId ?? "");
+  const disconnectGoogle = useDisconnectAgendaGoogle();
+  const [googleLoadingId, setGoogleLoadingId] = useState<string | null>(null);
+
+  // Agenda com Google Calendar conectado (mostrar na UI)
+  const connectedAgendas = (agendasQuery.data ?? []).filter((a) => a.googleCalendarId);
+  const disconnectedAgendas = (agendasQuery.data ?? []).filter((a) => !a.googleCalendarId);
+
+  async function handleConnectGoogle(agenda: { id: string; nome: string }) {
+    setGoogleLoadingId(agenda.id);
+    try {
+      const { url } = await getAgendaGoogleAuthUrl(agenda.id);
+      window.location.href = url;
+    } catch {
+      toast({ title: "Erro ao obter URL do Google", variant: "destructive" });
+    } finally {
+      setGoogleLoadingId(null);
+    }
+  }
+
+  function handleDisconnectGoogle(agenda: { id: string }) {
+    disconnectGoogle.mutate(
+      { id: agenda.id },
+      {
+        onSuccess: () => {
+          toast({ title: "Google Calendar desconectado." });
+          queryClient.invalidateQueries({ queryKey: getListAgendasQueryKey(tenantId ?? "") });
+        },
+        onError: () => toast({ title: "Erro ao desconectar", variant: "destructive" }),
+      }
+    );
+  }
+
   // ── WhatsApp OAuth connection state ──────────────────────────────────────
   const waConnection = useGetWhatsappConnectionStatus(tenantId ?? "");
   const disconnectWa = useDisconnectWhatsapp();
   const refreshWa = useRefreshWhatsappToken();
+
+  useEffect(() => {
+    const url = new URL(window.location.href);
+    const connected = url.searchParams.get("googleConnected");
+    const error = url.searchParams.get("googleError");
+    if (connected === "1") {
+      toast({ title: "Google Calendar conectado com sucesso!" });
+      agendasQuery.refetch();
+      window.history.replaceState({}, "", window.location.pathname);
+    }
+    if (error) {
+      const messages: Record<string, string> = {
+        access_denied: "Permissão negada. Tente novamente.",
+        invalid_state: "Sessão inválida. Tente novamente.",
+        exchange_failed: "Erro ao conectar. Tente novamente.",
+      };
+      toast({ title: messages[error] ?? "Erro ao conectar Google Calendar.", variant: "destructive" });
+      window.history.replaceState({}, "", window.location.pathname);
+    }
+  }, [location]);
 
   useEffect(() => {
     const url = new URL(window.location.href);
@@ -2049,6 +2110,97 @@ export default function Configuracoes() {
             </div>
           ) : (
           <div className="space-y-6">
+
+            {/* Google Calendar — OAuth */}
+            <div className="rounded-xl border bg-card p-6 space-y-5">
+              <div className="flex items-start justify-between gap-4">
+                <div>
+                  <h2 className="font-semibold text-base flex items-center gap-2">
+                    <CalendarCheck className="h-4 w-4 text-red-500" />
+                    Google Calendar — OAuth
+                  </h2>
+                  <p className="text-sm text-muted-foreground mt-1">
+                    Conecte suas agendas ao Google Calendar para criar eventos com Google Meet automaticamente e enviar convites aos leads.
+                  </p>
+                </div>
+                {connectedAgendas.length > 0 && (
+                  <div className="shrink-0">
+                    <span className="inline-flex items-center gap-1.5 text-xs font-medium bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400 px-2.5 py-1 rounded-full">
+                      <CheckCircle2 className="h-3 w-3" /> {connectedAgendas.length} conectada{connectedAgendas.length > 1 ? "s" : ""}
+                    </span>
+                  </div>
+                )}
+              </div>
+
+              {agendasQuery.isLoading ? (
+                <div className="space-y-2">
+                  <div className="h-10 bg-muted rounded-md animate-pulse" />
+                  <div className="h-10 bg-muted rounded-md animate-pulse" />
+                </div>
+              ) : agendasQuery.data && agendasQuery.data.length > 0 ? (
+                <div className="space-y-4">
+                  {/* Agendas conectadas */}
+                  {connectedAgendas.length > 0 && (
+                    <div className="space-y-2">
+                      <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Agendas conectadas</p>
+                      {connectedAgendas.map((agenda) => (
+                        <div key={agenda.id} className="flex items-center justify-between gap-3 rounded-lg bg-muted/30 border p-3">
+                          <div className="flex items-center gap-3 min-w-0">
+                            <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: agenda.cor }} />
+                            <div className="min-w-0">
+                              <p className="text-sm font-medium truncate">{agenda.nome}</p>
+                              {agenda.googleEmail && (
+                                <p className="text-xs text-muted-foreground truncate">{agenda.googleEmail}</p>
+                              )}
+                            </div>
+                          </div>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => handleDisconnectGoogle(agenda)}
+                            disabled={disconnectGoogle.isPending || googleLoadingId === agenda.id}
+                            className="gap-1.5 text-destructive hover:text-destructive shrink-0"
+                          >
+                            <CalendarX className="h-3.5 w-3.5" />
+                            {disconnectGoogle.isPending ? "Desconectando…" : "Desconectar"}
+                          </Button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+
+                  {/* Agendas desconectadas */}
+                  {disconnectedAgendas.length > 0 && (
+                    <div className="space-y-2">
+                      <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Agendas disponíveis</p>
+                      {disconnectedAgendas.map((agenda) => (
+                        <div key={agenda.id} className="flex items-center justify-between gap-3 rounded-lg bg-muted/30 border p-3">
+                          <div className="flex items-center gap-3 min-w-0">
+                            <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: agenda.cor }} />
+                            <p className="text-sm font-medium truncate">{agenda.nome}</p>
+                          </div>
+                          <Button
+                            size="sm"
+                            onClick={() => handleConnectGoogle(agenda)}
+                            disabled={googleLoadingId === agenda.id}
+                            className="gap-1.5 shrink-0"
+                          >
+                            <CalendarPlus className="h-3.5 w-3.5" />
+                            {googleLoadingId === agenda.id ? "Conectando…" : "Conectar Google"}
+                          </Button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              ) : (
+                <div className="rounded-lg border border-dashed p-4 text-center space-y-1">
+                  <CalendarCheck className="h-7 w-7 text-muted-foreground mx-auto" />
+                  <p className="text-sm text-muted-foreground">Nenhuma agenda cadastrada.</p>
+                  <p className="text-xs text-muted-foreground">Crie uma agenda na página Agenda primeiro.</p>
+                </div>
+              )}
+            </div>
 
             {/* Webhook de entrada — WhatsApp Omnichannel */}
             <div className="rounded-xl border bg-card p-6 space-y-5">

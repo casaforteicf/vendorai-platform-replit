@@ -16,8 +16,8 @@ function getRedirectUri(): string {
   if (explicit) return explicit;
 
   const domain = (process.env["REPLIT_DOMAINS"] ?? "").split(",")[0]?.trim();
-  if (domain) return `https://${domain}/api/auth/google/calendar/callback`;
-  return `http://localhost:${process.env["PORT"] ?? 5000}/api/auth/google/calendar/callback`;
+  if (domain) return `https://${domain}/api/auth/google/callback`;
+  return `http://localhost:${process.env["PORT"] ?? 5000}/api/auth/google/callback`;
 }
 
 export function getGoogleRedirectUri(): string {
@@ -122,6 +122,7 @@ export async function createGoogleEvent(
   agendaId: string,
   agendamento: Agendamento,
   leadName?: string,
+  leadEmail?: string,
   gerarMeet?: boolean
 ): Promise<string | null> {
   const auth = await getAuthForAgenda(agendaId);
@@ -141,6 +142,12 @@ export async function createGoogleEvent(
     start: { dateTime: agendamento.dataHoraInicio.toISOString() },
     end: { dateTime: agendamento.dataHoraFim.toISOString() },
   };
+
+  if (leadEmail) {
+    requestBody.attendees = [
+      { email: leadEmail, displayName: leadName || leadEmail },
+    ];
+  }
 
   if (gerarMeet) {
     requestBody.conferenceData = {

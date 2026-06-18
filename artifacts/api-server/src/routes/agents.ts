@@ -188,6 +188,7 @@ async function handleSchedulerProcess(req: Request, res: Response): Promise<void
             agendamentoInput.agendaId,
             ag,
             ctx.lead.nome,
+            ctx.lead.email ?? undefined,
             agendamentoInput.gerarMeet ?? false
           );
           // Re-fetch updated record to get meetLink
