@@ -1,0 +1,95 @@
+import { useNavigate } from 'react-router-dom';
+
+const Dashboard = () => {
+  const navigate = useNavigate();
+
+  return (
+    <div className="dashboard-grid">
+
+      {/* Card: Valor em Pipeline */}
+      <div
+        className="card card-clickable"
+        onClick={() => navigate('/pipeline')}
+        title="Ver pipeline completo"
+      >
+        <div className="card-icon">📊</div>
+        <div className="card-label">Valor em Pipeline</div>
+        <div className="card-value">R$ {valorPipeline}</div>
+        <div className="card-hint">Clique para ver →</div>
+      </div>
+
+      {/* Card: Ganhos este mês */}
+      <div
+        className="card card-clickable"
+        onClick={() => navigate('/relatorios/ganhos-mes')}
+        title="Ver relatório de ganhos do mês"
+      >
+        <div className="card-icon">💰</div>
+        <div className="card-label">Ganhos este mês</div>
+        <div className="card-value">R$ {ganhosMes}</div>
+        <div className="card-hint">Clique para ver →</div>
+      </div>
+
+      {/* Card: Orçamentos ativos */}
+      <div
+        className="card card-clickable"
+        onClick={() => navigate('/propostas?status=ativa')}
+        title="Ver orçamentos ativos"
+      >
+        <div className="card-icon">📋</div>
+        <div className="card-label">Orçamentos ativos</div>
+        <div className="card-value">{orcamentosAtivos}</div>
+        <div className="card-hint">Clique para ver →</div>
+      </div>
+
+      {/* Card: Tipo de cliente */}
+      <div
+        className="card card-clickable"
+        onClick={() => navigate('/relatorios/tipo-cliente')}
+        title="Ver segmentação por tipo de cliente"
+      >
+        <div className="card-icon">👥</div>
+        <div className="card-label">Tipo de cliente</div>
+        <div className="card-value">{tiposCliente}</div>
+        <div className="card-hint">Clique para ver →</div>
+      </div>
+
+      {/* Card: Dores principais */}
+      <div
+        className="card card-clickable"
+        onClick={() => navigate('/relatorios/dores')}
+        title="Ver dores mapeadas nos leads"
+      >
+        <div className="card-icon">🎯</div>
+        <div className="card-label">Dores principais</div>
+        <div className="card-value">{totalDores}</div>
+        <div className="card-hint">Clique para ver →</div>
+      </div>
+
+      {/* Card: Leads com risco de churn */}
+      <div
+        className="card card-clickable"
+        onClick={() => navigate('/leads?filtro=churn')}
+        title="Ver leads com risco de churn"
+      >
+        <div className="card-icon">⚠️</div>
+        <div className="card-label">Risco de Churn</div>
+        <div className="card-value">{leadsChurn}</div>
+        <div className="card-hint">Clique para ver →</div>
+      </div>
+
+      {/* Card: Leads quentes */}
+      <div
+        className="card card-clickable"
+        onClick={() => navigate('/leads?filtro=quente')}
+        title="Ver leads quentes"
+      >
+        <div className="card-icon">🔥</div>
+        <div className="card-label">Leads quentes</div>
+        <div className="card-value">{leadsQuentes}</div>
+        <div className="card-hint">Clique para ver →</div>
+      </div>
+
+    </div>
+  );
+};

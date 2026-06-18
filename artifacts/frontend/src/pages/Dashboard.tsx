@@ -38,7 +38,7 @@ import {
   X,
 } from "lucide-react";
 import { useState } from "react";
-import { Link } from "wouter";
+import { Link, useLocation } from "wouter";
 import {
   useGetTenantDashboard,
   getGetTenantDashboardQueryKey,
@@ -277,6 +277,7 @@ function StatCardSkeleton() {
 export default function Dashboard() {
   const { user } = useAuth();
   const tenantId = user?.tenantId ?? "";
+  const [, navigate] = useLocation();
 
   const { data: dashboard, isLoading } = useGetTenantDashboard(tenantId, {
     query: {
@@ -350,7 +351,7 @@ export default function Dashboard() {
           Array.from({ length: 4 }).map((_, i) => <StatCardSkeleton key={i} />)
         ) : (
           <>
-            <Card data-testid="card-total-leads">
+            <Card data-testid="card-total-leads" className="cursor-pointer hover:shadow-md transition-shadow" onClick={() => navigate("/leads")}>
               <CardHeader className="flex flex-row items-center justify-between pb-2 space-y-0">
                 <CardTitle className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
                   Total de Leads
@@ -367,7 +368,7 @@ export default function Dashboard() {
               </CardContent>
             </Card>
 
-            <Card data-testid="card-valor-negociacao">
+            <Card data-testid="card-valor-negociacao" className="cursor-pointer hover:shadow-md transition-shadow" onClick={() => navigate("/negocios")}>
               <CardHeader className="flex flex-row items-center justify-between pb-2 space-y-0">
                 <CardTitle className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
                   Valor em Pipeline
@@ -386,7 +387,7 @@ export default function Dashboard() {
               </CardContent>
             </Card>
 
-            <Card data-testid="card-ganhos-mes">
+            <Card data-testid="card-ganhos-mes" className="cursor-pointer hover:shadow-md transition-shadow" onClick={() => navigate("/negocios")}>
               <CardHeader className="flex flex-row items-center justify-between pb-2 space-y-0">
                 <CardTitle className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
                   Ganhos este mês
@@ -406,7 +407,7 @@ export default function Dashboard() {
               </CardContent>
             </Card>
 
-            <Card data-testid="card-taxa-conversao">
+            <Card data-testid="card-taxa-conversao" className="cursor-pointer hover:shadow-md transition-shadow" onClick={() => navigate("/negocios")}>
               <CardHeader className="flex flex-row items-center justify-between pb-2 space-y-0">
                 <CardTitle className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
                   Taxa de Conversão
@@ -432,7 +433,7 @@ export default function Dashboard() {
           Array.from({ length: 4 }).map((_, i) => <StatCardSkeleton key={i} />)
         ) : (
           <>
-            <Card data-testid="card-ticket-medio">
+            <Card data-testid="card-ticket-medio" className="cursor-pointer hover:shadow-md transition-shadow" onClick={() => navigate("/negocios")}>
               <CardHeader className="flex flex-row items-center justify-between pb-2 space-y-0">
                 <CardTitle className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
                   Ticket Médio
@@ -449,7 +450,7 @@ export default function Dashboard() {
               </CardContent>
             </Card>
 
-            <Card data-testid="card-propostas-ativas">
+            <Card data-testid="card-propostas-ativas" className="cursor-pointer hover:shadow-md transition-shadow" onClick={() => navigate("/propostas")}>
               <CardHeader className="flex flex-row items-center justify-between pb-2 space-y-0">
                 <CardTitle className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
                   Orçamentos Ativos
@@ -466,7 +467,7 @@ export default function Dashboard() {
               </CardContent>
             </Card>
 
-            <Card data-testid="card-atividades-atrasadas">
+            <Card data-testid="card-atividades-atrasadas" className="cursor-pointer hover:shadow-md transition-shadow" onClick={() => navigate("/agenda")}>
               <CardHeader className="flex flex-row items-center justify-between pb-2 space-y-0">
                 <CardTitle className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
                   Atividades Atrasadas
@@ -487,7 +488,7 @@ export default function Dashboard() {
               </CardContent>
             </Card>
 
-            <Card data-testid="card-novos-leads">
+            <Card data-testid="card-novos-leads" className="cursor-pointer hover:shadow-md transition-shadow" onClick={() => navigate("/leads")}>
               <CardHeader className="flex flex-row items-center justify-between pb-2 space-y-0">
                 <CardTitle className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
                   Novos Leads (30d)
@@ -514,12 +515,15 @@ export default function Dashboard() {
             <div className="p-1.5 rounded-md bg-amber-500/10">
               <Flame className="h-4 w-4 text-amber-500" />
             </div>
-            <div>
+            <div className="flex-1">
               <CardTitle className="text-sm font-semibold">Oportunidades Quentes</CardTitle>
               <p className="text-xs text-muted-foreground mt-0.5">
                 Negócios com maior probabilidade de fechar
               </p>
             </div>
+            <Link href="/negocios" className="text-xs text-primary hover:underline font-medium shrink-0">
+              Ver todos →
+            </Link>
           </div>
         </CardHeader>
         <CardContent className="p-0">
@@ -550,7 +554,7 @@ export default function Dashboard() {
                   {dashboard.topOportunidades.map((deal, idx) => {
                     const prob = deal.probabilidade ?? 0;
                     return (
-                      <tr key={deal.dealId} className="hover:bg-muted/30 transition-colors">
+                      <tr key={deal.dealId} className="hover:bg-muted/30 transition-colors cursor-pointer" onClick={() => navigate("/negocios")}>
                         <td className="px-6 py-3 text-xs text-muted-foreground w-8">{idx + 1}</td>
                         <td className="px-3 py-3 min-w-[120px]">
                           <p className="font-medium truncate max-w-[140px]">
@@ -595,7 +599,12 @@ export default function Dashboard() {
       <div className="grid gap-6">
         <Card data-testid="card-funil">
           <CardHeader>
-            <CardTitle className="text-sm font-semibold">Funil de Negócios</CardTitle>
+            <div className="flex items-center justify-between">
+              <CardTitle className="text-sm font-semibold">Funil de Negócios</CardTitle>
+              <Link href="/negocios" className="text-xs text-primary hover:underline font-medium">
+                Ver todos →
+              </Link>
+            </div>
           </CardHeader>
           <CardContent>
             {isLoading ? (
