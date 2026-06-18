@@ -1835,39 +1835,6 @@ export default function Deals() {
         </Dialog>
       </div>
 
-      {/* ── Analytics de Perda ────────────────────────────────────────────── */}
-      {(() => {
-        const perdidos = deals.filter((d) => d.etapa === "perdido" && d.categoriaPerda);
-        if (perdidos.length === 0) return null;
-        const contagem: Record<string, number> = {};
-        perdidos.forEach((d) => {
-          if (d.categoriaPerda) contagem[d.categoriaPerda] = (contagem[d.categoriaPerda] ?? 0) + 1;
-        });
-        const sorted = Object.entries(contagem).sort((a, b) => b[1] - a[1]);
-        const total = perdidos.length;
-        return (
-          <div className="shrink-0 rounded-lg border border-red-100 bg-red-50/60 p-4">
-            <p className="text-xs font-semibold text-red-700 mb-3 flex items-center gap-1.5">
-              <AlertTriangle className="h-3.5 w-3.5" />
-              Motivos de perda — {total} negócio{total !== 1 ? "s" : ""} perdido{total !== 1 ? "s" : ""}
-            </p>
-            <div className="flex flex-wrap gap-2">
-              {sorted.map(([cat, count]) => {
-                const label = MOTIVOS_PERDA.find((m) => m.value === cat)?.label ?? cat;
-                const pct = Math.round((count / total) * 100);
-                return (
-                  <div key={cat} className="flex items-center gap-1.5 bg-white rounded-full px-3 py-1 border border-red-100 text-xs">
-                    <span className="text-slate-700 font-medium">{label}</span>
-                    <span className="text-red-600 font-bold">{count}</span>
-                    <span className="text-muted-foreground">({pct}%)</span>
-                  </div>
-                );
-              })}
-            </div>
-          </div>
-        );
-      })()}
-
       {/* ── Pipeline Clássico ─────────────────────────────────────────────── */}
       <div className="flex-1 min-h-0 flex flex-col">
         {isLoading ? (
