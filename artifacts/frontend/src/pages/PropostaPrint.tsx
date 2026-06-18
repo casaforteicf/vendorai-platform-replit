@@ -12,7 +12,7 @@ import {
   useUpdatePropostaStatus,
   useUpdateDeal,
 } from "@workspace/api-client-react";
-import { Loader2, Printer, MessageCircle, Pencil, CheckCircle2, X } from "lucide-react";
+import { Loader2, Printer, MessageCircle, Pencil, CheckCircle2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
 
@@ -56,7 +56,6 @@ export default function PropostaPrint() {
   const { toast } = useToast();
   const qc = useQueryClient();
   const [markingVendido, setMarkingVendido] = useState(false);
-  const [sendingWA, setSendingWA] = useState(false);
 
   const { data: proposta, isLoading: propostaLoading } = useGetProposta(id ?? "", {
     query: { enabled: !!id, queryKey: getGetPropostaQueryKey(id ?? "") },
@@ -108,39 +107,13 @@ export default function PropostaPrint() {
     }
   }
 
-  async function handleWhatsAppComPDF() {
+  function handleWhatsApp() {
     if (!proposta) return;
-    setSendingWA(true);
-    try {
-      const { default: html2pdf } = await import("html2pdf.js");
-      const element = document.getElementById("proposta-print");
-      if (!element) return;
-
-      const filename = `orcamento-${(proposta.numero ?? proposta.id.slice(0, 8)).replace(/[^a-zA-Z0-9-]/g, "")}.pdf`;
-
-      await html2pdf()
-        .set({
-          margin: [10, 12, 10, 12],
-          filename,
-          image: { type: "jpeg", quality: 0.92 },
-          html2canvas: { scale: 2, useCORS: true, logging: false },
-          jsPDF: { unit: "mm", format: "a4", orientation: "portrait" },
-        })
-        .from(element)
-        .save();
-
-      toast({
-        title: "PDF salvo!",
-        description: "Agora anexe o PDF na conversa do WhatsApp.",
-      });
-
-      await new Promise((r) => setTimeout(r, 600));
-      window.open(`https://wa.me/?text=${whatsappText}`, "_blank");
-    } catch {
-      toast({ title: "Erro ao gerar PDF", variant: "destructive" });
-    } finally {
-      setSendingWA(false);
-    }
+    toast({
+      title: "Dica",
+      description: 'Use "Imprimir / PDF" para salvar o PDF e depois anexe no WhatsApp.',
+    });
+    window.open(`https://wa.me/?text=${whatsappText}`, "_blank");
   }
 
   if (propostaLoading || leadLoading) {
@@ -226,14 +199,9 @@ export default function PropostaPrint() {
           variant="outline"
           size="sm"
           className="gap-1.5 text-green-700 border-green-300 hover:bg-green-50"
-          onClick={handleWhatsAppComPDF}
-          disabled={sendingWA}
+          onClick={handleWhatsApp}
         >
-          {sendingWA ? (
-            <Loader2 className="h-3.5 w-3.5 animate-spin" />
-          ) : (
-            <MessageCircle className="h-4 w-4" />
-          )}
+          <MessageCircle className="h-4 w-4" />
           <span className="hidden xs:inline">WhatsApp</span>
         </Button>
 
