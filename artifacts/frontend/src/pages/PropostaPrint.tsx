@@ -11,9 +11,24 @@ import {
   getGetBusinessProfileByTenantQueryKey,
   useUpdatePropostaStatus,
   useUpdateDeal,
+  useUpdateProposta,
 } from "@workspace/api-client-react";
-import { Loader2, Printer, MessageCircle, Pencil, CheckCircle2 } from "lucide-react";
+import {
+  Loader2, Printer, MessageCircle, Pencil, CheckCircle2,
+  Plus, Trash2, X,
+} from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
+import { Switch } from "@/components/ui/switch";
+import { ScrollArea } from "@/components/ui/scroll-area";
+import {
+  Sheet, SheetContent, SheetHeader, SheetTitle, SheetFooter,
+} from "@/components/ui/sheet";
+import {
+  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
+} from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
 
 const STATUS_LABELS: Record<string, string> = {
@@ -49,6 +64,17 @@ function fmtDateTime(dateStr: string | null | undefined): string {
   return new Intl.DateTimeFormat("pt-BR", { day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" }).format(new Date(dateStr));
 }
 
+function toDateInputValue(iso: string | null | undefined): string {
+  if (!iso) return "";
+  return iso.slice(0, 10);
+}
+
+interface ItemEdit {
+  nome: string;
+  quantidade: number;
+  valorUnitario: number;
+}
+
 export default function PropostaPrint() {
   const { id } = useParams<{ id: string }>();
   const [, navigate] = useLocation();
@@ -57,6 +83,21 @@ export default function PropostaPrint() {
   const qc = useQueryClient();
   const [markingVendido, setMarkingVendido] = useState(false);
 
+  // ── Edit sheet state ──────────────────────────────────────────────────────
+  const [editOpen, setEditOpen] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [eTitulo, setETitulo] = useState("");
+  const [eValidade, setEValidade] = useState("");
+  const [eFormaPagamento, setEFormaPagamento] = useState("");
+  const [eCondPagamento, setECondPagamento] = useState("");
+  const [ePrazoEntrega, setEPrazoEntrega] = useState("");
+  const [eObservacoes, setEObservacoes] = useState("");
+  const [eRecorrente, setERecorrente] = useState(false);
+  const [eValorMensal, setEValorMensal] = useState("");
+  const [ePrazoContrato, setEPrazoContrato] = useState("");
+  const [eItens, setEItens] = useState<ItemEdit[]>([]);
+
+  // ── Queries ───────────────────────────────────────────────────────────────
   const { data: proposta, isLoading: propostaLoading } = useGetProposta(id ?? "", {
     query: { enabled: !!id, queryKey: getGetPropostaQueryKey(id ?? "") },
   });
@@ -71,6 +112,7 @@ export default function PropostaPrint() {
 
   const updateStatus = useUpdatePropostaStatus();
   const updateDeal = useUpdateDeal();
+  const updateProposta = useUpdateProposta();
 
   useEffect(() => {
     if (proposta && lead && !propostaLoading && !leadLoading) {
@@ -78,27 +120,82 @@ export default function PropostaPrint() {
     }
   }, [proposta, lead, propostaLoading, leadLoading]);
 
+  // ── Handlers ─────────────────────────────────────────────────────────────
+  function openEdit() {
+    if (!proposta) return;
+    setETitulo(proposta.titulo);
+    setEValidade(toDateInputValue(proposta.validadeAte));
+    setEFormaPagamento(proposta.formaPagamento ?? "");
+    setECondPagamento(proposta.condPagamento ?? "");
+    setEPrazoEntrega(proposta.prazoEntrega ?? "");
+    setEObservacoes(proposta.observacoes ?? "");
+    setERecorrente(proposta.recorrente ?? false);
+    setEValorMensal(proposta.valorMensal ? String(proposta.valorMensal) : "");
+    setEPrazoContrato(proposta.prazoContratoMeses ? String(proposta.prazoContratoMeses) : "");
+    setEItens(
+      proposta.itens.map((it) => ({
+        nome: it.nome,
+        quantidade: it.quantidade,
+        valorUnitario: it.valorUnitario,
+      }))
+    );
+    setEditOpen(true);
+  }
+
+  async function handleSave() {
+    if (!proposta) return;
+    const itensValidos = eItens.filter((it) => it.nome.trim());
+    if (itensValidos.length === 0) {
+      toast({ title: "Adicione pelo menos um item", variant: "destructive" });
+      return;
+    }
+    const valorTotal = itensValidos.reduce((s, i) => s + i.quantidade * i.valorUnitario, 0);
+    setSaving(true);
+    try {
+      await updateProposta.mutateAsync({
+        id: proposta.id,
+        data: {
+          titulo: eTitulo.trim() || proposta.titulo,
+          itens: itensValidos,
+          valorTotal,
+          validadeAte: eValidade ? new Date(eValidade + "T23:59:59").toISOString() : undefined,
+          formaPagamento: (eFormaPagamento as any) || undefined,
+          condPagamento: eCondPagamento || undefined,
+          prazoEntrega: ePrazoEntrega || undefined,
+          observacoes: eObservacoes || undefined,
+          recorrente: eRecorrente,
+          valorMensal: eRecorrente && eValorMensal ? parseFloat(eValorMensal) : undefined,
+          prazoContratoMeses: eRecorrente && ePrazoContrato ? parseInt(ePrazoContrato) : undefined,
+        },
+      });
+      await qc.invalidateQueries({ queryKey: getGetPropostaQueryKey(proposta.id) });
+      toast({ title: "Orçamento atualizado!" });
+      setEditOpen(false);
+    } catch {
+      toast({ title: "Erro ao salvar", variant: "destructive" });
+    } finally {
+      setSaving(false);
+    }
+  }
+
   async function handleMarcarVendido() {
     if (!proposta) return;
     setMarkingVendido(true);
     try {
       const isRascunho = proposta.status === "rascunho";
-
       if (isRascunho) {
         await updateStatus.mutateAsync({ id: proposta.id, data: { status: "enviada" } });
       }
-
       await updateStatus.mutateAsync({ id: proposta.id, data: { status: "aceita" } });
-
       if (proposta.dealId) {
         await updateDeal.mutateAsync({ id: proposta.dealId, data: { etapa: "ganho" } });
       }
-
       await qc.invalidateQueries({ queryKey: getGetPropostaQueryKey(proposta.id) });
-
       toast({
         title: "Negócio marcado como vendido!",
-        description: proposta.dealId ? "Proposta aceita e card movido para Ganho na pipeline." : "Proposta marcada como aceita.",
+        description: proposta.dealId
+          ? "Proposta aceita e card movido para Ganho na pipeline."
+          : "Proposta marcada como aceita.",
       });
     } catch {
       toast({ title: "Erro ao marcar como vendido", variant: "destructive" });
@@ -116,6 +213,27 @@ export default function PropostaPrint() {
     window.open(`https://wa.me/?text=${whatsappText}`, "_blank");
   }
 
+  // ── Item helpers ──────────────────────────────────────────────────────────
+  function addItem() {
+    setEItens((prev) => [...prev, { nome: "", quantidade: 1, valorUnitario: 0 }]);
+  }
+
+  function removeItem(i: number) {
+    setEItens((prev) => prev.filter((_, idx) => idx !== i));
+  }
+
+  function updateItem(i: number, field: keyof ItemEdit, raw: string) {
+    setEItens((prev) =>
+      prev.map((it, idx) => {
+        if (idx !== i) return it;
+        if (field === "nome") return { ...it, nome: raw };
+        const n = parseFloat(raw) || 0;
+        return { ...it, [field]: n };
+      })
+    );
+  }
+
+  // ── Loading / not found ───────────────────────────────────────────────────
   if (propostaLoading || leadLoading) {
     return (
       <div className="min-h-screen flex items-center justify-center">
@@ -151,8 +269,12 @@ export default function PropostaPrint() {
   const jaVendido = proposta.status === "aceita";
   const podeVender = proposta.status === "rascunho" || proposta.status === "enviada";
 
+  // ── Edit sheet totals (live) ──────────────────────────────────────────────
+  const editTotal = eItens.reduce((s, i) => s + i.quantidade * i.valorUnitario, 0);
+
   return (
     <div className="min-h-screen bg-gray-50">
+
       {/* ── Action bar (hidden on print) ── */}
       <div className="no-print fixed top-0 left-0 right-0 z-50 bg-white border-b px-3 sm:px-6 py-2.5 flex items-center gap-2 shadow-sm flex-wrap">
         <Button variant="outline" size="sm" onClick={() => navigate(proposta.leadId ? `/leads/${proposta.leadId}` : "/propostas")}>
@@ -163,7 +285,7 @@ export default function PropostaPrint() {
           variant="outline"
           size="sm"
           className="gap-1.5"
-          onClick={() => navigate(proposta.leadId ? `/leads/${proposta.leadId}` : "/propostas")}
+          onClick={openEdit}
         >
           <Pencil className="h-3.5 w-3.5" />
           <span className="hidden sm:inline">Editar</span>
@@ -432,11 +554,226 @@ export default function PropostaPrint() {
         </div>
       </div>
 
+      {/* ── Edit Sheet ─────────────────────────────────────────────────────── */}
+      <Sheet open={editOpen} onOpenChange={setEditOpen}>
+        <SheetContent side="right" className="w-full sm:max-w-2xl p-0 flex flex-col">
+          <SheetHeader className="px-6 py-4 border-b shrink-0">
+            <SheetTitle>Editar Orçamento</SheetTitle>
+          </SheetHeader>
+
+          <ScrollArea className="flex-1 min-h-0">
+            <div className="px-6 py-5 space-y-6">
+
+              {/* Título */}
+              <div className="space-y-1.5">
+                <Label htmlFor="e-titulo">Título</Label>
+                <Input
+                  id="e-titulo"
+                  value={eTitulo}
+                  onChange={(e) => setETitulo(e.target.value)}
+                  placeholder="Ex: Proposta de Desenvolvimento Web"
+                />
+              </div>
+
+              {/* Validade */}
+              <div className="space-y-1.5">
+                <Label htmlFor="e-validade">Válido até</Label>
+                <Input
+                  id="e-validade"
+                  type="date"
+                  value={eValidade}
+                  onChange={(e) => setEValidade(e.target.value)}
+                />
+              </div>
+
+              {/* ── Itens ── */}
+              <div className="space-y-2">
+                <div className="flex items-center justify-between">
+                  <Label>Itens</Label>
+                  <Button type="button" size="sm" variant="outline" className="gap-1.5 h-7 text-xs" onClick={addItem}>
+                    <Plus className="h-3.5 w-3.5" />
+                    Adicionar item
+                  </Button>
+                </div>
+
+                <div className="border rounded-lg overflow-hidden">
+                  {/* Header */}
+                  <div className="grid grid-cols-[1fr_72px_96px_36px] gap-1 bg-gray-50 px-3 py-2 text-xs font-medium text-gray-500 border-b">
+                    <span>Descrição</span>
+                    <span className="text-center">Qtd</span>
+                    <span className="text-right">Valor Unit.</span>
+                    <span />
+                  </div>
+
+                  {eItens.length === 0 && (
+                    <p className="text-center text-sm text-muted-foreground py-6">
+                      Nenhum item. Clique em "Adicionar item".
+                    </p>
+                  )}
+
+                  {eItens.map((item, i) => (
+                    <div
+                      key={i}
+                      className="grid grid-cols-[1fr_72px_96px_36px] gap-1 items-center px-2 py-1.5 border-b last:border-0"
+                    >
+                      <Input
+                        value={item.nome}
+                        onChange={(e) => updateItem(i, "nome", e.target.value)}
+                        placeholder="Nome do item"
+                        className="h-8 text-sm"
+                      />
+                      <Input
+                        type="number"
+                        min="0"
+                        step="1"
+                        value={item.quantidade || ""}
+                        onChange={(e) => updateItem(i, "quantidade", e.target.value)}
+                        className="h-8 text-sm text-center"
+                      />
+                      <Input
+                        type="number"
+                        min="0"
+                        step="0.01"
+                        value={item.valorUnitario || ""}
+                        onChange={(e) => updateItem(i, "valorUnitario", e.target.value)}
+                        className="h-8 text-sm text-right font-mono"
+                      />
+                      <Button
+                        type="button"
+                        size="icon"
+                        variant="ghost"
+                        className="h-8 w-8 text-red-400 hover:text-red-600 hover:bg-red-50"
+                        onClick={() => removeItem(i)}
+                      >
+                        <X className="h-3.5 w-3.5" />
+                      </Button>
+                    </div>
+                  ))}
+
+                  {eItens.length > 0 && (
+                    <div className="flex justify-end px-3 py-2 bg-gray-50 border-t text-sm font-semibold">
+                      Total: {fmtCurrency(editTotal)}
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* Condições Comerciais */}
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                <div className="space-y-1.5">
+                  <Label>Forma de Pagamento</Label>
+                  <Select value={eFormaPagamento} onValueChange={setEFormaPagamento}>
+                    <SelectTrigger className="h-9">
+                      <SelectValue placeholder="Selecionar…" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="pix">PIX</SelectItem>
+                      <SelectItem value="boleto">Boleto</SelectItem>
+                      <SelectItem value="cartao_credito">Cartão de Crédito</SelectItem>
+                      <SelectItem value="cartao_debito">Cartão de Débito</SelectItem>
+                      <SelectItem value="transferencia">Transferência</SelectItem>
+                      <SelectItem value="dinheiro">Dinheiro</SelectItem>
+                      <SelectItem value="a_combinar">A Combinar</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-1.5">
+                  <Label htmlFor="e-cond">Condição de Pagamento</Label>
+                  <Input
+                    id="e-cond"
+                    value={eCondPagamento}
+                    onChange={(e) => setECondPagamento(e.target.value)}
+                    placeholder="Ex: 30/60/90 dias"
+                    className="h-9"
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <Label htmlFor="e-prazo">Prazo de Entrega</Label>
+                  <Input
+                    id="e-prazo"
+                    value={ePrazoEntrega}
+                    onChange={(e) => setEPrazoEntrega(e.target.value)}
+                    placeholder="Ex: 7 dias úteis"
+                    className="h-9"
+                  />
+                </div>
+              </div>
+
+              {/* Recorrência */}
+              <div className="border rounded-lg p-4 space-y-3">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-sm font-medium">Cobrança Recorrente Mensal</p>
+                    <p className="text-xs text-muted-foreground">Ativar para contratos com mensalidade</p>
+                  </div>
+                  <Switch checked={eRecorrente} onCheckedChange={setERecorrente} />
+                </div>
+
+                {eRecorrente && (
+                  <div className="grid grid-cols-2 gap-3 pt-1">
+                    <div className="space-y-1.5">
+                      <Label htmlFor="e-mensal">Mensalidade (R$)</Label>
+                      <Input
+                        id="e-mensal"
+                        type="number"
+                        min="0"
+                        step="0.01"
+                        value={eValorMensal}
+                        onChange={(e) => setEValorMensal(e.target.value)}
+                        placeholder="0,00"
+                      />
+                    </div>
+                    <div className="space-y-1.5">
+                      <Label htmlFor="e-prazocontrato">Prazo (meses)</Label>
+                      <Input
+                        id="e-prazocontrato"
+                        type="number"
+                        min="1"
+                        step="1"
+                        value={ePrazoContrato}
+                        onChange={(e) => setEPrazoContrato(e.target.value)}
+                        placeholder="12"
+                      />
+                    </div>
+                    {eValorMensal && ePrazoContrato && (
+                      <p className="col-span-2 text-xs text-muted-foreground">
+                        Total do contrato: {fmtCurrency(parseFloat(eValorMensal) * parseInt(ePrazoContrato))}
+                      </p>
+                    )}
+                  </div>
+                )}
+              </div>
+
+              {/* Observações */}
+              <div className="space-y-1.5">
+                <Label htmlFor="e-obs">Observações</Label>
+                <Textarea
+                  id="e-obs"
+                  value={eObservacoes}
+                  onChange={(e) => setEObservacoes(e.target.value)}
+                  placeholder="Notas adicionais, condições especiais…"
+                  rows={4}
+                />
+              </div>
+
+            </div>
+          </ScrollArea>
+
+          <SheetFooter className="px-6 py-4 border-t shrink-0 flex gap-2 justify-end">
+            <Button variant="outline" onClick={() => setEditOpen(false)} disabled={saving}>
+              Cancelar
+            </Button>
+            <Button onClick={handleSave} disabled={saving} className="gap-1.5">
+              {saving && <Loader2 className="h-4 w-4 animate-spin" />}
+              Salvar alterações
+            </Button>
+          </SheetFooter>
+        </SheetContent>
+      </Sheet>
+
       <style>{`
         @media print {
-          /* Esconde tudo — sidebar, header, action bar */
           body * { visibility: hidden !important; }
-          /* Mostra apenas o conteúdo do orçamento */
           #proposta-print,
           #proposta-print * { visibility: visible !important; }
           #proposta-print {
