@@ -8,6 +8,8 @@ import Funcionalidades from "@/pages/Funcionalidades";
 import Precos from "@/pages/Precos";
 import Sobre from "@/pages/Sobre";
 import Contato from "@/pages/Contato";
+import Privacy from "@/pages/Privacy";
+import Terms from "@/pages/Terms";
 import Navbar from "@/components/Navbar";
 import Footer from "@/components/Footer";
 
@@ -24,6 +26,8 @@ function Router() {
           <Route path="/precos" component={Precos} />
           <Route path="/sobre" component={Sobre} />
           <Route path="/contato" component={Contato} />
+          <Route path="/privacy" component={Privacy} />
+          <Route path="/terms" component={Terms} />
           <Route component={NotFound} />
         </Switch>
       </main>
