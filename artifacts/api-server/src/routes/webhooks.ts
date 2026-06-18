@@ -20,6 +20,7 @@ import {
 } from "../services/omnichannel.js";
 import { dispatchAgentBackground } from "../services/agent-dispatch.js";
 import { runAutoQuotePipeline } from "../services/auto-quote.js";
+import { transcribeAudio } from "../services/audio-transcription.js";
 
 const router: IRouter = Router();
 
@@ -256,6 +257,11 @@ const zapiNativeBody = z.object({
   text: z.object({ message: z.string() }).optional(),
   body: z.string().optional(),  // older Z-API format
   type: z.string().optional(),
+  audio: z.object({
+    audioUrl: z.string().optional(),
+    mimeType: z.string().optional(),
+    seconds: z.number().optional(),
+  }).optional(),
 }).passthrough();
 
 function normalizeZapiPhone(raw: string): string {
@@ -312,7 +318,38 @@ router.post("/tenants/:tenantId/webhooks/zapi", async (req, res) => {
     return;
   }
 
-  const mensagem = payload.text?.message ?? payload.body ?? "";
+  let mensagem = "";
+  let isAudio = false;
+  let audioUrl: string | undefined;
+
+  const msgType = payload.type ?? "chat";
+
+  if (msgType === "chat" || msgType === "text") {
+    mensagem = payload.text?.message ?? payload.body ?? "";
+  } else if (msgType === "audio" || msgType === "ptt") {
+    const url = payload.audio?.audioUrl;
+    if (!url) {
+      res.status(200).json({ ignored: true, reason: "audio_without_url" });
+      return;
+    }
+    audioUrl = url;
+    isAudio = true;
+
+    // Transcribe audio
+    try {
+      mensagem = await transcribeAudio(url, req.log);
+    } catch (err) {
+      req.log.error({ err, audioUrl: url.slice(0, 60) }, "audio: transcription failed");
+      res.status(200).json({ ignored: true, reason: "audio_transcription_failed" });
+      return;
+    }
+  } else {
+    // Unsupported message type (image, video, sticker, etc.)
+    req.log.info({ type: msgType }, "zapi-webhook: unsupported message type");
+    res.status(200).json({ ignored: true, reason: `unsupported_type_${msgType}` });
+    return;
+  }
+
   if (!mensagem.trim()) {
     res.status(200).json({ ignored: true, reason: "empty_message" });
     return;
@@ -321,7 +358,7 @@ router.post("/tenants/:tenantId/webhooks/zapi", async (req, res) => {
   const telefone = normalizeZapiPhone(payload.phone);
   const nome = payload.chatName ?? payload.senderName ?? telefone;
 
-  req.log.info({ telefone, nome }, "zapi-webhook: incoming message received");
+  req.log.info({ telefone, nome, isAudio }, "zapi-webhook: incoming message received");
 
   // ── 4. Find or create lead ─────────────────────────────────────────────────
   let [lead] = await db
@@ -369,7 +406,7 @@ router.post("/tenants/:tenantId/webhooks/zapi", async (req, res) => {
       canal: "whatsapp",
       conteudo: mensagem,
       enviadoPor: "lead",
-      tipoConteudo: "texto",
+      tipoConteudo: isAudio ? "audio" : "texto",
       status: "entregue",
     })
     .returning();
