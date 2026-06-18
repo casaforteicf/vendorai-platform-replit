@@ -7,6 +7,8 @@ import {
   useCreateLead,
   useListCustomerIntelligence,
   getListCustomerIntelligenceQueryKey,
+  useListPropostas,
+  getListPropostasQueryKey,
 } from "@workspace/api-client-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -248,7 +250,31 @@ export default function Leads() {
     },
   });
 
+  const { data: propostas } = useListPropostas(tenantId, undefined, {
+    query: {
+      enabled: !!tenantId,
+      queryKey: getListPropostasQueryKey(tenantId),
+    },
+  });
+
   const ciMap = new Map(ciList?.map((ci) => [ci.leadId, ci]) ?? []);
+
+  // Map: leadId → maior valor total de proposta
+  const leadValorMap = new Map<string, string>();
+  for (const p of propostas ?? []) {
+    if (!p.leadId || !p.valorTotal) continue;
+    const current = leadValorMap.get(p.leadId);
+    if (!current || parseFloat(p.valorTotal) > parseFloat(current)) {
+      leadValorMap.set(p.leadId, p.valorTotal);
+    }
+  }
+
+  function formatCurrency(value: string | null | undefined): string {
+    if (!value) return "";
+    const num = parseFloat(value);
+    if (isNaN(num)) return "";
+    return num.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
+  }
 
   const createLead = useCreateLead();
 
@@ -602,6 +628,11 @@ export default function Leads() {
                           {LEAD_STATUSES.find((s) => s.value === lead.status)?.label ?? lead.status}
                         </Badge>
                         {churnBadge(ci?.churnRisk, ci?.churnReasons)}
+                        {leadValorMap.get(lead.id) && (
+                          <Badge className="bg-emerald-100 text-emerald-700 border-emerald-200 text-xs font-mono">
+                            {formatCurrency(leadValorMap.get(lead.id))}
+                          </Badge>
+                        )}
                       </div>
                     </div>
                     <ChevronRight className="h-4 w-4 text-muted-foreground shrink-0" />
@@ -621,6 +652,7 @@ export default function Leads() {
                   <TableHead>Empresa</TableHead>
                   <TableHead>Telefone</TableHead>
                   <TableHead>Status</TableHead>
+                  <TableHead className="text-right">Orçamento</TableHead>
                   <TableHead>
                     <button
                       data-testid="sort-churn-risk"
@@ -644,7 +676,7 @@ export default function Leads() {
                 {leadsLoading ? (
                   Array.from({ length: 5 }).map((_, i) => (
                     <TableRow key={i}>
-                      {Array.from({ length: 6 }).map((__, j) => (
+                      {Array.from({ length: 7 }).map((__, j) => (
                         <TableCell key={j}>
                           <div className="h-4 bg-muted animate-pulse rounded w-full max-w-[120px]" />
                         </TableCell>
@@ -654,7 +686,7 @@ export default function Leads() {
                 ) : filteredLeads.length === 0 ? (
                   <TableRow>
                     <TableCell
-                      colSpan={6}
+                      colSpan={7}
                       className="text-center py-12 text-muted-foreground"
                     >
                       {leads?.length === 0
@@ -695,6 +727,9 @@ export default function Leads() {
                             {LEAD_STATUSES.find((s) => s.value === lead.status)?.label ??
                               lead.status}
                           </Badge>
+                        </TableCell>
+                        <TableCell className="text-right font-mono text-sm text-emerald-700">
+                          {formatCurrency(leadValorMap.get(lead.id)) || "—"}
                         </TableCell>
                         <TableCell>{churnBadge(ci?.churnRisk, ci?.churnReasons)}</TableCell>
                         <TableCell>
