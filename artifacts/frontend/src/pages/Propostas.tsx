@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import { useLocation } from "wouter";
 import { useAuth } from "@/contexts/AuthContext";
 import {
   useListPropostas,
@@ -1209,9 +1210,16 @@ function PropostaDetailSheet({
   leadName: string;
   onClose: () => void;
 }) {
+  const [, navigate] = useLocation();
+
   if (!proposta) return null;
   const statusCfg = STATUS_CONFIG[proposta.status] ?? STATUS_CONFIG.rascunho;
   const total = proposta.itens.reduce((s, i) => s + i.quantidade * i.valorUnitario, 0);
+
+  function handleEditar() {
+    onClose();
+    navigate(`/propostas/${proposta!.id}`);
+  }
 
   return (
     <Sheet open={!!proposta} onOpenChange={(o) => !o && onClose()}>
@@ -1223,7 +1231,7 @@ function PropostaDetailSheet({
           )}
         </SheetHeader>
         <div className="mt-5 space-y-5">
-          {/* Status + meta + impressão */}
+          {/* Status + meta + ações */}
           <div className="flex items-center gap-2 flex-wrap">
             <Badge variant="outline" className={`${statusCfg.className} text-xs`}>
               {statusCfg.label}
@@ -1233,7 +1241,16 @@ function PropostaDetailSheet({
                 Válida até {fmtDate(proposta.validadeAte)}
               </span>
             )}
-            <div className="ml-auto">
+            <div className="ml-auto flex items-center gap-1.5">
+              <Button
+                size="sm"
+                variant="outline"
+                className="h-7 text-xs gap-1.5"
+                onClick={handleEditar}
+              >
+                <Pencil className="h-3 w-3" />
+                Editar
+              </Button>
               <Button
                 size="sm"
                 variant="outline"
@@ -1241,7 +1258,7 @@ function PropostaDetailSheet({
                 onClick={() => window.open(`/propostas/${proposta.id}/print`, "_blank")}
               >
                 <Printer className="h-3 w-3" />
-                PDF / Imprimir
+                PDF
               </Button>
             </div>
           </div>
