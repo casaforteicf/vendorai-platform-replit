@@ -50,3 +50,4 @@ export * from "./supermercado_produtos";
 export * from "./supermercado_pedidos";
 export * from "./supermercado_campanhas";
 export * from "./generated_sites";
+export * from "./instagram_connections";
