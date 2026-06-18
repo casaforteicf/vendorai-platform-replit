@@ -1193,12 +1193,28 @@ export default function Deals() {
   );
 
   function handleCardClick(deal: Deal) {
-    const propostaId = dealToPropostaId.get(deal.id);
-    if (propostaId) {
-      navigate(`/propostas/${propostaId}`);
-    } else {
-      toast({ title: "Nenhum orçamento vinculado a este negócio.", description: "Crie um orçamento em Orçamentos e vincule este negócio." });
+    // 1️⃣ Match explícito por dealId
+    const byDeal = dealToPropostaId.get(deal.id);
+    if (byDeal) {
+      navigate(`/propostas/${byDeal}`);
+      return;
     }
+
+    // 2️⃣ Fallback: proposta mais recente do mesmo lead
+    if (deal.leadId) {
+      const byLead = propostas
+        .filter((p) => p.leadId === deal.leadId)
+        .sort((a, b) => new Date(b.createdAt ?? 0).getTime() - new Date(a.createdAt ?? 0).getTime());
+      if (byLead.length > 0) {
+        navigate(`/propostas/${byLead[0].id}`);
+        return;
+      }
+    }
+
+    toast({
+      title: "Nenhum orçamento vinculado.",
+      description: "Crie um orçamento em Orçamentos para este lead.",
+    });
   }
 
   const updateDeal = useUpdateDeal();
