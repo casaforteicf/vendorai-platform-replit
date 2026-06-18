@@ -7,26 +7,20 @@ export default function Terms() {
 
       <h2>1. Aceitação</h2>
       <p>
-        Ao usar a Vendor.ai, você concorda com estes termos.
+        Ao utilizar a plataforma Vendor.ai o usuário concorda com estes termos.
       </p>
 
-      <h2>2. Serviço</h2>
+      <h2>2. Serviços</h2>
       <p>
-        A Vendor.ai é uma plataforma de CRM com IA para automação comercial,
-        gestão de leads, negócios e orçamentos.
+        CRM, automação comercial, marketing e inteligência artificial.
       </p>
 
-      <h2>3. Responsabilidades</h2>
+      <h2>3. Responsabilidade</h2>
       <p>
-        Você é responsável pelos dados inseridos e pelo uso adequado da plataforma.
+        O usuário é responsável pelas informações fornecidas.
       </p>
 
-      <h2>4. Limitações</h2>
-      <p>
-        Não nos responsabilizamos por decisões de negócio baseadas nas análises de IA.
-      </p>
-
-      <h2>5. Contato</h2>
+      <h2>4. Contato</h2>
       <p>
         marcosreisdorfer@gmail.com
       </p>
