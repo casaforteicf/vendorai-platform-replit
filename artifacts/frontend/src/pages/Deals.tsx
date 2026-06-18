@@ -117,11 +117,114 @@ const ETAPA_SAAS_PROBABILIDADE: Record<DealEtapaSaas, number> = {
   expansao:         95,
 };
 
+const MOTIVOS_PERDA: { value: string; label: string }[] = [
+  { value: "preco",                   label: "Preço" },
+  { value: "prazo_entrega",           label: "Prazo de entrega" },
+  { value: "prazo_pagamento",         label: "Prazo de pagamento" },
+  { value: "atendimento",             label: "Atendimento" },
+  { value: "nao_atendeu_expectativa", label: "Não atendeu a expectativa" },
+  { value: "concorrencia",            label: "Concorrência" },
+  { value: "sem_orcamento",           label: "Sem orçamento" },
+  { value: "mudanca_prioridade",      label: "Mudança de prioridade" },
+  { value: "produto_inadequado",      label: "Produto inadequado" },
+  { value: "sem_resposta",            label: "Sem resposta (lead sumiu)" },
+  { value: "negociacao_malsucedida",  label: "Negociação malsucedida" },
+  { value: "outros",                  label: "Outros" },
+];
+
 function formatCurrency(value: string | null | undefined): string {
   if (!value) return "—";
   const num = parseFloat(value);
   if (isNaN(num)) return "—";
   return num.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
+}
+
+// ─── Motivos de Perda Dialog ─────────────────────────────────────────────────
+
+function MotivosPerdaDialog({
+  open,
+  onConfirm,
+  onCancel,
+}: {
+  open: boolean;
+  onConfirm: (categoria: string, detalhe: string) => void;
+  onCancel: () => void;
+}) {
+  const [categoria, setCategoria] = useState<string | null>(null);
+  const [detalhe, setDetalhe] = useState("");
+
+  function handleConfirm() {
+    if (!categoria) return;
+    onConfirm(categoria, detalhe.trim());
+    setCategoria(null);
+    setDetalhe("");
+  }
+
+  function handleCancel() {
+    setCategoria(null);
+    setDetalhe("");
+    onCancel();
+  }
+
+  return (
+    <Dialog open={open} onOpenChange={(v) => !v && handleCancel()}>
+      <DialogContent className="max-w-md">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2 text-red-600">
+            <AlertTriangle className="h-5 w-5" />
+            Motivo da perda
+          </DialogTitle>
+        </DialogHeader>
+        <div className="space-y-4 pt-1">
+          <p className="text-sm text-muted-foreground">
+            Selecione o principal motivo pelo qual este negócio foi perdido:
+          </p>
+          <div className="flex flex-wrap gap-2">
+            {MOTIVOS_PERDA.map((m) => (
+              <button
+                key={m.value}
+                type="button"
+                onClick={() => setCategoria(m.value === categoria ? null : m.value)}
+                className={`rounded-full px-3 py-1.5 text-xs font-medium border transition-all ${
+                  categoria === m.value
+                    ? "bg-red-600 text-white border-red-600 shadow-sm"
+                    : "bg-white text-slate-700 border-slate-200 hover:border-red-300 hover:text-red-600"
+                }`}
+              >
+                {m.label}
+              </button>
+            ))}
+          </div>
+          <div>
+            <label className="text-sm font-medium text-foreground block mb-1.5">
+              Detalhe <span className="text-muted-foreground font-normal">(opcional)</span>
+            </label>
+            <textarea
+              className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring resize-none"
+              rows={3}
+              placeholder="Descreva o contexto específico deste lead..."
+              value={detalhe}
+              onChange={(e) => setDetalhe(e.target.value)}
+            />
+          </div>
+          <div className="flex gap-2 justify-end pt-1">
+            <Button type="button" variant="outline" size="sm" onClick={handleCancel}>
+              Cancelar
+            </Button>
+            <Button
+              type="button"
+              size="sm"
+              className="bg-red-600 hover:bg-red-700 text-white"
+              onClick={handleConfirm}
+              disabled={!categoria}
+            >
+              Confirmar perda
+            </Button>
+          </div>
+        </div>
+      </DialogContent>
+    </Dialog>
+  );
 }
 
 // ─── Draggable Deal Card ──────────────────────────────────────────────────────
@@ -199,6 +302,18 @@ function DealCard({
           }`}>
             {deal.tipoFechamento === "contrato" ? "Contrato" : "Pedido"}
           </span>
+        </div>
+      )}
+
+      {/* Motivo de perda */}
+      {deal.categoriaPerda && (
+        <div className="pl-6 space-y-1">
+          <span className="inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-semibold bg-red-50 text-red-600 border border-red-100">
+            {MOTIVOS_PERDA.find((m) => m.value === deal.categoriaPerda)?.label ?? deal.categoriaPerda}
+          </span>
+          {deal.motivoPerda && (
+            <p className="text-[10px] text-muted-foreground line-clamp-2">{deal.motivoPerda}</p>
+          )}
         </div>
       )}
     </div>
@@ -1148,6 +1263,11 @@ export default function Deals() {
   const [isCreateOpen, setIsCreateOpen] = useState(false);
   const [activeId, setActiveId] = useState<string | null>(null);
   const [overColumn, setOverColumn] = useState<DealEtapa | null>(null);
+  const [perdidoDialog, setPerdidoDialog] = useState<{ open: boolean; deal: Deal | null; novaProb: number }>({
+    open: false,
+    deal: null,
+    novaProb: 0,
+  });
   // SaaS pipeline state
   const [saasActiveId, setSaasActiveId] = useState<string | null>(null);
   const [saasOverColumn, setSaasOverColumn] = useState<DealEtapaSaas | null>(null);
@@ -1316,6 +1436,20 @@ export default function Deals() {
 
       const novaProb = ETAPA_PROBABILIDADE[targetEtapa.value];
 
+      // Interceptar movimento para "perdido" — exibir modal antes de confirmar
+      if (targetEtapa.value === "perdido") {
+        // Optimistic update visual (card aparece na coluna)
+        queryClient.setQueryData(
+          getListDealsQueryKey(tenantId),
+          (old: Deal[] | undefined) =>
+            (old ?? []).map((d) =>
+              d.id === draggedDeal.id ? { ...d, etapa: "perdido", probabilidade: novaProb } : d
+            )
+        );
+        setPerdidoDialog({ open: true, deal: draggedDeal, novaProb });
+        return;
+      }
+
       // Optimistic update
       queryClient.setQueryData(
         getListDealsQueryKey(tenantId),
@@ -1359,6 +1493,46 @@ export default function Deals() {
     },
     [deals, queryClient, tenantId, updateDeal, toast]
   );
+
+  function confirmarPerdido(categoria: string, detalhe: string) {
+    const { deal, novaProb } = perdidoDialog;
+    if (!deal) return;
+    setPerdidoDialog({ open: false, deal: null, novaProb: 0 });
+    updateDeal.mutate(
+      {
+        id: deal.id,
+        data: {
+          etapa: "perdido",
+          probabilidade: novaProb,
+          categoriaPerda: categoria,
+          motivoPerda: detalhe || undefined,
+        },
+      },
+      {
+        onSuccess: () => {
+          queryClient.invalidateQueries({ queryKey: getListDealsQueryKey(tenantId) });
+        },
+        onError: () => {
+          toast({ title: "Erro ao registrar perda", variant: "destructive" });
+          queryClient.invalidateQueries({ queryKey: getListDealsQueryKey(tenantId) });
+        },
+      }
+    );
+  }
+
+  function cancelarPerdido() {
+    const { deal } = perdidoDialog;
+    if (deal) {
+      queryClient.setQueryData(
+        getListDealsQueryKey(tenantId),
+        (old: Deal[] | undefined) =>
+          (old ?? []).map((d) =>
+            d.id === deal.id ? { ...d, etapa: deal.etapa, probabilidade: deal.probabilidade } : d
+          )
+      );
+    }
+    setPerdidoDialog({ open: false, deal: null, novaProb: 0 });
+  }
 
   const dealsByEtapa = (etapa: DealEtapa) =>
     deals.filter((d) => d.etapa === etapa);
@@ -1661,6 +1835,39 @@ export default function Deals() {
         </Dialog>
       </div>
 
+      {/* ── Analytics de Perda ────────────────────────────────────────────── */}
+      {(() => {
+        const perdidos = deals.filter((d) => d.etapa === "perdido" && d.categoriaPerda);
+        if (perdidos.length === 0) return null;
+        const contagem: Record<string, number> = {};
+        perdidos.forEach((d) => {
+          if (d.categoriaPerda) contagem[d.categoriaPerda] = (contagem[d.categoriaPerda] ?? 0) + 1;
+        });
+        const sorted = Object.entries(contagem).sort((a, b) => b[1] - a[1]);
+        const total = perdidos.length;
+        return (
+          <div className="shrink-0 rounded-lg border border-red-100 bg-red-50/60 p-4">
+            <p className="text-xs font-semibold text-red-700 mb-3 flex items-center gap-1.5">
+              <AlertTriangle className="h-3.5 w-3.5" />
+              Motivos de perda — {total} negócio{total !== 1 ? "s" : ""} perdido{total !== 1 ? "s" : ""}
+            </p>
+            <div className="flex flex-wrap gap-2">
+              {sorted.map(([cat, count]) => {
+                const label = MOTIVOS_PERDA.find((m) => m.value === cat)?.label ?? cat;
+                const pct = Math.round((count / total) * 100);
+                return (
+                  <div key={cat} className="flex items-center gap-1.5 bg-white rounded-full px-3 py-1 border border-red-100 text-xs">
+                    <span className="text-slate-700 font-medium">{label}</span>
+                    <span className="text-red-600 font-bold">{count}</span>
+                    <span className="text-muted-foreground">({pct}%)</span>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        );
+      })()}
+
       {/* ── Pipeline Clássico ─────────────────────────────────────────────── */}
       <div className="flex-1 min-h-0 flex flex-col">
         {isLoading ? (
@@ -1703,6 +1910,13 @@ export default function Deals() {
           </DndContext>
         )}
       </div>
+
+      {/* ── Modal Motivo de Perda ─────────────────────────────────────────── */}
+      <MotivosPerdaDialog
+        open={perdidoDialog.open}
+        onConfirm={confirmarPerdido}
+        onCancel={cancelarPerdido}
+      />
 
     </div>
   );

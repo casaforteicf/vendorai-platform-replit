@@ -1390,6 +1390,8 @@ export interface Deal {
      */
   probabilidade?: number | null;
   dataFechamentoPrevista?: string | null;
+  /** Categoria de motivo de perda (ex. preco, prazo_entrega, atendimento…) */
+  categoriaPerda?: string | null;
   motivoPerda?: string | null;
   /** Tipo de fechamento do negócio. Null herda o padrão do tenant. */
   tipoFechamento?: TipoFechamento | null;
@@ -1449,6 +1451,8 @@ export interface CreateDealBody {
      */
   probabilidade?: number;
   dataFechamentoPrevista?: string;
+  /** Categoria de motivo de perda (ex. preco, prazo_entrega, atendimento…) */
+  categoriaPerda?: string;
   motivoPerda?: string;
   tipoFechamento?: TipoFechamento;
   etapaSaas?: DealEtapaSaas;
@@ -1477,6 +1481,8 @@ export interface UpdateDealBody {
      */
   probabilidade?: number;
   dataFechamentoPrevista?: string;
+  /** Categoria de motivo de perda (ex. preco, prazo_entrega, atendimento…) */
+  categoriaPerda?: string;
   motivoPerda?: string;
   tipoFechamento?: TipoFechamento;
   etapaSaas?: DealEtapaSaas;

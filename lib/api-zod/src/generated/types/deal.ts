@@ -24,6 +24,8 @@ export interface Deal {
      */
   probabilidade?: number | null;
   dataFechamentoPrevista?: Date | null;
+  /** Categoria de motivo de perda (ex. preco, prazo_entrega, atendimento…) */
+  categoriaPerda?: string | null;
   motivoPerda?: string | null;
   /** Tipo de fechamento do negócio. Null herda o padrão do tenant. */
   tipoFechamento?: TipoFechamento | null;

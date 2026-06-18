@@ -21,6 +21,8 @@ export interface UpdateDealBody {
      */
   probabilidade?: number;
   dataFechamentoPrevista?: Date;
+  /** Categoria de motivo de perda (ex. preco, prazo_entrega, atendimento…) */
+  categoriaPerda?: string;
   motivoPerda?: string;
   tipoFechamento?: TipoFechamento;
   etapaSaas?: DealEtapaSaas;

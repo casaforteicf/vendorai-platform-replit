@@ -37,6 +37,7 @@ export const dealsTable = pgTable("deals", {
   funilId: text("funil_id").references(() => funisTable.id, { onDelete: "set null" }),
   probabilidade: integer("probabilidade").default(0),
   dataFechamentoPrevista: timestamp("data_fechamento_prevista"),
+  categoriaPerda: text("categoria_perda"),
   motivoPerda: text("motivo_perda"),
   assignedTo: text("assigned_to").references(() => usersTable.id, { onDelete: "set null" }),
   tipoFechamento: dealTipoFechamentoEnum("tipo_fechamento"),

@@ -9268,6 +9268,10 @@ components:
           type: string
           format: date-time
           nullable: true
+        categoriaPerda:
+          type: string
+          nullable: true
+          description: Categoria de motivo de perda (ex. preco, prazo_entrega, atendimento…)
         motivoPerda:
           type: string
           nullable: true
@@ -9376,6 +9380,9 @@ components:
         dataFechamentoPrevista:
           type: string
           format: date-time
+        categoriaPerda:
+          type: string
+          description: Categoria de motivo de perda (ex. preco, prazo_entrega, atendimento…)
         motivoPerda:
           type: string
         tipoFechamento:
@@ -9420,6 +9427,9 @@ components:
         dataFechamentoPrevista:
           type: string
           format: date-time
+        categoriaPerda:
+          type: string
+          description: Categoria de motivo de perda (ex. preco, prazo_entrega, atendimento…)
         motivoPerda:
           type: string
         tipoFechamento:
