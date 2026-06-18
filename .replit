@@ -80,3 +80,4 @@ ASAAS_SANDBOX = "false"
 
 [userenv.shared]
 GOOGLE_REDIRECT_URI = "https://ab19153c-024f-4659-a3b1-92ea9524e3c0-00-2d0118focty3z.spock.replit.dev/api/auth/google/calendar/callback"
+INSTAGRAM_REDIRECT_URI = "https://vendorai.replit.app/api/auth/instagram/callback"

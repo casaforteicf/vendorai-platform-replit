@@ -1883,6 +1883,17 @@ export interface SuccessResponse {
   success: boolean;
 }
 
+export interface WhatsappConnection {
+  connected: boolean;
+  id?: string;
+  wabaId?: string;
+  phoneNumberId?: string;
+  businessName?: string;
+  displayPhoneNumber?: string;
+  tokenExpiresAt?: string | null;
+  connectedAt?: string | null;
+}
+
 export interface Partner {
   id: string;
   name: string;
@@ -3819,6 +3830,12 @@ export interface SupermercadoDashboard {
 }
 
 export type InstagramOAuthCallbackParams = {
+code?: string;
+state?: string;
+error?: string;
+};
+
+export type WhatsappOAuthCallbackParams = {
 code?: string;
 state?: string;
 error?: string;

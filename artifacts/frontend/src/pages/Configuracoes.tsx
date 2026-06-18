@@ -42,6 +42,10 @@ import {
   getGetInstagramConnectionStatusQueryKey,
   useDisconnectInstagram,
   useRefreshInstagramToken,
+  useGetWhatsappConnectionStatus,
+  getGetWhatsappConnectionStatusQueryKey,
+  useDisconnectWhatsapp,
+  useRefreshWhatsappToken,
 } from "@workspace/api-client-react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
@@ -1050,6 +1054,65 @@ export default function Configuracoes() {
       {
         onSuccess: () => {
           queryClient.invalidateQueries({ queryKey: getGetInstagramConnectionStatusQueryKey(tenantId ?? "") });
+          toast({ title: "Token renovado com sucesso." });
+        },
+        onError: () => {
+          toast({ title: "Erro ao renovar token.", variant: "destructive" });
+        },
+      }
+    );
+  }
+
+  // ── WhatsApp OAuth connection state ──────────────────────────────────────
+  const waConnection = useGetWhatsappConnectionStatus(tenantId ?? "");
+  const disconnectWa = useDisconnectWhatsapp();
+  const refreshWa = useRefreshWhatsappToken();
+
+  useEffect(() => {
+    const url = new URL(window.location.href);
+    const connected = url.searchParams.get("whatsappConnected");
+    const error = url.searchParams.get("whatsappError");
+    if (connected === "1") {
+      toast({ title: "WhatsApp conectado com sucesso!" });
+      waConnection.refetch();
+      window.history.replaceState({}, "", window.location.pathname);
+    }
+    if (error) {
+      const messages: Record<string, string> = {
+        access_denied: "Permissão negada. Tente novamente.",
+        invalid_state: "Sessão inválida. Tente novamente.",
+        no_waba: "Nenhuma conta WhatsApp Business encontrada.",
+        no_phone: "Nenhum número de telefone encontrado.",
+        exchange_failed: "Erro ao conectar. Tente novamente.",
+      };
+      toast({ title: messages[error] ?? "Erro ao conectar WhatsApp.", variant: "destructive" });
+      window.history.replaceState({}, "", window.location.pathname);
+    }
+  }, [location]);
+
+  function onConnectWhatsapp() {
+    window.location.href = "/api/auth/whatsapp";
+  }
+  function onDisconnectWhatsappOAuth() {
+    disconnectWa.mutate(
+      { tenantId: tenantId ?? "" },
+      {
+        onSuccess: () => {
+          queryClient.invalidateQueries({ queryKey: getGetWhatsappConnectionStatusQueryKey(tenantId ?? "") });
+          toast({ title: "WhatsApp desconectado." });
+        },
+        onError: () => {
+          toast({ title: "Erro ao desconectar WhatsApp.", variant: "destructive" });
+        },
+      }
+    );
+  }
+  function onRefreshWhatsapp() {
+    refreshWa.mutate(
+      { tenantId: tenantId ?? "" },
+      {
+        onSuccess: () => {
+          queryClient.invalidateQueries({ queryKey: getGetWhatsappConnectionStatusQueryKey(tenantId ?? "") });
           toast({ title: "Token renovado com sucesso." });
         },
         onError: () => {
@@ -2122,7 +2185,7 @@ Body:
               </div>
             </div>
 
-            {/* Meta WhatsApp Cloud API */}
+            {/* WhatsApp — OAuth via Meta */}
             <div className="rounded-xl border bg-card p-6 space-y-5">
               <div className="flex items-start justify-between gap-4">
                 <div>
@@ -2131,9 +2194,102 @@ Body:
                     WhatsApp — Meta Cloud API (oficial)
                   </h2>
                   <p className="text-sm text-muted-foreground mt-1">
-                    Integração oficial da Meta. Obtenha as credenciais em{" "}
-                    <strong>developers.facebook.com → seu app → WhatsApp → Configuração da API</strong>.
-                    Não requer instância ativa no celular.
+                    Conecte sua conta WhatsApp Business via Meta OAuth para enviar e receber mensagens diretamente pelo VendorAI.
+                  </p>
+                </div>
+                {waConnection.data?.connected && (
+                  <div className="shrink-0">
+                    <span className="inline-flex items-center gap-1.5 text-xs font-medium bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400 px-2.5 py-1 rounded-full">
+                      <CheckCircle2 className="h-3 w-3" /> Conectado
+                    </span>
+                  </div>
+                )}
+              </div>
+
+              {waConnection.isLoading ? (
+                <div className="space-y-2">
+                  <div className="h-10 bg-muted rounded-md animate-pulse" />
+                </div>
+              ) : waConnection.data?.connected ? (
+                <div className="space-y-4">
+                  <div className="rounded-lg bg-muted/30 border p-4 space-y-2">
+                    <div className="flex items-center gap-2">
+                      <span className="text-sm font-medium">Número:</span>
+                      <span className="text-sm font-semibold text-foreground">{waConnection.data.displayPhoneNumber}</span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <span className="text-sm font-medium">WABA ID:</span>
+                      <code className="text-sm font-mono text-muted-foreground">{waConnection.data.wabaId}</code>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <span className="text-sm font-medium">Phone Number ID:</span>
+                      <code className="text-sm font-mono text-muted-foreground">{waConnection.data.phoneNumberId}</code>
+                    </div>
+                    {waConnection.data.tokenExpiresAt && (
+                      <div className="flex items-center gap-2">
+                        <span className="text-sm font-medium">Token expira em:</span>
+                        <span className="text-sm text-muted-foreground">
+                          {format(new Date(waConnection.data.tokenExpiresAt), "dd/MM/yyyy HH:mm")}
+                        </span>
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="flex items-center gap-3">
+                    <Button
+                      onClick={onConnectWhatsapp}
+                      variant="outline"
+                      className="gap-2"
+                    >
+                      <RefreshCw className="h-4 w-4" />
+                      Reconectar
+                    </Button>
+                    <Button
+                      onClick={onRefreshWhatsapp}
+                      variant="outline"
+                      disabled={refreshWa.isPending}
+                      className="gap-2"
+                    >
+                      <RefreshCw className="h-4 w-4" />
+                      {refreshWa.isPending ? "Renovando…" : "Renovar token"}
+                    </Button>
+                    <Button
+                      variant="outline"
+                      onClick={onDisconnectWhatsappOAuth}
+                      disabled={disconnectWa.isPending}
+                      className="gap-2 text-destructive hover:text-destructive"
+                    >
+                      <Trash2 className="h-4 w-4" />
+                      {disconnectWa.isPending ? "Desconectando…" : "Desconectar"}
+                    </Button>
+                  </div>
+                </div>
+              ) : (
+                <div className="space-y-4">
+                  <p className="text-sm text-muted-foreground">
+                    Clique no botão abaixo para autorizar a conexão com sua conta WhatsApp Business via Meta.
+                  </p>
+                  <Button
+                    onClick={onConnectWhatsapp}
+                    className="gap-2"
+                  >
+                    <MessageCircle className="h-4 w-4" />
+                    Conectar WhatsApp
+                  </Button>
+                </div>
+              )}
+            </div>
+
+            {/* Meta WhatsApp Cloud API — Legacy Manual */}
+            <div className="rounded-xl border bg-card p-6 space-y-5">
+              <div className="flex items-start justify-between gap-4">
+                <div>
+                  <h2 className="font-semibold text-base flex items-center gap-2">
+                    <MessageCircle className="h-4 w-4 text-green-500" />
+                    WhatsApp — Configuração Manual (legado)
+                  </h2>
+                  <p className="text-sm text-muted-foreground mt-1">
+                    Configuração manual das credenciais Meta. Use apenas se o OAuth não estiver disponível.
                   </p>
                 </div>
                 {agentQuery.data?.metaPhoneNumberId && agentQuery.data?.metaAccessToken && (

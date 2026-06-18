@@ -39,6 +39,8 @@ tags:
     description: Instagram Content Generation — Feed, Stories, and Reels scripts
   - name: instagram
     description: Instagram Business OAuth connection and messaging
+  - name: whatsapp
+    description: WhatsApp Business Cloud API connection and messaging
   - name: schedule-hub
     description: Scheduling — agendas and agendamentos
 paths:
@@ -380,6 +382,153 @@ paths:
       responses:
         "302":
           description: Redirect to frontend with success or error
+        "500":
+          description: Internal error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /auth/whatsapp:
+    get:
+      operationId: whatsappOAuthRedirect
+      tags: [whatsapp]
+      summary: Start WhatsApp OAuth flow
+      description: Redirects the user to Meta's WhatsApp Embedded Signup to authorize WhatsApp Business access.
+      security:
+        - bearerAuth: []
+      responses:
+        "302":
+          description: Redirect to Meta WhatsApp Embedded Signup
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /auth/whatsapp/callback:
+    get:
+      operationId: whatsappOAuthCallback
+      tags: [whatsapp]
+      summary: WhatsApp OAuth callback
+      description: Handles the OAuth callback from Meta WhatsApp Embedded Signup, exchanges the code for tokens, and redirects to the frontend.
+      parameters:
+        - name: code
+          in: query
+          schema:
+            type: string
+        - name: state
+          in: query
+          schema:
+            type: string
+        - name: error
+          in: query
+          schema:
+            type: string
+      responses:
+        "302":
+          description: Redirect to frontend with success or error
+        "500":
+          description: Internal error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /tenants/{tenantId}/whatsapp-connection:
+    get:
+      operationId: getWhatsappConnectionStatus
+      tags: [whatsapp]
+      summary: Get WhatsApp connection status
+      description: Returns whether the tenant has an active WhatsApp Business connection.
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: tenantId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: WhatsApp connection status
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WhatsappConnection"
+        "403":
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "500":
+          description: Internal error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+    delete:
+      operationId: disconnectWhatsapp
+      tags: [whatsapp]
+      summary: Disconnect WhatsApp
+      description: Removes the WhatsApp connection for the tenant.
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: tenantId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Disconnected
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SuccessResponse"
+        "403":
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "500":
+          description: Internal error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /tenants/{tenantId}/whatsapp-connection/refresh:
+    post:
+      operationId: refreshWhatsappToken
+      tags: [whatsapp]
+      summary: Refresh WhatsApp token
+      description: Renews the WhatsApp Business Access Token for the tenant.
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: tenantId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Token refreshed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WhatsappConnection"
+        "403":
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
         "500":
           description: Internal error
           content:
@@ -10399,6 +10548,31 @@ components:
       properties:
         success:
           type: boolean
+
+    WhatsappConnection:
+      type: object
+      required: [connected]
+      properties:
+        connected:
+          type: boolean
+        id:
+          type: string
+        wabaId:
+          type: string
+        phoneNumberId:
+          type: string
+        businessName:
+          type: string
+        displayPhoneNumber:
+          type: string
+        tokenExpiresAt:
+          type: string
+          format: date-time
+          nullable: true
+        connectedAt:
+          type: string
+          format: date-time
+          nullable: true
 
     Partner:
       type: object

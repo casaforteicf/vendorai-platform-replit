@@ -51,3 +51,6 @@ export * from "./supermercado_pedidos";
 export * from "./supermercado_campanhas";
 export * from "./generated_sites";
 export * from "./instagram_connections";
+export * from "./whatsapp_connections";
+export * from "./whatsapp_contacts";
+export * from "./whatsapp_messages";

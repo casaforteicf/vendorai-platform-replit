@@ -195,6 +195,70 @@ export const InstagramOAuthCallbackQueryParams = zod.object({
 
 
 /**
+ * Handles the OAuth callback from Meta WhatsApp Embedded Signup, exchanges the code for tokens, and redirects to the frontend.
+ * @summary WhatsApp OAuth callback
+ */
+export const WhatsappOAuthCallbackQueryParams = zod.object({
+  "code": zod.coerce.string().optional(),
+  "state": zod.coerce.string().optional(),
+  "error": zod.coerce.string().optional()
+})
+
+
+/**
+ * Returns whether the tenant has an active WhatsApp Business connection.
+ * @summary Get WhatsApp connection status
+ */
+export const GetWhatsappConnectionStatusParams = zod.object({
+  "tenantId": zod.coerce.string()
+})
+
+export const GetWhatsappConnectionStatusResponse = zod.object({
+  "connected": zod.boolean(),
+  "id": zod.string().optional(),
+  "wabaId": zod.string().optional(),
+  "phoneNumberId": zod.string().optional(),
+  "businessName": zod.string().optional(),
+  "displayPhoneNumber": zod.string().optional(),
+  "tokenExpiresAt": zod.coerce.date().nullish(),
+  "connectedAt": zod.coerce.date().nullish()
+})
+
+
+/**
+ * Removes the WhatsApp connection for the tenant.
+ * @summary Disconnect WhatsApp
+ */
+export const DisconnectWhatsappParams = zod.object({
+  "tenantId": zod.coerce.string()
+})
+
+export const DisconnectWhatsappResponse = zod.object({
+  "success": zod.boolean()
+})
+
+
+/**
+ * Renews the WhatsApp Business Access Token for the tenant.
+ * @summary Refresh WhatsApp token
+ */
+export const RefreshWhatsappTokenParams = zod.object({
+  "tenantId": zod.coerce.string()
+})
+
+export const RefreshWhatsappTokenResponse = zod.object({
+  "connected": zod.boolean(),
+  "id": zod.string().optional(),
+  "wabaId": zod.string().optional(),
+  "phoneNumberId": zod.string().optional(),
+  "businessName": zod.string().optional(),
+  "displayPhoneNumber": zod.string().optional(),
+  "tokenExpiresAt": zod.coerce.date().nullish(),
+  "connectedAt": zod.coerce.date().nullish()
+})
+
+
+/**
  * Returns server health status
  * @summary Health check
  */

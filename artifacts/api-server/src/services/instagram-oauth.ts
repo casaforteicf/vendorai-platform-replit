@@ -6,6 +6,8 @@ const INSTAGRAM_APP_ID = process.env["INSTAGRAM_APP_ID"];
 const INSTAGRAM_APP_SECRET = process.env["INSTAGRAM_APP_SECRET"];
 
 function getRedirectUri(): string {
+  const configured = process.env["INSTAGRAM_REDIRECT_URI"];
+  if (configured) return configured;
   const domain = (process.env["REPLIT_DOMAINS"] ?? "").split(",")[0]?.trim();
   if (domain) return `https://${domain}/api/auth/instagram/callback`;
   return "http://localhost:3000/api/auth/instagram/callback";

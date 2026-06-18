@@ -244,7 +244,9 @@ import type {
   VarejoGrade,
   VarejoPedidoCompra,
   VarejoPedidoCompraItem,
-  VarejoProduto
+  VarejoProduto,
+  WhatsappConnection,
+  WhatsappOAuthCallbackParams
 } from './api.schemas';
 
 import { customFetch } from '../custom-fetch';
@@ -1156,6 +1158,389 @@ export function useInstagramOAuthCallback<TData = Awaited<ReturnType<typeof inst
 
 
 
+
+export const getWhatsappOAuthRedirectUrl = () => {
+
+
+
+
+  return `/api/auth/whatsapp`
+}
+
+/**
+ * Redirects the user to Meta's WhatsApp Embedded Signup to authorize WhatsApp Business access.
+ * @summary Start WhatsApp OAuth flow
+ */
+export const whatsappOAuthRedirect = async ( options?: RequestInit): Promise<unknown> => {
+
+  return customFetch<unknown>(getWhatsappOAuthRedirectUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getWhatsappOAuthRedirectQueryKey = () => {
+    return [
+    `/api/auth/whatsapp`
+    ] as const;
+    }
+
+
+export const getWhatsappOAuthRedirectQueryOptions = <TData = Awaited<ReturnType<typeof whatsappOAuthRedirect>>, TError = ErrorType<void | ErrorResponse>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof whatsappOAuthRedirect>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getWhatsappOAuthRedirectQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof whatsappOAuthRedirect>>> = ({ signal }) => whatsappOAuthRedirect({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof whatsappOAuthRedirect>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type WhatsappOAuthRedirectQueryResult = NonNullable<Awaited<ReturnType<typeof whatsappOAuthRedirect>>>
+export type WhatsappOAuthRedirectQueryError = ErrorType<void | ErrorResponse>
+
+
+/**
+ * @summary Start WhatsApp OAuth flow
+ */
+
+export function useWhatsappOAuthRedirect<TData = Awaited<ReturnType<typeof whatsappOAuthRedirect>>, TError = ErrorType<void | ErrorResponse>>(
+  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof whatsappOAuthRedirect>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getWhatsappOAuthRedirectQueryOptions(options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+
+
+
+
+
+
+export const getWhatsappOAuthCallbackUrl = (params?: WhatsappOAuthCallbackParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : value.toString())
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/api/auth/whatsapp/callback?${stringifiedParams}` : `/api/auth/whatsapp/callback`
+}
+
+/**
+ * Handles the OAuth callback from Meta WhatsApp Embedded Signup, exchanges the code for tokens, and redirects to the frontend.
+ * @summary WhatsApp OAuth callback
+ */
+export const whatsappOAuthCallback = async (params?: WhatsappOAuthCallbackParams, options?: RequestInit): Promise<unknown> => {
+
+  return customFetch<unknown>(getWhatsappOAuthCallbackUrl(params),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getWhatsappOAuthCallbackQueryKey = (params?: WhatsappOAuthCallbackParams,) => {
+    return [
+    `/api/auth/whatsapp/callback`, ...(params ? [params] : [])
+    ] as const;
+    }
+
+
+export const getWhatsappOAuthCallbackQueryOptions = <TData = Awaited<ReturnType<typeof whatsappOAuthCallback>>, TError = ErrorType<void | ErrorResponse>>(params?: WhatsappOAuthCallbackParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof whatsappOAuthCallback>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getWhatsappOAuthCallbackQueryKey(params);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof whatsappOAuthCallback>>> = ({ signal }) => whatsappOAuthCallback(params, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof whatsappOAuthCallback>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type WhatsappOAuthCallbackQueryResult = NonNullable<Awaited<ReturnType<typeof whatsappOAuthCallback>>>
+export type WhatsappOAuthCallbackQueryError = ErrorType<void | ErrorResponse>
+
+
+/**
+ * @summary WhatsApp OAuth callback
+ */
+
+export function useWhatsappOAuthCallback<TData = Awaited<ReturnType<typeof whatsappOAuthCallback>>, TError = ErrorType<void | ErrorResponse>>(
+ params?: WhatsappOAuthCallbackParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof whatsappOAuthCallback>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getWhatsappOAuthCallbackQueryOptions(params,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+
+
+
+
+
+
+export const getGetWhatsappConnectionStatusUrl = (tenantId: string,) => {
+
+
+
+
+  return `/api/tenants/${tenantId}/whatsapp-connection`
+}
+
+/**
+ * Returns whether the tenant has an active WhatsApp Business connection.
+ * @summary Get WhatsApp connection status
+ */
+export const getWhatsappConnectionStatus = async (tenantId: string, options?: RequestInit): Promise<WhatsappConnection> => {
+
+  return customFetch<WhatsappConnection>(getGetWhatsappConnectionStatusUrl(tenantId),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetWhatsappConnectionStatusQueryKey = (tenantId: string,) => {
+    return [
+    `/api/tenants/${tenantId}/whatsapp-connection`
+    ] as const;
+    }
+
+
+export const getGetWhatsappConnectionStatusQueryOptions = <TData = Awaited<ReturnType<typeof getWhatsappConnectionStatus>>, TError = ErrorType<ErrorResponse>>(tenantId: string, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getWhatsappConnectionStatus>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetWhatsappConnectionStatusQueryKey(tenantId);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getWhatsappConnectionStatus>>> = ({ signal }) => getWhatsappConnectionStatus(tenantId, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, enabled: !!(tenantId), ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getWhatsappConnectionStatus>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetWhatsappConnectionStatusQueryResult = NonNullable<Awaited<ReturnType<typeof getWhatsappConnectionStatus>>>
+export type GetWhatsappConnectionStatusQueryError = ErrorType<ErrorResponse>
+
+
+/**
+ * @summary Get WhatsApp connection status
+ */
+
+export function useGetWhatsappConnectionStatus<TData = Awaited<ReturnType<typeof getWhatsappConnectionStatus>>, TError = ErrorType<ErrorResponse>>(
+ tenantId: string, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getWhatsappConnectionStatus>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetWhatsappConnectionStatusQueryOptions(tenantId,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+
+
+
+
+
+
+export const getDisconnectWhatsappUrl = (tenantId: string,) => {
+
+
+
+
+  return `/api/tenants/${tenantId}/whatsapp-connection`
+}
+
+/**
+ * Removes the WhatsApp connection for the tenant.
+ * @summary Disconnect WhatsApp
+ */
+export const disconnectWhatsapp = async (tenantId: string, options?: RequestInit): Promise<SuccessResponse> => {
+
+  return customFetch<SuccessResponse>(getDisconnectWhatsappUrl(tenantId),
+  {
+    ...options,
+    method: 'DELETE'
+
+
+  }
+);}
+
+
+
+
+export const getDisconnectWhatsappMutationOptions = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof disconnectWhatsapp>>, TError,{tenantId: string}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof disconnectWhatsapp>>, TError,{tenantId: string}, TContext> => {
+
+const mutationKey = ['disconnectWhatsapp'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof disconnectWhatsapp>>, {tenantId: string}> = (props) => {
+          const {tenantId} = props ?? {};
+
+          return  disconnectWhatsapp(tenantId,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type DisconnectWhatsappMutationResult = NonNullable<Awaited<ReturnType<typeof disconnectWhatsapp>>>
+
+    export type DisconnectWhatsappMutationError = ErrorType<ErrorResponse>
+
+    /**
+ * @summary Disconnect WhatsApp
+ */
+export const useDisconnectWhatsapp = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof disconnectWhatsapp>>, TError,{tenantId: string}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof disconnectWhatsapp>>,
+        TError,
+        {tenantId: string},
+        TContext
+      > => {
+      return useMutation(getDisconnectWhatsappMutationOptions(options));
+    }
+
+export const getRefreshWhatsappTokenUrl = (tenantId: string,) => {
+
+
+
+
+  return `/api/tenants/${tenantId}/whatsapp-connection/refresh`
+}
+
+/**
+ * Renews the WhatsApp Business Access Token for the tenant.
+ * @summary Refresh WhatsApp token
+ */
+export const refreshWhatsappToken = async (tenantId: string, options?: RequestInit): Promise<WhatsappConnection> => {
+
+  return customFetch<WhatsappConnection>(getRefreshWhatsappTokenUrl(tenantId),
+  {
+    ...options,
+    method: 'POST'
+
+
+  }
+);}
+
+
+
+
+export const getRefreshWhatsappTokenMutationOptions = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof refreshWhatsappToken>>, TError,{tenantId: string}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof refreshWhatsappToken>>, TError,{tenantId: string}, TContext> => {
+
+const mutationKey = ['refreshWhatsappToken'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof refreshWhatsappToken>>, {tenantId: string}> = (props) => {
+          const {tenantId} = props ?? {};
+
+          return  refreshWhatsappToken(tenantId,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type RefreshWhatsappTokenMutationResult = NonNullable<Awaited<ReturnType<typeof refreshWhatsappToken>>>
+
+    export type RefreshWhatsappTokenMutationError = ErrorType<ErrorResponse>
+
+    /**
+ * @summary Refresh WhatsApp token
+ */
+export const useRefreshWhatsappToken = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof refreshWhatsappToken>>, TError,{tenantId: string}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof refreshWhatsappToken>>,
+        TError,
+        {tenantId: string},
+        TContext
+      > => {
+      return useMutation(getRefreshWhatsappTokenMutationOptions(options));
+    }
 
 export const getHealthCheckUrl = () => {
 

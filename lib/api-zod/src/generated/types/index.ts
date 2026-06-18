@@ -393,3 +393,5 @@ export * from './varejoPedidoCompraStatus';
 export * from './varejoProduto';
 export * from './varejoProdutoCategoria';
 export * from './varejoProdutoGenero';
+export * from './whatsappConnection';
+export * from './whatsappOAuthCallbackParams';
