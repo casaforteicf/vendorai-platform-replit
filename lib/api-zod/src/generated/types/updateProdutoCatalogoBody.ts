@@ -5,6 +5,7 @@
  * API specification
  * OpenAPI spec version: 0.1.0
  */
+import type { UpdateProdutoCatalogoBodyRecorrencia } from './updateProdutoCatalogoBodyRecorrencia';
 
 export interface UpdateProdutoCatalogoBody {
   nome?: string;
@@ -15,4 +16,8 @@ export interface UpdateProdutoCatalogoBody {
   unidade?: string;
   ativo?: boolean;
   imagemUrl?: string;
+  /** Recurrence type — "mensal" for monthly service, null for one-time */
+  recorrencia?: UpdateProdutoCatalogoBodyRecorrencia;
+  /** Contract term in months */
+  prazoContrato?: number | null;
 }

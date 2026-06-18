@@ -8237,6 +8237,15 @@ components:
           type: string
           nullable: true
           description: Product image URL
+        recorrencia:
+          type: string
+          nullable: true
+          enum: [mensal]
+          description: Recurrence type — "mensal" for monthly service, null for one-time
+        prazoContrato:
+          type: integer
+          nullable: true
+          description: Contract term in months (e.g. 12 for annual contract)
         createdAt:
           type: string
           format: date-time
@@ -8270,6 +8279,15 @@ components:
         imagemUrl:
           type: string
           description: Product image URL
+        recorrencia:
+          type: string
+          nullable: true
+          enum: [mensal]
+          description: Recurrence type — "mensal" for monthly service, null for one-time
+        prazoContrato:
+          type: integer
+          nullable: true
+          description: Contract term in months
       required: [tenantId, nome, precoBase]
 
     UpdateProdutoCatalogoBody:
@@ -8293,6 +8311,15 @@ components:
           type: boolean
         imagemUrl:
           type: string
+        recorrencia:
+          type: string
+          nullable: true
+          enum: [mensal]
+          description: Recurrence type — "mensal" for monthly service, null for one-time
+        prazoContrato:
+          type: integer
+          nullable: true
+          description: Contract term in months
 
     ImportProdutosCatalogoBody:
       type: object

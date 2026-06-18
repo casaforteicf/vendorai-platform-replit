@@ -2685,7 +2685,9 @@ export const CreateProdutoCatalogoBody = zod.object({
   "precoBase": zod.union([zod.string(),zod.number()]).describe('Decimal price (e.g. 99.90 or \"99.90\")'),
   "unidade": zod.string().optional(),
   "ativo": zod.boolean().optional(),
-  "imagemUrl": zod.string().optional().describe('Product image URL')
+  "imagemUrl": zod.string().optional().describe('Product image URL'),
+  "recorrencia": zod.enum(['mensal']).nullish().describe('Recurrence type — \"mensal\" for monthly service, null for one-time'),
+  "prazoContrato": zod.number().nullish().describe('Contract term in months')
 })
 
 
@@ -2727,6 +2729,8 @@ export const ListProdutosCatalogoResponseItem = zod.object({
   "unidade": zod.string().describe('Unit of measure (e.g. \"un\", \"m2\", \"kg\")'),
   "ativo": zod.boolean(),
   "imagemUrl": zod.string().nullish().describe('Product image URL'),
+  "recorrencia": zod.enum(['mensal']).nullish().describe('Recurrence type — \"mensal\" for monthly service, null for one-time'),
+  "prazoContrato": zod.number().nullish().describe('Contract term in months (e.g. 12 for annual contract)'),
   "createdAt": zod.coerce.date(),
   "updatedAt": zod.coerce.date()
 })
@@ -2751,6 +2755,8 @@ export const GetProdutoCatalogoResponse = zod.object({
   "unidade": zod.string().describe('Unit of measure (e.g. \"un\", \"m2\", \"kg\")'),
   "ativo": zod.boolean(),
   "imagemUrl": zod.string().nullish().describe('Product image URL'),
+  "recorrencia": zod.enum(['mensal']).nullish().describe('Recurrence type — \"mensal\" for monthly service, null for one-time'),
+  "prazoContrato": zod.number().nullish().describe('Contract term in months (e.g. 12 for annual contract)'),
   "createdAt": zod.coerce.date(),
   "updatedAt": zod.coerce.date()
 })
@@ -2771,7 +2777,9 @@ export const UpdateProdutoCatalogoBody = zod.object({
   "precoBase": zod.union([zod.string(),zod.number()]).optional(),
   "unidade": zod.string().optional(),
   "ativo": zod.boolean().optional(),
-  "imagemUrl": zod.string().optional()
+  "imagemUrl": zod.string().optional(),
+  "recorrencia": zod.enum(['mensal']).nullish().describe('Recurrence type — \"mensal\" for monthly service, null for one-time'),
+  "prazoContrato": zod.number().nullish().describe('Contract term in months')
 })
 
 export const UpdateProdutoCatalogoResponse = zod.object({
@@ -2785,6 +2793,8 @@ export const UpdateProdutoCatalogoResponse = zod.object({
   "unidade": zod.string().describe('Unit of measure (e.g. \"un\", \"m2\", \"kg\")'),
   "ativo": zod.boolean(),
   "imagemUrl": zod.string().nullish().describe('Product image URL'),
+  "recorrencia": zod.enum(['mensal']).nullish().describe('Recurrence type — \"mensal\" for monthly service, null for one-time'),
+  "prazoContrato": zod.number().nullish().describe('Contract term in months (e.g. 12 for annual contract)'),
   "createdAt": zod.coerce.date(),
   "updatedAt": zod.coerce.date()
 })

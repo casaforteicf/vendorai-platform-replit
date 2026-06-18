@@ -74,6 +74,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { Switch } from "@/components/ui/switch";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -151,6 +152,8 @@ const catFormSchema = z.object({
   descricao: z.string().optional(),
   imagemUrl: z.string().url("URL inválida").optional().or(z.literal("")),
   ativo: z.boolean().default(true),
+  recorrente: z.boolean().default(false),
+  prazoContrato: z.coerce.number().int().min(1).optional(),
 });
 type CatFormValues = z.infer<typeof catFormSchema>;
 
@@ -207,12 +210,14 @@ function CatalogoModal({
 
   const form = useForm<CatFormValues>({
     resolver: zodResolver(catFormSchema),
-    defaultValues: { nome: "", categoria: "", precoBase: 0, unidade: "un", descricao: "", imagemUrl: "", ativo: true },
+    defaultValues: { nome: "", categoria: "", precoBase: 0, unidade: "un", descricao: "", imagemUrl: "", ativo: true, recorrente: false, prazoContrato: undefined },
   });
+
+  const watchRecorrente = form.watch("recorrente");
 
   function openCreate() {
     setEditingProd(null);
-    form.reset({ nome: "", categoria: "", precoBase: 0, unidade: "un", descricao: "", imagemUrl: "", ativo: true });
+    form.reset({ nome: "", categoria: "", precoBase: 0, unidade: "un", descricao: "", imagemUrl: "", ativo: true, recorrente: false, prazoContrato: undefined });
     setFormOpen(true);
   }
 
@@ -226,6 +231,8 @@ function CatalogoModal({
       descricao: p.descricao ?? "",
       imagemUrl: p.imagemUrl ?? "",
       ativo: p.ativo,
+      recorrente: p.recorrencia === "mensal",
+      prazoContrato: p.prazoContrato ?? undefined,
     });
     setFormOpen(true);
   }
@@ -236,9 +243,15 @@ function CatalogoModal({
 
   function onSubmit(vals: CatFormValues) {
     const body = {
-      ...vals,
+      nome: vals.nome,
+      categoria: vals.categoria || undefined,
       precoBase: vals.precoBase.toFixed(2),
+      unidade: vals.unidade,
+      descricao: vals.descricao || undefined,
       imagemUrl: vals.imagemUrl || undefined,
+      ativo: vals.ativo,
+      recorrencia: vals.recorrente ? ("mensal" as const) : null,
+      prazoContrato: vals.recorrente ? (vals.prazoContrato ?? null) : null,
     };
     if (editingProd) {
       updateMut.mutate(
@@ -369,7 +382,7 @@ function CatalogoModal({
                   <TableHead>Nome</TableHead>
                   <TableHead>Categoria</TableHead>
                   <TableHead>Preço Base</TableHead>
-                  <TableHead>Unidade</TableHead>
+                  <TableHead>Recorrência</TableHead>
                   <TableHead>Ativo</TableHead>
                   <TableHead className="w-10" />
                 </TableRow>
@@ -396,8 +409,26 @@ function CatalogoModal({
                       {p.sku && <div className="text-xs text-muted-foreground">SKU: {p.sku}</div>}
                     </TableCell>
                     <TableCell className="text-muted-foreground">{p.categoria ?? "—"}</TableCell>
-                    <TableCell className="font-mono">{fmtCurrency(p.precoBase)}</TableCell>
-                    <TableCell className="text-muted-foreground">{p.unidade}</TableCell>
+                    <TableCell>
+                      <div className="font-mono">{fmtCurrency(p.precoBase)}</div>
+                      {p.recorrencia === "mensal" && (
+                        <div className="text-xs text-muted-foreground">/mês</div>
+                      )}
+                    </TableCell>
+                    <TableCell>
+                      {p.recorrencia === "mensal" ? (
+                        <div>
+                          <Badge variant="outline" className="bg-violet-50 text-violet-700 border-violet-200 text-xs">
+                            Mensal
+                          </Badge>
+                          {p.prazoContrato && (
+                            <div className="text-xs text-muted-foreground mt-0.5">{p.prazoContrato} {p.prazoContrato === 1 ? "mês" : "meses"}</div>
+                          )}
+                        </div>
+                      ) : (
+                        <span className="text-muted-foreground text-xs">Avulso</span>
+                      )}
+                    </TableCell>
                     <TableCell>
                       <Badge variant="outline" className={p.ativo ? "bg-emerald-50 text-emerald-700 border-emerald-200" : "bg-zinc-100 text-zinc-500 border-zinc-200"}>
                         {p.ativo ? "Sim" : "Não"}
@@ -469,6 +500,42 @@ function CatalogoModal({
                   )}
                 </FormItem>
               )} />
+
+              {/* Recorrência mensal */}
+              <div className="rounded-lg border border-border p-3 space-y-3">
+                <FormField control={form.control} name="recorrente" render={({ field }) => (
+                  <FormItem>
+                    <div className="flex items-center justify-between gap-2">
+                      <div>
+                        <FormLabel className="text-sm font-medium">Serviço recorrente mensal</FormLabel>
+                        <p className="text-xs text-muted-foreground mt-0.5">Ativar quando o produto é cobrado mensalmente</p>
+                      </div>
+                      <FormControl>
+                        <Switch checked={field.value} onCheckedChange={field.onChange} />
+                      </FormControl>
+                    </div>
+                  </FormItem>
+                )} />
+                {watchRecorrente && (
+                  <FormField control={form.control} name="prazoContrato" render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Prazo do contrato <span className="text-muted-foreground text-xs">(meses)</span></FormLabel>
+                      <FormControl>
+                        <Input
+                          type="number"
+                          min="1"
+                          placeholder="Ex: 12"
+                          {...field}
+                          value={field.value ?? ""}
+                          onChange={(e) => field.onChange(e.target.value === "" ? undefined : parseInt(e.target.value, 10))}
+                        />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )} />
+                )}
+              </div>
+
               <div className="flex gap-2 pt-1">
                 <Button type="button" variant="outline" className="flex-1" onClick={() => setFormOpen(false)}>Cancelar</Button>
                 <Button type="submit" className="flex-1" disabled={isSaving}>

@@ -5,6 +5,7 @@
  * API specification
  * OpenAPI spec version: 0.1.0
  */
+import type { CreateProdutoCatalogoBodyRecorrencia } from './createProdutoCatalogoBodyRecorrencia';
 
 export interface CreateProdutoCatalogoBody {
   tenantId: string;
@@ -18,4 +19,8 @@ export interface CreateProdutoCatalogoBody {
   ativo?: boolean;
   /** Product image URL */
   imagemUrl?: string;
+  /** Recurrence type — "mensal" for monthly service, null for one-time */
+  recorrencia?: CreateProdutoCatalogoBodyRecorrencia;
+  /** Contract term in months */
+  prazoContrato?: number | null;
 }

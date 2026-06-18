@@ -646,6 +646,16 @@ export interface AgendamentoDisponibilidade {
   conflitos: Agendamento[];
 }
 
+/**
+ * Recurrence type — "mensal" for monthly service, null for one-time
+ */
+export type ProdutoCatalogoRecorrencia = typeof ProdutoCatalogoRecorrencia[keyof typeof ProdutoCatalogoRecorrencia] | null;
+
+
+export const ProdutoCatalogoRecorrencia = {
+  mensal: 'mensal',
+} as const;
+
 export interface ProdutoCatalogo {
   id: string;
   tenantId: string;
@@ -660,9 +670,23 @@ export interface ProdutoCatalogo {
   ativo: boolean;
   /** Product image URL */
   imagemUrl?: string | null;
+  /** Recurrence type — "mensal" for monthly service, null for one-time */
+  recorrencia?: ProdutoCatalogoRecorrencia;
+  /** Contract term in months (e.g. 12 for annual contract) */
+  prazoContrato?: number | null;
   createdAt: string;
   updatedAt: string;
 }
+
+/**
+ * Recurrence type — "mensal" for monthly service, null for one-time
+ */
+export type CreateProdutoCatalogoBodyRecorrencia = typeof CreateProdutoCatalogoBodyRecorrencia[keyof typeof CreateProdutoCatalogoBodyRecorrencia] | null;
+
+
+export const CreateProdutoCatalogoBodyRecorrencia = {
+  mensal: 'mensal',
+} as const;
 
 export interface CreateProdutoCatalogoBody {
   tenantId: string;
@@ -676,7 +700,21 @@ export interface CreateProdutoCatalogoBody {
   ativo?: boolean;
   /** Product image URL */
   imagemUrl?: string;
+  /** Recurrence type — "mensal" for monthly service, null for one-time */
+  recorrencia?: CreateProdutoCatalogoBodyRecorrencia;
+  /** Contract term in months */
+  prazoContrato?: number | null;
 }
+
+/**
+ * Recurrence type — "mensal" for monthly service, null for one-time
+ */
+export type UpdateProdutoCatalogoBodyRecorrencia = typeof UpdateProdutoCatalogoBodyRecorrencia[keyof typeof UpdateProdutoCatalogoBodyRecorrencia] | null;
+
+
+export const UpdateProdutoCatalogoBodyRecorrencia = {
+  mensal: 'mensal',
+} as const;
 
 export interface UpdateProdutoCatalogoBody {
   nome?: string;
@@ -687,6 +725,10 @@ export interface UpdateProdutoCatalogoBody {
   unidade?: string;
   ativo?: boolean;
   imagemUrl?: string;
+  /** Recurrence type — "mensal" for monthly service, null for one-time */
+  recorrencia?: UpdateProdutoCatalogoBodyRecorrencia;
+  /** Contract term in months */
+  prazoContrato?: number | null;
 }
 
 export interface ImportProdutosCatalogoBody {

@@ -1,4 +1,4 @@
-import { pgTable, text, timestamp, boolean, numeric } from "drizzle-orm/pg-core";
+import { pgTable, text, timestamp, boolean, numeric, integer } from "drizzle-orm/pg-core";
 import { createInsertSchema, createSelectSchema } from "drizzle-zod";
 import { z } from "zod/v4";
 import { tenantsTable } from "./tenants";
@@ -18,6 +18,8 @@ export const produtosCatalogoTable = pgTable("produtos_catalogo", {
   unidade: text("unidade").notNull().default("un"),
   ativo: boolean("ativo").notNull().default(true),
   imagemUrl: text("imagem_url"),
+  recorrencia: text("recorrencia"),
+  prazoContrato: integer("prazo_contrato"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
 });

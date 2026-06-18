@@ -5,6 +5,7 @@
  * API specification
  * OpenAPI spec version: 0.1.0
  */
+import type { ProdutoCatalogoRecorrencia } from './produtoCatalogoRecorrencia';
 
 export interface ProdutoCatalogo {
   id: string;
@@ -20,6 +21,10 @@ export interface ProdutoCatalogo {
   ativo: boolean;
   /** Product image URL */
   imagemUrl?: string | null;
+  /** Recurrence type — "mensal" for monthly service, null for one-time */
+  recorrencia?: ProdutoCatalogoRecorrencia;
+  /** Contract term in months (e.g. 12 for annual contract) */
+  prazoContrato?: number | null;
   createdAt: Date;
   updatedAt: Date;
 }
