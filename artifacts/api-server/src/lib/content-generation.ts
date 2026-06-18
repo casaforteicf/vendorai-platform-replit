@@ -1,4 +1,5 @@
 import { getOpenAI } from "./agent-engine.js";
+import { ObjectStorageService } from "./objectStorage.js";
 import type {
   FeedVariation,
   StoriesVariation,
@@ -48,42 +49,69 @@ function verticalHints(vertical: string | null | undefined): string {
   return "";
 }
 
+const IMAGE_MODELS_PRIORITY = [
+  "dall-e-3",
+  "gpt-image-1",
+  "chatgpt-image-latest",
+  "dall-e-2",
+];
+
 export async function generateImageForContent(
   profile: TenantProfile,
   theme: string,
   productName: string | undefined,
   format: "feed" | "stories"
-): Promise<string | undefined> {
-  try {
-    const openai = getOpenAI();
-    const brand = profile.nomeFantasia || "a empresa";
-    const subject = productName ? `${productName} — ${theme}` : theme;
-    const v = profile.vertical ?? "";
-    let styleHint = "clean, modern, professional marketing photography";
-    if (v.includes("Varejo") || v.includes("Moda") || v.includes("Roupa")) {
-      styleHint = "fashion editorial photography, stylish, trendy, well-lit studio or lifestyle setting";
-    } else if (v.includes("Supermercado") || v.includes("Mercado")) {
-      styleHint = "bright food photography, fresh produce, appetizing, commercial supermarket style";
-    } else if (v.includes("Construção") || v.includes("Reforma")) {
-      styleHint = "professional construction/renovation photography, high quality materials, clean workspace";
-    }
-
-    const formatLabel = format === "stories" ? "Stories (vertical format)" : "Feed (square format)";
-    const imagePrompt = `Professional marketing image for the Instagram ${formatLabel} of the brand "${brand}". Theme: ${subject}. Style: ${styleHint}. High quality, visually appealing, suitable for a business Instagram profile. No text overlays. No watermarks. Bright, well-lit, commercial photography aesthetic.`;
-
-    const response = await openai.images.generate({
-      model: "dall-e-3",
-      prompt: imagePrompt,
-      n: 1,
-      size: "1024x1024",
-      quality: "standard",
-    });
-
-    return response.data?.[0]?.url ?? undefined;
-  } catch (err) {
-    console.error("[content-generation] image generation failed:", err instanceof Error ? err.message : err);
-    return undefined;
+): Promise<string> {
+  const openai = getOpenAI();
+  const brand = profile.nomeFantasia || "a empresa";
+  const subject = productName ? `${productName} — ${theme}` : theme;
+  const v = profile.vertical ?? "";
+  let styleHint = "clean, modern, professional marketing photography";
+  if (v.includes("Varejo") || v.includes("Moda") || v.includes("Roupa")) {
+    styleHint = "fashion editorial photography, stylish, trendy, well-lit studio or lifestyle setting";
+  } else if (v.includes("Supermercado") || v.includes("Mercado")) {
+    styleHint = "bright food photography, fresh produce, appetizing, commercial supermarket style";
+  } else if (v.includes("Construção") || v.includes("Reforma")) {
+    styleHint = "professional construction/renovation photography, high quality materials, clean workspace";
   }
+
+  const formatLabel = format === "stories" ? "Stories (vertical format)" : "Feed (square format)";
+  const imagePrompt = `Professional marketing image for the Instagram ${formatLabel} of the brand "${brand}". Theme: ${subject}. Style: ${styleHint}. High quality, visually appealing, suitable for a business Instagram profile. No text overlays. No watermarks. Bright, well-lit, commercial photography aesthetic.`;
+
+  let lastError: unknown;
+  for (const model of IMAGE_MODELS_PRIORITY) {
+    try {
+      const response = await openai.images.generate({
+        model,
+        prompt: imagePrompt,
+        n: 1,
+        size: "1024x1024",
+        ...(model === "dall-e-3" ? { quality: "standard" } : {}),
+      } as Parameters<typeof openai.images.generate>[0]);
+
+      // Some models (gpt-image-1) return b64_json — upload to object storage
+      const item = response.data?.[0];
+      if (!item) continue;
+
+      if ("url" in item && item.url) {
+        return item.url;
+      }
+
+      if ("b64_json" in item && item.b64_json) {
+        const buf = Buffer.from(item.b64_json, "base64");
+        const storage = new ObjectStorageService();
+        const objectPath = await storage.savePrivateBuffer(buf, "image/png", `${crypto.randomUUID()}.png`);
+        // objectPath = /objects/quotes/uuid.png → serve via /api/storage/objects/quotes/uuid.png
+        const servePath = objectPath.replace(/^\/objects\//, "");
+        return `/api/storage/objects/${servePath}`;
+      }
+    } catch (err) {
+      lastError = err;
+      // Try next model
+    }
+  }
+
+  throw lastError ?? new Error("Nenhum modelo de imagem disponível retornou resultado");
 }
 
 export async function generateFeedContent(
