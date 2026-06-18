@@ -5096,8 +5096,12 @@ export const GenerateContentParams = zod.object({
   "tenantId": zod.coerce.string()
 })
 
+export const generateContentBodyProductSourceDefault = `catalog`;
 export const generateContentBodyVariationsDefault = 2;
 export const generateContentBodyVariationsMax = 3;
+
+export const generateContentBodyImageCountDefault = 2;
+export const generateContentBodyImageCountMax = 10;
 
 
 
@@ -5105,7 +5109,10 @@ export const GenerateContentBody = zod.object({
   "type": zod.enum(['feed', 'stories', 'reels']),
   "theme": zod.string(),
   "productId": zod.string().nullish(),
-  "variations": zod.number().min(1).max(generateContentBodyVariationsMax).default(generateContentBodyVariationsDefault)
+  "productSource": zod.enum(['catalog', 'varejo', 'supermercado', 'insumo']).default(generateContentBodyProductSourceDefault),
+  "variations": zod.number().min(1).max(generateContentBodyVariationsMax).default(generateContentBodyVariationsDefault),
+  "imageCount": zod.number().min(1).max(generateContentBodyImageCountMax).default(generateContentBodyImageCountDefault),
+  "imageUrl": zod.string().nullish()
 })
 
 export const GenerateContentResponse = zod.object({
@@ -5132,6 +5139,37 @@ export const GenerateContentResponse = zod.object({
 }),
   "tokensUsed": zod.number(),
   "createdAt": zod.coerce.date()
+})
+
+
+/**
+ * @summary Generate a content strategy from a simple command
+ */
+export const GenerateContentStrategyParams = zod.object({
+  "tenantId": zod.coerce.string()
+})
+
+export const generateContentStrategyBodyContentTypeDefault = `feed`;
+export const generateContentStrategyBodyVariationsDefault = 3;
+export const generateContentStrategyBodyVariationsMax = 5;
+
+
+
+export const GenerateContentStrategyBody = zod.object({
+  "command": zod.string(),
+  "contentType": zod.enum(['feed', 'stories', 'reels']).default(generateContentStrategyBodyContentTypeDefault),
+  "variations": zod.number().min(1).max(generateContentStrategyBodyVariationsMax).default(generateContentStrategyBodyVariationsDefault)
+})
+
+export const GenerateContentStrategyResponse = zod.object({
+  "strategy": zod.string(),
+  "prompts": zod.array(zod.string()),
+  "headlines": zod.array(zod.string()),
+  "ctas": zod.array(zod.string()),
+  "captions": zod.array(zod.string()),
+  "hashtags": zod.array(zod.string()),
+  "approaches": zod.array(zod.string()),
+  "visualStyle": zod.string().optional()
 })
 
 

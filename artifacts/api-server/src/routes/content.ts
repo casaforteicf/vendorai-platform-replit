@@ -16,7 +16,9 @@ import {
   generateFeedContent,
   generateStoriesContent,
   generateReelsScript,
-  generateImageForContent,
+  generateImagesForContent,
+  generateContentStrategy,
+  describeImage,
 } from "../lib/content-generation.js";
 import { publishFeedPost, publishStoriesPost } from "../lib/instagram-publish.js";
 import type { FeedVariation, StoriesVariation } from "@workspace/db";
@@ -35,6 +37,7 @@ const generateBodySchema = z.object({
   productId: z.string().optional().nullable(),
   productSource: z.enum(["catalog", "varejo", "supermercado", "insumo"]).optional().default("catalog"),
   variations: z.coerce.number().int().min(1).max(3).default(2),
+  imageCount: z.coerce.number().int().min(1).max(10).default(2),
   imageUrl: z.string().optional().nullable(),
 });
 
@@ -92,7 +95,7 @@ router.post("/tenants/:tenantId/content/generate", async (req, res) => {
     return;
   }
 
-  const { type, theme, productId, productSource, variations, imageUrl } = parsed.data;
+  const { type, theme, productId, productSource, variations, imageCount, imageUrl } = parsed.data;
 
   const { used, limit, configId } = await getMonthlyUsage(tenantId);
   if (used >= limit) {
@@ -158,9 +161,9 @@ router.post("/tenants/:tenantId/content/generate", async (req, res) => {
   let result: { result: { variations: unknown[] }; tokensUsed: number };
   try {
     if (type === "feed") {
-      result = await generateFeedContent(profile ?? {}, theme, productName, variations, productExtra);
+      result = await generateFeedContent(profile ?? {}, theme, productName, variations, imageCount, productExtra);
     } else if (type === "stories") {
-      result = await generateStoriesContent(profile ?? {}, theme, productName, variations, productExtra);
+      result = await generateStoriesContent(profile ?? {}, theme, productName, variations, imageCount, productExtra);
     } else {
       result = await generateReelsScript(profile ?? {}, theme, productName, variations, productExtra);
     }
@@ -201,6 +204,47 @@ router.post("/tenants/:tenantId/content/generate", async (req, res) => {
   }
 
   res.json(saved);
+});
+
+const strategyBodySchema = z.object({
+  command: z.string().min(3, "Descreva o comando (mín. 3 caracteres)"),
+  contentType: z.enum(["feed", "stories", "reels"]).default("feed"),
+  variations: z.coerce.number().int().min(1).max(5).default(3),
+});
+
+router.post("/tenants/:tenantId/content/strategy", async (req, res) => {
+  const tenantId = String(req.params["tenantId"]);
+
+  if (req.user?.platformRole !== "super_admin" && req.user?.tenantId !== tenantId) {
+    res.status(403).json({ error: "Acesso negado" });
+    return;
+  }
+
+  const parsed = strategyBodySchema.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(422).json({ error: parsed.error.message });
+    return;
+  }
+
+  const { command, contentType, variations } = parsed.data;
+
+  const [profile] = await db
+    .select()
+    .from(businessProfilesTable)
+    .where(eq(businessProfilesTable.tenantId, tenantId));
+
+  try {
+    const { strategy } = await generateContentStrategy(
+      profile ?? {},
+      command,
+      contentType,
+      variations,
+    );
+    res.json(strategy);
+  } catch (err) {
+    req.log.error({ err }, "content strategy generation failed");
+    res.status(500).json({ error: "Falha na geração de estratégia. Tente novamente." });
+  }
 });
 
 router.get("/tenants/:tenantId/content", async (req, res) => {
@@ -265,12 +309,14 @@ router.post("/tenants/:tenantId/content/:contentId/variations/:idx/generate-imag
   const format = gen.type === "stories" ? "stories" : "feed";
   let imageUrl: string | undefined;
   try {
-    imageUrl = await generateImageForContent(
+    const imageUrls = await generateImagesForContent(
       profile ?? {},
       gen.theme,
       gen.productName ?? undefined,
       format,
+      1,
     );
+    imageUrl = imageUrls[0];
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : "Falha ao gerar imagem";
     res.status(502).json({ error: `Erro ao gerar imagem: ${msg}` });
@@ -420,6 +466,98 @@ router.delete("/tenants/:tenantId/content/:id", async (req, res) => {
     );
 
   res.json({ success: true });
+});
+
+// POST /tenants/:tenantId/content/describe-image — descreve imagem com GPT-4o Vision
+router.post("/tenants/:tenantId/content/describe-image", async (req, res) => {
+  const tenantId = String(req.params["tenantId"]);
+
+  if (req.user?.platformRole !== "super_admin" && req.user?.tenantId !== tenantId) {
+    res.status(403).json({ error: "Acesso negado" });
+    return;
+  }
+
+  const bodySchema = z.object({ imageUrl: z.string().min(1) });
+  const parsed = bodySchema.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(422).json({ error: parsed.error.message });
+    return;
+  }
+
+  try {
+    const description = await describeImage(parsed.data.imageUrl);
+    res.json({ description });
+  } catch (err) {
+    req.log.error({ err }, "describe-image failed");
+    res.status(500).json({ error: "Falha ao descrever imagem" });
+  }
+});
+
+// POST /tenants/:tenantId/content/:contentId/variations/:idx/regenerate-image — regenera com estilo
+router.post("/tenants/:tenantId/content/:contentId/variations/:idx/regenerate-image", async (req, res) => {
+  const tenantId = String(req.params["tenantId"]);
+  const contentId = String(req.params["contentId"]);
+  const idx = parseInt(String(req.params["idx"]), 10);
+
+  if (req.user?.platformRole !== "super_admin" && req.user?.tenantId !== tenantId) {
+    res.status(403).json({ error: "Acesso negado" });
+    return;
+  }
+
+  const bodySchema = z.object({
+    style: z.string().optional(),
+    imageCount: z.coerce.number().int().min(1).max(10).default(1),
+  });
+  const body = bodySchema.safeParse(req.body);
+  if (!body.success) {
+    res.status(422).json({ error: body.error.message });
+    return;
+  }
+
+  const [gen] = await db
+    .select()
+    .from(contentGenerationsTable)
+    .where(and(eq(contentGenerationsTable.id, contentId), eq(contentGenerationsTable.tenantId, tenantId)))
+    .limit(1);
+
+  if (!gen) { res.status(404).json({ error: "Conteúdo não encontrado" }); return; }
+  if (gen.type === "reels") { res.status(400).json({ error: "Reels não suportam geração de imagem" }); return; }
+
+  const [profile] = await db
+    .select()
+    .from(businessProfilesTable)
+    .where(eq(businessProfilesTable.tenantId, tenantId));
+
+  const format = gen.type === "stories" ? "stories" : "feed";
+  try {
+    const imageUrls = await generateImagesForContent(
+      profile ?? {},
+      gen.theme,
+      gen.productName ?? undefined,
+      format,
+      body.data.imageCount,
+      body.data.style,
+    );
+
+    const variations = [...gen.result.variations] as (typeof gen.result.variations[number] & { imageUrl?: string; imageUrls?: string[] })[];
+    if (!variations[idx]) { res.status(400).json({ error: "Variação inválida" }); return; }
+
+    variations[idx] = {
+      ...variations[idx],
+      imageUrl: imageUrls[0],
+      imageUrls: imageUrls.length > 1 ? imageUrls : undefined,
+    };
+
+    await db
+      .update(contentGenerationsTable)
+      .set({ result: { variations } })
+      .where(eq(contentGenerationsTable.id, contentId));
+
+    res.json({ success: true, imageUrls });
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : "Falha ao regenerar imagem";
+    res.status(502).json({ error: msg });
+  }
 });
 
 export default router;

@@ -5,15 +5,23 @@
  * API specification
  * OpenAPI spec version: 0.1.0
  */
+import type { GenerateContentBodyProductSource } from './generateContentBodyProductSource';
 import type { GenerateContentBodyType } from './generateContentBodyType';
 
 export interface GenerateContentBody {
   type: GenerateContentBodyType;
   theme: string;
   productId?: string | null;
+  productSource?: GenerateContentBodyProductSource;
   /**
      * @minimum 1
      * @maximum 3
      */
   variations?: number;
+  /**
+     * @minimum 1
+     * @maximum 10
+     */
+  imageCount?: number;
+  imageUrl?: string | null;
 }

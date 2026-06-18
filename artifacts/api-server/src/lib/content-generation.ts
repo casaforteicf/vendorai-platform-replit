@@ -56,62 +56,95 @@ const IMAGE_MODELS_PRIORITY = [
   "dall-e-2",
 ];
 
-export async function generateImageForContent(
+export async function generateImagesForContent(
   profile: TenantProfile,
   theme: string,
   productName: string | undefined,
-  format: "feed" | "stories"
-): Promise<string> {
+  format: "feed" | "stories",
+  imageCount: number = 1,
+  style?: string
+): Promise<string[]> {
+  if (imageCount < 1) imageCount = 1;
+  if (imageCount > 10) imageCount = 10;
+  const results: string[] = [];
   const openai = getOpenAI();
   const brand = profile.nomeFantasia || "a empresa";
   const subject = productName ? `${productName} — ${theme}` : theme;
   const v = profile.vertical ?? "";
-  let styleHint = "clean, modern, professional marketing photography";
-  if (v.includes("Varejo") || v.includes("Moda") || v.includes("Roupa")) {
-    styleHint = "fashion editorial photography, stylish, trendy, well-lit studio or lifestyle setting";
-  } else if (v.includes("Supermercado") || v.includes("Mercado")) {
-    styleHint = "bright food photography, fresh produce, appetizing, commercial supermarket style";
-  } else if (v.includes("Construção") || v.includes("Reforma")) {
-    styleHint = "professional construction/renovation photography, high quality materials, clean workspace";
-  }
-
-  const formatLabel = format === "stories" ? "Stories (vertical format)" : "Feed (square format)";
-  const imagePrompt = `Professional marketing image for the Instagram ${formatLabel} of the brand "${brand}". Theme: ${subject}. Style: ${styleHint}. High quality, visually appealing, suitable for a business Instagram profile. No text overlays. No watermarks. Bright, well-lit, commercial photography aesthetic.`;
-
-  let lastError: unknown;
-  for (const model of IMAGE_MODELS_PRIORITY) {
-    try {
-      const response = await openai.images.generate({
-        model,
-        prompt: imagePrompt,
-        n: 1,
-        size: "1024x1024",
-        ...(model === "dall-e-3" ? { quality: "standard" } : {}),
-      } as Parameters<typeof openai.images.generate>[0]);
-
-      // Some models (gpt-image-1) return b64_json — upload to object storage
-      const item = "data" in response && Array.isArray(response.data) ? response.data[0] : undefined;
-      if (!item) continue;
-
-      if ("url" in item && item.url) {
-        return item.url;
-      }
-
-      if ("b64_json" in item && item.b64_json) {
-        const buf = Buffer.from(item.b64_json, "base64");
-        const storage = new ObjectStorageService();
-        const objectPath = await storage.savePrivateBuffer(buf, "image/png", `${crypto.randomUUID()}.png`);
-        // objectPath = /objects/quotes/uuid.png → serve via /api/storage/objects/quotes/uuid.png
-        const servePath = objectPath.replace(/^\/objects\//, "");
-        return `/api/storage/objects/${servePath}`;
-      }
-    } catch (err) {
-      lastError = err;
-      // Try next model
+  let styleHint = style ?? "clean, modern, professional marketing photography";
+  if (!style) {
+    if (v.includes("Varejo") || v.includes("Moda") || v.includes("Roupa")) {
+      styleHint = "fashion editorial photography, stylish, trendy, well-lit studio or lifestyle setting";
+    } else if (v.includes("Supermercado") || v.includes("Mercado")) {
+      styleHint = "bright food photography, fresh produce, appetizing, commercial supermarket style";
+    } else if (v.includes("Construção") || v.includes("Reforma")) {
+      styleHint = "professional construction/renovation photography, high quality materials, clean workspace";
     }
   }
 
-  throw lastError ?? new Error("Nenhum modelo de imagem disponível retornou resultado");
+  const formatLabel = format === "stories" ? "Stories (vertical format)" : "Feed (square format)";
+  const basePrompt = `Professional marketing image for the Instagram ${formatLabel} of the brand "${brand}". Theme: ${subject}. Style: ${styleHint}. High quality, visually appealing, suitable for a business Instagram profile. No text overlays. No watermarks. Bright, well-lit, commercial photography aesthetic.`;
+
+  for (let i = 0; i < imageCount; i++) {
+    let lastError: unknown;
+    const imagePrompt = imageCount > 1 ? `${basePrompt} Variation ${i + 1} of ${imageCount}. Each image should be unique and distinct.` : basePrompt;
+
+    for (const model of IMAGE_MODELS_PRIORITY) {
+      try {
+        const response = await openai.images.generate({
+          model,
+          prompt: imagePrompt,
+          n: 1,
+          size: "1024x1024",
+          ...(model === "dall-e-3" ? { quality: "standard" } : {}),
+        } as Parameters<typeof openai.images.generate>[0]);
+
+        const item = "data" in response && Array.isArray(response.data) ? response.data[0] : undefined;
+        if (!item) continue;
+
+        if ("url" in item && item.url) {
+          results.push(item.url);
+          break;
+        }
+
+        if ("b64_json" in item && item.b64_json) {
+          const buf = Buffer.from(item.b64_json, "base64");
+          const storage = new ObjectStorageService();
+          const objectPath = await storage.savePrivateBuffer(buf, "image/png", `${crypto.randomUUID()}.png`);
+          const servePath = objectPath.replace(/^\/objects\//, "");
+          results.push(`/api/storage/objects/${servePath}`);
+          break;
+        }
+      } catch (err) {
+        lastError = err;
+        // Try next model
+      }
+    }
+
+    if (results.length <= i) {
+      throw lastError ?? new Error(`Nenhum modelo de imagem disponível retornou resultado para imagem ${i + 1}`);
+    }
+  }
+
+  return results;
+}
+
+export async function describeImage(imageUrl: string): Promise<string> {
+  const openai = getOpenAI();
+  const response = await openai.chat.completions.create({
+    model: "gpt-4o-mini",
+    messages: [
+      {
+        role: "user",
+        content: [
+          { type: "text", text: "Descreva esta imagem em detalhes para que eu possa usar a descrição como prompt para gerar uma imagem similar. Inclua: objetos principais, composição, cores, iluminação, estilo, ambiente e qualquer detalhes visuais importantes. Escreva em português." },
+          { type: "image_url", image_url: { url: imageUrl } },
+        ],
+      },
+    ],
+    max_tokens: 500,
+  });
+  return response.choices[0]?.message?.content ?? "Imagem sem descrição disponível";
 }
 
 export async function generateFeedContent(
@@ -119,6 +152,7 @@ export async function generateFeedContent(
   theme: string,
   productName: string | undefined,
   variationsCount: number,
+  imageCount: number = 1,
   productExtra?: string
 ): Promise<{ result: ContentGenerationResult; tokensUsed: number }> {
   const openai = getOpenAI();
@@ -150,14 +184,14 @@ Crie ${variationsCount} variações distintas de legenda para o Feed do Instagra
 Retorne SOMENTE JSON válido no formato:
 {"variations": [{"caption": "...", "hashtags": ["#hashtag1", "#hashtag2"]}]}`;
 
-  const [textResponse, imageUrl] = await Promise.all([
+  const [textResponse, imageUrls] = await Promise.all([
     openai.chat.completions.create({
       model: "gpt-4o-mini",
       messages: [{ role: "user", content: prompt }],
       response_format: { type: "json_object" },
       temperature: 0.85,
     }),
-    generateImageForContent(profile, theme, productName, "feed"),
+    generateImagesForContent(profile, theme, productName, "feed", imageCount),
   ]);
 
   const tokensUsed = textResponse.usage?.total_tokens ?? 0;
@@ -167,7 +201,8 @@ Retorne SOMENTE JSON válido no formato:
 
   const variations: FeedVariation[] = (raw.variations ?? []).map((v, i) => ({
     ...v,
-    imageUrl: i === 0 ? imageUrl : undefined,
+    imageUrl: imageUrls[0],
+    imageUrls: imageUrls,
   }));
 
   return {
@@ -181,6 +216,7 @@ export async function generateStoriesContent(
   theme: string,
   productName: string | undefined,
   variationsCount: number,
+  imageCount: number = 1,
   productExtra?: string
 ): Promise<{ result: ContentGenerationResult; tokensUsed: number }> {
   const openai = getOpenAI();
@@ -212,14 +248,14 @@ Crie ${variationsCount} variações distintas de conteúdo para Stories do Insta
 Retorne SOMENTE JSON válido no formato:
 {"variations": [{"text": "...", "cta": "..."}]}`;
 
-  const [textResponse, imageUrl] = await Promise.all([
+  const [textResponse, imageUrls] = await Promise.all([
     openai.chat.completions.create({
       model: "gpt-4o-mini",
       messages: [{ role: "user", content: prompt }],
       response_format: { type: "json_object" },
       temperature: 0.85,
     }),
-    generateImageForContent(profile, theme, productName, "stories"),
+    generateImagesForContent(profile, theme, productName, "stories", imageCount),
   ]);
 
   const tokensUsed = textResponse.usage?.total_tokens ?? 0;
@@ -229,7 +265,8 @@ Retorne SOMENTE JSON válido no formato:
 
   const variations: StoriesVariation[] = (raw.variations ?? []).map((v, i) => ({
     ...v,
-    imageUrl: i === 0 ? imageUrl : undefined,
+    imageUrl: imageUrls[0],
+    imageUrls: imageUrls,
   }));
 
   return {
@@ -291,4 +328,84 @@ Retorne SOMENTE JSON válido no formato:
     result: { variations: raw.variations ?? [] },
     tokensUsed,
   };
+}
+
+export interface ContentStrategy {
+  strategy: string;
+  prompts: string[];
+  headlines: string[];
+  ctas: string[];
+  captions: string[];
+  hashtags: string[];
+  approaches: string[];
+  visualStyle: string;
+}
+
+export async function generateContentStrategy(
+  profile: TenantProfile,
+  command: string,
+  contentType: string,
+  variationsCount: number
+): Promise<{ strategy: ContentStrategy; tokensUsed: number }> {
+  const openai = getOpenAI();
+  const brand = profile.nomeFantasia || "a empresa";
+  const context = buildBrandContext(profile);
+  const hints = verticalHints(profile.vertical);
+
+  const typeLabel = contentType === "stories" ? "Stories" : contentType === "reels" ? "Reels" : "Feed";
+
+  const prompt = `Você é um estrategista de marketing digital especialista em Instagram para a marca "${brand}".
+
+Contexto da marca:
+${context}
+${hints ? `\n${hints}\n` : ""}
+
+O usuário deu o seguinte comando simples: "${command}"
+
+Com base nesse comando, crie uma estratégia de conteúdo completa para ${variationsCount} variações de ${typeLabel}.
+
+Retorne SOMENTE JSON válido com este formato exato:
+{
+  "strategy": "Visão geral da estratégia em 2-3 frases",
+  "visualStyle": "Descrição do estilo visual recomendado (cores, iluminação, composição)",
+  "prompts": ["prompt de imagem 1 em inglês para DALL-E", "prompt de imagem 2", ...],
+  "headlines": ["headline 1", "headline 2", ...],
+  "ctas": ["CTA 1", "CTA 2", ...],
+  "captions": ["legenda completa 1", "legenda completa 2", ...],
+  "hashtags": ["#hashtag1 #hashtag2 #hashtag3", "#hashtagA #hashtagB", ...],
+  "approaches": ["abordagem 1 (ex: promocional, emocional, educativo)", "abordagem 2", ...]
+}
+
+Regras:
+- prompts: ${variationsCount} prompts detalhados em inglês para gerar imagens com IA
+- headlines: ${variationsCount} headlines curtas e impactantes em português
+- ctas: ${variationsCount} calls-to-action em português
+- captions: ${variationsCount} legendas completas com storytelling em português
+- hashtags: ${variationsCount} conjuntos de hashtags (5-8 por conjunto)
+- approaches: ${variationsCount} nomes de abordagem/distância de cada variação
+- strategy: visão geral da estratégia de conteúdo
+- visualStyle: guia visual unificada para todas as imagens`;
+
+  const response = await openai.chat.completions.create({
+    model: "gpt-4o-mini",
+    messages: [{ role: "user", content: prompt }],
+    response_format: { type: "json_object" },
+    temperature: 0.85,
+  });
+
+  const tokensUsed = response.usage?.total_tokens ?? 0;
+  const raw = JSON.parse(response.choices[0]?.message?.content ?? "{}") as Partial<ContentStrategy>;
+
+  const strategy: ContentStrategy = {
+    strategy: raw.strategy ?? "Estratégia de conteúdo gerada",
+    visualStyle: raw.visualStyle ?? "Estilo visual moderno e clean",
+    prompts: Array.isArray(raw.prompts) ? raw.prompts : [],
+    headlines: Array.isArray(raw.headlines) ? raw.headlines : [],
+    ctas: Array.isArray(raw.ctas) ? raw.ctas : [],
+    captions: Array.isArray(raw.captions) ? raw.captions : [],
+    hashtags: Array.isArray(raw.hashtags) ? raw.hashtags : [],
+    approaches: Array.isArray(raw.approaches) ? raw.approaches : [],
+  };
+
+  return { strategy, tokensUsed };
 }

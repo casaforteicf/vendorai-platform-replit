@@ -47,6 +47,7 @@ import type {
   CompraObraUpdate,
   Consent,
   ContentGeneration,
+  ContentStrategy,
   Conversation,
   CreateActivityBody,
   CreateAgendaBody,
@@ -104,6 +105,7 @@ import type {
   ForgotPasswordBody,
   Funil,
   GenerateContentBody,
+  GenerateContentStrategyBody,
   GeneratePerfilInsight200,
   GerarConteudoSupermercadoCampanha200,
   GerarConteudoSupermercadoCampanhaBody,
@@ -14730,6 +14732,78 @@ export const useGenerateContent = <TError = ErrorType<ErrorResponse>,
         TContext
       > => {
       return useMutation(getGenerateContentMutationOptions(options));
+    }
+
+export const getGenerateContentStrategyUrl = (tenantId: string,) => {
+
+
+
+
+  return `/api/tenants/${tenantId}/content/strategy`
+}
+
+/**
+ * @summary Generate a content strategy from a simple command
+ */
+export const generateContentStrategy = async (tenantId: string,
+    generateContentStrategyBody: GenerateContentStrategyBody, options?: RequestInit): Promise<ContentStrategy> => {
+
+  return customFetch<ContentStrategy>(getGenerateContentStrategyUrl(tenantId),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(
+      generateContentStrategyBody,)
+  }
+);}
+
+
+
+
+export const getGenerateContentStrategyMutationOptions = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof generateContentStrategy>>, TError,{tenantId: string;data: BodyType<GenerateContentStrategyBody>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof generateContentStrategy>>, TError,{tenantId: string;data: BodyType<GenerateContentStrategyBody>}, TContext> => {
+
+const mutationKey = ['generateContentStrategy'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof generateContentStrategy>>, {tenantId: string;data: BodyType<GenerateContentStrategyBody>}> = (props) => {
+          const {tenantId,data} = props ?? {};
+
+          return  generateContentStrategy(tenantId,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type GenerateContentStrategyMutationResult = NonNullable<Awaited<ReturnType<typeof generateContentStrategy>>>
+    export type GenerateContentStrategyMutationBody = BodyType<GenerateContentStrategyBody>
+    export type GenerateContentStrategyMutationError = ErrorType<ErrorResponse>
+
+    /**
+ * @summary Generate a content strategy from a simple command
+ */
+export const useGenerateContentStrategy = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof generateContentStrategy>>, TError,{tenantId: string;data: BodyType<GenerateContentStrategyBody>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof generateContentStrategy>>,
+        TError,
+        {tenantId: string;data: BodyType<GenerateContentStrategyBody>},
+        TContext
+      > => {
+      return useMutation(getGenerateContentStrategyMutationOptions(options));
     }
 
 export const getListContentGenerationsUrl = (tenantId: string,) => {

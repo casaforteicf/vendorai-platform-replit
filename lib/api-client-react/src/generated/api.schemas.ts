@@ -2502,15 +2502,43 @@ export const GenerateContentBodyType = {
   reels: 'reels',
 } as const;
 
+export type GenerateContentBodyProductSource = typeof GenerateContentBodyProductSource[keyof typeof GenerateContentBodyProductSource];
+
+
+export const GenerateContentBodyProductSource = {
+  catalog: 'catalog',
+  varejo: 'varejo',
+  supermercado: 'supermercado',
+  insumo: 'insumo',
+} as const;
+
 export interface GenerateContentBody {
   type: GenerateContentBodyType;
   theme: string;
   productId?: string | null;
+  productSource?: GenerateContentBodyProductSource;
   /**
      * @minimum 1
      * @maximum 3
      */
   variations?: number;
+  /**
+     * @minimum 1
+     * @maximum 10
+     */
+  imageCount?: number;
+  imageUrl?: string | null;
+}
+
+export interface ContentStrategy {
+  strategy: string;
+  prompts: string[];
+  headlines: string[];
+  ctas: string[];
+  captions: string[];
+  hashtags: string[];
+  approaches: string[];
+  visualStyle?: string;
 }
 
 export type ContentVariationScenesItem = {
@@ -3970,6 +3998,25 @@ limit?: number;
 
 export type ListInventoryMovementsParams = {
 inventoryItemId?: string;
+};
+
+export type GenerateContentStrategyBodyContentType = typeof GenerateContentStrategyBodyContentType[keyof typeof GenerateContentStrategyBodyContentType];
+
+
+export const GenerateContentStrategyBodyContentType = {
+  feed: 'feed',
+  stories: 'stories',
+  reels: 'reels',
+} as const;
+
+export type GenerateContentStrategyBody = {
+  command: string;
+  contentType?: GenerateContentStrategyBodyContentType;
+  /**
+     * @minimum 1
+     * @maximum 5
+     */
+  variations?: number;
 };
 
 export type DeleteContentGeneration200 = {

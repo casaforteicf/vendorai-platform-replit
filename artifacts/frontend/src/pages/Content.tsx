@@ -20,22 +20,35 @@ import {
   getListSupermercadoProdutosQueryKey,
   useListInsumos,
   getListInsumosQueryKey,
+  useGenerateContentStrategy,
 } from "@workspace/api-client-react";
 import {
   Sparkles, Copy, Trash2, Loader2, Instagram, Clapperboard, Image,
   CheckCircle2, AlertCircle, ChevronDown, ChevronUp, ExternalLink, Upload,
-  Pencil, Check, X, Wand2,
+  Pencil, Check, X, Wand2, Download, Archive, Eye, RefreshCw, Palette,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import JSZip from "jszip";
 
 type ContentType = "feed" | "stories" | "reels";
 type ProductSource = "catalog" | "varejo" | "supermercado" | "insumo";
 
-interface FeedVariation { caption: string; hashtags: string[]; imageUrl?: string }
-interface StoriesVariation { text: string; cta: string; imageUrl?: string }
+interface FeedVariation { caption: string; hashtags: string[]; imageUrl?: string; imageUrls?: string[] }
+interface StoriesVariation { text: string; cta: string; imageUrl?: string; imageUrls?: string[] }
 interface ReelsScene { visual: string; fala: string; duracao: string }
 interface ReelsVariation { title: string; scenes: ReelsScene[]; audioSuggestion: string; cta: string; videoUrl?: string }
 type ContentVariation = FeedVariation | StoriesVariation | ReelsVariation;
+
+interface ContentStrategy {
+  strategy: string;
+  prompts: string[];
+  headlines: string[];
+  ctas: string[];
+  captions: string[];
+  hashtags: string[];
+  approaches: string[];
+  visualStyle: string;
+}
 
 interface ContentGenerationResult { variations: ContentVariation[] }
 
@@ -96,6 +109,124 @@ const VERTICAL_PLACEHOLDERS: Record<string, Record<ContentType, string>> = {
   },
 };
 
+function downloadImage(url: string, filename: string) {
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  a.target = "_blank";
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+}
+
+async function downloadAllImagesZip(
+  variations: ContentVariation[],
+  type: ContentType,
+  setZipping?: (v: boolean) => void,
+  toast?: (opts: { title: string; description?: string; variant?: "default" | "destructive" }) => void,
+) {
+  try {
+    setZipping?.(true);
+    const zip = new JSZip();
+    const folder = zip.folder(`${type}-images`);
+    if (!folder) throw new Error("Falha ao criar pasta ZIP");
+
+    const allUrls: { url: string; name: string }[] = [];
+    variations.forEach((v, vi) => {
+      const urls = (v as { imageUrls?: string[]; imageUrl?: string }).imageUrls ??
+        ((v as { imageUrl?: string }).imageUrl ? [(v as { imageUrl?: string }).imageUrl!] : []);
+      urls.forEach((url, ii) => {
+        allUrls.push({ url, name: `${type}-v${vi + 1}-img${ii + 1}.png` });
+      });
+    });
+
+    if (allUrls.length === 0) {
+      toast?.({ title: "Nenhuma imagem para baixar", variant: "destructive" });
+      return;
+    }
+
+    await Promise.all(
+      allUrls.map(async ({ url, name }) => {
+        const res = await fetch(url);
+        if (!res.ok) throw new Error(`Falha ao buscar ${name}`);
+        const blob = await res.blob();
+        folder.file(name, blob);
+      }),
+    );
+
+    const zipBlob = await zip.generateAsync({ type: "blob" });
+    const zipUrl = URL.createObjectURL(zipBlob);
+    const a = document.createElement("a");
+    a.href = zipUrl;
+    a.download = `${type}-images-${Date.now()}.zip`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(zipUrl);
+    toast?.({ title: `${allUrls.length} imagens baixadas em ZIP` });
+  } catch (err) {
+    toast?.({
+      title: "Erro ao criar ZIP",
+      description: err instanceof Error ? err.message : "Tente novamente",
+      variant: "destructive",
+    });
+  } finally {
+    setZipping?.(false);
+  }
+}
+
+function SmartImageButton({
+  imageUrl,
+  tenantId,
+  onDescribe,
+}: {
+  imageUrl: string;
+  tenantId: string;
+  onDescribe?: (desc: string) => void;
+}) {
+  const [describing, setDescribing] = useState(false);
+  const { toast } = useToast();
+
+  async function handleDescribe() {
+    try {
+      setDescribing(true);
+      const res = await fetch(`/api/tenants/${tenantId}/content/describe-image`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${localStorage.getItem("vendorai_token")}`,
+        },
+        body: JSON.stringify({ imageUrl }),
+      });
+      if (!res.ok) throw new Error("Falha ao descrever");
+      const data = await res.json();
+      onDescribe?.(data.description);
+      toast({ title: "Imagem descrita!", description: "Tema atualizado com a descrição da imagem." });
+    } catch (err) {
+      toast({
+        title: "Erro ao descrever imagem",
+        description: err instanceof Error ? err.message : "Tente novamente",
+        variant: "destructive",
+      });
+    } finally {
+      setDescribing(false);
+    }
+  }
+
+  return (
+    <Button
+      variant="secondary"
+      size="sm"
+      className="h-6 text-[10px] px-1.5 gap-0.5"
+      onClick={handleDescribe}
+      disabled={describing}
+    >
+      {describing ? <Loader2 className="h-3 w-3 animate-spin" /> : <Eye className="h-3 w-3" />}
+      Descrever
+    </Button>
+  );
+}
+
 function CopyButton({ text }: { text: string }) {
   const [copied, setCopied] = useState(false);
   function handleCopy() {
@@ -133,16 +264,33 @@ function FeedCard({
   const displayCaption = editing ? editedCaption : v.caption;
   const displayHashtagsStr = editing ? editedHashtags : v.hashtags.join(" ");
   const fullText = `${displayCaption}\n\n${displayHashtagsStr}`;
+  const images = v.imageUrls ?? (v.imageUrl ? [v.imageUrl] : []);
+
   return (
     <div className="space-y-3">
-      {v.imageUrl && (
-        <div className="rounded-lg overflow-hidden border bg-muted/30 aspect-square max-w-sm mx-auto">
-          <img
-            src={v.imageUrl}
-            alt="Imagem gerada para o Feed"
-            className="w-full h-full object-cover"
-            loading="lazy"
-          />
+      {images.length > 0 && (
+        <div className={`grid gap-2 ${images.length === 1 ? "grid-cols-1 max-w-sm mx-auto" : images.length === 2 ? "grid-cols-2" : "grid-cols-2 md:grid-cols-3"}`}>
+          {images.map((url, idx) => (
+            <div key={idx} className="rounded-lg overflow-hidden border bg-muted/30 aspect-square relative group">
+              <img
+                src={url}
+                alt={`Imagem ${idx + 1} gerada para o Feed`}
+                className="w-full h-full object-cover"
+                loading="lazy"
+              />
+              <div className="absolute inset-0 bg-black/0 group-hover:bg-black/40 transition-colors flex items-center justify-center opacity-0 group-hover:opacity-100">
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  className="text-xs"
+                  onClick={() => downloadImage(url, `feed-${idx + 1}.png`)}
+                >
+                  <Download className="h-3 w-3 mr-1" />
+                  Baixar
+                </Button>
+              </div>
+            </div>
+          ))}
         </div>
       )}
       <div className="flex items-start justify-between gap-2">
@@ -198,16 +346,32 @@ function StoriesCard({
 }) {
   const displayText = editing ? editedText : v.text;
   const displayCta = editing ? editedCta : v.cta;
+  const images = v.imageUrls ?? (v.imageUrl ? [v.imageUrl] : []);
   return (
     <div className="space-y-3">
-      {v.imageUrl && (
-        <div className="rounded-lg overflow-hidden border bg-muted/30 mx-auto" style={{ maxWidth: "200px", aspectRatio: "9/16" }}>
-          <img
-            src={v.imageUrl}
-            alt="Imagem gerada para Stories"
-            className="w-full h-full object-cover"
-            loading="lazy"
-          />
+      {images.length > 0 && (
+        <div className={`grid gap-2 ${images.length === 1 ? "grid-cols-1 max-w-[200px] mx-auto" : "grid-cols-2 max-w-[420px] mx-auto"}`}>
+          {images.map((url, idx) => (
+            <div key={idx} className="rounded-lg overflow-hidden border bg-muted/30 aspect-[9/16] relative group" style={{ maxWidth: "200px" }}>
+              <img
+                src={url}
+                alt={`Imagem ${idx + 1} gerada para Stories`}
+                className="w-full h-full object-cover"
+                loading="lazy"
+              />
+              <div className="absolute inset-0 bg-black/0 group-hover:bg-black/40 transition-colors flex items-center justify-center opacity-0 group-hover:opacity-100">
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  className="text-xs"
+                  onClick={() => downloadImage(url, `stories-${idx + 1}.png`)}
+                >
+                  <Download className="h-3 w-3 mr-1" />
+                  Baixar
+                </Button>
+              </div>
+            </div>
+          ))}
         </div>
       )}
       <div className="flex items-start justify-between gap-2">
@@ -531,6 +695,99 @@ function GenerateAIImageButton({
   );
 }
 
+function RegenerateStyleButton({
+  contentId,
+  variationIndex,
+  tenantId,
+  onGenerated,
+}: {
+  contentId: string;
+  variationIndex: number;
+  tenantId: string;
+  onGenerated: (imageUrl: string) => void;
+}) {
+  const { toast } = useToast();
+  const [loading, setLoading] = useState(false);
+  const [style, setStyle] = useState("");
+  const [showInput, setShowInput] = useState(false);
+
+  async function handleRegenerate() {
+    setLoading(true);
+    try {
+      const res = await fetch(
+        `/api/tenants/${tenantId}/content/${contentId}/variations/${variationIndex}/regenerate-image`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${localStorage.getItem("vendorai_token")}`,
+          },
+          body: JSON.stringify({ style: style || undefined, imageCount: 1 }),
+        }
+      );
+      const data = (await res.json()) as { imageUrls?: string[]; error?: string };
+      if (!res.ok || !data.imageUrls?.[0]) {
+        toast({ title: "Erro ao regenerar imagem", description: data.error ?? "Tente novamente.", variant: "destructive" });
+        return;
+      }
+      onGenerated(data.imageUrls[0]);
+      toast({ title: "Imagem regenerada!", description: `Novo estilo aplicado${style ? `: ${style}` : ""}` });
+      setShowInput(false);
+      setStyle("");
+    } catch {
+      toast({ title: "Erro ao regenerar imagem", description: "Verifique sua conexão e tente novamente.", variant: "destructive" });
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  if (showInput) {
+    return (
+      <div className="flex items-center gap-1">
+        <input
+          value={style}
+          onChange={(e) => setStyle(e.target.value)}
+          placeholder="Estilo (ex: minimalista, vintage)"
+          className="text-xs border rounded px-2 py-1 w-40"
+          onKeyDown={(e) => { if (e.key === "Enter") handleRegenerate(); }}
+          autoFocus
+        />
+        <Button
+          variant="default"
+          size="sm"
+          className="h-7 px-2 text-xs"
+          onClick={handleRegenerate}
+          disabled={loading}
+        >
+          {loading ? <Loader2 className="h-3 w-3 animate-spin" /> : <Check className="h-3 w-3" />}
+        </Button>
+        <Button
+          variant="ghost"
+          size="sm"
+          className="h-7 px-2 text-xs"
+          onClick={() => { setShowInput(false); setStyle(""); }}
+        >
+          <X className="h-3 w-3" />
+        </Button>
+      </div>
+    );
+  }
+
+  return (
+    <Button
+      variant="ghost"
+      size="sm"
+      onClick={() => setShowInput(true)}
+      disabled={loading}
+      title="Regenerar imagem com novo estilo"
+      className="h-7 px-2 text-xs gap-1 text-muted-foreground"
+    >
+      <Palette className="h-3 w-3" />
+      Estilo
+    </Button>
+  );
+}
+
 function VariationCard({
   index,
   type,
@@ -673,12 +930,20 @@ function VariationCard({
                   </Button>
                 )}
                 {type !== "reels" && contentId && tenantId && (
-                  <GenerateAIImageButton
-                    contentId={contentId}
-                    variationIndex={index}
-                    tenantId={tenantId}
-                    onGenerated={setLocalImageUrl}
-                  />
+                  <>
+                    <GenerateAIImageButton
+                      contentId={contentId}
+                      variationIndex={index}
+                      tenantId={tenantId}
+                      onGenerated={setLocalImageUrl}
+                    />
+                    <RegenerateStyleButton
+                      contentId={contentId}
+                      variationIndex={index}
+                      tenantId={tenantId}
+                      onGenerated={setLocalImageUrl}
+                    />
+                  </>
                 )}
                 {contentId && tenantId && (
                   <MediaUploadButton
@@ -830,10 +1095,17 @@ export default function Content() {
   const [theme, setTheme] = useState("");
   const [productId, setProductId] = useState<string>("none");
   const [variations, setVariations] = useState(2);
+  const [imageCount, setImageCount] = useState(2);
   const [lastResult, setLastResult] = useState<ContentGeneration | null>(null);
   const [preImageUrl, setPreImageUrl] = useState<string | null>(null);
   const [preImageUploading, setPreImageUploading] = useState(false);
+  const [zipping, setZipping] = useState(false);
   const preImageInputRef = useRef<HTMLInputElement>(null);
+
+  // Simple command mode
+  const [simpleCommand, setSimpleCommand] = useState("");
+  const [strategyResult, setStrategyResult] = useState<ContentStrategy | null>(null);
+  const [strategyMode, setStrategyMode] = useState(false);
 
   const isVarejo = productSource === "varejo";
   const isSupermercado = productSource === "supermercado";
@@ -873,7 +1145,7 @@ export default function Content() {
     enabled: !!tenantId,
   });
 
-  const generateMutation = useMutation<ContentGeneration, Error, { type: ContentType; theme: string; productId?: string; productSource?: ProductSource; variations: number; imageUrl?: string }>({
+  const generateMutation = useMutation<ContentGeneration, Error, { type: ContentType; theme: string; productId?: string; productSource?: ProductSource; variations: number; imageCount: number; imageUrl?: string }>({
     mutationFn: async (body) => {
       const res = await fetch(`/api/tenants/${tenantId}/content/generate`, {
         method: "POST",
@@ -895,6 +1167,31 @@ export default function Content() {
     },
     onError: (err) => {
       toast({ title: "Erro na geração", description: err.message, variant: "destructive" });
+    },
+  });
+
+  const strategyMutation = useMutation<ContentStrategy, Error, { command: string; contentType: string; variations: number }>({
+    mutationFn: async (body) => {
+      const res = await fetch(`/api/tenants/${tenantId}/content/strategy`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${localStorage.getItem("vendorai_token")}`,
+        },
+        body: JSON.stringify(body),
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({ error: "Erro desconhecido" }));
+        throw new Error(err.error ?? "Falha na geração de estratégia");
+      }
+      return res.json();
+    },
+    onSuccess: (data) => {
+      setStrategyResult(data);
+      toast({ title: "Estratégia gerada com sucesso!" });
+    },
+    onError: (err) => {
+      toast({ title: "Erro na estratégia", description: err.message, variant: "destructive" });
     },
   });
 
@@ -956,6 +1253,7 @@ export default function Content() {
       productId: productId !== "none" ? productId : undefined,
       productSource,
       variations,
+      imageCount,
       imageUrl: preImageUrl ?? undefined,
     });
   }
@@ -994,8 +1292,26 @@ export default function Content() {
         </div>
       </div>
 
+      {/* Mode toggle */}
+      <div className="flex gap-2">
+        <Button
+          variant={!strategyMode ? "default" : "outline"}
+          size="sm"
+          onClick={() => { setStrategyMode(false); setStrategyResult(null); }}
+        >
+          Modo Avançado
+        </Button>
+        <Button
+          variant={strategyMode ? "default" : "outline"}
+          size="sm"
+          onClick={() => { setStrategyMode(true); setLastResult(null); }}
+        >
+          Comando Simples
+        </Button>
+      </div>
+
       {/* Main content */}
-      <Tabs value={activeTab} onValueChange={(v) => { setActiveTab(v as ContentType); setLastResult(null); }}>
+      <Tabs value={activeTab} onValueChange={(v) => { setActiveTab(v as ContentType); setLastResult(null); setStrategyResult(null); }}>
         <TabsList className="grid grid-cols-3 w-full max-w-sm">
           {(Object.keys(TYPE_CONFIG) as ContentType[]).map((key) => {
             const Icon = TYPE_CONFIG[key].icon;
@@ -1015,110 +1331,190 @@ export default function Content() {
               <div className="lg:col-span-2 space-y-4">
                 <Card>
                   <CardHeader className="pb-3">
-                    <CardTitle className="text-base">Configurar geração</CardTitle>
-                    <p className="text-xs text-muted-foreground">{TYPE_CONFIG[key].description}</p>
+                    <CardTitle className="text-base">
+                      {strategyMode ? "Comando simples" : "Configurar geração"}
+                    </CardTitle>
+                    <p className="text-xs text-muted-foreground">
+                      {strategyMode
+                        ? "Descreva o que você quer e a IA cria a estratégia completa"
+                        : TYPE_CONFIG[key].description}
+                    </p>
                   </CardHeader>
                   <CardContent className="space-y-4">
-                    <div className="space-y-1.5">
-                      <Label>{verticalProductLabel(vertical)} (opcional)</Label>
-                      <Select value={productId} onValueChange={setProductId}>
-                        <SelectTrigger>
-                          <SelectValue placeholder="Selecione um produto" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="none">Nenhum — tema livre</SelectItem>
-                          {products?.map((p) => (
-                            <SelectItem key={p.id} value={p.id}>{p.nome}</SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    </div>
-
-                    <div className="space-y-1.5">
-                      <Label>Tema / contexto da publicação <span className="text-destructive">*</span></Label>
-                      <Textarea
-                        placeholder={
-                          (vertical && VERTICAL_PLACEHOLDERS[vertical]?.[key as ContentType]) ??
-                          TYPE_CONFIG[key].placeholder
-                        }
-                        value={theme}
-                        onChange={(e) => setTheme(e.target.value)}
-                        rows={4}
-                        className="resize-none text-sm"
-                      />
-                    </div>
-
-                    <div className="space-y-1.5">
-                      <Label>Nº de variações</Label>
-                      <div className="flex gap-2">
-                        {[2, 3].map((n) => (
-                          <Button
-                            key={n}
-                            variant={variations === n ? "default" : "outline"}
-                            size="sm"
-                            onClick={() => setVariations(n)}
-                            className="w-12"
-                          >
-                            {n}
-                          </Button>
-                        ))}
-                      </div>
-                    </div>
-
-                    {/* Image upload */}
-                    <div className="space-y-1.5">
-                      <Label>Imagem do cliente (opcional)</Label>
-                      <input
-                        ref={preImageInputRef}
-                        type="file"
-                        accept="image/jpeg,image/png,image/webp"
-                        className="hidden"
-                        onChange={(e) => {
-                          const f = e.target.files?.[0];
-                          if (f) handlePreImageUpload(f);
-                          e.target.value = "";
-                        }}
-                      />
-                      {preImageUrl ? (
-                        <div className="relative rounded-lg overflow-hidden border border-border">
-                          <img src={preImageUrl} alt="Imagem selecionada" className="w-full h-32 object-cover" />
-                          <button
-                            type="button"
-                            onClick={() => setPreImageUrl(null)}
-                            className="absolute top-1 right-1 bg-black/60 text-white rounded-full p-0.5 hover:bg-black/80"
-                          >
-                            <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
-                          </button>
-                          <div className="absolute bottom-0 left-0 right-0 bg-black/50 text-white text-[10px] text-center py-0.5">
-                            Imagem será incluída em todas as variações
+                    {strategyMode ? (
+                      <>
+                        <div className="space-y-1.5">
+                          <Label>O que você quer publicar? <span className="text-destructive">*</span></Label>
+                          <Textarea
+                            placeholder={`Ex: "Quero promover meu novo produto de skincare para mulheres de 25-35 anos, com tom elegante e sofisticado"`}
+                            value={simpleCommand}
+                            onChange={(e) => setSimpleCommand(e.target.value)}
+                            rows={5}
+                            className="resize-none text-sm"
+                          />
+                        </div>
+                        <div className="space-y-1.5">
+                          <Label>Nº de variações</Label>
+                          <div className="flex gap-2">
+                            {[2, 3, 4, 5].map((n) => (
+                              <Button
+                                key={n}
+                                variant={variations === n ? "default" : "outline"}
+                                size="sm"
+                                onClick={() => setVariations(n)}
+                                className="w-12"
+                              >
+                                {n}
+                              </Button>
+                            ))}
                           </div>
                         </div>
-                      ) : (
-                        <button
-                          type="button"
-                          onClick={() => preImageInputRef.current?.click()}
-                          disabled={preImageUploading}
-                          className="w-full border-2 border-dashed border-border rounded-lg py-4 flex flex-col items-center gap-1.5 text-muted-foreground hover:border-primary/50 hover:text-primary transition-colors disabled:opacity-50"
+                        <Button
+                          className="w-full"
+                          onClick={() => {
+                            if (!simpleCommand.trim()) {
+                              toast({ title: "Descreva o que você quer publicar", variant: "destructive" });
+                              return;
+                            }
+                            strategyMutation.mutate({
+                              command: simpleCommand.trim(),
+                              contentType: key,
+                              variations,
+                            });
+                          }}
+                          disabled={strategyMutation.isPending || monthlyUsed >= monthlyLimit}
                         >
-                          {preImageUploading
-                            ? <><Loader2 className="h-5 w-5 animate-spin" /><span className="text-xs">Enviando...</span></>
-                            : <><Upload className="h-5 w-5" /><span className="text-xs">Clique para importar imagem</span><span className="text-[10px]">JPG, PNG ou WebP — máx. 10 MB</span></>
-                          }
-                        </button>
-                      )}
-                    </div>
+                          {strategyMutation.isPending ? (
+                            <><Loader2 className="h-4 w-4 mr-2 animate-spin" />Criando estratégia...</>
+                          ) : (
+                            <><Wand2 className="h-4 w-4 mr-2" />Criar estratégia com IA</>
+                          )}
+                        </Button>
+                      </>
+                    ) : (
+                      <>
+                        <div className="space-y-1.5">
+                          <Label>{verticalProductLabel(vertical)} (opcional)</Label>
+                          <Select value={productId} onValueChange={setProductId}>
+                            <SelectTrigger>
+                              <SelectValue placeholder="Selecione um produto" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="none">Nenhum — tema livre</SelectItem>
+                              {products?.map((p) => (
+                                <SelectItem key={p.id} value={p.id}>{p.nome}</SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        </div>
 
-                    <Button
-                      className="w-full"
-                      onClick={handleGenerate}
-                      disabled={generateMutation.isPending || monthlyUsed >= monthlyLimit}
-                    >
-                      {generateMutation.isPending ? (
-                        <><Loader2 className="h-4 w-4 mr-2 animate-spin" />Gerando...</>
-                      ) : (
-                        <><Sparkles className="h-4 w-4 mr-2" />Gerar com IA</>
-                      )}
-                    </Button>
+                        <div className="space-y-1.5">
+                          <Label>Tema / contexto da publicação <span className="text-destructive">*</span></Label>
+                          <Textarea
+                            placeholder={
+                              (vertical && VERTICAL_PLACEHOLDERS[vertical]?.[key as ContentType]) ??
+                              TYPE_CONFIG[key].placeholder
+                            }
+                            value={theme}
+                            onChange={(e) => setTheme(e.target.value)}
+                            rows={4}
+                            className="resize-none text-sm"
+                          />
+                        </div>
+
+                        <div className="space-y-1.5">
+                          <Label>Nº de variações (texto)</Label>
+                          <div className="flex gap-2">
+                            {[2, 3].map((n) => (
+                              <Button
+                                key={n}
+                                variant={variations === n ? "default" : "outline"}
+                                size="sm"
+                                onClick={() => setVariations(n)}
+                                className="w-12"
+                              >
+                                {n}
+                              </Button>
+                            ))}
+                          </div>
+                        </div>
+
+                        <div className="space-y-1.5">
+                          <Label>Quantidade de imagens</Label>
+                          <div className="flex gap-2 flex-wrap">
+                            {[1, 2, 4, 6, 8, 10].map((n) => (
+                              <Button
+                                key={n}
+                                variant={imageCount === n ? "default" : "outline"}
+                                size="sm"
+                                onClick={() => setImageCount(n)}
+                                className="w-12"
+                              >
+                                {n}
+                              </Button>
+                            ))}
+                          </div>
+                        </div>
+
+                        {/* Image upload */}
+                        <div className="space-y-1.5">
+                          <Label>Imagem do cliente (opcional)</Label>
+                          <input
+                            ref={preImageInputRef}
+                            type="file"
+                            accept="image/jpeg,image/png,image/webp"
+                            className="hidden"
+                            onChange={(e) => {
+                              const f = e.target.files?.[0];
+                              if (f) handlePreImageUpload(f);
+                              e.target.value = "";
+                            }}
+                          />
+                          {preImageUrl ? (
+                            <div className="relative rounded-lg overflow-hidden border border-border">
+                              <img src={preImageUrl} alt="Imagem selecionada" className="w-full h-32 object-cover" />
+                              <button
+                                type="button"
+                                onClick={() => setPreImageUrl(null)}
+                                className="absolute top-1 right-1 bg-black/60 text-white rounded-full p-0.5 hover:bg-black/80"
+                              >
+                                <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
+                              </button>
+                              <div className="absolute bottom-0 left-0 right-0 bg-black/50 text-white text-[10px] text-center py-0.5">
+                                Imagem será incluída em todas as variações
+                              </div>
+                              <div className="absolute top-1 left-1 flex gap-1">
+                                <SmartImageButton imageUrl={preImageUrl} tenantId={tenantId} onDescribe={setTheme} />
+                              </div>
+                            </div>
+                          ) : (
+                            <button
+                              type="button"
+                              onClick={() => preImageInputRef.current?.click()}
+                              disabled={preImageUploading}
+                              className="w-full border-2 border-dashed border-border rounded-lg py-4 flex flex-col items-center gap-1.5 text-muted-foreground hover:border-primary/50 hover:text-primary transition-colors disabled:opacity-50"
+                            >
+                              {preImageUploading
+                                ? <><Loader2 className="h-5 w-5 animate-spin" /><span className="text-xs">Enviando...</span></>
+                                : <><Upload className="h-5 w-5" /><span className="text-xs">Clique para importar imagem</span><span className="text-[10px]">JPG, PNG ou WebP — máx. 10 MB</span></>
+                              }
+                            </button>
+                          )}
+                        </div>
+
+                        <Button
+                          className="w-full"
+                          onClick={handleGenerate}
+                          disabled={generateMutation.isPending || monthlyUsed >= monthlyLimit}
+                        >
+                          {generateMutation.isPending ? (
+                            <><Loader2 className="h-4 w-4 mr-2 animate-spin" />Gerando...</>
+                          ) : (
+                            <><Sparkles className="h-4 w-4 mr-2" />Gerar com IA</>
+                          )}
+                        </Button>
+                      </>
+                    )}
 
                     {monthlyUsed >= monthlyLimit && (
                       <div className="flex items-center gap-2 text-xs text-destructive bg-destructive/10 rounded-md p-2">
@@ -1132,35 +1528,123 @@ export default function Content() {
 
               {/* ── Right: results ── */}
               <div className="lg:col-span-3 space-y-4">
-                {generateMutation.isPending && (
-                  <Card>
-                    <CardContent className="py-12 flex flex-col items-center gap-3 text-center">
-                      <Loader2 className="h-8 w-8 animate-spin text-primary" />
-                      <p className="text-sm text-muted-foreground">
-                        Gerando {variations} variações com IA...
-                      </p>
-                    </CardContent>
-                  </Card>
-                )}
+                {strategyMode ? (
+                  <>
+                    {strategyMutation.isPending && (
+                      <Card>
+                        <CardContent className="py-12 flex flex-col items-center gap-3 text-center">
+                          <Loader2 className="h-8 w-8 animate-spin text-primary" />
+                          <p className="text-sm text-muted-foreground">
+                            Criando estratégia de conteúdo com IA...
+                          </p>
+                        </CardContent>
+                      </Card>
+                    )}
 
-                {!generateMutation.isPending && lastResult && (
-                  <div className="space-y-3">
-                    <p className="text-sm font-medium text-muted-foreground">
-                      {lastResult.result.variations.length} variações geradas
-                    </p>
-                    {lastResult.result.variations.map((v, i) => (
-                      <VariationCard key={i} index={i} type={lastResult.type} variation={v} contentId={lastResult.id} tenantId={tenantId} />
-                    ))}
-                  </div>
-                )}
+                    {!strategyMutation.isPending && strategyResult && (
+                      <div className="space-y-3">
+                        <Card>
+                          <CardHeader className="pb-2">
+                            <CardTitle className="text-sm font-semibold">Estratégia</CardTitle>
+                          </CardHeader>
+                          <CardContent>
+                            <p className="text-sm text-muted-foreground">{strategyResult.strategy}</p>
+                          </CardContent>
+                        </Card>
+                        <Card>
+                          <CardHeader className="pb-2">
+                            <CardTitle className="text-sm font-semibold">Estilo Visual</CardTitle>
+                          </CardHeader>
+                          <CardContent>
+                            <p className="text-sm text-muted-foreground">{strategyResult.visualStyle}</p>
+                          </CardContent>
+                        </Card>
+                        {strategyResult.approaches.map((approach, i) => (
+                          <Card key={i}>
+                            <CardHeader className="pb-2">
+                              <div className="flex items-center justify-between">
+                                <CardTitle className="text-sm font-semibold">Variação {i + 1} — {approach}</CardTitle>
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  className="h-7 px-2 text-xs gap-1"
+                                  onClick={() => {
+                                    setTheme(strategyResult.prompts[i] ?? "");
+                                    setStrategyMode(false);
+                                    setStrategyResult(null);
+                                  }}
+                                >
+                                  <Sparkles className="h-3 w-3" />
+                                  Usar esta
+                                </Button>
+                              </div>
+                            </CardHeader>
+                            <CardContent className="space-y-2 text-sm">
+                              <div><span className="font-medium text-xs text-muted-foreground uppercase">Headline</span><p>{strategyResult.headlines[i]}</p></div>
+                              <div><span className="font-medium text-xs text-muted-foreground uppercase">CTA</span><p>{strategyResult.ctas[i]}</p></div>
+                              <div><span className="font-medium text-xs text-muted-foreground uppercase">Legenda</span><p className="text-muted-foreground">{strategyResult.captions[i]}</p></div>
+                              <div><span className="font-medium text-xs text-muted-foreground uppercase">Hashtags</span><p className="text-primary">{strategyResult.hashtags[i]}</p></div>
+                              <div><span className="font-medium text-xs text-muted-foreground uppercase">Prompt de imagem</span><p className="text-xs text-muted-foreground bg-muted rounded p-2">{strategyResult.prompts[i]}</p></div>
+                            </CardContent>
+                          </Card>
+                        ))}
+                      </div>
+                    )}
 
-                {!generateMutation.isPending && !lastResult && (
-                  <Card className="border-dashed">
-                    <CardContent className="py-12 flex flex-col items-center gap-3 text-center text-muted-foreground">
-                      <Sparkles className="h-10 w-10 opacity-30" />
-                      <p className="text-sm">Preencha o tema ao lado e clique em <strong>Gerar com IA</strong></p>
-                    </CardContent>
-                  </Card>
+                    {!strategyMutation.isPending && !strategyResult && (
+                      <Card className="border-dashed">
+                        <CardContent className="py-12 flex flex-col items-center gap-3 text-center text-muted-foreground">
+                          <Wand2 className="h-10 w-10 opacity-30" />
+                          <p className="text-sm">Descreva o que você quer publicar e clique em <strong>Criar estratégia com IA</strong></p>
+                        </CardContent>
+                      </Card>
+                    )}
+                  </>
+                ) : (
+                  <>
+                    {generateMutation.isPending && (
+                      <Card>
+                        <CardContent className="py-12 flex flex-col items-center gap-3 text-center">
+                          <Loader2 className="h-8 w-8 animate-spin text-primary" />
+                          <p className="text-sm text-muted-foreground">
+                            Gerando {variations} variações com IA...
+                          </p>
+                        </CardContent>
+                      </Card>
+                    )}
+
+                    {!generateMutation.isPending && lastResult && (
+                      <div className="space-y-3">
+                        <div className="flex items-center justify-between">
+                          <p className="text-sm font-medium text-muted-foreground">
+                            {lastResult.result.variations.length} variações geradas
+                          </p>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            className="text-xs gap-1"
+                            onClick={() => downloadAllImagesZip(lastResult.result.variations, lastResult.type, setZipping, toast)}
+                            disabled={zipping}
+                          >
+                            {zipping ? <Loader2 className="h-3 w-3 animate-spin" /> : <Archive className="h-3 w-3" />}
+                            {zipping ? "Criando ZIP..." : "Baixar todas (ZIP)"}
+                          </Button>
+                        </div>
+                        {lastResult.result.variations.map((v, i) => (
+                          <VariationCard key={i} index={i} type={lastResult.type} variation={v} contentId={lastResult.id} tenantId={tenantId} />
+                        ))}
+                      </div>
+                    )}
+
+                    {!generateMutation.isPending && !lastResult && (
+                      <Card className="border-dashed">
+                        <CardContent className="py-12 flex flex-col items-center gap-3 text-center text-muted-foreground">
+                          <Sparkles className="h-10 w-10 opacity-30" />
+                          <p className="text-sm">Preencha o tema ao lado e clique em <strong>Gerar com IA</strong></p>
+                        </CardContent>
+                      </Card>
+                    )}
+                  </>
                 )}
               </div>
             </div>
