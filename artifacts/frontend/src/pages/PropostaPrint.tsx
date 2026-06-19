@@ -287,6 +287,8 @@ export default function PropostaPrint() {
   const logoUrl = bp?.logoUrl;
   const jaVendido = proposta.status === "aceita";
   const podeVender = proposta.status === "rascunho" || proposta.status === "enviada" || proposta.status === "pendente";
+  const isGerente = user?.platformRole === "super_admin" || user?.platformRole === "tenant_admin";
+  const podeEditar = !jaVendido || isGerente;
 
   // ── Edit sheet totals (live) ──────────────────────────────────────────────
   const editTotal = eItens.reduce((s, i) => s + i.quantidade * i.valorUnitario, 0);
@@ -300,15 +302,17 @@ export default function PropostaPrint() {
           ← Voltar
         </Button>
 
-        <Button
-          variant="outline"
-          size="sm"
-          className="gap-1.5"
-          onClick={openEdit}
-        >
-          <Pencil className="h-3.5 w-3.5" />
-          <span className="hidden sm:inline">Editar</span>
-        </Button>
+        {podeEditar && (
+          <Button
+            variant="outline"
+            size="sm"
+            className="gap-1.5"
+            onClick={openEdit}
+          >
+            <Pencil className="h-3.5 w-3.5" />
+            <span className="hidden sm:inline">Editar</span>
+          </Button>
+        )}
 
         <div className="flex-1" />
 

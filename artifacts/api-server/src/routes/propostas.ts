@@ -108,7 +108,7 @@ router.patch("/propostas/:id", async (req, res) => {
   }
 
   const [existing] = await db
-    .select({ id: propostasTable.id, tenantId: propostasTable.tenantId })
+    .select({ id: propostasTable.id, tenantId: propostasTable.tenantId, status: propostasTable.status })
     .from(propostasTable)
     .where(eq(propostasTable.id, String(req.params.id)));
 
@@ -119,6 +119,14 @@ router.patch("/propostas/:id", async (req, res) => {
 
   if (req.user?.platformRole !== "super_admin" && existing.tenantId !== req.user?.tenantId) {
     res.status(403).json({ error: "Access denied to this tenant" });
+    return;
+  }
+
+  const propostaAceita = existing.status === "aceita";
+  const isGerente = req.user?.platformRole === "super_admin" || req.user?.platformRole === "tenant_admin";
+
+  if (propostaAceita && !isGerente) {
+    res.status(403).json({ error: "Orçamento vendido. Apenas usuário gerencial pode alterar os itens." });
     return;
   }
 
