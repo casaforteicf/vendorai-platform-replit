@@ -146,21 +146,28 @@ router.patch("/deals/:id", async (req, res) => {
   let onboardingSent = false;
   let onboardingSkipReason: string | undefined;
 
-  // ── Trigger ganho: idempotent closure (allows retry if contract failed/skipped) ──────
+  // ── Trigger ganho: idempotent closure (contract-only retry for failed/skipped) ─────
   if (parsed.data.etapa === "ganho" && existing.etapa !== "ganho") {
-    const canRetry = deal.closureTriggeredAt && (deal.contractStatus === "failed" || deal.contractStatus === "skipped");
-    if (deal.closureTriggeredAt && !canRetry) {
+    const isContractRetry = deal.closureTriggeredAt && (deal.contractStatus === "failed" || deal.contractStatus === "skipped");
+    if (deal.closureTriggeredAt && !isContractRetry) {
       req.log.info({ dealId: deal.id }, "deal-ganho: already triggered and succeeded, skipping");
     } else {
       try {
-        // Marcar início do fechamento (ou retry)
+        // Marcar início do fechamento (ou manter data no retry)
         await db
           .update(dealsTable)
-          .set({ closureTriggeredAt: canRetry ? deal.closureTriggeredAt : new Date(), contractStatus: "pending", onboardingStatus: "pending" })
+          .set({
+            closureTriggeredAt: isContractRetry ? deal.closureTriggeredAt : new Date(),
+            contractStatus: isContractRetry ? deal.contractStatus : "pending",
+            onboardingStatus: isContractRetry ? deal.onboardingStatus : "pending",
+          })
           .where(eq(dealsTable.id, deal.id));
 
-        const [tenant, lead] = await Promise.all([
-          db
+        // ── Resolve tenant: usar existing ou criar novo do lead ───────────────
+        let tenantId = existing.tenantId;
+        let tenant: { name: string; webhookEstoqueUrl: string | null; partnerId: string | null; tipoFechamentoDefault: string | null; integrationType: string | null } | undefined;
+        if (tenantId) {
+          tenant = await db
             .select({
               name: tenantsTable.name,
               webhookEstoqueUrl: tenantsTable.webhookEstoqueUrl,
@@ -169,16 +176,41 @@ router.patch("/deals/:id", async (req, res) => {
               integrationType: tenantsTable.integrationType,
             })
             .from(tenantsTable)
-            .where(eq(tenantsTable.id, existing.tenantId))
-            .then((rows) => rows[0]),
-          deal.leadId
-            ? db
-                .select({ email: leadsTable.email, nome: leadsTable.nome, telefone: leadsTable.telefone, documento: leadsTable.documento, empresa: leadsTable.empresa })
-                .from(leadsTable)
-                .where(eq(leadsTable.id, deal.leadId))
-                .then((rows) => rows[0])
-            : Promise.resolve(undefined),
-        ]);
+            .where(eq(tenantsTable.id, tenantId))
+            .then((rows) => rows[0]);
+        }
+        if (!tenant) {
+          const slugBase = (deal.titulo ?? deal.id).toLowerCase().replace(/[^a-z0-9]/g, "-").substring(0, 30);
+          const slug = `${slugBase}-${Math.random().toString(36).substring(2, 8)}`;
+          const [newTenant] = await db
+            .insert(tenantsTable)
+            .values({
+              name: deal.titulo,
+              slug,
+              status: "active",
+              partnerId: null,
+            })
+            .returning({
+              id: tenantsTable.id,
+              name: tenantsTable.name,
+              webhookEstoqueUrl: tenantsTable.webhookEstoqueUrl,
+              partnerId: tenantsTable.partnerId,
+              tipoFechamentoDefault: tenantsTable.tipoFechamentoDefault,
+              integrationType: tenantsTable.integrationType,
+            });
+          tenantId = newTenant.id;
+          tenant = newTenant;
+          await db.update(dealsTable).set({ tenantId: newTenant.id }).where(eq(dealsTable.id, deal.id));
+          req.log.info({ dealId: deal.id, tenantId: newTenant.id }, "deal-ganho: auto-created tenant");
+        }
+
+        const lead = deal.leadId
+          ? await db
+              .select({ email: leadsTable.email, nome: leadsTable.nome, telefone: leadsTable.telefone, documento: leadsTable.documento, empresa: leadsTable.empresa })
+              .from(leadsTable)
+              .where(eq(leadsTable.id, deal.leadId))
+              .then((rows) => rows[0])
+          : undefined;
 
         // ── Notificações de dados faltantes ─────────────────────────────────
         const missingData: string[] = [];
@@ -187,7 +219,7 @@ router.patch("/deals/:id", async (req, res) => {
         if (!lead?.documento) missingData.push("documento (CPF/CNPJ)");
         if (missingData.length > 0) {
           await db.insert(notificationsTable).values({
-            tenantId: existing.tenantId,
+            tenantId,
             title: "Dados faltantes para fechamento",
             message: `Deal "${deal.titulo}" está faltando: ${missingData.join(", ")}. Complete o lead para enviar contrato e onboarding.`,
             type: "warning",
@@ -212,7 +244,7 @@ router.patch("/deals/:id", async (req, res) => {
             .where(
               and(
                 eq(tenantInvitesTable.email, email),
-                eq(tenantInvitesTable.tenantId, existing.tenantId),
+                eq(tenantInvitesTable.tenantId, tenantId),
                 eq(tenantInvitesTable.role, "tenant_admin"),
                 isNull(tenantInvitesTable.usedAt),
               ),
@@ -229,7 +261,7 @@ router.patch("/deals/:id", async (req, res) => {
             [invite] = await db
               .insert(tenantInvitesTable)
               .values({
-                tenantId: existing.tenantId,
+                tenantId,
                 email,
                 role: "tenant_admin",
                 expiresAt,
@@ -255,7 +287,7 @@ router.patch("/deals/:id", async (req, res) => {
             const whatsappMessage = inviteUrl
               ? `Olá, ${nome}! 🎉\n\nSeu acesso à plataforma ${plataforma} foi liberado.\n\nClique no link abaixo para criar sua senha e acessar:\n${inviteUrl}`
               : `Olá, ${nome}! 🎉\n\nSeu negócio foi fechado com sucesso na plataforma ${plataforma}. Em breve nossa equipe entrará em contato com mais informações.`;
-            await sendDirectWhatsAppMessage(existing.tenantId, lead.telefone, whatsappMessage, req.log);
+            await sendDirectWhatsAppMessage(tenantId, lead.telefone, whatsappMessage, req.log);
             whatsappSent = true;
             req.log.info({ dealId: deal.id }, "whatsapp invite sent");
           } catch (err) {
@@ -283,21 +315,37 @@ router.patch("/deals/:id", async (req, res) => {
           await db
             .update(tenantsTable)
             .set({ mensalidadeValor: deal.valor, updatedAt: new Date() })
-            .where(eq(tenantsTable.id, existing.tenantId));
+            .where(eq(tenantsTable.id, tenantId));
           req.log.info({ dealId: deal.id, valor: deal.valor }, "deal-ganho: mensalidadeValor updated");
         }
 
-        // ── Criar billing_event initial ────────────────────────────────────────
-        if (deal.valor) {
-          const dueDate = new Date();
-          dueDate.setDate(dueDate.getDate() + 3);
-          await db.insert(billingEventsTable).values({
-            tenantId: existing.tenantId,
-            tipo: "initial",
-            valor: deal.valor,
-            status: "pending",
-            dueDate,
-          });
+        // ── Criar billing_event initial (idempotente: verifica se já existe) ──────
+        if (deal.valor && !isContractRetry) {
+          const [existingBilling] = await db
+            .select({ id: billingEventsTable.id })
+            .from(billingEventsTable)
+            .where(
+              and(
+                eq(billingEventsTable.tenantId, tenantId),
+                eq(billingEventsTable.tipo, "initial"),
+                eq(billingEventsTable.valor, deal.valor),
+              ),
+            )
+            .limit(1);
+
+          if (!existingBilling) {
+            const dueDate = new Date();
+            dueDate.setDate(dueDate.getDate() + 3);
+            await db.insert(billingEventsTable).values({
+              tenantId,
+              tipo: "initial",
+              valor: deal.valor,
+              status: "pending",
+              dueDate,
+            });
+          } else {
+            req.log.info({ dealId: deal.id }, "deal-ganho: billing_event already exists, skipping");
+          }
         }
 
         // ── ZapSign: contrato 2 ou 3 partes com PDF ───────────────────────────
@@ -416,13 +464,16 @@ router.patch("/deals/:id", async (req, res) => {
           req.log.info({ dealId: deal.id }, "deal-ganho: tipo=pedido — confirmação simples");
         }
 
-        // ── Cobrança Asaas ─────────────────────────────────────────────────────
+        // ── Cobrança Asaas (idempotente: verifica se já existe) ────────────
         if (!isAsaasConfigured()) {
           chargeSkipReason = "asaas_not_configured";
           req.log.warn({ dealId: deal.id }, "Asaas charge skipped: ASAAS_API_KEY not configured");
         } else if (!deal.valor) {
           chargeSkipReason = "no_valor";
           req.log.info({ dealId: deal.id }, "Asaas charge skipped: deal has no valor");
+        } else if (deal.asaasChargeId) {
+          chargeSkipReason = undefined;
+          req.log.info({ dealId: deal.id, chargeId: deal.asaasChargeId }, "Asaas charge already exists, skipping");
         } else {
           try {
             // Descobrir walletId do parceiro (se tenant tiver parceiro com subconta)
@@ -482,13 +533,13 @@ router.patch("/deals/:id", async (req, res) => {
           }
         }
 
-        // ── Webhook ERP: venda realizada ───────────────────────────────────────
-        if (tenant?.webhookEstoqueUrl) {
+        // ── Webhook ERP: venda realizada (idempotente via closureTriggeredAt) ──────
+        if (tenant?.webhookEstoqueUrl && !isContractRetry) {
           void dispatchVendaWebhook(
             tenant.webhookEstoqueUrl,
             {
               event: "venda_realizada",
-              tenantId: existing.tenantId,
+              tenantId,
               vendaId: deal.id,
               tipo: "deal",
               produtos: [],
@@ -523,7 +574,24 @@ router.patch("/deals/:id", async (req, res) => {
     }
   }
 
-  res.json({ ...deal, inviteSent, inviteEmail, inviteSkipReason, whatsappSent, whatsappSkipReason, chargeId, chargeLink, chargeSkipReason, contractSent, contractSkipReason, onboardingSent, onboardingSkipReason });
+  // Re-fetch deal atualizado para retornar estado fresco
+  const [finalDeal] = await db.select().from(dealsTable).where(eq(dealsTable.id, deal.id));
+
+  res.json({
+    ...finalDeal,
+    inviteSent,
+    inviteEmail,
+    inviteSkipReason,
+    whatsappSent,
+    whatsappSkipReason,
+    chargeId,
+    chargeLink,
+    chargeSkipReason,
+    contractSent,
+    contractSkipReason,
+    onboardingSent,
+    onboardingSkipReason,
+  });
 });
 
 // ─── Quote extraction ─────────────────────────────────────────────────────────
