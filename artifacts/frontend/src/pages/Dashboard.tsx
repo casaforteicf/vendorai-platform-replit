@@ -658,7 +658,7 @@ export default function Dashboard() {
                   {dashboard.topOportunidades.map((deal, idx) => {
                     const prob = deal.probabilidade ?? 0;
                     return (
-                      <tr key={deal.dealId} className="hover:bg-muted/30 transition-colors cursor-pointer" onClick={() => navigate("/negocios")}>
+                      <tr key={deal.dealId} className="hover:bg-muted/30 transition-colors cursor-pointer" onClick={() => navigate(`/leads/${deal.leadId}`)}>
                         <td className="px-6 py-3 text-xs text-muted-foreground w-8">{idx + 1}</td>
                         <td className="px-3 py-3 min-w-[120px]">
                           <p className="font-medium truncate max-w-[140px]">
@@ -1305,8 +1305,9 @@ export default function Dashboard() {
               {dashboard.top5ChurnRisk.map((lead, idx) => (
                 <div
                   key={lead.leadId}
-                  className="flex items-center justify-between py-3 gap-4"
+                  className="flex items-center justify-between py-3 gap-4 cursor-pointer hover:bg-muted/50 rounded transition-colors"
                   data-testid={`row-lead-risco-${lead.leadId}`}
+                  onClick={() => navigate(`/leads/${lead.leadId}`)}
                 >
                   <div className="flex items-center gap-3 min-w-0">
                     <span className="text-xs text-muted-foreground w-4 shrink-0">
