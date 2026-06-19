@@ -509,16 +509,22 @@ router.patch("/deals/:id", async (req, res) => {
             dueDate.setDate(dueDate.getDate() + 3);
             const dueDateStr = dueDate.toISOString().split("T")[0]!;
 
-            // ── Resolve billingType a partir da proposta vinculada ───────────────
+            // ── Resolve billingType + parcelamento a partir da proposta vinculada ─
             let billingType: AsaasBillingType = "PIX";
+            let installmentCount: number | undefined;
+            let installmentValue: number | undefined;
             const [proposta] = await db
-              .select({ formaPagamento: propostasTable.formaPagamento })
+              .select({ formaPagamento: propostasTable.formaPagamento, numParcelas: propostasTable.numParcelas })
               .from(propostasTable)
               .where(eq(propostasTable.dealId, deal.id))
               .orderBy(sql`${propostasTable.createdAt} desc`)
               .limit(1);
             if (proposta?.formaPagamento) {
               billingType = formaPagamentoToBillingType(proposta.formaPagamento);
+            }
+            if (proposta?.numParcelas && proposta.numParcelas > 1) {
+              installmentCount = proposta.numParcelas;
+              installmentValue = Math.round((Number(deal.valor) / proposta.numParcelas) * 100) / 100;
             }
 
             const charge = await createCharge({
@@ -530,6 +536,7 @@ router.patch("/deals/:id", async (req, res) => {
               split: partnerWalletId
                 ? [{ walletId: partnerWalletId, percentualValue: 50 }]
                 : undefined,
+              ...(installmentCount ? { installmentCount, installmentValue } : {}),
             });
 
             chargeId = charge.id;

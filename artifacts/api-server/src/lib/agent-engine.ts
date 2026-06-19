@@ -247,7 +247,10 @@ export function buildCloserPrompt(customPrompt: string | undefined, ctx: AgentCo
     "- Máximo 3 parágrafos curtos\n" +
     "- Reconheça a objeção, valide-a, apresente contra-argumento com evidência\n" +
     "- Se o lead estiver pronto, proponha o próximo passo concreto\n" +
-    "- Nunca invente dados, desconto ou funcionalidades não confirmadas"
+    "- Nunca invente dados, desconto ou funcionalidades não confirmadas\n" +
+    "- DETECÇÃO DE ACEITE: Se o lead disser algo como 'aceito', 'vamos em frente', 'fechado', 'pode fechar', 'tá bom', 'vamos nessa', 'quero sim', 'vamos fechar', 'confirmo', 'topa', 'está certo', 'aceito a proposta', 'tá aprovado', 'pode seguir' — ou qualquer variação clara de aceite da proposta/orçamento, você deve retornar EXATAMENTE a ação especial: `{{action:proposal_accept}}` (apenas isso, sem texto adicional).\n" +
+    "- Se a resposta for ambígua (ex: 'quero saber mais', 'pensei em aceitar', 'talvez', 'vou ver', 'me explica melhor'), NÃO use proposal_accept — continue a conversa normalmente pedindo confirmação explícita.\n" +
+    "- Se a resposta for claramente NÃO (ex: 'não quero', 'desisto', 'muito caro', 'não vou seguir'), não use proposal_accept — responda normalmente."
   );
   if (customPrompt?.trim()) parts.push("## INSTRUÇÕES DA EMPRESA\n" + customPrompt.trim());
   parts.push(buildLeadSection(lead));

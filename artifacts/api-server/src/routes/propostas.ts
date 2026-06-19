@@ -10,9 +10,11 @@ import {
   updatePropostaSchema,
   tenantsTable,
   dealsTable,
+  leadsTable,
 } from "@workspace/db";
 import { dispatchVendaWebhook } from "../services/erp-webhook.js";
 import { getOpenAI } from "../lib/agent-engine.js";
+import { proposalAccepted } from "../lib/proposal-accepted.js";
 
 const router: IRouter = Router();
 
@@ -174,11 +176,18 @@ router.patch("/propostas/:id/status", async (req, res) => {
     .where(eq(propostasTable.id, String(req.params.id)))
     .returning();
 
-  // ── Auto-sync deal stage based on proposta status ──────────────────────────
-  if (proposta.dealId) {
+  // ── Central funnel: proposalAccepted handles deal ganho + automation ───────
+  if (status === "aceita" && proposta.dealId) {
+    const result = await proposalAccepted(proposta.id, "manual");
+    if (!result.ok) {
+      req.log.warn({ propostaId: proposta.id, error: result.error }, "proposalAccepted failed during status transition");
+    } else {
+      req.log.info({ propostaId: proposta.id, dealId: result.dealId, alreadyProcessed: result.alreadyProcessed }, "proposalAccepted executed via status transition");
+    }
+  } else if (proposta.dealId && status !== "aceita") {
+    // Auto-sync deal stage for non-aceita transitions (rejeitada, expirada, pendente)
     const dealEtapaMap: Record<string, string> = {
       pendente: "proposta",
-      aceita: "ganho",
       rejeitada: "perdido",
       expirada: "perdido",
     };
@@ -190,53 +199,6 @@ router.patch("/propostas/:id/status", async (req, res) => {
         .where(eq(dealsTable.id, proposta.dealId));
       req.log.info({ dealId: proposta.dealId, from: proposta.status, to: status, etapa: targetEtapa }, "proposta: auto-synced deal stage");
     }
-  }
-
-  // ── Webhook de saída: proposta aceita = venda realizada ───────────────────
-  if (status === "aceita") {
-    void (async () => {
-      try {
-        const [tenant] = await db
-          .select({ webhookEstoqueUrl: tenantsTable.webhookEstoqueUrl, integrationType: tenantsTable.integrationType })
-          .from(tenantsTable)
-          .where(eq(tenantsTable.id, proposta.tenantId));
-
-        if (!tenant?.webhookEstoqueUrl) return;
-
-        const itens = (updated.itens ?? []) as Array<{
-          nome: string;
-          sku?: string | null;
-          quantidade: number;
-          precoUnitario?: number | null;
-        }>;
-
-        const valorTotal = itens.reduce(
-          (acc, item) => acc + item.quantidade * (item.precoUnitario ?? 0),
-          0,
-        );
-
-        dispatchVendaWebhook(
-          tenant.webhookEstoqueUrl,
-          {
-            event: "venda_realizada",
-            tenantId: proposta.tenantId,
-            vendaId: updated.id,
-            tipo: "proposta",
-            integrationType: (tenant.integrationType as "n8n" | "api" | undefined) ?? undefined,
-            produtos: itens.map((item) => ({
-              nome: item.nome,
-              sku: item.sku ?? null,
-              quantidade: item.quantidade,
-            })),
-            valorTotal,
-            realizadaEm: new Date().toISOString(),
-          },
-          req.log,
-        );
-      } catch (err) {
-        req.log.warn({ err }, "erp-webhook: failed to read tenant config");
-      }
-    })();
   }
 
   res.json(updated);
@@ -254,6 +216,7 @@ const fromCatalogoBodySchema = z.object({
   recorrente: z.boolean().optional(),
   valorMensal: z.number().optional(),
   prazoContratoMeses: z.number().int().optional(),
+  numParcelas: z.number().int().min(1).optional(),
   itens: z
     .array(
       z.object({
@@ -283,7 +246,7 @@ router.post(
     const {
       leadId, titulo, dealId, validadeAte, observacoes, itens,
       formaPagamento, condPagamento, prazoEntrega,
-      recorrente, valorMensal, prazoContratoMeses,
+      recorrente, valorMensal, prazoContratoMeses, numParcelas,
     } = parsed.data;
 
     const produtoIds = itens.map((i) => i.produtoId);
@@ -348,6 +311,7 @@ router.post(
         ...(recorrente !== undefined ? { recorrente } : {}),
         ...(valorMensal !== undefined ? { valorMensal: String(valorMensal) } : {}),
         ...(prazoContratoMeses !== undefined ? { prazoContratoMeses } : {}),
+        ...(numParcelas !== undefined ? { numParcelas } : {}),
         itens: propostaItens,
         valorTotal: valorTotal.toFixed(2),
       })
@@ -465,6 +429,132 @@ router.delete("/propostas/:id", async (req, res) => {
   await db.delete(propostasTable).where(eq(propostasTable.id, existing.id));
 
   res.status(204).send();
+});
+
+// ── Canal A: Link público de aceite ───────────────────────────────────────────
+
+router.get("/propostas/:id/public", async (req, res) => {
+  const [proposta] = await db
+    .select({
+      id: propostasTable.id,
+      tenantId: propostasTable.tenantId,
+      leadId: propostasTable.leadId,
+      titulo: propostasTable.titulo,
+      numero: propostasTable.numero,
+      itens: propostasTable.itens,
+      valorTotal: propostasTable.valorTotal,
+      formaPagamento: propostasTable.formaPagamento,
+      condPagamento: propostasTable.condPagamento,
+      prazoEntrega: propostasTable.prazoEntrega,
+      validadeAte: propostasTable.validadeAte,
+      status: propostasTable.status,
+      observacoes: propostasTable.observacoes,
+    })
+    .from(propostasTable)
+    .where(eq(propostasTable.id, String(req.params.id)));
+
+  if (!proposta) {
+    res.status(404).json({ error: "Proposta not found" });
+    return;
+  }
+
+  if (proposta.status !== "enviada" && proposta.status !== "pendente") {
+    res.status(422).json({ error: "Proposta cannot be accepted in current status" });
+    return;
+  }
+
+  const [lead] = await db
+    .select({ nome: leadsTable.nome, email: leadsTable.email, telefone: leadsTable.telefone })
+    .from(leadsTable)
+    .where(eq(leadsTable.id, proposta.leadId));
+
+  const [tenant] = await db
+    .select({ name: tenantsTable.name })
+    .from(tenantsTable)
+    .where(eq(tenantsTable.id, proposta.tenantId));
+
+  res.json({
+    proposta,
+    lead: lead ?? null,
+    tenant: tenant ?? null,
+  });
+});
+
+const acceptBodySchema = z.object({
+  nome: z.string().min(1).optional(),
+  documento: z.string().optional(),
+});
+
+router.post("/propostas/:id/accept", async (req, res) => {
+  const parsed = acceptBodySchema.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(422).json({ error: parsed.error.message });
+    return;
+  }
+
+  const propostaId = String(req.params.id);
+  const ip = req.ip ?? req.headers["x-forwarded-for"] as string ?? undefined;
+
+  const result = await proposalAccepted(propostaId, "link", {
+    ip,
+    nome: parsed.data.nome,
+    documento: parsed.data.documento,
+  });
+
+  if (!result.ok) {
+    res.status(404).json({ error: result.error });
+    return;
+  }
+
+  if (result.alreadyProcessed) {
+    res.status(200).json({ message: "Proposta already accepted", propostaId: result.propostaId });
+    return;
+  }
+
+  res.status(200).json({
+    message: "Proposta accepted successfully",
+    propostaId: result.propostaId,
+    dealId: result.dealId,
+  });
+});
+
+// ── Canal C: Marcação manual pelo vendedor ──────────────────────────────────
+
+router.post("/propostas/:id/accept-manual", async (req, res) => {
+  const [proposta] = await db
+    .select()
+    .from(propostasTable)
+    .where(eq(propostasTable.id, String(req.params.id)));
+
+  if (!proposta) {
+    res.status(404).json({ error: "Proposta not found" });
+    return;
+  }
+
+  if (req.user?.platformRole !== "super_admin" && proposta.tenantId !== req.user?.tenantId) {
+    res.status(403).json({ error: "Access denied to this tenant" });
+    return;
+  }
+
+  const result = await proposalAccepted(proposta.id, "manual", {
+    nome: req.user?.email ?? undefined,
+  });
+
+  if (!result.ok) {
+    res.status(500).json({ error: result.error });
+    return;
+  }
+
+  if (result.alreadyProcessed) {
+    res.status(200).json({ message: "Proposta already accepted", propostaId: result.propostaId });
+    return;
+  }
+
+  res.status(200).json({
+    message: "Proposta accepted manually",
+    propostaId: result.propostaId,
+    dealId: result.dealId,
+  });
 });
 
 export default router;

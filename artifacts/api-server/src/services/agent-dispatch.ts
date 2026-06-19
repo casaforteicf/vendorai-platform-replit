@@ -14,6 +14,7 @@ import {
   customerIntelligenceTable,
   dealsTable,
   leadsTable,
+  propostasTable,
 } from "@workspace/db";
 import {
   loadContext,
@@ -26,6 +27,7 @@ import {
   daysSinceLastContact,
   type AgentName,
 } from "../lib/agent-engine.js";
+import { proposalAccepted } from "../lib/proposal-accepted.js";
 
 type Lead = typeof leadsTable.$inferSelect;
 type CI   = typeof customerIntelligenceTable.$inferSelect;
@@ -171,7 +173,42 @@ export async function processAgentInternal(params: {
       return;
     }
 
-    // 8. Update counters and insert task
+    // 8. Detect proposal-accept action from closer agent
+    let finalResposta = resposta;
+    if (resolvedAgentName === "closer" && resposta.includes("{{action:proposal_accept}}")) {
+      const openProposals = await db
+        .select({ id: propostasTable.id })
+        .from(propostasTable)
+        .where(
+          and(
+            eq(propostasTable.leadId, leadId),
+            eq(propostasTable.tenantId, tenantId),
+            eq(propostasTable.status, "enviada")
+          )
+        )
+        .orderBy(desc(propostasTable.createdAt))
+        .limit(1);
+
+      if (openProposals.length > 0) {
+        const result = await proposalAccepted(openProposals[0]!.id, "whatsapp", {
+          nome: ctx.lead.nome ?? undefined,
+        });
+        if (result.ok) {
+          finalResposta = result.alreadyProcessed
+            ? "Sua proposta já tinha sido aceita anteriormente. Vamos seguir com o fechamento!"
+            : "Proposta aceita com sucesso! Parabéns, vamos seguir com o fechamento e os próximos passos.";
+          log.info({ leadId, tenantId, propostaId: openProposals[0]!.id }, "dispatch: proposal_accept via WhatsApp succeeded");
+        } else {
+          finalResposta = "Detectei que você quer aceitar, mas tive um problema técnico. Vou chamar a equipe para confirmar manualmente.";
+          log.error({ leadId, tenantId, error: result.error }, "dispatch: proposal_accept via WhatsApp failed");
+        }
+      } else {
+        finalResposta = "Agradeço o interesse! Vou verificar a proposta disponível para você.";
+        log.info({ leadId, tenantId }, "dispatch: proposal_accept action but no open proposal found");
+      }
+    }
+
+    // 9. Update counters and insert task
     const now = new Date();
     await updateCounters(config, limits, tokensUsed, now);
 
@@ -181,7 +218,7 @@ export async function processAgentInternal(params: {
       leadId,
       agentName: resolvedAgentName,
       actionType: "enviar_whatsapp",
-      resposta,
+      resposta: finalResposta,
       isAutonomous,
       now,
       log,

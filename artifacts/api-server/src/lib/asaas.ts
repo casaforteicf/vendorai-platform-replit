@@ -78,6 +78,8 @@ export interface AsaasChargeInput {
   description?: string;
   externalReference?: string;
   split?: AsaasSplit[];
+  installmentCount?: number;
+  installmentValue?: number;
 }
 
 // ── Forma de pagamento (proposta) → Asaas billingType ───────────────────────────

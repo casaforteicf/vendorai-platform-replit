@@ -10,6 +10,7 @@ import {
   messagesTable,
   customerIntelligenceTable,
   agentTasksTable,
+  propostasTable,
 } from "@workspace/db";
 
 const router: IRouter = Router();
@@ -344,6 +345,70 @@ router.get("/tenants/:tenantId/analytics/intelligence", async (req, res) => {
       total: Number(r.total),
     })),
     totalAnalyzed: Number(totalAnalyzed[0]?.total ?? 0),
+  });
+});
+
+router.get("/tenants/:tenantId/analytics/vendas", async (req, res) => {
+  const tenantId = String(req.params.tenantId);
+  if (!canAccess(req, tenantId)) {
+    res.status(403).json({ error: "Access denied" });
+    return;
+  }
+
+  const wins = await db
+    .select({
+      dealId: dealsTable.id,
+      leadId: dealsTable.leadId,
+      leadName: leadsTable.nome,
+      leadEmail: leadsTable.email,
+      leadPhone: leadsTable.telefone,
+      etapa: dealsTable.etapa,
+      valor: dealsTable.valor,
+      closureTriggeredAt: dealsTable.closureTriggeredAt,
+      createdAt: dealsTable.createdAt,
+      propostaId: propostasTable.id,
+      propostaNumero: propostasTable.numero,
+      propostaValor: propostasTable.valorTotal,
+      propostaFormaPagamento: propostasTable.formaPagamento,
+      propostaStatus: propostasTable.status,
+      acceptanceMetadata: propostasTable.acceptanceMetadata,
+    })
+    .from(dealsTable)
+    .leftJoin(leadsTable, eq(dealsTable.leadId, leadsTable.id))
+    .leftJoin(propostasTable, eq(propostasTable.dealId, dealsTable.id))
+    .where(and(eq(dealsTable.tenantId, tenantId), eq(dealsTable.etapa, "ganho")))
+    .orderBy(desc(dealsTable.createdAt));
+
+  const totalFaturado = wins.reduce((sum, w) => {
+    const v = typeof w.valor === "string" ? parseFloat(w.valor) : Number(w.valor ?? 0);
+    return sum + (isNaN(v) ? 0 : v);
+  }, 0);
+
+  const totalPropostas = wins.reduce((sum, w) => {
+    const v = typeof w.propostaValor === "string" ? parseFloat(w.propostaValor) : Number(w.propostaValor ?? 0);
+    return sum + (isNaN(v) ? 0 : v);
+  }, 0);
+
+  res.json({
+    vendas: wins.map((w) => ({
+      dealId: w.dealId,
+      leadId: w.leadId,
+      leadName: w.leadName ?? null,
+      leadEmail: w.leadEmail ?? null,
+      leadPhone: w.leadPhone ?? null,
+      valor: w.valor,
+      closureTriggeredAt: w.closureTriggeredAt,
+      createdAt: w.createdAt,
+      propostaId: w.propostaId ?? null,
+      propostaNumero: w.propostaNumero ?? null,
+      propostaValor: w.propostaValor ?? null,
+      propostaFormaPagamento: w.propostaFormaPagamento ?? null,
+      propostaStatus: w.propostaStatus ?? null,
+      acceptanceMetadata: w.acceptanceMetadata ?? null,
+    })),
+    totalFaturado,
+    totalPropostas,
+    count: wins.length,
   });
 });
 

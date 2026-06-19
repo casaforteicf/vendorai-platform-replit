@@ -1,0 +1,49 @@
+Briefing: Automação de Aceite de Proposta (Orçamento)
+Objetivo
+Quando um lead aceita uma proposta/orçamento — por qualquer um dos canais disponíveis — o sistema deve automaticamente:
+Mover o card do deal para "Vendido" no Kanban (reaproveitando toda a automação já briefada: contrato + ZapSign + onboarding)
+Criar a cobrança no Asaas, respeitando o parcelamento definido no orçamento
+Executar toda a movimentação correlata (baixa de estoque, atividades no CRM, etc.)
+Registrar a venda na tabela de performance do vendedor responsável
+1. Canais de aceite (todos devem ser suportados)
+A. Link público da proposta
+A proposta enviada ao lead (PDF/link) deve ter um botão "Aceitar Proposta"
+Ao clicar, abre uma confirmação simples (pode pedir nome/CPF para validade jurídica) e registra o aceite com timestamp e IP
+B. Confirmação via WhatsApp
+Quando o lead responde confirmando interesse na proposta enviada (ex: "sim", "aceito", "pode fechar"), o agente de IA responsável pela conversa (Closer) deve reconhecer a confirmação
+Importante: usar um nível de confiança adequado — se a resposta for ambígua, o agente deve pedir confirmação explícita antes de disparar a automação (evitar falso positivo)
+C. Marcação manual pelo vendedor
+Na tela da proposta ou do deal, um botão "Marcar como Aceita" disponível para o vendedor confirmar manualmente (ex: aceite verbal, por telefone, presencial)
+Importante: independente do canal, todos devem convergir para o mesmo evento interno (ex: proposalAccepted), que dispara a cadeia de automação abaixo — para evitar lógica duplicada.
+2. O que acontece ao disparar proposalAccepted
+2.1 Mover deal para "Vendido"
+Atualizar deals.status = 'ganho'
+Isso já deve reaproveitar a automação existente (briefing "Fechamento Automático de Deal"): gerar contrato correto (2 ou 3 partes), enviar para ZapSign, disparar onboarding por WhatsApp + e-mail
+Registrar deals.closure_triggered_at (evitar duplicação, conforme já definido)
+2.2 Criar cobrança no Asaas conforme parcelamento do orçamento
+Ler o orçamento/proposta aceito e identificar:
+Valor total
+Número de parcelas (se definido) e valores de cada uma
+Forma de pagamento selecionada (se o orçamento já registrar isso)
+Criar a cobrança no Asaas respeitando exatamente esse parcelamento (uma cobrança por parcela, ou usar o recurso de parcelamento nativo do Asaas se disponível via API)
+Aplicar a lógica de split já definida no projeto: 100% direto para Vendor.ai, ou 50/50 se houver parceiro vinculado ao tenant
+Salvar os IDs das cobranças geradas vinculados ao deal, para rastreamento de status de pagamento depois
+2.3 Movimentação correlata
+Baixa de estoque: para os produtos/serviços incluídos no orçamento que tenham controle de estoque, debitar a quantidade vendida
+Atividade no CRM: registrar automaticamente uma atividade/nota no histórico do lead/deal: "Proposta aceita via [canal] em [data]"
+Atualização do funil: se o lead tiver alguma etapa de funil separada do deal, sincronizar também
+2.4 Registro na tabela de vendas do vendedor
+Não é um arquivo exportável — é uma tela/tabela dentro do próprio Vendor.ai
+Criar (se não existir) uma visão "Minhas Vendas" ou similar, filtrável por vendedor, mostrando:
+Data do fechamento
+Cliente
+Valor da venda
+Status do pagamento (sincronizado com Asaas: pendente/pago/atrasado)
+Comissão (se houver lógica de comissão definida — confirmar se já existe ou fica para depois)
+Essa tabela deve atualizar automaticamente assim que proposalAccepted é processado, sem necessidade de ação manual
+Pontos de atenção
+Idempotência geral: se o mesmo aceite for processado duas vezes (ex: lead clica no link duas vezes, ou confirma por WhatsApp depois de já ter sido marcado manualmente), o sistema não deve duplicar cobrança, contrato ou registro de venda. Usar o mesmo closure_triggered_at (ou equivalente) como trava.
+Conflito entre canais: se dois canais tentarem confirmar o mesmo aceite quase ao mesmo tempo (ex: vendedor marca manualmente enquanto o lead também confirma por WhatsApp), o primeiro processado vence; o segundo é ignorado silenciosamente (sem erro visível, só log).
+Falha parcial: se a criação da cobrança no Asaas falhar mas o resto do fluxo (contrato, onboarding) já tiver sido disparado, não travar o processo todo — registrar o erro especificamente da etapa financeira e permitir reprocessamento manual só dessa parte.
+Resultado esperado
+Assim que um lead aceita a proposta — por link, WhatsApp ou marcação manual — o vendedor não precisa fazer mais nada: o deal vira "Vendido", o contrato é enviado para assinatura, o onboarding é disparado, a cobrança certa é criada no Asaas com o parcelamento correto, o estoque é baixado, e a venda já aparece na tabela de performance do vendedor em tempo real.
