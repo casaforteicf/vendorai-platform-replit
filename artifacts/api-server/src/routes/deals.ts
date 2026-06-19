@@ -146,16 +146,17 @@ router.patch("/deals/:id", async (req, res) => {
   let onboardingSent = false;
   let onboardingSkipReason: string | undefined;
 
-  // ── Trigger ganho: idempotent closure ───────────────────────────────────
+  // ── Trigger ganho: idempotent closure (allows retry if contract failed/skipped) ──────
   if (parsed.data.etapa === "ganho" && existing.etapa !== "ganho") {
-    if (deal.closureTriggeredAt) {
-      req.log.info({ dealId: deal.id }, "deal-ganho: already triggered, skipping");
+    const canRetry = deal.closureTriggeredAt && (deal.contractStatus === "failed" || deal.contractStatus === "skipped");
+    if (deal.closureTriggeredAt && !canRetry) {
+      req.log.info({ dealId: deal.id }, "deal-ganho: already triggered and succeeded, skipping");
     } else {
       try {
-        // Marcar início do fechamento
+        // Marcar início do fechamento (ou retry)
         await db
           .update(dealsTable)
-          .set({ closureTriggeredAt: new Date(), contractStatus: "pending", onboardingStatus: "pending" })
+          .set({ closureTriggeredAt: canRetry ? deal.closureTriggeredAt : new Date(), contractStatus: "pending", onboardingStatus: "pending" })
           .where(eq(dealsTable.id, deal.id));
 
         const [tenant, lead] = await Promise.all([
@@ -312,43 +313,41 @@ router.patch("/deals/:id", async (req, res) => {
             req.log.warn({ dealId: deal.id }, "deal-ganho: ZapSign não configurado (ZAPSIGN_API_KEY ausente)");
           } else {
             try {
-              const signers: { name: string; email: string }[] = [];
-
-              // 1. Cliente
-              if (lead?.email) {
-                signers.push({ name: lead.nome ?? "Cliente", email: lead.email });
-              }
-
-              // 2. Parceiro (se tenant tem partner)
-              let partnerName: string | undefined;
-              let partnerEmail: string | undefined;
-              if (tenant?.partnerId) {
-                const [partner] = await db
-                  .select({ name: partnersTable.name, email: partnersTable.email })
-                  .from(partnersTable)
-                  .where(eq(partnersTable.id, tenant.partnerId));
-                if (partner) {
-                  signers.push({ name: partner.name, email: partner.email });
-                  partnerName = partner.name;
-                  partnerEmail = partner.email;
-                }
-              }
-
-              // 3. Vendor.ai (sempre — CONTRATADA)
-              const vendoraiEmail = process.env["VENDORAI_SIGNING_EMAIL"];
-              if (vendoraiEmail) {
-                signers.push({ name: "Vendor.ai", email: vendoraiEmail });
-              }
-
-              if (signers.length === 0) {
+              // Pré-requisito: lead precisa ter email para assinar contrato
+              if (!lead?.email) {
                 contractSent = false;
-                contractSkipReason = "no_signers";
+                contractSkipReason = "no_lead_email";
                 await db
                   .update(dealsTable)
-                  .set({ contractStatus: "failed", contractError: "no_signers", updatedAt: new Date() })
+                  .set({ contractStatus: "failed", contractError: "no_lead_email", updatedAt: new Date() })
                   .where(eq(dealsTable.id, deal.id));
-                req.log.warn({ dealId: deal.id }, "deal-ganho: no signers available for contract");
+                req.log.warn({ dealId: deal.id }, "deal-ganho: contract skipped — lead has no email");
               } else {
+                const signers: { name: string; email: string }[] = [];
+
+                // 1. Cliente (obrigatório)
+                signers.push({ name: lead.nome ?? "Cliente", email: lead.email });
+
+                // 2. Parceiro (se tenant tem partner)
+                let partnerName: string | undefined;
+                let partnerEmail: string | undefined;
+                if (tenant?.partnerId) {
+                  const [partner] = await db
+                    .select({ name: partnersTable.name, email: partnersTable.email })
+                    .from(partnersTable)
+                    .where(eq(partnersTable.id, tenant.partnerId));
+                  if (partner) {
+                    signers.push({ name: partner.name, email: partner.email });
+                    partnerName = partner.name;
+                    partnerEmail = partner.email;
+                  }
+                }
+
+                // 3. Vendor.ai (sempre — CONTRATADA)
+                const vendoraiEmail = process.env["VENDORAI_SIGNING_EMAIL"];
+                if (vendoraiEmail) {
+                  signers.push({ name: "Vendor.ai", email: vendoraiEmail });
+                }
                 const partes = tenant?.partnerId ? "3 partes" : "2 partes";
 
                 // Gerar PDF do contrato
