@@ -52,12 +52,13 @@ export default function LeadDetailScreen() {
   const tenantId = user?.tenantId ?? "";
 
   const { data: lead, isLoading: loadingLead } = useGetLead(id ?? "", {
-    query: { enabled: !!id },
+    query: { queryKey: ["lead", id], enabled: !!id },
   });
 
   const { data: ci, isLoading: loadingCI, refetch: refetchCI } = useGetOrCreateLeadIntelligence(
+    tenantId,
     id ?? "",
-    { query: { enabled: !!id } }
+    { query: { queryKey: ["ci", tenantId, id], enabled: !!id && !!tenantId } }
   );
 
   const analyzeMutation = useAnalyzeLeadIntelligence();

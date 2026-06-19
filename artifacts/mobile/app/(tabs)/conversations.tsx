@@ -48,7 +48,7 @@ export default function ConversationsScreen() {
   const tenantId = user?.tenantId ?? "";
 
   const { data: conversations, isLoading, refetch } = useListTenantConversations(tenantId, {
-    query: { enabled: !!tenantId, refetchInterval: 30_000 },
+    query: { queryKey: ["conversations", tenantId], enabled: !!tenantId, refetchInterval: 30_000 },
   });
 
   const sorted = [...(conversations ?? [])].sort(
@@ -77,11 +77,12 @@ export default function ConversationsScreen() {
           data={sorted}
           keyExtractor={(item: any) => item.id}
           renderItem={({ item }) => {
-            const canal = item.canal ?? "web";
+            const raw = item as any;
+            const canal = raw.canal ?? "web";
             const icon = CHANNEL_ICON[canal] ?? "message-circle";
             const channelColor = CHANNEL_COLOR[canal] ?? colors.primary;
-            const unread = item.naoLidas ?? 0;
-            const contactName = item.lead?.name ?? item.leadId ?? "Contato";
+            const unread = raw.naoLidas ?? 0;
+            const contactName = raw.lead?.name ?? raw.leadId ?? "Contato";
 
             return (
               <TouchableOpacity

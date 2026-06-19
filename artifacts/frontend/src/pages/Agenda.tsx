@@ -142,7 +142,13 @@ function formatHour(iso: string) {
 }
 
 function fromLocalDateTimeInput(local: string) {
-  return new Date(local).toISOString();
+  // local is "YYYY-MM-DDTHH:mm" from <input type="datetime-local">
+  // Preserve the wall-clock time; treat as UTC so the server stores exactly
+  // what the user picked without browser-TZ shifts.
+  const [date, time] = local.split("T");
+  const [year, month, day] = date.split("-").map(Number);
+  const [hour, minute] = time.split(":").map(Number);
+  return new Date(Date.UTC(year, month - 1, day, hour, minute, 0)).toISOString();
 }
 
 // ─── Quick status actions — desktop inline ────────────────────────────────────
@@ -723,8 +729,21 @@ export default function AgendaPage() {
           form.reset();
         },
         onError: (err: unknown) => {
-          const msg = (err as { response?: { data?: { error?: string } } })?.response?.data?.error;
-          toast({ title: "Erro ao criar agendamento", description: msg ?? undefined, variant: "destructive" });
+          const axiosErr = err as {
+            response?: { data?: { error?: string; issues?: unknown[] }; status?: number };
+            message?: string;
+          };
+          const msg = axiosErr.response?.data?.error ?? axiosErr.message;
+          const status = axiosErr.response?.status;
+          const issues = axiosErr.response?.data?.issues;
+          const description = issues
+            ? issues.map((i) => (typeof i === "string" ? i : (i as { message?: string }).message ?? JSON.stringify(i))).join("\n")
+            : msg;
+          toast({
+            title: status === 422 ? "Dados inválidos" : "Erro ao criar agendamento",
+            description: description || "Verifique os campos e tente novamente.",
+            variant: "destructive",
+          });
         },
       }
     );
@@ -819,11 +838,13 @@ export default function AgendaPage() {
 
   // ── Create dialog trigger shared between header button and FAB ──────────────
   function openCreate() {
+    const safeLeadId = leads && leads.length > 0 ? leads[0].id : "";
+    const safeAgendaId = selectedAgendaId ?? (agendas && agendas.length > 0 ? agendas[0].id : "");
     form.reset({
       titulo: "",
       tipo: "reuniao",
-      leadId: leads[0]?.id ?? "",
-      agendaId: selectedAgendaId ?? (agendas[0]?.id ?? ""),
+      leadId: safeLeadId,
+      agendaId: safeAgendaId,
       dataHoraInicio: format(selectedDay, "yyyy-MM-dd") + "T09:00",
       dataHoraFim: format(selectedDay, "yyyy-MM-dd") + "T10:00",
       local: "",

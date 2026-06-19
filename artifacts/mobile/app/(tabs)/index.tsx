@@ -30,10 +30,10 @@ export default function DashboardScreen() {
   const tenantId = user?.tenantId ?? "";
 
   const { data: dashboard, isLoading: loadingDash, refetch: refetchDash } =
-    useGetTenantDashboard(tenantId, { query: { enabled: !!tenantId } });
+    useGetTenantDashboard(tenantId, { query: { queryKey: ["dashboard", tenantId], enabled: !!tenantId } });
 
   const { data: leads, isLoading: loadingLeads, refetch: refetchLeads } =
-    useListLeads({ query: { enabled: !!tenantId } });
+    useListLeads({ query: { queryKey: ["leads"], enabled: !!tenantId } });
 
   const isLoading = loadingDash || loadingLeads;
   const highRiskLeads = (leads ?? [])

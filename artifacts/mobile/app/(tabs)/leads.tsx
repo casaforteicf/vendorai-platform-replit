@@ -29,7 +29,7 @@ export default function LeadsScreen() {
   const [filter, setFilter] = useState<FilterType>("all");
 
   const { data: leads, isLoading, refetch } = useListLeads({
-    query: { enabled: !!user?.tenantId },
+    query: { queryKey: ["leads"], enabled: !!user?.tenantId },
   });
 
   const filtered = useMemo(() => {
@@ -107,7 +107,7 @@ export default function LeadsScreen() {
           data={filtered}
           keyExtractor={(item: any) => item.id}
           renderItem={({ item }) => (
-            <LeadCard lead={item} onPress={() => router.push(`/leads/${item.id}`)} />
+            <LeadCard lead={item as any} onPress={() => router.push(`/leads/${item.id}`)} />
           )}
           contentContainerStyle={[
             styles.list,

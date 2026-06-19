@@ -57,7 +57,7 @@ export default function AgendaScreen() {
   const tenantId = user?.tenantId ?? "";
 
   const { data: agendamentos, isLoading, refetch } = useListAgendamentos(tenantId, undefined, {
-    query: { enabled: !!tenantId },
+    query: { queryKey: ["agendamentos", tenantId], enabled: !!tenantId },
   });
 
   const sorted = [...(agendamentos ?? [])].sort(

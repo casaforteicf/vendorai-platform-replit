@@ -47,13 +47,13 @@ export default function ConversationDetailScreen() {
   const tenantId = user?.tenantId ?? "";
 
   const { data: conversation, isLoading: loadingConv } = useGetConversation(id ?? "", {
-    query: { enabled: !!id },
+    query: { queryKey: ["conversation", id], enabled: !!id },
   });
 
   const { data: messages, isLoading: loadingMsgs, refetch } = useListConversationMessages(
     tenantId,
     id ?? "",
-    { query: { enabled: !!id && !!tenantId, refetchInterval: 15_000 } }
+    { query: { queryKey: ["messages", tenantId, id], enabled: !!id && !!tenantId, refetchInterval: 15_000 } }
   );
 
   const reversed = [...(messages ?? [])].reverse();
