@@ -3,6 +3,7 @@ import { sql } from "drizzle-orm";
 import { createInsertSchema, createSelectSchema } from "drizzle-zod";
 import { z } from "zod/v4";
 import { partnersTable } from "./partners";
+import { plansTable } from "./plans";
 
 export const tenantStatusEnum = pgEnum("tenant_status", [
   "active",
@@ -43,6 +44,9 @@ export const tenantsTable = pgTable(
     tokenCredits: integer("token_credits").notNull().default(0),
     partnerId: text("partner_id").references(() => partnersTable.id, { onDelete: "set null" }),
     subdomainSlug: text("subdomain_slug").unique(),
+    planId: text("plan_id").references(() => plansTable.id, { onDelete: "set null" }),
+    billingCycle: text("billing_cycle").$type<"monthly" | "annual">(),
+    planStartedAt: timestamp("plan_started_at"),
     createdAt: timestamp("created_at").notNull().defaultNow(),
     updatedAt: timestamp("updated_at").notNull().defaultNow(),
   },
@@ -68,6 +72,16 @@ const positiveIntOrNull = z
   .nullable()
   .optional();
 
+const billingCycleOrNull = z
+  .enum(["monthly", "annual"])
+  .nullable()
+  .optional();
+
+const tipoFechamentoOrNull = z
+  .enum(["pedido", "contrato", "pedido_e_contrato"])
+  .nullable()
+  .optional();
+
 export const insertTenantSchema = createInsertSchema(tenantsTable)
   .omit({
     id: true,
@@ -75,11 +89,14 @@ export const insertTenantSchema = createInsertSchema(tenantsTable)
     messagesSentToday: true,
     createdAt: true,
     updatedAt: true,
+    planStartedAt: true,
   })
   .extend({
     analysisStalenessHours: positiveIntOrNull,
     analysisMessageThreshold: positiveIntOrNull,
     maxAnalysesPerHour: positiveIntOrNull,
+    billingCycle: billingCycleOrNull,
+    tipoFechamentoDefault: tipoFechamentoOrNull,
   });
 
 export const updateTenantSchema = createSelectSchema(tenantsTable)
@@ -92,6 +109,8 @@ export const updateTenantSchema = createSelectSchema(tenantsTable)
     analysisStalenessHours: positiveIntOrNull,
     analysisMessageThreshold: positiveIntOrNull,
     maxAnalysesPerHour: positiveIntOrNull,
+    billingCycle: billingCycleOrNull,
+    tipoFechamentoDefault: tipoFechamentoOrNull,
   })
   .partial();
 

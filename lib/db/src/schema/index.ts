@@ -56,3 +56,5 @@ export * from "./whatsapp_contacts";
 export * from "./whatsapp_messages";
 export * from "./tenant_domains";
 export * from "./notifications";
+export * from "./plans";
+export * from "./plan_modules";

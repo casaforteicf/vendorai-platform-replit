@@ -1,0 +1,65 @@
+Briefing: Planos Comerciais e Modulação por Tenant — vendorai-core
+Contexto
+O vendorai-core (NestJS + Drizzle ORM + Supabase, multi-tenant) já possui o AI Hub com 7 agentes (SDR, Closer, Followup, Reactivation, Scheduler, Service, Onboarding), agent_actions_log com kill-switch, e controle de rate limit diário + token mensal por tenant. Falta a camada de planos comerciais: cada tenant precisa estar vinculado a um plano que define quais agentes/módulos ele tem direito a usar.
+Objetivo
+Criar a estrutura de dados e a lógica de enforcement para que o sistema bloqueie automaticamente qualquer agente/módulo fora do plano contratado pelo tenant.
+1. Estrutura de planos (proposta comercial vigente)
+Plano
+Implantação
+Mensal (sem fidelidade)
+Mensal (anual)
+Módulos inclusos
+Starter
+R$ 3.000
+R$ 690
+R$ 590
+SDR, Followup
+Growth
+R$ 5.000
+R$ 1.000
+R$ 890
+SDR, Followup, Scheduler, Reactivation
+Enterprise
+a partir de R$ 8.000
+a partir de R$ 1.800
+sob consulta
+AI Hub completo (7 agentes) + Customer Intelligence Hub (7 engines)
+2. Modelo de dados sugerido (Drizzle)
+Tabela plans
+id (uuid, pk)
+slug (text, único: starter / growth / enterprise)
+name (text)
+implantation_price_cents (integer)
+monthly_price_cents (integer)
+monthly_price_annual_cents (integer)
+is_active (boolean, default true)
+created_at, updated_at
+Tabela plan_modules
+id (uuid, pk)
+plan_id (FK → plans.id)
+module_key (text — ver enum abaixo)
+created_at
+Enum sugerido de module_key:
+agent_sdr, agent_closer, agent_followup, agent_reactivation, agent_scheduler, agent_service, agent_onboarding, customer_intelligence
+Alteração na tabela tenants:
+plan_id (FK → plans.id, nullable)
+billing_cycle (enum: monthly / annual)
+plan_started_at (timestamp)
+3. Regras de negócio (enforcement)
+Antes de disparar qualquer agente do AI Hub, verificar se o module_key correspondente existe em plan_modules para o plan_id do tenant.
+Se não estiver incluso: bloquear a execução, registrar tentativa em agent_actions_log com status blocked_by_plan, e retornar erro claro pro frontend (ex: "Este módulo não está disponível no seu plano atual").
+Tenant sem plano definido (plan_id IS NULL) não pode disparar nenhum agente — fail closed por padrão, nunca fail open.
+Upgrade de plano: ao alterar tenants.plan_id, os módulos do novo plano ficam disponíveis imediatamente, sem necessidade de redeploy.
+Downgrade de plano: módulos fora do novo plano são desativados na execução, mas o histórico e dados gerados por esses agentes não são apagados.
+4. Importante: pacotes por vertical ≠ planos novos
+Pacotes comerciais por segmento (ex: "Materiais de Construção", "Imobiliárias") são apenas reembalagem de vendas dos mesmos três planos acima — a página de vendas, o discurso e os exemplos mudam por vertical, mas a estrutura de plans e plan_modules no banco continua sendo só essas três linhas. Não criar planos duplicados por vertical.
+5. Critérios de aceite
+[ ] Tabelas plans e plan_modules criadas via migration Drizzle
+[ ] Seed inicial populando os 3 planos com os módulos da tabela acima
+[ ] Middleware/guard que verifica plan_modules antes de qualquer chamada de agente
+[ ] Tentativa bloqueada gera log em agent_actions_log (status blocked_by_plan) e erro 403 claro pro frontend
+[ ] Endpoint para super_admin listar, atribuir e alterar o plano de um tenant
+[ ] Mudança de plano reflete em tempo real (sem redeploy)
+[ ] Tenant sem plano não consegue disparar nenhum agente
+6. Nota para o painel Retool (pendente)
+Ao finalizar o dashboard Retool, incluir uma view de planos: plano atual de cada tenant, módulos ativos/bloqueados, e ação manual de upgrade/downgrade — útil enquanto a integração Asaas (billing automático) ainda não está pronta.

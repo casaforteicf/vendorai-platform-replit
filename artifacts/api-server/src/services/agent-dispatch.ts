@@ -28,6 +28,7 @@ import {
   type AgentName,
 } from "../lib/agent-engine.js";
 import { proposalAccepted } from "../lib/proposal-accepted.js";
+import { checkAgentPlan } from "../middlewares/plan-guard.js";
 
 type Lead = typeof leadsTable.$inferSelect;
 type CI   = typeof customerIntelligenceTable.$inferSelect;
@@ -146,6 +147,14 @@ export async function processAgentInternal(params: {
     }
 
     const resolvedAgentName: AgentName = (agentCfg?.enabled ? agentName : "sdr");
+
+    // 5b. Check plan module authorization
+    const planCheck = await checkAgentPlan(tenantId, resolvedAgentName, log, leadId);
+    if (!planCheck.allowed) {
+      log.warn({ tenantId, leadId, agentName: resolvedAgentName, reason: planCheck.reason }, "dispatch: blocked by plan — skipping");
+      return;
+    }
+
     const resolvedAgentCfg = config.agents?.[resolvedAgentName];
 
     // 6. Check daily/monthly limits

@@ -34,6 +34,7 @@ import {
   type AgentName,
   type PromptBuilder,
 } from "../lib/agent-engine.js";
+import { checkAgentPlan } from "../middlewares/plan-guard.js";
 
 const router: IRouter = Router();
 
@@ -83,6 +84,13 @@ async function handleAgentProcess(
 
   const [config] = await db.select().from(agentConfigsTable).where(eq(agentConfigsTable.tenantId, tenantId));
   if (!config) { res.status(404).json({ error: "Agent config not found for this tenant" }); return; }
+
+  // Check plan authorization
+  const planCheck = await checkAgentPlan(tenantId, agentName, req.log, leadId);
+  if (!planCheck.allowed) {
+    res.status(403).json({ error: planCheck.reason });
+    return;
+  }
 
   const agentCfg = config.agents?.[agentName];
   if (!agentCfg?.enabled) { res.status(422).json({ error: `Agent "${agentName}" is not enabled for this tenant` }); return; }

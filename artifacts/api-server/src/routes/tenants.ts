@@ -25,10 +25,8 @@ router.post("/tenants", requireRole("super_admin"), async (req, res) => {
     return;
   }
 
-  type TipoFechamento = "pedido" | "contrato";
   const insertData = {
     ...parsed.data,
-    tipoFechamentoDefault: parsed.data.tipoFechamentoDefault as TipoFechamento | null | undefined,
   };
 
   try {
@@ -71,10 +69,8 @@ router.patch("/tenants/:id", requireSameTenanOrSuperAdmin(), async (req, res) =>
     return;
   }
 
-  type TipoFechamento = "pedido" | "contrato";
   const updateData = {
     ...parsed.data,
-    tipoFechamentoDefault: parsed.data.tipoFechamentoDefault as TipoFechamento | null | undefined,
     updatedAt: new Date(),
   };
 

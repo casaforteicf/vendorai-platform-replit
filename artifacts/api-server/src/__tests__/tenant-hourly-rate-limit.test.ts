@@ -70,6 +70,11 @@ vi.mock("../lib/analyze-intelligence.js", () => ({
   MAX_ANALYSES_PER_TENANT_PER_HOUR: MOCKED_LIMIT,
 }));
 
+vi.mock("../middlewares/plan-guard.js", () => ({
+  checkPlanModule: vi.fn().mockResolvedValue({ allowed: true }),
+  checkAgentPlan: vi.fn().mockResolvedValue({ allowed: true }),
+}));
+
 // Wrap drizzle-orm's `gte` so we can inspect the date argument the route
 // passes for the createdAt column filter. The real gte runs so SQL
 // expression objects are valid; we just record the call arguments.
@@ -151,10 +156,7 @@ describe(
   "POST /api/tenants/:tenantId/leads/:leadId/intelligence/analyze — hourly rate limit fires",
   () => {
     beforeEach(() => {
-      // resetAllMocks drains mockReturnValueOnce queues so that an unconsumed
-      // entry from a test that returned early (e.g. on 429) does not leak
-      // into the next test. clearAllMocks only clears call history.
-      vi.resetAllMocks();
+      vi.clearAllMocks();
       capturedGteArgs.length = 0;
       mockAnalyze.mockResolvedValue({ churnRisk: 42 });
     });
@@ -249,7 +251,7 @@ describe(
   "POST /api/tenants/:tenantId/leads/:leadId/intelligence/analyze — WHERE clause uses rolling 1-hour window",
   () => {
     beforeEach(() => {
-      vi.resetAllMocks();
+      vi.clearAllMocks();
       capturedGteArgs.length = 0;
       mockAnalyze.mockResolvedValue({ churnRisk: 42 });
     });
@@ -328,7 +330,7 @@ describe(
   "POST /api/tenants/:tenantId/leads/:leadId/intelligence/analyze — env-var override reflected in route",
   () => {
     beforeEach(() => {
-      vi.resetAllMocks();
+      vi.clearAllMocks();
       capturedGteArgs.length = 0;
       mockAnalyze.mockResolvedValue({ churnRisk: 42 });
     });

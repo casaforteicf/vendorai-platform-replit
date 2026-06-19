@@ -9,6 +9,7 @@ export const agentActionStatusEnum = pgEnum("agent_action_status", [
   "approved",
   "executed",
   "rejected",
+  "blocked_by_plan",
 ]);
 
 export const agentActionsLogTable = pgTable("agent_actions_log", {

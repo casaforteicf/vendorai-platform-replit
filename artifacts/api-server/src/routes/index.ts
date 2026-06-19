@@ -39,6 +39,7 @@ import onboardingRouter from "./onboarding";
 import contentRouter from "./content";
 import partnerRouter from "./partner";
 import adminPartnersRouter from "./admin_partners";
+import adminPlansRouter from "./admin_plans";
 import billingEventsRouter from "./billing_events";
 import tokenPurchasesRouter from "./token_purchases";
 import tenantDomainsRouter from "./tenant_domains";
@@ -155,6 +156,7 @@ router.use(partnerRouter);
 
 // Admin Partners Hub (super_admin management)
 router.use(adminPartnersRouter);
+router.use(adminPlansRouter);
 
 // Construção Civil Hub
 router.use(construcaoRouter);

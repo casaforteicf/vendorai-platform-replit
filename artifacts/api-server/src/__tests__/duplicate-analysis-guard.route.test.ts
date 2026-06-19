@@ -65,6 +65,11 @@ vi.mock("../lib/analyze-intelligence.js", () => ({
   MAX_ANALYSES_PER_TENANT_PER_HOUR: 50,
 }));
 
+vi.mock("../middlewares/plan-guard.js", () => ({
+  checkPlanModule: vi.fn().mockResolvedValue({ allowed: true }),
+  checkAgentPlan: vi.fn().mockResolvedValue({ allowed: true }),
+}));
+
 // ---------------------------------------------------------------------------
 // Minimal Express app — mirrors the pattern in customer-intelligence-isolation
 // ---------------------------------------------------------------------------
