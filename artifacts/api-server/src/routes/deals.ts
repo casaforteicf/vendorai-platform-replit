@@ -1,5 +1,5 @@
 import { Router, type IRouter } from "express";
-import { and, eq, isNull } from "drizzle-orm";
+import { and, eq, isNull, sql } from "drizzle-orm";
 import multer from "multer";
 import {
   db,
@@ -11,6 +11,7 @@ import {
   tenantInvitesTable,
   partnersTable,
   notificationsTable,
+  propostasTable,
 } from "@workspace/db";
 import { dispatchVendaWebhook } from "../services/erp-webhook.js";
 import { sendDirectWhatsAppMessage, WhatsAppNotConnectedError } from "../services/omnichannel.js";
@@ -20,6 +21,8 @@ import {
   isAsaasConfigured,
   createOrGetCustomer,
   createCharge,
+  formaPagamentoToBillingType,
+  type AsaasBillingType,
 } from "../lib/asaas.js";
 import {
   isZapSignConfigured,
@@ -506,9 +509,21 @@ router.patch("/deals/:id", async (req, res) => {
             dueDate.setDate(dueDate.getDate() + 3);
             const dueDateStr = dueDate.toISOString().split("T")[0]!;
 
+            // ── Resolve billingType a partir da proposta vinculada ───────────────
+            let billingType: AsaasBillingType = "PIX";
+            const [proposta] = await db
+              .select({ formaPagamento: propostasTable.formaPagamento })
+              .from(propostasTable)
+              .where(eq(propostasTable.dealId, deal.id))
+              .orderBy(sql`${propostasTable.createdAt} desc`)
+              .limit(1);
+            if (proposta?.formaPagamento) {
+              billingType = formaPagamentoToBillingType(proposta.formaPagamento);
+            }
+
             const charge = await createCharge({
               customer: customer.id,
-              billingType: "PIX",
+              billingType,
               value: Number(deal.valor),
               dueDate: dueDateStr,
               description: `Proposta: ${deal.titulo}`,
@@ -674,6 +689,26 @@ router.delete("/deals/:id", async (req, res) => {
   await db.delete(dealsTable).where(eq(dealsTable.id, existing.id));
 
   res.status(204).send();
+});
+
+router.get("/tenants/:tenantId/payment-methods", async (req, res) => {
+  const tenantId = String(req.params["tenantId"]);
+  if (req.user?.platformRole !== "super_admin" && req.user?.tenantId !== tenantId) {
+    res.status(403).json({ error: "Access denied to this tenant" });
+    return;
+  }
+
+  const methods = [
+    { code: "pix", label: "PIX", enabled: true },
+    { code: "boleto", label: "Boleto Bancário", enabled: true },
+    { code: "cartao_credito", label: "Cartão de Crédito", enabled: true },
+    { code: "cartao_debito", label: "Cartão de Débito", enabled: true },
+    { code: "transferencia", label: "Transferência Bancária", enabled: true },
+    { code: "dinheiro", label: "Dinheiro", enabled: true },
+    { code: "a_combinar", label: "A Combinar", enabled: true },
+  ];
+
+  res.json({ gateway: "asaas", methods });
 });
 
 export default router;

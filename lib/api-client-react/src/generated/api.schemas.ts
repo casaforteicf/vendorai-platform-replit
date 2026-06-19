@@ -393,6 +393,17 @@ export const InvoiceFormaPagamento = {
   boleto: 'boleto',
 } as const;
 
+export interface PaymentMethod {
+  code?: string;
+  label?: string;
+  enabled?: boolean;
+}
+
+export interface PaymentMethodList {
+  gateway?: string;
+  methods?: PaymentMethod[];
+}
+
 export interface Invoice {
   id: string;
   tenantId: string;

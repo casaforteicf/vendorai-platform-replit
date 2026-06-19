@@ -1339,6 +1339,33 @@ paths:
                 items:
                   $ref: "#/components/schemas/Deal"
 
+  /tenants/{tenantId}/payment-methods:
+    get:
+      operationId: listPaymentMethods
+      tags: [billing]
+      summary: List available payment methods for tenant
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: tenantId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Available payment methods
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PaymentMethodList"
+        "403":
+          description: Access denied
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
   /deals/{id}:
     get:
       operationId: getDeal
@@ -8197,6 +8224,26 @@ components:
     InvoiceFormaPagamento:
       type: string
       enum: [pix, cartao, boleto]
+
+    PaymentMethod:
+      type: object
+      properties:
+        code:
+          type: string
+        label:
+          type: string
+        enabled:
+          type: boolean
+
+    PaymentMethodList:
+      type: object
+      properties:
+        gateway:
+          type: string
+        methods:
+          type: array
+          items:
+            $ref: "#/components/schemas/PaymentMethod"
 
     Invoice:
       type: object

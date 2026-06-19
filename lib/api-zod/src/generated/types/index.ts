@@ -248,6 +248,8 @@ export * from './partner';
 export * from './partnerTenant';
 export * from './partnerTenantUsage';
 export * from './partnerTenantUsageUsage';
+export * from './paymentMethod';
+export * from './paymentMethodList';
 export * from './platformRole';
 export * from './product';
 export * from './produtoCatalogo';

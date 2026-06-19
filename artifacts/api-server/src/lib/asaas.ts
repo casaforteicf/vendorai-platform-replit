@@ -68,14 +68,31 @@ export interface AsaasSplit {
   percentualValue: number;
 }
 
+export type AsaasBillingType = "BOLETO" | "PIX" | "CREDIT_CARD" | "UNDEFINED";
+
 export interface AsaasChargeInput {
   customer: string;
-  billingType: "BOLETO" | "PIX" | "CREDIT_CARD" | "UNDEFINED";
+  billingType: AsaasBillingType;
   value: number;
   dueDate: string;
   description?: string;
   externalReference?: string;
   split?: AsaasSplit[];
+}
+
+// ── Forma de pagamento (proposta) → Asaas billingType ───────────────────────────
+const FORMA_TO_BILLING_TYPE: Record<string, AsaasBillingType> = {
+  pix: "PIX",
+  boleto: "BOLETO",
+  cartao_credito: "CREDIT_CARD",
+  cartao_debito: "CREDIT_CARD",
+  transferencia: "UNDEFINED",
+  dinheiro: "UNDEFINED",
+  a_combinar: "UNDEFINED",
+};
+
+export function formaPagamentoToBillingType(formaPagamento: string | null | undefined): AsaasBillingType {
+  return FORMA_TO_BILLING_TYPE[formaPagamento ?? ""] ?? "UNDEFINED";
 }
 
 export interface AsaasChargeOutput {

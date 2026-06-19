@@ -22,6 +22,8 @@ import {
   getGetBusinessProfileByTenantQueryKey,
   useGetLead,
   getGetLeadQueryKey,
+  useListPaymentMethods,
+  getListPaymentMethodsQueryKey,
 } from "@workspace/api-client-react";
 import type {
   Proposta,
@@ -660,6 +662,11 @@ const FORMA_PAGAMENTO_LABELS: Record<string, string> = {
   a_combinar: "A Combinar",
 };
 
+function getPaymentLabel(code: string | null | undefined): string {
+  if (!code) return "—";
+  return FORMA_PAGAMENTO_LABELS[code] ?? code;
+}
+
 const propostaFormSchema = z.object({
   leadId: z.string().min(1, "Selecione um lead"),
   titulo: z.string().min(1, "Título é obrigatório"),
@@ -719,6 +726,13 @@ function PropostaModal({
   const { data: leads = [] } = useListTenantLeads(tenantId, {
     query: { queryKey: getListTenantLeadsQueryKey(tenantId), enabled: !!tenantId },
   });
+  const { data: paymentMethods } = useListPaymentMethods(tenantId, {
+    query: { queryKey: getListPaymentMethodsQueryKey(tenantId), enabled: !!tenantId },
+  });
+  const pmLabels = paymentMethods?.methods?.reduce((acc: Record<string, string>, m) => {
+    if (m.enabled && m.code) acc[m.code] = m.label ?? m.code;
+    return acc;
+  }, {} as Record<string, string>) ?? {};
 
   const createFromCatMut  = useCreatePropostaFromCatalogo();
   const createLivreMut    = useCreateProposta();
@@ -1164,7 +1178,7 @@ function PropostaModal({
                       <SelectTrigger><SelectValue placeholder="Selecione…" /></SelectTrigger>
                     </FormControl>
                     <SelectContent>
-                      {Object.entries(FORMA_PAGAMENTO_LABELS).map(([val, label]) => (
+                      {Object.entries(pmLabels).map(([val, label]) => (
                         <SelectItem key={val} value={val}>{label}</SelectItem>
                       ))}
                     </SelectContent>
@@ -1346,7 +1360,7 @@ function PropostaDetailSheet({
                 {proposta.formaPagamento && (
                   <div>
                     <p className="text-xs text-muted-foreground uppercase tracking-wide mb-0.5">Forma de Pagamento</p>
-                    <p className="font-medium">{FORMA_PAGAMENTO_LABELS[proposta.formaPagamento] ?? proposta.formaPagamento}</p>
+                    <p className="font-medium">{getPaymentLabel(proposta.formaPagamento)}</p>
                   </div>
                 )}
                 {proposta.condPagamento && (
@@ -1447,7 +1461,7 @@ function PropostaViewer({
       lines.push(`• ${it.nome} × ${it.quantidade} — ${fmtCurrency(it.valorUnitario)}`);
     });
     lines.push(`\n*Total: ${fmtCurrency(total)}*`);
-    if (proposta.formaPagamento) lines.push(`\nForma de Pagamento: ${FORMA_PAGAMENTO_LABELS[proposta.formaPagamento] ?? proposta.formaPagamento}`);
+    if (proposta.formaPagamento) lines.push(`\nForma de Pagamento: ${getPaymentLabel(proposta.formaPagamento)}`);
     if (proposta.condPagamento)  lines.push(`Condição: ${proposta.condPagamento}`);
     if (proposta.prazoEntrega)   lines.push(`Entrega: ${proposta.prazoEntrega}`);
     if (proposta.observacoes)   lines.push(`\n${proposta.observacoes}`);
@@ -1628,7 +1642,7 @@ function PropostaViewer({
                 {proposta.formaPagamento && (
                   <div>
                     <p className="text-xs text-gray-500 mb-0.5">Forma de Pagamento</p>
-                    <p className="font-medium text-gray-800">{FORMA_PAGAMENTO_LABELS[proposta.formaPagamento] ?? proposta.formaPagamento}</p>
+                    <p className="font-medium text-gray-800">{getPaymentLabel(proposta.formaPagamento)}</p>
                   </div>
                 )}
                 {proposta.condPagamento && (

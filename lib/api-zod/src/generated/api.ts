@@ -1307,6 +1307,23 @@ export const ListDealsResponse = zod.array(ListDealsResponseItem)
 
 
 /**
+ * @summary List available payment methods for tenant
+ */
+export const ListPaymentMethodsParams = zod.object({
+  "tenantId": zod.coerce.string()
+})
+
+export const ListPaymentMethodsResponse = zod.object({
+  "gateway": zod.string().optional(),
+  "methods": zod.array(zod.object({
+  "code": zod.string().optional(),
+  "label": zod.string().optional(),
+  "enabled": zod.boolean().optional()
+})).optional()
+})
+
+
+/**
  * @summary Get deal by ID
  */
 export const GetDealParams = zod.object({
