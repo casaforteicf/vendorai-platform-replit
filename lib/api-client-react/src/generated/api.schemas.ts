@@ -1495,6 +1495,21 @@ export interface CreateDealBody {
   probChurn?: number;
 }
 
+/**
+ * Override contract status (e.g. retry after failure)
+ */
+export type UpdateDealBodyContractStatus = typeof UpdateDealBodyContractStatus[keyof typeof UpdateDealBodyContractStatus] | null;
+
+
+export const UpdateDealBodyContractStatus = {
+  pending: 'pending',
+  sent: 'sent',
+  signed: 'signed',
+  failed: 'failed',
+  skipped: 'skipped',
+  na: 'na',
+} as const;
+
 export interface UpdateDealBody {
   leadId?: string;
   titulo?: string;
@@ -1507,9 +1522,14 @@ export interface UpdateDealBody {
      */
   probabilidade?: number;
   dataFechamentoPrevista?: string;
-  /** Categoria de motivo de perda (ex. preco, prazo_entrega, atendimento…) */
+  /** (deprecated) Use lostReason instead */
   categoriaPerda?: string;
+  /** (deprecated) Use lostReasonDetail instead */
   motivoPerda?: string;
+  /** Categoria de motivo de perda (preco_alto, concorrente, sem_orcamento, nao_momento, perda_contato, outro) */
+  lostReason?: string;
+  /** Detalhe do motivo de perda (obrigatório quando lostReason = outro) */
+  lostReasonDetail?: string;
   tipoFechamento?: TipoFechamento;
   etapaSaas?: DealEtapaSaas;
   mrr?: number;
@@ -1525,7 +1545,7 @@ export interface UpdateDealBody {
   probChurn?: number;
   quoteFileUrl?: string | null;
   /** Override contract status (e.g. retry after failure) */
-  contractStatus?: string | null;
+  contractStatus?: UpdateDealBodyContractStatus;
 }
 
 export interface IncrementBody {

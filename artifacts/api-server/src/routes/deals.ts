@@ -567,12 +567,14 @@ router.patch("/deals/:id", async (req, res) => {
   // ── Trigger perda: capturar motivo e data ─────────────────────────────────
   if (parsed.data.etapa === "perdido" && existing.etapa !== "perdido") {
     try {
+      const primaryReason = parsed.data.lostReason ?? parsed.data.categoriaPerda ?? null;
+      const primaryDetail = parsed.data.lostReasonDetail ?? parsed.data.motivoPerda ?? null;
       await db
         .update(dealsTable)
         .set({
           lostAt: new Date(),
-          lostReason: parsed.data.categoriaPerda ?? null,
-          lostReasonDetail: parsed.data.motivoPerda ?? null,
+          lostReason: primaryReason,
+          lostReasonDetail: primaryDetail,
           updatedAt: new Date(),
         })
         .where(eq(dealsTable.id, deal.id));

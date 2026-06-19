@@ -9926,9 +9926,16 @@ components:
           format: date-time
         categoriaPerda:
           type: string
-          description: Categoria de motivo de perda (ex. preco, prazo_entrega, atendimento…)
+          description: "(deprecated) Use lostReason instead"
         motivoPerda:
           type: string
+          description: "(deprecated) Use lostReasonDetail instead"
+        lostReason:
+          type: string
+          description: Categoria de motivo de perda (preco_alto, concorrente, sem_orcamento, nao_momento, perda_contato, outro)
+        lostReasonDetail:
+          type: string
+          description: Detalhe do motivo de perda (obrigatório quando lostReason = outro)
         tipoFechamento:
           $ref: "#/components/schemas/TipoFechamento"
         etapaSaas:
@@ -9954,6 +9961,7 @@ components:
           nullable: true
         contractStatus:
           type: string
+          enum: [pending, sent, signed, failed, skipped, na]
           nullable: true
           description: Override contract status (e.g. retry after failure)
 

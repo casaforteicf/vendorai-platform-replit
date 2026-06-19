@@ -118,18 +118,12 @@ const ETAPA_SAAS_PROBABILIDADE: Record<DealEtapaSaas, number> = {
 };
 
 const MOTIVOS_PERDA: { value: string; label: string }[] = [
-  { value: "preco",                   label: "Preço" },
-  { value: "prazo_entrega",           label: "Prazo de entrega" },
-  { value: "prazo_pagamento",         label: "Prazo de pagamento" },
-  { value: "atendimento",             label: "Atendimento" },
-  { value: "nao_atendeu_expectativa", label: "Não atendeu a expectativa" },
-  { value: "concorrencia",            label: "Concorrência" },
-  { value: "sem_orcamento",           label: "Sem orçamento" },
-  { value: "mudanca_prioridade",      label: "Mudança de prioridade" },
-  { value: "produto_inadequado",      label: "Produto inadequado" },
-  { value: "sem_resposta",            label: "Sem resposta (lead sumiu)" },
-  { value: "negociacao_malsucedida",  label: "Negociação malsucedida" },
-  { value: "outros",                  label: "Outros" },
+  { value: "preco_alto",       label: "Preço alto" },
+  { value: "concorrente",      label: "Concorrente" },
+  { value: "sem_orcamento",    label: "Sem orçamento" },
+  { value: "nao_momento",      label: "Não é o momento" },
+  { value: "perda_contato",    label: "Perda de contato" },
+  { value: "outro",            label: "Outro" },
 ];
 
 function formatCurrency(value: string | null | undefined): string {
@@ -147,22 +141,23 @@ function MotivosPerdaDialog({
   onCancel,
 }: {
   open: boolean;
-  onConfirm: (categoria: string, detalhe: string) => void;
+  onConfirm: (lostReason: string, lostReasonDetail: string) => void;
   onCancel: () => void;
 }) {
-  const [categoria, setCategoria] = useState<string | null>(null);
-  const [detalhe, setDetalhe] = useState("");
+  const [lostReason, setLostReason] = useState<string | null>(null);
+  const [lostReasonDetail, setLostReasonDetail] = useState("");
 
   function handleConfirm() {
-    if (!categoria) return;
-    onConfirm(categoria, detalhe.trim());
-    setCategoria(null);
-    setDetalhe("");
+    if (!lostReason) return;
+    const detail = lostReason === "outro" ? lostReasonDetail.trim() : lostReasonDetail.trim();
+    onConfirm(lostReason, detail);
+    setLostReason(null);
+    setLostReasonDetail("");
   }
 
   function handleCancel() {
-    setCategoria(null);
-    setDetalhe("");
+    setLostReason(null);
+    setLostReasonDetail("");
     onCancel();
   }
 
@@ -179,34 +174,40 @@ function MotivosPerdaDialog({
           <p className="text-sm text-muted-foreground">
             Selecione o principal motivo pelo qual este negócio foi perdido:
           </p>
-          <div className="flex flex-wrap gap-2">
-            {MOTIVOS_PERDA.map((m) => (
-              <button
-                key={m.value}
-                type="button"
-                onClick={() => setCategoria(m.value === categoria ? null : m.value)}
-                className={`rounded-full px-3 py-1.5 text-xs font-medium border transition-all ${
-                  categoria === m.value
-                    ? "bg-red-600 text-white border-red-600 shadow-sm"
-                    : "bg-white text-slate-700 border-slate-200 hover:border-red-300 hover:text-red-600"
-                }`}
-              >
-                {m.label}
-              </button>
-            ))}
+          <div className="space-y-1.5">
+            <label className="text-sm font-medium text-foreground">Motivo *</label>
+            <Select
+              onValueChange={(v) => setLostReason(v)}
+              value={lostReason || ""}
+            >
+              <SelectTrigger className="w-full" data-testid="select-lost-reason">
+                <SelectValue placeholder="Selecione..." />
+              </SelectTrigger>
+              <SelectContent>
+                {MOTIVOS_PERDA.map((m) => (
+                  <SelectItem key={m.value} value={m.value}>
+                    {m.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           </div>
-          <div>
-            <label className="text-sm font-medium text-foreground block mb-1.5">
-              Detalhe <span className="text-muted-foreground font-normal">(opcional)</span>
-            </label>
-            <textarea
-              className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring resize-none"
-              rows={3}
-              placeholder="Descreva o contexto específico deste lead..."
-              value={detalhe}
-              onChange={(e) => setDetalhe(e.target.value)}
-            />
-          </div>
+          {lostReason === "outro" && (
+            <div className="space-y-1.5">
+              <label className="text-sm font-medium text-foreground">
+                Detalhe <span className="text-red-500">*</span>
+              </label>
+              <textarea
+                className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring resize-none"
+                rows={3}
+                placeholder="Descreva o motivo específico..."
+                value={lostReasonDetail}
+                onChange={(e) => setLostReasonDetail(e.target.value)}
+                required={lostReason === "outro"}
+                data-testid="textarea-lost-detail"
+              />
+            </div>
+          )}
           <div className="flex gap-2 justify-end pt-1">
             <Button type="button" variant="outline" size="sm" onClick={handleCancel}>
               Cancelar
@@ -216,7 +217,7 @@ function MotivosPerdaDialog({
               size="sm"
               className="bg-red-600 hover:bg-red-700 text-white"
               onClick={handleConfirm}
-              disabled={!categoria}
+              disabled={!lostReason || (lostReason === "outro" && !lostReasonDetail.trim())}
             >
               Confirmar perda
             </Button>
@@ -306,13 +307,13 @@ function DealCard({
       )}
 
       {/* Motivo de perda */}
-      {deal.categoriaPerda && (
+      {deal.lostReason && (
         <div className="pl-6 space-y-1">
           <span className="inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-semibold bg-red-50 text-red-600 border border-red-100">
-            {MOTIVOS_PERDA.find((m) => m.value === deal.categoriaPerda)?.label ?? deal.categoriaPerda}
+            {MOTIVOS_PERDA.find((m) => m.value === deal.lostReason)?.label ?? deal.lostReason}
           </span>
-          {deal.motivoPerda && (
-            <p className="text-[10px] text-muted-foreground line-clamp-2">{deal.motivoPerda}</p>
+          {deal.lostReasonDetail && (
+            <p className="text-[10px] text-muted-foreground line-clamp-2">{deal.lostReasonDetail}</p>
           )}
         </div>
       )}
@@ -1344,6 +1345,33 @@ function EditDealSheet({
           </div>
         )}
 
+        {/* ── Loss reason section (perdido) ─────────────────── */}
+        {deal?.etapa === "perdido" && deal?.lostReason && (
+          <div className="mt-4 rounded-lg border border-red-200 bg-red-50 p-3 space-y-2">
+            <p className="text-xs font-medium text-red-700 flex items-center gap-1.5">
+              <AlertTriangle className="h-3.5 w-3.5" />
+              Motivo da perda
+            </p>
+            <div className="space-y-1.5">
+              <div className="flex items-center gap-1.5 text-xs">
+                <span className="inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-semibold bg-red-100 text-red-700 border border-red-200">
+                  {MOTIVOS_PERDA.find((m) => m.value === deal.lostReason)?.label ?? deal.lostReason}
+                </span>
+                {deal.lostAt && (
+                  <span className="text-[10px] text-red-500">
+                    {new Date(deal.lostAt).toLocaleDateString("pt-BR")}
+                  </span>
+                )}
+              </div>
+              {deal.lostReasonDetail && (
+                <p className="text-[11px] text-red-700 bg-white/60 rounded px-2 py-1 border border-red-100">
+                  {deal.lostReasonDetail}
+                </p>
+              )}
+            </div>
+          </div>
+        )}
+
         {deal?.etapa === "ganho" && tenantSlug && (
           <div className="mt-4 rounded-lg border border-emerald-200 bg-emerald-50 p-3 space-y-2">
             <p className="text-xs font-medium text-emerald-800 flex items-center gap-1.5">
@@ -1626,8 +1654,8 @@ export default function Deals() {
         data: {
           etapa: "perdido",
           probabilidade: novaProb,
-          categoriaPerda: categoria,
-          motivoPerda: detalhe || undefined,
+          lostReason: categoria,
+          lostReasonDetail: detalhe || undefined,
         },
       },
       {

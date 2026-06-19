@@ -8,6 +8,7 @@
 import type { DealEtapa } from './dealEtapa';
 import type { DealEtapaSaas } from './dealEtapaSaas';
 import type { TipoFechamento } from './tipoFechamento';
+import type { UpdateDealBodyContractStatus } from './updateDealBodyContractStatus';
 
 export interface UpdateDealBody {
   leadId?: string;
@@ -21,9 +22,14 @@ export interface UpdateDealBody {
      */
   probabilidade?: number;
   dataFechamentoPrevista?: Date;
-  /** Categoria de motivo de perda (ex. preco, prazo_entrega, atendimento…) */
+  /** (deprecated) Use lostReason instead */
   categoriaPerda?: string;
+  /** (deprecated) Use lostReasonDetail instead */
   motivoPerda?: string;
+  /** Categoria de motivo de perda (preco_alto, concorrente, sem_orcamento, nao_momento, perda_contato, outro) */
+  lostReason?: string;
+  /** Detalhe do motivo de perda (obrigatório quando lostReason = outro) */
+  lostReasonDetail?: string;
   tipoFechamento?: TipoFechamento;
   etapaSaas?: DealEtapaSaas;
   mrr?: number;
@@ -39,5 +45,5 @@ export interface UpdateDealBody {
   probChurn?: number;
   quoteFileUrl?: string | null;
   /** Override contract status (e.g. retry after failure) */
-  contractStatus?: string | null;
+  contractStatus?: UpdateDealBodyContractStatus;
 }

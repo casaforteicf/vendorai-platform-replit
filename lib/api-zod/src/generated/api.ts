@@ -1381,8 +1381,10 @@ export const UpdateDealBody = zod.object({
   "funilId": zod.string().optional(),
   "probabilidade": zod.number().min(updateDealBodyProbabilidadeMin).max(updateDealBodyProbabilidadeMax).optional(),
   "dataFechamentoPrevista": zod.coerce.date().optional(),
-  "categoriaPerda": zod.string().optional().describe('Categoria de motivo de perda (ex. preco, prazo_entrega, atendimento…)'),
-  "motivoPerda": zod.string().optional(),
+  "categoriaPerda": zod.string().optional().describe('(deprecated) Use lostReason instead'),
+  "motivoPerda": zod.string().optional().describe('(deprecated) Use lostReasonDetail instead'),
+  "lostReason": zod.string().optional().describe('Categoria de motivo de perda (preco_alto, concorrente, sem_orcamento, nao_momento, perda_contato, outro)'),
+  "lostReasonDetail": zod.string().optional().describe('Detalhe do motivo de perda (obrigatório quando lostReason = outro)'),
   "tipoFechamento": zod.enum(['pedido', 'contrato', 'pedido_e_contrato']).optional().describe('Define o comportamento ao marcar o negócio como Ganho. \'pedido\' gera apenas uma confirmação simples (sem assinatura). \'contrato\' inicia o fluxo completo de assinatura eletrônica. \'pedido_e_contrato\' significa que o tenant usa ambos os modelos — o tipo é escolhido por negócio.\n'),
   "etapaSaas": zod.enum(['lead_qualificado', 'demo_agendada', 'trial_ativo', 'proposta_enviada', 'fechamento', 'onboarding', 'expansao']).optional().describe('Etapa no funil SaaS\/TI'),
   "mrr": zod.number().optional(),
@@ -1392,7 +1394,7 @@ export const UpdateDealBody = zod.object({
   "dataRenovacao": zod.coerce.date().optional(),
   "probChurn": zod.number().min(updateDealBodyProbChurnMin).max(updateDealBodyProbChurnMax).optional(),
   "quoteFileUrl": zod.string().nullish(),
-  "contractStatus": zod.string().nullish().describe('Override contract status (e.g. retry after failure)')
+  "contractStatus": zod.enum(['pending', 'sent', 'signed', 'failed', 'skipped', 'na']).nullish().describe('Override contract status (e.g. retry after failure)')
 })
 
 export const updateDealResponseOneProbabilidadeMin = 0;

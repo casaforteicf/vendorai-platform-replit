@@ -354,6 +354,7 @@ export * from './updateCustomerIntelligenceBody';
 export * from './updateCustomerIntelligenceBodyBehaviorScore';
 export * from './updateCustomerIntelligenceBodyChurnReasonsEditedBy';
 export * from './updateDealBody';
+export * from './updateDealBodyContractStatus';
 export * from './updateFunilBody';
 export * from './updateIntegrationSettingsBody';
 export * from './updateIntegrationSettingsBodyIntegrationType';
