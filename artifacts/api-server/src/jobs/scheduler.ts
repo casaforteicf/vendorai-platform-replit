@@ -20,6 +20,7 @@ import {
   tenantsTable,
   campaignsTable,
   leadsTable,
+  dealsTable,
   customerIntelligenceTable,
   agentConfigsTable,
   agentTasksTable,
@@ -348,6 +349,96 @@ async function dispatchDueCampaigns(log: Logger): Promise<void> {
   log.info("scheduler/campaigns: cycle complete");
 }
 
+// ── Job 4: Lost deal reactivation (after 30 days) ───────────────────────────
+
+async function runLostDealReactivation(log: Logger): Promise<void> {
+  log.info("scheduler/reactivation: starting");
+
+  const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
+
+  // Find lost deals older than 30 days (grouped by lead for latest date)
+  const lostDeals = await db
+    .select({
+      dealId: dealsTable.id,
+      leadId: dealsTable.leadId,
+      tenantId: dealsTable.tenantId,
+      lostAt: dealsTable.lostAt,
+    })
+    .from(dealsTable)
+    .where(
+      and(
+        eq(dealsTable.etapa, "perdido"),
+        isNotNull(dealsTable.leadId),
+        isNotNull(dealsTable.lostAt),
+        lte(dealsTable.lostAt, thirtyDaysAgo)
+      )
+    )
+    .orderBy(dealsTable.lostAt);
+
+  if (lostDeals.length === 0) {
+    log.debug("scheduler/reactivation: no deals ready for reactivation");
+    return;
+  }
+
+  // Deduplicate by lead: keep the most recent lost deal per lead
+  const byLead = new Map<string, typeof lostDeals[0]>();
+  for (const d of lostDeals) {
+    const leadId = d.leadId!;
+    const existing = byLead.get(leadId);
+    if (!existing || (existing.lostAt && d.lostAt && d.lostAt > existing.lostAt)) {
+      byLead.set(leadId, d);
+    }
+  }
+
+  let requeued = 0;
+  let dispatched = 0;
+
+  for (const deal of byLead.values()) {
+    const leadId = deal.leadId!;
+    try {
+      // Check if lead already requeued
+      const [lead] = await db
+        .select({ status: leadsTable.status, tenantId: leadsTable.tenantId })
+        .from(leadsTable)
+        .where(eq(leadsTable.id, leadId))
+        .limit(1);
+
+      if (!lead || lead.status === "aquecimento") {
+        log.info({ leadId, dealId: deal.dealId }, "scheduler/reactivation: skip — lead already in aquecimento");
+        continue;
+      }
+
+      // Verify lead belongs to same tenant as deal
+      if (lead.tenantId !== deal.tenantId) {
+        log.warn({ leadId, dealId: deal.dealId }, "scheduler/reactivation: tenant mismatch — skipping");
+        continue;
+      }
+
+      // Update lead to aquecimento
+      await db
+        .update(leadsTable)
+        .set({ status: "aquecimento", updatedAt: new Date() })
+        .where(eq(leadsTable.id, leadId));
+      requeued++;
+      log.info({ leadId, dealId: deal.dealId }, "scheduler/reactivation: lead requeued to aquecimento");
+
+      // Dispatch reactivation agent
+      dispatchAgentBackground({
+        tenantId: deal.tenantId,
+        leadId,
+        mensagem: "PROATIVO: reativação automática — deal perdido há mais de 30 dias, tentando reengajamento.",
+        log,
+      });
+      dispatched++;
+      log.info({ leadId, dealId: deal.dealId }, "scheduler/reactivation: reactivation agent dispatched");
+    } catch (err) {
+      log.error({ err, leadId, dealId: deal.dealId }, "scheduler/reactivation: lead failed (non-fatal)");
+    }
+  }
+
+  log.info({ totalDeals: lostDeals.length, leadsRequeued: requeued, agentsDispatched: dispatched }, "scheduler/reactivation: complete");
+}
+
 // ── Scheduler bootstrap ───────────────────────────────────────────────────────
 
 export function startScheduler(log: Logger): void {
@@ -372,5 +463,12 @@ export function startScheduler(log: Logger): void {
     });
   });
 
-  log.info("scheduler: started (churn-check @:05, campaigns @:15, billing @day-5-08:00)");
+  // Job 4: Lost deal reactivation — daily at 03:00
+  cron.schedule("0 3 * * *", () => {
+    runLostDealReactivation(log).catch((err) => {
+      log.error({ err }, "scheduler/reactivation: unhandled error");
+    });
+  });
+
+  log.info("scheduler: started (churn-check @:05, campaigns @:15, billing @day-5-08:00, reactivation @03:00)");
 }
