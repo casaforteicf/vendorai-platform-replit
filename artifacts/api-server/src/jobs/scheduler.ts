@@ -12,7 +12,7 @@
  *        (enviar_whatsapp with the campaign message), and advance status.
  */
 import cron from "node-cron";
-import { and, eq, gt, isNotNull, lte, gte, lt, inArray, sql } from "drizzle-orm";
+import { and, desc, eq, gt, isNotNull, lte, gte, lt, inArray, sql } from "drizzle-orm";
 import { runMonthlyBilling } from "../lib/billing.js";
 import type { Logger } from "pino";
 import {
@@ -356,8 +356,10 @@ async function runLostDealReactivation(log: Logger): Promise<void> {
 
   const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
 
-  // Find lost deals older than 30 days (grouped by lead for latest date)
-  const lostDeals = await db
+  // Fetch ALL lost deals with leadId, ordered by most recent lostAt first.
+  // Then deduplicate by lead so we keep the most recent loss per lead
+  // (regardless of age), and only after deduplication filter by >30 days.
+  const allLostDeals = await db
     .select({
       dealId: dealsTable.id,
       leadId: dealsTable.leadId,
@@ -369,31 +371,42 @@ async function runLostDealReactivation(log: Logger): Promise<void> {
       and(
         eq(dealsTable.etapa, "perdido"),
         isNotNull(dealsTable.leadId),
-        isNotNull(dealsTable.lostAt),
-        lte(dealsTable.lostAt, thirtyDaysAgo)
+        isNotNull(dealsTable.lostAt)
       )
     )
-    .orderBy(dealsTable.lostAt);
+    .orderBy(desc(dealsTable.lostAt));
 
-  if (lostDeals.length === 0) {
-    log.debug("scheduler/reactivation: no deals ready for reactivation");
+  // Deduplicate by lead: keep the most recent lost deal per lead
+  const byLead = new Map<string, typeof allLostDeals[0]>();
+  for (const d of allLostDeals) {
+    const leadId = d.leadId!;
+    if (!byLead.has(leadId)) {
+      byLead.set(leadId, d);
+    }
+  }
+
+  if (byLead.size === 0) {
+    log.debug("scheduler/reactivation: no lost deals found");
     return;
   }
 
-  // Deduplicate by lead: keep the most recent lost deal per lead
-  const byLead = new Map<string, typeof lostDeals[0]>();
-  for (const d of lostDeals) {
-    const leadId = d.leadId!;
-    const existing = byLead.get(leadId);
-    if (!existing || (existing.lostAt && d.lostAt && d.lostAt > existing.lostAt)) {
-      byLead.set(leadId, d);
+  // Filter to only leads whose most recent lost deal is >=30 days old
+  const readyDeals: typeof allLostDeals[0][] = [];
+  for (const deal of byLead.values()) {
+    if (deal.lostAt && deal.lostAt <= thirtyDaysAgo) {
+      readyDeals.push(deal);
     }
+  }
+
+  if (readyDeals.length === 0) {
+    log.debug("scheduler/reactivation: no deals ready for reactivation (most recent loss <30 days)");
+    return;
   }
 
   let requeued = 0;
   let dispatched = 0;
 
-  for (const deal of byLead.values()) {
+  for (const deal of readyDeals) {
     const leadId = deal.leadId!;
     try {
       // Check if lead already requeued
@@ -422,11 +435,12 @@ async function runLostDealReactivation(log: Logger): Promise<void> {
       requeued++;
       log.info({ leadId, dealId: deal.dealId }, "scheduler/reactivation: lead requeued to aquecimento");
 
-      // Dispatch reactivation agent
+      // Dispatch reactivation agent (forced)
       dispatchAgentBackground({
         tenantId: deal.tenantId,
         leadId,
         mensagem: "PROATIVO: reativação automática — deal perdido há mais de 30 dias, tentando reengajamento.",
+        forcedAgent: "reactivation",
         log,
       });
       dispatched++;
@@ -436,7 +450,7 @@ async function runLostDealReactivation(log: Logger): Promise<void> {
     }
   }
 
-  log.info({ totalDeals: lostDeals.length, leadsRequeued: requeued, agentsDispatched: dispatched }, "scheduler/reactivation: complete");
+  log.info({ readyDeals: readyDeals.length, leadsRequeued: requeued, agentsDispatched: dispatched }, "scheduler/reactivation: complete");
 }
 
 // ── Scheduler bootstrap ───────────────────────────────────────────────────────

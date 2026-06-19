@@ -93,8 +93,9 @@ export async function processAgentInternal(params: {
   leadId:   string;
   mensagem: string;
   log:      Logger;
+  forcedAgent?: AgentName;
 }): Promise<void> {
-  const { tenantId, leadId, mensagem, log } = params;
+  const { tenantId, leadId, mensagem, log, forcedAgent } = params;
 
   try {
     // 1. Load agent config
@@ -123,8 +124,13 @@ export async function processAgentInternal(params: {
       .orderBy(desc(dealsTable.updatedAt));
 
     // 4. Determine which agent should respond
-    const diasSinceContact = daysSinceLastContact(ctx);
-    const agentName = determineAgent(ctx.lead, ctx.ci, deals, diasSinceContact);
+    let agentName: AgentName;
+    if (forcedAgent) {
+      agentName = forcedAgent;
+    } else {
+      const diasSinceContact = daysSinceLastContact(ctx);
+      agentName = determineAgent(ctx.lead, ctx.ci, deals, diasSinceContact);
+    }
 
     // 5. Check if that agent is enabled
     const agentCfg = config.agents?.[agentName];
@@ -201,6 +207,7 @@ export function dispatchAgentBackground(params: {
   leadId:   string;
   mensagem: string;
   log:      Logger;
+  forcedAgent?: AgentName;
 }): void {
   processAgentInternal(params).catch((err) => {
     params.log.error({ err, ...params }, "dispatch: unhandled error in background task");
