@@ -1303,11 +1303,11 @@ export default function Dashboard() {
           ) : (
             <div className="divide-y divide-border">
               {dashboard.top5ChurnRisk.map((lead, idx) => (
-                <div
+                <Link
                   key={lead.leadId}
-                  className="flex items-center justify-between py-3 gap-4 cursor-pointer hover:bg-muted/50 rounded transition-colors"
+                  href={`/leads/${lead.leadId}`}
+                  className="flex items-center justify-between py-3 gap-4 cursor-pointer hover:bg-muted/50 rounded transition-colors no-underline"
                   data-testid={`row-lead-risco-${lead.leadId}`}
-                  onClick={() => navigate(`/leads/${lead.leadId}`)}
                 >
                   <div className="flex items-center gap-3 min-w-0">
                     <span className="text-xs text-muted-foreground w-4 shrink-0">
@@ -1323,7 +1323,7 @@ export default function Dashboard() {
                     </div>
                   </div>
                   {churnBadge(lead.churnRisk)}
-                </div>
+                </Link>
               ))}
             </div>
           )}
