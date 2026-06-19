@@ -2011,7 +2011,7 @@ export default function LeadDetail() {
 
       {/* Dados do Lead — edit dialog */}
       <Dialog open={editingLeadDados} onOpenChange={setEditingLeadDados}>
-        <DialogContent className="max-w-md">
+        <DialogContent className="max-w-md max-h-[85vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>Editar Dados do Lead</DialogTitle>
           </DialogHeader>
