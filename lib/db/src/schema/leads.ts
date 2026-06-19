@@ -15,6 +15,7 @@ export const leadsTable = pgTable("leads", {
   telefone: text("telefone"),
   email: text("email"),
   empresa: text("empresa"),
+  documento: text("documento"),
   tamanhoEquipe: text("tamanho_equipe"),
   objetivo: text("objetivo"),
   urgencia: text("urgencia"),

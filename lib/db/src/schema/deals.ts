@@ -39,6 +39,17 @@ export const dealsTable = pgTable("deals", {
   dataFechamentoPrevista: timestamp("data_fechamento_prevista"),
   categoriaPerda: text("categoria_perda"),
   motivoPerda: text("motivo_perda"),
+  // Closure tracking
+  closureTriggeredAt: timestamp("closure_triggered_at"),
+  contractStatus: text("contract_status"),
+  contractError: text("contract_error"),
+  onboardingStatus: text("onboarding_status"),
+  onboardingError: text("onboarding_error"),
+  zapsignDocId: text("zapsign_doc_id"),
+  // Lost deal tracking
+  lostAt: timestamp("lost_at"),
+  lostReason: text("lost_reason"),
+  lostReasonDetail: text("lost_reason_detail"),
   assignedTo: text("assigned_to").references(() => usersTable.id, { onDelete: "set null" }),
   tipoFechamento: dealTipoFechamentoEnum("tipo_fechamento"),
   asaasChargeId: text("asaas_charge_id"),

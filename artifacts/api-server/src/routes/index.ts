@@ -42,6 +42,7 @@ import adminPartnersRouter from "./admin_partners";
 import billingEventsRouter from "./billing_events";
 import tokenPurchasesRouter from "./token_purchases";
 import tenantDomainsRouter from "./tenant_domains";
+import notificationsRouter from "./notifications";
 import { intakeRouter } from "./intake";
 import construcaoRouter from "./construcao";
 import varejoRouter from "./varejo";
@@ -169,6 +170,9 @@ router.use(siteGeneratorRouter);
 
 // Tenant Domains Hub
 router.use(tenantDomainsRouter);
+
+// Notifications Hub
+router.use(notificationsRouter);
 
 export { requireRole, requireSameTenanOrSuperAdmin };
 export default router;

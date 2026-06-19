@@ -1291,6 +1291,15 @@ export const ListDealsResponseItem = zod.object({
   "dataRenovacao": zod.coerce.date().nullish().describe('Data de renovação do contrato'),
   "probChurn": zod.number().min(listDealsResponseProbChurnMin).max(listDealsResponseProbChurnMax).nullish().describe('Probabilidade de churn (0-100%)'),
   "quoteFileUrl": zod.string().nullish().describe('Path of the imported quote file stored in object storage (\/objects\/...)'),
+  "closureTriggeredAt": zod.coerce.date().nullish().describe('When the automated deal closure workflow was triggered'),
+  "contractStatus": zod.string().nullish().describe('Contract status (pending, sent, signed, failed, skipped, na)'),
+  "contractError": zod.string().nullish().describe('Error message if contract generation failed'),
+  "onboardingStatus": zod.string().nullish().describe('Onboarding status (pending, sent, failed)'),
+  "onboardingError": zod.string().nullish().describe('Error message if onboarding failed'),
+  "zapsignDocId": zod.string().nullish().describe('ZapSign document token'),
+  "lostAt": zod.coerce.date().nullish().describe('When the deal was marked as lost'),
+  "lostReason": zod.string().nullish().describe('Categoria de motivo de perda'),
+  "lostReasonDetail": zod.string().nullish().describe('Detalhe do motivo de perda'),
   "createdAt": zod.coerce.date(),
   "updatedAt": zod.coerce.date()
 })
@@ -1333,6 +1342,15 @@ export const GetDealResponse = zod.object({
   "dataRenovacao": zod.coerce.date().nullish().describe('Data de renovação do contrato'),
   "probChurn": zod.number().min(getDealResponseProbChurnMin).max(getDealResponseProbChurnMax).nullish().describe('Probabilidade de churn (0-100%)'),
   "quoteFileUrl": zod.string().nullish().describe('Path of the imported quote file stored in object storage (\/objects\/...)'),
+  "closureTriggeredAt": zod.coerce.date().nullish().describe('When the automated deal closure workflow was triggered'),
+  "contractStatus": zod.string().nullish().describe('Contract status (pending, sent, signed, failed, skipped, na)'),
+  "contractError": zod.string().nullish().describe('Error message if contract generation failed'),
+  "onboardingStatus": zod.string().nullish().describe('Onboarding status (pending, sent, failed)'),
+  "onboardingError": zod.string().nullish().describe('Error message if onboarding failed'),
+  "zapsignDocId": zod.string().nullish().describe('ZapSign document token'),
+  "lostAt": zod.coerce.date().nullish().describe('When the deal was marked as lost'),
+  "lostReason": zod.string().nullish().describe('Categoria de motivo de perda'),
+  "lostReasonDetail": zod.string().nullish().describe('Detalhe do motivo de perda'),
   "createdAt": zod.coerce.date(),
   "updatedAt": zod.coerce.date()
 })
@@ -1405,6 +1423,15 @@ export const UpdateDealResponse = zod.object({
   "dataRenovacao": zod.coerce.date().nullish().describe('Data de renovação do contrato'),
   "probChurn": zod.number().min(updateDealResponseOneProbChurnMin).max(updateDealResponseOneProbChurnMax).nullish().describe('Probabilidade de churn (0-100%)'),
   "quoteFileUrl": zod.string().nullish().describe('Path of the imported quote file stored in object storage (\/objects\/...)'),
+  "closureTriggeredAt": zod.coerce.date().nullish().describe('When the automated deal closure workflow was triggered'),
+  "contractStatus": zod.string().nullish().describe('Contract status (pending, sent, signed, failed, skipped, na)'),
+  "contractError": zod.string().nullish().describe('Error message if contract generation failed'),
+  "onboardingStatus": zod.string().nullish().describe('Onboarding status (pending, sent, failed)'),
+  "onboardingError": zod.string().nullish().describe('Error message if onboarding failed'),
+  "zapsignDocId": zod.string().nullish().describe('ZapSign document token'),
+  "lostAt": zod.coerce.date().nullish().describe('When the deal was marked as lost'),
+  "lostReason": zod.string().nullish().describe('Categoria de motivo de perda'),
+  "lostReasonDetail": zod.string().nullish().describe('Detalhe do motivo de perda'),
   "createdAt": zod.coerce.date(),
   "updatedAt": zod.coerce.date()
 }).and(zod.object({
@@ -1415,7 +1442,11 @@ export const UpdateDealResponse = zod.object({
   "chargeLink": zod.string().nullish().describe('Payment link (Pix\/boleto) for the charge'),
   "chargeSkipReason": zod.string().nullish().describe('Why the charge was not created (e.g. asaas_not_configured, no_valor, asaas_error)'),
   "whatsappSent": zod.boolean().optional().describe('Whether a WhatsApp invite message was sent on deal win'),
-  "whatsappSkipReason": zod.string().nullish().describe('Why WhatsApp was not sent (e.g. no_phone, zapi_not_configured, send_error)')
+  "whatsappSkipReason": zod.string().nullish().describe('Why WhatsApp was not sent (e.g. no_phone, zapi_not_configured, send_error)'),
+  "contractSent": zod.boolean().optional().describe('Whether a contract was sent via ZapSign'),
+  "contractSkipReason": zod.string().nullish().describe('Why contract was not sent (e.g. zapsign_not_configured, no_signers, send_error)'),
+  "onboardingSent": zod.boolean().optional().describe('Whether onboarding was sent (invite or WhatsApp)'),
+  "onboardingSkipReason": zod.string().nullish().describe('Why onboarding was not sent')
 }))
 
 
@@ -4576,6 +4607,7 @@ export const ListLeadsResponseItem = zod.object({
   "telefone": zod.string().nullish(),
   "email": zod.string().nullish(),
   "empresa": zod.string().nullish(),
+  "documento": zod.string().nullish().describe('CPF\/CNPJ do lead'),
   "tamanhoEquipe": zod.string().nullish(),
   "objetivo": zod.string().nullish(),
   "urgencia": zod.string().nullish(),
@@ -4614,6 +4646,7 @@ export const CreateLeadBody = zod.object({
   "telefone": zod.string().nullish(),
   "email": zod.string().nullish(),
   "empresa": zod.string().nullish(),
+  "documento": zod.string().nullish().describe('CPF\/CNPJ do lead'),
   "tamanhoEquipe": zod.string().nullish(),
   "objetivo": zod.string().nullish(),
   "urgencia": zod.string().nullish(),
@@ -4655,6 +4688,7 @@ export const ListTenantLeadsResponseItem = zod.object({
   "telefone": zod.string().nullish(),
   "email": zod.string().nullish(),
   "empresa": zod.string().nullish(),
+  "documento": zod.string().nullish().describe('CPF\/CNPJ do lead'),
   "tamanhoEquipe": zod.string().nullish(),
   "objetivo": zod.string().nullish(),
   "urgencia": zod.string().nullish(),
@@ -4700,6 +4734,7 @@ export const GetLeadResponse = zod.object({
   "telefone": zod.string().nullish(),
   "email": zod.string().nullish(),
   "empresa": zod.string().nullish(),
+  "documento": zod.string().nullish().describe('CPF\/CNPJ do lead'),
   "tamanhoEquipe": zod.string().nullish(),
   "objetivo": zod.string().nullish(),
   "urgencia": zod.string().nullish(),
@@ -4740,6 +4775,7 @@ export const UpdateLeadBody = zod.object({
   "telefone": zod.string().nullish(),
   "email": zod.string().nullish(),
   "empresa": zod.string().nullish(),
+  "documento": zod.string().nullish().describe('CPF\/CNPJ do lead'),
   "tamanhoEquipe": zod.string().nullish(),
   "objetivo": zod.string().nullish(),
   "urgencia": zod.string().nullish(),
@@ -4773,6 +4809,7 @@ export const UpdateLeadResponse = zod.object({
   "telefone": zod.string().nullish(),
   "email": zod.string().nullish(),
   "empresa": zod.string().nullish(),
+  "documento": zod.string().nullish().describe('CPF\/CNPJ do lead'),
   "tamanhoEquipe": zod.string().nullish(),
   "objetivo": zod.string().nullish(),
   "urgencia": zod.string().nullish(),

@@ -1415,6 +1415,24 @@ export interface Deal {
   probChurn?: number | null;
   /** Path of the imported quote file stored in object storage (/objects/...) */
   quoteFileUrl?: string | null;
+  /** When the automated deal closure workflow was triggered */
+  closureTriggeredAt?: string | null;
+  /** Contract status (pending, sent, signed, failed, skipped, na) */
+  contractStatus?: string | null;
+  /** Error message if contract generation failed */
+  contractError?: string | null;
+  /** Onboarding status (pending, sent, failed) */
+  onboardingStatus?: string | null;
+  /** Error message if onboarding failed */
+  onboardingError?: string | null;
+  /** ZapSign document token */
+  zapsignDocId?: string | null;
+  /** When the deal was marked as lost */
+  lostAt?: string | null;
+  /** Categoria de motivo de perda */
+  lostReason?: string | null;
+  /** Detalhe do motivo de perda */
+  lostReasonDetail?: string | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -1436,6 +1454,14 @@ export type DealUpdateResponse = Deal & ({
   whatsappSent?: boolean;
   /** Why WhatsApp was not sent (e.g. no_phone, zapi_not_configured, send_error) */
   whatsappSkipReason?: string | null;
+  /** Whether a contract was sent via ZapSign */
+  contractSent?: boolean;
+  /** Why contract was not sent (e.g. zapsign_not_configured, no_signers, send_error) */
+  contractSkipReason?: string | null;
+  /** Whether onboarding was sent (invite or WhatsApp) */
+  onboardingSent?: boolean;
+  /** Why onboarding was not sent */
+  onboardingSkipReason?: string | null;
 });
 
 export interface CreateDealBody {
@@ -2123,6 +2149,8 @@ export interface Lead {
   telefone?: string | null;
   email?: string | null;
   empresa?: string | null;
+  /** CPF/CNPJ do lead */
+  documento?: string | null;
   tamanhoEquipe?: string | null;
   objetivo?: string | null;
   urgencia?: string | null;
@@ -2165,6 +2193,8 @@ export interface CreateLeadBody {
   telefone?: string | null;
   email?: string | null;
   empresa?: string | null;
+  /** CPF/CNPJ do lead */
+  documento?: string | null;
   tamanhoEquipe?: string | null;
   objetivo?: string | null;
   urgencia?: string | null;
@@ -2198,6 +2228,8 @@ export interface UpdateLeadBody {
   telefone?: string | null;
   email?: string | null;
   empresa?: string | null;
+  /** CPF/CNPJ do lead */
+  documento?: string | null;
   tamanhoEquipe?: string | null;
   objetivo?: string | null;
   urgencia?: string | null;

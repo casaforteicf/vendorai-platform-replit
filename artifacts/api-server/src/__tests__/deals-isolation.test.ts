@@ -35,9 +35,11 @@ vi.mock("@workspace/db", () => ({
     leadId: "leadId",
     assignedTo: "assignedTo",
   },
-  leadsTable: { id: "id", tenantId: "tenantId", email: "email", nome: "nome", telefone: "telefone" },
-  tenantsTable: { id: "id", name: "name", webhookEstoqueUrl: "webhookEstoqueUrl", partnerId: "partnerId" },
-  partnersTable: { id: "id", asaasWalletId: "asaasWalletId" },
+  leadsTable: { id: "id", tenantId: "tenantId", email: "email", nome: "nome", telefone: "telefone", documento: "documento", empresa: "empresa" },
+  tenantsTable: { id: "id", name: "name", webhookEstoqueUrl: "webhookEstoqueUrl", partnerId: "partnerId", tipoFechamentoDefault: "tipoFechamentoDefault", integrationType: "integrationType" },
+  partnersTable: { id: "id", name: "name", email: "email", asaasWalletId: "asaasWalletId" },
+  billingEventsTable: { id: "id" },
+  notificationsTable: { id: "id", tenantId: "tenantId", title: "title", message: "message", type: "type", category: "category", readAt: "readAt", createdAt: "createdAt" },
   tenantInvitesTable: {
     id: "id",
     tenantId: "tenantId",
@@ -80,6 +82,24 @@ vi.mock("../lib/asaas.js", () => ({
   isAsaasConfigured: vi.fn().mockReturnValue(false),
   createOrGetCustomer: vi.fn(),
   createCharge: vi.fn(),
+}));
+
+vi.mock("../lib/zapsign.js", () => ({
+  isZapSignConfigured: vi.fn().mockReturnValue(false),
+  createDocument: vi.fn(),
+}));
+
+vi.mock("../lib/contract-generation.js", () => ({
+  generateContractPDF: vi.fn().mockResolvedValue(Buffer.from("mock-pdf")),
+}));
+
+vi.mock("../services/erp-webhook.js", () => ({
+  dispatchVendaWebhook: vi.fn(),
+}));
+
+vi.mock("../services/omnichannel.js", () => ({
+  sendDirectWhatsAppMessage: vi.fn().mockResolvedValue(undefined),
+  WhatsAppNotConnectedError: class WhatsAppNotConnectedError extends Error {},
 }));
 
 import express from "express";

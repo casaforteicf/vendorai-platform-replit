@@ -49,6 +49,24 @@ export interface Deal {
   probChurn?: number | null;
   /** Path of the imported quote file stored in object storage (/objects/...) */
   quoteFileUrl?: string | null;
+  /** When the automated deal closure workflow was triggered */
+  closureTriggeredAt?: Date | null;
+  /** Contract status (pending, sent, signed, failed, skipped, na) */
+  contractStatus?: string | null;
+  /** Error message if contract generation failed */
+  contractError?: string | null;
+  /** Onboarding status (pending, sent, failed) */
+  onboardingStatus?: string | null;
+  /** Error message if onboarding failed */
+  onboardingError?: string | null;
+  /** ZapSign document token */
+  zapsignDocId?: string | null;
+  /** When the deal was marked as lost */
+  lostAt?: Date | null;
+  /** Categoria de motivo de perda */
+  lostReason?: string | null;
+  /** Detalhe do motivo de perda */
+  lostReasonDetail?: string | null;
   createdAt: Date;
   updatedAt: Date;
 }

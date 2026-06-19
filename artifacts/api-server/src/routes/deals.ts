@@ -10,6 +10,7 @@ import {
   leadsTable,
   tenantInvitesTable,
   partnersTable,
+  notificationsTable,
 } from "@workspace/db";
 import { dispatchVendaWebhook } from "../services/erp-webhook.js";
 import { sendDirectWhatsAppMessage, WhatsAppNotConnectedError } from "../services/omnichannel.js";
@@ -27,6 +28,7 @@ import {
 import { billingEventsTable } from "@workspace/db";
 import { extractQuoteData } from "../lib/document-extraction.js";
 import { ObjectStorageService } from "../lib/objectStorage.js";
+import { generateContractPDF } from "../lib/contract-generation.js";
 
 const router: IRouter = Router();
 const objectStorageService = new ObjectStorageService();
@@ -139,260 +141,390 @@ router.patch("/deals/:id", async (req, res) => {
   let chargeId: string | null = null;
   let chargeLink: string | null = null;
   let chargeSkipReason: string | undefined;
+  let contractSent = false;
+  let contractSkipReason: string | undefined;
+  let onboardingSent = false;
+  let onboardingSkipReason: string | undefined;
 
-  // ── Trigger ganho: convite + cobrança + webhook ───────────────────────────
+  // ── Trigger ganho: idempotent closure ───────────────────────────────────
   if (parsed.data.etapa === "ganho" && existing.etapa !== "ganho") {
-    try {
-      const [tenant, lead] = await Promise.all([
-        db
-          .select({
-            name: tenantsTable.name,
-            webhookEstoqueUrl: tenantsTable.webhookEstoqueUrl,
-            partnerId: tenantsTable.partnerId,
-            tipoFechamentoDefault: tenantsTable.tipoFechamentoDefault,
-            integrationType: tenantsTable.integrationType,
-          })
-          .from(tenantsTable)
-          .where(eq(tenantsTable.id, existing.tenantId))
-          .then((rows) => rows[0]),
-        deal.leadId
-          ? db
-              .select({ email: leadsTable.email, nome: leadsTable.nome, telefone: leadsTable.telefone })
-              .from(leadsTable)
-              .where(eq(leadsTable.id, deal.leadId))
-              .then((rows) => rows[0])
-          : Promise.resolve(undefined),
-      ]);
-
-      // ── Auto-invite (e-mail) ───────────────────────────────────────────────
-      let inviteUrl: string | undefined;
-      if (!lead?.email) {
-        inviteSkipReason = "no_email";
-        req.log.info({ dealId: deal.id }, "auto-invite skipped: lead has no email");
-      } else {
-        const email = lead.email;
-        const expiresAt = new Date();
-        expiresAt.setDate(expiresAt.getDate() + 7);
-
-        const [existing_invite] = await db
-          .select({ id: tenantInvitesTable.id, token: tenantInvitesTable.token })
-          .from(tenantInvitesTable)
-          .where(
-            and(
-              eq(tenantInvitesTable.email, email),
-              eq(tenantInvitesTable.tenantId, existing.tenantId),
-              eq(tenantInvitesTable.role, "tenant_admin"),
-              isNull(tenantInvitesTable.usedAt),
-            ),
-          );
-
-        let invite: { id: string; token: string };
-        if (existing_invite) {
-          [invite] = await db
-            .update(tenantInvitesTable)
-            .set({ expiresAt })
-            .where(eq(tenantInvitesTable.id, existing_invite.id))
-            .returning({ id: tenantInvitesTable.id, token: tenantInvitesTable.token });
-        } else {
-          [invite] = await db
-            .insert(tenantInvitesTable)
-            .values({
-              tenantId: existing.tenantId,
-              email,
-              role: "tenant_admin",
-              expiresAt,
-              createdBy: req.user!.sub,
-            })
-            .returning({ id: tenantInvitesTable.id, token: tenantInvitesTable.token });
-        }
-
-        inviteUrl = buildInviteUrl(req, invite.token);
-        inviteSent = await sendInviteEmail(email, inviteUrl, tenant?.name ?? "");
-        inviteEmail = email;
-        req.log.info({ dealId: deal.id, inviteId: invite.id, inviteSent }, "auto-invite processed");
-      }
-
-      // ── WhatsApp invite (independente do e-mail) ──────────────────────────
-      if (!lead?.telefone) {
-        whatsappSkipReason = "no_phone";
-        req.log.info({ dealId: deal.id }, "whatsapp invite skipped: lead has no phone");
-      } else {
-        try {
-          const nome = lead.nome ?? "";
-          const plataforma = tenant?.name ?? "VendorAI";
-          const whatsappMessage = inviteUrl
-            ? `Olá, ${nome}! 🎉\n\nSeu acesso à plataforma ${plataforma} foi liberado.\n\nClique no link abaixo para criar sua senha e acessar:\n${inviteUrl}`
-            : `Olá, ${nome}! 🎉\n\nSeu negócio foi fechado com sucesso na plataforma ${plataforma}. Em breve nossa equipe entrará em contato com mais informações.`;
-          await sendDirectWhatsAppMessage(existing.tenantId, lead.telefone, whatsappMessage, req.log);
-          whatsappSent = true;
-          req.log.info({ dealId: deal.id }, "whatsapp invite sent");
-        } catch (err) {
-          whatsappSkipReason =
-            err instanceof WhatsAppNotConnectedError ? "zapi_not_configured" : "send_error";
-          req.log.warn({ dealId: deal.id, err }, "whatsapp invite failed");
-        }
-      }
-
-      // ── Copiar valor → mensalidadeValor do tenant ─────────────────────────
-      if (deal.valor) {
+    if (deal.closureTriggeredAt) {
+      req.log.info({ dealId: deal.id }, "deal-ganho: already triggered, skipping");
+    } else {
+      try {
+        // Marcar início do fechamento
         await db
-          .update(tenantsTable)
-          .set({ mensalidadeValor: deal.valor, updatedAt: new Date() })
-          .where(eq(tenantsTable.id, existing.tenantId));
-        req.log.info({ dealId: deal.id, valor: deal.valor }, "deal-ganho: mensalidadeValor updated");
-      }
+          .update(dealsTable)
+          .set({ closureTriggeredAt: new Date(), contractStatus: "pending", onboardingStatus: "pending" })
+          .where(eq(dealsTable.id, deal.id));
 
-      // ── Criar billing_event initial ────────────────────────────────────────
-      if (deal.valor) {
-        const dueDate = new Date();
-        dueDate.setDate(dueDate.getDate() + 3);
-        await db.insert(billingEventsTable).values({
-          tenantId: existing.tenantId,
-          tipo: "initial",
-          valor: deal.valor,
-          status: "pending",
-          dueDate,
-        });
-      }
+        const [tenant, lead] = await Promise.all([
+          db
+            .select({
+              name: tenantsTable.name,
+              webhookEstoqueUrl: tenantsTable.webhookEstoqueUrl,
+              partnerId: tenantsTable.partnerId,
+              tipoFechamentoDefault: tenantsTable.tipoFechamentoDefault,
+              integrationType: tenantsTable.integrationType,
+            })
+            .from(tenantsTable)
+            .where(eq(tenantsTable.id, existing.tenantId))
+            .then((rows) => rows[0]),
+          deal.leadId
+            ? db
+                .select({ email: leadsTable.email, nome: leadsTable.nome, telefone: leadsTable.telefone, documento: leadsTable.documento, empresa: leadsTable.empresa })
+                .from(leadsTable)
+                .where(eq(leadsTable.id, deal.leadId))
+                .then((rows) => rows[0])
+            : Promise.resolve(undefined),
+        ]);
 
-      // ── ZapSign: contrato 2 ou 3 partes ───────────────────────────────────
-      const tipoFechamento = deal.tipoFechamento ?? tenant?.tipoFechamentoDefault ?? "pedido";
-      if (tipoFechamento === "contrato") {
-        if (!isZapSignConfigured()) {
-          req.log.warn({ dealId: deal.id }, "deal-ganho: ZapSign não configurado (ZAPSIGN_API_KEY ausente)");
+        // ── Notificações de dados faltantes ─────────────────────────────────
+        const missingData: string[] = [];
+        if (!lead?.email) missingData.push("email");
+        if (!lead?.telefone) missingData.push("telefone");
+        if (!lead?.documento) missingData.push("documento (CPF/CNPJ)");
+        if (missingData.length > 0) {
+          await db.insert(notificationsTable).values({
+            tenantId: existing.tenantId,
+            title: "Dados faltantes para fechamento",
+            message: `Deal "${deal.titulo}" está faltando: ${missingData.join(", ")}. Complete o lead para enviar contrato e onboarding.`,
+            type: "warning",
+            category: "deal_closure",
+          });
+          req.log.warn({ dealId: deal.id, missing: missingData }, "deal-ganho: missing data notification created");
+        }
+
+        // ── Auto-invite (e-mail) ───────────────────────────────────────────────
+        let inviteUrl: string | undefined;
+        if (!lead?.email) {
+          inviteSkipReason = "no_email";
+          req.log.info({ dealId: deal.id }, "auto-invite skipped: lead has no email");
+        } else {
+          const email = lead.email;
+          const expiresAt = new Date();
+          expiresAt.setDate(expiresAt.getDate() + 7);
+
+          const [existing_invite] = await db
+            .select({ id: tenantInvitesTable.id, token: tenantInvitesTable.token })
+            .from(tenantInvitesTable)
+            .where(
+              and(
+                eq(tenantInvitesTable.email, email),
+                eq(tenantInvitesTable.tenantId, existing.tenantId),
+                eq(tenantInvitesTable.role, "tenant_admin"),
+                isNull(tenantInvitesTable.usedAt),
+              ),
+            );
+
+          let invite: { id: string; token: string };
+          if (existing_invite) {
+            [invite] = await db
+              .update(tenantInvitesTable)
+              .set({ expiresAt })
+              .where(eq(tenantInvitesTable.id, existing_invite.id))
+              .returning({ id: tenantInvitesTable.id, token: tenantInvitesTable.token });
+          } else {
+            [invite] = await db
+              .insert(tenantInvitesTable)
+              .values({
+                tenantId: existing.tenantId,
+                email,
+                role: "tenant_admin",
+                expiresAt,
+                createdBy: req.user!.sub,
+              })
+              .returning({ id: tenantInvitesTable.id, token: tenantInvitesTable.token });
+          }
+
+          inviteUrl = buildInviteUrl(req, invite.token);
+          inviteSent = await sendInviteEmail(email, inviteUrl, tenant?.name ?? "");
+          inviteEmail = email;
+          req.log.info({ dealId: deal.id, inviteId: invite.id, inviteSent }, "auto-invite processed");
+        }
+
+        // ── WhatsApp invite (independente do e-mail) ──────────────────────────
+        if (!lead?.telefone) {
+          whatsappSkipReason = "no_phone";
+          req.log.info({ dealId: deal.id }, "whatsapp invite skipped: lead has no phone");
         } else {
           try {
-            const signers: { name: string; email: string }[] = [];
-
-            // 1. Cliente
-            if (lead?.email) {
-              signers.push({ name: lead.nome ?? "Cliente", email: lead.email });
-            }
-
-            // 2. Parceiro (se tenant tem partner)
-            if (tenant?.partnerId) {
-              const [partner] = await db
-                .select({ name: partnersTable.name, email: partnersTable.email })
-                .from(partnersTable)
-                .where(eq(partnersTable.id, tenant.partnerId));
-              if (partner) signers.push({ name: partner.name, email: partner.email });
-            }
-
-            // 3. Vendor.ai (sempre — CONTRATADA)
-            const vendoraiEmail = process.env["VENDORAI_SIGNING_EMAIL"];
-            if (vendoraiEmail) {
-              signers.push({ name: "Vendor.ai", email: vendoraiEmail });
-            }
-
-            if (signers.length > 0) {
-              const partes = tenant?.partnerId ? "3 partes" : "2 partes";
-              const doc = await createDocument({
-                name: `Contrato ${deal.titulo} — ${partes}`,
-                lang: "pt-BR",
-                signers,
-              });
-              req.log.info(
-                { dealId: deal.id, docToken: doc.token, signers: signers.length, partes },
-                "deal-ganho: contrato ZapSign criado",
-              );
-            }
+            const nome = lead.nome ?? "";
+            const plataforma = tenant?.name ?? "VendorAI";
+            const whatsappMessage = inviteUrl
+              ? `Olá, ${nome}! 🎉\n\nSeu acesso à plataforma ${plataforma} foi liberado.\n\nClique no link abaixo para criar sua senha e acessar:\n${inviteUrl}`
+              : `Olá, ${nome}! 🎉\n\nSeu negócio foi fechado com sucesso na plataforma ${plataforma}. Em breve nossa equipe entrará em contato com mais informações.`;
+            await sendDirectWhatsAppMessage(existing.tenantId, lead.telefone, whatsappMessage, req.log);
+            whatsappSent = true;
+            req.log.info({ dealId: deal.id }, "whatsapp invite sent");
           } catch (err) {
-            req.log.warn({ err, dealId: deal.id }, "deal-ganho: ZapSign falhou (non-fatal)");
+            whatsappSkipReason =
+              err instanceof WhatsAppNotConnectedError ? "zapi_not_configured" : "send_error";
+            req.log.warn({ dealId: deal.id, err }, "whatsapp invite failed");
           }
         }
-      } else {
-        req.log.info({ dealId: deal.id }, "deal-ganho: tipo=pedido — confirmação simples");
-      }
 
-      // ── Cobrança Asaas ─────────────────────────────────────────────────────
-      if (!isAsaasConfigured()) {
-        chargeSkipReason = "asaas_not_configured";
-        req.log.warn({ dealId: deal.id }, "Asaas charge skipped: ASAAS_API_KEY not configured");
-      } else if (!deal.valor) {
-        chargeSkipReason = "no_valor";
-        req.log.info({ dealId: deal.id }, "Asaas charge skipped: deal has no valor");
-      } else {
-        try {
-          // Descobrir walletId do parceiro (se tenant tiver parceiro com subconta)
-          let partnerWalletId: string | null = null;
-          if (tenant?.partnerId) {
-            const [partner] = await db
-              .select({ asaasWalletId: partnersTable.asaasWalletId })
-              .from(partnersTable)
-              .where(eq(partnersTable.id, tenant.partnerId));
-            partnerWalletId = partner?.asaasWalletId ?? null;
-          }
+        // Atualizar onboarding status
+        const onboardingError = inviteSkipReason || whatsappSkipReason || undefined;
+        onboardingSent = inviteSent || whatsappSent;
+        onboardingSkipReason = onboardingError;
+        await db
+          .update(dealsTable)
+          .set({
+            onboardingStatus: onboardingSent ? "sent" : "failed",
+            onboardingError: onboardingError ?? null,
+            updatedAt: new Date(),
+          })
+          .where(eq(dealsTable.id, deal.id));
 
-          // Criar ou recuperar cliente Asaas
-          const customer = await createOrGetCustomer({
-            name: lead?.nome ?? tenant?.name ?? "Cliente",
-            email: lead?.email ?? undefined,
-            phone: lead?.telefone ?? undefined,
-          });
+        // ── Copiar valor → mensalidadeValor do tenant ─────────────────────────
+        if (deal.valor) {
+          await db
+            .update(tenantsTable)
+            .set({ mensalidadeValor: deal.valor, updatedAt: new Date() })
+            .where(eq(tenantsTable.id, existing.tenantId));
+          req.log.info({ dealId: deal.id, valor: deal.valor }, "deal-ganho: mensalidadeValor updated");
+        }
 
-          // Vencimento: 3 dias úteis a partir de hoje
+        // ── Criar billing_event initial ────────────────────────────────────────
+        if (deal.valor) {
           const dueDate = new Date();
           dueDate.setDate(dueDate.getDate() + 3);
-          const dueDateStr = dueDate.toISOString().split("T")[0]!;
-
-          const charge = await createCharge({
-            customer: customer.id,
-            billingType: "PIX",
-            value: Number(deal.valor),
-            dueDate: dueDateStr,
-            description: `Proposta: ${deal.titulo}`,
-            split: partnerWalletId
-              ? [{ walletId: partnerWalletId, percentualValue: 50 }]
-              : undefined,
+          await db.insert(billingEventsTable).values({
+            tenantId: existing.tenantId,
+            tipo: "initial",
+            valor: deal.valor,
+            status: "pending",
+            dueDate,
           });
+        }
 
-          chargeId = charge.id;
-          chargeLink = charge.invoiceUrl ?? charge.bankSlipUrl ?? null;
+        // ── ZapSign: contrato 2 ou 3 partes com PDF ───────────────────────────
+        const tipoFechamento = deal.tipoFechamento ?? tenant?.tipoFechamentoDefault ?? "pedido";
+        if (tipoFechamento === "contrato") {
+          if (!isZapSignConfigured()) {
+            contractSent = false;
+            contractSkipReason = "zapsign_not_configured";
+            await db
+              .update(dealsTable)
+              .set({ contractStatus: "skipped", contractError: "zapsign_not_configured", updatedAt: new Date() })
+              .where(eq(dealsTable.id, deal.id));
+            req.log.warn({ dealId: deal.id }, "deal-ganho: ZapSign não configurado (ZAPSIGN_API_KEY ausente)");
+          } else {
+            try {
+              const signers: { name: string; email: string }[] = [];
 
-          // Persistir dados de cobrança no deal
+              // 1. Cliente
+              if (lead?.email) {
+                signers.push({ name: lead.nome ?? "Cliente", email: lead.email });
+              }
+
+              // 2. Parceiro (se tenant tem partner)
+              let partnerName: string | undefined;
+              let partnerEmail: string | undefined;
+              if (tenant?.partnerId) {
+                const [partner] = await db
+                  .select({ name: partnersTable.name, email: partnersTable.email })
+                  .from(partnersTable)
+                  .where(eq(partnersTable.id, tenant.partnerId));
+                if (partner) {
+                  signers.push({ name: partner.name, email: partner.email });
+                  partnerName = partner.name;
+                  partnerEmail = partner.email;
+                }
+              }
+
+              // 3. Vendor.ai (sempre — CONTRATADA)
+              const vendoraiEmail = process.env["VENDORAI_SIGNING_EMAIL"];
+              if (vendoraiEmail) {
+                signers.push({ name: "Vendor.ai", email: vendoraiEmail });
+              }
+
+              if (signers.length === 0) {
+                contractSent = false;
+                contractSkipReason = "no_signers";
+                await db
+                  .update(dealsTable)
+                  .set({ contractStatus: "failed", contractError: "no_signers", updatedAt: new Date() })
+                  .where(eq(dealsTable.id, deal.id));
+                req.log.warn({ dealId: deal.id }, "deal-ganho: no signers available for contract");
+              } else {
+                const partes = tenant?.partnerId ? "3 partes" : "2 partes";
+
+                // Gerar PDF do contrato
+                let contentBase64: string | undefined;
+                try {
+                  const pdfBuffer = await generateContractPDF({
+                    dealTitulo: deal.titulo,
+                    dealValor: deal.valor ? `R$ ${Number(deal.valor).toLocaleString("pt-BR", { minimumFractionDigits: 2 })}` : "Valor não especificado",
+                    clienteNome: lead?.nome ?? "Cliente",
+                    clienteEmail: lead?.email ?? "",
+                    clienteTelefone: lead?.telefone ?? "",
+                    clienteDocumento: lead?.documento ?? undefined,
+                    clienteEmpresa: lead?.empresa ?? undefined,
+                    tenantNome: tenant?.name ?? "Vendor.ai",
+                    dataHoje: new Date().toLocaleDateString("pt-BR", { day: "2-digit", month: "long", year: "numeric" }),
+                    produtosServicos: deal.titulo,
+                    partnerName,
+                    partnerEmail,
+                  }, !!tenant?.partnerId);
+                  contentBase64 = pdfBuffer.toString("base64");
+                } catch (pdfErr) {
+                  req.log.warn({ dealId: deal.id, err: pdfErr }, "deal-ganho: PDF generation failed, sending empty document");
+                }
+
+                const doc = await createDocument({
+                  name: `Contrato ${deal.titulo} — ${partes}`,
+                  lang: "pt-BR",
+                  signers,
+                  content_base64: contentBase64,
+                });
+                contractSent = true;
+
+                await db
+                  .update(dealsTable)
+                  .set({
+                    zapsignDocId: doc.token,
+                    contractStatus: "sent",
+                    contractError: null,
+                    updatedAt: new Date(),
+                  })
+                  .where(eq(dealsTable.id, deal.id));
+
+                req.log.info(
+                  { dealId: deal.id, docToken: doc.token, signers: signers.length, partes },
+                  "deal-ganho: contrato ZapSign criado",
+                );
+              }
+            } catch (err) {
+              const errMsg = err instanceof Error ? err.message : String(err);
+              contractSent = false;
+              contractSkipReason = "send_error";
+              await db
+                .update(dealsTable)
+                .set({ contractStatus: "failed", contractError: errMsg.slice(0, 500), updatedAt: new Date() })
+                .where(eq(dealsTable.id, deal.id));
+              req.log.warn({ err, dealId: deal.id }, "deal-ganho: ZapSign falhou (non-fatal)");
+            }
+          }
+        } else {
+          contractSent = false;
+          contractSkipReason = "tipo_pedido";
           await db
             .update(dealsTable)
-            .set({
-              asaasChargeId: charge.id,
-              chargeLink: charge.invoiceUrl,
-              chargeStatus: charge.status,
-              updatedAt: new Date(),
-            })
+            .set({ contractStatus: "na", updatedAt: new Date() })
             .where(eq(dealsTable.id, deal.id));
-
-          req.log.info(
-            { dealId: deal.id, chargeId: charge.id, split: !!partnerWalletId, partnerWalletId },
-            "Asaas charge created",
-          );
-        } catch (err) {
-          chargeSkipReason = "asaas_error";
-          req.log.warn({ err, dealId: deal.id }, "Asaas charge creation failed");
+          req.log.info({ dealId: deal.id }, "deal-ganho: tipo=pedido — confirmação simples");
         }
-      }
 
-      // ── Webhook ERP: venda realizada ───────────────────────────────────────
-      if (tenant?.webhookEstoqueUrl) {
-        void dispatchVendaWebhook(
-          tenant.webhookEstoqueUrl,
-          {
-            event: "venda_realizada",
-            tenantId: existing.tenantId,
-            vendaId: deal.id,
-            tipo: "deal",
-            produtos: [],
-            valorTotal: deal.valor ? Number(deal.valor) : null,
-            realizadaEm: new Date().toISOString(),
-            integrationType: (tenant.integrationType as "n8n" | "api" | undefined) ?? undefined,
-          },
-          req.log,
-        );
+        // ── Cobrança Asaas ─────────────────────────────────────────────────────
+        if (!isAsaasConfigured()) {
+          chargeSkipReason = "asaas_not_configured";
+          req.log.warn({ dealId: deal.id }, "Asaas charge skipped: ASAAS_API_KEY not configured");
+        } else if (!deal.valor) {
+          chargeSkipReason = "no_valor";
+          req.log.info({ dealId: deal.id }, "Asaas charge skipped: deal has no valor");
+        } else {
+          try {
+            // Descobrir walletId do parceiro (se tenant tiver parceiro com subconta)
+            let partnerWalletId: string | null = null;
+            if (tenant?.partnerId) {
+              const [partner] = await db
+                .select({ asaasWalletId: partnersTable.asaasWalletId })
+                .from(partnersTable)
+                .where(eq(partnersTable.id, tenant.partnerId));
+              partnerWalletId = partner?.asaasWalletId ?? null;
+            }
+
+            // Criar ou recuperar cliente Asaas
+            const customer = await createOrGetCustomer({
+              name: lead?.nome ?? tenant?.name ?? "Cliente",
+              email: lead?.email ?? undefined,
+              phone: lead?.telefone ?? undefined,
+            });
+
+            // Vencimento: 3 dias úteis a partir de hoje
+            const dueDate = new Date();
+            dueDate.setDate(dueDate.getDate() + 3);
+            const dueDateStr = dueDate.toISOString().split("T")[0]!;
+
+            const charge = await createCharge({
+              customer: customer.id,
+              billingType: "PIX",
+              value: Number(deal.valor),
+              dueDate: dueDateStr,
+              description: `Proposta: ${deal.titulo}`,
+              split: partnerWalletId
+                ? [{ walletId: partnerWalletId, percentualValue: 50 }]
+                : undefined,
+            });
+
+            chargeId = charge.id;
+            chargeLink = charge.invoiceUrl ?? charge.bankSlipUrl ?? null;
+
+            // Persistir dados de cobrança no deal
+            await db
+              .update(dealsTable)
+              .set({
+                asaasChargeId: charge.id,
+                chargeLink: charge.invoiceUrl,
+                chargeStatus: charge.status,
+                updatedAt: new Date(),
+              })
+              .where(eq(dealsTable.id, deal.id));
+
+            req.log.info(
+              { dealId: deal.id, chargeId: charge.id, split: !!partnerWalletId, partnerWalletId },
+              "Asaas charge created",
+            );
+          } catch (err) {
+            chargeSkipReason = "asaas_error";
+            req.log.warn({ err, dealId: deal.id }, "Asaas charge creation failed");
+          }
+        }
+
+        // ── Webhook ERP: venda realizada ───────────────────────────────────────
+        if (tenant?.webhookEstoqueUrl) {
+          void dispatchVendaWebhook(
+            tenant.webhookEstoqueUrl,
+            {
+              event: "venda_realizada",
+              tenantId: existing.tenantId,
+              vendaId: deal.id,
+              tipo: "deal",
+              produtos: [],
+              valorTotal: deal.valor ? Number(deal.valor) : null,
+              realizadaEm: new Date().toISOString(),
+              integrationType: (tenant.integrationType as "n8n" | "api" | undefined) ?? undefined,
+            },
+            req.log,
+          );
+        }
+      } catch (err) {
+        req.log.warn({ err }, "deal-ganho: trigger processing failed");
       }
-    } catch (err) {
-      req.log.warn({ err }, "deal-ganho: trigger processing failed");
     }
   }
 
-  res.json({ ...deal, inviteSent, inviteEmail, inviteSkipReason, whatsappSent, whatsappSkipReason, chargeId, chargeLink, chargeSkipReason });
+  // ── Trigger perda: capturar motivo e data ─────────────────────────────────
+  if (parsed.data.etapa === "perdido" && existing.etapa !== "perdido") {
+    try {
+      await db
+        .update(dealsTable)
+        .set({
+          lostAt: new Date(),
+          lostReason: parsed.data.categoriaPerda ?? null,
+          lostReasonDetail: parsed.data.motivoPerda ?? null,
+          updatedAt: new Date(),
+        })
+        .where(eq(dealsTable.id, deal.id));
+      req.log.info({ dealId: deal.id }, "deal marked as lost");
+    } catch (err) {
+      req.log.warn({ err, dealId: deal.id }, "deal-perdido: failed to update lost fields");
+    }
+  }
+
+  res.json({ ...deal, inviteSent, inviteEmail, inviteSkipReason, whatsappSent, whatsappSkipReason, chargeId, chargeLink, chargeSkipReason, contractSent, contractSkipReason, onboardingSent, onboardingSkipReason });
 });
 
 // ─── Quote extraction ─────────────────────────────────────────────────────────

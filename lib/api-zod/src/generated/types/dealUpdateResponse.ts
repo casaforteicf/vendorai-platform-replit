@@ -24,4 +24,12 @@ export type DealUpdateResponse = Deal & ({
   whatsappSent?: boolean;
   /** Why WhatsApp was not sent (e.g. no_phone, zapi_not_configured, send_error) */
   whatsappSkipReason?: string | null;
+  /** Whether a contract was sent via ZapSign */
+  contractSent?: boolean;
+  /** Why contract was not sent (e.g. zapsign_not_configured, no_signers, send_error) */
+  contractSkipReason?: string | null;
+  /** Whether onboarding was sent (invite or WhatsApp) */
+  onboardingSent?: boolean;
+  /** Why onboarding was not sent */
+  onboardingSkipReason?: string | null;
 });

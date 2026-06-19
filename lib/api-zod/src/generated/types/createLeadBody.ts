@@ -13,6 +13,8 @@ export interface CreateLeadBody {
   telefone?: string | null;
   email?: string | null;
   empresa?: string | null;
+  /** CPF/CNPJ do lead */
+  documento?: string | null;
   tamanhoEquipe?: string | null;
   objetivo?: string | null;
   urgencia?: string | null;

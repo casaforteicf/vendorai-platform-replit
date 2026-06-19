@@ -9759,6 +9759,44 @@ components:
           type: string
           nullable: true
           description: Path of the imported quote file stored in object storage (/objects/...)
+        closureTriggeredAt:
+          type: string
+          format: date-time
+          nullable: true
+          description: When the automated deal closure workflow was triggered
+        contractStatus:
+          type: string
+          nullable: true
+          description: Contract status (pending, sent, signed, failed, skipped, na)
+        contractError:
+          type: string
+          nullable: true
+          description: Error message if contract generation failed
+        onboardingStatus:
+          type: string
+          nullable: true
+          description: Onboarding status (pending, sent, failed)
+        onboardingError:
+          type: string
+          nullable: true
+          description: Error message if onboarding failed
+        zapsignDocId:
+          type: string
+          nullable: true
+          description: ZapSign document token
+        lostAt:
+          type: string
+          format: date-time
+          nullable: true
+          description: When the deal was marked as lost
+        lostReason:
+          type: string
+          nullable: true
+          description: Categoria de motivo de perda
+        lostReasonDetail:
+          type: string
+          nullable: true
+          description: Detalhe do motivo de perda
         createdAt:
           type: string
           format: date-time
@@ -9802,6 +9840,20 @@ components:
               type: string
               nullable: true
               description: Why WhatsApp was not sent (e.g. no_phone, zapi_not_configured, send_error)
+            contractSent:
+              type: boolean
+              description: Whether a contract was sent via ZapSign
+            contractSkipReason:
+              type: string
+              nullable: true
+              description: Why contract was not sent (e.g. zapsign_not_configured, no_signers, send_error)
+            onboardingSent:
+              type: boolean
+              description: Whether onboarding was sent (invite or WhatsApp)
+            onboardingSkipReason:
+              type: string
+              nullable: true
+              description: Why onboarding was not sent
 
     CreateDealBody:
       type: object
@@ -11185,6 +11237,10 @@ components:
         empresa:
           type: string
           nullable: true
+        documento:
+          type: string
+          nullable: true
+          description: CPF/CNPJ do lead
         tamanhoEquipe:
           type: string
           nullable: true
@@ -11290,6 +11346,10 @@ components:
         empresa:
           type: string
           nullable: true
+        documento:
+          type: string
+          nullable: true
+          description: CPF/CNPJ do lead
         tamanhoEquipe:
           type: string
           nullable: true
@@ -11374,6 +11434,10 @@ components:
         empresa:
           type: string
           nullable: true
+        documento:
+          type: string
+          nullable: true
+          description: CPF/CNPJ do lead
         tamanhoEquipe:
           type: string
           nullable: true
