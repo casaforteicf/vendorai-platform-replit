@@ -262,7 +262,7 @@ router.post("/agendas/:id/google/disconnect", async (req, res) => {
 
 export const googleCallbackRouter: IRouter = Router();
 
-googleCallbackRouter.get("/auth/google/callback", async (req, res) => {
+googleCallbackRouter.get("/auth/google/calendar/callback", async (req, res) => {
   const { code, state, error } = req.query as Record<string, string>;
 
   // Determine the app URL for redirect

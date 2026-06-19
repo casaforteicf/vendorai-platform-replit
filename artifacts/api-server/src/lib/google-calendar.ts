@@ -16,8 +16,8 @@ function getRedirectUri(): string {
   if (explicit) return explicit;
 
   const domain = (process.env["REPLIT_DOMAINS"] ?? "").split(",")[0]?.trim();
-  if (domain) return `https://${domain}/api/auth/google/callback`;
-  return `http://localhost:${process.env["PORT"] ?? 5000}/api/auth/google/callback`;
+  if (domain) return `https://${domain}/api/auth/google/calendar/callback`;
+  return `http://localhost:${process.env["PORT"] ?? 5000}/api/auth/google/calendar/callback`;
 }
 
 export function getGoogleRedirectUri(): string {
