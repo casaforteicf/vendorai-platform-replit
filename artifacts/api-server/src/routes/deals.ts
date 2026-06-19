@@ -582,6 +582,8 @@ router.patch("/deals/:id", async (req, res) => {
           );
         }
       } catch (err) {
+        const errStr = err instanceof Error ? err.stack || err.message : String(err);
+        console.error("=== deal-ganho: CRITICAL ERROR ===", errStr);
         req.log.warn({ err }, "deal-ganho: trigger processing failed");
       }
     }
