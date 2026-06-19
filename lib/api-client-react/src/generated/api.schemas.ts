@@ -1754,6 +1754,8 @@ export interface Tenant {
      * @nullable
      */
   maxAnalysesPerHour?: number | null;
+  /** Subdomain slug for *.vendor.ai automatic assignment. */
+  subdomainSlug?: string | null;
   /** Tipo de fechamento padrão para novos deals deste tenant. Null significa 'pedido'. */
   tipoFechamentoDefault?: TipoFechamento | null;
   /** Valor da mensalidade recorrente (copiado do deal ao ganhar). Usado para cobrança mensal no dia 5. */

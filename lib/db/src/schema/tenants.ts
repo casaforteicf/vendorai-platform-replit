@@ -42,6 +42,7 @@ export const tenantsTable = pgTable(
     mensalidadeValor: numeric("mensalidade_valor", { precision: 10, scale: 2 }),
     tokenCredits: integer("token_credits").notNull().default(0),
     partnerId: text("partner_id").references(() => partnersTable.id, { onDelete: "set null" }),
+    subdomainSlug: text("subdomain_slug").unique(),
     createdAt: timestamp("created_at").notNull().defaultNow(),
     updatedAt: timestamp("updated_at").notNull().defaultNow(),
   },

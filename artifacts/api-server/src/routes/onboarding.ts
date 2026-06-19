@@ -15,6 +15,7 @@ import {
 } from "@workspace/db";
 import { requireSameTenanOrSuperAdmin } from "../middlewares/auth.js";
 import { extractBusinessDataFromDocuments } from "../lib/document-extraction.js";
+import { generateSubdomainSlug } from "../lib/subdomain.js";
 
 const router: IRouter = Router();
 
@@ -357,13 +358,22 @@ router.post(
       });
     }
 
+    // Generate subdomain slug from nomeFantasia
+    const [tenantBefore] = await db
+      .select({ subdomainSlug: tenantsTable.subdomainSlug })
+      .from(tenantsTable)
+      .where(eq(tenantsTable.id, tenantId));
+
+    const subdomainSlug = tenantBefore?.subdomainSlug
+      ?? (await generateSubdomainSlug(data.nomeFantasia));
+
     const [tenant] = await db
       .update(tenantsTable)
-      .set({ setupCompletedAt: now, updatedAt: now })
+      .set({ setupCompletedAt: now, subdomainSlug, updatedAt: now })
       .where(eq(tenantsTable.id, tenantId))
-      .returning({ setupCompletedAt: tenantsTable.setupCompletedAt });
+      .returning({ setupCompletedAt: tenantsTable.setupCompletedAt, subdomainSlug: tenantsTable.subdomainSlug });
 
-    req.log.info({ tenantId }, "Onboarding: profile saved, setup marked complete");
+    req.log.info({ tenantId, subdomainSlug }, "Onboarding: profile saved, setup marked complete, subdomain assigned");
 
     // ── 2. Auto-config IA via segment template ─────────────────────────────
     const promptsApplied: string[] = [];

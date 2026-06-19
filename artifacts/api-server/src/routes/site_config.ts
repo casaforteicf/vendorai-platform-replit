@@ -6,14 +6,49 @@ import {
   insertSiteConfigSchema,
   updateSiteConfigSchema,
   tenantsTable,
+  tenantDomainsTable,
   businessProfilesTable,
   produtosCatalogoTable,
 } from "@workspace/db";
 import type { GeneratedSiteContent } from "@workspace/db";
 import { getOpenAI } from "../lib/agent-engine.js";
+import express from "express";
 
 // ─── Public router (no auth) ─────────────────────────────────────────────────
 export const publicSiteRouter: IRouter = Router();
+
+async function resolveTenantByHost(req: express.Request): Promise<{ id: string; slug: string; name: string } | null> {
+  const host = req.headers.host || req.headers["x-forwarded-host"] || "";
+  const hostStr = Array.isArray(host) ? host[0] : host;
+  const hostLower = hostStr.toLowerCase();
+
+  // Custom domain: lookup in tenant_domains
+  const [customDomain] = await db
+    .select({ tenantId: tenantDomainsTable.tenantId })
+    .from(tenantDomainsTable)
+    .where(eq(tenantDomainsTable.domain, hostLower));
+
+  if (customDomain) {
+    const [tenant] = await db
+      .select({ id: tenantsTable.id, slug: tenantsTable.slug, name: tenantsTable.name })
+      .from(tenantsTable)
+      .where(eq(tenantsTable.id, customDomain.tenantId));
+    return tenant ?? null;
+  }
+
+  // Subdomain: *.vendor.ai
+  const subdomainSuffix = ".vendor.ai";
+  if (hostLower.endsWith(subdomainSuffix)) {
+    const slug = hostLower.slice(0, -subdomainSuffix.length);
+    const [tenant] = await db
+      .select({ id: tenantsTable.id, slug: tenantsTable.slug, name: tenantsTable.name })
+      .from(tenantsTable)
+      .where(eq(tenantsTable.subdomainSlug, slug));
+    return tenant ?? null;
+  }
+
+  return null;
+}
 
 publicSiteRouter.get("/public/:tenantSlug/site", async (req, res) => {
   const { tenantSlug } = req.params;
@@ -22,6 +57,56 @@ publicSiteRouter.get("/public/:tenantSlug/site", async (req, res) => {
     .select({ id: tenantsTable.id, slug: tenantsTable.slug, name: tenantsTable.name })
     .from(tenantsTable)
     .where(eq(tenantsTable.slug, tenantSlug));
+
+  if (!tenant) {
+    res.status(404).json({ error: "Site not found" });
+    return;
+  }
+
+  const [siteConfig] = await db
+    .select()
+    .from(siteConfigTable)
+    .where(eq(siteConfigTable.tenantId, tenant.id));
+
+  if (!siteConfig || !siteConfig.ativo) {
+    res.status(404).json({ error: "Site not found or inactive" });
+    return;
+  }
+
+  const [[businessProfile], produtos] = await Promise.all([
+    db
+      .select()
+      .from(businessProfilesTable)
+      .where(eq(businessProfilesTable.tenantId, tenant.id)),
+    db
+      .select({
+        id: produtosCatalogoTable.id,
+        nome: produtosCatalogoTable.nome,
+        descricao: produtosCatalogoTable.descricao,
+        precoBase: produtosCatalogoTable.precoBase,
+        unidade: produtosCatalogoTable.unidade,
+      })
+      .from(produtosCatalogoTable)
+      .where(
+        and(
+          eq(produtosCatalogoTable.tenantId, tenant.id),
+          eq(produtosCatalogoTable.ativo, true)
+        )
+      )
+      .orderBy(produtosCatalogoTable.nome),
+  ]);
+
+  res.json({
+    tenant,
+    businessProfile: businessProfile ?? null,
+    produtos,
+    siteConfig,
+  });
+});
+
+// Host-based routing (subdomain or custom domain)
+publicSiteRouter.get("/public/site", async (req, res) => {
+  const tenant = await resolveTenantByHost(req);
 
   if (!tenant) {
     res.status(404).json({ error: "Site not found" });

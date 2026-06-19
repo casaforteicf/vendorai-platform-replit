@@ -914,6 +914,108 @@ export default function Configuracoes() {
     setSyncedIntegration(true);
   }
 
+  // ── Custom Domain state ─────────────────────────────────────────────────
+  const [customDomainInput, setCustomDomainInput] = useState<string>("");
+  const [customDomainSaving, setCustomDomainSaving] = useState(false);
+  const [customDomainList, setCustomDomainList] = useState<Array<{
+    id: string; domain: string; status: string; dnsRecordName?: string; dnsRecordValue?: string;
+  }>>([]);
+  const [customDomainLoading, setCustomDomainLoading] = useState(false);
+  const [domainStatusChecking, setDomainStatusChecking] = useState(false);
+
+  async function loadCustomDomains() {
+    if (!tenantId) return;
+    setCustomDomainLoading(true);
+    try {
+      const res = await fetch(`/api/tenants/${tenantId}/domains`, {
+        headers: { Authorization: `Bearer ${localStorage.getItem("vendorai_token")}` },
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setCustomDomainList(data.domains ?? []);
+      }
+    } catch {
+      // ignore
+    } finally {
+      setCustomDomainLoading(false);
+    }
+  }
+
+  useEffect(() => {
+    if (tenantId) loadCustomDomains();
+  }, [tenantId]);
+
+  async function onSaveCustomDomain() {
+    if (!tenantId || !customDomainInput.trim()) return;
+    setCustomDomainSaving(true);
+    try {
+      const res = await fetch(`/api/tenants/${tenantId}/domains`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${localStorage.getItem("vendorai_token")}`,
+        },
+        body: JSON.stringify({ domain: customDomainInput.trim() }),
+      });
+      if (res.ok) {
+        const data = await res.json();
+        toast({ title: "Domínio registrado com sucesso." });
+        setCustomDomainInput("");
+        setCustomDomainList((prev) => [...prev, { id: data.id, domain: data.domain, status: data.status, dnsRecordName: data.dnsRecordName, dnsRecordValue: data.dnsRecordValue }]);
+      } else {
+        const err = await res.json().catch(() => ({}));
+        toast({ title: err.error || "Erro ao registrar domínio.", variant: "destructive" });
+      }
+    } catch {
+      toast({ title: "Erro ao registrar domínio.", variant: "destructive" });
+    } finally {
+      setCustomDomainSaving(false);
+    }
+  }
+
+  async function onDeleteCustomDomain(domainId: string) {
+    if (!tenantId) return;
+    setDomainStatusChecking(true);
+    try {
+      const res = await fetch(`/api/tenants/${tenantId}/domains/${domainId}`, {
+        method: "DELETE",
+        headers: { Authorization: `Bearer ${localStorage.getItem("vendorai_token")}` },
+      });
+      if (res.ok) {
+        toast({ title: "Domínio removido." });
+        setCustomDomainList((prev) => prev.filter((d) => d.id !== domainId));
+      } else {
+        toast({ title: "Erro ao remover domínio.", variant: "destructive" });
+      }
+    } catch {
+      toast({ title: "Erro ao remover domínio.", variant: "destructive" });
+    } finally {
+      setDomainStatusChecking(false);
+    }
+  }
+
+  async function checkDomainStatus(domainId: string) {
+    if (!tenantId) return;
+    setDomainStatusChecking(true);
+    try {
+      const res = await fetch(`/api/tenants/${tenantId}/domains/${domainId}/status`, {
+        headers: { Authorization: `Bearer ${localStorage.getItem("vendorai_token")}` },
+      });
+      if (res.ok) {
+        const data = await res.json();
+        const domain = data.domain;
+        setCustomDomainList((prev) => prev.map((d) => (d.id === domainId ? { ...d, status: domain.status, dnsRecordName: domain.dnsRecordName, dnsRecordValue: domain.dnsRecordValue } : d)));
+        toast({ title: `Status: ${domain.status === "active" ? "Ativo" : domain.status === "pending_dns" ? "DNS pendente" : domain.status === "pending_ssl" ? "SSL pendente" : "Falhou"}.` });
+      } else {
+        toast({ title: "Erro ao verificar status.", variant: "destructive" });
+      }
+    } catch {
+      toast({ title: "Erro ao verificar status.", variant: "destructive" });
+    } finally {
+      setDomainStatusChecking(false);
+    }
+  }
+
   // ── Meta WhatsApp Cloud API connection state ──────────────────────────────
   const [metaPhoneNumberIdInput, setMetaPhoneNumberIdInput] = useState<string>("");
   const [metaWabaIdInput, setMetaWabaIdInput] = useState<string>("");
@@ -1868,6 +1970,151 @@ export default function Configuracoes() {
             </TabsList>
 
             <TabsContent value="configurar">
+          {/* ── Domain Card ─────────────────────────────────────────────── */}
+          <div className="rounded-xl border bg-card p-6 space-y-5">
+            <div>
+              <h2 className="font-semibold text-base flex items-center gap-2">
+                <Link className="h-4 w-4 text-primary" />
+                Endereço do seu site
+              </h2>
+              <p className="text-sm text-muted-foreground mt-0.5">
+                Subdomínio gratuito e opção de domínio próprio via Cloudflare.
+              </p>
+            </div>
+
+            {/* Subdomínio */}
+            <div className="rounded-lg border bg-muted/30 p-4 space-y-2">
+              <div className="flex items-center gap-2 text-sm font-medium">
+                <Globe className="h-4 w-4 text-muted-foreground" />
+                Subdomínio VendorAI
+              </div>
+              {tenantQuery.data?.subdomainSlug ? (
+                <div className="flex items-center gap-3">
+                  <code className="text-sm bg-background border rounded px-3 py-1.5 font-mono">
+                    https://{tenantQuery.data.subdomainSlug}.vendor.ai
+                  </code>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="gap-1.5 h-8"
+                    onClick={() => {
+                      const url = `https://${tenantQuery.data?.subdomainSlug}.vendor.ai`;
+                      navigator.clipboard.writeText(url);
+                      toast({ title: "URL copiada." });
+                    }}
+                  >
+                    <Copy className="h-3.5 w-3.5" /> Copiar
+                  </Button>
+                  {siteQuery.data?.ativo && (
+                    <a
+                      href={`/site/${tenantQuery.data?.slug ?? ""}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="inline-flex items-center gap-1.5 text-sm text-primary hover:underline shrink-0"
+                    >
+                      <ExternalLink className="h-3.5 w-3.5" />
+                      Ver site
+                    </a>
+                  )}
+                </div>
+              ) : (
+                <p className="text-sm text-muted-foreground">
+                  Subdomínio será gerado automaticamente após o onboarding.
+                </p>
+              )}
+            </div>
+
+            {/* Domínio próprio */}
+            <div className="space-y-3">
+              <div className="flex items-center gap-2 text-sm font-medium">
+                <Link className="h-4 w-4 text-muted-foreground" />
+                Domínio próprio
+              </div>
+              <div className="flex items-center gap-2">
+                <Input
+                  placeholder="exemplo.com.br"
+                  value={customDomainInput}
+                  onChange={(e) => setCustomDomainInput(e.target.value)}
+                  className="max-w-sm"
+                />
+                <Button
+                  onClick={onSaveCustomDomain}
+                  disabled={customDomainSaving || !customDomainInput.trim()}
+                  className="gap-2"
+                >
+                  {customDomainSaving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Link className="h-4 w-4" />}
+                  {customDomainSaving ? "Registrando..." : "Adicionar"}
+                </Button>
+              </div>
+              {customDomainList.length > 0 && (
+                <div className="space-y-2">
+                  {customDomainList.map((d) => (
+                    <div key={d.id} className="flex items-center justify-between gap-3 rounded-lg border bg-muted/30 p-3">
+                      <div className="space-y-1">
+                        <div className="flex items-center gap-2">
+                          <span className="font-mono text-sm">{d.domain}</span>
+                          {d.status === "active" && (
+                            <Badge variant="outline" className="text-green-600 border-green-200 bg-green-50 gap-1">
+                              <CheckCircle2 className="h-3 w-3" /> Ativo
+                            </Badge>
+                          )}
+                          {d.status === "pending_dns" && (
+                            <Badge variant="outline" className="text-amber-600 border-amber-200 bg-amber-50 gap-1">
+                              <Clock className="h-3 w-3" /> DNS pendente
+                            </Badge>
+                          )}
+                          {d.status === "pending_ssl" && (
+                            <Badge variant="outline" className="text-blue-600 border-blue-200 bg-blue-50 gap-1">
+                              <Clock className="h-3 w-3" /> SSL pendente
+                            </Badge>
+                          )}
+                          {d.status === "failed" && (
+                            <Badge variant="outline" className="text-destructive border-red-200 bg-red-50 gap-1">
+                              <AlertTriangle className="h-3 w-3" /> Falhou
+                            </Badge>
+                          )}
+                        </div>
+                        {d.status === "pending_dns" && (
+                          <div className="text-xs text-muted-foreground">
+                            Crie um registro <strong>CNAME</strong> em seu DNS:
+                            <code className="ml-1 font-mono bg-background border rounded px-1">{d.dnsRecordName}</code> → <code className="font-mono bg-background border rounded px-1">{d.dnsRecordValue}</code>
+                          </div>
+                        )}
+                      </div>
+                      <div className="flex items-center gap-2 shrink-0">
+                        <Button
+                          variant="outline"
+                          size="icon"
+                          className="h-8 w-8"
+                          onClick={() => checkDomainStatus(d.id)}
+                          disabled={domainStatusChecking}
+                          title="Verificar status"
+                        >
+                          <RefreshCw className="h-3.5 w-3.5" />
+                        </Button>
+                        <Button
+                          variant="outline"
+                          size="icon"
+                          className="h-8 w-8 text-destructive hover:text-destructive"
+                          onClick={() => onDeleteCustomDomain(d.id)}
+                          disabled={domainStatusChecking}
+                          title="Remover domínio"
+                        >
+                          <Trash2 className="h-3.5 w-3.5" />
+                        </Button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+              {customDomainList.length === 0 && !customDomainInput && (
+                <p className="text-sm text-muted-foreground">
+                  Adicione um domínio próprio para apontar seu site para um endereço personalizado.
+                </p>
+              )}
+            </div>
+          </div>
+
           <div className="rounded-xl border bg-card p-6 space-y-6">
             <div className="flex items-start justify-between gap-4">
               <div>
@@ -1876,8 +2123,7 @@ export default function Configuracoes() {
                   Landing Page Pública
                 </h2>
                 <p className="text-sm text-muted-foreground mt-0.5">
-                  Configure a página pública do seu negócio. Acessível em{" "}
-                  <code className="text-xs bg-muted px-1 py-0.5 rounded">/site/{"{seu-slug}"}</code>
+                  Configure a página pública do seu negócio.
                 </p>
               </div>
               {siteQuery.data?.ativo && (
