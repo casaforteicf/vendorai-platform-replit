@@ -53,6 +53,7 @@ router.post("/agendamentos", async (req, res) => {
   res.status(201).json(agendamento);
 
   // Async Google Calendar sync — after response sent
+  req.log.info({ agendaId: agendamento.agendaId, agendamentoId: agendamento.id }, "agendamento: starting Google Calendar sync");
   if (agendamento.agendaId) {
     try {
       const [agenda] = await db
@@ -60,22 +61,28 @@ router.post("/agendamentos", async (req, res) => {
         .from(agendasTable)
         .where(eq(agendasTable.id, agendamento.agendaId));
 
+      req.log.info({ agendaId: agendamento.agendaId, hasRefreshToken: !!agenda?.googleRefreshToken }, "agendamento: agenda lookup done");
+
       if (agenda?.googleRefreshToken) {
         const [lead] = await db
           .select({ nome: leadsTable.nome, email: leadsTable.email })
           .from(leadsTable)
           .where(eq(leadsTable.id, agendamento.leadId));
 
-        await createGoogleEvent(
+        req.log.info({ agendaId: agendamento.agendaId, leadId: agendamento.leadId }, "agendamento: calling createGoogleEvent");
+        const googleEventId = await createGoogleEvent(
           agendamento.agendaId,
           agendamento,
           lead?.nome ?? undefined,
           lead?.email ?? undefined,
           agendamento.gerarMeet ?? false
         );
+        req.log.info({ agendaId: agendamento.agendaId, googleEventId }, "agendamento: Google Calendar sync result");
+      } else {
+        req.log.warn({ agendaId: agendamento.agendaId }, "agendamento: agenda has no refresh_token, skipping Google Calendar sync");
       }
     } catch (err) {
-      req.log.warn({ err }, "Google Calendar sync failed on create");
+      req.log.error({ err }, "agendamento: Google Calendar sync failed on create");
     }
   }
 });

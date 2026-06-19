@@ -71,28 +71,43 @@ export async function exchangeCodeAndStore(
     logger.warn({ err: e }, "Could not fetch Google Calendar info");
   }
 
+  // Build update object — only overwrite refresh_token if Google actually sent a new one
+  const updateData: Record<string, unknown> = {
+    googleCalendarId,
+    googleEmail,
+    googleAccessToken: tokens.access_token ?? null,
+    googleTokenExpiresAt: tokens.expiry_date
+      ? new Date(tokens.expiry_date)
+      : null,
+    updatedAt: new Date(),
+  };
+  if (tokens.refresh_token) {
+    updateData.googleRefreshToken = tokens.refresh_token;
+  }
+
   await db
     .update(agendasTable)
-    .set({
-      googleCalendarId,
-      googleEmail,
-      googleAccessToken: tokens.access_token ?? null,
-      googleRefreshToken: tokens.refresh_token ?? null,
-      googleTokenExpiresAt: tokens.expiry_date
-        ? new Date(tokens.expiry_date)
-        : null,
-      updatedAt: new Date(),
-    })
+    .set(updateData)
     .where(eq(agendasTable.id, agendaId));
 }
 
 async function getAuthForAgenda(agendaId: string) {
+  logger.info({ agendaId }, "getAuthForAgenda: fetching agenda");
+
   const [agenda] = await db
     .select()
     .from(agendasTable)
     .where(eq(agendasTable.id, agendaId));
 
-  if (!agenda?.googleRefreshToken) return null;
+  logger.info(
+    { agendaId, hasRefreshToken: !!agenda?.googleRefreshToken, hasAccessToken: !!agenda?.googleAccessToken, tokenExpiresAt: agenda?.googleTokenExpiresAt },
+    "getAuthForAgenda: agenda fetched"
+  );
+
+  if (!agenda?.googleRefreshToken) {
+    logger.warn({ agendaId }, "getAuthForAgenda: no refresh_token for agenda");
+    return null;
+  }
 
   const oauth2 = createOAuth2Client();
   oauth2.setCredentials({
@@ -125,8 +140,15 @@ export async function createGoogleEvent(
   leadEmail?: string,
   gerarMeet?: boolean
 ): Promise<string | null> {
+  logger.info({ agendaId, agendamentoId: agendamento.id, gerarMeet }, "createGoogleEvent: starting");
+
   const auth = await getAuthForAgenda(agendaId);
-  if (!auth) return null;
+  if (!auth) {
+    logger.warn({ agendaId }, "createGoogleEvent: getAuthForAgenda returned null");
+    return null;
+  }
+
+  logger.info({ agendaId, calendarId: auth.calendarId }, "createGoogleEvent: auth ready");
 
   const cal = google.calendar({ version: "v3", auth: auth.oauth2 });
 
@@ -158,28 +180,37 @@ export async function createGoogleEvent(
     };
   }
 
-  const event = await cal.events.insert({
-    calendarId: auth.calendarId,
-    conferenceDataVersion: gerarMeet ? 1 : 0,
-    requestBody,
-  });
+  logger.info({ agendaId, calendarId: auth.calendarId, requestBody }, "createGoogleEvent: calling Google Calendar API");
 
-  const googleEventId = event.data.id ?? null;
-  const meetLink =
-    event.data.conferenceData?.entryPoints?.find((ep) => ep.entryPointType === "video")
-      ?.uri ?? null;
+  try {
+    const event = await cal.events.insert({
+      calendarId: auth.calendarId,
+      conferenceDataVersion: gerarMeet ? 1 : 0,
+      requestBody,
+    });
 
-  if (googleEventId || meetLink) {
-    await db
-      .update(agendamentosTable)
-      .set({
-        ...(googleEventId ? { googleEventId } : {}),
-        ...(meetLink ? { meetLink } : {}),
-        updatedAt: new Date(),
-      })
-      .where(eq(agendamentosTable.id, agendamento.id));
+    const googleEventId = event.data.id ?? null;
+    const meetLink =
+      event.data.conferenceData?.entryPoints?.find((ep) => ep.entryPointType === "video")
+        ?.uri ?? null;
+
+    logger.info({ agendaId, googleEventId, meetLink }, "createGoogleEvent: event created successfully");
+
+    if (googleEventId || meetLink) {
+      await db
+        .update(agendamentosTable)
+        .set({
+          ...(googleEventId ? { googleEventId } : {}),
+          ...(meetLink ? { meetLink } : {}),
+          updatedAt: new Date(),
+        })
+        .where(eq(agendamentosTable.id, agendamento.id));
+    }
+    return googleEventId;
+  } catch (err) {
+    logger.error({ err, agendaId, requestBody }, "createGoogleEvent: Google Calendar API error");
+    throw err;
   }
-  return googleEventId;
 }
 
 export async function updateGoogleEvent(
