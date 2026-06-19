@@ -228,87 +228,95 @@ router.patch("/deals/:id", async (req, res) => {
           req.log.warn({ dealId: deal.id, missing: missingData }, "deal-ganho: missing data notification created");
         }
 
-        // ── Auto-invite (e-mail) ───────────────────────────────────────────────
+        // ── Onboarding: email + WhatsApp (skip on contract retry) ──────────
         let inviteUrl: string | undefined;
-        if (!lead?.email) {
-          inviteSkipReason = "no_email";
-          req.log.info({ dealId: deal.id }, "auto-invite skipped: lead has no email");
+        if (isContractRetry) {
+          // Preservar estado anterior do onboarding no retry
+          inviteSent = deal.onboardingStatus === "sent";
+          onboardingSent = deal.onboardingStatus === "sent";
+          whatsappSent = deal.onboardingStatus === "sent";
+          req.log.info({ dealId: deal.id }, "deal-ganho: onboarding skipped on contract retry");
         } else {
-          const email = lead.email;
-          const expiresAt = new Date();
-          expiresAt.setDate(expiresAt.getDate() + 7);
-
-          const [existing_invite] = await db
-            .select({ id: tenantInvitesTable.id, token: tenantInvitesTable.token })
-            .from(tenantInvitesTable)
-            .where(
-              and(
-                eq(tenantInvitesTable.email, email),
-                eq(tenantInvitesTable.tenantId, tenantId),
-                eq(tenantInvitesTable.role, "tenant_admin"),
-                isNull(tenantInvitesTable.usedAt),
-              ),
-            );
-
-          let invite: { id: string; token: string };
-          if (existing_invite) {
-            [invite] = await db
-              .update(tenantInvitesTable)
-              .set({ expiresAt })
-              .where(eq(tenantInvitesTable.id, existing_invite.id))
-              .returning({ id: tenantInvitesTable.id, token: tenantInvitesTable.token });
+          if (!lead?.email) {
+            inviteSkipReason = "no_email";
+            req.log.info({ dealId: deal.id }, "auto-invite skipped: lead has no email");
           } else {
-            [invite] = await db
-              .insert(tenantInvitesTable)
-              .values({
-                tenantId,
-                email,
-                role: "tenant_admin",
-                expiresAt,
-                createdBy: req.user!.sub,
-              })
-              .returning({ id: tenantInvitesTable.id, token: tenantInvitesTable.token });
+            const email = lead.email;
+            const expiresAt = new Date();
+            expiresAt.setDate(expiresAt.getDate() + 7);
+
+            const [existing_invite] = await db
+              .select({ id: tenantInvitesTable.id, token: tenantInvitesTable.token })
+              .from(tenantInvitesTable)
+              .where(
+                and(
+                  eq(tenantInvitesTable.email, email),
+                  eq(tenantInvitesTable.tenantId, tenantId),
+                  eq(tenantInvitesTable.role, "tenant_admin"),
+                  isNull(tenantInvitesTable.usedAt),
+                ),
+              );
+
+            let invite: { id: string; token: string };
+            if (existing_invite) {
+              [invite] = await db
+                .update(tenantInvitesTable)
+                .set({ expiresAt })
+                .where(eq(tenantInvitesTable.id, existing_invite.id))
+                .returning({ id: tenantInvitesTable.id, token: tenantInvitesTable.token });
+            } else {
+              [invite] = await db
+                .insert(tenantInvitesTable)
+                .values({
+                  tenantId,
+                  email,
+                  role: "tenant_admin",
+                  expiresAt,
+                  createdBy: req.user!.sub,
+                })
+                .returning({ id: tenantInvitesTable.id, token: tenantInvitesTable.token });
+            }
+
+            inviteUrl = buildInviteUrl(req, invite.token);
+            inviteSent = await sendInviteEmail(email, inviteUrl, tenant?.name ?? "");
+            inviteEmail = email;
+            req.log.info({ dealId: deal.id, inviteId: invite.id, inviteSent }, "auto-invite processed");
           }
 
-          inviteUrl = buildInviteUrl(req, invite.token);
-          inviteSent = await sendInviteEmail(email, inviteUrl, tenant?.name ?? "");
-          inviteEmail = email;
-          req.log.info({ dealId: deal.id, inviteId: invite.id, inviteSent }, "auto-invite processed");
-        }
-
-        // ── WhatsApp invite (independente do e-mail) ──────────────────────────
-        if (!lead?.telefone) {
-          whatsappSkipReason = "no_phone";
-          req.log.info({ dealId: deal.id }, "whatsapp invite skipped: lead has no phone");
-        } else {
-          try {
-            const nome = lead.nome ?? "";
-            const plataforma = tenant?.name ?? "VendorAI";
-            const whatsappMessage = inviteUrl
-              ? `Olá, ${nome}! 🎉\n\nSeu acesso à plataforma ${plataforma} foi liberado.\n\nClique no link abaixo para criar sua senha e acessar:\n${inviteUrl}`
-              : `Olá, ${nome}! 🎉\n\nSeu negócio foi fechado com sucesso na plataforma ${plataforma}. Em breve nossa equipe entrará em contato com mais informações.`;
-            await sendDirectWhatsAppMessage(tenantId, lead.telefone, whatsappMessage, req.log);
-            whatsappSent = true;
-            req.log.info({ dealId: deal.id }, "whatsapp invite sent");
-          } catch (err) {
-            whatsappSkipReason =
-              err instanceof WhatsAppNotConnectedError ? "zapi_not_configured" : "send_error";
-            req.log.warn({ dealId: deal.id, err }, "whatsapp invite failed");
+          // WhatsApp invite
+          if (!lead?.telefone) {
+            whatsappSkipReason = "no_phone";
+            req.log.info({ dealId: deal.id }, "whatsapp invite skipped: lead has no phone");
+          } else {
+            try {
+              const nome = lead.nome ?? "";
+              const plataforma = tenant?.name ?? "VendorAI";
+              const whatsappMessage = inviteUrl
+                ? `Olá, ${nome}! 🎉\n\nSeu acesso à plataforma ${plataforma} foi liberado.\n\nClique no link abaixo para criar sua senha e acessar:\n${inviteUrl}`
+                : `Olá, ${nome}! 🎉\n\nSeu negócio foi fechado com sucesso na plataforma ${plataforma}. Em breve nossa equipe entrará em contato com mais informações.`;
+              await sendDirectWhatsAppMessage(tenantId, lead.telefone, whatsappMessage, req.log);
+              whatsappSent = true;
+              req.log.info({ dealId: deal.id }, "whatsapp invite sent");
+            } catch (err) {
+              whatsappSkipReason =
+                err instanceof WhatsAppNotConnectedError ? "zapi_not_configured" : "send_error";
+              req.log.warn({ dealId: deal.id, err }, "whatsapp invite failed");
+            }
           }
-        }
 
-        // Atualizar onboarding status
-        const onboardingError = inviteSkipReason || whatsappSkipReason || undefined;
-        onboardingSent = inviteSent || whatsappSent;
-        onboardingSkipReason = onboardingError;
-        await db
-          .update(dealsTable)
-          .set({
-            onboardingStatus: onboardingSent ? "sent" : "failed",
-            onboardingError: onboardingError ?? null,
-            updatedAt: new Date(),
-          })
-          .where(eq(dealsTable.id, deal.id));
+          // Atualizar onboarding status
+          const onboardingError = inviteSkipReason || whatsappSkipReason || undefined;
+          onboardingSent = inviteSent || whatsappSent;
+          onboardingSkipReason = onboardingError;
+          await db
+            .update(dealsTable)
+            .set({
+              onboardingStatus: onboardingSent ? "sent" : "failed",
+              onboardingError: onboardingError ?? null,
+              updatedAt: new Date(),
+            })
+            .where(eq(dealsTable.id, deal.id));
+        }
 
         // ── Copiar valor → mensalidadeValor do tenant ─────────────────────────
         if (deal.valor) {

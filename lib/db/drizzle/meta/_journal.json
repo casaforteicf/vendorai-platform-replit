@@ -36,6 +36,13 @@
       "when": 1781814000000,
       "tag": "0004_threshold_check_constraints",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1781814000001,
+      "tag": "0005_deal_closure_notifications",
+      "breakpoints": true
     }
   ]
 }
