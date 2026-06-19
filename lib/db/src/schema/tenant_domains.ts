@@ -17,7 +17,7 @@ export const tenantDomainsTable = pgTable("tenant_domains", {
   tenantId: text("tenant_id")
     .notNull()
     .references(() => tenantsTable.id, { onDelete: "cascade" }),
-  domain: text("domain").notNull(),
+  domain: text("domain").notNull().unique(),
   status: domainStatusEnum("status").notNull().default("pending_dns"),
   cloudflareCustomHostnameId: text("cloudflare_custom_hostname_id"),
   dnsRecordName: text("dns_record_name"),

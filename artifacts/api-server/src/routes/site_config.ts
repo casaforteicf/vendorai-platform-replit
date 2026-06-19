@@ -22,11 +22,16 @@ async function resolveTenantByHost(req: express.Request): Promise<{ id: string; 
   const hostStr = Array.isArray(host) ? host[0] : host;
   const hostLower = hostStr.toLowerCase();
 
-  // Custom domain: lookup in tenant_domains
+  // Custom domain: lookup only active verified domains
   const [customDomain] = await db
     .select({ tenantId: tenantDomainsTable.tenantId })
     .from(tenantDomainsTable)
-    .where(eq(tenantDomainsTable.domain, hostLower));
+    .where(
+      and(
+        eq(tenantDomainsTable.domain, hostLower),
+        eq(tenantDomainsTable.status, "active")
+      )
+    );
 
   if (customDomain) {
     const [tenant] = await db
