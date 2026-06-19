@@ -361,7 +361,8 @@ router.patch("/deals/:id", async (req, res) => {
 
         // ── ZapSign: contrato 2 ou 3 partes com PDF ───────────────────────────
         const tipoFechamento = deal.tipoFechamento ?? tenant?.tipoFechamentoDefault ?? "pedido";
-        if (tipoFechamento === "contrato") {
+        req.log.info({ dealId: deal.id, tipoFechamento, dealTipoFechamento: deal.tipoFechamento, tenantDefault: tenant?.tipoFechamentoDefault }, "deal-ganho: resolved tipoFechamento");
+        if (tipoFechamento === "contrato" || tipoFechamento === "pedido_e_contrato") {
           if (!isZapSignConfigured()) {
             contractSent = false;
             contractSkipReason = "zapsign_not_configured";

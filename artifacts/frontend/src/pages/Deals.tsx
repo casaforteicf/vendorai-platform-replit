@@ -299,9 +299,15 @@ function DealCard({
           <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-semibold ${
             deal.tipoFechamento === "contrato"
               ? "bg-violet-100 text-violet-700"
-              : "bg-slate-100 text-slate-600"
+              : deal.tipoFechamento === "pedido_e_contrato"
+                ? "bg-indigo-100 text-indigo-700"
+                : "bg-slate-100 text-slate-600"
           }`}>
-            {deal.tipoFechamento === "contrato" ? "Contrato" : "Pedido"}
+            {deal.tipoFechamento === "contrato"
+              ? "Contrato"
+              : deal.tipoFechamento === "pedido_e_contrato"
+                ? "Pedido + Contrato"
+                : "Pedido"}
           </span>
         </div>
       )}
@@ -893,7 +899,7 @@ const createSchema = z.object({
   leadId: z.string().optional().or(z.literal("")),
   etapa: z.string().min(1, "Etapa obrigatória"),
   probabilidade: z.coerce.number().min(0).max(100).optional(),
-  tipoFechamento: z.enum(["pedido", "contrato"]).optional(),
+  tipoFechamento: z.enum(["pedido", "contrato", "pedido_e_contrato"]).optional(),
 });
 
 // ─── Edit Deal Sheet ──────────────────────────────────────────────────────────
@@ -974,7 +980,7 @@ function EditDealSheet({
           leadId: deal.leadId ?? "",
           etapa: deal.etapa,
           probabilidade: deal.probabilidade ?? undefined,
-          tipoFechamento: (deal.tipoFechamento as "pedido" | "contrato" | undefined) ?? tenantDefault ?? "pedido",
+          tipoFechamento: (deal.tipoFechamento as "pedido" | "contrato" | "pedido_e_contrato" | undefined) ?? tenantDefault ?? "pedido",
         }
       : { titulo: "", etapa: "novo", tipoFechamento: tenantDefault ?? "pedido" },
   });
@@ -1610,7 +1616,7 @@ export default function Deals() {
       );
 
       updateDeal.mutate(
-        { id: draggedDeal.id, data: { etapa: targetEtapa.value, probabilidade: novaProb } },
+        { id: draggedDeal.id, data: { etapa: targetEtapa.value, probabilidade: novaProb, tipoFechamento: draggedDeal.tipoFechamento ?? undefined } },
         {
           onSuccess: (data) => {
             if (targetEtapa.value === "ganho") {

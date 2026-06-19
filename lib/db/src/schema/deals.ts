@@ -21,6 +21,7 @@ export const dealEtapaEnum = pgEnum("deal_etapa", [
 export const dealTipoFechamentoEnum = pgEnum("deal_tipo_fechamento", [
   "pedido",
   "contrato",
+  "pedido_e_contrato",
 ]);
 
 export const dealsTable = pgTable("deals", {
@@ -110,6 +111,7 @@ export const updateDealSchema = createSelectSchema(dealsTable, {
   seats: z.number().int().min(0).optional(),
   probChurn: z.number().int().min(0).max(100).optional(),
   dataRenovacao: z.coerce.date().optional(),
+  tipoFechamento: z.enum(["pedido", "contrato", "pedido_e_contrato"]).optional(),
 })
   .omit({ id: true, tenantId: true, createdAt: true, updatedAt: true })
   .partial();
