@@ -294,13 +294,13 @@ function AgendamentoRow({
       {/* Content */}
       <div className="flex-1 min-w-0 space-y-1">
         {/* Title row */}
-        <p className="text-sm font-semibold leading-tight line-clamp-1">{ag.titulo}</p>
+        <p className="text-sm font-semibold leading-tight">{ag.titulo}</p>
 
         {/* Badges row */}
         <div className="flex items-center gap-1.5 flex-wrap">
           <span className={`flex items-center gap-1 text-xs font-medium ${tipo.color}`}>
             {tipo.icon}
-            <span className="hidden sm:inline">{tipo.label}</span>
+            <span>{tipo.label}</span>
           </span>
           <Badge className={`text-[10px] px-1.5 py-0 h-4 border font-medium ${statusCfg.className}`}>
             {statusCfg.label}
@@ -313,7 +313,7 @@ function AgendamentoRow({
           {ag.meetLink && (
             <span className="text-[10px] text-blue-600 flex items-center gap-0.5 font-medium">
               <Video className="h-3 w-3" />
-              <span className="hidden sm:inline">Meet</span>
+              <span>Meet</span>
             </span>
           )}
         </div>
@@ -323,13 +323,13 @@ function AgendamentoRow({
           {leadName && (
             <span className="flex items-center gap-1">
               <User className="h-3 w-3 shrink-0" />
-              <span className="truncate max-w-[120px] md:max-w-[180px]">{leadName}</span>
+              <span className="truncate max-w-[200px] md:max-w-[280px]">{leadName}</span>
             </span>
           )}
           {ag.local && (
             <span className="flex items-center gap-1">
               <MapPin className="h-3 w-3 shrink-0" />
-              <span className="truncate max-w-[100px] md:max-w-[160px]">{ag.local}</span>
+              <span className="truncate max-w-[180px] md:max-w-[260px]">{ag.local}</span>
             </span>
           )}
           <span className="flex items-center gap-1">
