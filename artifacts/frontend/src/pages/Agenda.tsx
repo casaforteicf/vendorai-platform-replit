@@ -14,6 +14,8 @@ import {
   useDeleteAgenda,
   getAgendaGoogleAuthUrl,
   useDisconnectAgendaGoogle,
+  useListTenantUsers,
+  getListTenantUsersQueryKey,
   Agendamento,
   AgendamentoTipo,
   AgendamentoStatus,
@@ -620,6 +622,9 @@ export default function AgendaPage() {
 
   const { data: leads = [] } = useListTenantLeads(tenantId);
   const { data: agendas = [] } = useListAgendas(tenantId);
+  const { data: tenantUsers = [] } = useListTenantUsers(tenantId, {
+    query: { enabled: !!tenantId, queryKey: getListTenantUsersQueryKey(tenantId) },
+  });
 
   const createAg = useCreateAgendamento();
   const updateAg = useUpdateAgendamento();
@@ -882,7 +887,7 @@ export default function AgendaPage() {
       <div className="flex-1 min-w-0 flex flex-col space-y-4">
 
         {/* ── Header ── */}
-        <div className="flex items-center justify-between gap-2">
+        <div className="flex items-center justify-between gap-2 flex-wrap">
           <div className="min-w-0">
             <h1 className="text-xl md:text-2xl font-bold tracking-tight truncate">
               {selectedAgendaId
@@ -915,6 +920,7 @@ export default function AgendaPage() {
                 onSubmit={onSubmit}
                 leads={leads}
                 agendas={agendas}
+                tenantUsers={tenantUsers}
                 isPending={createAg.isPending}
               />
             </DialogContent>
@@ -941,6 +947,7 @@ export default function AgendaPage() {
                 onSubmit={onSubmit}
                 leads={leads}
                 agendas={agendas}
+                tenantUsers={tenantUsers}
                 isPending={createAg.isPending}
               />
             </DialogContent>
@@ -1017,7 +1024,7 @@ export default function AgendaPage() {
             </button>
           </div>
 
-          <div className="flex gap-1">
+          <div className="flex gap-1 overflow-x-auto pb-1">
             {weekDays.map((d) => (
               <WeekDayBtn
                 key={d.toISOString()}
@@ -1197,12 +1204,14 @@ function AgendamentoForm({
   onSubmit,
   leads,
   agendas,
+  tenantUsers,
   isPending,
 }: {
   form: ReturnType<typeof useForm<CreateForm>>;
   onSubmit: (values: CreateForm) => void;
   leads: { id: string; nome: string }[];
   agendas: Agenda[];
+  tenantUsers: { id: string; name: string }[];
   isPending: boolean;
 }) {
   return (
@@ -1312,7 +1321,7 @@ function AgendamentoForm({
           />
         )}
 
-        <div className="grid grid-cols-2 gap-3">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <FormField
             control={form.control}
             name="dataHoraInicio"
@@ -1359,14 +1368,23 @@ function AgendamentoForm({
           name="responsavelId"
           render={({ field }) => (
             <FormItem>
-              <FormLabel>
-                Responsável{" "}
-                <span className="text-[11px] text-muted-foreground font-normal">
-                  (ID — verifica disponibilidade)
-                </span>
-              </FormLabel>
+              <FormLabel>Responsável</FormLabel>
               <FormControl>
-                <Input data-testid="input-responsavel" placeholder="UUID do responsável" {...field} />
+                <Select
+                  onValueChange={field.onChange}
+                  value={field.value || ""}
+                >
+                  <SelectTrigger data-testid="select-responsavel">
+                    <SelectValue placeholder="Selecionar responsável" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {tenantUsers.map((u) => (
+                      <SelectItem key={u.id} value={u.id}>
+                        {u.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
               </FormControl>
             </FormItem>
           )}

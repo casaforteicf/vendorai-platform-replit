@@ -361,7 +361,7 @@ export default function Dashboard() {
                 </div>
               </CardHeader>
               <CardContent>
-                <p className="text-2xl font-bold">{dashboard?.leads.total ?? 0}</p>
+                <p className="text-[clamp(1.1rem,5vw,1.5rem)] font-bold">{dashboard?.leads.total ?? 0}</p>
                 <p className="text-xs text-muted-foreground mt-0.5">
                   {dashboard?.leads.novosUltimos30Dias ?? 0} novos nos últimos 30 dias
                 </p>
@@ -378,7 +378,7 @@ export default function Dashboard() {
                 </div>
               </CardHeader>
               <CardContent>
-                <p className="text-2xl font-bold">
+                <p className="text-[clamp(1.1rem,5vw,1.5rem)] font-bold">
                   {formatCurrency(dashboard?.deals.totalEmNegociacao)}
                 </p>
                 <p className="text-xs text-muted-foreground mt-0.5">
@@ -397,7 +397,7 @@ export default function Dashboard() {
                 </div>
               </CardHeader>
               <CardContent>
-                <p className="text-2xl font-bold text-teal-600">
+                <p className="text-[clamp(1.1rem,5vw,1.5rem)] font-bold text-teal-600">
                   {formatCurrency(dashboard?.ganhosMes?.somaValor)}
                 </p>
                 <p className="text-xs text-muted-foreground mt-0.5">
@@ -417,7 +417,7 @@ export default function Dashboard() {
                 </div>
               </CardHeader>
               <CardContent>
-                <p className="text-2xl font-bold">
+                <p className="text-[clamp(1.1rem,5vw,1.5rem)] font-bold">
                   {formatPercent(dashboard?.deals.taxaConversao)}
                 </p>
                 <p className="text-xs text-muted-foreground mt-0.5">ganhos / total de deals</p>
@@ -443,7 +443,7 @@ export default function Dashboard() {
                 </div>
               </CardHeader>
               <CardContent>
-                <p className="text-2xl font-bold">
+                <p className="text-[clamp(1.1rem,5vw,1.5rem)] font-bold">
                   {dashboard?.ticketMedio ? formatCurrency(dashboard.ticketMedio) : "—"}
                 </p>
                 <p className="text-xs text-muted-foreground mt-0.5">média dos deals ganhos</p>
@@ -460,7 +460,7 @@ export default function Dashboard() {
                 </div>
               </CardHeader>
               <CardContent>
-                <p className="text-2xl font-bold">{dashboard?.propostas?.ativas?.count ?? 0}</p>
+                <p className="text-[clamp(1.1rem,5vw,1.5rem)] font-bold">{dashboard?.propostas?.ativas?.count ?? 0}</p>
                 <p className="text-xs text-muted-foreground mt-0.5">
                   {formatCurrency(dashboard?.propostas?.ativas?.somaValor)} em aberto
                 </p>
@@ -477,7 +477,7 @@ export default function Dashboard() {
                 </div>
               </CardHeader>
               <CardContent>
-                <p className="text-2xl font-bold text-red-500">
+                <p className="text-[clamp(1.1rem,5vw,1.5rem)] font-bold text-red-500">
                   {dashboard?.atividadesAtrasadas ?? 0}
                 </p>
                 <p className="text-xs text-muted-foreground mt-0.5">
@@ -498,7 +498,7 @@ export default function Dashboard() {
                 </div>
               </CardHeader>
               <CardContent>
-                <p className="text-2xl font-bold">
+                <p className="text-[clamp(1.1rem,5vw,1.5rem)] font-bold">
                   {dashboard?.leads.novosUltimos30Dias ?? 0}
                 </p>
                 <p className="text-xs text-muted-foreground mt-0.5">leads criados</p>
@@ -531,7 +531,7 @@ export default function Dashboard() {
                   const total = b2b + b2c;
                   if (total === 0) return (
                     <>
-                      <p className="text-2xl font-bold">—</p>
+                      <p className="text-[clamp(1.1rem,5vw,1.5rem)] font-bold">—</p>
                       <p className="text-xs text-muted-foreground mt-0.5">nenhum lead tipado</p>
                     </>
                   );
@@ -539,7 +539,7 @@ export default function Dashboard() {
                   const b2cPct = Math.round((b2c / total) * 100);
                   return (
                     <>
-                      <p className="text-2xl font-bold">{b2bPct}% B2B</p>
+                      <p className="text-[clamp(1.1rem,5vw,1.5rem)] font-bold">{b2bPct}% B2B</p>
                       <p className="text-xs text-muted-foreground mt-0.5">
                         {b2b} B2B · {b2c} B2C
                       </p>
@@ -560,7 +560,7 @@ export default function Dashboard() {
                 </div>
               </CardHeader>
               <CardContent>
-                <p className="text-2xl font-bold">
+                <p className="text-[clamp(1.1rem,5vw,1.5rem)] font-bold">
                   {dashboard?.perfilCompra?.doresPrincipais?.length ?? 0}
                 </p>
                 <p className="text-xs text-muted-foreground mt-0.5">
@@ -580,7 +580,7 @@ export default function Dashboard() {
                 </div>
               </CardHeader>
               <CardContent>
-                <p className="text-2xl font-bold text-red-500">
+                <p className="text-[clamp(1.1rem,5vw,1.5rem)] font-bold text-red-500">
                   {dashboard?.churnRiskDistribuicao?.alto ?? 0}
                 </p>
                 <p className="text-xs text-muted-foreground mt-0.5">
@@ -600,7 +600,7 @@ export default function Dashboard() {
                 </div>
               </CardHeader>
               <CardContent>
-                <p className="text-2xl font-bold text-amber-600">
+                <p className="text-[clamp(1.1rem,5vw,1.5rem)] font-bold text-amber-600">
                   {dashboard?.top5ChurnRisk?.length ?? 0}
                 </p>
                 <p className="text-xs text-muted-foreground mt-0.5">

@@ -1,0 +1,45 @@
+Briefing: Correções de Responsividade Mobile
+Contexto
+Testado no celular Android (Chrome mobile). As telas de Leads, Conversas, Negócios/Kanban e Configurações estão ok. Os problemas estão nos 3 itens abaixo.
+Problema 1 — Dashboard: valores grandes extrapolando os cards
+Tela: Visão Geral (Dashboard)
+Problema: Valores monetários grandes como "R$ 5.940,00" estão saindo para fora dos limites do card no grid 2x2, especialmente no card "VALOR EM PIPELINE".
+Correção esperada:
+Limitar o tamanho da fonte dos valores nos cards para que nunca ultrapassem a largura do card
+Usar text-overflow: ellipsis ou font-size responsivo (ex: clamp()) para adaptar o tamanho do texto ao espaço disponível
+Em telas menores que 400px de largura, reduzir o font-size dos valores dos cards (atualmente parecem estar em torno de text-2xl ou maior)
+O layout grid 2x2 pode ser mantido, apenas o texto interno precisa ser contido
+Problema 2 — Agenda: layout cortando conteúdo horizontalmente
+Tela: Agenda (/agenda)
+Problema: Em portrait (vertical) no mobile, o conteúdo da Agenda extrapola a largura da tela, causando scroll horizontal indesejado. O botão "Novo Agendamento" ficava fora da área visível.
+Correção esperada:
+Garantir max-width: 100% e overflow-x: hidden no container principal da Agenda
+O header da Agenda (título + botão "Novo Agendamento") deve usar flex-wrap: wrap ou layout em coluna no mobile para que o botão não fique cortado
+O calendário semanal (grid com dias da semana) deve ser scrollável horizontalmente de forma controlada (overflow-x: auto no container do calendário, não na página inteira)
+Testar em viewport de 390px de largura (iPhone 14 / Android padrão)
+Problema 3 — Novo Agendamento: campos com problemas de UX
+Tela: Modal/formulário de Novo Agendamento
+Problema A — Campos de data/hora cortados:
+Os campos "Início" e "Fim" mostram a data (18/06/2026,) mas a hora está sumindo — provavelmente o campo está muito estreito para mostrar data + hora juntos no layout de 2 colunas.
+Correção: Em mobile (< 640px), mudar os campos "Início" e "Fim" de layout 2 colunas para 1 coluna (empilhados), garantindo largura total para cada campo mostrar data e hora completas.
+Problema B — Campo "Responsável" mostrando UUID:
+O campo está com placeholder "UUID do responsável" e aceita texto livre — isso é um campo técnico exposto para o usuário final, que não sabe o UUID de ninguém.
+Correção: Substituir o campo de texto livre por um dropdown/select que lista os usuários do tenant pelo nome (buscar via API os usuários/membros do tenant atual) e salva o UUID internamente ao selecionar. O usuário deve ver nomes, não UUIDs.
+Resumo das correções
+Tela
+Problema
+Tipo de correção
+Dashboard
+Valores grandes saindo dos cards
+CSS responsivo (font-size adaptativo)
+Agenda
+Scroll horizontal indesejado
+CSS (overflow, flex-wrap)
+Novo Agendamento
+Campos data/hora cortados
+Layout 1 coluna no mobile
+Novo Agendamento
+Campo UUID exposto
+Substituir por dropdown de usuários
+Como testar
+Usar DevTools do Chrome com viewport 390x844 (iPhone 14) ou testar diretamente no celular Android após cada correção.
