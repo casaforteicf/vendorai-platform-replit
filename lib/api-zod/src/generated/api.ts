@@ -1391,7 +1391,8 @@ export const UpdateDealBody = zod.object({
   "planoContratado": zod.string().optional(),
   "dataRenovacao": zod.coerce.date().optional(),
   "probChurn": zod.number().min(updateDealBodyProbChurnMin).max(updateDealBodyProbChurnMax).optional(),
-  "quoteFileUrl": zod.string().nullish()
+  "quoteFileUrl": zod.string().nullish(),
+  "contractStatus": zod.string().nullish().describe('Override contract status (e.g. retry after failure)')
 })
 
 export const updateDealResponseOneProbabilidadeMin = 0;

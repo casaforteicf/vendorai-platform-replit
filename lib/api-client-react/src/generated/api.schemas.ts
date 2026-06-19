@@ -1524,6 +1524,8 @@ export interface UpdateDealBody {
      */
   probChurn?: number;
   quoteFileUrl?: string | null;
+  /** Override contract status (e.g. retry after failure) */
+  contractStatus?: string | null;
 }
 
 export interface IncrementBody {

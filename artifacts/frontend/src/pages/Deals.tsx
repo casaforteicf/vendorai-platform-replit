@@ -53,7 +53,7 @@ import {
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
-import { Plus, GripVertical, DollarSign, User, TrendingUp, Link2, Copy, CheckCheck, FileUp, Loader2, Sparkles, BarChart3, RefreshCw, Users, Package, AlertTriangle, Paperclip } from "lucide-react";
+import { Plus, GripVertical, DollarSign, User, TrendingUp, Link2, Copy, CheckCheck, FileUp, Loader2, Sparkles, BarChart3, RefreshCw, Users, Package, AlertTriangle, Paperclip, FileCheck } from "lucide-react";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import {
   DealEtapaSaas,
@@ -316,7 +316,46 @@ function DealCard({
           )}
         </div>
       )}
+
+      {/* Status de fechamento (contrato + onboarding) */}
+      {deal.etapa === "ganho" && (deal.contractStatus || deal.onboardingStatus) && (
+        <div className="pl-6 flex flex-wrap gap-1.5">
+          <ClosureStatusBadge status={deal.contractStatus} error={deal.contractError} label="Contrato" />
+          <ClosureStatusBadge status={deal.onboardingStatus} error={deal.onboardingError} label="Onboarding" />
+        </div>
+      )}
     </div>
+  );
+}
+
+function ClosureStatusBadge({
+  status,
+  error,
+  label,
+}: {
+  status: string | null | undefined;
+  error: string | null | undefined;
+  label: string;
+}) {
+  if (!status || status === "na") return null;
+
+  const configs: Record<string, { text: string; className: string }> = {
+    pending: { text: "Gerando...", className: "bg-amber-50 text-amber-700 border-amber-200" },
+    sent:    { text: "Enviado",   className: "bg-blue-50 text-blue-700 border-blue-200" },
+    signed:  { text: "Assinado",  className: "bg-emerald-50 text-emerald-700 border-emerald-200" },
+    failed:  { text: "Erro",      className: "bg-red-50 text-red-700 border-red-200" },
+    skipped: { text: "Ignorado",  className: "bg-slate-50 text-slate-600 border-slate-200" },
+  };
+
+  const cfg = configs[status] ?? { text: status, className: "bg-slate-50 text-slate-600 border-slate-200" };
+
+  return (
+    <span
+      title={error ? `${label}: ${error}` : `${label}: ${cfg.text}`}
+      className={`inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-semibold border ${cfg.className}`}
+    >
+      {label}: {cfg.text}
+    </span>
   );
 }
 
@@ -1219,6 +1258,89 @@ function EditDealSheet({
                 {quoteFileName ?? quoteFileUrl.split("/").pop() ?? "Orçamento"}
               </span>
             </a>
+          </div>
+        )}
+
+        {/* ── Closure status ──────────────────────────────────── */}
+        {deal?.etapa === "ganho" && (deal.contractStatus || deal.onboardingStatus) && (
+          <div className="mt-4 rounded-lg border border-slate-200 bg-slate-50 p-3 space-y-2">
+            <p className="text-xs font-medium text-slate-700 flex items-center gap-1.5">
+              <FileCheck className="h-3.5 w-3.5 text-slate-500" />
+              Status do fechamento
+            </p>
+            <div className="space-y-1.5">
+              {deal.contractStatus && deal.contractStatus !== "na" && (
+                <div className="flex items-center justify-between text-xs">
+                  <span className="text-slate-600">Contrato</span>
+                  <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-semibold border ${
+                    deal.contractStatus === "pending" ? "bg-amber-50 text-amber-700 border-amber-200" :
+                    deal.contractStatus === "sent"    ? "bg-blue-50 text-blue-700 border-blue-200" :
+                    deal.contractStatus === "signed"  ? "bg-emerald-50 text-emerald-700 border-emerald-200" :
+                    deal.contractStatus === "failed"  ? "bg-red-50 text-red-700 border-red-200" :
+                    "bg-slate-50 text-slate-600 border-slate-200"
+                  }`}>
+                    {deal.contractStatus === "pending" && "Gerando..."}
+                    {deal.contractStatus === "sent" && "Enviado para assinatura"}
+                    {deal.contractStatus === "signed" && "Assinado"}
+                    {deal.contractStatus === "failed" && "Erro"}
+                    {deal.contractStatus === "skipped" && "Ignorado"}
+                    {!["pending","sent","signed","failed","skipped"].includes(deal.contractStatus) && deal.contractStatus}
+                  </span>
+                </div>
+              )}
+              {deal.contractError && (
+                <p className="text-[10px] text-red-600 bg-red-50 rounded px-2 py-1 border border-red-100">
+                  Erro contrato: {deal.contractError}
+                </p>
+              )}
+              {deal.onboardingStatus && deal.onboardingStatus !== "na" && (
+                <div className="flex items-center justify-between text-xs">
+                  <span className="text-slate-600">Onboarding</span>
+                  <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-semibold border ${
+                    deal.onboardingStatus === "pending" ? "bg-amber-50 text-amber-700 border-amber-200" :
+                    deal.onboardingStatus === "sent"    ? "bg-blue-50 text-blue-700 border-blue-200" :
+                    deal.onboardingStatus === "completed" ? "bg-emerald-50 text-emerald-700 border-emerald-200" :
+                    deal.onboardingStatus === "failed"  ? "bg-red-50 text-red-700 border-red-200" :
+                    "bg-slate-50 text-slate-600 border-slate-200"
+                  }`}>
+                    {deal.onboardingStatus === "pending" && "Pendente"}
+                    {deal.onboardingStatus === "sent" && "Convite enviado"}
+                    {deal.onboardingStatus === "completed" && "Concluído"}
+                    {deal.onboardingStatus === "failed" && "Erro"}
+                    {!["pending","sent","completed","failed"].includes(deal.onboardingStatus) && deal.onboardingStatus}
+                  </span>
+                </div>
+              )}
+              {deal.onboardingError && (
+                <p className="text-[10px] text-red-600 bg-red-50 rounded px-2 py-1 border border-red-100">
+                  Erro onboarding: {deal.onboardingError}
+                </p>
+              )}
+              {deal.contractStatus === "failed" && (
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  className="w-full text-xs border-red-300 text-red-700 hover:bg-red-50 gap-1.5"
+                  onClick={() => {
+                    updateDeal.mutate(
+                      { id: deal.id, data: { contractStatus: "pending" } },
+                      {
+                        onSuccess: () => {
+                          toast({ title: "Contrato reenviado para geração." });
+                          queryClient.invalidateQueries({ queryKey: getListDealsQueryKey(tenantId) });
+                        },
+                        onError: () => {
+                          toast({ title: "Erro ao reenviar contrato", variant: "destructive" });
+                        },
+                      }
+                    );
+                  }}
+                >
+                  <RefreshCw className="h-3 w-3" /> Reenviar contrato
+                </Button>
+              )}
+            </div>
           </div>
         )}
 

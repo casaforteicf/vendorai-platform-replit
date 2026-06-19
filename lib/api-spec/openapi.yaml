@@ -9952,6 +9952,10 @@ components:
         quoteFileUrl:
           type: string
           nullable: true
+        contractStatus:
+          type: string
+          nullable: true
+          description: Override contract status (e.g. retry after failure)
 
     IncrementBody:
       type: object
