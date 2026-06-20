@@ -685,16 +685,26 @@ function newFreeItem(): FreeItem {
   return { id: Math.random().toString(36).slice(2), nome: "", quantidade: 1, valorUnitario: 0 };
 }
 
-function PropostaModal({
+export function PropostaModal({
   open,
   onClose,
   tenantId,
   catalog,
+  leadId: lockedLeadId,
+  leadNome,
+  leadTelefone,
+  leadEmpresa,
+  onSuccess,
 }: {
   open: boolean;
   onClose: () => void;
   tenantId: string;
   catalog: ProdutoCatalogo[];
+  leadId?: string;
+  leadNome?: string;
+  leadTelefone?: string;
+  leadEmpresa?: string;
+  onSuccess?: () => void;
 }) {
   const { toast } = useToast();
   const qc = useQueryClient();
@@ -713,9 +723,24 @@ function PropostaModal({
   const [contextoIA, setContextoIA] = useState("");
   const [showIAPanel, setShowIAPanel] = useState(false);
 
+  const defaultTitle = lockedLeadId
+    ? `Orçamento - ${leadNome || "Cliente"}`
+    : "";
+
   const form = useForm<PropostaFormValues>({
     resolver: zodResolver(propostaFormSchema),
-    defaultValues: { leadId: "", titulo: "", validadeAte: "", observacoes: "", formaPagamento: "", condPagamento: "", prazoEntrega: "", recorrente: false, valorMensal: undefined, prazoContratoMeses: undefined },
+    defaultValues: {
+      leadId: lockedLeadId || "",
+      titulo: defaultTitle,
+      validadeAte: "",
+      observacoes: "",
+      formaPagamento: "",
+      condPagamento: "",
+      prazoEntrega: "",
+      recorrente: false,
+      valorMensal: undefined,
+      prazoContratoMeses: undefined,
+    },
   });
 
   const watchRecorrente = form.watch("recorrente");
@@ -724,7 +749,7 @@ function PropostaModal({
   const totalContrato = (watchValorMensal ?? 0) * (watchPrazoMeses ?? 0);
 
   const { data: leads = [] } = useListTenantLeads(tenantId, {
-    query: { queryKey: getListTenantLeadsQueryKey(tenantId), enabled: !!tenantId },
+    query: { queryKey: getListTenantLeadsQueryKey(tenantId), enabled: !!tenantId && !lockedLeadId },
   });
   const { data: paymentMethods } = useListPaymentMethods(tenantId, {
     query: { queryKey: getListPaymentMethodsQueryKey(tenantId), enabled: !!tenantId },
@@ -747,7 +772,18 @@ function PropostaModal({
   const freeTotal = freeItems.reduce((s, i) => s + i.quantidade * i.valorUnitario, 0);
 
   function handleClose() {
-    form.reset({ leadId: "", titulo: "", validadeAte: "", observacoes: "", formaPagamento: "", condPagamento: "", prazoEntrega: "", recorrente: false, valorMensal: undefined, prazoContratoMeses: undefined });
+    form.reset({
+      leadId: lockedLeadId || "",
+      titulo: lockedLeadId ? defaultTitle : "",
+      validadeAte: "",
+      observacoes: "",
+      formaPagamento: "",
+      condPagamento: "",
+      prazoEntrega: "",
+      recorrente: false,
+      valorMensal: undefined,
+      prazoContratoMeses: undefined,
+    });
     setMode("catalogo");
     setCartLines([{ produtoId: "", quantidade: 1 }]);
     setCartError("");
@@ -778,14 +814,16 @@ function PropostaModal({
     try {
       const titulo   = form.getValues("titulo") || "orçamento";
       const leadId   = form.getValues("leadId");
-      const leadNome = leads.find((l) => l.id === leadId)?.nome;
+      const resolvedLeadNome = lockedLeadId
+        ? leadNome
+        : leads.find((l) => l.id === leadId)?.nome;
       const res = await fetch(`/api/tenants/${tenantId}/propostas/suggest-items`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
           Authorization: `Bearer ${localStorage.getItem("vendorai_token")}`,
         },
-        body: JSON.stringify({ titulo, leadNome, contexto: contextoIA }),
+        body: JSON.stringify({ titulo, leadNome: resolvedLeadNome, contexto: contextoIA }),
       });
       if (!res.ok) throw new Error("Falha");
       const data = await res.json();
@@ -823,11 +861,15 @@ function PropostaModal({
           onSuccess: () => {
             toast({ title: "Orçamento criado com sucesso" });
             qc.invalidateQueries({ queryKey: getListPropostasQueryKey(tenantId) });
+            if (lockedLeadId) {
+              qc.invalidateQueries({ queryKey: getListPropostasQueryKey(tenantId, { leadId: lockedLeadId }) });
+            }
             const dealValor = vals.recorrente && totalContrato > 0 ? totalContrato : catTotal || undefined;
             createDeal(
               { data: { tenantId, titulo: vals.titulo, leadId: vals.leadId, etapa: "proposta", valor: dealValor } },
               { onSuccess: () => qc.invalidateQueries({ queryKey: getListDealsQueryKey(tenantId) }) }
             );
+            onSuccess?.();
             handleClose();
           },
           onError: () => toast({ title: "Erro ao criar orçamento", variant: "destructive" }),
@@ -843,11 +885,15 @@ function PropostaModal({
           onSuccess: () => {
             toast({ title: "Orçamento criado com sucesso" });
             qc.invalidateQueries({ queryKey: getListPropostasQueryKey(tenantId) });
+            if (lockedLeadId) {
+              qc.invalidateQueries({ queryKey: getListPropostasQueryKey(tenantId, { leadId: lockedLeadId }) });
+            }
             const dealValor = vals.recorrente && totalContrato > 0 ? totalContrato : freeTotal || undefined;
             createDeal(
               { data: { tenantId, titulo: vals.titulo, leadId: vals.leadId, etapa: "proposta", valor: dealValor } },
               { onSuccess: () => qc.invalidateQueries({ queryKey: getListDealsQueryKey(tenantId) }) }
             );
+            onSuccess?.();
             handleClose();
           },
           onError: () => toast({ title: "Erro ao criar proposta", variant: "destructive" }),
@@ -872,16 +918,26 @@ function PropostaModal({
               <FormField control={form.control} name="leadId" render={({ field }) => (
                 <FormItem>
                   <FormLabel>Lead</FormLabel>
-                  <Select onValueChange={field.onChange} value={field.value}>
+                  {lockedLeadId ? (
                     <FormControl>
-                      <SelectTrigger><SelectValue placeholder="Selecione o lead" /></SelectTrigger>
+                      <Input
+                        value={leadNome ? `${leadNome}${leadTelefone ? " / " + leadTelefone : ""}${leadEmpresa ? " / " + leadEmpresa : ""}` : lockedLeadId}
+                        disabled
+                        className="bg-muted text-muted-foreground"
+                      />
                     </FormControl>
-                    <SelectContent>
-                      {leads.map((l) => (
-                        <SelectItem key={l.id} value={l.id}>{l.nome}</SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
+                  ) : (
+                    <Select onValueChange={field.onChange} value={field.value}>
+                      <FormControl>
+                        <SelectTrigger><SelectValue placeholder="Selecione o lead" /></SelectTrigger>
+                      </FormControl>
+                      <SelectContent>
+                        {leads.map((l) => (
+                          <SelectItem key={l.id} value={l.id}>{l.nome}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  )}
                   <FormMessage />
                 </FormItem>
               )} />

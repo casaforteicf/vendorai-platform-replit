@@ -4,6 +4,8 @@ import { useRelativeTime } from "@/hooks/useRelativeTime";
 import { useQueryClient } from "@tanstack/react-query";
 import { useAuth } from "@/contexts/AuthContext";
 import { useToast } from "@/hooks/use-toast";
+import { PropostaModal } from "./Propostas";
+import { useListProdutosCatalogo, getListProdutosCatalogoQueryKey } from "@workspace/api-client-react";
 import {
   useGetLead,
   getGetLeadQueryKey,
@@ -243,6 +245,12 @@ export default function LeadDetail() {
   const [openConvId, setOpenConvId] = useState<string | null>(null);
   const [openActivityId, setOpenActivityId] = useState<string | null>(null);
   const queryClient = useQueryClient();
+
+  const [propostaModalOpen, setPropostaModalOpen] = useState(false);
+
+  const { data: catalog = [] } = useListProdutosCatalogo(tenantId, {
+    query: { queryKey: getListProdutosCatalogoQueryKey(tenantId), enabled: !!tenantId },
+  });
 
   const [editingChurnRisk, setEditingChurnRisk] = useState(false);
   const [churnRiskDraft, setChurnRiskDraft] = useState<string>("");
@@ -1925,7 +1933,7 @@ export default function LeadDetail() {
                 size="sm"
                 variant="outline"
                 className="h-7 text-xs gap-1"
-                onClick={() => setLocation("/propostas")}
+                onClick={() => setPropostaModalOpen(true)}
               >
                 <Plus className="h-3 w-3" />
                 Novo
@@ -1940,9 +1948,20 @@ export default function LeadDetail() {
                 ))}
               </div>
             ) : !leadPropostas?.length ? (
-              <p className="text-sm text-muted-foreground py-4 text-center">
-                Nenhum orçamento para este lead.
-              </p>
+              <div className="py-6 text-center space-y-3">
+                <p className="text-sm text-muted-foreground">
+                  Nenhum orçamento para este lead.
+                </p>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="gap-1"
+                  onClick={() => setPropostaModalOpen(true)}
+                >
+                  <Plus className="h-3.5 w-3.5" />
+                  Gerar primeiro orçamento
+                </Button>
+              </div>
             ) : (
               <div className="divide-y divide-border">
                 {[...leadPropostas].sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()).map((p) => {
@@ -2415,6 +2434,22 @@ export default function LeadDetail() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* Orçamento Modal inline para este lead */}
+      <PropostaModal
+        open={propostaModalOpen}
+        onClose={() => setPropostaModalOpen(false)}
+        tenantId={tenantId}
+        catalog={catalog}
+        leadId={id}
+        leadNome={lead?.nome ?? undefined}
+        leadTelefone={lead?.telefone ?? undefined}
+        leadEmpresa={lead?.empresa ?? undefined}
+        onSuccess={() => {
+          void queryClient.invalidateQueries({ queryKey: getListPropostasQueryKey(tenantId, { leadId: id }) });
+          void queryClient.invalidateQueries({ queryKey: getListDealsQueryKey(tenantId) });
+        }}
+      />
     </div>
   );
 }

@@ -1,0 +1,71 @@
+Briefing para Agente Replit — Vendor.ai Core
+Bug Crítico: Orçamentos não filtrados por Lead + UX de criação
+PROBLEMA 1 — Orçamentos da base inteira aparecendo dentro do Lead (BUG)
+Sintoma
+Ao abrir um Lead específico e clicar na aba/seção "Orçamentos", o sistema está
+retornando TODOS os orçamentos de TODOS os leads do tenant, não apenas os
+orçamentos vinculados àquele lead específico.
+Causa provável
+O endpoint que busca orçamentos dentro da tela de detalhe do Lead está fazendo
+a query filtrando apenas por tenant_id, sem o filtro adicional de lead_id.
+Investigação obrigatória
+Passo 1 — Localizar o componente frontend
+Buscar o componente que renderiza a aba "Orçamentos" dentro da tela de detalhe
+do Lead. Provavelmente em:
+Código
+Passo 2 — Localizar a chamada de API feita por esse componente
+Verificar qual endpoint está sendo chamado. Provavelmente algo como:
+Typescript
+Passo 3 — Localizar o endpoint no backend
+Typescript
+Correção obrigatória
+3.1 — Backend: garantir que o endpoint aceite e aplique filtro por leadId
+Typescript
+3.2 — Frontend: corrigir a chamada para sempre passar o leadId quando estiver dentro do Lead
+Typescript
+3.3 — Confirmar isolamento correto em outros lugares
+Verificar se existe uma tela separada de "Todos os Orçamentos" (visão geral,
+fora do contexto de um lead específico) — essa tela SIM deve listar todos os
+orçamentos do tenant, sem filtro de lead. A correção é apenas para dentro da
+tela de detalhe do Lead.
+Se essa tela geral não existir ainda, não criar agora — fora de escopo deste
+briefing.
+3.4 — Teste obrigatório
+Após a correção, validar manualmente:
+Abrir Lead A → aba Orçamentos → deve mostrar SOMENTE orçamentos do Lead A
+Abrir Lead B → aba Orçamentos → deve mostrar SOMENTE orçamentos do Lead B
+Confirmar que um lead sem orçamentos mostra estado vazio, não os orçamentos de outro lead
+PROBLEMA 2 — UX: gerar orçamento dentro do Lead deve abrir direto o formulário
+Objetivo
+Quando o usuário está dentro de um Lead e clica em "Novo Orçamento" (ou "Gerar
+Orçamento"), o sistema deve abrir diretamente o formulário/modal de criação já
+com o leadId e dados do cliente pré-preenchidos — sem precisar navegar para
+fora do Lead ou selecionar o lead novamente.
+Implementação
+Passo 1 — Localizar o botão/ação de criar orçamento dentro do Lead
+No componente LeadOrcamentos.tsx (ou onde estiver), garantir que existe um
+botão visível mesmo quando a lista estiver vazia:
+Tsx
+Passo 2 — Modal de criação deve receber e travar os dados do lead
+Tsx
+Passo 3 — Garantir que o backend sempre salva o leadId
+Typescript
+Passo 4 — Se o orçamento for gerado automaticamente pelo agente IA (fluxo já implementado)
+Confirmar que o orquestrador de orçamento automático (briefing anterior:
+fluxoOrcamentoOrchestrator) já está salvando corretamente o leadId —
+esse fluxo já deveria estar certo, mas validar já que o bug foi encontrado
+na criação manual.
+CHECKLIST DE VALIDAÇÃO FINAL
+[ ] Abrir Lead A → Orçamentos → mostra somente orçamentos do Lead A
+[ ] Abrir Lead B → Orçamentos → mostra somente orçamentos do Lead B
+[ ] Lead sem orçamento mostra estado vazio com botão "Gerar primeiro orçamento"
+[ ] Clicar em "Novo Orçamento" dentro do Lead abre modal direto, sem navegação extra
+[ ] Modal já vem com nome, telefone e empresa do lead preenchidos e travados
+[ ] Orçamento criado aparece imediatamente na lista do lead (sem precisar dar refresh)
+[ ] Orçamento criado tem leadId salvo corretamente no banco
+[ ] Rodar pnpm --filter @workspace/api-server run test — 0 falhas
+REGRAS GERAIS
+Usar Drizzle ORM (db.query, and(), eq())
+Toda query filtrar por tenant_id SEMPRE, e por lead_id quando aplicável
+Não quebrar os 208+ testes existentes
+Seguir padrão visual já existente nos outros modais do sistema (não criar estilo novo)
