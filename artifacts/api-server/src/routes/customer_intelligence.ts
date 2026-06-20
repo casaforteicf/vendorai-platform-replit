@@ -15,7 +15,6 @@ import {
   ANALYSIS_COOLDOWN_MINUTES,
   MAX_ANALYSES_PER_TENANT_PER_HOUR,
 } from "../lib/analyze-intelligence.js";
-import { checkPlanModule } from "../middlewares/plan-guard.js";
 
 const router: IRouter = Router();
 
@@ -390,13 +389,6 @@ router.post(
     // Tenant scope guard — requester must belong to this tenant (super_admin bypasses)
     if (req.user?.platformRole !== "super_admin" && req.user?.tenantId !== tenantId) {
       res.status(403).json({ error: "Access denied to this tenant" });
-      return;
-    }
-
-    // Plan guard: customer_intelligence only available on Enterprise
-    const planCheck = await checkPlanModule(tenantId, "customer_intelligence", req.log);
-    if (!planCheck.allowed) {
-      res.status(403).json({ error: planCheck.reason });
       return;
     }
 
