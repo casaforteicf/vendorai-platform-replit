@@ -13,7 +13,7 @@ import {
   leadsTable,
 } from "@workspace/db";
 import { dispatchVendaWebhook } from "../services/erp-webhook.js";
-import { getOpenAI } from "../lib/agent-engine.js";
+import { getOpenAIForTenant } from "../lib/agent-engine.js";
 import { proposalAccepted } from "../lib/proposal-accepted.js";
 
 const router: IRouter = Router();
@@ -387,7 +387,7 @@ router.post("/tenants/:tenantId/propostas/suggest-items", async (req, res) => {
   }
 
   try {
-    const openai = getOpenAI();
+    const openai = await getOpenAIForTenant(tenantId);
     const response = await openai.chat.completions.create({
       model: "gpt-4o-mini",
       messages: [

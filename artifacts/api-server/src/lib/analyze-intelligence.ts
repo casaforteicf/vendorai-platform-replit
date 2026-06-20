@@ -83,33 +83,7 @@ const aiAnalysisSchema = z.object({
 
 export type AiAnalysisResult = z.infer<typeof aiAnalysisSchema>;
 
-function getOpenAI(): OpenAI {
-  const apiKey = process.env["OPENAI_API_KEY"];
-  if (!apiKey) throw new Error("OPENAI_API_KEY environment variable is not set");
-  return new OpenAI({ apiKey });
-}
-
-export async function getOpenAIForTenant(tenantId: string): Promise<OpenAI> {
-  const [tenant] = await db
-    .select({ openaiApiKeyEncrypted: tenantsTable.openaiApiKeyEncrypted, openaiKeyStatus: tenantsTable.openaiKeyStatus })
-    .from(tenantsTable)
-    .where(eq(tenantsTable.id, tenantId))
-    .limit(1);
-
-  if (tenant?.openaiApiKeyEncrypted && tenant.openaiKeyStatus === "ativo") {
-    try {
-      const { decrypt } = await import("./crypto.js");
-      const apiKey = decrypt(tenant.openaiApiKeyEncrypted);
-      return new OpenAI({ apiKey });
-    } catch {
-      // Fallback to global key
-    }
-  }
-
-  const apiKey = process.env["OPENAI_API_KEY"];
-  if (!apiKey) throw new Error("OPENAI_API_KEY environment variable is not set");
-  return new OpenAI({ apiKey });
-}
+import { getOpenAIForTenant } from "./agent-engine.js";
 
 export interface AnalyzeResult {
   intelligence: typeof customerIntelligenceTable.$inferSelect;

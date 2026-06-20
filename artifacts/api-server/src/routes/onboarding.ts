@@ -276,7 +276,8 @@ router.post(
         buffer: f.buffer,
         mimeType: f.mimetype,
         originalName: f.originalname,
-      }))
+      })),
+      tenantId
     );
 
     req.log.info(

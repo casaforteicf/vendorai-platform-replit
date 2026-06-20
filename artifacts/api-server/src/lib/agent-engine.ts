@@ -18,6 +18,7 @@ import {
   customerIntelligenceTable,
   agentConfigsTable,
   agentTasksTable,
+  tenantsTable,
 } from "@workspace/db";
 import type { AgentTask } from "@workspace/db";
 import { executeTaskAction } from "../routes/agent_tasks.js";
@@ -51,6 +52,28 @@ export type PromptBuilder = (customPrompt: string | undefined, ctx: AgentContext
 
 // ── OpenAI client (lazy) ──────────────────────────────────────────────────────
 export function getOpenAI(): OpenAI {
+  const apiKey = process.env["OPENAI_API_KEY"];
+  if (!apiKey) throw new Error("OPENAI_API_KEY environment variable is not set");
+  return new OpenAI({ apiKey });
+}
+
+export async function getOpenAIForTenant(tenantId: string): Promise<OpenAI> {
+  const [tenant] = await db
+    .select({ openaiApiKeyEncrypted: tenantsTable.openaiApiKeyEncrypted, openaiKeyStatus: tenantsTable.openaiKeyStatus })
+    .from(tenantsTable)
+    .where(eq(tenantsTable.id, tenantId))
+    .limit(1);
+
+  if (tenant?.openaiApiKeyEncrypted && tenant.openaiKeyStatus === "ativo") {
+    try {
+      const { decrypt } = await import("./crypto.js");
+      const apiKey = decrypt(tenant.openaiApiKeyEncrypted);
+      return new OpenAI({ apiKey });
+    } catch {
+      // Fallback to global key
+    }
+  }
+
   const apiKey = process.env["OPENAI_API_KEY"];
   if (!apiKey) throw new Error("OPENAI_API_KEY environment variable is not set");
   return new OpenAI({ apiKey });
@@ -121,8 +144,12 @@ export function computeLimits(config: AgentConfig): LimitResult {
 }
 
 // ── OpenAI call ───────────────────────────────────────────────────────────────
-export async function callOpenAI(messages: OpenAI.Chat.ChatCompletionMessageParam[]): Promise<{ resposta: string; tokensUsed: number }> {
-  const completion = await getOpenAI().chat.completions.create({
+export async function callOpenAI(
+  messages: OpenAI.Chat.ChatCompletionMessageParam[],
+  tenantId?: string
+): Promise<{ resposta: string; tokensUsed: number }> {
+  const openai = tenantId ? await getOpenAIForTenant(tenantId) : getOpenAI();
+  const completion = await openai.chat.completions.create({
     model:       "gpt-4o-mini",
     messages,
     temperature: 0.7,

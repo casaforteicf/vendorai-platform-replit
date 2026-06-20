@@ -740,7 +740,7 @@ router.post(
             mimeType: req.file.mimetype,
             originalName: req.file.originalname,
           },
-        ]),
+        ], tenantId),
         objectStorageService.savePrivateBuffer(
           req.file.buffer,
           req.file.mimetype,

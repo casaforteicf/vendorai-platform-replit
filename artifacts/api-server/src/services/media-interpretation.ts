@@ -6,11 +6,9 @@
  * identically to typed text in the auto-quote pipeline.
  */
 
-import OpenAI from "openai";
 import pdfParse from "pdf-parse";
 import type { Logger } from "pino";
-
-const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+import { getOpenAIForTenant } from "../lib/agent-engine.js";
 
 async function downloadBuffer(url: string): Promise<Buffer> {
   const response = await fetch(url, { redirect: "follow" });
@@ -25,10 +23,12 @@ async function downloadBuffer(url: string): Promise<Buffer> {
  * Returns a natural-language description focused on purchase intent,
  * products, quantities, and prices visible in the image.
  */
-export async function interpretImage(imageUrl: string, caption?: string, log?: Logger): Promise<string> {
+export async function interpretImage(imageUrl: string, tenantId: string, caption?: string, log?: Logger): Promise<string> {
   log?.info({ imageUrl: imageUrl.slice(0, 60) }, "media: interpreting image");
 
-  const userContent: OpenAI.Chat.ChatCompletionContentPart[] = [
+  const openai = await getOpenAIForTenant(tenantId);
+
+  const userContent: import("openai").OpenAI.Chat.ChatCompletionContentPart[] = [
     {
       type: "text",
       text: caption
@@ -66,7 +66,7 @@ export async function interpretImage(imageUrl: string, caption?: string, log?: L
  * Extracts text from a PDF file.
  * Falls back to a note if extraction fails or returns no text.
  */
-export async function interpretPdf(documentUrl: string, fileName?: string, log?: Logger): Promise<string> {
+export async function interpretPdf(documentUrl: string, tenantId: string, fileName?: string, log?: Logger): Promise<string> {
   log?.info({ documentUrl: documentUrl.slice(0, 60) }, "media: extracting PDF text");
 
   const buffer = await downloadBuffer(documentUrl);

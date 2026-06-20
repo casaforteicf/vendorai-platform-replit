@@ -11,9 +11,10 @@ import { tmpdir } from "os";
 import { join } from "path";
 import type { Logger } from "pino";
 
-const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+import { getOpenAIForTenant } from "../lib/agent-engine.js";
 
-export async function transcribeAudio(audioUrl: string, log?: Logger): Promise<string> {
+
+export async function transcribeAudio(audioUrl: string, tenantId: string, log?: Logger): Promise<string> {
   log?.info({ audioUrl: audioUrl.slice(0, 60) }, "audio: downloading");
 
   // 1. Download audio file
@@ -30,6 +31,7 @@ export async function transcribeAudio(audioUrl: string, log?: Logger): Promise<s
 
   try {
     // 3. Transcribe with Whisper
+    const openai = await getOpenAIForTenant(tenantId);
     const transcription = await openai.audio.transcriptions.create({
       file: new File([buffer], "audio.ogg", { type: "audio/ogg" }),
       model: "whisper-1",

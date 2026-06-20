@@ -1,4 +1,4 @@
-import { getOpenAI } from "./agent-engine.js";
+import { getOpenAIForTenant } from "./agent-engine.js";
 import { ObjectStorageService } from "./objectStorage.js";
 import type {
   FeedVariation,
@@ -58,6 +58,7 @@ const IMAGE_MODELS_PRIORITY = [
 
 export async function generateImagesForContent(
   profile: TenantProfile,
+  tenantId: string,
   theme: string,
   productName: string | undefined,
   format: "feed" | "stories",
@@ -67,7 +68,7 @@ export async function generateImagesForContent(
   if (imageCount < 1) imageCount = 1;
   if (imageCount > 10) imageCount = 10;
   const results: string[] = [];
-  const openai = getOpenAI();
+  const openai = await getOpenAIForTenant(tenantId);
   const brand = profile.nomeFantasia || "a empresa";
   const subject = productName ? `${productName} — ${theme}` : theme;
   const v = profile.vertical ?? "";
@@ -129,8 +130,8 @@ export async function generateImagesForContent(
   return results;
 }
 
-export async function describeImage(imageUrl: string): Promise<string> {
-  const openai = getOpenAI();
+export async function describeImage(imageUrl: string, tenantId: string): Promise<string> {
+  const openai = await getOpenAIForTenant(tenantId);
   const response = await openai.chat.completions.create({
     model: "gpt-4o-mini",
     messages: [
@@ -149,13 +150,14 @@ export async function describeImage(imageUrl: string): Promise<string> {
 
 export async function generateFeedContent(
   profile: TenantProfile,
+  tenantId: string,
   theme: string,
   productName: string | undefined,
   variationsCount: number,
   imageCount: number = 1,
   productExtra?: string
 ): Promise<{ result: ContentGenerationResult; tokensUsed: number }> {
-  const openai = getOpenAI();
+  const openai = await getOpenAIForTenant(tenantId);
   const brand = profile.nomeFantasia || "a empresa";
   const context = buildBrandContext(profile);
   const hints = verticalHints(profile.vertical);
@@ -191,7 +193,7 @@ Retorne SOMENTE JSON válido no formato:
       response_format: { type: "json_object" },
       temperature: 0.85,
     }),
-    generateImagesForContent(profile, theme, productName, "feed", imageCount),
+    generateImagesForContent(profile, tenantId, theme, productName, "feed", imageCount),
   ]);
 
   const tokensUsed = textResponse.usage?.total_tokens ?? 0;
@@ -213,13 +215,14 @@ Retorne SOMENTE JSON válido no formato:
 
 export async function generateStoriesContent(
   profile: TenantProfile,
+  tenantId: string,
   theme: string,
   productName: string | undefined,
   variationsCount: number,
   imageCount: number = 1,
   productExtra?: string
 ): Promise<{ result: ContentGenerationResult; tokensUsed: number }> {
-  const openai = getOpenAI();
+  const openai = await getOpenAIForTenant(tenantId);
   const brand = profile.nomeFantasia || "a empresa";
   const context = buildBrandContext(profile);
   const hints = verticalHints(profile.vertical);
@@ -255,7 +258,7 @@ Retorne SOMENTE JSON válido no formato:
       response_format: { type: "json_object" },
       temperature: 0.85,
     }),
-    generateImagesForContent(profile, theme, productName, "stories", imageCount),
+    generateImagesForContent(profile, tenantId, theme, productName, "stories", imageCount),
   ]);
 
   const tokensUsed = textResponse.usage?.total_tokens ?? 0;
@@ -277,12 +280,13 @@ Retorne SOMENTE JSON válido no formato:
 
 export async function generateReelsScript(
   profile: TenantProfile,
+  tenantId: string,
   theme: string,
   productName: string | undefined,
   variationsCount: number,
   productExtra?: string
 ): Promise<{ result: ContentGenerationResult; tokensUsed: number }> {
-  const openai = getOpenAI();
+  const openai = await getOpenAIForTenant(tenantId);
   const brand = profile.nomeFantasia || "a empresa";
   const context = buildBrandContext(profile);
   const hints = verticalHints(profile.vertical);
@@ -343,11 +347,12 @@ export interface ContentStrategy {
 
 export async function generateContentStrategy(
   profile: TenantProfile,
+  tenantId: string,
   command: string,
   contentType: string,
   variationsCount: number
 ): Promise<{ strategy: ContentStrategy; tokensUsed: number }> {
-  const openai = getOpenAI();
+  const openai = await getOpenAIForTenant(tenantId);
   const brand = profile.nomeFantasia || "a empresa";
   const context = buildBrandContext(profile);
   const hints = verticalHints(profile.vertical);

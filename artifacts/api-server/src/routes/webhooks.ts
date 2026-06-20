@@ -348,7 +348,7 @@ router.post("/tenants/:tenantId/webhooks/zapi", async (req, res) => {
       return;
     }
     try {
-      mensagem = await transcribeAudio(url, req.log);
+      mensagem = await transcribeAudio(url, tenantId, req.log);
       tipoConteudo = "audio";
     } catch (err) {
       req.log.error({ err, url: url.slice(0, 60) }, "audio: transcription failed");
@@ -363,7 +363,7 @@ router.post("/tenants/:tenantId/webhooks/zapi", async (req, res) => {
       return;
     }
     try {
-      mensagem = await interpretImage(url, payload.image?.caption, req.log);
+      mensagem = await interpretImage(url, tenantId, payload.image?.caption, req.log);
       tipoConteudo = "imagem";
     } catch (err) {
       req.log.error({ err, url: url.slice(0, 60) }, "image: interpretation failed");
@@ -388,7 +388,7 @@ router.post("/tenants/:tenantId/webhooks/zapi", async (req, res) => {
       return;
     }
     try {
-      mensagem = await interpretPdf(url, fileName, req.log);
+      mensagem = await interpretPdf(url, tenantId, fileName, req.log);
       tipoConteudo = "documento";
     } catch (err) {
       req.log.error({ err, url: url.slice(0, 60) }, "document: extraction failed");

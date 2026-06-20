@@ -24,7 +24,7 @@ import {
   desc,
   gte,
 } from "drizzle-orm";
-import { getOpenAI } from "../lib/agent-engine.js";
+import { getOpenAIForTenant } from "../lib/agent-engine.js";
 
 const router: IRouter = Router();
 
@@ -672,7 +672,7 @@ Gere uma análise em 3-4 parágrafos cobrindo:
 
 Seja direto, use dados concretos e fale em segunda pessoa para o usuário do CRM.`;
 
-  const openai = getOpenAI();
+  const openai = await getOpenAIForTenant(tenantId);
   const completion = await openai.chat.completions.create({
     model: "gpt-4o-mini",
     messages: [{ role: "user", content: prompt }],

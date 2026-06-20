@@ -1,6 +1,6 @@
 import pdfParse from "pdf-parse";
 import mammoth from "mammoth";
-import { getOpenAI } from "./agent-engine.js";
+import { getOpenAIForTenant } from "./agent-engine.js";
 import { z } from "zod/v4";
 
 // ─── Quote / Budget extraction ────────────────────────────────────────────────
@@ -57,13 +57,14 @@ Instruções:
 - Retorne SOMENTE o JSON, nenhum texto fora dele`;
 
 export async function extractQuoteData(
-  files: Array<{ buffer: Buffer; mimeType: string; originalName: string }>
+  files: Array<{ buffer: Buffer; mimeType: string; originalName: string }>,
+  tenantId: string
 ): Promise<QuoteExtractionResult> {
   const texts: string[] = [];
 
   for (const file of files) {
     try {
-      const text = await extractTextFromBuffer(file.buffer, file.mimeType, file.originalName);
+      const text = await extractTextFromBuffer(file.buffer, file.mimeType, file.originalName, tenantId);
       if (text.trim().length > 20) {
         texts.push(`=== ${file.originalName} ===\n${text.trim()}`);
       }
@@ -79,7 +80,7 @@ export async function extractQuoteData(
     combinedText = combinedText.slice(0, MAX_TEXT_LENGTH) + "\n[texto truncado]";
   }
 
-  const openai = getOpenAI();
+  const openai = await getOpenAIForTenant(tenantId);
   const response = await openai.chat.completions.create({
     model: "gpt-4o-mini",
     messages: [
@@ -133,7 +134,8 @@ export type DocumentExtractionResult = z.infer<
 async function extractTextFromBuffer(
   buffer: Buffer,
   mimeType: string,
-  originalName: string
+  originalName: string,
+  tenantId: string
 ): Promise<string> {
   // PDF
   if (mimeType === "application/pdf") {
@@ -165,7 +167,7 @@ async function extractTextFromBuffer(
   // Images — use OpenAI vision
   if (mimeType.startsWith("image/")) {
     const base64 = buffer.toString("base64");
-    const openai = getOpenAI();
+    const openai = await getOpenAIForTenant(tenantId);
     const response = await openai.chat.completions.create({
       model: "gpt-4o-mini",
       messages: [
@@ -217,7 +219,8 @@ Instruções:
 - Retorne SOMENTE o JSON, nenhum texto fora dele`;
 
 export async function extractBusinessDataFromDocuments(
-  files: Array<{ buffer: Buffer; mimeType: string; originalName: string }>
+  files: Array<{ buffer: Buffer; mimeType: string; originalName: string }>,
+  tenantId: string
 ): Promise<DocumentExtractionResult> {
   const texts: string[] = [];
 
@@ -226,7 +229,8 @@ export async function extractBusinessDataFromDocuments(
       const text = await extractTextFromBuffer(
         file.buffer,
         file.mimeType,
-        file.originalName
+        file.originalName,
+        tenantId
       );
       if (text.trim().length > 50) {
         texts.push(`=== ${file.originalName} ===\n${text.trim()}`);
@@ -245,7 +249,7 @@ export async function extractBusinessDataFromDocuments(
     combinedText = combinedText.slice(0, MAX_TEXT_LENGTH) + "\n[texto truncado]";
   }
 
-  const openai = getOpenAI();
+  const openai = await getOpenAIForTenant(tenantId);
   const response = await openai.chat.completions.create({
     model: "gpt-4o-mini",
     messages: [

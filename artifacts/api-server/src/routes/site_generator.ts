@@ -2,10 +2,8 @@ import { Router, type IRouter } from "express";
 import { desc, eq } from "drizzle-orm";
 import { db, generatedSitesTable } from "@workspace/db";
 import type { SiteGeneratorConfig } from "@workspace/db";
-import OpenAI from "openai";
 import Anthropic from "@anthropic-ai/sdk";
-
-const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+import { getOpenAIForTenant } from "../lib/agent-engine.js";
 
 // Prefer Anthropic when available; fallback to OpenAI
 const anthropicApiKey = process.env.ANTHROPIC_API_KEY;
@@ -84,6 +82,7 @@ type AiMessage = { role: "user" | "assistant"; content: string };
 
 async function callAI(
   messages: AiMessage[],
+  tenantId: string,
   log: { info: (obj: object, msg: string) => void }
 ): Promise<{ content: string; provider: string; model: string }> {
   if (useAnthropic && anthropic) {
@@ -104,6 +103,7 @@ async function callAI(
   }
 
   log.info({ provider: "openai", model: AI_MODEL }, "Calling OpenAI for site generation");
+  const openai = await getOpenAIForTenant(tenantId);
   const response = await openai.chat.completions.create({
     model: "gpt-4o-mini",
     max_tokens: 8192,
@@ -163,7 +163,7 @@ router.post("/tenants/:tenantId/site-generator/generate", async (req, res) => {
 
   let result;
   try {
-    result = await callAI([{ role: "user", content: prompt }], req.log);
+    result = await callAI([{ role: "user", content: prompt }], tenantId, req.log);
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : "Falha ao chamar a IA";
     req.log.error({ error: msg, provider: AI_PROVIDER }, "Site generation failed");
@@ -228,7 +228,7 @@ router.post("/tenants/:tenantId/site-generator/:siteId/refine", async (req, res)
 
   let result;
   try {
-    result = await callAI(refineMessages, req.log);
+    result = await callAI(refineMessages, tenantId, req.log);
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : "Falha ao chamar a IA";
     req.log.error({ error: msg, provider: AI_PROVIDER }, "Site refinement failed");

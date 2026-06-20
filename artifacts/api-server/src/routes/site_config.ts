@@ -11,7 +11,7 @@ import {
   produtosCatalogoTable,
 } from "@workspace/db";
 import type { GeneratedSiteContent } from "@workspace/db";
-import { getOpenAI } from "../lib/agent-engine.js";
+import { getOpenAIForTenant } from "../lib/agent-engine.js";
 import express from "express";
 
 // ─── Public router (no auth) ─────────────────────────────────────────────────
@@ -280,7 +280,7 @@ Gere um JSON com EXATAMENTE esta estrutura (todos os campos obrigatórios):
 
   let generated: GeneratedSiteContent;
   try {
-    const openai = getOpenAI();
+    const openai = await getOpenAIForTenant(tenantId);
     const completion = await openai.chat.completions.create({
       model: "gpt-4o-mini",
       messages: [

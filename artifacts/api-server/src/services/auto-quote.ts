@@ -12,7 +12,6 @@
  *   5. Send quote summary to lead via WhatsApp
  */
 import { and, eq, ilike, sql } from "drizzle-orm";
-import OpenAI from "openai";
 import type { Logger } from "pino";
 import {
   db,
@@ -88,19 +87,14 @@ const INTENT_JSON_SCHEMA = {
   required: ["intent", "products", "missingInformation", "notes"],
 };
 
-// ── OpenAI client (lazy) ──────────────────────────────────────────────────────
-
-function getOpenAI(): OpenAI {
-  const apiKey = process.env["OPENAI_API_KEY"];
-  if (!apiKey) throw new Error("OPENAI_API_KEY not set");
-  return new OpenAI({ apiKey });
-}
+import { getOpenAIForTenant } from "../lib/agent-engine.js";
 
 // ── Extract intent from customer message ──────────────────────────────────────
 
 export async function extractIntent(
   mensagem: string,
   catalogo: Array<{ nome: string; categoria: string | null; sku: string | null }>,
+  tenantId: string,
   log: Logger
 ): Promise<ExtractedIntent> {
   const catalogSummary = catalogo
@@ -118,7 +112,8 @@ export async function extractIntent(
     "- Se o cliente não está pedindo orçamento, use intent='question' ou 'other'\n" +
     "- Retorne APENAS JSON válido conforme o schema";
 
-  const completion = await getOpenAI().chat.completions.create({
+  const openai = await getOpenAIForTenant(tenantId);
+  const completion = await openai.chat.completions.create({
     model: "gpt-4o-mini",
     messages: [
       { role: "system", content: systemPrompt },
@@ -391,7 +386,7 @@ export async function runAutoQuotePipeline(params: {
   }
 
   // 2. Extract intent
-  const intent = await extractIntent(mensagem, catalogo, log);
+  const intent = await extractIntent(mensagem, catalogo, tenantId, log);
   log.info({ intent: intent.intent, products: intent.products.length }, "auto-quote: intent");
 
   if (intent.intent !== "quote_request") {

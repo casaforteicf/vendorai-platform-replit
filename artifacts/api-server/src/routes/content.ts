@@ -161,11 +161,11 @@ router.post("/tenants/:tenantId/content/generate", async (req, res) => {
   let result: { result: { variations: unknown[] }; tokensUsed: number };
   try {
     if (type === "feed") {
-      result = await generateFeedContent(profile ?? {}, theme, productName, variations, imageCount, productExtra);
+      result = await generateFeedContent(profile ?? {}, tenantId, theme, productName, variations, imageCount, productExtra);
     } else if (type === "stories") {
-      result = await generateStoriesContent(profile ?? {}, theme, productName, variations, imageCount, productExtra);
+      result = await generateStoriesContent(profile ?? {}, tenantId, theme, productName, variations, imageCount, productExtra);
     } else {
-      result = await generateReelsScript(profile ?? {}, theme, productName, variations, productExtra);
+      result = await generateReelsScript(profile ?? {}, tenantId, theme, productName, variations, productExtra);
     }
   } catch (err) {
     req.log.error({ err }, "content generation failed");
@@ -236,6 +236,7 @@ router.post("/tenants/:tenantId/content/strategy", async (req, res) => {
   try {
     const { strategy } = await generateContentStrategy(
       profile ?? {},
+      tenantId,
       command,
       contentType,
       variations,
@@ -311,6 +312,7 @@ router.post("/tenants/:tenantId/content/:contentId/variations/:idx/generate-imag
   try {
     const imageUrls = await generateImagesForContent(
       profile ?? {},
+      tenantId,
       gen.theme,
       gen.productName ?? undefined,
       format,
@@ -485,7 +487,7 @@ router.post("/tenants/:tenantId/content/describe-image", async (req, res) => {
   }
 
   try {
-    const description = await describeImage(parsed.data.imageUrl);
+    const description = await describeImage(parsed.data.imageUrl, tenantId);
     res.json({ description });
   } catch (err) {
     req.log.error({ err }, "describe-image failed");
@@ -532,6 +534,7 @@ router.post("/tenants/:tenantId/content/:contentId/variations/:idx/regenerate-im
   try {
     const imageUrls = await generateImagesForContent(
       profile ?? {},
+      tenantId,
       gen.theme,
       gen.productName ?? undefined,
       format,

@@ -10,11 +10,9 @@ import {
   supermercadoCampanhaEnvioTable,
   leadsTable,
 } from "@workspace/db";
-import OpenAI from "openai";
+import { getOpenAIForTenant } from "../lib/agent-engine.js";
 
 const router: IRouter = Router();
-
-const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
 function tid(req: Express.Request): string {
   return (req as any).user?.tenantId as string;
@@ -420,6 +418,7 @@ router.post("/tenants/:tenantId/supermercado/campanhas/gerar-conteudo", async (r
     ? `Contexto adicional: ${contexto}`
     : "Crie uma mensagem genérica para o supermercado.";
 
+  const openai = await getOpenAIForTenant(tenantId);
   const completion = await openai.chat.completions.create({
     model: "gpt-4o-mini",
     messages: [
