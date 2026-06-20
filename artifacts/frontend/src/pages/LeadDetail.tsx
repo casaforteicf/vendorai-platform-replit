@@ -24,6 +24,8 @@ import {
   useUpdateLead,
   useListTenantUsers,
   getListTenantUsersQueryKey,
+  useListAgendas,
+  getListAgendasQueryKey,
   useCreateConversation,
   useCreateDeal,
   useCreateMessage,
@@ -37,6 +39,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Progress } from "@/components/ui/progress";
 import { Textarea } from "@/components/ui/textarea";
+import { Switch } from "@/components/ui/switch";
 import {
   Dialog,
   DialogContent,
@@ -127,6 +130,7 @@ const ACTIVITY_TIPO_LABELS: Record<string, string> = {
   email: "Email",
   visita: "Visita",
   tarefa: "Tarefa",
+  reuniao: "Reunião Online",
 };
 
 const CHANNEL_LABELS: Record<string, string> = {
@@ -695,14 +699,22 @@ export default function LeadDetail() {
 
   // ── Nova Atividade ────────────────────────────────────────────────────────
   const [isNewActivityOpen, setIsNewActivityOpen] = useState(false);
-  const [newActivityTipo, setNewActivityTipo] = useState<"ligacao" | "whatsapp" | "email" | "visita" | "tarefa">("tarefa");
+  const [newActivityTipo, setNewActivityTipo] = useState<"ligacao" | "whatsapp" | "email" | "visita" | "tarefa" | "reuniao">("tarefa");
   const [newActivityTitulo, setNewActivityTitulo] = useState("");
   const [newActivityDescricao, setNewActivityDescricao] = useState("");
   const [newActivityData, setNewActivityData] = useState("");
   const [newActivityResponsavelId, setNewActivityResponsavelId] = useState<string>("__ia__");
+  // Reunião online
+  const [newActivityDataHoraInicio, setNewActivityDataHoraInicio] = useState("");
+  const [newActivityDataHoraFim, setNewActivityDataHoraFim] = useState("");
+  const [newActivityAgendaId, setNewActivityAgendaId] = useState<string>("");
+  const [newActivityGerarMeet, setNewActivityGerarMeet] = useState(false);
 
   const { data: tenantUsers } = useListTenantUsers(tenantId, {
     query: { enabled: !!tenantId, queryKey: getListTenantUsersQueryKey(tenantId) },
+  });
+  const { data: agendas } = useListAgendas(tenantId, {
+    query: { enabled: !!tenantId, queryKey: getListAgendasQueryKey(tenantId) },
   });
 
   const { mutate: createActivity, isPending: isCreatingActivity } = useCreateActivity({
@@ -715,6 +727,10 @@ export default function LeadDetail() {
         setNewActivityData("");
         setNewActivityTipo("tarefa");
         setNewActivityResponsavelId("__ia__");
+        setNewActivityDataHoraInicio("");
+        setNewActivityDataHoraFim("");
+        setNewActivityAgendaId("");
+        setNewActivityGerarMeet(false);
         toast({ title: "Atividade criada." });
       },
       onError: () => {
@@ -729,24 +745,34 @@ export default function LeadDetail() {
     setNewActivityData("");
     setNewActivityTipo("tarefa");
     setNewActivityResponsavelId("__ia__");
+    setNewActivityDataHoraInicio("");
+    setNewActivityDataHoraFim("");
+    setNewActivityAgendaId("");
+    setNewActivityGerarMeet(false);
     setIsNewActivityOpen(true);
   }
 
   function handleCreateActivity() {
     if (!tenantId || !id || !newActivityTitulo.trim()) return;
     const responsavelId = newActivityResponsavelId === "__ia__" ? undefined : newActivityResponsavelId;
-    createActivity({
-      data: {
-        tenantId,
-        leadId: id,
-        tipo: newActivityTipo,
-        titulo: newActivityTitulo.trim(),
-        descricao: newActivityDescricao.trim() || undefined,
-        dataVencimento: newActivityData || undefined,
-        status: "planejado",
-        responsavelId,
-      },
-    });
+    const isReuniao = newActivityTipo === "reuniao";
+    const data: Parameters<typeof createActivity>[0]["data"] = {
+      tenantId,
+      leadId: id,
+      tipo: newActivityTipo,
+      titulo: newActivityTitulo.trim(),
+      descricao: newActivityDescricao.trim() || undefined,
+      dataVencimento: isReuniao ? undefined : (newActivityData || undefined),
+      status: "planejado",
+      responsavelId,
+    };
+    if (isReuniao) {
+      data.agendaId = newActivityAgendaId || undefined;
+      data.dataHoraInicio = newActivityDataHoraInicio ? new Date(newActivityDataHoraInicio).toISOString() : undefined;
+      data.dataHoraFim = newActivityDataHoraFim ? new Date(newActivityDataHoraFim).toISOString() : undefined;
+      data.gerarMeet = newActivityGerarMeet;
+    }
+    createActivity({ data });
   }
 
   const { data: conversations, isLoading: convsLoading } = useListTenantConversations(
@@ -1739,6 +1765,32 @@ export default function LeadDetail() {
                                   <span className="text-foreground">{formatDate(activity.dataVencimento)}</span>
                                 </div>
                               )}
+                              {activity.dataHoraInicio && (
+                                <div className="flex items-center justify-between gap-2">
+                                  <span className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Início</span>
+                                  <span className="text-foreground">{formatDateTime(activity.dataHoraInicio)}</span>
+                                </div>
+                              )}
+                              {activity.dataHoraFim && (
+                                <div className="flex items-center justify-between gap-2">
+                                  <span className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Fim</span>
+                                  <span className="text-foreground">{formatDateTime(activity.dataHoraFim)}</span>
+                                </div>
+                              )}
+                              {activity.meetLink && (
+                                <div className="flex items-center justify-between gap-2">
+                                  <span className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Google Meet</span>
+                                  <a
+                                    href={activity.meetLink}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className="text-blue-600 hover:underline flex items-center gap-1"
+                                  >
+                                    <Video className="h-3 w-3" />
+                                    Entrar na reunião
+                                  </a>
+                                </div>
+                              )}
                               {activity.descricao && (
                                 <div className="space-y-1 pt-1 border-t border-border/40">
                                   <span className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Descrição</span>
@@ -2347,17 +2399,78 @@ export default function LeadDetail() {
               />
             </div>
 
-            {/* Data de vencimento */}
-            <div className="space-y-1.5">
-              <label className="text-sm font-medium">Vencimento <span className="text-xs text-muted-foreground">(opcional)</span></label>
-              <Input
-                type="date"
-                value={newActivityData}
-                min={new Date().toISOString().split("T")[0]}
-                onChange={(e) => setNewActivityData(e.target.value)}
-                data-testid="input-activity-data"
-              />
-            </div>
+            {/* Data de vencimento — apenas para tipos que não são reunião */}
+            {newActivityTipo !== "reuniao" && (
+              <div className="space-y-1.5">
+                <label className="text-sm font-medium">Vencimento <span className="text-xs text-muted-foreground">(opcional)</span></label>
+                <Input
+                  type="date"
+                  value={newActivityData}
+                  min={new Date().toISOString().split("T")[0]}
+                  onChange={(e) => setNewActivityData(e.target.value)}
+                  data-testid="input-activity-data"
+                />
+              </div>
+            )}
+
+            {/* Campos de reunião online */}
+            {newActivityTipo === "reuniao" && (
+              <>
+                {/* Agenda */}
+                <div className="space-y-1.5">
+                  <label className="text-sm font-medium">Agenda Google <span className="text-destructive">*</span></label>
+                  <Select
+                    value={newActivityAgendaId}
+                    onValueChange={setNewActivityAgendaId}
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="Selecione uma agenda…" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {(agendas ?? []).map((a) => (
+                        <SelectItem key={a.id} value={a.id}>
+                          {a.nome} {a.googleEmail ? `(${a.googleEmail})` : ""}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                {/* Data/hora início */}
+                <div className="space-y-1.5">
+                  <label className="text-sm font-medium">Início <span className="text-destructive">*</span></label>
+                  <Input
+                    type="datetime-local"
+                    value={newActivityDataHoraInicio}
+                    onChange={(e) => setNewActivityDataHoraInicio(e.target.value)}
+                    data-testid="input-activity-inicio"
+                  />
+                </div>
+
+                {/* Data/hora fim */}
+                <div className="space-y-1.5">
+                  <label className="text-sm font-medium">Fim <span className="text-destructive">*</span></label>
+                  <Input
+                    type="datetime-local"
+                    value={newActivityDataHoraFim}
+                    onChange={(e) => setNewActivityDataHoraFim(e.target.value)}
+                    data-testid="input-activity-fim"
+                  />
+                </div>
+
+                {/* Gerar Google Meet */}
+                <div className="flex items-center gap-2">
+                  <Switch
+                    checked={newActivityGerarMeet}
+                    onCheckedChange={setNewActivityGerarMeet}
+                    id="gerar-meet"
+                  />
+                  <label htmlFor="gerar-meet" className="text-sm font-medium">
+                    Gerar link do Google Meet
+                  </label>
+                </div>
+              </>
+            )}
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setIsNewActivityOpen(false)}>
@@ -2365,7 +2478,11 @@ export default function LeadDetail() {
             </Button>
             <Button
               onClick={handleCreateActivity}
-              disabled={isCreatingActivity || !newActivityTitulo.trim()}
+              disabled={
+                isCreatingActivity ||
+                !newActivityTitulo.trim() ||
+                (newActivityTipo === "reuniao" && (!newActivityAgendaId || !newActivityDataHoraInicio || !newActivityDataHoraFim))
+              }
               data-testid="btn-salvar-atividade"
             >
               {isCreatingActivity && <Loader2 className="h-4 w-4 animate-spin mr-2" />}

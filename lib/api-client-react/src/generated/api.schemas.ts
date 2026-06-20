@@ -1266,6 +1266,7 @@ export const ActivityTipo = {
   email: 'email',
   visita: 'visita',
   tarefa: 'tarefa',
+  reuniao: 'reuniao',
 } as const;
 
 export type ActivityStatus = typeof ActivityStatus[keyof typeof ActivityStatus];
@@ -1291,6 +1292,12 @@ export interface Activity {
   concluidaEm?: string | null;
   resultadoExecucao?: string | null;
   responsavelId?: string | null;
+  agendaId?: string | null;
+  dataHoraInicio?: string | null;
+  dataHoraFim?: string | null;
+  gerarMeet?: boolean | null;
+  googleEventId?: string | null;
+  meetLink?: string | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -1307,6 +1314,10 @@ export interface CreateActivityBody {
   concluidaEm?: string;
   resultadoExecucao?: string;
   responsavelId?: string;
+  agendaId?: string;
+  dataHoraInicio?: string;
+  dataHoraFim?: string;
+  gerarMeet?: boolean;
 }
 
 export interface UpdateActivityBody {
@@ -1320,6 +1331,10 @@ export interface UpdateActivityBody {
   concluidaEm?: string;
   resultadoExecucao?: string;
   responsavelId?: string;
+  agendaId?: string;
+  dataHoraInicio?: string;
+  dataHoraFim?: string;
+  gerarMeet?: boolean;
 }
 
 export type DealEtapa = typeof DealEtapa[keyof typeof DealEtapa];

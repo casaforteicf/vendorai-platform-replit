@@ -9555,7 +9555,7 @@ components:
 
     ActivityTipo:
       type: string
-      enum: [ligacao, whatsapp, email, visita, tarefa]
+      enum: [ligacao, whatsapp, email, visita, tarefa, reuniao]
 
     ActivityStatus:
       type: string
@@ -9596,6 +9596,26 @@ components:
         responsavelId:
           type: string
           nullable: true
+        agendaId:
+          type: string
+          nullable: true
+        dataHoraInicio:
+          type: string
+          format: date-time
+          nullable: true
+        dataHoraFim:
+          type: string
+          format: date-time
+          nullable: true
+        gerarMeet:
+          type: boolean
+          nullable: true
+        googleEventId:
+          type: string
+          nullable: true
+        meetLink:
+          type: string
+          nullable: true
         createdAt:
           type: string
           format: date-time
@@ -9631,6 +9651,16 @@ components:
           type: string
         responsavelId:
           type: string
+        agendaId:
+          type: string
+        dataHoraInicio:
+          type: string
+          format: date-time
+        dataHoraFim:
+          type: string
+          format: date-time
+        gerarMeet:
+          type: boolean
       required: [tenantId, leadId, tipo, titulo]
 
     UpdateActivityBody:
@@ -9658,6 +9688,16 @@ components:
           type: string
         responsavelId:
           type: string
+        agendaId:
+          type: string
+        dataHoraInicio:
+          type: string
+          format: date-time
+        dataHoraFim:
+          type: string
+          format: date-time
+        gerarMeet:
+          type: boolean
 
     DealEtapa:
       type: string

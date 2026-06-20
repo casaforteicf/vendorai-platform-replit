@@ -3,9 +3,12 @@ import { and, eq, lt, isNotNull } from "drizzle-orm";
 import {
   db,
   activitiesTable,
+  agendasTable,
+  leadsTable,
   insertActivitySchema,
   updateActivitySchema,
 } from "@workspace/db";
+import { createGoogleEvent } from "../lib/google-calendar.js";
 
 const router: IRouter = Router();
 
@@ -26,6 +29,57 @@ router.post("/activities", async (req, res) => {
     .values(parsed.data)
     .returning();
   res.status(201).json(activity);
+
+  // Async Google Calendar sync for reuniao
+  if (activity.tipo === "reuniao" && activity.agendaId && activity.dataHoraInicio && activity.dataHoraFim) {
+    req.log.info({ activityId: activity.id, agendaId: activity.agendaId }, "activity: starting Google Calendar sync for reuniao");
+    try {
+      const [agenda] = await db
+        .select({ googleRefreshToken: agendasTable.googleRefreshToken })
+        .from(agendasTable)
+        .where(eq(agendasTable.id, activity.agendaId));
+
+      if (agenda?.googleRefreshToken) {
+        const [lead] = await db
+          .select({ nome: leadsTable.nome, email: leadsTable.email })
+          .from(leadsTable)
+          .where(eq(leadsTable.id, activity.leadId));
+
+        const googleEventId = await createGoogleEvent(
+          activity.agendaId,
+          {
+            id: activity.id,
+            tenantId: activity.tenantId,
+            leadId: activity.leadId,
+            dealId: activity.dealId,
+            agendaId: activity.agendaId,
+            tipo: "reuniao",
+            titulo: activity.titulo,
+            dataHoraInicio: activity.dataHoraInicio,
+            dataHoraFim: activity.dataHoraFim,
+            local: null,
+            status: "agendado",
+            responsavelId: activity.responsavelId,
+            observacoes: activity.descricao,
+            googleEventId: activity.googleEventId,
+            meetLink: activity.meetLink,
+            gerarMeet: activity.gerarMeet ?? false,
+            createdAt: activity.createdAt,
+            updatedAt: activity.updatedAt,
+          },
+          lead?.nome ?? undefined,
+          lead?.email ?? undefined,
+          activity.gerarMeet ?? false
+        );
+
+        req.log.info({ activityId: activity.id, googleEventId }, "activity: Google Calendar sync result for reuniao");
+      } else {
+        req.log.warn({ activityId: activity.id, agendaId: activity.agendaId }, "activity: no google refresh token for agenda");
+      }
+    } catch (err: unknown) {
+      req.log.error({ err, activityId: activity.id }, "activity: Google Calendar sync failed for reuniao");
+    }
+  }
 });
 
 router.get("/tenants/:tenantId/activities", async (req, res) => {

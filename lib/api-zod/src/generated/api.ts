@@ -1485,14 +1485,18 @@ export const CreateActivityBody = zod.object({
   "tenantId": zod.string(),
   "leadId": zod.string(),
   "dealId": zod.string().optional(),
-  "tipo": zod.enum(['ligacao', 'whatsapp', 'email', 'visita', 'tarefa']),
+  "tipo": zod.enum(['ligacao', 'whatsapp', 'email', 'visita', 'tarefa', 'reuniao']),
   "titulo": zod.string(),
   "descricao": zod.string().optional(),
   "status": zod.enum(['pendente', 'planejado', 'concluida', 'cancelada']).optional(),
   "dataVencimento": zod.coerce.date().optional(),
   "concluidaEm": zod.coerce.date().optional(),
   "resultadoExecucao": zod.string().optional(),
-  "responsavelId": zod.string().optional()
+  "responsavelId": zod.string().optional(),
+  "agendaId": zod.string().optional(),
+  "dataHoraInicio": zod.coerce.date().optional(),
+  "dataHoraFim": zod.coerce.date().optional(),
+  "gerarMeet": zod.boolean().optional()
 })
 
 
@@ -1509,7 +1513,7 @@ export const ListOverdueActivitiesResponseItem = zod.object({
   "tenantId": zod.string(),
   "leadId": zod.string(),
   "dealId": zod.string().nullish(),
-  "tipo": zod.enum(['ligacao', 'whatsapp', 'email', 'visita', 'tarefa']),
+  "tipo": zod.enum(['ligacao', 'whatsapp', 'email', 'visita', 'tarefa', 'reuniao']),
   "titulo": zod.string(),
   "descricao": zod.string().nullish(),
   "status": zod.enum(['pendente', 'planejado', 'concluida', 'cancelada']),
@@ -1517,6 +1521,12 @@ export const ListOverdueActivitiesResponseItem = zod.object({
   "concluidaEm": zod.coerce.date().nullish(),
   "resultadoExecucao": zod.string().nullish(),
   "responsavelId": zod.string().nullish(),
+  "agendaId": zod.string().nullish(),
+  "dataHoraInicio": zod.coerce.date().nullish(),
+  "dataHoraFim": zod.coerce.date().nullish(),
+  "gerarMeet": zod.boolean().nullish(),
+  "googleEventId": zod.string().nullish(),
+  "meetLink": zod.string().nullish(),
   "createdAt": zod.coerce.date(),
   "updatedAt": zod.coerce.date()
 })
@@ -1541,7 +1551,7 @@ export const ListActivitiesResponseItem = zod.object({
   "tenantId": zod.string(),
   "leadId": zod.string(),
   "dealId": zod.string().nullish(),
-  "tipo": zod.enum(['ligacao', 'whatsapp', 'email', 'visita', 'tarefa']),
+  "tipo": zod.enum(['ligacao', 'whatsapp', 'email', 'visita', 'tarefa', 'reuniao']),
   "titulo": zod.string(),
   "descricao": zod.string().nullish(),
   "status": zod.enum(['pendente', 'planejado', 'concluida', 'cancelada']),
@@ -1549,6 +1559,12 @@ export const ListActivitiesResponseItem = zod.object({
   "concluidaEm": zod.coerce.date().nullish(),
   "resultadoExecucao": zod.string().nullish(),
   "responsavelId": zod.string().nullish(),
+  "agendaId": zod.string().nullish(),
+  "dataHoraInicio": zod.coerce.date().nullish(),
+  "dataHoraFim": zod.coerce.date().nullish(),
+  "gerarMeet": zod.boolean().nullish(),
+  "googleEventId": zod.string().nullish(),
+  "meetLink": zod.string().nullish(),
   "createdAt": zod.coerce.date(),
   "updatedAt": zod.coerce.date()
 })
@@ -1567,7 +1583,7 @@ export const GetActivityResponse = zod.object({
   "tenantId": zod.string(),
   "leadId": zod.string(),
   "dealId": zod.string().nullish(),
-  "tipo": zod.enum(['ligacao', 'whatsapp', 'email', 'visita', 'tarefa']),
+  "tipo": zod.enum(['ligacao', 'whatsapp', 'email', 'visita', 'tarefa', 'reuniao']),
   "titulo": zod.string(),
   "descricao": zod.string().nullish(),
   "status": zod.enum(['pendente', 'planejado', 'concluida', 'cancelada']),
@@ -1575,6 +1591,12 @@ export const GetActivityResponse = zod.object({
   "concluidaEm": zod.coerce.date().nullish(),
   "resultadoExecucao": zod.string().nullish(),
   "responsavelId": zod.string().nullish(),
+  "agendaId": zod.string().nullish(),
+  "dataHoraInicio": zod.coerce.date().nullish(),
+  "dataHoraFim": zod.coerce.date().nullish(),
+  "gerarMeet": zod.boolean().nullish(),
+  "googleEventId": zod.string().nullish(),
+  "meetLink": zod.string().nullish(),
   "createdAt": zod.coerce.date(),
   "updatedAt": zod.coerce.date()
 })
@@ -1591,14 +1613,18 @@ export const UpdateActivityParams = zod.object({
 export const UpdateActivityBody = zod.object({
   "leadId": zod.string().optional(),
   "dealId": zod.string().optional(),
-  "tipo": zod.enum(['ligacao', 'whatsapp', 'email', 'visita', 'tarefa']).optional(),
+  "tipo": zod.enum(['ligacao', 'whatsapp', 'email', 'visita', 'tarefa', 'reuniao']).optional(),
   "titulo": zod.string().optional(),
   "descricao": zod.string().optional(),
   "status": zod.enum(['pendente', 'planejado', 'concluida', 'cancelada']).optional(),
   "dataVencimento": zod.coerce.date().optional(),
   "concluidaEm": zod.coerce.date().optional(),
   "resultadoExecucao": zod.string().optional(),
-  "responsavelId": zod.string().optional()
+  "responsavelId": zod.string().optional(),
+  "agendaId": zod.string().optional(),
+  "dataHoraInicio": zod.coerce.date().optional(),
+  "dataHoraFim": zod.coerce.date().optional(),
+  "gerarMeet": zod.boolean().optional()
 })
 
 export const UpdateActivityResponse = zod.object({
@@ -1606,7 +1632,7 @@ export const UpdateActivityResponse = zod.object({
   "tenantId": zod.string(),
   "leadId": zod.string(),
   "dealId": zod.string().nullish(),
-  "tipo": zod.enum(['ligacao', 'whatsapp', 'email', 'visita', 'tarefa']),
+  "tipo": zod.enum(['ligacao', 'whatsapp', 'email', 'visita', 'tarefa', 'reuniao']),
   "titulo": zod.string(),
   "descricao": zod.string().nullish(),
   "status": zod.enum(['pendente', 'planejado', 'concluida', 'cancelada']),
@@ -1614,6 +1640,12 @@ export const UpdateActivityResponse = zod.object({
   "concluidaEm": zod.coerce.date().nullish(),
   "resultadoExecucao": zod.string().nullish(),
   "responsavelId": zod.string().nullish(),
+  "agendaId": zod.string().nullish(),
+  "dataHoraInicio": zod.coerce.date().nullish(),
+  "dataHoraFim": zod.coerce.date().nullish(),
+  "gerarMeet": zod.boolean().nullish(),
+  "googleEventId": zod.string().nullish(),
+  "meetLink": zod.string().nullish(),
   "createdAt": zod.coerce.date(),
   "updatedAt": zod.coerce.date()
 })

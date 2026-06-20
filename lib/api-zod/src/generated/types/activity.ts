@@ -21,6 +21,12 @@ export interface Activity {
   concluidaEm?: Date | null;
   resultadoExecucao?: string | null;
   responsavelId?: string | null;
+  agendaId?: string | null;
+  dataHoraInicio?: Date | null;
+  dataHoraFim?: Date | null;
+  gerarMeet?: boolean | null;
+  googleEventId?: string | null;
+  meetLink?: string | null;
   createdAt: Date;
   updatedAt: Date;
 }

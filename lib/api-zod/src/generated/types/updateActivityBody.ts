@@ -19,4 +19,8 @@ export interface UpdateActivityBody {
   concluidaEm?: Date;
   resultadoExecucao?: string;
   responsavelId?: string;
+  agendaId?: string;
+  dataHoraInicio?: Date;
+  dataHoraFim?: Date;
+  gerarMeet?: boolean;
 }

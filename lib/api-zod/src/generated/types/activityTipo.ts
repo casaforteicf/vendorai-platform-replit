@@ -15,4 +15,5 @@ export const ActivityTipo = {
   email: 'email',
   visita: 'visita',
   tarefa: 'tarefa',
+  reuniao: 'reuniao',
 } as const;

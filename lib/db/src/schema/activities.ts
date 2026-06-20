@@ -1,10 +1,11 @@
-import { pgTable, text, timestamp, pgEnum } from "drizzle-orm/pg-core";
+import { pgTable, text, timestamp, pgEnum, boolean } from "drizzle-orm/pg-core";
 import { createInsertSchema, createSelectSchema } from "drizzle-zod";
 import { z } from "zod/v4";
 import { tenantsTable } from "./tenants";
 import { leadsTable } from "./leads";
 import { dealsTable } from "./deals";
 import { usersTable } from "./users";
+import { agendasTable } from "./agendas";
 
 export const activityTipoEnum = pgEnum("activity_tipo", [
   "ligacao",
@@ -12,6 +13,7 @@ export const activityTipoEnum = pgEnum("activity_tipo", [
   "email",
   "visita",
   "tarefa",
+  "reuniao",
 ]);
 
 export const activityStatusEnum = pgEnum("activity_status", [
@@ -42,6 +44,13 @@ export const activitiesTable = pgTable("activities", {
   responsavelId: text("responsavel_id").references(() => usersTable.id, {
     onDelete: "set null",
   }),
+  // Reunião online
+  agendaId: text("agenda_id").references(() => agendasTable.id, { onDelete: "set null" }),
+  dataHoraInicio: timestamp("data_hora_inicio"),
+  dataHoraFim: timestamp("data_hora_fim"),
+  gerarMeet: boolean("gerar_meet").default(false),
+  googleEventId: text("google_event_id"),
+  meetLink: text("meet_link"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
 });
@@ -49,11 +58,15 @@ export const activitiesTable = pgTable("activities", {
 export const insertActivitySchema = createInsertSchema(activitiesTable, {
   dataVencimento: z.coerce.date().optional(),
   concluidaEm: z.coerce.date().optional(),
-}).omit({ id: true, createdAt: true, updatedAt: true });
+  dataHoraInicio: z.coerce.date().optional(),
+  dataHoraFim: z.coerce.date().optional(),
+}).omit({ id: true, createdAt: true, updatedAt: true, googleEventId: true, meetLink: true });
 
 export const updateActivitySchema = createSelectSchema(activitiesTable, {
   dataVencimento: z.coerce.date().optional(),
   concluidaEm: z.coerce.date().optional(),
+  dataHoraInicio: z.coerce.date().optional(),
+  dataHoraFim: z.coerce.date().optional(),
 })
   .omit({ id: true, tenantId: true, createdAt: true, updatedAt: true })
   .partial();
