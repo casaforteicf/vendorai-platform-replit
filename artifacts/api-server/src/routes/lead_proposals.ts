@@ -12,7 +12,7 @@ import {
   customerIntelligenceTable,
   businessProfilesTable,
 } from "@workspace/db";
-import { buildProposalPrompt, callProposalAI, renderProposalHtml, generateTheme, AI_PROVIDER } from "../lib/proposal-engine.js";
+import { buildProposalPrompt, callProposalAI, renderProposalHtml, generateTheme, AI_PROVIDER, generateProposalPDF } from "../lib/proposal-engine.js";
 
 const router: IRouter = Router();
 
@@ -139,6 +139,42 @@ router.get("/leads/:leadId/proposals/:version/download", async (req, res) => {
   res.setHeader("Content-Type", "text/html; charset=utf-8");
   res.setHeader("Content-Disposition", `attachment; filename="${filename}"`);
   res.send(row.htmlContent);
+});
+
+// ── GET /leads/:leadId/proposals/:version/pdf
+router.get("/leads/:leadId/proposals/:version/pdf", async (req, res) => {
+  const leadId = String(req.params.leadId);
+  const version = parseInt(req.params.version, 10);
+  const [lead] = await db.select({ tenantId: leadsTable.tenantId, nome: leadsTable.nome, empresa: leadsTable.empresa }).from(leadsTable).where(eq(leadsTable.id, leadId));
+  if (!lead) {
+    res.status(404).json({ error: "Lead not found" });
+    return;
+  }
+  if (req.user?.platformRole !== "super_admin" && lead.tenantId !== req.user?.tenantId) {
+    res.status(403).json({ error: "Access denied" });
+    return;
+  }
+  const [row] = await db
+    .select()
+    .from(leadProposalsTable)
+    .where(and(eq(leadProposalsTable.leadId, leadId), eq(leadProposalsTable.tenantId, lead.tenantId), eq(leadProposalsTable.version, version)));
+  if (!row) {
+    res.status(404).json({ error: "Proposal not found" });
+    return;
+  }
+  const clientName = lead.empresa || lead.nome || "Cliente";
+  const filename = `Proposta_${clientName.replace(/\s+/g, "_")}_v${version}.pdf`;
+  const pdfBuffer = await generateProposalPDF(row.htmlContent);
+  const isPdf = pdfBuffer.length > 0 && pdfBuffer[0] === 0x25 && pdfBuffer[1] === 0x50 && pdfBuffer[2] === 0x44 && pdfBuffer[3] === 0x46; // %PDF
+  if (isPdf) {
+    res.setHeader("Content-Type", "application/pdf");
+    res.setHeader("Content-Disposition", `attachment; filename="${filename}"`);
+  } else {
+    // Fallback: puppeteer failed, return HTML
+    res.setHeader("Content-Type", "text/html; charset=utf-8");
+    res.setHeader("Content-Disposition", `attachment; filename="Proposta_${clientName.replace(/\s+/g, "_")}_v${version}.html"`);
+  }
+  res.send(pdfBuffer);
 });
 
 // ── POST /leads/:leadId/proposals ─────────────────────────────────────────────────

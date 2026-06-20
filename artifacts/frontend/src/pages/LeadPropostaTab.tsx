@@ -1,5 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
-import { useAuth } from "@/contexts/AuthContext";
+import { useState, useEffect } from "react";
 import { useToast } from "@/hooks/use-toast";
 import { useQueryClient } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -36,24 +35,18 @@ import {
   ChevronUp,
   Package,
 } from "lucide-react";
+import {
+  useListLeadProposals,
+  useListLeadProducts,
+  useGenerateLeadProposal,
+  useCreateLeadProduct,
+  useDeleteLeadProduct,
+} from "@workspace/api-client-react";
 
 interface LeadPropostaTabProps {
   leadId: string;
   tenantId: string;
   lead: any;
-}
-
-interface LeadProduct {
-  id: string;
-  nome: string;
-  imagemUrl?: string | null;
-}
-
-interface LeadProposal {
-  id: string;
-  version: number;
-  status: string;
-  createdAt: string;
 }
 
 const BASE = typeof import.meta.env !== "undefined" && import.meta.env.BASE_URL
@@ -69,10 +62,6 @@ export default function LeadPropostaTab({ leadId, tenantId, lead }: LeadProposta
   const queryClient = useQueryClient();
   const token = localStorage.getItem("vendorai_token") ?? "";
 
-  const [proposals, setProposals] = useState<LeadProposal[]>([]);
-  const [products, setProducts] = useState<LeadProduct[]>([]);
-  const [loadingProposals, setLoadingProposals] = useState(false);
-  const [loadingProducts, setLoadingProducts] = useState(false);
   const [generating, setGenerating] = useState(false);
   const [previewHtml, setPreviewHtml] = useState<string | null>(null);
   const [previewOpen, setPreviewOpen] = useState(false);
@@ -96,36 +85,34 @@ export default function LeadPropostaTab({ leadId, tenantId, lead }: LeadProposta
     Authorization: `Bearer ${token}`,
   };
 
-  const loadProposals = useCallback(async () => {
-    if (!leadId || !token) return;
-    setLoadingProposals(true);
-    try {
-      const res = await fetch(api(`/leads/${leadId}/proposals`), { headers: { Authorization: `Bearer ${token}` } });
-      if (res.ok) setProposals(await res.json());
-    } catch {
-      /* silently ignore */
-    } finally {
-      setLoadingProposals(false);
-    }
-  }, [leadId, token]);
+  // React Query hooks
+  const {
+    data: proposals = [],
+    isLoading: loadingProposals,
+  } = useListLeadProposals(leadId, { request: { headers: { Authorization: `Bearer ${token}` } } });
 
-  const loadProducts = useCallback(async () => {
-    if (!leadId || !token) return;
-    setLoadingProducts(true);
-    try {
-      const res = await fetch(api(`/leads/${leadId}/products`), { headers: { Authorization: `Bearer ${token}` } });
-      if (res.ok) setProducts(await res.json());
-    } catch {
-      /* silently ignore */
-    } finally {
-      setLoadingProducts(false);
-    }
-  }, [leadId, token]);
+  const {
+    data: products = [],
+    isLoading: loadingProducts,
+  } = useListLeadProducts(leadId, { request: { headers: { Authorization: `Bearer ${token}` } } });
+
+  const generateMutation = useGenerateLeadProposal({
+    request: { headers: { Authorization: `Bearer ${token}` } },
+  });
+  const createProductMutation = useCreateLeadProduct({
+    request: { headers: { Authorization: `Bearer ${token}` } },
+  });
+  const deleteProductMutation = useDeleteLeadProduct({
+    request: { headers: { Authorization: `Bearer ${token}` } },
+  });
 
   useEffect(() => {
-    loadProposals();
-    loadProducts();
-  }, [loadProposals, loadProducts]);
+    // Sync lead fields when lead prop changes
+    setMercadoSegmento(lead?.mercadoSegmento ?? "");
+    setLogoUrl(lead?.logoUrl ?? "");
+    setCorDestaque(lead?.corDestaque ?? "#A78BFA");
+    setCorSecundaria(lead?.corSecundaria ?? "");
+  }, [lead]);
 
   async function saveLeadFields() {
     if (!leadId || !token) return;
@@ -155,22 +142,23 @@ export default function LeadPropostaTab({ leadId, tenantId, lead }: LeadProposta
     if (!leadId || !token) return;
     setGenerating(true);
     try {
-      const res = await fetch(api(`/leads/${leadId}/proposals`), {
-        method: "POST",
-        headers,
+      const created = await generateMutation.mutateAsync({
+        leadId,
+        data: {
+          segmento: mercadoSegmento || undefined,
+          logoUrl: logoUrl || undefined,
+          corDestaque: corDestaque || undefined,
+          corSecundaria: corSecundaria || undefined,
+        },
       });
-      if (!res.ok) {
-        const body = await res.json().catch(() => ({}));
-        throw new Error(body.error || "Erro ao gerar proposta");
-      }
-      const created = await res.json();
       toast({ title: `Proposta v${created.version} gerada com sucesso` });
-      await loadProposals();
+      queryClient.invalidateQueries({ queryKey: ["listLeadProposals", leadId] });
       setActiveVersion(created.version);
       // Auto preview
       await previewProposal(created.version);
     } catch (e: any) {
-      toast({ title: "Erro na geração", description: e.message, variant: "destructive" });
+      const msg = e?.error || e?.message || "Erro ao gerar proposta";
+      toast({ title: "Erro na geração", description: msg, variant: "destructive" });
     } finally {
       setGenerating(false);
     }
@@ -192,13 +180,12 @@ export default function LeadPropostaTab({ leadId, tenantId, lead }: LeadProposta
     }
   }
 
-  function downloadProposal(version: number) {
+  function downloadProposal(version: number, format: "html" | "pdf" = "html") {
     if (!leadId || !token) return;
-    const url = api(`/leads/${leadId}/proposals/${version}/download`);
+    const url = api(`/leads/${leadId}/proposals/${version}/${format === "pdf" ? "pdf" : "download"}`);
     const a = document.createElement("a");
     a.href = url;
     a.setAttribute("download", "");
-    // We need to set auth header; fetch then blob download is better
     fetch(url, { headers: { Authorization: `Bearer ${token}` } })
       .then(async (res) => {
         if (!res.ok) throw new Error("Falha no download");
@@ -217,18 +204,17 @@ export default function LeadPropostaTab({ leadId, tenantId, lead }: LeadProposta
     if (!newProductNome.trim() || !leadId || !token) return;
     setAddingProduct(true);
     try {
-      const res = await fetch(api(`/leads/${leadId}/products`), {
-        method: "POST",
-        headers,
-        body: JSON.stringify({ nome: newProductNome.trim(), imagemUrl: newProductImagem || null }),
+      await createProductMutation.mutateAsync({
+        leadId,
+        data: { nome: newProductNome.trim(), imagemUrl: newProductImagem || null },
       });
-      if (!res.ok) throw new Error("Falha ao adicionar produto");
       toast({ title: "Produto adicionado" });
       setNewProductNome("");
       setNewProductImagem("");
-      await loadProducts();
+      queryClient.invalidateQueries({ queryKey: ["listLeadProducts", leadId] });
     } catch (e: any) {
-      toast({ title: "Erro", description: e.message, variant: "destructive" });
+      const msg = e?.error || e?.message || "Falha ao adicionar produto";
+      toast({ title: "Erro", description: msg, variant: "destructive" });
     } finally {
       setAddingProduct(false);
     }
@@ -238,15 +224,12 @@ export default function LeadPropostaTab({ leadId, tenantId, lead }: LeadProposta
     if (!leadId || !token) return;
     if (!confirm("Remover este produto?")) return;
     try {
-      const res = await fetch(api(`/leads/${leadId}/products/${productId}`), {
-        method: "DELETE",
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      if (!res.ok) throw new Error("Falha ao remover");
+      await deleteProductMutation.mutateAsync({ leadId, productId });
       toast({ title: "Produto removido" });
-      await loadProducts();
+      queryClient.invalidateQueries({ queryKey: ["listLeadProducts", leadId] });
     } catch (e: any) {
-      toast({ title: "Erro", description: e.message, variant: "destructive" });
+      const msg = e?.error || e?.message || "Falha ao remover";
+      toast({ title: "Erro", description: msg, variant: "destructive" });
     }
   }
 
@@ -484,9 +467,18 @@ export default function LeadPropostaTab({ leadId, tenantId, lead }: LeadProposta
                         variant="ghost"
                         className="h-7 w-7"
                         title="Download HTML"
-                        onClick={() => downloadProposal(p.version)}
+                        onClick={() => downloadProposal(p.version, "html")}
                       >
                         <Download className="h-3.5 w-3.5" />
+                      </Button>
+                      <Button
+                        size="icon"
+                        variant="ghost"
+                        className="h-7 w-7"
+                        title="Download PDF"
+                        onClick={() => downloadProposal(p.version, "pdf")}
+                      >
+                        <FileText className="h-3.5 w-3.5" />
                       </Button>
                     </div>
                   </div>
@@ -524,10 +516,19 @@ export default function LeadPropostaTab({ leadId, tenantId, lead }: LeadProposta
               variant="outline"
               size="sm"
               className="gap-1"
-              onClick={() => activeVersion && downloadProposal(activeVersion)}
+              onClick={() => activeVersion && downloadProposal(activeVersion, "html")}
             >
               <Download className="h-3.5 w-3.5" />
               Download HTML
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              className="gap-1"
+              onClick={() => activeVersion && downloadProposal(activeVersion, "pdf")}
+            >
+              <FileText className="h-3.5 w-3.5" />
+              Download PDF
             </Button>
             <Button size="sm" onClick={() => setPreviewOpen(false)}>
               Fechar

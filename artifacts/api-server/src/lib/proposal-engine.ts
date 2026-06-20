@@ -18,6 +18,7 @@ import {
 } from "@workspace/db";
 import Anthropic from "@anthropic-ai/sdk";
 import { getOpenAIForTenant } from "./agent-engine.js";
+import { logger } from "./logger.js";
 
 const anthropicApiKey = process.env.ANTHROPIC_API_KEY;
 const useAnthropic = !!anthropicApiKey;
@@ -292,6 +293,25 @@ ${ctx.conversationSamples || "Nenhuma conversa disponível. Use tom profissional
 }
 
 // ── HTML renderer from JSON + theme ─────────────────────────────────────────
+export async function generateProposalPDF(htmlContent: string): Promise<Buffer> {
+  try {
+    const puppeteer = (await import("puppeteer-core")).default;
+    const browser = await puppeteer.launch({
+      headless: true,
+      executablePath: process.env.PUPPETEER_EXECUTABLE_PATH ?? "/usr/bin/chromium",
+      args: ["--no-sandbox", "--disable-setuid-sandbox", "--disable-gpu"],
+    });
+    const page = await browser.newPage();
+    await page.setContent(htmlContent, { waitUntil: "load" });
+    const pdf = await page.pdf({ format: "A4", printBackground: true, margin: { top: "20px", bottom: "20px", left: "20px", right: "20px" } });
+    await browser.close();
+    return Buffer.from(pdf);
+  } catch (err) {
+    logger.warn({ err }, "proposal-engine: puppeteer failed, returning HTML fallback");
+    return Buffer.from(htmlContent, "utf-8");
+  }
+}
+
 export function renderProposalHtml(json: unknown, theme: {
   cream: string; cream2: string; ink: string;
   navyDeep: string; navyMid: string;

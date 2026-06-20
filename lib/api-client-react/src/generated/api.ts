@@ -68,6 +68,7 @@ import type {
   CreateInvoiceBody,
   CreateKnowledgeBaseBody,
   CreateLeadBody,
+  CreateLeadProductBody,
   CreateMessageBody,
   CreatePartnerBody,
   CreatePartnerResponse,
@@ -96,6 +97,7 @@ import type {
   Deal,
   DealUpdateResponse,
   DeleteContentGeneration200,
+  DeleteLeadProduct200,
   DismissDuplicateLead200,
   DispararSupermercadoCampanha200,
   DocumentExtractionResult,
@@ -107,6 +109,7 @@ import type {
   Funil,
   GenerateContentBody,
   GenerateContentStrategyBody,
+  GenerateLeadProposalBody,
   GeneratePerfilInsight200,
   GerarConteudoSupermercadoCampanha200,
   GerarConteudoSupermercadoCampanhaBody,
@@ -134,6 +137,8 @@ import type {
   KnowledgeBase,
   Lead,
   LeadBriefing,
+  LeadProduct,
+  LeadProposal,
   LinkTenantPartnerBody,
   ListActivitiesParams,
   ListAgendamentosParams,
@@ -14078,6 +14083,622 @@ export const useUpsertLeadBriefing = <TError = ErrorType<ErrorResponse>,
         TContext
       > => {
       return useMutation(getUpsertLeadBriefingMutationOptions(options));
+    }
+
+export const getListLeadProposalsUrl = (leadId: string,) => {
+
+
+
+
+  return `/api/leads/${leadId}/proposals`
+}
+
+/**
+ * @summary List generated proposals for a lead
+ */
+export const listLeadProposals = async (leadId: string, options?: RequestInit): Promise<LeadProposal[]> => {
+
+  return customFetch<LeadProposal[]>(getListLeadProposalsUrl(leadId),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getListLeadProposalsQueryKey = (leadId: string,) => {
+    return [
+    `/api/leads/${leadId}/proposals`
+    ] as const;
+    }
+
+
+export const getListLeadProposalsQueryOptions = <TData = Awaited<ReturnType<typeof listLeadProposals>>, TError = ErrorType<ErrorResponse>>(leadId: string, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listLeadProposals>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getListLeadProposalsQueryKey(leadId);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof listLeadProposals>>> = ({ signal }) => listLeadProposals(leadId, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, enabled: !!(leadId), ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof listLeadProposals>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type ListLeadProposalsQueryResult = NonNullable<Awaited<ReturnType<typeof listLeadProposals>>>
+export type ListLeadProposalsQueryError = ErrorType<ErrorResponse>
+
+
+/**
+ * @summary List generated proposals for a lead
+ */
+
+export function useListLeadProposals<TData = Awaited<ReturnType<typeof listLeadProposals>>, TError = ErrorType<ErrorResponse>>(
+ leadId: string, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listLeadProposals>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getListLeadProposalsQueryOptions(leadId,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+
+
+
+
+
+
+export const getGenerateLeadProposalUrl = (leadId: string,) => {
+
+
+
+
+  return `/api/leads/${leadId}/proposals`
+}
+
+/**
+ * @summary Generate a new proposal version
+ */
+export const generateLeadProposal = async (leadId: string,
+    generateLeadProposalBody: GenerateLeadProposalBody, options?: RequestInit): Promise<LeadProposal> => {
+
+  return customFetch<LeadProposal>(getGenerateLeadProposalUrl(leadId),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(
+      generateLeadProposalBody,)
+  }
+);}
+
+
+
+
+export const getGenerateLeadProposalMutationOptions = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof generateLeadProposal>>, TError,{leadId: string;data: BodyType<GenerateLeadProposalBody>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof generateLeadProposal>>, TError,{leadId: string;data: BodyType<GenerateLeadProposalBody>}, TContext> => {
+
+const mutationKey = ['generateLeadProposal'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof generateLeadProposal>>, {leadId: string;data: BodyType<GenerateLeadProposalBody>}> = (props) => {
+          const {leadId,data} = props ?? {};
+
+          return  generateLeadProposal(leadId,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type GenerateLeadProposalMutationResult = NonNullable<Awaited<ReturnType<typeof generateLeadProposal>>>
+    export type GenerateLeadProposalMutationBody = BodyType<GenerateLeadProposalBody>
+    export type GenerateLeadProposalMutationError = ErrorType<ErrorResponse>
+
+    /**
+ * @summary Generate a new proposal version
+ */
+export const useGenerateLeadProposal = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof generateLeadProposal>>, TError,{leadId: string;data: BodyType<GenerateLeadProposalBody>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof generateLeadProposal>>,
+        TError,
+        {leadId: string;data: BodyType<GenerateLeadProposalBody>},
+        TContext
+      > => {
+      return useMutation(getGenerateLeadProposalMutationOptions(options));
+    }
+
+export const getGetLeadProposalUrl = (leadId: string,
+    version: number,) => {
+
+
+
+
+  return `/api/leads/${leadId}/proposals/${version}`
+}
+
+/**
+ * @summary Get a proposal version with full HTML
+ */
+export const getLeadProposal = async (leadId: string,
+    version: number, options?: RequestInit): Promise<LeadProposal> => {
+
+  return customFetch<LeadProposal>(getGetLeadProposalUrl(leadId,version),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetLeadProposalQueryKey = (leadId: string,
+    version: number,) => {
+    return [
+    `/api/leads/${leadId}/proposals/${version}`
+    ] as const;
+    }
+
+
+export const getGetLeadProposalQueryOptions = <TData = Awaited<ReturnType<typeof getLeadProposal>>, TError = ErrorType<ErrorResponse>>(leadId: string,
+    version: number, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getLeadProposal>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetLeadProposalQueryKey(leadId,version);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getLeadProposal>>> = ({ signal }) => getLeadProposal(leadId,version, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, enabled: !!(leadId && version), ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getLeadProposal>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetLeadProposalQueryResult = NonNullable<Awaited<ReturnType<typeof getLeadProposal>>>
+export type GetLeadProposalQueryError = ErrorType<ErrorResponse>
+
+
+/**
+ * @summary Get a proposal version with full HTML
+ */
+
+export function useGetLeadProposal<TData = Awaited<ReturnType<typeof getLeadProposal>>, TError = ErrorType<ErrorResponse>>(
+ leadId: string,
+    version: number, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getLeadProposal>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetLeadProposalQueryOptions(leadId,version,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+
+
+
+
+
+
+export const getDownloadLeadProposalHtmlUrl = (leadId: string,
+    version: number,) => {
+
+
+
+
+  return `/api/leads/${leadId}/proposals/${version}/download`
+}
+
+/**
+ * @summary Download proposal as HTML
+ */
+export const downloadLeadProposalHtml = async (leadId: string,
+    version: number, options?: RequestInit): Promise<string> => {
+
+  return customFetch<string>(getDownloadLeadProposalHtmlUrl(leadId,version),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getDownloadLeadProposalHtmlQueryKey = (leadId: string,
+    version: number,) => {
+    return [
+    `/api/leads/${leadId}/proposals/${version}/download`
+    ] as const;
+    }
+
+
+export const getDownloadLeadProposalHtmlQueryOptions = <TData = Awaited<ReturnType<typeof downloadLeadProposalHtml>>, TError = ErrorType<ErrorResponse>>(leadId: string,
+    version: number, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof downloadLeadProposalHtml>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getDownloadLeadProposalHtmlQueryKey(leadId,version);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof downloadLeadProposalHtml>>> = ({ signal }) => downloadLeadProposalHtml(leadId,version, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, enabled: !!(leadId && version), ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof downloadLeadProposalHtml>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type DownloadLeadProposalHtmlQueryResult = NonNullable<Awaited<ReturnType<typeof downloadLeadProposalHtml>>>
+export type DownloadLeadProposalHtmlQueryError = ErrorType<ErrorResponse>
+
+
+/**
+ * @summary Download proposal as HTML
+ */
+
+export function useDownloadLeadProposalHtml<TData = Awaited<ReturnType<typeof downloadLeadProposalHtml>>, TError = ErrorType<ErrorResponse>>(
+ leadId: string,
+    version: number, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof downloadLeadProposalHtml>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getDownloadLeadProposalHtmlQueryOptions(leadId,version,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+
+
+
+
+
+
+export const getDownloadLeadProposalPdfUrl = (leadId: string,
+    version: number,) => {
+
+
+
+
+  return `/api/leads/${leadId}/proposals/${version}/pdf`
+}
+
+/**
+ * @summary Download proposal as PDF
+ */
+export const downloadLeadProposalPdf = async (leadId: string,
+    version: number, options?: RequestInit): Promise<Blob> => {
+
+  return customFetch<Blob>(getDownloadLeadProposalPdfUrl(leadId,version),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getDownloadLeadProposalPdfQueryKey = (leadId: string,
+    version: number,) => {
+    return [
+    `/api/leads/${leadId}/proposals/${version}/pdf`
+    ] as const;
+    }
+
+
+export const getDownloadLeadProposalPdfQueryOptions = <TData = Awaited<ReturnType<typeof downloadLeadProposalPdf>>, TError = ErrorType<ErrorResponse>>(leadId: string,
+    version: number, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof downloadLeadProposalPdf>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getDownloadLeadProposalPdfQueryKey(leadId,version);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof downloadLeadProposalPdf>>> = ({ signal }) => downloadLeadProposalPdf(leadId,version, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, enabled: !!(leadId && version), ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof downloadLeadProposalPdf>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type DownloadLeadProposalPdfQueryResult = NonNullable<Awaited<ReturnType<typeof downloadLeadProposalPdf>>>
+export type DownloadLeadProposalPdfQueryError = ErrorType<ErrorResponse>
+
+
+/**
+ * @summary Download proposal as PDF
+ */
+
+export function useDownloadLeadProposalPdf<TData = Awaited<ReturnType<typeof downloadLeadProposalPdf>>, TError = ErrorType<ErrorResponse>>(
+ leadId: string,
+    version: number, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof downloadLeadProposalPdf>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getDownloadLeadProposalPdfQueryOptions(leadId,version,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+
+
+
+
+
+
+export const getListLeadProductsUrl = (leadId: string,) => {
+
+
+
+
+  return `/api/leads/${leadId}/products`
+}
+
+/**
+ * @summary List products for a lead
+ */
+export const listLeadProducts = async (leadId: string, options?: RequestInit): Promise<LeadProduct[]> => {
+
+  return customFetch<LeadProduct[]>(getListLeadProductsUrl(leadId),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getListLeadProductsQueryKey = (leadId: string,) => {
+    return [
+    `/api/leads/${leadId}/products`
+    ] as const;
+    }
+
+
+export const getListLeadProductsQueryOptions = <TData = Awaited<ReturnType<typeof listLeadProducts>>, TError = ErrorType<ErrorResponse>>(leadId: string, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listLeadProducts>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getListLeadProductsQueryKey(leadId);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof listLeadProducts>>> = ({ signal }) => listLeadProducts(leadId, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, enabled: !!(leadId), ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof listLeadProducts>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type ListLeadProductsQueryResult = NonNullable<Awaited<ReturnType<typeof listLeadProducts>>>
+export type ListLeadProductsQueryError = ErrorType<ErrorResponse>
+
+
+/**
+ * @summary List products for a lead
+ */
+
+export function useListLeadProducts<TData = Awaited<ReturnType<typeof listLeadProducts>>, TError = ErrorType<ErrorResponse>>(
+ leadId: string, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listLeadProducts>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getListLeadProductsQueryOptions(leadId,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+
+
+
+
+
+
+export const getCreateLeadProductUrl = (leadId: string,) => {
+
+
+
+
+  return `/api/leads/${leadId}/products`
+}
+
+/**
+ * @summary Add a product to a lead
+ */
+export const createLeadProduct = async (leadId: string,
+    createLeadProductBody: CreateLeadProductBody, options?: RequestInit): Promise<LeadProduct> => {
+
+  return customFetch<LeadProduct>(getCreateLeadProductUrl(leadId),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(
+      createLeadProductBody,)
+  }
+);}
+
+
+
+
+export const getCreateLeadProductMutationOptions = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createLeadProduct>>, TError,{leadId: string;data: BodyType<CreateLeadProductBody>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof createLeadProduct>>, TError,{leadId: string;data: BodyType<CreateLeadProductBody>}, TContext> => {
+
+const mutationKey = ['createLeadProduct'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof createLeadProduct>>, {leadId: string;data: BodyType<CreateLeadProductBody>}> = (props) => {
+          const {leadId,data} = props ?? {};
+
+          return  createLeadProduct(leadId,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type CreateLeadProductMutationResult = NonNullable<Awaited<ReturnType<typeof createLeadProduct>>>
+    export type CreateLeadProductMutationBody = BodyType<CreateLeadProductBody>
+    export type CreateLeadProductMutationError = ErrorType<ErrorResponse>
+
+    /**
+ * @summary Add a product to a lead
+ */
+export const useCreateLeadProduct = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createLeadProduct>>, TError,{leadId: string;data: BodyType<CreateLeadProductBody>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof createLeadProduct>>,
+        TError,
+        {leadId: string;data: BodyType<CreateLeadProductBody>},
+        TContext
+      > => {
+      return useMutation(getCreateLeadProductMutationOptions(options));
+    }
+
+export const getDeleteLeadProductUrl = (leadId: string,
+    productId: string,) => {
+
+
+
+
+  return `/api/leads/${leadId}/products/${productId}`
+}
+
+/**
+ * @summary Remove a product from a lead
+ */
+export const deleteLeadProduct = async (leadId: string,
+    productId: string, options?: RequestInit): Promise<DeleteLeadProduct200> => {
+
+  return customFetch<DeleteLeadProduct200>(getDeleteLeadProductUrl(leadId,productId),
+  {
+    ...options,
+    method: 'DELETE'
+
+
+  }
+);}
+
+
+
+
+export const getDeleteLeadProductMutationOptions = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof deleteLeadProduct>>, TError,{leadId: string;productId: string}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof deleteLeadProduct>>, TError,{leadId: string;productId: string}, TContext> => {
+
+const mutationKey = ['deleteLeadProduct'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof deleteLeadProduct>>, {leadId: string;productId: string}> = (props) => {
+          const {leadId,productId} = props ?? {};
+
+          return  deleteLeadProduct(leadId,productId,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type DeleteLeadProductMutationResult = NonNullable<Awaited<ReturnType<typeof deleteLeadProduct>>>
+
+    export type DeleteLeadProductMutationError = ErrorType<ErrorResponse>
+
+    /**
+ * @summary Remove a product from a lead
+ */
+export const useDeleteLeadProduct = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof deleteLeadProduct>>, TError,{leadId: string;productId: string}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof deleteLeadProduct>>,
+        TError,
+        {leadId: string;productId: string},
+        TContext
+      > => {
+      return useMutation(getDeleteLeadProductMutationOptions(options));
     }
 
 export const getGetPublicSiteUrl = (tenantSlug: string,) => {

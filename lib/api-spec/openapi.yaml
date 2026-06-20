@@ -5429,6 +5429,294 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
 
+  /leads/{leadId}/proposals:
+    get:
+      operationId: listLeadProposals
+      tags: [leads]
+      summary: List generated proposals for a lead
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: leadId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: List of proposals
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/LeadProposal"
+        "403":
+          description: Access denied
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+    post:
+      operationId: generateLeadProposal
+      tags: [leads]
+      summary: Generate a new proposal version
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: leadId
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/GenerateLeadProposalBody"
+      responses:
+        "200":
+          description: Generated proposal
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LeadProposal"
+        "403":
+          description: Access denied
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Lead not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /leads/{leadId}/proposals/{version}:
+    get:
+      operationId: getLeadProposal
+      tags: [leads]
+      summary: Get a proposal version with full HTML
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: leadId
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: version
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Proposal data
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LeadProposal"
+        "403":
+          description: Access denied
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /leads/{leadId}/proposals/{version}/download:
+    get:
+      operationId: downloadLeadProposalHtml
+      tags: [leads]
+      summary: Download proposal as HTML
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: leadId
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: version
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: HTML file
+          content:
+            text/html:
+              schema:
+                type: string
+        "403":
+          description: Access denied
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /leads/{leadId}/proposals/{version}/pdf:
+    get:
+      operationId: downloadLeadProposalPdf
+      tags: [leads]
+      summary: Download proposal as PDF
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: leadId
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: version
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: PDF file
+          content:
+            application/pdf:
+              schema:
+                type: string
+                format: binary
+        "403":
+          description: Access denied
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /leads/{leadId}/products:
+    get:
+      operationId: listLeadProducts
+      tags: [leads]
+      summary: List products for a lead
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: leadId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: List of products
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/LeadProduct"
+        "403":
+          description: Access denied
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+    post:
+      operationId: createLeadProduct
+      tags: [leads]
+      summary: Add a product to a lead
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: leadId
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateLeadProductBody"
+      responses:
+        "200":
+          description: Created product
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LeadProduct"
+        "403":
+          description: Access denied
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Lead not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /leads/{leadId}/products/{productId}:
+    delete:
+      operationId: deleteLeadProduct
+      tags: [leads]
+      summary: Remove a product from a lead
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: leadId
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: productId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Deleted
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+        "403":
+          description: Access denied
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
   /public/{tenantSlug}/site:
     get:
       operationId: getPublicSite
@@ -11317,6 +11605,103 @@ components:
           type: string
         freeNotes:
           type: string
+
+    LeadProposal:
+      type: object
+      properties:
+        id:
+          type: string
+        tenantId:
+          type: string
+        leadId:
+          type: string
+        version:
+          type: integer
+        htmlContent:
+          type: string
+        jsonContent:
+          type: object
+          nullable: true
+        status:
+          type: string
+          enum: [draft, generated, sent, accepted, rejected]
+        aiProvider:
+          type: string
+          nullable: true
+        aiModel:
+          type: string
+          nullable: true
+        aiTokensUsed:
+          type: integer
+          nullable: true
+        theme:
+          type: object
+          nullable: true
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+      required:
+        - id
+        - tenantId
+        - leadId
+        - version
+        - status
+        - createdAt
+        - updatedAt
+
+    LeadProduct:
+      type: object
+      properties:
+        id:
+          type: string
+        tenantId:
+          type: string
+        leadId:
+          type: string
+        nome:
+          type: string
+        imagemUrl:
+          type: string
+          nullable: true
+        createdAt:
+          type: string
+          format: date-time
+      required:
+        - id
+        - tenantId
+        - leadId
+        - nome
+        - createdAt
+
+    CreateLeadProductBody:
+      type: object
+      properties:
+        nome:
+          type: string
+        imagemUrl:
+          type: string
+          nullable: true
+      required:
+        - nome
+
+    GenerateLeadProposalBody:
+      type: object
+      properties:
+        segmento:
+          type: string
+          nullable: true
+        logoUrl:
+          type: string
+          nullable: true
+        corDestaque:
+          type: string
+          nullable: true
+        corSecundaria:
+          type: string
+          nullable: true
 
     ErrorResponse:
       type: object

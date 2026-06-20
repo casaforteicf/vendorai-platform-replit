@@ -2165,6 +2165,58 @@ export interface UpsertLeadBriefingBody {
   freeNotes?: string;
 }
 
+export type LeadProposalJsonContent = { [key: string]: unknown } | null;
+
+export type LeadProposalStatus = typeof LeadProposalStatus[keyof typeof LeadProposalStatus];
+
+
+export const LeadProposalStatus = {
+  draft: 'draft',
+  generated: 'generated',
+  sent: 'sent',
+  accepted: 'accepted',
+  rejected: 'rejected',
+} as const;
+
+export type LeadProposalTheme = { [key: string]: unknown } | null;
+
+export interface LeadProposal {
+  id: string;
+  tenantId: string;
+  leadId: string;
+  version: number;
+  htmlContent?: string;
+  jsonContent?: LeadProposalJsonContent;
+  status: LeadProposalStatus;
+  aiProvider?: string | null;
+  aiModel?: string | null;
+  aiTokensUsed?: number | null;
+  theme?: LeadProposalTheme;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface LeadProduct {
+  id: string;
+  tenantId: string;
+  leadId: string;
+  nome: string;
+  imagemUrl?: string | null;
+  createdAt: string;
+}
+
+export interface CreateLeadProductBody {
+  nome: string;
+  imagemUrl?: string | null;
+}
+
+export interface GenerateLeadProposalBody {
+  segmento?: string | null;
+  logoUrl?: string | null;
+  corDestaque?: string | null;
+  corSecundaria?: string | null;
+}
+
 export interface ErrorResponse {
   error: string;
 }
@@ -4469,6 +4521,10 @@ export type MergeLead200 = {
 export type DismissDuplicateLead200 = {
   success?: boolean;
   lead?: Lead;
+};
+
+export type DeleteLeadProduct200 = {
+  success?: boolean;
 };
 
 export type ListInventoryMovementsParams = {

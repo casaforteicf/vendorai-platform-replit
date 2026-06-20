@@ -5378,6 +5378,170 @@ export const UpsertLeadBriefingResponse = zod.object({
 
 
 /**
+ * @summary List generated proposals for a lead
+ */
+export const ListLeadProposalsParams = zod.object({
+  "leadId": zod.coerce.string()
+})
+
+export const ListLeadProposalsResponseItem = zod.object({
+  "id": zod.string(),
+  "tenantId": zod.string(),
+  "leadId": zod.string(),
+  "version": zod.number(),
+  "htmlContent": zod.string().optional(),
+  "jsonContent": zod.object({
+
+}).passthrough().nullish(),
+  "status": zod.enum(['draft', 'generated', 'sent', 'accepted', 'rejected']),
+  "aiProvider": zod.string().nullish(),
+  "aiModel": zod.string().nullish(),
+  "aiTokensUsed": zod.number().nullish(),
+  "theme": zod.object({
+
+}).passthrough().nullish(),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date()
+})
+export const ListLeadProposalsResponse = zod.array(ListLeadProposalsResponseItem)
+
+
+/**
+ * @summary Generate a new proposal version
+ */
+export const GenerateLeadProposalParams = zod.object({
+  "leadId": zod.coerce.string()
+})
+
+export const GenerateLeadProposalBody = zod.object({
+  "segmento": zod.string().nullish(),
+  "logoUrl": zod.string().nullish(),
+  "corDestaque": zod.string().nullish(),
+  "corSecundaria": zod.string().nullish()
+})
+
+export const GenerateLeadProposalResponse = zod.object({
+  "id": zod.string(),
+  "tenantId": zod.string(),
+  "leadId": zod.string(),
+  "version": zod.number(),
+  "htmlContent": zod.string().optional(),
+  "jsonContent": zod.object({
+
+}).passthrough().nullish(),
+  "status": zod.enum(['draft', 'generated', 'sent', 'accepted', 'rejected']),
+  "aiProvider": zod.string().nullish(),
+  "aiModel": zod.string().nullish(),
+  "aiTokensUsed": zod.number().nullish(),
+  "theme": zod.object({
+
+}).passthrough().nullish(),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date()
+})
+
+
+/**
+ * @summary Get a proposal version with full HTML
+ */
+export const GetLeadProposalParams = zod.object({
+  "leadId": zod.coerce.string(),
+  "version": zod.coerce.number()
+})
+
+export const GetLeadProposalResponse = zod.object({
+  "id": zod.string(),
+  "tenantId": zod.string(),
+  "leadId": zod.string(),
+  "version": zod.number(),
+  "htmlContent": zod.string().optional(),
+  "jsonContent": zod.object({
+
+}).passthrough().nullish(),
+  "status": zod.enum(['draft', 'generated', 'sent', 'accepted', 'rejected']),
+  "aiProvider": zod.string().nullish(),
+  "aiModel": zod.string().nullish(),
+  "aiTokensUsed": zod.number().nullish(),
+  "theme": zod.object({
+
+}).passthrough().nullish(),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date()
+})
+
+
+/**
+ * @summary Download proposal as HTML
+ */
+export const DownloadLeadProposalHtmlParams = zod.object({
+  "leadId": zod.coerce.string(),
+  "version": zod.coerce.number()
+})
+
+
+/**
+ * @summary Download proposal as PDF
+ */
+export const DownloadLeadProposalPdfParams = zod.object({
+  "leadId": zod.coerce.string(),
+  "version": zod.coerce.number()
+})
+
+
+/**
+ * @summary List products for a lead
+ */
+export const ListLeadProductsParams = zod.object({
+  "leadId": zod.coerce.string()
+})
+
+export const ListLeadProductsResponseItem = zod.object({
+  "id": zod.string(),
+  "tenantId": zod.string(),
+  "leadId": zod.string(),
+  "nome": zod.string(),
+  "imagemUrl": zod.string().nullish(),
+  "createdAt": zod.coerce.date()
+})
+export const ListLeadProductsResponse = zod.array(ListLeadProductsResponseItem)
+
+
+/**
+ * @summary Add a product to a lead
+ */
+export const CreateLeadProductParams = zod.object({
+  "leadId": zod.coerce.string()
+})
+
+export const CreateLeadProductBody = zod.object({
+  "nome": zod.string(),
+  "imagemUrl": zod.string().nullish()
+})
+
+export const CreateLeadProductResponse = zod.object({
+  "id": zod.string(),
+  "tenantId": zod.string(),
+  "leadId": zod.string(),
+  "nome": zod.string(),
+  "imagemUrl": zod.string().nullish(),
+  "createdAt": zod.coerce.date()
+})
+
+
+/**
+ * @summary Remove a product from a lead
+ */
+export const DeleteLeadProductParams = zod.object({
+  "leadId": zod.coerce.string(),
+  "productId": zod.coerce.string()
+})
+
+export const DeleteLeadProductResponse = zod.object({
+  "success": zod.boolean().optional()
+})
+
+
+/**
  * @summary Public landing page data (no auth required)
  */
 export const GetPublicSiteParams = zod.object({
