@@ -43,6 +43,13 @@ export const leadsTable = pgTable("leads", {
   source: text("source").notNull().default("manual"),
   possivelDuplicata: boolean("possivel_duplicata").notNull().default(false),
   leadSimilarId: text("lead_similar_id"),
+
+  // Proposta fields
+  mercadoSegmento: text("mercado_segmento"),
+  logoUrl: text("logo_url"),
+  corDestaque: text("cor_destaque"),
+  corSecundaria: text("cor_secundaria"),
+
   createdAt: timestamp("created_at").notNull().defaultNow(),
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
 }, (table) => ({

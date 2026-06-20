@@ -49,6 +49,7 @@ import construcaoRouter from "./construcao";
 import varejoRouter from "./varejo";
 import supermercadoRouter from "./supermercado";
 import siteGeneratorRouter from "./site_generator";
+import leadProposalsRouter from "./lead_proposals";
 import { authenticate, blockPartnerFromCRM, blockSuspendedTenants, blockExpiredDemo, requireRole, requireSameTenanOrSuperAdmin } from "../middlewares/auth";
 
 const router: IRouter = Router();
@@ -99,6 +100,7 @@ router.use(funisRouter);
 router.use(dealsRouter);
 router.use(activitiesRouter);
 router.use(propostasRouter);
+router.use(leadProposalsRouter);
 router.use(messagesRouter);
 
 // Customer Intelligence Hub

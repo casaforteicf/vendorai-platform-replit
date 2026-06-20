@@ -63,3 +63,5 @@ export * from "./deal_closing_status";
 export * from "./tenant_alerts";
 export * from "./payment_compositions";
 export * from "./lead_briefings";
+export * from "./lead_products";
+export * from "./lead_proposals";
