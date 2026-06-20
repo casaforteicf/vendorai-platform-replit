@@ -2,7 +2,7 @@ import { Router, type IRouter } from "express";
 import { eq } from "drizzle-orm";
 import { z } from "zod/v4";
 import { db, tenantsTable, leadsTable } from "@workspace/db";
-import { findLeadByDedup, storePhone } from "../lib/dedup.js";
+import { findLeadByDedup, storePhone, storeDocument } from "../lib/dedup.js";
 
 export const intakeRouter: IRouter = Router();
 
@@ -107,6 +107,7 @@ intakeRouter.post("/public/:tenantSlug/intake", async (req, res) => {
       nome: d.nome,
       email: d.email || null,
       telefone: storePhone(d.telefone),
+      documento: storeDocument(d.documento),
       empresa: d.empresa || null,
       objetivo: d.objetivo6meses || null,
       dorPrincipal: d.desafioPrincipal || null,
