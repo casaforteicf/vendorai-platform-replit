@@ -12,6 +12,9 @@ import {
   partnersTable,
   notificationsTable,
   propostasTable,
+  plansTable,
+  planAssignmentLogTable,
+  dealClosingStatusTable,
 } from "@workspace/db";
 import { dispatchVendaWebhook } from "../services/erp-webhook.js";
 import { sendDirectWhatsAppMessage, WhatsAppNotConnectedError } from "../services/omnichannel.js";
@@ -32,6 +35,7 @@ import { billingEventsTable } from "@workspace/db";
 import { extractQuoteData } from "../lib/document-extraction.js";
 import { ObjectStorageService } from "../lib/objectStorage.js";
 import { generateContractPDF } from "../lib/contract-generation.js";
+import { requireRole } from "../middlewares/auth.js";
 
 const router: IRouter = Router();
 const objectStorageService = new ObjectStorageService();
@@ -151,6 +155,49 @@ router.patch("/deals/:id", async (req, res) => {
 
   // ── Trigger ganho: idempotent closure (contract-only retry for failed/skipped) ─────
   if (parsed.data.etapa === "ganho" && existing.etapa !== "ganho") {
+    // ── Validação: plano obrigatório antes de fechar ────────────────────────
+    if (!deal.planoContratado) {
+      res.status(400).json({
+        error: "PLANO_OBRIGATORIO",
+        message: "É necessário definir o plano comercial (planoContratado) antes de fechar este deal.",
+      });
+      return;
+    }
+
+    // Inicializar rastreamento de fechamento
+    const tenantId = deal.tenantId ?? (req.user?.tenantId || "");
+    const [closingStatus] = await db
+      .select({ id: dealClosingStatusTable.id })
+      .from(dealClosingStatusTable)
+      .where(eq(dealClosingStatusTable.dealId, deal.id))
+      .limit(1);
+    if (!closingStatus) {
+      await db.insert(dealClosingStatusTable).values({
+        dealId: deal.id,
+        tenantId,
+        etapaAtual: "plano_atribuido",
+      });
+    } else {
+      await db
+        .update(dealClosingStatusTable)
+        .set({ etapaAtual: "plano_atribuido", updatedAt: new Date(), tentativas: sql`${dealClosingStatusTable.tentativas} + 1` })
+        .where(eq(dealClosingStatusTable.id, closingStatus.id));
+    }
+
+    const plano = await db
+      .select({ id: plansTable.id })
+      .from(plansTable)
+      .where(eq(plansTable.slug, deal.planoContratado))
+      .limit(1)
+      .then((rows) => rows[0]);
+    if (!plano) {
+      res.status(400).json({
+        error: "PLANO_INVALIDO",
+        message: `Plano "${deal.planoContratado}" não encontrado.`,
+      });
+      return;
+    }
+
     const isContractRetry = deal.closureTriggeredAt && (deal.contractStatus === "failed" || deal.contractStatus === "skipped");
     if (deal.closureTriggeredAt && !isContractRetry) {
       req.log.info({ dealId: deal.id }, "deal-ganho: already triggered and succeeded, skipping");
@@ -206,6 +253,32 @@ router.patch("/deals/:id", async (req, res) => {
           await db.update(dealsTable).set({ tenantId: newTenant.id }).where(eq(dealsTable.id, deal.id));
           req.log.info({ dealId: deal.id, tenantId: newTenant.id }, "deal-ganho: auto-created tenant");
         }
+
+        // Atribuir plano ao tenant (obrigatório — nunca deixar em modo legacy)
+        await db
+          .update(tenantsTable)
+          .set({
+            planId: plano.id,
+            billingCycle: "monthly",
+            planStartedAt: new Date(),
+            isDemo: false,
+            demoExpiresAt: null,
+            updatedAt: new Date(),
+          })
+          .where(eq(tenantsTable.id, tenantId));
+        await db.insert(planAssignmentLogTable).values({
+          tenantId,
+          dealId: deal.id,
+          planId: plano.id,
+          assignedBy: "sistema_fechamento_deal",
+        });
+        req.log.info({ dealId: deal.id, tenantId, planId: plano.id }, "deal-ganho: plano atribuído ao tenant");
+
+        // Atualizar deal_closing_status: plano_atribuido → concluido (ou travado em erro)
+        await db
+          .update(dealClosingStatusTable)
+          .set({ etapaAtual: "concluido", updatedAt: new Date() })
+          .where(eq(dealClosingStatusTable.dealId, deal.id));
 
         const lead = deal.leadId
           ? await db
@@ -585,6 +658,16 @@ router.patch("/deals/:id", async (req, res) => {
         const errStr = err instanceof Error ? err.stack || err.message : String(err);
         console.error("=== deal-ganho: CRITICAL ERROR ===", errStr);
         req.log.warn({ err }, "deal-ganho: trigger processing failed");
+        // Marcar deal_closing_status como travado para permitir retry manual
+        await db
+          .update(dealClosingStatusTable)
+          .set({
+            etapaAtual: "travado_erro",
+            ultimoErro: errStr.slice(0, 500),
+            updatedAt: new Date(),
+          })
+          .where(eq(dealClosingStatusTable.dealId, deal.id))
+          .catch(() => { /* ignore */ });
       }
     }
   }
@@ -699,6 +782,57 @@ router.delete("/deals/:id", async (req, res) => {
   await db.delete(dealsTable).where(eq(dealsTable.id, existing.id));
 
   res.status(204).send();
+});
+
+// ── GET /admin/deals/travados ───────────────────────────────────────────────
+router.get("/admin/deals/travados", requireRole("super_admin"), async (req, res) => {
+  const travados = await db
+    .select({
+      id: dealClosingStatusTable.id,
+      dealId: dealClosingStatusTable.dealId,
+      tenantId: dealClosingStatusTable.tenantId,
+      etapaAtual: dealClosingStatusTable.etapaAtual,
+      ultimoErro: dealClosingStatusTable.ultimoErro,
+      tentativas: dealClosingStatusTable.tentativas,
+      updatedAt: dealClosingStatusTable.updatedAt,
+      titulo: dealsTable.titulo,
+      valor: dealsTable.valor,
+      nomeEmpresa: leadsTable.empresa,
+    })
+    .from(dealClosingStatusTable)
+    .innerJoin(dealsTable, eq(dealClosingStatusTable.dealId, dealsTable.id))
+    .leftJoin(leadsTable, eq(dealsTable.leadId, leadsTable.id))
+    .where(eq(dealClosingStatusTable.etapaAtual, "travado_erro"))
+    .orderBy(dealClosingStatusTable.updatedAt);
+
+  res.json(travados);
+});
+
+// ── POST /admin/deals/:id/retry ──────────────────────────────────────────────
+router.post("/admin/deals/:id/retry", requireRole("super_admin"), async (req, res) => {
+  const dealId = String(req.params.id);
+  const [deal] = await db.select().from(dealsTable).where(eq(dealsTable.id, dealId)).limit(1);
+  if (!deal) {
+    res.status(404).json({ error: "Deal not found" });
+    return;
+  }
+
+  if (deal.etapa !== "ganho") {
+    res.status(400).json({ error: "Deal não está na etapa ganho" });
+    return;
+  }
+
+  // Resetar deal_closing_status para permitir reprocessamento
+  await db
+    .update(dealClosingStatusTable)
+    .set({
+      etapaAtual: "plano_atribuido",
+      ultimoErro: null,
+      updatedAt: new Date(),
+    })
+    .where(eq(dealClosingStatusTable.dealId, dealId));
+
+  res.json({ success: true, message: "Deal marcado para reprocessamento. Refaça o PATCH /deals/:id com etapa=ganho." });
 });
 
 router.get("/tenants/:tenantId/payment-methods", async (req, res) => {

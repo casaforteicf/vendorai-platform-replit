@@ -49,7 +49,7 @@ import construcaoRouter from "./construcao";
 import varejoRouter from "./varejo";
 import supermercadoRouter from "./supermercado";
 import siteGeneratorRouter from "./site_generator";
-import { authenticate, blockPartnerFromCRM, blockSuspendedTenants, requireRole, requireSameTenanOrSuperAdmin } from "../middlewares/auth";
+import { authenticate, blockPartnerFromCRM, blockSuspendedTenants, blockExpiredDemo, requireRole, requireSameTenanOrSuperAdmin } from "../middlewares/auth";
 
 const router: IRouter = Router();
 
@@ -70,6 +70,7 @@ router.use(whatsappCallbackRouter);
 // Protected — all routes below require a valid JWT
 router.use(authenticate);
 router.use(blockPartnerFromCRM);
+router.use(blockExpiredDemo);
 router.use(blockSuspendedTenants);
 
 // Auth — protected endpoints (me, refresh)

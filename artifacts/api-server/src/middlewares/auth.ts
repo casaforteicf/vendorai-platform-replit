@@ -57,6 +57,44 @@ export const blockPartnerFromCRM: RequestHandler = (req, res, next) => {
   next();
 };
 
+export const blockExpiredDemo: RequestHandler = async (req, res, next) => {
+  const user = req.user;
+  if (!user || user.platformRole === "super_admin" || user.platformRole === "partner") {
+    next();
+    return;
+  }
+
+  if (!user.tenantId) {
+    next();
+    return;
+  }
+
+  try {
+    const [tenant] = await db
+      .select({
+        status: tenantsTable.status,
+        isDemo: tenantsTable.isDemo,
+        demoExpiresAt: tenantsTable.demoExpiresAt,
+        suspendedReason: tenantsTable.suspendedReason,
+      })
+      .from(tenantsTable)
+      .where(eq(tenantsTable.id, user.tenantId));
+
+    if (tenant?.isDemo && tenant?.demoExpiresAt && new Date(tenant.demoExpiresAt) < new Date()) {
+      res.status(403).json({
+        error: "DEMO_EXPIRADA",
+        message: "Este per\u00edodo de demonstra\u00e7\u00e3o expirou. Entre em contato para continuar usando o Vendor.ai.",
+        contato: "https://wa.me/5548999999999",
+      });
+      return;
+    }
+  } catch {
+    // On DB failure, allow through
+  }
+
+  next();
+};
+
 /**
  * Blocks suspended tenants OR tenants with overdue invoices from accessing the API.
  * Super_admins and partners bypass this check.

@@ -25,6 +25,8 @@ export const customerIntelligenceTable = pgTable("customer_intelligence", {
   churnReasons: jsonb("churn_reasons").$type<unknown[]>(),
   nextBestAction: text("next_best_action"),
   nextBestActionReason: text("next_best_action_reason"),
+  scoreExplicacao: text("score_explicacao"),
+  churnRiskExplicacao: text("churn_risk_explicacao"),
   churnReasonsEditedBy: text("churn_reasons_edited_by").$type<"ai" | "rep">(),
   churnReasonsEditedAt: timestamp("churn_reasons_edited_at"),
   lastAnalyzedAt: timestamp("last_analyzed_at"),

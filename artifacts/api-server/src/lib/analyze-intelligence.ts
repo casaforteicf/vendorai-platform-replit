@@ -77,11 +77,35 @@ const aiAnalysisSchema = z.object({
   opportunities:        z.array(z.string()).default([]),
   nextBestAction:       z.string(),
   nextBestActionReason: z.string(),
+  scoreExplicacao:      z.string().optional(),
+  churnRiskExplicacao:  z.string().optional(),
 });
 
 export type AiAnalysisResult = z.infer<typeof aiAnalysisSchema>;
 
 function getOpenAI(): OpenAI {
+  const apiKey = process.env["OPENAI_API_KEY"];
+  if (!apiKey) throw new Error("OPENAI_API_KEY environment variable is not set");
+  return new OpenAI({ apiKey });
+}
+
+export async function getOpenAIForTenant(tenantId: string): Promise<OpenAI> {
+  const [tenant] = await db
+    .select({ openaiApiKeyEncrypted: tenantsTable.openaiApiKeyEncrypted, openaiKeyStatus: tenantsTable.openaiKeyStatus })
+    .from(tenantsTable)
+    .where(eq(tenantsTable.id, tenantId))
+    .limit(1);
+
+  if (tenant?.openaiApiKeyEncrypted && tenant.openaiKeyStatus === "ativo") {
+    try {
+      const { decrypt } = await import("./crypto.js");
+      const apiKey = decrypt(tenant.openaiApiKeyEncrypted);
+      return new OpenAI({ apiKey });
+    } catch {
+      // Fallback to global key
+    }
+  }
+
   const apiKey = process.env["OPENAI_API_KEY"];
   if (!apiKey) throw new Error("OPENAI_API_KEY environment variable is not set");
   return new OpenAI({ apiKey });
@@ -283,7 +307,9 @@ Analise os dados do lead abaixo — perfil, pipeline de negócios, histórico de
   "intentAnalysis": "<texto curto descrevendo a intenção real e motivação do lead>",
   "opportunities": ["oportunidade 1", "oportunidade 2", ...],
   "nextBestAction": "<ação concreta que a equipe deve realizar agora>",
-  "nextBestActionReason": "<justificativa curta para a ação recomendada>"
+  "nextBestActionReason": "<justificativa curta para a ação recomendada>",
+  "scoreExplicacao": "<explicação de 1-2 frases sobre o que gerou o score de 0-100: quais fatores positivos/negativos pesaram mais>",
+  "churnRiskExplicacao": "<explicação de 1-2 frases sobre o que motivou o churnRisk: quais sinais de risco ou engajamento foram considerados>"
 }
 
 Regras:
@@ -306,7 +332,8 @@ Regras:
   let rawJson: string;
   let tokensUsed: number;
   try {
-    const completion = await getOpenAI().chat.completions.create({
+    const openai = await getOpenAIForTenant(tenantId);
+    const completion = await openai.chat.completions.create({
       model:           "gpt-4o-mini",
       messages:        [
         { role: "system", content: systemPrompt },
@@ -370,6 +397,8 @@ Regras:
     opportunities:         parsed.opportunities,
     nextBestAction:        parsed.nextBestAction,
     nextBestActionReason:  parsed.nextBestActionReason,
+    scoreExplicacao:       parsed.scoreExplicacao ?? null,
+    churnRiskExplicacao:   parsed.churnRiskExplicacao ?? null,
     lastAnalyzedAt:        now,
     updatedAt:             now,
   };

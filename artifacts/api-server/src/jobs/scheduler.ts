@@ -453,6 +453,43 @@ async function runLostDealReactivation(log: Logger): Promise<void> {
   log.info({ readyDeals: readyDeals.length, leadsRequeued: requeued, agentsDispatched: dispatched }, "scheduler/reactivation: complete");
 }
 
+// ── Job 5: Expiração de demos ───────────────────────────────────────────────
+
+async function expireOldDemos(log: Logger): Promise<void> {
+  log.info("scheduler/demo-expiration: starting");
+
+  const now = new Date();
+  const expiredDemos = await db
+    .select({ id: tenantsTable.id, name: tenantsTable.name })
+    .from(tenantsTable)
+    .where(
+      and(
+        eq(tenantsTable.isDemo, true),
+        eq(tenantsTable.status, "active"),
+        lte(tenantsTable.demoExpiresAt, now)
+      )
+    );
+
+  if (expiredDemos.length === 0) {
+    log.info("scheduler/demo-expiration: no expired demos found");
+    return;
+  }
+
+  for (const demo of expiredDemos) {
+    try {
+      await db
+        .update(tenantsTable)
+        .set({ status: "suspended", suspendedReason: "demo_expirada", updatedAt: new Date() })
+        .where(eq(tenantsTable.id, demo.id));
+      log.info({ tenantId: demo.id }, "scheduler/demo-expiration: demo suspended");
+    } catch (err) {
+      log.error({ err, tenantId: demo.id }, "scheduler/demo-expiration: failed to suspend demo");
+    }
+  }
+
+  log.info({ count: expiredDemos.length }, "scheduler/demo-expiration: complete");
+}
+
 // ── Scheduler bootstrap ───────────────────────────────────────────────────────
 
 export function startScheduler(log: Logger): void {
@@ -484,5 +521,12 @@ export function startScheduler(log: Logger): void {
     });
   });
 
-  log.info("scheduler: started (churn-check @:05, campaigns @:15, billing @day-5-08:00, reactivation @03:00)");
+  // Job 5: Expiração de demos expiradas — daily at 06:00
+  cron.schedule("0 6 * * *", () => {
+    expireOldDemos(log).catch((err) => {
+      log.error({ err }, "scheduler/demo-expiration: unhandled error");
+    });
+  });
+
+  log.info("scheduler: started (churn-check @:05, campaigns @:15, billing @day-5-08:00, reactivation @03:00, demo-expiration @06:00)");
 }

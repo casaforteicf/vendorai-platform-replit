@@ -7,6 +7,7 @@ import {
   planModulesTable,
   tenantsTable,
   agentActionsLogTable,
+  planAssignmentLogTable,
 } from "@workspace/db";
 import { requireRole } from "../middlewares/auth.js";
 
@@ -124,6 +125,14 @@ router.patch("/admin/tenants/:id/plan", requireRole("super_admin"), async (req, 
       billingCycle: tenantsTable.billingCycle,
       planStartedAt: tenantsTable.planStartedAt,
     });
+
+  // Log de auditoria
+  const adminEmail = req.user?.email ?? "admin";
+  await db.insert(planAssignmentLogTable).values({
+    tenantId,
+    planId,
+    assignedBy: `admin_manual:${adminEmail}`,
+  });
 
   res.json({
     message: "Plano atualizado com sucesso",
