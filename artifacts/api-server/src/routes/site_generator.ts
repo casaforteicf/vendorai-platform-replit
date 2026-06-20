@@ -87,10 +87,11 @@ function extractHtml(text: string): string {
     cleaned = cleaned.slice(firstIndex);
   }
 
-  // Truncate after the closing </html> tag
-  const closingHtml = cleaned.match(/<\/html\s*>/i);
-  if (closingHtml && closingHtml.index !== undefined) {
-    cleaned = cleaned.slice(0, closingHtml.index + closingHtml[0].length);
+  // Truncate after the LAST closing </html> tag (not the first)
+  // This handles cases where </html> appears inside <script> tags
+  const lastClosingHtml = [...cleaned.matchAll(/<\/html\s*>/gi)].pop();
+  if (lastClosingHtml && lastClosingHtml.index !== undefined) {
+    cleaned = cleaned.slice(0, lastClosingHtml.index + lastClosingHtml[0].length);
   }
 
   return cleaned.trim();
