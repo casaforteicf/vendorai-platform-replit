@@ -2,6 +2,7 @@ import { Router, type IRouter } from "express";
 import { eq } from "drizzle-orm";
 import { z } from "zod/v4";
 import { db, tenantsTable, leadsTable } from "@workspace/db";
+import { findLeadByDedup, storePhone } from "../lib/dedup.js";
 
 export const intakeRouter: IRouter = Router();
 
@@ -89,23 +90,36 @@ intakeRouter.post("/public/:tenantSlug/intake", async (req, res) => {
     cargo: d.cargo,
   };
 
-  const [lead] = await db
-    .insert(leadsTable)
-    .values({
+  // Dedup: check for existing lead by phone or document
+  const match = await findLeadByDedup(tenant.id, d.telefone, null, d.nome);
+  let leadId: string | undefined;
+
+  if (match.found) {
+    leadId = match.lead.id;
+    await db
+      .update(leadsTable)
+      .set({ updatedAt: new Date() })
+      .where(eq(leadsTable.id, leadId));
+  } else {
+    const insertData = {
       tenantId: tenant.id,
       nome: d.nome,
       email: d.email || null,
-      telefone: d.telefone || null,
+      telefone: storePhone(d.telefone),
       empresa: d.empresa || null,
       objetivo: d.objetivo6meses || null,
       dorPrincipal: d.desafioPrincipal || null,
       urgencia: d.urgencia || null,
       orcamento: d.orcamento || null,
       tamanhoEquipe: d.tamanhoEquipe || null,
-      status: "novo",
+      status: "novo" as const,
       discoveryData,
-    })
-    .returning({ id: leadsTable.id });
+      possivelDuplicata: match.similar ? "true" : "false",
+      leadSimilarId: match.similar?.id ?? null,
+    };
+    const [lead] = await db.insert(leadsTable).values(insertData).returning({ id: leadsTable.id });
+    leadId = lead?.id;
+  }
 
-  res.status(201).json({ ok: true, leadId: lead?.id });
+  res.status(201).json({ ok: true, leadId, isDuplicate: match.found ? true : match.similar ? "possible" : false });
 });

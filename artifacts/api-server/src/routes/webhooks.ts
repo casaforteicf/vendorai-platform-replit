@@ -22,6 +22,7 @@ import { dispatchAgentBackground } from "../services/agent-dispatch.js";
 import { runAutoQuotePipeline } from "../services/auto-quote.js";
 import { transcribeAudio } from "../services/audio-transcription.js";
 import { interpretImage, interpretPdf } from "../services/media-interpretation.js";
+import { findLeadByDedup, storePhone } from "../lib/dedup.js";
 
 const router: IRouter = Router();
 
@@ -128,21 +129,24 @@ router.post("/tenants/:tenantId/webhooks/whatsapp", async (req, res) => {
 
   const { telefone, nome, mensagem } = parsed.data;
 
-  // ── 3. Find or create lead by phone ───────────────────────────────────
-  let [lead] = await db
-    .select()
-    .from(leadsTable)
-    .where(
-      and(eq(leadsTable.tenantId, tenantId), eq(leadsTable.telefone, telefone))
-    )
-    .limit(1);
+  // ── 3. Find or create lead by phone (dedup-aware) ────────────────────
+  const normalized = storePhone(telefone);
+  const match = await findLeadByDedup(tenantId, telefone, null, null);
 
-  if (!lead) {
+  let lead: typeof leadsTable.$inferSelect;
+  if (match.found) {
+    lead = match.lead;
+    await db
+      .update(leadsTable)
+      .set({ updatedAt: new Date() })
+      .where(eq(leadsTable.id, lead.id));
+    req.log.info({ leadId: lead.id, telefone: normalized, matchBy: match.matchBy }, "webhook: existing lead found (dedup)");
+  } else {
     [lead] = await db
       .insert(leadsTable)
-      .values({ tenantId, nome: nome ?? telefone, telefone, status: "novo", source: "whatsapp" })
+      .values({ tenantId, nome: nome ?? telefone, telefone: normalized, status: "novo", source: "whatsapp" })
       .returning();
-    req.log.info({ leadId: lead.id, telefone }, "webhook: new lead created");
+    req.log.info({ leadId: lead.id, telefone: normalized }, "webhook: new lead created");
   }
 
   // ── 4. Find or create whatsapp conversation for this lead ──────────────
@@ -413,19 +417,24 @@ router.post("/tenants/:tenantId/webhooks/zapi", async (req, res) => {
 
   req.log.info({ telefone, nome, tipoConteudo }, "zapi-webhook: incoming message received");
 
-  // ── 4. Find or create lead ─────────────────────────────────────────────────
-  let [lead] = await db
-    .select()
-    .from(leadsTable)
-    .where(and(eq(leadsTable.tenantId, tenantId), eq(leadsTable.telefone, telefone)))
-    .limit(1);
+  // ── 4. Find or create lead (dedup-aware) ───────────────────────────────────
+  const normalized = storePhone(telefone);
+  const match = await findLeadByDedup(tenantId, telefone, null, null);
 
-  if (!lead) {
+  let lead: typeof leadsTable.$inferSelect;
+  if (match.found) {
+    lead = match.lead;
+    await db
+      .update(leadsTable)
+      .set({ updatedAt: new Date() })
+      .where(eq(leadsTable.id, lead.id));
+    req.log.info({ leadId: lead.id, telefone: normalized, matchBy: match.matchBy }, "zapi-webhook: existing lead found (dedup)");
+  } else {
     [lead] = await db
       .insert(leadsTable)
-      .values({ tenantId, nome, telefone, status: "novo", source: "whatsapp" })
+      .values({ tenantId, nome, telefone: normalized, status: "novo", source: "whatsapp" })
       .returning();
-    req.log.info({ leadId: lead.id, telefone }, "zapi-webhook: new lead created");
+    req.log.info({ leadId: lead.id, telefone: normalized }, "zapi-webhook: new lead created");
   }
 
   // ── 5. Find or create whatsapp conversation ────────────────────────────────
@@ -547,7 +556,7 @@ router.post("/tenants/:tenantId/webhooks/instagram", async (req, res) => {
 
   const { igsid, nome, mensagem } = parsed.data;
 
-  // ── Find or create lead by Instagram Scoped ID ──────────────────────────
+  // Find or create lead by Instagram Scoped ID (dedup-aware)
   let [lead] = await db
     .select()
     .from(leadsTable)
@@ -557,11 +566,22 @@ router.post("/tenants/:tenantId/webhooks/instagram", async (req, res) => {
     .limit(1);
 
   if (!lead) {
-    [lead] = await db
-      .insert(leadsTable)
-      .values({ tenantId, nome: nome ?? `Instagram @${igsid.slice(0, 8)}`, instagramScopedId: igsid, status: "novo", source: "instagram" })
-      .returning();
-    req.log.info({ leadId: lead.id, igsid }, "webhook/instagram: new lead created");
+    // Try to match by name as fallback — if exact name match, backfill IGSID
+    const match = await findLeadByDedup(tenantId, null, null, nome);
+    if (match.found && match.matchBy === "nome") {
+      lead = match.lead;
+      await db
+        .update(leadsTable)
+        .set({ instagramScopedId: igsid, updatedAt: new Date() })
+        .where(eq(leadsTable.id, lead.id));
+      req.log.info({ leadId: lead.id, igsid, matchBy: "nome" }, "webhook/instagram: existing lead found by name, backfilled IGSID");
+    } else {
+      [lead] = await db
+        .insert(leadsTable)
+        .values({ tenantId, nome: nome ?? `Instagram @${igsid.slice(0, 8)}`, instagramScopedId: igsid, status: "novo", source: "instagram" })
+        .returning();
+      req.log.info({ leadId: lead.id, igsid }, "webhook/instagram: new lead created");
+    }
   } else if (!lead.instagramScopedId) {
     // Backfill if lead existed without IGSID
     await db

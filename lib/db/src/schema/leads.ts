@@ -41,6 +41,8 @@ export const leadsTable = pgTable("leads", {
   indicadoPor: text("indicado_por"),
   notasNutricao: text("notas_nutricao"),
   source: text("source").notNull().default("manual"),
+  possivelDuplicata: text("possivel_duplicata").notNull().default("false"),
+  leadSimilarId: text("lead_similar_id"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
 });
