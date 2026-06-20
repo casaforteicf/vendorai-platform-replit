@@ -1,5 +1,6 @@
 import { useState, useRef, useCallback } from "react";
 import { useAuth } from "@/contexts/AuthContext";
+import { useGetBusinessProfileByTenant, getGetBusinessProfileByTenantQueryKey } from "@workspace/api-client-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -151,11 +152,21 @@ function useSiteGenerator(tenantId: string, token: string | null) {
 
 // ── ConfigForm ─────────────────────────────────────────────────────────────────
 
-function ConfigForm({ onGenerate }: { onGenerate: (config: SiteConfig) => void }) {
+function ConfigForm({ tenantId, onGenerate }: { tenantId: string; onGenerate: (config: SiteConfig) => void }) {
   const [siteType, setSiteType] = useState<SiteType>("landing");
   const [color, setColor] = useState("#6366F1");
   const [tone, setTone] = useState("profissional");
   const [products, setProducts] = useState<Product[]>([{ name: "", price: "" }]);
+
+  const { data: bp } = useGetBusinessProfileByTenant(tenantId, {
+    query: { queryKey: getGetBusinessProfileByTenantQueryKey(tenantId), enabled: !!tenantId },
+  });
+
+  const nomeNegocio = bp?.nomeFantasia ?? bp?.razaoSocial ?? "";
+  const setor = bp?.vertical ?? "";
+  const descricao = bp?.diferenciais ?? "";
+  const publico = bp?.publicoAlvo ?? "";
+  const descNegocio = descricao || publico || "";
 
   function addProduct() { setProducts((p) => [...p, { name: "", price: "" }]); }
   function removeProduct(i: number) { setProducts((p) => p.filter((_, idx) => idx !== i)); }
@@ -168,9 +179,9 @@ function ConfigForm({ onGenerate }: { onGenerate: (config: SiteConfig) => void }
     const fd = new FormData(e.currentTarget);
     onGenerate({
       type: siteType,
-      name: fd.get("name") as string,
-      sector: fd.get("sector") as string,
-      desc: fd.get("desc") as string,
+      name: (fd.get("name") as string) || nomeNegocio || "",
+      sector: (fd.get("sector") as string) || setor || "",
+      desc: (fd.get("desc") as string) || descNegocio || "",
       pain: fd.get("pain") as string,
       tone,
       cta: fd.get("cta") as string,
@@ -209,11 +220,32 @@ function ConfigForm({ onGenerate }: { onGenerate: (config: SiteConfig) => void }
       <div className="grid grid-cols-2 gap-3">
         <div className="flex flex-col gap-1.5">
           <Label htmlFor="sg-name">Nome do negócio *</Label>
-          <Input id="sg-name" name="name" required placeholder="Ex: Floricultura Primavera" />
+          <Input
+            id="sg-name"
+            name="name"
+            required
+            placeholder="Ex: Floricultura Primavera"
+            defaultValue={nomeNegocio}
+            readOnly={!!nomeNegocio}
+            className={nomeNegocio ? "bg-muted/50" : ""}
+          />
+          {nomeNegocio && (
+            <span className="text-[10px] text-muted-foreground">Preenchido automaticamente do cadastro da empresa</span>
+          )}
         </div>
         <div className="flex flex-col gap-1.5">
           <Label htmlFor="sg-sector">Setor / nicho</Label>
-          <Input id="sg-sector" name="sector" placeholder="Ex: floricultura, consultoria" />
+          <Input
+            id="sg-sector"
+            name="sector"
+            placeholder="Ex: floricultura, consultoria"
+            defaultValue={setor}
+            readOnly={!!setor}
+            className={setor ? "bg-muted/50" : ""}
+          />
+          {setor && (
+            <span className="text-[10px] text-muted-foreground">Preenchido automaticamente do cadastro da empresa</span>
+          )}
         </div>
         <div className="col-span-2 flex flex-col gap-1.5">
           <Label htmlFor="sg-desc">O que o negócio faz *</Label>
@@ -223,7 +255,13 @@ function ConfigForm({ onGenerate }: { onGenerate: (config: SiteConfig) => void }
             rows={3}
             required
             placeholder="Descreva em 1-2 frases o que o negócio faz e para quem..."
+            defaultValue={descNegocio}
+            readOnly={!!descNegocio}
+            className={descNegocio ? "bg-muted/50" : ""}
           />
+          {descNegocio && (
+            <span className="text-[10px] text-muted-foreground">Preenchido automaticamente do cadastro da empresa</span>
+          )}
         </div>
         <div className="col-span-2 flex flex-col gap-1.5">
           <Label htmlFor="sg-pain">Maior dor do cliente (SPIN — Implicação)</Label>
@@ -546,7 +584,7 @@ function SiteGeneratorInner({ tenantId, token }: { tenantId: string; token: stri
         <Card className="mt-2">
           <CardContent className="pt-6">
             <TabsContent value="config" className="mt-0">
-              <ConfigForm onGenerate={handleGenerate} />
+              <ConfigForm tenantId={tenantId} onGenerate={handleGenerate} />
             </TabsContent>
 
             <TabsContent value="preview" className="mt-0">

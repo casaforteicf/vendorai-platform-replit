@@ -1,6 +1,6 @@
 import { Router, type IRouter } from "express";
 import { desc, eq } from "drizzle-orm";
-import { db, generatedSitesTable } from "@workspace/db";
+import { db, generatedSitesTable, businessProfilesTable } from "@workspace/db";
 import type { SiteGeneratorConfig } from "@workspace/db";
 import Anthropic from "@anthropic-ai/sdk";
 import { getOpenAIForTenant } from "../lib/agent-engine.js";
@@ -154,12 +154,28 @@ router.post("/tenants/:tenantId/site-generator/generate", async (req, res) => {
   const { tenantId } = req.params;
   const config: SiteGeneratorConfig = req.body;
 
-  if (!config?.name || !config?.desc || !config?.type) {
-    res.status(400).json({ error: "name, desc e type são obrigatórios" });
+  if (!config?.type) {
+    res.status(400).json({ error: "type é obrigatório" });
     return;
   }
 
-  const prompt = buildGeneratePrompt(config);
+  // Fallback to business_profile for missing fields
+  const [bp] = await db
+    .select({ nomeFantasia: businessProfilesTable.nomeFantasia, razaoSocial: businessProfilesTable.razaoSocial, vertical: businessProfilesTable.vertical, diferenciais: businessProfilesTable.diferenciais, publicoAlvo: businessProfilesTable.publicoAlvo })
+    .from(businessProfilesTable)
+    .where(eq(businessProfilesTable.tenantId, tenantId));
+
+  const name = config.name || bp?.nomeFantasia || bp?.razaoSocial || "";
+  const sector = config.sector || bp?.vertical || "";
+  const desc = config.desc || bp?.diferenciais || bp?.publicoAlvo || "";
+
+  if (!name || !desc) {
+    res.status(400).json({ error: "name e desc são obrigatórios. Preencha no cadastro da empresa (Configurações) ou no formulário." });
+    return;
+  }
+
+  const enrichedConfig = { ...config, name, sector, desc };
+  const prompt = buildGeneratePrompt(enrichedConfig);
 
   let result;
   try {
@@ -186,9 +202,9 @@ router.post("/tenants/:tenantId/site-generator/generate", async (req, res) => {
     .values({
       id: crypto.randomUUID(),
       tenantId,
-      name: config.name,
+      name: enrichedConfig.name,
       siteType: config.type,
-      config,
+      config: enrichedConfig,
       html,
     })
     .returning();
