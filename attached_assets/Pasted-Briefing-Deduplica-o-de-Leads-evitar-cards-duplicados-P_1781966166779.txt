@@ -1,0 +1,59 @@
+Briefing — Deduplicação de Leads (evitar cards duplicados)
+
+Problema
+
+Leads podem estar sendo cadastrados em duplicidade quando a mesma pessoa entra em contato por canais diferentes (WhatsApp, Instagram, cadastro manual no CRM, import de planilha, Typebot) ou entra em contato mais de uma vez. Hoje, aparentemente, cada novo ponto de entrada cria um novo card de lead em vez de verificar se a pessoa já está cadastrada.
+
+Objetivo
+
+Antes de criar um novo lead, o sistema deve buscar se já existe um lead cadastrado para aquele tenant usando os dados disponíveis no momento da entrada, e se encontrar, vincular a nova interação ao lead existente em vez de criar um card novo.
+
+Estratégia de matching (ordem de prioridade)
+
+A confiabilidade dos campos para identificar a mesma pessoa não é igual — definir prioridade:
+
+
+Telefone (WhatsApp) — campo mais confiável quando a entrada é via mensagem. Normalizar antes de comparar (remover formatação, DDI, espaços, traços). Ex: +55 (49) 99999-9999 e 49999999999 devem bater.
+CPF — identificador único e confiável quando disponível (cadastro manual, formulário, import). Normalizar removendo pontuação antes de comparar.
+RG — usar como critério secundário, já que não é padronizado nacionalmente (varia por estado) e tem taxa maior de erro de digitação. Só usar como confirmação adicional, não como único critério de match.
+Nome completo — usar apenas como fallback e nunca como match automático isolado (nomes se repetem, têm variações de grafia). Se o match for só por nome, sinalizar como "possível duplicata" para revisão manual em vez de mesclar automaticamente.
+
+
+Onde aplicar a verificação
+
+Todos os pontos de criação de lead precisam passar por essa checagem antes do insert:
+
+
+Webhook WhatsApp (Meta Cloud API / Z-API)
+Webhook Instagram (Meta Graph API)
+Fluxo Typebot (Clara)
+Cadastro manual no CRM (tela de novo lead)
+Import CSV/planilha
+Qualquer outro agente de IA que crie leads automaticamente (ex: SDR)
+
+
+Comportamento esperado
+
+
+Match exato por telefone ou CPF → não criar novo lead; associar a nova conversa/mensagem/orçamento ao lead já existente; atualizar lastContactAt.
+Match só por nome (sem telefone/CPF batendo) → criar o lead normalmente, mas marcar com flag possivel_duplicata: true e o ID do lead similar, para aparecer numa tela/filtro de "Possíveis duplicatas" no CRM (revisão manual, sem merge automático).
+Nenhum match → criar lead novo normalmente.
+
+
+Recomendações técnicas
+
+
+Índice no banco: criar índice (não necessariamente unique constraint rígido, pois nem todo lead tem CPF) em tenant_id + telefone_normalizado e tenant_id + cpf para acelerar a busca de duplicatas.
+Função utilitária de normalização: criar uma função compartilhada normalizePhone() e normalizeCPF() usada em todos os pontos de entrada, para garantir consistência na comparação.
+Dedupe retroativo: rodar uma checagem nos leads já existentes no banco para identificar duplicatas atuais por telefone/CPF e gerar um relatório (não mesclar automaticamente sem revisão).
+Tela de "Possíveis duplicatas": listar leads com a flag possivel_duplicata, mostrando os dois cards lado a lado, com opção de "Mesclar" (combina histórico de conversas, orçamentos, atividades em um único lead) ou "Manter separados" (remove a flag).
+
+
+Teste de validação
+
+
+Criar um lead manualmente com telefone X.
+Simular mensagem WhatsApp recebida do mesmo telefone X (formatos diferentes: com/sem DDI, com/sem formatação) → confirmar que não cria novo lead, e que a conversa aparece vinculada ao lead já existente.
+Cadastrar um segundo lead com CPF igual a um lead existente, mas telefone diferente → confirmar que é tratado como mesmo lead (ou pelo menos sinalizado).
+Criar um lead com nome igual a outro existente mas telefone/CPF diferentes → confirmar que cria normalmente, mas com flag de possível duplicata para revisão.
+Verificar tela de "Possíveis duplicatas" exibindo o caso do passo 4 corretamente.

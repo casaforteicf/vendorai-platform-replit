@@ -230,7 +230,7 @@ async function executeAction(
       const tipo   = (payload.tipo as typeof activitiesTable.$inferInsert["tipo"]) ?? "tarefa";
       const titulo = String(payload.titulo ?? `Ação automática — ${rule.nome}`);
 
-      // Dedup: skip if a pending activity with the same title already exists for this lead
+      // Dedup: skip if a pending or planned activity with the same title already exists for this lead
       const [existingActivity] = await db
         .select({ id: activitiesTable.id })
         .from(activitiesTable)
@@ -239,7 +239,7 @@ async function executeAction(
             eq(activitiesTable.tenantId, tenantId),
             eq(activitiesTable.leadId,   leadId),
             eq(activitiesTable.titulo,   titulo),
-            eq(activitiesTable.status,   "pendente")
+            inArray(activitiesTable.status, ["pendente", "planejado"])
           )
         )
         .limit(1);
@@ -268,7 +268,7 @@ async function executeAction(
 
       const titulo = String(payload.titulo ?? `Notificação: ${rule.nome}`);
 
-      // Dedup: skip if a pending notification with the same title already exists for this lead
+      // Dedup: skip if a pending or planned notification with the same title already exists for this lead
       const [existingNotif] = await db
         .select({ id: activitiesTable.id })
         .from(activitiesTable)
@@ -277,7 +277,7 @@ async function executeAction(
             eq(activitiesTable.tenantId, tenantId),
             eq(activitiesTable.leadId,   leadId),
             eq(activitiesTable.titulo,   titulo),
-            eq(activitiesTable.status,   "pendente")
+            inArray(activitiesTable.status, ["pendente", "planejado"])
           )
         )
         .limit(1);
