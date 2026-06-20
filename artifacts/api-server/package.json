@@ -14,6 +14,7 @@
   "dependencies": {
     "@anthropic-ai/sdk": "^0.78.0",
     "@google-cloud/storage": "^7.21.0",
+    "@replit/connectors-sdk": "^0.4.1",
     "@types/multer": "^2.1.0",
     "@types/pdf-parse": "^1.1.5",
     "@workspace/api-zod": "workspace:*",
