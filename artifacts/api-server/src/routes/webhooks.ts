@@ -907,21 +907,30 @@ router.post("/webhooks/meta/whatsapp", async (req, res) => {
 
           const senderName = (contacts[0] as any)?.profile?.name as string | undefined;
 
-          // Find or create lead
-          let [lead] = await db
-            .select()
-            .from(leadsTable)
-            .where(and(eq(leadsTable.tenantId, tenantId), eq(leadsTable.telefone, phone)))
-            .limit(1);
+          // Find or create lead (dedup by normalized phone)
+          const normalized = storePhone(phone) ?? phone;
+          const match = await findLeadByDedup(tenantId, normalized, null, senderName ?? null);
 
-          if (!lead) {
+          let lead: typeof leadsTable.$inferSelect | null = null;
+
+          if (match.found === true) {
+            lead = match.lead;
+            await db
+              .update(leadsTable)
+              .set({ updatedAt: new Date() })
+              .where(eq(leadsTable.id, lead.id));
+            req.log.info({ leadId: lead.id, phone: normalized, matchBy: match.matchBy }, "meta-webhook: existing lead found (dedup)");
+          } else {
             [lead] = await db.insert(leadsTable).values({
               tenantId,
-              nome: senderName ?? `WhatsApp ${phone}`,
-              telefone: phone,
+              nome: senderName ?? `WhatsApp ${normalized}`,
+              telefone: normalized,
               status: "novo",
+              source: "whatsapp",
+              possivelDuplicata: match.similar ? "true" : "false",
+              leadSimilarId: match.similar?.id ?? null,
             }).returning();
-            req.log.info({ phone, tenantId }, "meta-webhook: new lead created");
+            req.log.info({ leadId: lead.id, phone: normalized }, "meta-webhook: new lead created");
           }
 
           // Find or create conversation
@@ -1051,16 +1060,20 @@ router.post("/webhooks/meta/instagram", async (req, res) => {
             continue;
           }
 
-          // Find or create lead by Instagram Scoped ID
-          let [lead] = await db
-            .select()
-            .from(leadsTable)
-            .where(
-              and(eq(leadsTable.tenantId, tenantId), eq(leadsTable.instagramScopedId, igsid))
-            )
-            .limit(1);
+          // Find or create lead (dedup by name first, then IGSID)
+          const match = await findLeadByDedup(tenantId, null, null, `Instagram @${igsid.slice(0, 8)}`);
 
-          if (!lead) {
+          let lead: typeof leadsTable.$inferSelect | null = null;
+
+          if (match.found === true) {
+            lead = match.lead;
+            // Backfill IGSID if missing
+            await db
+              .update(leadsTable)
+              .set({ instagramScopedId: igsid, updatedAt: new Date() })
+              .where(eq(leadsTable.id, lead.id));
+            req.log.info({ leadId: lead.id, igsid, matchBy: match.matchBy }, "meta/instagram: existing lead found (dedup), backfilled IGSID");
+          } else {
             [lead] = await db
               .insert(leadsTable)
               .values({
@@ -1069,6 +1082,8 @@ router.post("/webhooks/meta/instagram", async (req, res) => {
                 instagramScopedId: igsid,
                 status: "novo",
                 source: "instagram",
+                possivelDuplicata: match.similar ? "true" : "false",
+                leadSimilarId: match.similar?.id ?? null,
               })
               .returning();
             req.log.info({ leadId: lead.id, igsid, tenantId }, "meta/instagram: new lead created");
