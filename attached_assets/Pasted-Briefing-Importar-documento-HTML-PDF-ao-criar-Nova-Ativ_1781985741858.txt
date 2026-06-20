@@ -1,0 +1,52 @@
+Briefing — Importar documento (HTML/PDF) ao criar Nova Atividade no lead
+
+Objetivo
+
+Na tela do lead, seção Atividades (botão + Nova), adicionar a opção de importar/anexar qualquer formato de arquivo ao criar uma nova atividade, com um campo de categorização do anexo (tipo: Projeto, Imagem, Documento, Outras informações).
+
+Comportamento esperado
+
+
+No modal/formulário de "Nova Atividade", adicionar um campo de upload de arquivo (além dos campos já existentes: título, tipo de atividade, descrição, status, etc.) — sem restrição de formato (qualquer extensão aceita).
+Adicionar um campo "Tipo de anexo" (dropdown/select) com opções:
+
+Projeto
+Imagem
+Documento
+Outras informações
+Esse campo serve pra categorizar/organizar o que foi anexado, independente do formato real do arquivo (ex: um PDF pode ser categorizado como "Projeto" ou como "Documento", dependendo do que o usuário escolher).
+
+
+
+O arquivo fica anexado àquela atividade específica, visível na timeline do lead (ícone de anexo + nome do arquivo + tipo categorizado + opção de abrir/baixar).
+Para imagens (detectado pelo MIME type, não pela categoria escolhida): exibir miniatura (thumbnail) diretamente na timeline da atividade, além da opção de abrir em tamanho real/baixar.
+Para os demais formatos: exibir como ícone genérico + nome do arquivo + tag com o "Tipo de anexo" escolhido, com link pra abrir/baixar.
+
+
+Pontos a confirmar com o Marcos antes de implementar
+
+
+O documento deve servir só como anexo/registro (ex: anexar uma proposta em PDF, um print de e-mail salvo em HTML, contrato, etc.) ou também deve alimentar o contexto da IA (ex: os agentes passarem a considerar esse documento ao responder esse lead)? Isso muda bastante o escopo técnico — anexo simples é só upload + storage; usar como contexto de IA envolve o mesmo pipeline de embeddings já especificado na base de conhecimento do tenant, mas aplicado por lead.
+Assumindo, por padrão, que é anexo/registro (mais simples e mais alinhado ao que costuma existir num CRM), a menos que o Marcos confirme que quer o uso como contexto de IA também.
+
+
+Passos técnicos (assumindo anexo/registro)
+
+
+Adicionar campo de upload no formulário de Nova Atividade (frontend), sem restrição de tipo de arquivo (accept aberto).
+Adicionar campo "Tipo de anexo" (select) com as opções: Projeto, Imagem, Documento, Outras informações.
+Validar apenas tamanho máximo do arquivo (ex: 20MB, ajustar conforme limite do storage usado).
+Fazer upload do arquivo para o storage já usado no projeto (mesmo bucket/serviço usado para outros uploads, se já existir).
+Salvar referência do arquivo (nome, URL/path, MIME type, tamanho, categoria escolhida) vinculada ao registro da atividade no banco.
+Exibir o anexo na timeline de Atividades do lead: imagens (detectadas por MIME type) com thumbnail visível direto na timeline; demais formatos como ícone + nome do arquivo + tag da categoria escolhida, com link pra abrir/baixar.
+
+
+Teste de validação
+
+
+Criar uma nova atividade num lead, anexando um arquivo PDF com tipo "Documento".
+Confirmar que o anexo aparece na timeline com a categoria certa e pode ser aberto/baixado corretamente.
+Repetir o teste com uma imagem (JPG ou PNG), categoria "Imagem", e confirmar que aparece como thumbnail na timeline.
+Repetir com um arquivo de outro formato (ex: .zip, .xlsx, .mp4) e confirmar que o upload funciona sem restrição de tipo.
+Testar a categoria "Projeto" e "Outras informações" e confirmar que a tag aparece corretamente na timeline.
+Tentar subir um arquivo acima do limite de tamanho e confirmar rejeição com mensagem clara.

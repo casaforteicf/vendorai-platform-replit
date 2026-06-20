@@ -7,6 +7,7 @@
  */
 import type { ActivityStatus } from './activityStatus';
 import type { ActivityTipo } from './activityTipo';
+import type { AnexoCategoria } from './anexoCategoria';
 
 export interface UpdateActivityBody {
   leadId?: string;
@@ -23,4 +24,9 @@ export interface UpdateActivityBody {
   dataHoraInicio?: Date;
   dataHoraFim?: Date;
   gerarMeet?: boolean;
+  anexoNome?: string;
+  anexoUrl?: string;
+  anexoMimeType?: string;
+  anexoTamanho?: number;
+  anexoCategoria?: AnexoCategoria;
 }

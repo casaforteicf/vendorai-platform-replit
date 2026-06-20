@@ -1,4 +1,4 @@
-import { pgTable, text, timestamp, pgEnum, boolean } from "drizzle-orm/pg-core";
+import { pgTable, text, timestamp, pgEnum, boolean, integer } from "drizzle-orm/pg-core";
 import { createInsertSchema, createSelectSchema } from "drizzle-zod";
 import { z } from "zod/v4";
 import { tenantsTable } from "./tenants";
@@ -21,6 +21,13 @@ export const activityStatusEnum = pgEnum("activity_status", [
   "concluida",
   "cancelada",
   "planejado",
+]);
+
+export const anexoCategoriaEnum = pgEnum("anexo_categoria", [
+  "projeto",
+  "imagem",
+  "documento",
+  "outras_informacoes",
 ]);
 
 export const activitiesTable = pgTable("activities", {
@@ -51,6 +58,12 @@ export const activitiesTable = pgTable("activities", {
   gerarMeet: boolean("gerar_meet").default(false),
   googleEventId: text("google_event_id"),
   meetLink: text("meet_link"),
+  // Anexo
+  anexoNome: text("anexo_nome"),
+  anexoUrl: text("anexo_url"),
+  anexoMimeType: text("anexo_mime_type"),
+  anexoTamanho: integer("anexo_tamanho"),
+  anexoCategoria: anexoCategoriaEnum("anexo_categoria"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
 });

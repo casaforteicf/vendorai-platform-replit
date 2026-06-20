@@ -1,0 +1,73 @@
+Briefing — Nova aba "Briefing" no card do lead (visão ampla do cliente)
+
+Objetivo
+
+Criar uma aba própria chamada "Briefing" na tela do lead, ao lado das seções já existentes (Dados Pessoais, Inteligência do Cliente, Atividades, Conversas, Orçamentos). Essa aba reúne tudo que já existe sobre o cliente — informações do card + anexos + histórico — numa visão consolidada e de fácil leitura, para qualquer pessoa da equipe entender rapidamente "quem é esse cliente e onde estamos com ele".
+
+Por que
+
+Hoje a informação do lead está espalhada em várias seções (Dados Pessoais, Inteligência do Cliente, Atividades, Conversas, Orçamentos). Pra entender o cenário completo de um cliente, é preciso navegar por todas elas. A aba Briefing centraliza isso, com um resumo gerado por IA + os anexos relevantes reunidos num só lugar.
+
+Conteúdo da aba Briefing
+
+1. Resumo gerado por IA (texto corrido, não lista de campos)
+
+Um parágrafo/seção de texto sintetizando:
+
+
+Quem é o cliente (pessoa + empresa) e o objetivo dele com a Vendor.ai/produto.
+Situação atual do relacionamento: em que estágio está (negociação, fechado, em risco de churn).
+Principais pontos de atenção (dores identificadas, oportunidades, motivos de churn se houver).
+Resumo do histórico relevante (ex: "fechou 3 orçamentos totalizando R$ X, sendo um recorrente; última interação foi via WhatsApp há 2 dias").
+Sugestão de próximo passo (reaproveitar a lógica já existente de "Próxima melhor ação", se já existir nos agentes).
+
+
+Reaproveitar a mesma infraestrutura de IA já usada em "Analisar com IA" (Inteligência do Cliente) — esse resumo pode, inclusive, ser uma evolução/complemento daquela análise, não necessariamente algo do zero.
+
+2. Anexos consolidados
+
+Reunir num só lugar todos os anexos de todas as atividades desse lead (os arquivos de Projeto, Imagem, Documento, Outras informações especificados no briefing de upload de atividade), com:
+
+
+Filtro por categoria (Projeto / Imagem / Documento / Outras informações).
+Imagens em grid de thumbnails; demais arquivos em lista com ícone + nome + data + atividade de origem.
+
+
+3. Dados-chave em destaque (atalhos, não duplicar tudo)
+
+Em vez de duplicar cada campo já visível em "Dados Pessoais", destacar só o que ajuda a entender o cliente rápido:
+
+
+Empresa, objetivo, data de criação do lead.
+Status atual do(s) negócio(s) vinculado(s).
+Valor total já fechado em orçamentos (e se tem recorrência).
+Score de churn atual + última data de análise.
+
+
+Geração do conteúdo
+
+
+Botão "Gerar/Atualizar Briefing" (similar ao "Analisar com IA" já existente), que dispara a IA pra reler os dados do lead (negócios, orçamentos, conversas, atividades, anexos) e gerar o resumo em texto.
+Cache do último briefing gerado, com timestamp ("Última atualização: há X horas"), para não precisar gerar do zero a cada vez que a aba é aberta.
+Disparo automático opcional: gerar/atualizar o briefing automaticamente quando houver mudança relevante no lead (ex: orçamento aceito, negócio movido de estágio) — reaproveitando os triggers já definidos no briefing de churn (item 2 do consolidado).
+
+
+Passos técnicos
+
+
+Adicionar nova aba "Briefing" no componente de navegação da tela do lead (mesmo padrão das abas já existentes).
+Criar endpoint que monta o contexto do lead (dados pessoais, negócios, orçamentos, conversas resumidas, atividades, anexos) e chama a IA (Claude) pra gerar o texto-resumo.
+Salvar o briefing gerado (texto) vinculado ao lead, com timestamp de geração.
+Criar componente de UI pra essa aba: texto do resumo no topo, grid/lista de anexos consolidados abaixo, atalhos de dados-chave.
+Implementar filtro de anexos por categoria.
+Adicionar botão de regenerar briefing.
+
+
+Teste de validação
+
+
+Abrir um lead com histórico razoável (negócios, orçamentos, atividades com anexos de tipos variados, conversas).
+Clicar na aba "Briefing" e confirmar que o resumo gerado reflete corretamente a situação real do lead.
+Confirmar que os anexos de todas as atividades aparecem consolidados, com filtro por categoria funcionando.
+Aceitar um novo orçamento desse lead e confirmar que o briefing pode ser atualizado (manual ou automaticamente) refletindo a mudança.
+Testar com um lead novo, sem histórico — confirmar que a aba não quebra, mostra algo como "Ainda não há informações suficientes para gerar um briefing".

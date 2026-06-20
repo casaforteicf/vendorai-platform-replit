@@ -9669,6 +9669,10 @@ components:
       type: string
       enum: [pendente, planejado, concluida, cancelada]
 
+    AnexoCategoria:
+      type: string
+      enum: [projeto, imagem, documento, outras_informacoes]
+
     Activity:
       type: object
       properties:
@@ -9724,6 +9728,21 @@ components:
         meetLink:
           type: string
           nullable: true
+        anexoNome:
+          type: string
+          nullable: true
+        anexoUrl:
+          type: string
+          nullable: true
+        anexoMimeType:
+          type: string
+          nullable: true
+        anexoTamanho:
+          type: integer
+          nullable: true
+        anexoCategoria:
+          $ref: "#/components/schemas/AnexoCategoria"
+          nullable: true
         createdAt:
           type: string
           format: date-time
@@ -9769,6 +9788,16 @@ components:
           format: date-time
         gerarMeet:
           type: boolean
+        anexoNome:
+          type: string
+        anexoUrl:
+          type: string
+        anexoMimeType:
+          type: string
+        anexoTamanho:
+          type: integer
+        anexoCategoria:
+          $ref: "#/components/schemas/AnexoCategoria"
       required: [tenantId, leadId, tipo, titulo]
 
     UpdateActivityBody:
@@ -9806,6 +9835,16 @@ components:
           format: date-time
         gerarMeet:
           type: boolean
+        anexoNome:
+          type: string
+        anexoUrl:
+          type: string
+        anexoMimeType:
+          type: string
+        anexoTamanho:
+          type: integer
+        anexoCategoria:
+          $ref: "#/components/schemas/AnexoCategoria"
 
     DealEtapa:
       type: string

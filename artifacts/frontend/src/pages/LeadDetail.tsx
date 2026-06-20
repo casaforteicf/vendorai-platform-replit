@@ -84,6 +84,9 @@ import {
   FileText,
   Printer,
   Video,
+  Paperclip,
+  FileUp,
+  Image,
 } from "lucide-react";
 
 const STATUS_STYLES: Record<string, string> = {
@@ -710,6 +713,11 @@ export default function LeadDetail() {
   const [newActivityDataHoraFim, setNewActivityDataHoraFim] = useState("");
   const [newActivityAgendaId, setNewActivityAgendaId] = useState<string>("");
   const [newActivityGerarMeet, setNewActivityGerarMeet] = useState(false);
+  // Anexo
+  const [newActivityAnexoFile, setNewActivityAnexoFile] = useState<File | null>(null);
+  const [newActivityAnexoCategoria, setNewActivityAnexoCategoria] = useState<"projeto" | "imagem" | "documento" | "outras_informacoes">("documento");
+  const [isUploadingAnexo, setIsUploadingAnexo] = useState(false);
+  const anexoInputRef = useRef<HTMLInputElement>(null);
 
   const { data: tenantUsers } = useListTenantUsers(tenantId, {
     query: { enabled: !!tenantId, queryKey: getListTenantUsersQueryKey(tenantId) },
@@ -732,6 +740,8 @@ export default function LeadDetail() {
         setNewActivityDataHoraFim("");
         setNewActivityAgendaId("");
         setNewActivityGerarMeet(false);
+        setNewActivityAnexoFile(null);
+        setNewActivityAnexoCategoria("documento");
         toast({ title: "Atividade criada." });
       },
       onError: () => {
@@ -750,13 +760,57 @@ export default function LeadDetail() {
     setNewActivityDataHoraFim("");
     setNewActivityAgendaId("");
     setNewActivityGerarMeet(false);
+    setNewActivityAnexoFile(null);
+    setNewActivityAnexoCategoria("documento");
     setIsNewActivityOpen(true);
   }
 
-  function handleCreateActivity() {
+  async function handleCreateActivity() {
     if (!tenantId || !id || !newActivityTitulo.trim()) return;
     const responsavelId = newActivityResponsavelId === "__ia__" ? undefined : newActivityResponsavelId;
     const isReuniao = newActivityTipo === "reuniao";
+
+    let anexoNome: string | undefined;
+    let anexoUrl: string | undefined;
+    let anexoMimeType: string | undefined;
+    let anexoTamanho: number | undefined;
+    let anexoCategoria: "projeto" | "imagem" | "documento" | "outras_informacoes" | undefined;
+
+    if (newActivityAnexoFile) {
+      setIsUploadingAnexo(true);
+      try {
+        const metaRes = await fetch("/api/storage/uploads/request-url", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            name: newActivityAnexoFile.name,
+            size: newActivityAnexoFile.size,
+            contentType: newActivityAnexoFile.type,
+          }),
+        });
+        if (!metaRes.ok) throw new Error("Falha ao obter URL de upload");
+        const { uploadURL, objectPath } = (await metaRes.json()) as { uploadURL: string; objectPath: string };
+
+        const putRes = await fetch(uploadURL, {
+          method: "PUT",
+          body: newActivityAnexoFile,
+          headers: { "Content-Type": newActivityAnexoFile.type },
+        });
+        if (!putRes.ok) throw new Error("Falha ao enviar anexo");
+
+        anexoNome = newActivityAnexoFile.name;
+        anexoUrl = `/api/storage/public-objects/${objectPath}`;
+        anexoMimeType = newActivityAnexoFile.type;
+        anexoTamanho = newActivityAnexoFile.size;
+        anexoCategoria = newActivityAnexoCategoria;
+      } catch (err) {
+        toast({ title: "Erro ao enviar anexo", variant: "destructive" });
+        setIsUploadingAnexo(false);
+        return;
+      }
+      setIsUploadingAnexo(false);
+    }
+
     const data: Parameters<typeof createActivity>[0]["data"] = {
       tenantId,
       leadId: id,
@@ -766,6 +820,11 @@ export default function LeadDetail() {
       dataVencimento: isReuniao ? undefined : (newActivityData || undefined),
       status: "planejado",
       responsavelId,
+      anexoNome,
+      anexoUrl,
+      anexoMimeType,
+      anexoTamanho,
+      anexoCategoria,
     };
     if (isReuniao) {
       data.agendaId = newActivityAgendaId || undefined;
@@ -1812,6 +1871,49 @@ export default function LeadDetail() {
                                   <p className="text-foreground leading-snug">{activity.resultadoExecucao}</p>
                                 </div>
                               )}
+                              {activity.anexoUrl && (
+                                <div className="space-y-1 pt-1 border-t border-border/40">
+                                  <span className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Anexo</span>
+                                  <a
+                                    href={activity.anexoUrl}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className="flex items-center gap-2 rounded-md border border-border p-2 bg-background hover:bg-muted/50 transition-colors"
+                                  >
+                                    {activity.anexoMimeType?.startsWith("image/") ? (
+                                      <img
+                                        src={activity.anexoUrl}
+                                        alt={activity.anexoNome ?? "Anexo"}
+                                        className="h-10 w-10 object-cover rounded"
+                                        loading="lazy"
+                                      />
+                                    ) : (
+                                      <div className="h-10 w-10 rounded bg-muted flex items-center justify-center">
+                                        <FileText className="h-5 w-5 text-muted-foreground" />
+                                      </div>
+                                    )}
+                                    <div className="flex-1 min-w-0">
+                                      <p className="text-sm font-medium truncate">{activity.anexoNome ?? "Anexo"}</p>
+                                      <div className="flex items-center gap-1.5 mt-0.5">
+                                        <Badge variant="outline" className="text-[10px] px-1 py-0 h-4">
+                                          {activity.anexoCategoria === "projeto"
+                                            ? "Projeto"
+                                            : activity.anexoCategoria === "imagem"
+                                            ? "Imagem"
+                                            : activity.anexoCategoria === "documento"
+                                            ? "Documento"
+                                            : "Outras"}
+                                        </Badge>
+                                        {activity.anexoTamanho && (
+                                          <span className="text-[10px] text-muted-foreground">
+                                            {(activity.anexoTamanho / 1024 / 1024).toFixed(1)} MB
+                                          </span>
+                                        )}
+                                      </div>
+                                    </div>
+                                  </a>
+                                </div>
+                              )}
                             </div>
 
                             {/* Status change section */}
@@ -2480,6 +2582,70 @@ export default function LeadDetail() {
                 </div>
               </>
             )}
+
+            {/* ── Anexo ── */}
+            <div className="space-y-2 pt-2 border-t border-border">
+              <label className="text-sm font-medium">Anexo</label>
+              <input
+                type="file"
+                ref={anexoInputRef}
+                className="hidden"
+                onChange={(e) => {
+                  const f = e.target.files?.[0] ?? null;
+                  if (f && f.size > 20 * 1024 * 1024) {
+                    toast({ title: "Arquivo excede 20MB", variant: "destructive" });
+                    return;
+                  }
+                  setNewActivityAnexoFile(f);
+                  if (f) {
+                    if (f.type.startsWith("image/")) setNewActivityAnexoCategoria("imagem");
+                    else if (f.name.endsWith(".pdf")) setNewActivityAnexoCategoria("documento");
+                  }
+                }}
+              />
+              {!newActivityAnexoFile ? (
+                <button
+                  type="button"
+                  onClick={() => anexoInputRef.current?.click()}
+                  className="w-full flex items-center gap-2 rounded-md border border-dashed border-border p-3 text-sm text-muted-foreground hover:bg-muted/50 transition-colors"
+                >
+                  <FileUp className="h-4 w-4" />
+                  <span>Clique para selecionar um arquivo</span>
+                </button>
+              ) : (
+                <div className="flex items-center gap-2 rounded-md border border-border p-2 text-sm bg-muted/30">
+                  <Paperclip className="h-4 w-4 text-muted-foreground" />
+                  <span className="flex-1 truncate">{newActivityAnexoFile.name}</span>
+                  <span className="text-xs text-muted-foreground">{(newActivityAnexoFile.size / 1024 / 1024).toFixed(1)} MB</span>
+                  <button
+                    type="button"
+                    onClick={() => setNewActivityAnexoFile(null)}
+                    className="p-1 rounded hover:bg-muted"
+                  >
+                    <X className="h-3 w-3 text-muted-foreground" />
+                  </button>
+                </div>
+              )}
+              {newActivityAnexoFile && (
+                <div className="space-y-1">
+                  <label className="text-xs text-muted-foreground">Tipo de anexo</label>
+                  <Select
+                    value={newActivityAnexoCategoria}
+                    onValueChange={(v) => setNewActivityAnexoCategoria(v as typeof newActivityAnexoCategoria)}
+                  >
+                    <SelectTrigger className="h-8 text-xs">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="projeto">Projeto</SelectItem>
+                      <SelectItem value="imagem">Imagem</SelectItem>
+                      <SelectItem value="documento">Documento</SelectItem>
+                      <SelectItem value="outras_informacoes">Outras informações</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+              )}
+            </div>
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setIsNewActivityOpen(false)}>
@@ -2489,13 +2655,14 @@ export default function LeadDetail() {
               onClick={handleCreateActivity}
               disabled={
                 isCreatingActivity ||
+                isUploadingAnexo ||
                 !newActivityTitulo.trim() ||
                 (newActivityTipo === "reuniao" && (!newActivityAgendaId || !newActivityDataHoraInicio || !newActivityDataHoraFim))
               }
               data-testid="btn-salvar-atividade"
             >
-              {isCreatingActivity && <Loader2 className="h-4 w-4 animate-spin mr-2" />}
-              Criar Atividade
+              {(isCreatingActivity || isUploadingAnexo) && <Loader2 className="h-4 w-4 animate-spin mr-2" />}
+              {isUploadingAnexo ? "Enviando anexo..." : "Criar Atividade"}
             </Button>
           </DialogFooter>
         </DialogContent>

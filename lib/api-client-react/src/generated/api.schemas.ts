@@ -1279,6 +1279,16 @@ export const ActivityStatus = {
   cancelada: 'cancelada',
 } as const;
 
+export type AnexoCategoria = typeof AnexoCategoria[keyof typeof AnexoCategoria];
+
+
+export const AnexoCategoria = {
+  projeto: 'projeto',
+  imagem: 'imagem',
+  documento: 'documento',
+  outras_informacoes: 'outras_informacoes',
+} as const;
+
 export interface Activity {
   id: string;
   tenantId: string;
@@ -1298,6 +1308,11 @@ export interface Activity {
   gerarMeet?: boolean | null;
   googleEventId?: string | null;
   meetLink?: string | null;
+  anexoNome?: string | null;
+  anexoUrl?: string | null;
+  anexoMimeType?: string | null;
+  anexoTamanho?: number | null;
+  anexoCategoria?: AnexoCategoria | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -1318,6 +1333,11 @@ export interface CreateActivityBody {
   dataHoraInicio?: string;
   dataHoraFim?: string;
   gerarMeet?: boolean;
+  anexoNome?: string;
+  anexoUrl?: string;
+  anexoMimeType?: string;
+  anexoTamanho?: number;
+  anexoCategoria?: AnexoCategoria;
 }
 
 export interface UpdateActivityBody {
@@ -1335,6 +1355,11 @@ export interface UpdateActivityBody {
   dataHoraInicio?: string;
   dataHoraFim?: string;
   gerarMeet?: boolean;
+  anexoNome?: string;
+  anexoUrl?: string;
+  anexoMimeType?: string;
+  anexoTamanho?: number;
+  anexoCategoria?: AnexoCategoria;
 }
 
 export type DealEtapa = typeof DealEtapa[keyof typeof DealEtapa];

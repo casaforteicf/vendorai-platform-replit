@@ -1496,7 +1496,12 @@ export const CreateActivityBody = zod.object({
   "agendaId": zod.string().optional(),
   "dataHoraInicio": zod.coerce.date().optional(),
   "dataHoraFim": zod.coerce.date().optional(),
-  "gerarMeet": zod.boolean().optional()
+  "gerarMeet": zod.boolean().optional(),
+  "anexoNome": zod.string().optional(),
+  "anexoUrl": zod.string().optional(),
+  "anexoMimeType": zod.string().optional(),
+  "anexoTamanho": zod.number().optional(),
+  "anexoCategoria": zod.enum(['projeto', 'imagem', 'documento', 'outras_informacoes']).optional()
 })
 
 
@@ -1527,6 +1532,11 @@ export const ListOverdueActivitiesResponseItem = zod.object({
   "gerarMeet": zod.boolean().nullish(),
   "googleEventId": zod.string().nullish(),
   "meetLink": zod.string().nullish(),
+  "anexoNome": zod.string().nullish(),
+  "anexoUrl": zod.string().nullish(),
+  "anexoMimeType": zod.string().nullish(),
+  "anexoTamanho": zod.number().nullish(),
+  "anexoCategoria": zod.enum(['projeto', 'imagem', 'documento', 'outras_informacoes']).nullish(),
   "createdAt": zod.coerce.date(),
   "updatedAt": zod.coerce.date()
 })
@@ -1565,6 +1575,11 @@ export const ListActivitiesResponseItem = zod.object({
   "gerarMeet": zod.boolean().nullish(),
   "googleEventId": zod.string().nullish(),
   "meetLink": zod.string().nullish(),
+  "anexoNome": zod.string().nullish(),
+  "anexoUrl": zod.string().nullish(),
+  "anexoMimeType": zod.string().nullish(),
+  "anexoTamanho": zod.number().nullish(),
+  "anexoCategoria": zod.enum(['projeto', 'imagem', 'documento', 'outras_informacoes']).nullish(),
   "createdAt": zod.coerce.date(),
   "updatedAt": zod.coerce.date()
 })
@@ -1597,6 +1612,11 @@ export const GetActivityResponse = zod.object({
   "gerarMeet": zod.boolean().nullish(),
   "googleEventId": zod.string().nullish(),
   "meetLink": zod.string().nullish(),
+  "anexoNome": zod.string().nullish(),
+  "anexoUrl": zod.string().nullish(),
+  "anexoMimeType": zod.string().nullish(),
+  "anexoTamanho": zod.number().nullish(),
+  "anexoCategoria": zod.enum(['projeto', 'imagem', 'documento', 'outras_informacoes']).nullish(),
   "createdAt": zod.coerce.date(),
   "updatedAt": zod.coerce.date()
 })
@@ -1624,7 +1644,12 @@ export const UpdateActivityBody = zod.object({
   "agendaId": zod.string().optional(),
   "dataHoraInicio": zod.coerce.date().optional(),
   "dataHoraFim": zod.coerce.date().optional(),
-  "gerarMeet": zod.boolean().optional()
+  "gerarMeet": zod.boolean().optional(),
+  "anexoNome": zod.string().optional(),
+  "anexoUrl": zod.string().optional(),
+  "anexoMimeType": zod.string().optional(),
+  "anexoTamanho": zod.number().optional(),
+  "anexoCategoria": zod.enum(['projeto', 'imagem', 'documento', 'outras_informacoes']).optional()
 })
 
 export const UpdateActivityResponse = zod.object({
@@ -1646,6 +1671,11 @@ export const UpdateActivityResponse = zod.object({
   "gerarMeet": zod.boolean().nullish(),
   "googleEventId": zod.string().nullish(),
   "meetLink": zod.string().nullish(),
+  "anexoNome": zod.string().nullish(),
+  "anexoUrl": zod.string().nullish(),
+  "anexoMimeType": zod.string().nullish(),
+  "anexoTamanho": zod.number().nullish(),
+  "anexoCategoria": zod.enum(['projeto', 'imagem', 'documento', 'outras_informacoes']).nullish(),
   "createdAt": zod.coerce.date(),
   "updatedAt": zod.coerce.date()
 })

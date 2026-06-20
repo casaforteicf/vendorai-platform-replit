@@ -29,6 +29,7 @@ export * from './agentTaskStatus';
 export * from './analyzeLeadIntelligenceResponse';
 export * from './analyzeLeadIntelligenceResponseRulesResultsItem';
 export * from './analyzeOnboardingDocumentsBody';
+export * from './anexoCategoria';
 export * from './applyTemplateResponse';
 export * from './authResponse';
 export * from './billingEvent';

@@ -7,6 +7,7 @@
  */
 import type { ActivityStatus } from './activityStatus';
 import type { ActivityTipo } from './activityTipo';
+import type { AnexoCategoria } from './anexoCategoria';
 
 export interface Activity {
   id: string;
@@ -27,6 +28,11 @@ export interface Activity {
   gerarMeet?: boolean | null;
   googleEventId?: string | null;
   meetLink?: string | null;
+  anexoNome?: string | null;
+  anexoUrl?: string | null;
+  anexoMimeType?: string | null;
+  anexoTamanho?: number | null;
+  anexoCategoria?: AnexoCategoria | null;
   createdAt: Date;
   updatedAt: Date;
 }
