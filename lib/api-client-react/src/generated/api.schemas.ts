@@ -2030,6 +2030,141 @@ export interface BillingEvent {
   createdAt: string;
 }
 
+export type LeadBriefingSituationAnswersItem = {
+  question?: string;
+  answer?: string;
+};
+
+export type LeadBriefingProblemAnswersItem = {
+  question?: string;
+  answer?: string;
+};
+
+export type LeadBriefingImplicationAnswersItem = {
+  question?: string;
+  answer?: string;
+};
+
+export type LeadBriefingNeedAnswersItem = {
+  question?: string;
+  answer?: string;
+};
+
+export type LeadBriefingObjectionsItem = {
+  objection?: string;
+  response?: string;
+};
+
+export interface LeadBriefing {
+  id: string;
+  tenantId: string;
+  leadId: string;
+  channelsUsed?: string[] | null;
+  contactType?: string | null;
+  approachedBy?: string | null;
+  contactDate?: string | null;
+  situationAnswers?: LeadBriefingSituationAnswersItem[] | null;
+  problemAnswers?: LeadBriefingProblemAnswersItem[] | null;
+  problemMinimized?: boolean | null;
+  implicationAnswers?: LeadBriefingImplicationAnswersItem[] | null;
+  implicationEstimatedValue?: string | null;
+  needAnswers?: LeadBriefingNeedAnswersItem[] | null;
+  needThermometer?: string | null;
+  objections?: LeadBriefingObjectionsItem[] | null;
+  prospectSize?: string | null;
+  presentationSent?: boolean | null;
+  presentationSentDate?: string | null;
+  presentationLink?: string | null;
+  nextStepType?: string | null;
+  nextStepDate?: string | null;
+  freeNotes?: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export type UpsertLeadBriefingBodyContactType = typeof UpsertLeadBriefingBodyContactType[keyof typeof UpsertLeadBriefingBodyContactType];
+
+
+export const UpsertLeadBriefingBodyContactType = {
+  call: 'call',
+  visit: 'visit',
+  whatsapp: 'whatsapp',
+} as const;
+
+export type UpsertLeadBriefingBodySituationAnswersItem = {
+  question?: string;
+  answer?: string;
+};
+
+export type UpsertLeadBriefingBodyProblemAnswersItem = {
+  question?: string;
+  answer?: string;
+};
+
+export type UpsertLeadBriefingBodyImplicationAnswersItem = {
+  question?: string;
+  answer?: string;
+};
+
+export type UpsertLeadBriefingBodyNeedAnswersItem = {
+  question?: string;
+  answer?: string;
+};
+
+export type UpsertLeadBriefingBodyNeedThermometer = typeof UpsertLeadBriefingBodyNeedThermometer[keyof typeof UpsertLeadBriefingBodyNeedThermometer];
+
+
+export const UpsertLeadBriefingBodyNeedThermometer = {
+  hot: 'hot',
+  warm: 'warm',
+  cold: 'cold',
+} as const;
+
+export type UpsertLeadBriefingBodyObjectionsItem = {
+  objection?: string;
+  response?: string;
+};
+
+export type UpsertLeadBriefingBodyProspectSize = typeof UpsertLeadBriefingBodyProspectSize[keyof typeof UpsertLeadBriefingBodyProspectSize];
+
+
+export const UpsertLeadBriefingBodyProspectSize = {
+  small_digital: 'small_digital',
+  medium_regional: 'medium_regional',
+  large_multichannel: 'large_multichannel',
+} as const;
+
+export type UpsertLeadBriefingBodyNextStepType = typeof UpsertLeadBriefingBodyNextStepType[keyof typeof UpsertLeadBriefingBodyNextStepType];
+
+
+export const UpsertLeadBriefingBodyNextStepType = {
+  meeting_scheduled: 'meeting_scheduled',
+  callback: 'callback',
+  open_door: 'open_door',
+} as const;
+
+export interface UpsertLeadBriefingBody {
+  channelsUsed?: string[];
+  contactType?: UpsertLeadBriefingBodyContactType;
+  approachedBy?: string | null;
+  contactDate?: string;
+  situationAnswers?: UpsertLeadBriefingBodySituationAnswersItem[];
+  problemAnswers?: UpsertLeadBriefingBodyProblemAnswersItem[];
+  problemMinimized?: boolean;
+  implicationAnswers?: UpsertLeadBriefingBodyImplicationAnswersItem[];
+  implicationEstimatedValue?: string;
+  needAnswers?: UpsertLeadBriefingBodyNeedAnswersItem[];
+  needThermometer?: UpsertLeadBriefingBodyNeedThermometer;
+  objections?: UpsertLeadBriefingBodyObjectionsItem[];
+  prospectSize?: UpsertLeadBriefingBodyProspectSize;
+  presentationSent?: boolean;
+  presentationSentDate?: string;
+  presentationLink?: string;
+  nextStepType?: UpsertLeadBriefingBodyNextStepType;
+  nextStepDate?: string;
+  freeNotes?: string;
+}
+
 export interface ErrorResponse {
   error: string;
 }

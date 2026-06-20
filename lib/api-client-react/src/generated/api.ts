@@ -133,6 +133,7 @@ import type {
   Invoice,
   KnowledgeBase,
   Lead,
+  LeadBriefing,
   LinkTenantPartnerBody,
   ListActivitiesParams,
   ListAgendamentosParams,
@@ -242,6 +243,7 @@ import type {
   UpdateVarejoProdutoBody,
   UploadUrlRequest,
   UploadUrlResponse,
+  UpsertLeadBriefingBody,
   UpsertSupermercadoConfigBody,
   UpsertVarejoFidelidadeBody,
   UsageSummary,
@@ -13850,6 +13852,155 @@ export const useDismissDuplicateLead = <TError = ErrorType<ErrorResponse>,
         TContext
       > => {
       return useMutation(getDismissDuplicateLeadMutationOptions(options));
+    }
+
+export const getGetLeadBriefingUrl = (leadId: string,) => {
+
+
+
+
+  return `/api/leads/${leadId}/briefing`
+}
+
+/**
+ * @summary Get lead briefing
+ */
+export const getLeadBriefing = async (leadId: string, options?: RequestInit): Promise<LeadBriefing> => {
+
+  return customFetch<LeadBriefing>(getGetLeadBriefingUrl(leadId),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetLeadBriefingQueryKey = (leadId: string,) => {
+    return [
+    `/api/leads/${leadId}/briefing`
+    ] as const;
+    }
+
+
+export const getGetLeadBriefingQueryOptions = <TData = Awaited<ReturnType<typeof getLeadBriefing>>, TError = ErrorType<ErrorResponse>>(leadId: string, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getLeadBriefing>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetLeadBriefingQueryKey(leadId);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getLeadBriefing>>> = ({ signal }) => getLeadBriefing(leadId, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, enabled: !!(leadId), ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getLeadBriefing>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetLeadBriefingQueryResult = NonNullable<Awaited<ReturnType<typeof getLeadBriefing>>>
+export type GetLeadBriefingQueryError = ErrorType<ErrorResponse>
+
+
+/**
+ * @summary Get lead briefing
+ */
+
+export function useGetLeadBriefing<TData = Awaited<ReturnType<typeof getLeadBriefing>>, TError = ErrorType<ErrorResponse>>(
+ leadId: string, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getLeadBriefing>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetLeadBriefingQueryOptions(leadId,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+
+
+
+
+
+
+export const getUpsertLeadBriefingUrl = (leadId: string,) => {
+
+
+
+
+  return `/api/leads/${leadId}/briefing`
+}
+
+/**
+ * @summary Create or update lead briefing
+ */
+export const upsertLeadBriefing = async (leadId: string,
+    upsertLeadBriefingBody: UpsertLeadBriefingBody, options?: RequestInit): Promise<LeadBriefing> => {
+
+  return customFetch<LeadBriefing>(getUpsertLeadBriefingUrl(leadId),
+  {
+    ...options,
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(
+      upsertLeadBriefingBody,)
+  }
+);}
+
+
+
+
+export const getUpsertLeadBriefingMutationOptions = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof upsertLeadBriefing>>, TError,{leadId: string;data: BodyType<UpsertLeadBriefingBody>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof upsertLeadBriefing>>, TError,{leadId: string;data: BodyType<UpsertLeadBriefingBody>}, TContext> => {
+
+const mutationKey = ['upsertLeadBriefing'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof upsertLeadBriefing>>, {leadId: string;data: BodyType<UpsertLeadBriefingBody>}> = (props) => {
+          const {leadId,data} = props ?? {};
+
+          return  upsertLeadBriefing(leadId,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type UpsertLeadBriefingMutationResult = NonNullable<Awaited<ReturnType<typeof upsertLeadBriefing>>>
+    export type UpsertLeadBriefingMutationBody = BodyType<UpsertLeadBriefingBody>
+    export type UpsertLeadBriefingMutationError = ErrorType<ErrorResponse>
+
+    /**
+ * @summary Create or update lead briefing
+ */
+export const useUpsertLeadBriefing = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof upsertLeadBriefing>>, TError,{leadId: string;data: BodyType<UpsertLeadBriefingBody>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof upsertLeadBriefing>>,
+        TError,
+        {leadId: string;data: BodyType<UpsertLeadBriefingBody>},
+        TContext
+      > => {
+      return useMutation(getUpsertLeadBriefingMutationOptions(options));
     }
 
 export const getGetPublicSiteUrl = (tenantSlug: string,) => {

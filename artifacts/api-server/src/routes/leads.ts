@@ -16,6 +16,8 @@ import {
   agentActionsLogTable,
   consentsTable,
   intelligenceAnalysisLogTable,
+  leadBriefingsTable,
+  insertLeadBriefingSchema,
 } from "@workspace/db";
 import { findLeadByDedup, storePhone } from "../lib/dedup.js";
 import { buildUserFunctionFilter, requireAdminOrUserFunction, type UserFunction } from "../middlewares/auth.js";
@@ -441,6 +443,141 @@ router.post("/leads/:id/dismiss-duplicate", async (req, res) => {
     .returning();
 
   res.json({ success: true, lead });
+});
+
+// ── GET /leads/:leadId/briefing ────────────────────────────────────────────
+router.get("/leads/:leadId/briefing", async (req, res) => {
+  const leadId = String(req.params.leadId);
+
+  const [lead] = await db
+    .select({ id: leadsTable.id, tenantId: leadsTable.tenantId, assignedTo: leadsTable.assignedTo })
+    .from(leadsTable)
+    .where(eq(leadsTable.id, leadId));
+
+  if (!lead) {
+    res.status(404).json({ error: "Lead not found" });
+    return;
+  }
+
+  if (req.user?.platformRole !== "super_admin" && lead.tenantId !== req.user?.tenantId) {
+    res.status(403).json({ error: "Access denied to this tenant" });
+    return;
+  }
+
+  const isAdmin = req.user?.platformRole === "super_admin" || req.user?.platformRole === "tenant_admin";
+  const userFn = req.user?.userFunction as UserFunction | undefined;
+  if (!isAdmin && userFn === "vendedor" && lead.assignedTo !== req.user?.sub) {
+    res.status(403).json({ error: "Access denied to this lead" });
+    return;
+  }
+
+  const [briefing] = await db
+    .select()
+    .from(leadBriefingsTable)
+    .where(eq(leadBriefingsTable.leadId, leadId));
+
+  res.json(briefing ?? null);
+});
+
+// ── PUT /leads/:leadId/briefing ────────────────────────────────────────────
+// Upsert: create if not exists, update if exists
+router.put("/leads/:leadId/briefing", async (req, res) => {
+  const leadId = String(req.params.leadId);
+
+  const [lead] = await db
+    .select({ id: leadsTable.id, tenantId: leadsTable.tenantId, assignedTo: leadsTable.assignedTo })
+    .from(leadsTable)
+    .where(eq(leadsTable.id, leadId));
+
+  if (!lead) {
+    res.status(404).json({ error: "Lead not found" });
+    return;
+  }
+
+  if (req.user?.platformRole !== "super_admin" && lead.tenantId !== req.user?.tenantId) {
+    res.status(403).json({ error: "Access denied to this tenant" });
+    return;
+  }
+
+  const isAdmin = req.user?.platformRole === "super_admin" || req.user?.platformRole === "tenant_admin";
+  const userFn = req.user?.userFunction as UserFunction | undefined;
+  if (!isAdmin && userFn === "vendedor" && lead.assignedTo !== req.user?.sub) {
+    res.status(403).json({ error: "Access denied to this lead" });
+    return;
+  }
+
+  const parsed = insertLeadBriefingSchema.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(422).json({ error: parsed.error.message });
+    return;
+  }
+
+  const data = parsed.data;
+  const tenantId = lead.tenantId;
+  const approachedBy = data.approachedBy ?? req.user?.sub ?? null;
+
+  const [existing] = await db
+    .select()
+    .from(leadBriefingsTable)
+    .where(eq(leadBriefingsTable.leadId, leadId));
+
+  if (existing) {
+    const [updated] = await db
+      .update(leadBriefingsTable)
+      .set({
+        channelsUsed: data.channelsUsed ?? existing.channelsUsed,
+        contactType: data.contactType ?? existing.contactType,
+        approachedBy: approachedBy ?? existing.approachedBy,
+        contactDate: data.contactDate ?? existing.contactDate,
+        situationAnswers: data.situationAnswers ?? existing.situationAnswers,
+        problemAnswers: data.problemAnswers ?? existing.problemAnswers,
+        problemMinimized: data.problemMinimized ?? existing.problemMinimized,
+        implicationAnswers: data.implicationAnswers ?? existing.implicationAnswers,
+        implicationEstimatedValue: data.implicationEstimatedValue ?? existing.implicationEstimatedValue,
+        needAnswers: data.needAnswers ?? existing.needAnswers,
+        needThermometer: data.needThermometer ?? existing.needThermometer,
+        objections: data.objections ?? existing.objections,
+        prospectSize: data.prospectSize ?? existing.prospectSize,
+        presentationSent: data.presentationSent ?? existing.presentationSent,
+        presentationSentDate: data.presentationSentDate ?? existing.presentationSentDate,
+        presentationLink: data.presentationLink ?? existing.presentationLink,
+        nextStepType: data.nextStepType ?? existing.nextStepType,
+        nextStepDate: data.nextStepDate ?? existing.nextStepDate,
+        freeNotes: data.freeNotes ?? existing.freeNotes,
+        updatedAt: new Date(),
+      })
+      .where(eq(leadBriefingsTable.id, existing.id))
+      .returning();
+    res.json(updated);
+  } else {
+    const [created] = await db
+      .insert(leadBriefingsTable)
+      .values({
+        tenantId,
+        leadId,
+        channelsUsed: data.channelsUsed,
+        contactType: data.contactType,
+        approachedBy,
+        contactDate: data.contactDate,
+        situationAnswers: data.situationAnswers,
+        problemAnswers: data.problemAnswers,
+        problemMinimized: data.problemMinimized,
+        implicationAnswers: data.implicationAnswers,
+        implicationEstimatedValue: data.implicationEstimatedValue,
+        needAnswers: data.needAnswers,
+        needThermometer: data.needThermometer,
+        objections: data.objections,
+        prospectSize: data.prospectSize,
+        presentationSent: data.presentationSent,
+        presentationSentDate: data.presentationSentDate,
+        presentationLink: data.presentationLink,
+        nextStepType: data.nextStepType,
+        nextStepDate: data.nextStepDate,
+        freeNotes: data.freeNotes,
+      })
+      .returning();
+    res.status(201).json(created);
+  }
 });
 
 export default router;

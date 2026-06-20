@@ -5342,6 +5342,66 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
 
+  /leads/{leadId}/briefing:
+    get:
+      operationId: getLeadBriefing
+      tags: [leads]
+      summary: Get lead briefing
+      parameters:
+        - name: leadId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Lead briefing
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LeadBriefing"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+    put:
+      operationId: upsertLeadBriefing
+      tags: [leads]
+      summary: Create or update lead briefing
+      parameters:
+        - name: leadId
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpsertLeadBriefingBody"
+      responses:
+        "200":
+          description: Upserted lead briefing
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LeadBriefing"
+        "404":
+          description: Lead not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "422":
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
   /public/{tenantSlug}/site:
     get:
       operationId: getPublicSite
@@ -11030,6 +11090,206 @@ components:
         - valor
         - status
         - createdAt
+
+    LeadBriefing:
+      type: object
+      properties:
+        id:
+          type: string
+        tenantId:
+          type: string
+        leadId:
+          type: string
+        channelsUsed:
+          type: array
+          nullable: true
+          items:
+            type: string
+        contactType:
+          type: string
+          nullable: true
+        approachedBy:
+          type: string
+          nullable: true
+        contactDate:
+          type: string
+          nullable: true
+        situationAnswers:
+          type: array
+          nullable: true
+          items:
+            type: object
+            properties:
+              question:
+                type: string
+              answer:
+                type: string
+        problemAnswers:
+          type: array
+          nullable: true
+          items:
+            type: object
+            properties:
+              question:
+                type: string
+              answer:
+                type: string
+        problemMinimized:
+          type: boolean
+          nullable: true
+        implicationAnswers:
+          type: array
+          nullable: true
+          items:
+            type: object
+            properties:
+              question:
+                type: string
+              answer:
+                type: string
+        implicationEstimatedValue:
+          type: string
+          nullable: true
+        needAnswers:
+          type: array
+          nullable: true
+          items:
+            type: object
+            properties:
+              question:
+                type: string
+              answer:
+                type: string
+        needThermometer:
+          type: string
+          nullable: true
+        objections:
+          type: array
+          nullable: true
+          items:
+            type: object
+            properties:
+              objection:
+                type: string
+              response:
+                type: string
+        prospectSize:
+          type: string
+          nullable: true
+        presentationSent:
+          type: boolean
+          nullable: true
+        presentationSentDate:
+          type: string
+          nullable: true
+        presentationLink:
+          type: string
+          nullable: true
+        nextStepType:
+          type: string
+          nullable: true
+        nextStepDate:
+          type: string
+          nullable: true
+        freeNotes:
+          type: string
+          nullable: true
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+      required:
+        - id
+        - tenantId
+        - leadId
+        - createdAt
+        - updatedAt
+
+    UpsertLeadBriefingBody:
+      type: object
+      properties:
+        channelsUsed:
+          type: array
+          items:
+            type: string
+        contactType:
+          type: string
+          enum: [call, visit, whatsapp]
+        approachedBy:
+          type: string
+          nullable: true
+        contactDate:
+          type: string
+        situationAnswers:
+          type: array
+          items:
+            type: object
+            properties:
+              question:
+                type: string
+              answer:
+                type: string
+        problemAnswers:
+          type: array
+          items:
+            type: object
+            properties:
+              question:
+                type: string
+              answer:
+                type: string
+        problemMinimized:
+          type: boolean
+        implicationAnswers:
+          type: array
+          items:
+            type: object
+            properties:
+              question:
+                type: string
+              answer:
+                type: string
+        implicationEstimatedValue:
+          type: string
+        needAnswers:
+          type: array
+          items:
+            type: object
+            properties:
+              question:
+                type: string
+              answer:
+                type: string
+        needThermometer:
+          type: string
+          enum: [hot, warm, cold]
+        objections:
+          type: array
+          items:
+            type: object
+            properties:
+              objection:
+                type: string
+              response:
+                type: string
+        prospectSize:
+          type: string
+          enum: [small_digital, medium_regional, large_multichannel]
+        presentationSent:
+          type: boolean
+        presentationSentDate:
+          type: string
+        presentationLink:
+          type: string
+        nextStepType:
+          type: string
+          enum: [meeting_scheduled, callback, open_door]
+        nextStepDate:
+          type: string
+        freeNotes:
+          type: string
 
     ErrorResponse:
       type: object

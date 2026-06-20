@@ -5190,6 +5190,143 @@ export const DismissDuplicateLeadResponse = zod.object({
 
 
 /**
+ * @summary Get lead briefing
+ */
+export const GetLeadBriefingParams = zod.object({
+  "leadId": zod.coerce.string()
+})
+
+export const GetLeadBriefingResponse = zod.object({
+  "id": zod.string(),
+  "tenantId": zod.string(),
+  "leadId": zod.string(),
+  "channelsUsed": zod.array(zod.string()).nullish(),
+  "contactType": zod.string().nullish(),
+  "approachedBy": zod.string().nullish(),
+  "contactDate": zod.string().nullish(),
+  "situationAnswers": zod.array(zod.object({
+  "question": zod.string().optional(),
+  "answer": zod.string().optional()
+})).nullish(),
+  "problemAnswers": zod.array(zod.object({
+  "question": zod.string().optional(),
+  "answer": zod.string().optional()
+})).nullish(),
+  "problemMinimized": zod.boolean().nullish(),
+  "implicationAnswers": zod.array(zod.object({
+  "question": zod.string().optional(),
+  "answer": zod.string().optional()
+})).nullish(),
+  "implicationEstimatedValue": zod.string().nullish(),
+  "needAnswers": zod.array(zod.object({
+  "question": zod.string().optional(),
+  "answer": zod.string().optional()
+})).nullish(),
+  "needThermometer": zod.string().nullish(),
+  "objections": zod.array(zod.object({
+  "objection": zod.string().optional(),
+  "response": zod.string().optional()
+})).nullish(),
+  "prospectSize": zod.string().nullish(),
+  "presentationSent": zod.boolean().nullish(),
+  "presentationSentDate": zod.string().nullish(),
+  "presentationLink": zod.string().nullish(),
+  "nextStepType": zod.string().nullish(),
+  "nextStepDate": zod.string().nullish(),
+  "freeNotes": zod.string().nullish(),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date()
+})
+
+
+/**
+ * @summary Create or update lead briefing
+ */
+export const UpsertLeadBriefingParams = zod.object({
+  "leadId": zod.coerce.string()
+})
+
+export const UpsertLeadBriefingBody = zod.object({
+  "channelsUsed": zod.array(zod.string()).optional(),
+  "contactType": zod.enum(['call', 'visit', 'whatsapp']).optional(),
+  "approachedBy": zod.string().nullish(),
+  "contactDate": zod.string().optional(),
+  "situationAnswers": zod.array(zod.object({
+  "question": zod.string().optional(),
+  "answer": zod.string().optional()
+})).optional(),
+  "problemAnswers": zod.array(zod.object({
+  "question": zod.string().optional(),
+  "answer": zod.string().optional()
+})).optional(),
+  "problemMinimized": zod.boolean().optional(),
+  "implicationAnswers": zod.array(zod.object({
+  "question": zod.string().optional(),
+  "answer": zod.string().optional()
+})).optional(),
+  "implicationEstimatedValue": zod.string().optional(),
+  "needAnswers": zod.array(zod.object({
+  "question": zod.string().optional(),
+  "answer": zod.string().optional()
+})).optional(),
+  "needThermometer": zod.enum(['hot', 'warm', 'cold']).optional(),
+  "objections": zod.array(zod.object({
+  "objection": zod.string().optional(),
+  "response": zod.string().optional()
+})).optional(),
+  "prospectSize": zod.enum(['small_digital', 'medium_regional', 'large_multichannel']).optional(),
+  "presentationSent": zod.boolean().optional(),
+  "presentationSentDate": zod.string().optional(),
+  "presentationLink": zod.string().optional(),
+  "nextStepType": zod.enum(['meeting_scheduled', 'callback', 'open_door']).optional(),
+  "nextStepDate": zod.string().optional(),
+  "freeNotes": zod.string().optional()
+})
+
+export const UpsertLeadBriefingResponse = zod.object({
+  "id": zod.string(),
+  "tenantId": zod.string(),
+  "leadId": zod.string(),
+  "channelsUsed": zod.array(zod.string()).nullish(),
+  "contactType": zod.string().nullish(),
+  "approachedBy": zod.string().nullish(),
+  "contactDate": zod.string().nullish(),
+  "situationAnswers": zod.array(zod.object({
+  "question": zod.string().optional(),
+  "answer": zod.string().optional()
+})).nullish(),
+  "problemAnswers": zod.array(zod.object({
+  "question": zod.string().optional(),
+  "answer": zod.string().optional()
+})).nullish(),
+  "problemMinimized": zod.boolean().nullish(),
+  "implicationAnswers": zod.array(zod.object({
+  "question": zod.string().optional(),
+  "answer": zod.string().optional()
+})).nullish(),
+  "implicationEstimatedValue": zod.string().nullish(),
+  "needAnswers": zod.array(zod.object({
+  "question": zod.string().optional(),
+  "answer": zod.string().optional()
+})).nullish(),
+  "needThermometer": zod.string().nullish(),
+  "objections": zod.array(zod.object({
+  "objection": zod.string().optional(),
+  "response": zod.string().optional()
+})).nullish(),
+  "prospectSize": zod.string().nullish(),
+  "presentationSent": zod.boolean().nullish(),
+  "presentationSentDate": zod.string().nullish(),
+  "presentationLink": zod.string().nullish(),
+  "nextStepType": zod.string().nullish(),
+  "nextStepDate": zod.string().nullish(),
+  "freeNotes": zod.string().nullish(),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date()
+})
+
+
+/**
  * @summary Public landing page data (no auth required)
  */
 export const GetPublicSiteParams = zod.object({

@@ -5,6 +5,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { useAuth } from "@/contexts/AuthContext";
 import { useToast } from "@/hooks/use-toast";
 import { PropostaModal } from "./Propostas";
+import LeadBriefingTab from "./LeadBriefingTab";
 import { useListProdutosCatalogo, getListProdutosCatalogoQueryKey } from "@workspace/api-client-react";
 import {
   useGetLead,
@@ -2080,6 +2081,9 @@ export default function LeadDetail() {
             </CardContent>
           </Card>
         </div>
+
+        {/* Briefing SPIN+PAS */}
+        <LeadBriefingTab leadId={id} tenantId={tenantId} />
 
         {/* Orçamentos do Lead */}
         <Card data-testid="card-orcamentos">
