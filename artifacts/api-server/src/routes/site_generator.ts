@@ -123,7 +123,7 @@ async function callAI(
     const userMessages = messages.filter((m) => m.role === "user");
     const response = await anthropic.messages.create({
       model: "claude-sonnet-4-6",
-      max_tokens: 8192,
+      max_tokens: 20000,
       messages: userMessages.map((m) => ({ role: m.role, content: m.content })),
       ...(system ? { system } : {}),
     });
@@ -131,6 +131,14 @@ async function callAI(
       .filter((c) => c.type === "text")
       .map((c) => (c as Anthropic.TextBlock).text)
       .join("");
+    // Detect truncated response (max_tokens reached before completion)
+    const stopReason = (response as any).stop_reason;
+    if (stopReason === "max_tokens") {
+      const err = new Error(`Anthropic resposta truncada: max_tokens atingido (${content.length} chars gerados). Tente um site mais simples ou aumente o limite.`);
+      (err as any).truncated = true;
+      (err as any).generatedLength = content.length;
+      throw err;
+    }
     return { content, provider: "anthropic", model: "claude-sonnet-4-6" };
   }
 
@@ -138,7 +146,7 @@ async function callAI(
   const openai = await getOpenAIForTenant(tenantId);
   const response = await openai.chat.completions.create({
     model: "gpt-4o-mini",
-    max_tokens: 8192,
+    max_tokens: 16000,
     messages: messages as Array<{ role: "user" | "assistant"; content: string }>,
   });
   return {
