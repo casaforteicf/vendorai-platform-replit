@@ -17,3 +17,9 @@ id = "E29SYmaBL-_LNRG_9P2Ss"
 uri = "file://.local/auditoria-vendorai.json"
 type = "unspecified"
 title = "Auditoria Completa VendorAI Core"
+
+[[outputs]]
+id = "l1Y4meFUK3lSwYTbWFmLn"
+uri = "file://artifacts/resumo-executivo.md"
+type = "text"
+title = "Resumo Executivo - VendorAI"
