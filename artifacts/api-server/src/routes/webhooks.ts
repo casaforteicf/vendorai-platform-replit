@@ -1060,7 +1060,7 @@ router.post("/webhooks/meta/instagram", async (req, res) => {
             continue;
           }
 
-          // Find or create lead: 1) by IGSID (exact), 2) fallback to dedup by name
+          // Find or create lead: 1) by IGSID (exact), 2) check for similar name
           let lead: typeof leadsTable.$inferSelect | null = null;
 
           const [existingByIgsid] = await db
@@ -1074,30 +1074,22 @@ router.post("/webhooks/meta/instagram", async (req, res) => {
             req.log.info({ leadId: lead.id, igsid }, "meta/instagram: existing lead found by IGSID");
           } else {
             const match = await findLeadByDedup(tenantId, null, null, `Instagram @${igsid.slice(0, 8)}`);
+            const hasSimilar = match.found === false && match.similar !== null;
+            const similarId = match.found === false ? match.similar?.id ?? null : null;
 
-            if (match.found === true) {
-              lead = match.lead;
-              // Backfill IGSID if missing
-              await db
-                .update(leadsTable)
-                .set({ instagramScopedId: igsid, updatedAt: new Date() })
-                .where(eq(leadsTable.id, lead.id));
-              req.log.info({ leadId: lead.id, igsid, matchBy: match.matchBy }, "meta/instagram: existing lead found (dedup), backfilled IGSID");
-            } else {
-              [lead] = await db
-                .insert(leadsTable)
-                .values({
-                  tenantId,
-                  nome: `Instagram @${igsid.slice(0, 8)}`,
-                  instagramScopedId: igsid,
-                  status: "novo",
-                  source: "instagram",
-                  possivelDuplicata: match.similar ? true : false,
-                  leadSimilarId: match.similar?.id ?? null,
-                })
-                .returning();
-              req.log.info({ leadId: lead.id, igsid, tenantId }, "meta/instagram: new lead created");
-            }
+            [lead] = await db
+              .insert(leadsTable)
+              .values({
+                tenantId,
+                nome: `Instagram @${igsid.slice(0, 8)}`,
+                instagramScopedId: igsid,
+                status: "novo",
+                source: "instagram",
+                possivelDuplicata: hasSimilar,
+                leadSimilarId: similarId,
+              })
+              .returning();
+            req.log.info({ leadId: lead.id, igsid, tenantId, possivelDuplicata: lead.possivelDuplicata }, "meta/instagram: new lead created");
           }
 
           // Find or create Instagram conversation

@@ -318,63 +318,68 @@ router.post("/leads/:id/merge", async (req, res) => {
 
   const tenantId = duplicate.tenantId;
 
-  // Transfer all related data
-  await db
-    .update(conversationsTable)
-    .set({ leadId: targetLeadId, updatedAt: new Date() })
-    .where(and(eq(conversationsTable.tenantId, tenantId), eq(conversationsTable.leadId, duplicateId)));
+    // Transfer all related data atomically
+  const [mergedLead] = await db.transaction(async (tx) => {
+    await tx
+      .update(conversationsTable)
+      .set({ leadId: targetLeadId, updatedAt: new Date() })
+      .where(and(eq(conversationsTable.tenantId, tenantId), eq(conversationsTable.leadId, duplicateId)));
 
-  await db
-    .update(messagesTable)
-    .set({ leadId: targetLeadId })
-    .where(and(eq(messagesTable.tenantId, tenantId), eq(messagesTable.leadId, duplicateId)));
+    await tx
+      .update(messagesTable)
+      .set({ leadId: targetLeadId })
+      .where(and(eq(messagesTable.tenantId, tenantId), eq(messagesTable.leadId, duplicateId)));
 
-  await db
-    .update(dealsTable)
-    .set({ leadId: targetLeadId, updatedAt: new Date() })
-    .where(and(eq(dealsTable.tenantId, tenantId), eq(dealsTable.leadId, duplicateId)));
+    await tx
+      .update(dealsTable)
+      .set({ leadId: targetLeadId, updatedAt: new Date() })
+      .where(and(eq(dealsTable.tenantId, tenantId), eq(dealsTable.leadId, duplicateId)));
 
-  await db
-    .update(propostasTable)
-    .set({ leadId: targetLeadId, updatedAt: new Date() })
-    .where(and(eq(propostasTable.tenantId, tenantId), eq(propostasTable.leadId, duplicateId)));
+    await tx
+      .update(propostasTable)
+      .set({ leadId: targetLeadId, updatedAt: new Date() })
+      .where(and(eq(propostasTable.tenantId, tenantId), eq(propostasTable.leadId, duplicateId)));
 
-  await db
-    .update(activitiesTable)
-    .set({ leadId: targetLeadId, updatedAt: new Date() })
-    .where(and(eq(activitiesTable.tenantId, tenantId), eq(activitiesTable.leadId, duplicateId)));
+    await tx
+      .update(activitiesTable)
+      .set({ leadId: targetLeadId, updatedAt: new Date() })
+      .where(and(eq(activitiesTable.tenantId, tenantId), eq(activitiesTable.leadId, duplicateId)));
 
-  await db
-    .update(customerIntelligenceTable)
-    .set({ leadId: targetLeadId, updatedAt: new Date() })
-    .where(and(eq(customerIntelligenceTable.tenantId, tenantId), eq(customerIntelligenceTable.leadId, duplicateId)));
+    await tx
+      .update(customerIntelligenceTable)
+      .set({ leadId: targetLeadId, updatedAt: new Date() })
+      .where(and(eq(customerIntelligenceTable.tenantId, tenantId), eq(customerIntelligenceTable.leadId, duplicateId)));
 
-  await db
-    .update(agentTasksTable)
-    .set({ leadId: targetLeadId })
-    .where(and(eq(agentTasksTable.tenantId, tenantId), eq(agentTasksTable.leadId, duplicateId)));
+    await tx
+      .update(agentTasksTable)
+      .set({ leadId: targetLeadId })
+      .where(and(eq(agentTasksTable.tenantId, tenantId), eq(agentTasksTable.leadId, duplicateId)));
 
-  await db
-    .update(agentActionsLogTable)
-    .set({ leadId: targetLeadId })
-    .where(and(eq(agentActionsLogTable.tenantId, tenantId), eq(agentActionsLogTable.leadId, duplicateId)));
+    await tx
+      .update(agentActionsLogTable)
+      .set({ leadId: targetLeadId })
+      .where(and(eq(agentActionsLogTable.tenantId, tenantId), eq(agentActionsLogTable.leadId, duplicateId)));
 
-  await db
-    .update(consentsTable)
-    .set({ leadId: targetLeadId })
-    .where(and(eq(consentsTable.tenantId, tenantId), eq(consentsTable.leadId, duplicateId)));
+    await tx
+      .update(consentsTable)
+      .set({ leadId: targetLeadId })
+      .where(and(eq(consentsTable.tenantId, tenantId), eq(consentsTable.leadId, duplicateId)));
 
-  await db
-    .update(intelligenceAnalysisLogTable)
-    .set({ leadId: targetLeadId })
-    .where(and(eq(intelligenceAnalysisLogTable.tenantId, tenantId), eq(intelligenceAnalysisLogTable.leadId, duplicateId)));
+    await tx
+      .update(intelligenceAnalysisLogTable)
+      .set({ leadId: targetLeadId })
+      .where(and(eq(intelligenceAnalysisLogTable.tenantId, tenantId), eq(intelligenceAnalysisLogTable.leadId, duplicateId)));
 
-  // Delete the duplicate
-  await db.delete(leadsTable).where(eq(leadsTable.id, duplicateId));
+    // Delete the duplicate
+    await tx.delete(leadsTable).where(eq(leadsTable.id, duplicateId));
+
+    // Return the merged (target) lead
+    return tx.select().from(leadsTable).where(eq(leadsTable.id, targetLeadId)).limit(1);
+  });
 
   res.json({
     success: true,
-    targetLeadId,
+    lead: mergedLead,
     duplicateId,
     transferredTables: [
       "conversations",

@@ -5234,6 +5234,114 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
 
+  /tenants/{tenantId}/leads/duplicates:
+    get:
+      operationId: listTenantDuplicateLeads
+      tags: [leads]
+      summary: List leads flagged as possible duplicates
+      parameters:
+        - name: tenantId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: List of duplicate lead pairs
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: object
+                  properties:
+                    lead:
+                      $ref: "#/components/schemas/Lead"
+                    similar:
+                      $ref: "#/components/schemas/Lead"
+
+  /leads/{id}/merge:
+    post:
+      operationId: mergeLead
+      tags: [leads]
+      summary: Merge duplicate lead into target lead
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [targetLeadId]
+              properties:
+                targetLeadId:
+                  type: string
+      responses:
+        "200":
+          description: Merge completed
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  lead:
+                    $ref: "#/components/schemas/Lead"
+                  duplicateId:
+                    type: string
+                  transferredTables:
+                    type: array
+                    items:
+                      type: string
+        "404":
+          description: Lead not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "422":
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /leads/{id}/dismiss-duplicate:
+    post:
+      operationId: dismissDuplicateLead
+      tags: [leads]
+      summary: Remove duplicate flag from a lead
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Flag removed
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  lead:
+                    $ref: "#/components/schemas/Lead"
+        "404":
+          description: Lead not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
   /public/{tenantSlug}/site:
     get:
       operationId: getPublicSite

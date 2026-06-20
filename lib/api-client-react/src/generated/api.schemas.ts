@@ -4222,6 +4222,27 @@ page?: number;
 limit?: number;
 };
 
+export type ListTenantDuplicateLeads200Item = {
+  lead?: Lead;
+  similar?: Lead;
+};
+
+export type MergeLeadBody = {
+  targetLeadId: string;
+};
+
+export type MergeLead200 = {
+  success?: boolean;
+  lead?: Lead;
+  duplicateId?: string;
+  transferredTables?: string[];
+};
+
+export type DismissDuplicateLead200 = {
+  success?: boolean;
+  lead?: Lead;
+};
+
 export type ListInventoryMovementsParams = {
 inventoryItemId?: string;
 };

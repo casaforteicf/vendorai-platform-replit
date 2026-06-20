@@ -4899,6 +4899,191 @@ export const DeleteLeadParams = zod.object({
 
 
 /**
+ * @summary List leads flagged as possible duplicates
+ */
+export const ListTenantDuplicateLeadsParams = zod.object({
+  "tenantId": zod.coerce.string()
+})
+
+export const listTenantDuplicateLeadsResponseLeadTipoDefault = `cliente`;
+export const listTenantDuplicateLeadsResponseSimilarTipoDefault = `cliente`;
+
+export const ListTenantDuplicateLeadsResponseItem = zod.object({
+  "lead": zod.object({
+  "id": zod.string(),
+  "tenantId": zod.string(),
+  "nome": zod.string(),
+  "telefone": zod.string().nullish(),
+  "email": zod.string().nullish(),
+  "empresa": zod.string().nullish(),
+  "documento": zod.string().nullish().describe('CPF\/CNPJ do lead'),
+  "tamanhoEquipe": zod.string().nullish(),
+  "objetivo": zod.string().nullish(),
+  "urgencia": zod.string().nullish(),
+  "orcamento": zod.string().nullish(),
+  "planoRecomendado": zod.string().nullish(),
+  "dorPrincipal": zod.string().nullish(),
+  "proximaAcao": zod.string().nullish(),
+  "status": zod.string(),
+  "activeAgentLock": zod.string().nullish(),
+  "instagramScopedId": zod.string().nullish().describe('Instagram Scoped User ID (IGSID) — set automatically when the lead sends an Instagram DM.'),
+  "dataNascimento": zod.string().nullish().describe('Data de nascimento do lead (YYYY-MM-DD).'),
+  "estadoCivil": zod.string().nullish().describe('Estado civil: solteiro, casado, divorciado, viuvo, uniao_estavel.'),
+  "conjugeNome": zod.string().nullish(),
+  "conjugeTelefone": zod.string().nullish(),
+  "conjugeEmail": zod.string().nullish(),
+  "conjugeDataNascimento": zod.string().nullish().describe('Data de nascimento do cônjuge no formato YYYY-MM-DD.'),
+  "filhos": zod.array(zod.object({
+  "nome": zod.string(),
+  "dataNascimento": zod.string().optional()
+})).nullish(),
+  "tipo": zod.string().default(listTenantDuplicateLeadsResponseLeadTipoDefault).describe('Tipo do lead: \'cliente\' (prospect que pode comprar) ou \'indicador\' (parceiro que gera indicações).'),
+  "indicadoPor": zod.string().nullish().describe('ID do lead indicador que referenciou este lead cliente.'),
+  "notasNutricao": zod.string().nullish().describe('Notas de nutrição para leads do tipo indicador.'),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date()
+}).optional(),
+  "similar": zod.object({
+  "id": zod.string(),
+  "tenantId": zod.string(),
+  "nome": zod.string(),
+  "telefone": zod.string().nullish(),
+  "email": zod.string().nullish(),
+  "empresa": zod.string().nullish(),
+  "documento": zod.string().nullish().describe('CPF\/CNPJ do lead'),
+  "tamanhoEquipe": zod.string().nullish(),
+  "objetivo": zod.string().nullish(),
+  "urgencia": zod.string().nullish(),
+  "orcamento": zod.string().nullish(),
+  "planoRecomendado": zod.string().nullish(),
+  "dorPrincipal": zod.string().nullish(),
+  "proximaAcao": zod.string().nullish(),
+  "status": zod.string(),
+  "activeAgentLock": zod.string().nullish(),
+  "instagramScopedId": zod.string().nullish().describe('Instagram Scoped User ID (IGSID) — set automatically when the lead sends an Instagram DM.'),
+  "dataNascimento": zod.string().nullish().describe('Data de nascimento do lead (YYYY-MM-DD).'),
+  "estadoCivil": zod.string().nullish().describe('Estado civil: solteiro, casado, divorciado, viuvo, uniao_estavel.'),
+  "conjugeNome": zod.string().nullish(),
+  "conjugeTelefone": zod.string().nullish(),
+  "conjugeEmail": zod.string().nullish(),
+  "conjugeDataNascimento": zod.string().nullish().describe('Data de nascimento do cônjuge no formato YYYY-MM-DD.'),
+  "filhos": zod.array(zod.object({
+  "nome": zod.string(),
+  "dataNascimento": zod.string().optional()
+})).nullish(),
+  "tipo": zod.string().default(listTenantDuplicateLeadsResponseSimilarTipoDefault).describe('Tipo do lead: \'cliente\' (prospect que pode comprar) ou \'indicador\' (parceiro que gera indicações).'),
+  "indicadoPor": zod.string().nullish().describe('ID do lead indicador que referenciou este lead cliente.'),
+  "notasNutricao": zod.string().nullish().describe('Notas de nutrição para leads do tipo indicador.'),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date()
+}).optional()
+})
+export const ListTenantDuplicateLeadsResponse = zod.array(ListTenantDuplicateLeadsResponseItem)
+
+
+/**
+ * @summary Merge duplicate lead into target lead
+ */
+export const MergeLeadParams = zod.object({
+  "id": zod.coerce.string()
+})
+
+export const MergeLeadBody = zod.object({
+  "targetLeadId": zod.string()
+})
+
+export const mergeLeadResponseLeadTipoDefault = `cliente`;
+
+export const MergeLeadResponse = zod.object({
+  "success": zod.boolean().optional(),
+  "lead": zod.object({
+  "id": zod.string(),
+  "tenantId": zod.string(),
+  "nome": zod.string(),
+  "telefone": zod.string().nullish(),
+  "email": zod.string().nullish(),
+  "empresa": zod.string().nullish(),
+  "documento": zod.string().nullish().describe('CPF\/CNPJ do lead'),
+  "tamanhoEquipe": zod.string().nullish(),
+  "objetivo": zod.string().nullish(),
+  "urgencia": zod.string().nullish(),
+  "orcamento": zod.string().nullish(),
+  "planoRecomendado": zod.string().nullish(),
+  "dorPrincipal": zod.string().nullish(),
+  "proximaAcao": zod.string().nullish(),
+  "status": zod.string(),
+  "activeAgentLock": zod.string().nullish(),
+  "instagramScopedId": zod.string().nullish().describe('Instagram Scoped User ID (IGSID) — set automatically when the lead sends an Instagram DM.'),
+  "dataNascimento": zod.string().nullish().describe('Data de nascimento do lead (YYYY-MM-DD).'),
+  "estadoCivil": zod.string().nullish().describe('Estado civil: solteiro, casado, divorciado, viuvo, uniao_estavel.'),
+  "conjugeNome": zod.string().nullish(),
+  "conjugeTelefone": zod.string().nullish(),
+  "conjugeEmail": zod.string().nullish(),
+  "conjugeDataNascimento": zod.string().nullish().describe('Data de nascimento do cônjuge no formato YYYY-MM-DD.'),
+  "filhos": zod.array(zod.object({
+  "nome": zod.string(),
+  "dataNascimento": zod.string().optional()
+})).nullish(),
+  "tipo": zod.string().default(mergeLeadResponseLeadTipoDefault).describe('Tipo do lead: \'cliente\' (prospect que pode comprar) ou \'indicador\' (parceiro que gera indicações).'),
+  "indicadoPor": zod.string().nullish().describe('ID do lead indicador que referenciou este lead cliente.'),
+  "notasNutricao": zod.string().nullish().describe('Notas de nutrição para leads do tipo indicador.'),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date()
+}).optional(),
+  "duplicateId": zod.string().optional(),
+  "transferredTables": zod.array(zod.string()).optional()
+})
+
+
+/**
+ * @summary Remove duplicate flag from a lead
+ */
+export const DismissDuplicateLeadParams = zod.object({
+  "id": zod.coerce.string()
+})
+
+export const dismissDuplicateLeadResponseLeadTipoDefault = `cliente`;
+
+export const DismissDuplicateLeadResponse = zod.object({
+  "success": zod.boolean().optional(),
+  "lead": zod.object({
+  "id": zod.string(),
+  "tenantId": zod.string(),
+  "nome": zod.string(),
+  "telefone": zod.string().nullish(),
+  "email": zod.string().nullish(),
+  "empresa": zod.string().nullish(),
+  "documento": zod.string().nullish().describe('CPF\/CNPJ do lead'),
+  "tamanhoEquipe": zod.string().nullish(),
+  "objetivo": zod.string().nullish(),
+  "urgencia": zod.string().nullish(),
+  "orcamento": zod.string().nullish(),
+  "planoRecomendado": zod.string().nullish(),
+  "dorPrincipal": zod.string().nullish(),
+  "proximaAcao": zod.string().nullish(),
+  "status": zod.string(),
+  "activeAgentLock": zod.string().nullish(),
+  "instagramScopedId": zod.string().nullish().describe('Instagram Scoped User ID (IGSID) — set automatically when the lead sends an Instagram DM.'),
+  "dataNascimento": zod.string().nullish().describe('Data de nascimento do lead (YYYY-MM-DD).'),
+  "estadoCivil": zod.string().nullish().describe('Estado civil: solteiro, casado, divorciado, viuvo, uniao_estavel.'),
+  "conjugeNome": zod.string().nullish(),
+  "conjugeTelefone": zod.string().nullish(),
+  "conjugeEmail": zod.string().nullish(),
+  "conjugeDataNascimento": zod.string().nullish().describe('Data de nascimento do cônjuge no formato YYYY-MM-DD.'),
+  "filhos": zod.array(zod.object({
+  "nome": zod.string(),
+  "dataNascimento": zod.string().optional()
+})).nullish(),
+  "tipo": zod.string().default(dismissDuplicateLeadResponseLeadTipoDefault).describe('Tipo do lead: \'cliente\' (prospect que pode comprar) ou \'indicador\' (parceiro que gera indicações).'),
+  "indicadoPor": zod.string().nullish().describe('ID do lead indicador que referenciou este lead cliente.'),
+  "notasNutricao": zod.string().nullish().describe('Notas de nutrição para leads do tipo indicador.'),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date()
+}).optional()
+})
+
+
+/**
  * @summary Public landing page data (no auth required)
  */
 export const GetPublicSiteParams = zod.object({

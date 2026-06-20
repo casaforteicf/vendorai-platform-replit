@@ -96,6 +96,7 @@ import type {
   Deal,
   DealUpdateResponse,
   DeleteContentGeneration200,
+  DismissDuplicateLead200,
   DispararSupermercadoCampanha200,
   DocumentExtractionResult,
   ErrorResponse,
@@ -150,10 +151,13 @@ import type {
   ListSupermercadoCampanhasParams,
   ListSupermercadoPedidosParams,
   ListSupermercadoProdutosParams,
+  ListTenantDuplicateLeads200Item,
   ListVarejoFidelidadeParams,
   ListVarejoPedidosCompraParams,
   ListVarejoProdutosParams,
   LoginBody,
+  MergeLead200,
+  MergeLeadBody,
   Message,
   MovimentacaoEstoque,
   MovimentacaoEstoqueInput,
@@ -13627,6 +13631,225 @@ export const useDeleteLead = <TError = ErrorType<ErrorResponse>,
         TContext
       > => {
       return useMutation(getDeleteLeadMutationOptions(options));
+    }
+
+export const getListTenantDuplicateLeadsUrl = (tenantId: string,) => {
+
+
+
+
+  return `/api/tenants/${tenantId}/leads/duplicates`
+}
+
+/**
+ * @summary List leads flagged as possible duplicates
+ */
+export const listTenantDuplicateLeads = async (tenantId: string, options?: RequestInit): Promise<ListTenantDuplicateLeads200Item[]> => {
+
+  return customFetch<ListTenantDuplicateLeads200Item[]>(getListTenantDuplicateLeadsUrl(tenantId),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getListTenantDuplicateLeadsQueryKey = (tenantId: string,) => {
+    return [
+    `/api/tenants/${tenantId}/leads/duplicates`
+    ] as const;
+    }
+
+
+export const getListTenantDuplicateLeadsQueryOptions = <TData = Awaited<ReturnType<typeof listTenantDuplicateLeads>>, TError = ErrorType<unknown>>(tenantId: string, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listTenantDuplicateLeads>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getListTenantDuplicateLeadsQueryKey(tenantId);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof listTenantDuplicateLeads>>> = ({ signal }) => listTenantDuplicateLeads(tenantId, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, enabled: !!(tenantId), ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof listTenantDuplicateLeads>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type ListTenantDuplicateLeadsQueryResult = NonNullable<Awaited<ReturnType<typeof listTenantDuplicateLeads>>>
+export type ListTenantDuplicateLeadsQueryError = ErrorType<unknown>
+
+
+/**
+ * @summary List leads flagged as possible duplicates
+ */
+
+export function useListTenantDuplicateLeads<TData = Awaited<ReturnType<typeof listTenantDuplicateLeads>>, TError = ErrorType<unknown>>(
+ tenantId: string, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listTenantDuplicateLeads>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getListTenantDuplicateLeadsQueryOptions(tenantId,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+
+
+
+
+
+
+export const getMergeLeadUrl = (id: string,) => {
+
+
+
+
+  return `/api/leads/${id}/merge`
+}
+
+/**
+ * @summary Merge duplicate lead into target lead
+ */
+export const mergeLead = async (id: string,
+    mergeLeadBody: MergeLeadBody, options?: RequestInit): Promise<MergeLead200> => {
+
+  return customFetch<MergeLead200>(getMergeLeadUrl(id),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(
+      mergeLeadBody,)
+  }
+);}
+
+
+
+
+export const getMergeLeadMutationOptions = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof mergeLead>>, TError,{id: string;data: BodyType<MergeLeadBody>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof mergeLead>>, TError,{id: string;data: BodyType<MergeLeadBody>}, TContext> => {
+
+const mutationKey = ['mergeLead'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof mergeLead>>, {id: string;data: BodyType<MergeLeadBody>}> = (props) => {
+          const {id,data} = props ?? {};
+
+          return  mergeLead(id,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type MergeLeadMutationResult = NonNullable<Awaited<ReturnType<typeof mergeLead>>>
+    export type MergeLeadMutationBody = BodyType<MergeLeadBody>
+    export type MergeLeadMutationError = ErrorType<ErrorResponse>
+
+    /**
+ * @summary Merge duplicate lead into target lead
+ */
+export const useMergeLead = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof mergeLead>>, TError,{id: string;data: BodyType<MergeLeadBody>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof mergeLead>>,
+        TError,
+        {id: string;data: BodyType<MergeLeadBody>},
+        TContext
+      > => {
+      return useMutation(getMergeLeadMutationOptions(options));
+    }
+
+export const getDismissDuplicateLeadUrl = (id: string,) => {
+
+
+
+
+  return `/api/leads/${id}/dismiss-duplicate`
+}
+
+/**
+ * @summary Remove duplicate flag from a lead
+ */
+export const dismissDuplicateLead = async (id: string, options?: RequestInit): Promise<DismissDuplicateLead200> => {
+
+  return customFetch<DismissDuplicateLead200>(getDismissDuplicateLeadUrl(id),
+  {
+    ...options,
+    method: 'POST'
+
+
+  }
+);}
+
+
+
+
+export const getDismissDuplicateLeadMutationOptions = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof dismissDuplicateLead>>, TError,{id: string}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof dismissDuplicateLead>>, TError,{id: string}, TContext> => {
+
+const mutationKey = ['dismissDuplicateLead'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof dismissDuplicateLead>>, {id: string}> = (props) => {
+          const {id} = props ?? {};
+
+          return  dismissDuplicateLead(id,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type DismissDuplicateLeadMutationResult = NonNullable<Awaited<ReturnType<typeof dismissDuplicateLead>>>
+
+    export type DismissDuplicateLeadMutationError = ErrorType<ErrorResponse>
+
+    /**
+ * @summary Remove duplicate flag from a lead
+ */
+export const useDismissDuplicateLead = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof dismissDuplicateLead>>, TError,{id: string}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof dismissDuplicateLead>>,
+        TError,
+        {id: string},
+        TContext
+      > => {
+      return useMutation(getDismissDuplicateLeadMutationOptions(options));
     }
 
 export const getGetPublicSiteUrl = (tenantSlug: string,) => {

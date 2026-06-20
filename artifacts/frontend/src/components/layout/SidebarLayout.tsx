@@ -26,6 +26,7 @@ export function SidebarLayout({ children }: { children: React.ReactNode }) {
   const allNavItems = [
     { name: "Dashboard",     href: "/",             icon: LayoutDashboard, sellerHidden: false, section: "crm" },
     { name: "Leads",         href: "/leads",         icon: Users,           sellerHidden: false, section: "crm" },
+    { name: "Duplicatas",    href: "/duplicatas",    icon: Target,          sellerHidden: false, section: "crm" },
     { name: "Negócios",      href: "/deals",         icon: Briefcase,       sellerHidden: false, section: "crm" },
     { name: "Conversas",     href: "/conversations", icon: MessageSquare,   sellerHidden: false, section: "crm" },
     { name: "Agenda",        href: "/agenda",        icon: Calendar,        sellerHidden: false, section: "crm" },
