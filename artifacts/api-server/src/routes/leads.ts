@@ -358,10 +358,33 @@ router.post("/leads/:id/merge", async (req, res) => {
       .set({ leadId: targetLeadId, updatedAt: new Date() })
       .where(and(eq(activitiesTable.tenantId, tenantId), eq(activitiesTable.leadId, duplicateId)));
 
-    await tx
-      .update(customerIntelligenceTable)
-      .set({ leadId: targetLeadId, updatedAt: new Date() })
-      .where(and(eq(customerIntelligenceTable.tenantId, tenantId), eq(customerIntelligenceTable.leadId, duplicateId)));
+    // customerIntelligenceTable.leadId is unique(): one row per lead.
+    // If both leads have rows, we must delete the duplicate row before any
+    // update to avoid a unique-constraint violation.
+    const [targetIntel] = await tx
+      .select({ id: customerIntelligenceTable.id })
+      .from(customerIntelligenceTable)
+      .where(and(eq(customerIntelligenceTable.tenantId, tenantId), eq(customerIntelligenceTable.leadId, targetLeadId)))
+      .limit(1);
+    const [dupIntel] = await tx
+      .select({ id: customerIntelligenceTable.id })
+      .from(customerIntelligenceTable)
+      .where(and(eq(customerIntelligenceTable.tenantId, tenantId), eq(customerIntelligenceTable.leadId, duplicateId)))
+      .limit(1);
+    if (dupIntel) {
+      if (targetIntel) {
+        // Target already has intel — delete duplicate row and keep target.
+        await tx
+          .delete(customerIntelligenceTable)
+          .where(eq(customerIntelligenceTable.id, dupIntel.id));
+      } else {
+        // Target has no intel — reassign duplicate row to target.
+        await tx
+          .update(customerIntelligenceTable)
+          .set({ leadId: targetLeadId, updatedAt: new Date() })
+          .where(eq(customerIntelligenceTable.id, dupIntel.id));
+      }
+    }
 
     await tx
       .update(agentTasksTable)
