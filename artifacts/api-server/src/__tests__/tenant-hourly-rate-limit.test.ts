@@ -156,7 +156,7 @@ describe(
   "POST /api/tenants/:tenantId/leads/:leadId/intelligence/analyze — hourly rate limit fires",
   () => {
     beforeEach(() => {
-      vi.clearAllMocks();
+      vi.resetAllMocks();
       capturedGteArgs.length = 0;
       mockAnalyze.mockResolvedValue({ churnRisk: 42 });
     });
@@ -251,7 +251,7 @@ describe(
   "POST /api/tenants/:tenantId/leads/:leadId/intelligence/analyze — WHERE clause uses rolling 1-hour window",
   () => {
     beforeEach(() => {
-      vi.clearAllMocks();
+      vi.resetAllMocks();
       capturedGteArgs.length = 0;
       mockAnalyze.mockResolvedValue({ churnRisk: 42 });
     });
@@ -330,7 +330,7 @@ describe(
   "POST /api/tenants/:tenantId/leads/:leadId/intelligence/analyze — env-var override reflected in route",
   () => {
     beforeEach(() => {
-      vi.clearAllMocks();
+      vi.resetAllMocks();
       capturedGteArgs.length = 0;
       mockAnalyze.mockResolvedValue({ churnRisk: 42 });
     });

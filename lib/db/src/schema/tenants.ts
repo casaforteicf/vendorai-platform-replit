@@ -1,4 +1,4 @@
-import { pgTable, text, integer, numeric, timestamp, pgEnum, json, check } from "drizzle-orm/pg-core";
+import { pgTable, text, integer, numeric, timestamp, boolean, pgEnum, json, check } from "drizzle-orm/pg-core";
 import { sql } from "drizzle-orm";
 import { createInsertSchema, createSelectSchema } from "drizzle-zod";
 import { z } from "zod/v4";
@@ -47,6 +47,13 @@ export const tenantsTable = pgTable(
     planId: text("plan_id").references(() => plansTable.id, { onDelete: "set null" }),
     billingCycle: text("billing_cycle").$type<"monthly" | "annual">(),
     planStartedAt: timestamp("plan_started_at"),
+    isDemo: boolean("is_demo").notNull().default(false),
+    demoExpiresAt: timestamp("demo_expires_at"),
+    demoSeeded: boolean("demo_seeded").notNull().default(false),
+    openaiApiKeyEncrypted: text("openai_api_key_encrypted"),
+    openaiKeyConfiguredAt: timestamp("openai_key_configured_at"),
+    openaiKeyStatus: text("openai_key_status").default("nao_configurada"),
+    suspendedReason: text("suspended_reason"),
     createdAt: timestamp("created_at").notNull().defaultNow(),
     updatedAt: timestamp("updated_at").notNull().defaultNow(),
   },
