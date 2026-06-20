@@ -598,6 +598,12 @@ router.post("/tenants/:tenantId/webhooks/instagram", async (req, res) => {
       .update(leadsTable)
       .set({ instagramScopedId: igsid, updatedAt: new Date() })
       .where(eq(leadsTable.id, lead.id));
+  } else {
+    // Lead reused by IGSID — bump updatedAt
+    await db
+      .update(leadsTable)
+      .set({ updatedAt: new Date() })
+      .where(eq(leadsTable.id, lead.id));
   }
 
   // ── Find or create Instagram conversation ────────────────────────────────

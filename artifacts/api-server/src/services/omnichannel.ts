@@ -245,11 +245,28 @@ export async function sendOutgoingMessage(
       .values({ tenantId, leadId, channel: canal, status: "open", naoLidas: 0 })
       .onConflictDoNothing({ target: [conversationsTable.tenantId, conversationsTable.leadId, conversationsTable.channel] })
       .returning();
+    // If onConflictDoNothing skipped, fetch the existing conversation
+    const resolvedConversation =
+      conversation ??
+      (await db
+        .select()
+        .from(conversationsTable)
+        .where(
+          and(
+            eq(conversationsTable.tenantId, tenantId),
+            eq(conversationsTable.leadId, leadId),
+            eq(conversationsTable.channel, canal),
+          ),
+        )
+        .limit(1))[0];
+    if (!resolvedConversation) {
+      throw new Error("Failed to resolve conversation for demo message");
+    }
     const [message] = await db
       .insert(messagesTable)
       .values({
         tenantId,
-        conversationId: conversation?.id ?? "",
+        conversationId: resolvedConversation.id,
         leadId,
         conteudo,
         direcao: "saida",
@@ -262,7 +279,7 @@ export async function sendOutgoingMessage(
       .returning();
     return {
       message,
-      conversation: conversation ?? (await db.select().from(conversationsTable).where(and(eq(conversationsTable.tenantId, tenantId), eq(conversationsTable.leadId, leadId), eq(conversationsTable.channel, canal))).limit(1))[0]!,
+      conversation: resolvedConversation,
       telefoneDestino: null,
     };
   }

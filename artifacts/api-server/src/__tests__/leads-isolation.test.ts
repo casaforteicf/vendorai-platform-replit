@@ -9,12 +9,13 @@ import {
   tokenSuperAdmin,
 } from "./helpers/auth.js";
 
-const { mockDbSelect, mockDbUpdate, mockDbDelete, mockDbInsert } = vi.hoisted(
+const { mockDbSelect, mockDbUpdate, mockDbDelete, mockDbInsert, mockDbTransaction } = vi.hoisted(
   () => ({
     mockDbSelect: vi.fn(),
     mockDbUpdate: vi.fn(),
     mockDbDelete: vi.fn(),
     mockDbInsert: vi.fn(),
+    mockDbTransaction: vi.fn(),
   })
 );
 
@@ -24,6 +25,7 @@ vi.mock("@workspace/db", () => ({
     update: mockDbUpdate,
     delete: mockDbDelete,
     insert: mockDbInsert,
+    transaction: mockDbTransaction,
   },
   leadsTable: {
     id: "id",
@@ -31,6 +33,17 @@ vi.mock("@workspace/db", () => ({
     createdAt: "createdAt",
     updatedAt: "updatedAt",
   },
+  conversationsTable: { id: "id", tenantId: "tenantId", leadId: "leadId" },
+  messagesTable: { id: "id", tenantId: "tenantId", leadId: "leadId" },
+  dealsTable: { id: "id", tenantId: "tenantId", leadId: "leadId" },
+  propostasTable: { id: "id", tenantId: "tenantId", leadId: "leadId" },
+  activitiesTable: { id: "id", tenantId: "tenantId", leadId: "leadId" },
+  customerIntelligenceTable: { id: "id", tenantId: "tenantId", leadId: "leadId" },
+  agentTasksTable: { id: "id", tenantId: "tenantId", leadId: "leadId" },
+  agentActionsLogTable: { id: "id", tenantId: "tenantId", leadId: "leadId" },
+  consentsTable: { id: "id", tenantId: "tenantId", leadId: "leadId" },
+  intelligenceAnalysisLogTable: { id: "id", tenantId: "tenantId", leadId: "leadId" },
+  leadBriefingsTable: { id: "id", tenantId: "tenantId", leadId: "leadId" },
   insertLeadSchema: {
     safeParse: () => ({ success: false, error: { message: "not exercised" } }),
   },
