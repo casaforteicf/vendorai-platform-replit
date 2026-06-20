@@ -121,18 +121,27 @@ async function callAI(
     log.info({ provider: "anthropic", model: AI_MODEL }, "Calling Anthropic for site generation");
     const system = messages.find((m) => m.role === "assistant")?.content;
     const userMessages = messages.filter((m) => m.role === "user");
-    const response = await anthropic.messages.create({
+    const stream = await anthropic.messages.create({
       model: "claude-sonnet-4-6",
-      max_tokens: 20000,
+      max_tokens: 64000,
+      stream: true,
       messages: userMessages.map((m) => ({ role: m.role, content: m.content })),
       ...(system ? { system } : {}),
     });
-    const content = response.content
-      .filter((c) => c.type === "text")
-      .map((c) => (c as Anthropic.TextBlock).text)
-      .join("");
-    // Detect truncated response (max_tokens reached before completion)
-    const stopReason = (response as any).stop_reason;
+    const chunks: string[] = [];
+    let stopReason: string | null = null;
+    for await (const event of stream) {
+      if (event.type === "content_block_delta" && event.delta.type === "text_delta") {
+        chunks.push(event.delta.text);
+      }
+      if (event.type === "message_stop") {
+        stopReason = "end_turn";
+      }
+      if (event.type === "message_delta" && event.delta?.stop_reason) {
+        stopReason = event.delta.stop_reason;
+      }
+    }
+    const content = chunks.join("");
     if (stopReason === "max_tokens") {
       const err = new Error(`Anthropic resposta truncada: max_tokens atingido (${content.length} chars gerados). Tente um site mais simples ou aumente o limite.`);
       (err as any).truncated = true;
