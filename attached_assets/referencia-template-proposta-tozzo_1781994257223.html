@@ -1,0 +1,408 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Vendor.ai × Tozzo Alimentos</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --cream:#FAF8F4;
+    --cream-2:#F1ECE2;
+    --ink:#1B1438;
+    --navy-deep:#0B0817;
+    --navy-mid:#1B1438;
+    --indigo:#A78BFA;
+    --indigo-soft:#C4B5FD;
+    --cyan:#22D3EE;
+    --cyan-soft:#38BDF8;
+    --concrete:#C8C2B6;
+    --concrete-line:#DAD4C8;
+    --ok:#3FAE7A;
+    --warn:#E0793C;
+    --display: "Instrument Serif", serif;
+    --body: "Inter", sans-serif;
+    --mono: "JetBrains Mono", monospace;
+  }
+  *{box-sizing:border-box; margin:0; padding:0;}
+  html{scroll-behavior:smooth;}
+  body{background:var(--cream); color:var(--ink); font-family:var(--body); line-height:1.5; -webkit-font-smoothing:antialiased;}
+  ::selection{background:var(--indigo-soft); color:var(--navy-deep);}
+  .grad-text{background:linear-gradient(90deg,var(--indigo),var(--cyan)); -webkit-background-clip:text; background-clip:text; color:transparent;}
+  .logo{display:flex; align-items:center; gap:10px;}
+  .badge{width:34px; height:34px; border-radius:9px; background:linear-gradient(160deg,var(--navy-mid),var(--navy-deep)); display:flex; align-items:center; justify-content:center; flex-shrink:0;}
+  .wordmark{font-family:var(--display); font-size:1.25rem; letter-spacing:0.01em; color:var(--ink);}
+  .wordmark .ai{font-style:italic;}
+  .nav{position:sticky; top:0; z-index:50; display:flex; align-items:center; justify-content:space-between; padding:16px 6vw; background:rgba(250,248,244,0.86); backdrop-filter:blur(10px); border-bottom:1px solid var(--concrete-line);}
+  .nav-tag{font-family:var(--mono); font-size:0.7rem; letter-spacing:0.08em; color:var(--ink); opacity:0.55; text-transform:uppercase; display:none;}
+  @media(min-width:640px){.nav-tag{display:block;}}
+  .btn{font-family:var(--body); font-weight:600; font-size:0.85rem; padding:10px 18px; border-radius:100px; border:none; cursor:pointer; text-decoration:none; display:inline-block;}
+  .btn-primary{background:linear-gradient(90deg,var(--indigo),var(--cyan)); color:var(--navy-deep);}
+  .btn-ghost{background:transparent; color:var(--ink); border:1px solid var(--ink);}
+  section{padding:96px 6vw;}
+  .container{max-width:1080px; margin:0 auto;}
+  .cod{font-family:var(--mono); font-size:0.72rem; letter-spacing:0.06em; text-transform:uppercase; color:var(--navy-mid); background:var(--cream-2); border:1px solid var(--concrete-line); padding:5px 11px; border-radius:5px; display:inline-block;}
+  .eyebrow-row{display:flex; align-items:center; gap:12px; margin-bottom:22px;}
+  .eyebrow-line{flex:1; height:1px; background:var(--concrete-line); display:none;}
+  @media(min-width:760px){.eyebrow-line{display:block;}}
+  h1,h2,h3{font-family:var(--display); font-weight:400; line-height:1.08;}
+  h2{font-size:clamp(1.9rem,4vw,3rem); max-width:18ch;}
+  p.lead{font-size:1.05rem; color:#3a3358; max-width:62ch;}
+  .reveal{opacity:0; transform:translateY(18px); transition:opacity .7s ease, transform .7s ease;}
+  .reveal.in{opacity:1; transform:translateY(0);}
+  @media(prefers-reduced-motion:reduce){.reveal{opacity:1; transform:none; transition:none;}}
+  .hero{padding-top:90px; padding-bottom:80px; background:radial-gradient(620px 320px at 86% 6%, rgba(167,139,250,0.16), transparent 70%), var(--cream);}
+  .hero .container{display:grid; gap:18px;}
+  .hero-tag{font-family:var(--mono); font-size:0.78rem; color:var(--navy-mid); opacity:.7; letter-spacing:.06em;}
+  .hero h1{font-size:clamp(2.4rem,6vw,4.4rem); max-width:15ch; margin:6px 0 18px;}
+  .hero p.lead{font-size:1.18rem; margin-bottom:30px;}
+  .hero-ctas{display:flex; flex-wrap:wrap; gap:14px; margin-bottom:54px;}
+  .for-tag{font-family:var(--mono); font-size:0.75rem; color:#6b6485; border-left:2px solid var(--indigo); padding-left:10px;}
+  .fact-row{display:grid; gap:14px; grid-template-columns:1fr; margin-top:36px;}
+  @media(min-width:640px){.fact-row{grid-template-columns:repeat(2,1fr);}}
+  @media(min-width:980px){.fact-row{grid-template-columns:repeat(4,1fr);}}
+  .fact{background:#fff; border:1px solid var(--concrete-line); border-radius:12px; padding:20px;}
+  .fact .num{font-family:var(--display); font-size:1.9rem; display:block;}
+  .fact .flabel{font-family:var(--mono); font-size:0.7rem; color:#6b6485; text-transform:uppercase; margin-top:6px; display:block; line-height:1.4;}
+  .situation-bridge{margin-top:34px; font-size:0.95rem; color:#4a4368; max-width:60ch; border-left:2px solid var(--indigo); padding-left:14px;}
+  .cascade{display:flex; flex-direction:column; gap:0; margin-top:40px; max-width:680px;}
+  .cascade-step{display:flex; gap:18px; align-items:flex-start; padding:20px 0; border-bottom:1px solid rgba(255,255,255,0.14);}
+  .cascade-step:last-child{border-bottom:none;}
+  .cascade-step .snum{font-family:var(--mono); font-size:0.8rem; color:var(--cyan); flex-shrink:0; width:30px; padding-top:3px;}
+  .cascade-step p{font-size:0.96rem; color:#e6e2f5;}
+  .cascade-step strong{color:#fff;}
+  .cascade-close{margin-top:30px; font-family:var(--display); font-style:italic; font-size:1.3rem; color:#fff; max-width:30ch;}
+  .need-q{font-family:var(--display); font-style:italic; font-size:1.25rem; line-height:1.3; max-width:36ch; padding-left:18px; margin-bottom:26px; border-left:3px solid var(--indigo);}
+  .need-close{font-size:1rem; color:#3a3358; margin-top:8px;}
+  .grid-cards{display:grid; gap:16px; grid-template-columns:1fr; margin-top:36px;}
+  @media(min-width:760px){.grid-cards{grid-template-columns:1fr 1fr;}}
+  .pcard{background:#fff; border:1px solid var(--concrete-line); border-radius:14px; padding:24px; position:relative; overflow:hidden;}
+  .pcard::before{content:''; position:absolute; left:0; top:0; bottom:0; width:3px; background:linear-gradient(180deg,var(--indigo),var(--cyan));}
+  .pcard h4{font-family:var(--body); font-weight:700; font-size:1rem; margin-bottom:8px;}
+  .pcard p{font-size:0.92rem; color:#4a4368;}
+  .pcard .cod{margin-bottom:10px; font-size:0.65rem;}
+  .agitate{background:linear-gradient(160deg,var(--navy-mid),var(--navy-deep)); color:var(--cream);}
+  .agitate .cod{background:rgba(255,255,255,0.08); border-color:rgba(255,255,255,0.18); color:var(--cream);}
+  .agitate h2{color:#fff;}
+  .agitate p.lead{color:#cfc9e6;}
+  .agents{display:grid; gap:14px; margin-top:38px; grid-template-columns:1fr;}
+  @media(min-width:680px){.agents{grid-template-columns:repeat(3,1fr);}}
+  .agent{background:#fff; border:1px solid var(--concrete-line); border-radius:14px; padding:22px;}
+  .agent .tag{font-family:var(--mono); font-size:0.68rem; letter-spacing:.05em; text-transform:uppercase; color:#fff; background:linear-gradient(90deg,var(--indigo),var(--cyan)); padding:4px 9px; border-radius:5px; display:inline-block; margin-bottom:12px;}
+  .agent h4{font-size:1.02rem; font-weight:700; margin-bottom:6px;}
+  .agent p{font-size:0.88rem; color:#4a4368;}
+  .ticket-wrap{display:flex; justify-content:center; margin:60px 0 10px;}
+  .ticket{position:relative; width:100%; max-width:430px; background:#fff; border:1px solid var(--concrete-line); border-radius:4px; padding:26px 24px 22px; box-shadow:0 30px 60px -28px rgba(27,20,56,0.35);}
+  .ticket::before,.ticket::after{content:''; position:absolute; top:-11px; width:22px; height:22px; border-radius:50%; background:var(--cream); border:1px solid var(--concrete-line); border-top:none;}
+  .ticket::before{left:-11px;}
+  .ticket::after{right:-11px;}
+  .ticket-perf{border-top:1px dashed var(--concrete-line); margin:16px 0;}
+  .ticket-head{display:flex; justify-content:space-between; align-items:baseline; margin-bottom:4px;}
+  .ticket-head .t{font-family:var(--mono); font-size:0.7rem; letter-spacing:.06em; text-transform:uppercase; color:#6b6485;}
+  .ticket-head .n{font-family:var(--mono); font-size:0.7rem; color:#6b6485;}
+  .ticket-store{font-family:var(--body); font-weight:800; font-size:0.95rem; margin-bottom:18px;}
+  .bubble{border-radius:10px; padding:10px 13px; font-size:0.85rem; margin-bottom:10px; max-width:88%;}
+  .bubble.client{background:var(--cream-2); color:var(--ink); margin-right:auto;}
+  .bubble.agent{background:linear-gradient(90deg,rgba(167,139,250,0.14),rgba(34,211,238,0.14)); color:var(--ink); margin-left:auto; border:1px solid var(--indigo-soft);}
+  .bubble .who{font-family:var(--mono); font-size:0.62rem; opacity:.6; display:block; margin-bottom:3px; text-transform:uppercase;}
+  .ticket-foot{display:flex; justify-content:space-between; align-items:center; font-family:var(--mono); font-size:0.75rem; color:#4a4368;}
+  .ticket-foot .time{color:var(--ok); font-weight:600;}
+  .modules{background:var(--cream-2);}
+  .mod-grid{display:grid; gap:14px; grid-template-columns:1fr; margin-top:36px;}
+  @media(min-width:640px){.mod-grid{grid-template-columns:1fr 1fr;}}
+  @media(min-width:980px){.mod-grid{grid-template-columns:1fr 1fr 1fr;}}
+  .mod{background:var(--cream); border:1px solid var(--concrete-line); border-radius:12px; padding:20px;}
+  .mod .cod{font-size:0.62rem; margin-bottom:10px;}
+  .mod h4{font-size:0.95rem; font-weight:700; margin-bottom:6px;}
+  .mod p{font-size:0.85rem; color:#4a4368;}
+  .cta-final{background:linear-gradient(160deg,var(--navy-mid),var(--navy-deep)); color:#fff; text-align:left;}
+  .cta-final h2{color:#fff; max-width:16ch;}
+  .cta-final p.lead{color:#cfc9e6;}
+  .cta-final .hero-ctas{margin-top:28px;}
+  .cta-final .btn-ghost{border-color:rgba(255,255,255,0.4); color:#fff;}
+  footer{padding:30px 6vw; font-family:var(--mono); font-size:0.72rem; color:#8b84a8; background:var(--navy-deep); display:flex; justify-content:space-between; flex-wrap:wrap; gap:10px;}
+</style>
+</head>
+<body>
+
+<header class="nav">
+  <div class="logo">
+    <div class="badge" aria-hidden="true">
+      <svg width="20" height="20" viewBox="0 0 20 20">
+        <defs><linearGradient id="g1" x1="0" y1="0" x2="20" y2="20"><stop offset="0%" stop-color="#C4B5FD"/><stop offset="100%" stop-color="#38BDF8"/></linearGradient></defs>
+        <circle cx="10" cy="10" r="3.1" fill="url(#g1)"/>
+        <circle cx="3" cy="4" r="1.5" fill="url(#g1)" opacity="0.85"/>
+        <circle cx="17" cy="4" r="1.5" fill="url(#g1)" opacity="0.85"/>
+        <circle cx="3" cy="16" r="1.5" fill="url(#g1)" opacity="0.85"/>
+        <circle cx="17" cy="16" r="1.5" fill="url(#g1)" opacity="0.85"/>
+        <g stroke="url(#g1)" stroke-width="0.8" opacity="0.7">
+          <line x1="3" y1="4" x2="10" y2="10"/><line x1="17" y1="4" x2="10" y2="10"/>
+          <line x1="3" y1="16" x2="10" y2="10"/><line x1="17" y1="16" x2="10" y2="10"/>
+        </g>
+      </svg>
+    </div>
+    <div class="wordmark">Vendor<span class="ai grad-text">.ai</span></div>
+  </div>
+  <div class="nav-tag">Proposta — Tozzo Alimentos</div>
+  <a class="btn btn-primary" href="https://wa.me/554931913565" target="_blank" rel="noopener">Falar com a gente</a>
+</header>
+
+<main>
+
+  <section class="hero">
+    <div class="container">
+      <div class="hero-tag">Sistema Operacional Empresarial com IA — distribuição atacadista de alimentos, bebidas e mercearia</div>
+      <h1 class="reveal">Quatro canais de pedido. Um cliente só.<br>A pergunta é: eles se conhecem?</h1>
+      <p class="lead reveal">O Vendor.ai conecta Tele-Vendas, WhatsApp, portal e representante comercial num único histórico — pra cada cliente ser reconhecido, não importa por onde ele chega.</p>
+      <div class="hero-ctas">
+        <a class="btn btn-primary" href="#solucao">Ver como funciona</a>
+        <a class="btn btn-ghost" href="https://wa.me/554931913565" target="_blank" rel="noopener">Falar com a Vendor.ai</a>
+      </div>
+      <div class="for-tag">Preparado para a Tozzo Alimentos — atacado e distribuição do Grupo Tozzo, Chapecó-SC</div>
+    </div>
+  </section>
+
+  <section id="situacao">
+    <div class="container">
+      <div class="eyebrow-row"><span class="cod">Cód. 01 — A situação</span><div class="eyebrow-line"></div></div>
+      <h2 class="reveal">Antes de propor qualquer coisa, olhamos pra como a Tozzo Alimentos atende hoje.</h2>
+      <p class="lead reveal">Uma distribuidora desse porte já investiu em vários canais de venda — e qualquer solução de atendimento precisa somar a isso, não competir com isso.</p>
+      <div class="fact-row">
+        
+        <div class="fact reveal">
+          <span class="num">1990</span>
+          <span class="flabel">Ano de fundação — 35 anos como uma das maiores distribuidoras do Sul do Brasil</span>
+        </div>
+        
+        <div class="fact reveal">
+          <span class="num">86 mil m²</span>
+          <span class="flabel">Centro de distribuição, com 23 mil posições-palete</span>
+        </div>
+        
+        <div class="fact reveal">
+          <span class="num">4 canais</span>
+          <span class="flabel">Tele-Vendas, dois números de WhatsApp, portal web e representantes comerciais — já em uso</span>
+        </div>
+        
+        <div class="fact reveal">
+          <span class="num">3 milhões kg/mês</span>
+          <span class="flabel">Volume de produtos movimentados, entre Chapecó e a filial em Nonoai (RS)</span>
+        </div>
+        
+      </div>
+      <p class="situation-bridge reveal">Com volume desse porte espalhado entre telefone, WhatsApp, portal web e representantes, surgem perguntas que toda distribuidora com múltiplos canais enfrenta, mesmo sem perceber todo dia:</p>
+    </div>
+  </section>
+
+  <section id="problema">
+    <div class="container">
+      <div class="eyebrow-row"><span class="cod">Cód. 02 — O problema</span><div class="eyebrow-line"></div></div>
+      <h2 class="reveal">Quatro canais de pedido. Nenhum conversando com o outro.</h2>
+      <p class="lead reveal">Quem distribui pra mercado, padaria e revenda sabe: ter Tele-Vendas, WhatsApp e portal web é o começo. O problema aparece quando cada canal responde diferente, e ninguém sabe o que já foi combinado no outro.</p>
+      <div class="grid-cards">
+        
+        <div class="pcard reveal">
+          <span class="cod">Cód. P-01</span>
+          <h4>Cliente muda de canal e a conversa recomeça do zero</h4>
+          <p>Quem liga pro Tele-Vendas e depois manda WhatsApp não é reconhecido como o mesmo cliente — o atendimento começa de novo.</p>
+        </div>
+        
+        <div class="pcard reveal">
+          <span class="cod">Cód. P-02</span>
+          <h4>Dois números de WhatsApp, sem padrão único de resposta</h4>
+          <p>Sem um sistema central, cada canal pode responder preço ou prazo de um jeito diferente pro mesmo produto.</p>
+        </div>
+        
+        <div class="pcard reveal">
+          <span class="cod">Cód. P-03</span>
+          <h4>Representante sem visibilidade do que já foi pedido por outro canal</h4>
+          <p>O cliente pode ter fechado pelo portal ou Tele-Vendas, e o representante não saber — gerando pedido duplicado ou contato desnecessário.</p>
+        </div>
+        
+        <div class="pcard reveal">
+          <span class="cod">Cód. P-04</span>
+          <h4>Fora do horário comercial, só sobra o portal — sem orientação</h4>
+          <p>Tele-Vendas e WhatsApp atendidos por pessoas têm hora pra parar; quem aparece fora desse horário fica sem resposta até o próximo expediente.</p>
+        </div>
+        
+      </div>
+    </div>
+  </section>
+
+  <section class="agitate" id="custo">
+    <div class="container">
+      <div class="eyebrow-row"><span class="cod">Cód. 03 — A implicação</span><div class="eyebrow-line"></div></div>
+      <h2 class="reveal">Um canal que não reconhece o cliente não é só um detalhe. É o primeiro elo de uma corrente.</h2>
+      <p class="lead reveal">Numa distribuidora com múltiplos canais ativos, o atrito de não estar tudo conectado não fica isolado — ele se acumula.</p>
+      <div class="cascade">
+        
+        <div class="cascade-step reveal">
+          <span class="snum">01</span>
+          <p>Um cliente que muda de canal sem ser reconhecido <strong>recomeça a conversa do zero</strong>, perdendo o histórico já negociado.</p>
+        </div>
+        
+        <div class="cascade-step reveal">
+          <span class="snum">02</span>
+          <p>Sem padrão único entre os canais, respostas diferentes pro mesmo produto <strong>minam a confiança</strong> de quem compra toda semana.</p>
+        </div>
+        
+        <div class="cascade-step reveal">
+          <span class="snum">03</span>
+          <p>Mercado e padaria que sentem esse atrito <strong>migram pra quem responde igual</strong>, em qualquer canal que usem.</p>
+        </div>
+        
+        <div class="cascade-step reveal">
+          <span class="snum">04</span>
+          <p>Espalhado pelos quatro canais e pelo volume de 3 milhões de kg/mês, isso vira <strong>um padrão de atrito que custa receita toda semana</strong> — sem aparecer em nenhum relatório.</p>
+        </div>
+        
+      </div>
+      <p class="cascade-close reveal">É o tipo de prejuízo que não dói de uma vez. Ele dói toda semana, em silêncio.</p>
+    </div>
+  </section>
+
+  <section id="valor">
+    <div class="container">
+      <div class="eyebrow-row"><span class="cod">Cód. 04 — O que isso valeria</span><div class="eyebrow-line"></div></div>
+      <h2 class="reveal">E se todos os canais falassem a mesma língua?</h2>
+      
+      <blockquote class="need-q reveal">"Se Tele-Vendas, WhatsApp, portal e representante enxergassem o mesmo histórico de cada cliente — quanto atrito desapareceria do dia a dia?"</blockquote>
+      
+      <blockquote class="need-q reveal">"Se cada canal respondesse com o mesmo preço e prazo, sempre — quanto isso fortaleceria a confiança de quem compra toda semana?"</blockquote>
+      
+      <blockquote class="need-q reveal">"Se o atendimento fosse unificado e disponível 24h, mesmo fora do expediente — o que isso significaria pro volume mensal que a Tozzo já movimenta?"</blockquote>
+      
+      <p class="need-close reveal">Não precisa imaginar. É exatamente isso que o Vendor.ai faz.</p>
+    </div>
+  </section>
+
+  <section id="solucao">
+    <div class="container">
+      <div class="eyebrow-row"><span class="cod">Cód. 05 — A solução</span><div class="eyebrow-line"></div></div>
+      <h2 class="reveal">Um agente de IA que une Tele-Vendas, WhatsApp, portal e representante numa única conversa.</h2>
+      <p class="lead reveal">O Vendor.ai não substitui os canais que a Tozzo já construiu — ele os conecta. Um único histórico de cliente, acessível em qualquer canal, com o mesmo padrão de resposta sempre.</p>
+
+      <div class="agents">
+        <div class="agent reveal">
+          <span class="tag">SDR</span>
+          <h4>Atende e qualifica</h4>
+          <p>Recebe a mensagem, entende o que o cliente precisa e já consulta o catálogo em tempo real.</p>
+        </div>
+        <div class="agent reveal">
+          <span class="tag">Closer</span>
+          <h4>Monta o orçamento e fecha</h4>
+          <p>Gera orçamento com preço e estoque corretos, e conduz até o fechamento.</p>
+        </div>
+        <div class="agent reveal">
+          <span class="tag">Followup</span>
+          <h4>Retoma quem esfriou</h4>
+          <p>Volta a falar com quem não respondeu, no momento certo — sem parecer insistente.</p>
+        </div>
+      </div>
+
+      <div class="ticket-wrap">
+        <div class="ticket reveal">
+          <div class="ticket-head">
+            <span class="t">Nota de Atendimento</span>
+            <span class="n">Cód. PED-08145</span>
+          </div>
+          <div class="ticket-store">Tozzo Alimentos — WhatsApp</div>
+          <div class="bubble client">
+            <span class="who">Cliente · 09:14</span>
+            Bom dia! Liguei ontem pro Tele-Vendas e cotei 20 fardos de arroz, mas não fechei. Ainda dá pra confirmar?
+          </div>
+          <div class="bubble agent">
+            <span class="who">Vendor SDR · 09:14</span>
+            Bom dia! Encontrei aqui: 20 fardos de Arroz Tozzo 5kg, R$ 1.340,00, cotado ontem às 14h32 pelo Tele-Vendas. Posso confirmar nesse valor e já programar a entrega na sua rota de sempre?
+          </div>
+          <div class="ticket-perf"></div>
+          <div class="ticket-foot">
+            <span>Tempo de 1ª resposta</span>
+            <span class="time">5 segundos</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="modules" id="modulos">
+    <div class="container">
+      <div class="eyebrow-row"><span class="cod">Cód. 06 — Como conecta com Tozzo Alimentos</span><div class="eyebrow-line"></div></div>
+      <h2 class="reveal">Os canais já existem. A gente os conecta entre si.</h2>
+      <p class="lead reveal">Distribuidoras com múltiplos canais de venda já ativos costumam ter o trabalho mais rápido — unificamos o que já existe, em dias, não meses.</p>
+      <div class="mod-grid">
+        
+        <div class="mod reveal">
+          <span class="cod">Omnichannel</span>
+          <h4>Tele-Vendas, WhatsApp e portal num só histórico</h4>
+          <p>Cliente que muda de canal continua a mesma conversa, sem repetir informação nem perder o que já foi negociado.</p>
+        </div>
+        
+        <div class="mod reveal">
+          <span class="cod">CRM Hub</span>
+          <h4>Histórico único por cliente</h4>
+          <p>Representante, Tele-Vendas e WhatsApp enxergam o mesmo cadastro — sem pedido duplicado ou contato desnecessário.</p>
+        </div>
+        
+        <div class="mod reveal">
+          <span class="cod">Sales / CPQ</span>
+          <h4>Preço e condição padronizados</h4>
+          <p>A mesma cotação, em qualquer canal, sem depender de quem atendeu naquele dia.</p>
+        </div>
+        
+        <div class="mod reveal">
+          <span class="cod">Customer Intelligence</span>
+          <h4>Score de cliente recorrente</h4>
+          <p>Reconhece quem compra toda semana, independente de qual canal ele usou da última vez.</p>
+        </div>
+        
+        <div class="mod reveal">
+          <span class="cod">Executive Intelligence</span>
+          <h4>Painel cruzando todos os canais</h4>
+          <p>Volume, taxa de fechamento e ticket médio comparados entre Tele-Vendas, WhatsApp, portal e representantes.</p>
+        </div>
+        
+        <div class="mod reveal">
+          <span class="cod">Knowledge Hub</span>
+          <h4>Disponibilidade sempre atualizada</h4>
+          <p>Qualquer canal consulta o mesmo estoque em tempo real — sem promessa que outro canal não consiga cumprir.</p>
+        </div>
+        
+      </div>
+    </div>
+  </section>
+
+  <section class="cta-final" id="contato">
+    <div class="container">
+      <div class="eyebrow-row"><span class="cod">Cód. 07 — Próximo passo</span><div class="eyebrow-line"></div></div>
+      <h2 class="reveal">Vamos mostrar como fica, unindo os canais reais da Tozzo Alimentos.</h2>
+      <p class="lead reveal">Uma conversa de 20 minutos pra ver o agente conectando Tele-Vendas, WhatsApp e portal num único atendimento — antes de qualquer decisão.</p>
+      <div class="hero-ctas">
+        <a class="btn btn-primary" href="https://wa.me/554931913565" target="_blank" rel="noopener">Falar no WhatsApp</a>
+      </div>
+    </div>
+  </section>
+
+</main>
+
+<footer>
+  <span>Vendor.ai — Sistema Operacional Empresarial com IA</span>
+  <span>Proposta preparada para Tozzo Alimentos</span>
+</footer>
+
+<script>
+  const els = document.querySelectorAll('.reveal');
+  if ('IntersectionObserver' in window) {
+    const io = new IntersectionObserver((entries) => {
+      entries.forEach(e => { if (e.isIntersecting) { e.target.classList.add('in'); io.unobserve(e.target); } });
+    }, { threshold: 0.12 });
+    els.forEach(el => io.observe(el));
+  } else {
+    els.forEach(el => el.classList.add('in'));
+  }
+</script>
+
+</body>
+</html>

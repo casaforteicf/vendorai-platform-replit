@@ -52,6 +52,15 @@ export async function findLeadByDedup(
       .where(and(eq(leadsTable.tenantId, tenantId), eq(leadsTable.telefone, phone)))
       .limit(1);
     if (lead) return { found: true, lead, matchBy: "telefone" };
+
+    // Fallback: try prefix match (legacy stored numbers may have missing DDI)
+    const suffix = phone.startsWith("55") ? phone.slice(2) : phone;
+    const [leadLegacy] = await db
+      .select()
+      .from(leadsTable)
+      .where(and(eq(leadsTable.tenantId, tenantId), eq(leadsTable.telefone, suffix)))
+      .limit(1);
+    if (leadLegacy) return { found: true, lead: leadLegacy, matchBy: "telefone" };
   }
 
   // 2. Match by normalized document

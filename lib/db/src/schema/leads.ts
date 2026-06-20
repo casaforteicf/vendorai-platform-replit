@@ -62,6 +62,8 @@ export const updateLeadSchema = createSelectSchema(leadsTable)
     tenantId: true,
     createdAt: true,
     updatedAt: true,
+    leadSimilarId: true,
+    possivelDuplicata: true,
   })
   .partial();
 

@@ -262,7 +262,7 @@ router.get("/tenants/:tenantId/leads/duplicates", async (req, res) => {
       const [similar] = await db
         .select()
         .from(leadsTable)
-        .where(eq(leadsTable.id, lead.leadSimilarId))
+        .where(and(eq(leadsTable.id, lead.leadSimilarId), eq(leadsTable.tenantId, tenantId)))
         .limit(1);
       return { lead, similar: similar ?? null };
     })

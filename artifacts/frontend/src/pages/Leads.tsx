@@ -11,6 +11,7 @@ import {
   getListPropostasQueryKey,
   useListTenantBriefings,
   getListTenantBriefingsQueryKey,
+  Lead,
 } from "@workspace/api-client-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -204,6 +205,7 @@ export default function Leads() {
   const { toast } = useToast();
   const [, setLocation] = useLocation();
   const [isDialogOpen, setIsDialogOpen] = useState(false);
+  const [duplicateDialog, setDuplicateDialog] = useState<{ open: boolean; lead: Lead | null; matchBy: string }>({ open: false, lead: null, matchBy: "" });
   const urlParams = new URLSearchParams(window.location.search);
   const urlFiltro = urlParams.get("filtro");
   const isChurnUrl = urlFiltro === "churn";
@@ -352,8 +354,16 @@ export default function Leads() {
           setIsDialogOpen(false);
           form.reset();
         },
-        onError: () => {
-          toast({ title: "Erro ao criar lead", variant: "destructive" });
+        onError: (err: any) => {
+          if (err?.status === 409 && err?.body?.isDuplicate) {
+            setDuplicateDialog({
+              open: true,
+              lead: err.body.lead ?? null,
+              matchBy: err.body.matchBy ?? "",
+            });
+            return;
+          }
+          toast({ title: err?.body?.error ?? "Erro ao criar lead", variant: "destructive" });
         },
       }
     );
@@ -813,6 +823,51 @@ export default function Leads() {
           </div>
         </CardContent>
       </Card>
+
+      {/* Duplicate merge dialog */}
+      <Dialog open={duplicateDialog.open} onOpenChange={(v) => !v && setDuplicateDialog({ open: false, lead: null, matchBy: "" })}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-amber-600">
+              <AlertTriangle className="h-5 w-5" />
+              Lead duplicado detectado
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 pt-1">
+            <p className="text-sm text-muted-foreground">
+              Já existe um lead com o mesmo {duplicateDialog.matchBy === "telefone" ? "telefone" : "dado"}.
+            </p>
+            {duplicateDialog.lead && (
+              <div className="bg-muted/50 rounded-lg p-3 space-y-1 text-sm">
+                <p className="font-medium">{duplicateDialog.lead.nome}</p>
+                {duplicateDialog.lead.telefone && (
+                  <p className="text-muted-foreground">{duplicateDialog.lead.telefone}</p>
+                )}
+                {duplicateDialog.lead.email && (
+                  <p className="text-muted-foreground">{duplicateDialog.lead.email}</p>
+                )}
+              </div>
+            )}
+            <div className="flex gap-2 justify-end pt-1">
+              <Button type="button" variant="outline" size="sm" onClick={() => setDuplicateDialog({ open: false, lead: null, matchBy: "" })}>
+                Cancelar
+              </Button>
+              <Button
+                type="button"
+                size="sm"
+                onClick={() => {
+                  if (duplicateDialog.lead) {
+                    setLocation(`/leads/${duplicateDialog.lead.id}`);
+                  }
+                  setDuplicateDialog({ open: false, lead: null, matchBy: "" });
+                }}
+              >
+                Ver lead existente
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
