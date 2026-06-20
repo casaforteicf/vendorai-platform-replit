@@ -13,6 +13,15 @@ export const platformRoleEnum = pgEnum("platform_role", [
   "member",
 ]);
 
+export const userFunctionEnum = pgEnum("user_function", [
+  "vendedor",
+  "financeiro",
+  "suporte",
+  "entrega",
+  "administrador",
+  "outro",
+]);
+
 export const usersTable = pgTable("users", {
   id: text("id")
     .primaryKey()
@@ -25,6 +34,8 @@ export const usersTable = pgTable("users", {
   password: text("password").notNull(),
   role: userRoleEnum("role").notNull().default("member"),
   platformRole: platformRoleEnum("platform_role").notNull().default("member"),
+  userFunction: userFunctionEnum("user_function").default("outro"),
+  telefone: text("telefone"),
   active: boolean("active").notNull().default(true),
   createdAt: timestamp("created_at").notNull().defaultNow(),
   updatedAt: timestamp("updated_at").notNull().defaultNow(),

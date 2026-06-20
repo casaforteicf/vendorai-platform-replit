@@ -1,3 +1,5 @@
+type UserFunction = "vendedor" | "financeiro" | "suporte" | "entrega" | "administrador" | "outro";
+
 import { Link, useLocation } from "wouter";
 import { useAuth } from "@/contexts/AuthContext";
 import React, { useState } from "react";
@@ -18,48 +20,57 @@ export function SidebarLayout({ children }: { children: React.ReactNode }) {
   const [mobileOpen, setMobileOpen] = useState(false);
 
   const isSuperAdmin = user?.platformRole === "super_admin";
+  const isTenantAdmin = user?.platformRole === "tenant_admin";
   const isSeller = user?.platformRole === "tenant_seller";
+  const userFunction = user?.userFunction as UserFunction | undefined;
   const isConstrucao = user?.tenantVertical === "Construção & Reforma";
   const isVarejo = user?.tenantVertical === "Varejo de Roupas & Acessórios";
   const isSupermercado = user?.tenantVertical === "Supermercado";
 
   const allNavItems = [
-    { name: "Dashboard",     href: "/",             icon: LayoutDashboard, sellerHidden: false, section: "crm" },
-    { name: "Leads",         href: "/leads",         icon: Users,           sellerHidden: false, section: "crm" },
-    { name: "Duplicatas",    href: "/duplicatas",    icon: Target,          sellerHidden: false, section: "crm" },
-    { name: "Negócios",      href: "/deals",         icon: Briefcase,       sellerHidden: false, section: "crm" },
-    { name: "Conversas",     href: "/conversations", icon: MessageSquare,   sellerHidden: false, section: "crm" },
-    { name: "Agenda",        href: "/agenda",        icon: Calendar,        sellerHidden: false, section: "crm" },
-    { name: "Orçamentos",    href: "/propostas",     icon: FileText,        sellerHidden: false, section: "crm" },
-    { name: "Estoque",       href: "/estoque",       icon: Package,         sellerHidden: false, section: "crm" },
-    { name: "Conteúdo",      href: "/content",       icon: Sparkles,        sellerHidden: false, section: "crm" },
-    { name: "Campanhas",     href: "/campanhas",     icon: Megaphone,       sellerHidden: true,  section: "crm" },
-    { name: "Faturamento",   href: "/faturamento",   icon: Receipt,         sellerHidden: true,  section: "crm" },
-    { name: "Métricas de IA",href: "/analytics",     icon: BarChart3,     sellerHidden: true,  section: "crm" },
-    { name: "Configurações", href: "/configuracoes", icon: Settings,        sellerHidden: false, section: "crm" },
-    { name: "Guia de Setup", href: "/guia-implantacao", icon: BookOpen,     sellerHidden: true,  section: "crm" },
-    { name: "Obras",         href: "/obras",                    icon: HardHat,     sellerHidden: false, section: "construcao" },
-    { name: "Insumos",       href: "/insumos",                  icon: Package,     sellerHidden: false, section: "construcao" },
-    { name: "Composições",   href: "/composicoes",              icon: Layers,      sellerHidden: false, section: "construcao" },
-    { name: "Produtos",      href: "/varejo/produtos",          icon: Shirt,       sellerHidden: false, section: "varejo" },
-    { name: "Coleções",      href: "/varejo/colecoes",          icon: Tag,         sellerHidden: false, section: "varejo" },
-    { name: "Fornecedores",  href: "/varejo/fornecedores",      icon: Truck,       sellerHidden: false, section: "varejo" },
-    { name: "Compras",       href: "/varejo/compras",           icon: ShoppingCart,sellerHidden: false, section: "varejo" },
-    { name: "Fidelidade",    href: "/varejo/fidelidade",        icon: Heart,       sellerHidden: false, section: "varejo" },
-    { name: "Combos & Looks",href: "/varejo/combos",            icon: Gift,        sellerHidden: false, section: "varejo" },
-    { name: "Dashboard",     href: "/supermercado",             icon: ShoppingCart,sellerHidden: false, section: "supermercado" },
-    { name: "Produtos",      href: "/supermercado/produtos",    icon: Package,     sellerHidden: false, section: "supermercado" },
-    { name: "Pedidos",       href: "/supermercado/pedidos",     icon: UtensilsCrossed, sellerHidden: false, section: "supermercado" },
-    { name: "Campanhas",     href: "/supermercado/campanhas",   icon: MegaphoneIcon, sellerHidden: false, section: "supermercado" },
-    { name: "Configurações", href: "/supermercado/config",      icon: Settings,    sellerHidden: false, section: "supermercado" },
+    { name: "Dashboard",     href: "/",             icon: LayoutDashboard, sellerHidden: false, section: "crm", fn: ["vendedor", "financeiro", "suporte", "entrega", "administrador", "outro"] as UserFunction[] },
+    { name: "Leads",         href: "/leads",         icon: Users,           sellerHidden: false, section: "crm", fn: ["vendedor", "suporte", "administrador", "outro"] as UserFunction[] },
+    { name: "Duplicatas",    href: "/duplicatas",    icon: Target,          sellerHidden: false, section: "crm", fn: ["vendedor", "administrador", "outro"] as UserFunction[] },
+    { name: "Negócios",      href: "/deals",         icon: Briefcase,       sellerHidden: false, section: "crm", fn: ["vendedor", "entrega", "administrador", "outro"] as UserFunction[] },
+    { name: "Conversas",     href: "/conversations", icon: MessageSquare,   sellerHidden: false, section: "crm", fn: ["vendedor", "suporte", "administrador", "outro"] as UserFunction[] },
+    { name: "Agenda",        href: "/agenda",        icon: Calendar,        sellerHidden: false, section: "crm", fn: ["vendedor", "suporte", "administrador", "outro"] as UserFunction[] },
+    { name: "Orçamentos",    href: "/propostas",     icon: FileText,        sellerHidden: false, section: "crm", fn: ["vendedor", "financeiro", "entrega", "administrador", "outro"] as UserFunction[] },
+    { name: "Estoque",       href: "/estoque",       icon: Package,         sellerHidden: false, section: "crm", fn: ["vendedor", "financeiro", "administrador", "outro"] as UserFunction[] },
+    { name: "Conteúdo",      href: "/content",       icon: Sparkles,        sellerHidden: false, section: "crm", fn: ["administrador", "outro"] as UserFunction[] },
+    { name: "Campanhas",     href: "/campanhas",     icon: Megaphone,       sellerHidden: true,  section: "crm", fn: ["administrador", "outro"] as UserFunction[] },
+    { name: "Faturamento",   href: "/faturamento",   icon: Receipt,         sellerHidden: true,  section: "crm", fn: ["financeiro", "administrador", "outro"] as UserFunction[] },
+    { name: "Métricas de IA",href: "/analytics",     icon: BarChart3,     sellerHidden: true,  section: "crm", fn: ["administrador", "outro"] as UserFunction[] },
+    { name: "Equipe",        href: "/usuarios",      icon: Users,           sellerHidden: false, section: "crm", fn: ["administrador"] as UserFunction[] },
+    { name: "Configurações", href: "/configuracoes", icon: Settings,        sellerHidden: false, section: "crm", fn: ["administrador", "outro"] as UserFunction[] },
+    { name: "Guia de Setup", href: "/guia-implantacao", icon: BookOpen,     sellerHidden: true,  section: "crm", fn: ["administrador", "outro"] as UserFunction[] },
+    { name: "Obras",         href: "/obras",                    icon: HardHat,     sellerHidden: false, section: "construcao", fn: ["administrador", "outro"] as UserFunction[] },
+    { name: "Insumos",       href: "/insumos",                  icon: Package,     sellerHidden: false, section: "construcao", fn: ["administrador", "outro"] as UserFunction[] },
+    { name: "Composições",   href: "/composicoes",              icon: Layers,      sellerHidden: false, section: "construcao", fn: ["administrador", "outro"] as UserFunction[] },
+    { name: "Produtos",      href: "/varejo/produtos",          icon: Shirt,       sellerHidden: false, section: "varejo", fn: ["administrador", "outro"] as UserFunction[] },
+    { name: "Coleções",      href: "/varejo/colecoes",          icon: Tag,         sellerHidden: false, section: "varejo", fn: ["administrador", "outro"] as UserFunction[] },
+    { name: "Fornecedores",  href: "/varejo/fornecedores",      icon: Truck,       sellerHidden: false, section: "varejo", fn: ["administrador", "outro"] as UserFunction[] },
+    { name: "Compras",       href: "/varejo/compras",           icon: ShoppingCart,sellerHidden: false, section: "varejo", fn: ["administrador", "outro"] as UserFunction[] },
+    { name: "Fidelidade",    href: "/varejo/fidelidade",        icon: Heart,       sellerHidden: false, section: "varejo", fn: ["administrador", "outro"] as UserFunction[] },
+    { name: "Combos & Looks",href: "/varejo/combos",            icon: Gift,        sellerHidden: false, section: "varejo", fn: ["administrador", "outro"] as UserFunction[] },
+    { name: "Dashboard",     href: "/supermercado",             icon: ShoppingCart,sellerHidden: false, section: "supermercado", fn: ["administrador", "outro"] as UserFunction[] },
+    { name: "Produtos",      href: "/supermercado/produtos",    icon: Package,     sellerHidden: false, section: "supermercado", fn: ["administrador", "outro"] as UserFunction[] },
+    { name: "Pedidos",       href: "/supermercado/pedidos",     icon: UtensilsCrossed, sellerHidden: false, section: "supermercado", fn: ["administrador", "outro"] as UserFunction[] },
+    { name: "Campanhas",     href: "/supermercado/campanhas",   icon: MegaphoneIcon, sellerHidden: false, section: "supermercado", fn: ["administrador", "outro"] as UserFunction[] },
+    { name: "Configurações", href: "/supermercado/config",      icon: Settings,    sellerHidden: false, section: "supermercado", fn: ["administrador", "outro"] as UserFunction[] },
   ];
 
-  const navigation = allNavItems.filter(item =>
-    !(isSeller && item.sellerHidden) &&
-    (item.section !== "construcao" || isConstrucao) &&
-    (item.section !== "varejo" || isVarejo) &&
-    (item.section !== "supermercado" || isSupermercado)
-  );
+  function isVisible(item: typeof allNavItems[0]) {
+    if (isSeller && item.sellerHidden) return false;
+    if (item.section !== "crm" && item.section !== "construcao" && item.section !== "varejo" && item.section !== "supermercado") return false;
+    if (item.section === "construcao" && !isConstrucao) return false;
+    if (item.section === "varejo" && !isVarejo) return false;
+    if (item.section === "supermercado" && !isSupermercado) return false;
+    const isAdmin = isSuperAdmin || isTenantAdmin;
+    if (isAdmin) return true;
+    return userFunction ? item.fn.includes(userFunction) : true;
+  }
+
+  const navigation = allNavItems.filter(isVisible);
 
   const adminNavigation = isSuperAdmin
     ? [
@@ -74,7 +85,7 @@ export function SidebarLayout({ children }: { children: React.ReactNode }) {
   const varejoNav = navigation.filter((i) => i.section === "varejo");
   const supermercadoNav = navigation.filter((i) => i.section === "supermercado");
 
-  function NavItem({ item, onNavigate }: { item: (typeof allNavItems)[0]; onNavigate?: () => void }) {
+  function NavItem({ item, onNavigate }: { item: any; onNavigate?: () => void }) {
     const isActive = location === item.href || (item.href !== "/" && location.startsWith(item.href));
     return (
       <Link

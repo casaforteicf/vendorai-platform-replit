@@ -45,6 +45,8 @@ const PUBLIC_FIELDS = {
   email: usersTable.email,
   role: usersTable.role,
   platformRole: usersTable.platformRole,
+  userFunction: usersTable.userFunction,
+  telefone: usersTable.telefone,
   active: usersTable.active,
   createdAt: usersTable.createdAt,
   updatedAt: usersTable.updatedAt,
@@ -218,6 +220,7 @@ router.post("/auth/demo-login", async (req, res) => {
     platformRole: user.platformRole,
     tenantId: user.tenantId,
     role: user.role,
+    userFunction: user.userFunction ?? undefined,
   });
 
   const { password: _pw, ...publicUser } = user;
@@ -268,6 +271,7 @@ router.post("/auth/login", async (req, res) => {
     platformRole: user.platformRole,
     tenantId: user.tenantId,
     role: user.role,
+    userFunction: user.userFunction ?? undefined,
     ...(partnerId ? { partnerId } : {}),
   });
 
@@ -363,6 +367,7 @@ protectedRouter.post("/auth/refresh", async (req, res) => {
     platformRole: user.platformRole,
     tenantId: user.tenantId,
     role: user.role,
+    userFunction: user.userFunction ?? undefined,
     ...(partnerId ? { partnerId } : {}),
   });
 

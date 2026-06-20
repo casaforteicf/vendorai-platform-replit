@@ -411,6 +411,7 @@ export * from './usageSummary';
 export * from './usageSummaryMessages';
 export * from './usageSummaryTokens';
 export * from './user';
+export * from './userFunction';
 export * from './userRole';
 export * from './varejoColecao';
 export * from './varejoColecaoStatus';

@@ -18,6 +18,7 @@ import {
   intelligenceAnalysisLogTable,
 } from "@workspace/db";
 import { findLeadByDedup, storePhone } from "../lib/dedup.js";
+import { buildUserFunctionFilter, requireAdminOrUserFunction, type UserFunction } from "../middlewares/auth.js";
 
 const router: IRouter = Router();
 
@@ -129,10 +130,7 @@ router.post("/tenants/:tenantId/leads/import", async (req, res) => {
 router.get("/tenants/:tenantId/leads", async (req, res) => {
   const tenantId = String(req.params["tenantId"]);
   const conditions = [eq(leadsTable.tenantId, tenantId)];
-
-  if (req.user?.platformRole === "tenant_seller") {
-    conditions.push(eq(leadsTable.assignedTo, req.user.sub));
-  }
+  conditions.push(...buildUserFunctionFilter(req, leadsTable));
 
   const leads = await db
     .select()
@@ -158,7 +156,9 @@ router.get("/leads/:id", async (req, res) => {
     return;
   }
 
-  if (req.user?.platformRole === "tenant_seller" && lead.assignedTo !== req.user.sub) {
+  const isAdmin = req.user?.platformRole === "super_admin" || req.user?.platformRole === "tenant_admin";
+  const userFn = req.user?.userFunction as UserFunction | undefined;
+  if (!isAdmin && userFn === "vendedor" && lead.assignedTo !== req.user?.sub) {
     res.status(403).json({ error: "Access denied to this lead" });
     return;
   }
@@ -188,7 +188,9 @@ router.patch("/leads/:id", async (req, res) => {
     return;
   }
 
-  if (req.user?.platformRole === "tenant_seller" && existing.assignedTo !== req.user.sub) {
+  const isAdmin2 = req.user?.platformRole === "super_admin" || req.user?.platformRole === "tenant_admin";
+  const userFn2 = req.user?.userFunction as UserFunction | undefined;
+  if (!isAdmin2 && userFn2 === "vendedor" && existing.assignedTo !== req.user?.sub) {
     res.status(403).json({ error: "Access denied to this lead" });
     return;
   }
@@ -218,7 +220,9 @@ router.delete("/leads/:id", async (req, res) => {
     return;
   }
 
-  if (req.user?.platformRole === "tenant_seller" && existing.assignedTo !== req.user.sub) {
+  const isAdmin3 = req.user?.platformRole === "super_admin" || req.user?.platformRole === "tenant_admin";
+  const userFn3 = req.user?.userFunction as UserFunction | undefined;
+  if (!isAdmin3 && userFn3 === "vendedor" && existing.assignedTo !== req.user?.sub) {
     res.status(403).json({ error: "Access denied to this lead" });
     return;
   }
@@ -314,8 +318,10 @@ router.post("/leads/:id/merge", async (req, res) => {
   }
 
   // Tenant sellers may only merge leads that are assigned to them
-  if (req.user?.platformRole === "tenant_seller") {
-    if (duplicate.assignedTo !== req.user.sub || target.assignedTo !== req.user.sub) {
+  const isAdminMerge = req.user?.platformRole === "super_admin" || req.user?.platformRole === "tenant_admin";
+  const userFnMerge = req.user?.userFunction as UserFunction | undefined;
+  if (!isAdminMerge && userFnMerge === "vendedor") {
+    if (duplicate.assignedTo !== req.user?.sub || target.assignedTo !== req.user?.sub) {
       res.status(403).json({ error: "Access denied: seller can only merge leads assigned to them" });
       return;
     }
@@ -421,7 +427,9 @@ router.post("/leads/:id/dismiss-duplicate", async (req, res) => {
     return;
   }
 
-  if (req.user?.platformRole === "tenant_seller" && existing.assignedTo !== req.user.sub) {
+  const isAdmin4 = req.user?.platformRole === "super_admin" || req.user?.platformRole === "tenant_admin";
+  const userFn4 = req.user?.userFunction as UserFunction | undefined;
+  if (!isAdmin4 && userFn4 === "vendedor" && existing.assignedTo !== req.user?.sub) {
     res.status(403).json({ error: "Access denied to this lead" });
     return;
   }

@@ -6,6 +6,7 @@
  * OpenAPI spec version: 0.1.0
  */
 import type { PlatformRole } from './platformRole';
+import type { UserFunction } from './userFunction';
 import type { UserRole } from './userRole';
 
 export interface User {
@@ -15,6 +16,8 @@ export interface User {
   email: string;
   role: UserRole;
   platformRole: PlatformRole;
+  userFunction?: UserFunction;
+  telefone?: string | null;
   active: boolean;
   /** Segment/vertical of the tenant (e.g. "Construção & Reforma") */
   tenantVertical?: string | null;

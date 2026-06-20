@@ -109,6 +109,21 @@ export const PlatformRole = {
   member: 'member',
 } as const;
 
+/**
+ * Função/tipo do usuário dentro do tenant
+ */
+export type UserFunction = typeof UserFunction[keyof typeof UserFunction];
+
+
+export const UserFunction = {
+  vendedor: 'vendedor',
+  financeiro: 'financeiro',
+  suporte: 'suporte',
+  entrega: 'entrega',
+  administrador: 'administrador',
+  outro: 'outro',
+} as const;
+
 export interface User {
   id: string;
   tenantId: string;
@@ -116,6 +131,8 @@ export interface User {
   email: string;
   role: UserRole;
   platformRole: PlatformRole;
+  userFunction?: UserFunction;
+  telefone?: string | null;
   active: boolean;
   /** Segment/vertical of the tenant (e.g. "Construção & Reforma") */
   tenantVertical?: string | null;
@@ -2198,6 +2215,8 @@ export interface CreateUserBody {
   password: string;
   role?: UserRole;
   platformRole?: PlatformRole;
+  userFunction?: UserFunction;
+  telefone?: string;
   active?: boolean;
 }
 
@@ -2207,6 +2226,8 @@ export interface UpdateUserBody {
   password?: string;
   role?: UserRole;
   platformRole?: PlatformRole;
+  userFunction?: UserFunction;
+  telefone?: string;
   active?: boolean;
 }
 

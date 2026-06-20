@@ -6,6 +6,7 @@
  * OpenAPI spec version: 0.1.0
  */
 import type { PlatformRole } from './platformRole';
+import type { UserFunction } from './userFunction';
 import type { UserRole } from './userRole';
 
 export interface UpdateUserBody {
@@ -14,5 +15,7 @@ export interface UpdateUserBody {
   password?: string;
   role?: UserRole;
   platformRole?: PlatformRole;
+  userFunction?: UserFunction;
+  telefone?: string;
   active?: boolean;
 }

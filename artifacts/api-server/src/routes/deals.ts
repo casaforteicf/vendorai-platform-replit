@@ -35,7 +35,7 @@ import { billingEventsTable } from "@workspace/db";
 import { extractQuoteData } from "../lib/document-extraction.js";
 import { ObjectStorageService } from "../lib/objectStorage.js";
 import { generateContractPDF } from "../lib/contract-generation.js";
-import { requireRole } from "../middlewares/auth.js";
+import { requireRole, buildUserFunctionFilter, type UserFunction } from "../middlewares/auth.js";
 
 const router: IRouter = Router();
 const objectStorageService = new ObjectStorageService();
@@ -70,9 +70,7 @@ router.get("/tenants/:tenantId/deals", async (req, res) => {
   if (funilId) conditions.push(eq(dealsTable.funilId, funilId));
   if (leadId) conditions.push(eq(dealsTable.leadId, leadId));
 
-  if (req.user?.platformRole === "tenant_seller") {
-    conditions.push(eq(dealsTable.assignedTo, req.user.sub));
-  }
+  conditions.push(...buildUserFunctionFilter(req, dealsTable));
 
   const deals = await db
     .select()
@@ -99,7 +97,13 @@ router.get("/deals/:id", async (req, res) => {
     return;
   }
 
-  if (req.user?.platformRole === "tenant_seller" && deal.assignedTo !== req.user.sub) {
+  const isAdmin = req.user?.platformRole === "super_admin" || req.user?.platformRole === "tenant_admin";
+  const userFn = req.user?.userFunction as UserFunction | undefined;
+  if (!isAdmin && userFn === "vendedor" && deal.assignedTo !== req.user?.sub) {
+    res.status(403).json({ error: "Access denied to this deal" });
+    return;
+  }
+  if (!isAdmin && userFn === "entrega" && deal.assignedTo !== req.user?.sub) {
     res.status(403).json({ error: "Access denied to this deal" });
     return;
   }
@@ -129,7 +133,9 @@ router.patch("/deals/:id", async (req, res) => {
     return;
   }
 
-  if (req.user?.platformRole === "tenant_seller" && existing.assignedTo !== req.user.sub) {
+  const isAdmin2 = req.user?.platformRole === "super_admin" || req.user?.platformRole === "tenant_admin";
+  const userFn2 = req.user?.userFunction as UserFunction | undefined;
+  if (!isAdmin2 && (userFn2 === "vendedor" || userFn2 === "entrega") && existing.assignedTo !== req.user?.sub) {
     res.status(403).json({ error: "Access denied to this deal" });
     return;
   }

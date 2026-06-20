@@ -6,6 +6,7 @@ import {
   insertConversationSchema,
   updateConversationSchema,
 } from "@workspace/db";
+import { buildUserFunctionFilter, type UserFunction } from "../middlewares/auth.js";
 
 const router: IRouter = Router();
 
@@ -39,10 +40,7 @@ router.post("/conversations", async (req, res) => {
 router.get("/tenants/:tenantId/conversations", async (req, res) => {
   const tenantId = String(req.params["tenantId"]);
   const conditions = [eq(conversationsTable.tenantId, tenantId)];
-
-  if (req.user?.platformRole === "tenant_seller") {
-    conditions.push(eq(conversationsTable.assignedTo, req.user.sub));
-  }
+  conditions.push(...buildUserFunctionFilter(req, conversationsTable));
 
   const conversations = await db
     .select()
@@ -95,7 +93,9 @@ router.get("/conversations/:id", async (req, res) => {
     return;
   }
 
-  if (req.user?.platformRole === "tenant_seller" && conversation.assignedTo !== req.user.sub) {
+  const isAdmin = req.user?.platformRole === "super_admin" || req.user?.platformRole === "tenant_admin";
+  const userFn = req.user?.userFunction as UserFunction | undefined;
+  if (!isAdmin && (userFn === "vendedor" || userFn === "suporte") && conversation.assignedTo !== req.user?.sub) {
     res.status(403).json({ error: "Access denied to this conversation" });
     return;
   }
@@ -125,7 +125,9 @@ router.patch("/conversations/:id", async (req, res) => {
     return;
   }
 
-  if (req.user?.platformRole === "tenant_seller" && existing.assignedTo !== req.user.sub) {
+  const isAdmin2 = req.user?.platformRole === "super_admin" || req.user?.platformRole === "tenant_admin";
+  const userFn2 = req.user?.userFunction as UserFunction | undefined;
+  if (!isAdmin2 && (userFn2 === "vendedor" || userFn2 === "suporte") && existing.assignedTo !== req.user?.sub) {
     res.status(403).json({ error: "Access denied to this conversation" });
     return;
   }
@@ -155,7 +157,9 @@ router.delete("/conversations/:id", async (req, res) => {
     return;
   }
 
-  if (req.user?.platformRole === "tenant_seller" && existing.assignedTo !== req.user.sub) {
+  const isAdmin3 = req.user?.platformRole === "super_admin" || req.user?.platformRole === "tenant_admin";
+  const userFn3 = req.user?.userFunction as UserFunction | undefined;
+  if (!isAdmin3 && (userFn3 === "vendedor" || userFn3 === "suporte") && existing.assignedTo !== req.user?.sub) {
     res.status(403).json({ error: "Access denied to this conversation" });
     return;
   }

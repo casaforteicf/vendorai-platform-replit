@@ -9,6 +9,7 @@ export interface JwtPayload {
   platformRole: "super_admin" | "tenant_admin" | "tenant_seller" | "partner" | "member";
   tenantId: string;
   role: "admin" | "member";
+  userFunction?: string;
   partnerId?: string;
 }
 

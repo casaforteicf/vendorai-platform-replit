@@ -12,6 +12,8 @@ const PUBLIC_FIELDS = {
   email: usersTable.email,
   role: usersTable.role,
   platformRole: usersTable.platformRole,
+  userFunction: usersTable.userFunction,
+  telefone: usersTable.telefone,
   active: usersTable.active,
   createdAt: usersTable.createdAt,
   updatedAt: usersTable.updatedAt,

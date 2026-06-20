@@ -57,6 +57,55 @@ export const blockPartnerFromCRM: RequestHandler = (req, res, next) => {
   next();
 };
 
+export type UserFunction = "vendedor" | "financeiro" | "suporte" | "entrega" | "administrador" | "outro";
+
+export function requireUserFunction(...functions: UserFunction[]): RequestHandler {
+  return (req, res, next) => {
+    if (!req.user) {
+      res.status(401).json({ error: "Unauthenticated" });
+      return;
+    }
+    const userFn = req.user.userFunction as UserFunction | undefined;
+    if (!userFn || !functions.includes(userFn)) {
+      res.status(403).json({ error: "Função do usuário não permite esta ação" });
+      return;
+    }
+    next();
+  };
+}
+
+export function requireAdminOrUserFunction(...functions: UserFunction[]): RequestHandler {
+  return (req, res, next) => {
+    if (!req.user) {
+      res.status(401).json({ error: "Unauthenticated" });
+      return;
+    }
+    const isAdmin = req.user.platformRole === "super_admin" || req.user.platformRole === "tenant_admin";
+    const userFn = req.user.userFunction as UserFunction | undefined;
+    if (isAdmin || (userFn && functions.includes(userFn))) {
+      next();
+      return;
+    }
+    res.status(403).json({ error: "Função do usuário não permite esta ação" });
+  };
+}
+
+export function buildUserFunctionFilter(req: Express.Request, table: { tenantId: any; assignedTo: any }): any[] {
+  const conditions: any[] = [];
+  const userFn = req.user?.userFunction as UserFunction | undefined;
+  const isAdmin = req.user?.platformRole === "super_admin" || req.user?.platformRole === "tenant_admin";
+  const userId = req.user?.sub;
+
+  if (!isAdmin && userFn === "vendedor" && userId) {
+    conditions.push(eq(table.assignedTo, userId));
+  }
+  if (!isAdmin && userFn === "entrega" && userId) {
+    conditions.push(eq(table.assignedTo, userId));
+  }
+
+  return conditions;
+}
+
 export const blockExpiredDemo: RequestHandler = async (req, res, next) => {
   const user = req.user;
   if (!user || user.platformRole === "super_admin" || user.platformRole === "partner") {

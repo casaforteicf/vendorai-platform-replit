@@ -11388,6 +11388,11 @@ components:
       type: string
       enum: [super_admin, tenant_admin, tenant_seller, partner, member]
 
+    UserFunction:
+      type: string
+      enum: [vendedor, financeiro, suporte, entrega, administrador, outro]
+      description: Função/tipo do usuário dentro do tenant
+
     User:
       type: object
       properties:
@@ -11403,6 +11408,11 @@ components:
           $ref: "#/components/schemas/UserRole"
         platformRole:
           $ref: "#/components/schemas/PlatformRole"
+        userFunction:
+          $ref: "#/components/schemas/UserFunction"
+        telefone:
+          type: string
+          nullable: true
         active:
           type: boolean
         tenantVertical:
@@ -11441,6 +11451,10 @@ components:
           $ref: "#/components/schemas/UserRole"
         platformRole:
           $ref: "#/components/schemas/PlatformRole"
+        userFunction:
+          $ref: "#/components/schemas/UserFunction"
+        telefone:
+          type: string
         active:
           type: boolean
       required:
@@ -11462,6 +11476,10 @@ components:
           $ref: "#/components/schemas/UserRole"
         platformRole:
           $ref: "#/components/schemas/PlatformRole"
+        userFunction:
+          $ref: "#/components/schemas/UserFunction"
+        telefone:
+          type: string
         active:
           type: boolean
 
