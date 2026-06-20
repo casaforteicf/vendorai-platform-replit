@@ -65,6 +65,7 @@ export const dealsTable = pgTable("deals", {
   dataRenovacao: timestamp("data_renovacao"),
   probChurn: integer("prob_churn"),
   quoteFileUrl: text("quote_file_url"),
+  skipAsaasBilling: text("skip_asaas_billing"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
 });

@@ -61,3 +61,4 @@ export * from "./plan_modules";
 export * from "./plan_assignment_log";
 export * from "./deal_closing_status";
 export * from "./tenant_alerts";
+export * from "./payment_compositions";

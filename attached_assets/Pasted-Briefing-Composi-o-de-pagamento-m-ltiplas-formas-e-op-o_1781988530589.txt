@@ -1,0 +1,63 @@
+Briefing — Composição de pagamento (múltiplas formas) e opção de não cobrar via Asaas
+
+Objetivo
+
+No fechamento de um pedido/orçamento/contrato com o cliente, permitir:
+
+
+Compor o pagamento com mais de uma forma simultaneamente (ex: parte em PIX, parte em cartão, parte em dinheiro).
+Optar por não gerar cobrança via Asaas para aquele pedido específico — registrar o pagamento como recebido por fora (manual), sem disparar cobrança automática.
+
+
+Situação atual
+
+No modal de orçamento (ex: "Novo Orçamento"), o campo "Forma de Pagamento" é um select único (uma forma só por orçamento). Isso não cobre casos reais de venda onde o cliente paga parte em uma forma e parte em outra.
+
+1. Composição de pagamento (múltiplas formas)
+
+
+Trocar o campo único "Forma de Pagamento" por uma lista de linhas de pagamento, cada uma com:
+
+Forma (PIX, Cartão de crédito, Cartão de débito, Dinheiro, Boleto, Transferência, Outro)
+Valor
+
+
+
+Botão "+ Adicionar forma de pagamento" pra incluir mais de uma linha.
+Mostrar em tempo real: total do pedido, soma já alocada nas formas de pagamento, e valor restante (deve chegar a zero pra fechar).
+Validação: a soma das formas de pagamento deve bater exatamente com o valor total do orçamento/pedido antes de permitir confirmar/fechar.
+Salvar essa composição vinculada ao orçamento/negócio (não só um campo de texto livre — estruturado, pra permitir relatórios futuros tipo "quanto recebemos em PIX esse mês" etc.).
+
+
+2. Opção de não cobrar via Asaas
+
+
+Adicionar um toggle/checkbox: "Pagamento já recebido / não gerar cobrança no Asaas".
+Quando marcado:
+
+O fluxo de fechamento (won → ZapSign/Asaas → pagamento → onboarding) pula a etapa de gerar cobrança no Asaas para esse pedido.
+O pedido é marcado como pago com base na composição de pagamento informada manualmente (seção 1), sem integração com o Asaas.
+Permitir anexar um comprovante (reaproveitando a funcionalidade de anexos já especificada no briefing de atividades, se fizer sentido aqui também) como evidência do pagamento manual — opcional, mas recomendado pra auditoria.
+
+
+
+Quando não marcado (comportamento padrão/atual): segue o fluxo normal, gerando cobrança no Asaas conforme já implementado.
+
+
+Passos técnicos
+
+
+Schema: criar tabela/estrutura payment_compositions (ou similar) vinculada ao orçamento/negócio: id, orcamento_id, forma, valor. Adicionar campo skip_asaas_billing (boolean) no orçamento/negócio.
+UI do orçamento: substituir o select único de "Forma de Pagamento" pela lista de linhas + total/restante, conforme seção 1.
+UI de fechamento: adicionar o toggle "Pagamento já recebido / não gerar cobrança no Asaas" na tela onde o negócio é marcado como Ganho/fechado.
+Lógica de fechamento: ajustar o fluxo won → ZapSign/Asaas → pagamento → onboarding para checar skip_asaas_billing antes de chamar a API do Asaas — se true, pular essa etapa e ir direto pra onboarding (assumindo que ZapSign de contrato continua normal, só a parte de cobrança no Asaas que é pulada; confirmar se a intenção é pular só o Asaas ou também o ZapSign, caso o pagamento manual também dispense formalização de contrato).
+Relatórios/Faturamento: ajustar a tela de Faturamento pra refletir corretamente pedidos pagos via Asaas vs. pagos manualmente, já que agora há duas origens de "pago".
+
+
+Teste de validação
+
+
+Criar um orçamento de R$ 1.000, compor pagamento como R$ 600 PIX + R$ 400 Cartão, confirmar que o sistema só permite fechar quando a soma bate com o total.
+Fechar esse pedido com a composição acima, sem marcar "não cobrar via Asaas", e confirmar que a cobrança no Asaas é gerada normalmente (fluxo atual mantido).
+Criar outro orçamento, marcar "Pagamento já recebido / não gerar cobrança no Asaas", compor o pagamento (ex: 100% Dinheiro), e confirmar que nenhuma cobrança é criada no Asaas, mas o pedido segue pro onboarding normalmente.
+Conferir na tela de Faturamento que ambos os pedidos aparecem corretamente, com a origem do pagamento (Asaas vs. manual) identificável.

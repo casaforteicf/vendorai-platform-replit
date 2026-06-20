@@ -70,6 +70,9 @@ export const propostasTable = pgTable("propostas", {
     nome?: string;
     documento?: string;
   } | null>(),
+  paymentCompositions: jsonb("payment_compositions").$type<
+    { forma: string; valor: string; comprovanteUrl?: string | null }[]
+  >().notNull().default([]),
   createdAt: timestamp("created_at").notNull().defaultNow(),
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
 });
