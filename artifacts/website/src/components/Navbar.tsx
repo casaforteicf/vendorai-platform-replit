@@ -41,10 +41,10 @@ export default function Navbar() {
           ))}
           <div className="ml-4 flex items-center gap-4">
             <Button variant="ghost" asChild data-testid="btn-login">
-              <a href="#">Entrar</a>
+              <a href="/app">Entrar</a>
             </Button>
             <Button asChild data-testid="btn-demo">
-              <a href="/contato">Falar com vendas</a>
+              <a href="/demo">Experimentar grátis</a>
             </Button>
           </div>
         </nav>
@@ -75,11 +75,11 @@ export default function Navbar() {
             ))}
             <div className="flex flex-col gap-2 mt-4 pt-4 border-t border-border">
               <Button variant="outline" className="w-full" asChild>
-                <a href="#">Entrar</a>
+                <a href="/app">Entrar</a>
               </Button>
               <Button className="w-full" asChild>
-                <Link href="/contato" onClick={() => setMobileMenuOpen(false)}>
-                  Falar com vendas
+                <Link href="/demo" onClick={() => setMobileMenuOpen(false)}>
+                  Experimentar grátis
                 </Link>
               </Button>
             </div>

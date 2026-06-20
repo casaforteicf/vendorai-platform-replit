@@ -46,6 +46,80 @@ const registerSchema = z.object({
   password: z.string().min(8),
 });
 
+const demoSignupSchema = z.object({
+  nomeEmpresa: z.string().min(1, "Nome da empresa é obrigatório"),
+  nomePessoa: z.string().min(1, "Seu nome é obrigatório"),
+  email: z.email(),
+  senha: z.string().min(8, "Senha deve ter pelo menos 8 caracteres"),
+  telefone: z.string().optional(),
+});
+
+router.post("/auth/demo-signup", async (req, res) => {
+  const parsed = demoSignupSchema.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(422).json({ error: parsed.error.message });
+    return;
+  }
+
+  const { nomeEmpresa, nomePessoa, email, senha, telefone } = parsed.data;
+
+  const slugBase = nomeEmpresa.toLowerCase().replace(/[^a-z0-9]/g, "-").substring(0, 30);
+  const slug = `${slugBase}-${Math.random().toString(36).substring(2, 8)}`;
+  const demoExpiresAt = new Date(Date.now() + 5 * 24 * 60 * 60 * 1000);
+
+  const hashed = await bcrypt.hash(senha, 12);
+
+  try {
+    const [tenant] = await db
+      .insert(tenantsTable)
+      .values({
+        name: nomeEmpresa,
+        slug,
+        status: "active",
+        isDemo: true,
+        demoExpiresAt,
+        planId: null,
+      })
+      .returning();
+
+    const { seedDemoData } = await import("./tenants.js");
+    await seedDemoData(tenant.id);
+
+    const [user] = await db
+      .insert(usersTable)
+      .values({
+        tenantId: tenant.id,
+        name: nomePessoa,
+        email,
+        password: hashed,
+        role: "admin",
+        platformRole: "tenant_admin",
+      })
+      .returning(PUBLIC_FIELDS);
+
+    const token = signToken({
+      sub: user.id,
+      email: user.email,
+      platformRole: user.platformRole,
+      tenantId: user.tenantId,
+      role: user.role,
+    });
+
+    res.status(201).json({
+      token,
+      user,
+      tenant: { id: tenant.id, name: tenant.name, slug: tenant.slug, isDemo: true, demoExpiresAt },
+      demoUrl: `/app?tenant=${tenant.slug}`,
+    });
+  } catch (err: unknown) {
+    if (isUniqueViolation(err)) {
+      res.status(409).json({ error: "Email ou slug do tenant já existe" });
+      return;
+    }
+    throw err;
+  }
+});
+
 router.post("/auth/login", async (req, res) => {
   const parsed = loginSchema.safeParse(req.body);
   if (!parsed.success) {
@@ -273,13 +347,15 @@ router.post("/auth/reset-password", async (req, res) => {
   res.json({ ok: true });
 });
 
+function isPgCode(err: unknown, code: string): boolean {
+  if (typeof err !== "object" || err === null) return false;
+  if ("code" in err && (err as { code: string }).code === code) return true;
+  if ("cause" in err) return isPgCode((err as { cause: unknown }).cause, code);
+  return false;
+}
+
 function isUniqueViolation(err: unknown): boolean {
-  return (
-    typeof err === "object" &&
-    err !== null &&
-    "code" in err &&
-    (err as { code: string }).code === "23505"
-  );
+  return isPgCode(err, "23505");
 }
 
 export { protectedRouter as authProtectedRouter };

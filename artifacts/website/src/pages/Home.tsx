@@ -28,7 +28,7 @@ export default function Home() {
             </p>
             <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
               <Button size="lg" className="w-full sm:w-auto text-base h-12 px-8" asChild data-testid="hero-btn-primary">
-                <Link href="/contato">Solicitar demonstração <ArrowRight className="ml-2 w-5 h-5" /></Link>
+                <Link href="/demo">Experimentar grátis <ArrowRight className="ml-2 w-5 h-5" /></Link>
               </Button>
               <Button size="lg" variant="outline" className="w-full sm:w-auto text-base h-12 px-8 bg-white" asChild data-testid="hero-btn-secondary">
                 <Link href="/funcionalidades">Conheça a plataforma</Link>

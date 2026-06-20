@@ -46,6 +46,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const logout = () => {
     localStorage.removeItem("vendorai_token");
+    localStorage.removeItem("vendorai_demo_expires_at");
     setToken(null);
     setUser(null);
     setLocation("/login");

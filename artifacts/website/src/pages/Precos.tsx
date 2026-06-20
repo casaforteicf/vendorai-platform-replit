@@ -57,6 +57,23 @@ export default function Precos() {
     }
   ];
 
+  const demoPlan = {
+    name: "Demo",
+    price: "Grátis",
+    period: "5 dias",
+    desc: "Experimente tudo antes de comprar. Acesso completo com dados de exemplo.",
+    features: [
+      "Todos os 7 agentes de IA",
+      "Até 3 usuários",
+      "WhatsApp + Email + Instagram",
+      "CRM completo",
+      "Dados de exemplo prontos",
+      "Suporte por chat"
+    ],
+    popular: true,
+    cta: "Criar conta demo"
+  };
+
   return (
     <div className="pb-24 bg-slate-50 min-h-screen">
       <div className="pt-20 pb-16 px-4 text-center">
@@ -69,9 +86,35 @@ export default function Precos() {
       </div>
 
       <div className="container mx-auto px-4">
-        <div className="grid md:grid-cols-3 gap-8 max-w-6xl mx-auto items-start">
+        <div className="grid md:grid-cols-4 gap-6 max-w-7xl mx-auto items-start">
+          {/* Demo card */}
+          <div className="relative rounded-3xl bg-white p-8 border border-emerald-200 shadow-md">
+            <div className="absolute top-0 left-1/2 -translate-x-1/2 -translate-y-1/2 bg-emerald-500 text-white px-4 py-1 rounded-full text-sm font-bold shadow-md">
+              Experimente grátis
+            </div>
+            <div className="mb-8">
+              <h3 className="text-2xl font-bold text-slate-900 mb-2">{demoPlan.name}</h3>
+              <p className="text-slate-500 text-sm mb-6 h-10">{demoPlan.desc}</p>
+              <div className="flex items-baseline gap-1">
+                <span className="text-4xl font-bold text-emerald-600">{demoPlan.price}</span>
+                <span className="text-slate-500 font-medium">{demoPlan.period}</span>
+              </div>
+            </div>
+            <ul className="space-y-4 mb-8">
+              {demoPlan.features.map((feat, i) => (
+                <li key={i} className="flex items-start gap-3 text-slate-700">
+                  <CheckCircle2 className="w-5 h-5 text-emerald-500 shrink-0 mt-0.5" />
+                  <span>{feat}</span>
+                </li>
+              ))}
+            </ul>
+            <Button className="w-full h-12 text-base font-bold" asChild data-testid="btn-plan-demo">
+              <Link href="/demo">{demoPlan.cta}</Link>
+            </Button>
+          </div>
+
           {plans.map((plan) => (
-            <div 
+            <div
               key={plan.name}
               className={`relative rounded-3xl bg-white p-8 border ${
                 plan.popular ? 'border-primary shadow-xl scale-105 z-10' : 'border-slate-200 shadow-sm'
@@ -82,7 +125,7 @@ export default function Precos() {
                   ⭐ Mais popular
                 </div>
               )}
-              
+
               <div className="mb-8">
                 <h3 className="text-2xl font-bold text-slate-900 mb-2">{plan.name}</h3>
                 <p className="text-slate-500 text-sm mb-6 h-10">{plan.desc}</p>
@@ -101,8 +144,8 @@ export default function Precos() {
                 ))}
               </ul>
 
-              <Button 
-                className="w-full h-12 text-base font-bold" 
+              <Button
+                className="w-full h-12 text-base font-bold"
                 variant={plan.popular ? 'default' : 'outline'}
                 asChild
                 data-testid={`btn-plan-${plan.name.toLowerCase()}`}

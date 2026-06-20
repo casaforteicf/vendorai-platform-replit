@@ -120,7 +120,7 @@ export default function Funcionalidades() {
             Nossos especialistas estão prontos para montar uma demonstração personalizada para o seu processo comercial.
           </p>
           <Button size="lg" className="h-14 px-8" asChild data-testid="features-btn-demo">
-            <Link href="/contato">Agendar demonstração gratuita</Link>
+            <Link href="/demo">Experimentar grátis por 5 dias</Link>
           </Button>
         </div>
       </div>

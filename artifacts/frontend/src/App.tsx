@@ -4,6 +4,7 @@ import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import NotFound from "@/pages/not-found";
 import { AuthProvider, useAuth } from "@/contexts/AuthContext";
+import { DemoBanner } from "@/components/DemoBanner";
 import { SidebarLayout } from "@/components/layout/SidebarLayout";
 import Login from "@/pages/Login";
 import Register from "@/pages/Register";
@@ -128,6 +129,7 @@ function ProtectedRoute({ component: Component, ...rest }: any) {
 
   return (
     <SidebarLayout>
+      <DemoBanner />
       <Component {...rest} />
     </SidebarLayout>
   );
