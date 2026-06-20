@@ -83,6 +83,7 @@ import {
   Trash2,
   FileText,
   Printer,
+  Video,
 } from "lucide-react";
 
 const STATUS_STYLES: Record<string, string> = {

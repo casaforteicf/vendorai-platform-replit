@@ -60,7 +60,7 @@ router.post("/leads", async (req, res) => {
     ...data,
     telefone: storePhone(data.telefone),
     documento: data.documento ? data.documento.replace(/\D/g, "") : data.documento,
-    possivelDuplicata: match.similar ? "true" : "false",
+    possivelDuplicata: match.similar ? true : false,
     leadSimilarId: match.similar?.id ?? null,
   }).returning();
   res.status(201).json(lead);
@@ -114,7 +114,7 @@ router.post("/tenants/:tenantId/leads/import", async (req, res) => {
         email: row.email || null,
         endereco: row.endereco || null,
         instagramHandle: row.instagram || null,
-        possivelDuplicata: match.similar ? "true" : "false",
+        possivelDuplicata: match.similar ? true : false,
         leadSimilarId: match.similar?.id ?? null,
       });
       imported++;
@@ -244,7 +244,7 @@ router.get("/tenants/:tenantId/leads/duplicates", async (req, res) => {
     .where(
       and(
         eq(leadsTable.tenantId, tenantId),
-        eq(leadsTable.possivelDuplicata, "true")
+        eq(leadsTable.possivelDuplicata, true)
       )
     )
     .orderBy(leadsTable.createdAt);
@@ -306,6 +306,14 @@ router.post("/leads/:id/merge", async (req, res) => {
   if (req.user?.platformRole !== "super_admin" && req.user?.tenantId !== duplicate.tenantId) {
     res.status(403).json({ error: "Access denied to this tenant" });
     return;
+  }
+
+  // Tenant sellers may only merge leads that are assigned to them
+  if (req.user?.platformRole === "tenant_seller") {
+    if (duplicate.assignedTo !== req.user.sub && target.assignedTo !== req.user.sub) {
+      res.status(403).json({ error: "Access denied: seller can only merge leads assigned to them" });
+      return;
+    }
   }
 
   const tenantId = duplicate.tenantId;
@@ -410,7 +418,7 @@ router.post("/leads/:id/dismiss-duplicate", async (req, res) => {
 
   const [lead] = await db
     .update(leadsTable)
-    .set({ possivelDuplicata: "false", leadSimilarId: null, updatedAt: new Date() })
+    .set({ possivelDuplicata: false, leadSimilarId: null, updatedAt: new Date() })
     .where(eq(leadsTable.id, leadId))
     .returning();
 

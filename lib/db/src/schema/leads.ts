@@ -1,4 +1,4 @@
-import { pgTable, text, timestamp, jsonb } from "drizzle-orm/pg-core";
+import { pgTable, text, timestamp, jsonb, boolean, index } from "drizzle-orm/pg-core";
 import { createInsertSchema, createSelectSchema } from "drizzle-zod";
 import { z } from "zod/v4";
 import { tenantsTable } from "./tenants";
@@ -41,11 +41,14 @@ export const leadsTable = pgTable("leads", {
   indicadoPor: text("indicado_por"),
   notasNutricao: text("notas_nutricao"),
   source: text("source").notNull().default("manual"),
-  possivelDuplicata: text("possivel_duplicata").notNull().default("false"),
+  possivelDuplicata: boolean("possivel_duplicata").notNull().default(false),
   leadSimilarId: text("lead_similar_id"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
-});
+}, (table) => ({
+  tenantPhoneIdx: index("leads_tenant_phone_idx").on(table.tenantId, table.telefone),
+  tenantDocIdx: index("leads_tenant_doc_idx").on(table.tenantId, table.documento),
+}));
 
 export const insertLeadSchema = createInsertSchema(leadsTable).omit({
   id: true,

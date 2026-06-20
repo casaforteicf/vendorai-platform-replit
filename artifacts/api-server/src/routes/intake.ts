@@ -114,7 +114,7 @@ intakeRouter.post("/public/:tenantSlug/intake", async (req, res) => {
       tamanhoEquipe: d.tamanhoEquipe || null,
       status: "novo" as const,
       discoveryData,
-      possivelDuplicata: match.similar ? "true" : "false",
+      possivelDuplicata: match.similar ? true : false,
       leadSimilarId: match.similar?.id ?? null,
     };
     const [lead] = await db.insert(leadsTable).values(insertData).returning({ id: leadsTable.id });
