@@ -45,6 +45,28 @@ export default defineConfig({
           ),
         ]
       : []),
+    {
+      name: "spa-fallback",
+      configureServer(server) {
+        server.middlewares.use((req, res, next) => {
+          if (
+            req.method === "GET" &&
+            req.url &&
+            !req.url.startsWith("/assets/") &&
+            !req.url.startsWith("/src/") &&
+            !req.url.startsWith("/website/@vite/") &&
+            !req.url.startsWith("/website/@react-refresh/") &&
+            !req.url.startsWith("/website/@fs/") &&
+            !req.url.startsWith("/website/@id/") &&
+            !req.url.startsWith("/website/node_modules/") &&
+            !req.url.match(/\.[a-zA-Z0-9]+$/)
+          ) {
+            req.url = "/website/";
+          }
+          next();
+        });
+      },
+    },
   ],
   resolve: {
     alias: {
@@ -72,4 +94,5 @@ export default defineConfig({
     host: "0.0.0.0",
     allowedHosts: true,
   },
+  appType: "spa",
 });
