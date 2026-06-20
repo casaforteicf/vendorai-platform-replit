@@ -61,6 +61,14 @@ export interface Deal {
   onboardingError?: string | null;
   /** ZapSign document token */
   zapsignDocId?: string | null;
+  /** When 'true', skip Asaas billing and treat as manually paid. */
+  skipAsaasBilling?: string | null;
+  /** Asaas charge ID */
+  asaasChargeId?: string | null;
+  /** Payment link (invoice URL or bank slip URL) */
+  chargeLink?: string | null;
+  /** Payment status (PENDING, RECEIVED, OVERDUE, CONFIRMED, manual_paid) */
+  chargeStatus?: string | null;
   /** When the deal was marked as lost */
   lostAt?: Date | null;
   /** Categoria de motivo de perda */

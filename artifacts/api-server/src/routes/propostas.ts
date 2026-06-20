@@ -212,6 +212,12 @@ router.patch("/propostas/:id/status", async (req, res) => {
   res.json(updated);
 });
 
+const paymentCompositionLineSchema = z.object({
+  forma: z.string().min(1),
+  valor: z.number().positive(),
+  comprovanteUrl: z.string().optional(),
+});
+
 const fromCatalogoBodySchema = z.object({
   leadId: z.string().min(1),
   titulo: z.string().min(1),
@@ -225,6 +231,7 @@ const fromCatalogoBodySchema = z.object({
   valorMensal: z.number().optional(),
   prazoContratoMeses: z.number().int().optional(),
   numParcelas: z.number().int().min(1).optional(),
+  paymentCompositions: z.array(paymentCompositionLineSchema).optional(),
   itens: z
     .array(
       z.object({
@@ -255,6 +262,7 @@ router.post(
       leadId, titulo, dealId, validadeAte, observacoes, itens,
       formaPagamento, condPagamento, prazoEntrega,
       recorrente, valorMensal, prazoContratoMeses, numParcelas,
+      paymentCompositions,
     } = parsed.data;
 
     const produtoIds = itens.map((i) => i.produtoId);
@@ -320,6 +328,13 @@ router.post(
         ...(valorMensal !== undefined ? { valorMensal: String(valorMensal) } : {}),
         ...(prazoContratoMeses !== undefined ? { prazoContratoMeses } : {}),
         ...(numParcelas !== undefined ? { numParcelas } : {}),
+        ...(paymentCompositions ? {
+          paymentCompositions: paymentCompositions.map((pc) => ({
+            forma: pc.forma,
+            valor: String(pc.valor),
+            comprovanteUrl: pc.comprovanteUrl ?? null,
+          })),
+        } : {}),
         itens: propostaItens,
         valorTotal: valorTotal.toFixed(2),
       })

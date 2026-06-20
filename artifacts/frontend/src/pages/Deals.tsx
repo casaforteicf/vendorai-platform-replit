@@ -43,6 +43,7 @@ import {
   FormLabel,
   FormMessage,
 } from "@/components/ui/form";
+import { Switch } from "@/components/ui/switch";
 import {
   Select,
   SelectContent,
@@ -53,7 +54,7 @@ import {
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
-import { Plus, GripVertical, DollarSign, User, TrendingUp, Link2, Copy, CheckCheck, FileUp, Loader2, Sparkles, BarChart3, RefreshCw, Users, Package, AlertTriangle, Paperclip, FileCheck } from "lucide-react";
+import { Plus, GripVertical, DollarSign, User, TrendingUp, Link2, Copy, CheckCheck, FileUp, Loader2, Sparkles, BarChart3, RefreshCw, Users, Package, AlertTriangle, Paperclip, FileCheck, CreditCard, HandCoins } from "lucide-react";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import {
   DealEtapaSaas,
@@ -900,6 +901,7 @@ const createSchema = z.object({
   etapa: z.string().min(1, "Etapa obrigatória"),
   probabilidade: z.coerce.number().min(0).max(100).optional(),
   tipoFechamento: z.enum(["pedido", "contrato", "pedido_e_contrato"]).optional(),
+  skipAsaasBilling: z.boolean().default(false),
 });
 
 // ─── Edit Deal Sheet ──────────────────────────────────────────────────────────
@@ -981,8 +983,9 @@ function EditDealSheet({
           etapa: deal.etapa,
           probabilidade: deal.probabilidade ?? undefined,
           tipoFechamento: (deal.tipoFechamento as "pedido" | "contrato" | "pedido_e_contrato" | undefined) ?? tenantDefault ?? "pedido",
+          skipAsaasBilling: deal.skipAsaasBilling === "true",
         }
-      : { titulo: "", etapa: "novo", tipoFechamento: tenantDefault ?? "pedido" },
+      : { titulo: "", etapa: "novo", tipoFechamento: tenantDefault ?? "pedido", skipAsaasBilling: false },
   });
 
   function onSubmit(values: z.infer<typeof createSchema>) {
@@ -997,6 +1000,7 @@ function EditDealSheet({
           leadId: values.leadId || undefined,
           probabilidade: values.probabilidade,
           tipoFechamento: values.tipoFechamento as TipoFechamento | undefined,
+          skipAsaasBilling: values.skipAsaasBilling,
           ...(quoteFileUrl !== deal.quoteFileUrl ? { quoteFileUrl } : {}),
         },
       },
@@ -1020,6 +1024,9 @@ function EditDealSheet({
               toast({ title: "WhatsApp não enviado — Z-API não configurada.", variant: "destructive" });
             } else if ((data as any).whatsappSkipReason === "send_error") {
               toast({ title: "WhatsApp não enviado — erro ao contatar Z-API.", description: "Verifique a conexão em Configurações → WhatsApp.", variant: "destructive" });
+            }
+            if ((data as any).chargeSkipReason === "manual_payment") {
+              toast({ title: "Cobrança Asaas pulada", description: "Pagamento marcado como recebido manualmente.", variant: "default" });
             }
           }
           queryClient.invalidateQueries({ queryKey: getListDealsQueryKey(tenantId) });
@@ -1236,6 +1243,21 @@ function EditDealSheet({
                 </FormItem>
               )}
             />
+            <FormField
+              control={form.control}
+              name="skipAsaasBilling"
+              render={({ field }) => (
+                <FormItem className="flex items-center gap-3 rounded-lg border p-3">
+                  <FormControl>
+                    <Switch checked={field.value} onCheckedChange={field.onChange} />
+                  </FormControl>
+                  <div className="space-y-0.5">
+                    <FormLabel className="text-sm font-medium cursor-pointer">Pagamento já recebido / não gerar cobrança no Asaas</FormLabel>
+                    <p className="text-xs text-muted-foreground">Marque se o pagamento foi feito manualmente e não deve gerar cobrança no Asaas.</p>
+                  </div>
+                </FormItem>
+              )}
+            />
             <Button
               type="submit"
               className="w-full"
@@ -1322,6 +1344,29 @@ function EditDealSheet({
                 <p className="text-[10px] text-red-600 bg-red-50 rounded px-2 py-1 border border-red-100">
                   Erro onboarding: {deal.onboardingError}
                 </p>
+              )}
+              {deal.chargeStatus && deal.chargeStatus !== "na" && (
+                <div className="flex items-center justify-between text-xs">
+                  <span className="text-slate-600">Cobrança</span>
+                  <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-semibold border ${
+                    deal.chargeStatus === "manual_paid" ? "bg-emerald-50 text-emerald-700 border-emerald-200" :
+                    deal.chargeStatus === "PENDING" || deal.chargeStatus === "RECEIVED" ? "bg-emerald-50 text-emerald-700 border-emerald-200" :
+                    deal.chargeStatus === "OVERDUE" ? "bg-red-50 text-red-700 border-red-200" :
+                    "bg-slate-50 text-slate-600 border-slate-200"
+                  }`}>
+                    {deal.chargeStatus === "manual_paid" && "Pago manualmente"}
+                    {deal.chargeStatus === "PENDING" && "Pendente"}
+                    {deal.chargeStatus === "RECEIVED" && "Recebida"}
+                    {deal.chargeStatus === "OVERDUE" && "Atrasada"}
+                    {deal.chargeStatus === "CONFIRMED" && "Confirmada"}
+                    {!["manual_paid","PENDING","RECEIVED","OVERDUE","CONFIRMED"].includes(deal.chargeStatus) && deal.chargeStatus}
+                  </span>
+                </div>
+              )}
+              {deal.chargeLink && (
+                <a href={deal.chargeLink} target="_blank" rel="noopener noreferrer" className="flex items-center gap-1.5 text-[11px] text-blue-600 hover:text-blue-800 hover:underline">
+                  <CreditCard className="h-3 w-3" /> Link de pagamento
+                </a>
               )}
               {deal.contractStatus === "failed" && (
                 <Button

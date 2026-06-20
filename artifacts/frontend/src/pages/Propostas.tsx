@@ -30,6 +30,7 @@ import type {
   PropostaStatus,
   ProdutoCatalogo,
   FormaPagamentoProposta,
+  PaymentCompositionLineForma,
 } from "@workspace/api-client-react";
 import { useQueryClient } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
@@ -667,6 +668,12 @@ function getPaymentLabel(code: string | null | undefined): string {
   return FORMA_PAGAMENTO_LABELS[code] ?? code;
 }
 
+const paymentCompositionSchema = z.object({
+  forma: z.string().min(1, "Selecione uma forma"),
+  valor: z.coerce.number().min(0.01, "Valor deve ser maior que zero"),
+  comprovanteUrl: z.string().optional(),
+});
+
 const propostaFormSchema = z.object({
   leadId: z.string().min(1, "Selecione um lead"),
   titulo: z.string().min(1, "Título é obrigatório"),
@@ -678,6 +685,8 @@ const propostaFormSchema = z.object({
   recorrente: z.boolean().default(false),
   valorMensal: z.coerce.number().min(0).optional(),
   prazoContratoMeses: z.coerce.number().int().min(1).optional(),
+  paymentCompositions: z.array(paymentCompositionSchema).optional().default([]),
+  skipAsaasBilling: z.boolean().default(false),
 });
 type PropostaFormValues = z.infer<typeof propostaFormSchema>;
 
@@ -740,6 +749,8 @@ export function PropostaModal({
       recorrente: false,
       valorMensal: undefined,
       prazoContratoMeses: undefined,
+      paymentCompositions: [],
+      skipAsaasBilling: false,
     },
   });
 
@@ -855,8 +866,10 @@ export function PropostaModal({
       const valid = cartLines.filter((l) => l.produtoId);
       if (!valid.length) { setCartError("Adicione pelo menos um produto."); return; }
       setCartError("");
+      const paymentComp = vals.paymentCompositions?.filter((pc) => pc.forma && pc.valor > 0);
+      const skipAsaas = vals.skipAsaasBilling;
       createFromCatMut.mutate(
-        { tenantId, data: { leadId: vals.leadId, titulo: vals.titulo, validadeAte: vals.validadeAte || undefined, observacoes: vals.observacoes || undefined, formaPagamento: (vals.formaPagamento || undefined) as FormaPagamentoProposta | undefined, condPagamento: vals.condPagamento || undefined, prazoEntrega: vals.prazoEntrega || undefined, ...recFields, itens: valid.map((l) => ({ produtoId: l.produtoId, quantidade: l.quantidade })) } },
+        { tenantId, data: { leadId: vals.leadId, titulo: vals.titulo, validadeAte: vals.validadeAte || undefined, observacoes: vals.observacoes || undefined, formaPagamento: (vals.formaPagamento || undefined) as FormaPagamentoProposta | undefined, condPagamento: vals.condPagamento || undefined, prazoEntrega: vals.prazoEntrega || undefined, ...recFields, itens: valid.map((l) => ({ produtoId: l.produtoId, quantidade: l.quantidade })), paymentCompositions: paymentComp?.length ? paymentComp.map((pc) => ({ forma: pc.forma as PaymentCompositionLineForma, valor: pc.valor, comprovanteUrl: pc.comprovanteUrl })) : undefined, skipAsaasBilling: skipAsaas } },
         {
           onSuccess: () => {
             toast({ title: "Orçamento criado com sucesso" });
@@ -866,7 +879,7 @@ export function PropostaModal({
             }
             const dealValor = vals.recorrente && totalContrato > 0 ? totalContrato : catTotal || undefined;
             createDeal(
-              { data: { tenantId, titulo: vals.titulo, leadId: vals.leadId, etapa: "proposta", valor: dealValor } },
+              { data: { tenantId, titulo: vals.titulo, leadId: vals.leadId, etapa: "proposta", valor: dealValor, skipAsaasBilling: skipAsaas } },
               { onSuccess: () => qc.invalidateQueries({ queryKey: getListDealsQueryKey(tenantId) }) }
             );
             onSuccess?.();
@@ -879,8 +892,10 @@ export function PropostaModal({
       const valid = freeItems.filter((i) => i.nome.trim());
       if (!valid.length) { setFreeError("Adicione pelo menos um item."); return; }
       setFreeError("");
+      const paymentComp2 = vals.paymentCompositions?.filter((pc) => pc.forma && pc.valor > 0);
+      const skipAsaas2 = vals.skipAsaasBilling;
       createLivreMut.mutate(
-        { data: { tenantId, leadId: vals.leadId, titulo: vals.titulo, validadeAte: vals.validadeAte || undefined, observacoes: vals.observacoes || undefined, formaPagamento: (vals.formaPagamento || undefined) as FormaPagamentoProposta | undefined, condPagamento: vals.condPagamento || undefined, prazoEntrega: vals.prazoEntrega || undefined, ...recFields, itens: valid.map((i) => ({ nome: i.nome, quantidade: i.quantidade, valorUnitario: i.valorUnitario })), valorTotal: freeTotal } },
+        { data: { tenantId, leadId: vals.leadId, titulo: vals.titulo, validadeAte: vals.validadeAte || undefined, observacoes: vals.observacoes || undefined, formaPagamento: (vals.formaPagamento || undefined) as FormaPagamentoProposta | undefined, condPagamento: vals.condPagamento || undefined, prazoEntrega: vals.prazoEntrega || undefined, ...recFields, itens: valid.map((i) => ({ nome: i.nome, quantidade: i.quantidade, valorUnitario: i.valorUnitario })), valorTotal: freeTotal, paymentCompositions: paymentComp2?.length ? paymentComp2.map((pc) => ({ forma: pc.forma as PaymentCompositionLineForma, valor: pc.valor, comprovanteUrl: pc.comprovanteUrl })) : undefined, skipAsaasBilling: skipAsaas2 } },
         {
           onSuccess: () => {
             toast({ title: "Orçamento criado com sucesso" });
@@ -890,7 +905,7 @@ export function PropostaModal({
             }
             const dealValor = vals.recorrente && totalContrato > 0 ? totalContrato : freeTotal || undefined;
             createDeal(
-              { data: { tenantId, titulo: vals.titulo, leadId: vals.leadId, etapa: "proposta", valor: dealValor } },
+              { data: { tenantId, titulo: vals.titulo, leadId: vals.leadId, etapa: "proposta", valor: dealValor, skipAsaasBilling: skipAsaas2 } },
               { onSuccess: () => qc.invalidateQueries({ queryKey: getListDealsQueryKey(tenantId) }) }
             );
             onSuccess?.();
@@ -1226,22 +1241,6 @@ export function PropostaModal({
 
             {/* Condições Comerciais */}
             <div className="grid grid-cols-3 gap-3">
-              <FormField control={form.control} name="formaPagamento" render={({ field }) => (
-                <FormItem>
-                  <FormLabel>Forma de Pagamento <span className="text-muted-foreground text-xs">(opcional)</span></FormLabel>
-                  <Select onValueChange={field.onChange} value={field.value ?? ""}>
-                    <FormControl>
-                      <SelectTrigger><SelectValue placeholder="Selecione…" /></SelectTrigger>
-                    </FormControl>
-                    <SelectContent>
-                      {Object.entries(pmLabels).map(([val, label]) => (
-                        <SelectItem key={val} value={val}>{label}</SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                  <FormMessage />
-                </FormItem>
-              )} />
               <FormField control={form.control} name="condPagamento" render={({ field }) => (
                 <FormItem>
                   <FormLabel>Condição de Pagamento <span className="text-muted-foreground text-xs">(opcional)</span></FormLabel>
@@ -1256,7 +1255,87 @@ export function PropostaModal({
                   <FormMessage />
                 </FormItem>
               )} />
+              <FormField control={form.control} name="formaPagamento" render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Forma Principal <span className="text-muted-foreground text-xs">(opcional)</span></FormLabel>
+                  <Select onValueChange={field.onChange} value={field.value ?? ""}>
+                    <FormControl>
+                      <SelectTrigger><SelectValue placeholder="Selecione…" /></SelectTrigger>
+                    </FormControl>
+                    <SelectContent>
+                      {Object.entries(pmLabels).map(([val, label]) => (
+                        <SelectItem key={val} value={val}>{label}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <FormMessage />
+                </FormItem>
+              )} />
             </div>
+
+            {/* Composição de Pagamento */}
+            <div className="border rounded-lg p-3 space-y-3">
+              <div className="flex items-center justify-between">
+                <h4 className="text-sm font-medium">Composição de Pagamento</h4>
+                <span className="text-xs text-muted-foreground">
+                  Total: {fmtCurrency((form.watch("paymentCompositions")?.reduce((s, p) => s + (p.valor || 0), 0)) ?? 0)}
+                </span>
+              </div>
+              {form.watch("paymentCompositions")?.map((_, idx) => (
+                <div key={idx} className="grid grid-cols-[1fr_120px_32px] gap-2 items-start">
+                  <FormField control={form.control} name={`paymentCompositions.${idx}.forma` as const} render={({ field }) => (
+                    <FormItem className="space-y-1">
+                      <Select onValueChange={field.onChange} value={field.value ?? ""}>
+                        <FormControl>
+                          <SelectTrigger><SelectValue placeholder="Forma…" /></SelectTrigger>
+                        </FormControl>
+                        <SelectContent>
+                          {Object.entries(pmLabels).map(([val, label]) => (
+                            <SelectItem key={val} value={val}>{label}</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      <FormMessage />
+                    </FormItem>
+                  )} />
+                  <FormField control={form.control} name={`paymentCompositions.${idx}.valor` as const} render={({ field }) => (
+                    <FormItem className="space-y-1">
+                      <FormControl>
+                        <Input type="number" step="0.01" placeholder="Valor" {...field} value={field.value ?? ""} />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )} />
+                  <Button type="button" variant="ghost" size="icon" className="mt-0.5"
+                    onClick={() => {
+                      const arr = form.getValues("paymentCompositions") || [];
+                      form.setValue("paymentCompositions", arr.filter((_, i) => i !== idx));
+                    }}>
+                    <Trash2 className="h-4 w-4 text-red-500" />
+                  </Button>
+                </div>
+              ))}
+              <Button type="button" variant="outline" size="sm" className="w-full"
+                onClick={() => {
+                  const arr = form.getValues("paymentCompositions") || [];
+                  form.setValue("paymentCompositions", [...arr, { forma: "", valor: 0, comprovanteUrl: "" }]);
+                }}>
+                <Plus className="h-4 w-4 mr-1" /> Adicionar forma de pagamento
+              </Button>
+            </div>
+
+            {/* Skip Asaas Billing */}
+            <FormField control={form.control} name="skipAsaasBilling" render={({ field }) => (
+              <FormItem className="flex items-center gap-3 rounded-lg border p-3">
+                <FormControl>
+                  <Switch checked={field.value} onCheckedChange={field.onChange} />
+                </FormControl>
+                <div className="space-y-0.5">
+                  <FormLabel className="text-sm font-medium cursor-pointer">Pagamento já recebido / não gerar cobrança no Asaas</FormLabel>
+                  <p className="text-xs text-muted-foreground">Marque se o pagamento foi feito manualmente e não deve gerar cobrança no Asaas.</p>
+                </div>
+              </FormItem>
+            )} />
 
             <div className="flex gap-2">
               <Button type="button" variant="outline" className="flex-1" onClick={handleClose}>Cancelar</Button>

@@ -38,4 +38,5 @@ export interface CreateDealBody {
      * @maximum 100
      */
   probChurn?: number;
+  skipAsaasBilling?: boolean | null;
 }

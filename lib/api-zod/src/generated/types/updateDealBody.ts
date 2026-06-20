@@ -46,4 +46,6 @@ export interface UpdateDealBody {
   quoteFileUrl?: string | null;
   /** Override contract status (e.g. retry after failure) */
   contractStatus?: UpdateDealBodyContractStatus;
+  /** When true, skip Asaas billing and treat as manually paid. */
+  skipAsaasBilling?: boolean | null;
 }

@@ -556,7 +556,15 @@ router.patch("/deals/:id", async (req, res) => {
         }
 
         // ── Cobrança Asaas (idempotente: verifica se já existe) ────────────
-        if (!isAsaasConfigured()) {
+        if (deal.skipAsaasBilling === "true") {
+          chargeSkipReason = "manual_payment";
+          req.log.info({ dealId: deal.id }, "Asaas charge skipped: skipAsaasBilling=true (manual payment)");
+          // Marcar como pago manualmente
+          await db
+            .update(dealsTable)
+            .set({ chargeStatus: "manual_paid", updatedAt: new Date() })
+            .where(eq(dealsTable.id, deal.id));
+        } else if (!isAsaasConfigured()) {
           chargeSkipReason = "asaas_not_configured";
           req.log.warn({ dealId: deal.id }, "Asaas charge skipped: ASAAS_API_KEY not configured");
         } else if (!deal.valor) {

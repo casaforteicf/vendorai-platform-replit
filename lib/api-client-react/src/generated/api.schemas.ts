@@ -793,6 +793,26 @@ export const FormaPagamentoProposta = {
   a_combinar: 'a_combinar',
 } as const;
 
+export type PaymentCompositionLineForma = typeof PaymentCompositionLineForma[keyof typeof PaymentCompositionLineForma];
+
+
+export const PaymentCompositionLineForma = {
+  pix: 'pix',
+  cartao_credito: 'cartao_credito',
+  cartao_debito: 'cartao_debito',
+  dinheiro: 'dinheiro',
+  boleto: 'boleto',
+  transferencia: 'transferencia',
+  outro: 'outro',
+} as const;
+
+export interface PaymentCompositionLine {
+  forma: PaymentCompositionLineForma;
+  valor: number;
+  /** URL do comprovante de pagamento (opcional). */
+  comprovanteUrl?: string | null;
+}
+
 export interface CreatePropostaFromCatalogoBody {
   leadId: string;
   titulo: string;
@@ -812,6 +832,10 @@ export interface CreatePropostaFromCatalogoBody {
   prazoContratoMeses?: number;
   /** @minItems 1 */
   itens: CreatePropostaFromCatalogoBodyItensItem[];
+  /** Composição de pagamento (múltiplas formas). */
+  paymentCompositions?: PaymentCompositionLine[];
+  /** Se true, não gerar cobrança no Asaas para este orçamento. */
+  skipAsaasBilling?: boolean;
 }
 
 export type CampaignTipo = typeof CampaignTipo[keyof typeof CampaignTipo];
@@ -1225,6 +1249,10 @@ export interface Proposta {
   valorMensal?: string | null;
   /** Contract term in months. */
   prazoContratoMeses?: number | null;
+  /** Number of installments. */
+  numParcelas?: number | null;
+  /** Composição de pagamento (múltiplas formas). */
+  paymentCompositions?: PaymentCompositionLine[];
   createdAt: string;
   updatedAt: string;
 }
@@ -1250,6 +1278,10 @@ export interface CreatePropostaBody {
   valorMensal?: number;
   /** Contract term in months. */
   prazoContratoMeses?: number;
+  /** Composição de pagamento (múltiplas formas). */
+  paymentCompositions?: PaymentCompositionLine[];
+  /** Se true, não gerar cobrança no Asaas para este orçamento. */
+  skipAsaasBilling?: boolean;
 }
 
 export interface UpdatePropostaBody {
@@ -1272,6 +1304,10 @@ export interface UpdatePropostaBody {
   valorMensal?: number;
   /** Contract term in months. */
   prazoContratoMeses?: number;
+  /** Composição de pagamento (múltiplas formas). */
+  paymentCompositions?: PaymentCompositionLine[];
+  /** When true, skip Asaas billing and treat as manually paid. */
+  skipAsaasBilling?: boolean | null;
 }
 
 export type ActivityTipo = typeof ActivityTipo[keyof typeof ActivityTipo];
@@ -1495,6 +1531,14 @@ export interface Deal {
   onboardingError?: string | null;
   /** ZapSign document token */
   zapsignDocId?: string | null;
+  /** When 'true', skip Asaas billing and treat as manually paid. */
+  skipAsaasBilling?: string | null;
+  /** Asaas charge ID */
+  asaasChargeId?: string | null;
+  /** Payment link (invoice URL or bank slip URL) */
+  chargeLink?: string | null;
+  /** Payment status (PENDING, RECEIVED, OVERDUE, CONFIRMED, manual_paid) */
+  chargeStatus?: string | null;
   /** When the deal was marked as lost */
   lostAt?: string | null;
   /** Categoria de motivo de perda */
@@ -1561,6 +1605,7 @@ export interface CreateDealBody {
      * @maximum 100
      */
   probChurn?: number;
+  skipAsaasBilling?: boolean | null;
 }
 
 /**
@@ -1614,6 +1659,8 @@ export interface UpdateDealBody {
   quoteFileUrl?: string | null;
   /** Override contract status (e.g. retry after failure) */
   contractStatus?: UpdateDealBodyContractStatus;
+  /** When true, skip Asaas billing and treat as manually paid. */
+  skipAsaasBilling?: boolean | null;
 }
 
 export interface IncrementBody {

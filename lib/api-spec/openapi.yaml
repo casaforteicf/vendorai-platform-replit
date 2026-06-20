@@ -8990,6 +8990,14 @@ components:
                 type: number
                 exclusiveMinimum: 0
             required: [produtoId, quantidade]
+        paymentCompositions:
+          type: array
+          description: Composição de pagamento (múltiplas formas).
+          items:
+            $ref: "#/components/schemas/PaymentCompositionLine"
+        skipAsaasBilling:
+          type: boolean
+          description: Se true, não gerar cobrança no Asaas para este orçamento.
       required: [leadId, titulo, itens]
 
     FormaPagamentoProposta:
@@ -9570,6 +9578,15 @@ components:
           type: integer
           nullable: true
           description: Contract term in months.
+        numParcelas:
+          type: integer
+          nullable: true
+          description: Number of installments.
+        paymentCompositions:
+          type: array
+          description: Composição de pagamento (múltiplas formas).
+          items:
+            $ref: "#/components/schemas/PaymentCompositionLine"
         createdAt:
           type: string
           format: date-time
@@ -9619,6 +9636,14 @@ components:
         prazoContratoMeses:
           type: integer
           description: Contract term in months.
+        paymentCompositions:
+          type: array
+          description: Composição de pagamento (múltiplas formas).
+          items:
+            $ref: "#/components/schemas/PaymentCompositionLine"
+        skipAsaasBilling:
+          type: boolean
+          description: Se true, não gerar cobrança no Asaas para este orçamento.
       required: [tenantId, leadId, titulo]
 
     UpdatePropostaBody:
@@ -9660,6 +9685,29 @@ components:
         prazoContratoMeses:
           type: integer
           description: Contract term in months.
+        paymentCompositions:
+          type: array
+          description: Composição de pagamento (múltiplas formas).
+          items:
+            $ref: "#/components/schemas/PaymentCompositionLine"
+        skipAsaasBilling:
+          type: boolean
+          nullable: true
+          description: When true, skip Asaas billing and treat as manually paid.
+
+    PaymentCompositionLine:
+      type: object
+      required: [forma, valor]
+      properties:
+        forma:
+          type: string
+          enum: [pix, cartao_credito, cartao_debito, dinheiro, boleto, transferencia, outro]
+        valor:
+          type: number
+        comprovanteUrl:
+          type: string
+          nullable: true
+          description: URL do comprovante de pagamento (opcional).
 
     ActivityTipo:
       type: string
@@ -10018,6 +10066,22 @@ components:
           type: string
           nullable: true
           description: ZapSign document token
+        skipAsaasBilling:
+          type: string
+          nullable: true
+          description: When 'true', skip Asaas billing and treat as manually paid.
+        asaasChargeId:
+          type: string
+          nullable: true
+          description: Asaas charge ID
+        chargeLink:
+          type: string
+          nullable: true
+          description: Payment link (invoice URL or bank slip URL)
+        chargeStatus:
+          type: string
+          nullable: true
+          description: Payment status (PENDING, RECEIVED, OVERDUE, CONFIRMED, manual_paid)
         lostAt:
           type: string
           format: date-time
@@ -10136,6 +10200,9 @@ components:
           type: integer
           minimum: 0
           maximum: 100
+        skipAsaasBilling:
+          type: boolean
+          nullable: true
       required: [tenantId, titulo]
 
     UpdateDealBody:
@@ -10198,6 +10265,10 @@ components:
           enum: [pending, sent, signed, failed, skipped, na]
           nullable: true
           description: Override contract status (e.g. retry after failure)
+        skipAsaasBilling:
+          type: boolean
+          nullable: true
+          description: When true, skip Asaas billing and treat as manually paid.
 
     IncrementBody:
       type: object

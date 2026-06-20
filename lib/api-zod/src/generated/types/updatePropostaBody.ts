@@ -6,6 +6,7 @@
  * OpenAPI spec version: 0.1.0
  */
 import type { FormaPagamentoProposta } from './formaPagamentoProposta';
+import type { PaymentCompositionLine } from './paymentCompositionLine';
 import type { PropostaItem } from './propostaItem';
 import type { PropostaStatus } from './propostaStatus';
 
@@ -29,4 +30,8 @@ export interface UpdatePropostaBody {
   valorMensal?: number;
   /** Contract term in months. */
   prazoContratoMeses?: number;
+  /** Composição de pagamento (múltiplas formas). */
+  paymentCompositions?: PaymentCompositionLine[];
+  /** When true, skip Asaas billing and treat as manually paid. */
+  skipAsaasBilling?: boolean | null;
 }

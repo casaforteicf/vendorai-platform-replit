@@ -6,6 +6,7 @@
  * OpenAPI spec version: 0.1.0
  */
 import type { FormaPagamentoProposta } from './formaPagamentoProposta';
+import type { PaymentCompositionLine } from './paymentCompositionLine';
 import type { PropostaItem } from './propostaItem';
 import type { PropostaStatus } from './propostaStatus';
 
@@ -34,6 +35,10 @@ export interface Proposta {
   valorMensal?: string | null;
   /** Contract term in months. */
   prazoContratoMeses?: number | null;
+  /** Number of installments. */
+  numParcelas?: number | null;
+  /** Composição de pagamento (múltiplas formas). */
+  paymentCompositions?: PaymentCompositionLine[];
   createdAt: Date;
   updatedAt: Date;
 }

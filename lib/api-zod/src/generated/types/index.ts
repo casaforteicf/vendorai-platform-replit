@@ -253,6 +253,8 @@ export * from './partner';
 export * from './partnerTenant';
 export * from './partnerTenantUsage';
 export * from './partnerTenantUsageUsage';
+export * from './paymentCompositionLine';
+export * from './paymentCompositionLineForma';
 export * from './paymentMethod';
 export * from './paymentMethodList';
 export * from './platformRole';

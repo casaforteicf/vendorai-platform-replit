@@ -1263,7 +1263,8 @@ export const CreateDealBody = zod.object({
   "seats": zod.number().min(createDealBodySeatsMin).optional(),
   "planoContratado": zod.string().optional(),
   "dataRenovacao": zod.coerce.date().optional(),
-  "probChurn": zod.number().min(createDealBodyProbChurnMin).max(createDealBodyProbChurnMax).optional()
+  "probChurn": zod.number().min(createDealBodyProbChurnMin).max(createDealBodyProbChurnMax).optional(),
+  "skipAsaasBilling": zod.boolean().nullish()
 })
 
 
@@ -1315,6 +1316,10 @@ export const ListDealsResponseItem = zod.object({
   "onboardingStatus": zod.string().nullish().describe('Onboarding status (pending, sent, failed)'),
   "onboardingError": zod.string().nullish().describe('Error message if onboarding failed'),
   "zapsignDocId": zod.string().nullish().describe('ZapSign document token'),
+  "skipAsaasBilling": zod.string().nullish().describe('When \'true\', skip Asaas billing and treat as manually paid.'),
+  "asaasChargeId": zod.string().nullish().describe('Asaas charge ID'),
+  "chargeLink": zod.string().nullish().describe('Payment link (invoice URL or bank slip URL)'),
+  "chargeStatus": zod.string().nullish().describe('Payment status (PENDING, RECEIVED, OVERDUE, CONFIRMED, manual_paid)'),
   "lostAt": zod.coerce.date().nullish().describe('When the deal was marked as lost'),
   "lostReason": zod.string().nullish().describe('Categoria de motivo de perda'),
   "lostReasonDetail": zod.string().nullish().describe('Detalhe do motivo de perda'),
@@ -1383,6 +1388,10 @@ export const GetDealResponse = zod.object({
   "onboardingStatus": zod.string().nullish().describe('Onboarding status (pending, sent, failed)'),
   "onboardingError": zod.string().nullish().describe('Error message if onboarding failed'),
   "zapsignDocId": zod.string().nullish().describe('ZapSign document token'),
+  "skipAsaasBilling": zod.string().nullish().describe('When \'true\', skip Asaas billing and treat as manually paid.'),
+  "asaasChargeId": zod.string().nullish().describe('Asaas charge ID'),
+  "chargeLink": zod.string().nullish().describe('Payment link (invoice URL or bank slip URL)'),
+  "chargeStatus": zod.string().nullish().describe('Payment status (PENDING, RECEIVED, OVERDUE, CONFIRMED, manual_paid)'),
   "lostAt": zod.coerce.date().nullish().describe('When the deal was marked as lost'),
   "lostReason": zod.string().nullish().describe('Categoria de motivo de perda'),
   "lostReasonDetail": zod.string().nullish().describe('Detalhe do motivo de perda'),
@@ -1429,7 +1438,8 @@ export const UpdateDealBody = zod.object({
   "dataRenovacao": zod.coerce.date().optional(),
   "probChurn": zod.number().min(updateDealBodyProbChurnMin).max(updateDealBodyProbChurnMax).optional(),
   "quoteFileUrl": zod.string().nullish(),
-  "contractStatus": zod.enum(['pending', 'sent', 'signed', 'failed', 'skipped', 'na']).nullish().describe('Override contract status (e.g. retry after failure)')
+  "contractStatus": zod.enum(['pending', 'sent', 'signed', 'failed', 'skipped', 'na']).nullish().describe('Override contract status (e.g. retry after failure)'),
+  "skipAsaasBilling": zod.boolean().nullish().describe('When true, skip Asaas billing and treat as manually paid.')
 })
 
 export const updateDealResponseOneProbabilidadeMin = 0;
@@ -1467,6 +1477,10 @@ export const UpdateDealResponse = zod.object({
   "onboardingStatus": zod.string().nullish().describe('Onboarding status (pending, sent, failed)'),
   "onboardingError": zod.string().nullish().describe('Error message if onboarding failed'),
   "zapsignDocId": zod.string().nullish().describe('ZapSign document token'),
+  "skipAsaasBilling": zod.string().nullish().describe('When \'true\', skip Asaas billing and treat as manually paid.'),
+  "asaasChargeId": zod.string().nullish().describe('Asaas charge ID'),
+  "chargeLink": zod.string().nullish().describe('Payment link (invoice URL or bank slip URL)'),
+  "chargeStatus": zod.string().nullish().describe('Payment status (PENDING, RECEIVED, OVERDUE, CONFIRMED, manual_paid)'),
   "lostAt": zod.coerce.date().nullish().describe('When the deal was marked as lost'),
   "lostReason": zod.string().nullish().describe('Categoria de motivo de perda'),
   "lostReasonDetail": zod.string().nullish().describe('Detalhe do motivo de perda'),
@@ -1729,7 +1743,13 @@ export const CreatePropostaBody = zod.object({
   "prazoEntrega": zod.string().optional().describe('Prazo de entrega (ex: 7 dias úteis).'),
   "recorrente": zod.boolean().optional().describe('Whether this proposal has monthly recurring billing.'),
   "valorMensal": zod.number().optional().describe('Monthly billing amount.'),
-  "prazoContratoMeses": zod.number().optional().describe('Contract term in months.')
+  "prazoContratoMeses": zod.number().optional().describe('Contract term in months.'),
+  "paymentCompositions": zod.array(zod.object({
+  "forma": zod.enum(['pix', 'cartao_credito', 'cartao_debito', 'dinheiro', 'boleto', 'transferencia', 'outro']),
+  "valor": zod.number(),
+  "comprovanteUrl": zod.string().nullish().describe('URL do comprovante de pagamento (opcional).')
+})).optional().describe('Composição de pagamento (múltiplas formas).'),
+  "skipAsaasBilling": zod.boolean().optional().describe('Se true, não gerar cobrança no Asaas para este orçamento.')
 })
 
 
@@ -1767,6 +1787,12 @@ export const ListPropostasResponseItem = zod.object({
   "recorrente": zod.boolean().nullish().describe('Whether this proposal has monthly recurring billing.'),
   "valorMensal": zod.string().nullish().describe('Monthly billing amount stored as decimal string (e.g. \"1500.00\").'),
   "prazoContratoMeses": zod.number().nullish().describe('Contract term in months.'),
+  "numParcelas": zod.number().nullish().describe('Number of installments.'),
+  "paymentCompositions": zod.array(zod.object({
+  "forma": zod.enum(['pix', 'cartao_credito', 'cartao_debito', 'dinheiro', 'boleto', 'transferencia', 'outro']),
+  "valor": zod.number(),
+  "comprovanteUrl": zod.string().nullish().describe('URL do comprovante de pagamento (opcional).')
+})).optional().describe('Composição de pagamento (múltiplas formas).'),
   "createdAt": zod.coerce.date(),
   "updatedAt": zod.coerce.date()
 })
@@ -1812,6 +1838,12 @@ export const UpdatePropostaStatusResponse = zod.object({
   "recorrente": zod.boolean().nullish().describe('Whether this proposal has monthly recurring billing.'),
   "valorMensal": zod.string().nullish().describe('Monthly billing amount stored as decimal string (e.g. \"1500.00\").'),
   "prazoContratoMeses": zod.number().nullish().describe('Contract term in months.'),
+  "numParcelas": zod.number().nullish().describe('Number of installments.'),
+  "paymentCompositions": zod.array(zod.object({
+  "forma": zod.enum(['pix', 'cartao_credito', 'cartao_debito', 'dinheiro', 'boleto', 'transferencia', 'outro']),
+  "valor": zod.number(),
+  "comprovanteUrl": zod.string().nullish().describe('URL do comprovante de pagamento (opcional).')
+})).optional().describe('Composição de pagamento (múltiplas formas).'),
   "createdAt": zod.coerce.date(),
   "updatedAt": zod.coerce.date()
 })
@@ -1846,6 +1878,12 @@ export const GetPropostaResponse = zod.object({
   "recorrente": zod.boolean().nullish().describe('Whether this proposal has monthly recurring billing.'),
   "valorMensal": zod.string().nullish().describe('Monthly billing amount stored as decimal string (e.g. \"1500.00\").'),
   "prazoContratoMeses": zod.number().nullish().describe('Contract term in months.'),
+  "numParcelas": zod.number().nullish().describe('Number of installments.'),
+  "paymentCompositions": zod.array(zod.object({
+  "forma": zod.enum(['pix', 'cartao_credito', 'cartao_debito', 'dinheiro', 'boleto', 'transferencia', 'outro']),
+  "valor": zod.number(),
+  "comprovanteUrl": zod.string().nullish().describe('URL do comprovante de pagamento (opcional).')
+})).optional().describe('Composição de pagamento (múltiplas formas).'),
   "createdAt": zod.coerce.date(),
   "updatedAt": zod.coerce.date()
 })
@@ -1876,7 +1914,13 @@ export const UpdatePropostaBody = zod.object({
   "prazoEntrega": zod.string().optional().describe('Prazo de entrega (ex: 7 dias úteis).'),
   "recorrente": zod.boolean().optional().describe('Whether this proposal has monthly recurring billing.'),
   "valorMensal": zod.number().optional().describe('Monthly billing amount.'),
-  "prazoContratoMeses": zod.number().optional().describe('Contract term in months.')
+  "prazoContratoMeses": zod.number().optional().describe('Contract term in months.'),
+  "paymentCompositions": zod.array(zod.object({
+  "forma": zod.enum(['pix', 'cartao_credito', 'cartao_debito', 'dinheiro', 'boleto', 'transferencia', 'outro']),
+  "valor": zod.number(),
+  "comprovanteUrl": zod.string().nullish().describe('URL do comprovante de pagamento (opcional).')
+})).optional().describe('Composição de pagamento (múltiplas formas).'),
+  "skipAsaasBilling": zod.boolean().nullish().describe('When true, skip Asaas billing and treat as manually paid.')
 })
 
 export const UpdatePropostaResponse = zod.object({
@@ -1901,6 +1945,12 @@ export const UpdatePropostaResponse = zod.object({
   "recorrente": zod.boolean().nullish().describe('Whether this proposal has monthly recurring billing.'),
   "valorMensal": zod.string().nullish().describe('Monthly billing amount stored as decimal string (e.g. \"1500.00\").'),
   "prazoContratoMeses": zod.number().nullish().describe('Contract term in months.'),
+  "numParcelas": zod.number().nullish().describe('Number of installments.'),
+  "paymentCompositions": zod.array(zod.object({
+  "forma": zod.enum(['pix', 'cartao_credito', 'cartao_debito', 'dinheiro', 'boleto', 'transferencia', 'outro']),
+  "valor": zod.number(),
+  "comprovanteUrl": zod.string().nullish().describe('URL do comprovante de pagamento (opcional).')
+})).optional().describe('Composição de pagamento (múltiplas formas).'),
   "createdAt": zod.coerce.date(),
   "updatedAt": zod.coerce.date()
 })
@@ -3232,7 +3282,13 @@ export const CreatePropostaFromCatalogoBody = zod.object({
   "itens": zod.array(zod.object({
   "produtoId": zod.string(),
   "quantidade": zod.number().gt(createPropostaFromCatalogoBodyItensItemQuantidadeExclusiveMin)
-})).min(1)
+})).min(1),
+  "paymentCompositions": zod.array(zod.object({
+  "forma": zod.enum(['pix', 'cartao_credito', 'cartao_debito', 'dinheiro', 'boleto', 'transferencia', 'outro']),
+  "valor": zod.number(),
+  "comprovanteUrl": zod.string().nullish().describe('URL do comprovante de pagamento (opcional).')
+})).optional().describe('Composição de pagamento (múltiplas formas).'),
+  "skipAsaasBilling": zod.boolean().optional().describe('Se true, não gerar cobrança no Asaas para este orçamento.')
 })
 
 
