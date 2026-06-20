@@ -10,6 +10,7 @@ import {
   produtosCatalogoTable,
 } from "@workspace/db";
 import { dispatchVendaWebhook } from "../services/erp-webhook.js";
+import { analyzeLeadIntelligence } from "./analyze-intelligence.js";
 import { logger } from "./logger.js";
 
 export type ProposalAcceptanceChannel = "link" | "whatsapp" | "manual";
@@ -152,6 +153,25 @@ export async function proposalAccepted(
     .where(eq(dealsTable.id, deal.id));
 
   log.info({ dealId: deal.id }, "proposalAccepted: deal moved to ganho");
+
+  // 4b. Trigger re-analysis of churn risk — non-blocking
+  // A deal moving to ganho is a strong engagement signal; the churn score
+  // should be recomputed immediately so the UI reflects the real state.
+  Promise.resolve()
+    .then(async () => {
+      try {
+        await analyzeLeadIntelligence({
+          tenantId: proposta.tenantId,
+          leadId:   proposta.leadId,
+          log,
+          triggeredBy: "auto",
+        });
+        log.info({ dealId: deal.id, leadId: proposta.leadId }, "proposalAccepted: churn re-analysis triggered");
+      } catch (err) {
+        log.warn({ err, dealId: deal.id, leadId: proposta.leadId }, "proposalAccepted: churn re-analysis failed (non-fatal)");
+      }
+    })
+    .catch(() => { /* ignore */ });
 
   // 5. Create CRM activity
   let activityCreated = false;

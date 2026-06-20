@@ -1,0 +1,45 @@
+# Briefing — Bug: Risco de churn alto mesmo com orçamentos aceitos
+
+## Problema observado
+
+Lead (CasaforteICF) com **3 orçamentos aceitos** (R$ 4.990,00 + R$ 990,00/mês recorrente, R$ 4.990,00 e R$ 9.980,00) continua marcado com **75% de risco de churn (alto)**, e a análise de IA aponta razões que não condizem com o estado real do lead:
+
+- "Negócios em estágio Novo sem progresso" e "Negócios perdidos" — mas há orçamentos aceitos, o que sugere que negócio(s) fechado(s) não estão sendo refletidos no estágio do pipeline.
+- "Histórico de mensagens vazio" — mas a timeline mostra múltiplas conversas WhatsApp recentes (18/06 e 19/06).
+- "Última análise: há cerca de 16 horas" — não houve recálculo após a aceitação dos orçamentos.
+
+Além disso, foram geradas **3 tarefas duplicadas** de "Verificar situação do lead (churn alto)" / "Lead com churn risk alto detectado" no card de Atividades (uma cancelada, uma pendente, uma planejada) — indicando que o job de churn check está criando novas tarefas sem checar se já existe uma aberta para o mesmo lead/motivo.
+
+## Causas prováveis (a confirmar no código)
+
+1. **Aceitar orçamento não dispara atualização do estágio do negócio vinculado.** O fluxo de fechamento (won → ZapSign/Asaas → pagamento → onboarding) provavelmente só é acionado quando o negócio é movido manualmente para "Ganho" no Kanban, não quando um orçamento muda de status para "Aceita". Isso deixa o negócio "preso" em estágio Novo mesmo após fechamento comercial.
+2. **Aceitar orçamento não dispara re-análise de churn.** A análise de IA do card "Inteligência do Cliente" só roda no job agendado (re-análise de IA) ou sob clique manual em "Analisar com IA", sem trigger reativo a eventos como orçamento aceito ou negócio ganho.
+3. **Prompt de análise de churn não pondera orçamentos aceitos/recorrência como sinal forte negativo de churn.** Mesmo que a análise rode de novo, se o prompt não inclui esse dado como contexto, o resultado pode continuar errado.
+4. **Contagem de "histórico de mensagens" desatualizada ou usando fonte errada** (não está puxando as conversas reais do lead).
+5. **Job de churn check sem deduplicação**: cria uma nova tarefa "churn alto" a cada execução, sem verificar se já existe uma tarefa do mesmo tipo em status Pendente/Planejada para aquele lead.
+
+## Correções sugeridas
+
+### 1. Trigger de atualização ao aceitar orçamento
+Ao orçamento mudar de status para "Aceita":
+- Verificar se há negócio (deal) vinculado ao lead em estágio diferente de "Ganho"; se sim, mover automaticamente (ou pelo menos sinalizar/sugerir) para "Ganho", disparando o fluxo já existente (won → ZapSign/Asaas → pagamento → onboarding).
+- Disparar re-análise de churn imediatamente (não esperar o job agendado).
+
+### 2. Incluir orçamentos aceitos no contexto da análise de IA
+No prompt de "Analisar com IA" / job de re-análise, incluir explicitamente: número de orçamentos aceitos, valor total fechado, presença de recorrência mensal. Esses dados devem reduzir fortemente o score de churn quando presentes.
+
+### 3. Corrigir contagem de histórico de mensagens
+Garantir que a fonte de dados da análise puxe as conversas reais (tabela de conversations/messages) do lead, não um campo desatualizado ou cache antigo.
+
+### 4. Deduplicar criação de tarefas de churn
+No job de churn check, antes de criar uma nova tarefa "Lead com churn risk alto detectado", verificar se já existe tarefa do mesmo `type`/motivo em status `Pendente` ou `Planejada` para aquele lead. Se existir, não criar duplicata (opcionalmente, atualizar a existente com timestamp/nota).
+
+## Teste de validação
+
+1. Pegar um lead com negócio em estágio "Novo" e churn risk alto.
+2. Aceitar um orçamento desse lead.
+3. Confirmar que:
+   - O negócio vinculado é movido para "Ganho" (ou ao menos sinalizado).
+   - A análise de churn é refeita automaticamente e o score cai de forma coerente.
+   - As razões do churn refletem o estado atual (orçamento aceito, conversas existentes).
+4. Rodar o job de churn check duas vezes seguidas no mesmo lead e confirmar que **não** cria tarefas duplicadas.
