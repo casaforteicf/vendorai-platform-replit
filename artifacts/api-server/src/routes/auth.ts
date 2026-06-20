@@ -11,6 +11,33 @@ import { sendPasswordResetEmail } from "../lib/email.js";
 const router: IRouter = Router();
 const protectedRouter: IRouter = Router();
 
+// ── In-memory rate limiter for demo login ─────────────────────────
+const demoLoginAttempts = new Map<string, number[]>();
+
+function checkDemoRateLimit(clientKey: string): { allowed: boolean; retryAfter?: number } {
+  const now = Date.now();
+  const MINUTE_MS = 60_000;
+  const HOUR_MS = 60 * MINUTE_MS;
+
+  const attempts = demoLoginAttempts.get(clientKey) ?? [];
+  const recent = attempts.filter((t) => now - t < HOUR_MS);
+
+  // Max 5 per minute
+  const inLastMinute = recent.filter((t) => now - t < MINUTE_MS).length;
+  if (inLastMinute >= 5) {
+    return { allowed: false, retryAfter: Math.ceil((MINUTE_MS - (now - recent[0]!)) / 1000) };
+  }
+
+  // Max 20 per hour
+  if (recent.length >= 20) {
+    return { allowed: false, retryAfter: Math.ceil((HOUR_MS - (now - recent[0]!)) / 1000) };
+  }
+
+  recent.push(now);
+  demoLoginAttempts.set(clientKey, recent);
+  return { allowed: true };
+}
+
 const PUBLIC_FIELDS = {
   id: usersTable.id,
   tenantId: usersTable.tenantId,
@@ -118,6 +145,87 @@ router.post("/auth/demo-signup", async (req, res) => {
     }
     throw err;
   }
+});
+
+router.post("/auth/demo-login", async (req, res) => {
+  const { email, password } = req.body;
+
+  // Rate limiting check for demo credentials
+  const isDemoCredentials = email === "demo" && password === "demo";
+  if (!isDemoCredentials) {
+    res.status(401).json({ error: "Invalid demo credentials" });
+    return;
+  }
+
+  // Apply rate limiting (by IP)
+  const clientKey = req.ip ?? "unknown";
+  const rateLimit = checkDemoRateLimit(clientKey);
+  if (!rateLimit.allowed) {
+    res.status(429).json({ error: "Muitas tentativas de login demo. Tente novamente em breve.", retryAfter: rateLimit.retryAfter });
+    return;
+  }
+
+  // Find or create demo tenant
+  let [tenant] = await db
+    .select()
+    .from(tenantsTable)
+    .where(eq(tenantsTable.slug, "demo"));
+
+  if (!tenant) {
+    [tenant] = await db
+      .insert(tenantsTable)
+      .values({
+        name: "Demo",
+        slug: "demo",
+        status: "active",
+        isDemo: true,
+        demoExpiresAt: new Date(Date.now() + 365 * 24 * 60 * 60 * 1000), // 1 year
+        planId: null,
+      })
+      .returning();
+  }
+
+  // Find or create demo user
+  let [user] = await db
+    .select()
+    .from(usersTable)
+    .where(eq(usersTable.email, "demo@demo.com"));
+
+  if (!user) {
+    const hashed = await bcrypt.hash("demo", 12);
+    [user] = await db
+      .insert(usersTable)
+      .values({
+        tenantId: tenant.id,
+        name: "Demo User",
+        email: "demo@demo.com",
+        password: hashed,
+        role: "admin",
+        platformRole: "tenant_admin",
+      })
+      .returning();
+  }
+
+  // Seed if not seeded
+  if (!tenant.demoSeeded) {
+    const { seedDemoData } = await import("./tenants.js");
+    await seedDemoData(tenant.id);
+  }
+
+  const token = signToken({
+    sub: user.id,
+    email: user.email,
+    platformRole: user.platformRole,
+    tenantId: user.tenantId,
+    role: user.role,
+  });
+
+  const { password: _pw, ...publicUser } = user;
+  res.json({
+    token,
+    user: publicUser,
+    tenant: { id: tenant.id, name: tenant.name, slug: tenant.slug, isDemo: true },
+  });
 });
 
 router.post("/auth/login", async (req, res) => {

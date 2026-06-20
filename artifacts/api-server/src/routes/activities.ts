@@ -5,6 +5,7 @@ import {
   activitiesTable,
   agendasTable,
   leadsTable,
+  tenantsTable,
   insertActivitySchema,
   updateActivitySchema,
 } from "@workspace/db";
@@ -32,6 +33,17 @@ router.post("/activities", async (req, res) => {
 
   // Async Google Calendar sync for reuniao
   if (activity.tipo === "reuniao" && activity.agendaId && activity.dataHoraInicio && activity.dataHoraFim) {
+    // Skip Google Calendar sync for demo tenants
+    const [tenant] = await db
+      .select({ isDemo: tenantsTable.isDemo })
+      .from(tenantsTable)
+      .where(eq(tenantsTable.id, activity.tenantId))
+      .limit(1);
+    if (tenant?.isDemo) {
+      req.log.info({ activityId: activity.id }, "activity: demo tenant — skipping Google Calendar sync");
+      return;
+    }
+
     req.log.info({ activityId: activity.id, agendaId: activity.agendaId }, "activity: starting Google Calendar sync for reuniao");
     try {
       const [agenda] = await db

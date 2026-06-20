@@ -6,6 +6,7 @@ import {
   messagesTable,
   agentConfigsTable,
   activitiesTable,
+  tenantsTable,
 } from "@workspace/db";
 import type { Message, Conversation } from "@workspace/db";
 import type { Logger } from "pino";
@@ -111,7 +112,6 @@ async function sendMetaWhatsAppMessage(
 ): Promise<void> {
   if (isAiResponse) await simulateTypingDelay(message, log);
 
-  // Meta requires international digits only, no "+"
   const normalizedPhone = phone.replace(/\D/g, "").replace(/^0+/, "");
   const url = `https://graph.facebook.com/v20.0/${phoneNumberId}/messages`;
 
@@ -170,7 +170,6 @@ export async function sendDirectWhatsAppMessage(
       .limit(1);
   }
 
-  // Prefer Meta Cloud API; fall back to Z-API if still configured
   if (config?.metaPhoneNumberId && config?.metaAccessToken) {
     await sendMetaWhatsAppMessage(config.metaPhoneNumberId, config.metaAccessToken, phone, message, log);
   } else if (config?.zapiInstanceId && config?.zapiToken && config?.zapiClientToken) {
@@ -180,10 +179,6 @@ export async function sendDirectWhatsAppMessage(
   }
 }
 
-// ── Anti-ban: typing delay ────────────────────────────────────────────────────
-// Simula o tempo que um humano levaria para digitar a mensagem.
-// Só é chamado em respostas de IA (agentName definido).
-// Fórmula: base 3s + 40 ms/char + jitter 0–3s, limitado a 12s.
 async function simulateTypingDelay(message: string, log: Logger): Promise<void> {
   const baseMs    = 3000;
   const perChar   = 40;
@@ -202,7 +197,6 @@ async function sendZapiWhatsAppMessage(
   log: Logger,
   isAiResponse = false
 ): Promise<void> {
-  // ── Anti-ban: typing delay para respostas de IA ──────────────────────────
   if (isAiResponse) await simulateTypingDelay(message, log);
 
   const url = `https://api.z-api.io/instances/${instanceId}/token/${token}/send-text`;
@@ -224,8 +218,6 @@ async function sendZapiWhatsAppMessage(
     throw new Error(`Z-API error ${res.status}: ${JSON.stringify(body)}`);
   }
 
-  // Z-API returns HTTP 200 with {"value": false} when the instance is not connected
-  // or the phone number is invalid — treat this as a hard failure.
   if (body.value === false) {
     log.error({ body, phone }, "omnichannel: zapi returned value=false (instance not connected or invalid phone)");
     throw new Error(`Z-API rejected message: ${JSON.stringify(body)}`);
@@ -240,7 +232,42 @@ export async function sendOutgoingMessage(
 ): Promise<SendOutgoingMessageResult> {
   const { tenantId, leadId, conteudo, canal, agentName } = input;
 
-  // ── 1. Fetch lead — validate tenant ownership + retrieve telefone/instagramScopedId ──
+  // ── 0. Demo tenant — no-op: simulate locally without external APIs
+  const [tenant] = await db
+    .select({ isDemo: tenantsTable.isDemo })
+    .from(tenantsTable)
+    .where(eq(tenantsTable.id, tenantId))
+    .limit(1);
+  if (tenant?.isDemo) {
+    log.info({ tenantId, leadId, canal }, "omnichannel: demo tenant — simulating message without external API");
+    const [conversation] = await db
+      .insert(conversationsTable)
+      .values({ tenantId, leadId, channel: canal, status: "open", naoLidas: 0 })
+      .onConflictDoNothing({ target: [conversationsTable.tenantId, conversationsTable.leadId, conversationsTable.channel] })
+      .returning();
+    const [message] = await db
+      .insert(messagesTable)
+      .values({
+        tenantId,
+        conversationId: conversation?.id ?? "",
+        leadId,
+        conteudo,
+        direcao: "saida",
+        enviadoPor: agentName ? "agente_ia" : "humano",
+        agentName: agentName ?? null,
+        tipoConteudo: "texto",
+        status: "enviado",
+        canal,
+      })
+      .returning();
+    return {
+      message,
+      conversation: conversation ?? (await db.select().from(conversationsTable).where(and(eq(conversationsTable.tenantId, tenantId), eq(conversationsTable.leadId, leadId), eq(conversationsTable.channel, canal))).limit(1))[0]!,
+      telefoneDestino: null,
+    };
+  }
+
+  // ── 1. Fetch lead — validate tenant ownership + retrieve telefone/instagramScopedId
   const [lead] = await db
     .select()
     .from(leadsTable)
@@ -249,7 +276,7 @@ export async function sendOutgoingMessage(
 
   if (!lead) throw new LeadNotFoundError(leadId);
 
-  // ── 2. WhatsApp: validate credentials + actually send ─────────────────────
+  // ── 2. WhatsApp: validate credentials + actually send
   if (canal === "whatsapp") {
     let config: { metaPhoneNumberId?: string | null; metaAccessToken?: string | null; zapiInstanceId?: string | null; zapiToken?: string | null; zapiClientToken?: string | null } | undefined;
     try {
@@ -280,7 +307,6 @@ export async function sendOutgoingMessage(
       throw new WhatsAppPhoneMissingError(leadId);
     }
 
-    // agentName definido = resposta do IA → aplica typing delay anti-ban
     if (config?.metaPhoneNumberId && config?.metaAccessToken) {
       await sendMetaWhatsAppMessage(
         config.metaPhoneNumberId,
@@ -305,7 +331,7 @@ export async function sendOutgoingMessage(
     }
   }
 
-  // ── 3. Instagram: validate credentials + actually send ─────────────────────
+  // ── 3. Instagram: validate credentials + actually send
   if (canal === "instagram") {
     const [config] = await db
       .select({
@@ -332,7 +358,7 @@ export async function sendOutgoingMessage(
     );
   }
 
-  // ── 4. Find or create conversation for leadId + canal ─────────────────────
+  // ── 4. Find or create conversation for leadId + canal
   let [conversation] = await db
     .select()
     .from(conversationsTable)
@@ -356,7 +382,7 @@ export async function sendOutgoingMessage(
     );
   }
 
-  // ── 5. Insert outgoing message ─────────────────────────────────────────────
+  // ── 5. Insert outgoing message
   const enviadoPor: "humano" | "agente_ia" = agentName ? "agente_ia" : "humano";
 
   const [message] = await db
@@ -380,13 +406,13 @@ export async function sendOutgoingMessage(
     "omnichannel: outgoing message inserted"
   );
 
-  // ── 6. Update conversation: ultimaMensagemEm ───────────────────────────────
+  // ── 6. Update conversation: ultimaMensagemEm
   await db
     .update(conversationsTable)
     .set({ ultimaMensagemEm: new Date(), updatedAt: new Date() })
     .where(eq(conversationsTable.id, conversation.id));
 
-  // ── 7. Auto-complete pending activities when AI sends a message ────────────
+  // ── 7. Auto-complete pending activities when AI sends a message
   if (agentName) {
     const tipoMap: Partial<Record<typeof canal, typeof activitiesTable.tipo._.data>> = {
       whatsapp: "whatsapp",

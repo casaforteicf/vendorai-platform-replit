@@ -566,15 +566,25 @@ router.post("/tenants/:tenantId/webhooks/instagram", async (req, res) => {
     .limit(1);
 
   if (!lead) {
-    // Try to match by name as fallback — if similar name found, backfill IGSID
+    // Dedup check: name-only match must NOT auto-merge; create separate lead
+    // and flag as possible duplicate for manual review
     const match = await findLeadByDedup(tenantId, null, null, nome);
     if (match.found === false && match.similar !== null) {
-      lead = match.similar;
-      await db
-        .update(leadsTable)
-        .set({ instagramScopedId: igsid, updatedAt: new Date() })
-        .where(eq(leadsTable.id, lead.id));
-      req.log.info({ leadId: lead.id, igsid, matchBy: "nome" }, "webhook/instagram: existing lead found by name, backfilled IGSID");
+      // Similar name found — create NEW lead, mark as possible duplicate
+      const similarId = match.similar.id;
+      [lead] = await db
+        .insert(leadsTable)
+        .values({
+          tenantId,
+          nome: nome ?? `Instagram @${igsid.slice(0, 8)}`,
+          instagramScopedId: igsid,
+          status: "novo",
+          source: "instagram",
+          possivelDuplicata: true,
+          leadSimilarId: similarId,
+        })
+        .returning();
+      req.log.info({ leadId: lead.id, igsid, similarId, matchBy: "nome" }, "webhook/instagram: new lead created, flagged as possible duplicate (name-only match)");
     } else {
       [lead] = await db
         .insert(leadsTable)

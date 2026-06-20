@@ -26,6 +26,15 @@ import {
   agentTasksTable,
   messagesTable,
   conversationsTable,
+  propostasTable,
+  activitiesTable,
+  inventoryItemsTable,
+  produtosCatalogoTable,
+  agendasTable,
+  agentActionsLogTable,
+  intelligenceAnalysisLogTable,
+  planAssignmentLogTable,
+  businessProfilesTable,
 } from "@workspace/db";
 import type { SegmentoFiltro } from "@workspace/db";
 import { evaluateForLead } from "../routes/rules.js";
@@ -528,5 +537,68 @@ export function startScheduler(log: Logger): void {
     });
   });
 
-  log.info("scheduler: started (churn-check @:05, campaigns @:15, billing @day-5-08:00, reactivation @03:00, demo-expiration @06:00)");
+  // Job 6: Reset demo tenants — daily at 02:00
+  cron.schedule("0 2 * * *", () => {
+    resetDemoTenants(log).catch((err) => {
+      log.error({ err }, "scheduler/demo-reset: unhandled error");
+    });
+  });
+
+  log.info("scheduler: started (churn-check @:05, campaigns @:15, billing @day-5-08:00, reactivation @03:00, demo-expiration @06:00, demo-reset @02:00)");
+}
+
+// ── Job 6: Reset demo tenants ──────────────────────────────────
+
+async function resetDemoTenants(log: Logger): Promise<void> {
+  log.info("scheduler/demo-reset: starting");
+
+  const demoTenants = await db
+    .select({ id: tenantsTable.id, name: tenantsTable.name })
+    .from(tenantsTable)
+    .where(
+      and(
+        eq(tenantsTable.isDemo, true),
+        eq(tenantsTable.status, "active")
+      )
+    );
+
+  if (demoTenants.length === 0) {
+    log.info("scheduler/demo-reset: no demo tenants found");
+    return;
+  }
+
+  for (const tenant of demoTenants) {
+    try {
+      log.info({ tenantId: tenant.id }, "scheduler/demo-reset: resetting demo tenant");
+
+      // Delete all tenant data (except tenant itself and user)
+      await db.delete(agentTasksTable).where(eq(agentTasksTable.tenantId, tenant.id));
+      await db.delete(messagesTable).where(eq(messagesTable.tenantId, tenant.id));
+      await db.delete(conversationsTable).where(eq(conversationsTable.tenantId, tenant.id));
+      await db.delete(activitiesTable).where(eq(activitiesTable.tenantId, tenant.id));
+      await db.delete(dealsTable).where(eq(dealsTable.tenantId, tenant.id));
+      await db.delete(propostasTable).where(eq(propostasTable.tenantId, tenant.id));
+      await db.delete(customerIntelligenceTable).where(eq(customerIntelligenceTable.tenantId, tenant.id));
+      await db.delete(leadsTable).where(eq(leadsTable.tenantId, tenant.id));
+      await db.delete(inventoryItemsTable).where(eq(inventoryItemsTable.tenantId, tenant.id));
+      await db.delete(produtosCatalogoTable).where(eq(produtosCatalogoTable.tenantId, tenant.id));
+      await db.delete(agendasTable).where(eq(agendasTable.tenantId, tenant.id));
+      await db.delete(agentActionsLogTable).where(eq(agentActionsLogTable.tenantId, tenant.id));
+      await db.delete(intelligenceAnalysisLogTable).where(eq(intelligenceAnalysisLogTable.tenantId, tenant.id));
+      await db.delete(campaignsTable).where(eq(campaignsTable.tenantId, tenant.id));
+      await db.delete(planAssignmentLogTable).where(eq(planAssignmentLogTable.tenantId, tenant.id));
+      await db.delete(businessProfilesTable).where(eq(businessProfilesTable.tenantId, tenant.id));
+      await db.delete(agentConfigsTable).where(eq(agentConfigsTable.tenantId, tenant.id));
+
+      // Re-seed
+      const { seedDemoData } = await import("../routes/tenants.js");
+      await seedDemoData(tenant.id);
+
+      log.info({ tenantId: tenant.id }, "scheduler/demo-reset: demo tenant reset complete");
+    } catch (err) {
+      log.error({ err, tenantId: tenant.id }, "scheduler/demo-reset: failed to reset demo tenant");
+    }
+  }
+
+  log.info({ count: demoTenants.length }, "scheduler/demo-reset: complete");
 }
