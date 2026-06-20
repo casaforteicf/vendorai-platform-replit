@@ -566,10 +566,10 @@ router.post("/tenants/:tenantId/webhooks/instagram", async (req, res) => {
     .limit(1);
 
   if (!lead) {
-    // Try to match by name as fallback — if exact name match, backfill IGSID
+    // Try to match by name as fallback — if similar name found, backfill IGSID
     const match = await findLeadByDedup(tenantId, null, null, nome);
-    if (match.found && match.matchBy === "nome") {
-      lead = match.lead;
+    if (match.found === false && match.similar !== null) {
+      lead = match.similar;
       await db
         .update(leadsTable)
         .set({ instagramScopedId: igsid, updatedAt: new Date() })

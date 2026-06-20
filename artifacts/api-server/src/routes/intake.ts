@@ -10,6 +10,7 @@ const intakeSchema = z.object({
   nome: z.string().min(1),
   email: z.string().optional(),
   telefone: z.string().optional(),
+  documento: z.string().optional(),
   cargo: z.string().optional(),
   empresa: z.string().optional(),
   segmento: z.string().optional(),
@@ -91,7 +92,7 @@ intakeRouter.post("/public/:tenantSlug/intake", async (req, res) => {
   };
 
   // Dedup: check for existing lead by phone or document
-  const match = await findLeadByDedup(tenant.id, d.telefone, null, d.nome);
+  const match = await findLeadByDedup(tenant.id, d.telefone, d.documento, d.nome);
   let leadId: string | undefined;
 
   if (match.found) {

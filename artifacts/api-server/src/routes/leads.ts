@@ -315,7 +315,7 @@ router.post("/leads/:id/merge", async (req, res) => {
 
   // Tenant sellers may only merge leads that are assigned to them
   if (req.user?.platformRole === "tenant_seller") {
-    if (duplicate.assignedTo !== req.user.sub && target.assignedTo !== req.user.sub) {
+    if (duplicate.assignedTo !== req.user.sub || target.assignedTo !== req.user.sub) {
       res.status(403).json({ error: "Access denied: seller can only merge leads assigned to them" });
       return;
     }
