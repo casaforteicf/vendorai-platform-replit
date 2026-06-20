@@ -70,11 +70,42 @@ Mantenha todas as outras seções inalteradas. Sem explicações, sem markdown.`
 }
 
 function extractHtml(text: string): string {
-  return text
-    .replace(/^```html\s*/i, "")
-    .replace(/^```\s*/i, "")
-    .replace(/```\s*$/, "")
+  // Remove markdown fences anywhere in the text
+  let cleaned = text
+    .replace(/```html\s*/gi, "")
+    .replace(/```\s*/g, "")
     .trim();
+
+  // Find the first HTML tag or DOCTYPE and discard everything before it
+  const doctypeMatch = cleaned.match(/<!DOCTYPE/i);
+  const htmlTagMatch = cleaned.match(/<html/i);
+  const firstIndex = Math.min(
+    doctypeMatch?.index ?? Infinity,
+    htmlTagMatch?.index ?? Infinity
+  );
+  if (firstIndex !== Infinity && firstIndex > 0) {
+    cleaned = cleaned.slice(firstIndex);
+  }
+
+  // Truncate after the closing </html> tag
+  const closingHtml = cleaned.match(/<\/html\s*>/i);
+  if (closingHtml && closingHtml.index !== undefined) {
+    cleaned = cleaned.slice(0, closingHtml.index + closingHtml[0].length);
+  }
+
+  return cleaned.trim();
+}
+
+/** Safe wrapper that logs for debugging */
+function extractHtmlSafe(text: string, log: { info: (obj: object, msg: string) => void }): string {
+  const rawPreview = text.slice(0, 200).replace(/\n/g, "\\n");
+  const html = extractHtml(text);
+  log.info({ rawLength: text.length, htmlLength: html.length, rawPreview }, "extractHtml debug");
+  return html;
+}
+
+function isValidHtml(html: string): boolean {
+  return html.length >= 500 && (/<html/i.test(html) || /<!DOCTYPE/i.test(html));
 }
 
 // Unified AI caller with provider logging
@@ -190,9 +221,10 @@ router.post("/tenants/:tenantId/site-generator/generate", async (req, res) => {
   req.log.info({ provider: result.provider, model: result.model, tenantId }, "Site generated successfully");
 
   const rawText = result.content;
-  const html = extractHtml(rawText);
+  const html = extractHtmlSafe(rawText, req.log);
 
-  if (!html || html.length < 500) {
+  if (!isValidHtml(html)) {
+    req.log.error({ rawLength: rawText.length, htmlLength: html.length, provider: result.provider, htmlPreview: html.slice(0, 200) }, "Site generation returned invalid HTML");
     res.status(502).json({ error: "Resposta da IA inválida ou muito curta" });
     return;
   }
@@ -257,7 +289,8 @@ router.post("/tenants/:tenantId/site-generator/:siteId/refine", async (req, res)
   const rawText = result.content;
   const html = extractHtml(rawText);
 
-  if (!html || html.length < 500) {
+  if (!isValidHtml(html)) {
+    req.log.error({ rawLength: rawText.length, htmlLength: html.length, provider: result.provider }, "Site refinement returned invalid HTML");
     res.status(502).json({ error: "Resposta da IA inválida" });
     return;
   }
