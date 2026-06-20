@@ -1,7 +1,6 @@
 import { google } from "googleapis";
-import { db, agendasTable, agendamentosTable } from "@workspace/db";
+import { db, agendasTable } from "@workspace/db";
 import { eq } from "drizzle-orm";
-import type { Agendamento } from "@workspace/db";
 import { logger } from "./logger";
 
 const SCOPES = [
@@ -11,7 +10,6 @@ const SCOPES = [
 ];
 
 function getRedirectUri(): string {
-  // Allow explicit override via env var (most reliable for production)
   const explicit = process.env["GOOGLE_REDIRECT_URI"];
   if (explicit) return explicit;
 
@@ -53,7 +51,6 @@ export async function exchangeCodeAndStore(
 
   oauth2.setCredentials(tokens);
 
-  // Fetch primary calendar info
   const cal = google.calendar({ version: "v3", auth: oauth2 });
   let googleCalendarId = "primary";
   let googleEmail: string | null = null;
@@ -63,7 +60,6 @@ export async function exchangeCodeAndStore(
     googleCalendarId = me.data.id ?? "primary";
     googleEmail = me.data.summary ?? null;
 
-    // Fetch the user's email from token info
     const oauth2Api = google.oauth2({ version: "v2", auth: oauth2 });
     const userInfo = await oauth2Api.userinfo.get();
     googleEmail = userInfo.data.email ?? googleEmail;
@@ -71,7 +67,6 @@ export async function exchangeCodeAndStore(
     logger.warn({ err: e }, "Could not fetch Google Calendar info");
   }
 
-  // Build update object — only overwrite refresh_token if Google actually sent a new one
   const updateData: Record<string, unknown> = {
     googleCalendarId,
     googleEmail,
@@ -116,7 +111,6 @@ async function getAuthForAgenda(agendaId: string) {
     expiry_date: agenda.googleTokenExpiresAt?.getTime() ?? undefined,
   });
 
-  // Persist refreshed tokens
   oauth2.on("tokens", async (newTokens) => {
     await db
       .update(agendasTable)
@@ -133,36 +127,64 @@ async function getAuthForAgenda(agendaId: string) {
   return { oauth2, calendarId: agenda.googleCalendarId ?? "primary" };
 }
 
+export interface GoogleCalendarSyncResult {
+  googleEventId: string | null;
+  meetLink: string | null;
+}
+
+export interface CalendarEventInput {
+  id: string;
+  tenantId: string;
+  titulo: string;
+  dataHoraInicio: Date | string | null;
+  dataHoraFim: Date | string | null;
+  observacoes?: string | null;
+  local?: string | null;
+  gerarMeet?: boolean | null;
+}
+
 export async function createGoogleEvent(
   agendaId: string,
-  agendamento: Agendamento,
+  eventInput: CalendarEventInput,
   leadName?: string,
   leadEmail?: string,
   gerarMeet?: boolean
-): Promise<string | null> {
-  logger.info({ agendaId, agendamentoId: agendamento.id, gerarMeet }, "createGoogleEvent: starting");
+): Promise<GoogleCalendarSyncResult> {
+  logger.info({ agendaId, eventId: eventInput.id, gerarMeet }, "createGoogleEvent: starting");
 
   const auth = await getAuthForAgenda(agendaId);
   if (!auth) {
     logger.warn({ agendaId }, "createGoogleEvent: getAuthForAgenda returned null");
-    return null;
+    return { googleEventId: null, meetLink: null };
   }
 
   logger.info({ agendaId, calendarId: auth.calendarId }, "createGoogleEvent: auth ready");
 
   const cal = google.calendar({ version: "v3", auth: auth.oauth2 });
 
+  const startIso = eventInput.dataHoraInicio instanceof Date
+    ? eventInput.dataHoraInicio.toISOString()
+    : (eventInput.dataHoraInicio ?? undefined);
+  const endIso = eventInput.dataHoraFim instanceof Date
+    ? eventInput.dataHoraFim.toISOString()
+    : (eventInput.dataHoraFim ?? undefined);
+
+  if (!startIso || !endIso) {
+    logger.warn({ agendaId, eventId: eventInput.id }, "createGoogleEvent: missing start/end time, skipping");
+    return { googleEventId: null, meetLink: null };
+  }
+
   const requestBody: any = {
-    summary: agendamento.titulo,
+    summary: eventInput.titulo,
     description: [
       leadName ? `Cliente: ${leadName}` : null,
-      agendamento.observacoes,
+      eventInput.observacoes,
     ]
       .filter(Boolean)
       .join("\n"),
-    location: agendamento.local ?? undefined,
-    start: { dateTime: agendamento.dataHoraInicio.toISOString() },
-    end: { dateTime: agendamento.dataHoraFim.toISOString() },
+    location: eventInput.local ?? undefined,
+    start: { dateTime: startIso },
+    end: { dateTime: endIso },
   };
 
   if (leadEmail) {
@@ -196,17 +218,7 @@ export async function createGoogleEvent(
 
     logger.info({ agendaId, googleEventId, meetLink }, "createGoogleEvent: event created successfully");
 
-    if (googleEventId || meetLink) {
-      await db
-        .update(agendamentosTable)
-        .set({
-          ...(googleEventId ? { googleEventId } : {}),
-          ...(meetLink ? { meetLink } : {}),
-          updatedAt: new Date(),
-        })
-        .where(eq(agendamentosTable.id, agendamento.id));
-    }
-    return googleEventId;
+    return { googleEventId, meetLink };
   } catch (err) {
     logger.error({ err, agendaId, requestBody }, "createGoogleEvent: Google Calendar API error");
     throw err;
@@ -215,29 +227,38 @@ export async function createGoogleEvent(
 
 export async function updateGoogleEvent(
   agendaId: string,
-  agendamento: Agendamento,
-  leadName?: string
+  eventInput: CalendarEventInput,
+  leadName?: string,
+  googleEventId?: string | null
 ): Promise<void> {
-  if (!agendamento.googleEventId) return;
+  if (!googleEventId) return;
   const auth = await getAuthForAgenda(agendaId);
   if (!auth) return;
 
   const cal = google.calendar({ version: "v3", auth: auth.oauth2 });
+
+  const startIso = eventInput.dataHoraInicio instanceof Date
+    ? eventInput.dataHoraInicio.toISOString()
+    : eventInput.dataHoraInicio;
+  const endIso = eventInput.dataHoraFim instanceof Date
+    ? eventInput.dataHoraFim.toISOString()
+    : eventInput.dataHoraFim;
+
   try {
     await cal.events.update({
       calendarId: auth.calendarId,
-      eventId: agendamento.googleEventId,
+      eventId: googleEventId,
       requestBody: {
-        summary: agendamento.titulo,
+        summary: eventInput.titulo,
         description: [
           leadName ? `Cliente: ${leadName}` : null,
-          agendamento.observacoes,
+          eventInput.observacoes,
         ]
           .filter(Boolean)
           .join("\n"),
-        location: agendamento.local ?? undefined,
-        start: { dateTime: agendamento.dataHoraInicio.toISOString() },
-        end: { dateTime: agendamento.dataHoraFim.toISOString() },
+        location: eventInput.local ?? undefined,
+        start: { dateTime: startIso },
+        end: { dateTime: endIso },
       },
     });
   } catch (e) {

@@ -70,14 +70,33 @@ router.post("/agendamentos", async (req, res) => {
           .where(eq(leadsTable.id, agendamento.leadId));
 
         req.log.info({ agendaId: agendamento.agendaId, leadId: agendamento.leadId }, "agendamento: calling createGoogleEvent");
-        const googleEventId = await createGoogleEvent(
+        const { googleEventId, meetLink } = await createGoogleEvent(
           agendamento.agendaId,
-          agendamento,
+          {
+            id: agendamento.id,
+            tenantId: agendamento.tenantId,
+            titulo: agendamento.titulo,
+            dataHoraInicio: agendamento.dataHoraInicio,
+            dataHoraFim: agendamento.dataHoraFim,
+            observacoes: agendamento.observacoes,
+            local: agendamento.local,
+            gerarMeet: agendamento.gerarMeet ?? false,
+          },
           lead?.nome ?? undefined,
           lead?.email ?? undefined,
           agendamento.gerarMeet ?? false
         );
-        req.log.info({ agendaId: agendamento.agendaId, googleEventId }, "agendamento: Google Calendar sync result");
+        if (googleEventId || meetLink) {
+          await db
+            .update(agendamentosTable)
+            .set({
+              ...(googleEventId ? { googleEventId } : {}),
+              ...(meetLink ? { meetLink } : {}),
+              updatedAt: new Date(),
+            })
+            .where(eq(agendamentosTable.id, agendamento.id));
+        }
+        req.log.info({ agendaId: agendamento.agendaId, googleEventId, meetLink }, "agendamento: Google Calendar sync result");
       } else {
         req.log.warn({ agendaId: agendamento.agendaId }, "agendamento: agenda has no refresh_token, skipping Google Calendar sync");
       }
@@ -236,7 +255,7 @@ router.patch("/agendamentos/:id", async (req, res) => {
           .from(leadsTable)
           .where(eq(leadsTable.id, agendamento.leadId));
 
-        await updateGoogleEvent(agendaId, agendamento, lead?.nome ?? undefined);
+        await updateGoogleEvent(agendaId, agendamento, lead?.nome ?? undefined, agendamento.googleEventId);
       }
     } catch (err) {
       req.log.warn({ err }, "Google Calendar sync failed on update");

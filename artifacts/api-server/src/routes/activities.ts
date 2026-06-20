@@ -8,7 +8,7 @@ import {
   insertActivitySchema,
   updateActivitySchema,
 } from "@workspace/db";
-import { createGoogleEvent } from "../lib/google-calendar.js";
+import { createGoogleEvent, updateGoogleEvent, deleteGoogleEvent } from "../lib/google-calendar.js";
 
 const router: IRouter = Router();
 
@@ -45,34 +45,35 @@ router.post("/activities", async (req, res) => {
           .from(leadsTable)
           .where(eq(leadsTable.id, activity.leadId));
 
-        const googleEventId = await createGoogleEvent(
+        const { googleEventId, meetLink } = await createGoogleEvent(
           activity.agendaId,
           {
             id: activity.id,
             tenantId: activity.tenantId,
-            leadId: activity.leadId,
-            dealId: activity.dealId,
-            agendaId: activity.agendaId,
-            tipo: "reuniao",
             titulo: activity.titulo,
             dataHoraInicio: activity.dataHoraInicio,
             dataHoraFim: activity.dataHoraFim,
-            local: null,
-            status: "agendado",
-            responsavelId: activity.responsavelId,
             observacoes: activity.descricao,
-            googleEventId: activity.googleEventId,
-            meetLink: activity.meetLink,
+            local: null,
             gerarMeet: activity.gerarMeet ?? false,
-            createdAt: activity.createdAt,
-            updatedAt: activity.updatedAt,
           },
           lead?.nome ?? undefined,
           lead?.email ?? undefined,
           activity.gerarMeet ?? false
         );
 
-        req.log.info({ activityId: activity.id, googleEventId }, "activity: Google Calendar sync result for reuniao");
+        if (googleEventId || meetLink) {
+          await db
+            .update(activitiesTable)
+            .set({
+              ...(googleEventId ? { googleEventId } : {}),
+              ...(meetLink ? { meetLink } : {}),
+              updatedAt: new Date(),
+            })
+            .where(eq(activitiesTable.id, activity.id));
+        }
+
+        req.log.info({ activityId: activity.id, googleEventId, meetLink }, "activity: Google Calendar sync result for reuniao");
       } else {
         req.log.warn({ activityId: activity.id, agendaId: activity.agendaId }, "activity: no google refresh token for agenda");
       }
@@ -146,7 +147,7 @@ router.patch("/activities/:id", async (req, res) => {
   }
 
   const [existing] = await db
-    .select({ id: activitiesTable.id, tenantId: activitiesTable.tenantId })
+    .select({ id: activitiesTable.id, tenantId: activitiesTable.tenantId, agendaId: activitiesTable.agendaId, googleEventId: activitiesTable.googleEventId })
     .from(activitiesTable)
     .where(eq(activitiesTable.id, String(req.params.id)));
 
@@ -174,11 +175,33 @@ router.patch("/activities/:id", async (req, res) => {
     .returning();
 
   res.json(activity);
+
+  // Async Google Calendar sync on update
+  const agendaId = activity.agendaId ?? existing.agendaId;
+  if (agendaId && activity.googleEventId) {
+    try {
+      const [agenda] = await db
+        .select({ googleRefreshToken: agendasTable.googleRefreshToken })
+        .from(agendasTable)
+        .where(eq(agendasTable.id, agendaId));
+
+      if (agenda?.googleRefreshToken) {
+        const [lead] = await db
+          .select({ nome: leadsTable.nome })
+          .from(leadsTable)
+          .where(eq(leadsTable.id, activity.leadId));
+
+        await updateGoogleEvent(agendaId, activity, lead?.nome ?? undefined, activity.googleEventId);
+      }
+    } catch (err) {
+      req.log.warn({ err }, "activity: Google Calendar sync failed on update");
+    }
+  }
 });
 
 router.delete("/activities/:id", async (req, res) => {
   const [existing] = await db
-    .select({ id: activitiesTable.id, tenantId: activitiesTable.tenantId })
+    .select({ id: activitiesTable.id, tenantId: activitiesTable.tenantId, agendaId: activitiesTable.agendaId, googleEventId: activitiesTable.googleEventId })
     .from(activitiesTable)
     .where(eq(activitiesTable.id, String(req.params.id)));
 
@@ -195,6 +218,22 @@ router.delete("/activities/:id", async (req, res) => {
   await db.delete(activitiesTable).where(eq(activitiesTable.id, existing.id));
 
   res.status(204).send();
+
+  // Async Google Calendar delete
+  if (existing.agendaId && existing.googleEventId) {
+    try {
+      const [agenda] = await db
+        .select({ googleRefreshToken: agendasTable.googleRefreshToken })
+        .from(agendasTable)
+        .where(eq(agendasTable.id, existing.agendaId));
+
+      if (agenda?.googleRefreshToken) {
+        await deleteGoogleEvent(existing.agendaId, existing.googleEventId);
+      }
+    } catch (err) {
+      req.log.warn({ err }, "activity: Google Calendar delete failed");
+    }
+  }
 });
 
 export default router;

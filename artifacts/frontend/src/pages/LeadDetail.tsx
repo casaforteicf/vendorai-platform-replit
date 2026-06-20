@@ -1713,6 +1713,14 @@ export default function LeadDetail() {
                                   </span>
                                 </>
                               )}
+                              {activity.dataHoraInicio && (
+                                <>
+                                  <span className="text-muted-foreground">·</span>
+                                  <span className="text-xs text-muted-foreground">
+                                    Início {formatDateTime(activity.dataHoraInicio)}
+                                  </span>
+                                </>
+                              )}
                             </div>
                             {!isActivityOpen && activity.descricao && (
                               <p className="text-xs text-muted-foreground mt-1 leading-snug line-clamp-1">

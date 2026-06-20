@@ -20,7 +20,7 @@ export function normalizePhone(raw: string | null | undefined): string | null {
 /** Remove dots, dashes, slashes from CPF/CNPJ. */
 export function normalizeDocument(raw: string | null | undefined): string | null {
   if (!raw) return null;
-  const cleaned = raw.replace(/[.-\/]/g, "");
+  const cleaned = raw.replace(/[\.\-\/]/g, "");
   return cleaned.length > 0 ? cleaned : null;
 }
 

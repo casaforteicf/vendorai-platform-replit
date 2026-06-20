@@ -192,19 +192,33 @@ async function handleSchedulerProcess(req: Request, res: Response): Promise<void
           .where(eq(agendasTable.id, agendamentoInput.agendaId));
 
         if (agenda?.googleRefreshToken) {
-          await createGoogleEvent(
+          const { googleEventId, meetLink } = await createGoogleEvent(
             agendamentoInput.agendaId,
-            ag,
+            {
+              id: ag.id,
+              tenantId: ag.tenantId,
+              titulo: ag.titulo,
+              dataHoraInicio: ag.dataHoraInicio,
+              dataHoraFim: ag.dataHoraFim,
+              observacoes: ag.observacoes,
+              local: ag.local,
+              gerarMeet: agendamentoInput.gerarMeet ?? false,
+            },
             ctx.lead.nome,
             ctx.lead.email ?? undefined,
             agendamentoInput.gerarMeet ?? false
           );
-          // Re-fetch updated record to get meetLink
-          const [updated] = await db
-            .select({ meetLink: agendamentosTable.meetLink })
-            .from(agendamentosTable)
-            .where(eq(agendamentosTable.id, ag.id));
-          meetLinkGerado = updated?.meetLink ?? null;
+          if (googleEventId || meetLink) {
+            await db
+              .update(agendamentosTable)
+              .set({
+                ...(googleEventId ? { googleEventId } : {}),
+                ...(meetLink ? { meetLink } : {}),
+                updatedAt: new Date(),
+              })
+              .where(eq(agendamentosTable.id, ag.id));
+          }
+          meetLinkGerado = meetLink ?? null;
           if (meetLinkGerado) {
             req.log.info({ agendamentoId: ag.id, meetLink: meetLinkGerado }, "scheduler: Meet link generated");
           }

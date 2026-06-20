@@ -283,6 +283,11 @@ router.post("/leads/:id/merge", async (req, res) => {
 
   const { targetLeadId } = parsed.data;
 
+  if (duplicateId === targetLeadId) {
+    res.status(422).json({ error: "Cannot merge a lead into itself" });
+    return;
+  }
+
   // Load both leads and verify same tenant + auth
   const [duplicate] = await db
     .select()
