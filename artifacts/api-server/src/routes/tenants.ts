@@ -456,14 +456,14 @@ export async function seedDemoData(tenantId: string) {
 
   // 10. Atividades fake (8)
   const atividadesFake = [
-    { leadId: leadsCriados[0]!.id, tipo: "ligacao" as const, titulo: "Ligar para Construtora Horizonte", descricao: "Apresentar sistema", status: "pendente" as const, vencimentoEm: new Date(now.getTime() + 86400000) },
-    { leadId: leadsCriados[1]!.id, tipo: "whatsapp" as const, titulo: "Enviar catálogo Distribuidora Sul", descricao: "Enviar PDF", status: "concluida" as const, vencimentoEm: new Date(now.getTime() - 86400000), concluidaEm: new Date(now.getTime() - 3600000) },
-    { leadId: leadsCriados[2]!.id, tipo: "email" as const, titulo: "Enviar proposta Mercado Bom Preço", descricao: "Proposta formal", status: "pendente" as const, vencimentoEm: new Date(now.getTime() + 172800000) },
-    { leadId: leadsCriados[3]!.id, tipo: "visita" as const, titulo: "Visita Auto Peças Central", descricao: "Demo presencial", status: "pendente" as const, vencimentoEm: new Date(now.getTime() + 432000000) },
-    { leadId: leadsCriados[4]!.id, tipo: "reuniao" as const, titulo: "Reunião de kickoff Confecções Maria", descricao: "Início do projeto", status: "concluida" as const, vencimentoEm: new Date(now.getTime() - 172800000), concluidaEm: new Date(now.getTime() - 86400000), dataHoraInicio: new Date(now.getTime() - 172800000), dataHoraFim: new Date(now.getTime() - 169200000), meetLink: "https://meet.google.com/demo-kickoff", googleEventId: "demo_event_1" },
-    { leadId: leadsCriados[5]!.id, tipo: "tarefa" as const, titulo: "Preparar demo Padaria do João", descricao: "Configurar ambiente", status: "pendente" as const, vencimentoEm: new Date(now.getTime() + 259200000) },
-    { leadId: leadsCriados[6]!.id, tipo: "ligacao" as const, titulo: "Follow-up Loja de Eletrônicos", descricao: "Verificar interesse", status: "pendente" as const, vencimentoEm: new Date(now.getTime() + 43200000) },
-    { leadId: leadsCriados[7]!.id, tipo: "whatsapp" as const, titulo: "Lembrar proposta Clínica Saúde", descricao: "Urgência", status: "pendente" as const, vencimentoEm: new Date(now.getTime() + 86400000) },
+    { leadId: leadsCriados[0]!.id, tipo: "ligacao" as const, titulo: "Ligar para Construtora Horizonte", descricao: "Apresentar sistema", status: "pendente" as const, dataVencimento: new Date(now.getTime() + 86400000) },
+    { leadId: leadsCriados[1]!.id, tipo: "whatsapp" as const, titulo: "Enviar catálogo Distribuidora Sul", descricao: "Enviar PDF", status: "concluida" as const, dataVencimento: new Date(now.getTime() - 86400000), concluidaEm: new Date(now.getTime() - 3600000) },
+    { leadId: leadsCriados[2]!.id, tipo: "email" as const, titulo: "Enviar proposta Mercado Bom Preço", descricao: "Proposta formal", status: "pendente" as const, dataVencimento: new Date(now.getTime() + 172800000) },
+    { leadId: leadsCriados[3]!.id, tipo: "visita" as const, titulo: "Visita Auto Peças Central", descricao: "Demo presencial", status: "pendente" as const, dataVencimento: new Date(now.getTime() + 432000000) },
+    { leadId: leadsCriados[4]!.id, tipo: "reuniao" as const, titulo: "Reunião de kickoff Confecções Maria", descricao: "Início do projeto", status: "concluida" as const, dataVencimento: new Date(now.getTime() - 172800000), concluidaEm: new Date(now.getTime() - 86400000), dataHoraInicio: new Date(now.getTime() - 172800000), dataHoraFim: new Date(now.getTime() - 169200000), meetLink: "https://meet.google.com/demo-kickoff", googleEventId: "demo_event_1" },
+    { leadId: leadsCriados[5]!.id, tipo: "tarefa" as const, titulo: "Preparar demo Padaria do João", descricao: "Configurar ambiente", status: "pendente" as const, dataVencimento: new Date(now.getTime() + 259200000) },
+    { leadId: leadsCriados[6]!.id, tipo: "ligacao" as const, titulo: "Follow-up Loja de Eletrônicos", descricao: "Verificar interesse", status: "pendente" as const, dataVencimento: new Date(now.getTime() + 43200000) },
+    { leadId: leadsCriados[7]!.id, tipo: "whatsapp" as const, titulo: "Lembrar proposta Clínica Saúde", descricao: "Urgência", status: "pendente" as const, dataVencimento: new Date(now.getTime() + 86400000) },
   ];
   await db.insert(activitiesTable).values(
     atividadesFake.map((a) => ({
