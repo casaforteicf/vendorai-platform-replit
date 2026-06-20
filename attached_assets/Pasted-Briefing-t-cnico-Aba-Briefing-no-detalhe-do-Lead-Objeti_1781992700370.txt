@@ -1,0 +1,185 @@
+Briefing técnico — Aba "Briefing" no detalhe do Lead
+
+Objetivo: adicionar uma nova aba "Briefing" na tela de detalhe de cada lead/deal, contendo o formulário de descoberta SPIN+PAS (situação, problema, implicação, necessidade, objeções, classificação e próximo passo) usado na prospecção. Os dados ficam salvos no lead e disponíveis pra qualquer pessoa do time consultar depois.
+
+Premissa assumida: um briefing por lead (registro único, editável/atualizável ao longo do relacionamento — não um histórico de múltiplos briefings). Se precisar de histórico (um registro por contato/ligação), avisa que ajusto o schema.
+
+
+1. Schema (Drizzle ORM)
+
+Nova tabela lead_briefings, relação 1:1 com leads (ajustar nome da tabela de leads/deals conforme já existe no projeto).
+
+tsimport { pgTable, uuid, varchar, text, boolean, timestamp, jsonb } from 'drizzle-orm/pg-core';
+import { tenants } from './tenants';
+import { leads } from './leads';
+import { users } from './users';
+
+export const leadBriefings = pgTable('lead_briefings', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  tenantId: uuid('tenant_id').notNull().references(() => tenants.id),
+  leadId: uuid('lead_id').notNull().references(() => leads.id).unique(),
+
+  // 1. Dados da empresa / contato
+  channelsUsed: jsonb('channels_used').$type<string[]>().default([]),
+  // valores possíveis: 'whatsapp' | 'instagram' | 'site' | 'televendas' | 'representante' | 'outro'
+  contactType: varchar('contact_type', { length: 20 }), // 'call' | 'visit' | 'whatsapp'
+  approachedBy: uuid('approached_by').references(() => users.id),
+  contactDate: timestamp('contact_date'),
+
+  // 2-5. Blocos SPIN — cada um é uma lista de {question, answer}
+  situationAnswers: jsonb('situation_answers').$type<{ question: string; answer: string }[]>().default([]),
+  problemAnswers: jsonb('problem_answers').$type<{ question: string; answer: string }[]>().default([]),
+  problemMinimized: boolean('problem_minimized').default(false),
+  implicationAnswers: jsonb('implication_answers').$type<{ question: string; answer: string }[]>().default([]),
+  implicationEstimatedValue: text('implication_estimated_value'),
+  needAnswers: jsonb('need_answers').$type<{ question: string; answer: string }[]>().default([]),
+  needThermometer: varchar('need_thermometer', { length: 20 }), // 'hot' | 'warm' | 'cold'
+
+  // 6. Objeções
+  objections: jsonb('objections').$type<{ objection: string; response: string }[]>().default([]),
+
+  // 7. Classificação de porte
+  prospectSize: varchar('prospect_size', { length: 30 }),
+  // 'small_digital' | 'medium_regional' | 'large_multichannel'
+
+  // 8. Material enviado
+  presentationSent: boolean('presentation_sent').default(false),
+  presentationSentDate: timestamp('presentation_sent_date'),
+  presentationLink: text('presentation_link'),
+
+  // 9. Próximo passo
+  nextStepType: varchar('next_step_type', { length: 20 }), // 'meeting_scheduled' | 'callback' | 'open_door'
+  nextStepDate: timestamp('next_step_date'),
+
+  // 10. Notas livres
+  freeNotes: text('free_notes'),
+
+  createdAt: timestamp('created_at').defaultNow(),
+  updatedAt: timestamp('updated_at').defaultNow(),
+});
+
+Gerar e aplicar a migration (drizzle-kit generate + drizzle-kit push, ou o fluxo de migration já usado no projeto — última aplicada foi a 0004).
+
+
+2. API (NestJS)
+
+Seguir o mesmo padrão de autenticação/multi-tenant já usado nas outras rotas (JWT + tenant scoping + guard de role).
+
+MétodoRotaDescriçãoGET/leads/:leadId/briefingRetorna o briefing do lead (ou null se ainda não existe)PUT/leads/:leadId/briefingCria ou atualiza o briefing (upsert) — body com todos os campos do schema
+
+Regras:
+
+
+Upsert por leadId (não criar duplicado — usar o unique() da coluna leadId)
+tenantId sempre herdado do JWT, nunca do body
+approachedBy default = usuário autenticado, mas editável (caso alguém preencha em nome de outro vendedor)
+Validar needThermometer, prospectSize, contactType, nextStepType como enums fechados (DTO com @IsIn([...]))
+
+
+
+3. Frontend (React + wouter)
+
+3.1 Nova aba no detalhe do lead
+
+Adicionar "Briefing" ao conjunto de abas já existentes na tela de detalhe do lead (ao lado de Conversa / Negócio / Histórico, conforme estrutura atual). Ícone sugerido: documento/clipboard.
+
+3.2 Componente LeadBriefingTab
+
+Formulário dividido nas mesmas 10 seções do questionário, com autosave (debounce ~1.5s) ou botão "Salvar" explícito — usar o padrão que já existe nos outros formulários do CRM.
+
+Seção 1 — Dados da empresa
+
+
+Multi-select: Canais já usados (channelsUsed)
+Select: Tipo de contato (contactType)
+Date picker: Data da abordagem (contactDate)
+Select de usuário: Quem abordou (approachedBy)
+
+
+Seções 2-5 — Blocos S/P/I/N
+
+
+Lista editável de pergunta+resposta (componente repetível: textarea de resposta abaixo de cada pergunta pré-cadastrada — ver lista de perguntas padrão no item 4 abaixo)
+Checkbox: "Prospect minimizou o problema" (só na seção Problema)
+Campo de texto curto: "Valor estimado" (só na seção Implicação)
+Seção Necessidade: incluir o campo especial termômetro como 3 botões/radio (🔥 Dor latente / 🌤️ Interesse sem urgência / ❄️ Não é prioridade) em vez de texto livre — isso é o campo mais importante pra relatório depois
+
+
+Seção 6 — Objeções
+
+
+Lista repetível de {objeção (select com as 5 padrão + "outra"), resposta dada (texto)}
+
+
+Seção 7 — Classificação
+
+
+Radio: Pequeno digital / Médio regional / Grande multicanal
+
+
+Seção 8 — Material enviado
+
+
+Checkbox + date picker + campo de link
+
+
+Seção 9 — Próximo passo
+
+
+Radio: Reunião marcada / Compromisso de retorno / Porta aberta
+Date picker condicional (só aparece se não for "porta aberta")
+Sugestão: se "Reunião marcada" ou "Compromisso de retorno" for selecionado com data, oferecer botão "Criar tarefa/lembrete" integrando com o módulo de agendamento que já existe na plataforma
+
+
+Seção 10 — Notas livres
+
+
+Textarea simples
+
+
+3.3 Indicador visual na listagem de leads / Kanban
+
+Mostrar um badge pequeno no card do lead/Kanban quando o briefing estiver preenchido — por exemplo, ícone com a cor do termômetro (🔥/🌤️/❄️). Ajuda o time a priorizar visualmente sem abrir cada lead.
+
+
+4. Perguntas padrão (seed de conteúdo)
+
+Usar este conjunto fixo de perguntas em cada bloco (igual ao roteiro/briefing em markdown já em uso). Pode ficar hardcoded no frontend ou numa tabela de configuração briefing_question_templates caso queira permitir customização por tenant no futuro — pra v1, hardcoded é suficiente.
+
+Situação:
+
+
+Quando um cliente quer fazer um pedido, qual é o caminho mais comum — liga, manda WhatsApp, ou passa pelo site?
+Vocês têm gente dedicada só pra responder mensagem, ou é o mesmo time do balcão/loja?
+Fora do horário comercial, alguém ainda responde, ou fica pro outro dia?
+
+
+Problema:
+
+
+Quando chega mensagem fora do horário ou fim de semana, o que costuma acontecer?
+Já aconteceu de um cliente perguntar preço e demorar pra alguém responder?
+Se a pessoa que sabe os preços de cor falta um dia, como fica o atendimento?
+
+
+Implicação:
+
+
+Quando isso acontece, o pedido espera ou o cliente já compra em outro lugar?
+Um cliente que troca de fornecedor por demora costuma voltar, ou fica com quem atendeu rápido?
+Se isso acontece [x] vezes por semana, multiplicado pelo mês, dá pra ter ideia de quanto representa?
+
+
+Necessidade:
+
+
+Se toda mensagem fosse respondida na hora, com preço certo, mesmo fora do horário — mudaria o volume de pedido fechado?
+Se o time não precisasse responder a mesma pergunta de preço todo dia, no que focaria o tempo?
+
+
+
+5. Próximos passos sugeridos (fora do escopo desta v1, citar mas não implementar agora)
+
+
+Dashboard no Executive Intelligence Hub cruzando needThermometer x prospectSize x taxa de conversão real do lead — pra validar se o termômetro realmente prediz fechamento
+Gerar automaticamente o JSON de dados da apresentação (prospect-data.{lead}.json) a partir do briefing preenchido, fechando o ciclo Briefing → Apresentação sem digitar duas vezes
