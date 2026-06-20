@@ -5190,6 +5190,57 @@ export const DismissDuplicateLeadResponse = zod.object({
 
 
 /**
+ * @summary List all lead briefings for a tenant
+ */
+export const ListTenantBriefingsParams = zod.object({
+  "tenantId": zod.coerce.string()
+})
+
+export const ListTenantBriefingsResponseItem = zod.object({
+  "id": zod.string(),
+  "tenantId": zod.string(),
+  "leadId": zod.string(),
+  "channelsUsed": zod.array(zod.string()).nullish(),
+  "contactType": zod.string().nullish(),
+  "approachedBy": zod.string().nullish(),
+  "contactDate": zod.string().nullish(),
+  "situationAnswers": zod.array(zod.object({
+  "question": zod.string().optional(),
+  "answer": zod.string().optional()
+})).nullish(),
+  "problemAnswers": zod.array(zod.object({
+  "question": zod.string().optional(),
+  "answer": zod.string().optional()
+})).nullish(),
+  "problemMinimized": zod.boolean().nullish(),
+  "implicationAnswers": zod.array(zod.object({
+  "question": zod.string().optional(),
+  "answer": zod.string().optional()
+})).nullish(),
+  "implicationEstimatedValue": zod.string().nullish(),
+  "needAnswers": zod.array(zod.object({
+  "question": zod.string().optional(),
+  "answer": zod.string().optional()
+})).nullish(),
+  "needThermometer": zod.string().nullish(),
+  "objections": zod.array(zod.object({
+  "objection": zod.string().optional(),
+  "response": zod.string().optional()
+})).nullish(),
+  "prospectSize": zod.string().nullish(),
+  "presentationSent": zod.boolean().nullish(),
+  "presentationSentDate": zod.string().nullish(),
+  "presentationLink": zod.string().nullish(),
+  "nextStepType": zod.string().nullish(),
+  "nextStepDate": zod.string().nullish(),
+  "freeNotes": zod.string().nullish(),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date()
+})
+export const ListTenantBriefingsResponse = zod.array(ListTenantBriefingsResponseItem)
+
+
+/**
  * @summary Get lead briefing
  */
 export const GetLeadBriefingParams = zod.object({

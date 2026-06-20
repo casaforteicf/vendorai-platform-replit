@@ -445,6 +445,23 @@ router.post("/leads/:id/dismiss-duplicate", async (req, res) => {
   res.json({ success: true, lead });
 });
 
+// ── GET /tenants/:tenantId/lead-briefings ─────────────────────────────────
+router.get("/tenants/:tenantId/lead-briefings", async (req, res) => {
+  const tenantId = String(req.params["tenantId"]);
+
+  if (req.user?.platformRole !== "super_admin" && req.user?.tenantId !== tenantId) {
+    res.status(403).json({ error: "Acesso negado" });
+    return;
+  }
+
+  const briefings = await db
+    .select()
+    .from(leadBriefingsTable)
+    .where(eq(leadBriefingsTable.tenantId, tenantId));
+
+  res.json(briefings);
+});
+
 // ── GET /leads/:leadId/briefing ────────────────────────────────────────────
 router.get("/leads/:leadId/briefing", async (req, res) => {
   const leadId = String(req.params.leadId);

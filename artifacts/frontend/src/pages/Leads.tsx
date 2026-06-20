@@ -9,11 +9,13 @@ import {
   getListCustomerIntelligenceQueryKey,
   useListPropostas,
   getListPropostasQueryKey,
+  useListTenantBriefings,
+  getListTenantBriefingsQueryKey,
 } from "@workspace/api-client-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Plus, Search, ChevronRight, AlertTriangle, ArrowDown, ArrowUp, ArrowUpDown, Upload, FileDown, CheckCircle2, XCircle } from "lucide-react";
+import { Plus, Search, ChevronRight, AlertTriangle, ArrowDown, ArrowUp, ArrowUpDown, Upload, FileDown, CheckCircle2, XCircle, Flame, Cloud, Snowflake } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import {
   Select,
@@ -83,6 +85,38 @@ function getFirstChurnReason(reasons: unknown[] | null | undefined): string | nu
     return (first as Record<string, unknown>).reason as string;
   }
   return null;
+}
+
+function BriefingBadge({
+  briefing,
+}: {
+  briefing: { needThermometer?: string | null } | undefined;
+}) {
+  if (!briefing?.needThermometer) return null;
+
+  const t = briefing.needThermometer;
+  if (t === "hot") {
+    return (
+      <span className="inline-flex items-center gap-0.5 rounded-full px-1.5 py-0.5 text-[10px] font-semibold bg-red-50 text-red-600 border border-red-100">
+        <Flame className="h-3 w-3" />
+        Hot
+      </span>
+    );
+  }
+  if (t === "warm") {
+    return (
+      <span className="inline-flex items-center gap-0.5 rounded-full px-1.5 py-0.5 text-[10px] font-semibold bg-amber-50 text-amber-600 border border-amber-100">
+        <Cloud className="h-3 w-3" />
+        Warm
+      </span>
+    );
+  }
+  return (
+    <span className="inline-flex items-center gap-0.5 rounded-full px-1.5 py-0.5 text-[10px] font-semibold bg-slate-50 text-slate-500 border border-slate-100">
+      <Snowflake className="h-3 w-3" />
+      Cold
+    </span>
+  );
 }
 
 function churnBadge(risk: number | null | undefined, reasons?: unknown[] | null) {
@@ -264,7 +298,16 @@ export default function Leads() {
     },
   });
 
+  const { data: briefings = [] } = useListTenantBriefings(tenantId, {
+    query: {
+      enabled: !!tenantId,
+      queryKey: getListTenantBriefingsQueryKey(tenantId),
+    },
+  });
+
   const ciMap = new Map(ciList?.map((ci) => [ci.leadId, ci]) ?? []);
+
+  const briefingMap = new Map(briefings.map((b) => [b.leadId, b]));
 
   // Map: leadId → maior valor total de proposta
   const leadValorMap = new Map<string, string>();
@@ -646,6 +689,7 @@ export default function Leads() {
                         <Badge variant="outline" className={`text-xs ${STATUS_STYLES[lead.status] ?? ""}`}>
                           {LEAD_STATUSES.find((s) => s.value === lead.status)?.label ?? lead.status}
                         </Badge>
+                        <BriefingBadge briefing={briefingMap.get(lead.id)} />
                         {churnBadge(ci?.churnRisk, ci?.churnReasons)}
                         {leadValorMap.get(lead.id) && (
                           <Badge className="bg-emerald-100 text-emerald-700 border-emerald-200 text-xs font-mono">
@@ -750,7 +794,12 @@ export default function Leads() {
                         <TableCell className="text-right font-mono text-sm text-emerald-700">
                           {formatCurrency(leadValorMap.get(lead.id)) || "—"}
                         </TableCell>
-                        <TableCell>{churnBadge(ci?.churnRisk, ci?.churnReasons)}</TableCell>
+                        <TableCell>
+                          <span className="flex items-center gap-1">
+                            <BriefingBadge briefing={briefingMap.get(lead.id)} />
+                            {churnBadge(ci?.churnRisk, ci?.churnReasons)}
+                          </span>
+                        </TableCell>
                         <TableCell>
                           <ChevronRight className="h-4 w-4 text-muted-foreground" />
                         </TableCell>

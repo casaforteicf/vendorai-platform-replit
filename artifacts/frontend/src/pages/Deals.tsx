@@ -12,6 +12,9 @@ import {
   getGetTenantQueryKey,
   useListPropostas,
   getListPropostasQueryKey,
+  useListTenantBriefings,
+  getListTenantBriefingsQueryKey,
+  LeadBriefing,
   Deal,
   DealEtapa,
   TipoFechamento,
@@ -54,7 +57,7 @@ import {
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
-import { Plus, GripVertical, DollarSign, User, TrendingUp, Link2, Copy, CheckCheck, FileUp, Loader2, Sparkles, BarChart3, RefreshCw, Users, Package, AlertTriangle, Paperclip, FileCheck, CreditCard, HandCoins } from "lucide-react";
+import { Plus, GripVertical, DollarSign, User, TrendingUp, Link2, Copy, CheckCheck, FileUp, Loader2, Sparkles, BarChart3, RefreshCw, Users, Package, AlertTriangle, Paperclip, FileCheck, CreditCard, HandCoins, Flame, Cloud, Snowflake } from "lucide-react";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import {
   DealEtapaSaas,
@@ -234,11 +237,13 @@ function MotivosPerdaDialog({
 function DealCard({
   deal,
   leadName,
+  briefing,
   onClick,
   overlay = false,
 }: {
   deal: Deal;
   leadName: string | undefined;
+  briefing: LeadBriefing | undefined;
   onClick?: () => void;
   overlay?: boolean;
 }) {
@@ -325,6 +330,9 @@ function DealCard({
         </div>
       )}
 
+      {/* Briefing termômetro */}
+      {briefing && <BriefingBadge briefing={briefing} />}
+
       {/* Status de fechamento (contrato + onboarding) */}
       {deal.etapa === "ganho" && (deal.contractStatus || deal.onboardingStatus) && (
         <div className="pl-6 flex flex-wrap gap-1.5">
@@ -333,6 +341,40 @@ function DealCard({
         </div>
       )}
     </div>
+  );
+}
+
+function BriefingBadge({
+  briefing,
+}: {
+  briefing: LeadBriefing | undefined;
+}) {
+  if (!briefing) return null;
+
+  const t = briefing.needThermometer;
+  if (!t) return null;
+
+  if (t === "hot") {
+    return (
+      <span className="inline-flex items-center gap-0.5 rounded-full px-1.5 py-0.5 text-[10px] font-semibold bg-red-50 text-red-600 border border-red-100">
+        <Flame className="h-3 w-3" />
+        Hot
+      </span>
+    );
+  }
+  if (t === "warm") {
+    return (
+      <span className="inline-flex items-center gap-0.5 rounded-full px-1.5 py-0.5 text-[10px] font-semibold bg-amber-50 text-amber-600 border border-amber-100">
+        <Cloud className="h-3 w-3" />
+        Warm
+      </span>
+    );
+  }
+  return (
+    <span className="inline-flex items-center gap-0.5 rounded-full px-1.5 py-0.5 text-[10px] font-semibold bg-slate-50 text-slate-500 border border-slate-100">
+      <Snowflake className="h-3 w-3" />
+      Cold
+    </span>
   );
 }
 
@@ -373,12 +415,14 @@ function KanbanColumn({
   etapa,
   deals,
   leadMap,
+  briefingMap,
   isOver,
   onCardClick,
 }: {
   etapa: (typeof ETAPAS)[number];
   deals: Deal[];
   leadMap: Map<string, string>;
+  briefingMap: Map<string, LeadBriefing>;
   isOver: boolean;
   onCardClick: (deal: Deal) => void;
 }) {
@@ -427,6 +471,7 @@ function KanbanColumn({
             key={deal.id}
             deal={deal}
             leadName={deal.leadId ? leadMap.get(deal.leadId) : undefined}
+            briefing={deal.leadId ? briefingMap.get(deal.leadId) : undefined}
             onClick={() => onCardClick(deal)}
           />
         ))}
@@ -1496,6 +1541,13 @@ export default function Deals() {
     },
   });
 
+  const { data: briefings = [] } = useListTenantBriefings(tenantId, {
+    query: {
+      enabled: !!tenantId,
+      queryKey: getListTenantBriefingsQueryKey(tenantId),
+    },
+  });
+
   const { data: tenantData } = useGetTenant(tenantId, {
     query: { enabled: !!tenantId, queryKey: getGetTenantQueryKey(tenantId) },
   });
@@ -1504,6 +1556,8 @@ export default function Deals() {
     rawTenantDefault === "pedido_e_contrato" ? null : rawTenantDefault;
 
   const leadMap = new Map(leads.map((l) => [l.id, l.nome]));
+
+  const briefingMap = new Map(briefings.map((b) => [b.leadId, b]));
 
   const { data: propostas = [] } = useListPropostas(tenantId, undefined, {
     query: { enabled: !!tenantId, queryKey: getListPropostasQueryKey(tenantId) },
@@ -2061,6 +2115,7 @@ export default function Deals() {
                   etapa={etapa}
                   deals={dealsByEtapa(etapa.value)}
                   leadMap={leadMap}
+                  briefingMap={briefingMap}
                   isOver={overColumn === etapa.value}
                   onCardClick={handleCardClick}
                 />
@@ -2071,6 +2126,7 @@ export default function Deals() {
                 <DealCard
                   deal={activeDeal}
                   leadName={activeDeal.leadId ? leadMap.get(activeDeal.leadId) : undefined}
+                  briefing={activeDeal.leadId ? briefingMap.get(activeDeal.leadId) : undefined}
                   overlay
                 />
               ) : null}

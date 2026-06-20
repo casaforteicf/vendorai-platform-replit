@@ -13854,6 +13854,83 @@ export const useDismissDuplicateLead = <TError = ErrorType<ErrorResponse>,
       return useMutation(getDismissDuplicateLeadMutationOptions(options));
     }
 
+export const getListTenantBriefingsUrl = (tenantId: string,) => {
+
+
+
+
+  return `/api/tenants/${tenantId}/lead-briefings`
+}
+
+/**
+ * @summary List all lead briefings for a tenant
+ */
+export const listTenantBriefings = async (tenantId: string, options?: RequestInit): Promise<LeadBriefing[]> => {
+
+  return customFetch<LeadBriefing[]>(getListTenantBriefingsUrl(tenantId),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getListTenantBriefingsQueryKey = (tenantId: string,) => {
+    return [
+    `/api/tenants/${tenantId}/lead-briefings`
+    ] as const;
+    }
+
+
+export const getListTenantBriefingsQueryOptions = <TData = Awaited<ReturnType<typeof listTenantBriefings>>, TError = ErrorType<ErrorResponse>>(tenantId: string, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listTenantBriefings>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getListTenantBriefingsQueryKey(tenantId);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof listTenantBriefings>>> = ({ signal }) => listTenantBriefings(tenantId, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, enabled: !!(tenantId), ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof listTenantBriefings>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type ListTenantBriefingsQueryResult = NonNullable<Awaited<ReturnType<typeof listTenantBriefings>>>
+export type ListTenantBriefingsQueryError = ErrorType<ErrorResponse>
+
+
+/**
+ * @summary List all lead briefings for a tenant
+ */
+
+export function useListTenantBriefings<TData = Awaited<ReturnType<typeof listTenantBriefings>>, TError = ErrorType<ErrorResponse>>(
+ tenantId: string, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listTenantBriefings>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getListTenantBriefingsQueryOptions(tenantId,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+
+
+
+
+
+
 export const getGetLeadBriefingUrl = (leadId: string,) => {
 
 
