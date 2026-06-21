@@ -163,6 +163,10 @@ async function handleSchedulerProcess(req: Request, res: Response): Promise<void
   let meetLinkGerado: string | null = null;
 
   if (agendamentoInput) {
+    if (agendamentoInput.dataHoraInicio <= new Date()) {
+      res.status(400).json({ error: "Nao e possivel agendar para uma data/horario no passado." });
+      return;
+    }
     const titulo = agendamentoInput.titulo ?? `Reunião com ${ctx.lead.nome}`;
     const [ag] = await db
       .insert(agendamentosTable)

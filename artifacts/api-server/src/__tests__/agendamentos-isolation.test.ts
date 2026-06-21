@@ -8,13 +8,14 @@ import {
   tokenSuperAdmin,
 } from "./helpers/auth.js";
 
-const { mockDbSelect, mockDbUpdate, mockDbDelete, mockDbInsert, mockInsertSchema } =
+const { mockDbSelect, mockDbUpdate, mockDbDelete, mockDbInsert, mockInsertSchema, mockUpdateSchema } =
   vi.hoisted(() => ({
     mockDbSelect: vi.fn(),
     mockDbUpdate: vi.fn(),
     mockDbDelete: vi.fn(),
     mockDbInsert: vi.fn(),
     mockInsertSchema: vi.fn(),
+    mockUpdateSchema: vi.fn(() => ({ success: true, data: {} })),
   }));
 
 vi.mock("@workspace/db", () => ({
@@ -39,7 +40,7 @@ vi.mock("@workspace/db", () => ({
     safeParse: (data: unknown) => mockInsertSchema(data),
   },
   updateAgendamentoSchema: {
-    safeParse: () => ({ success: true, data: {} }),
+    safeParse: (_data: unknown) => mockUpdateSchema(),
   },
 }));
 
@@ -266,5 +267,73 @@ describe("Unauthenticated access — agendamentos", () => {
   it("returns 401 for DELETE without a token", async () => {
     const res = await request(app).delete(`/api/agendamentos/${RECORD_ID}`);
     expect(res.status).toBe(401);
+  });
+});
+
+// ─── Past date validation tests ───────────────────────────────────────────────
+
+describe("POST /api/agendamentos — past date validation", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it("returns 400 when dataHoraInicio is in the past", async () => {
+    mockInsertSchema.mockReturnValue({
+      success: true,
+      data: {
+        tenantId: TENANT_A,
+        leadId: "lead-1",
+        dataHoraInicio: new Date("2020-01-01T10:00:00Z"),
+        dataHoraFim: new Date("2020-01-01T11:00:00Z"),
+      },
+    });
+
+    const res = await request(app)
+      .post("/api/agendamentos")
+      .set("Authorization", `Bearer ${tokenA}`)
+      .send({ tenantId: TENANT_A, leadId: "lead-1" });
+
+    expect(res.status).toBe(400);
+    expect(res.body.error).toMatch(/passado/);
+  });
+});
+
+describe("PATCH /api/agendamentos/:id — past date validation", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    setupSelectReturning([recordOwnedByTenantB]);
+    setupUpdateReturning([{ ...recordOwnedByTenantB, tipo: "consulta" }]);
+  });
+
+  it("returns 400 when reagendamento sets dataHoraInicio to the past", async () => {
+    mockUpdateSchema.mockReturnValue({
+      success: true,
+      data: {
+        dataHoraInicio: new Date("2020-01-01T10:00:00Z"),
+        dataHoraFim: new Date("2020-01-01T11:00:00Z"),
+      },
+    });
+
+    const res = await request(app)
+      .patch(`/api/agendamentos/${RECORD_ID}`)
+      .set("Authorization", `Bearer ${tokenB}`)
+      .send({ dataHoraInicio: "2020-01-01T10:00:00Z", dataHoraFim: "2020-01-01T11:00:00Z" });
+
+    expect(res.status).toBe(400);
+    expect(res.body.error).toMatch(/passado/);
+  });
+
+  it("returns 200 when editing non-date fields of a past appointment", async () => {
+    mockUpdateSchema.mockReturnValue({
+      success: true,
+      data: { status: "concluido", observacoes: "Cliente nao compareceu" },
+    });
+
+    const res = await request(app)
+      .patch(`/api/agendamentos/${RECORD_ID}`)
+      .set("Authorization", `Bearer ${tokenB}`)
+      .send({ status: "concluido", observacoes: "Cliente nao compareceu" });
+
+    expect(res.status).toBe(200);
   });
 });

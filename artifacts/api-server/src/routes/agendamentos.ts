@@ -35,6 +35,10 @@ router.post("/agendamentos", async (req, res) => {
     res.status(422).json({ error: "dataHoraFim must be after dataHoraInicio" });
     return;
   }
+  if (dataHoraInicio <= new Date()) {
+    res.status(400).json({ error: "Nao e possivel agendar para uma data/horario no passado." });
+    return;
+  }
 
   let agendamento: typeof agendamentosTable.$inferSelect;
   try {
@@ -229,6 +233,10 @@ router.patch("/agendamentos/:id", async (req, res) => {
     data.dataHoraFim <= data.dataHoraInicio
   ) {
     res.status(422).json({ error: "dataHoraFim must be after dataHoraInicio" });
+    return;
+  }
+  if (data.dataHoraInicio && data.dataHoraInicio <= new Date()) {
+    res.status(400).json({ error: "Nao e possivel agendar para uma data/horario no passado." });
     return;
   }
 

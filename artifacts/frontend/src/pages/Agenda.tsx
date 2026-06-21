@@ -563,6 +563,12 @@ const createFormSchema = z.object({
   responsavelId: z.string().optional(),
   observacoes: z.string().optional(),
   gerarMeet: z.boolean().optional(),
+}).refine((data) => {
+  const inicio = new Date(data.dataHoraInicio);
+  return inicio > new Date();
+}, {
+  message: "Não é possível agendar para uma data/horário no passado.",
+  path: ["dataHoraInicio"],
 });
 type CreateForm = z.infer<typeof createFormSchema>;
 
@@ -1350,7 +1356,7 @@ function AgendamentoForm({
               <FormItem>
                 <FormLabel>Início *</FormLabel>
                 <FormControl>
-                  <Input type="datetime-local" data-testid="input-inicio" {...field} />
+                  <Input type="datetime-local" data-testid="input-inicio" min={new Date().toISOString().slice(0,16)} {...field} />
                 </FormControl>
                 <FormMessage />
               </FormItem>
