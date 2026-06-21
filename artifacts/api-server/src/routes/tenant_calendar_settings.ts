@@ -10,31 +10,12 @@ import type { CommercialDate } from "@workspace/db";
 
 const router: IRouter = Router();
 
-const BOOLEAN_DATE_MAP: Record<string, Omit<CommercialDate, "active">> = {
-  pascoaEnabled:        { name: "Páscoa", daysBeforeToSend: 3, movableDate: true },
-  diaDasMaesEnabled:    { name: "Dia das Mães", daysBeforeToSend: 3, movableDate: true, targetGender: "feminino" },
-  diaDosPaisEnabled:    { name: "Dia dos Pais", daysBeforeToSend: 3, movableDate: true, targetGender: "masculino" },
-  diaDasCriancasEnabled:{ name: "Dia das Crianças", daysBeforeToSend: 3, movableDate: true },
-  namoradosEnabled:     { name: "Dia dos Namorados", daysBeforeToSend: 3, movableDate: true },
-  natalEnabled:         { name: "Natal", daysBeforeToSend: 5, movableDate: true },
-  blackFridayEnabled:   { name: "Black Friday", daysBeforeToSend: 1, movableDate: true },
-};
-
 function normalizeCalendarBody(body: Record<string, unknown>): { commercialDates?: CommercialDate[]; enableSpouseGiftFlow?: boolean } {
-  // If body already has commercialDates array, use it directly
-  if (Array.isArray(body.commercialDates)) {
-    return { commercialDates: body.commercialDates as CommercialDate[], enableSpouseGiftFlow: body.enableSpouseGiftFlow as boolean | undefined };
-  }
-  // Convert boolean flags to commercialDates array
-  const dates: CommercialDate[] = [];
-  for (const [key, meta] of Object.entries(BOOLEAN_DATE_MAP)) {
-    if (body[key] === true) {
-      dates.push({ ...meta, active: true });
-    } else if (body[key] === false) {
-      dates.push({ ...meta, active: false });
-    }
-  }
-  return { commercialDates: dates.length > 0 ? dates : undefined, enableSpouseGiftFlow: body.enableSpouseGiftFlow as boolean | undefined };
+  // Frontend is the single source of truth for commercialDates array
+  return {
+    commercialDates: Array.isArray(body.commercialDates) ? (body.commercialDates as CommercialDate[]) : undefined,
+    enableSpouseGiftFlow: body.enableSpouseGiftFlow as boolean | undefined,
+  };
 }
 
 router.get("/tenants/:tenantId/calendar-settings", async (req, res) => {
@@ -53,14 +34,7 @@ router.get("/tenants/:tenantId/calendar-settings", async (req, res) => {
     return res.status(404).json({ error: "Not found" });
   }
 
-  // Also return boolean flags for backward compatibility with frontend
-  const booleanFlags: Record<string, boolean> = {};
-  for (const [key, meta] of Object.entries(BOOLEAN_DATE_MAP)) {
-    const cd = settings.commercialDates?.find((d) => d.name === meta.name);
-    booleanFlags[key] = cd?.active ?? false;
-  }
-
-  return res.json({ ...settings, ...booleanFlags });
+  return res.json(settings);
 });
 
 router.post("/tenants/:tenantId/calendar-settings", async (req, res) => {

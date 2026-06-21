@@ -3427,37 +3427,24 @@ function CalendarSettingsTab({ tenantId }: { tenantId: string }) {
   });
 
   const [draft, setDraft] = useState<{
-    pascoaEnabled: boolean;
-    diaDasMaesEnabled: boolean;
-    diaDosPaisEnabled: boolean;
-    diaDasCriancasEnabled: boolean;
-    namoradosEnabled: boolean;
-    natalEnabled: boolean;
-    blackFridayEnabled: boolean;
     enableSpouseGiftFlow: boolean;
     commercialDates: Array<{ name: string; active: boolean; daysBeforeToSend: number; movableDate?: boolean; targetGender?: string }>;
   }>({
-    pascoaEnabled: true,
-    diaDasMaesEnabled: true,
-    diaDosPaisEnabled: true,
-    diaDasCriancasEnabled: true,
-    namoradosEnabled: true,
-    natalEnabled: true,
-    blackFridayEnabled: true,
     enableSpouseGiftFlow: false,
-    commercialDates: [],
+    commercialDates: [
+      { name: "Páscoa", active: true, daysBeforeToSend: 3, movableDate: true },
+      { name: "Dia das Mães", active: true, daysBeforeToSend: 3, movableDate: true, targetGender: "feminino" },
+      { name: "Dia dos Pais", active: true, daysBeforeToSend: 3, movableDate: true, targetGender: "masculino" },
+      { name: "Dia das Crianças", active: true, daysBeforeToSend: 3, movableDate: true },
+      { name: "Dia dos Namorados", active: true, daysBeforeToSend: 3, movableDate: true },
+      { name: "Natal", active: true, daysBeforeToSend: 5, movableDate: true },
+      { name: "Black Friday", active: true, daysBeforeToSend: 1, movableDate: true },
+    ],
   });
 
   useEffect(() => {
     if (settings) {
       setDraft({
-        pascoaEnabled: settings.pascoaEnabled,
-        diaDasMaesEnabled: settings.diaDasMaesEnabled,
-        diaDosPaisEnabled: settings.diaDosPaisEnabled,
-        diaDasCriancasEnabled: settings.diaDasCriancasEnabled,
-        namoradosEnabled: settings.namoradosEnabled,
-        natalEnabled: settings.natalEnabled,
-        blackFridayEnabled: settings.blackFridayEnabled,
         enableSpouseGiftFlow: settings.enableSpouseGiftFlow,
         commercialDates: settings.commercialDates ?? [],
       });
@@ -3465,37 +3452,37 @@ function CalendarSettingsTab({ tenantId }: { tenantId: string }) {
   }, [settings]);
 
   const dates = [
-    { key: "pascoaEnabled", label: "Páscoa", desc: "Domingo de Páscoa (data móvel)", defaultDays: 3 },
-    { key: "diaDasMaesEnabled", label: "Dia das Mães", desc: "2º domingo de maio", defaultDays: 3 },
-    { key: "diaDosPaisEnabled", label: "Dia dos Pais", desc: "2º domingo de agosto", defaultDays: 3 },
-    { key: "diaDasCriancasEnabled", label: "Dia das Crianças", desc: "12 de outubro", defaultDays: 3 },
-    { key: "namoradosEnabled", label: "Dia dos Namorados", desc: "12 de junho", defaultDays: 3 },
-    { key: "natalEnabled", label: "Natal", desc: "25 de dezembro", defaultDays: 5 },
-    { key: "blackFridayEnabled", label: "Black Friday", desc: "Última sexta de novembro", defaultDays: 1 },
+    { name: "Páscoa", desc: "Domingo de Páscoa (data móvel)", defaultDays: 3 },
+    { name: "Dia das Mães", desc: "2º domingo de maio", defaultDays: 3 },
+    { name: "Dia dos Pais", desc: "2º domingo de agosto", defaultDays: 3 },
+    { name: "Dia das Crianças", desc: "12 de outubro", defaultDays: 3 },
+    { name: "Dia dos Namorados", desc: "12 de junho", defaultDays: 3 },
+    { name: "Natal", desc: "25 de dezembro", defaultDays: 5 },
+    { name: "Black Friday", desc: "Última sexta de novembro", defaultDays: 1 },
   ] as const;
 
-  function getDaysBefore(key: string): number {
-    if (!settings) return dates.find((d) => d.key === key)?.defaultDays ?? 3;
-    const cd = settings.commercialDates?.find((c) => {
-      const nameMap: Record<string, string> = {
-        pascoaEnabled: "Páscoa",
-        diaDasMaesEnabled: "Dia das Mães",
-        diaDosPaisEnabled: "Dia dos Pais",
-        diaDasCriancasEnabled: "Dia das Crianças",
-        namoradosEnabled: "Dia dos Namorados",
-        natalEnabled: "Natal",
-        blackFridayEnabled: "Black Friday",
-      };
-      return c.name === nameMap[key];
-    });
-    return cd?.daysBeforeToSend ?? dates.find((d) => d.key === key)?.defaultDays ?? 3;
+  function findEntry(name: string) {
+    return draft.commercialDates.find((c) => c.name === name);
+  }
+
+  function updateEntry(name: string, patch: Partial<(typeof draft.commercialDates)[0]>) {
+    const idx = draft.commercialDates.findIndex((c) => c.name === name);
+    if (idx >= 0) {
+      const updated = [...draft.commercialDates];
+      updated[idx] = { ...updated[idx], ...patch };
+      setDraft((prev) => ({ ...prev, commercialDates: updated }));
+    }
   }
 
   function save() {
+    const payload = {
+      commercialDates: draft.commercialDates,
+      enableSpouseGiftFlow: draft.enableSpouseGiftFlow,
+    };
     if (settings) {
-      update.mutate({ tenantId, data: draft });
+      update.mutate({ tenantId, data: payload });
     } else {
-      create.mutate({ tenantId, data: draft });
+      create.mutate({ tenantId, data: payload });
     }
   }
 
@@ -3519,58 +3506,49 @@ function CalendarSettingsTab({ tenantId }: { tenantId: string }) {
         </div>
       ) : (
         <div className="space-y-3">
-          {dates.map((d) => (
-            <div key={d.key} className="flex items-center justify-between rounded-lg border p-3">
-              <div>
-                <p className="font-medium text-sm">{d.label}</p>
-                <p className="text-xs text-muted-foreground">{d.desc} • Enviar {getDaysBefore(d.key)} dias antes</p>
+          {dates.map((d) => {
+            const entry = findEntry(d.name);
+            const active = entry?.active ?? false;
+            const daysBefore = entry?.daysBeforeToSend ?? d.defaultDays;
+            return (
+              <div key={d.name} className="flex items-center justify-between rounded-lg border p-3">
+                <div>
+                  <p className="font-medium text-sm">{d.name}</p>
+                  <p className="text-xs text-muted-foreground">{d.desc} • Enviar {daysBefore} dias antes</p>
+                </div>
+                <div className="flex items-center gap-3">
+                  <Input
+                    type="number"
+                    min={0}
+                    max={30}
+                    className="w-20 text-sm"
+                    value={daysBefore}
+                    onChange={(e) => {
+                      const val = parseInt(e.target.value, 10);
+                      if (isNaN(val)) return;
+                      updateEntry(d.name, { daysBeforeToSend: val });
+                    }}
+                  />
+                  <Switch
+                    checked={active}
+                    onCheckedChange={(v) => {
+                      if (findEntry(d.name)) {
+                        updateEntry(d.name, { active: v });
+                      } else {
+                        setDraft((prev) => ({
+                          ...prev,
+                          commercialDates: [
+                            ...prev.commercialDates,
+                            { name: d.name, active: v, daysBeforeToSend: d.defaultDays, movableDate: true },
+                          ],
+                        }));
+                      }
+                    }}
+                  />
+                </div>
               </div>
-              <div className="flex items-center gap-3">
-                <Input
-                  type="number"
-                  min={0}
-                  max={30}
-                  className="w-20 text-sm"
-                  value={getDaysBefore(d.key)}
-                  onChange={(e) => {
-                    const val = parseInt(e.target.value, 10);
-                    if (isNaN(val)) return;
-                    // Update via commercialDates array
-                    const nameMap: Record<string, string> = {
-                      pascoaEnabled: "Páscoa",
-                      diaDasMaesEnabled: "Dia das Mães",
-                      diaDosPaisEnabled: "Dia dos Pais",
-                      diaDasCriancasEnabled: "Dia das Crianças",
-                      namoradosEnabled: "Dia dos Namorados",
-                      natalEnabled: "Natal",
-                      blackFridayEnabled: "Black Friday",
-                    };
-                    const existingDates = settings?.commercialDates ?? [];
-                    const idx = existingDates.findIndex((c) => c.name === nameMap[d.key]);
-                    const updatedDates = [...existingDates];
-                    const entry = {
-                      name: nameMap[d.key],
-                      active: draft[d.key as keyof typeof draft] as boolean,
-                      daysBeforeToSend: val,
-                      movableDate: true,
-                    };
-                    if (idx >= 0) updatedDates[idx] = entry;
-                    else updatedDates.push(entry);
-                    const payload = { ...draft, commercialDates: updatedDates };
-                    if (settings) {
-                      update.mutate({ tenantId, data: payload });
-                    } else {
-                      create.mutate({ tenantId, data: payload });
-                    }
-                  }}
-                />
-                <Switch
-                  checked={draft[d.key as keyof typeof draft] as boolean}
-                  onCheckedChange={(v) => setDraft((prev) => ({ ...prev, [d.key]: v }))}
-                />
-              </div>
-            </div>
-          ))}
+            );
+          })}
         </div>
       )}
 
