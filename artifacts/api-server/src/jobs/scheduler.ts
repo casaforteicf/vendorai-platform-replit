@@ -41,7 +41,7 @@ import {
 } from "@workspace/db";
 import type { SegmentoFiltro } from "@workspace/db";
 import { evaluateForLead } from "../routes/rules.js";
-import { dispatchAgentBackground } from "../services/agent-dispatch.js";
+import { dispatchAgentBackground, processAgentInternal } from "../services/agent-dispatch.js";
 
 // ── Job 1: Churn check ────────────────────────────────────────────────────────
 
@@ -756,55 +756,80 @@ async function runSpecialDateCheck(log: Logger): Promise<void> {
 
         if (!scenario) continue;
 
-        // Event-level deduplication
-        const alreadySent = await isEventAlreadySent(tenant.id, lead.id, scenario.type, scenario.campaignKey, yearStr);
-        if (alreadySent) {
+        // 1. Try to insert dedup record (unique constraint on tenantId+leadId+campaignKey+year)
+        let inserted = false;
+        try {
+          const [logRow] = await db
+            .insert(leadCampaignLogTable)
+            .values({
+              tenantId: tenant.id,
+              leadId: lead.id,
+              campaignType: scenario.type,
+              campaignKey: scenario.campaignKey,
+              year: yearStr,
+              status: "pending",
+            })
+            .returning({ id: leadCampaignLogTable.id });
+          inserted = !!logRow;
+        } catch (err) {
+          // Unique constraint violation = already handled this event
+          totalSkipped++;
+          continue;
+        }
+        if (!inserted) {
           totalSkipped++;
           continue;
         }
 
-        // Log dispatch attempt
-        await db
-          .insert(leadCampaignLogTable)
-          .values({
+        // 2. Dispatch synchronously (await processAgentInternal) so we know success/failure
+        let dispatchOk = false;
+        try {
+          await processAgentInternal({
             tenantId: tenant.id,
             leadId: lead.id,
-            campaignType: scenario.type,
-            campaignKey: scenario.campaignKey,
-            year: yearStr,
-            status: "pending",
+            mensagem: `PROATIVO: ${scenario.type === "birthday_lead" ? "aniversário do lead" : scenario.type === "birthday_family" ? `aniversário de ${scenario.recipientName}` : scenario.type === "deal_anniversary" ? "aniversário de fechamento do deal" : scenario.type === "commercial_date" ? `campanha de ${scenario.dateName}` : "relacionamento"}.`,
+            forcedAgent: "relacionamento",
+            log,
+            scenario: {
+              type: scenario.type,
+              dateName: scenario.dateName,
+              recipientName: scenario.recipientName,
+              recipientRelation: scenario.recipientRelation,
+              catalog: catalog.map((c) => ({ nome: c.nome, categoria: c.categoria, precoBase: c.precoBase })),
+            },
           });
+          dispatchOk = true;
+        } catch (err) {
+          log.warn({ err, leadId: lead.id, tenantId: tenant.id, campaignKey: scenario.campaignKey }, "scheduler/special-dates: dispatch failed");
+        }
 
-        // Dispatch relationship agent
-        dispatchAgentBackground({
-          tenantId: tenant.id,
-          leadId: lead.id,
-          mensagem: `PROATIVO: ${scenario.type === "birthday_lead" ? "aniversário do lead" : scenario.type === "birthday_family" ? `aniversário de ${scenario.recipientName}` : scenario.type === "deal_anniversary" ? "aniversário de fechamento do deal" : scenario.type === "commercial_date" ? `campanha de ${scenario.dateName}` : "relacionamento"}.`,
-          forcedAgent: "relacionamento",
-          log,
-          scenario: {
-            type: scenario.type,
-            dateName: scenario.dateName,
-            recipientName: scenario.recipientName,
-            recipientRelation: scenario.recipientRelation,
-            catalog: catalog.map((c) => ({ nome: c.nome, categoria: c.categoria, precoBase: c.precoBase })),
-          },
-        });
-
-        // Mark as sent only after successful task creation
-        await db
-          .update(leadCampaignLogTable)
-          .set({ status: "sent", sentAt: new Date() })
-          .where(
-            and(
-              eq(leadCampaignLogTable.tenantId, tenant.id),
-              eq(leadCampaignLogTable.leadId, lead.id),
-              eq(leadCampaignLogTable.campaignKey, scenario.campaignKey)
-            )
-          );
-
-        totalDispatched++;
-        log.info({ leadId: lead.id, tenantId: tenant.id, scenario: scenario.type }, "scheduler/special-dates: dispatched");
+        // 3. Update log with actual outcome
+        if (dispatchOk) {
+          await db
+            .update(leadCampaignLogTable)
+            .set({ status: "sent", sentAt: new Date() })
+            .where(
+              and(
+                eq(leadCampaignLogTable.tenantId, tenant.id),
+                eq(leadCampaignLogTable.leadId, lead.id),
+                eq(leadCampaignLogTable.campaignKey, scenario.campaignKey)
+              )
+            );
+          totalDispatched++;
+          log.info({ leadId: lead.id, tenantId: tenant.id, scenario: scenario.type }, "scheduler/special-dates: dispatched");
+        } else {
+          await db
+            .update(leadCampaignLogTable)
+            .set({ status: "failed" })
+            .where(
+              and(
+                eq(leadCampaignLogTable.tenantId, tenant.id),
+                eq(leadCampaignLogTable.leadId, lead.id),
+                eq(leadCampaignLogTable.campaignKey, scenario.campaignKey)
+              )
+            );
+          totalSkipped++;
+        }
       }
 
       log.info({ tenantId: tenant.id, dispatched: totalDispatched, skipped: totalSkipped }, "scheduler/special-dates: tenant done");

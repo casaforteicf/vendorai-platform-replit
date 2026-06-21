@@ -1,26 +1,32 @@
-import { pgTable, text, timestamp, boolean } from "drizzle-orm/pg-core";
+import { pgTable, text, timestamp, unique } from "drizzle-orm/pg-core";
 import { createInsertSchema, createSelectSchema } from "drizzle-zod";
 import { z } from "zod/v4";
 import { tenantsTable } from "./tenants";
 import { leadsTable } from "./leads";
 
-export const leadCampaignLogTable = pgTable("lead_campaign_log", {
-  id: text("id")
-    .primaryKey()
-    .$defaultFn(() => crypto.randomUUID()),
-  tenantId: text("tenant_id")
-    .notNull()
-    .references(() => tenantsTable.id, { onDelete: "cascade" }),
-  leadId: text("lead_id")
-    .notNull()
-    .references(() => leadsTable.id, { onDelete: "cascade" }),
-  campaignType: text("campaign_type").notNull(), // birthday_lead, birthday_family, deal_anniversary, commercial_date
-  campaignKey: text("campaign_key").notNull(), // e.g., "2026-05-12-mothers-day"
-  year: text("year").notNull(), // "2026"
-  sentAt: timestamp("sent_at").notNull().defaultNow(),
-  status: text("status").notNull().default("pending"), // pending, sent, failed
-  createdAt: timestamp("created_at").notNull().defaultNow(),
-});
+export const leadCampaignLogTable = pgTable(
+  "lead_campaign_log",
+  {
+    id: text("id")
+      .primaryKey()
+      .$defaultFn(() => crypto.randomUUID()),
+    tenantId: text("tenant_id")
+      .notNull()
+      .references(() => tenantsTable.id, { onDelete: "cascade" }),
+    leadId: text("lead_id")
+      .notNull()
+      .references(() => leadsTable.id, { onDelete: "cascade" }),
+    campaignType: text("campaign_type").notNull(), // birthday_lead, birthday_family, deal_anniversary, commercial_date
+    campaignKey: text("campaign_key").notNull(), // e.g., "2026-05-12-mothers-day"
+    year: text("year").notNull(), // "2026"
+    sentAt: timestamp("sent_at"), // null until actually sent
+    status: text("status").notNull().default("pending"), // pending, sent, failed
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+  },
+  (t) => [
+    unique("lead_campaign_log_event_unique").on(t.tenantId, t.leadId, t.campaignKey, t.year),
+  ]
+);
 
 export const insertLeadCampaignLogSchema = createInsertSchema(
   leadCampaignLogTable,
