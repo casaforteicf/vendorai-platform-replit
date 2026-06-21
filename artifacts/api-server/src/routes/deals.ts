@@ -159,6 +159,15 @@ router.patch("/deals/:id", async (req, res) => {
   let onboardingSent = false;
   let onboardingSkipReason: string | undefined;
 
+  // ── Update lead status when deal is won
+  if (parsed.data.etapa === "ganho" && existing.etapa !== "ganho" && deal.leadId) {
+    await db
+      .update(leadsTable)
+      .set({ status: "convertido", updatedAt: new Date() })
+      .where(eq(leadsTable.id, deal.leadId));
+    req.log.info({ dealId: deal.id, leadId: deal.leadId }, "deal-ganho: lead status updated to convertido");
+  }
+
   // ── Trigger ganho: idempotent closure (contract-only retry for failed/skipped) ─────
   if (parsed.data.etapa === "ganho" && existing.etapa !== "ganho") {
     // ── Validação: plano obrigatório antes de fechar ────────────────────────

@@ -3,6 +3,7 @@ import {
   db,
   propostasTable,
   dealsTable,
+  leadsTable,
   tenantsTable,
   activitiesTable,
   inventoryItemsTable,
@@ -151,6 +152,15 @@ export async function proposalAccepted(
       updatedAt: new Date(),
     })
     .where(eq(dealsTable.id, deal.id));
+
+  // Update lead status to "convertido" so it leaves the "novo" pipeline
+  if (proposta.leadId) {
+    await db
+      .update(leadsTable)
+      .set({ status: "convertido", updatedAt: new Date() })
+      .where(eq(leadsTable.id, proposta.leadId));
+    log.info({ dealId: deal.id, leadId: proposta.leadId }, "proposalAccepted: lead status updated to convertido");
+  }
 
   log.info({ dealId: deal.id }, "proposalAccepted: deal moved to ganho");
 

@@ -355,15 +355,15 @@ export default function Leads() {
           form.reset();
         },
         onError: (err: any) => {
-          if (err?.status === 409 && err?.body?.isDuplicate) {
+          if (err?.status === 409 && err?.data?.isDuplicate) {
             setDuplicateDialog({
               open: true,
-              lead: err.body.lead ?? null,
-              matchBy: err.body.matchBy ?? "",
+              lead: err.data.lead ?? null,
+              matchBy: err.data.matchBy ?? "",
             });
             return;
           }
-          toast({ title: err?.body?.error ?? "Erro ao criar lead", variant: "destructive" });
+          toast({ title: err?.data?.error ?? "Erro ao criar lead", variant: "destructive" });
         },
       }
     );
