@@ -9,4 +9,9 @@
 export type UpdateLeadBodyFilhosItem = {
   nome: string;
   dataNascimento?: string;
+  genero?: string | null;
+  birthMonth?: number | null;
+  birthDay?: number | null;
+  source?: string | null;
+  lastCampaignSentYear?: number | null;
 };

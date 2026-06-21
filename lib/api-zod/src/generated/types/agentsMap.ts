@@ -15,4 +15,5 @@ export interface AgentsMap {
   scheduler?: AgentEntry;
   service?: AgentEntry;
   onboarding?: AgentEntry;
+  relacionamento?: AgentEntry;
 }

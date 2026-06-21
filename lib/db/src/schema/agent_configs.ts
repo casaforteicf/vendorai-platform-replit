@@ -11,6 +11,7 @@ export const AGENT_TYPES = [
   "scheduler",
   "service",
   "onboarding",
+  "relacionamento",
 ] as const;
 
 export type AgentType = (typeof AGENT_TYPES)[number];
@@ -28,6 +29,7 @@ export const agentsMapSchema = z.object({
   scheduler: agentEntrySchema.optional(),
   service: agentEntrySchema.optional(),
   onboarding: agentEntrySchema.optional(),
+  relacionamento: agentEntrySchema.optional(),
 });
 
 export type AgentsMap = z.infer<typeof agentsMapSchema>;
@@ -64,6 +66,7 @@ export const agentConfigsTable = pgTable(
     metaWabaId: text("meta_waba_id"),
     metaAccessToken: text("meta_access_token"),
     metaVerifyToken: text("meta_verify_token"),
+    specialDateMessagesOptOut: boolean("special_date_messages_opt_out").notNull().default(false),
     createdAt: timestamp("created_at").notNull().defaultNow(),
     updatedAt: timestamp("updated_at").notNull().defaultNow(),
   },

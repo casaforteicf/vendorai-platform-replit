@@ -1,4 +1,4 @@
-import { pgTable, text, timestamp, jsonb, boolean, index } from "drizzle-orm/pg-core";
+import { pgTable, text, timestamp, jsonb, boolean, integer, index } from "drizzle-orm/pg-core";
 import { createInsertSchema, createSelectSchema } from "drizzle-zod";
 import { z } from "zod/v4";
 import { tenantsTable } from "./tenants";
@@ -35,7 +35,7 @@ export const leadsTable = pgTable("leads", {
   conjugeTelefone: text("conjuge_telefone"),
   conjugeEmail: text("conjuge_email"),
   conjugeDataNascimento: text("conjuge_data_nascimento"),
-  filhos: jsonb("filhos").$type<Array<{ nome: string; dataNascimento: string }>>(),
+  filhos: jsonb("filhos").$type<Array<{ nome: string; dataNascimento: string; genero?: string; birthMonth?: number; birthDay?: number; source?: string; lastCampaignSentYear?: number }>>(),
   discoveryData: jsonb("discovery_data").$type<Record<string, unknown>>(),
   tipo: text("tipo").notNull().default("cliente"),
   indicadoPor: text("indicado_por"),
@@ -49,6 +49,13 @@ export const leadsTable = pgTable("leads", {
   logoUrl: text("logo_url"),
   corDestaque: text("cor_destaque"),
   corSecundaria: text("cor_secundaria"),
+
+  // Family / relationship agent fields
+  genero: text("genero"),
+  birthMonth: integer("birth_month"),
+  birthDay: integer("birth_day"),
+  lastCampaignSentYear: integer("last_campaign_sent_year"),
+  specialDateMessagesOptOut: boolean("special_date_messages_opt_out").notNull().default(false),
 
   createdAt: timestamp("created_at").notNull().defaultNow(),
   updatedAt: timestamp("updated_at").notNull().defaultNow(),

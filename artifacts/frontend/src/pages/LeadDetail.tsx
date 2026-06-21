@@ -34,6 +34,10 @@ import {
   getListDealsQueryKey,
   useListPropostas,
   getListPropostasQueryKey,
+  useGetLeadSpouseConsent,
+  useCreateLeadSpouseConsent,
+  useUpdateLeadSpouseConsent,
+  getGetLeadSpouseConsentQueryKey,
 } from "@workspace/api-client-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -42,6 +46,7 @@ import { Input } from "@/components/ui/input";
 import { Progress } from "@/components/ui/progress";
 import { Textarea } from "@/components/ui/textarea";
 import { Switch } from "@/components/ui/switch";
+import { Skeleton } from "@/components/ui/skeleton";
 import {
   Dialog,
   DialogContent,
@@ -89,6 +94,7 @@ import {
   Paperclip,
   FileUp,
   Image,
+  Gift,
 } from "lucide-react";
 
 const STATUS_STYLES: Record<string, string> = {
@@ -438,11 +444,12 @@ export default function LeadDetail() {
   const [pessoalDraft, setPessoalDraft] = useState({
     dataNascimento: "",
     estadoCivil: "",
+    genero: "",
     conjugeNome: "",
     conjugeTelefone: "",
     conjugeEmail: "",
     conjugeDataNascimento: "",
-    filhos: [] as Array<{ nome: string; dataNascimento: string }>,
+    filhos: [] as Array<{ nome: string; dataNascimento: string; genero: string }>,
   });
 
   const { mutate: updateLead, isPending: isUpdatingLead } = useUpdateLead({
@@ -463,6 +470,7 @@ export default function LeadDetail() {
     setPessoalDraft({
       dataNascimento: lead.dataNascimento ?? "",
       estadoCivil: lead.estadoCivil ?? "",
+      genero: lead.genero ?? "",
       conjugeNome: lead.conjugeNome ?? "",
       conjugeTelefone: lead.conjugeTelefone ?? "",
       conjugeEmail: lead.conjugeEmail ?? "",
@@ -470,6 +478,7 @@ export default function LeadDetail() {
       filhos: (lead.filhos ?? []).map((f) => ({
         nome: f.nome ?? "",
         dataNascimento: f.dataNascimento ?? "",
+        genero: f.genero ?? "",
       })),
     });
     setEditingPessoal(true);
@@ -482,12 +491,17 @@ export default function LeadDetail() {
       data: {
         dataNascimento: pessoalDraft.dataNascimento || null,
         estadoCivil: pessoalDraft.estadoCivil || null,
+        genero: pessoalDraft.genero || null,
         conjugeNome: pessoalDraft.conjugeNome || null,
         conjugeTelefone: pessoalDraft.conjugeTelefone || null,
         conjugeEmail: pessoalDraft.conjugeEmail || null,
         conjugeDataNascimento: pessoalDraft.conjugeDataNascimento || null,
         filhos: pessoalDraft.filhos.filter((f) => f.nome.trim()).length > 0
-          ? pessoalDraft.filhos.filter((f) => f.nome.trim())
+          ? pessoalDraft.filhos.filter((f) => f.nome.trim()).map((f) => ({
+              nome: f.nome,
+              dataNascimento: f.dataNascimento,
+              genero: f.genero || null,
+            }))
           : null,
       },
     });
@@ -1081,13 +1095,19 @@ export default function LeadDetail() {
                       {lead.filhos.map((filho, i) => (
                         <div key={i} className="flex items-center gap-2 text-muted-foreground">
                           <Baby className="h-3.5 w-3.5 shrink-0" />
-                          <span>{filho.nome}</span>
+                          <span>{filho.nome}{filho.genero ? ` (${filho.genero === "masculino" ? "M" : "F"})` : ""}</span>
                           {filho.dataNascimento && (
                             <span className="text-xs ml-auto">🎂 {formatBirthday(filho.dataNascimento)}</span>
+                          )}
+                          {filho.source === "extracted_from_conversation" && (
+                            <span className="text-[10px] text-emerald-600 bg-emerald-50 px-1 rounded ml-auto">IA</span>
                           )}
                         </div>
                       ))}
                     </div>
+                  )}
+                  {lead.conjugeNome && (
+                    <SpouseConsentBlock leadId={id} />
                   )}
                 </>
               )}
@@ -2300,6 +2320,24 @@ export default function LeadDetail() {
               />
             </div>
             <div className="space-y-1.5">
+              <label className="text-sm font-medium">Genero</label>
+              <Select
+                value={pessoalDraft.genero || "__none__"}
+                onValueChange={(v) =>
+                  setPessoalDraft((d) => ({ ...d, genero: v === "__none__" ? "" : v }))
+                }
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Selecione..." />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="__none__">Não informado</SelectItem>
+                  <SelectItem value="masculino">Masculino</SelectItem>
+                  <SelectItem value="feminino">Feminino</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-1.5">
               <label className="text-sm font-medium">Estado Civil</label>
               <Select
                 value={pessoalDraft.estadoCivil || "__none__"}
@@ -2383,7 +2421,7 @@ export default function LeadDetail() {
                   onClick={() =>
                     setPessoalDraft((d) => ({
                       ...d,
-                      filhos: [...d.filhos, { nome: "", dataNascimento: "" }],
+                      filhos: [...d.filhos, { nome: "", dataNascimento: "", genero: "" }],
                     }))
                   }
                 >
@@ -2396,7 +2434,7 @@ export default function LeadDetail() {
               )}
               {pessoalDraft.filhos.map((filho, i) => (
                 <div key={i} className="flex items-start gap-2">
-                  <div className="flex-1 grid grid-cols-2 gap-2">
+                  <div className="flex-1 grid grid-cols-3 gap-2">
                     <Input
                       placeholder="Nome"
                       value={filho.nome}
@@ -2416,6 +2454,23 @@ export default function LeadDetail() {
                         setPessoalDraft((d) => ({ ...d, filhos }));
                       }}
                     />
+                    <Select
+                      value={filho.genero || "__none__"}
+                      onValueChange={(v) => {
+                        const filhos = [...pessoalDraft.filhos];
+                        filhos[i] = { ...filhos[i]!, genero: v === "__none__" ? "" : v };
+                        setPessoalDraft((d) => ({ ...d, filhos }));
+                      }}
+                    >
+                      <SelectTrigger>
+                        <SelectValue placeholder="Gênero" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="__none__">Não informado</SelectItem>
+                        <SelectItem value="masculino">Masculino</SelectItem>
+                        <SelectItem value="feminino">Feminino</SelectItem>
+                      </SelectContent>
+                    </Select>
                   </div>
                   <Button
                     type="button"
@@ -2751,6 +2806,98 @@ export default function LeadDetail() {
           void queryClient.invalidateQueries({ queryKey: getListDealsQueryKey(tenantId) });
         }}
       />
+    </div>
+  );
+}
+
+function SpouseConsentBlock({ leadId }: { leadId: string | undefined }) {
+  const { toast } = useToast();
+  const queryClient = useQueryClient();
+  const { data: consent, isLoading } = useGetLeadSpouseConsent(leadId || "", {
+    query: { enabled: !!leadId, retry: false, queryKey: getGetLeadSpouseConsentQueryKey(leadId || "") },
+  });
+  const create = useCreateLeadSpouseConsent({
+    mutation: {
+      onSuccess: () => {
+        void queryClient.invalidateQueries({ queryKey: getGetLeadSpouseConsentQueryKey(leadId || "") });
+        toast({ title: "Preferência salva." });
+      },
+      onError: () => toast({ title: "Erro ao salvar", variant: "destructive" }),
+    },
+  });
+  const update = useUpdateLeadSpouseConsent({
+    mutation: {
+      onSuccess: () => {
+        void queryClient.invalidateQueries({ queryKey: getGetLeadSpouseConsentQueryKey(leadId || "") });
+        toast({ title: "Preferência atualizada." });
+      },
+      onError: () => toast({ title: "Erro ao atualizar", variant: "destructive" }),
+    },
+  });
+
+  const [draft, setDraft] = useState({
+    consentGiven: false,
+    giftPreference: "",
+  });
+
+  useEffect(() => {
+    if (consent) {
+      setDraft({
+        consentGiven: consent.consentGiven,
+        giftPreference: consent.giftPreference ?? "",
+      });
+    }
+  }, [consent]);
+
+  function save() {
+    if (!leadId) return;
+    if (consent) {
+      update.mutate({ leadId, data: { consentGiven: draft.consentGiven, giftPreference: draft.giftPreference || null } });
+    } else {
+      create.mutate({ leadId, data: { consentGiven: draft.consentGiven, giftPreference: draft.giftPreference || null } });
+    }
+  }
+
+  return (
+    <div className="space-y-2 border rounded-md p-3 bg-muted/20">
+      <div className="flex items-center gap-1.5 text-sm font-medium">
+        <Gift className="h-3.5 w-3.5 text-rose-500" />
+        <span>Presente para cônjuge</span>
+      </div>
+      {isLoading ? (
+        <Skeleton className="h-8 w-full" />
+      ) : (
+        <div className="space-y-2">
+          <div className="flex items-center gap-2">
+            <Switch
+              checked={draft.consentGiven}
+              onCheckedChange={(v) => setDraft((d) => ({ ...d, consentGiven: v }))}
+            />
+            <span className="text-sm text-muted-foreground">
+              {draft.consentGiven
+                ? "Lead autorizou envio de sugestões de presente"
+                : "Lead ainda não autorizou"}
+            </span>
+          </div>
+          {draft.consentGiven && (
+            <div className="space-y-1">
+              <label className="text-xs font-medium text-muted-foreground">Preferência de presente</label>
+              <Input
+                placeholder="Ex: perfumes, eletrônicos, roupas"
+                value={draft.giftPreference}
+                onChange={(e) => setDraft((d) => ({ ...d, giftPreference: e.target.value }))}
+                className="text-sm"
+              />
+            </div>
+          )}
+          <div className="flex items-center gap-2 pt-1">
+            <Button size="sm" className="h-7 text-xs" onClick={save} disabled={create.isPending || update.isPending}>
+              {(create.isPending || update.isPending) && <Loader2 className="h-3 w-3 animate-spin mr-1" />}
+              Salvar
+            </Button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

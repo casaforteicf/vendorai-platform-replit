@@ -69,6 +69,7 @@ import type {
   CreateKnowledgeBaseBody,
   CreateLeadBody,
   CreateLeadProductBody,
+  CreateLeadSpouseConsentBody,
   CreateMessageBody,
   CreatePartnerBody,
   CreatePartnerResponse,
@@ -83,6 +84,7 @@ import type {
   CreateSupermercadoPedidoBody,
   CreateSupermercadoProdutoBody,
   CreateTenantBody,
+  CreateTenantCalendarSettingsBody,
   CreateTenantInviteBody,
   CreateUserBody,
   CreateVarejoColecaoBody,
@@ -139,6 +141,7 @@ import type {
   LeadBriefing,
   LeadProduct,
   LeadProposal,
+  LeadSpouseConsent,
   LinkTenantPartnerBody,
   ListActivitiesParams,
   ListAgendamentosParams,
@@ -208,6 +211,7 @@ import type {
   TenantAnalyticsAgents,
   TenantAnalyticsChannels,
   TenantAnalyticsIntelligence,
+  TenantCalendarSettings,
   TenantDashboard,
   TenantSetupStatus,
   UpdateActivityBody,
@@ -227,6 +231,7 @@ import type {
   UpdateInvoiceBody,
   UpdateKnowledgeBaseBody,
   UpdateLeadBody,
+  UpdateLeadSpouseConsentBody,
   UpdateMessageBody,
   UpdatePartnerBody,
   UpdateProdutoCatalogoBody,
@@ -239,6 +244,7 @@ import type {
   UpdateSupermercadoPedidoBody,
   UpdateSupermercadoProdutoBody,
   UpdateTenantBody,
+  UpdateTenantCalendarSettingsBody,
   UpdateUserBody,
   UpdateVarejoColecaoBody,
   UpdateVarejoComboBody,
@@ -23523,4 +23529,446 @@ export function useGetSupermercadoDashboard<TData = Awaited<ReturnType<typeof ge
 
 
 
+
+export const getGetTenantCalendarSettingsUrl = (tenantId: string,) => {
+
+
+
+
+  return `/api/tenants/${tenantId}/calendar-settings`
+}
+
+/**
+ * @summary Get calendar settings for a tenant
+ */
+export const getTenantCalendarSettings = async (tenantId: string, options?: RequestInit): Promise<TenantCalendarSettings> => {
+
+  return customFetch<TenantCalendarSettings>(getGetTenantCalendarSettingsUrl(tenantId),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetTenantCalendarSettingsQueryKey = (tenantId: string,) => {
+    return [
+    `/api/tenants/${tenantId}/calendar-settings`
+    ] as const;
+    }
+
+
+export const getGetTenantCalendarSettingsQueryOptions = <TData = Awaited<ReturnType<typeof getTenantCalendarSettings>>, TError = ErrorType<ErrorResponse>>(tenantId: string, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getTenantCalendarSettings>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetTenantCalendarSettingsQueryKey(tenantId);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getTenantCalendarSettings>>> = ({ signal }) => getTenantCalendarSettings(tenantId, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, enabled: !!(tenantId), ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getTenantCalendarSettings>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetTenantCalendarSettingsQueryResult = NonNullable<Awaited<ReturnType<typeof getTenantCalendarSettings>>>
+export type GetTenantCalendarSettingsQueryError = ErrorType<ErrorResponse>
+
+
+/**
+ * @summary Get calendar settings for a tenant
+ */
+
+export function useGetTenantCalendarSettings<TData = Awaited<ReturnType<typeof getTenantCalendarSettings>>, TError = ErrorType<ErrorResponse>>(
+ tenantId: string, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getTenantCalendarSettings>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetTenantCalendarSettingsQueryOptions(tenantId,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+
+
+
+
+
+
+export const getCreateTenantCalendarSettingsUrl = (tenantId: string,) => {
+
+
+
+
+  return `/api/tenants/${tenantId}/calendar-settings`
+}
+
+/**
+ * @summary Create calendar settings for a tenant
+ */
+export const createTenantCalendarSettings = async (tenantId: string,
+    createTenantCalendarSettingsBody: CreateTenantCalendarSettingsBody, options?: RequestInit): Promise<TenantCalendarSettings> => {
+
+  return customFetch<TenantCalendarSettings>(getCreateTenantCalendarSettingsUrl(tenantId),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(
+      createTenantCalendarSettingsBody,)
+  }
+);}
+
+
+
+
+export const getCreateTenantCalendarSettingsMutationOptions = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createTenantCalendarSettings>>, TError,{tenantId: string;data: BodyType<CreateTenantCalendarSettingsBody>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof createTenantCalendarSettings>>, TError,{tenantId: string;data: BodyType<CreateTenantCalendarSettingsBody>}, TContext> => {
+
+const mutationKey = ['createTenantCalendarSettings'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof createTenantCalendarSettings>>, {tenantId: string;data: BodyType<CreateTenantCalendarSettingsBody>}> = (props) => {
+          const {tenantId,data} = props ?? {};
+
+          return  createTenantCalendarSettings(tenantId,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type CreateTenantCalendarSettingsMutationResult = NonNullable<Awaited<ReturnType<typeof createTenantCalendarSettings>>>
+    export type CreateTenantCalendarSettingsMutationBody = BodyType<CreateTenantCalendarSettingsBody>
+    export type CreateTenantCalendarSettingsMutationError = ErrorType<ErrorResponse>
+
+    /**
+ * @summary Create calendar settings for a tenant
+ */
+export const useCreateTenantCalendarSettings = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createTenantCalendarSettings>>, TError,{tenantId: string;data: BodyType<CreateTenantCalendarSettingsBody>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof createTenantCalendarSettings>>,
+        TError,
+        {tenantId: string;data: BodyType<CreateTenantCalendarSettingsBody>},
+        TContext
+      > => {
+      return useMutation(getCreateTenantCalendarSettingsMutationOptions(options));
+    }
+
+export const getUpdateTenantCalendarSettingsUrl = (tenantId: string,) => {
+
+
+
+
+  return `/api/tenants/${tenantId}/calendar-settings`
+}
+
+/**
+ * @summary Update calendar settings for a tenant
+ */
+export const updateTenantCalendarSettings = async (tenantId: string,
+    updateTenantCalendarSettingsBody: UpdateTenantCalendarSettingsBody, options?: RequestInit): Promise<TenantCalendarSettings> => {
+
+  return customFetch<TenantCalendarSettings>(getUpdateTenantCalendarSettingsUrl(tenantId),
+  {
+    ...options,
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(
+      updateTenantCalendarSettingsBody,)
+  }
+);}
+
+
+
+
+export const getUpdateTenantCalendarSettingsMutationOptions = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updateTenantCalendarSettings>>, TError,{tenantId: string;data: BodyType<UpdateTenantCalendarSettingsBody>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof updateTenantCalendarSettings>>, TError,{tenantId: string;data: BodyType<UpdateTenantCalendarSettingsBody>}, TContext> => {
+
+const mutationKey = ['updateTenantCalendarSettings'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof updateTenantCalendarSettings>>, {tenantId: string;data: BodyType<UpdateTenantCalendarSettingsBody>}> = (props) => {
+          const {tenantId,data} = props ?? {};
+
+          return  updateTenantCalendarSettings(tenantId,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type UpdateTenantCalendarSettingsMutationResult = NonNullable<Awaited<ReturnType<typeof updateTenantCalendarSettings>>>
+    export type UpdateTenantCalendarSettingsMutationBody = BodyType<UpdateTenantCalendarSettingsBody>
+    export type UpdateTenantCalendarSettingsMutationError = ErrorType<ErrorResponse>
+
+    /**
+ * @summary Update calendar settings for a tenant
+ */
+export const useUpdateTenantCalendarSettings = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updateTenantCalendarSettings>>, TError,{tenantId: string;data: BodyType<UpdateTenantCalendarSettingsBody>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof updateTenantCalendarSettings>>,
+        TError,
+        {tenantId: string;data: BodyType<UpdateTenantCalendarSettingsBody>},
+        TContext
+      > => {
+      return useMutation(getUpdateTenantCalendarSettingsMutationOptions(options));
+    }
+
+export const getGetLeadSpouseConsentUrl = (leadId: string,) => {
+
+
+
+
+  return `/api/leads/${leadId}/spouse-consent`
+}
+
+/**
+ * @summary Get spouse consent for a lead
+ */
+export const getLeadSpouseConsent = async (leadId: string, options?: RequestInit): Promise<LeadSpouseConsent> => {
+
+  return customFetch<LeadSpouseConsent>(getGetLeadSpouseConsentUrl(leadId),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetLeadSpouseConsentQueryKey = (leadId: string,) => {
+    return [
+    `/api/leads/${leadId}/spouse-consent`
+    ] as const;
+    }
+
+
+export const getGetLeadSpouseConsentQueryOptions = <TData = Awaited<ReturnType<typeof getLeadSpouseConsent>>, TError = ErrorType<ErrorResponse>>(leadId: string, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getLeadSpouseConsent>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetLeadSpouseConsentQueryKey(leadId);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getLeadSpouseConsent>>> = ({ signal }) => getLeadSpouseConsent(leadId, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, enabled: !!(leadId), ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getLeadSpouseConsent>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetLeadSpouseConsentQueryResult = NonNullable<Awaited<ReturnType<typeof getLeadSpouseConsent>>>
+export type GetLeadSpouseConsentQueryError = ErrorType<ErrorResponse>
+
+
+/**
+ * @summary Get spouse consent for a lead
+ */
+
+export function useGetLeadSpouseConsent<TData = Awaited<ReturnType<typeof getLeadSpouseConsent>>, TError = ErrorType<ErrorResponse>>(
+ leadId: string, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getLeadSpouseConsent>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetLeadSpouseConsentQueryOptions(leadId,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+
+
+
+
+
+
+export const getCreateLeadSpouseConsentUrl = (leadId: string,) => {
+
+
+
+
+  return `/api/leads/${leadId}/spouse-consent`
+}
+
+/**
+ * @summary Create spouse consent for a lead
+ */
+export const createLeadSpouseConsent = async (leadId: string,
+    createLeadSpouseConsentBody: CreateLeadSpouseConsentBody, options?: RequestInit): Promise<LeadSpouseConsent> => {
+
+  return customFetch<LeadSpouseConsent>(getCreateLeadSpouseConsentUrl(leadId),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(
+      createLeadSpouseConsentBody,)
+  }
+);}
+
+
+
+
+export const getCreateLeadSpouseConsentMutationOptions = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createLeadSpouseConsent>>, TError,{leadId: string;data: BodyType<CreateLeadSpouseConsentBody>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof createLeadSpouseConsent>>, TError,{leadId: string;data: BodyType<CreateLeadSpouseConsentBody>}, TContext> => {
+
+const mutationKey = ['createLeadSpouseConsent'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof createLeadSpouseConsent>>, {leadId: string;data: BodyType<CreateLeadSpouseConsentBody>}> = (props) => {
+          const {leadId,data} = props ?? {};
+
+          return  createLeadSpouseConsent(leadId,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type CreateLeadSpouseConsentMutationResult = NonNullable<Awaited<ReturnType<typeof createLeadSpouseConsent>>>
+    export type CreateLeadSpouseConsentMutationBody = BodyType<CreateLeadSpouseConsentBody>
+    export type CreateLeadSpouseConsentMutationError = ErrorType<ErrorResponse>
+
+    /**
+ * @summary Create spouse consent for a lead
+ */
+export const useCreateLeadSpouseConsent = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createLeadSpouseConsent>>, TError,{leadId: string;data: BodyType<CreateLeadSpouseConsentBody>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof createLeadSpouseConsent>>,
+        TError,
+        {leadId: string;data: BodyType<CreateLeadSpouseConsentBody>},
+        TContext
+      > => {
+      return useMutation(getCreateLeadSpouseConsentMutationOptions(options));
+    }
+
+export const getUpdateLeadSpouseConsentUrl = (leadId: string,) => {
+
+
+
+
+  return `/api/leads/${leadId}/spouse-consent`
+}
+
+/**
+ * @summary Update spouse consent for a lead
+ */
+export const updateLeadSpouseConsent = async (leadId: string,
+    updateLeadSpouseConsentBody: UpdateLeadSpouseConsentBody, options?: RequestInit): Promise<LeadSpouseConsent> => {
+
+  return customFetch<LeadSpouseConsent>(getUpdateLeadSpouseConsentUrl(leadId),
+  {
+    ...options,
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(
+      updateLeadSpouseConsentBody,)
+  }
+);}
+
+
+
+
+export const getUpdateLeadSpouseConsentMutationOptions = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updateLeadSpouseConsent>>, TError,{leadId: string;data: BodyType<UpdateLeadSpouseConsentBody>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof updateLeadSpouseConsent>>, TError,{leadId: string;data: BodyType<UpdateLeadSpouseConsentBody>}, TContext> => {
+
+const mutationKey = ['updateLeadSpouseConsent'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof updateLeadSpouseConsent>>, {leadId: string;data: BodyType<UpdateLeadSpouseConsentBody>}> = (props) => {
+          const {leadId,data} = props ?? {};
+
+          return  updateLeadSpouseConsent(leadId,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type UpdateLeadSpouseConsentMutationResult = NonNullable<Awaited<ReturnType<typeof updateLeadSpouseConsent>>>
+    export type UpdateLeadSpouseConsentMutationBody = BodyType<UpdateLeadSpouseConsentBody>
+    export type UpdateLeadSpouseConsentMutationError = ErrorType<ErrorResponse>
+
+    /**
+ * @summary Update spouse consent for a lead
+ */
+export const useUpdateLeadSpouseConsent = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updateLeadSpouseConsent>>, TError,{leadId: string;data: BodyType<UpdateLeadSpouseConsentBody>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof updateLeadSpouseConsent>>,
+        TError,
+        {leadId: string;data: BodyType<UpdateLeadSpouseConsentBody>},
+        TContext
+      > => {
+      return useMutation(getUpdateLeadSpouseConsentMutationOptions(options));
+    }
 

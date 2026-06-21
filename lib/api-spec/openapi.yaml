@@ -8088,6 +8088,188 @@ paths:
             application/json:
               schema: { $ref: "#/components/schemas/SupermercadoDashboard" }
 
+  /tenants/{tenantId}/calendar-settings:
+    get:
+      operationId: getTenantCalendarSettings
+      tags: [tenants]
+      summary: Get calendar settings for a tenant
+      security:
+        - bearerAuth: []
+      parameters:
+        - { name: tenantId, in: path, required: true, schema: { type: string } }
+      responses:
+        "200":
+          description: Calendar settings
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/TenantCalendarSettings" }
+        "403":
+          description: Access denied
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+    post:
+      operationId: createTenantCalendarSettings
+      tags: [tenants]
+      summary: Create calendar settings for a tenant
+      security:
+        - bearerAuth: []
+      parameters:
+        - { name: tenantId, in: path, required: true, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CreateTenantCalendarSettingsBody" }
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/TenantCalendarSettings" }
+        "403":
+          description: Access denied
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+        "409":
+          description: Already exists
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+        "422":
+          description: Validation error
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+    patch:
+      operationId: updateTenantCalendarSettings
+      tags: [tenants]
+      summary: Update calendar settings for a tenant
+      security:
+        - bearerAuth: []
+      parameters:
+        - { name: tenantId, in: path, required: true, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/UpdateTenantCalendarSettingsBody" }
+      responses:
+        "200":
+          description: Updated
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/TenantCalendarSettings" }
+        "403":
+          description: Access denied
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+        "422":
+          description: Validation error
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+
+  /leads/{leadId}/spouse-consent:
+    get:
+      operationId: getLeadSpouseConsent
+      tags: [leads]
+      summary: Get spouse consent for a lead
+      security:
+        - bearerAuth: []
+      parameters:
+        - { name: leadId, in: path, required: true, schema: { type: string } }
+      responses:
+        "200":
+          description: Spouse consent
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/LeadSpouseConsent" }
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+    post:
+      operationId: createLeadSpouseConsent
+      tags: [leads]
+      summary: Create spouse consent for a lead
+      security:
+        - bearerAuth: []
+      parameters:
+        - { name: leadId, in: path, required: true, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CreateLeadSpouseConsentBody" }
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/LeadSpouseConsent" }
+        "403":
+          description: Access denied
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+        "409":
+          description: Already exists
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+        "422":
+          description: Validation error
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+    patch:
+      operationId: updateLeadSpouseConsent
+      tags: [leads]
+      summary: Update spouse consent for a lead
+      security:
+        - bearerAuth: []
+      parameters:
+        - { name: leadId, in: path, required: true, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/UpdateLeadSpouseConsentBody" }
+      responses:
+        "200":
+          description: Updated
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/LeadSpouseConsent" }
+        "403":
+          description: Access denied
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+        "422":
+          description: Validation error
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
 
 components:
   schemas:
@@ -10682,6 +10864,8 @@ components:
           $ref: "#/components/schemas/AgentEntry"
         onboarding:
           $ref: "#/components/schemas/AgentEntry"
+        relacionamento:
+          $ref: "#/components/schemas/AgentEntry"
 
     AgentConfig:
       type: object
@@ -12322,6 +12506,21 @@ components:
                 type: string
               dataNascimento:
                 type: string
+              genero:
+                type: string
+                nullable: true
+              birthMonth:
+                type: integer
+                nullable: true
+              birthDay:
+                type: integer
+                nullable: true
+              source:
+                type: string
+                nullable: true
+              lastCampaignSentYear:
+                type: integer
+                nullable: true
             required:
               - nome
         tipo:
@@ -12336,6 +12535,26 @@ components:
           type: string
           nullable: true
           description: Notas de nutrição para leads do tipo indicador.
+        genero:
+          type: string
+          nullable: true
+          description: "Genero do lead: masculino, feminino."
+        birthMonth:
+          type: integer
+          nullable: true
+          description: Mês de nascimento (1-12).
+        birthDay:
+          type: integer
+          nullable: true
+          description: Dia de nascimento (1-31).
+        lastCampaignSentYear:
+          type: integer
+          nullable: true
+          description: Ano da última campanha de data especial enviada.
+        specialDateMessagesOptOut:
+          type: boolean
+          nullable: true
+          description: Lead optou por não receber mensagens de datas especiais.
         createdAt:
           type: string
           format: date-time
@@ -12425,6 +12644,21 @@ components:
                 type: string
               dataNascimento:
                 type: string
+              genero:
+                type: string
+                nullable: true
+              birthMonth:
+                type: integer
+                nullable: true
+              birthDay:
+                type: integer
+                nullable: true
+              source:
+                type: string
+                nullable: true
+              lastCampaignSentYear:
+                type: integer
+                nullable: true
             required:
               - nome
         tipo:
@@ -12435,6 +12669,21 @@ components:
           nullable: true
         notasNutricao:
           type: string
+          nullable: true
+        genero:
+          type: string
+          nullable: true
+        birthMonth:
+          type: integer
+          nullable: true
+        birthDay:
+          type: integer
+          nullable: true
+        lastCampaignSentYear:
+          type: integer
+          nullable: true
+        specialDateMessagesOptOut:
+          type: boolean
           nullable: true
       required:
         - tenantId
@@ -12513,6 +12762,21 @@ components:
                 type: string
               dataNascimento:
                 type: string
+              genero:
+                type: string
+                nullable: true
+              birthMonth:
+                type: integer
+                nullable: true
+              birthDay:
+                type: integer
+                nullable: true
+              source:
+                type: string
+                nullable: true
+              lastCampaignSentYear:
+                type: integer
+                nullable: true
             required:
               - nome
         tipo:
@@ -12523,6 +12787,21 @@ components:
           nullable: true
         notasNutricao:
           type: string
+          nullable: true
+        genero:
+          type: string
+          nullable: true
+        birthMonth:
+          type: integer
+          nullable: true
+        birthDay:
+          type: integer
+          nullable: true
+        lastCampaignSentYear:
+          type: integer
+          nullable: true
+        specialDateMessagesOptOut:
+          type: boolean
           nullable: true
 
     Conversation:
@@ -14449,3 +14728,70 @@ components:
         ultimosPedidos:
           type: array
           items: { $ref: "#/components/schemas/SupermercadoPedido" }
+
+    TenantCalendarSettings:
+      type: object
+      properties:
+        id: { type: string }
+        tenantId: { type: string }
+        pascoaEnabled: { type: boolean }
+        diaDasMaesEnabled: { type: boolean }
+        diaDosPaisEnabled: { type: boolean }
+        diaDasCriancasEnabled: { type: boolean }
+        namoradosEnabled: { type: boolean }
+        natalEnabled: { type: boolean }
+        blackFridayEnabled: { type: boolean }
+        customDates: { type: array, items: { type: object, properties: { name: { type: string }, date: { type: string }, enabled: { type: boolean } }, required: [name, date, enabled] } }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+      required: [id, tenantId, pascoaEnabled, diaDasMaesEnabled, diaDosPaisEnabled, diaDasCriancasEnabled, namoradosEnabled, natalEnabled, blackFridayEnabled, createdAt, updatedAt]
+
+    CreateTenantCalendarSettingsBody:
+      type: object
+      properties:
+        pascoaEnabled: { type: boolean }
+        diaDasMaesEnabled: { type: boolean }
+        diaDosPaisEnabled: { type: boolean }
+        diaDasCriancasEnabled: { type: boolean }
+        namoradosEnabled: { type: boolean }
+        natalEnabled: { type: boolean }
+        blackFridayEnabled: { type: boolean }
+        customDates: { type: array, items: { type: object, properties: { name: { type: string }, date: { type: string }, enabled: { type: boolean } }, required: [name, date, enabled] } }
+
+    UpdateTenantCalendarSettingsBody:
+      type: object
+      properties:
+        pascoaEnabled: { type: boolean }
+        diaDasMaesEnabled: { type: boolean }
+        diaDosPaisEnabled: { type: boolean }
+        diaDasCriancasEnabled: { type: boolean }
+        namoradosEnabled: { type: boolean }
+        natalEnabled: { type: boolean }
+        blackFridayEnabled: { type: boolean }
+        customDates: { type: array, items: { type: object, properties: { name: { type: string }, date: { type: string }, enabled: { type: boolean } }, required: [name, date, enabled] } }
+
+    LeadSpouseConsent:
+      type: object
+      properties:
+        id: { type: string }
+        tenantId: { type: string }
+        leadId: { type: string }
+        consentGiven: { type: boolean }
+        consentGivenAt: { type: string, format: date-time, nullable: true }
+        giftPreference: { type: string, nullable: true }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+      required: [id, tenantId, leadId, consentGiven, createdAt, updatedAt]
+
+    CreateLeadSpouseConsentBody:
+      type: object
+      properties:
+        consentGiven: { type: boolean }
+        giftPreference: { type: string, nullable: true }
+      required: [consentGiven]
+
+    UpdateLeadSpouseConsentBody:
+      type: object
+      properties:
+        consentGiven: { type: boolean }
+        giftPreference: { type: string, nullable: true }

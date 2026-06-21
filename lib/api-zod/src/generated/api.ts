@@ -419,6 +419,7 @@ export const createAgentConfigBodyAgentsReactivationEnabledDefault = false;
 export const createAgentConfigBodyAgentsSchedulerEnabledDefault = false;
 export const createAgentConfigBodyAgentsServiceEnabledDefault = false;
 export const createAgentConfigBodyAgentsOnboardingEnabledDefault = false;
+export const createAgentConfigBodyAgentsRelacionamentoEnabledDefault = false;
 
 export const CreateAgentConfigBody = zod.object({
   "tenantId": zod.string(),
@@ -450,6 +451,10 @@ export const CreateAgentConfigBody = zod.object({
   "onboarding": zod.object({
   "enabled": zod.boolean().default(createAgentConfigBodyAgentsOnboardingEnabledDefault),
   "prompt": zod.string().nullish()
+}).optional(),
+  "relacionamento": zod.object({
+  "enabled": zod.boolean().default(createAgentConfigBodyAgentsRelacionamentoEnabledDefault),
+  "prompt": zod.string().nullish()
 }).optional()
 }).optional(),
   "dailyMessageLimit": zod.number().optional(),
@@ -476,6 +481,7 @@ export const getAgentConfigByTenantResponseAgentsReactivationEnabledDefault = fa
 export const getAgentConfigByTenantResponseAgentsSchedulerEnabledDefault = false;
 export const getAgentConfigByTenantResponseAgentsServiceEnabledDefault = false;
 export const getAgentConfigByTenantResponseAgentsOnboardingEnabledDefault = false;
+export const getAgentConfigByTenantResponseAgentsRelacionamentoEnabledDefault = false;
 export const getAgentConfigByTenantResponseDailyMessageLimitDefault = 100;
 export const getAgentConfigByTenantResponseMessagesSentTodayDefault = 0;
 export const getAgentConfigByTenantResponseMonthlyTokenLimitDefault = 100000;
@@ -512,6 +518,10 @@ export const GetAgentConfigByTenantResponse = zod.object({
 }).optional(),
   "onboarding": zod.object({
   "enabled": zod.boolean().default(getAgentConfigByTenantResponseAgentsOnboardingEnabledDefault),
+  "prompt": zod.string().nullish()
+}).optional(),
+  "relacionamento": zod.object({
+  "enabled": zod.boolean().default(getAgentConfigByTenantResponseAgentsRelacionamentoEnabledDefault),
   "prompt": zod.string().nullish()
 }).optional()
 }),
@@ -552,6 +562,7 @@ export const getAgentConfigResponseAgentsReactivationEnabledDefault = false;
 export const getAgentConfigResponseAgentsSchedulerEnabledDefault = false;
 export const getAgentConfigResponseAgentsServiceEnabledDefault = false;
 export const getAgentConfigResponseAgentsOnboardingEnabledDefault = false;
+export const getAgentConfigResponseAgentsRelacionamentoEnabledDefault = false;
 export const getAgentConfigResponseDailyMessageLimitDefault = 100;
 export const getAgentConfigResponseMessagesSentTodayDefault = 0;
 export const getAgentConfigResponseMonthlyTokenLimitDefault = 100000;
@@ -588,6 +599,10 @@ export const GetAgentConfigResponse = zod.object({
 }).optional(),
   "onboarding": zod.object({
   "enabled": zod.boolean().default(getAgentConfigResponseAgentsOnboardingEnabledDefault),
+  "prompt": zod.string().nullish()
+}).optional(),
+  "relacionamento": zod.object({
+  "enabled": zod.boolean().default(getAgentConfigResponseAgentsRelacionamentoEnabledDefault),
   "prompt": zod.string().nullish()
 }).optional()
 }),
@@ -628,6 +643,7 @@ export const updateAgentConfigBodyAgentsReactivationEnabledDefault = false;
 export const updateAgentConfigBodyAgentsSchedulerEnabledDefault = false;
 export const updateAgentConfigBodyAgentsServiceEnabledDefault = false;
 export const updateAgentConfigBodyAgentsOnboardingEnabledDefault = false;
+export const updateAgentConfigBodyAgentsRelacionamentoEnabledDefault = false;
 
 export const UpdateAgentConfigBody = zod.object({
   "agents": zod.object({
@@ -658,6 +674,10 @@ export const UpdateAgentConfigBody = zod.object({
   "onboarding": zod.object({
   "enabled": zod.boolean().default(updateAgentConfigBodyAgentsOnboardingEnabledDefault),
   "prompt": zod.string().nullish()
+}).optional(),
+  "relacionamento": zod.object({
+  "enabled": zod.boolean().default(updateAgentConfigBodyAgentsRelacionamentoEnabledDefault),
+  "prompt": zod.string().nullish()
 }).optional()
 }).optional(),
   "dailyMessageLimit": zod.number().optional(),
@@ -686,6 +706,7 @@ export const updateAgentConfigResponseAgentsReactivationEnabledDefault = false;
 export const updateAgentConfigResponseAgentsSchedulerEnabledDefault = false;
 export const updateAgentConfigResponseAgentsServiceEnabledDefault = false;
 export const updateAgentConfigResponseAgentsOnboardingEnabledDefault = false;
+export const updateAgentConfigResponseAgentsRelacionamentoEnabledDefault = false;
 export const updateAgentConfigResponseDailyMessageLimitDefault = 100;
 export const updateAgentConfigResponseMessagesSentTodayDefault = 0;
 export const updateAgentConfigResponseMonthlyTokenLimitDefault = 100000;
@@ -722,6 +743,10 @@ export const UpdateAgentConfigResponse = zod.object({
 }).optional(),
   "onboarding": zod.object({
   "enabled": zod.boolean().default(updateAgentConfigResponseAgentsOnboardingEnabledDefault),
+  "prompt": zod.string().nullish()
+}).optional(),
+  "relacionamento": zod.object({
+  "enabled": zod.boolean().default(updateAgentConfigResponseAgentsRelacionamentoEnabledDefault),
   "prompt": zod.string().nullish()
 }).optional()
 }),
@@ -779,6 +804,7 @@ export const incrementMessagesResponseAgentsReactivationEnabledDefault = false;
 export const incrementMessagesResponseAgentsSchedulerEnabledDefault = false;
 export const incrementMessagesResponseAgentsServiceEnabledDefault = false;
 export const incrementMessagesResponseAgentsOnboardingEnabledDefault = false;
+export const incrementMessagesResponseAgentsRelacionamentoEnabledDefault = false;
 export const incrementMessagesResponseDailyMessageLimitDefault = 100;
 export const incrementMessagesResponseMessagesSentTodayDefault = 0;
 export const incrementMessagesResponseMonthlyTokenLimitDefault = 100000;
@@ -815,6 +841,10 @@ export const IncrementMessagesResponse = zod.object({
 }).optional(),
   "onboarding": zod.object({
   "enabled": zod.boolean().default(incrementMessagesResponseAgentsOnboardingEnabledDefault),
+  "prompt": zod.string().nullish()
+}).optional(),
+  "relacionamento": zod.object({
+  "enabled": zod.boolean().default(incrementMessagesResponseAgentsRelacionamentoEnabledDefault),
   "prompt": zod.string().nullish()
 }).optional()
 }),
@@ -864,6 +894,7 @@ export const incrementTokensResponseAgentsReactivationEnabledDefault = false;
 export const incrementTokensResponseAgentsSchedulerEnabledDefault = false;
 export const incrementTokensResponseAgentsServiceEnabledDefault = false;
 export const incrementTokensResponseAgentsOnboardingEnabledDefault = false;
+export const incrementTokensResponseAgentsRelacionamentoEnabledDefault = false;
 export const incrementTokensResponseDailyMessageLimitDefault = 100;
 export const incrementTokensResponseMessagesSentTodayDefault = 0;
 export const incrementTokensResponseMonthlyTokenLimitDefault = 100000;
@@ -900,6 +931,10 @@ export const IncrementTokensResponse = zod.object({
 }).optional(),
   "onboarding": zod.object({
   "enabled": zod.boolean().default(incrementTokensResponseAgentsOnboardingEnabledDefault),
+  "prompt": zod.string().nullish()
+}).optional(),
+  "relacionamento": zod.object({
+  "enabled": zod.boolean().default(incrementTokensResponseAgentsRelacionamentoEnabledDefault),
   "prompt": zod.string().nullish()
 }).optional()
 }),
@@ -1018,6 +1053,7 @@ export const regenerateWebhookSecretResponseAgentsReactivationEnabledDefault = f
 export const regenerateWebhookSecretResponseAgentsSchedulerEnabledDefault = false;
 export const regenerateWebhookSecretResponseAgentsServiceEnabledDefault = false;
 export const regenerateWebhookSecretResponseAgentsOnboardingEnabledDefault = false;
+export const regenerateWebhookSecretResponseAgentsRelacionamentoEnabledDefault = false;
 export const regenerateWebhookSecretResponseDailyMessageLimitDefault = 100;
 export const regenerateWebhookSecretResponseMessagesSentTodayDefault = 0;
 export const regenerateWebhookSecretResponseMonthlyTokenLimitDefault = 100000;
@@ -1054,6 +1090,10 @@ export const RegenerateWebhookSecretResponse = zod.object({
 }).optional(),
   "onboarding": zod.object({
   "enabled": zod.boolean().default(regenerateWebhookSecretResponseAgentsOnboardingEnabledDefault),
+  "prompt": zod.string().nullish()
+}).optional(),
+  "relacionamento": zod.object({
+  "enabled": zod.boolean().default(regenerateWebhookSecretResponseAgentsRelacionamentoEnabledDefault),
   "prompt": zod.string().nullish()
 }).optional()
 }),
@@ -1095,6 +1135,7 @@ export const completeAgentConfigSetupResponseAgentsReactivationEnabledDefault = 
 export const completeAgentConfigSetupResponseAgentsSchedulerEnabledDefault = false;
 export const completeAgentConfigSetupResponseAgentsServiceEnabledDefault = false;
 export const completeAgentConfigSetupResponseAgentsOnboardingEnabledDefault = false;
+export const completeAgentConfigSetupResponseAgentsRelacionamentoEnabledDefault = false;
 export const completeAgentConfigSetupResponseDailyMessageLimitDefault = 100;
 export const completeAgentConfigSetupResponseMessagesSentTodayDefault = 0;
 export const completeAgentConfigSetupResponseMonthlyTokenLimitDefault = 100000;
@@ -1131,6 +1172,10 @@ export const CompleteAgentConfigSetupResponse = zod.object({
 }).optional(),
   "onboarding": zod.object({
   "enabled": zod.boolean().default(completeAgentConfigSetupResponseAgentsOnboardingEnabledDefault),
+  "prompt": zod.string().nullish()
+}).optional(),
+  "relacionamento": zod.object({
+  "enabled": zod.boolean().default(completeAgentConfigSetupResponseAgentsRelacionamentoEnabledDefault),
   "prompt": zod.string().nullish()
 }).optional()
 }),
@@ -4790,11 +4835,21 @@ export const ListLeadsResponseItem = zod.object({
   "conjugeDataNascimento": zod.string().nullish().describe('Data de nascimento do cônjuge no formato YYYY-MM-DD.'),
   "filhos": zod.array(zod.object({
   "nome": zod.string(),
-  "dataNascimento": zod.string().optional()
+  "dataNascimento": zod.string().optional(),
+  "genero": zod.string().nullish(),
+  "birthMonth": zod.number().nullish(),
+  "birthDay": zod.number().nullish(),
+  "source": zod.string().nullish(),
+  "lastCampaignSentYear": zod.number().nullish()
 })).nullish(),
   "tipo": zod.string().default(listLeadsResponseTipoDefault).describe('Tipo do lead: \'cliente\' (prospect que pode comprar) ou \'indicador\' (parceiro que gera indicações).'),
   "indicadoPor": zod.string().nullish().describe('ID do lead indicador que referenciou este lead cliente.'),
   "notasNutricao": zod.string().nullish().describe('Notas de nutrição para leads do tipo indicador.'),
+  "genero": zod.string().nullish().describe('Genero do lead: masculino, feminino.'),
+  "birthMonth": zod.number().nullish().describe('Mês de nascimento (1-12).'),
+  "birthDay": zod.number().nullish().describe('Dia de nascimento (1-31).'),
+  "lastCampaignSentYear": zod.number().nullish().describe('Ano da última campanha de data especial enviada.'),
+  "specialDateMessagesOptOut": zod.boolean().nullish().describe('Lead optou por não receber mensagens de datas especiais.'),
   "createdAt": zod.coerce.date(),
   "updatedAt": zod.coerce.date()
 })
@@ -4828,11 +4883,21 @@ export const CreateLeadBody = zod.object({
   "conjugeDataNascimento": zod.string().nullish().describe('Data de nascimento do cônjuge no formato YYYY-MM-DD.'),
   "filhos": zod.array(zod.object({
   "nome": zod.string(),
-  "dataNascimento": zod.string().optional()
+  "dataNascimento": zod.string().optional(),
+  "genero": zod.string().nullish(),
+  "birthMonth": zod.number().nullish(),
+  "birthDay": zod.number().nullish(),
+  "source": zod.string().nullish(),
+  "lastCampaignSentYear": zod.number().nullish()
 })).nullish(),
   "tipo": zod.string().optional().describe('\'cliente\' ou \'indicador\''),
   "indicadoPor": zod.string().nullish(),
-  "notasNutricao": zod.string().nullish()
+  "notasNutricao": zod.string().nullish(),
+  "genero": zod.string().nullish(),
+  "birthMonth": zod.number().nullish(),
+  "birthDay": zod.number().nullish(),
+  "lastCampaignSentYear": zod.number().nullish(),
+  "specialDateMessagesOptOut": zod.boolean().nullish()
 })
 
 
@@ -4871,11 +4936,21 @@ export const ListTenantLeadsResponseItem = zod.object({
   "conjugeDataNascimento": zod.string().nullish().describe('Data de nascimento do cônjuge no formato YYYY-MM-DD.'),
   "filhos": zod.array(zod.object({
   "nome": zod.string(),
-  "dataNascimento": zod.string().optional()
+  "dataNascimento": zod.string().optional(),
+  "genero": zod.string().nullish(),
+  "birthMonth": zod.number().nullish(),
+  "birthDay": zod.number().nullish(),
+  "source": zod.string().nullish(),
+  "lastCampaignSentYear": zod.number().nullish()
 })).nullish(),
   "tipo": zod.string().default(listTenantLeadsResponseTipoDefault).describe('Tipo do lead: \'cliente\' (prospect que pode comprar) ou \'indicador\' (parceiro que gera indicações).'),
   "indicadoPor": zod.string().nullish().describe('ID do lead indicador que referenciou este lead cliente.'),
   "notasNutricao": zod.string().nullish().describe('Notas de nutrição para leads do tipo indicador.'),
+  "genero": zod.string().nullish().describe('Genero do lead: masculino, feminino.'),
+  "birthMonth": zod.number().nullish().describe('Mês de nascimento (1-12).'),
+  "birthDay": zod.number().nullish().describe('Dia de nascimento (1-31).'),
+  "lastCampaignSentYear": zod.number().nullish().describe('Ano da última campanha de data especial enviada.'),
+  "specialDateMessagesOptOut": zod.boolean().nullish().describe('Lead optou por não receber mensagens de datas especiais.'),
   "createdAt": zod.coerce.date(),
   "updatedAt": zod.coerce.date()
 })
@@ -4917,11 +4992,21 @@ export const GetLeadResponse = zod.object({
   "conjugeDataNascimento": zod.string().nullish().describe('Data de nascimento do cônjuge no formato YYYY-MM-DD.'),
   "filhos": zod.array(zod.object({
   "nome": zod.string(),
-  "dataNascimento": zod.string().optional()
+  "dataNascimento": zod.string().optional(),
+  "genero": zod.string().nullish(),
+  "birthMonth": zod.number().nullish(),
+  "birthDay": zod.number().nullish(),
+  "source": zod.string().nullish(),
+  "lastCampaignSentYear": zod.number().nullish()
 })).nullish(),
   "tipo": zod.string().default(getLeadResponseTipoDefault).describe('Tipo do lead: \'cliente\' (prospect que pode comprar) ou \'indicador\' (parceiro que gera indicações).'),
   "indicadoPor": zod.string().nullish().describe('ID do lead indicador que referenciou este lead cliente.'),
   "notasNutricao": zod.string().nullish().describe('Notas de nutrição para leads do tipo indicador.'),
+  "genero": zod.string().nullish().describe('Genero do lead: masculino, feminino.'),
+  "birthMonth": zod.number().nullish().describe('Mês de nascimento (1-12).'),
+  "birthDay": zod.number().nullish().describe('Dia de nascimento (1-31).'),
+  "lastCampaignSentYear": zod.number().nullish().describe('Ano da última campanha de data especial enviada.'),
+  "specialDateMessagesOptOut": zod.boolean().nullish().describe('Lead optou por não receber mensagens de datas especiais.'),
   "createdAt": zod.coerce.date(),
   "updatedAt": zod.coerce.date()
 })
@@ -4957,11 +5042,21 @@ export const UpdateLeadBody = zod.object({
   "conjugeDataNascimento": zod.string().nullish().describe('Data de nascimento do cônjuge no formato YYYY-MM-DD.'),
   "filhos": zod.array(zod.object({
   "nome": zod.string(),
-  "dataNascimento": zod.string().optional()
+  "dataNascimento": zod.string().optional(),
+  "genero": zod.string().nullish(),
+  "birthMonth": zod.number().nullish(),
+  "birthDay": zod.number().nullish(),
+  "source": zod.string().nullish(),
+  "lastCampaignSentYear": zod.number().nullish()
 })).nullish(),
   "tipo": zod.string().optional().describe('\'cliente\' ou \'indicador\''),
   "indicadoPor": zod.string().nullish(),
-  "notasNutricao": zod.string().nullish()
+  "notasNutricao": zod.string().nullish(),
+  "genero": zod.string().nullish(),
+  "birthMonth": zod.number().nullish(),
+  "birthDay": zod.number().nullish(),
+  "lastCampaignSentYear": zod.number().nullish(),
+  "specialDateMessagesOptOut": zod.boolean().nullish()
 })
 
 export const updateLeadResponseTipoDefault = `cliente`;
@@ -4992,11 +5087,21 @@ export const UpdateLeadResponse = zod.object({
   "conjugeDataNascimento": zod.string().nullish().describe('Data de nascimento do cônjuge no formato YYYY-MM-DD.'),
   "filhos": zod.array(zod.object({
   "nome": zod.string(),
-  "dataNascimento": zod.string().optional()
+  "dataNascimento": zod.string().optional(),
+  "genero": zod.string().nullish(),
+  "birthMonth": zod.number().nullish(),
+  "birthDay": zod.number().nullish(),
+  "source": zod.string().nullish(),
+  "lastCampaignSentYear": zod.number().nullish()
 })).nullish(),
   "tipo": zod.string().default(updateLeadResponseTipoDefault).describe('Tipo do lead: \'cliente\' (prospect que pode comprar) ou \'indicador\' (parceiro que gera indicações).'),
   "indicadoPor": zod.string().nullish().describe('ID do lead indicador que referenciou este lead cliente.'),
   "notasNutricao": zod.string().nullish().describe('Notas de nutrição para leads do tipo indicador.'),
+  "genero": zod.string().nullish().describe('Genero do lead: masculino, feminino.'),
+  "birthMonth": zod.number().nullish().describe('Mês de nascimento (1-12).'),
+  "birthDay": zod.number().nullish().describe('Dia de nascimento (1-31).'),
+  "lastCampaignSentYear": zod.number().nullish().describe('Ano da última campanha de data especial enviada.'),
+  "specialDateMessagesOptOut": zod.boolean().nullish().describe('Lead optou por não receber mensagens de datas especiais.'),
   "createdAt": zod.coerce.date(),
   "updatedAt": zod.coerce.date()
 })
@@ -5047,11 +5152,21 @@ export const ListTenantDuplicateLeadsResponseItem = zod.object({
   "conjugeDataNascimento": zod.string().nullish().describe('Data de nascimento do cônjuge no formato YYYY-MM-DD.'),
   "filhos": zod.array(zod.object({
   "nome": zod.string(),
-  "dataNascimento": zod.string().optional()
+  "dataNascimento": zod.string().optional(),
+  "genero": zod.string().nullish(),
+  "birthMonth": zod.number().nullish(),
+  "birthDay": zod.number().nullish(),
+  "source": zod.string().nullish(),
+  "lastCampaignSentYear": zod.number().nullish()
 })).nullish(),
   "tipo": zod.string().default(listTenantDuplicateLeadsResponseLeadTipoDefault).describe('Tipo do lead: \'cliente\' (prospect que pode comprar) ou \'indicador\' (parceiro que gera indicações).'),
   "indicadoPor": zod.string().nullish().describe('ID do lead indicador que referenciou este lead cliente.'),
   "notasNutricao": zod.string().nullish().describe('Notas de nutrição para leads do tipo indicador.'),
+  "genero": zod.string().nullish().describe('Genero do lead: masculino, feminino.'),
+  "birthMonth": zod.number().nullish().describe('Mês de nascimento (1-12).'),
+  "birthDay": zod.number().nullish().describe('Dia de nascimento (1-31).'),
+  "lastCampaignSentYear": zod.number().nullish().describe('Ano da última campanha de data especial enviada.'),
+  "specialDateMessagesOptOut": zod.boolean().nullish().describe('Lead optou por não receber mensagens de datas especiais.'),
   "createdAt": zod.coerce.date(),
   "updatedAt": zod.coerce.date()
 }).optional(),
@@ -5081,11 +5196,21 @@ export const ListTenantDuplicateLeadsResponseItem = zod.object({
   "conjugeDataNascimento": zod.string().nullish().describe('Data de nascimento do cônjuge no formato YYYY-MM-DD.'),
   "filhos": zod.array(zod.object({
   "nome": zod.string(),
-  "dataNascimento": zod.string().optional()
+  "dataNascimento": zod.string().optional(),
+  "genero": zod.string().nullish(),
+  "birthMonth": zod.number().nullish(),
+  "birthDay": zod.number().nullish(),
+  "source": zod.string().nullish(),
+  "lastCampaignSentYear": zod.number().nullish()
 })).nullish(),
   "tipo": zod.string().default(listTenantDuplicateLeadsResponseSimilarTipoDefault).describe('Tipo do lead: \'cliente\' (prospect que pode comprar) ou \'indicador\' (parceiro que gera indicações).'),
   "indicadoPor": zod.string().nullish().describe('ID do lead indicador que referenciou este lead cliente.'),
   "notasNutricao": zod.string().nullish().describe('Notas de nutrição para leads do tipo indicador.'),
+  "genero": zod.string().nullish().describe('Genero do lead: masculino, feminino.'),
+  "birthMonth": zod.number().nullish().describe('Mês de nascimento (1-12).'),
+  "birthDay": zod.number().nullish().describe('Dia de nascimento (1-31).'),
+  "lastCampaignSentYear": zod.number().nullish().describe('Ano da última campanha de data especial enviada.'),
+  "specialDateMessagesOptOut": zod.boolean().nullish().describe('Lead optou por não receber mensagens de datas especiais.'),
   "createdAt": zod.coerce.date(),
   "updatedAt": zod.coerce.date()
 }).optional()
@@ -5134,11 +5259,21 @@ export const MergeLeadResponse = zod.object({
   "conjugeDataNascimento": zod.string().nullish().describe('Data de nascimento do cônjuge no formato YYYY-MM-DD.'),
   "filhos": zod.array(zod.object({
   "nome": zod.string(),
-  "dataNascimento": zod.string().optional()
+  "dataNascimento": zod.string().optional(),
+  "genero": zod.string().nullish(),
+  "birthMonth": zod.number().nullish(),
+  "birthDay": zod.number().nullish(),
+  "source": zod.string().nullish(),
+  "lastCampaignSentYear": zod.number().nullish()
 })).nullish(),
   "tipo": zod.string().default(mergeLeadResponseLeadTipoDefault).describe('Tipo do lead: \'cliente\' (prospect que pode comprar) ou \'indicador\' (parceiro que gera indicações).'),
   "indicadoPor": zod.string().nullish().describe('ID do lead indicador que referenciou este lead cliente.'),
   "notasNutricao": zod.string().nullish().describe('Notas de nutrição para leads do tipo indicador.'),
+  "genero": zod.string().nullish().describe('Genero do lead: masculino, feminino.'),
+  "birthMonth": zod.number().nullish().describe('Mês de nascimento (1-12).'),
+  "birthDay": zod.number().nullish().describe('Dia de nascimento (1-31).'),
+  "lastCampaignSentYear": zod.number().nullish().describe('Ano da última campanha de data especial enviada.'),
+  "specialDateMessagesOptOut": zod.boolean().nullish().describe('Lead optou por não receber mensagens de datas especiais.'),
   "createdAt": zod.coerce.date(),
   "updatedAt": zod.coerce.date()
 }).optional(),
@@ -5184,11 +5319,21 @@ export const DismissDuplicateLeadResponse = zod.object({
   "conjugeDataNascimento": zod.string().nullish().describe('Data de nascimento do cônjuge no formato YYYY-MM-DD.'),
   "filhos": zod.array(zod.object({
   "nome": zod.string(),
-  "dataNascimento": zod.string().optional()
+  "dataNascimento": zod.string().optional(),
+  "genero": zod.string().nullish(),
+  "birthMonth": zod.number().nullish(),
+  "birthDay": zod.number().nullish(),
+  "source": zod.string().nullish(),
+  "lastCampaignSentYear": zod.number().nullish()
 })).nullish(),
   "tipo": zod.string().default(dismissDuplicateLeadResponseLeadTipoDefault).describe('Tipo do lead: \'cliente\' (prospect que pode comprar) ou \'indicador\' (parceiro que gera indicações).'),
   "indicadoPor": zod.string().nullish().describe('ID do lead indicador que referenciou este lead cliente.'),
   "notasNutricao": zod.string().nullish().describe('Notas de nutrição para leads do tipo indicador.'),
+  "genero": zod.string().nullish().describe('Genero do lead: masculino, feminino.'),
+  "birthMonth": zod.number().nullish().describe('Mês de nascimento (1-12).'),
+  "birthDay": zod.number().nullish().describe('Dia de nascimento (1-31).'),
+  "lastCampaignSentYear": zod.number().nullish().describe('Ano da última campanha de data especial enviada.'),
+  "specialDateMessagesOptOut": zod.boolean().nullish().describe('Lead optou por não receber mensagens de datas especiais.'),
   "createdAt": zod.coerce.date(),
   "updatedAt": zod.coerce.date()
 }).optional()
@@ -9025,6 +9170,154 @@ export const GetSupermercadoDashboardResponse = zod.object({
   "createdAt": zod.coerce.date(),
   "updatedAt": zod.coerce.date()
 })).optional()
+})
+
+
+/**
+ * @summary Get calendar settings for a tenant
+ */
+export const GetTenantCalendarSettingsParams = zod.object({
+  "tenantId": zod.coerce.string()
+})
+
+export const GetTenantCalendarSettingsResponse = zod.object({
+  "id": zod.string(),
+  "tenantId": zod.string(),
+  "pascoaEnabled": zod.boolean(),
+  "diaDasMaesEnabled": zod.boolean(),
+  "diaDosPaisEnabled": zod.boolean(),
+  "diaDasCriancasEnabled": zod.boolean(),
+  "namoradosEnabled": zod.boolean(),
+  "natalEnabled": zod.boolean(),
+  "blackFridayEnabled": zod.boolean(),
+  "customDates": zod.array(zod.object({
+  "name": zod.string(),
+  "date": zod.string(),
+  "enabled": zod.boolean()
+})).optional(),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date()
+})
+
+
+/**
+ * @summary Create calendar settings for a tenant
+ */
+export const CreateTenantCalendarSettingsParams = zod.object({
+  "tenantId": zod.coerce.string()
+})
+
+export const CreateTenantCalendarSettingsBody = zod.object({
+  "pascoaEnabled": zod.boolean().optional(),
+  "diaDasMaesEnabled": zod.boolean().optional(),
+  "diaDosPaisEnabled": zod.boolean().optional(),
+  "diaDasCriancasEnabled": zod.boolean().optional(),
+  "namoradosEnabled": zod.boolean().optional(),
+  "natalEnabled": zod.boolean().optional(),
+  "blackFridayEnabled": zod.boolean().optional(),
+  "customDates": zod.array(zod.object({
+  "name": zod.string(),
+  "date": zod.string(),
+  "enabled": zod.boolean()
+})).optional()
+})
+
+
+/**
+ * @summary Update calendar settings for a tenant
+ */
+export const UpdateTenantCalendarSettingsParams = zod.object({
+  "tenantId": zod.coerce.string()
+})
+
+export const UpdateTenantCalendarSettingsBody = zod.object({
+  "pascoaEnabled": zod.boolean().optional(),
+  "diaDasMaesEnabled": zod.boolean().optional(),
+  "diaDosPaisEnabled": zod.boolean().optional(),
+  "diaDasCriancasEnabled": zod.boolean().optional(),
+  "namoradosEnabled": zod.boolean().optional(),
+  "natalEnabled": zod.boolean().optional(),
+  "blackFridayEnabled": zod.boolean().optional(),
+  "customDates": zod.array(zod.object({
+  "name": zod.string(),
+  "date": zod.string(),
+  "enabled": zod.boolean()
+})).optional()
+})
+
+export const UpdateTenantCalendarSettingsResponse = zod.object({
+  "id": zod.string(),
+  "tenantId": zod.string(),
+  "pascoaEnabled": zod.boolean(),
+  "diaDasMaesEnabled": zod.boolean(),
+  "diaDosPaisEnabled": zod.boolean(),
+  "diaDasCriancasEnabled": zod.boolean(),
+  "namoradosEnabled": zod.boolean(),
+  "natalEnabled": zod.boolean(),
+  "blackFridayEnabled": zod.boolean(),
+  "customDates": zod.array(zod.object({
+  "name": zod.string(),
+  "date": zod.string(),
+  "enabled": zod.boolean()
+})).optional(),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date()
+})
+
+
+/**
+ * @summary Get spouse consent for a lead
+ */
+export const GetLeadSpouseConsentParams = zod.object({
+  "leadId": zod.coerce.string()
+})
+
+export const GetLeadSpouseConsentResponse = zod.object({
+  "id": zod.string(),
+  "tenantId": zod.string(),
+  "leadId": zod.string(),
+  "consentGiven": zod.boolean(),
+  "consentGivenAt": zod.coerce.date().nullish(),
+  "giftPreference": zod.string().nullish(),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date()
+})
+
+
+/**
+ * @summary Create spouse consent for a lead
+ */
+export const CreateLeadSpouseConsentParams = zod.object({
+  "leadId": zod.coerce.string()
+})
+
+export const CreateLeadSpouseConsentBody = zod.object({
+  "consentGiven": zod.boolean(),
+  "giftPreference": zod.string().nullish()
+})
+
+
+/**
+ * @summary Update spouse consent for a lead
+ */
+export const UpdateLeadSpouseConsentParams = zod.object({
+  "leadId": zod.coerce.string()
+})
+
+export const UpdateLeadSpouseConsentBody = zod.object({
+  "consentGiven": zod.boolean().optional(),
+  "giftPreference": zod.string().nullish()
+})
+
+export const UpdateLeadSpouseConsentResponse = zod.object({
+  "id": zod.string(),
+  "tenantId": zod.string(),
+  "leadId": zod.string(),
+  "consentGiven": zod.boolean(),
+  "consentGivenAt": zod.coerce.date().nullish(),
+  "giftPreference": zod.string().nullish(),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date()
 })
 
 

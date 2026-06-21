@@ -1681,6 +1681,7 @@ export interface AgentsMap {
   scheduler?: AgentEntry;
   service?: AgentEntry;
   onboarding?: AgentEntry;
+  relacionamento?: AgentEntry;
 }
 
 export interface AgentConfig {
@@ -2476,6 +2477,11 @@ export interface UpdateUserBody {
 export type LeadFilhosItem = {
   nome: string;
   dataNascimento?: string;
+  genero?: string | null;
+  birthMonth?: number | null;
+  birthDay?: number | null;
+  source?: string | null;
+  lastCampaignSentYear?: number | null;
 };
 
 export interface Lead {
@@ -2514,6 +2520,16 @@ export interface Lead {
   indicadoPor?: string | null;
   /** Notas de nutrição para leads do tipo indicador. */
   notasNutricao?: string | null;
+  /** Genero do lead: masculino, feminino. */
+  genero?: string | null;
+  /** Mês de nascimento (1-12). */
+  birthMonth?: number | null;
+  /** Dia de nascimento (1-31). */
+  birthDay?: number | null;
+  /** Ano da última campanha de data especial enviada. */
+  lastCampaignSentYear?: number | null;
+  /** Lead optou por não receber mensagens de datas especiais. */
+  specialDateMessagesOptOut?: boolean | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -2521,6 +2537,11 @@ export interface Lead {
 export type CreateLeadBodyFilhosItem = {
   nome: string;
   dataNascimento?: string;
+  genero?: string | null;
+  birthMonth?: number | null;
+  birthDay?: number | null;
+  source?: string | null;
+  lastCampaignSentYear?: number | null;
 };
 
 export interface CreateLeadBody {
@@ -2552,11 +2573,21 @@ export interface CreateLeadBody {
   tipo?: string;
   indicadoPor?: string | null;
   notasNutricao?: string | null;
+  genero?: string | null;
+  birthMonth?: number | null;
+  birthDay?: number | null;
+  lastCampaignSentYear?: number | null;
+  specialDateMessagesOptOut?: boolean | null;
 }
 
 export type UpdateLeadBodyFilhosItem = {
   nome: string;
   dataNascimento?: string;
+  genero?: string | null;
+  birthMonth?: number | null;
+  birthDay?: number | null;
+  source?: string | null;
+  lastCampaignSentYear?: number | null;
 };
 
 export interface UpdateLeadBody {
@@ -2587,6 +2618,11 @@ export interface UpdateLeadBody {
   tipo?: string;
   indicadoPor?: string | null;
   notasNutricao?: string | null;
+  genero?: string | null;
+  birthMonth?: number | null;
+  birthDay?: number | null;
+  lastCampaignSentYear?: number | null;
+  specialDateMessagesOptOut?: boolean | null;
 }
 
 export type ConversationMetadata = { [key: string]: unknown } | null;
@@ -4369,6 +4405,82 @@ export interface SupermercadoDashboard {
   clientesAtivos: number;
   ultimasCampanhas?: SupermercadoCampanha[];
   ultimosPedidos?: SupermercadoPedido[];
+}
+
+export type TenantCalendarSettingsCustomDatesItem = {
+  name: string;
+  date: string;
+  enabled: boolean;
+};
+
+export interface TenantCalendarSettings {
+  id: string;
+  tenantId: string;
+  pascoaEnabled: boolean;
+  diaDasMaesEnabled: boolean;
+  diaDosPaisEnabled: boolean;
+  diaDasCriancasEnabled: boolean;
+  namoradosEnabled: boolean;
+  natalEnabled: boolean;
+  blackFridayEnabled: boolean;
+  customDates?: TenantCalendarSettingsCustomDatesItem[];
+  createdAt: string;
+  updatedAt: string;
+}
+
+export type CreateTenantCalendarSettingsBodyCustomDatesItem = {
+  name: string;
+  date: string;
+  enabled: boolean;
+};
+
+export interface CreateTenantCalendarSettingsBody {
+  pascoaEnabled?: boolean;
+  diaDasMaesEnabled?: boolean;
+  diaDosPaisEnabled?: boolean;
+  diaDasCriancasEnabled?: boolean;
+  namoradosEnabled?: boolean;
+  natalEnabled?: boolean;
+  blackFridayEnabled?: boolean;
+  customDates?: CreateTenantCalendarSettingsBodyCustomDatesItem[];
+}
+
+export type UpdateTenantCalendarSettingsBodyCustomDatesItem = {
+  name: string;
+  date: string;
+  enabled: boolean;
+};
+
+export interface UpdateTenantCalendarSettingsBody {
+  pascoaEnabled?: boolean;
+  diaDasMaesEnabled?: boolean;
+  diaDosPaisEnabled?: boolean;
+  diaDasCriancasEnabled?: boolean;
+  namoradosEnabled?: boolean;
+  natalEnabled?: boolean;
+  blackFridayEnabled?: boolean;
+  customDates?: UpdateTenantCalendarSettingsBodyCustomDatesItem[];
+}
+
+export interface LeadSpouseConsent {
+  id: string;
+  tenantId: string;
+  leadId: string;
+  consentGiven: boolean;
+  consentGivenAt?: string | null;
+  giftPreference?: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface CreateLeadSpouseConsentBody {
+  consentGiven: boolean;
+  giftPreference?: string | null;
+}
+
+export interface UpdateLeadSpouseConsentBody {
+  consentGiven?: boolean;
+  giftPreference?: string | null;
 }
 
 export type InstagramOAuthCallbackParams = {

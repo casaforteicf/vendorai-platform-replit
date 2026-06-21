@@ -50,6 +50,8 @@ import varejoRouter from "./varejo";
 import supermercadoRouter from "./supermercado";
 import siteGeneratorRouter from "./site_generator";
 import leadProposalsRouter from "./lead_proposals";
+import tenantCalendarSettingsRouter from "./tenant_calendar_settings";
+import leadSpouseConsentRouter from "./lead_spouse_consent";
 import { authenticate, blockPartnerFromCRM, blockSuspendedTenants, blockExpiredDemo, requireRole, requireSameTenanOrSuperAdmin } from "../middlewares/auth";
 
 const router: IRouter = Router();
@@ -178,6 +180,10 @@ router.use(tenantDomainsRouter);
 
 // Notifications Hub
 router.use(notificationsRouter);
+
+// Relationship Hub
+router.use(tenantCalendarSettingsRouter);
+router.use(leadSpouseConsentRouter);
 
 export { requireRole, requireSameTenanOrSuperAdmin };
 export default router;

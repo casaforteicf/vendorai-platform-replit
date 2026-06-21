@@ -36,4 +36,9 @@ export interface CreateLeadBody {
   tipo?: string;
   indicadoPor?: string | null;
   notasNutricao?: string | null;
+  genero?: string | null;
+  birthMonth?: number | null;
+  birthDay?: number | null;
+  lastCampaignSentYear?: number | null;
+  specialDateMessagesOptOut?: boolean | null;
 }

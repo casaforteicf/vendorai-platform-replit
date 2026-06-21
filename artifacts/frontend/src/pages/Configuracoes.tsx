@@ -52,6 +52,10 @@ import {
   getListAgendasQueryKey,
   useDisconnectAgendaGoogle,
   getAgendaGoogleAuthUrl,
+  useGetTenantCalendarSettings,
+  useCreateTenantCalendarSettings,
+  useUpdateTenantCalendarSettings,
+  getGetTenantCalendarSettingsQueryKey,
 } from "@workspace/api-client-react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
@@ -122,6 +126,7 @@ import {
   CalendarCheck,
   CalendarX,
   CalendarPlus,
+  CalendarHeart,
   Receipt,
 } from "lucide-react";
 import { SiteGeneratorTab } from "./SiteGenerator";
@@ -174,7 +179,7 @@ const siteConfigSchema = z.object({
 });
 type SiteConfigForm = z.infer<typeof siteConfigSchema>;
 
-type AgentKey = "sdr" | "closer" | "followup" | "reactivation" | "scheduler" | "service" | "onboarding";
+type AgentKey = "sdr" | "closer" | "followup" | "reactivation" | "scheduler" | "service" | "onboarding" | "relacionamento";
 
 const AGENT_LABELS: Record<AgentKey, { label: string; description: string }> = {
   sdr:          { label: "SDR",          description: "Qualificação e primeiro contato com leads" },
@@ -184,9 +189,10 @@ const AGENT_LABELS: Record<AgentKey, { label: string; description: string }> = {
   scheduler:    { label: "Agendador",    description: "Marcação e confirmação de reuniões" },
   service:      { label: "Atendimento",  description: "Suporte e dúvidas de clientes" },
   onboarding:   { label: "Onboarding",   description: "Integração e ativação de novos clientes" },
+  relacionamento: { label: "Relacionamento", description: "Campanhas de datas especiais (aniversários, datas comerciais)" },
 };
 
-const AGENT_KEYS: AgentKey[] = ["sdr", "closer", "followup", "reactivation", "scheduler", "service", "onboarding"];
+const AGENT_KEYS: AgentKey[] = ["sdr", "closer", "followup", "reactivation", "scheduler", "service", "onboarding", "relacionamento"];
 
 const VERTICAIS = [
   { value: "tecnologia",     label: "Tecnologia" },
@@ -1346,7 +1352,7 @@ export default function Configuracoes() {
         className="space-y-6"
         onValueChange={(tab) => { if (tab !== "integracoes") setIntegracoesUnlocked(false); }}
       >
-        <TabsList className={cn("grid w-full max-w-3xl", (isTenantAdmin && showFaturamento) ? "grid-cols-7" : (isTenantAdmin || showFaturamento) ? "grid-cols-6" : "grid-cols-5")}>
+        <TabsList className={cn("grid w-full max-w-3xl", (isTenantAdmin && showFaturamento) ? "grid-cols-8" : (isTenantAdmin || showFaturamento) ? "grid-cols-7" : "grid-cols-6")}>
           <TabsTrigger value="perfil" className="gap-1.5">
             <Building2 className="h-4 w-4" />
             Perfil
@@ -1362,6 +1368,10 @@ export default function Configuracoes() {
           <TabsTrigger value="site" className="gap-1.5">
             <Globe className="h-4 w-4" />
             Site
+          </TabsTrigger>
+          <TabsTrigger value="calendario" className="gap-1.5">
+            <CalendarHeart className="h-4 w-4" />
+            Calendário
           </TabsTrigger>
           <TabsTrigger value="integracoes" className="gap-1.5">
             <Webhook className="h-4 w-4" />
@@ -2369,6 +2379,11 @@ export default function Configuracoes() {
               </div>
             </TabsContent>
           </Tabs>
+        </TabsContent>
+
+        {/* ── Tab: Calendário Comercial ───────────────────────────────────── */}
+        <TabsContent value="calendario">
+          <CalendarSettingsTab tenantId={tenantId} />
         </TabsContent>
 
         {/* ── Tab: Integrações ERP ────────────────────────────────────────── */}
@@ -3382,6 +3397,118 @@ Body:
         )}
 
       </Tabs>
+    </div>
+  );
+}
+
+// ── Calendar Settings Tab ─────────────────────────────────────────────────
+
+function CalendarSettingsTab({ tenantId }: { tenantId: string }) {
+  const { toast } = useToast();
+  const queryClient = useQueryClient();
+  const { data: settings, isLoading } = useGetTenantCalendarSettings(tenantId);
+  const create = useCreateTenantCalendarSettings({
+    mutation: {
+      onSuccess: () => {
+        void queryClient.invalidateQueries({ queryKey: getGetTenantCalendarSettingsQueryKey(tenantId) });
+        toast({ title: "Configurações de calendário salvas." });
+      },
+      onError: () => toast({ title: "Erro ao salvar", variant: "destructive" }),
+    },
+  });
+  const update = useUpdateTenantCalendarSettings({
+    mutation: {
+      onSuccess: () => {
+        void queryClient.invalidateQueries({ queryKey: getGetTenantCalendarSettingsQueryKey(tenantId) });
+        toast({ title: "Configurações de calendário atualizadas." });
+      },
+      onError: () => toast({ title: "Erro ao atualizar", variant: "destructive" }),
+    },
+  });
+
+  const [draft, setDraft] = useState({
+    pascoaEnabled: true,
+    diaDasMaesEnabled: true,
+    diaDosPaisEnabled: true,
+    diaDasCriancasEnabled: true,
+    namoradosEnabled: true,
+    natalEnabled: true,
+    blackFridayEnabled: true,
+  });
+
+  useEffect(() => {
+    if (settings) {
+      setDraft({
+        pascoaEnabled: settings.pascoaEnabled,
+        diaDasMaesEnabled: settings.diaDasMaesEnabled,
+        diaDosPaisEnabled: settings.diaDosPaisEnabled,
+        diaDasCriancasEnabled: settings.diaDasCriancasEnabled,
+        namoradosEnabled: settings.namoradosEnabled,
+        natalEnabled: settings.natalEnabled,
+        blackFridayEnabled: settings.blackFridayEnabled,
+      });
+    }
+  }, [settings]);
+
+  const dates = [
+    { key: "pascoaEnabled", label: "Páscoa", desc: "Domingo de Páscoa (data móvel)" },
+    { key: "diaDasMaesEnabled", label: "Dia das Mães", desc: "2º domingo de maio" },
+    { key: "diaDosPaisEnabled", label: "Dia dos Pais", desc: "2º domingo de agosto" },
+    { key: "diaDasCriancasEnabled", label: "Dia das Crianças", desc: "12 de outubro" },
+    { key: "namoradosEnabled", label: "Dia dos Namorados", desc: "12 de junho" },
+    { key: "natalEnabled", label: "Natal", desc: "25 de dezembro" },
+    { key: "blackFridayEnabled", label: "Black Friday", desc: "Última sexta de novembro" },
+  ] as const;
+
+  function save() {
+    if (settings) {
+      update.mutate({ tenantId, data: draft });
+    } else {
+      create.mutate({ tenantId, data: draft });
+    }
+  }
+
+  return (
+    <div className="rounded-xl border bg-card p-6 space-y-6">
+      <div>
+        <h2 className="font-semibold text-base flex items-center gap-2">
+          <CalendarHeart className="h-4 w-4 text-primary" />
+          Calendário Comercial
+        </h2>
+        <p className="text-sm text-muted-foreground mt-0.5">
+          Ative as datas comerciais que o Agente Relacionamento usará para campanhas automáticas.
+        </p>
+      </div>
+
+      {isLoading ? (
+        <div className="space-y-3">
+          <Skeleton className="h-12 w-full" />
+          <Skeleton className="h-12 w-full" />
+          <Skeleton className="h-12 w-full" />
+        </div>
+      ) : (
+        <div className="space-y-3">
+          {dates.map((d) => (
+            <div key={d.key} className="flex items-center justify-between rounded-lg border p-3">
+              <div>
+                <p className="font-medium text-sm">{d.label}</p>
+                <p className="text-xs text-muted-foreground">{d.desc}</p>
+              </div>
+              <Switch
+                checked={draft[d.key as keyof typeof draft]}
+                onCheckedChange={(v) => setDraft((prev) => ({ ...prev, [d.key]: v }))}
+              />
+            </div>
+          ))}
+        </div>
+      )}
+
+      <div className="flex items-center gap-3">
+        <Button onClick={save} disabled={create.isPending || update.isPending}>
+          {(create.isPending || update.isPending) && <Loader2 className="h-4 w-4 animate-spin mr-2" />}
+          Salvar
+        </Button>
+      </div>
     </div>
   );
 }

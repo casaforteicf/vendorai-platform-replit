@@ -43,6 +43,16 @@ export interface Lead {
   indicadoPor?: string | null;
   /** Notas de nutrição para leads do tipo indicador. */
   notasNutricao?: string | null;
+  /** Genero do lead: masculino, feminino. */
+  genero?: string | null;
+  /** Mês de nascimento (1-12). */
+  birthMonth?: number | null;
+  /** Dia de nascimento (1-31). */
+  birthDay?: number | null;
+  /** Ano da última campanha de data especial enviada. */
+  lastCampaignSentYear?: number | null;
+  /** Lead optou por não receber mensagens de datas especiais. */
+  specialDateMessagesOptOut?: boolean | null;
   createdAt: Date;
   updatedAt: Date;
 }

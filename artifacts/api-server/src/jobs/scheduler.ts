@@ -35,6 +35,8 @@ import {
   intelligenceAnalysisLogTable,
   planAssignmentLogTable,
   businessProfilesTable,
+  tenantCalendarSettingsTable,
+  leadSpouseConsentTable,
 } from "@workspace/db";
 import type { SegmentoFiltro } from "@workspace/db";
 import { evaluateForLead } from "../routes/rules.js";
@@ -501,6 +503,264 @@ async function expireOldDemos(log: Logger): Promise<void> {
 
 // ── Scheduler bootstrap ───────────────────────────────────────────────────────
 
+// ── Job 7: Special date check (birthdays, commercial dates) ─────────────────
+
+/**
+ * Computes movable holiday dates for a given year.
+ */
+function getMovableDates(year: number) {
+  // Easter (Gauss algorithm)
+  const a = year % 19;
+  const b = Math.floor(year / 100);
+  const c = year % 100;
+  const d = Math.floor(b / 4);
+  const e = b % 4;
+  const f = Math.floor((b + 8) / 25);
+  const g = Math.floor((b - f + 1) / 3);
+  const h = (19 * a + b - d - g + 15) % 30;
+  const i = Math.floor(c / 4);
+  const k = c % 4;
+  const l = (32 + 2 * e + 2 * i - h - k) % 7;
+  const m = Math.floor((a + 11 * h + 22 * l) / 451);
+  const month = Math.floor((h + l - 7 * m + 114) / 31);
+  const day = ((h + l - 7 * m + 114) % 31) + 1;
+  const easter = new Date(year, month - 1, day);
+
+  // Mother's Day: 2nd Sunday of May
+  const may1 = new Date(year, 4, 1);
+  const mothersDay = new Date(year, 4, 1 + (7 - may1.getDay() + 7) % 7 + 7);
+
+  // Father's Day: 2nd Sunday of August
+  const aug1 = new Date(year, 7, 1);
+  const fathersDay = new Date(year, 7, 1 + (7 - aug1.getDay() + 7) % 7 + 7);
+
+  // Children's Day: Oct 12 (fixed)
+  const childrensDay = new Date(year, 9, 12);
+
+  // Valentine's Day: Jun 12 (Brazil)
+  const valentinesDay = new Date(year, 5, 12);
+
+  // Christmas: Dec 25
+  const christmas = new Date(year, 11, 25);
+
+  // Black Friday: last Friday of November
+  const nov30 = new Date(year, 10, 30);
+  const blackFriday = new Date(year, 10, 30 - ((nov30.getDay() + 2) % 7));
+
+  return {
+    pascoa: { name: "Páscoa", date: easter, targetGender: undefined },
+    dia_das_maes: { name: "Dia das Mães", date: mothersDay, targetGender: "feminino" },
+    dia_dos_pais: { name: "Dia dos Pais", date: fathersDay, targetGender: "masculino" },
+    dia_das_criancas: { name: "Dia das Crianças", date: childrensDay, targetGender: undefined },
+    dia_dos_namorados: { name: "Dia dos Namorados", date: valentinesDay, targetGender: undefined },
+    natal: { name: "Natal", date: christmas, targetGender: undefined },
+    black_friday: { name: "Black Friday", date: blackFriday, targetGender: undefined },
+  };
+}
+
+/**
+ * Default commercial dates for new tenants.
+ */
+export function getDefaultCommercialDates() {
+  return [
+    { name: "Ano Novo", active: false, daysBeforeToSend: 1, month: 1, day: 1 },
+    { name: "Carnaval", active: false, daysBeforeToSend: 3, movableDate: true },
+    { name: "Páscoa", active: true, daysBeforeToSend: 3, movableDate: true },
+    { name: "Dia das Mães", active: true, daysBeforeToSend: 3, movableDate: true, targetGender: "feminino" },
+    { name: "Dia dos Pais", active: true, daysBeforeToSend: 3, movableDate: true, targetGender: "masculino" },
+    { name: "Dia das Crianças", active: true, daysBeforeToSend: 3, movableDate: true },
+    { name: "Dia dos Namorados", active: true, daysBeforeToSend: 3, movableDate: true },
+    { name: "Natal", active: true, daysBeforeToSend: 5, movableDate: true },
+    { name: "Black Friday", active: true, daysBeforeToSend: 1, movableDate: true },
+  ];
+}
+
+async function runSpecialDateCheck(log: Logger): Promise<void> {
+  log.info("scheduler/special-dates: starting");
+
+  const now = new Date();
+  const todayMonth = now.getMonth() + 1;
+  const todayDay = now.getDate();
+  const currentYear = now.getFullYear();
+
+  const movableDates = getMovableDates(currentYear);
+
+  // Get all active tenants with calendar settings
+  const tenants = await db
+    .select({ id: tenantsTable.id, slug: tenantsTable.slug })
+    .from(tenantsTable)
+    .where(eq(tenantsTable.status, "active"));
+
+  let totalDispatched = 0;
+  let totalSkipped = 0;
+
+  for (const tenant of tenants) {
+    try {
+      // Load calendar settings
+      const [calendarSettings] = await db
+        .select()
+        .from(tenantCalendarSettingsTable)
+        .where(eq(tenantCalendarSettingsTable.tenantId, tenant.id))
+        .limit(1);
+
+      const commercialDates = calendarSettings?.commercialDates ?? getDefaultCommercialDates();
+
+      // Load active catalog products for this tenant
+      const catalog = await db
+        .select({ id: produtosCatalogoTable.id, nome: produtosCatalogoTable.nome, categoria: produtosCatalogoTable.categoria, precoBase: produtosCatalogoTable.precoBase })
+        .from(produtosCatalogoTable)
+        .where(and(eq(produtosCatalogoTable.tenantId, tenant.id), eq(produtosCatalogoTable.ativo, true)))
+        .limit(10);
+
+      // Get all leads for this tenant
+      const leads = await db
+        .select()
+        .from(leadsTable)
+        .where(eq(leadsTable.tenantId, tenant.id))
+        .limit(500);
+
+      for (const lead of leads) {
+        // Skip if opted out
+        if (lead.specialDateMessagesOptOut) {
+          totalSkipped++;
+          continue;
+        }
+
+        // Skip if no phone
+        if (!lead.telefone) {
+          totalSkipped++;
+          continue;
+        }
+
+        // Skip if already sent this year
+        if (lead.lastCampaignSentYear === currentYear) {
+          totalSkipped++;
+          continue;
+        }
+
+        let scenario: { type: string; dateName?: string; recipientName?: string; recipientRelation?: string; catalog?: Array<{ nome: string; categoria?: string | null; precoBase: string | null }> } | null = null;
+
+        // Check lead birthday
+        if (lead.birthMonth === todayMonth && lead.birthDay === todayDay) {
+          scenario = { type: "birthday_lead", catalog };
+        }
+
+        // Check spouse birthday
+        if (!scenario && lead.conjugeDataNascimento) {
+          const parts = lead.conjugeDataNascimento.split("-");
+          if (parts.length >= 3) {
+            const m = parseInt(parts[1], 10);
+            const d = parseInt(parts[2], 10);
+            if (m === todayMonth && d === todayDay) {
+              scenario = { type: "birthday_family", recipientName: lead.conjugeNome ?? "seu cônjuge", recipientRelation: "cônjuge", catalog };
+            }
+          }
+        }
+
+        // Check children birthdays
+        if (!scenario && lead.filhos && lead.filhos.length > 0) {
+          for (const f of lead.filhos) {
+            if (f.dataNascimento) {
+              const parts = f.dataNascimento.split("-");
+              if (parts.length >= 3) {
+                const m = parseInt(parts[1], 10);
+                const d = parseInt(parts[2], 10);
+                if (m === todayMonth && d === todayDay) {
+                  scenario = { type: "birthday_family", recipientName: f.nome, recipientRelation: "filho(a)", catalog };
+                  break;
+                }
+              }
+            }
+            // Also check birthMonth/birthDay if present
+            if (!scenario && f.birthMonth === todayMonth && f.birthDay === todayDay) {
+              scenario = { type: "birthday_family", recipientName: f.nome, recipientRelation: "filho(a)", catalog };
+              break;
+            }
+          }
+        }
+
+        // Check commercial dates
+        if (!scenario) {
+          for (const cd of commercialDates) {
+            if (!cd.active) continue;
+            let sendDate: Date | null = null;
+            if (cd.movableDate) {
+              const md = Object.values(movableDates).find((m) => m.name === cd.name);
+              if (md) {
+                sendDate = new Date(md.date);
+                sendDate.setDate(sendDate.getDate() - cd.daysBeforeToSend);
+              }
+            } else if (cd.month && cd.day) {
+              sendDate = new Date(currentYear, cd.month - 1, cd.day);
+              sendDate.setDate(sendDate.getDate() - cd.daysBeforeToSend);
+            }
+            if (sendDate && sendDate.getMonth() + 1 === todayMonth && sendDate.getDate() === todayDay) {
+              // Check target gender if specified
+              if (cd.targetGender && lead.genero && lead.genero !== cd.targetGender) {
+                continue;
+              }
+              scenario = { type: "commercial_date", dateName: cd.name, catalog };
+              break;
+            }
+          }
+        }
+
+        if (!scenario) continue;
+
+        // Check if already sent this year for this lead
+        const [recentTask] = await db
+          .select({ id: agentTasksTable.id })
+          .from(agentTasksTable)
+          .where(
+            and(
+              eq(agentTasksTable.tenantId, tenant.id),
+              eq(agentTasksTable.leadId, lead.id),
+              eq(agentTasksTable.agentName, "relacionamento"),
+              gte(agentTasksTable.createdAt, new Date(`${currentYear}-01-01`))
+            )
+          )
+          .limit(1);
+
+        if (recentTask) {
+          totalSkipped++;
+          continue;
+        }
+
+        // Dispatch relationship agent
+        dispatchAgentBackground({
+          tenantId: tenant.id,
+          leadId: lead.id,
+          mensagem: `PROATIVO: ${scenario.type === "birthday_lead" ? "aniversário do lead" : scenario.type === "birthday_family" ? `aniversário de ${scenario.recipientName}` : scenario.type === "commercial_date" ? `campanha de ${scenario.dateName}` : "relacionamento"}.`,
+          forcedAgent: "relacionamento",
+          log,
+          scenario: {
+            type: scenario.type,
+            dateName: scenario.dateName,
+            recipientName: scenario.recipientName,
+            recipientRelation: scenario.recipientRelation,
+            catalog: catalog.map((c) => ({ nome: c.nome, categoria: c.categoria, precoBase: c.precoBase })),
+          },
+        });
+
+        // Update lastCampaignSentYear
+        await db
+          .update(leadsTable)
+          .set({ lastCampaignSentYear: currentYear, updatedAt: new Date() })
+          .where(eq(leadsTable.id, lead.id));
+
+        totalDispatched++;
+        log.info({ leadId: lead.id, tenantId: tenant.id, scenario: scenario.type }, "scheduler/special-dates: dispatched");
+      }
+
+      log.info({ tenantId: tenant.id, dispatched: totalDispatched, skipped: totalSkipped }, "scheduler/special-dates: tenant done");
+    } catch (err) {
+      log.error({ err, tenantId: tenant.id }, "scheduler/special-dates: tenant failed (non-fatal)");
+    }
+  }
+
+  log.info({ totalDispatched, totalSkipped }, "scheduler/special-dates: complete");
+}
+
 export function startScheduler(log: Logger): void {
   // Job 1: Churn check — every hour at :05
   cron.schedule("5 * * * *", () => {
@@ -544,7 +804,14 @@ export function startScheduler(log: Logger): void {
     });
   });
 
-  log.info("scheduler: started (churn-check @:05, campaigns @:15, billing @day-5-08:00, reactivation @03:00, demo-expiration @06:00, demo-reset @02:00)");
+  // Job 7: Special date check — daily at 07:00
+  cron.schedule("0 7 * * *", () => {
+    runSpecialDateCheck(log).catch((err) => {
+      log.error({ err }, "scheduler/special-dates: unhandled error");
+    });
+  });
+
+  log.info("scheduler: started (churn-check @:05, campaigns @:15, billing @day-5-08:00, reactivation @03:00, demo-expiration @06:00, demo-reset @02:00, special-dates @07:00)");
 }
 
 // ── Job 6: Reset demo tenants ──────────────────────────────────

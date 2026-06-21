@@ -19,6 +19,7 @@ import {
   agentConfigsTable,
   agentTasksTable,
   tenantsTable,
+  produtosCatalogoTable,
 } from "@workspace/db";
 import type { AgentTask } from "@workspace/db";
 import { executeTaskAction } from "../routes/agent_tasks.js";
@@ -47,8 +48,16 @@ export type LimitOk = {
 type LimitExceeded = { ok: false; httpStatus: 429; body: object };
 export type LimitResult = LimitOk | LimitExceeded;
 
-export type AgentName    = "sdr" | "closer" | "followup" | "reactivation" | "scheduler" | "service" | "onboarding";
-export type PromptBuilder = (customPrompt: string | undefined, ctx: AgentContext) => string;
+export type AgentName    = "sdr" | "closer" | "followup" | "reactivation" | "scheduler" | "service" | "onboarding" | "relacionamento";
+export type PromptBuilder = (customPrompt: string | undefined, ctx: AgentContext, scenario?: Record<string, unknown> | null) => string;
+
+export type RelacionamentoScenario = {
+  type: "birthday_lead" | "birthday_family" | "deal_anniversary" | "commercial_date";
+  dateName?: string;
+  recipientName?: string;
+  recipientRelation?: string;
+  catalog?: Array<{ nome: string; categoria?: string | null; precoBase: string | null }>;
+} | null;
 
 // ── OpenAI client (lazy) ──────────────────────────────────────────────────────
 export function getOpenAI(): OpenAI {
@@ -500,6 +509,100 @@ export function buildOnboardingPrompt(customPrompt: string | undefined, ctx: Age
   return parts.join("\n\n");
 }
 
+export function buildRelacionamentoPrompt(
+  customPrompt: string | undefined,
+  ctx: AgentContext,
+  scenario?: Record<string, unknown> | null
+): string {
+  const s = scenario as RelacionamentoScenario | undefined;
+  const { lead, ci } = ctx;
+  const parts: string[] = [];
+
+  const isPersonal = s?.type === "birthday_lead" || s?.type === "birthday_family" || s?.type === "deal_anniversary";
+  const isCommercial = s?.type === "commercial_date";
+
+  if (isPersonal) {
+    parts.push(
+      "Você é um especialista em relacionamento e fidelização de clientes.\n" +
+      "Missão: enviar uma mensagem calorosa e personalizada por uma data especial do lead ou de sua família.\n" +
+      "Regras:\n" +
+      "- Responda em português brasileiro, tom afetivo, caloroso e genuinamente prestativo\n" +
+      "- Máximo 2 parágrafos curtos\n" +
+      "- NÃO seja comercial demais — a prioridade é demonstrar que você se lembra e se importa\n" +
+      "- Se houver produtos relevantes no catálogo, sugira de forma leve, sem pressão\n" +
+      "- NUNCA invente preços ou produtos que não estejam no catálogo fornecido"
+    );
+  } else if (isCommercial) {
+    parts.push(
+      "Você é um especialista em campanhas de datas comerciais.\n" +
+      "Missão: enviar uma mensagem relevante sobre uma data comercial (Páscoa, Dia das Mães, Black Friday, etc.) conectando-a ao catálogo do tenant.\n" +
+      "Regras:\n" +
+      "- Responda em português brasileiro, tom comercial mas empático\n" +
+      "- Máximo 2 parágrafos curtos\n" +
+      "- Conecte a data comercial a produtos relevantes do catálogo\n" +
+      "- Seja claro sobre a promoção ou sugestão, mas sem pressão excessiva\n" +
+      "- NUNCA invente preços, descontos ou produtos que não estejam no catálogo"
+    );
+  } else {
+    parts.push(
+      "Você é um especialista em relacionamento e fidelização de clientes.\n" +
+      "Missão: manter o relacionamento com o lead através de contatos relevantes e personalizados.\n" +
+      "Regras:\n" +
+      "- Responda em português brasileiro, tom caloroso e genuinamente prestativo\n" +
+      "- Máximo 2 parágrafos curtos\n" +
+      "- NUNCA invente preços ou produtos que não estejam no catálogo fornecido"
+    );
+  }
+
+  if (customPrompt?.trim()) parts.push("## INSTRUÇÕES DA EMPRESA\n" + customPrompt.trim());
+
+  // Lead profile
+  const lines = ["## PERFIL DO LEAD"];
+  lines.push(`Nome: ${lead.nome}`);
+  if (lead.empresa) lines.push(`Empresa: ${lead.empresa}`);
+  if (lead.dataNascimento) lines.push(`Data de nascimento: ${lead.dataNascimento}`);
+  if (lead.estadoCivil) lines.push(`Estado civil: ${lead.estadoCivil}`);
+  if (lead.conjugeNome) lines.push(`Cônjuge: ${lead.conjugeNome}`);
+  if (lead.conjugeDataNascimento) lines.push(`Aniversário do cônjuge: ${lead.conjugeDataNascimento}`);
+  if (lead.filhos && lead.filhos.length > 0) {
+    lines.push(`Filhos:`);
+    for (const f of lead.filhos) {
+      lines.push(`  - ${f.nome}${f.dataNascimento ? ` (nasc. ${f.dataNascimento})` : ""}${f.genero ? ` [${f.genero}]` : ""}`);
+    }
+  }
+  parts.push(lines.join("\n"));
+
+  if (ci) {
+    const ciLines = ["## INTELIGÊNCIA DE CLIENTE"];
+    if (ci.journeyStage) ciLines.push(`Estágio: ${ci.journeyStage}`);
+    if (ci.intentAnalysis) ciLines.push(`Intenção: ${ci.intentAnalysis}`);
+    if (ci.goalAnalysis) ciLines.push(`Objetivo: ${ci.goalAnalysis}`);
+    if (ci.nextBestAction) ciLines.push(`Próxima ação: ${ci.nextBestAction}`);
+    if (ciLines.length > 1) parts.push(ciLines.join("\n"));
+  }
+
+  // Scenario context
+  if (s) {
+    const scLines = ["## CENÁRIO ATUAL"];
+    if (s.type === "birthday_lead") scLines.push("Hoje é o aniversário do lead!");
+    else if (s.type === "birthday_family") scLines.push(`Hoje é o aniversário de ${s.recipientName ?? "familiar"} (${s.recipientRelation ?? "familiar"}) do lead.`);
+    else if (s.type === "deal_anniversary") scLines.push("Hoje é o aniversário de fechamento do deal com o lead!");
+    else if (s.type === "commercial_date") scLines.push(`Data comercial: ${s.dateName ?? "data especial"}.`);
+    parts.push(scLines.join("\n"));
+  }
+
+  // Catalog
+  if (s?.catalog && s.catalog.length > 0) {
+    const catLines = ["## CATÁLOGO DO TENANT (use para sugerir produtos relevantes)"];
+    for (const p of s.catalog) {
+      catLines.push(`- ${p.nome}${p.categoria ? ` (${p.categoria})` : ""}${p.precoBase ? ` — R$ ${p.precoBase}` : ""}`);
+    }
+    parts.push(catLines.join("\n"));
+  }
+
+  return parts.join("\n\n");
+}
+
 // ── Prompt builder map ────────────────────────────────────────────────────────
 export const PROMPT_BUILDERS: Record<AgentName, PromptBuilder> = {
   sdr:         buildSdrPrompt,
@@ -509,4 +612,5 @@ export const PROMPT_BUILDERS: Record<AgentName, PromptBuilder> = {
   scheduler:   buildSchedulerPrompt,
   service:     buildServicePrompt,
   onboarding:  buildOnboardingPrompt,
+  relacionamento: buildRelacionamentoPrompt,
 };
