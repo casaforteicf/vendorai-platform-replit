@@ -1,0 +1,21 @@
+Briefing — Bug: Área em branco esconde parte da tela em "Configurar" (Gerador de Sites com IA)
+Problema observado
+Na aba Site → Gerador IA → Configurar, depois do campo "O que o negócio faz" (textarea), aparece uma grande área em branco/cinza vazia ocupando o restante da tela até o final — escondendo o que deveria vir depois (provavelmente mais campos do formulário e/ou o botão de gerar o site).
+No mobile, esse espaço em branco ocupa mais da metade da tela visível, dando a impressão de que a página travou ou carregou pela metade.
+Causa provável
+Padrão parecido com os outros bugs de layout já corrigidos nesta sessão (modal de orçamento cortado): provavelmente um container com altura/overflow mal configurado, ou um campo/seção do formulário que deveria renderizar logo abaixo do textarea mas está falhando silenciosamente (ex: erro de carregamento de um componente, condição de renderização quebrada, ou campo dependente de algum dado que não carregou).
+Onde investigar
+Componente do formulário de "Configurar" no Gerador de Sites com IA (provavelmente mesmo arquivo da tela "Novo site"/"Configurar" mencionada nas telas anteriores do Gerador IA).
+Conferir se há campos adicionais esperados depois de "O que o negócio faz" (ex: diferenciais, público-alvo, paleta de cores, botão "Gerar") que deveriam aparecer ali e não estão renderizando.
+Verificar o console do navegador por erros JS nessa tela específica.
+Verificar se a altura do container pai está fixa/forçada (ex: min-height ou height fixo maior que o conteúdo real), em vez de se ajustar ao conteúdo (height: auto ou similar).
+Correção sugerida
+Identificar se o problema é conteúdo faltando (campos que deveriam estar ali não renderizam) ou CSS de altura/espaçamento (conteúdo existe mas o espaçamento está errado).
+Se for conteúdo faltando: corrigir a renderização condicional ou o carregamento de dados que está impedindo os campos seguintes (e o botão de gerar) de aparecer.
+Se for CSS: remover altura fixa desnecessária do container, deixando-o se ajustar ao conteúdo real (mesmo princípio já aplicado na correção do modal de orçamento).
+Garantir que o botão de ação (gerar site) fique sempre visível/acessível, sem precisar rolar por uma área vazia gigante pra encontrá-lo.
+Teste de validação
+Abrir Site → Gerador IA → Configurar no celular.
+Preencher os campos e confirmar que todos os campos esperados aparecem em sequência, sem espaço vazio entre eles.
+Confirmar que o botão de gerar o site aparece logo após o último campo, sem precisar rolar por área em branco.
+Repetir o teste no desktop pra garantir que a correção não quebrou o layout maior.
