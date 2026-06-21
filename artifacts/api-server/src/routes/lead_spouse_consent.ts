@@ -12,6 +12,16 @@ const router: IRouter = Router();
 
 router.get("/leads/:leadId/spouse-consent", async (req, res) => {
   const leadId = String(req.params["leadId"]);
+
+  const [lead] = await db.select().from(leadsTable).where(eq(leadsTable.id, leadId)).limit(1);
+  if (!lead) {
+    return res.status(404).json({ error: "Lead not found" });
+  }
+
+  if (req.user?.tenantId !== lead.tenantId && req.user?.platformRole !== "super_admin") {
+    return res.status(403).json({ error: "Access denied" });
+  }
+
   const [consent] = await db
     .select()
     .from(leadSpouseConsentTable)
