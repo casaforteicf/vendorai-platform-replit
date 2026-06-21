@@ -5610,6 +5610,123 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
 
+  /leads/{leadId}/product-presentations:
+    get:
+      operationId: listProductPresentations
+      tags: [leads]
+      summary: List product presentations for a lead
+      security:
+        - bearerAuth: []
+      parameters:
+        - { name: leadId, in: path, required: true, schema: { type: string } }
+      responses:
+        "200":
+          description: List of presentations
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/ProductPresentation"
+        "403":
+          description: Access denied
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+    post:
+      operationId: generateProductPresentation
+      tags: [leads]
+      summary: Generate a product presentation for a lead
+      security:
+        - bearerAuth: []
+      parameters:
+        - { name: leadId, in: path, required: true, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/GenerateProductPresentationBody"
+      responses:
+        "200":
+          description: Generated presentation
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProductPresentation"
+        "403":
+          description: Access denied
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+        "404":
+          description: Lead or product not found
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+        "422":
+          description: Not enough data
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+
+  /product-presentations/{presentationId}:
+    get:
+      operationId: getProductPresentation
+      tags: [leads]
+      summary: Get a product presentation
+      security:
+        - bearerAuth: []
+      parameters:
+        - { name: presentationId, in: path, required: true, schema: { type: string } }
+      responses:
+        "200":
+          description: Presentation data
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProductPresentation"
+        "403":
+          description: Access denied
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+
+  /product-presentations/{presentationId}/send:
+    post:
+      operationId: sendProductPresentation
+      tags: [leads]
+      summary: Send product presentation to lead
+      security:
+        - bearerAuth: []
+      parameters:
+        - { name: presentationId, in: path, required: true, schema: { type: string } }
+      responses:
+        "200":
+          description: Sent
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+        "403":
+          description: Access denied
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+
   /leads/{leadId}/products:
     get:
       operationId: listLeadProducts
