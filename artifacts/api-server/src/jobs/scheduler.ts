@@ -37,6 +37,7 @@ import {
   businessProfilesTable,
   tenantCalendarSettingsTable,
   leadSpouseConsentTable,
+  leadCampaignLogTable,
 } from "@workspace/db";
 import type { SegmentoFiltro } from "@workspace/db";
 import { evaluateForLead } from "../routes/rules.js";
@@ -580,6 +581,23 @@ export function getDefaultCommercialDates() {
   ];
 }
 
+async function isEventAlreadySent(tenantId: string, leadId: string, campaignType: string, campaignKey: string, year: string): Promise<boolean> {
+  const [existing] = await db
+    .select({ id: leadCampaignLogTable.id })
+    .from(leadCampaignLogTable)
+    .where(
+      and(
+        eq(leadCampaignLogTable.tenantId, tenantId),
+        eq(leadCampaignLogTable.leadId, leadId),
+        eq(leadCampaignLogTable.campaignType, campaignType),
+        eq(leadCampaignLogTable.campaignKey, campaignKey),
+        eq(leadCampaignLogTable.year, year)
+      )
+    )
+    .limit(1);
+  return !!existing;
+}
+
 async function runSpecialDateCheck(log: Logger): Promise<void> {
   log.info("scheduler/special-dates: starting");
 
@@ -587,10 +605,10 @@ async function runSpecialDateCheck(log: Logger): Promise<void> {
   const todayMonth = now.getMonth() + 1;
   const todayDay = now.getDate();
   const currentYear = now.getFullYear();
+  const yearStr = String(currentYear);
 
   const movableDates = getMovableDates(currentYear);
 
-  // Get all active tenants with calendar settings
   const tenants = await db
     .select({ id: tenantsTable.id, slug: tenantsTable.slug })
     .from(tenantsTable)
@@ -601,7 +619,6 @@ async function runSpecialDateCheck(log: Logger): Promise<void> {
 
   for (const tenant of tenants) {
     try {
-      // Load calendar settings
       const [calendarSettings] = await db
         .select()
         .from(tenantCalendarSettingsTable)
@@ -610,14 +627,12 @@ async function runSpecialDateCheck(log: Logger): Promise<void> {
 
       const commercialDates = calendarSettings?.commercialDates ?? getDefaultCommercialDates();
 
-      // Load active catalog products for this tenant
       const catalog = await db
         .select({ id: produtosCatalogoTable.id, nome: produtosCatalogoTable.nome, categoria: produtosCatalogoTable.categoria, precoBase: produtosCatalogoTable.precoBase })
         .from(produtosCatalogoTable)
         .where(and(eq(produtosCatalogoTable.tenantId, tenant.id), eq(produtosCatalogoTable.ativo, true)))
         .limit(10);
 
-      // Get all leads for this tenant
       const leads = await db
         .select()
         .from(leadsTable)
@@ -625,66 +640,68 @@ async function runSpecialDateCheck(log: Logger): Promise<void> {
         .limit(500);
 
       for (const lead of leads) {
-        // Skip if opted out
         if (lead.specialDateMessagesOptOut) {
           totalSkipped++;
           continue;
         }
-
-        // Skip if no phone
         if (!lead.telefone) {
           totalSkipped++;
           continue;
         }
 
-        // Skip if already sent this year
-        if (lead.lastCampaignSentYear === currentYear) {
-          totalSkipped++;
-          continue;
-        }
+        type Scenario = {
+          type: string;
+          dateName?: string;
+          recipientName?: string;
+          recipientRelation?: string;
+          catalog?: Array<{ nome: string; categoria?: string | null; precoBase: string | null }>;
+          dealId?: string;
+          campaignKey: string;
+        };
 
-        let scenario: { type: string; dateName?: string; recipientName?: string; recipientRelation?: string; catalog?: Array<{ nome: string; categoria?: string | null; precoBase: string | null }>; dealId?: string } | null = null;
+        let scenario: Scenario | null = null;
 
-        // Check lead birthday
+        // Lead birthday
         if (lead.birthMonth === todayMonth && lead.birthDay === todayDay) {
-          scenario = { type: "birthday_lead", catalog };
+          const campaignKey = `birthday-lead-${yearStr}-${todayMonth.toString().padStart(2, "0")}-${todayDay.toString().padStart(2, "0")}`;
+          scenario = { type: "birthday_lead", catalog, campaignKey };
         }
 
-        // Check spouse birthday
+        // Spouse birthday
         if (!scenario && lead.conjugeDataNascimento) {
           const parts = lead.conjugeDataNascimento.split("-");
           if (parts.length >= 3) {
             const m = parseInt(parts[1], 10);
             const d = parseInt(parts[2], 10);
             if (m === todayMonth && d === todayDay) {
-              scenario = { type: "birthday_family", recipientName: lead.conjugeNome ?? "seu cônjuge", recipientRelation: "cônjuge", catalog };
+              const campaignKey = `birthday-family-${yearStr}-${todayMonth.toString().padStart(2, "0")}-${todayDay.toString().padStart(2, "0")}-spouse`;
+              scenario = { type: "birthday_family", recipientName: lead.conjugeNome ?? "seu cônjuge", recipientRelation: "cônjuge", catalog, campaignKey };
             }
           }
         }
 
-        // Check children birthdays
+        // Children birthdays
         if (!scenario && lead.filhos && lead.filhos.length > 0) {
           for (const f of lead.filhos) {
+            let match = false;
             if (f.dataNascimento) {
               const parts = f.dataNascimento.split("-");
               if (parts.length >= 3) {
                 const m = parseInt(parts[1], 10);
                 const d = parseInt(parts[2], 10);
-                if (m === todayMonth && d === todayDay) {
-                  scenario = { type: "birthday_family", recipientName: f.nome, recipientRelation: "filho(a)", catalog };
-                  break;
-                }
+                if (m === todayMonth && d === todayDay) match = true;
               }
             }
-            // Also check birthMonth/birthDay if present
-            if (!scenario && f.birthMonth === todayMonth && f.birthDay === todayDay) {
-              scenario = { type: "birthday_family", recipientName: f.nome, recipientRelation: "filho(a)", catalog };
+            if (!match && f.birthMonth === todayMonth && f.birthDay === todayDay) match = true;
+            if (match) {
+              const campaignKey = `birthday-family-${yearStr}-${todayMonth.toString().padStart(2, "0")}-${todayDay.toString().padStart(2, "0")}-child-${f.nome ?? ""}`;
+              scenario = { type: "birthday_family", recipientName: f.nome, recipientRelation: "filho(a)", catalog, campaignKey };
               break;
             }
           }
         }
 
-        // Check deal anniversary (won deals)
+        // Deal anniversary
         if (!scenario) {
           const wonDeals = await db
             .select({ id: dealsTable.id, dataFechamento: dealsTable.dataFechamento })
@@ -703,17 +720,17 @@ async function runSpecialDateCheck(log: Logger): Promise<void> {
             const fechDate = new Date(deal.dataFechamento);
             const fechMonth = fechDate.getMonth() + 1;
             const fechDay = fechDate.getDate();
-            // Only trigger if the deal closed at least 1 year ago
             const oneYearAgo = new Date(now);
             oneYearAgo.setFullYear(oneYearAgo.getFullYear() - 1);
             if (fechDate <= oneYearAgo && fechMonth === todayMonth && fechDay === todayDay) {
-              scenario = { type: "deal_anniversary", dealId: deal.id, catalog };
+              const campaignKey = `deal-anniversary-${deal.id}-${yearStr}`;
+              scenario = { type: "deal_anniversary", dealId: deal.id, catalog, campaignKey };
               break;
             }
           }
         }
 
-        // Check commercial dates
+        // Commercial dates
         if (!scenario) {
           for (const cd of commercialDates) {
             if (!cd.active) continue;
@@ -729,11 +746,9 @@ async function runSpecialDateCheck(log: Logger): Promise<void> {
               sendDate.setDate(sendDate.getDate() - cd.daysBeforeToSend);
             }
             if (sendDate && sendDate.getMonth() + 1 === todayMonth && sendDate.getDate() === todayDay) {
-              // Check target gender if specified
-              if (cd.targetGender && lead.genero && lead.genero !== cd.targetGender) {
-                continue;
-              }
-              scenario = { type: "commercial_date", dateName: cd.name, catalog };
+              if (cd.targetGender && lead.genero && lead.genero !== cd.targetGender) continue;
+              const campaignKey = `commercial-${cd.name.replace(/\s+/g, "-")}-${yearStr}`;
+              scenario = { type: "commercial_date", dateName: cd.name, catalog, campaignKey };
               break;
             }
           }
@@ -741,24 +756,24 @@ async function runSpecialDateCheck(log: Logger): Promise<void> {
 
         if (!scenario) continue;
 
-        // Check if already sent this year for this lead
-        const [recentTask] = await db
-          .select({ id: agentTasksTable.id })
-          .from(agentTasksTable)
-          .where(
-            and(
-              eq(agentTasksTable.tenantId, tenant.id),
-              eq(agentTasksTable.leadId, lead.id),
-              eq(agentTasksTable.agentName, "relacionamento"),
-              gte(agentTasksTable.createdAt, new Date(`${currentYear}-01-01`))
-            )
-          )
-          .limit(1);
-
-        if (recentTask) {
+        // Event-level deduplication
+        const alreadySent = await isEventAlreadySent(tenant.id, lead.id, scenario.type, scenario.campaignKey, yearStr);
+        if (alreadySent) {
           totalSkipped++;
           continue;
         }
+
+        // Log dispatch attempt
+        await db
+          .insert(leadCampaignLogTable)
+          .values({
+            tenantId: tenant.id,
+            leadId: lead.id,
+            campaignType: scenario.type,
+            campaignKey: scenario.campaignKey,
+            year: yearStr,
+            status: "pending",
+          });
 
         // Dispatch relationship agent
         dispatchAgentBackground({
@@ -776,11 +791,17 @@ async function runSpecialDateCheck(log: Logger): Promise<void> {
           },
         });
 
-        // Update lastCampaignSentYear
+        // Mark as sent only after successful task creation
         await db
-          .update(leadsTable)
-          .set({ lastCampaignSentYear: currentYear, updatedAt: new Date() })
-          .where(eq(leadsTable.id, lead.id));
+          .update(leadCampaignLogTable)
+          .set({ status: "sent", sentAt: new Date() })
+          .where(
+            and(
+              eq(leadCampaignLogTable.tenantId, tenant.id),
+              eq(leadCampaignLogTable.leadId, lead.id),
+              eq(leadCampaignLogTable.campaignKey, scenario.campaignKey)
+            )
+          );
 
         totalDispatched++;
         log.info({ leadId: lead.id, tenantId: tenant.id, scenario: scenario.type }, "scheduler/special-dates: dispatched");

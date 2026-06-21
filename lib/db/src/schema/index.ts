@@ -67,4 +67,5 @@ export * from "./lead_products";
 export * from "./lead_proposals";
 export * from "./tenant_calendar_settings";
 export * from "./lead_spouse_consent";
+export * from "./lead_campaign_log";
 export * from "./product_presentations";

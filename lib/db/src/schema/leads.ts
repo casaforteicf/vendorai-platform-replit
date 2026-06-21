@@ -54,7 +54,6 @@ export const leadsTable = pgTable("leads", {
   genero: text("genero"),
   birthMonth: integer("birth_month"),
   birthDay: integer("birth_day"),
-  lastCampaignSentYear: integer("last_campaign_sent_year"),
   specialDateMessagesOptOut: boolean("special_date_messages_opt_out").notNull().default(false),
 
   // Spouse gift flow fields
