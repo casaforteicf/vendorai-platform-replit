@@ -44,6 +44,7 @@ vi.mock("@workspace/db", () => ({
   consentsTable: { id: "id", tenantId: "tenantId", leadId: "leadId" },
   intelligenceAnalysisLogTable: { id: "id", tenantId: "tenantId", leadId: "leadId" },
   leadBriefingsTable: { id: "id", tenantId: "tenantId", leadId: "leadId" },
+  leadProposalsTable: { id: "id", tenantId: "tenantId", leadId: "leadId" },
   insertLeadSchema: {
     safeParse: () => ({ success: false, error: { message: "not exercised" } }),
   },

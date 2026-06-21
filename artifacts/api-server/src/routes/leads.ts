@@ -17,6 +17,7 @@ import {
   consentsTable,
   intelligenceAnalysisLogTable,
   leadBriefingsTable,
+  leadProposalsTable,
   insertLeadBriefingSchema,
 } from "@workspace/db";
 import { findLeadByDedup, storePhone } from "../lib/dedup.js";
@@ -354,6 +355,11 @@ router.post("/leads/:id/merge", async (req, res) => {
       .where(and(eq(propostasTable.tenantId, tenantId), eq(propostasTable.leadId, duplicateId)));
 
     await tx
+      .update(leadProposalsTable)
+      .set({ leadId: targetLeadId, updatedAt: new Date() })
+      .where(and(eq(leadProposalsTable.tenantId, tenantId), eq(leadProposalsTable.leadId, duplicateId)));
+
+    await tx
       .update(activitiesTable)
       .set({ leadId: targetLeadId, updatedAt: new Date() })
       .where(and(eq(activitiesTable.tenantId, tenantId), eq(activitiesTable.leadId, duplicateId)));
@@ -422,6 +428,7 @@ router.post("/leads/:id/merge", async (req, res) => {
       "messages",
       "deals",
       "propostas",
+      "lead_proposals",
       "activities",
       "customer_intelligence",
       "agent_tasks",
