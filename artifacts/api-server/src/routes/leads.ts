@@ -251,7 +251,8 @@ router.get("/tenants/:tenantId/leads/duplicates", async (req, res) => {
     .where(
       and(
         eq(leadsTable.tenantId, tenantId),
-        eq(leadsTable.possivelDuplicata, true)
+        eq(leadsTable.possivelDuplicata, true),
+        ...buildUserFunctionFilter(req, leadsTable)
       )
     )
     .orderBy(leadsTable.createdAt);
@@ -274,7 +275,7 @@ router.get("/tenants/:tenantId/leads/duplicates", async (req, res) => {
 
 // ── POST /leads/:id/merge ─────────────────────────────────────────────────
 // Merge a duplicate lead into the target lead. All related data (conversations,
-// messages, deals, propostas, activities, intelligence, tasks, logs, consents)
+// messages, deals, propostas, lead_proposals, activities, intelligence, tasks, logs, consents, briefings)
 // is transferred to the target lead. The duplicate lead is then deleted.
 const mergeLeadSchema = z.object({
   targetLeadId: z.string().uuid(),
@@ -412,6 +413,11 @@ router.post("/leads/:id/merge", async (req, res) => {
       .set({ leadId: targetLeadId })
       .where(and(eq(intelligenceAnalysisLogTable.tenantId, tenantId), eq(intelligenceAnalysisLogTable.leadId, duplicateId)));
 
+    await tx
+      .update(leadBriefingsTable)
+      .set({ leadId: targetLeadId, updatedAt: new Date() })
+      .where(and(eq(leadBriefingsTable.tenantId, tenantId), eq(leadBriefingsTable.leadId, duplicateId)));
+
     // Delete the duplicate
     await tx.delete(leadsTable).where(eq(leadsTable.id, duplicateId));
 
@@ -435,6 +441,7 @@ router.post("/leads/:id/merge", async (req, res) => {
       "agent_actions_log",
       "consents",
       "intelligence_analysis_log",
+      "lead_briefings",
     ],
   });
 });
