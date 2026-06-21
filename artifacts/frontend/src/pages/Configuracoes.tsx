@@ -1,6 +1,8 @@
 import { useState, useRef, useEffect } from "react";
 import { useAuth } from "@/contexts/AuthContext";
 import { useForm } from "react-hook-form";
+
+type UserFunction = "vendedor" | "financeiro" | "suporte" | "entrega" | "administrador" | "outro";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
 import { useQueryClient } from "@tanstack/react-query";
@@ -120,8 +122,10 @@ import {
   CalendarCheck,
   CalendarX,
   CalendarPlus,
+  Receipt,
 } from "lucide-react";
 import { SiteGeneratorTab } from "./SiteGenerator";
+import { FaturamentoTab } from "./FaturamentoTab";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { cn } from "@/lib/utils";
@@ -520,6 +524,11 @@ export default function Configuracoes() {
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const isTenantAdmin = user?.platformRole === "tenant_admin";
+  const isSuperAdmin = user?.platformRole === "super_admin";
+  const isSeller = user?.platformRole === "tenant_seller";
+  const userFunction = user?.userFunction as UserFunction | undefined;
+  const isAdmin = isTenantAdmin || isSuperAdmin;
+  const showFaturamento = isAdmin || (userFunction && ["financeiro", "administrador", "outro"].includes(userFunction));
 
   // ── Team Management ────────────────────────────────────────────────────────
   const [inviteEmail, setInviteEmail] = useState("");
@@ -1331,7 +1340,7 @@ export default function Configuracoes() {
         className="space-y-6"
         onValueChange={(tab) => { if (tab !== "integracoes") setIntegracoesUnlocked(false); }}
       >
-        <TabsList className={cn("grid w-full max-w-3xl", isTenantAdmin ? "grid-cols-6" : "grid-cols-5")}>
+        <TabsList className={cn("grid w-full max-w-3xl", (isTenantAdmin && showFaturamento) ? "grid-cols-7" : (isTenantAdmin || showFaturamento) ? "grid-cols-6" : "grid-cols-5")}>
           <TabsTrigger value="perfil" className="gap-1.5">
             <Building2 className="h-4 w-4" />
             Perfil
@@ -1356,6 +1365,12 @@ export default function Configuracoes() {
             <TabsTrigger value="equipe" className="gap-1.5">
               <Users className="h-4 w-4" />
               Equipe
+            </TabsTrigger>
+          )}
+          {showFaturamento && (
+            <TabsTrigger value="faturamento" className="gap-1.5">
+              <Receipt className="h-4 w-4" />
+              Faturamento
             </TabsTrigger>
           )}
         </TabsList>
@@ -3300,6 +3315,13 @@ Body:
               </div>
 
             </div>
+          </TabsContent>
+        )}
+
+        {/* ── Tab: Faturamento ──────────────────────────────────────────────── */}
+        {showFaturamento && (
+          <TabsContent value="faturamento">
+            <FaturamentoTab />
           </TabsContent>
         )}
 

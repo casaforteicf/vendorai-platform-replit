@@ -37,7 +37,7 @@ import {
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
 
-// ── Helpers ───────────────────────────────────────────────────────────────────
+// ── Helpers ──────────────────────────────────────────────────────────────────
 function fmtDate(iso: string | null | undefined) {
   if (!iso) return "—";
   try { return format(new Date(iso), "dd/MM/yyyy", { locale: ptBR }); }
@@ -50,7 +50,7 @@ function fmtCurrency(val: string | number | null | undefined) {
   return n.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 }
 
-// ── Config maps ───────────────────────────────────────────────────────────────
+// ── Config maps ─────────────────────────────────────────────────────────────────
 const PLANO_CONFIG: Record<string, { label: string; className: string; icon: React.ReactNode }> = {
   starter:    { label: "Starter",    className: "bg-zinc-100 text-zinc-600 border-zinc-300",         icon: <FileText className="h-4 w-4" /> },
   growth:     { label: "Growth",     className: "bg-blue-100 text-blue-700 border-blue-200",          icon: <Sparkles className="h-4 w-4" /> },
@@ -85,7 +85,7 @@ const FILTER_TABS: Array<{ value: InvoiceStatus | "todas"; label: string }> = [
   { value: "cancelada",label: "Cancelada" },
 ];
 
-// ── Subscription Card ─────────────────────────────────────────────────────────
+// ── Subscription Card ────────────────────────────────────────────────────────────────
 function SubscriptionCard({ sub }: { sub: Subscription | null | undefined }) {
   if (!sub) {
     return (
@@ -147,7 +147,7 @@ function SubscriptionCard({ sub }: { sub: Subscription | null | undefined }) {
   );
 }
 
-// ── Invoice Table ─────────────────────────────────────────────────────────────
+// ── Invoice Table ────────────────────────────────────────────────────────────────
 function InvoiceTable({ invoices, isLoading }: { invoices: Invoice[]; isLoading: boolean }) {
   if (isLoading) {
     return (
@@ -262,8 +262,8 @@ function InvoiceTable({ invoices, isLoading }: { invoices: Invoice[]; isLoading:
   );
 }
 
-// ── Main Page ─────────────────────────────────────────────────────────────────
-export default function Faturamento() {
+// ── Tab Component ─────────────────────────────────────────────────────────────────
+export function FaturamentoTab() {
   const { user } = useAuth();
   const tenantId = user?.tenantId ?? "";
   const [activeFilter, setActiveFilter] = useState<InvoiceStatus | "todas">("todas");
@@ -305,14 +305,6 @@ export default function Faturamento() {
 
   return (
     <div className="space-y-6">
-      {/* Header */}
-      <div>
-        <h1 className="text-2xl font-bold tracking-tight">Faturamento</h1>
-        <p className="text-muted-foreground text-sm mt-0.5">
-          Acompanhe sua assinatura e histórico de faturas
-        </p>
-      </div>
-
       {/* Alert for overdue */}
       {hasPendingAlert && (
         <div className="flex items-center gap-3 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-red-700">

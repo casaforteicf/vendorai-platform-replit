@@ -20,7 +20,6 @@ import Usuarios from "@/pages/Usuarios";
 import Campanhas from "@/pages/Campanhas";
 import Propostas from "@/pages/Propostas";
 import PropostaPrint from "@/pages/PropostaPrint";
-import Faturamento from "@/pages/Faturamento";
 import AdminAIUsage from "@/pages/AdminAIUsage";
 import AdminPartners from "@/pages/AdminPartners";
 import PartnerDashboard from "@/pages/PartnerDashboard";
@@ -81,6 +80,14 @@ function Spinner() {
       <div className="animate-spin h-8 w-8 border-4 border-primary border-t-transparent rounded-full" />
     </div>
   );
+}
+
+function RedirectPage({ to }: { to: string }) {
+  const [, setLocation] = useLocation();
+  useEffect(() => {
+    setLocation(to);
+  }, [to, setLocation]);
+  return null;
 }
 
 function ProtectedRoute({ component: Component, ...rest }: any) {
@@ -369,7 +376,7 @@ function AppRoutes() {
         {() => <ProtectedRoute component={Estoque} />}
       </Route>
       <Route path="/faturamento">
-        {() => <ProtectedRoute component={Faturamento} />}
+        <RedirectPage to="/configuracoes" />
       </Route>
       <Route path="/admin/ai-usage">
         {() => <SuperAdminRoute component={AdminAIUsage} />}
