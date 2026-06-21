@@ -12,6 +12,8 @@ export interface OnboardingCompleteBody {
   nomeFantasia: string;
   vertical: string;
   logoUrl?: string;
+  /** URL pública com informações da linha de produtos para a IA */
+  urlLinhaProdutos?: string;
   produtos?: Product[];
   diferenciais?: string;
   publicoAlvo?: string;

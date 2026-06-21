@@ -24,6 +24,7 @@ import {
   getGetLeadQueryKey,
   useListPaymentMethods,
   getListPaymentMethodsQueryKey,
+  useRequestUploadUrl,
 } from "@workspace/api-client-react";
 import type {
   Proposta,
@@ -197,8 +198,10 @@ function CatalogoModal({
 }) {
   const { toast } = useToast();
   const qc = useQueryClient();
+  const requestUploadUrl = useRequestUploadUrl();
   const [editingProd, setEditingProd] = useState<ProdutoCatalogo | null>(null);
   const [formOpen, setFormOpen] = useState(false);
+  const [imagemUploading, setImagemUploading] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<ProdutoCatalogo | null>(null);
   const [csvPreview, setCsvPreview] = useState<CsvPreviewRow[]>([]);
   const [csvRaw, setCsvRaw] = useState("");
@@ -399,7 +402,7 @@ function CatalogoModal({
                     <TableCell>
                       {p.imagemUrl ? (
                         <img
-                          src={p.imagemUrl}
+                          src={p.imagemUrl.startsWith("/objects/") ? `/api/storage${p.imagemUrl}` : p.imagemUrl}
                           alt={p.nome}
                           className="h-9 w-9 rounded object-cover border border-border"
                           onError={(e) => { (e.target as HTMLImageElement).style.display = "none"; }}
@@ -497,12 +500,54 @@ function CatalogoModal({
               )} />
               <FormField control={form.control} name="imagemUrl" render={({ field }) => (
                 <FormItem>
-                  <FormLabel>URL da Imagem <span className="text-muted-foreground text-xs">(opcional)</span></FormLabel>
-                  <FormControl><Input placeholder="https://…" {...field} value={field.value ?? ""} /></FormControl>
+                  <FormLabel>Imagem do Produto <span className="text-muted-foreground text-xs">(opcional)</span></FormLabel>
+                  <div className="flex items-center gap-2">
+                    <FormControl><Input placeholder="https://…" {...field} value={field.value ?? ""} /></FormControl>
+                    <input
+                      type="file"
+                      accept="image/*"
+                      className="hidden"
+                      id="prod-img-upload"
+                      onChange={async (e) => {
+                        const file = e.target.files?.[0];
+                        if (!file) return;
+                        setImagemUploading(true);
+                        try {
+                          const result = await new Promise<{ uploadURL: string; objectPath: string }>((resolve, reject) => {
+                            requestUploadUrl.mutate(
+                              { data: { name: file.name, size: file.size, contentType: file.type } },
+                              { onSuccess: resolve, onError: reject },
+                            );
+                          });
+                          const res = await fetch(result.uploadURL, { method: "PUT", body: file, headers: { "Content-Type": file.type } });
+                          if (!res.ok) throw new Error("Upload failed");
+                          field.onChange(result.objectPath);
+                          toast({ title: "Imagem enviada", description: "Upload concluído." });
+                        } catch (err) {
+                          toast({ title: "Erro no upload", description: String(err), variant: "destructive" });
+                        } finally {
+                          setImagemUploading(false);
+                          e.target.value = "";
+                        }
+                      }}
+                    />
+                    <label htmlFor="prod-img-upload">
+                      <Button type="button" variant="outline" size="sm" className="shrink-0" disabled={imagemUploading} asChild>
+                        <span className="cursor-pointer flex items-center gap-1.5 text-xs">
+                          {imagemUploading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Upload className="h-3.5 w-3.5" />}
+                          Enviar
+                        </span>
+                      </Button>
+                    </label>
+                  </div>
                   <FormMessage />
                   {field.value && (
-                    <img src={field.value} alt="preview" className="h-16 w-16 rounded object-cover border border-border mt-1"
-                      onError={(e) => { (e.target as HTMLImageElement).style.display = "none"; }} />
+                    <img
+                      src={field.value.startsWith("/objects/") ? `/api/storage${field.value}` : field.value}
+                      alt="preview"
+                      className="h-16 w-16 rounded object-cover border border-border mt-1"
+                      onError={(e) => { (e.target as HTMLImageElement).style.display = "none"; }}
+                    />
                   )}
                 </FormItem>
               )} />

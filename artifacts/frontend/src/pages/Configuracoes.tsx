@@ -159,6 +159,8 @@ const profileSchema = z.object({
   telefone: z.string().optional(),
   email: z.string().email("E-mail inválido").optional().or(z.literal("")),
   vertical: z.string().optional(),
+  urlLinhaProdutos: z.string().url("URL inválida").optional().or(z.literal("")),
+  logoUrl: z.string().optional(),
 });
 type ProfileForm = z.infer<typeof profileSchema>;
 
@@ -600,16 +602,18 @@ export default function Configuracoes() {
 
   const profileForm = useForm<ProfileForm>({
     resolver: zodResolver(profileSchema),
-    defaultValues: { razaoSocial: "", nomeFantasia: "", cnpj: "", endereco: "", telefone: "", email: "", vertical: "" },
+    defaultValues: { razaoSocial: "", nomeFantasia: "", cnpj: "", endereco: "", telefone: "", email: "", vertical: "", urlLinhaProdutos: "", logoUrl: "" },
     values: profileQuery.data
       ? {
-          razaoSocial:  profileQuery.data.razaoSocial ?? "",
-          nomeFantasia: profileQuery.data.nomeFantasia ?? "",
-          cnpj:         profileQuery.data.cnpj ?? "",
-          endereco:     profileQuery.data.endereco ?? "",
-          telefone:     profileQuery.data.telefone ?? "",
-          email:        profileQuery.data.email ?? "",
-          vertical:     profileQuery.data.vertical ?? "",
+          razaoSocial:      profileQuery.data.razaoSocial ?? "",
+          nomeFantasia:     profileQuery.data.nomeFantasia ?? "",
+          cnpj:             profileQuery.data.cnpj ?? "",
+          endereco:         profileQuery.data.endereco ?? "",
+          telefone:         profileQuery.data.telefone ?? "",
+          email:            profileQuery.data.email ?? "",
+          vertical:         profileQuery.data.vertical ?? "",
+          urlLinhaProdutos: profileQuery.data.urlLinhaProdutos ?? "",
+          logoUrl:          profileQuery.data.logoUrl ?? "",
         }
       : undefined,
   });
@@ -617,13 +621,15 @@ export default function Configuracoes() {
   function onSaveProfile(values: ProfileForm) {
     const profileExists = !!profileQuery.data?.id;
     const payload = {
-      razaoSocial:  values.razaoSocial,
-      nomeFantasia: values.nomeFantasia || undefined,
-      cnpj:         values.cnpj || undefined,
-      endereco:     values.endereco || undefined,
-      telefone:     values.telefone || undefined,
-      email:        values.email || undefined,
-      vertical:     values.vertical || undefined,
+      razaoSocial:      values.razaoSocial,
+      nomeFantasia:     values.nomeFantasia || undefined,
+      cnpj:             values.cnpj || undefined,
+      endereco:         values.endereco || undefined,
+      telefone:         values.telefone || undefined,
+      email:            values.email || undefined,
+      vertical:         values.vertical || undefined,
+      urlLinhaProdutos: values.urlLinhaProdutos || undefined,
+      logoUrl:          values.logoUrl || undefined,
     };
 
     if (profileExists) {
@@ -1419,47 +1425,74 @@ export default function Configuracoes() {
                           e.target.value = "";
                         }}
                       />
-                      {profileQuery.data?.logoUrl ? (
-                        <div className="flex items-center gap-3 p-3 rounded-lg border bg-muted/30">
-                          <img
-                            src={
-                              profileQuery.data.logoUrl.startsWith("/objects/")
-                                ? `/api/storage${profileQuery.data.logoUrl}`
-                                : profileQuery.data.logoUrl
-                            }
-                            alt="Logo"
-                            className="h-12 w-auto max-w-[160px] rounded object-contain"
-                            onError={(e) => ((e.target as HTMLImageElement).style.display = "none")}
-                          />
-                          <div className="flex-1 min-w-0">
-                            <p className="text-xs text-muted-foreground">Logo atual</p>
+                      {/* Logo preview + URL input */}
+                      <div className="space-y-2">
+                        {profileQuery.data?.logoUrl ? (
+                          <div className="flex items-center gap-3 p-3 rounded-lg border bg-muted/30">
+                            <img
+                              src={
+                                profileQuery.data.logoUrl.startsWith("/objects/")
+                                  ? `/api/storage${profileQuery.data.logoUrl}`
+                                  : profileQuery.data.logoUrl
+                              }
+                              alt="Logo"
+                              className="h-12 w-auto max-w-[160px] rounded object-contain"
+                              onError={(e) => ((e.target as HTMLImageElement).style.display = "none")}
+                            />
+                            <div className="flex-1 min-w-0">
+                              <p className="text-xs text-muted-foreground">Logo atual</p>
+                            </div>
+                            <Button
+                              type="button"
+                              variant="outline"
+                              size="sm"
+                              onClick={() => logoInputRef.current?.click()}
+                              disabled={logoUploading}
+                              className="gap-1.5 text-xs shrink-0"
+                            >
+                              {logoUploading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Upload className="h-3.5 w-3.5" />}
+                              Trocar
+                            </Button>
                           </div>
+                        ) : (
+                          <button
+                            type="button"
+                            onClick={() => logoInputRef.current?.click()}
+                            disabled={logoUploading}
+                            className="w-full flex flex-col items-center gap-2 p-5 rounded-lg border-2 border-dashed border-muted-foreground/30 hover:border-primary/50 hover:bg-muted/30 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                          >
+                            {logoUploading ? (
+                              <><Loader2 className="h-7 w-7 text-primary animate-spin" /><span className="text-sm text-muted-foreground">Enviando...</span></>
+                            ) : (
+                              <><ImageIcon className="h-7 w-7 text-muted-foreground/50" /><span className="text-sm font-medium">Selecionar logo</span><span className="text-xs text-muted-foreground">PNG, JPG, SVG ou WebP</span></>
+                            )}
+                          </button>
+                        )}
+                        {/* Logo URL input */}
+                        <div className="flex items-center gap-2">
+                          <Input
+                            placeholder="Ou cole a URL da logo..."
+                            value={profileForm.watch("logoUrl") ?? ""}
+                            onChange={(e) => {
+                              profileForm.setValue("logoUrl", e.target.value, { shouldDirty: true });
+                            }}
+                            className="text-xs"
+                          />
                           <Button
                             type="button"
                             variant="outline"
                             size="sm"
-                            onClick={() => logoInputRef.current?.click()}
-                            disabled={logoUploading}
-                            className="gap-1.5 text-xs shrink-0"
+                            className="shrink-0 text-xs"
+                            onClick={() => {
+                              const url = profileForm.getValues("logoUrl");
+                              if (url) saveImageUrl("logoUrl", url);
+                            }}
                           >
-                            {logoUploading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Upload className="h-3.5 w-3.5" />}
-                            Trocar
+                            <Link className="h-3.5 w-3.5" />
+                            Salvar
                           </Button>
                         </div>
-                      ) : (
-                        <button
-                          type="button"
-                          onClick={() => logoInputRef.current?.click()}
-                          disabled={logoUploading}
-                          className="w-full flex flex-col items-center gap-2 p-5 rounded-lg border-2 border-dashed border-muted-foreground/30 hover:border-primary/50 hover:bg-muted/30 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                        >
-                          {logoUploading ? (
-                            <><Loader2 className="h-7 w-7 text-primary animate-spin" /><span className="text-sm text-muted-foreground">Enviando...</span></>
-                          ) : (
-                            <><ImageIcon className="h-7 w-7 text-muted-foreground/50" /><span className="text-sm font-medium">Selecionar logo</span><span className="text-xs text-muted-foreground">PNG, JPG, SVG ou WebP</span></>
-                          )}
-                        </button>
-                      )}
+                      </div>
                     </div>
 
                     {/* Favicon */}
@@ -1624,6 +1657,29 @@ export default function Configuracoes() {
                             <Input placeholder="Rua, número, cidade — UF" {...field} />
                           </FormControl>
                           <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+                    <FormField
+                      control={profileForm.control}
+                      name="urlLinhaProdutos"
+                      render={({ field }) => (
+                        <FormItem className="sm:col-span-2">
+                          <FormLabel>
+                            URL da linha de produtos
+                            <span className="text-muted-foreground text-xs ml-1">(opcional)</span>
+                          </FormLabel>
+                          <FormControl>
+                            <Input
+                              placeholder="https://meusite.com.br/produtos"
+                              {...field}
+                              value={field.value ?? ""}
+                            />
+                          </FormControl>
+                          <FormMessage />
+                          <p className="text-xs text-muted-foreground">
+                            Link público com informações dos produtos para a IA consultar.
+                          </p>
                         </FormItem>
                       )}
                     />

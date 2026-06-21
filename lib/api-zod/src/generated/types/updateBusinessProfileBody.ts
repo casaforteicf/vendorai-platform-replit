@@ -18,6 +18,8 @@ export interface UpdateBusinessProfileBody {
   vertical?: string;
   logoUrl?: string;
   faviconUrl?: string;
+  /** URL pública com informações da linha de produtos para a IA */
+  urlLinhaProdutos?: string;
   produtos?: Product[];
   diferenciais?: string;
   publicoAlvo?: string;

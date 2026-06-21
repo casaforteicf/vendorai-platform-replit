@@ -20,6 +20,8 @@ export interface BusinessProfile {
   vertical?: string | null;
   logoUrl?: string | null;
   faviconUrl?: string | null;
+  /** URL pública com informações da linha de produtos para a IA */
+  urlLinhaProdutos?: string | null;
   produtos?: Product[] | null;
   diferenciais?: string | null;
   publicoAlvo?: string | null;

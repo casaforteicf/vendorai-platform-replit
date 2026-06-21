@@ -386,6 +386,7 @@ router.post("/tenants/:tenantId/propostas/suggest-items", async (req, res) => {
   if (parsed.data.contexto) contextParts.push(`Contexto adicional: ${parsed.data.contexto}`);
   if (profile?.nomeFantasia) contextParts.push(`Empresa vendedora: ${profile.nomeFantasia}`);
   if (profile?.vertical) contextParts.push(`Segmento: ${profile.vertical}`);
+  if (profile?.urlLinhaProdutos) contextParts.push(`Linha de produtos: ${profile.urlLinhaProdutos}`);
   if ((profile?.produtos as unknown[])?.length) {
     contextParts.push(
       `Produtos da empresa: ${(profile.produtos as Array<{ nome: string; preco?: number }>)

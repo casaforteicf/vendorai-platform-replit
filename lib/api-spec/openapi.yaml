@@ -10910,6 +10910,10 @@ components:
         faviconUrl:
           type: string
           nullable: true
+        urlLinhaProdutos:
+          type: string
+          nullable: true
+          description: URL pública com informações da linha de produtos para a IA
         produtos:
           type: array
           items:
@@ -10975,6 +10979,9 @@ components:
           type: string
         faviconUrl:
           type: string
+        urlLinhaProdutos:
+          type: string
+          description: URL pública com informações da linha de produtos para a IA
         produtos:
           type: array
           items:
@@ -11022,6 +11029,9 @@ components:
           type: string
         faviconUrl:
           type: string
+        urlLinhaProdutos:
+          type: string
+          description: URL pública com informações da linha de produtos para a IA
         produtos:
           type: array
           items:
@@ -11054,6 +11064,9 @@ components:
           type: string
         logoUrl:
           type: string
+        urlLinhaProdutos:
+          type: string
+          description: URL pública com informações da linha de produtos para a IA
         produtos:
           type: array
           items:

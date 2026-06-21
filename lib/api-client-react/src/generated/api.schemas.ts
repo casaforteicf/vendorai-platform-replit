@@ -1782,6 +1782,8 @@ export interface BusinessProfile {
   vertical?: string | null;
   logoUrl?: string | null;
   faviconUrl?: string | null;
+  /** URL pública com informações da linha de produtos para a IA */
+  urlLinhaProdutos?: string | null;
   produtos?: Product[] | null;
   diferenciais?: string | null;
   publicoAlvo?: string | null;
@@ -1806,6 +1808,8 @@ export interface CreateBusinessProfileBody {
   vertical?: string;
   logoUrl?: string;
   faviconUrl?: string;
+  /** URL pública com informações da linha de produtos para a IA */
+  urlLinhaProdutos?: string;
   produtos?: Product[];
   diferenciais?: string;
   publicoAlvo?: string;
@@ -1827,6 +1831,8 @@ export interface UpdateBusinessProfileBody {
   vertical?: string;
   logoUrl?: string;
   faviconUrl?: string;
+  /** URL pública com informações da linha de produtos para a IA */
+  urlLinhaProdutos?: string;
   produtos?: Product[];
   diferenciais?: string;
   publicoAlvo?: string;
@@ -1845,6 +1851,8 @@ export interface OnboardingCompleteBody {
   nomeFantasia: string;
   vertical: string;
   logoUrl?: string;
+  /** URL pública com informações da linha de produtos para a IA */
+  urlLinhaProdutos?: string;
   produtos?: Product[];
   diferenciais?: string;
   publicoAlvo?: string;

@@ -2359,6 +2359,7 @@ export const CompleteOnboardingBody = zod.object({
   "nomeFantasia": zod.string(),
   "vertical": zod.string(),
   "logoUrl": zod.string().optional(),
+  "urlLinhaProdutos": zod.string().optional().describe('URL pública com informações da linha de produtos para a IA'),
   "produtos": zod.array(zod.object({
   "nome": zod.string(),
   "descricao": zod.string().nullish(),
@@ -3979,6 +3980,7 @@ export const CreateBusinessProfileBody = zod.object({
   "vertical": zod.string().optional(),
   "logoUrl": zod.string().optional(),
   "faviconUrl": zod.string().optional(),
+  "urlLinhaProdutos": zod.string().optional().describe('URL pública com informações da linha de produtos para a IA'),
   "produtos": zod.array(zod.object({
   "nome": zod.string(),
   "descricao": zod.string().nullish(),
@@ -4012,6 +4014,7 @@ export const GetBusinessProfileByTenantResponse = zod.object({
   "vertical": zod.string().nullish(),
   "logoUrl": zod.string().nullish(),
   "faviconUrl": zod.string().nullish(),
+  "urlLinhaProdutos": zod.string().nullish().describe('URL pública com informações da linha de produtos para a IA'),
   "produtos": zod.array(zod.object({
   "nome": zod.string(),
   "descricao": zod.string().nullish(),
@@ -4047,6 +4050,7 @@ export const GetBusinessProfileResponse = zod.object({
   "vertical": zod.string().nullish(),
   "logoUrl": zod.string().nullish(),
   "faviconUrl": zod.string().nullish(),
+  "urlLinhaProdutos": zod.string().nullish().describe('URL pública com informações da linha de produtos para a IA'),
   "produtos": zod.array(zod.object({
   "nome": zod.string(),
   "descricao": zod.string().nullish(),
@@ -4080,6 +4084,7 @@ export const UpdateBusinessProfileBody = zod.object({
   "vertical": zod.string().optional(),
   "logoUrl": zod.string().optional(),
   "faviconUrl": zod.string().optional(),
+  "urlLinhaProdutos": zod.string().optional().describe('URL pública com informações da linha de produtos para a IA'),
   "produtos": zod.array(zod.object({
   "nome": zod.string(),
   "descricao": zod.string().nullish(),
@@ -4105,6 +4110,7 @@ export const UpdateBusinessProfileResponse = zod.object({
   "vertical": zod.string().nullish(),
   "logoUrl": zod.string().nullish(),
   "faviconUrl": zod.string().nullish(),
+  "urlLinhaProdutos": zod.string().nullish().describe('URL pública com informações da linha de produtos para a IA'),
   "produtos": zod.array(zod.object({
   "nome": zod.string(),
   "descricao": zod.string().nullish(),

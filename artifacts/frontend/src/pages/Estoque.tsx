@@ -645,7 +645,12 @@ export default function Estoque() {
                         {/* Image or placeholder */}
                         <div className="aspect-video rounded-md bg-muted/50 overflow-hidden flex items-center justify-center">
                           {produto.imagemUrl ? (
-                            <img src={produto.imagemUrl} alt={produto.nome} className="w-full h-full object-cover" />
+                            <img
+                              src={produto.imagemUrl.startsWith("/objects/") ? `/api/storage${produto.imagemUrl}` : produto.imagemUrl}
+                              alt={produto.nome}
+                              className="w-full h-full object-cover"
+                              onError={(e) => { (e.target as HTMLImageElement).style.display = "none"; }}
+                            />
                           ) : (
                             <ImageIcon className="h-8 w-8 text-muted-foreground/30" />
                           )}
@@ -1229,7 +1234,12 @@ function ProdutoDetailSheet({
           {/* Image */}
           {produto.imagemUrl && (
             <div className="rounded-lg overflow-hidden border aspect-video bg-muted flex items-center justify-center">
-              <img src={produto.imagemUrl} alt={produto.nome} className="w-full h-full object-contain" />
+              <img
+                src={produto.imagemUrl.startsWith("/objects/") ? `/api/storage${produto.imagemUrl}` : produto.imagemUrl}
+                alt={produto.nome}
+                className="w-full h-full object-contain"
+                onError={(e) => { (e.target as HTMLImageElement).style.display = "none"; }}
+              />
             </div>
           )}
 

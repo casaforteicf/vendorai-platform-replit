@@ -350,7 +350,12 @@ export default function LeadPropostaTab({ leadId, tenantId, lead }: LeadProposta
                     <div key={p.id} className="flex items-center justify-between gap-2 px-2 py-1.5 rounded bg-muted/50">
                       <div className="flex items-center gap-2 min-w-0">
                         {p.imagemUrl ? (
-                          <img src={p.imagemUrl} alt="" className="h-6 w-6 rounded object-cover" />
+                          <img
+                            src={p.imagemUrl.startsWith("/objects/") ? `/api/storage${p.imagemUrl}` : p.imagemUrl}
+                            alt=""
+                            className="h-6 w-6 rounded object-cover"
+                            onError={(e) => { (e.target as HTMLImageElement).style.display = "none"; }}
+                          />
                         ) : (
                           <Image className="h-4 w-4 text-muted-foreground" />
                         )}
