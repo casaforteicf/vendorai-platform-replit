@@ -50,6 +50,7 @@ import varejoRouter from "./varejo";
 import supermercadoRouter from "./supermercado";
 import siteGeneratorRouter from "./site_generator";
 import leadProposalsRouter from "./lead_proposals";
+import productPresentationsRouter from "./product_presentations";
 import tenantCalendarSettingsRouter from "./tenant_calendar_settings";
 import leadSpouseConsentRouter from "./lead_spouse_consent";
 import { authenticate, blockPartnerFromCRM, blockSuspendedTenants, blockExpiredDemo, requireRole, requireSameTenanOrSuperAdmin } from "../middlewares/auth";
@@ -103,6 +104,7 @@ router.use(dealsRouter);
 router.use(activitiesRouter);
 router.use(propostasRouter);
 router.use(leadProposalsRouter);
+router.use(productPresentationsRouter);
 router.use(messagesRouter);
 
 // Customer Intelligence Hub

@@ -28,7 +28,7 @@ export const AI_PROVIDER = useAnthropic ? "anthropic" : "openai";
 export const AI_MODEL = useAnthropic ? "claude-sonnet-4-6" : "gpt-4o-mini";
 
 // ── AI caller (reuses pattern from site_generator.ts) ───────────────────────
-type AiMessage = { role: "user" | "assistant"; content: string };
+export type AiMessage = { role: "user" | "assistant"; content: string };
 
 export async function callProposalAI(
   messages: AiMessage[],

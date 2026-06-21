@@ -12017,6 +12017,80 @@ components:
           type: string
           nullable: true
 
+    ProductPresentation:
+      type: object
+      properties:
+        id:
+          type: string
+        tenantId:
+          type: string
+        leadId:
+          type: string
+        productName:
+          type: string
+        catalogProductId:
+          type: string
+          nullable: true
+        status:
+          type: string
+          enum: [draft, reviewed, sent]
+        htmlContent:
+          type: string
+        jsonContent:
+          type: object
+          nullable: true
+        webSources:
+          type: array
+          nullable: true
+          items:
+            type: object
+            properties:
+              url:
+                type: string
+              title:
+                type: string
+              snippet:
+                type: string
+        reviewedBy:
+          type: string
+          nullable: true
+        sentAt:
+          type: string
+          format: date-time
+          nullable: true
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+      required:
+        - id
+        - tenantId
+        - leadId
+        - productName
+        - status
+        - htmlContent
+        - createdAt
+        - updatedAt
+
+    GenerateProductPresentationBody:
+      type: object
+      properties:
+        productName:
+          type: string
+        catalogProductId:
+          type: string
+          nullable: true
+        corDestaque:
+          type: string
+          nullable: true
+        logoUrl:
+          type: string
+          nullable: true
+      required:
+        - productName
+
     ErrorResponse:
       type: object
       properties:

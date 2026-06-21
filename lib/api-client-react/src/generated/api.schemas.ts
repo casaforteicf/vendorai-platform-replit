@@ -2226,6 +2226,46 @@ export interface GenerateLeadProposalBody {
   corSecundaria?: string | null;
 }
 
+export type ProductPresentationStatus = typeof ProductPresentationStatus[keyof typeof ProductPresentationStatus];
+
+
+export const ProductPresentationStatus = {
+  draft: 'draft',
+  reviewed: 'reviewed',
+  sent: 'sent',
+} as const;
+
+export type ProductPresentationJsonContent = { [key: string]: unknown } | null;
+
+export type ProductPresentationWebSourcesItem = {
+  url?: string;
+  title?: string;
+  snippet?: string;
+};
+
+export interface ProductPresentation {
+  id: string;
+  tenantId: string;
+  leadId: string;
+  productName: string;
+  catalogProductId?: string | null;
+  status: ProductPresentationStatus;
+  htmlContent: string;
+  jsonContent?: ProductPresentationJsonContent;
+  webSources?: ProductPresentationWebSourcesItem[] | null;
+  reviewedBy?: string | null;
+  sentAt?: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface GenerateProductPresentationBody {
+  productName: string;
+  catalogProductId?: string | null;
+  corDestaque?: string | null;
+  logoUrl?: string | null;
+}
+
 export interface ErrorResponse {
   error: string;
 }
@@ -4641,6 +4681,10 @@ export type MergeLead200 = {
 export type DismissDuplicateLead200 = {
   success?: boolean;
   lead?: Lead;
+};
+
+export type SendProductPresentation200 = {
+  success?: boolean;
 };
 
 export type DeleteLeadProduct200 = {

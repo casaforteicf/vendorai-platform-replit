@@ -5640,6 +5640,116 @@ export const DownloadLeadProposalPdfParams = zod.object({
 
 
 /**
+ * @summary List product presentations for a lead
+ */
+export const ListProductPresentationsParams = zod.object({
+  "leadId": zod.coerce.string()
+})
+
+export const ListProductPresentationsResponseItem = zod.object({
+  "id": zod.string(),
+  "tenantId": zod.string(),
+  "leadId": zod.string(),
+  "productName": zod.string(),
+  "catalogProductId": zod.string().nullish(),
+  "status": zod.enum(['draft', 'reviewed', 'sent']),
+  "htmlContent": zod.string(),
+  "jsonContent": zod.object({
+
+}).passthrough().nullish(),
+  "webSources": zod.array(zod.object({
+  "url": zod.string().optional(),
+  "title": zod.string().optional(),
+  "snippet": zod.string().optional()
+})).nullish(),
+  "reviewedBy": zod.string().nullish(),
+  "sentAt": zod.coerce.date().nullish(),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date()
+})
+export const ListProductPresentationsResponse = zod.array(ListProductPresentationsResponseItem)
+
+
+/**
+ * @summary Generate a product presentation for a lead
+ */
+export const GenerateProductPresentationParams = zod.object({
+  "leadId": zod.coerce.string()
+})
+
+export const GenerateProductPresentationBody = zod.object({
+  "productName": zod.string(),
+  "catalogProductId": zod.string().nullish(),
+  "corDestaque": zod.string().nullish(),
+  "logoUrl": zod.string().nullish()
+})
+
+export const GenerateProductPresentationResponse = zod.object({
+  "id": zod.string(),
+  "tenantId": zod.string(),
+  "leadId": zod.string(),
+  "productName": zod.string(),
+  "catalogProductId": zod.string().nullish(),
+  "status": zod.enum(['draft', 'reviewed', 'sent']),
+  "htmlContent": zod.string(),
+  "jsonContent": zod.object({
+
+}).passthrough().nullish(),
+  "webSources": zod.array(zod.object({
+  "url": zod.string().optional(),
+  "title": zod.string().optional(),
+  "snippet": zod.string().optional()
+})).nullish(),
+  "reviewedBy": zod.string().nullish(),
+  "sentAt": zod.coerce.date().nullish(),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date()
+})
+
+
+/**
+ * @summary Get a product presentation
+ */
+export const GetProductPresentationParams = zod.object({
+  "presentationId": zod.coerce.string()
+})
+
+export const GetProductPresentationResponse = zod.object({
+  "id": zod.string(),
+  "tenantId": zod.string(),
+  "leadId": zod.string(),
+  "productName": zod.string(),
+  "catalogProductId": zod.string().nullish(),
+  "status": zod.enum(['draft', 'reviewed', 'sent']),
+  "htmlContent": zod.string(),
+  "jsonContent": zod.object({
+
+}).passthrough().nullish(),
+  "webSources": zod.array(zod.object({
+  "url": zod.string().optional(),
+  "title": zod.string().optional(),
+  "snippet": zod.string().optional()
+})).nullish(),
+  "reviewedBy": zod.string().nullish(),
+  "sentAt": zod.coerce.date().nullish(),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date()
+})
+
+
+/**
+ * @summary Send product presentation to lead
+ */
+export const SendProductPresentationParams = zod.object({
+  "presentationId": zod.coerce.string()
+})
+
+export const SendProductPresentationResponse = zod.object({
+  "success": zod.boolean().optional()
+})
+
+
+/**
  * @summary List products for a lead
  */
 export const ListLeadProductsParams = zod.object({

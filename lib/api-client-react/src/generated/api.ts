@@ -113,6 +113,7 @@ import type {
   GenerateContentStrategyBody,
   GenerateLeadProposalBody,
   GeneratePerfilInsight200,
+  GenerateProductPresentationBody,
   GerarConteudoSupermercadoCampanha200,
   GerarConteudoSupermercadoCampanhaBody,
   GetAgendaGoogleAuthUrl200,
@@ -188,6 +189,7 @@ import type {
   PartnerTenant,
   PartnerTenantUsage,
   PaymentMethodList,
+  ProductPresentation,
   ProdutoCatalogo,
   Proposta,
   PublicSiteResponse,
@@ -195,6 +197,7 @@ import type {
   ResetPasswordBody,
   Rule,
   SegmentTemplate,
+  SendProductPresentation200,
   SiteConfig,
   Subscription,
   SuccessResponse,
@@ -14485,6 +14488,302 @@ export function useDownloadLeadProposalPdf<TData = Awaited<ReturnType<typeof dow
 
 
 
+
+export const getListProductPresentationsUrl = (leadId: string,) => {
+
+
+
+
+  return `/api/leads/${leadId}/product-presentations`
+}
+
+/**
+ * @summary List product presentations for a lead
+ */
+export const listProductPresentations = async (leadId: string, options?: RequestInit): Promise<ProductPresentation[]> => {
+
+  return customFetch<ProductPresentation[]>(getListProductPresentationsUrl(leadId),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getListProductPresentationsQueryKey = (leadId: string,) => {
+    return [
+    `/api/leads/${leadId}/product-presentations`
+    ] as const;
+    }
+
+
+export const getListProductPresentationsQueryOptions = <TData = Awaited<ReturnType<typeof listProductPresentations>>, TError = ErrorType<ErrorResponse>>(leadId: string, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listProductPresentations>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getListProductPresentationsQueryKey(leadId);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof listProductPresentations>>> = ({ signal }) => listProductPresentations(leadId, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, enabled: !!(leadId), ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof listProductPresentations>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type ListProductPresentationsQueryResult = NonNullable<Awaited<ReturnType<typeof listProductPresentations>>>
+export type ListProductPresentationsQueryError = ErrorType<ErrorResponse>
+
+
+/**
+ * @summary List product presentations for a lead
+ */
+
+export function useListProductPresentations<TData = Awaited<ReturnType<typeof listProductPresentations>>, TError = ErrorType<ErrorResponse>>(
+ leadId: string, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listProductPresentations>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getListProductPresentationsQueryOptions(leadId,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+
+
+
+
+
+
+export const getGenerateProductPresentationUrl = (leadId: string,) => {
+
+
+
+
+  return `/api/leads/${leadId}/product-presentations`
+}
+
+/**
+ * @summary Generate a product presentation for a lead
+ */
+export const generateProductPresentation = async (leadId: string,
+    generateProductPresentationBody: GenerateProductPresentationBody, options?: RequestInit): Promise<ProductPresentation> => {
+
+  return customFetch<ProductPresentation>(getGenerateProductPresentationUrl(leadId),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(
+      generateProductPresentationBody,)
+  }
+);}
+
+
+
+
+export const getGenerateProductPresentationMutationOptions = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof generateProductPresentation>>, TError,{leadId: string;data: BodyType<GenerateProductPresentationBody>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof generateProductPresentation>>, TError,{leadId: string;data: BodyType<GenerateProductPresentationBody>}, TContext> => {
+
+const mutationKey = ['generateProductPresentation'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof generateProductPresentation>>, {leadId: string;data: BodyType<GenerateProductPresentationBody>}> = (props) => {
+          const {leadId,data} = props ?? {};
+
+          return  generateProductPresentation(leadId,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type GenerateProductPresentationMutationResult = NonNullable<Awaited<ReturnType<typeof generateProductPresentation>>>
+    export type GenerateProductPresentationMutationBody = BodyType<GenerateProductPresentationBody>
+    export type GenerateProductPresentationMutationError = ErrorType<ErrorResponse>
+
+    /**
+ * @summary Generate a product presentation for a lead
+ */
+export const useGenerateProductPresentation = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof generateProductPresentation>>, TError,{leadId: string;data: BodyType<GenerateProductPresentationBody>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof generateProductPresentation>>,
+        TError,
+        {leadId: string;data: BodyType<GenerateProductPresentationBody>},
+        TContext
+      > => {
+      return useMutation(getGenerateProductPresentationMutationOptions(options));
+    }
+
+export const getGetProductPresentationUrl = (presentationId: string,) => {
+
+
+
+
+  return `/api/product-presentations/${presentationId}`
+}
+
+/**
+ * @summary Get a product presentation
+ */
+export const getProductPresentation = async (presentationId: string, options?: RequestInit): Promise<ProductPresentation> => {
+
+  return customFetch<ProductPresentation>(getGetProductPresentationUrl(presentationId),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetProductPresentationQueryKey = (presentationId: string,) => {
+    return [
+    `/api/product-presentations/${presentationId}`
+    ] as const;
+    }
+
+
+export const getGetProductPresentationQueryOptions = <TData = Awaited<ReturnType<typeof getProductPresentation>>, TError = ErrorType<ErrorResponse>>(presentationId: string, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getProductPresentation>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetProductPresentationQueryKey(presentationId);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getProductPresentation>>> = ({ signal }) => getProductPresentation(presentationId, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, enabled: !!(presentationId), ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getProductPresentation>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetProductPresentationQueryResult = NonNullable<Awaited<ReturnType<typeof getProductPresentation>>>
+export type GetProductPresentationQueryError = ErrorType<ErrorResponse>
+
+
+/**
+ * @summary Get a product presentation
+ */
+
+export function useGetProductPresentation<TData = Awaited<ReturnType<typeof getProductPresentation>>, TError = ErrorType<ErrorResponse>>(
+ presentationId: string, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getProductPresentation>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetProductPresentationQueryOptions(presentationId,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+
+
+
+
+
+
+export const getSendProductPresentationUrl = (presentationId: string,) => {
+
+
+
+
+  return `/api/product-presentations/${presentationId}/send`
+}
+
+/**
+ * @summary Send product presentation to lead
+ */
+export const sendProductPresentation = async (presentationId: string, options?: RequestInit): Promise<SendProductPresentation200> => {
+
+  return customFetch<SendProductPresentation200>(getSendProductPresentationUrl(presentationId),
+  {
+    ...options,
+    method: 'POST'
+
+
+  }
+);}
+
+
+
+
+export const getSendProductPresentationMutationOptions = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof sendProductPresentation>>, TError,{presentationId: string}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof sendProductPresentation>>, TError,{presentationId: string}, TContext> => {
+
+const mutationKey = ['sendProductPresentation'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof sendProductPresentation>>, {presentationId: string}> = (props) => {
+          const {presentationId} = props ?? {};
+
+          return  sendProductPresentation(presentationId,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type SendProductPresentationMutationResult = NonNullable<Awaited<ReturnType<typeof sendProductPresentation>>>
+
+    export type SendProductPresentationMutationError = ErrorType<ErrorResponse>
+
+    /**
+ * @summary Send product presentation to lead
+ */
+export const useSendProductPresentation = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof sendProductPresentation>>, TError,{presentationId: string}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof sendProductPresentation>>,
+        TError,
+        {presentationId: string},
+        TContext
+      > => {
+      return useMutation(getSendProductPresentationMutationOptions(options));
+    }
 
 export const getListLeadProductsUrl = (leadId: string,) => {
 
