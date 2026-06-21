@@ -1,0 +1,273 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Experimente grátis — Vendor.ai</title>
+<meta name="description" content="Crie sua conta demo em segundos e veja como a VendorAI transforma seus resultados comerciais.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --cream:#FAF8F4;
+    --cream-2:#F1ECE2;
+    --ink:#1B1438;
+    --navy-deep:#0B0817;
+    --navy-mid:#1B1438;
+    --indigo:#A78BFA;
+    --indigo-soft:#C4B5FD;
+    --cyan:#22D3EE;
+    --cyan-soft:#38BDF8;
+    --concrete-line:#DAD4C8;
+    --ok:#3FAE7A;
+    --error:#E5484D;
+    --display: "Instrument Serif", serif;
+    --body: "Inter", sans-serif;
+    --mono: "JetBrains Mono", monospace;
+  }
+  *{box-sizing:border-box; margin:0; padding:0;}
+  html{scroll-behavior:smooth;}
+  body{background:var(--cream); color:var(--ink); font-family:var(--body); line-height:1.55; -webkit-font-smoothing:antialiased;}
+  ::selection{background:var(--indigo-soft); color:var(--navy-deep);}
+  a{color:inherit;}
+  :focus-visible{outline:2px solid var(--indigo); outline-offset:3px;}
+
+  .logo{display:flex; align-items:center; gap:10px; text-decoration:none;}
+  .badge{width:34px; height:34px; border-radius:9px; background:linear-gradient(160deg,var(--navy-mid),var(--navy-deep)); display:flex; align-items:center; justify-content:center; flex-shrink:0; color:#fff; font-weight:700; font-size:0.95rem;}
+  .wordmark{font-family:var(--display); font-size:1.25rem; letter-spacing:0.01em; color:var(--ink);}
+  .wordmark .ai{font-style:italic;}
+
+  .nav{position:sticky; top:0; z-index:50; display:flex; align-items:center; justify-content:space-between; padding:16px 6vw; background:rgba(250,248,244,0.88); backdrop-filter:blur(10px); border-bottom:1px solid var(--concrete-line);}
+
+  .btn{font-family:var(--body); font-weight:600; font-size:0.85rem; padding:11px 20px; border-radius:100px; border:none; cursor:pointer; text-decoration:none; display:inline-block; transition:transform .15s ease, box-shadow .15s ease;}
+  .btn:hover{transform:translateY(-1px);}
+  .btn-primary{background:linear-gradient(90deg,var(--indigo),var(--cyan)); color:var(--navy-deep);}
+  .btn-primary:hover{box-shadow:0 4px 16px rgba(167,139,250,0.35);}
+  .btn-ghost{background:transparent; color:var(--ink); border:1px solid var(--ink);}
+
+  .hero{background:linear-gradient(160deg,var(--navy-mid),var(--navy-deep)); color:var(--cream); padding:64px 6vw 48px; text-align:center;}
+  .hero h1{font-family:var(--display); font-size:clamp(2rem,4vw,3rem); margin-bottom:14px; line-height:1.1;}
+  .hero p{font-size:1.05rem; color:#c6c0e0; max-width:48ch; margin:0 auto;}
+
+  .container{max-width:1120px; margin:0 auto; padding:0 6vw;}
+
+  .form-section{padding:56px 6vw 80px;}
+  .form-grid{display:grid; gap:48px; align-items:start;}
+  @media(min-width:900px){.form-grid{grid-template-columns:1fr 0.9fr;}}
+
+  .form-card{background:#fff; border:1px solid var(--concrete-line); border-radius:18px; padding:36px;}
+  .form-card h2{font-family:var(--display); font-size:1.6rem; margin-bottom:6px;}
+  .form-card .sub{color:#6b6485; font-size:0.92rem; margin-bottom:28px;}
+
+  .field-group{margin-bottom:18px;}
+  .field-group label{display:block; font-size:0.8rem; font-weight:600; margin-bottom:6px; color:var(--ink);}
+  .field-group input, .field-group select{
+    width:100%; padding:12px 14px; border:1px solid var(--concrete-line); border-radius:10px;
+    font-family:var(--body); font-size:0.95rem; background:var(--cream); color:var(--ink);
+    transition:border-color .15s, box-shadow .15s;
+  }
+  .field-group input:focus, .field-group select:focus{border-color:var(--indigo); box-shadow:0 0 0 3px rgba(167,139,250,0.12); outline:none;}
+  .field-group input::placeholder{color:#9a94b0;}
+  .field-row{display:grid; gap:14px;}
+  @media(min-width:600px){.field-row{grid-template-columns:1fr 1fr;}}
+
+  .form-error{color:var(--error); font-size:0.82rem; margin-top:6px; display:none;}
+  .form-error.visible{display:block;}
+
+  .features-side{display:flex; flex-direction:column; gap:20px;}
+  .feature-item{display:flex; gap:14px; align-items:flex-start; padding:20px; background:var(--cream-2); border:1px solid var(--concrete-line); border-radius:14px;}
+  .feature-icon{width:40px; height:40px; border-radius:10px; background:linear-gradient(135deg,var(--indigo-soft),var(--cyan-soft)); display:flex; align-items:center; justify-content:center; flex-shrink:0; font-size:1.1rem;}
+  .feature-item h4{font-size:0.95rem; font-weight:700; margin-bottom:3px;}
+  .feature-item p{font-size:0.85rem; color:#4a4368;}
+
+  .submit-btn{width:100%; margin-top:8px; padding:14px; font-size:1rem;}
+  .submit-btn:disabled{opacity:0.6; cursor:not-allowed; transform:none;}
+
+  .success-card{display:none; text-align:center; padding:48px 36px;}
+  .success-card.visible{display:block;}
+  .success-card .success-icon{width:64px; height:64px; border-radius:50%; background:linear-gradient(135deg,var(--indigo-soft),var(--cyan-soft)); display:flex; align-items:center; justify-content:center; margin:0 auto 20px; font-size:1.8rem;}
+  .success-card h2{font-family:var(--display); font-size:1.8rem; margin-bottom:10px;}
+  .success-card p{color:#6b6485; font-size:0.95rem; margin-bottom:24px;}
+
+  .trust-badges{display:flex; gap:16px; justify-content:center; flex-wrap:wrap; margin-top:32px;}
+  .trust-badge{background:var(--cream-2); border:1px solid var(--concrete-line); border-radius:8px; padding:8px 14px; font-size:0.78rem; color:#6b6485;}
+
+  footer{padding:24px 6vw; border-top:1px solid var(--concrete-line); text-align:center; font-size:0.82rem; color:#6b6485;}
+  footer a{color:var(--ink); text-decoration:underline; text-underline-offset:2px;}
+
+  .loading-spinner{display:inline-block; width:16px; height:16px; border:2px solid rgba(255,255,255,0.3); border-top-color:#fff; border-radius:50%; animation:spin 0.8s linear infinite; margin-right:8px; vertical-align:middle;}
+  @keyframes spin{to{transform:rotate(360deg);}}
+</style>
+</head>
+<body>
+
+<nav class="nav">
+  <a href="/website/" class="logo">
+    <div class="badge">V</div>
+    <span class="wordmark">Vendor<span class="ai">.ai</span></span>
+  </a>
+  <a href="/website/" class="btn btn-ghost">Voltar ao site</a>
+</nav>
+
+<section class="hero">
+  <h1>Experimente grátis por 5 dias</h1>
+  <p>Crie sua conta demo em segundos e veja como a Vendor.ai transforma seus resultados comerciais.</p>
+</section>
+
+<section class="form-section">
+  <div class="container">
+    <div class="form-grid">
+      <div class="form-card">
+        <div id="form-view">
+          <h2>Criar conta demo</h2>
+          <p class="sub">Sem cartão de crédito. Sem compromisso. Acesso completo por 5 dias.</p>
+          <form id="demo-form">
+            <div class="field-row">
+              <div class="field-group">
+                <label for="nomeEmpresa">Nome da empresa *</label>
+                <input type="text" id="nomeEmpresa" name="nomeEmpresa" placeholder="Sua empresa LTDA" required>
+              </div>
+              <div class="field-group">
+                <label for="nomePessoa">Seu nome *</label>
+                <input type="text" id="nomePessoa" name="nomePessoa" placeholder="João Silva" required>
+              </div>
+            </div>
+            <div class="field-group">
+              <label for="email">E-mail *</label>
+              <input type="email" id="email" name="email" placeholder="voce@empresa.com" required>
+            </div>
+            <div class="field-group">
+              <label for="senha">Senha *</label>
+              <input type="password" id="senha" name="senha" placeholder="Mínimo 8 caracteres" minlength="8" required>
+            </div>
+            <div class="field-group">
+              <label for="telefone">WhatsApp (opcional)</label>
+              <input type="tel" id="telefone" name="telefone" placeholder="+55 11 99999-9999">
+            </div>
+            <button type="submit" class="btn btn-primary submit-btn" id="submit-btn">
+              Criar conta e entrar no CRM
+            </button>
+            <div class="form-error" id="form-error"></div>
+          </form>
+        </div>
+
+        <div class="success-card" id="success-view">
+          <div class="success-icon">✓</div>
+          <h2>Conta criada com sucesso!</h2>
+          <p>Redirecionando para o CRM...</p>
+          <div class="trust-badges">
+            <span class="trust-badge">7 agentes de IA</span>
+            <span class="trust-badge">WhatsApp + Instagram</span>
+            <span class="trust-badge">5 dias grátis</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="features-side">
+        <div class="feature-item">
+          <div class="feature-icon">🤖</div>
+          <div>
+            <h4>7 agentes de IA</h4>
+            <p>SDR, Closer, Follow-up, Scheduler, Service, Onboarding e Relacionamento — cada um com uma missão clara.</p>
+          </div>
+        </div>
+        <div class="feature-item">
+          <div class="feature-icon">💬</div>
+          <div>
+            <h4>WhatsApp + Instagram</h4>
+            <p>Atenda seus leads onde eles já estão. Uma caixa de entrada só, com histórico completo.</p>
+          </div>
+        </div>
+        <div class="feature-item">
+          <div class="feature-icon">📊</div>
+          <div>
+            <h4>Inteligência do Cliente</h4>
+            <p>7 motores de análise que identificam intenção, jornada, oportunidades e risco de churn em tempo real.</p>
+          </div>
+        </div>
+        <div class="feature-item">
+          <div class="feature-icon">⚡</div>
+          <div>
+            <h4>Orçamento e proposta automáticos</h4>
+            <p>Gere PDFs profissionais com a cara da sua marca e envie direto no WhatsApp do cliente.</p>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<footer>
+  <p>Vendor.ai — Sistema Operacional Empresarial com IA · Chapecó, SC — Brasil</p>
+  <p style="margin-top:8px;"><a href="/website/privacy">Privacidade</a> · <a href="/website/terms">Termos</a></p>
+</footer>
+
+<script>
+  const API_BASE = '/api';
+  const form = document.getElementById('demo-form');
+  const submitBtn = document.getElementById('submit-btn');
+  const formError = document.getElementById('form-error');
+  const formView = document.getElementById('form-view');
+  const successView = document.getElementById('success-view');
+
+  form.addEventListener('submit', async function(e) {
+    e.preventDefault();
+    formError.classList.remove('visible');
+
+    const senha = document.getElementById('senha').value;
+    if (senha.length < 8) {
+      formError.textContent = 'A senha deve ter pelo menos 8 caracteres.';
+      formError.classList.add('visible');
+      return;
+    }
+
+    const data = {
+      nomeEmpresa: document.getElementById('nomeEmpresa').value,
+      nomePessoa: document.getElementById('nomePessoa').value,
+      email: document.getElementById('email').value,
+      senha: senha,
+      telefone: document.getElementById('telefone').value,
+    };
+
+    submitBtn.disabled = true;
+    submitBtn.innerHTML = '<span class="loading-spinner"></span> Criando conta...';
+
+    try {
+      const res = await fetch(API_BASE + '/auth/demo-signup', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(data),
+      });
+      const result = await res.json();
+
+      if (!res.ok) {
+        formError.textContent = result.error || 'Erro ao criar conta. Tente novamente.';
+        formError.classList.add('visible');
+        submitBtn.disabled = false;
+        submitBtn.textContent = 'Criar conta e entrar no CRM';
+        return;
+      }
+
+      localStorage.setItem('vendorai_token', result.token);
+      if (result.tenant?.demoExpiresAt) {
+        localStorage.setItem('vendorai_demo_expires_at', result.tenant.demoExpiresAt);
+      }
+
+      formView.style.display = 'none';
+      successView.classList.add('visible');
+
+      setTimeout(() => {
+        window.location.href = '/app';
+      }, 2000);
+    } catch (err) {
+      formError.textContent = 'Erro de conexão. Tente novamente.';
+      formError.classList.add('visible');
+      submitBtn.disabled = false;
+      submitBtn.textContent = 'Criar conta e entrar no CRM';
+    }
+  });
+</script>
+
+</body>
+</html>

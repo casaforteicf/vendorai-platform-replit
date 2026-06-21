@@ -7,6 +7,7 @@ import { useToast } from "@/hooks/use-toast";
 import { PropostaModal } from "./Propostas";
 import LeadBriefingTab from "./LeadBriefingTab";
 import LeadPropostaTab from "./LeadPropostaTab";
+import LeadProductPresentationTab from "./LeadProductPresentationTab";
 import { useListProdutosCatalogo, getListProdutosCatalogoQueryKey } from "@workspace/api-client-react";
 import {
   useGetLead,
@@ -95,6 +96,7 @@ import {
   FileUp,
   Image,
   Gift,
+  Package,
 } from "lucide-react";
 
 const STATUS_STYLES: Record<string, string> = {
@@ -2108,6 +2110,9 @@ export default function LeadDetail() {
 
         {/* Proposta Gerada */}
         <LeadPropostaTab leadId={id} tenantId={tenantId} lead={lead} />
+
+        {/* Apresentações de Produto */}
+        <LeadProductPresentationTab leadId={id} tenantId={tenantId} lead={lead} />
 
         {/* Orçamentos do Lead */}
         <Card data-testid="card-orcamentos">

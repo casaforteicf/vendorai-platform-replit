@@ -5,8 +5,8 @@
   "type": "module",
   "scripts": {
     "dev": "vite --config vite.config.ts --host 0.0.0.0",
-    "build": "mkdir -p dist/public && cp index.html dist/public/index.html",
-    "serve": "npx -y serve dist/public -l 19161",
+    "build": "mkdir -p dist/public && cp index.html dist/public/index.html && cp demo.html dist/public/demo.html",
+    "serve": "node static-server.cjs",
     "typecheck": "echo 'skip'"
   },
   "devDependencies": {

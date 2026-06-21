@@ -272,7 +272,7 @@ export function buildSdrPrompt(customPrompt: string | undefined, ctx: AgentConte
   return parts.join("\n\n");
 }
 
-export function buildCloserPrompt(customPrompt: string | undefined, ctx: AgentContext): string {
+export function buildCloserPrompt(customPrompt: string | undefined, ctx: AgentContext, scenario?: Record<string, unknown> | null): string {
   const { lead, ci } = ctx;
   const parts: string[] = [];
   parts.push(
@@ -289,6 +289,17 @@ export function buildCloserPrompt(customPrompt: string | undefined, ctx: AgentCo
     "- Se a resposta for claramente NÃO (ex: 'não quero', 'desisto', 'muito caro', 'não vou seguir'), não use proposal_accept — responda normalmente."
   );
   if (customPrompt?.trim()) parts.push("## INSTRUÇÕES DA EMPRESA\n" + customPrompt.trim());
+
+  // Product presentation scenario
+  if (scenario?.type === "product_presentation") {
+    const s = scenario as { type: "product_presentation"; productName: string; features?: string[]; price?: string; brand?: string };
+    parts.push(`## APRESENTAÇÃO DE PRODUTO\nVocê está apresentando o produto: ${s.productName}.\n` +
+      `${s.brand ? `Marca: ${s.brand}\n` : ""}` +
+      `${s.price ? `Preço: ${s.price}\n` : ""}` +
+      `${s.features?.length ? `Características principais:\n${s.features.map((f) => `  - ${f}`).join("\n")}` : ""}\n` +
+      `Foque nas vantagens relevantes para o perfil do lead e encaminhe para a conversa no WhatsApp.`);
+  }
+
   parts.push(buildLeadSection(lead));
   if (ci) {
     const lines = ["## INTELIGÊNCIA DE CLIENTE (use para personalizar a abordagem)"];
