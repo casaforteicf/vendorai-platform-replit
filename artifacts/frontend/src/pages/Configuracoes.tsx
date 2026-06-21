@@ -56,6 +56,10 @@ import {
   useCreateTenantCalendarSettings,
   useUpdateTenantCalendarSettings,
   getGetTenantCalendarSettingsQueryKey,
+  useGetTenantAIUsage,
+  getGetTenantAIUsageQueryKey,
+  useConfigureAnthropicAIKey,
+  useRemoveAnthropicAIKey,
 } from "@workspace/api-client-react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
@@ -98,6 +102,7 @@ import {
   Zap,
   Save,
   Brain,
+  BrainCircuit,
   ChevronLeft,
   ChevronRight,
   BarChart3,
@@ -1352,7 +1357,7 @@ export default function Configuracoes() {
         className="space-y-6"
         onValueChange={(tab) => { if (tab !== "integracoes") setIntegracoesUnlocked(false); }}
       >
-        <TabsList className={cn("grid w-full max-w-3xl", (isTenantAdmin && showFaturamento) ? "grid-cols-8" : (isTenantAdmin || showFaturamento) ? "grid-cols-7" : "grid-cols-6")}>
+        <TabsList className={cn("grid w-full max-w-3xl", (isTenantAdmin && showFaturamento) ? "grid-cols-9" : (isTenantAdmin || showFaturamento) ? "grid-cols-8" : "grid-cols-7")}>
           <TabsTrigger value="perfil" className="gap-1.5">
             <Building2 className="h-4 w-4" />
             Perfil
@@ -1376,6 +1381,10 @@ export default function Configuracoes() {
           <TabsTrigger value="integracoes" className="gap-1.5">
             <Webhook className="h-4 w-4" />
             Integrações
+          </TabsTrigger>
+          <TabsTrigger value="ai" className="gap-1.5">
+            <BrainCircuit className="h-4 w-4" />
+            Uso de IA
           </TabsTrigger>
           {isTenantAdmin && (
             <TabsTrigger value="equipe" className="gap-1.5">
@@ -3396,7 +3405,319 @@ Body:
           </TabsContent>
         )}
 
+        {/* ── Tab: Uso de IA ───────────────────────────────────────────────── */}
+        <TabsContent value="ai">
+          <AIUsageTab tenantId={tenantId} />
+        </TabsContent>
+
       </Tabs>
+    </div>
+  );
+}
+
+// ── AI Usage Tab ──────────────────────────────────────────────────────────
+
+function AIUsageTab({ tenantId }: { tenantId: string }) {
+  const { toast } = useToast();
+  const queryClient = useQueryClient();
+  const { data: usage, isLoading } = useGetTenantAIUsage(tenantId);
+  const configureKey = useConfigureAnthropicAIKey({
+    mutation: {
+      onSuccess: () => {
+        void queryClient.invalidateQueries({ queryKey: getGetTenantAIUsageQueryKey(tenantId) });
+        toast({ title: "Chave Anthropic configurada" });
+      },
+      onError: () => toast({ title: "Erro ao configurar chave", variant: "destructive" }),
+    },
+  });
+  const removeKey = useRemoveAnthropicAIKey({
+    mutation: {
+      onSuccess: () => {
+        void queryClient.invalidateQueries({ queryKey: getGetTenantAIUsageQueryKey(tenantId) });
+        toast({ title: "Chave removida" });
+      },
+      onError: () => toast({ title: "Erro ao remover chave", variant: "destructive" }),
+    },
+  });
+
+  const [anthropicKey, setAnthropicKey] = useState("");
+  const [showKey, setShowKey] = useState(false);
+
+  const spent = Number(usage?.spentThisMonthUsd ?? 0);
+  const quota = Number(usage?.quotaUsd ?? 0);
+  const credits = Number(usage?.creditsUsd ?? 0);
+  const remaining = Math.max(0, quota + credits - spent);
+  const pct = quota + credits > 0 ? Math.round((spent / (quota + credits)) * 100) : 0;
+  const alert80 = quota + credits > 0 && spent / (quota + credits) >= 0.8;
+
+  const features = usage?.featureBreakdown ?? [];
+  const recent = (usage?.recentLogs ?? []) as Array<{
+    id: string;
+    feature: string;
+    provider: string;
+    costEstimateUsd: number | null;
+    usedByok: boolean | null;
+    createdAt: string;
+  }>;
+
+  return (
+    <div className="space-y-6">
+      {/* ── Quota & Credits ─────────────────────────────────────────────── */}
+      <div className="rounded-xl border bg-card p-6 space-y-5">
+        <div>
+          <h2 className="font-semibold text-base flex items-center gap-2">
+            <BarChart3 className="h-4 w-4 text-primary" />
+            Consumo de IA
+          </h2>
+          <p className="text-sm text-muted-foreground mt-1">
+            Gastos do mês atual e limites da sua conta.
+          </p>
+        </div>
+
+        {isLoading ? (
+          <div className="space-y-3">
+            <Skeleton className="h-12 w-full" />
+            <Skeleton className="h-12 w-full" />
+          </div>
+        ) : (
+          <div className="space-y-5">
+            {/* Metric cards */}
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+              <div className="rounded-lg border p-3 space-y-1">
+                <p className="text-xs text-muted-foreground">Gasto este mês</p>
+                <p className="text-lg font-semibold">${spent.toFixed(2)}</p>
+              </div>
+              <div className="rounded-lg border p-3 space-y-1">
+                <p className="text-xs text-muted-foreground">Quota plano</p>
+                <p className="text-lg font-semibold">${quota.toFixed(2)}</p>
+              </div>
+              <div className="rounded-lg border p-3 space-y-1">
+                <p className="text-xs text-muted-foreground">Créditos</p>
+                <p className="text-lg font-semibold">${credits.toFixed(2)}</p>
+              </div>
+              <div className="rounded-lg border p-3 space-y-1">
+                <p className="text-xs text-muted-foreground">Restante</p>
+                <p className="text-lg font-semibold">${remaining.toFixed(2)}</p>
+              </div>
+            </div>
+
+            {/* Progress bar */}
+            <div className="space-y-2">
+              <div className="flex items-center justify-between text-sm">
+                <span className="text-muted-foreground">Consumo do mês</span>
+                <span className={cn("font-medium", alert80 ? "text-amber-600" : "text-muted-foreground")}>
+                  {pct}%
+                </span>
+              </div>
+              <Progress value={pct} className={cn("h-2", alert80 && "[&>div]:bg-amber-500")} />
+              {alert80 && (
+                <p className="text-xs text-amber-600 flex items-center gap-1">
+                  <AlertTriangle className="h-3 w-3" />
+                  Você atingiu 80% do limite. Considere comprar créditos.
+                </p>
+              )}
+            </div>
+
+            {/* Daily spend */}
+            <div className="rounded-lg bg-muted/30 p-3 space-y-1">
+              <p className="text-xs text-muted-foreground">Gasto hoje</p>
+              <p className="text-sm font-medium">
+                ${Number(usage?.dailySpendUsd ?? 0).toFixed(2)}
+              </p>
+              <p className="text-xs text-muted-foreground">
+                Reseta em{" "}
+                {usage?.dailySpendResetAt
+                  ? format(new Date(usage.dailySpendResetAt), "dd/MM/yyyy HH:mm", { locale: ptBR })
+                  : "—"}
+              </p>
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* ── Feature Breakdown ─────────────────────────────────────────────── */}
+      <div className="rounded-xl border bg-card p-6 space-y-5">
+        <div>
+          <h2 className="font-semibold text-base flex items-center gap-2">
+            <BrainCircuit className="h-4 w-4 text-primary" />
+            Uso por funcionalidade
+          </h2>
+        </div>
+        {isLoading ? (
+          <div className="space-y-3">
+            <Skeleton className="h-10 w-full" />
+            <Skeleton className="h-10 w-full" />
+          </div>
+        ) : features.length === 0 ? (
+          <p className="text-sm text-muted-foreground">Nenhum uso registrado este mês.</p>
+        ) : (
+          <div className="space-y-2">
+            {features.map((f) => (
+              <div key={f.feature ?? "unknown"} className="flex items-center justify-between rounded-lg border p-3">
+                <div className="flex items-center gap-2">
+                  <span className="capitalize text-sm font-medium">{(f.feature ?? "unknown").replace(/_/g, " ")}</span>
+                </div>
+                <div className="text-right">
+                  <p className="text-sm font-medium">${Number(f.total ?? 0).toFixed(2)}</p>
+                  <p className="text-xs text-muted-foreground">{f.calls ?? 0} chamadas</p>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {/* ── Recent Logs ──────────────────────────────────────────────────── */}
+      <div className="rounded-xl border bg-card p-6 space-y-5">
+        <div>
+          <h2 className="font-semibold text-base flex items-center gap-2">
+            <Clock className="h-4 w-4 text-primary" />
+            Chamadas recentes
+          </h2>
+        </div>
+        {isLoading ? (
+          <div className="space-y-3">
+            <Skeleton className="h-10 w-full" />
+            <Skeleton className="h-10 w-full" />
+          </div>
+        ) : recent.length === 0 ? (
+          <p className="text-sm text-muted-foreground">Nenhuma chamada recente.</p>
+        ) : (
+          <div className="divide-y divide-border rounded-lg border overflow-hidden">
+            {recent.map((log) => (
+              <div key={log.id} className="flex items-center justify-between px-4 py-3">
+                <div className="min-w-0 flex-1">
+                  <p className="text-sm font-medium truncate">{(log.feature ?? "unknown").replace(/_/g, " ")}</p>
+                  <p className="text-xs text-muted-foreground">
+                    {log.provider} • {log.createdAt ? format(new Date(log.createdAt), "dd/MM HH:mm", { locale: ptBR }) : "—"}
+                  </p>
+                </div>
+                <div className="flex items-center gap-3 ml-4 shrink-0">
+                  <span className="text-sm font-medium">${Number(log.costEstimateUsd ?? 0).toFixed(4)}</span>
+                  {log.usedByok && (
+                    <span className="inline-flex items-center gap-1 text-[10px] font-medium bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400 px-1.5 py-0.5 rounded">
+                      <Key className="h-2.5 w-2.5" /> BYOK
+                    </span>
+                  )}
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {/* ── BYOK Key Configuration ───────────────────────────────────────── */}
+      <div className="rounded-xl border bg-card p-6 space-y-5">
+        <div>
+          <h2 className="font-semibold text-base flex items-center gap-2">
+            <Key className="h-4 w-4 text-primary" />
+            Chaves de API (BYOK)
+          </h2>
+          <p className="text-sm text-muted-foreground mt-1">
+            Use suas próprias chaves de API para reduzir custos. As chaves são criptografadas.
+          </p>
+        </div>
+
+        <div className="space-y-4">
+          {/* Anthropic */}
+          <div className="rounded-lg border p-4 space-y-3">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm font-medium">Anthropic (Claude)</p>
+                <p className="text-xs text-muted-foreground">
+                  Status:{" "}
+                  <span className={cn(
+                    "inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium",
+                    usage?.byok?.anthropic
+                      ? "bg-green-100 text-green-700"
+                      : "bg-zinc-100 text-zinc-600"
+                  )}>
+                    {usage?.byok?.anthropic ? "Ativo" : "Não configurado"}
+                  </span>
+                </p>
+              </div>
+              {usage?.byok?.anthropic && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => {
+                    if (window.confirm("Remover chave Anthropic?")) {
+                      removeKey.mutate({ id: tenantId });
+                    }
+                  }}
+                  disabled={removeKey.isPending}
+                  className="text-destructive hover:text-destructive"
+                >
+                  <Trash2 className="h-3.5 w-3.5" />
+                  Remover
+                </Button>
+              )}
+            </div>
+
+            {!usage?.byok?.anthropic && (
+              <div className="space-y-2">
+                <div className="flex gap-2">
+                  <Input
+                    type={showKey ? "text" : "password"}
+                    placeholder="sk-ant-..."
+                    value={anthropicKey}
+                    onChange={(e) => setAnthropicKey(e.target.value)}
+                    className="font-mono text-sm"
+                  />
+                  <Button
+                    variant="outline"
+                    size="icon"
+                    onClick={() => setShowKey(!showKey)}
+                    type="button"
+                  >
+                    {showKey ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                  </Button>
+                </div>
+                <Button
+                  onClick={() => {
+                    if (!anthropicKey.trim().startsWith("sk-")) {
+                      toast({ title: "Chave inválida", variant: "destructive" });
+                      return;
+                    }
+                    configureKey.mutate({ id: tenantId, data: { apiKey: anthropicKey.trim() } });
+                    setAnthropicKey("");
+                  }}
+                  disabled={configureKey.isPending || !anthropicKey.trim()}
+                  className="gap-1.5"
+                >
+                  {configureKey.isPending && <Loader2 className="h-4 w-4 animate-spin" />}
+                  Salvar chave
+                </Button>
+              </div>
+            )}
+          </div>
+
+          {/* OpenAI */}
+          <div className="rounded-lg border p-4 space-y-3">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm font-medium">OpenAI (GPT / DALL-E)</p>
+                <p className="text-xs text-muted-foreground">
+                  Status:{" "}
+                  <span className={cn(
+                    "inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium",
+                    usage?.byok?.openai
+                      ? "bg-green-100 text-green-700"
+                      : "bg-zinc-100 text-zinc-600"
+                  )}>
+                    {usage?.byok?.openai ? "Ativo" : "Em breve"}
+                  </span>
+                </p>
+              </div>
+            </div>
+            {!usage?.byok?.openai && (
+              <p className="text-xs text-muted-foreground">
+                Configuração de chave OpenAI estará disponível em breve.
+              </p>
+            )}
+          </div>
+        </div>
+      </div>
     </div>
   );
 }

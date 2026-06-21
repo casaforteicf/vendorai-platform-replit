@@ -4568,6 +4568,69 @@ export interface UpdateLeadSpouseConsentBody {
   giftPreference?: string | null;
 }
 
+export type TenantAIUsageByok = {
+  openai?: boolean;
+  anthropic?: boolean;
+};
+
+export type TenantAIUsageFeatureBreakdownItem = {
+  feature?: string;
+  total?: number;
+  calls?: number;
+};
+
+export type TenantAIUsageRecentLogsItem = {
+  id?: string;
+  tenantId?: string;
+  feature?: string;
+  provider?: string;
+  model?: string;
+  inputTokens?: number;
+  outputTokens?: number;
+  costEstimateUsd?: number;
+  usedByok?: boolean;
+  createdAt?: string;
+};
+
+export interface TenantAIUsage {
+  quotaUsd?: number | null;
+  creditsUsd: number;
+  spentThisMonthUsd: number;
+  remainingUsd: number;
+  dailySpendUsd: number;
+  dailySpendResetAt?: string | null;
+  byok: TenantAIUsageByok;
+  featureBreakdown: TenantAIUsageFeatureBreakdownItem[];
+  recentLogs: TenantAIUsageRecentLogsItem[];
+}
+
+export interface AnthropicKeyConfig {
+  success: boolean;
+  tenantId: string;
+  anthropicKeyStatus: string;
+  message?: string;
+}
+
+export type AdminAIUsageTenantBreakdownItem = {
+  tenantId?: string;
+  totalCost?: number;
+  totalCalls?: number;
+  byokCalls?: number;
+};
+
+export type AdminAIUsageFeatureBreakdownItem = {
+  feature?: string;
+  totalCost?: number;
+  totalCalls?: number;
+};
+
+export interface AdminAIUsage {
+  totalCostUsd: number;
+  totalCalls: number;
+  tenantBreakdown: AdminAIUsageTenantBreakdownItem[];
+  featureBreakdown: AdminAIUsageFeatureBreakdownItem[];
+}
+
 export type InstagramOAuthCallbackParams = {
 code?: string;
 state?: string;
@@ -4705,6 +4768,14 @@ page?: number;
  * @maximum 100
  */
 limit?: number;
+};
+
+export type ConfigureAnthropicAIKeyBody = {
+  apiKey: string;
+};
+
+export type RemoveAnthropicAIKey200 = {
+  success?: boolean;
 };
 
 export type ListTenantDuplicateLeads200Item = {

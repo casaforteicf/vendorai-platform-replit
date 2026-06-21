@@ -22,6 +22,7 @@ import type {
 import type {
   AcceptInviteBody,
   Activity,
+  AdminAIUsage,
   Agenda,
   Agendamento,
   AgendamentoDisponibilidade,
@@ -30,6 +31,7 @@ import type {
   AgentTask,
   AnalyzeLeadIntelligenceResponse,
   AnalyzeOnboardingDocumentsBody,
+  AnthropicKeyConfig,
   ApplyTemplateResponse,
   AuthResponse,
   BusinessProfile,
@@ -45,6 +47,7 @@ import type {
   CompraObra,
   CompraObraInput,
   CompraObraUpdate,
+  ConfigureAnthropicAIKeyBody,
   Consent,
   ContentGeneration,
   ContentStrategy,
@@ -194,6 +197,7 @@ import type {
   Proposta,
   PublicSiteResponse,
   RegisterBody,
+  RemoveAnthropicAIKey200,
   ResetPasswordBody,
   Rule,
   SegmentTemplate,
@@ -211,6 +215,7 @@ import type {
   SyncInventoryResponse,
   SyncSupermercadoProdutos200,
   Tenant,
+  TenantAIUsage,
   TenantAnalyticsAgents,
   TenantAnalyticsChannels,
   TenantAnalyticsIntelligence,
@@ -11561,6 +11566,305 @@ export const useRegenerateIntegrationApiKey = <TError = ErrorType<ErrorResponse>
       > => {
       return useMutation(getRegenerateIntegrationApiKeyMutationOptions(options));
     }
+
+export const getGetTenantAIUsageUrl = (id: string,) => {
+
+
+
+
+  return `/api/tenants/${id}/ai-usage`
+}
+
+/**
+ * Returns quota, credits, spend, BYOK status, and feature breakdown.
+ * @summary Tenant AI usage dashboard
+ */
+export const getTenantAIUsage = async (id: string, options?: RequestInit): Promise<TenantAIUsage> => {
+
+  return customFetch<TenantAIUsage>(getGetTenantAIUsageUrl(id),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetTenantAIUsageQueryKey = (id: string,) => {
+    return [
+    `/api/tenants/${id}/ai-usage`
+    ] as const;
+    }
+
+
+export const getGetTenantAIUsageQueryOptions = <TData = Awaited<ReturnType<typeof getTenantAIUsage>>, TError = ErrorType<ErrorResponse>>(id: string, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getTenantAIUsage>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetTenantAIUsageQueryKey(id);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getTenantAIUsage>>> = ({ signal }) => getTenantAIUsage(id, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, enabled: !!(id), ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getTenantAIUsage>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetTenantAIUsageQueryResult = NonNullable<Awaited<ReturnType<typeof getTenantAIUsage>>>
+export type GetTenantAIUsageQueryError = ErrorType<ErrorResponse>
+
+
+/**
+ * @summary Tenant AI usage dashboard
+ */
+
+export function useGetTenantAIUsage<TData = Awaited<ReturnType<typeof getTenantAIUsage>>, TError = ErrorType<ErrorResponse>>(
+ id: string, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getTenantAIUsage>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetTenantAIUsageQueryOptions(id,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+
+
+
+
+
+
+export const getConfigureAnthropicAIKeyUrl = (id: string,) => {
+
+
+
+
+  return `/api/tenants/${id}/ai-keys/anthropic`
+}
+
+/**
+ * Save tenant's own Anthropic API key (encrypted).
+ * @summary Configure Anthropic BYOK key
+ */
+export const configureAnthropicAIKey = async (id: string,
+    configureAnthropicAIKeyBody: ConfigureAnthropicAIKeyBody, options?: RequestInit): Promise<AnthropicKeyConfig> => {
+
+  return customFetch<AnthropicKeyConfig>(getConfigureAnthropicAIKeyUrl(id),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(
+      configureAnthropicAIKeyBody,)
+  }
+);}
+
+
+
+
+export const getConfigureAnthropicAIKeyMutationOptions = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof configureAnthropicAIKey>>, TError,{id: string;data: BodyType<ConfigureAnthropicAIKeyBody>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof configureAnthropicAIKey>>, TError,{id: string;data: BodyType<ConfigureAnthropicAIKeyBody>}, TContext> => {
+
+const mutationKey = ['configureAnthropicAIKey'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof configureAnthropicAIKey>>, {id: string;data: BodyType<ConfigureAnthropicAIKeyBody>}> = (props) => {
+          const {id,data} = props ?? {};
+
+          return  configureAnthropicAIKey(id,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type ConfigureAnthropicAIKeyMutationResult = NonNullable<Awaited<ReturnType<typeof configureAnthropicAIKey>>>
+    export type ConfigureAnthropicAIKeyMutationBody = BodyType<ConfigureAnthropicAIKeyBody>
+    export type ConfigureAnthropicAIKeyMutationError = ErrorType<ErrorResponse>
+
+    /**
+ * @summary Configure Anthropic BYOK key
+ */
+export const useConfigureAnthropicAIKey = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof configureAnthropicAIKey>>, TError,{id: string;data: BodyType<ConfigureAnthropicAIKeyBody>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof configureAnthropicAIKey>>,
+        TError,
+        {id: string;data: BodyType<ConfigureAnthropicAIKeyBody>},
+        TContext
+      > => {
+      return useMutation(getConfigureAnthropicAIKeyMutationOptions(options));
+    }
+
+export const getRemoveAnthropicAIKeyUrl = (id: string,) => {
+
+
+
+
+  return `/api/tenants/${id}/ai-keys/anthropic`
+}
+
+/**
+ * @summary Remove Anthropic BYOK key
+ */
+export const removeAnthropicAIKey = async (id: string, options?: RequestInit): Promise<RemoveAnthropicAIKey200> => {
+
+  return customFetch<RemoveAnthropicAIKey200>(getRemoveAnthropicAIKeyUrl(id),
+  {
+    ...options,
+    method: 'DELETE'
+
+
+  }
+);}
+
+
+
+
+export const getRemoveAnthropicAIKeyMutationOptions = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof removeAnthropicAIKey>>, TError,{id: string}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof removeAnthropicAIKey>>, TError,{id: string}, TContext> => {
+
+const mutationKey = ['removeAnthropicAIKey'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof removeAnthropicAIKey>>, {id: string}> = (props) => {
+          const {id} = props ?? {};
+
+          return  removeAnthropicAIKey(id,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type RemoveAnthropicAIKeyMutationResult = NonNullable<Awaited<ReturnType<typeof removeAnthropicAIKey>>>
+
+    export type RemoveAnthropicAIKeyMutationError = ErrorType<ErrorResponse>
+
+    /**
+ * @summary Remove Anthropic BYOK key
+ */
+export const useRemoveAnthropicAIKey = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof removeAnthropicAIKey>>, TError,{id: string}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof removeAnthropicAIKey>>,
+        TError,
+        {id: string},
+        TContext
+      > => {
+      return useMutation(getRemoveAnthropicAIKeyMutationOptions(options));
+    }
+
+export const getGetAdminAIUsageUrl = () => {
+
+
+
+
+  return `/api/admin/ai-usage`
+}
+
+/**
+ * Total cost, calls, and breakdown by tenant and feature.
+ * @summary Super admin aggregate AI usage
+ */
+export const getAdminAIUsage = async ( options?: RequestInit): Promise<AdminAIUsage> => {
+
+  return customFetch<AdminAIUsage>(getGetAdminAIUsageUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetAdminAIUsageQueryKey = () => {
+    return [
+    `/api/admin/ai-usage`
+    ] as const;
+    }
+
+
+export const getGetAdminAIUsageQueryOptions = <TData = Awaited<ReturnType<typeof getAdminAIUsage>>, TError = ErrorType<ErrorResponse>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getAdminAIUsage>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetAdminAIUsageQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getAdminAIUsage>>> = ({ signal }) => getAdminAIUsage({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getAdminAIUsage>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetAdminAIUsageQueryResult = NonNullable<Awaited<ReturnType<typeof getAdminAIUsage>>>
+export type GetAdminAIUsageQueryError = ErrorType<ErrorResponse>
+
+
+/**
+ * @summary Super admin aggregate AI usage
+ */
+
+export function useGetAdminAIUsage<TData = Awaited<ReturnType<typeof getAdminAIUsage>>, TError = ErrorType<ErrorResponse>>(
+  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getAdminAIUsage>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetAdminAIUsageQueryOptions(options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+
+
+
+
+
 
 export const getListConversationsUrl = () => {
 

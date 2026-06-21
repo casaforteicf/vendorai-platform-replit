@@ -21,8 +21,9 @@ import {
   tenantsTable,
   produtosCatalogoTable,
 } from "@workspace/db";
-import type { AgentTask } from "@workspace/db";
+import type { AgentTask, AiFeature } from "@workspace/db";
 import { executeTaskAction } from "../routes/agent_tasks.js";
+import { callOpenAI as gatewayCallOpenAI, callAnthropic as gatewayCallAnthropic } from "./ai-gateway.js";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 type Lead         = typeof leadsTable.$inferSelect;
@@ -61,7 +62,18 @@ export type RelacionamentoScenario = {
   catalog?: Array<{ nome: string; categoria?: string | null; precoBase: string | null }>;
 } | null;
 
-// ── OpenAI client (lazy) ──────────────────────────────────────────────────────
+const AGENT_FEATURE_MAP: Record<AgentName, AiFeature> = {
+  sdr: "agent_sdr",
+  closer: "agent_closer",
+  followup: "agent_followup",
+  reactivation: "agent_reactivation",
+  scheduler: "agent_scheduler",
+  service: "agent_service",
+  onboarding: "agent_onboarding",
+  relacionamento: "agent_relacionamento",
+};
+
+// ── OpenAI client (lazy) — kept for backward compat, migrate to gateway ──────
 export function getOpenAI(): OpenAI {
   const apiKey = process.env["OPENAI_API_KEY"];
   if (!apiKey) throw new Error("OPENAI_API_KEY environment variable is not set");
@@ -90,7 +102,7 @@ export async function getOpenAIForTenant(tenantId: string): Promise<OpenAI> {
   return new OpenAI({ apiKey });
 }
 
-// ── Anthropic client (lazy) ──────────────────────────────────────────────────
+// ── Anthropic client (lazy) — kept for backward compat ──────────────
 export function getAnthropic(): Anthropic {
   const apiKey = process.env["ANTHROPIC_API_KEY"];
   if (!apiKey) throw new Error("ANTHROPIC_API_KEY environment variable is not set");
@@ -157,8 +169,22 @@ export function computeLimits(config: AgentConfig): LimitResult {
 // ── OpenAI call ───────────────────────────────────────────────────────────────
 export async function callOpenAI(
   messages: OpenAI.Chat.ChatCompletionMessageParam[],
-  tenantId?: string
+  tenantId?: string,
+  agentName?: AgentName,
+  log?: Logger
 ): Promise<{ resposta: string; tokensUsed: number }> {
+  if (tenantId && agentName) {
+    const feature = AGENT_FEATURE_MAP[agentName];
+    const { content, inputTokens, outputTokens } = await gatewayCallOpenAI(
+      tenantId,
+      feature,
+      messages,
+      { model: "gpt-4o-mini", temperature: 0.7, maxTokens: 600, log }
+    );
+    return { resposta: content, tokensUsed: inputTokens + outputTokens };
+  }
+
+  // Fallback: direct call (for non-tenant contexts or until full migration)
   const openai = tenantId ? await getOpenAIForTenant(tenantId) : getOpenAI();
   const completion = await openai.chat.completions.create({
     model:       "gpt-4o-mini",

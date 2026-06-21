@@ -53,6 +53,7 @@ import leadProposalsRouter from "./lead_proposals";
 import productPresentationsRouter from "./product_presentations";
 import tenantCalendarSettingsRouter from "./tenant_calendar_settings";
 import leadSpouseConsentRouter from "./lead_spouse_consent";
+import aiGatewayRouter from "./ai_gateway";
 import { authenticate, blockPartnerFromCRM, blockSuspendedTenants, blockExpiredDemo, requireRole, requireSameTenanOrSuperAdmin } from "../middlewares/auth";
 
 const router: IRouter = Router();
@@ -186,6 +187,9 @@ router.use(notificationsRouter);
 // Relationship Hub
 router.use(tenantCalendarSettingsRouter);
 router.use(leadSpouseConsentRouter);
+
+// AI Gateway Hub
+router.use(aiGatewayRouter);
 
 export { requireRole, requireSameTenanOrSuperAdmin };
 export default router;

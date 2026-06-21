@@ -1,17 +1,18 @@
-import { useState, useMemo } from "react";
+import { useState } from "react";
 import { useAuth } from "@/contexts/AuthContext";
 import {
   useListTenants,
   getListTenantsQueryKey,
-  getListIntelligenceAnalysisLogQueryOptions,
   useCreateInvite,
   useListInvitesByTenant,
   getListInvitesByTenantQueryKey,
+  useGetAdminAIUsage,
+  getGetAdminAIUsageQueryKey,
   type Tenant,
-  type IntelligenceAnalysisLogStats,
   type InviteItem,
+  type AdminAIUsage,
 } from "@workspace/api-client-react";
-import { useQueries, useQueryClient } from "@tanstack/react-query";
+import { useQueryClient } from "@tanstack/react-query";
 import {
   Table,
   TableBody,
@@ -43,14 +44,20 @@ import {
   Loader2,
   Clock,
   UserCheck,
+  CreditCard,
+  DollarSign,
+  Activity,
+  Key,
+  Hash,
+  BarChart3,
 } from "lucide-react";
 
-type SortField = "name" | "totalCalls" | "totalTokens";
+type SortField = "name" | "totalCost" | "totalCalls" | "byokRatio";
 type SortDir = "asc" | "desc";
 
 interface TenantRow {
   tenant: Tenant;
-  stats: IntelligenceAnalysisLogStats | null;
+  usage: AdminAIUsage["tenantBreakdown"][0] | null;
   isLoading: boolean;
 }
 
@@ -322,7 +329,7 @@ function InviteDialog({
 
 export default function AdminAIUsage() {
   const { user } = useAuth();
-  const [sortField, setSortField] = useState<SortField>("totalTokens");
+  const [sortField, setSortField] = useState<SortField>("totalCost");
   const [sortDir, setSortDir] = useState<SortDir>("desc");
   const [inviteDialogTenant, setInviteDialogTenant] = useState<Tenant | null>(
     null
@@ -334,30 +341,28 @@ export default function AdminAIUsage() {
     query: { enabled: isSuperAdmin, queryKey: getListTenantsQueryKey() },
   });
 
-  const analysisQueries = useQueries({
-    queries: isSuperAdmin
-      ? tenants.map((t) =>
-          getListIntelligenceAnalysisLogQueryOptions(t.id, { limit: 1 })
-        )
-      : [],
+  const {
+    data: adminUsage,
+    isLoading: usageLoading,
+  } = useGetAdminAIUsage({
+    query: { enabled: isSuperAdmin, queryKey: getGetAdminAIUsageQueryKey() },
   });
 
-  const rows: TenantRow[] = tenants.map((tenant, i) => ({
+  // Merge tenant list with usage data
+  const usageByTenant = new Map(
+    (adminUsage?.tenantBreakdown ?? []).map((u) => [u.tenantId, u])
+  );
+
+  const rows: TenantRow[] = tenants.map((tenant) => ({
     tenant,
-    stats: analysisQueries[i]?.data?.stats ?? null,
-    isLoading: analysisQueries[i]?.isLoading ?? false,
+    usage: usageByTenant.get(tenant.id) ?? null,
+    isLoading: usageLoading,
   }));
 
-  const totalTokensAll = rows.reduce(
-    (sum, r) => sum + (r.stats?.totalTokens ?? 0),
-    0
-  );
-  const totalCallsAll = rows.reduce(
-    (sum, r) => sum + (r.stats?.totalCalls ?? 0),
-    0
-  );
+  const totalCostUsd = adminUsage?.totalCostUsd ?? 0;
+  const totalCalls = adminUsage?.totalCalls ?? 0;
   const tenantsWithUsage = rows.filter(
-    (r) => (r.stats?.totalCalls ?? 0) > 0
+    (r) => (r.usage?.totalCalls ?? 0) > 0
   ).length;
 
   function handleSort(field: SortField) {
@@ -369,27 +374,33 @@ export default function AdminAIUsage() {
     }
   }
 
-  const sorted = useMemo(() => {
-    return [...rows].sort((a, b) => {
-      let aVal: string | number;
-      let bVal: string | number;
-      if (sortField === "name") {
-        aVal = a.tenant.name.toLowerCase();
-        bVal = b.tenant.name.toLowerCase();
-      } else if (sortField === "totalCalls") {
-        aVal = a.stats?.totalCalls ?? 0;
-        bVal = b.stats?.totalCalls ?? 0;
-      } else {
-        aVal = a.stats?.totalTokens ?? 0;
-        bVal = b.stats?.totalTokens ?? 0;
-      }
-      if (aVal < bVal) return sortDir === "asc" ? -1 : 1;
-      if (aVal > bVal) return sortDir === "asc" ? 1 : -1;
-      return 0;
-    });
-  }, [rows, sortField, sortDir]);
+  const sorted = [...rows].sort((a, b) => {
+    let aVal: string | number;
+    let bVal: string | number;
+    if (sortField === "name") {
+      aVal = a.tenant.name.toLowerCase();
+      bVal = b.tenant.name.toLowerCase();
+    } else if (sortField === "totalCost") {
+      aVal = a.usage?.totalCost ?? 0;
+      bVal = b.usage?.totalCost ?? 0;
+    } else if (sortField === "totalCalls") {
+      aVal = a.usage?.totalCalls ?? 0;
+      bVal = b.usage?.totalCalls ?? 0;
+    } else {
+      // byokRatio
+      const aRatio = a.usage && (a.usage.totalCalls ?? 0) > 0
+        ? (a.usage.byokCalls ?? 0) / a.usage.totalCalls! : 0;
+      const bRatio = b.usage && (b.usage.totalCalls ?? 0) > 0
+        ? (b.usage.byokCalls ?? 0) / b.usage.totalCalls! : 0;
+      aVal = aRatio;
+      bVal = bRatio;
+    }
+    if (aVal < bVal) return sortDir === "asc" ? -1 : 1;
+    if (aVal > bVal) return sortDir === "asc" ? 1 : -1;
+    return 0;
+  });
 
-  const allLoading = tenantsLoading || analysisQueries.some((q) => q.isLoading);
+  const allLoading = tenantsLoading || usageLoading;
 
   return (
     <div className="space-y-6">
@@ -397,46 +408,49 @@ export default function AdminAIUsage() {
         <BrainCircuit className="h-6 w-6 text-primary" />
         <div>
           <h1 className="text-2xl font-bold tracking-tight">
-            AI Analysis Usage
+            AI Usage & Cost
           </h1>
           <p className="text-muted-foreground text-sm">
-            Token consumption across all tenants — sorted by highest usage
+            Cost governance across all tenants — real usage from AI Gateway
           </p>
         </div>
       </div>
 
-      <div className="grid grid-cols-3 gap-4">
+      <div className="grid grid-cols-4 gap-4">
         <Card>
           <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium text-muted-foreground">
-              Total Tokens Consumed
+            <CardTitle className="text-sm font-medium text-muted-foreground flex items-center gap-1.5">
+              <DollarSign className="h-3.5 w-3.5" />
+              Total Cost (USD)
             </CardTitle>
           </CardHeader>
           <CardContent>
             {allLoading ? (
               <div className="h-8 w-24 bg-muted animate-pulse rounded" />
             ) : (
-              <p className="text-2xl font-bold">{formatNumber(totalTokensAll)}</p>
+              <p className="text-2xl font-bold">${totalCostUsd.toFixed(2)}</p>
             )}
           </CardContent>
         </Card>
         <Card>
           <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium text-muted-foreground">
-              Total Analysis Calls
+            <CardTitle className="text-sm font-medium text-muted-foreground flex items-center gap-1.5">
+              <Hash className="h-3.5 w-3.5" />
+              Total AI Calls
             </CardTitle>
           </CardHeader>
           <CardContent>
             {allLoading ? (
               <div className="h-8 w-16 bg-muted animate-pulse rounded" />
             ) : (
-              <p className="text-2xl font-bold">{formatNumber(totalCallsAll)}</p>
+              <p className="text-2xl font-bold">{formatNumber(totalCalls)}</p>
             )}
           </CardContent>
         </Card>
         <Card>
           <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium text-muted-foreground">
+            <CardTitle className="text-sm font-medium text-muted-foreground flex items-center gap-1.5">
+              <Activity className="h-3.5 w-3.5" />
               Tenants with Usage
             </CardTitle>
           </CardHeader>
@@ -453,7 +467,46 @@ export default function AdminAIUsage() {
             )}
           </CardContent>
         </Card>
+        <Card>
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm font-medium text-muted-foreground flex items-center gap-1.5">
+              <BarChart3 className="h-3.5 w-3.5" />
+              Features Used
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            {allLoading ? (
+              <div className="h-8 w-12 bg-muted animate-pulse rounded" />
+            ) : (
+              <p className="text-2xl font-bold">
+                {adminUsage?.featureBreakdown?.length ?? 0}
+              </p>
+            )}
+          </CardContent>
+        </Card>
       </div>
+
+      {/* Feature Breakdown */}
+      {(adminUsage?.featureBreakdown?.length ?? 0) > 0 && (
+        <Card>
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm font-medium text-muted-foreground">
+              Cost by Feature
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="flex flex-wrap gap-3">
+              {adminUsage?.featureBreakdown?.map((f) => (
+                <div key={f.feature ?? "unknown"} className="flex items-center gap-2 rounded-lg border px-3 py-2 text-sm">
+                  <span className="capitalize font-medium">{(f.feature ?? "unknown").replace(/_/g, " ")}</span>
+                  <span className="text-muted-foreground">${Number(f.totalCost ?? 0).toFixed(2)}</span>
+                  <span className="text-xs text-muted-foreground">({f.totalCalls ?? 0} calls)</span>
+                </div>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       <Card>
         <CardContent className="p-0">
@@ -478,43 +531,54 @@ export default function AdminAIUsage() {
                     dir={sortDir}
                     onSort={handleSort}
                   >
-                    Analysis Calls
+                    AI Calls
                   </SortButton>
                 </TableHead>
                 <TableHead className="text-right pr-6">
                   <SortButton
-                    field="totalTokens"
+                    field="totalCost"
                     current={sortField}
                     dir={sortDir}
                     onSort={handleSort}
                   >
-                    Tokens Used
+                    Cost (USD)
                   </SortButton>
                 </TableHead>
-                <TableHead className="text-right">Hourly Cap</TableHead>
-                <TableHead className="text-right pr-6">Breakdown</TableHead>
+                <TableHead className="text-right pr-6">
+                  <SortButton
+                    field="byokRatio"
+                    current={sortField}
+                    dir={sortDir}
+                    onSort={handleSort}
+                  >
+                    BYOK
+                  </SortButton>
+                </TableHead>
                 <TableHead className="text-right pr-6">Ações</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {tenantsLoading ? (
                 <TableRow>
-                  <TableCell colSpan={7} className="h-32 text-center">
+                  <TableCell colSpan={6} className="h-32 text-center">
                     <Loader2 className="h-5 w-5 animate-spin mx-auto text-muted-foreground" />
                   </TableCell>
                 </TableRow>
               ) : sorted.length === 0 ? (
                 <TableRow>
                   <TableCell
-                    colSpan={7}
+                    colSpan={6}
                     className="h-32 text-center text-muted-foreground"
                   >
                     No tenants found.
                   </TableCell>
                 </TableRow>
               ) : (
-                sorted.map(({ tenant, stats, isLoading }) => {
-                  const byTrigger = stats?.byTriggeredBy ?? {};
+                sorted.map((row) => {
+                  const { tenant, usage } = row;
+                  const byokRatio = usage && (usage.totalCalls ?? 0) > 0
+                    ? Math.round(((usage.byokCalls ?? 0) / (usage.totalCalls ?? 1)) * 100)
+                    : 0;
                   return (
                     <TableRow key={tenant.id}>
                       <TableCell className="pl-6">
@@ -540,56 +604,33 @@ export default function AdminAIUsage() {
                         </Badge>
                       </TableCell>
                       <TableCell className="text-right">
-                        {isLoading ? (
+                        {usageLoading ? (
                           <div className="h-4 w-12 bg-muted animate-pulse rounded ml-auto" />
                         ) : (
                           <span className="font-mono">
-                            {formatNumber(stats?.totalCalls ?? 0)}
+                            {formatNumber(usage?.totalCalls ?? 0)}
                           </span>
                         )}
                       </TableCell>
                       <TableCell className="text-right pr-6">
-                        {isLoading ? (
+                        {usageLoading ? (
                           <div className="h-4 w-16 bg-muted animate-pulse rounded ml-auto" />
                         ) : (
                           <span className="font-mono font-medium">
-                            {formatNumber(stats?.totalTokens ?? 0)}
+                            ${Number(usage?.totalCost ?? 0).toFixed(2)}
                           </span>
                         )}
                       </TableCell>
-                      <TableCell className="text-right">
-                        {isLoading ? (
-                          <div className="h-4 w-20 bg-muted animate-pulse rounded ml-auto" />
-                        ) : stats ? (
-                          <HourlyCapCell
-                            used={stats.rollingHourCount}
-                            limit={stats.hourlyLimit}
-                          />
-                        ) : (
-                          <span className="text-xs text-muted-foreground">—</span>
-                        )}
-                      </TableCell>
                       <TableCell className="text-right pr-6">
-                        {isLoading ? (
-                          <div className="h-4 w-24 bg-muted animate-pulse rounded ml-auto" />
-                        ) : Object.keys(byTrigger).length === 0 ? (
-                          <span className="text-xs text-muted-foreground">—</span>
-                        ) : (
-                          <div className="flex flex-col items-end gap-0.5">
-                            {Object.entries(byTrigger).map(([trigger, data]) => (
-                              <span
-                                key={trigger}
-                                className="text-xs text-muted-foreground"
-                              >
-                                <span className="capitalize">{trigger}</span>:{" "}
-                                <span className="font-mono">
-                                  {formatNumber(data.tokens)}
-                                </span>{" "}
-                                tok / {data.calls} call
-                                {data.calls !== 1 ? "s" : ""}
-                              </span>
-                            ))}
+                        {usageLoading ? (
+                          <div className="h-4 w-12 bg-muted animate-pulse rounded ml-auto" />
+                        ) : usage && (usage.totalCalls ?? 0) > 0 ? (
+                          <div className="flex items-center justify-end gap-1">
+                            <Key className="h-3 w-3 text-muted-foreground" />
+                            <span className="text-xs font-mono">{byokRatio}%</span>
                           </div>
+                        ) : (
+                          <span className="text-xs text-muted-foreground">—</span>
                         )}
                       </TableCell>
                       <TableCell className="text-right pr-6">

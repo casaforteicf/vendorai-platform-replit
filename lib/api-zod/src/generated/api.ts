@@ -4402,6 +4402,98 @@ export const RegenerateIntegrationApiKeyResponse = zod.object({
 
 
 /**
+ * Returns quota, credits, spend, BYOK status, and feature breakdown.
+ * @summary Tenant AI usage dashboard
+ */
+export const GetTenantAIUsageParams = zod.object({
+  "id": zod.coerce.string()
+})
+
+export const GetTenantAIUsageResponse = zod.object({
+  "quotaUsd": zod.number().nullish(),
+  "creditsUsd": zod.number(),
+  "spentThisMonthUsd": zod.number(),
+  "remainingUsd": zod.number(),
+  "dailySpendUsd": zod.number(),
+  "dailySpendResetAt": zod.coerce.date().nullish(),
+  "byok": zod.object({
+  "openai": zod.boolean().optional(),
+  "anthropic": zod.boolean().optional()
+}),
+  "featureBreakdown": zod.array(zod.object({
+  "feature": zod.string().optional(),
+  "total": zod.number().optional(),
+  "calls": zod.number().optional()
+})),
+  "recentLogs": zod.array(zod.object({
+  "id": zod.string().optional(),
+  "tenantId": zod.string().optional(),
+  "feature": zod.string().optional(),
+  "provider": zod.string().optional(),
+  "model": zod.string().optional(),
+  "inputTokens": zod.number().optional(),
+  "outputTokens": zod.number().optional(),
+  "costEstimateUsd": zod.number().optional(),
+  "usedByok": zod.boolean().optional(),
+  "createdAt": zod.coerce.date().optional()
+}))
+})
+
+
+/**
+ * Save tenant's own Anthropic API key (encrypted).
+ * @summary Configure Anthropic BYOK key
+ */
+export const ConfigureAnthropicAIKeyParams = zod.object({
+  "id": zod.coerce.string()
+})
+
+export const ConfigureAnthropicAIKeyBody = zod.object({
+  "apiKey": zod.string()
+})
+
+export const ConfigureAnthropicAIKeyResponse = zod.object({
+  "success": zod.boolean(),
+  "tenantId": zod.string(),
+  "anthropicKeyStatus": zod.string(),
+  "message": zod.string().optional()
+})
+
+
+/**
+ * @summary Remove Anthropic BYOK key
+ */
+export const RemoveAnthropicAIKeyParams = zod.object({
+  "id": zod.coerce.string()
+})
+
+export const RemoveAnthropicAIKeyResponse = zod.object({
+  "success": zod.boolean().optional()
+})
+
+
+/**
+ * Total cost, calls, and breakdown by tenant and feature.
+ * @summary Super admin aggregate AI usage
+ */
+export const GetAdminAIUsageResponse = zod.object({
+  "totalCostUsd": zod.number(),
+  "totalCalls": zod.number(),
+  "tenantBreakdown": zod.array(zod.object({
+  "tenantId": zod.string().optional(),
+  "totalCost": zod.number().optional(),
+  "totalCalls": zod.number().optional(),
+  "byokCalls": zod.number().optional()
+})),
+  "featureBreakdown": zod.array(zod.object({
+  "feature": zod.string().optional(),
+  "totalCost": zod.number().optional(),
+  "totalCalls": zod.number().optional()
+}))
+})
+
+
+/**
  * @summary List all conversations
  */
 export const listConversationsResponseNaoLidasDefault = 0;
