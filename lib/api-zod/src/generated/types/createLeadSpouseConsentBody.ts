@@ -7,6 +7,8 @@
  */
 
 export interface CreateLeadSpouseConsentBody {
+  consentStatus?: string;
   consentGiven: boolean;
+  spouseLeadId?: string | null;
   giftPreference?: string | null;
 }

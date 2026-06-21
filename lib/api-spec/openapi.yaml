@@ -14932,10 +14932,12 @@ components:
         namoradosEnabled: { type: boolean }
         natalEnabled: { type: boolean }
         blackFridayEnabled: { type: boolean }
+        enableSpouseGiftFlow: { type: boolean }
+        commercialDates: { type: array, items: { type: object, properties: { name: { type: string }, active: { type: boolean }, daysBeforeToSend: { type: integer }, targetGender: { type: string }, movableDate: { type: boolean }, month: { type: integer }, day: { type: integer } }, required: [name, active, daysBeforeToSend] } }
         customDates: { type: array, items: { type: object, properties: { name: { type: string }, date: { type: string }, enabled: { type: boolean } }, required: [name, date, enabled] } }
         createdAt: { type: string, format: date-time }
         updatedAt: { type: string, format: date-time }
-      required: [id, tenantId, pascoaEnabled, diaDasMaesEnabled, diaDosPaisEnabled, diaDasCriancasEnabled, namoradosEnabled, natalEnabled, blackFridayEnabled, createdAt, updatedAt]
+      required: [id, tenantId, pascoaEnabled, diaDasMaesEnabled, diaDosPaisEnabled, diaDasCriancasEnabled, namoradosEnabled, natalEnabled, blackFridayEnabled, enableSpouseGiftFlow, createdAt, updatedAt]
 
     CreateTenantCalendarSettingsBody:
       type: object
@@ -14947,6 +14949,8 @@ components:
         namoradosEnabled: { type: boolean }
         natalEnabled: { type: boolean }
         blackFridayEnabled: { type: boolean }
+        enableSpouseGiftFlow: { type: boolean }
+        commercialDates: { type: array, items: { type: object, properties: { name: { type: string }, active: { type: boolean }, daysBeforeToSend: { type: integer }, targetGender: { type: string }, movableDate: { type: boolean }, month: { type: integer }, day: { type: integer } }, required: [name, active, daysBeforeToSend] } }
         customDates: { type: array, items: { type: object, properties: { name: { type: string }, date: { type: string }, enabled: { type: boolean } }, required: [name, date, enabled] } }
 
     UpdateTenantCalendarSettingsBody:
@@ -14959,6 +14963,8 @@ components:
         namoradosEnabled: { type: boolean }
         natalEnabled: { type: boolean }
         blackFridayEnabled: { type: boolean }
+        enableSpouseGiftFlow: { type: boolean }
+        commercialDates: { type: array, items: { type: object, properties: { name: { type: string }, active: { type: boolean }, daysBeforeToSend: { type: integer }, targetGender: { type: string }, movableDate: { type: boolean }, month: { type: integer }, day: { type: integer } }, required: [name, active, daysBeforeToSend] } }
         customDates: { type: array, items: { type: object, properties: { name: { type: string }, date: { type: string }, enabled: { type: boolean } }, required: [name, date, enabled] } }
 
     LeadSpouseConsent:
@@ -14967,22 +14973,31 @@ components:
         id: { type: string }
         tenantId: { type: string }
         leadId: { type: string }
+        consentStatus: { type: string }
         consentGiven: { type: boolean }
         consentGivenAt: { type: string, format: date-time, nullable: true }
+        consentRequestedAt: { type: string, format: date-time, nullable: true }
+        spouseLeadId: { type: string, nullable: true }
         giftPreference: { type: string, nullable: true }
         createdAt: { type: string, format: date-time }
         updatedAt: { type: string, format: date-time }
-      required: [id, tenantId, leadId, consentGiven, createdAt, updatedAt]
+      required: [id, tenantId, leadId, consentStatus, consentGiven, createdAt, updatedAt]
 
     CreateLeadSpouseConsentBody:
       type: object
       properties:
+        consentStatus: { type: string }
         consentGiven: { type: boolean }
+        spouseLeadId: { type: string, nullable: true }
         giftPreference: { type: string, nullable: true }
       required: [consentGiven]
 
     UpdateLeadSpouseConsentBody:
       type: object
       properties:
+        consentStatus: { type: string }
         consentGiven: { type: boolean }
+        consentGivenAt: { type: string, format: date-time, nullable: true }
+        consentRequestedAt: { type: string, format: date-time, nullable: true }
+        spouseLeadId: { type: string, nullable: true }
         giftPreference: { type: string, nullable: true }

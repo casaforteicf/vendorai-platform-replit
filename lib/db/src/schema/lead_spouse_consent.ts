@@ -16,9 +16,12 @@ export const leadSpouseConsentTable = pgTable(
     leadId: text("lead_id")
       .notNull()
       .references(() => leadsTable.id, { onDelete: "cascade" }),
+    consentStatus: text("consent_status").notNull().default("none"),
     consentGiven: boolean("consent_given").notNull().default(false),
     consentGivenAt: timestamp("consent_given_at"),
+    consentRequestedAt: timestamp("consent_requested_at"),
     spouseLeadId: text("spouse_lead_id"),
+    giftPreference: text("gift_preference"),
     createdAt: timestamp("created_at").notNull().defaultNow(),
     updatedAt: timestamp("updated_at").notNull().defaultNow(),
   },
@@ -29,6 +32,7 @@ export const insertLeadSpouseConsentSchema = createInsertSchema(
   leadSpouseConsentTable,
   {
     consentGivenAt: z.coerce.date().optional(),
+    consentRequestedAt: z.coerce.date().optional(),
   }
 ).omit({ id: true, createdAt: true, updatedAt: true });
 
@@ -36,6 +40,7 @@ export const updateLeadSpouseConsentSchema = createSelectSchema(
   leadSpouseConsentTable,
   {
     consentGivenAt: z.coerce.date().optional(),
+    consentRequestedAt: z.coerce.date().optional(),
   }
 )
   .omit({ id: true, tenantId: true, leadId: true, createdAt: true, updatedAt: true })

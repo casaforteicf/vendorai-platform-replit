@@ -638,7 +638,7 @@ async function runSpecialDateCheck(log: Logger): Promise<void> {
           continue;
         }
 
-        let scenario: { type: string; dateName?: string; recipientName?: string; recipientRelation?: string; catalog?: Array<{ nome: string; categoria?: string | null; precoBase: string | null }> } | null = null;
+        let scenario: { type: string; dateName?: string; recipientName?: string; recipientRelation?: string; catalog?: Array<{ nome: string; categoria?: string | null; precoBase: string | null }>; dealId?: string } | null = null;
 
         // Check lead birthday
         if (lead.birthMonth === todayMonth && lead.birthDay === todayDay) {
@@ -674,6 +674,32 @@ async function runSpecialDateCheck(log: Logger): Promise<void> {
             // Also check birthMonth/birthDay if present
             if (!scenario && f.birthMonth === todayMonth && f.birthDay === todayDay) {
               scenario = { type: "birthday_family", recipientName: f.nome, recipientRelation: "filho(a)", catalog };
+              break;
+            }
+          }
+        }
+
+        // Check deal anniversary (won deals)
+        if (!scenario) {
+          const wonDeals = await db
+            .select({ id: dealsTable.id, dataFechamento: dealsTable.dataFechamento })
+            .from(dealsTable)
+            .where(
+              and(
+                eq(dealsTable.tenantId, tenant.id),
+                eq(dealsTable.leadId, lead.id),
+                eq(dealsTable.etapa, "ganho"),
+                isNotNull(dealsTable.dataFechamento)
+              )
+            )
+            .limit(5);
+          for (const deal of wonDeals) {
+            if (!deal.dataFechamento) continue;
+            const fechDate = new Date(deal.dataFechamento);
+            const fechMonth = fechDate.getMonth() + 1;
+            const fechDay = fechDate.getDate();
+            if (fechMonth === todayMonth && fechDay === todayDay) {
+              scenario = { type: "deal_anniversary", dealId: deal.id, catalog };
               break;
             }
           }
@@ -730,7 +756,7 @@ async function runSpecialDateCheck(log: Logger): Promise<void> {
         dispatchAgentBackground({
           tenantId: tenant.id,
           leadId: lead.id,
-          mensagem: `PROATIVO: ${scenario.type === "birthday_lead" ? "aniversário do lead" : scenario.type === "birthday_family" ? `aniversário de ${scenario.recipientName}` : scenario.type === "commercial_date" ? `campanha de ${scenario.dateName}` : "relacionamento"}.`,
+          mensagem: `PROATIVO: ${scenario.type === "birthday_lead" ? "aniversário do lead" : scenario.type === "birthday_family" ? `aniversário de ${scenario.recipientName}` : scenario.type === "deal_anniversary" ? "aniversário de fechamento do deal" : scenario.type === "commercial_date" ? `campanha de ${scenario.dateName}` : "relacionamento"}.`,
           forcedAgent: "relacionamento",
           log,
           scenario: {

@@ -7,6 +7,10 @@
  */
 
 export interface UpdateLeadSpouseConsentBody {
+  consentStatus?: string;
   consentGiven?: boolean;
+  consentGivenAt?: Date | null;
+  consentRequestedAt?: Date | null;
+  spouseLeadId?: string | null;
   giftPreference?: string | null;
 }

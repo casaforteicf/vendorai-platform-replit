@@ -9300,6 +9300,16 @@ export const GetTenantCalendarSettingsResponse = zod.object({
   "namoradosEnabled": zod.boolean(),
   "natalEnabled": zod.boolean(),
   "blackFridayEnabled": zod.boolean(),
+  "enableSpouseGiftFlow": zod.boolean(),
+  "commercialDates": zod.array(zod.object({
+  "name": zod.string(),
+  "active": zod.boolean(),
+  "daysBeforeToSend": zod.number(),
+  "targetGender": zod.string().optional(),
+  "movableDate": zod.boolean().optional(),
+  "month": zod.number().optional(),
+  "day": zod.number().optional()
+})).optional(),
   "customDates": zod.array(zod.object({
   "name": zod.string(),
   "date": zod.string(),
@@ -9325,6 +9335,16 @@ export const CreateTenantCalendarSettingsBody = zod.object({
   "namoradosEnabled": zod.boolean().optional(),
   "natalEnabled": zod.boolean().optional(),
   "blackFridayEnabled": zod.boolean().optional(),
+  "enableSpouseGiftFlow": zod.boolean().optional(),
+  "commercialDates": zod.array(zod.object({
+  "name": zod.string(),
+  "active": zod.boolean(),
+  "daysBeforeToSend": zod.number(),
+  "targetGender": zod.string().optional(),
+  "movableDate": zod.boolean().optional(),
+  "month": zod.number().optional(),
+  "day": zod.number().optional()
+})).optional(),
   "customDates": zod.array(zod.object({
   "name": zod.string(),
   "date": zod.string(),
@@ -9348,6 +9368,16 @@ export const UpdateTenantCalendarSettingsBody = zod.object({
   "namoradosEnabled": zod.boolean().optional(),
   "natalEnabled": zod.boolean().optional(),
   "blackFridayEnabled": zod.boolean().optional(),
+  "enableSpouseGiftFlow": zod.boolean().optional(),
+  "commercialDates": zod.array(zod.object({
+  "name": zod.string(),
+  "active": zod.boolean(),
+  "daysBeforeToSend": zod.number(),
+  "targetGender": zod.string().optional(),
+  "movableDate": zod.boolean().optional(),
+  "month": zod.number().optional(),
+  "day": zod.number().optional()
+})).optional(),
   "customDates": zod.array(zod.object({
   "name": zod.string(),
   "date": zod.string(),
@@ -9365,6 +9395,16 @@ export const UpdateTenantCalendarSettingsResponse = zod.object({
   "namoradosEnabled": zod.boolean(),
   "natalEnabled": zod.boolean(),
   "blackFridayEnabled": zod.boolean(),
+  "enableSpouseGiftFlow": zod.boolean(),
+  "commercialDates": zod.array(zod.object({
+  "name": zod.string(),
+  "active": zod.boolean(),
+  "daysBeforeToSend": zod.number(),
+  "targetGender": zod.string().optional(),
+  "movableDate": zod.boolean().optional(),
+  "month": zod.number().optional(),
+  "day": zod.number().optional()
+})).optional(),
   "customDates": zod.array(zod.object({
   "name": zod.string(),
   "date": zod.string(),
@@ -9386,8 +9426,11 @@ export const GetLeadSpouseConsentResponse = zod.object({
   "id": zod.string(),
   "tenantId": zod.string(),
   "leadId": zod.string(),
+  "consentStatus": zod.string(),
   "consentGiven": zod.boolean(),
   "consentGivenAt": zod.coerce.date().nullish(),
+  "consentRequestedAt": zod.coerce.date().nullish(),
+  "spouseLeadId": zod.string().nullish(),
   "giftPreference": zod.string().nullish(),
   "createdAt": zod.coerce.date(),
   "updatedAt": zod.coerce.date()
@@ -9402,7 +9445,9 @@ export const CreateLeadSpouseConsentParams = zod.object({
 })
 
 export const CreateLeadSpouseConsentBody = zod.object({
+  "consentStatus": zod.string().optional(),
   "consentGiven": zod.boolean(),
+  "spouseLeadId": zod.string().nullish(),
   "giftPreference": zod.string().nullish()
 })
 
@@ -9415,7 +9460,11 @@ export const UpdateLeadSpouseConsentParams = zod.object({
 })
 
 export const UpdateLeadSpouseConsentBody = zod.object({
+  "consentStatus": zod.string().optional(),
   "consentGiven": zod.boolean().optional(),
+  "consentGivenAt": zod.coerce.date().nullish(),
+  "consentRequestedAt": zod.coerce.date().nullish(),
+  "spouseLeadId": zod.string().nullish(),
   "giftPreference": zod.string().nullish()
 })
 
@@ -9423,8 +9472,11 @@ export const UpdateLeadSpouseConsentResponse = zod.object({
   "id": zod.string(),
   "tenantId": zod.string(),
   "leadId": zod.string(),
+  "consentStatus": zod.string(),
   "consentGiven": zod.boolean(),
   "consentGivenAt": zod.coerce.date().nullish(),
+  "consentRequestedAt": zod.coerce.date().nullish(),
+  "spouseLeadId": zod.string().nullish(),
   "giftPreference": zod.string().nullish(),
   "createdAt": zod.coerce.date(),
   "updatedAt": zod.coerce.date()

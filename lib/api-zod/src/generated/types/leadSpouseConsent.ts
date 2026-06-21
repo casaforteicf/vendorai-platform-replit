@@ -10,8 +10,11 @@ export interface LeadSpouseConsent {
   id: string;
   tenantId: string;
   leadId: string;
+  consentStatus: string;
   consentGiven: boolean;
   consentGivenAt?: Date | null;
+  consentRequestedAt?: Date | null;
+  spouseLeadId?: string | null;
   giftPreference?: string | null;
   createdAt: Date;
   updatedAt: Date;

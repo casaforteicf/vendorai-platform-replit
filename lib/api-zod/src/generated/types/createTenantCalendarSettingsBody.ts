@@ -5,6 +5,7 @@
  * API specification
  * OpenAPI spec version: 0.1.0
  */
+import type { CreateTenantCalendarSettingsBodyCommercialDatesItem } from './createTenantCalendarSettingsBodyCommercialDatesItem';
 import type { CreateTenantCalendarSettingsBodyCustomDatesItem } from './createTenantCalendarSettingsBodyCustomDatesItem';
 
 export interface CreateTenantCalendarSettingsBody {
@@ -15,5 +16,7 @@ export interface CreateTenantCalendarSettingsBody {
   namoradosEnabled?: boolean;
   natalEnabled?: boolean;
   blackFridayEnabled?: boolean;
+  enableSpouseGiftFlow?: boolean;
+  commercialDates?: CreateTenantCalendarSettingsBodyCommercialDatesItem[];
   customDates?: CreateTenantCalendarSettingsBodyCustomDatesItem[];
 }

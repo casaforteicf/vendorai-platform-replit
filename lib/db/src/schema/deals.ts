@@ -42,6 +42,7 @@ export const dealsTable = pgTable("deals", {
   motivoPerda: text("motivo_perda"),
   // Closure tracking
   closureTriggeredAt: timestamp("closure_triggered_at"),
+  dataFechamento: timestamp("data_fechamento"),
   contractStatus: text("contract_status"),
   contractError: text("contract_error"),
   onboardingStatus: text("onboarding_status"),
@@ -96,6 +97,7 @@ export const insertDealSchema = createInsertSchema(dealsTable, {
   valor: valorField,
   probabilidade: z.number().int().min(0).max(100).optional(),
   dataFechamentoPrevista: z.coerce.date().optional(),
+  dataFechamento: z.coerce.date().optional(),
   mrr: numericSaasField,
   arr: numericSaasField,
   seats: z.number().int().min(0).optional(),
@@ -107,6 +109,7 @@ export const updateDealSchema = createSelectSchema(dealsTable, {
   valor: valorField,
   probabilidade: z.number().int().min(0).max(100).optional(),
   dataFechamentoPrevista: z.coerce.date().optional(),
+  dataFechamento: z.coerce.date().optional(),
   mrr: numericSaasField,
   arr: numericSaasField,
   seats: z.number().int().min(0).optional(),

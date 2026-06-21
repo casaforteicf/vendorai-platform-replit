@@ -3434,6 +3434,7 @@ function CalendarSettingsTab({ tenantId }: { tenantId: string }) {
     namoradosEnabled: true,
     natalEnabled: true,
     blackFridayEnabled: true,
+    enableSpouseGiftFlow: false,
   });
 
   useEffect(() => {
@@ -3446,6 +3447,7 @@ function CalendarSettingsTab({ tenantId }: { tenantId: string }) {
         namoradosEnabled: settings.namoradosEnabled,
         natalEnabled: settings.natalEnabled,
         blackFridayEnabled: settings.blackFridayEnabled,
+        enableSpouseGiftFlow: settings.enableSpouseGiftFlow,
       });
     }
   }, [settings]);
@@ -3502,6 +3504,17 @@ function CalendarSettingsTab({ tenantId }: { tenantId: string }) {
           ))}
         </div>
       )}
+
+      <div className="flex items-center justify-between rounded-lg border p-3 mt-4">
+        <div>
+          <p className="font-medium text-sm">Fluxo de Presente para Cônjuge</p>
+          <p className="text-xs text-muted-foreground">Ativa a campanha de relacionamento que oferece um presente especial para o cônjuge do lead, quando o lead optar por compartilhar o contato.</p>
+        </div>
+        <Switch
+          checked={draft.enableSpouseGiftFlow}
+          onCheckedChange={(v) => setDraft((prev) => ({ ...prev, enableSpouseGiftFlow: v }))}
+        />
+      </div>
 
       <div className="flex items-center gap-3">
         <Button onClick={save} disabled={create.isPending || update.isPending}>

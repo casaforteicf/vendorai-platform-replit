@@ -4447,6 +4447,16 @@ export interface SupermercadoDashboard {
   ultimosPedidos?: SupermercadoPedido[];
 }
 
+export type TenantCalendarSettingsCommercialDatesItem = {
+  name: string;
+  active: boolean;
+  daysBeforeToSend: number;
+  targetGender?: string;
+  movableDate?: boolean;
+  month?: number;
+  day?: number;
+};
+
 export type TenantCalendarSettingsCustomDatesItem = {
   name: string;
   date: string;
@@ -4463,10 +4473,22 @@ export interface TenantCalendarSettings {
   namoradosEnabled: boolean;
   natalEnabled: boolean;
   blackFridayEnabled: boolean;
+  enableSpouseGiftFlow: boolean;
+  commercialDates?: TenantCalendarSettingsCommercialDatesItem[];
   customDates?: TenantCalendarSettingsCustomDatesItem[];
   createdAt: string;
   updatedAt: string;
 }
+
+export type CreateTenantCalendarSettingsBodyCommercialDatesItem = {
+  name: string;
+  active: boolean;
+  daysBeforeToSend: number;
+  targetGender?: string;
+  movableDate?: boolean;
+  month?: number;
+  day?: number;
+};
 
 export type CreateTenantCalendarSettingsBodyCustomDatesItem = {
   name: string;
@@ -4482,8 +4504,20 @@ export interface CreateTenantCalendarSettingsBody {
   namoradosEnabled?: boolean;
   natalEnabled?: boolean;
   blackFridayEnabled?: boolean;
+  enableSpouseGiftFlow?: boolean;
+  commercialDates?: CreateTenantCalendarSettingsBodyCommercialDatesItem[];
   customDates?: CreateTenantCalendarSettingsBodyCustomDatesItem[];
 }
+
+export type UpdateTenantCalendarSettingsBodyCommercialDatesItem = {
+  name: string;
+  active: boolean;
+  daysBeforeToSend: number;
+  targetGender?: string;
+  movableDate?: boolean;
+  month?: number;
+  day?: number;
+};
 
 export type UpdateTenantCalendarSettingsBodyCustomDatesItem = {
   name: string;
@@ -4499,6 +4533,8 @@ export interface UpdateTenantCalendarSettingsBody {
   namoradosEnabled?: boolean;
   natalEnabled?: boolean;
   blackFridayEnabled?: boolean;
+  enableSpouseGiftFlow?: boolean;
+  commercialDates?: UpdateTenantCalendarSettingsBodyCommercialDatesItem[];
   customDates?: UpdateTenantCalendarSettingsBodyCustomDatesItem[];
 }
 
@@ -4506,20 +4542,29 @@ export interface LeadSpouseConsent {
   id: string;
   tenantId: string;
   leadId: string;
+  consentStatus: string;
   consentGiven: boolean;
   consentGivenAt?: string | null;
+  consentRequestedAt?: string | null;
+  spouseLeadId?: string | null;
   giftPreference?: string | null;
   createdAt: string;
   updatedAt: string;
 }
 
 export interface CreateLeadSpouseConsentBody {
+  consentStatus?: string;
   consentGiven: boolean;
+  spouseLeadId?: string | null;
   giftPreference?: string | null;
 }
 
 export interface UpdateLeadSpouseConsentBody {
+  consentStatus?: string;
   consentGiven?: boolean;
+  consentGivenAt?: string | null;
+  consentRequestedAt?: string | null;
+  spouseLeadId?: string | null;
   giftPreference?: string | null;
 }
 

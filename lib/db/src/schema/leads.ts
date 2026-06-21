@@ -57,6 +57,9 @@ export const leadsTable = pgTable("leads", {
   lastCampaignSentYear: integer("last_campaign_sent_year"),
   specialDateMessagesOptOut: boolean("special_date_messages_opt_out").notNull().default(false),
 
+  // Spouse gift flow fields
+  pipelineExempt: boolean("pipeline_exempt").notNull().default(false),
+
   createdAt: timestamp("created_at").notNull().defaultNow(),
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
 }, (table) => ({
