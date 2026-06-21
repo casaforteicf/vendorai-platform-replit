@@ -41,7 +41,7 @@ import {
 } from "@workspace/db";
 import type { SegmentoFiltro } from "@workspace/db";
 import { evaluateForLead } from "../routes/rules.js";
-import { dispatchAgentBackground, processAgentInternal } from "../services/agent-dispatch.js";
+import { dispatchAgentBackground, processAgentInternal, type DispatchResult } from "../services/agent-dispatch.js";
 
 // ── Job 1: Churn check ────────────────────────────────────────────────────────
 
@@ -636,8 +636,7 @@ async function runSpecialDateCheck(log: Logger): Promise<void> {
       const leads = await db
         .select()
         .from(leadsTable)
-        .where(eq(leadsTable.tenantId, tenant.id))
-        .limit(500);
+        .where(eq(leadsTable.tenantId, tenant.id));
 
       for (const lead of leads) {
         if (lead.specialDateMessagesOptOut) {
@@ -756,35 +755,29 @@ async function runSpecialDateCheck(log: Logger): Promise<void> {
 
         if (!scenario) continue;
 
-        // 1. Try to insert dedup record (unique constraint on tenantId+leadId+campaignKey+year)
-        let inserted = false;
-        try {
-          const [logRow] = await db
-            .insert(leadCampaignLogTable)
-            .values({
-              tenantId: tenant.id,
-              leadId: lead.id,
-              campaignType: scenario.type,
-              campaignKey: scenario.campaignKey,
-              year: yearStr,
-              status: "pending",
-            })
-            .returning({ id: leadCampaignLogTable.id });
-          inserted = !!logRow;
-        } catch (err) {
-          // Unique constraint violation = already handled this event
-          totalSkipped++;
-          continue;
-        }
-        if (!inserted) {
+        // 1. Insert dedup record with ON CONFLICT DO NOTHING (unique constraint)
+        const [logRow] = await db
+          .insert(leadCampaignLogTable)
+          .values({
+            tenantId: tenant.id,
+            leadId: lead.id,
+            campaignType: scenario.type,
+            campaignKey: scenario.campaignKey,
+            year: yearStr,
+            status: "pending",
+          })
+          .onConflictDoNothing({ target: [leadCampaignLogTable.tenantId, leadCampaignLogTable.leadId, leadCampaignLogTable.campaignKey, leadCampaignLogTable.year] })
+          .returning({ id: leadCampaignLogTable.id });
+        if (!logRow) {
+          // Already handled this event
           totalSkipped++;
           continue;
         }
 
-        // 2. Dispatch synchronously (await processAgentInternal) so we know success/failure
-        let dispatchOk = false;
+        // 2. Dispatch synchronously and capture explicit result
+        let result: DispatchResult | null = null;
         try {
-          await processAgentInternal({
+          result = await processAgentInternal({
             tenantId: tenant.id,
             leadId: lead.id,
             mensagem: `PROATIVO: ${scenario.type === "birthday_lead" ? "aniversário do lead" : scenario.type === "birthday_family" ? `aniversário de ${scenario.recipientName}` : scenario.type === "deal_anniversary" ? "aniversário de fechamento do deal" : scenario.type === "commercial_date" ? `campanha de ${scenario.dateName}` : "relacionamento"}.`,
@@ -798,13 +791,13 @@ async function runSpecialDateCheck(log: Logger): Promise<void> {
               catalog: catalog.map((c) => ({ nome: c.nome, categoria: c.categoria, precoBase: c.precoBase })),
             },
           });
-          dispatchOk = true;
         } catch (err) {
           log.warn({ err, leadId: lead.id, tenantId: tenant.id, campaignKey: scenario.campaignKey }, "scheduler/special-dates: dispatch failed");
         }
 
         // 3. Update log with actual outcome
-        if (dispatchOk) {
+        const outcome = result?.status ?? "failed";
+        if (outcome === "sent") {
           await db
             .update(leadCampaignLogTable)
             .set({ status: "sent", sentAt: new Date() })
@@ -820,7 +813,7 @@ async function runSpecialDateCheck(log: Logger): Promise<void> {
         } else {
           await db
             .update(leadCampaignLogTable)
-            .set({ status: "failed" })
+            .set({ status: outcome === "skipped" ? "skipped" : "failed" })
             .where(
               and(
                 eq(leadCampaignLogTable.tenantId, tenant.id),

@@ -95,6 +95,11 @@ export function determineAgent(
  *   can fire-and-forget without crashing.
  * - Throws only on unrecoverable programmer errors.
  */
+export type DispatchResult =
+  | { status: "sent"; taskId: string; agentName: AgentName; tokensUsed: number }
+  | { status: "skipped"; reason: string }
+  | { status: "failed"; reason: string };
+
 export async function processAgentInternal(params: {
   tenantId: string;
   leadId:   string;
@@ -102,7 +107,7 @@ export async function processAgentInternal(params: {
   log:      Logger;
   forcedAgent?: AgentName;
   scenario?: Record<string, unknown> | null;
-}): Promise<void> {
+}): Promise<DispatchResult> {
   const { tenantId, leadId, mensagem, log, forcedAgent } = params;
 
   try {
@@ -114,14 +119,14 @@ export async function processAgentInternal(params: {
 
     if (!config) {
       log.warn({ tenantId, leadId }, "dispatch: no agent config — skipping");
-      return;
+      return { status: "skipped", reason: "no_agent_config" };
     }
 
     // 2. Load context (lead + CI + conversation + recent messages)
     const ctx = await loadContext(tenantId, leadId);
     if (!ctx) {
       log.warn({ tenantId, leadId }, "dispatch: lead not found — skipping");
-      return;
+      return { status: "skipped", reason: "lead_not_found" };
     }
 
     // 3. Load open deals for agent routing
@@ -147,7 +152,7 @@ export async function processAgentInternal(params: {
       const sdrCfg = config.agents?.["sdr"];
       if (!sdrCfg?.enabled) {
         log.warn({ tenantId, leadId, agentName }, "dispatch: chosen agent and SDR both disabled — skipping");
-        return;
+        return { status: "skipped", reason: "agent_disabled" };
       }
     }
 
@@ -157,7 +162,7 @@ export async function processAgentInternal(params: {
     const planCheck = await checkAgentPlan(tenantId, resolvedAgentName, log, leadId);
     if (!planCheck.allowed) {
       log.warn({ tenantId, leadId, agentName: resolvedAgentName, reason: planCheck.reason }, "dispatch: blocked by plan — skipping");
-      return;
+      return { status: "skipped", reason: "plan_blocked" };
     }
 
     const resolvedAgentCfg = config.agents?.[resolvedAgentName];
@@ -166,7 +171,7 @@ export async function processAgentInternal(params: {
     const limits = computeLimits(config);
     if (!limits.ok) {
       log.warn({ tenantId, leadId, ...limits.body }, "dispatch: limit reached — skipping");
-      return;
+      return { status: "skipped", reason: "limit_reached" };
     }
 
     // 7. Build prompt and call OpenAI
@@ -185,7 +190,7 @@ export async function processAgentInternal(params: {
       log.info({ leadId, tenantId, agentName: resolvedAgentName, tokensUsed }, "dispatch: openai call succeeded");
     } catch (err) {
       log.error({ err, leadId, tenantId, agentName: resolvedAgentName }, "dispatch: openai call failed");
-      return;
+      return { status: "failed", reason: "openai_error" };
     }
 
     // 8. Detect proposal-accept action from closer agent
@@ -250,8 +255,11 @@ export async function processAgentInternal(params: {
         log.error({ err, leadId, tenantId }, "dispatch: family extraction failed");
       });
     }
+
+    return { status: "sent", taskId: task.id, agentName: resolvedAgentName, tokensUsed };
   } catch (err) {
     log.error({ err, tenantId, leadId }, "dispatch: unexpected error — skipping");
+    return { status: "failed", reason: "unexpected_error" };
   }
 }
 
