@@ -52,10 +52,12 @@ export type AgentName    = "sdr" | "closer" | "followup" | "reactivation" | "sch
 export type PromptBuilder = (customPrompt: string | undefined, ctx: AgentContext, scenario?: Record<string, unknown> | null) => string;
 
 export type RelacionamentoScenario = {
-  type: "birthday_lead" | "birthday_family" | "deal_anniversary" | "commercial_date";
+  type: "birthday_lead" | "birthday_family" | "deal_anniversary" | "commercial_date" | "spouse_welcome";
   dateName?: string;
   recipientName?: string;
   recipientRelation?: string;
+  referrerName?: string;
+  spouseName?: string;
   catalog?: Array<{ nome: string; categoria?: string | null; precoBase: string | null }>;
 } | null;
 
@@ -529,7 +531,7 @@ export function buildRelacionamentoPrompt(
   const { lead, ci } = ctx;
   const parts: string[] = [];
 
-  const isPersonal = s?.type === "birthday_lead" || s?.type === "birthday_family" || s?.type === "deal_anniversary";
+  const isPersonal = s?.type === "birthday_lead" || s?.type === "birthday_family" || s?.type === "deal_anniversary" || s?.type === "spouse_welcome";
   const isCommercial = s?.type === "commercial_date";
 
   if (isPersonal) {
@@ -599,6 +601,7 @@ export function buildRelacionamentoPrompt(
     else if (s.type === "birthday_family") scLines.push(`Hoje é o aniversário de ${s.recipientName ?? "familiar"} (${s.recipientRelation ?? "familiar"}) do lead.`);
     else if (s.type === "deal_anniversary") scLines.push("Hoje é o aniversário de fechamento do deal com o lead!");
     else if (s.type === "commercial_date") scLines.push(`Data comercial: ${s.dateName ?? "data especial"}.`);
+    else if (s.type === "spouse_welcome") scLines.push(`Este lead é o cônjuge de ${s.referrerName ?? "um cliente"}. Envie uma mensagem de boas-vindas transparente, mencionando que ${s.referrerName ?? "seu cônjuge"} compartilhou o contato.`);
     parts.push(scLines.join("\n"));
   }
 

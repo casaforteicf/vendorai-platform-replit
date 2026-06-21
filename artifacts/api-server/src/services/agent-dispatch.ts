@@ -16,6 +16,7 @@ import {
   leadsTable,
   propostasTable,
   leadSpouseConsentTable,
+  tenantCalendarSettingsTable,
 } from "@workspace/db";
 import {
   loadContext,
@@ -375,22 +376,30 @@ ${conversationText}`;
   await db.update(leadsTable).set(update as Record<string, unknown>).where(eq(leadsTable.id, leadId));
   log.info({ leadId, tenantId, fields: Object.keys(update) }, "dispatch: family data extracted and updated");
 
-  // Check spouse gift consent flow
+  // Check spouse gift consent flow (tenant-gated)
   if (extracted.conjugeNome && !lead.conjugeNome) {
-    const [existingConsent] = await db
-      .select()
-      .from(leadSpouseConsentTable)
-      .where(eq(leadSpouseConsentTable.leadId, leadId))
+    const [tenantSettings] = await db
+      .select({ enableSpouseGiftFlow: tenantCalendarSettingsTable.enableSpouseGiftFlow })
+      .from(tenantCalendarSettingsTable)
+      .where(eq(tenantCalendarSettingsTable.tenantId, tenantId))
       .limit(1);
-    if (!existingConsent) {
-      await db.insert(leadSpouseConsentTable).values({
-        tenantId,
-        leadId,
-        consentGiven: false,
-        createdAt: new Date(),
-        updatedAt: new Date(),
-      });
-      log.info({ leadId, tenantId }, "dispatch: spouse consent record created");
+    if (tenantSettings?.enableSpouseGiftFlow) {
+      const [existingConsent] = await db
+        .select()
+        .from(leadSpouseConsentTable)
+        .where(eq(leadSpouseConsentTable.leadId, leadId))
+        .limit(1);
+      if (!existingConsent) {
+        await db.insert(leadSpouseConsentTable).values({
+          tenantId,
+          leadId,
+          consentStatus: "pending",
+          consentGiven: false,
+          createdAt: new Date(),
+          updatedAt: new Date(),
+        });
+        log.info({ leadId, tenantId }, "dispatch: spouse consent record created");
+      }
     }
   }
 }

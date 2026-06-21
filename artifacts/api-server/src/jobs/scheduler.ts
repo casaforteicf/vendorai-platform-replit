@@ -547,7 +547,12 @@ function getMovableDates(year: number) {
   const nov30 = new Date(year, 10, 30);
   const blackFriday = new Date(year, 10, 30 - ((nov30.getDay() + 2) % 7));
 
+  // Carnaval = 47 days before Easter
+  const carnaval = new Date(easter);
+  carnaval.setDate(carnaval.getDate() - 47);
+
   return {
+    carnaval: { name: "Carnaval", date: carnaval, targetGender: undefined },
     pascoa: { name: "Páscoa", date: easter, targetGender: undefined },
     dia_das_maes: { name: "Dia das Mães", date: mothersDay, targetGender: "feminino" },
     dia_dos_pais: { name: "Dia dos Pais", date: fathersDay, targetGender: "masculino" },
@@ -698,7 +703,10 @@ async function runSpecialDateCheck(log: Logger): Promise<void> {
             const fechDate = new Date(deal.dataFechamento);
             const fechMonth = fechDate.getMonth() + 1;
             const fechDay = fechDate.getDate();
-            if (fechMonth === todayMonth && fechDay === todayDay) {
+            // Only trigger if the deal closed at least 1 year ago
+            const oneYearAgo = new Date(now);
+            oneYearAgo.setFullYear(oneYearAgo.getFullYear() - 1);
+            if (fechDate <= oneYearAgo && fechMonth === todayMonth && fechDay === todayDay) {
               scenario = { type: "deal_anniversary", dealId: deal.id, catalog };
               break;
             }
