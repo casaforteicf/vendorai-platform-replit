@@ -19,6 +19,19 @@ const { mockDbSelect, mockDbUpdate, mockDbDelete, mockDbInsert } = vi.hoisted(
   })
 );
 
+vi.mock("../lib/ai-gateway.js", () => ({
+  callOpenAI: vi.fn().mockResolvedValue({ content: "", inputTokens: 0, outputTokens: 0 }),
+  callAnthropic: vi.fn().mockResolvedValue({ content: "", inputTokens: 0, outputTokens: 0 }),
+}));
+
+vi.mock("../lib/proposal-accepted.js", () => ({
+  proposalAccepted: vi.fn().mockResolvedValue({ ok: true, dealId: "deal-1", alreadyProcessed: false }),
+}));
+
+vi.mock("../services/erp-webhook.js", () => ({
+  dispatchVendaWebhook: vi.fn().mockResolvedValue(undefined),
+}));
+
 vi.mock("@workspace/db", () => ({
   db: {
     select: mockDbSelect,
