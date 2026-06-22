@@ -150,6 +150,7 @@ export * from './dealEtapaSaas';
 export * from './dealUpdateResponse';
 export * from './deleteContentGeneration200';
 export * from './deleteLeadProduct200';
+export * from './demoLoginBody';
 export * from './dismissDuplicateLead200';
 export * from './dispararSupermercadoCampanha200';
 export * from './documentExtractionResult';

@@ -103,6 +103,7 @@ import type {
   DealUpdateResponse,
   DeleteContentGeneration200,
   DeleteLeadProduct200,
+  DemoLoginBody,
   DismissDuplicateLead200,
   DispararSupermercadoCampanha200,
   DocumentExtractionResult,
@@ -582,6 +583,78 @@ export const useLogin = <TError = ErrorType<ErrorResponse>,
         TContext
       > => {
       return useMutation(getLoginMutationOptions(options));
+    }
+
+export const getDemoLoginUrl = () => {
+
+
+
+
+  return `/api/auth/demo-login`
+}
+
+/**
+ * Logs in to the shared demo tenant using the fixed demo credentials.
+ * @summary Demo login
+ */
+export const demoLogin = async (demoLoginBody: DemoLoginBody, options?: RequestInit): Promise<AuthResponse> => {
+
+  return customFetch<AuthResponse>(getDemoLoginUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(
+      demoLoginBody,)
+  }
+);}
+
+
+
+
+export const getDemoLoginMutationOptions = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof demoLogin>>, TError,{data: BodyType<DemoLoginBody>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof demoLogin>>, TError,{data: BodyType<DemoLoginBody>}, TContext> => {
+
+const mutationKey = ['demoLogin'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof demoLogin>>, {data: BodyType<DemoLoginBody>}> = (props) => {
+          const {data} = props ?? {};
+
+          return  demoLogin(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type DemoLoginMutationResult = NonNullable<Awaited<ReturnType<typeof demoLogin>>>
+    export type DemoLoginMutationBody = BodyType<DemoLoginBody>
+    export type DemoLoginMutationError = ErrorType<ErrorResponse>
+
+    /**
+ * @summary Demo login
+ */
+export const useDemoLogin = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof demoLogin>>, TError,{data: BodyType<DemoLoginBody>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof demoLogin>>,
+        TError,
+        {data: BodyType<DemoLoginBody>},
+        TContext
+      > => {
+      return useMutation(getDemoLoginMutationOptions(options));
     }
 
 export const getForgotPasswordUrl = () => {

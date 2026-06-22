@@ -151,6 +151,38 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
 
+  /auth/demo-login:
+    post:
+      operationId: demoLogin
+      tags: [auth]
+      summary: Demo login
+      description: Logs in to the shared demo tenant using the fixed demo credentials.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/DemoLoginBody"
+      responses:
+        "200":
+          description: Logged in successfully
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AuthResponse"
+        "401":
+          description: Invalid demo credentials
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "429":
+          description: Too many demo login attempts
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
   /auth/forgot-password:
     post:
       operationId: forgotPassword
@@ -8690,6 +8722,17 @@ components:
         email:
           type: string
           format: email
+        password:
+          type: string
+      required:
+        - email
+        - password
+
+    DemoLoginBody:
+      type: object
+      properties:
+        email:
+          type: string
         password:
           type: string
       required:

@@ -1,7 +1,7 @@
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
-import { useLogin } from "@workspace/api-client-react";
+import { useLogin, useDemoLogin } from "@workspace/api-client-react";
 import { useAuth } from "@/contexts/AuthContext";
 import { Button } from "@/components/ui/button";
 import {
@@ -24,6 +24,7 @@ const formSchema = z.object({
 
 export default function Login() {
   const loginMutation = useLogin();
+  const demoLoginMutation = useDemoLogin();
   const { login } = useAuth();
   const { toast } = useToast();
 
@@ -48,6 +49,24 @@ export default function Login() {
         });
       }
     });
+  }
+
+  function onDemoLogin() {
+    demoLoginMutation.mutate(
+      { data: { email: "demo", password: "demo" } },
+      {
+        onSuccess: (response) => {
+          login(response.token, response.user);
+        },
+        onError: (error) => {
+          toast({
+            title: "Erro ao entrar na demo",
+            description: error.message || "Não foi possível acessar a conta de demonstração.",
+            variant: "destructive",
+          });
+        },
+      },
+    );
   }
 
   return (
@@ -93,6 +112,25 @@ export default function Login() {
               </Button>
             </form>
           </Form>
+
+          <div className="relative">
+            <div className="absolute inset-0 flex items-center">
+              <span className="w-full border-t" />
+            </div>
+            <div className="relative flex justify-center text-xs uppercase">
+              <span className="bg-background px-2 text-muted-foreground">ou</span>
+            </div>
+          </div>
+
+          <Button
+            type="button"
+            variant="outline"
+            className="w-full"
+            onClick={onDemoLogin}
+            disabled={demoLoginMutation.isPending}
+          >
+            {demoLoginMutation.isPending ? "Entrando..." : "Acessar conta de demonstração"}
+          </Button>
 
           <div className="text-center">
             <a

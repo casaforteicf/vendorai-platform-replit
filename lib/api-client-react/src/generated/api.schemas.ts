@@ -81,6 +81,11 @@ export interface LoginBody {
   password: string;
 }
 
+export interface DemoLoginBody {
+  email: string;
+  password: string;
+}
+
 export interface RegisterBody {
   tenantName: string;
   tenantSlug: string;

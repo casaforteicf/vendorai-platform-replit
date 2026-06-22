@@ -96,6 +96,34 @@ export const LoginResponse = zod.object({
 
 
 /**
+ * Logs in to the shared demo tenant using the fixed demo credentials.
+ * @summary Demo login
+ */
+export const DemoLoginBody = zod.object({
+  "email": zod.string(),
+  "password": zod.string()
+})
+
+export const DemoLoginResponse = zod.object({
+  "token": zod.string(),
+  "user": zod.object({
+  "id": zod.string(),
+  "tenantId": zod.string(),
+  "name": zod.string(),
+  "email": zod.string(),
+  "role": zod.enum(['admin', 'member']),
+  "platformRole": zod.enum(['super_admin', 'tenant_admin', 'tenant_seller', 'partner', 'member']),
+  "userFunction": zod.enum(['vendedor', 'financeiro', 'suporte', 'entrega', 'administrador', 'outro']).optional().describe('Função\/tipo do usuário dentro do tenant'),
+  "telefone": zod.string().nullish(),
+  "active": zod.boolean(),
+  "tenantVertical": zod.string().nullish().describe('Segment\/vertical of the tenant (e.g. \"Construção & Reforma\")'),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date()
+})
+})
+
+
+/**
  * Sends a password reset link to the user's email. Always returns 200 to prevent user enumeration.
  * @summary Request password reset email
  */

@@ -1,5 +1,5 @@
 import { Router, type IRouter } from "express";
-import { eq } from "drizzle-orm";
+import { eq, and } from "drizzle-orm";
 import bcrypt from "bcryptjs";
 import { createHash, randomBytes } from "crypto";
 import { z } from "zod/v4";
@@ -187,11 +187,17 @@ router.post("/auth/demo-login", async (req, res) => {
       .returning();
   }
 
-  // Find or create demo user
+  // Find or create demo user — scoped to the demo tenant to avoid
+  // authenticating a conflicting account that reuses demo@demo.com.
   let [user] = await db
     .select()
     .from(usersTable)
-    .where(eq(usersTable.email, "demo@demo.com"));
+    .where(
+      and(
+        eq(usersTable.email, "demo@demo.com"),
+        eq(usersTable.tenantId, tenant.id),
+      ),
+    );
 
   if (!user) {
     const hashed = await bcrypt.hash("demo", 12);
