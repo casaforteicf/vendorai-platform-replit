@@ -8,6 +8,7 @@ import {
   tokenB,
   tokenSuperAdmin,
 } from "./helpers/auth.js";
+import { MockRow } from "./helpers/isolation.js";
 
 const { mockDbSelect, mockDbInsert, mockDbDelete } = vi.hoisted(() => ({
   mockDbSelect: vi.fn(),
@@ -87,7 +88,6 @@ app.use("/api", authenticate, (req, _res, next) => {
   next();
 }, leadProposalsRouter);
 
-type MockRow = { id: string; tenantId: string; [k: string]: unknown };
 
 // ── Drizzle select chain builder (thenable, supports .where().orderBy().limit())
 function createSelectChain(rows: MockRow[]) {

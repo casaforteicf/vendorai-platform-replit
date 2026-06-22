@@ -7,6 +7,7 @@ import {
   tokenB,
   tokenSuperAdmin,
 } from "./helpers/auth.js";
+import { MockRow, createDbHelpers } from "./helpers/isolation.js";
 
 const { mockDbSelect, mockDbUpdate, mockDbDelete, mockDbInsert, mockInsertSchema } =
   vi.hoisted(() => ({
@@ -50,35 +51,12 @@ const app = express();
 app.use(express.json());
 app.use("/api", authenticate, knowledgeBaseRouter);
 
-type MockRow = { id: string; tenantId: string; [k: string]: unknown };
-
-function setupSelectReturning(rows: MockRow[]) {
-  const chain = {
-    from: vi.fn().mockReturnThis(),
-    where: vi.fn().mockResolvedValue(rows),
-    orderBy: vi.fn().mockResolvedValue(rows),
-    and: vi.fn().mockReturnThis(),
-  };
-  mockDbSelect.mockReturnValue(chain);
-}
-
-function setupUpdateReturning(rows: MockRow[]) {
-  const returning = vi.fn().mockResolvedValue(rows);
-  const where = vi.fn().mockReturnValue({ returning });
-  const set = vi.fn().mockReturnValue({ where });
-  mockDbUpdate.mockReturnValue({ set });
-}
-
-function setupDeleteSuccess() {
-  const where = vi.fn().mockResolvedValue(undefined);
-  mockDbDelete.mockReturnValue({ where });
-}
-
-function setupInsertReturning(rows: MockRow[]) {
-  const returning = vi.fn().mockResolvedValue(rows);
-  const values = vi.fn().mockReturnValue({ returning });
-  mockDbInsert.mockReturnValue({ values });
-}
+const {
+  setupSelectReturning,
+  setupUpdateReturning,
+  setupDeleteSuccess,
+  setupInsertReturning,
+} = createDbHelpers({ mockDbSelect, mockDbUpdate, mockDbDelete, mockDbInsert });
 
 const RECORD_ID = "kb-article-owned-by-b";
 

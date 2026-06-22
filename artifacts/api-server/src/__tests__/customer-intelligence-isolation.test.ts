@@ -8,6 +8,7 @@ import {
   tokenB,
   tokenSuperAdmin,
 } from "./helpers/auth.js";
+import { MockRow, createDbHelpers } from "./helpers/isolation.js";
 
 // ---------------------------------------------------------------------------
 // Hoisted mock state — must be created before vi.mock calls
@@ -90,61 +91,14 @@ app.use("/api", authenticate, customerIntelligenceRouter);
 // ---------------------------------------------------------------------------
 // DB mock helpers
 // ---------------------------------------------------------------------------
-type MockRow = { id: string; tenantId: string; [k: string]: unknown };
-
-/** Single select returning one set of rows for all calls in the test */
-function setupSelectReturning(rows: MockRow[]) {
-  const chain = {
-    from: vi.fn().mockReturnThis(),
-    where: vi.fn().mockResolvedValue(rows),
-    orderBy: vi.fn().mockResolvedValue(rows),
-  };
-  mockDbSelect.mockReturnValue(chain);
-}
-
-/**
- * Sequential selects: first call returns rowArrays[0], second returns rowArrays[1], etc.
- * Any additional calls fall back to the last entry.
- */
-function setupSequentialSelects(...rowArrays: MockRow[][]) {
-  rowArrays.forEach((rows) => {
-    const chain = {
-      from: vi.fn().mockReturnThis(),
-      where: vi.fn().mockResolvedValue(rows),
-      orderBy: vi.fn().mockResolvedValue(rows),
-    };
-    mockDbSelect.mockReturnValueOnce(chain);
-  });
-}
-
-function setupUpdateReturning(rows: MockRow[]) {
-  const returning = vi.fn().mockResolvedValue(rows);
-  const where = vi.fn().mockReturnValue({ returning });
-  const set = vi.fn().mockReturnValue({ where });
-  mockDbUpdate.mockReturnValue({ set });
-}
-
-function setupDeleteSuccess() {
-  const where = vi.fn().mockResolvedValue(undefined);
-  mockDbDelete.mockReturnValue({ where });
-}
-
-/** Insert that supports both .returning() and .onConflictDoNothing() */
-function setupInsertReturning(rows: MockRow[]) {
-  const returning = vi.fn().mockResolvedValue(rows);
-  const onConflictDoNothing = vi.fn().mockResolvedValue([]);
-  const values = vi.fn().mockReturnValue({ returning, onConflictDoNothing });
-  mockDbInsert.mockReturnValue({ values });
-}
-
-/** Insert that raises a unique constraint violation */
-function setupInsertUniqueViolation() {
-  const pgErr = Object.assign(new Error("duplicate key"), { code: "23505" });
-  const returning = vi.fn().mockRejectedValue(pgErr);
-  const onConflictDoNothing = vi.fn().mockResolvedValue([]);
-  const values = vi.fn().mockReturnValue({ returning, onConflictDoNothing });
-  mockDbInsert.mockReturnValue({ values });
-}
+const {
+  setupSelectReturning,
+  setupSequentialSelects,
+  setupUpdateReturning,
+  setupDeleteSuccess,
+  setupInsertReturning,
+  setupInsertUniqueViolation,
+} = createDbHelpers({ mockDbSelect, mockDbUpdate, mockDbDelete, mockDbInsert });
 
 const RECORD_ID = "ci-record-owned-by-b";
 const LEAD_ID_B  = "lead-owned-by-b";
