@@ -12,6 +12,7 @@ import Dashboard from "@/pages/Dashboard";
 import Leads from "@/pages/Leads";
 import LeadDetail from "@/pages/LeadDetail";
 import Prospector from "@/pages/Prospector";
+import ProspectorAprovacoes from "@/pages/ProspectorAprovacoes";
 import Duplicatas from "@/pages/Duplicatas";
 import Deals from "@/pages/Deals";
 import Conversations from "@/pages/Conversations";
@@ -339,6 +340,9 @@ function AppRoutes() {
       </Route>
       <Route path="/leads/:id">
         <ProtectedRoute component={LeadDetail} />
+      </Route>
+      <Route path="/app/prospector/aprovacoes">
+        <ProtectedRoute component={ProspectorAprovacoes} />
       </Route>
       <Route path="/app/prospector">
         <ProtectedRoute component={Prospector} />

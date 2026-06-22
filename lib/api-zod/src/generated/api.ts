@@ -9677,3 +9677,46 @@ export const ProspectorGenerateMessageBody = zod.object({
 })
 
 
+/**
+ * @summary List pending AI message drafts awaiting approval
+ */
+export const ProspectorListApprovalsQueryParams = zod.object({
+  "tenantId": zod.coerce.string().optional().describe('Required when caller is a super_admin')
+})
+
+export const ProspectorListApprovalsResponse = zod.object({
+  "items": zod.array(zod.object({
+  "id": zod.string(),
+  "leadId": zod.string().nullish(),
+  "messageType": zod.string().nullable(),
+  "email": zod.string(),
+  "whatsapp": zod.string(),
+  "createdAt": zod.coerce.date(),
+  "empresa": zod.string().nullish(),
+  "dorPrincipal": zod.string().nullish(),
+  "score": zod.number().nullish()
+}))
+})
+
+
+/**
+ * @summary Approve, approve-with-edit, or reject an AI message draft
+ */
+export const ProspectorPatchApprovalParams = zod.object({
+  "id": zod.coerce.string()
+})
+
+export const ProspectorPatchApprovalBody = zod.object({
+  "action": zod.enum(['approved', 'edited', 'rejected']),
+  "approvedText": zod.string().optional().describe('Required when action is \'edited\''),
+  "tenantId": zod.string().optional().describe('Required when caller is a super_admin')
+})
+
+export const ProspectorPatchApprovalResponse = zod.object({
+  "ok": zod.boolean(),
+  "action": zod.string(),
+  "approvedCount": zod.number(),
+  "automationUnlocked": zod.boolean()
+})
+
+

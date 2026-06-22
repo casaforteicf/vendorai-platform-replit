@@ -2341,8 +2341,51 @@ export interface ProspectApproval {
 }
 
 export interface ProspectorGenerateMessageResponse {
-  text: string;
+  /** E-mail draft (max ~150 words) */
+  email: string;
+  /** WhatsApp draft (max ~60 words) */
+  whatsapp: string;
   approval: ProspectApproval;
+}
+
+export interface ProspectorApprovalItem {
+  id: string;
+  leadId?: string | null;
+  messageType: string | null;
+  email: string;
+  whatsapp: string;
+  createdAt: string;
+  empresa?: string | null;
+  dorPrincipal?: string | null;
+  score?: number | null;
+}
+
+export interface ProspectorApprovalsListResponse {
+  items: ProspectorApprovalItem[];
+}
+
+export type ProspectorPatchApprovalBodyAction = typeof ProspectorPatchApprovalBodyAction[keyof typeof ProspectorPatchApprovalBodyAction];
+
+
+export const ProspectorPatchApprovalBodyAction = {
+  approved: 'approved',
+  edited: 'edited',
+  rejected: 'rejected',
+} as const;
+
+export interface ProspectorPatchApprovalBody {
+  action: ProspectorPatchApprovalBodyAction;
+  /** Required when action is 'edited' */
+  approvedText?: string;
+  /** Required when caller is a super_admin */
+  tenantId?: string;
+}
+
+export interface ProspectorPatchApprovalResponse {
+  ok: boolean;
+  action: string;
+  approvedCount: number;
+  automationUnlocked: boolean;
 }
 
 export interface ErrorResponse {
@@ -4991,6 +5034,13 @@ export type GerarConteudoSupermercadoCampanha200 = {
 };
 
 export type ProspectorExportParams = {
+/**
+ * Required when caller is a super_admin
+ */
+tenantId?: string;
+};
+
+export type ProspectorListApprovalsParams = {
 /**
  * Required when caller is a super_admin
  */

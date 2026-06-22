@@ -59,6 +59,7 @@ export const tenantsTable = pgTable(
     aiCreditsUsd: numeric("ai_credits_usd", { precision: 12, scale: 6 }).notNull().default("0"),
     aiDailySpendUsd: numeric("ai_daily_spend_usd", { precision: 12, scale: 6 }).notNull().default("0"),
     aiDailySpendResetAt: timestamp("ai_daily_spend_reset_at"),
+    prospectStatus: text("prospect_status").notNull().default("learning"),
     suspendedReason: text("suspended_reason"),
     createdAt: timestamp("created_at").notNull().defaultNow(),
     updatedAt: timestamp("updated_at").notNull().defaultNow(),

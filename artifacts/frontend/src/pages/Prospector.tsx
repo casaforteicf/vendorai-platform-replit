@@ -341,7 +341,7 @@ export default function Prospector() {
       },
       {
         onSuccess: (res) => {
-          setGeneratedText(res.text);
+          setGeneratedText(messageType === "email" ? res.email : res.whatsapp);
           toast({ title: "Mensagem gerada" });
         },
         onError: (err) => {

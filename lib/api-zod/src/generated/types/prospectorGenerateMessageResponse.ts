@@ -8,6 +8,9 @@
 import type { ProspectApproval } from './prospectApproval';
 
 export interface ProspectorGenerateMessageResponse {
-  text: string;
+  /** E-mail draft (max ~150 words) */
+  email: string;
+  /** WhatsApp draft (max ~60 words) */
+  whatsapp: string;
   approval: ProspectApproval;
 }

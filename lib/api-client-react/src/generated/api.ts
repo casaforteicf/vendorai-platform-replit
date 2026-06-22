@@ -196,11 +196,15 @@ import type {
   ProductPresentation,
   ProdutoCatalogo,
   Proposta,
+  ProspectorApprovalsListResponse,
   ProspectorEnrichBody,
   ProspectorEnrichResponse,
   ProspectorExportParams,
   ProspectorGenerateMessageBody,
   ProspectorGenerateMessageResponse,
+  ProspectorListApprovalsParams,
+  ProspectorPatchApprovalBody,
+  ProspectorPatchApprovalResponse,
   PublicSiteResponse,
   RegisterBody,
   RemoveAnthropicAIKey200,
@@ -24877,5 +24881,161 @@ export const useProspectorGenerateMessage = <TError = ErrorType<ErrorResponse>,
         TContext
       > => {
       return useMutation(getProspectorGenerateMessageMutationOptions(options));
+    }
+
+export const getProspectorListApprovalsUrl = (params?: ProspectorListApprovalsParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : value.toString())
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/api/prospector/approvals?${stringifiedParams}` : `/api/prospector/approvals`
+}
+
+/**
+ * @summary List pending AI message drafts awaiting approval
+ */
+export const prospectorListApprovals = async (params?: ProspectorListApprovalsParams, options?: RequestInit): Promise<ProspectorApprovalsListResponse> => {
+
+  return customFetch<ProspectorApprovalsListResponse>(getProspectorListApprovalsUrl(params),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getProspectorListApprovalsQueryKey = (params?: ProspectorListApprovalsParams,) => {
+    return [
+    `/api/prospector/approvals`, ...(params ? [params] : [])
+    ] as const;
+    }
+
+
+export const getProspectorListApprovalsQueryOptions = <TData = Awaited<ReturnType<typeof prospectorListApprovals>>, TError = ErrorType<unknown>>(params?: ProspectorListApprovalsParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof prospectorListApprovals>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getProspectorListApprovalsQueryKey(params);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof prospectorListApprovals>>> = ({ signal }) => prospectorListApprovals(params, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof prospectorListApprovals>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type ProspectorListApprovalsQueryResult = NonNullable<Awaited<ReturnType<typeof prospectorListApprovals>>>
+export type ProspectorListApprovalsQueryError = ErrorType<unknown>
+
+
+/**
+ * @summary List pending AI message drafts awaiting approval
+ */
+
+export function useProspectorListApprovals<TData = Awaited<ReturnType<typeof prospectorListApprovals>>, TError = ErrorType<unknown>>(
+ params?: ProspectorListApprovalsParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof prospectorListApprovals>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getProspectorListApprovalsQueryOptions(params,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+
+
+
+
+
+
+export const getProspectorPatchApprovalUrl = (id: string,) => {
+
+
+
+
+  return `/api/prospector/approvals/${id}`
+}
+
+/**
+ * @summary Approve, approve-with-edit, or reject an AI message draft
+ */
+export const prospectorPatchApproval = async (id: string,
+    prospectorPatchApprovalBody: ProspectorPatchApprovalBody, options?: RequestInit): Promise<ProspectorPatchApprovalResponse> => {
+
+  return customFetch<ProspectorPatchApprovalResponse>(getProspectorPatchApprovalUrl(id),
+  {
+    ...options,
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(
+      prospectorPatchApprovalBody,)
+  }
+);}
+
+
+
+
+export const getProspectorPatchApprovalMutationOptions = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof prospectorPatchApproval>>, TError,{id: string;data: BodyType<ProspectorPatchApprovalBody>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof prospectorPatchApproval>>, TError,{id: string;data: BodyType<ProspectorPatchApprovalBody>}, TContext> => {
+
+const mutationKey = ['prospectorPatchApproval'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof prospectorPatchApproval>>, {id: string;data: BodyType<ProspectorPatchApprovalBody>}> = (props) => {
+          const {id,data} = props ?? {};
+
+          return  prospectorPatchApproval(id,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type ProspectorPatchApprovalMutationResult = NonNullable<Awaited<ReturnType<typeof prospectorPatchApproval>>>
+    export type ProspectorPatchApprovalMutationBody = BodyType<ProspectorPatchApprovalBody>
+    export type ProspectorPatchApprovalMutationError = ErrorType<ErrorResponse>
+
+    /**
+ * @summary Approve, approve-with-edit, or reject an AI message draft
+ */
+export const useProspectorPatchApproval = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof prospectorPatchApproval>>, TError,{id: string;data: BodyType<ProspectorPatchApprovalBody>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof prospectorPatchApproval>>,
+        TError,
+        {id: string;data: BodyType<ProspectorPatchApprovalBody>},
+        TContext
+      > => {
+      return useMutation(getProspectorPatchApprovalMutationOptions(options));
     }
 

@@ -1,13 +1,26 @@
 import { Router, type IRouter } from "express";
 import { z } from "zod/v4";
-import { and, eq, desc, or, sql } from "drizzle-orm";
+import { and, eq, desc, or, sql, inArray } from "drizzle-orm";
 import {
   db,
   prospectEnrichmentsTable,
   prospectApprovalsTable,
   leadsTable,
+  tenantsTable,
+  notificationsTable,
 } from "@workspace/db";
-import { callOpenAI as gatewayCallOpenAI } from "../lib/ai-gateway.js";
+import {
+  callOpenAI as gatewayCallOpenAI,
+  generateEmbedding,
+} from "../lib/ai-gateway.js";
+
+// Quantidade de aprovações (approved + edited) para liberar a automação.
+const AUTOMATION_THRESHOLD = 50;
+
+// Formata um vetor JS para o literal aceito pelo pgvector (ex: "[0.1,0.2,...]").
+function toVectorLiteral(embedding: number[]): string {
+  return `[${embedding.join(",")}]`;
+}
 
 const router: IRouter = Router();
 
@@ -452,6 +465,37 @@ const generateMessageBodySchema = z.object({
   tenantId: z.string().optional(),
 });
 
+// Busca os N exemplos de aprovações anteriores (approved/edited) mais similares
+// ao contexto do lead via pgvector (cosine distance: operador `<=>`).
+async function findSimilarApprovals(
+  tenantId: string,
+  queryEmbedding: number[],
+  limit: number,
+): Promise<{ messageType: string | null; text: string }[]> {
+  const vec = toVectorLiteral(queryEmbedding);
+  const rows = await db
+    .select({
+      messageType: prospectApprovalsTable.messageType,
+      approvedText: prospectApprovalsTable.approvedText,
+      generatedText: prospectApprovalsTable.generatedText,
+    })
+    .from(prospectApprovalsTable)
+    .where(
+      and(
+        eq(prospectApprovalsTable.tenantId, tenantId),
+        inArray(prospectApprovalsTable.action, ["approved", "edited"]),
+        sql`${prospectApprovalsTable.embedding} IS NOT NULL`,
+      ),
+    )
+    .orderBy(sql`${prospectApprovalsTable.embedding} <=> ${vec}::vector`)
+    .limit(limit);
+
+  return rows.map((r) => ({
+    messageType: r.messageType,
+    text: (r.approvedText ?? r.generatedText ?? "").trim(),
+  }));
+}
+
 router.post("/prospector/generate-message", async (req, res) => {
   const parsed = generateMessageBodySchema.safeParse(req.body);
   if (!parsed.success) {
@@ -461,6 +505,50 @@ router.post("/prospector/generate-message", async (req, res) => {
   const tenantId = resolveTenantId(req, bodyTenantId);
   if (leadId) await assertLeadInTenant(leadId, tenantId);
 
+  // 1. Reúne o contexto do lead (do enrichment quando houver leadId).
+  let dorPrincipal: string | null = null;
+  let resumoNegocio: string | null = null;
+  if (leadId) {
+    const [enr] = await db
+      .select({
+        doresPrincipais: prospectEnrichmentsTable.doresPrincipais,
+        resumoNegocio: prospectEnrichmentsTable.resumoNegocio,
+      })
+      .from(prospectEnrichmentsTable)
+      .where(
+        and(
+          eq(prospectEnrichmentsTable.tenantId, tenantId),
+          eq(prospectEnrichmentsTable.leadId, leadId),
+        ),
+      )
+      .orderBy(desc(prospectEnrichmentsTable.createdAt))
+      .limit(1);
+    dorPrincipal = enr?.doresPrincipais?.[0] ?? null;
+    resumoNegocio = enr?.resumoNegocio ?? null;
+  }
+
+  const queryText = [nomeEmpresa, resumoNegocio, dorPrincipal, contexto]
+    .filter(Boolean)
+    .join(" — ");
+
+  // 2. Busca semântica dos 3 melhores exemplos aprovados (few-shot).
+  let fewShot: { messageType: string | null; text: string }[] = [];
+  try {
+    if (queryText.trim().length > 0) {
+      const { embedding } = await generateEmbedding(tenantId, queryText, { log: req.log });
+      fewShot = await findSimilarApprovals(tenantId, embedding, 3);
+    }
+  } catch (err) {
+    req.log.error({ err }, "prospector: few-shot retrieval failed (non-fatal)");
+  }
+
+  const fewShotBlock =
+    fewShot.length > 0
+      ? "Exemplos de mensagens aprovadas anteriormente por este time (imite o tom, NÃO copie):\n" +
+        fewShot.map((f, i) => `Exemplo ${i + 1} (${f.messageType ?? "geral"}):\n${f.text}`).join("\n\n")
+      : "Ainda não há exemplos aprovados; use as melhores práticas de prospecção B2B.";
+
+  // 3. Geração via aiGateway — rascunhos de e-mail (<=150 palavras) e WhatsApp (<=60 palavras).
   const ai = await gatewayCallOpenAI(
     tenantId,
     "content_generator",
@@ -468,17 +556,47 @@ router.post("/prospector/generate-message", async (req, res) => {
       {
         role: "system",
         content:
-          "Você é um SDR especialista em prospecção. Escreva uma mensagem de primeiro contato " +
-          `para o canal "${messageType}", curta, personalizada e cordial, em português do Brasil. ` +
-          "Responda apenas com o texto da mensagem, sem aspas nem comentários.",
+          "Você é um SDR especialista em prospecção B2B no Brasil. Gere rascunhos de primeiro contato " +
+          "personalizados e cordiais, em português do Brasil. Responda APENAS um JSON no formato " +
+          '{"email": string, "whatsapp": string}. ' +
+          "O e-mail deve ter NO MÁXIMO 150 palavras; o WhatsApp NO MÁXIMO 60 palavras. " +
+          "Sem aspas extras nem comentários fora do JSON.\n\n" +
+          fewShotBlock,
       },
       {
         role: "user",
-        content: JSON.stringify({ nomeEmpresa: nomeEmpresa ?? null, contexto: contexto ?? null }),
+        content: JSON.stringify({
+          nomeEmpresa: nomeEmpresa ?? null,
+          dorPrincipal,
+          resumoNegocio,
+          contexto: contexto ?? null,
+        }),
       },
     ],
-    { maxTokens: 400, temperature: 0.8, log: req.log },
+    { maxTokens: 700, temperature: 0.8, responseFormat: { type: "json_object" }, log: req.log },
   );
+
+  let email = "";
+  let whatsapp = "";
+  try {
+    const json = JSON.parse(ai.content) as { email?: string; whatsapp?: string };
+    email = typeof json.email === "string" ? json.email.trim() : "";
+    whatsapp = typeof json.whatsapp === "string" ? json.whatsapp.trim() : "";
+  } catch (err) {
+    req.log.error({ err }, "prospector: generate-message JSON parse failed");
+  }
+
+  // 4. Persiste o rascunho (action='generated') com embedding para futuras buscas.
+  const draftText = messageType === "email" ? email : whatsapp;
+  let embedding: number[] | null = null;
+  try {
+    if (draftText) {
+      const r = await generateEmbedding(tenantId, draftText, { log: req.log });
+      embedding = r.embedding;
+    }
+  } catch (err) {
+    req.log.error({ err }, "prospector: draft embedding failed (non-fatal)");
+  }
 
   const [approval] = await db
     .insert(prospectApprovalsTable)
@@ -486,12 +604,189 @@ router.post("/prospector/generate-message", async (req, res) => {
       tenantId,
       leadId: leadId ?? null,
       messageType,
-      generatedText: ai.content,
+      generatedText: JSON.stringify({ email, whatsapp }),
       action: "generated",
+      ...(embedding ? { embedding } : {}),
     })
     .returning();
 
-  return res.status(201).json({ text: ai.content, approval });
+  return res.status(201).json({ email, whatsapp, approval });
+});
+
+// ── GET /prospector/approvals — rascunhos pendentes (action='generated') ───────
+router.get("/prospector/approvals", async (req, res) => {
+  const bodyTenantId = typeof req.query["tenantId"] === "string" ? req.query["tenantId"] : undefined;
+  const tenantId = resolveTenantId(req, bodyTenantId);
+
+  const drafts = await db
+    .select({
+      id: prospectApprovalsTable.id,
+      leadId: prospectApprovalsTable.leadId,
+      messageType: prospectApprovalsTable.messageType,
+      generatedText: prospectApprovalsTable.generatedText,
+      createdAt: prospectApprovalsTable.createdAt,
+      leadNome: leadsTable.nome,
+      leadEmpresa: leadsTable.empresa,
+    })
+    .from(prospectApprovalsTable)
+    .leftJoin(leadsTable, eq(leadsTable.id, prospectApprovalsTable.leadId))
+    .where(
+      and(
+        eq(prospectApprovalsTable.tenantId, tenantId),
+        eq(prospectApprovalsTable.action, "generated"),
+      ),
+    )
+    .orderBy(desc(prospectApprovalsTable.createdAt))
+    .limit(100);
+
+  // Enriquecimento (dor principal + score) por lead, em uma única query.
+  const leadIds = [...new Set(drafts.map((d) => d.leadId).filter((x): x is string => !!x))];
+  const enrichByLead = new Map<string, { dorPrincipal: string | null; score: number | null; empresa: string | null }>();
+  if (leadIds.length > 0) {
+    const enrichments = await db
+      .select({
+        leadId: prospectEnrichmentsTable.leadId,
+        nomeEmpresa: prospectEnrichmentsTable.nomeEmpresa,
+        doresPrincipais: prospectEnrichmentsTable.doresPrincipais,
+        scoreProspector: prospectEnrichmentsTable.scoreProspector,
+        createdAt: prospectEnrichmentsTable.createdAt,
+      })
+      .from(prospectEnrichmentsTable)
+      .where(
+        and(
+          eq(prospectEnrichmentsTable.tenantId, tenantId),
+          inArray(prospectEnrichmentsTable.leadId, leadIds),
+        ),
+      )
+      .orderBy(desc(prospectEnrichmentsTable.createdAt));
+    for (const e of enrichments) {
+      if (!e.leadId || enrichByLead.has(e.leadId)) continue; // mantém o mais recente
+      enrichByLead.set(e.leadId, {
+        dorPrincipal: e.doresPrincipais?.[0] ?? null,
+        score: e.scoreProspector ?? null,
+        empresa: e.nomeEmpresa ?? null,
+      });
+    }
+  }
+
+  const items = drafts.map((d) => {
+    let email = "";
+    let whatsapp = "";
+    try {
+      const j = JSON.parse(d.generatedText ?? "{}") as { email?: string; whatsapp?: string };
+      email = j.email ?? "";
+      whatsapp = j.whatsapp ?? "";
+    } catch {
+      whatsapp = d.generatedText ?? "";
+    }
+    const enr = d.leadId ? enrichByLead.get(d.leadId) : undefined;
+    return {
+      id: d.id,
+      leadId: d.leadId,
+      messageType: d.messageType,
+      email,
+      whatsapp,
+      createdAt: d.createdAt.toISOString(),
+      empresa: d.leadEmpresa ?? enr?.empresa ?? d.leadNome ?? null,
+      dorPrincipal: enr?.dorPrincipal ?? null,
+      score: enr?.score ?? null,
+    };
+  });
+
+  return res.status(200).json({ items });
+});
+
+// ── PATCH /prospector/approvals/:id — aprovar / aprovar com edição / rejeitar ──
+const patchApprovalSchema = z.object({
+  action: z.enum(["approved", "edited", "rejected"]),
+  approvedText: z.string().optional(),
+  tenantId: z.string().optional(),
+});
+
+router.patch("/prospector/approvals/:id", async (req, res) => {
+  const parsed = patchApprovalSchema.safeParse(req.body);
+  if (!parsed.success) {
+    return res.status(400).json({ error: "Dados inválidos", details: parsed.error.flatten() });
+  }
+  const { action, approvedText, tenantId: bodyTenantId } = parsed.data;
+  const tenantId = resolveTenantId(req, bodyTenantId);
+  const approvalId = req.params["id"]!;
+
+  if (action === "edited" && (!approvedText || approvedText.trim().length === 0)) {
+    return res.status(400).json({ error: "approvedText é obrigatório para 'edited'" });
+  }
+
+  // Verifica posse pelo tenant.
+  const [existing] = await db
+    .select({ id: prospectApprovalsTable.id })
+    .from(prospectApprovalsTable)
+    .where(
+      and(eq(prospectApprovalsTable.id, approvalId), eq(prospectApprovalsTable.tenantId, tenantId)),
+    )
+    .limit(1);
+  if (!existing) {
+    return res.status(404).json({ error: "Aprovação não encontrada para este tenant" });
+  }
+
+  // Re-embedding quando o texto é editado (busca semântica usa a versão corrigida).
+  let newEmbedding: number[] | null = null;
+  if (action === "edited" && approvedText) {
+    try {
+      const r = await generateEmbedding(tenantId, approvedText.trim(), { log: req.log });
+      newEmbedding = r.embedding;
+    } catch (err) {
+      req.log.error({ err }, "prospector: re-embedding on edit failed (non-fatal)");
+    }
+  }
+
+  await db
+    .update(prospectApprovalsTable)
+    .set({
+      action,
+      ...(approvedText ? { approvedText: approvedText.trim() } : {}),
+      ...(newEmbedding ? { embedding: newEmbedding } : {}),
+    })
+    .where(eq(prospectApprovalsTable.id, approvalId));
+
+  // Contagem de treinamento: approved + edited.
+  let automationUnlocked = false;
+  let approvedCount = 0;
+  if (action === "approved" || action === "edited") {
+    const [{ count }] = await db
+      .select({ count: sql<number>`count(*)::int` })
+      .from(prospectApprovalsTable)
+      .where(
+        and(
+          eq(prospectApprovalsTable.tenantId, tenantId),
+          inArray(prospectApprovalsTable.action, ["approved", "edited"]),
+        ),
+      );
+    approvedCount = count ?? 0;
+
+    if (approvedCount >= AUTOMATION_THRESHOLD) {
+      const [tenant] = await db
+        .select({ prospectStatus: tenantsTable.prospectStatus })
+        .from(tenantsTable)
+        .where(eq(tenantsTable.id, tenantId))
+        .limit(1);
+      if (tenant && tenant.prospectStatus !== "automated") {
+        await db
+          .update(tenantsTable)
+          .set({ prospectStatus: "automated", updatedAt: new Date() })
+          .where(eq(tenantsTable.id, tenantId));
+        await db.insert(notificationsTable).values({
+          tenantId,
+          title: "Automação liberada 🎉",
+          message: "Seu Agente Prospector já aprendeu com você! Automação liberada.",
+          type: "info",
+          category: "prospector",
+        });
+        automationUnlocked = true;
+      }
+    }
+  }
+
+  return res.status(200).json({ ok: true, action, approvedCount, automationUnlocked });
 });
 
 export default router;

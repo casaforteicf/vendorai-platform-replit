@@ -12,7 +12,7 @@
  *        (enviar_whatsapp with the campaign message), and advance status.
  */
 import cron from "node-cron";
-import { and, desc, eq, gt, isNotNull, lte, gte, lt, inArray, sql } from "drizzle-orm";
+import { and, desc, eq, gt, isNotNull, isNull, lte, gte, lt, inArray, sql } from "drizzle-orm";
 import { runMonthlyBilling } from "../lib/billing.js";
 import type { Logger } from "pino";
 import {
@@ -38,6 +38,8 @@ import {
   tenantCalendarSettingsTable,
   leadSpouseConsentTable,
   leadCampaignLogTable,
+  prospectCampaignsTable,
+  prospectApprovalsTable,
 } from "@workspace/db";
 import type { SegmentoFiltro } from "@workspace/db";
 import { evaluateForLead } from "../routes/rules.js";
@@ -834,6 +836,220 @@ async function runSpecialDateCheck(log: Logger): Promise<void> {
   log.info({ totalDispatched, totalSkipped }, "scheduler/special-dates: complete");
 }
 
+// ── Job: Prospector campaign orchestrator (every 15 min) ──────────────────────
+//
+// Only runs for tenants with prospect_status='automated'. Advances each active
+// prospect_campaign through the cadence:
+//   Dia 1: 1º e-mail            (day1SentAt)
+//   Dia 3: 2º e-mail            (day3SentAt) — só se o lead não respondeu
+//   Dia 7: WhatsApp             (day7SentAt) — só se o lead não respondeu
+// Para cada passo, registra o envio e atualiza o timestamp. Se o lead respondeu
+// (mensagem de entrada após o início), a campanha é encerrada (status='respondido').
+const DAY_MS = 24 * 60 * 60 * 1000;
+
+// Texto aprovado mais recente para o lead (edited > generated). Retorna email/whatsapp.
+async function resolveApprovedTexts(
+  tenantId: string,
+  leadId: string,
+): Promise<{ email: string; whatsapp: string } | null> {
+  const [row] = await db
+    .select({
+      approvedText: prospectApprovalsTable.approvedText,
+      generatedText: prospectApprovalsTable.generatedText,
+      messageType: prospectApprovalsTable.messageType,
+    })
+    .from(prospectApprovalsTable)
+    .where(
+      and(
+        eq(prospectApprovalsTable.tenantId, tenantId),
+        eq(prospectApprovalsTable.leadId, leadId),
+        inArray(prospectApprovalsTable.action, ["approved", "edited"]),
+      ),
+    )
+    .orderBy(desc(prospectApprovalsTable.createdAt))
+    .limit(1);
+  if (!row) return null;
+
+  let email = "";
+  let whatsapp = "";
+  try {
+    const j = JSON.parse(row.generatedText ?? "{}") as { email?: string; whatsapp?: string };
+    email = j.email ?? "";
+    whatsapp = j.whatsapp ?? "";
+  } catch {
+    // generatedText não é JSON (rascunho legado): usa como texto único.
+    const plain = row.generatedText ?? "";
+    email = plain;
+    whatsapp = plain;
+  }
+  // Edição manual sobrepõe o texto do canal correspondente.
+  if (row.approvedText) {
+    if (row.messageType === "email") email = row.approvedText;
+    else whatsapp = row.approvedText;
+  }
+  return { email, whatsapp };
+}
+
+// True se o lead enviou alguma mensagem de entrada depois de `since`.
+async function leadHasReplied(tenantId: string, leadId: string, since: Date): Promise<boolean> {
+  const [reply] = await db
+    .select({ id: messagesTable.id })
+    .from(messagesTable)
+    .where(
+      and(
+        eq(messagesTable.tenantId, tenantId),
+        eq(messagesTable.leadId, leadId),
+        eq(messagesTable.direcao, "entrada"),
+        gt(messagesTable.createdAt, since),
+      ),
+    )
+    .limit(1);
+  return !!reply;
+}
+
+async function recordEmailSent(tenantId: string, leadId: string, conteudo: string): Promise<void> {
+  if (!conteudo.trim()) return;
+  await db.insert(messagesTable).values({
+    tenantId,
+    leadId,
+    direcao: "saida",
+    canal: "email",
+    conteudo,
+    enviadoPor: "agente_ia",
+  });
+}
+
+async function orchestrateProspectCampaigns(log: Logger): Promise<void> {
+  log.info("scheduler/prospect-orchestrator: starting");
+
+  const automatedTenants = await db
+    .select({ id: tenantsTable.id })
+    .from(tenantsTable)
+    .where(eq(tenantsTable.prospectStatus, "automated"));
+
+  if (automatedTenants.length === 0) {
+    log.debug("scheduler/prospect-orchestrator: no automated tenants");
+    return;
+  }
+
+  const now = new Date();
+  let advanced = 0;
+
+  for (const tenant of automatedTenants) {
+    const campaigns = await db
+      .select()
+      .from(prospectCampaignsTable)
+      .where(
+        and(
+          eq(prospectCampaignsTable.tenantId, tenant.id),
+          isNotNull(prospectCampaignsTable.leadId),
+          sql`(${prospectCampaignsTable.status} IS NULL OR ${prospectCampaignsTable.status} NOT IN ('respondido', 'concluida'))`,
+        ),
+      )
+      .limit(500);
+
+    for (const campaign of campaigns) {
+      const leadId = campaign.leadId;
+      if (!leadId) continue;
+      try {
+        const texts = await resolveApprovedTexts(tenant.id, leadId);
+        const emailText = (texts?.email ?? "").trim();
+        const whatsappText = (texts?.whatsapp ?? "").trim();
+
+        // ── Dia 1: 1º e-mail ──────────────────────────────────────────────────
+        if (!campaign.day1SentAt) {
+          // Sem texto aprovado ainda: não avança (tenta de novo no próximo ciclo).
+          if (!emailText) continue;
+          // Claim atômico: só avança se day1SentAt ainda está nulo (evita corrida).
+          const claimed = await db
+            .update(prospectCampaignsTable)
+            .set({ day1SentAt: now, status: "dia1_enviado", updatedAt: now })
+            .where(
+              and(eq(prospectCampaignsTable.id, campaign.id), isNull(prospectCampaignsTable.day1SentAt)),
+            )
+            .returning({ id: prospectCampaignsTable.id });
+          if (claimed.length > 0) {
+            await recordEmailSent(tenant.id, leadId, emailText);
+            advanced++;
+          }
+          continue;
+        }
+
+        // Se o lead respondeu desde o Dia 1, encerra a cadência.
+        if (await leadHasReplied(tenant.id, leadId, campaign.day1SentAt)) {
+          await db
+            .update(prospectCampaignsTable)
+            .set({ status: "respondido", updatedAt: now })
+            .where(eq(prospectCampaignsTable.id, campaign.id));
+          continue;
+        }
+
+        // ── Dia 3: 2º e-mail (>= 2 dias após o Dia 1) ─────────────────────────
+        if (!campaign.day3SentAt) {
+          if (now.getTime() - campaign.day1SentAt.getTime() >= 2 * DAY_MS) {
+            if (!emailText) continue;
+            const claimed = await db
+              .update(prospectCampaignsTable)
+              .set({ day3SentAt: now, status: "dia3_enviado", updatedAt: now })
+              .where(
+                and(
+                  eq(prospectCampaignsTable.id, campaign.id),
+                  isNull(prospectCampaignsTable.day3SentAt),
+                ),
+              )
+              .returning({ id: prospectCampaignsTable.id });
+            if (claimed.length > 0) {
+              await recordEmailSent(tenant.id, leadId, emailText);
+              advanced++;
+            }
+          }
+          continue;
+        }
+
+        // ── Dia 7: WhatsApp (>= 4 dias após o Dia 3) ──────────────────────────
+        if (!campaign.day7SentAt) {
+          if (now.getTime() - campaign.day3SentAt.getTime() >= 4 * DAY_MS) {
+            if (!whatsappText) continue;
+            const claimed = await db
+              .update(prospectCampaignsTable)
+              .set({ day7SentAt: now, status: "concluida", updatedAt: now })
+              .where(
+                and(
+                  eq(prospectCampaignsTable.id, campaign.id),
+                  isNull(prospectCampaignsTable.day7SentAt),
+                ),
+              )
+              .returning({ id: prospectCampaignsTable.id });
+            if (claimed.length > 0) {
+              await db.insert(agentTasksTable).values({
+                tenantId: tenant.id,
+                leadId,
+                agentName: "sdr",
+                actionType: "enviar_whatsapp",
+                payload: {
+                  leadId,
+                  conteudo: whatsappText,
+                  agentName: "sdr",
+                  canal: "whatsapp",
+                  prospectCampaignId: campaign.id,
+                },
+                status: "executando",
+                executedAt: now,
+              });
+              advanced++;
+            }
+          }
+          continue;
+        }
+      } catch (err) {
+        log.error({ err, campaignId: campaign.id }, "scheduler/prospect-orchestrator: campaign error");
+      }
+    }
+  }
+
+  log.info({ advanced }, "scheduler/prospect-orchestrator: complete");
+}
+
 export function startScheduler(log: Logger): void {
   // Job 1: Churn check — every hour at :05
   cron.schedule("5 * * * *", () => {
@@ -846,6 +1062,13 @@ export function startScheduler(log: Logger): void {
   cron.schedule("15 * * * *", () => {
     dispatchDueCampaigns(log).catch((err) => {
       log.error({ err }, "scheduler/campaigns: unhandled error");
+    });
+  });
+
+  // Job 2b: Prospector campaign orchestrator — every 15 minutes
+  cron.schedule("*/15 * * * *", () => {
+    orchestrateProspectCampaigns(log).catch((err) => {
+      log.error({ err }, "scheduler/prospect-orchestrator: unhandled error");
     });
   });
 

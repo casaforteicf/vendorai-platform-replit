@@ -27,3 +27,11 @@ description: Durable rules/decisions for the Prospector feature, contract, and p
 - **Dedup must compare digits-only.** Lead dedup matches on `regexp_replace(telefone,'[^0-9]','','g')` (SQL) OR `documento = cnpjDigits`. Exact-string phone match creates duplicates across formatting variants.
 
 - **CSV export must neutralize formula injection.** Any user-derived field rendered to CSV must prefix values starting with `= + - @ \t \r` with a single quote before quoting, or Excel/Sheets executes them.
+
+- **pgvector similarity in Drizzle = raw `sql` literal, not a bound param.** Build the query vector as a string `[v1,v2,...]` and order with `sql\`${col} <=> ${vecLiteral}::vector\``. Cosine distance operator is `<=>`. Filter `embedding IS NOT NULL` to skip rows without embeddings.
+
+- **Few-shot learning loop:** generate-message embeds the lead context, pulls top-3 prior approvals (action in approved/edited) as style examples, and stores each new draft's embedding so approvals compound. Drafts are stored as `generatedText = JSON {email,whatsapp}`; embedding is of the chosen-channel text. `approvedText` (edited) overrides on read.
+
+- **Prospector automation gate:** tenant gains `prospect_status='automated'` (column added via raw ALTER, default 'learning') once approved+edited approval count >= 50; that transition also inserts an in-app notification once (guard on current status != 'automated' to avoid duplicates).
+
+- **Scheduler step-advance rule:** any cadence job (e.g. orchestrateProspectCampaigns, 15-min cron) must (a) NOT mark a step sent when there is no content/artifact to send — skip and retry next cycle; (b) claim the step atomically with `UPDATE ... WHERE id=? AND dayXSentAt IS NULL RETURNING id` and only perform the side-effect (insert message/agent_task) when the claim returns a row. Prevents double-sends across overlapping runs. There is NO generic email transport — emails are logged as outbound `messages` rows (canal='email', enviadoPor='agente_ia'); only WhatsApp has a real executor (agent_tasks actionType='enviar_whatsapp').

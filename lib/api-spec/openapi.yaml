@@ -8648,6 +8648,65 @@ paths:
             application/json:
               schema: { $ref: "#/components/schemas/ErrorResponse" }
 
+  /prospector/approvals:
+    get:
+      operationId: prospectorListApprovals
+      tags: [prospector]
+      summary: List pending AI message drafts awaiting approval
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: query
+          name: tenantId
+          required: false
+          schema:
+            type: string
+          description: Required when caller is a super_admin
+      responses:
+        "200":
+          description: Pending drafts with lead context
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProspectorApprovalsListResponse"
+
+  /prospector/approvals/{id}:
+    patch:
+      operationId: prospectorPatchApproval
+      tags: [prospector]
+      summary: Approve, approve-with-edit, or reject an AI message draft
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ProspectorPatchApprovalBody"
+      responses:
+        "200":
+          description: Updated approval, with training count and automation flag
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProspectorPatchApprovalResponse"
+        "400":
+          description: Validation error
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+        "404":
+          description: Approval not found for tenant
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+
 components:
   schemas:
     CreateInviteBody:
@@ -12528,12 +12587,81 @@ components:
 
     ProspectorGenerateMessageResponse:
       type: object
-      required: [text, approval]
+      required: [email, whatsapp, approval]
       properties:
-        text:
+        email:
           type: string
+          description: E-mail draft (max ~150 words)
+        whatsapp:
+          type: string
+          description: WhatsApp draft (max ~60 words)
         approval:
           $ref: "#/components/schemas/ProspectApproval"
+
+    ProspectorApprovalItem:
+      type: object
+      required: [id, messageType, email, whatsapp, createdAt]
+      properties:
+        id:
+          type: string
+        leadId:
+          type: string
+          nullable: true
+        messageType:
+          type: string
+          nullable: true
+        email:
+          type: string
+        whatsapp:
+          type: string
+        createdAt:
+          type: string
+          format: date-time
+        empresa:
+          type: string
+          nullable: true
+        dorPrincipal:
+          type: string
+          nullable: true
+        score:
+          type: integer
+          nullable: true
+
+    ProspectorApprovalsListResponse:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/ProspectorApprovalItem"
+
+    ProspectorPatchApprovalBody:
+      type: object
+      required: [action]
+      properties:
+        action:
+          type: string
+          enum: [approved, edited, rejected]
+        approvedText:
+          type: string
+          description: Required when action is 'edited'
+        tenantId:
+          type: string
+          description: Required when caller is a super_admin
+
+    ProspectorPatchApprovalResponse:
+      type: object
+      required: [ok, action, approvedCount, automationUnlocked]
+      properties:
+        ok:
+          type: boolean
+        action:
+          type: string
+        approvedCount:
+          type: integer
+        automationUnlocked:
+          type: boolean
 
     ErrorResponse:
       type: object

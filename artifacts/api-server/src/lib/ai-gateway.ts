@@ -583,6 +583,69 @@ export async function generateImage(
   return { urls, costUsd, usedByok: key.usedByok };
 }
 
+// ── Helper: text embedding (pgvector) ───────────────────────────────────────────
+
+export async function generateEmbedding(
+  tenantId: string,
+  text: string,
+  options: { model?: string; log?: Logger } = {},
+): Promise<{ embedding: number[]; costUsd: number; usedByok: boolean }> {
+  const model = options.model ?? "text-embedding-3-small";
+  const log = options.log;
+
+  const estimatedInputTokens = Math.ceil(text.length / 4);
+  const estimatedCost = estimateCost(model, estimatedInputTokens, 0);
+
+  const quota = await checkQuota(tenantId, estimatedCost, log);
+  if (!quota.ok) {
+    throw new AiGatewayError(quota.reason, quota.httpStatus, quota.details);
+  }
+
+  const key = await resolveAIKey(tenantId, "openai");
+  const openai = new OpenAI({ apiKey: key.apiKey });
+
+  let embedding: number[] = [];
+  let inputTokens = estimatedInputTokens;
+  let success = false;
+  let errorMessage: string | undefined;
+  try {
+    const response = await openai.embeddings.create({ model, input: text });
+    embedding = response.data[0]?.embedding ?? [];
+    inputTokens = response.usage?.prompt_tokens ?? estimatedInputTokens;
+    success = true;
+  } catch (err: any) {
+    errorMessage = err.message ?? "Embedding generation failed";
+    log?.error({ tenantId, model, error: errorMessage }, "ai-gateway: embedding failed");
+  }
+
+  const costUsd = estimateCost(model, inputTokens, 0);
+  await logUsage({
+    tenantId,
+    provider: "openai",
+    model,
+    feature: "embedding",
+    inputTokens,
+    outputTokens: 0,
+    costEstimateUsd: costUsd,
+    usedByok: key.usedByok,
+    success,
+    errorMessage,
+  });
+
+  if (!key.usedByok) {
+    await incrementDailySpend(tenantId, costUsd);
+  }
+
+  if (!success) {
+    throw new AiGatewayError(errorMessage ?? "Embedding generation failed", 502, {
+      provider: "openai",
+      model,
+    });
+  }
+
+  return { embedding, costUsd, usedByok: key.usedByok };
+}
+
 // ── Helper: audio transcription via Whisper ─────────────────────────────────────
 
 export async function transcribeAudio(
