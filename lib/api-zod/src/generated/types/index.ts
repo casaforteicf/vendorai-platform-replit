@@ -297,6 +297,8 @@ export * from './propostaStatus';
 export * from './prospectApproval';
 export * from './prospectEnrichment';
 export * from './prospectorEnrichBody';
+export * from './prospectorEnrichResponse';
+export * from './prospectorExportParams';
 export * from './prospectorGenerateMessageBody';
 export * from './prospectorGenerateMessageResponse';
 export * from './publicSiteResponse';

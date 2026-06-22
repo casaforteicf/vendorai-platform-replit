@@ -19,3 +19,11 @@ description: Durable rules/decisions for the Prospector feature, contract, and p
 - **Multi-tenant rule for optional `leadId` inputs:** any endpoint accepting a `leadId` and writing it must verify the lead belongs to the resolved tenant before persisting (else cross-tenant linkage). Pattern: select lead `where id = leadId AND tenant_id = tenantId`; 404 if absent.
 
 - **Frontend route convention exception:** the Prospector page lives at `/app/prospector` (user-requested), unlike the rest of the app which uses root-relative paths (`/leads`, `/deals`).
+
+- **Lead scoring is provisional.** `computeScore()` in `prospector.ts` is an isolated placeholder pending the user's "Módulo 3" criteria (never provided). Replace the weights once the real criteria arrive; do not treat current scores as final.
+
+- **CNPJ enrichment via ReceitaWS** (`receitaws.com.br/v1/cnpj/{14 digits}`, no key). Degrades gracefully — enrich proceeds on Places data alone if ReceitaWS fails/empty.
+
+- **Dedup must compare digits-only.** Lead dedup matches on `regexp_replace(telefone,'[^0-9]','','g')` (SQL) OR `documento = cnpjDigits`. Exact-string phone match creates duplicates across formatting variants.
+
+- **CSV export must neutralize formula injection.** Any user-derived field rendered to CSV must prefix values starting with `= + - @ \t \r` with a single quote before quoting, or Excel/Sheets executes them.

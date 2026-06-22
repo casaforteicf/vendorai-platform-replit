@@ -7,8 +7,8 @@
  */
 
 export interface ProspectEnrichment {
-  id: string;
-  tenantId: string;
+  id?: string;
+  tenantId?: string;
   leadId?: string | null;
   nomeEmpresa: string | null;
   endereco?: string | null;
@@ -16,11 +16,21 @@ export interface ProspectEnrichment {
   reviewCount?: number | null;
   telefone?: string | null;
   whatsapp?: string | null;
+  instagram?: string | null;
   siteOficial?: string | null;
+  cnpj?: string | null;
+  razaoSocial?: string | null;
+  nomeFantasia?: string | null;
+  situacaoCadastral?: string | null;
+  atividadePrincipal?: string | null;
   pontosFortes?: string[] | null;
   doresPrincipais?: string[] | null;
+  publicoAlvo?: string | null;
+  tipoNegocio?: string | null;
+  nivelPresencaDigital?: string | null;
+  resumoNegocio?: string | null;
   scoreProspector?: number | null;
   temContato: boolean;
-  createdAt: Date;
-  updatedAt: Date;
+  createdAt?: Date;
+  updatedAt?: Date;
 }

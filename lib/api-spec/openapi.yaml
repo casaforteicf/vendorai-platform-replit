@@ -8562,12 +8562,18 @@ paths:
             schema:
               $ref: "#/components/schemas/ProspectorEnrichBody"
       responses:
-        "201":
-          description: Created enrichment record
+        "200":
+          description: Prospect collected but not saved (no contact channel)
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/ProspectEnrichment"
+                $ref: "#/components/schemas/ProspectorEnrichResponse"
+        "201":
+          description: Enrichment saved (lead created or linked)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProspectorEnrichResponse"
         "400":
           description: Validation error
           content:
@@ -8575,6 +8581,33 @@ paths:
               schema: { $ref: "#/components/schemas/ErrorResponse" }
         "404":
           description: Lead not found for tenant
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+
+  /prospector/export:
+    get:
+      operationId: prospectorExport
+      tags: [prospector]
+      summary: Export the tenant's prospect enrichments as CSV
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: query
+          name: tenantId
+          required: false
+          schema:
+            type: string
+          description: Required when caller is a super_admin
+      responses:
+        "200":
+          description: CSV file of prospect enrichments
+          content:
+            text/csv:
+              schema:
+                type: string
+        "400":
+          description: Validation error
           content:
             application/json:
               schema: { $ref: "#/components/schemas/ErrorResponse" }
@@ -12338,6 +12371,11 @@ components:
           minLength: 2
         endereco:
           type: string
+        cnpj:
+          type: string
+          description: When provided, enriches via ReceitaWS
+        instagram:
+          type: string
         leadId:
           type: string
         tenantId:
@@ -12346,7 +12384,7 @@ components:
 
     ProspectEnrichment:
       type: object
-      required: [id, tenantId, nomeEmpresa, temContato, createdAt, updatedAt]
+      required: [nomeEmpresa, temContato]
       properties:
         id:
           type: string
@@ -12373,7 +12411,25 @@ components:
         whatsapp:
           type: string
           nullable: true
+        instagram:
+          type: string
+          nullable: true
         siteOficial:
+          type: string
+          nullable: true
+        cnpj:
+          type: string
+          nullable: true
+        razaoSocial:
+          type: string
+          nullable: true
+        nomeFantasia:
+          type: string
+          nullable: true
+        situacaoCadastral:
+          type: string
+          nullable: true
+        atividadePrincipal:
           type: string
           nullable: true
         pontosFortes:
@@ -12386,6 +12442,18 @@ components:
           nullable: true
           items:
             type: string
+        publicoAlvo:
+          type: string
+          nullable: true
+        tipoNegocio:
+          type: string
+          nullable: true
+        nivelPresencaDigital:
+          type: string
+          nullable: true
+        resumoNegocio:
+          type: string
+          nullable: true
         scoreProspector:
           type: integer
           nullable: true
@@ -12397,6 +12465,23 @@ components:
         updatedAt:
           type: string
           format: date-time
+
+    ProspectorEnrichResponse:
+      type: object
+      required: [saved, enrichment]
+      properties:
+        saved:
+          type: boolean
+        reason:
+          type: string
+          nullable: true
+        isDuplicate:
+          type: boolean
+        leadId:
+          type: string
+          nullable: true
+        enrichment:
+          $ref: "#/components/schemas/ProspectEnrichment"
 
     ProspectorGenerateMessageBody:
       type: object

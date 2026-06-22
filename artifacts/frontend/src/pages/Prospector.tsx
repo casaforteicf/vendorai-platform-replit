@@ -4,6 +4,7 @@ import { useToast } from "@/hooks/use-toast";
 import {
   useProspectorEnrich,
   useProspectorGenerateMessage,
+  prospectorExport,
   type ProspectEnrichment,
 } from "@workspace/api-client-react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -32,6 +33,12 @@ import {
   XCircle,
   ThumbsUp,
   ThumbsDown,
+  Download,
+  Instagram,
+  MessageCircle,
+  Building2,
+  Target,
+  Gauge,
 } from "lucide-react";
 
 type ApprovalDecision = "approved" | "approved_edited" | "rejected";
@@ -49,11 +56,18 @@ function EnrichmentResult({ data }: { data: ProspectEnrichment }) {
               </CardDescription>
             )}
           </div>
-          {data.temContato ? (
-            <Badge variant="default">Com contato</Badge>
-          ) : (
-            <Badge variant="secondary">Sem contato</Badge>
-          )}
+          <div className="flex flex-col items-end gap-1.5">
+            {data.scoreProspector != null && (
+              <Badge variant="default" className="text-sm">
+                <Gauge className="h-3.5 w-3.5 mr-1" /> Score {data.scoreProspector}
+              </Badge>
+            )}
+            {data.temContato ? (
+              <Badge variant="secondary">Com contato</Badge>
+            ) : (
+              <Badge variant="outline">Sem contato</Badge>
+            )}
+          </div>
         </div>
       </CardHeader>
       <CardContent className="space-y-4">
@@ -72,6 +86,16 @@ function EnrichmentResult({ data }: { data: ProspectEnrichment }) {
               <Phone className="h-4 w-4 text-muted-foreground" /> {data.telefone}
             </span>
           )}
+          {data.whatsapp && (
+            <span className="flex items-center gap-1.5 text-green-600">
+              <MessageCircle className="h-4 w-4" /> WhatsApp
+            </span>
+          )}
+          {data.instagram && (
+            <span className="flex items-center gap-1.5 text-pink-600">
+              <Instagram className="h-4 w-4" /> {data.instagram}
+            </span>
+          )}
           {data.siteOficial && (
             <a
               href={data.siteOficial}
@@ -81,6 +105,40 @@ function EnrichmentResult({ data }: { data: ProspectEnrichment }) {
             >
               <Globe className="h-4 w-4" /> Site oficial
             </a>
+          )}
+        </div>
+
+        {(data.cnpj || data.razaoSocial || data.situacaoCadastral || data.atividadePrincipal) && (
+          <div className="rounded-md border bg-muted/30 p-3 text-sm space-y-1">
+            <p className="font-medium flex items-center gap-1.5">
+              <Building2 className="h-4 w-4 text-muted-foreground" /> Dados cadastrais (ReceitaWS)
+            </p>
+            {data.razaoSocial && <p>Razão social: {data.razaoSocial}</p>}
+            {data.cnpj && <p>CNPJ: {data.cnpj}</p>}
+            {data.situacaoCadastral && <p>Situação: {data.situacaoCadastral}</p>}
+            {data.atividadePrincipal && <p>Atividade: {data.atividadePrincipal}</p>}
+          </div>
+        )}
+
+        {data.resumoNegocio && (
+          <p className="text-sm text-muted-foreground italic">{data.resumoNegocio}</p>
+        )}
+
+        <div className="flex flex-wrap gap-2 text-sm">
+          {data.tipoNegocio && (
+            <Badge variant="outline" className="font-normal">
+              <Building2 className="h-3.5 w-3.5 mr-1" /> {data.tipoNegocio}
+            </Badge>
+          )}
+          {data.publicoAlvo && (
+            <Badge variant="outline" className="font-normal">
+              <Target className="h-3.5 w-3.5 mr-1" /> {data.publicoAlvo}
+            </Badge>
+          )}
+          {data.nivelPresencaDigital && (
+            <Badge variant="outline" className="font-normal">
+              <Gauge className="h-3.5 w-3.5 mr-1" /> Presença digital: {data.nivelPresencaDigital}
+            </Badge>
           )}
         </div>
 
@@ -187,7 +245,10 @@ export default function Prospector() {
   // Enrichment form
   const [nomeEmpresa, setNomeEmpresa] = useState("");
   const [endereco, setEndereco] = useState("");
+  const [cnpj, setCnpj] = useState("");
+  const [instagram, setInstagram] = useState("");
   const [enrichment, setEnrichment] = useState<ProspectEnrichment | null>(null);
+  const [exporting, setExporting] = useState(false);
 
   // Message form
   const [messageType, setMessageType] = useState("whatsapp");
@@ -212,14 +273,28 @@ export default function Prospector() {
         data: {
           nomeEmpresa: nomeEmpresa.trim(),
           endereco: endereco.trim() || undefined,
+          cnpj: cnpj.trim() || undefined,
+          instagram: instagram.trim() || undefined,
           ...tenantIdField(),
         },
       },
       {
-        onSuccess: (data) => {
-          setEnrichment(data);
-          if (!msgNomeEmpresa) setMsgNomeEmpresa(data.nomeEmpresa ?? nomeEmpresa.trim());
-          toast({ title: "Empresa enriquecida com sucesso" });
+        onSuccess: (res) => {
+          setEnrichment(res.enrichment);
+          if (!msgNomeEmpresa) {
+            setMsgNomeEmpresa(res.enrichment.nomeEmpresa ?? nomeEmpresa.trim());
+          }
+          if (!res.saved) {
+            toast({
+              title: "Não salvo no banco",
+              description: res.reason ?? "Sem canal de contato.",
+              variant: "destructive",
+            });
+          } else if (res.isDuplicate) {
+            toast({ title: "Lead já existia — vinculado ao registro existente" });
+          } else {
+            toast({ title: "Empresa enriquecida e lead criado" });
+          }
         },
         onError: (err) => {
           toast({
@@ -230,6 +305,28 @@ export default function Prospector() {
         },
       },
     );
+  }
+
+  async function onExport() {
+    setExporting(true);
+    try {
+      const csv = await prospectorExport(isSuperAdmin && tenantId ? { tenantId } : undefined);
+      const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = "prospector_leads.csv";
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      toast({
+        title: "Falha ao exportar CSV",
+        description: err instanceof Error ? err.message : undefined,
+        variant: "destructive",
+      });
+    } finally {
+      setExporting(false);
+    }
   }
 
   function onGenerate() {
@@ -260,13 +357,26 @@ export default function Prospector() {
 
   return (
     <div className="max-w-5xl mx-auto space-y-6">
-      <div>
-        <h1 className="text-2xl font-bold tracking-tight flex items-center gap-2">
-          <Search className="h-6 w-6 text-primary" /> Prospector
-        </h1>
-        <p className="text-muted-foreground mt-1">
-          Busque e enriqueça empresas e gere mensagens de primeiro contato com IA.
-        </p>
+      <div className="flex items-start justify-between gap-4">
+        <div>
+          <h1 className="text-2xl font-bold tracking-tight flex items-center gap-2">
+            <Search className="h-6 w-6 text-primary" /> Prospector
+          </h1>
+          <p className="text-muted-foreground mt-1">
+            Busque e enriqueça empresas e gere mensagens de primeiro contato com IA.
+          </p>
+        </div>
+        <Button onClick={onExport} disabled={exporting} variant="outline">
+          {exporting ? (
+            <>
+              <Spinner className="h-4 w-4 mr-2" /> Exportando...
+            </>
+          ) : (
+            <>
+              <Download className="h-4 w-4 mr-2" /> Exportar CSV
+            </>
+          )}
+        </Button>
       </div>
 
       {isSuperAdmin && (
@@ -314,6 +424,26 @@ export default function Prospector() {
                 value={endereco}
                 onChange={(e) => setEndereco(e.target.value)}
               />
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1.5">
+                <Label htmlFor="cnpj">CNPJ (opcional)</Label>
+                <Input
+                  id="cnpj"
+                  placeholder="00.000.000/0000-00"
+                  value={cnpj}
+                  onChange={(e) => setCnpj(e.target.value)}
+                />
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="instagram">Instagram (opcional)</Label>
+                <Input
+                  id="instagram"
+                  placeholder="@empresa"
+                  value={instagram}
+                  onChange={(e) => setInstagram(e.target.value)}
+                />
+              </div>
             </div>
             <Button onClick={onEnrich} disabled={enrich.isPending} className="w-full">
               {enrich.isPending ? (

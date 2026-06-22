@@ -10,6 +10,9 @@ export interface ProspectorEnrichBody {
   /** @minLength 2 */
   nomeEmpresa: string;
   endereco?: string;
+  /** When provided, enriches via ReceitaWS */
+  cnpj?: string;
+  instagram?: string;
   leadId?: string;
   /** Required when caller is a super_admin */
   tenantId?: string;

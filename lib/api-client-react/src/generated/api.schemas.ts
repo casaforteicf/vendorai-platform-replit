@@ -2275,14 +2275,17 @@ export interface ProspectorEnrichBody {
   /** @minLength 2 */
   nomeEmpresa: string;
   endereco?: string;
+  /** When provided, enriches via ReceitaWS */
+  cnpj?: string;
+  instagram?: string;
   leadId?: string;
   /** Required when caller is a super_admin */
   tenantId?: string;
 }
 
 export interface ProspectEnrichment {
-  id: string;
-  tenantId: string;
+  id?: string;
+  tenantId?: string;
   leadId?: string | null;
   nomeEmpresa: string | null;
   endereco?: string | null;
@@ -2290,13 +2293,31 @@ export interface ProspectEnrichment {
   reviewCount?: number | null;
   telefone?: string | null;
   whatsapp?: string | null;
+  instagram?: string | null;
   siteOficial?: string | null;
+  cnpj?: string | null;
+  razaoSocial?: string | null;
+  nomeFantasia?: string | null;
+  situacaoCadastral?: string | null;
+  atividadePrincipal?: string | null;
   pontosFortes?: string[] | null;
   doresPrincipais?: string[] | null;
+  publicoAlvo?: string | null;
+  tipoNegocio?: string | null;
+  nivelPresencaDigital?: string | null;
+  resumoNegocio?: string | null;
   scoreProspector?: number | null;
   temContato: boolean;
-  createdAt: string;
-  updatedAt: string;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+export interface ProspectorEnrichResponse {
+  saved: boolean;
+  reason?: string | null;
+  isDuplicate?: boolean;
+  leadId?: string | null;
+  enrichment: ProspectEnrichment;
 }
 
 export interface ProspectorGenerateMessageBody {
@@ -4967,5 +4988,12 @@ export type GerarConteudoSupermercadoCampanhaBody = {
 export type GerarConteudoSupermercadoCampanha200 = {
   titulo: string;
   conteudo: string;
+};
+
+export type ProspectorExportParams = {
+/**
+ * Required when caller is a super_admin
+ */
+tenantId?: string;
 };
 

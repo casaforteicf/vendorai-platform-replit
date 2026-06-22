@@ -196,8 +196,9 @@ import type {
   ProductPresentation,
   ProdutoCatalogo,
   Proposta,
-  ProspectEnrichment,
   ProspectorEnrichBody,
+  ProspectorEnrichResponse,
+  ProspectorExportParams,
   ProspectorGenerateMessageBody,
   ProspectorGenerateMessageResponse,
   PublicSiteResponse,
@@ -24663,9 +24664,9 @@ export const getProspectorEnrichUrl = () => {
 /**
  * @summary Enrich a prospect using Google Places and AI
  */
-export const prospectorEnrich = async (prospectorEnrichBody: ProspectorEnrichBody, options?: RequestInit): Promise<ProspectEnrichment> => {
+export const prospectorEnrich = async (prospectorEnrichBody: ProspectorEnrichBody, options?: RequestInit): Promise<ProspectorEnrichResponse> => {
 
-  return customFetch<ProspectEnrichment>(getProspectorEnrichUrl(),
+  return customFetch<ProspectorEnrichResponse>(getProspectorEnrichUrl(),
   {
     ...options,
     method: 'POST',
@@ -24722,6 +24723,90 @@ export const useProspectorEnrich = <TError = ErrorType<ErrorResponse>,
       > => {
       return useMutation(getProspectorEnrichMutationOptions(options));
     }
+
+export const getProspectorExportUrl = (params?: ProspectorExportParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : value.toString())
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/api/prospector/export?${stringifiedParams}` : `/api/prospector/export`
+}
+
+/**
+ * @summary Export the tenant's prospect enrichments as CSV
+ */
+export const prospectorExport = async (params?: ProspectorExportParams, options?: RequestInit): Promise<string> => {
+
+  return customFetch<string>(getProspectorExportUrl(params),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getProspectorExportQueryKey = (params?: ProspectorExportParams,) => {
+    return [
+    `/api/prospector/export`, ...(params ? [params] : [])
+    ] as const;
+    }
+
+
+export const getProspectorExportQueryOptions = <TData = Awaited<ReturnType<typeof prospectorExport>>, TError = ErrorType<ErrorResponse>>(params?: ProspectorExportParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof prospectorExport>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getProspectorExportQueryKey(params);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof prospectorExport>>> = ({ signal }) => prospectorExport(params, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof prospectorExport>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type ProspectorExportQueryResult = NonNullable<Awaited<ReturnType<typeof prospectorExport>>>
+export type ProspectorExportQueryError = ErrorType<ErrorResponse>
+
+
+/**
+ * @summary Export the tenant's prospect enrichments as CSV
+ */
+
+export function useProspectorExport<TData = Awaited<ReturnType<typeof prospectorExport>>, TError = ErrorType<ErrorResponse>>(
+ params?: ProspectorExportParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof prospectorExport>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getProspectorExportQueryOptions(params,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+
+
+
+
+
 
 export const getProspectorGenerateMessageUrl = () => {
 

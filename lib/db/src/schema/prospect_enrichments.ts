@@ -19,9 +19,24 @@ export const prospectEnrichmentsTable = pgTable("prospect_enrichments", {
   reviewCount: integer("review_count"),
   telefone: text("telefone"),
   whatsapp: text("whatsapp"),
+  instagram: text("instagram"),
   siteOficial: text("site_oficial"),
+
+  // ReceitaWS (preenchido quando um CNPJ é informado)
+  cnpj: text("cnpj"),
+  razaoSocial: text("razao_social"),
+  nomeFantasia: text("nome_fantasia"),
+  situacaoCadastral: text("situacao_cadastral"),
+  atividadePrincipal: text("atividade_principal"),
+
+  // Enriquecimento de IA (via aiGateway)
   pontosFortes: jsonb("pontos_fortes").$type<string[]>(),
   doresPrincipais: jsonb("dores_principais").$type<string[]>(),
+  publicoAlvo: text("publico_alvo"),
+  tipoNegocio: text("tipo_negocio"),
+  nivelPresencaDigital: text("nivel_presenca_digital"),
+  resumoNegocio: text("resumo_negocio"),
+
   scoreProspector: integer("score_prospector"),
   temContato: boolean("tem_contato").notNull().default(false),
 

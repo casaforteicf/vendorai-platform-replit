@@ -9613,8 +9613,53 @@ export const prospectorEnrichBodyNomeEmpresaMin = 2;
 export const ProspectorEnrichBody = zod.object({
   "nomeEmpresa": zod.string().min(prospectorEnrichBodyNomeEmpresaMin),
   "endereco": zod.string().optional(),
+  "cnpj": zod.string().optional().describe('When provided, enriches via ReceitaWS'),
+  "instagram": zod.string().optional(),
   "leadId": zod.string().optional(),
   "tenantId": zod.string().optional().describe('Required when caller is a super_admin')
+})
+
+export const ProspectorEnrichResponse = zod.object({
+  "saved": zod.boolean(),
+  "reason": zod.string().nullish(),
+  "isDuplicate": zod.boolean().optional(),
+  "leadId": zod.string().nullish(),
+  "enrichment": zod.object({
+  "id": zod.string().optional(),
+  "tenantId": zod.string().optional(),
+  "leadId": zod.string().nullish(),
+  "nomeEmpresa": zod.string().nullable(),
+  "endereco": zod.string().nullish(),
+  "rating": zod.string().nullish(),
+  "reviewCount": zod.number().nullish(),
+  "telefone": zod.string().nullish(),
+  "whatsapp": zod.string().nullish(),
+  "instagram": zod.string().nullish(),
+  "siteOficial": zod.string().nullish(),
+  "cnpj": zod.string().nullish(),
+  "razaoSocial": zod.string().nullish(),
+  "nomeFantasia": zod.string().nullish(),
+  "situacaoCadastral": zod.string().nullish(),
+  "atividadePrincipal": zod.string().nullish(),
+  "pontosFortes": zod.array(zod.string()).nullish(),
+  "doresPrincipais": zod.array(zod.string()).nullish(),
+  "publicoAlvo": zod.string().nullish(),
+  "tipoNegocio": zod.string().nullish(),
+  "nivelPresencaDigital": zod.string().nullish(),
+  "resumoNegocio": zod.string().nullish(),
+  "scoreProspector": zod.number().nullish(),
+  "temContato": zod.boolean(),
+  "createdAt": zod.coerce.date().optional(),
+  "updatedAt": zod.coerce.date().optional()
+})
+})
+
+
+/**
+ * @summary Export the tenant's prospect enrichments as CSV
+ */
+export const ProspectorExportQueryParams = zod.object({
+  "tenantId": zod.coerce.string().optional().describe('Required when caller is a super_admin')
 })
 
 
