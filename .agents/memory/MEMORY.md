@@ -12,3 +12,4 @@
 - [executeSql vs Supabase](executesql-vs-supabase.md) — executeSql em code_execution conecta ao Postgres interno do Replit, NÃO ao Supabase; para produção usar pg com SUPABASE_DATABASE_URL diretamente.
 - [OpenAI image models](openai-image-models.md) — dall-e-2/3 não existem nesta conta; usar gpt-image-1 (retorna b64_json); upload → object storage → /api/storage/objects/*.
 - [Analytics dashboard](analytics-dashboard.md) — 3 rotas (/analytics/agents, /channels, /intelligence); frontend em /analytics com 3 tabs; usa count(*) filter para performance.
+- [Demo session auth](demo-session-auth.md) — demo login é "try-it" não-persistente; detectado pelo JWT email demo@demo.com + marker sessionStorage; token fica em localStorage vendorai_token.

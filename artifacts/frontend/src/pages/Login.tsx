@@ -56,7 +56,7 @@ export default function Login() {
       { data: { email: "demo", password: "demo" } },
       {
         onSuccess: (response) => {
-          login(response.token, response.user);
+          login(response.token, response.user, { isDemo: true });
         },
         onError: (error) => {
           toast({
