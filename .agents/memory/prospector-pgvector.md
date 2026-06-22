@@ -1,17 +1,21 @@
 ---
 name: Prospector feature & pgvector
-description: How the Prospector endpoints/tables were built, pgvector enablement, and the safe migration path used.
+description: Durable rules/decisions for the Prospector feature, contract, and pgvector usage.
 ---
 
 # Prospector + pgvector
 
-- **pgvector is now enabled in Supabase** (`CREATE EXTENSION IF NOT EXISTS vector`). Drizzle 0.45 exposes `vector("col", { dimensions: 1536 })` from `drizzle-orm/pg-core`; `typecheck:libs` covers it and drizzle-zod handles the column. No need to re-enable the extension.
+- **Contract-first is mandatory for new prospector endpoints.** Backend Express handlers exist in `prospector.ts`, but the frontend consumes them only via Orval-generated hooks. Any new endpoint must be added to `lib/api-spec/openapi.yaml` first, then regenerated. The handlers' actual status codes must match the spec — e.g. endpoints that call the tenant-ownership guard can return 404, so document it.
 
 - **Migration path for new tables = surgical raw DDL via `pg` against `SUPABASE_DATABASE_URL`**, NOT `drizzle-kit push`.
-  **Why:** a full push prompts to *truncate `tenant_domains`* (unique-constraint drift) — running push (even `--force`) risks wiping that table's data. Apply only the new tables' `CREATE TABLE IF NOT EXISTS` directly. Run the script from inside `lib/db/` so Node ESM resolves the `pg` package.
+  **Why:** a full push prompts to *truncate `tenant_domains`* (unique-constraint drift), risking data loss. Apply only the new tables' `CREATE TABLE IF NOT EXISTS` directly. Run the script from inside `lib/db/` so Node ESM resolves the `pg` package.
 
-- **Prospector endpoints route through the existing aiGateway only** (`callOpenAI` from `lib/ai-gateway.js`), never the OpenAI SDK directly. A 402 "AI quota exhausted ($0 plan)" from these endpoints is the gateway enforcing the tenant's budget — not a bug. enrich degrades gracefully (saves Google Places data, leaves AI-derived arrays empty) when the gateway rejects; generate-message hard-fails 402.
+- **pgvector is enabled in Supabase.** Drizzle exposes `vector("col", { dimensions: 1536 })`. Do not re-run the extension enable. When exposing a vector-bearing row in an OpenAPI response, omit the embedding column from the response schema to avoid client type noise.
 
-- **Google Places uses the *New* Places API** (`POST https://places.googleapis.com/v1/places:searchText`, header `X-Goog-Api-Key` + `X-Goog-FieldMask`) with secret `GOOGLE_PLACES_API_KEY`. The OAuth `GOOGLE_CLIENT_ID/SECRET` do NOT work for Places — a separate API key is required.
+- **All AI must route through the existing aiGateway** (`callOpenAI` from `lib/ai-gateway.js`), never the OpenAI SDK directly. A 402 "AI quota exhausted" from these endpoints is the gateway enforcing the tenant budget, not a bug. enrich degrades gracefully (saves Places data, empty AI arrays) when the gateway rejects; generate-message hard-fails 402.
 
-- **Multi-tenant rule for optional `leadId` inputs:** any endpoint that accepts a `leadId` and writes it must verify the lead belongs to the resolved tenant before persisting, else cross-tenant linkage is possible. Pattern: `select` lead `where id = leadId AND tenant_id = tenantId`; 404 if absent.
+- **Google Places uses the *New* Places API** (`POST places.googleapis.com/v1/places:searchText`, headers `X-Goog-Api-Key` + `X-Goog-FieldMask`) with secret `GOOGLE_PLACES_API_KEY`. The OAuth `GOOGLE_CLIENT_ID/SECRET` do NOT work for Places — a separate API key is required.
+
+- **Multi-tenant rule for optional `leadId` inputs:** any endpoint accepting a `leadId` and writing it must verify the lead belongs to the resolved tenant before persisting (else cross-tenant linkage). Pattern: select lead `where id = leadId AND tenant_id = tenantId`; 404 if absent.
+
+- **Frontend route convention exception:** the Prospector page lives at `/app/prospector` (user-requested), unlike the rest of the app which uses root-relative paths (`/leads`, `/deals`).

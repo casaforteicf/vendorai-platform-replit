@@ -196,6 +196,10 @@ import type {
   ProductPresentation,
   ProdutoCatalogo,
   Proposta,
+  ProspectEnrichment,
+  ProspectorEnrichBody,
+  ProspectorGenerateMessageBody,
+  ProspectorGenerateMessageResponse,
   PublicSiteResponse,
   RegisterBody,
   RemoveAnthropicAIKey200,
@@ -24646,5 +24650,147 @@ export const useUpdateLeadSpouseConsent = <TError = ErrorType<ErrorResponse>,
         TContext
       > => {
       return useMutation(getUpdateLeadSpouseConsentMutationOptions(options));
+    }
+
+export const getProspectorEnrichUrl = () => {
+
+
+
+
+  return `/api/prospector/enrich`
+}
+
+/**
+ * @summary Enrich a prospect using Google Places and AI
+ */
+export const prospectorEnrich = async (prospectorEnrichBody: ProspectorEnrichBody, options?: RequestInit): Promise<ProspectEnrichment> => {
+
+  return customFetch<ProspectEnrichment>(getProspectorEnrichUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(
+      prospectorEnrichBody,)
+  }
+);}
+
+
+
+
+export const getProspectorEnrichMutationOptions = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof prospectorEnrich>>, TError,{data: BodyType<ProspectorEnrichBody>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof prospectorEnrich>>, TError,{data: BodyType<ProspectorEnrichBody>}, TContext> => {
+
+const mutationKey = ['prospectorEnrich'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof prospectorEnrich>>, {data: BodyType<ProspectorEnrichBody>}> = (props) => {
+          const {data} = props ?? {};
+
+          return  prospectorEnrich(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type ProspectorEnrichMutationResult = NonNullable<Awaited<ReturnType<typeof prospectorEnrich>>>
+    export type ProspectorEnrichMutationBody = BodyType<ProspectorEnrichBody>
+    export type ProspectorEnrichMutationError = ErrorType<ErrorResponse>
+
+    /**
+ * @summary Enrich a prospect using Google Places and AI
+ */
+export const useProspectorEnrich = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof prospectorEnrich>>, TError,{data: BodyType<ProspectorEnrichBody>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof prospectorEnrich>>,
+        TError,
+        {data: BodyType<ProspectorEnrichBody>},
+        TContext
+      > => {
+      return useMutation(getProspectorEnrichMutationOptions(options));
+    }
+
+export const getProspectorGenerateMessageUrl = () => {
+
+
+
+
+  return `/api/prospector/generate-message`
+}
+
+/**
+ * @summary Generate a first-contact message via AI
+ */
+export const prospectorGenerateMessage = async (prospectorGenerateMessageBody: ProspectorGenerateMessageBody, options?: RequestInit): Promise<ProspectorGenerateMessageResponse> => {
+
+  return customFetch<ProspectorGenerateMessageResponse>(getProspectorGenerateMessageUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(
+      prospectorGenerateMessageBody,)
+  }
+);}
+
+
+
+
+export const getProspectorGenerateMessageMutationOptions = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof prospectorGenerateMessage>>, TError,{data: BodyType<ProspectorGenerateMessageBody>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof prospectorGenerateMessage>>, TError,{data: BodyType<ProspectorGenerateMessageBody>}, TContext> => {
+
+const mutationKey = ['prospectorGenerateMessage'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof prospectorGenerateMessage>>, {data: BodyType<ProspectorGenerateMessageBody>}> = (props) => {
+          const {data} = props ?? {};
+
+          return  prospectorGenerateMessage(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type ProspectorGenerateMessageMutationResult = NonNullable<Awaited<ReturnType<typeof prospectorGenerateMessage>>>
+    export type ProspectorGenerateMessageMutationBody = BodyType<ProspectorGenerateMessageBody>
+    export type ProspectorGenerateMessageMutationError = ErrorType<ErrorResponse>
+
+    /**
+ * @summary Generate a first-contact message via AI
+ */
+export const useProspectorGenerateMessage = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof prospectorGenerateMessage>>, TError,{data: BodyType<ProspectorGenerateMessageBody>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof prospectorGenerateMessage>>,
+        TError,
+        {data: BodyType<ProspectorGenerateMessageBody>},
+        TContext
+      > => {
+      return useMutation(getProspectorGenerateMessageMutationOptions(options));
     }
 

@@ -9603,3 +9603,32 @@ export const UpdateLeadSpouseConsentResponse = zod.object({
 })
 
 
+/**
+ * @summary Enrich a prospect using Google Places and AI
+ */
+export const prospectorEnrichBodyNomeEmpresaMin = 2;
+
+
+
+export const ProspectorEnrichBody = zod.object({
+  "nomeEmpresa": zod.string().min(prospectorEnrichBodyNomeEmpresaMin),
+  "endereco": zod.string().optional(),
+  "leadId": zod.string().optional(),
+  "tenantId": zod.string().optional().describe('Required when caller is a super_admin')
+})
+
+
+/**
+ * @summary Generate a first-contact message via AI
+ */
+export const prospectorGenerateMessageBodyMessageTypeDefault = `whatsapp`;
+
+export const ProspectorGenerateMessageBody = zod.object({
+  "messageType": zod.string().default(prospectorGenerateMessageBodyMessageTypeDefault),
+  "nomeEmpresa": zod.string().optional(),
+  "contexto": zod.string().optional(),
+  "leadId": zod.string().optional(),
+  "tenantId": zod.string().optional().describe('Required when caller is a super_admin')
+})
+
+

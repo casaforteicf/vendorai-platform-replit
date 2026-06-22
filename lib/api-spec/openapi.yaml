@@ -8548,6 +8548,73 @@ paths:
             application/json:
               schema: { $ref: "#/components/schemas/ErrorResponse" }
 
+  /prospector/enrich:
+    post:
+      operationId: prospectorEnrich
+      tags: [prospector]
+      summary: Enrich a prospect using Google Places and AI
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ProspectorEnrichBody"
+      responses:
+        "201":
+          description: Created enrichment record
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProspectEnrichment"
+        "400":
+          description: Validation error
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+        "404":
+          description: Lead not found for tenant
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+
+  /prospector/generate-message:
+    post:
+      operationId: prospectorGenerateMessage
+      tags: [prospector]
+      summary: Generate a first-contact message via AI
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ProspectorGenerateMessageBody"
+      responses:
+        "201":
+          description: Generated message and approval record
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProspectorGenerateMessageResponse"
+        "400":
+          description: Validation error
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+        "402":
+          description: AI quota exhausted
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+        "404":
+          description: Lead not found for tenant
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+
 components:
   schemas:
     CreateInviteBody:
@@ -12261,6 +12328,127 @@ components:
           nullable: true
       required:
         - productName
+
+    ProspectorEnrichBody:
+      type: object
+      required: [nomeEmpresa]
+      properties:
+        nomeEmpresa:
+          type: string
+          minLength: 2
+        endereco:
+          type: string
+        leadId:
+          type: string
+        tenantId:
+          type: string
+          description: Required when caller is a super_admin
+
+    ProspectEnrichment:
+      type: object
+      required: [id, tenantId, nomeEmpresa, temContato, createdAt, updatedAt]
+      properties:
+        id:
+          type: string
+        tenantId:
+          type: string
+        leadId:
+          type: string
+          nullable: true
+        nomeEmpresa:
+          type: string
+          nullable: true
+        endereco:
+          type: string
+          nullable: true
+        rating:
+          type: string
+          nullable: true
+        reviewCount:
+          type: integer
+          nullable: true
+        telefone:
+          type: string
+          nullable: true
+        whatsapp:
+          type: string
+          nullable: true
+        siteOficial:
+          type: string
+          nullable: true
+        pontosFortes:
+          type: array
+          nullable: true
+          items:
+            type: string
+        doresPrincipais:
+          type: array
+          nullable: true
+          items:
+            type: string
+        scoreProspector:
+          type: integer
+          nullable: true
+        temContato:
+          type: boolean
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+
+    ProspectorGenerateMessageBody:
+      type: object
+      properties:
+        messageType:
+          type: string
+          default: whatsapp
+        nomeEmpresa:
+          type: string
+        contexto:
+          type: string
+        leadId:
+          type: string
+        tenantId:
+          type: string
+          description: Required when caller is a super_admin
+
+    ProspectApproval:
+      type: object
+      required: [id, tenantId, createdAt]
+      properties:
+        id:
+          type: string
+        tenantId:
+          type: string
+        leadId:
+          type: string
+          nullable: true
+        messageType:
+          type: string
+          nullable: true
+        generatedText:
+          type: string
+          nullable: true
+        approvedText:
+          type: string
+          nullable: true
+        action:
+          type: string
+          nullable: true
+        createdAt:
+          type: string
+          format: date-time
+
+    ProspectorGenerateMessageResponse:
+      type: object
+      required: [text, approval]
+      properties:
+        text:
+          type: string
+        approval:
+          $ref: "#/components/schemas/ProspectApproval"
 
     ErrorResponse:
       type: object

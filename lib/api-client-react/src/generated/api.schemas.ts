@@ -2271,6 +2271,59 @@ export interface GenerateProductPresentationBody {
   logoUrl?: string | null;
 }
 
+export interface ProspectorEnrichBody {
+  /** @minLength 2 */
+  nomeEmpresa: string;
+  endereco?: string;
+  leadId?: string;
+  /** Required when caller is a super_admin */
+  tenantId?: string;
+}
+
+export interface ProspectEnrichment {
+  id: string;
+  tenantId: string;
+  leadId?: string | null;
+  nomeEmpresa: string | null;
+  endereco?: string | null;
+  rating?: string | null;
+  reviewCount?: number | null;
+  telefone?: string | null;
+  whatsapp?: string | null;
+  siteOficial?: string | null;
+  pontosFortes?: string[] | null;
+  doresPrincipais?: string[] | null;
+  scoreProspector?: number | null;
+  temContato: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface ProspectorGenerateMessageBody {
+  messageType?: string;
+  nomeEmpresa?: string;
+  contexto?: string;
+  leadId?: string;
+  /** Required when caller is a super_admin */
+  tenantId?: string;
+}
+
+export interface ProspectApproval {
+  id: string;
+  tenantId: string;
+  leadId?: string | null;
+  messageType?: string | null;
+  generatedText?: string | null;
+  approvedText?: string | null;
+  action?: string | null;
+  createdAt: string;
+}
+
+export interface ProspectorGenerateMessageResponse {
+  text: string;
+  approval: ProspectApproval;
+}
+
 export interface ErrorResponse {
   error: string;
 }
