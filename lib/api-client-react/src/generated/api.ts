@@ -205,6 +205,8 @@ import type {
   ProspectorListApprovalsParams,
   ProspectorPatchApprovalBody,
   ProspectorPatchApprovalResponse,
+  ProspectorSearchBody,
+  ProspectorSearchResponse,
   PublicSiteResponse,
   RegisterBody,
   RemoveAnthropicAIKey200,
@@ -24726,6 +24728,77 @@ export const useProspectorEnrich = <TError = ErrorType<ErrorResponse>,
         TContext
       > => {
       return useMutation(getProspectorEnrichMutationOptions(options));
+    }
+
+export const getProspectorSearchUrl = () => {
+
+
+
+
+  return `/api/prospector/search`
+}
+
+/**
+ * @summary Search businesses by commercial activity and locality
+ */
+export const prospectorSearch = async (prospectorSearchBody: ProspectorSearchBody, options?: RequestInit): Promise<ProspectorSearchResponse> => {
+
+  return customFetch<ProspectorSearchResponse>(getProspectorSearchUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(
+      prospectorSearchBody,)
+  }
+);}
+
+
+
+
+export const getProspectorSearchMutationOptions = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof prospectorSearch>>, TError,{data: BodyType<ProspectorSearchBody>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof prospectorSearch>>, TError,{data: BodyType<ProspectorSearchBody>}, TContext> => {
+
+const mutationKey = ['prospectorSearch'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof prospectorSearch>>, {data: BodyType<ProspectorSearchBody>}> = (props) => {
+          const {data} = props ?? {};
+
+          return  prospectorSearch(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type ProspectorSearchMutationResult = NonNullable<Awaited<ReturnType<typeof prospectorSearch>>>
+    export type ProspectorSearchMutationBody = BodyType<ProspectorSearchBody>
+    export type ProspectorSearchMutationError = ErrorType<ErrorResponse>
+
+    /**
+ * @summary Search businesses by commercial activity and locality
+ */
+export const useProspectorSearch = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof prospectorSearch>>, TError,{data: BodyType<ProspectorSearchBody>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof prospectorSearch>>,
+        TError,
+        {data: BodyType<ProspectorSearchBody>},
+        TContext
+      > => {
+      return useMutation(getProspectorSearchMutationOptions(options));
     }
 
 export const getProspectorExportUrl = (params?: ProspectorExportParams,) => {

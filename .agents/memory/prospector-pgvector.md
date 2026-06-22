@@ -16,6 +16,10 @@ description: Durable rules/decisions for the Prospector feature, contract, and p
 
 - **Google Places uses the *New* Places API** (`POST places.googleapis.com/v1/places:searchText`, headers `X-Goog-Api-Key` + `X-Goog-FieldMask`) with secret `GOOGLE_PLACES_API_KEY`. The OAuth `GOOGLE_CLIENT_ID/SECRET` do NOT work for Places — a separate API key is required.
 
+- **Prospecção em duas etapas (busca → prospectar).** `POST /prospector/search` {atividade, localidade} faz `searchText` (até 20 resultados, sem IA, sem gravar no banco) e devolve a lista. O usuário escolhe quais empresas prospectar; cada "Prospectar" chama o `enrich` existente (nomeEmpresa + endereco), que enriquece com IA e cria o lead (status 'novo' = já na pipeline). **Não há busca por nome de empresa na UI** — foi substituída.
+  **Why:** o usuário pediu busca por atividade comercial+localidade retornando múltiplos negócios, com seleção manual antes de gastar cota de IA.
+  **How to apply:** estado de "já prospectado" no frontend é indexado pela POSIÇÃO da linha (não pelo nome) — nomes repetem em franquias/filiais e key por nome marcaria todas as linhas homônimas como prospectadas.
+
 - **Multi-tenant rule for optional `leadId` inputs:** any endpoint accepting a `leadId` and writing it must verify the lead belongs to the resolved tenant before persisting (else cross-tenant linkage). Pattern: select lead `where id = leadId AND tenant_id = tenantId`; 404 if absent.
 
 - **Frontend route convention exception:** the Prospector page lives at `/app/prospector` (user-requested), unlike the rest of the app which uses root-relative paths (`/leads`, `/deals`).

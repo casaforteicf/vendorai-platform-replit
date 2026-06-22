@@ -9656,6 +9656,36 @@ export const ProspectorEnrichResponse = zod.object({
 
 
 /**
+ * @summary Search businesses by commercial activity and locality
+ */
+export const prospectorSearchBodyAtividadeMin = 2;
+
+export const prospectorSearchBodyLocalidadeMin = 2;
+
+
+
+export const ProspectorSearchBody = zod.object({
+  "atividade": zod.string().min(prospectorSearchBodyAtividadeMin).describe('Atividade comercial (ex. \"restaurantes\", \"clínicas odontológicas\")'),
+  "localidade": zod.string().min(prospectorSearchBodyLocalidadeMin).describe('Cidade\/bairro\/região (ex. \"Curitiba, PR\")'),
+  "tenantId": zod.string().optional().describe('Required when caller is a super_admin')
+})
+
+export const ProspectorSearchResponse = zod.object({
+  "query": zod.string(),
+  "total": zod.number(),
+  "results": zod.array(zod.object({
+  "nomeEmpresa": zod.string().nullable(),
+  "endereco": zod.string().nullish(),
+  "telefone": zod.string().nullish(),
+  "whatsapp": zod.string().nullish(),
+  "rating": zod.number().nullish(),
+  "reviewCount": zod.number().nullish(),
+  "siteOficial": zod.string().nullish()
+}))
+})
+
+
+/**
  * @summary Export the tenant's prospect enrichments as CSV
  */
 export const ProspectorExportQueryParams = zod.object({

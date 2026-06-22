@@ -3,9 +3,11 @@ import { useAuth } from "@/contexts/AuthContext";
 import { useToast } from "@/hooks/use-toast";
 import {
   useProspectorEnrich,
+  useProspectorSearch,
   useProspectorGenerateMessage,
   prospectorExport,
   type ProspectEnrichment,
+  type ProspectorSearchResult,
 } from "@workspace/api-client-react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -39,6 +41,8 @@ import {
   Building2,
   Target,
   Gauge,
+  Briefcase,
+  UserPlus,
 } from "lucide-react";
 
 type ApprovalDecision = "approved" | "approved_edited" | "rejected";
@@ -242,11 +246,13 @@ export default function Prospector() {
 
   const [tenantId, setTenantId] = useState(user?.tenantId ?? "");
 
-  // Enrichment form
-  const [nomeEmpresa, setNomeEmpresa] = useState("");
-  const [endereco, setEndereco] = useState("");
-  const [cnpj, setCnpj] = useState("");
-  const [instagram, setInstagram] = useState("");
+  // Busca por atividade + localidade
+  const [atividade, setAtividade] = useState("");
+  const [localidade, setLocalidade] = useState("");
+  const [results, setResults] = useState<ProspectorSearchResult[]>([]);
+  const [searched, setSearched] = useState(false);
+  const [prospectingIndex, setProspectingIndex] = useState<number | null>(null);
+  const [prospectedIndexes, setProspectedIndexes] = useState<number[]>([]);
   const [enrichment, setEnrichment] = useState<ProspectEnrichment | null>(null);
   const [exporting, setExporting] = useState(false);
 
@@ -256,6 +262,7 @@ export default function Prospector() {
   const [contexto, setContexto] = useState("");
   const [generatedText, setGeneratedText] = useState<string | null>(null);
 
+  const search = useProspectorSearch();
   const enrich = useProspectorEnrich();
   const generate = useProspectorGenerateMessage();
 
@@ -263,46 +270,86 @@ export default function Prospector() {
     return isSuperAdmin ? { tenantId: tenantId || undefined } : {};
   }
 
-  function onEnrich() {
-    if (nomeEmpresa.trim().length < 2) {
-      toast({ title: "Informe o nome da empresa", variant: "destructive" });
+  function onSearch() {
+    if (atividade.trim().length < 2) {
+      toast({ title: "Informe a atividade comercial", variant: "destructive" });
       return;
     }
+    if (localidade.trim().length < 2) {
+      toast({ title: "Informe a localidade", variant: "destructive" });
+      return;
+    }
+    search.mutate(
+      {
+        data: {
+          atividade: atividade.trim(),
+          localidade: localidade.trim(),
+          ...tenantIdField(),
+        },
+      },
+      {
+        onSuccess: (res) => {
+          setResults(res.results);
+          setSearched(true);
+          setEnrichment(null);
+          setProspectedIndexes([]);
+          toast({
+            title: res.total > 0 ? `${res.total} empresa(s) encontrada(s)` : "Nenhuma empresa encontrada",
+            description: res.total === 0 ? "Tente outra atividade ou localidade." : undefined,
+            variant: res.total === 0 ? "destructive" : undefined,
+          });
+        },
+        onError: (err) => {
+          toast({
+            title: "Falha na busca",
+            description: err instanceof Error ? err.message : undefined,
+            variant: "destructive",
+          });
+        },
+      },
+    );
+  }
+
+  function onProspect(r: ProspectorSearchResult, index: number) {
+    const nome = r.nomeEmpresa ?? "";
+    if (nome.trim().length < 2) return;
+    setProspectingIndex(index);
     enrich.mutate(
       {
         data: {
-          nomeEmpresa: nomeEmpresa.trim(),
-          endereco: endereco.trim() || undefined,
-          cnpj: cnpj.trim() || undefined,
-          instagram: instagram.trim() || undefined,
+          nomeEmpresa: nome,
+          endereco: r.endereco ?? undefined,
           ...tenantIdField(),
         },
       },
       {
         onSuccess: (res) => {
           setEnrichment(res.enrichment);
-          if (!msgNomeEmpresa) {
-            setMsgNomeEmpresa(res.enrichment.nomeEmpresa ?? nomeEmpresa.trim());
-          }
+          if (!msgNomeEmpresa) setMsgNomeEmpresa(res.enrichment.nomeEmpresa ?? nome);
           if (!res.saved) {
             toast({
-              title: "Não salvo no banco",
-              description: res.reason ?? "Sem canal de contato.",
+              title: "Não virou lead",
+              description: res.reason ?? "Empresa sem canal de contato.",
               variant: "destructive",
             });
-          } else if (res.isDuplicate) {
-            toast({ title: "Lead já existia — vinculado ao registro existente" });
           } else {
-            toast({ title: "Empresa enriquecida e lead criado" });
+            setProspectedIndexes((prev) => (prev.includes(index) ? prev : [...prev, index]));
+            toast({
+              title: res.isDuplicate
+                ? "Lead já existia — vinculado na pipeline"
+                : "Lead criado na pipeline",
+              description: "Disponível em Leads para dar sequência no atendimento.",
+            });
           }
         },
         onError: (err) => {
           toast({
-            title: "Falha ao enriquecer",
+            title: "Falha ao prospectar",
             description: err instanceof Error ? err.message : undefined,
             variant: "destructive",
           });
         },
+        onSettled: () => setProspectingIndex(null),
       },
     );
   }
@@ -396,63 +443,49 @@ export default function Prospector() {
       )}
 
       <div className="grid gap-6 lg:grid-cols-2">
-        {/* ── Busca / Enriquecimento ──────────────────────────── */}
+        {/* ── Busca por atividade + localidade ────────────────── */}
         <Card>
           <CardHeader>
             <CardTitle className="text-base flex items-center gap-2">
-              <Search className="h-4 w-4 text-primary" /> Busca & Enriquecimento
+              <Search className="h-4 w-4 text-primary" /> Buscar empresas
             </CardTitle>
             <CardDescription>
-              Consulta dados públicos (Google Places) e gera insights com IA.
+              Informe a atividade comercial e a localidade para listar empresas (Google Places).
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
             <div className="space-y-1.5">
-              <Label htmlFor="nomeEmpresa">Nome da empresa</Label>
+              <Label htmlFor="atividade">Atividade comercial</Label>
               <Input
-                id="nomeEmpresa"
-                placeholder="Ex: Padaria Bella Paulista"
-                value={nomeEmpresa}
-                onChange={(e) => setNomeEmpresa(e.target.value)}
+                id="atividade"
+                placeholder="Ex: restaurantes, clínicas odontológicas"
+                value={atividade}
+                onChange={(e) => setAtividade(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") onSearch();
+                }}
               />
             </div>
             <div className="space-y-1.5">
-              <Label htmlFor="endereco">Endereço / cidade (opcional)</Label>
+              <Label htmlFor="localidade">Localidade</Label>
               <Input
-                id="endereco"
-                placeholder="Ex: São Paulo, SP"
-                value={endereco}
-                onChange={(e) => setEndereco(e.target.value)}
+                id="localidade"
+                placeholder="Ex: Curitiba, PR"
+                value={localidade}
+                onChange={(e) => setLocalidade(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") onSearch();
+                }}
               />
             </div>
-            <div className="grid grid-cols-2 gap-3">
-              <div className="space-y-1.5">
-                <Label htmlFor="cnpj">CNPJ (opcional)</Label>
-                <Input
-                  id="cnpj"
-                  placeholder="00.000.000/0000-00"
-                  value={cnpj}
-                  onChange={(e) => setCnpj(e.target.value)}
-                />
-              </div>
-              <div className="space-y-1.5">
-                <Label htmlFor="instagram">Instagram (opcional)</Label>
-                <Input
-                  id="instagram"
-                  placeholder="@empresa"
-                  value={instagram}
-                  onChange={(e) => setInstagram(e.target.value)}
-                />
-              </div>
-            </div>
-            <Button onClick={onEnrich} disabled={enrich.isPending} className="w-full">
-              {enrich.isPending ? (
+            <Button onClick={onSearch} disabled={search.isPending} className="w-full">
+              {search.isPending ? (
                 <>
-                  <Spinner className="h-4 w-4 mr-2" /> Enriquecendo...
+                  <Spinner className="h-4 w-4 mr-2" /> Buscando...
                 </>
               ) : (
                 <>
-                  <Search className="h-4 w-4 mr-2" /> Buscar e Enriquecer
+                  <Search className="h-4 w-4 mr-2" /> Buscar empresas
                 </>
               )}
             </Button>
@@ -517,11 +550,97 @@ export default function Prospector() {
         </Card>
       </div>
 
+      {/* ── Lista de empresas encontradas ───────────────────── */}
+      {searched && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-base flex items-center gap-2">
+              <Building2 className="h-4 w-4 text-primary" /> Empresas encontradas ({results.length})
+            </CardTitle>
+            <CardDescription>
+              Clique em "Prospectar" para enriquecer com IA e criar o lead na pipeline.
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            {results.length === 0 ? (
+              <p className="text-sm text-muted-foreground py-4 text-center">
+                Nenhuma empresa encontrada. Tente outra atividade ou localidade.
+              </p>
+            ) : (
+              <ul className="divide-y">
+                {results.map((r, i) => {
+                  const nome = r.nomeEmpresa ?? "";
+                  const isProspecting = prospectingIndex === i && enrich.isPending;
+                  const done = prospectedIndexes.includes(i);
+                  return (
+                    <li
+                      key={`${nome}-${i}`}
+                      className="py-3 flex items-start justify-between gap-3"
+                    >
+                      <div className="min-w-0 space-y-1">
+                        <p className="font-medium truncate">{nome || "Sem nome"}</p>
+                        {r.endereco && (
+                          <p className="text-xs text-muted-foreground truncate">{r.endereco}</p>
+                        )}
+                        <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
+                          {r.telefone && (
+                            <span className="flex items-center gap-1">
+                              <MessageCircle className="h-3 w-3" /> {r.telefone}
+                            </span>
+                          )}
+                          {typeof r.rating === "number" && (
+                            <span className="flex items-center gap-1">
+                              <Gauge className="h-3 w-3" /> {r.rating}
+                              {typeof r.reviewCount === "number" ? ` (${r.reviewCount})` : ""}
+                            </span>
+                          )}
+                          {r.siteOficial && (
+                            <a
+                              href={r.siteOficial}
+                              target="_blank"
+                              rel="noreferrer"
+                              className="text-primary hover:underline truncate max-w-[160px]"
+                            >
+                              site
+                            </a>
+                          )}
+                        </div>
+                      </div>
+                      <Button
+                        size="sm"
+                        variant={done ? "outline" : "default"}
+                        disabled={enrich.isPending || done || nome.trim().length < 2}
+                        onClick={() => onProspect(r, i)}
+                        className="shrink-0"
+                      >
+                        {isProspecting ? (
+                          <>
+                            <Spinner className="h-4 w-4 mr-1" /> Prospectando...
+                          </>
+                        ) : done ? (
+                          <>
+                            <CheckCircle2 className="h-4 w-4 mr-1" /> Lead criado
+                          </>
+                        ) : (
+                          <>
+                            <UserPlus className="h-4 w-4 mr-1" /> Prospectar
+                          </>
+                        )}
+                      </Button>
+                    </li>
+                  );
+                })}
+              </ul>
+            )}
+          </CardContent>
+        </Card>
+      )}
+
       {/* ── Resultados ──────────────────────────────────────── */}
       {enrichment && <EnrichmentResult data={enrichment} />}
       {generatedText && <MessageApproval key={generatedText} generatedText={generatedText} />}
 
-      {!enrichment && !generatedText && (
+      {!searched && !enrichment && !generatedText && (
         <Card className="border-dashed">
           <CardContent className="py-10 text-center text-muted-foreground">
             <CheckCircle2 className="h-8 w-8 mx-auto mb-2 opacity-40" />

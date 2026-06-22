@@ -8585,6 +8585,32 @@ paths:
             application/json:
               schema: { $ref: "#/components/schemas/ErrorResponse" }
 
+  /prospector/search:
+    post:
+      operationId: prospectorSearch
+      tags: [prospector]
+      summary: Search businesses by commercial activity and locality
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ProspectorSearchBody"
+      responses:
+        "200":
+          description: List of businesses found via Google Places
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProspectorSearchResponse"
+        "400":
+          description: Validation error
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+
   /prospector/export:
     get:
       operationId: prospectorExport
@@ -12541,6 +12567,61 @@ components:
           nullable: true
         enrichment:
           $ref: "#/components/schemas/ProspectEnrichment"
+
+    ProspectorSearchBody:
+      type: object
+      required: [atividade, localidade]
+      properties:
+        atividade:
+          type: string
+          minLength: 2
+          description: Atividade comercial (ex. "restaurantes", "clínicas odontológicas")
+        localidade:
+          type: string
+          minLength: 2
+          description: Cidade/bairro/região (ex. "Curitiba, PR")
+        tenantId:
+          type: string
+          description: Required when caller is a super_admin
+
+    ProspectorSearchResult:
+      type: object
+      required: [nomeEmpresa]
+      properties:
+        nomeEmpresa:
+          type: string
+          nullable: true
+        endereco:
+          type: string
+          nullable: true
+        telefone:
+          type: string
+          nullable: true
+        whatsapp:
+          type: string
+          nullable: true
+        rating:
+          type: number
+          nullable: true
+        reviewCount:
+          type: integer
+          nullable: true
+        siteOficial:
+          type: string
+          nullable: true
+
+    ProspectorSearchResponse:
+      type: object
+      required: [query, total, results]
+      properties:
+        query:
+          type: string
+        total:
+          type: integer
+        results:
+          type: array
+          items:
+            $ref: "#/components/schemas/ProspectorSearchResult"
 
     ProspectorGenerateMessageBody:
       type: object

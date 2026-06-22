@@ -2320,6 +2320,37 @@ export interface ProspectorEnrichResponse {
   enrichment: ProspectEnrichment;
 }
 
+export interface ProspectorSearchBody {
+  /**
+     * Atividade comercial (ex. "restaurantes", "clínicas odontológicas")
+     * @minLength 2
+     */
+  atividade: string;
+  /**
+     * Cidade/bairro/região (ex. "Curitiba, PR")
+     * @minLength 2
+     */
+  localidade: string;
+  /** Required when caller is a super_admin */
+  tenantId?: string;
+}
+
+export interface ProspectorSearchResult {
+  nomeEmpresa: string | null;
+  endereco?: string | null;
+  telefone?: string | null;
+  whatsapp?: string | null;
+  rating?: number | null;
+  reviewCount?: number | null;
+  siteOficial?: string | null;
+}
+
+export interface ProspectorSearchResponse {
+  query: string;
+  total: number;
+  results: ProspectorSearchResult[];
+}
+
 export interface ProspectorGenerateMessageBody {
   messageType?: string;
   nomeEmpresa?: string;

@@ -96,6 +96,59 @@ async function searchPlace(
   };
 }
 
+// Busca múltiplos estabelecimentos por atividade comercial + localidade.
+async function searchPlaces(
+  query: string,
+  maxResults: number,
+  log?: { error: (o: unknown, m?: string) => void },
+): Promise<PlacesResult[]> {
+  const apiKey = process.env["GOOGLE_PLACES_API_KEY"];
+  if (!apiKey) {
+    throw Object.assign(new Error("GOOGLE_PLACES_API_KEY não configurada"), { status: 500 });
+  }
+
+  const res = await fetch("https://places.googleapis.com/v1/places:searchText", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "X-Goog-Api-Key": apiKey,
+      "X-Goog-FieldMask":
+        "places.displayName,places.formattedAddress,places.rating,places.userRatingCount,places.nationalPhoneNumber,places.websiteUri",
+    },
+    body: JSON.stringify({
+      textQuery: query,
+      languageCode: "pt-BR",
+      maxResultCount: Math.min(Math.max(maxResults, 1), 20),
+    }),
+  });
+
+  if (!res.ok) {
+    const text = await res.text();
+    log?.error({ status: res.status, text }, "prospector: Google Places list call failed");
+    throw Object.assign(new Error(`Google Places API erro ${res.status}`), { status: 502 });
+  }
+
+  const data = (await res.json()) as {
+    places?: Array<{
+      displayName?: { text?: string };
+      formattedAddress?: string;
+      rating?: number;
+      userRatingCount?: number;
+      nationalPhoneNumber?: string;
+      websiteUri?: string;
+    }>;
+  };
+
+  return (data.places ?? []).map((place) => ({
+    nomeEmpresa: place.displayName?.text ?? null,
+    endereco: place.formattedAddress ?? null,
+    rating: typeof place.rating === "number" ? place.rating : null,
+    reviewCount: typeof place.userRatingCount === "number" ? place.userRatingCount : null,
+    telefone: place.nationalPhoneNumber ?? null,
+    siteOficial: place.websiteUri ?? null,
+  }));
+}
+
 // ── ReceitaWS — consulta pública de CNPJ ──────────────────────────────────────
 type ReceitaResult = {
   cnpj: string;
@@ -409,6 +462,40 @@ router.post("/prospector/enrich", async (req, res) => {
     .returning();
 
   return res.status(201).json({ saved: true, isDuplicate, leadId: resolvedLeadId, enrichment: record });
+});
+
+// ── POST /prospector/search — busca empresas por atividade + localidade ───────
+const searchBodySchema = z.object({
+  atividade: z.string().min(2, "Informe a atividade comercial"),
+  localidade: z.string().min(2, "Informe a localidade"),
+  tenantId: z.string().optional(),
+});
+
+router.post("/prospector/search", async (req, res) => {
+  const parsed = searchBodySchema.safeParse(req.body);
+  if (!parsed.success) {
+    return res.status(400).json({ error: "Dados inválidos", details: parsed.error.flatten() });
+  }
+  const { atividade, localidade, tenantId: bodyTenantId } = parsed.data;
+  // Valida o tenant (e a permissão de super_admin) antes de gastar chamada externa.
+  resolveTenantId(req, bodyTenantId);
+
+  const query = `${atividade.trim()} em ${localidade.trim()}`;
+  const places = await searchPlaces(query, 20, req.log);
+
+  const results = places
+    .filter((p) => p.nomeEmpresa)
+    .map((p) => ({
+      nomeEmpresa: p.nomeEmpresa,
+      endereco: p.endereco,
+      telefone: p.telefone,
+      whatsapp: deriveWhatsapp(p.telefone),
+      rating: p.rating,
+      reviewCount: p.reviewCount,
+      siteOficial: p.siteOficial,
+    }));
+
+  return res.status(200).json({ query, total: results.length, results });
 });
 
 // ── GET /prospector/export — exporta enriquecimentos do tenant em CSV ─────────
