@@ -23,3 +23,9 @@ id = "l1Y4meFUK3lSwYTbWFmLn"
 uri = "file://artifacts/resumo-executivo.md"
 type = "text"
 title = "Resumo Executivo - VendorAI"
+
+[[outputs]]
+id = "fz6XyjQXiz2zCVJ2dX1Nx"
+uri = "file://vendorai.tar.gz"
+type = "unspecified"
+title = "VendorAI - Projeto Completo (66 MB)"
