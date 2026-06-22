@@ -3,7 +3,7 @@ import { eq, and } from "drizzle-orm";
 import bcrypt from "bcryptjs";
 import { createHash, randomBytes } from "crypto";
 import { z } from "zod/v4";
-import { db, usersTable, tenantsTable, partnersTable, passwordResetTokensTable } from "@workspace/db";
+import { db, usersTable, tenantsTable, partnersTable, passwordResetTokensTable, leadsTable, dealsTable, funisTable } from "@workspace/db";
 import { signToken } from "../lib/jwt.js";
 import { authenticate, requireRole } from "../middlewares/auth.js";
 import { sendPasswordResetEmail } from "../lib/email.js";
@@ -125,6 +125,46 @@ router.post("/auth/demo-signup", async (req, res) => {
         platformRole: "tenant_admin",
       })
       .returning(PUBLIC_FIELDS);
+
+    // ── Pipeline: criar lead e deal no tenant de vendas da VendorAI ──
+    try {
+      const [vendorai] = await db
+        .select()
+        .from(tenantsTable)
+        .where(eq(tenantsTable.slug, "vendorai"));
+      if (vendorai) {
+        const [funil] = await db
+          .select()
+          .from(funisTable)
+          .where(
+            and(
+              eq(funisTable.tenantId, vendorai.id),
+              eq(funisTable.nome, "Funil de Vendas \u2014 VendorAI")
+            )
+          );
+        const [lead] = await db
+          .insert(leadsTable)
+          .values({
+            tenantId: vendorai.id,
+            nome: nomePessoa,
+            empresa: nomeEmpresa,
+            email,
+            telefone: telefone ?? null,
+            source: "demo_signup",
+          })
+          .returning();
+        await db.insert(dealsTable).values({
+          tenantId: vendorai.id,
+          leadId: lead.id,
+          titulo: `Trial \u2014 ${nomeEmpresa}`,
+          etapa: "novo",
+          funilId: funil?.id ?? null,
+          probabilidade: 30,
+        });
+      }
+    } catch {
+      // Falha no pipeline não bloqueia o cadastro de demo
+    }
 
     const token = signToken({
       sub: user.id,
