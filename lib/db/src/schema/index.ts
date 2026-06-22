@@ -70,3 +70,6 @@ export * from "./lead_spouse_consent";
 export * from "./lead_campaign_log";
 export * from "./product_presentations";
 export * from "./ai_usage_logs";
+export * from "./prospect_enrichments";
+export * from "./prospect_approvals";
+export * from "./prospect_campaigns";
