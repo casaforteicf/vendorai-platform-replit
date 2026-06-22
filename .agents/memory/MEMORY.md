@@ -13,3 +13,5 @@
 - [OpenAI image models](openai-image-models.md) — dall-e-2/3 não existem nesta conta; usar gpt-image-1 (retorna b64_json); upload → object storage → /api/storage/objects/*.
 - [Analytics dashboard](analytics-dashboard.md) — 3 rotas (/analytics/agents, /channels, /intelligence); frontend em /analytics com 3 tabs; usa count(*) filter para performance.
 - [Demo session auth](demo-session-auth.md) — demo login é "try-it" não-persistente; detectado pelo JWT email demo@demo.com + marker sessionStorage; token fica em localStorage vendorai_token.
+- [Prospector & pgvector](prospector-pgvector.md) — pgvector habilitado no Supabase; migração de tabela nova via DDL raw (push trunca tenant_domains); Places API New precisa GOOGLE_PLACES_API_KEY; leadId opcional exige checagem de tenant.
+- [api-server tsc/test limits](api-server-tsc-test-limits.md) — full tsc da api-server não termina no orçamento das ferramentas (use typecheck:libs + esbuild); 3 isolation tests dão timeout 5s flaky por import lento (~26s), não são falhas de asserção.

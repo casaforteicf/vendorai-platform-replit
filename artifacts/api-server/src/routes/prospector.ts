@@ -1,13 +1,27 @@
 import { Router, type IRouter } from "express";
 import { z } from "zod/v4";
+import { and, eq } from "drizzle-orm";
 import {
   db,
   prospectEnrichmentsTable,
   prospectApprovalsTable,
+  leadsTable,
 } from "@workspace/db";
 import { callOpenAI as gatewayCallOpenAI } from "../lib/ai-gateway.js";
 
 const router: IRouter = Router();
+
+// Garante que um leadId opcional pertence ao tenant resolvido (isolamento multi-tenant)
+async function assertLeadInTenant(leadId: string, tenantId: string): Promise<void> {
+  const [lead] = await db
+    .select({ id: leadsTable.id })
+    .from(leadsTable)
+    .where(and(eq(leadsTable.id, leadId), eq(leadsTable.tenantId, tenantId)))
+    .limit(1);
+  if (!lead) {
+    throw Object.assign(new Error("Lead não encontrado para este tenant"), { status: 404 });
+  }
+}
 
 // ── Google Places (New) — Text Search ─────────────────────────────────────────
 type PlacesResult = {
@@ -94,6 +108,7 @@ router.post("/prospector/enrich", async (req, res) => {
   }
   const { nomeEmpresa, endereco, leadId, tenantId: bodyTenantId } = parsed.data;
   const tenantId = resolveTenantId(req, bodyTenantId);
+  if (leadId) await assertLeadInTenant(leadId, tenantId);
 
   // 1. Google Places lookup
   const query = endereco ? `${nomeEmpresa} ${endereco}` : nomeEmpresa;
@@ -176,6 +191,7 @@ router.post("/prospector/generate-message", async (req, res) => {
   }
   const { messageType, nomeEmpresa, contexto, leadId, tenantId: bodyTenantId } = parsed.data;
   const tenantId = resolveTenantId(req, bodyTenantId);
+  if (leadId) await assertLeadInTenant(leadId, tenantId);
 
   const ai = await gatewayCallOpenAI(
     tenantId,
