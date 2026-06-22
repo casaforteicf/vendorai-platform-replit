@@ -18,6 +18,7 @@ import {
   leadSpouseConsentTable,
   tenantCalendarSettingsTable,
 } from "@workspace/db";
+import { callOpenAI as gatewayFamilyCallOpenAI } from "../lib/ai-gateway.js";
 import {
   loadContext,
   computeLimits,
@@ -299,14 +300,13 @@ ${conversationText}`;
 
   let extracted: Record<string, unknown>;
   try {
-    const openai = getOpenAI();
-    const response = await openai.chat.completions.create({
-      model: "gpt-4.1-mini",
-      messages: [{ role: "user", content: extractionPrompt }],
-      max_tokens: 500,
-      temperature: 0.1,
-    });
-    const raw = response.choices[0]?.message?.content?.trim() ?? "{}";
+    const aiResult = await gatewayFamilyCallOpenAI(
+      tenantId,
+      "intelligence_analysis",
+      [{ role: "user", content: extractionPrompt }],
+      { model: "gpt-4.1-mini", maxTokens: 500, temperature: 0.1, log },
+    );
+    const raw = aiResult.content.trim() || "{}";
     extracted = JSON.parse(raw.replace(/^```json\s*/, "").replace(/\s*```$/, "")) as Record<string, unknown>;
   } catch (err) {
     log.warn({ err, leadId, tenantId }, "dispatch: family extraction AI call failed");

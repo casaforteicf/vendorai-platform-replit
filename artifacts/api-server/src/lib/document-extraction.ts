@@ -1,6 +1,6 @@
 import pdfParse from "pdf-parse";
 import mammoth from "mammoth";
-import { getOpenAIForTenant } from "./agent-engine.js";
+import { callOpenAI as gatewayCallOpenAI } from "./ai-gateway.js";
 import { z } from "zod/v4";
 
 // ─── Quote / Budget extraction ────────────────────────────────────────────────
@@ -80,19 +80,17 @@ export async function extractQuoteData(
     combinedText = combinedText.slice(0, MAX_TEXT_LENGTH) + "\n[texto truncado]";
   }
 
-  const openai = await getOpenAIForTenant(tenantId);
-  const response = await openai.chat.completions.create({
-    model: "gpt-4o-mini",
-    messages: [
+  const aiResult = await gatewayCallOpenAI(
+    tenantId,
+    "document_extraction",
+    [
       { role: "system", content: QUOTE_EXTRACTION_SYSTEM_PROMPT },
       { role: "user", content: combinedText },
     ],
-    response_format: { type: "json_object" },
-    max_tokens: 1500,
-    temperature: 0.1,
-  });
+    { model: "gpt-4o-mini", responseFormat: { type: "json_object" }, maxTokens: 1500, temperature: 0.1 },
+  );
 
-  const raw = response.choices[0]?.message?.content ?? "{}";
+  const raw = aiResult.content || "{}";
   try {
     const parsed = JSON.parse(raw);
     return quoteExtractionResultSchema.parse(parsed);
@@ -167,27 +165,23 @@ async function extractTextFromBuffer(
   // Images — use OpenAI vision
   if (mimeType.startsWith("image/")) {
     const base64 = buffer.toString("base64");
-    const openai = await getOpenAIForTenant(tenantId);
-    const response = await openai.chat.completions.create({
-      model: "gpt-4o-mini",
-      messages: [
-        {
-          role: "user",
-          content: [
-            {
-              type: "text",
-              text: "Extraia todo o texto e informações relevantes desta imagem sobre o negócio: nome, produtos, serviços, missão, valores, diferenciais, público-alvo.",
-            },
-            {
-              type: "image_url",
-              image_url: { url: `data:${mimeType};base64,${base64}` },
-            },
-          ],
-        },
-      ],
-      max_tokens: 1000,
-    });
-    return response.choices[0]?.message?.content ?? "";
+    const imageContent: import("openai").OpenAI.Chat.ChatCompletionContentPart[] = [
+      {
+        type: "text",
+        text: "Extraia todo o texto e informações relevantes desta imagem sobre o negócio: nome, produtos, serviços, missão, valores, diferenciais, público-alvo.",
+      },
+      {
+        type: "image_url",
+        image_url: { url: `data:${mimeType};base64,${base64}` },
+      },
+    ];
+    const aiResult = await gatewayCallOpenAI(
+      tenantId,
+      "document_extraction",
+      [{ role: "user", content: imageContent } as any],
+      { model: "gpt-4o-mini", maxTokens: 1000 },
+    );
+    return aiResult.content;
   }
 
   return "";
@@ -249,19 +243,17 @@ export async function extractBusinessDataFromDocuments(
     combinedText = combinedText.slice(0, MAX_TEXT_LENGTH) + "\n[texto truncado]";
   }
 
-  const openai = await getOpenAIForTenant(tenantId);
-  const response = await openai.chat.completions.create({
-    model: "gpt-4o-mini",
-    messages: [
+  const aiResult2 = await gatewayCallOpenAI(
+    tenantId,
+    "document_extraction",
+    [
       { role: "system", content: EXTRACTION_SYSTEM_PROMPT },
       { role: "user", content: combinedText },
     ],
-    response_format: { type: "json_object" },
-    max_tokens: 1500,
-    temperature: 0.2,
-  });
+    { model: "gpt-4o-mini", responseFormat: { type: "json_object" }, maxTokens: 1500, temperature: 0.2 },
+  );
 
-  const raw = response.choices[0]?.message?.content ?? "{}";
+  const raw = aiResult2.content || "{}";
 
   try {
     const parsed = JSON.parse(raw);

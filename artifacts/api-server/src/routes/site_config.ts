@@ -11,7 +11,7 @@ import {
   produtosCatalogoTable,
 } from "@workspace/db";
 import type { GeneratedSiteContent } from "@workspace/db";
-import { getOpenAIForTenant } from "../lib/agent-engine.js";
+import { callOpenAI as gatewayCallOpenAI } from "../lib/ai-gateway.js";
 import express from "express";
 
 // ─── Public router (no auth) ─────────────────────────────────────────────────
@@ -280,19 +280,17 @@ Gere um JSON com EXATAMENTE esta estrutura (todos os campos obrigatórios):
 
   let generated: GeneratedSiteContent;
   try {
-    const openai = await getOpenAIForTenant(tenantId);
-    const completion = await openai.chat.completions.create({
-      model: "gpt-4o-mini",
-      messages: [
+    const aiResult = await gatewayCallOpenAI(
+      tenantId,
+      "site_generator",
+      [
         { role: "system", content: systemPrompt },
         { role: "user", content: userPrompt },
       ],
-      temperature: 0.8,
-      max_tokens: 2500,
-      response_format: { type: "json_object" },
-    });
+      { model: "gpt-4o-mini", temperature: 0.8, maxTokens: 2500, responseFormat: { type: "json_object" }, log: req.log },
+    );
 
-    const raw = completion.choices[0]?.message?.content ?? "{}";
+    const raw = aiResult.content || "{}";
     generated = JSON.parse(raw) as GeneratedSiteContent;
   } catch (err) {
     req.log.error({ err }, "AI site generation failed");

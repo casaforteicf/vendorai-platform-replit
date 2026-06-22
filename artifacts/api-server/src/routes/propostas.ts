@@ -13,7 +13,7 @@ import {
   leadsTable,
 } from "@workspace/db";
 import { dispatchVendaWebhook } from "../services/erp-webhook.js";
-import { getOpenAIForTenant } from "../lib/agent-engine.js";
+import { callOpenAI as gatewayCallOpenAI } from "../lib/ai-gateway.js";
 import { proposalAccepted } from "../lib/proposal-accepted.js";
 
 const router: IRouter = Router();
@@ -403,10 +403,10 @@ router.post("/tenants/:tenantId/propostas/suggest-items", async (req, res) => {
   }
 
   try {
-    const openai = await getOpenAIForTenant(tenantId);
-    const response = await openai.chat.completions.create({
-      model: "gpt-4o-mini",
-      messages: [
+    const aiResult = await gatewayCallOpenAI(
+      tenantId,
+      "proposal_generator",
+      [
         {
           role: "system",
           content: `Você é um assistente especializado em criar orçamentos comerciais brasileiros.
@@ -421,12 +421,10 @@ Regras:
         },
         { role: "user", content: contextParts.join("\n") },
       ],
-      response_format: { type: "json_object" },
-      max_tokens: 800,
-      temperature: 0.7,
-    });
+      { model: "gpt-4o-mini", responseFormat: { type: "json_object" }, maxTokens: 800, temperature: 0.7, log: req.log },
+    );
 
-    const raw = response.choices[0]?.message?.content ?? "{}";
+    const raw = aiResult.content || "{}";
     res.json(JSON.parse(raw));
   } catch (err) {
     req.log.error({ err }, "suggest-items: OpenAI error");

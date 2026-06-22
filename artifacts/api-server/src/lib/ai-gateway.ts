@@ -323,6 +323,7 @@ export async function callOpenAI(
     model?: string;
     temperature?: number;
     maxTokens?: number;
+    responseFormat?: OpenAI.Chat.Completions.ChatCompletionCreateParams["response_format"];
     log?: Logger;
   } = {},
 ): Promise<{ content: string; inputTokens: number; outputTokens: number; costUsd: number; usedByok: boolean }> {
@@ -353,7 +354,8 @@ export async function callOpenAI(
       messages,
       temperature: options.temperature ?? 0.7,
       max_tokens: options.maxTokens ?? 600,
-    });
+      ...(options.responseFormat ? { response_format: options.responseFormat } : {}),
+    } as OpenAI.Chat.Completions.ChatCompletionCreateParamsNonStreaming);
     success = true;
   } catch (err: any) {
     errorMessage = err.message ?? "OpenAI call failed";

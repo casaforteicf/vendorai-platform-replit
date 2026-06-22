@@ -1,7 +1,7 @@
 import { and, count, desc, eq, gt, gte, sql } from "drizzle-orm";
 import { z } from "zod";
-import OpenAI from "openai";
 import type { Logger } from "pino";
+import { callOpenAI as gatewayCallOpenAI } from "./ai-gateway.js";
 import {
   db,
   customerIntelligenceTable,
@@ -84,7 +84,6 @@ const aiAnalysisSchema = z.object({
 
 export type AiAnalysisResult = z.infer<typeof aiAnalysisSchema>;
 
-import { getOpenAIForTenant } from "./agent-engine.js";
 
 export interface AnalyzeResult {
   intelligence: typeof customerIntelligenceTable.$inferSelect;
@@ -336,23 +335,27 @@ Regras:
 
   const userContent = `## PERFIL DO LEAD\n${leadSection}\n\n## NEGÓCIOS NO PIPELINE (${activeDeals.length} negócio${activeDeals.length !== 1 ? "s" : ""})\n${dealsSection}\n\n## PROPOSTAS/ORÇAMENTOS ACEITOS (${acceptedPropostas.length})\n${propostasSection}\n\n## HISTÓRICO DE MENSAGENS (últimas ${recentMessages.length})\n${messagesSection}\n\n## ATIVIDADES RECENTES\n${activitiesSection}`;
 
-  // 5. Call GPT-4o-mini
+  // 5. Call GPT-4o-mini via gateway (BYOK + quota + logging)
   let rawJson: string;
   let tokensUsed: number;
   try {
-    const openai = await getOpenAIForTenant(tenantId);
-    const completion = await openai.chat.completions.create({
-      model:           "gpt-4o-mini",
-      messages:        [
+    const result = await gatewayCallOpenAI(
+      tenantId,
+      "intelligence_analysis",
+      [
         { role: "system", content: systemPrompt },
         { role: "user",   content: userContent },
       ],
-      response_format: { type: "json_object" },
-      temperature:     0.3,
-      max_tokens:      800,
-    });
-    rawJson    = completion.choices[0]?.message?.content?.trim() ?? "{}";
-    tokensUsed = completion.usage?.total_tokens ?? 0;
+      {
+        model: "gpt-4o-mini",
+        responseFormat: { type: "json_object" },
+        temperature: 0.3,
+        maxTokens: 800,
+        log,
+      },
+    );
+    rawJson    = result.content || "{}";
+    tokensUsed = result.inputTokens + result.outputTokens;
     log.info({ leadId, tenantId, tokensUsed }, "intelligence/analyze: openai call succeeded");
   } catch (err) {
     log.error({ err, leadId, tenantId }, "intelligence/analyze: openai call failed");

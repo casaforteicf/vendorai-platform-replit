@@ -10,7 +10,7 @@ import {
   supermercadoCampanhaEnvioTable,
   leadsTable,
 } from "@workspace/db";
-import { getOpenAIForTenant } from "../lib/agent-engine.js";
+import { callOpenAI as gatewayCallOpenAI } from "../lib/ai-gateway.js";
 
 const router: IRouter = Router();
 
@@ -418,17 +418,17 @@ router.post("/tenants/:tenantId/supermercado/campanhas/gerar-conteudo", async (r
     ? `Contexto adicional: ${contexto}`
     : "Crie uma mensagem genérica para o supermercado.";
 
-  const openai = await getOpenAIForTenant(tenantId);
-  const completion = await openai.chat.completions.create({
-    model: "gpt-4o-mini",
-    messages: [
+  const aiResult = await gatewayCallOpenAI(
+    tenantId,
+    "content_generator",
+    [
       { role: "system", content: systemPrompt },
       { role: "user", content: userMsg },
     ],
-    max_tokens: 300,
-  });
+    { model: "gpt-4o-mini", maxTokens: 300, log: req.log },
+  );
 
-  const conteudo = completion.choices[0]?.message?.content?.trim() ?? "";
+  const conteudo = aiResult.content;
 
   // Auto-generate title
   const tipoLabel: Record<string, string> = {

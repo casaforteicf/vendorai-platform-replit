@@ -16,18 +16,13 @@ import {
   customerIntelligenceTable,
   businessProfilesTable,
 } from "@workspace/db";
-import Anthropic from "@anthropic-ai/sdk";
-import { getOpenAIForTenant } from "./agent-engine.js";
+import { callOpenAI as gatewayCallOpenAI, callAnthropic as gatewayCallAnthropic } from "./ai-gateway.js";
 import { logger } from "./logger.js";
 
-const anthropicApiKey = process.env.ANTHROPIC_API_KEY;
-const useAnthropic = !!anthropicApiKey;
-const anthropic = useAnthropic ? new Anthropic({ apiKey: anthropicApiKey }) : null;
+export const AI_PROVIDER = process.env.ANTHROPIC_API_KEY ? "anthropic" : "openai";
+export const AI_MODEL = process.env.ANTHROPIC_API_KEY ? "claude-sonnet-4-6" : "gpt-4o-mini";
 
-export const AI_PROVIDER = useAnthropic ? "anthropic" : "openai";
-export const AI_MODEL = useAnthropic ? "claude-sonnet-4-6" : "gpt-4o-mini";
-
-// ── AI caller (reuses pattern from site_generator.ts) ───────────────────────
+// ── AI caller — routes through gateway (BYOK + quota + logging) ──────────────
 export type AiMessage = { role: "user" | "assistant"; content: string };
 
 export async function callProposalAI(
@@ -35,52 +30,27 @@ export async function callProposalAI(
   tenantId: string,
   log: { info: (obj: object, msg: string) => void; error: (obj: object, msg: string) => void }
 ): Promise<{ content: string; provider: string; model: string }> {
-  if (useAnthropic && anthropic) {
+  if (process.env.ANTHROPIC_API_KEY) {
     log.info({ provider: "anthropic", model: AI_MODEL }, "Calling Anthropic for proposal generation");
     const system = messages.find((m) => m.role === "assistant")?.content;
     const userMessages = messages.filter((m) => m.role === "user");
-    const stream = await anthropic.messages.create({
-      model: "claude-sonnet-4-6",
-      max_tokens: 32000,
-      stream: true,
-      messages: userMessages.map((m) => ({ role: m.role, content: m.content })),
-      ...(system ? { system } : {}),
-    });
-    const chunks: string[] = [];
-    let stopReason: string | null = null;
-    for await (const event of stream) {
-      if (event.type === "content_block_delta" && event.delta.type === "text_delta") {
-        chunks.push(event.delta.text);
-      }
-      if (event.type === "message_stop") {
-        stopReason = "end_turn";
-      }
-      if (event.type === "message_delta" && event.delta?.stop_reason) {
-        stopReason = event.delta.stop_reason;
-      }
-    }
-    const content = chunks.join("");
-    if (stopReason === "max_tokens") {
-      const err = new Error(`Anthropic resposta truncada: max_tokens atingido (${content.length} chars gerados).`);
-      (err as any).truncated = true;
-      (err as any).generatedLength = content.length;
-      throw err;
-    }
-    return { content, provider: "anthropic", model: "claude-sonnet-4-6" };
+    const result = await gatewayCallAnthropic(
+      tenantId,
+      "proposal_generator",
+      userMessages.map((m) => ({ role: m.role as "user" | "assistant", content: m.content })),
+      { model: "claude-sonnet-4-6", maxTokens: 32000, system },
+    );
+    return { content: result.content, provider: "anthropic", model: "claude-sonnet-4-6" };
   }
 
   log.info({ provider: "openai", model: AI_MODEL }, "Calling OpenAI for proposal generation");
-  const openai = await getOpenAIForTenant(tenantId);
-  const response = await openai.chat.completions.create({
-    model: "gpt-4o-mini",
-    max_tokens: 16000,
-    messages: messages as Array<{ role: "user" | "assistant"; content: string }>,
-  });
-  return {
-    content: response.choices[0]?.message?.content ?? "",
-    provider: "openai",
-    model: "gpt-4o-mini",
-  };
+  const result = await gatewayCallOpenAI(
+    tenantId,
+    "proposal_generator",
+    messages as Array<{ role: "user" | "assistant"; content: string }>,
+    { model: "gpt-4o-mini", maxTokens: 16000 },
+  );
+  return { content: result.content, provider: "openai", model: "gpt-4o-mini" };
 }
 
 // ── Theme generation from client color ───────────────────────────────────────

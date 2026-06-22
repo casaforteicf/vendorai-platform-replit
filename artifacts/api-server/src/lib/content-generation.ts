@@ -1,4 +1,5 @@
 import { getOpenAIForTenant } from "./agent-engine.js";
+import { callOpenAI as gatewayCallOpenAI } from "./ai-gateway.js";
 import { ObjectStorageService } from "./objectStorage.js";
 import type {
   FeedVariation,
@@ -131,21 +132,17 @@ export async function generateImagesForContent(
 }
 
 export async function describeImage(imageUrl: string, tenantId: string): Promise<string> {
-  const openai = await getOpenAIForTenant(tenantId);
-  const response = await openai.chat.completions.create({
-    model: "gpt-4o-mini",
-    messages: [
-      {
-        role: "user",
-        content: [
-          { type: "text", text: "Descreva esta imagem em detalhes para que eu possa usar a descrição como prompt para gerar uma imagem similar. Inclua: objetos principais, composição, cores, iluminação, estilo, ambiente e qualquer detalhes visuais importantes. Escreva em português." },
-          { type: "image_url", image_url: { url: imageUrl } },
-        ],
-      },
-    ],
-    max_tokens: 500,
-  });
-  return response.choices[0]?.message?.content ?? "Imagem sem descrição disponível";
+  const imgContent: import("openai").OpenAI.Chat.ChatCompletionContentPart[] = [
+    { type: "text", text: "Descreva esta imagem em detalhes para que eu possa usar a descrição como prompt para gerar uma imagem similar. Inclua: objetos principais, composição, cores, iluminação, estilo, ambiente e qualquer detalhes visuais importantes. Escreva em português." },
+    { type: "image_url", image_url: { url: imageUrl } },
+  ];
+  const result = await gatewayCallOpenAI(
+    tenantId,
+    "media_interpretation",
+    [{ role: "user", content: imgContent } as any],
+    { model: "gpt-4o-mini", maxTokens: 500 },
+  );
+  return result.content || "Imagem sem descrição disponível";
 }
 
 export async function generateFeedContent(
@@ -157,7 +154,6 @@ export async function generateFeedContent(
   imageCount: number = 1,
   productExtra?: string
 ): Promise<{ result: ContentGenerationResult; tokensUsed: number }> {
-  const openai = await getOpenAIForTenant(tenantId);
   const brand = profile.nomeFantasia || "a empresa";
   const context = buildBrandContext(profile);
   const hints = verticalHints(profile.vertical);
@@ -186,18 +182,18 @@ Crie ${variationsCount} variações distintas de legenda para o Feed do Instagra
 Retorne SOMENTE JSON válido no formato:
 {"variations": [{"caption": "...", "hashtags": ["#hashtag1", "#hashtag2"]}]}`;
 
-  const [textResponse, imageUrls] = await Promise.all([
-    openai.chat.completions.create({
-      model: "gpt-4o-mini",
-      messages: [{ role: "user", content: prompt }],
-      response_format: { type: "json_object" },
-      temperature: 0.85,
-    }),
+  const [textResult, imageUrls] = await Promise.all([
+    gatewayCallOpenAI(
+      tenantId,
+      "content_generator",
+      [{ role: "user", content: prompt }],
+      { model: "gpt-4o-mini", responseFormat: { type: "json_object" }, temperature: 0.85 },
+    ),
     generateImagesForContent(profile, tenantId, theme, productName, "feed", imageCount),
   ]);
 
-  const tokensUsed = textResponse.usage?.total_tokens ?? 0;
-  const raw = JSON.parse(textResponse.choices[0]?.message?.content ?? "{}") as {
+  const tokensUsed = textResult.inputTokens + textResult.outputTokens;
+  const raw = JSON.parse(textResult.content || "{}") as {
     variations?: Omit<FeedVariation, "imageUrl">[];
   };
 
@@ -222,7 +218,6 @@ export async function generateStoriesContent(
   imageCount: number = 1,
   productExtra?: string
 ): Promise<{ result: ContentGenerationResult; tokensUsed: number }> {
-  const openai = await getOpenAIForTenant(tenantId);
   const brand = profile.nomeFantasia || "a empresa";
   const context = buildBrandContext(profile);
   const hints = verticalHints(profile.vertical);
@@ -251,18 +246,18 @@ Crie ${variationsCount} variações distintas de conteúdo para Stories do Insta
 Retorne SOMENTE JSON válido no formato:
 {"variations": [{"text": "...", "cta": "..."}]}`;
 
-  const [textResponse, imageUrls] = await Promise.all([
-    openai.chat.completions.create({
-      model: "gpt-4o-mini",
-      messages: [{ role: "user", content: prompt }],
-      response_format: { type: "json_object" },
-      temperature: 0.85,
-    }),
+  const [textResult, imageUrls] = await Promise.all([
+    gatewayCallOpenAI(
+      tenantId,
+      "content_generator",
+      [{ role: "user", content: prompt }],
+      { model: "gpt-4o-mini", responseFormat: { type: "json_object" }, temperature: 0.85 },
+    ),
     generateImagesForContent(profile, tenantId, theme, productName, "stories", imageCount),
   ]);
 
-  const tokensUsed = textResponse.usage?.total_tokens ?? 0;
-  const raw = JSON.parse(textResponse.choices[0]?.message?.content ?? "{}") as {
+  const tokensUsed = textResult.inputTokens + textResult.outputTokens;
+  const raw = JSON.parse(textResult.content || "{}") as {
     variations?: Omit<StoriesVariation, "imageUrl">[];
   };
 
@@ -286,7 +281,6 @@ export async function generateReelsScript(
   variationsCount: number,
   productExtra?: string
 ): Promise<{ result: ContentGenerationResult; tokensUsed: number }> {
-  const openai = await getOpenAIForTenant(tenantId);
   const brand = profile.nomeFantasia || "a empresa";
   const context = buildBrandContext(profile);
   const hints = verticalHints(profile.vertical);
@@ -317,15 +311,15 @@ Crie ${variationsCount} roteiros distintos para Reels do Instagram (vídeos de 1
 Retorne SOMENTE JSON válido no formato:
 {"variations": [{"title": "...", "scenes": [{"visual": "...", "fala": "...", "duracao": "5s"}], "audioSuggestion": "...", "cta": "..."}]}`;
 
-  const response = await openai.chat.completions.create({
-    model: "gpt-4o-mini",
-    messages: [{ role: "user", content: prompt }],
-    response_format: { type: "json_object" },
-    temperature: 0.85,
-  });
+  const textResult = await gatewayCallOpenAI(
+    tenantId,
+    "content_generator",
+    [{ role: "user", content: prompt }],
+    { model: "gpt-4o-mini", responseFormat: { type: "json_object" }, temperature: 0.85 },
+  );
 
-  const tokensUsed = response.usage?.total_tokens ?? 0;
-  const raw = JSON.parse(response.choices[0]?.message?.content ?? "{}") as {
+  const tokensUsed = textResult.inputTokens + textResult.outputTokens;
+  const raw = JSON.parse(textResult.content || "{}") as {
     variations?: ReelsVariation[];
   };
   return {
@@ -352,7 +346,6 @@ export async function generateContentStrategy(
   contentType: string,
   variationsCount: number
 ): Promise<{ strategy: ContentStrategy; tokensUsed: number }> {
-  const openai = await getOpenAIForTenant(tenantId);
   const brand = profile.nomeFantasia || "a empresa";
   const context = buildBrandContext(profile);
   const hints = verticalHints(profile.vertical);
@@ -391,15 +384,15 @@ Regras:
 - strategy: visão geral da estratégia de conteúdo
 - visualStyle: guia visual unificada para todas as imagens`;
 
-  const response = await openai.chat.completions.create({
-    model: "gpt-4o-mini",
-    messages: [{ role: "user", content: prompt }],
-    response_format: { type: "json_object" },
-    temperature: 0.85,
-  });
+  const textResult = await gatewayCallOpenAI(
+    tenantId,
+    "content_generator",
+    [{ role: "user", content: prompt }],
+    { model: "gpt-4o-mini", responseFormat: { type: "json_object" }, temperature: 0.85 },
+  );
 
-  const tokensUsed = response.usage?.total_tokens ?? 0;
-  const raw = JSON.parse(response.choices[0]?.message?.content ?? "{}") as Partial<ContentStrategy>;
+  const tokensUsed = textResult.inputTokens + textResult.outputTokens;
+  const raw = JSON.parse(textResult.content || "{}") as Partial<ContentStrategy>;
 
   const strategy: ContentStrategy = {
     strategy: raw.strategy ?? "Estratégia de conteúdo gerada",

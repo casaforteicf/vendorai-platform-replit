@@ -24,7 +24,7 @@ import {
   desc,
   gte,
 } from "drizzle-orm";
-import { getOpenAIForTenant } from "../lib/agent-engine.js";
+import { callOpenAI as gatewayCallOpenAI } from "../lib/ai-gateway.js";
 
 const router: IRouter = Router();
 
@@ -672,15 +672,14 @@ Gere uma análise em 3-4 parágrafos cobrindo:
 
 Seja direto, use dados concretos e fale em segunda pessoa para o usuário do CRM.`;
 
-  const openai = await getOpenAIForTenant(tenantId);
-  const completion = await openai.chat.completions.create({
-    model: "gpt-4o-mini",
-    messages: [{ role: "user", content: prompt }],
-    max_tokens: 600,
-    temperature: 0.7,
-  });
+  const aiResult = await gatewayCallOpenAI(
+    tenantId,
+    "intelligence_analysis",
+    [{ role: "user", content: prompt }],
+    { model: "gpt-4o-mini", maxTokens: 600, temperature: 0.7, log: req.log },
+  );
 
-  const insight = completion.choices[0]?.message?.content ?? "Não foi possível gerar a análise.";
+  const insight = aiResult.content || "Não foi possível gerar a análise.";
 
   res.json({ insight, generatedAt: new Date().toISOString() });
 });

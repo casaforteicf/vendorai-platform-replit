@@ -13,6 +13,7 @@
  */
 import { and, eq, ilike, sql } from "drizzle-orm";
 import type { Logger } from "pino";
+import { callOpenAI as gatewayCallOpenAI } from "../lib/ai-gateway.js";
 import {
   db,
   leadsTable,
@@ -87,7 +88,6 @@ const INTENT_JSON_SCHEMA = {
   required: ["intent", "products", "missingInformation", "notes"],
 };
 
-import { getOpenAIForTenant } from "../lib/agent-engine.js";
 
 // ── Extract intent from customer message ──────────────────────────────────────
 
@@ -112,26 +112,30 @@ export async function extractIntent(
     "- Se o cliente não está pedindo orçamento, use intent='question' ou 'other'\n" +
     "- Retorne APENAS JSON válido conforme o schema";
 
-  const openai = await getOpenAIForTenant(tenantId);
-  const completion = await openai.chat.completions.create({
-    model: "gpt-4o-mini",
-    messages: [
+  const result = await gatewayCallOpenAI(
+    tenantId,
+    "auto_quote",
+    [
       { role: "system", content: systemPrompt },
       { role: "user", content: mensagem },
     ],
-    temperature: 0.3,
-    max_tokens: 800,
-    response_format: {
-      type: "json_schema",
-      json_schema: {
-        name: "sales_intent",
-        schema: INTENT_JSON_SCHEMA,
-        strict: true,
-      },
+    {
+      model: "gpt-4o-mini",
+      temperature: 0.3,
+      maxTokens: 800,
+      responseFormat: {
+        type: "json_schema",
+        json_schema: {
+          name: "sales_intent",
+          schema: INTENT_JSON_SCHEMA,
+          strict: true,
+        },
+      } as any,
+      log,
     },
-  });
+  );
 
-  const raw = completion.choices[0]?.message?.content?.trim() ?? "";
+  const raw = result.content;
   log.info({ raw }, "auto-quote: intent extracted");
 
   try {

@@ -8,7 +8,7 @@
 
 import pdfParse from "pdf-parse";
 import type { Logger } from "pino";
-import { getOpenAIForTenant } from "../lib/agent-engine.js";
+import { callOpenAI as gatewayCallOpenAI } from "../lib/ai-gateway.js";
 
 async function downloadBuffer(url: string): Promise<Buffer> {
   const response = await fetch(url, { redirect: "follow" });
@@ -26,8 +26,6 @@ async function downloadBuffer(url: string): Promise<Buffer> {
 export async function interpretImage(imageUrl: string, tenantId: string, caption?: string, log?: Logger): Promise<string> {
   log?.info({ imageUrl: imageUrl.slice(0, 60) }, "media: interpreting image");
 
-  const openai = await getOpenAIForTenant(tenantId);
-
   const userContent: import("openai").OpenAI.Chat.ChatCompletionContentPart[] = [
     {
       type: "text",
@@ -41,20 +39,21 @@ export async function interpretImage(imageUrl: string, tenantId: string, caption
     },
   ];
 
-  const completion = await openai.chat.completions.create({
-    model: "gpt-4o-mini",
-    messages: [
+  const result = await gatewayCallOpenAI(
+    tenantId,
+    "media_interpretation",
+    [
       {
         role: "system",
         content:
           "Você é um assistente de vendas. Analise imagens enviadas por clientes via WhatsApp e extraia informações relevantes sobre produtos, pedidos, quantidades, preços ou intenção de compra. Responda sempre em português.",
       },
-      { role: "user", content: userContent },
+      { role: "user", content: userContent } as any,
     ],
-    max_tokens: 400,
-  });
+    { model: "gpt-4o-mini", maxTokens: 400, log },
+  );
 
-  const description = completion.choices[0]?.message?.content?.trim() ?? "";
+  const description = result.content;
   log?.info({ description: description.slice(0, 100) }, "media: image interpreted");
 
   // Prefix so the auto-quote pipeline has full context
