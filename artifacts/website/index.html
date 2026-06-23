@@ -170,6 +170,10 @@
   .plan ul{list-style:none; display:flex; flex-direction:column; gap:10px; margin-bottom:26px; flex:1;}
   .plan li{font-size:0.87rem; color:#3a3358; display:flex; gap:8px;}
   .plan li:before{content:'+'; color:var(--indigo); font-weight:700;}
+  .plan .price{display:flex; align-items:baseline; gap:5px; margin-bottom:4px;}
+  .plan .price .amount{font-family:var(--display); font-size:2.1rem; color:var(--navy-deep); line-height:1;}
+  .plan .price .period{font-size:0.85rem; color:#6b6485;}
+  .plan .price-note{font-family:var(--mono); font-size:0.7rem; color:#8a82a3; line-height:1.5; margin-bottom:18px; letter-spacing:.01em;}
 
   /* cta final */
   .cta-final{background:linear-gradient(160deg,var(--navy-mid),var(--navy-deep)); color:#fff;}
@@ -322,7 +326,7 @@
 
   <div class="proof">
     <div class="proof-row">
-      <div class="proof-item reveal"><div class="n">7</div><div class="l">Agentes de IA especializados</div></div>
+      <div class="proof-item reveal"><div class="n">8</div><div class="l">Agentes de IA especializados</div></div>
       <div class="proof-item reveal"><div class="n">200+</div><div class="l">Testes automatizados rodando</div></div>
       <div class="proof-item reveal"><div class="n">100%</div><div class="l">Multi-tenant, isolado por empresa</div></div>
       <div class="proof-item reveal"><div class="n">BR</div><div class="l">BRL, pt-BR e CPF/CNPJ nativos</div></div>
@@ -383,9 +387,10 @@
   <section class="agitate" id="agentes">
     <div class="container">
       <span class="cod reveal">Os agentes</span>
-      <h2 class="reveal">Sete agentes especializados. Um time que não tira férias.</h2>
-      <p class="lead reveal">Cada agente cuida de uma etapa do funil — trabalhando junto, com o mesmo histórico de cada cliente.</p>
+      <h2 class="reveal">Oito agentes especializados. Um time que não tira férias.</h2>
+      <p class="lead reveal">Cada agente cuida de uma etapa do funil — da prospecção ao pós-venda — trabalhando junto, com o mesmo histórico de cada cliente.</p>
       <div class="agents">
+        <div class="agent reveal"><span class="tag">Prospector</span><h4>Encontra novos clientes</h4><p>Busca empresas por região e segmento, enriquece os dados de CNPJ e abre o funil com leads B2B prontos pra abordar.</p></div>
         <div class="agent reveal"><span class="tag">SDR</span><h4>Atende e qualifica</h4><p>Recebe a mensagem, entende a necessidade e já consulta o catálogo em tempo real.</p></div>
         <div class="agent reveal"><span class="tag">Closer</span><h4>Monta o orçamento e fecha</h4><p>Gera a proposta com preço e estoque corretos, e conduz até a decisão.</p></div>
         <div class="agent reveal"><span class="tag">Followup</span><h4>Retoma quem esfriou</h4><p>Volta a falar com quem não respondeu, no momento certo — sem parecer insistente.</p></div>
@@ -592,39 +597,44 @@
       <p class="lead reveal">Pensado pra custar menos do que contratar mais um analista comercial júnior.</p>
       <div class="plans">
         <div class="plan reveal">
-          <h3>Starter</h3>
-          <p class="for">Pra quem está organizando o primeiro canal digital de vendas</p>
+          <h3>Growth</h3>
+          <p class="for">Pra quem já vende em mais de um canal e quer parar de perder lead</p>
+          <div class="price"><span class="amount">R$ 1.490</span><span class="period">/mês</span></div>
+          <p class="price-note">ou R$ 1.190/mês no anual · implantação R$ 4.900</p>
           <ul>
-            <li>1 canal de atendimento (WhatsApp oficial)</li>
-            <li>CRM com pipeline visual</li>
-            <li>Agente SDR + Closer</li>
-            <li>Orçamento automático</li>
-            <li>IA multimodal (áudio e imagem)</li>
+            <li>Até 8 usuários</li>
+            <li>WhatsApp + Instagram oficiais em 1 clique</li>
+            <li>4 agentes de IA (SDR, Closer, Follow-up, Reativação)</li>
+            <li>Inteligência do Cliente</li>
+            <li>Orçamento automático e IA multimodal</li>
           </ul>
           <a class="btn btn-ghost" href="https://wa.me/554931913565" target="_blank" rel="noopener">Falar com a gente</a>
         </div>
         <div class="plan featured reveal">
-          <h3>Growth</h3>
-          <p class="for">Pra quem já vende em mais de um canal e quer parar de perder lead</p>
+          <h3>PME+</h3>
+          <p class="for">Pra quem quer o time de IA completo e prospecção ativa</p>
+          <div class="price"><span class="amount">R$ 1.890</span><span class="period">/mês</span></div>
+          <p class="price-note">ou R$ 1.490/mês no anual · implantação R$ 6.900</p>
           <ul>
-            <li>WhatsApp + Instagram oficiais em 1 clique</li>
+            <li>Até 15 usuários</li>
             <li>Todos os 7 agentes de IA</li>
-            <li>Inteligência do Cliente completa</li>
             <li>Prospector de leads B2B</li>
-            <li>Pagamentos, contratos e agenda automáticos</li>
-            <li>Gerador de sites com IA + painel executivo</li>
+            <li>Inteligência completa do Cliente</li>
+            <li>Google Agenda + Meet integrados</li>
           </ul>
           <a class="btn btn-primary" href="https://wa.me/554931913565" target="_blank" rel="noopener">Falar com a gente</a>
         </div>
         <div class="plan reveal">
           <h3>Enterprise</h3>
           <p class="for">Pra operações maiores, com volume e times comerciais grandes</p>
+          <div class="price"><span class="amount">R$ 2.490</span><span class="period">/mês</span></div>
+          <p class="price-note">ou R$ 1.990/mês no anual · implantação R$ 8.900</p>
           <ul>
-            <li>Tudo do Growth</li>
-            <li>Vertical sob medida (construção, varejo, supermercado)</li>
+            <li>Até 20 usuários</li>
+            <li>Tudo do PME+ e mais</li>
             <li>Portal de parceiros / revenda white-label</li>
-            <li>Limites e autonomia sob medida</li>
-            <li>Implantação dedicada e suporte prioritário</li>
+            <li>Base de conhecimento, BYOK e painel executivo</li>
+            <li>Vertical sob medida e suporte prioritário</li>
           </ul>
           <a class="btn btn-ghost" href="https://wa.me/554931913565" target="_blank" rel="noopener">Falar com a gente</a>
         </div>
