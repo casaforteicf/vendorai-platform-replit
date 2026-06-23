@@ -3446,6 +3446,71 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
 
+  /tenants/{tenantId}/proposta-templates:
+    get:
+      operationId: listPropostaTemplates
+      tags: [sales-cpq]
+      summary: List active proposta templates
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: tenantId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Active templates list
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/PropostaTemplate"
+
+  /tenants/{tenantId}/propostas/from-template:
+    post:
+      operationId: createPropostaFromTemplate
+      tags: [sales-cpq]
+      summary: Create proposta from a platform template
+      description: |
+        Looks up the template by slug, merges its itens with any extra items provided,
+        calculates valorTotal, and creates a proposta in "rascunho" status.
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: tenantId
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreatePropostaFromTemplateBody"
+      responses:
+        "201":
+          description: Proposta created from template
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Proposta"
+        "404":
+          description: Template or lead not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "422":
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
   /campaigns:
     post:
       operationId: createCampaign
@@ -9877,6 +9942,11 @@ components:
           type: integer
           nullable: true
           description: Contract term in months (e.g. 12 for annual contract)
+        productType:
+          type: string
+          enum: [physical, service, saas_plan, saas_addon]
+          default: physical
+          description: Product classification — saas_plan/saas_addon hide stock quantity in UI
         createdAt:
           type: string
           format: date-time
@@ -10029,6 +10099,77 @@ components:
           type: boolean
           description: Se true, não gerar cobrança no Asaas para este orçamento.
       required: [leadId, titulo, itens]
+
+    PropostaTemplate:
+      type: object
+      properties:
+        id:
+          type: string
+        slug:
+          type: string
+        name:
+          type: string
+        planSlug:
+          type: string
+        cycle:
+          type: string
+          enum: [monthly, annual]
+        itens:
+          type: array
+          items:
+            type: object
+            properties:
+              nome:
+                type: string
+              quantidade:
+                type: number
+              valorUnitario:
+                type: number
+              sku:
+                type: string
+              descricao:
+                type: string
+            required: [nome, quantidade, valorUnitario]
+        isActive:
+          type: boolean
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+      required: [id, slug, name, planSlug, cycle, itens, isActive, createdAt, updatedAt]
+
+    CreatePropostaFromTemplateBody:
+      type: object
+      properties:
+        templateSlug:
+          type: string
+        leadId:
+          type: string
+          format: uuid
+        dealId:
+          type: string
+          format: uuid
+        extraItens:
+          type: array
+          items:
+            type: object
+            properties:
+              nome:
+                type: string
+              quantidade:
+                type: number
+                exclusiveMinimum: 0
+              valorUnitario:
+                type: number
+                minimum: 0
+              sku:
+                type: string
+              descricao:
+                type: string
+            required: [nome, quantidade, valorUnitario]
+      required: [templateSlug, leadId]
 
     FormaPagamentoProposta:
       type: string

@@ -28,6 +28,8 @@ export const propostaItemSchema = z.object({
   nome: z.string().min(1),
   quantidade: z.number().positive(),
   valorUnitario: z.number().nonnegative(),
+  sku: z.string().optional(),
+  descricao: z.string().optional(),
 });
 
 export type PropostaItem = z.infer<typeof propostaItemSchema>;

@@ -3235,6 +3235,8 @@ export const ListProdutosCatalogoParams = zod.object({
   "tenantId": zod.coerce.string()
 })
 
+export const listProdutosCatalogoResponseProductTypeDefault = `physical`;
+
 export const ListProdutosCatalogoResponseItem = zod.object({
   "id": zod.string(),
   "tenantId": zod.string(),
@@ -3248,6 +3250,7 @@ export const ListProdutosCatalogoResponseItem = zod.object({
   "imagemUrl": zod.string().nullish().describe('Product image URL'),
   "recorrencia": zod.enum(['mensal']).nullish().describe('Recurrence type — \"mensal\" for monthly service, null for one-time'),
   "prazoContrato": zod.number().nullish().describe('Contract term in months (e.g. 12 for annual contract)'),
+  "productType": zod.enum(['physical', 'service', 'saas_plan', 'saas_addon']).default(listProdutosCatalogoResponseProductTypeDefault).describe('Product classification — saas_plan\/saas_addon hide stock quantity in UI'),
   "createdAt": zod.coerce.date(),
   "updatedAt": zod.coerce.date()
 })
@@ -3260,6 +3263,8 @@ export const ListProdutosCatalogoResponse = zod.array(ListProdutosCatalogoRespon
 export const GetProdutoCatalogoParams = zod.object({
   "id": zod.coerce.string()
 })
+
+export const getProdutoCatalogoResponseProductTypeDefault = `physical`;
 
 export const GetProdutoCatalogoResponse = zod.object({
   "id": zod.string(),
@@ -3274,6 +3279,7 @@ export const GetProdutoCatalogoResponse = zod.object({
   "imagemUrl": zod.string().nullish().describe('Product image URL'),
   "recorrencia": zod.enum(['mensal']).nullish().describe('Recurrence type — \"mensal\" for monthly service, null for one-time'),
   "prazoContrato": zod.number().nullish().describe('Contract term in months (e.g. 12 for annual contract)'),
+  "productType": zod.enum(['physical', 'service', 'saas_plan', 'saas_addon']).default(getProdutoCatalogoResponseProductTypeDefault).describe('Product classification — saas_plan\/saas_addon hide stock quantity in UI'),
   "createdAt": zod.coerce.date(),
   "updatedAt": zod.coerce.date()
 })
@@ -3299,6 +3305,8 @@ export const UpdateProdutoCatalogoBody = zod.object({
   "prazoContrato": zod.number().nullish().describe('Contract term in months')
 })
 
+export const updateProdutoCatalogoResponseProductTypeDefault = `physical`;
+
 export const UpdateProdutoCatalogoResponse = zod.object({
   "id": zod.string(),
   "tenantId": zod.string(),
@@ -3312,6 +3320,7 @@ export const UpdateProdutoCatalogoResponse = zod.object({
   "imagemUrl": zod.string().nullish().describe('Product image URL'),
   "recorrencia": zod.enum(['mensal']).nullish().describe('Recurrence type — \"mensal\" for monthly service, null for one-time'),
   "prazoContrato": zod.number().nullish().describe('Contract term in months (e.g. 12 for annual contract)'),
+  "productType": zod.enum(['physical', 'service', 'saas_plan', 'saas_addon']).default(updateProdutoCatalogoResponseProductTypeDefault).describe('Product classification — saas_plan\/saas_addon hide stock quantity in UI'),
   "createdAt": zod.coerce.date(),
   "updatedAt": zod.coerce.date()
 })
@@ -3363,6 +3372,63 @@ export const CreatePropostaFromCatalogoBody = zod.object({
   "comprovanteUrl": zod.string().nullish().describe('URL do comprovante de pagamento (opcional).')
 })).optional().describe('Composição de pagamento (múltiplas formas).'),
   "skipAsaasBilling": zod.boolean().optional().describe('Se true, não gerar cobrança no Asaas para este orçamento.')
+})
+
+
+/**
+ * @summary List active proposta templates
+ */
+export const ListPropostaTemplatesParams = zod.object({
+  "tenantId": zod.coerce.string()
+})
+
+export const ListPropostaTemplatesResponseItem = zod.object({
+  "id": zod.string(),
+  "slug": zod.string(),
+  "name": zod.string(),
+  "planSlug": zod.string(),
+  "cycle": zod.enum(['monthly', 'annual']),
+  "itens": zod.array(zod.object({
+  "nome": zod.string(),
+  "quantidade": zod.number(),
+  "valorUnitario": zod.number(),
+  "sku": zod.string().optional(),
+  "descricao": zod.string().optional()
+})),
+  "isActive": zod.boolean(),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date()
+})
+export const ListPropostaTemplatesResponse = zod.array(ListPropostaTemplatesResponseItem)
+
+
+/**
+ * Looks up the template by slug, merges its itens with any extra items provided,
+calculates valorTotal, and creates a proposta in "rascunho" status.
+
+ * @summary Create proposta from a platform template
+ */
+export const CreatePropostaFromTemplateParams = zod.object({
+  "tenantId": zod.coerce.string()
+})
+
+export const createPropostaFromTemplateBodyExtraItensItemQuantidadeExclusiveMin = 0;
+
+export const createPropostaFromTemplateBodyExtraItensItemValorUnitarioMin = 0;
+
+
+
+export const CreatePropostaFromTemplateBody = zod.object({
+  "templateSlug": zod.string(),
+  "leadId": zod.string().uuid(),
+  "dealId": zod.string().uuid().optional(),
+  "extraItens": zod.array(zod.object({
+  "nome": zod.string(),
+  "quantidade": zod.number().gt(createPropostaFromTemplateBodyExtraItensItemQuantidadeExclusiveMin),
+  "valorUnitario": zod.number().min(createPropostaFromTemplateBodyExtraItensItemValorUnitarioMin),
+  "sku": zod.string().optional(),
+  "descricao": zod.string().optional()
+})).optional()
 })
 
 

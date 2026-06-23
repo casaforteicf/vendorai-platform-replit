@@ -63,6 +63,7 @@ export const tenantsTable = pgTable(
     suspendedReason: text("suspended_reason"),
     planMigratedFrom: text("plan_migrated_from"),
     planMigratedAt: timestamp("plan_migrated_at"),
+    extraUserSlots: integer("extra_user_slots").notNull().default(0),
     createdAt: timestamp("created_at").notNull().defaultNow(),
     updatedAt: timestamp("updated_at").notNull().defaultNow(),
   },

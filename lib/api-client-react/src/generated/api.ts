@@ -79,6 +79,7 @@ import type {
   CreateProdutoCatalogoBody,
   CreatePropostaBody,
   CreatePropostaFromCatalogoBody,
+  CreatePropostaFromTemplateBody,
   CreateRuleBody,
   CreateSellerInviteBody,
   CreateSiteConfigBody,
@@ -196,6 +197,7 @@ import type {
   ProductPresentation,
   ProdutoCatalogo,
   Proposta,
+  PropostaTemplate,
   ProspectorApprovalsListResponse,
   ProspectorEnrichBody,
   ProspectorEnrichResponse,
@@ -8793,6 +8795,158 @@ export const useCreatePropostaFromCatalogo = <TError = ErrorType<ErrorResponse>,
         TContext
       > => {
       return useMutation(getCreatePropostaFromCatalogoMutationOptions(options));
+    }
+
+export const getListPropostaTemplatesUrl = (tenantId: string,) => {
+
+
+
+
+  return `/api/tenants/${tenantId}/proposta-templates`
+}
+
+/**
+ * @summary List active proposta templates
+ */
+export const listPropostaTemplates = async (tenantId: string, options?: RequestInit): Promise<PropostaTemplate[]> => {
+
+  return customFetch<PropostaTemplate[]>(getListPropostaTemplatesUrl(tenantId),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getListPropostaTemplatesQueryKey = (tenantId: string,) => {
+    return [
+    `/api/tenants/${tenantId}/proposta-templates`
+    ] as const;
+    }
+
+
+export const getListPropostaTemplatesQueryOptions = <TData = Awaited<ReturnType<typeof listPropostaTemplates>>, TError = ErrorType<unknown>>(tenantId: string, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listPropostaTemplates>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getListPropostaTemplatesQueryKey(tenantId);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof listPropostaTemplates>>> = ({ signal }) => listPropostaTemplates(tenantId, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, enabled: !!(tenantId), ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof listPropostaTemplates>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type ListPropostaTemplatesQueryResult = NonNullable<Awaited<ReturnType<typeof listPropostaTemplates>>>
+export type ListPropostaTemplatesQueryError = ErrorType<unknown>
+
+
+/**
+ * @summary List active proposta templates
+ */
+
+export function useListPropostaTemplates<TData = Awaited<ReturnType<typeof listPropostaTemplates>>, TError = ErrorType<unknown>>(
+ tenantId: string, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listPropostaTemplates>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getListPropostaTemplatesQueryOptions(tenantId,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+
+
+
+
+
+
+export const getCreatePropostaFromTemplateUrl = (tenantId: string,) => {
+
+
+
+
+  return `/api/tenants/${tenantId}/propostas/from-template`
+}
+
+/**
+ * Looks up the template by slug, merges its itens with any extra items provided,
+calculates valorTotal, and creates a proposta in "rascunho" status.
+
+ * @summary Create proposta from a platform template
+ */
+export const createPropostaFromTemplate = async (tenantId: string,
+    createPropostaFromTemplateBody: CreatePropostaFromTemplateBody, options?: RequestInit): Promise<Proposta> => {
+
+  return customFetch<Proposta>(getCreatePropostaFromTemplateUrl(tenantId),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(
+      createPropostaFromTemplateBody,)
+  }
+);}
+
+
+
+
+export const getCreatePropostaFromTemplateMutationOptions = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createPropostaFromTemplate>>, TError,{tenantId: string;data: BodyType<CreatePropostaFromTemplateBody>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof createPropostaFromTemplate>>, TError,{tenantId: string;data: BodyType<CreatePropostaFromTemplateBody>}, TContext> => {
+
+const mutationKey = ['createPropostaFromTemplate'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof createPropostaFromTemplate>>, {tenantId: string;data: BodyType<CreatePropostaFromTemplateBody>}> = (props) => {
+          const {tenantId,data} = props ?? {};
+
+          return  createPropostaFromTemplate(tenantId,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type CreatePropostaFromTemplateMutationResult = NonNullable<Awaited<ReturnType<typeof createPropostaFromTemplate>>>
+    export type CreatePropostaFromTemplateMutationBody = BodyType<CreatePropostaFromTemplateBody>
+    export type CreatePropostaFromTemplateMutationError = ErrorType<ErrorResponse>
+
+    /**
+ * @summary Create proposta from a platform template
+ */
+export const useCreatePropostaFromTemplate = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createPropostaFromTemplate>>, TError,{tenantId: string;data: BodyType<CreatePropostaFromTemplateBody>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof createPropostaFromTemplate>>,
+        TError,
+        {tenantId: string;data: BodyType<CreatePropostaFromTemplateBody>},
+        TContext
+      > => {
+      return useMutation(getCreatePropostaFromTemplateMutationOptions(options));
     }
 
 export const getCreateCampaignUrl = () => {

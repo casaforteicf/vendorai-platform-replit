@@ -689,6 +689,19 @@ export const ProdutoCatalogoRecorrencia = {
   mensal: 'mensal',
 } as const;
 
+/**
+ * Product classification — saas_plan/saas_addon hide stock quantity in UI
+ */
+export type ProdutoCatalogoProductType = typeof ProdutoCatalogoProductType[keyof typeof ProdutoCatalogoProductType];
+
+
+export const ProdutoCatalogoProductType = {
+  physical: 'physical',
+  service: 'service',
+  saas_plan: 'saas_plan',
+  saas_addon: 'saas_addon',
+} as const;
+
 export interface ProdutoCatalogo {
   id: string;
   tenantId: string;
@@ -707,6 +720,8 @@ export interface ProdutoCatalogo {
   recorrencia?: ProdutoCatalogoRecorrencia;
   /** Contract term in months (e.g. 12 for annual contract) */
   prazoContrato?: number | null;
+  /** Product classification — saas_plan/saas_addon hide stock quantity in UI */
+  productType?: ProdutoCatalogoProductType;
   createdAt: string;
   updatedAt: string;
 }
@@ -841,6 +856,51 @@ export interface CreatePropostaFromCatalogoBody {
   paymentCompositions?: PaymentCompositionLine[];
   /** Se true, não gerar cobrança no Asaas para este orçamento. */
   skipAsaasBilling?: boolean;
+}
+
+export type PropostaTemplateCycle = typeof PropostaTemplateCycle[keyof typeof PropostaTemplateCycle];
+
+
+export const PropostaTemplateCycle = {
+  monthly: 'monthly',
+  annual: 'annual',
+} as const;
+
+export type PropostaTemplateItensItem = {
+  nome: string;
+  quantidade: number;
+  valorUnitario: number;
+  sku?: string;
+  descricao?: string;
+};
+
+export interface PropostaTemplate {
+  id: string;
+  slug: string;
+  name: string;
+  planSlug: string;
+  cycle: PropostaTemplateCycle;
+  itens: PropostaTemplateItensItem[];
+  isActive: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export type CreatePropostaFromTemplateBodyExtraItensItem = {
+  nome: string;
+  /** @exclusiveMinimum 0 */
+  quantidade: number;
+  /** @minimum 0 */
+  valorUnitario: number;
+  sku?: string;
+  descricao?: string;
+};
+
+export interface CreatePropostaFromTemplateBody {
+  templateSlug: string;
+  leadId: string;
+  dealId?: string;
+  extraItens?: CreatePropostaFromTemplateBodyExtraItensItem[];
 }
 
 export type CampaignTipo = typeof CampaignTipo[keyof typeof CampaignTipo];

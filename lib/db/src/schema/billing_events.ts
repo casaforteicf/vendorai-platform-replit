@@ -30,6 +30,7 @@ export const billingEventsTable = pgTable("billing_events", {
   status: billingEventStatusEnum("status").notNull().default("pending"),
   dueDate: timestamp("due_date"),
   paidAt: timestamp("paid_at"),
+  propostaId: text("proposta_id"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
 });
 

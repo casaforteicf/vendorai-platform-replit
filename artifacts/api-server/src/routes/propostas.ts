@@ -5,6 +5,7 @@ import {
   db,
   propostasTable,
   produtosCatalogoTable,
+  propostaTemplatesTable,
   businessProfilesTable,
   insertPropostaSchema,
   updatePropostaSchema,
@@ -577,6 +578,107 @@ router.post("/propostas/:id/accept-manual", async (req, res) => {
     propostaId: result.propostaId,
     dealId: result.dealId,
   });
+});
+
+// ── GET /tenants/:tenantId/proposta-templates ─────────────────────────────────
+router.get("/tenants/:tenantId/proposta-templates", async (req, res) => {
+  const { tenantId } = req.params;
+
+  if (req.user?.platformRole !== "super_admin" && req.user?.tenantId !== tenantId) {
+    res.status(403).json({ error: "Access denied" });
+    return;
+  }
+
+  const templates = await db
+    .select()
+    .from(propostaTemplatesTable)
+    .where(eq(propostaTemplatesTable.isActive, true))
+    .orderBy(propostaTemplatesTable.name);
+
+  res.json(templates);
+});
+
+// ── POST /tenants/:tenantId/propostas/from-template ───────────────────────────
+const fromTemplateBody = z.object({
+  templateSlug: z.string(),
+  leadId: z.string().uuid(),
+  dealId: z.string().uuid().optional(),
+  extraItens: z.array(
+    z.object({
+      nome: z.string(),
+      quantidade: z.number().positive(),
+      valorUnitario: z.number().nonnegative(),
+      sku: z.string().optional(),
+      descricao: z.string().optional(),
+    })
+  ).optional(),
+});
+
+router.post("/tenants/:tenantId/propostas/from-template", async (req, res) => {
+  const { tenantId } = req.params;
+
+  if (req.user?.platformRole !== "super_admin" && req.user?.tenantId !== tenantId) {
+    res.status(403).json({ error: "Access denied" });
+    return;
+  }
+
+  const parsed = fromTemplateBody.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(422).json({ error: parsed.error.message });
+    return;
+  }
+
+  const { templateSlug, leadId, dealId, extraItens } = parsed.data;
+
+  const [template] = await db
+    .select()
+    .from(propostaTemplatesTable)
+    .where(and(eq(propostaTemplatesTable.slug, templateSlug), eq(propostaTemplatesTable.isActive, true)))
+    .limit(1);
+
+  if (!template) {
+    res.status(404).json({ error: "Template not found or inactive" });
+    return;
+  }
+
+  const [lead] = await db
+    .select({ id: leadsTable.id, nome: leadsTable.nome })
+    .from(leadsTable)
+    .where(and(eq(leadsTable.id, leadId), eq(leadsTable.tenantId, tenantId)))
+    .limit(1);
+
+  if (!lead) {
+    res.status(404).json({ error: "Lead not found" });
+    return;
+  }
+
+  const itens = [
+    ...(template.itens as Array<{ nome: string; quantidade: number; valorUnitario: number; sku?: string; descricao?: string }>),
+    ...(extraItens ?? []),
+  ];
+
+  const valorTotal = itens.reduce((sum, i) => sum + i.quantidade * i.valorUnitario, 0);
+  const numero = await generateNumero(tenantId);
+  const validadeAte = new Date();
+  validadeAte.setDate(validadeAte.getDate() + 15);
+
+  const [proposta] = await db
+    .insert(propostasTable)
+    .values({
+      tenantId,
+      leadId,
+      dealId: dealId ?? null,
+      titulo: `${template.name} — ${lead.nome}`,
+      numero,
+      itens,
+      valorTotal: String(valorTotal.toFixed(2)),
+      status: "rascunho",
+      validadeAte,
+      recorrente: template.cycle !== "annual" && template.planSlug !== "",
+    })
+    .returning();
+
+  res.status(201).json({ proposta, template: { slug: template.slug, name: template.name } });
 });
 
 export default router;

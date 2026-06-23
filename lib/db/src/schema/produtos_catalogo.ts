@@ -3,15 +3,18 @@ import { createInsertSchema, createSelectSchema } from "drizzle-zod";
 import { z } from "zod/v4";
 import { tenantsTable } from "./tenants";
 
+export const PRODUCT_TYPES = ["physical", "service", "saas_plan", "saas_addon"] as const;
+export type ProductType = typeof PRODUCT_TYPES[number];
+
 export const produtosCatalogoTable = pgTable("produtos_catalogo", {
   id: text("id")
     .primaryKey()
     .$defaultFn(() => crypto.randomUUID()),
   tenantId: text("tenant_id")
-    .notNull()
     .references(() => tenantsTable.id, { onDelete: "cascade" }),
   nome: text("nome").notNull(),
   sku: text("sku"),
+  productType: text("product_type").$type<ProductType>().notNull().default("physical"),
   descricao: text("descricao"),
   categoria: text("categoria"),
   precoBase: numeric("preco_base", { precision: 12, scale: 2 }).notNull(),

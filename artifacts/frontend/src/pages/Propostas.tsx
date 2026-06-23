@@ -18,6 +18,9 @@ import {
   useImportProdutosCatalogo,
   useCreateDeal,
   getListDealsQueryKey,
+  useListPropostaTemplates,
+  getListPropostaTemplatesQueryKey,
+  useCreatePropostaFromTemplate,
   useGetBusinessProfileByTenant,
   getGetBusinessProfileByTenantQueryKey,
   useGetLead,
@@ -32,6 +35,7 @@ import type {
   ProdutoCatalogo,
   FormaPagamentoProposta,
   PaymentCompositionLineForma,
+  PropostaTemplate,
 } from "@workspace/api-client-react";
 import { useQueryClient } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
@@ -764,7 +768,8 @@ export function PropostaModal({
   const qc = useQueryClient();
 
   // mode
-  const [mode, setMode] = useState<"catalogo" | "livre">("catalogo");
+  const [mode, setMode] = useState<"catalogo" | "livre" | "template">("catalogo");
+  const [selectedTemplateSlug, setSelectedTemplateSlug] = useState<string>("");
 
   // catalog mode
   const [cartLines, setCartLines] = useState<CartLine[]>([{ produtoId: "", quantidade: 1 }]);
@@ -815,9 +820,13 @@ export function PropostaModal({
     return acc;
   }, {} as Record<string, string>) ?? {};
 
-  const createFromCatMut  = useCreatePropostaFromCatalogo();
-  const createLivreMut    = useCreateProposta();
+  const createFromCatMut     = useCreatePropostaFromCatalogo();
+  const createLivreMut       = useCreateProposta();
+  const createFromTemplateMut = useCreatePropostaFromTemplate();
   const { mutate: createDeal } = useCreateDeal();
+  const { data: propostaTemplates = [] } = useListPropostaTemplates(tenantId, {
+    query: { queryKey: getListPropostaTemplatesQueryKey(tenantId), enabled: !!tenantId },
+  });
   const activeCatalog     = catalog.filter((p) => p.ativo);
 
   // totals
@@ -841,6 +850,7 @@ export function PropostaModal({
       prazoContratoMeses: undefined,
     });
     setMode("catalogo");
+    setSelectedTemplateSlug("");
     setCartLines([{ produtoId: "", quantidade: 1 }]);
     setCartError("");
     setFreeItems([newFreeItem()]);
@@ -962,7 +972,38 @@ export function PropostaModal({
     }
   }
 
-  const isPending = createFromCatMut.isPending || createLivreMut.isPending;
+  function onSubmitTemplate(vals: PropostaFormValues) {
+    if (!selectedTemplateSlug) {
+      toast({ title: "Selecione um template de plano", variant: "destructive" });
+      return;
+    }
+    const leadId = vals.leadId;
+    if (!leadId) {
+      toast({ title: "Selecione um lead", variant: "destructive" });
+      return;
+    }
+    createFromTemplateMut.mutate(
+      { tenantId, data: { templateSlug: selectedTemplateSlug, leadId } },
+      {
+        onSuccess: (proposta) => {
+          toast({ title: "Orçamento criado a partir do template" });
+          qc.invalidateQueries({ queryKey: getListPropostasQueryKey(tenantId) });
+          if (lockedLeadId) {
+            qc.invalidateQueries({ queryKey: getListPropostasQueryKey(tenantId, { leadId: lockedLeadId }) });
+          }
+          createDeal(
+            { data: { tenantId, titulo: (proposta as { titulo?: string }).titulo ?? vals.titulo, leadId, etapa: "proposta" } },
+            { onSuccess: () => qc.invalidateQueries({ queryKey: getListDealsQueryKey(tenantId) }) }
+          );
+          onSuccess?.();
+          handleClose();
+        },
+        onError: () => toast({ title: "Erro ao criar orçamento do template", variant: "destructive" }),
+      }
+    );
+  }
+
+  const isPending = createFromCatMut.isPending || createLivreMut.isPending || createFromTemplateMut.isPending;
 
   return (
     <Dialog open={open} onOpenChange={(o) => !o && handleClose()}>
@@ -972,7 +1013,7 @@ export function PropostaModal({
         </DialogHeader>
 
         <Form {...form}>
-          <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-5">
+          <form onSubmit={form.handleSubmit(mode === "template" ? onSubmitTemplate : onSubmit)} className="space-y-5">
             {/* Lead + Título */}
             <div className="grid grid-cols-2 gap-3">
               <FormField control={form.control} name="leadId" render={({ field }) => (
@@ -1010,6 +1051,13 @@ export function PropostaModal({
             <div className="flex rounded-lg border overflow-hidden text-sm">
               <button
                 type="button"
+                onClick={() => setMode("template")}
+                className={`flex-1 py-2 font-medium transition-colors ${mode === "template" ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:bg-muted"}`}
+              >
+                Template de Plano
+              </button>
+              <button
+                type="button"
                 onClick={() => setMode("catalogo")}
                 className={`flex-1 py-2 font-medium transition-colors ${mode === "catalogo" ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:bg-muted"}`}
               >
@@ -1023,6 +1071,46 @@ export function PropostaModal({
                 Itens Livres
               </button>
             </div>
+
+            {/* ── TEMPLATE MODE ─────────────────────────────────────────────── */}
+            {mode === "template" && (
+              <div className="space-y-3">
+                <p className="text-sm text-muted-foreground">Crie um orçamento com todos os itens de um plano VendorAI pré-configurado.</p>
+                <div className="grid gap-2">
+                  {propostaTemplates.length === 0 ? (
+                    <p className="text-sm text-muted-foreground text-center py-4">Nenhum template disponível</p>
+                  ) : (
+                    propostaTemplates.map((t: PropostaTemplate) => {
+                      const totalTemplate = (t.itens as Array<{ quantidade: number; valorUnitario: number }>).reduce(
+                        (s, i) => s + i.quantidade * i.valorUnitario, 0
+                      );
+                      const isSelected = selectedTemplateSlug === t.slug;
+                      return (
+                        <button
+                          key={t.slug}
+                          type="button"
+                          onClick={() => setSelectedTemplateSlug(t.slug)}
+                          className={`w-full text-left rounded-lg border p-3 transition-colors ${isSelected ? "border-primary bg-primary/5" : "hover:bg-muted/50"}`}
+                        >
+                          <div className="flex items-center justify-between">
+                            <div>
+                              <p className="font-medium text-sm">{t.name}</p>
+                              <p className="text-xs text-muted-foreground mt-0.5">
+                                {(t.itens as Array<{ nome: string }>).map((i) => i.nome).join(" + ")}
+                              </p>
+                            </div>
+                            <div className="text-right shrink-0 ml-3">
+                              <p className="text-sm font-bold">{fmtCurrency(totalTemplate)}</p>
+                              <p className="text-xs text-muted-foreground">{t.cycle === "annual" ? "pagamento anual" : "mensal"}</p>
+                            </div>
+                          </div>
+                        </button>
+                      );
+                    })
+                  )}
+                </div>
+              </div>
+            )}
 
             {/* ── CATALOG MODE ──────────────────────────────────────────────── */}
             {mode === "catalogo" && (

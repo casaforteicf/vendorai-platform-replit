@@ -611,7 +611,7 @@ router.patch("/deals/:id", async (req, res) => {
             let installmentCount: number | undefined;
             let installmentValue: number | undefined;
             const [proposta] = await db
-              .select({ formaPagamento: propostasTable.formaPagamento, numParcelas: propostasTable.numParcelas })
+              .select({ id: propostasTable.id, formaPagamento: propostasTable.formaPagamento, numParcelas: propostasTable.numParcelas, itens: propostasTable.itens })
               .from(propostasTable)
               .where(eq(propostasTable.dealId, deal.id))
               .orderBy(sql`${propostasTable.createdAt} desc`)
@@ -624,12 +624,22 @@ router.patch("/deals/:id", async (req, res) => {
               installmentValue = Math.round((Number(deal.valor) / proposta.numParcelas) * 100) / 100;
             }
 
+            // Detect SKU-based items (PLAN-* or SETUP-*) to enable auto-delivery
+            const propostaItens = (proposta?.itens ?? []) as Array<{ sku?: string }>;
+            const hasDeliverySku = propostaItens.some(
+              (i) => i.sku && (i.sku.startsWith("PLAN-") || i.sku.startsWith("SETUP-"))
+            );
+            const skuExternalRef = hasDeliverySku && proposta?.id
+              ? `sku_delivery:${proposta.id}`
+              : undefined;
+
             const charge = await createCharge({
               customer: customer.id,
               billingType,
               value: Number(deal.valor),
               dueDate: dueDateStr,
               description: `Proposta: ${deal.titulo}`,
+              externalReference: skuExternalRef,
               split: partnerWalletId
                 ? [{ walletId: partnerWalletId, percentualValue: 50 }]
                 : undefined,

@@ -1282,8 +1282,8 @@ function ProdutoDetailSheet({
 
           <Separator />
 
-          {/* Stock section */}
-          <div className="space-y-3">
+          {/* Stock section — hidden for SaaS products */}
+          {(produto.productType !== "saas_plan" && produto.productType !== "saas_addon") && <div className="space-y-3">
             <p className="text-xs text-muted-foreground uppercase tracking-wide font-medium flex items-center gap-1.5">
               <Warehouse className="h-3.5 w-3.5" /> Estoque atual
             </p>
@@ -1320,7 +1320,7 @@ function ProdutoDetailSheet({
                 Produto não cadastrado no estoque ainda
               </div>
             )}
-          </div>
+          </div>}
 
           {/* Recent movements */}
           {movements.length > 0 && (

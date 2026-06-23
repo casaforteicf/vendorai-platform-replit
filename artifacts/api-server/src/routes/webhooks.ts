@@ -10,6 +10,7 @@ import {
   billingEventsTable,
   tokenPurchasesTable,
 } from "@workspace/db";
+import { dispatchSkuDelivery } from "../lib/product-delivery.js";
 import { z } from "zod";
 import { verifyToken } from "../lib/jwt.js";
 import {
@@ -802,6 +803,19 @@ router.post("/webhooks/asaas", async (req, res) => {
 
           req.log.info({ tenantId, purchaseId, credits: purchase.credits }, "asaas-webhook: token top-up credited");
         }
+      }
+      res.status(200).json({ ok: true });
+      return;
+    }
+
+    // ── SKU-based product delivery ──────────────────────────────────────────
+    if (payment.externalReference?.startsWith("sku_delivery:")) {
+      const propostaId = payment.externalReference.split(":")[1] ?? null;
+      if (propostaId) {
+        req.log.info({ propostaId, paymentId: payment.id }, "asaas-webhook: sku_delivery triggered");
+        void dispatchSkuDelivery(propostaId).catch((err) =>
+          req.log.error({ err, propostaId }, "asaas-webhook: sku_delivery failed")
+        );
       }
       res.status(200).json({ ok: true });
       return;

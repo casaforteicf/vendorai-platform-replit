@@ -5,6 +5,7 @@
  * API specification
  * OpenAPI spec version: 0.1.0
  */
+import type { ProdutoCatalogoProductType } from './produtoCatalogoProductType';
 import type { ProdutoCatalogoRecorrencia } from './produtoCatalogoRecorrencia';
 
 export interface ProdutoCatalogo {
@@ -25,6 +26,8 @@ export interface ProdutoCatalogo {
   recorrencia?: ProdutoCatalogoRecorrencia;
   /** Contract term in months (e.g. 12 for annual contract) */
   prazoContrato?: number | null;
+  /** Product classification — saas_plan/saas_addon hide stock quantity in UI */
+  productType?: ProdutoCatalogoProductType;
   createdAt: Date;
   updatedAt: Date;
 }
