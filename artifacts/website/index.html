@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Vendor.ai — Sistema Operacional Empresarial com IA</title>
-<meta name="description" content="CRM, atendimento omnichannel e 7 agentes de IA num só sistema, feito para PMEs brasileiras.">
+<meta name="description" content="Prospecção, CRM, atendimento omnichannel e 7 agentes de IA num só sistema — com pagamentos, contratos, IA multimodal e marketing. Feito para PMEs brasileiras.">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
@@ -210,6 +210,25 @@
   .mk-card p{font-size:0.92rem; color:#c6c0e0;}
   .mk-card .mk-tag{font-family:var(--mono); font-size:0.66rem; text-transform:uppercase; color:var(--navy-deep); background:linear-gradient(90deg,var(--indigo-soft),var(--cyan-soft)); padding:4px 10px; border-radius:100px; display:inline-block; margin-bottom:14px;}
 
+  /* verticais */
+  .vert-grid{display:grid; gap:16px; grid-template-columns:1fr; margin-top:36px;}
+  @media(min-width:760px){.vert-grid{grid-template-columns:repeat(3,1fr);}}
+  .vert{background:#fff; border:1px solid var(--concrete-line); border-radius:16px; padding:26px; position:relative; overflow:hidden;}
+  .vert::before{content:''; position:absolute; left:0; top:0; right:0; height:3px; background:linear-gradient(90deg,var(--indigo),var(--cyan));}
+  .vert .vt{font-family:var(--mono); font-size:0.66rem; letter-spacing:.05em; text-transform:uppercase; color:var(--navy-mid); opacity:.65; margin-bottom:10px; display:block;}
+  .vert h4{font-size:1.15rem; font-weight:700; margin-bottom:8px; font-family:var(--display); font-weight:400;}
+  .vert p{font-size:0.9rem; color:#4a4368;}
+
+  /* integrações */
+  .int-grid{display:grid; gap:14px; grid-template-columns:1fr; margin-top:38px;}
+  @media(min-width:640px){.int-grid{grid-template-columns:repeat(2,1fr);}}
+  @media(min-width:1020px){.int-grid{grid-template-columns:repeat(3,1fr);}}
+  .int{background:rgba(255,255,255,0.05); border:1px solid rgba(255,255,255,0.12); border-radius:14px; padding:22px; transition:background .2s;}
+  .int:hover{background:rgba(255,255,255,0.08);}
+  .int .tag{font-family:var(--mono); font-size:0.66rem; letter-spacing:.05em; text-transform:uppercase; color:var(--navy-deep); background:linear-gradient(90deg,var(--indigo-soft),var(--cyan-soft)); padding:4px 9px; border-radius:5px; display:inline-block; margin-bottom:12px;}
+  .int h4{font-size:1rem; font-weight:700; margin-bottom:6px; color:#fff;}
+  .int p{font-size:0.85rem; color:#c6c0e0;}
+
   footer{padding:34px 6vw; font-family:var(--mono); font-size:0.72rem; color:#8b84a8; background:var(--navy-deep); display:flex; justify-content:space-between; flex-wrap:wrap; gap:12px;}
 </style>
 </head>
@@ -237,7 +256,8 @@
     <a href="#problema">O problema</a>
     <a href="#agentes">Agentes</a>
     <a href="#central-lead">Central do lead</a>
-    <a href="#funcionalidades">Funcionalidades</a>
+    <a href="#verticais">Verticais</a>
+    <a href="#integracoes">Integrações</a>
     <a href="#planos">Planos</a>
   </nav>
   <a class="btn btn-primary" href="https://wa.me/554931913565" target="_blank" rel="noopener">Falar no WhatsApp</a>
@@ -250,7 +270,7 @@
       <div>
         <div class="hero-tag reveal">Sistema Operacional Empresarial com IA — para PMEs brasileiras</div>
         <h1 class="reveal">O WhatsApp já é seu CRM. A gente deu inteligência pra ele.</h1>
-        <p class="lead reveal">Vendor.ai atende, qualifica, orça e fecha venda em WhatsApp, Instagram e nos seus outros canais — e cuida também do contrato, da fatura e do marketing depois que a venda fecha.</p>
+        <p class="lead reveal">Vendor.ai prospecta, atende, qualifica, orça e fecha venda em WhatsApp e Instagram — com conexão oficial em 1 clique — e ainda cuida do contrato, da cobrança e do marketing depois que a venda fecha.</p>
         <div class="hero-ctas reveal">
           <a class="btn btn-primary" href="#agentes">Ver os agentes em ação</a>
           <a class="btn btn-ghost" href="https://wa.me/554931913565" target="_blank" rel="noopener">Falar com a gente</a>
@@ -344,7 +364,7 @@
         <div class="pillar reveal">
           <span class="pnum">01</span>
           <h3>Atendimento unificado</h3>
-          <p>WhatsApp e Instagram numa única caixa de entrada, com o mesmo histórico de cliente em qualquer canal.</p>
+          <p>WhatsApp (API oficial da Meta) e Instagram conectados em 1 clique, numa única caixa de entrada com o mesmo histórico de cliente em qualquer canal.</p>
         </div>
         <div class="pillar reveal">
           <span class="pnum">02</span>
@@ -461,6 +481,31 @@
     </div>
   </section>
 
+  <section id="verticais">
+    <div class="container">
+      <span class="cod reveal">Verticais</span>
+      <h2 class="reveal">O mesmo sistema, moldado pro seu segmento.</h2>
+      <p class="lead reveal">Vendor.ai não é genérico: cada vertical ativa campos, fluxos e inteligência específicos do seu mercado.</p>
+      <div class="vert-grid">
+        <div class="vert reveal">
+          <span class="vt">Construção civil</span>
+          <h4>Da obra ao fechamento</h4>
+          <p>Acompanhamento de obra por fases, briefing técnico do lead e proposta ancorada no estágio do projeto.</p>
+        </div>
+        <div class="vert reveal">
+          <span class="vt">Varejo & moda</span>
+          <h4>Coleção, grade e fidelidade</h4>
+          <p>Coleções e fornecedores, grade de produtos, combos e looks, e programa de fidelidade por pontos.</p>
+        </div>
+        <div class="vert reveal">
+          <span class="vt">Supermercado</span>
+          <h4>Estoque vivo e promoção em massa</h4>
+          <p>Sincronização de estoque via ERP em tempo real e campanhas de promoção disparadas pra base toda.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
   <section class="modules" id="funcionalidades">
     <div class="container">
       <span class="cod reveal">Funcionalidades</span>
@@ -481,6 +526,27 @@
         <div class="mod reveal"><span class="cod">Integração</span><h4>ERP ou planilha CSV</h4><p>Importa estoque e preço do sistema que você já usa — sem digitar tudo de novo.</p></div>
         <div class="mod reveal"><span class="cod">Agenda do time</span><h4>Comercial, operacional e suporte</h4><p>Cada área com sua própria visão de compromissos, sem bagunçar a agenda dos outros.</p></div>
         <div class="mod reveal"><span class="cod">Conversas da equipe</span><h4>Tudo registrado, não só a IA</h4><p>O que sua equipe conversa com o cliente também fica salvo no histórico — não só o que o agente respondeu.</p></div>
+        <div class="mod reveal"><span class="cod">Prospecção</span><h4>Gerador de leads B2B</h4><p>Encontra empresas por região e segmento e enriquece os dados de CNPJ automaticamente — pipeline cheio sem garimpo manual.</p></div>
+        <div class="mod reveal"><span class="cod">IA Multimodal</span><h4>Entende áudio, imagem e PDF</h4><p>Transcreve o áudio do WhatsApp e lê documentos e fotos que o cliente manda — sem ninguém digitar nada.</p></div>
+        <div class="mod reveal"><span class="cod">Pagamentos</span><h4>Boleto, cartão e Pix</h4><p>Cobrança gerada e enviada automática, com split de pagamento pra parceiros.</p></div>
+        <div class="mod reveal"><span class="cod">Relacionamento</span><h4>Datas especiais no automático</h4><p>Aniversário e datas comemorativas com mensagem enviada sozinha, sem depender de alguém lembrar.</p></div>
+        <div class="mod reveal"><span class="cod">Parceiros</span><h4>Revenda white-label</h4><p>Parceiros gerenciam seus próprios clientes, cobrança e comissões num painel só.</p></div>
+      </div>
+    </div>
+  </section>
+
+  <section class="agitate" id="integracoes">
+    <div class="container">
+      <span class="cod reveal">Integrações</span>
+      <h2 class="reveal">Conectado às ferramentas que o seu negócio já usa.</h2>
+      <p class="lead reveal">Conexões oficiais, sem gambiarra — a maioria com login em poucos cliques.</p>
+      <div class="int-grid">
+        <div class="int reveal"><span class="tag">Meta</span><h4>WhatsApp Cloud API + Instagram</h4><p>Canais oficiais conectados por login em 1 clique. Mensagens e DMs caem direto na mesma caixa de entrada.</p></div>
+        <div class="int reveal"><span class="tag">Google</span><h4>Agenda + Meet</h4><p>Agenda sincronizada e link do Google Meet gerado automaticamente ao marcar uma reunião.</p></div>
+        <div class="int reveal"><span class="tag">Asaas</span><h4>Cobrança e pagamentos</h4><p>Boleto, cartão e Pix com split de pagamento — fatura emitida e enviada sozinha quando o negócio fecha.</p></div>
+        <div class="int reveal"><span class="tag">ZapSign</span><h4>Assinatura digital</h4><p>Contrato gerado e enviado pro cliente assinar digitalmente, sem papel e sem ida e volta.</p></div>
+        <div class="int reveal"><span class="tag">OpenAI</span><h4>IA que vê e ouve</h4><p>Transcrição de áudio e leitura de imagens e PDFs enviados pelo cliente, direto na conversa.</p></div>
+        <div class="int reveal"><span class="tag">ERP / CSV</span><h4>Estoque e preço sincronizados</h4><p>Importa estoque e tabela de preço do sistema que você já usa — sem redigitar nada.</p></div>
       </div>
     </div>
   </section>
@@ -529,10 +595,11 @@
           <h3>Starter</h3>
           <p class="for">Pra quem está organizando o primeiro canal digital de vendas</p>
           <ul>
-            <li>1 canal de atendimento (WhatsApp)</li>
+            <li>1 canal de atendimento (WhatsApp oficial)</li>
             <li>CRM com pipeline visual</li>
             <li>Agente SDR + Closer</li>
             <li>Orçamento automático</li>
+            <li>IA multimodal (áudio e imagem)</li>
           </ul>
           <a class="btn btn-ghost" href="https://wa.me/554931913565" target="_blank" rel="noopener">Falar com a gente</a>
         </div>
@@ -540,11 +607,12 @@
           <h3>Growth</h3>
           <p class="for">Pra quem já vende em mais de um canal e quer parar de perder lead</p>
           <ul>
-            <li>WhatsApp + Instagram unificados</li>
+            <li>WhatsApp + Instagram oficiais em 1 clique</li>
             <li>Todos os 7 agentes de IA</li>
             <li>Inteligência do Cliente completa</li>
-            <li>Gerador de sites com IA</li>
-            <li>Painel executivo</li>
+            <li>Prospector de leads B2B</li>
+            <li>Pagamentos, contratos e agenda automáticos</li>
+            <li>Gerador de sites com IA + painel executivo</li>
           </ul>
           <a class="btn btn-primary" href="https://wa.me/554931913565" target="_blank" rel="noopener">Falar com a gente</a>
         </div>
@@ -553,9 +621,10 @@
           <p class="for">Pra operações maiores, com volume e times comerciais grandes</p>
           <ul>
             <li>Tudo do Growth</li>
+            <li>Vertical sob medida (construção, varejo, supermercado)</li>
+            <li>Portal de parceiros / revenda white-label</li>
             <li>Limites e autonomia sob medida</li>
-            <li>Implantação dedicada</li>
-            <li>Suporte prioritário</li>
+            <li>Implantação dedicada e suporte prioritário</li>
           </ul>
           <a class="btn btn-ghost" href="https://wa.me/554931913565" target="_blank" rel="noopener">Falar com a gente</a>
         </div>
