@@ -8,22 +8,40 @@ const PLANS = [
     implantationPriceCents: 300_000,
     monthlyPriceCents: 69_000,
     monthlyPriceAnnualCents: 59_000,
-    modules: ["agent_sdr", "agent_followup"] as const,
+    aiQuotaUsd: "10",
+    maxUsers: 5,
+    extraUserPriceCents: null,
+    isActive: false,
+    modules: [] as string[],
   },
   {
     slug: "growth",
     name: "Growth",
-    implantationPriceCents: 500_000,
-    monthlyPriceCents: 100_000,
-    monthlyPriceAnnualCents: 89_000,
-    modules: ["agent_sdr", "agent_followup", "agent_scheduler", "agent_reactivation"] as const,
+    implantationPriceCents: 490_000,
+    monthlyPriceCents: 149_000,
+    monthlyPriceAnnualCents: 119_000,
+    aiQuotaUsd: "20",
+    maxUsers: 8,
+    extraUserPriceCents: 8_900,
+    isActive: true,
+    modules: [
+      "agent_sdr",
+      "agent_closer",
+      "agent_followup",
+      "agent_reactivation",
+      "customer_intelligence",
+    ],
   },
   {
-    slug: "enterprise",
-    name: "Enterprise",
-    implantationPriceCents: 800_000,
-    monthlyPriceCents: 180_000,
-    monthlyPriceAnnualCents: null,
+    slug: "pme_plus",
+    name: "PME+",
+    implantationPriceCents: 690_000,
+    monthlyPriceCents: 189_000,
+    monthlyPriceAnnualCents: 149_000,
+    aiQuotaUsd: "35",
+    maxUsers: 15,
+    extraUserPriceCents: 8_400,
+    isActive: true,
     modules: [
       "agent_sdr",
       "agent_closer",
@@ -33,7 +51,39 @@ const PLANS = [
       "agent_service",
       "agent_onboarding",
       "customer_intelligence",
-    ] as const,
+      "intelligence_full",
+      "prospector_alpha",
+      "google_calendar",
+    ],
+  },
+  {
+    slug: "enterprise",
+    name: "Enterprise",
+    implantationPriceCents: 890_000,
+    monthlyPriceCents: 249_000,
+    monthlyPriceAnnualCents: 199_000,
+    aiQuotaUsd: "50",
+    maxUsers: 20,
+    extraUserPriceCents: 7_900,
+    isActive: true,
+    modules: [
+      "agent_sdr",
+      "agent_closer",
+      "agent_followup",
+      "agent_reactivation",
+      "agent_scheduler",
+      "agent_service",
+      "agent_onboarding",
+      "customer_intelligence",
+      "intelligence_full",
+      "prospector_alpha",
+      "google_calendar",
+      "google_sheets",
+      "knowledge_base",
+      "byok",
+      "partner_portal",
+      "executive_report",
+    ],
   },
 ];
 
@@ -47,7 +97,33 @@ async function seed() {
       .limit(1);
 
     if (existing) {
-      console.log(`  Plan "${plan.slug}" already exists (${existing.id}) — skipping`);
+      await db
+        .update(plansTable)
+        .set({
+          name: plan.name,
+          implantationPriceCents: plan.implantationPriceCents,
+          monthlyPriceCents: plan.monthlyPriceCents,
+          monthlyPriceAnnualCents: plan.monthlyPriceAnnualCents,
+          aiQuotaUsd: plan.aiQuotaUsd,
+          maxUsers: plan.maxUsers,
+          extraUserPriceCents: plan.extraUserPriceCents,
+          isActive: plan.isActive,
+          updatedAt: new Date(),
+        })
+        .where(eq(plansTable.slug, plan.slug));
+
+      await db
+        .delete(planModulesTable)
+        .where(eq(planModulesTable.planId, existing.id));
+
+      for (const moduleKey of plan.modules) {
+        await db.insert(planModulesTable).values({
+          planId: existing.id,
+          moduleKey,
+        });
+      }
+
+      console.log(`  Plan "${plan.slug}" updated (${existing.id}) with ${plan.modules.length} modules`);
       continue;
     }
 
@@ -59,6 +135,10 @@ async function seed() {
         implantationPriceCents: plan.implantationPriceCents,
         monthlyPriceCents: plan.monthlyPriceCents,
         monthlyPriceAnnualCents: plan.monthlyPriceAnnualCents,
+        aiQuotaUsd: plan.aiQuotaUsd,
+        maxUsers: plan.maxUsers,
+        extraUserPriceCents: plan.extraUserPriceCents,
+        isActive: plan.isActive,
       })
       .returning({ id: plansTable.id });
 

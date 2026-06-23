@@ -11,6 +11,21 @@ const AGENT_TO_MODULE: Record<string, ModuleKey> = {
   scheduler: "agent_scheduler",
   service: "agent_service",
   onboarding: "agent_onboarding",
+  relacionamento: "agent_scheduler",
+};
+
+export const PLAN_UPGRADE_HINT: Partial<Record<ModuleKey, string>> = {
+  agent_scheduler: "Disponível a partir do plano PME+",
+  agent_service: "Disponível a partir do plano PME+",
+  agent_onboarding: "Disponível a partir do plano PME+",
+  intelligence_full: "Inteligência completa disponível a partir do plano PME+",
+  prospector_alpha: "Prospector Alpha disponível no plano PME+ ou como add-on",
+  google_calendar: "Google Calendar disponível a partir do plano PME+",
+  google_sheets: "Google Sheets disponível no plano Enterprise",
+  knowledge_base: "Base de conhecimento disponível no plano Enterprise",
+  byok: "BYOK disponível no plano Enterprise",
+  partner_portal: "Portal de parceiros disponível no plano Enterprise",
+  executive_report: "Relatório executivo disponível no plano Enterprise",
 };
 
 export function agentNameToModuleKey(agentName: string): ModuleKey | undefined {

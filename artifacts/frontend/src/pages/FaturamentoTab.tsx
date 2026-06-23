@@ -52,9 +52,10 @@ function fmtCurrency(val: string | number | null | undefined) {
 
 // ── Config maps ─────────────────────────────────────────────────────────────────
 const PLANO_CONFIG: Record<string, { label: string; className: string; icon: React.ReactNode }> = {
-  starter:    { label: "Starter",    className: "bg-zinc-100 text-zinc-600 border-zinc-300",         icon: <FileText className="h-4 w-4" /> },
-  growth:     { label: "Growth",     className: "bg-blue-100 text-blue-700 border-blue-200",          icon: <Sparkles className="h-4 w-4" /> },
-  enterprise: { label: "Enterprise", className: "bg-violet-100 text-violet-700 border-violet-200",   icon: <Sparkles className="h-4 w-4" /> },
+  starter:    { label: "Starter",    className: "bg-zinc-100 text-zinc-600 border-zinc-300",          icon: <FileText className="h-4 w-4" /> },
+  growth:     { label: "Growth",     className: "bg-blue-100 text-blue-700 border-blue-200",           icon: <Sparkles className="h-4 w-4" /> },
+  pme_plus:   { label: "PME+",       className: "bg-emerald-100 text-emerald-700 border-emerald-200",  icon: <Sparkles className="h-4 w-4" /> },
+  enterprise: { label: "Enterprise", className: "bg-violet-100 text-violet-700 border-violet-200",    icon: <Sparkles className="h-4 w-4" /> },
 };
 
 const SUB_STATUS_CONFIG: Record<string, { label: string; className: string; dot: string }> = {

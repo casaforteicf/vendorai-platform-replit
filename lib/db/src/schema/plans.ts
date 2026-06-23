@@ -12,6 +12,8 @@ export const plansTable = pgTable("plans", {
   monthlyPriceCents: integer("monthly_price_cents"),
   monthlyPriceAnnualCents: integer("monthly_price_annual_cents"),
   aiQuotaUsd: numeric("ai_quota_usd", { precision: 12, scale: 6 }),
+  maxUsers: integer("max_users"),
+  extraUserPriceCents: integer("extra_user_price_cents"),
   isActive: boolean("is_active").notNull().default(true),
   createdAt: timestamp("created_at").notNull().defaultNow(),
   updatedAt: timestamp("updated_at").notNull().defaultNow(),

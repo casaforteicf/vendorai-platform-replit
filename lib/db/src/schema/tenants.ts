@@ -61,6 +61,8 @@ export const tenantsTable = pgTable(
     aiDailySpendResetAt: timestamp("ai_daily_spend_reset_at"),
     prospectStatus: text("prospect_status").notNull().default("learning"),
     suspendedReason: text("suspended_reason"),
+    planMigratedFrom: text("plan_migrated_from"),
+    planMigratedAt: timestamp("plan_migrated_at"),
     createdAt: timestamp("created_at").notNull().defaultNow(),
     updatedAt: timestamp("updated_at").notNull().defaultNow(),
   },

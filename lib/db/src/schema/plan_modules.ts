@@ -12,6 +12,14 @@ export const MODULE_KEYS = [
   "agent_service",
   "agent_onboarding",
   "customer_intelligence",
+  "intelligence_full",
+  "prospector_alpha",
+  "google_calendar",
+  "google_sheets",
+  "knowledge_base",
+  "byok",
+  "partner_portal",
+  "executive_report",
 ] as const;
 
 export type ModuleKey = (typeof MODULE_KEYS)[number];
