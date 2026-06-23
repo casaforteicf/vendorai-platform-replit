@@ -7,6 +7,9 @@ description: Padrão de integração Meta WhatsApp Cloud API (oficial) — subst
 Adicionados: `metaPhoneNumberId`, `metaWabaId`, `metaAccessToken`, `metaVerifyToken` (todos nullable text).
 Campos Z-API mantidos por backward compat (fallback no omnichannel).
 
+## OAuth → agent_configs (CRÍTICO)
+O envio (omnichannel) e o webhook de entrada leem credenciais SÓ de `agent_configs`, não de `whatsapp_connections`/`instagram_connections`. Portanto qualquer fluxo de conexão (OAuth `saveWhatsappConnection`/`saveInstagramConnection`, ou form manual) DEVE propagar as credenciais para `agent_configs`, senão a conexão fica "morta" (conecta mas não envia/recebe). `saveWhatsappConnection` propaga meta* + inscreve WABA nos webhooks (`POST /{wabaId}/subscribed_apps`); `saveInstagramConnection` propaga instagram* + inscreve página (`POST /{pageId}/subscribed_apps?subscribed_fields=messages`). `disconnectWhatsapp`/`disconnectInstagram` limpam os campos do agent_configs (simetria). Inscrição em webhook é best-effort (logar, não quebrar o connect).
+
 ## Envio (omnichannel.ts)
 - Função: `sendMetaWhatsAppMessage(phoneNumberId, accessToken, phone, message, log, isAiResponse?)`
 - URL: `POST https://graph.facebook.com/v20.0/${phoneNumberId}/messages`

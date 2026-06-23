@@ -1021,14 +1021,31 @@ router.post("/webhooks/meta/whatsapp", async (req, res) => {
 // POST /api/webhooks/meta/instagram — Receive events
 
 router.get("/webhooks/meta/instagram", async (req, res) => {
-  const mode = req.query["hub.mode"];
-  const token = req.query["hub.verify_token"];
+  const mode = String(req.query["hub.mode"] ?? "");
+  const token = String(req.query["hub.verify_token"] ?? "");
   const challenge = req.query["hub.challenge"];
 
-  const verifyToken = process.env.WHATSAPP_VERIFY_TOKEN;
+  if (mode !== "subscribe" || !token) {
+    req.log.warn({ mode }, "meta/instagram: invalid verification request");
+    return res.status(400).json({ error: "Invalid verification request" });
+  }
 
-  if (mode !== "subscribe" || token !== verifyToken) {
-    req.log.warn({ mode, tokenMatch: token === verifyToken }, "meta/instagram: verification failed");
+  // Aceita o verify token global do app (env) OU um metaVerifyToken por tenant —
+  // consistente com a verificação do webhook do WhatsApp.
+  const envToken = process.env["WHATSAPP_VERIFY_TOKEN"];
+  let verified = !!envToken && token === envToken;
+
+  if (!verified) {
+    const [config] = await db
+      .select({ id: agentConfigsTable.id })
+      .from(agentConfigsTable)
+      .where(eq(agentConfigsTable.metaVerifyToken, token))
+      .limit(1);
+    verified = !!config;
+  }
+
+  if (!verified) {
+    req.log.warn({ mode }, "meta/instagram: verify_token mismatch");
     return res.status(403).json({ error: "Forbidden" });
   }
 

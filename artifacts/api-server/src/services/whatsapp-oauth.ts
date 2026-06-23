@@ -122,6 +122,8 @@ export async function saveWhatsappConnection(
     .from(whatsappConnectionsTable)
     .where(eq(whatsappConnectionsTable.tenantId, tenantId));
 
+  let connectionId: string;
+
   if (existing) {
     await db
       .update(whatsappConnectionsTable)
@@ -139,27 +141,65 @@ export async function saveWhatsappConnection(
       .where(eq(whatsappConnectionsTable.id, existing.id));
 
     logger.info({ tenantId, wabaId }, "WhatsApp connection updated");
-    return existing.id;
+    connectionId = existing.id;
+  } else {
+    const [inserted] = await db
+      .insert(whatsappConnectionsTable)
+      .values({
+        tenantId,
+        wabaId,
+        phoneNumberId: phoneNumber.id,
+        businessName: phoneNumber.verified_name,
+        displayPhoneNumber: phoneNumber.display_phone_number,
+        accessToken: longLivedToken,
+        tokenExpiresAt: expiresAt,
+        status: "active",
+        connectedAt: now,
+        updatedAt: now,
+      })
+      .returning();
+
+    logger.info({ tenantId, wabaId, id: inserted.id }, "WhatsApp connection created");
+    connectionId = inserted.id;
   }
 
-  const [inserted] = await db
-    .insert(whatsappConnectionsTable)
-    .values({
-      tenantId,
-      wabaId,
-      phoneNumberId: phoneNumber.id,
-      businessName: phoneNumber.verified_name,
-      displayPhoneNumber: phoneNumber.display_phone_number,
-      accessToken: longLivedToken,
-      tokenExpiresAt: expiresAt,
-      status: "active",
-      connectedAt: now,
+  // Propaga credenciais para agent_configs — onde o pipeline de envio (omnichannel)
+  // e o webhook de entrada (meta/whatsapp) buscam as credenciais. Sem isso a conexão
+  // OAuth fica "morta": não envia nem recebe mensagens.
+  await db
+    .update(agentConfigsTable)
+    .set({
+      metaPhoneNumberId: phoneNumber.id,
+      metaAccessToken: longLivedToken,
+      metaWabaId: wabaId,
+      metaVerifyToken: process.env["WHATSAPP_VERIFY_TOKEN"] ?? null,
       updatedAt: now,
     })
-    .returning();
+    .where(eq(agentConfigsTable.tenantId, tenantId));
 
-  logger.info({ tenantId, wabaId, id: inserted.id }, "WhatsApp connection created");
-  return inserted.id;
+  // Inscreve o app nos webhooks da WABA (best-effort) — passo final para receber mensagens.
+  await subscribeWabaToWebhooks(wabaId, longLivedToken);
+
+  return connectionId;
+}
+
+// Inscreve o app instalado nos webhooks da WhatsApp Business Account.
+// Best-effort: falha aqui não deve impedir a conexão (pode ser configurado no painel Meta).
+async function subscribeWabaToWebhooks(wabaId: string, accessToken: string): Promise<void> {
+  try {
+    const res = await fetch(`${META_WABA_BASE}/${wabaId}/subscribed_apps`, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${accessToken}` },
+    });
+    if (!res.ok) {
+      const body = await res.text();
+      logger.warn({ wabaId, status: res.status, body }, "Falha ao inscrever app nos webhooks da WABA");
+      return;
+    }
+    logger.info({ wabaId }, "App inscrito nos webhooks da WABA");
+  } catch (err) {
+    logger.warn({ err, wabaId }, "Erro ao inscrever app nos webhooks da WABA");
+  }
 }
 
 export async function getWhatsappConnectionByTenantId(tenantId: string) {
@@ -193,6 +233,16 @@ export async function refreshWhatsappToken(connectionId: string): Promise<void> 
     })
     .where(eq(whatsappConnectionsTable.id, connectionId));
 
+  // Propaga o token renovado para agent_configs — onde o pipeline de envio realmente lê.
+  // Sem isso, após o refresh o envio continuaria usando o token antigo (que vai expirar/revogar).
+  await db
+    .update(agentConfigsTable)
+    .set({
+      metaAccessToken: refreshed.access_token,
+      updatedAt: now,
+    })
+    .where(eq(agentConfigsTable.tenantId, conn.tenantId));
+
   logger.info({ connectionId }, "WhatsApp token refreshed");
 }
 
@@ -211,6 +261,19 @@ export async function disconnectWhatsapp(tenantId: string): Promise<void> {
       updatedAt: new Date(),
     })
     .where(eq(whatsappConnectionsTable.id, conn.id));
+
+  // Limpa as credenciais propagadas para agent_configs (simetria com saveWhatsappConnection),
+  // senão o pipeline de envio continuaria tentando usar um token revogado.
+  await db
+    .update(agentConfigsTable)
+    .set({
+      metaPhoneNumberId: null,
+      metaAccessToken: null,
+      metaWabaId: null,
+      metaVerifyToken: null,
+      updatedAt: new Date(),
+    })
+    .where(eq(agentConfigsTable.tenantId, tenantId));
 
   logger.info({ tenantId, connectionId: conn.id }, "WhatsApp disconnected");
 }

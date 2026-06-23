@@ -265,5 +265,29 @@ export async function saveInstagramConnection(
     })
     .where(eq(agentConfigsTable.tenantId, tenantId));
 
+  // Inscreve o app nos webhooks da página (best-effort) — passo final para receber DMs.
+  await subscribePageToWebhooks(page.id, longLivedToken.access_token);
+
   logger.info({ tenantId, username: igInfo.username }, "Conexão Instagram salva");
+}
+
+// Inscreve o app nos webhooks da página do Facebook vinculada ao Instagram Business,
+// assinando o campo "messages" para receber DMs. Best-effort: falha não impede a conexão.
+async function subscribePageToWebhooks(pageId: string, pageAccessToken: string): Promise<void> {
+  try {
+    const url = new URL(`${META_PAGE_BASE}/${pageId}/subscribed_apps`);
+    url.searchParams.set("subscribed_fields", "messages");
+    const res = await fetch(url.toString(), {
+      method: "POST",
+      headers: { Authorization: `Bearer ${pageAccessToken}` },
+    });
+    if (!res.ok) {
+      const body = await res.text();
+      logger.warn({ pageId, status: res.status, body }, "Falha ao inscrever app nos webhooks da página");
+      return;
+    }
+    logger.info({ pageId }, "App inscrito nos webhooks da página (Instagram DMs)");
+  } catch (err) {
+    logger.warn({ err, pageId }, "Erro ao inscrever app nos webhooks da página");
+  }
 }
