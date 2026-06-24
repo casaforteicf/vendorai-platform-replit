@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from "react";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/contexts/AuthContext";
+import { getSegmentHints } from "@/lib/segmentHints";
 import {
   useGetLeadBriefing,
   getGetLeadBriefingQueryKey,
@@ -134,6 +135,7 @@ interface BriefingForm {
 
 export default function LeadBriefingTab({ leadId, tenantId, lead }: LeadBriefingTabProps) {
   const { user } = useAuth();
+  const hints = getSegmentHints(user?.tenantVertical);
   const { toast } = useToast();
   const { data: briefing, isLoading: loadingBriefing } = useGetLeadBriefing(leadId, {
     query: { enabled: !!leadId, queryKey: getGetLeadBriefingQueryKey(leadId) },
@@ -487,7 +489,7 @@ export default function LeadBriefingTab({ leadId, tenantId, lead }: LeadBriefing
               <label className="text-xs font-medium">O que o cliente busca / demanda</label>
               <Textarea
                 className="text-xs min-h-[60px]"
-                placeholder="Ex: quer automatizar o atendimento via WhatsApp, reduzir custo com pessoal, escalar vendas sem contratar..."
+                placeholder={hints.briefingDemandaPlaceholder}
                 value={demanda}
                 onChange={(e) => { setDemanda(e.target.value); setContextChanged(true); }}
               />
@@ -496,7 +498,7 @@ export default function LeadBriefingTab({ leadId, tenantId, lead }: LeadBriefing
               <label className="text-xs font-medium">Segmento / mercado</label>
               <Input
                 className="h-8 text-xs"
-                placeholder="Ex: varejo alimentar, clínica estética, distribuidora..."
+                placeholder={hints.briefingSegmentoPlaceholder}
                 value={segmento}
                 onChange={(e) => { setSegmento(e.target.value); setContextChanged(true); }}
               />
@@ -578,7 +580,7 @@ export default function LeadBriefingTab({ leadId, tenantId, lead }: LeadBriefing
               {form[section.key].map((item, idx) => (
                 <div key={idx} className="space-y-1">
                   <p className="text-xs font-medium text-foreground">{item.question}</p>
-                  <Textarea className="text-xs min-h-[60px]" placeholder="Resposta..." value={item.answer} onChange={(e) => updateAnswer(section.key, idx, e.target.value)} />
+                  <Textarea className="text-xs min-h-[60px]" placeholder={hints.briefingRespostaPlaceholder} value={item.answer} onChange={(e) => updateAnswer(section.key, idx, e.target.value)} />
                 </div>
               ))}
             </div>
@@ -591,7 +593,7 @@ export default function LeadBriefingTab({ leadId, tenantId, lead }: LeadBriefing
             {section.extra === "implicationEstimatedValue" && (
               <div className="space-y-1">
                 <label className="text-xs font-medium">Valor estimado do impacto</label>
-                <Input className="h-8 text-xs" placeholder="Ex: R$ 5.000/mês" value={form.implicationEstimatedValue} onChange={(e) => updateField("implicationEstimatedValue", e.target.value)} />
+                <Input className="h-8 text-xs" placeholder={hints.briefingImpactoPlaceholder} value={form.implicationEstimatedValue} onChange={(e) => updateField("implicationEstimatedValue", e.target.value)} />
               </div>
             )}
             {section.extra === "needThermometer" && (
@@ -709,7 +711,7 @@ export default function LeadBriefingTab({ leadId, tenantId, lead }: LeadBriefing
         {/* Seção 10 */}
         <div className="space-y-3">
           <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Notas livres</h3>
-          <Textarea className="text-xs min-h-[100px]" placeholder="Informações adicionais sobre o lead..." value={form.freeNotes} onChange={(e) => updateField("freeNotes", e.target.value)} />
+          <Textarea className="text-xs min-h-[100px]" placeholder={hints.briefingNotasPlaceholder} value={form.freeNotes} onChange={(e) => updateField("freeNotes", e.target.value)} />
         </div>
 
         <div className="flex justify-end pt-2 border-t">

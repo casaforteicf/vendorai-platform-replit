@@ -1,6 +1,7 @@
 import React, { useState, useRef, useCallback } from "react";
 import { useLocation } from "wouter";
 import { useAuth } from "@/contexts/AuthContext";
+import { getSegmentHints } from "@/lib/segmentHints";
 import {
   useListTenantLeads,
   getListTenantLeadsQueryKey,
@@ -201,6 +202,7 @@ function parseCsvRows(text: string): ParsedLeadRow[] {
 export default function Leads() {
   const { user, token } = useAuth();
   const tenantId = user?.tenantId ?? "";
+  const hints = getSegmentHints(user?.tenantVertical);
   const queryClient = useQueryClient();
   const { toast } = useToast();
   const [, setLocation] = useLocation();
@@ -597,7 +599,7 @@ export default function Leads() {
                     <FormItem>
                       <FormLabel>Empresa</FormLabel>
                       <FormControl>
-                        <Input data-testid="input-empresa" placeholder="Nome da empresa" {...field} />
+                        <Input data-testid="input-empresa" placeholder={hints.leadEmpresaPlaceholder} {...field} />
                       </FormControl>
                       <FormMessage />
                     </FormItem>
@@ -610,7 +612,7 @@ export default function Leads() {
                     <FormItem>
                       <FormLabel>Objetivo</FormLabel>
                       <FormControl>
-                        <Input data-testid="input-objetivo" placeholder="O que o lead quer alcançar?" {...field} />
+                        <Input data-testid="input-objetivo" placeholder={hints.leadObjetivoPlaceholder} {...field} />
                       </FormControl>
                       <FormMessage />
                     </FormItem>

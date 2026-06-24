@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { useAuth } from "@/contexts/AuthContext";
+import { getSegmentHints } from "@/lib/segmentHints";
 import {
   useListCampaigns,
   getListCampaignsQueryKey,
@@ -143,6 +144,8 @@ interface CampaignModalProps {
   onClose: () => void;
   tenantId: string;
   editingCampaign: Campaign | null;
+  nomePlaceholder: string;
+  mensagemPlaceholder: string;
 }
 
 function CampaignModal({
@@ -150,6 +153,8 @@ function CampaignModal({
   onClose,
   tenantId,
   editingCampaign,
+  nomePlaceholder,
+  mensagemPlaceholder,
 }: CampaignModalProps) {
   const { toast } = useToast();
   const queryClient = useQueryClient();
@@ -421,7 +426,7 @@ function CampaignModal({
                   <FormItem>
                     <FormLabel>Nome da Campanha</FormLabel>
                     <FormControl>
-                      <Input placeholder="Ex: Reativação Q3 2026" {...field} />
+                      <Input placeholder={nomePlaceholder} {...field} />
                     </FormControl>
                     <FormMessage />
                   </FormItem>
@@ -459,7 +464,7 @@ function CampaignModal({
                     <FormLabel>Mensagem</FormLabel>
                     <FormControl>
                       <Textarea
-                        placeholder="Escreva a mensagem que será enviada aos leads…"
+                        placeholder={mensagemPlaceholder}
                         className="resize-none"
                         rows={4}
                         {...field}
@@ -662,6 +667,7 @@ function CampaignModal({
 // ── Main page ─────────────────────────────────────────────────────────────────
 export default function Campanhas() {
   const { user } = useAuth();
+  const hints = getSegmentHints(user?.tenantVertical);
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const tenantId = user?.tenantId ?? "";
@@ -948,6 +954,8 @@ export default function Campanhas() {
         onClose={() => setModalOpen(false)}
         tenantId={tenantId}
         editingCampaign={editingCampaign}
+        nomePlaceholder={hints.campanhasNomePlaceholder}
+        mensagemPlaceholder={hints.campanhasMensagemPlaceholder}
       />
 
       {/* Delete confirmation */}
