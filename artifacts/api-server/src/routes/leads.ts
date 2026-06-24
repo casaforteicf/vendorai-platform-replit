@@ -125,7 +125,7 @@ router.post("/tenants/:tenantId/leads/import", async (req, res) => {
         errors.push({ row: i + 1, message: `Duplicate: matched by ${match.matchBy} to lead ${match.lead.id}` });
         continue;
       }
-      await db.insert(leadsTable).values({
+      const [importedLead] = await db.insert(leadsTable).values({
         tenantId,
         nome: row.nome,
         telefone: storePhone(row.telefone),
@@ -135,7 +135,10 @@ router.post("/tenants/:tenantId/leads/import", async (req, res) => {
         instagramHandle: row.instagram || null,
         possivelDuplicata: match.similar ? true : false,
         leadSimilarId: match.similar?.id ?? null,
-      });
+      }).returning();
+      if (importedLead) {
+        await db.insert(dealsTable).values({ tenantId, leadId: importedLead.id, titulo: importedLead.nome, etapa: "em_aquecimento" });
+      }
       imported++;
     } catch (err) {
       errors.push({ row: i + 1, message: String(err) });

@@ -9,6 +9,7 @@ import {
   tenantsTable,
   billingEventsTable,
   tokenPurchasesTable,
+  dealsTable,
 } from "@workspace/db";
 import { dispatchSkuDelivery } from "../lib/product-delivery.js";
 import { z } from "zod";
@@ -148,6 +149,7 @@ router.post("/tenants/:tenantId/webhooks/whatsapp", async (req, res) => {
       .values({ tenantId, nome: nome ?? telefone, telefone: normalized, status: "novo", source: "whatsapp" })
       .returning();
     req.log.info({ leadId: lead.id, telefone: normalized }, "webhook: new lead created");
+    await db.insert(dealsTable).values({ tenantId, leadId: lead.id, titulo: lead.nome, etapa: "em_aquecimento" });
   }
 
   // ── 4. Find or create whatsapp conversation for this lead ──────────────
@@ -436,6 +438,7 @@ router.post("/tenants/:tenantId/webhooks/zapi", async (req, res) => {
       .values({ tenantId, nome, telefone: normalized, status: "novo", source: "whatsapp" })
       .returning();
     req.log.info({ leadId: lead.id, telefone: normalized }, "zapi-webhook: new lead created");
+    await db.insert(dealsTable).values({ tenantId, leadId: lead.id, titulo: lead.nome, etapa: "em_aquecimento" });
   }
 
   // ── 5. Find or create whatsapp conversation ────────────────────────────────
@@ -586,12 +589,14 @@ router.post("/tenants/:tenantId/webhooks/instagram", async (req, res) => {
         })
         .returning();
       req.log.info({ leadId: lead.id, igsid, similarId, matchBy: "nome" }, "webhook/instagram: new lead created, flagged as possible duplicate (name-only match)");
+      await db.insert(dealsTable).values({ tenantId, leadId: lead.id, titulo: lead.nome, etapa: "em_aquecimento" });
     } else {
       [lead] = await db
         .insert(leadsTable)
         .values({ tenantId, nome: nome ?? `Instagram @${igsid.slice(0, 8)}`, instagramScopedId: igsid, status: "novo", source: "instagram" })
         .returning();
       req.log.info({ leadId: lead.id, igsid }, "webhook/instagram: new lead created");
+      await db.insert(dealsTable).values({ tenantId, leadId: lead.id, titulo: lead.nome, etapa: "em_aquecimento" });
     }
   } else if (!lead.instagramScopedId) {
     // Backfill if lead existed without IGSID
@@ -961,6 +966,7 @@ router.post("/webhooks/meta/whatsapp", async (req, res) => {
               leadSimilarId: match.similar?.id ?? null,
             }).returning();
             req.log.info({ leadId: lead.id, phone: normalized }, "meta-webhook: new lead created");
+            await db.insert(dealsTable).values({ tenantId, leadId: lead.id, titulo: lead.nome, etapa: "em_aquecimento" });
           }
 
           // Find or create conversation
@@ -1137,6 +1143,7 @@ router.post("/webhooks/meta/instagram", async (req, res) => {
               })
               .returning();
             req.log.info({ leadId: lead.id, igsid, tenantId, possivelDuplicata: lead.possivelDuplicata }, "meta/instagram: new lead created");
+            await db.insert(dealsTable).values({ tenantId, leadId: lead.id, titulo: lead.nome, etapa: "em_aquecimento" });
           }
 
           // Find or create Instagram conversation
