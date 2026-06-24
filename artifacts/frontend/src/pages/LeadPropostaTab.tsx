@@ -291,15 +291,20 @@ export default function LeadPropostaTab({ leadId, tenantId, lead }: LeadProposta
   function downloadProposal(version: number, format: "html" | "pdf" = "html") {
     if (!leadId || !token) return;
     const url = api(`/leads/${leadId}/proposals/${version}/${format === "pdf" ? "pdf" : "download"}`);
+    const clientName = (lead?.empresa || lead?.nome || "cliente")
+      .normalize("NFD").replace(/[\u0300-\u036f]/g, "")
+      .replace(/[^a-zA-Z0-9\s-]/g, "").trim().replace(/\s+/g, "_").toLowerCase();
+    const filename = `proposta_${clientName}_v${version}.${format === "pdf" ? "pdf" : "html"}`;
     const a = document.createElement("a");
     a.href = url;
-    a.setAttribute("download", "");
+    a.setAttribute("download", filename);
     fetch(url, { headers: { Authorization: `Bearer ${token}` } })
       .then(async (res) => {
         if (!res.ok) throw new Error("Falha no download");
         const blob = await res.blob();
         const blobUrl = window.URL.createObjectURL(blob);
         a.href = blobUrl;
+        a.download = filename;
         a.click();
         window.URL.revokeObjectURL(blobUrl);
       })
