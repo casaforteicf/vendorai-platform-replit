@@ -77,6 +77,13 @@ async function loadProposalContext(leadId: string, tenantId: string) {
   return { lead, briefing, intelligence, products, propostas, conversationSamples, tenantName, tenantPhone: bp?.telefone, tenantLogoUrl: bp?.logoUrl ?? null };
 }
 
+/** Resolve object-storage relative paths to full API URLs for HTML embedding */
+function resolveStorageUrl(url: string | null | undefined): string | undefined {
+  if (!url) return undefined;
+  if (url.startsWith("/objects/")) return `/api/storage${url}`;
+  return url;
+}
+
 // ── GET /leads/:leadId/proposals ─────────────────────────────────────────────────
 router.get("/leads/:leadId/proposals", async (req, res) => {
   const leadId = String(req.params.leadId);
@@ -308,11 +315,11 @@ router.post("/leads/:leadId/proposals", async (req, res) => {
   const html = renderProposalHtml(
     json,
     theme,
-    ctx.lead.logoUrl || undefined,
+    resolveStorageUrl(ctx.lead.logoUrl),
     ctx.lead.empresa || ctx.lead.nome,
     ctx.tenantName || undefined,
     ctx.lead.websiteUrl || undefined,
-    ctx.tenantLogoUrl || undefined,
+    resolveStorageUrl(ctx.tenantLogoUrl),
     bodyImagens,
     orcamentoEmbed
   );
