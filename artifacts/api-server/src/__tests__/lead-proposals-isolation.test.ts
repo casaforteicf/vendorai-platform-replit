@@ -10,10 +10,11 @@ import {
 } from "./helpers/auth.js";
 import { MockRow } from "./helpers/isolation.js";
 
-const { mockDbSelect, mockDbInsert, mockDbDelete } = vi.hoisted(() => ({
+const { mockDbSelect, mockDbInsert, mockDbDelete, mockDbUpdate } = vi.hoisted(() => ({
   mockDbSelect: vi.fn(),
   mockDbInsert: vi.fn(),
   mockDbDelete: vi.fn(() => ({ where: vi.fn().mockResolvedValue(undefined) })),
+  mockDbUpdate: vi.fn(() => ({ set: vi.fn().mockReturnValue({ where: vi.fn().mockResolvedValue(undefined) }) })),
 }));
 
 const mockCallProposalAI = vi.hoisted(() => vi.fn());
@@ -24,6 +25,7 @@ vi.mock("@workspace/db", () => ({
     select: mockDbSelect,
     insert: mockDbInsert,
     delete: mockDbDelete,
+    update: mockDbUpdate,
   },
   leadsTable: {
     id: "id",
@@ -60,6 +62,7 @@ vi.mock("@workspace/db", () => ({
   messagesTable: { id: "id", tenantId: "tenantId", leadId: "leadId" },
   customerIntelligenceTable: { id: "id", tenantId: "tenantId", leadId: "leadId" },
   businessProfilesTable: { id: "id", tenantId: "tenantId" },
+  dealsTable: { id: "id", tenantId: "tenantId", leadId: "leadId", etapa: "etapa" },
 }));
 
 vi.mock("../lib/proposal-engine.js", () => ({
