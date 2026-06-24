@@ -104,6 +104,9 @@ export default function AdminTenants() {
       });
       const data = await res.json();
       if (res.ok) {
+        if (data.tempPassword) {
+          setResult(prev => prev ? { ...prev, tempPassword: data.tempPassword } : prev);
+        }
         toast({ title: data.emailSent ? "E-mail enviado com sucesso!" : "E-mail não pôde ser enviado (RESEND_API_KEY não configurada)" });
         void qc.invalidateQueries({ queryKey: getListTenantsQueryKey() });
       } else {
