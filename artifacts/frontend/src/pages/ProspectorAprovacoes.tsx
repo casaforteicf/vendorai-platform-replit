@@ -137,7 +137,7 @@ function ApprovalCard({
   );
 }
 
-export default function ProspectorAprovacoes() {
+export function ProspectorAprovacoesContent() {
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const { data, isLoading } = useProspectorListApprovals();
@@ -147,7 +147,6 @@ export default function ProspectorAprovacoes() {
 
   useEffect(() => {
     if (trainedCount == null) return;
-    // no-op placeholder to keep count reactive
   }, [trainedCount]);
 
   const handleDecided = (res: { approvedCount: number; automationUnlocked: boolean }) => {
@@ -164,16 +163,11 @@ export default function ProspectorAprovacoes() {
   const progress = trainedCount != null ? Math.min((trainedCount / AUTOMATION_THRESHOLD) * 100, 100) : null;
 
   return (
-    <div className="p-6 max-w-3xl mx-auto space-y-6">
-      <div className="space-y-1">
-        <h1 className="text-2xl font-bold flex items-center gap-2">
-          <Sparkles className="h-6 w-6 text-primary" /> Aprovações Pendentes
-        </h1>
-        <p className="text-muted-foreground text-sm">
-          Revise os rascunhos gerados pela IA. Após {AUTOMATION_THRESHOLD} aprovações, o Agente Prospector
-          passa a enviar automaticamente.
-        </p>
-      </div>
+    <div className="space-y-4">
+      <p className="text-sm text-muted-foreground">
+        Revise os rascunhos gerados pela IA. Após {AUTOMATION_THRESHOLD} aprovações, o Agente Prospector
+        passa a enviar automaticamente.
+      </p>
 
       {progress != null && (
         <Card>
@@ -207,6 +201,19 @@ export default function ProspectorAprovacoes() {
           ))}
         </div>
       )}
+    </div>
+  );
+}
+
+export default function ProspectorAprovacoes() {
+  return (
+    <div className="p-6 max-w-3xl mx-auto space-y-6">
+      <div className="space-y-1">
+        <h1 className="text-2xl font-bold flex items-center gap-2">
+          <Sparkles className="h-6 w-6 text-primary" /> Aprovações Pendentes
+        </h1>
+      </div>
+      <ProspectorAprovacoesContent />
     </div>
   );
 }

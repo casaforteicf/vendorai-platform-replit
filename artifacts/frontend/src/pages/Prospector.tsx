@@ -16,6 +16,7 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import { Spinner } from "@/components/ui/spinner";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   Select,
   SelectContent,
@@ -43,7 +44,9 @@ import {
   Gauge,
   Briefcase,
   UserPlus,
+  ClipboardCheck,
 } from "lucide-react";
+import { ProspectorAprovacoesContent } from "./ProspectorAprovacoes";
 
 type ApprovalDecision = "approved" | "approved_edited" | "rejected";
 
@@ -426,6 +429,18 @@ export default function Prospector() {
         </Button>
       </div>
 
+      <Tabs defaultValue="busca">
+        <TabsList>
+          <TabsTrigger value="busca" className="flex items-center gap-1.5">
+            <Search className="h-4 w-4" /> Busca
+          </TabsTrigger>
+          <TabsTrigger value="aprovacoes" className="flex items-center gap-1.5">
+            <ClipboardCheck className="h-4 w-4" /> Aprovações
+          </TabsTrigger>
+        </TabsList>
+
+        <TabsContent value="busca" className="mt-4 space-y-6">
+
       {isSuperAdmin && (
         <Card>
           <CardHeader>
@@ -651,6 +666,12 @@ export default function Prospector() {
           </CardContent>
         </Card>
       )}
+        </TabsContent>
+
+        <TabsContent value="aprovacoes" className="mt-4">
+          <ProspectorAprovacoesContent />
+        </TabsContent>
+      </Tabs>
     </div>
   );
 }
