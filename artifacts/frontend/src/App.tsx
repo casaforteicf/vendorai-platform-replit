@@ -54,7 +54,6 @@ import SupermercadoProdutos from "@/pages/supermercado/SupermercadoProdutos";
 import SupermercadoPedidos from "@/pages/supermercado/SupermercadoPedidos";
 import SupermercadoCampanhas from "@/pages/supermercado/SupermercadoCampanhas";
 import SupermercadoConfig from "@/pages/supermercado/SupermercadoConfig";
-import SiteGenerator from "@/pages/SiteGenerator";
 import Analytics from "@/pages/Analytics";
 import RelatorioGanhosMes from "@/pages/RelatorioGanhosMes";
 import RelatorioTipoCliente from "@/pages/RelatorioTipoCliente";
@@ -423,9 +422,6 @@ function AppRoutes() {
       </Route>
       <Route path="/relatorios/dores">
         {() => <ProtectedRoute component={RelatorioDores} />}
-      </Route>
-      <Route path="/site-generator">
-        {() => <ProtectedRoute component={SiteGenerator} />}
       </Route>
       <Route path="/obras">
         {() => <ConstrucaoRoute component={Obras} />}

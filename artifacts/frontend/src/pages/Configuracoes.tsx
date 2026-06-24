@@ -28,8 +28,6 @@ import {
   AgentsMap,
   useGetSiteConfigByTenant,
   getGetSiteConfigByTenantQueryKey,
-  useCreateSiteConfig,
-  useUpdateSiteConfig,
   useGetIntegrationSettings,
   getGetIntegrationSettingsQueryKey,
   useUpdateIntegrationSettings,
@@ -134,7 +132,7 @@ import {
   CalendarHeart,
   Receipt,
 } from "lucide-react";
-import { SiteGeneratorTab } from "./SiteGenerator";
+import MeuSite from "./MeuSite";
 import { FaturamentoTab } from "./FaturamentoTab";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
@@ -174,15 +172,6 @@ const profileSchema = z.object({
 });
 type ProfileForm = z.infer<typeof profileSchema>;
 
-const siteConfigSchema = z.object({
-  template: z.enum(["padrao", "moderno", "minimalista"]),
-  corPrimaria: z.string().optional(),
-  tagline: z.string().optional(),
-  sobreEmpresa: z.string().optional(),
-  whatsappContato: z.string().optional(),
-  ativo: z.boolean(),
-});
-type SiteConfigForm = z.infer<typeof siteConfigSchema>;
 
 type AgentKey = "sdr" | "closer" | "followup" | "reactivation" | "scheduler" | "service" | "onboarding" | "relacionamento";
 
@@ -839,57 +828,7 @@ export default function Configuracoes() {
   }
 
   // ── Site Config ───────────────────────────────────────────────────────────
-  const siteQuery      = useGetSiteConfigByTenant(tenantId, { query: { queryKey: getGetSiteConfigByTenantQueryKey(tenantId), enabled: !!tenantId } });
-  const createSite     = useCreateSiteConfig();
-  const updateSite     = useUpdateSiteConfig();
-
-  const siteForm = useForm<SiteConfigForm>({
-    resolver: zodResolver(siteConfigSchema),
-    defaultValues: { template: "padrao", corPrimaria: "", tagline: "", sobreEmpresa: "", whatsappContato: "", ativo: true },
-    values: siteQuery.data
-      ? {
-          template: (siteQuery.data.template as "padrao" | "moderno" | "minimalista") ?? "padrao",
-          corPrimaria: siteQuery.data.corPrimaria ?? "",
-          tagline: siteQuery.data.tagline ?? "",
-          sobreEmpresa: siteQuery.data.sobreEmpresa ?? "",
-          whatsappContato: siteQuery.data.whatsappContato ?? "",
-          ativo: siteQuery.data.ativo ?? true,
-        }
-      : undefined,
-  });
-
-  function onSaveSite(values: SiteConfigForm) {
-    const payload = {
-      ...values,
-      corPrimaria: values.corPrimaria || undefined,
-      tagline: values.tagline || undefined,
-      sobreEmpresa: values.sobreEmpresa || undefined,
-      whatsappContato: values.whatsappContato || undefined,
-    };
-    if (siteQuery.data?.id) {
-      updateSite.mutate(
-        { id: siteQuery.data.id, data: payload },
-        {
-          onSuccess: () => {
-            queryClient.invalidateQueries({ queryKey: getGetSiteConfigByTenantQueryKey(tenantId) });
-            toast({ title: "Configurações do site salvas." });
-          },
-          onError: () => toast({ title: "Erro ao salvar configurações do site.", variant: "destructive" }),
-        }
-      );
-    } else {
-      createSite.mutate(
-        { data: { tenantId, ...payload } },
-        {
-          onSuccess: () => {
-            queryClient.invalidateQueries({ queryKey: getGetSiteConfigByTenantQueryKey(tenantId) });
-            toast({ title: "Site configurado com sucesso." });
-          },
-          onError: () => toast({ title: "Erro ao criar configuração do site.", variant: "destructive" }),
-        }
-      );
-    }
-  }
+  const siteQuery = useGetSiteConfigByTenant(tenantId, { query: { queryKey: getGetSiteConfigByTenantQueryKey(tenantId), enabled: !!tenantId } });
 
   // ── Integration Settings ───────────────────────────────────────────────────
   const integrationQuery    = useGetIntegrationSettings(tenantId, { query: { queryKey: getGetIntegrationSettingsQueryKey(tenantId), enabled: !!tenantId } });
@@ -1343,7 +1282,6 @@ export default function Configuracoes() {
   const profileSaving    = createProfile.isPending || updateProfile.isPending;
   const agentSaving      = createAgentConf.isPending || updateAgentConf.isPending;
   const thresholdSaving  = updateTenant.isPending;
-  const siteSaving       = createSite.isPending || updateSite.isPending;
 
   return (
     <div className="max-w-4xl mx-auto space-y-6">
@@ -2047,19 +1985,8 @@ export default function Configuracoes() {
 
         {/* ── Tab: Site ───────────────────────────────────────────────────── */}
         <TabsContent value="site" className="space-y-5">
-          <Tabs defaultValue="configurar" className="space-y-4">
-            <TabsList className="grid w-full max-w-xs grid-cols-2">
-              <TabsTrigger value="configurar" className="gap-1.5">
-                <Globe className="h-4 w-4" />
-                Configurar
-              </TabsTrigger>
-              <TabsTrigger value="gerador-ia" className="gap-1.5">
-                <Wand2 className="h-4 w-4" />
-                Gerador IA
-              </TabsTrigger>
-            </TabsList>
+          <MeuSite />
 
-            <TabsContent value="configurar">
           {/* ── Domain Card ─────────────────────────────────────────────── */}
           <div className="rounded-xl border bg-card p-6 space-y-5">
             <div>
@@ -2204,190 +2131,6 @@ export default function Configuracoes() {
               )}
             </div>
           </div>
-
-          <div className="rounded-xl border bg-card p-6 space-y-6">
-            <div className="flex items-start justify-between gap-4">
-              <div>
-                <h2 className="font-semibold text-base flex items-center gap-2">
-                  <Globe className="h-4 w-4 text-primary" />
-                  Landing Page Pública
-                </h2>
-                <p className="text-sm text-muted-foreground mt-0.5">
-                  Configure a página pública do seu negócio.
-                </p>
-              </div>
-              {siteQuery.data?.ativo && (
-                <a
-                  href={`/site/${tenantQuery.data?.slug ?? ""}`}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="inline-flex items-center gap-1.5 text-sm text-primary hover:underline shrink-0"
-                >
-                  <ExternalLink className="h-3.5 w-3.5" />
-                  Ver site
-                </a>
-              )}
-            </div>
-
-            {siteQuery.isLoading ? (
-              <div className="space-y-4">
-                {Array.from({ length: 4 }).map((_, i) => (
-                  <Skeleton key={i} className="h-10 w-full" />
-                ))}
-              </div>
-            ) : (
-              <Form {...siteForm}>
-                <form onSubmit={siteForm.handleSubmit(onSaveSite)} className="space-y-5">
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-
-                    {/* Template */}
-                    <FormField
-                      control={siteForm.control}
-                      name="template"
-                      render={({ field }) => (
-                        <FormItem>
-                          <FormLabel>Template</FormLabel>
-                          <Select onValueChange={field.onChange} value={field.value}>
-                            <FormControl>
-                              <SelectTrigger>
-                                <SelectValue placeholder="Selecione um template" />
-                              </SelectTrigger>
-                            </FormControl>
-                            <SelectContent>
-                              <SelectItem value="padrao">Padrão</SelectItem>
-                              <SelectItem value="moderno">Moderno</SelectItem>
-                              <SelectItem value="minimalista">Minimalista</SelectItem>
-                            </SelectContent>
-                          </Select>
-                          <FormMessage />
-                        </FormItem>
-                      )}
-                    />
-
-                    {/* Cor Primária */}
-                    <FormField
-                      control={siteForm.control}
-                      name="corPrimaria"
-                      render={({ field }) => (
-                        <FormItem>
-                          <FormLabel>Cor Primária</FormLabel>
-                          <FormControl>
-                            <div className="flex gap-2 items-center">
-                              <input
-                                type="color"
-                                className="h-10 w-14 rounded border cursor-pointer p-1 bg-background"
-                                value={field.value || "#1e3a5f"}
-                                onChange={(e) => field.onChange(e.target.value)}
-                              />
-                              <Input
-                                placeholder="#1e3a5f"
-                                {...field}
-                                className="flex-1"
-                              />
-                            </div>
-                          </FormControl>
-                          <FormMessage />
-                        </FormItem>
-                      )}
-                    />
-
-                    {/* Tagline */}
-                    <FormField
-                      control={siteForm.control}
-                      name="tagline"
-                      render={({ field }) => (
-                        <FormItem className="sm:col-span-2">
-                          <FormLabel>Tagline</FormLabel>
-                          <FormControl>
-                            <Input placeholder="Soluções que transformam seu negócio." {...field} />
-                          </FormControl>
-                          <FormMessage />
-                        </FormItem>
-                      )}
-                    />
-
-                    {/* Sobre Empresa */}
-                    <FormField
-                      control={siteForm.control}
-                      name="sobreEmpresa"
-                      render={({ field }) => (
-                        <FormItem className="sm:col-span-2">
-                          <FormLabel>Sobre a Empresa</FormLabel>
-                          <FormControl>
-                            <Textarea
-                              placeholder="Descreva sua empresa, missão e diferenciais para os visitantes do site..."
-                              rows={4}
-                              {...field}
-                            />
-                          </FormControl>
-                          <FormMessage />
-                        </FormItem>
-                      )}
-                    />
-
-                    {/* WhatsApp */}
-                    <FormField
-                      control={siteForm.control}
-                      name="whatsappContato"
-                      render={({ field }) => (
-                        <FormItem>
-                          <FormLabel>WhatsApp de Contato</FormLabel>
-                          <FormControl>
-                            <Input placeholder="5511999999999 (com DDI e DDD)" {...field} />
-                          </FormControl>
-                          <FormMessage />
-                        </FormItem>
-                      )}
-                    />
-
-                    {/* Ativo */}
-                    <FormField
-                      control={siteForm.control}
-                      name="ativo"
-                      render={({ field }) => (
-                        <FormItem className="flex items-center justify-between rounded-lg border p-4">
-                          <div>
-                            <FormLabel className="text-sm font-medium">Site Ativo</FormLabel>
-                            <p className="text-xs text-muted-foreground mt-0.5">
-                              Site inativo retorna 404 para visitantes.
-                            </p>
-                          </div>
-                          <FormControl>
-                            <Switch
-                              checked={field.value}
-                              onCheckedChange={field.onChange}
-                            />
-                          </FormControl>
-                        </FormItem>
-                      )}
-                    />
-                  </div>
-
-                  <Button type="submit" disabled={siteSaving} className="gap-2">
-                    <Save className="h-4 w-4" />
-                    {siteSaving ? "Salvando..." : "Salvar Site"}
-                  </Button>
-                </form>
-              </Form>
-            )}
-          </div>
-            </TabsContent>
-
-            <TabsContent value="gerador-ia">
-              <div className="rounded-xl border bg-card p-6 space-y-4">
-                <div>
-                  <h2 className="font-semibold text-base flex items-center gap-2">
-                    <Wand2 className="h-4 w-4 text-primary" />
-                    Gerador de Sites com IA
-                  </h2>
-                  <p className="text-sm text-muted-foreground mt-0.5">
-                    Crie landing pages, e-commerces e sites institucionais em segundos.
-                  </p>
-                </div>
-                <SiteGeneratorTab />
-              </div>
-            </TabsContent>
-          </Tabs>
         </TabsContent>
 
         {/* ── Tab: Calendário Comercial ───────────────────────────────────── */}
