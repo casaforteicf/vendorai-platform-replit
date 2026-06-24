@@ -217,7 +217,7 @@ export default function LeadPropostaTab({ leadId, tenantId, lead }: LeadProposta
     if (!leadId || !token) return;
     setSavingLead(true);
     try {
-      const res = await fetch(api(`/leads/${leadId}`), {
+      const res = await fetch(`/api/leads/${leadId}`, {
         method: "PATCH",
         headers,
         body: JSON.stringify({
@@ -275,7 +275,7 @@ export default function LeadPropostaTab({ leadId, tenantId, lead }: LeadProposta
   async function previewProposal(version: number) {
     if (!leadId || !token) return;
     try {
-      const res = await fetch(api(`/leads/${leadId}/proposals/${version}`), {
+      const res = await fetch(`/api/leads/${leadId}/proposals/${version}`, {
         headers: { Authorization: `Bearer ${token}` },
       });
       if (!res.ok) return;
@@ -290,7 +290,7 @@ export default function LeadPropostaTab({ leadId, tenantId, lead }: LeadProposta
 
   function downloadProposal(version: number, format: "html" | "pdf" = "html") {
     if (!leadId || !token) return;
-    const url = api(`/leads/${leadId}/proposals/${version}/${format === "pdf" ? "pdf" : "download"}`);
+    const url = `/api/leads/${leadId}/proposals/${version}/${format === "pdf" ? "pdf" : "download"}`;
     const clientName = (lead?.empresa || lead?.nome || "cliente")
       .normalize("NFD").replace(/[\u0300-\u036f]/g, "")
       .replace(/[^a-zA-Z0-9\s-]/g, "").trim().replace(/\s+/g, "_").toLowerCase();

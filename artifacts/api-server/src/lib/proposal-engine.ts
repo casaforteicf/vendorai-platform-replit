@@ -269,13 +269,22 @@ ${ctx.conversationSamples || "Nenhuma conversa disponível. Use tom profissional
 }
 
 // ── HTML renderer from JSON + theme ─────────────────────────────────────────
+function resolveChromiumPath(): string {
+  if (process.env.PUPPETEER_EXECUTABLE_PATH) return process.env.PUPPETEER_EXECUTABLE_PATH;
+  const { execSync } = require("child_process") as typeof import("child_process");
+  for (const cmd of ["which chromium", "which chromium-browser", "which google-chrome"]) {
+    try { const p = execSync(cmd, { encoding: "utf-8" }).trim(); if (p) return p; } catch {}
+  }
+  return "/usr/bin/chromium";
+}
+
 export async function generateProposalPDF(htmlContent: string): Promise<Buffer> {
   try {
     const puppeteer = (await import("puppeteer-core")).default;
     const browser = await puppeteer.launch({
       headless: true,
-      executablePath: process.env.PUPPETEER_EXECUTABLE_PATH ?? "/usr/bin/chromium",
-      args: ["--no-sandbox", "--disable-setuid-sandbox", "--disable-gpu"],
+      executablePath: resolveChromiumPath(),
+      args: ["--no-sandbox", "--disable-setuid-sandbox", "--disable-gpu", "--disable-dev-shm-usage"],
     });
     const page = await browser.newPage();
     await page.setContent(htmlContent, { waitUntil: "load" });
