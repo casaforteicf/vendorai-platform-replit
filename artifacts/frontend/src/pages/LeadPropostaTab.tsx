@@ -154,8 +154,13 @@ export default function LeadPropostaTab({ leadId, tenantId, lead }: LeadProposta
       toast({ title: `Proposta v${created.version} gerada com sucesso` });
       queryClient.invalidateQueries({ queryKey: ["listLeadProposals", leadId] });
       setActiveVersion(created.version);
-      // Auto preview
-      await previewProposal(created.version);
+      // Auto preview — use htmlContent from response directly (avoids extra round-trip)
+      if (created.htmlContent) {
+        setPreviewHtml(created.htmlContent);
+        setPreviewOpen(true);
+      } else {
+        await previewProposal(created.version);
+      }
     } catch (e: any) {
       const msg = e?.error || e?.message || "Erro ao gerar proposta";
       toast({ title: "Erro na geração", description: msg, variant: "destructive" });
@@ -508,7 +513,7 @@ export default function LeadPropostaTab({ leadId, tenantId, lead }: LeadProposta
                 title="Preview"
                 srcDoc={previewHtml}
                 className="w-full h-full"
-                sandbox="allow-same-origin"
+                sandbox="allow-same-origin allow-scripts"
               />
             ) : (
               <div className="h-full flex items-center justify-center text-muted-foreground text-sm">

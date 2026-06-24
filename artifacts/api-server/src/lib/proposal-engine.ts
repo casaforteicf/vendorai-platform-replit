@@ -388,6 +388,7 @@ export function renderProposalHtml(json: unknown, theme: {
   .reveal{opacity:0;transform:translateY(18px);transition:opacity .7s ease,transform .7s ease}
   .reveal.in{opacity:1;transform:translateY(0)}
   @media(prefers-reduced-motion:reduce){.reveal{opacity:1;transform:none;transition:none}}
+  @media(scripting:none){.reveal{opacity:1 !important;transform:none !important;transition:none !important}}
   .hero{padding-top:90px;padding-bottom:80px;background:radial-gradient(620px 320px at 86% 6%,rgba(167,139,250,0.16),transparent 70%),var(--cream)}
   .hero .container{display:grid;gap:18px}
   .hero-tag{font-family:var(--mono);font-size:0.78rem;color:var(--navy-mid);opacity:.7;letter-spacing:.06em}
