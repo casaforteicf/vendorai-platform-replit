@@ -162,8 +162,8 @@ export function buildProposalPrompt(ctx: {
     : "\nNenhum produto cadastrado.";
 
   const propostasBlock = ctx.propostas.length
-    ? `\nOrçamentos já gerados:\n${ctx.propostas.map((p) => `- ${p.titulo}: R$ ${p.valorTotal || "?"}`).join("\n")}`
-    : "\nNenhum orçamento gerado ainda.";
+    ? `\n[CONTEXTO INTERNO — NÃO referencie estes valores no JSON gerado. Os orçamentos serão exibidos em seção separada.]\nOrçamentos vinculados ao lead:\n${ctx.propostas.map((p) => `- ${p.titulo}: R$ ${p.valorTotal || "?"}`).join("\n")}`
+    : "";
 
   const briefingBlock = ctx.briefing
     ? `\nBriefing do lead (dados validados no relacionamento):\n- Situação: ${ctx.briefing.situationAnswers?.map((a) => a.answer).filter(Boolean).join("; ") || "Não informado"}\n- Problemas: ${ctx.briefing.problemAnswers?.map((a) => a.answer).filter(Boolean).join("; ") || "Não informado"}\n- Implicações: ${ctx.briefing.implicationAnswers?.map((a) => a.answer).filter(Boolean).join("; ") || "Não informado"}\n- Necessidades: ${ctx.briefing.needAnswers?.map((a) => a.answer).filter(Boolean).join("; ") || "Não informado"}\n- Notas: ${ctx.briefing.freeNotes || ""}`
@@ -282,7 +282,8 @@ Retorne APENAS JSON válido — sem markdown, sem \`\`\`json, sem texto antes ou
 7. modules.mods: exatamente 5 módulos específicos ao segmento${ctx.products.length ? ` (baseie-se nos produtos: ${ctx.products.map((p) => p.nome).join(", ")})` : ""}.
 8. Se briefing existir, os problemas e implicações DEVEM refletir as respostas do briefing — não invente problemas que o cliente não mencionou.
 9. O ticket de suporte deve soar 100% real — use jargão do segmento ${ctx.mercadoSegmento || ""}.
-10. Retorne APENAS JSON válido. Nada antes ou depois.`;
+10. Retorne APENAS JSON válido. Nada antes ou depois.
+11. NUNCA mencione valores monetários (R$, preços, custos, investimento, orçamento, "a partir de", "mensalidade") em NENHUM campo do JSON — nem no hero, nem no subheadline, nem em modules, nem em cta. Os valores financeiros serão exibidos exclusivamente na seção de orçamento, que é gerada separadamente. O JSON deve ser 100% livre de números de precificação.`;
 }
 
 // ── HTML renderer from JSON + theme ─────────────────────────────────────────
