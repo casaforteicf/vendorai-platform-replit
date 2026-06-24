@@ -403,6 +403,7 @@ export * from './tenantDashboardPerfilCompraPlanosRecomendados';
 export * from './tenantDashboardPerfilCompraUrgenciaDistribuicao';
 export * from './tenantDashboardPropostas';
 export * from './tenantDashboardPropostasAtivas';
+export * from './tenantProvisioningMethod';
 export * from './tenantSetupStatus';
 export * from './tenantStatus';
 export * from './tipoFechamento';

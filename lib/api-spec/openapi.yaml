@@ -12040,6 +12040,28 @@ components:
           type: number
           nullable: true
           description: Valor da mensalidade recorrente (copiado do deal ao ganhar). Usado para cobrança mensal no dia 5.
+        provisioningMethod:
+          type: string
+          nullable: true
+          enum: [self_service, manual, trial]
+          description: How this tenant was created.
+        createdByAdminId:
+          type: string
+          nullable: true
+        accessSentAt:
+          type: string
+          format: date-time
+          nullable: true
+          description: When the welcome/access email was last sent by a super admin.
+        firstLoginAt:
+          type: string
+          format: date-time
+          nullable: true
+          description: Timestamp of the first login by this tenant's admin user.
+        internalNotes:
+          type: string
+          nullable: true
+          description: Internal notes visible only to super admins.
         createdAt:
           type: string
           format: date-time
@@ -13343,6 +13365,9 @@ components:
           nullable: true
         active:
           type: boolean
+        forcePasswordReset:
+          type: boolean
+          description: If true, user must change their password on next login.
         tenantVertical:
           type: string
           nullable: true
@@ -13361,6 +13386,7 @@ components:
         - role
         - platformRole
         - active
+        - forcePasswordReset
         - createdAt
         - updatedAt
 

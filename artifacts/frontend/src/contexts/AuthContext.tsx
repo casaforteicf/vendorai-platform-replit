@@ -71,6 +71,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     if (meData) {
       setUser(meData);
+      if (meData.forcePasswordReset) {
+        setLocation("/trocar-senha");
+      }
     }
   }, [meData]);
 
@@ -89,7 +92,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
     setToken(newToken);
     setUser(newUser);
-    setLocation(newUser.platformRole === "partner" ? "/partner" : "/");
+    if (newUser.forcePasswordReset) {
+      setLocation("/trocar-senha");
+    } else {
+      setLocation(newUser.platformRole === "partner" ? "/partner" : "/");
+    }
   };
 
   const logout = () => {

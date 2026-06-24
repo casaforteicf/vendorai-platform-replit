@@ -48,6 +48,7 @@ const PUBLIC_FIELDS = {
   userFunction: usersTable.userFunction,
   telefone: usersTable.telefone,
   active: usersTable.active,
+  forcePasswordReset: usersTable.forcePasswordReset,
   createdAt: usersTable.createdAt,
   updatedAt: usersTable.updatedAt,
 } as const;
@@ -502,6 +503,34 @@ router.post("/auth/reset-password", async (req, res) => {
     .update(passwordResetTokensTable)
     .set({ usedAt: now })
     .where(eq(passwordResetTokensTable.id, resetRecord.id));
+
+  res.json({ ok: true });
+});
+
+// ── Force password change (first login) ───────────────────────────────────
+protectedRouter.post("/auth/change-password", async (req, res) => {
+  const { z } = await import("zod/v4");
+  const schema = z.object({ newPassword: z.string().min(8) });
+  const parsed = schema.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(422).json({ error: "Nova senha deve ter no mínimo 8 caracteres" });
+    return;
+  }
+
+  const [existing] = await db.select({ id: usersTable.id, tenantId: usersTable.tenantId, forcePasswordReset: usersTable.forcePasswordReset })
+    .from(usersTable).where(eq(usersTable.id, req.user!.sub));
+  if (!existing) { res.status(404).json({ error: "User not found" }); return; }
+
+  const hashed = await bcrypt.hash(parsed.data.newPassword, 12);
+  await db.update(usersTable)
+    .set({ password: hashed, forcePasswordReset: false, updatedAt: new Date() })
+    .where(eq(usersTable.id, existing.id));
+
+  if (existing.forcePasswordReset) {
+    await db.update(tenantsTable)
+      .set({ firstLoginAt: new Date() })
+      .where(and(eq(tenantsTable.id, existing.tenantId), eq(tenantsTable.firstLoginAt, null as unknown as Date)));
+  }
 
   res.json({ ok: true });
 });

@@ -19,6 +19,8 @@ export interface User {
   userFunction?: UserFunction;
   telefone?: string | null;
   active: boolean;
+  /** If true, user must change their password on next login. */
+  forcePasswordReset: boolean;
   /** Segment/vertical of the tenant (e.g. "Construção & Reforma") */
   tenantVertical?: string | null;
   createdAt: Date;

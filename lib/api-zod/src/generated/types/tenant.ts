@@ -6,6 +6,7 @@
  * OpenAPI spec version: 0.1.0
  */
 import type { TenantAgentsEnabled } from './tenantAgentsEnabled';
+import type { TenantProvisioningMethod } from './tenantProvisioningMethod';
 import type { TenantStatus } from './tenantStatus';
 import type { TipoFechamento } from './tipoFechamento';
 
@@ -46,6 +47,15 @@ export interface Tenant {
   tipoFechamentoDefault?: TipoFechamento | null;
   /** Valor da mensalidade recorrente (copiado do deal ao ganhar). Usado para cobrança mensal no dia 5. */
   mensalidadeValor?: number | null;
+  /** How this tenant was created. */
+  provisioningMethod?: TenantProvisioningMethod;
+  createdByAdminId?: string | null;
+  /** When the welcome/access email was last sent by a super admin. */
+  accessSentAt?: Date | null;
+  /** Timestamp of the first login by this tenant's admin user. */
+  firstLoginAt?: Date | null;
+  /** Internal notes visible only to super admins. */
+  internalNotes?: string | null;
   createdAt: Date;
   updatedAt: Date;
 }

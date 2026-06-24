@@ -1,8 +1,10 @@
 import { Router, type IRouter } from "express";
 import { eq, count, and, gte } from "drizzle-orm";
+import bcrypt from "bcryptjs";
 import {
   db,
   tenantsTable,
+  usersTable,
   insertTenantSchema,
   updateTenantSchema,
   agentConfigsTable,
@@ -24,6 +26,7 @@ import {
 } from "@workspace/db";
 import { requireRole, requireSameTenanOrSuperAdmin } from "../middlewares/auth";
 import { encrypt } from "../lib/crypto.js";
+import { sendWelcomeEmail } from "../lib/email.js";
 
 const router: IRouter = Router();
 
@@ -603,6 +606,133 @@ router.patch("/tenants/:id/openai-key", requireSameTenanOrSuperAdmin(), async (r
     req.log?.warn({ err, tenantId }, "openai-key: failed to encrypt/store key");
     res.status(500).json({ error: "Falha ao criptografar ou salvar a chave OpenAI" });
   }
+});
+
+// ── Provision tenant (super admin) ──────────────────────────────────────────
+function generateTempPassword(length = 8): string {
+  const chars = "ABCDEFGHJKMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz23456789";
+  let result = "";
+  const array = new Uint8Array(length);
+  crypto.getRandomValues(array);
+  for (const byte of array) result += chars[byte % chars.length];
+  return result;
+}
+
+router.post("/superadmin/tenants/provision", requireRole("super_admin"), async (req, res) => {
+  const { z } = await import("zod/v4");
+  const schema = z.object({
+    companyName: z.string().min(1),
+    responsibleName: z.string().min(1),
+    email: z.email(),
+    phone: z.string().optional(),
+    cnpj: z.string().optional(),
+    planId: z.string().optional(),
+    billingCycle: z.enum(["monthly", "annual"]).optional(),
+    internalNotes: z.string().optional(),
+    sendWelcomeEmailFlag: z.boolean().optional().default(false),
+  });
+  const parsed = schema.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(422).json({ error: parsed.error.message });
+    return;
+  }
+  const { companyName, responsibleName, email, phone, cnpj, planId, billingCycle, internalNotes, sendWelcomeEmailFlag } = parsed.data;
+
+  const slug = companyName
+    .trim().toLowerCase()
+    .replace(/\s+/g, "-")
+    .replace(/[^a-z0-9-]/g, "")
+    .substring(0, 40) + "-" + Math.random().toString(36).substring(2, 6);
+
+  const tempPassword = generateTempPassword(8);
+  const hashed = await bcrypt.hash(tempPassword, 12);
+
+  try {
+    const [tenant] = await db.insert(tenantsTable).values({
+      name: companyName,
+      slug,
+      status: "active",
+      provisioningMethod: "manual",
+      createdByAdminId: req.user?.sub,
+      ...(cnpj ? { internalNotes: [cnpj, internalNotes].filter(Boolean).join(" | ") } : { internalNotes: internalNotes ?? null }),
+      ...(planId ? { planId, billingCycle: billingCycle ?? "monthly", planStartedAt: new Date() } : {}),
+    }).returning();
+
+    if (!tenant) throw new Error("Failed to create tenant");
+
+    const [user] = await db.insert(usersTable).values({
+      tenantId: tenant.id,
+      name: responsibleName,
+      email,
+      password: hashed,
+      role: "admin",
+      platformRole: "tenant_admin",
+      telefone: phone ?? null,
+      forcePasswordReset: true,
+    }).returning();
+
+    if (!user) throw new Error("Failed to create user");
+
+    let emailSent = false;
+    if (sendWelcomeEmailFlag) {
+      const loginUrl = process.env["REPLIT_DOMAINS"]
+        ? `https://${process.env["REPLIT_DOMAINS"].split(",")[0]}/login`
+        : "https://vendorai.replit.app/login";
+      emailSent = await sendWelcomeEmail({
+        to: email,
+        name: responsibleName,
+        tenantName: companyName,
+        loginUrl,
+        tempPassword,
+      });
+      if (emailSent) {
+        await db.update(tenantsTable).set({ accessSentAt: new Date() }).where(eq(tenantsTable.id, tenant.id));
+      }
+    }
+
+    const { password: _pw, ...publicUser } = user;
+    res.status(201).json({ tenant, user: publicUser, tempPassword, emailSent });
+  } catch (err: unknown) {
+    if (isUniqueViolation(err)) {
+      res.status(409).json({ error: "E-mail ou slug já existe" });
+      return;
+    }
+    throw err;
+  }
+});
+
+router.post("/superadmin/tenants/:id/resend-access", requireRole("super_admin"), async (req, res) => {
+  const [tenant] = await db.select().from(tenantsTable).where(eq(tenantsTable.id, String(req.params.id)));
+  if (!tenant) { res.status(404).json({ error: "Tenant not found" }); return; }
+
+  const [adminUser] = await db.select().from(usersTable)
+    .where(eq(usersTable.tenantId, tenant.id))
+    .limit(1);
+  if (!adminUser) { res.status(404).json({ error: "No user found for this tenant" }); return; }
+
+  const tempPassword = generateTempPassword(8);
+  const hashed = await bcrypt.hash(tempPassword, 12);
+
+  await db.update(usersTable).set({ password: hashed, forcePasswordReset: true, updatedAt: new Date() })
+    .where(eq(usersTable.id, adminUser.id));
+
+  const loginUrl = process.env["REPLIT_DOMAINS"]
+    ? `https://${process.env["REPLIT_DOMAINS"].split(",")[0]}/login`
+    : "https://vendorai.replit.app/login";
+
+  const emailSent = await sendWelcomeEmail({
+    to: adminUser.email,
+    name: adminUser.name,
+    tenantName: tenant.name,
+    loginUrl,
+    tempPassword,
+  });
+
+  if (emailSent) {
+    await db.update(tenantsTable).set({ accessSentAt: new Date() }).where(eq(tenantsTable.id, tenant.id));
+  }
+
+  res.json({ tempPassword, emailSent, email: adminUser.email });
 });
 
 function isUniqueViolation(err: unknown): boolean {

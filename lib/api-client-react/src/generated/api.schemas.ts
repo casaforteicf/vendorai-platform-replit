@@ -139,6 +139,8 @@ export interface User {
   userFunction?: UserFunction;
   telefone?: string | null;
   active: boolean;
+  /** If true, user must change their password on next login. */
+  forcePasswordReset: boolean;
   /** Segment/vertical of the tenant (e.g. "Construção & Reforma") */
   tenantVertical?: string | null;
   createdAt: string;
@@ -1960,6 +1962,18 @@ export interface TenantSetupStatus {
 
 export type TenantAgentsEnabled = { [key: string]: unknown };
 
+/**
+ * How this tenant was created.
+ */
+export type TenantProvisioningMethod = typeof TenantProvisioningMethod[keyof typeof TenantProvisioningMethod] | null;
+
+
+export const TenantProvisioningMethod = {
+  self_service: 'self_service',
+  manual: 'manual',
+  trial: 'trial',
+} as const;
+
 export interface Tenant {
   id: string;
   name: string;
@@ -1997,6 +2011,15 @@ export interface Tenant {
   tipoFechamentoDefault?: TipoFechamento | null;
   /** Valor da mensalidade recorrente (copiado do deal ao ganhar). Usado para cobrança mensal no dia 5. */
   mensalidadeValor?: number | null;
+  /** How this tenant was created. */
+  provisioningMethod?: TenantProvisioningMethod;
+  createdByAdminId?: string | null;
+  /** When the welcome/access email was last sent by a super admin. */
+  accessSentAt?: string | null;
+  /** Timestamp of the first login by this tenant's admin user. */
+  firstLoginAt?: string | null;
+  /** Internal notes visible only to super admins. */
+  internalNotes?: string | null;
   createdAt: string;
   updatedAt: string;
 }

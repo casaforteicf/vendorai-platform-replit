@@ -75,6 +75,7 @@ export function SidebarLayout({ children }: { children: React.ReactNode }) {
 
   const adminNavigation = isSuperAdmin
     ? [
+        { name: "Tenants",     href: "/admin/tenants",  icon: Briefcase,    sellerHidden: false, section: "admin" },
         { name: "Marketplace", href: "/marketplace",    icon: Store,        sellerHidden: false, section: "admin" },
         { name: "AI Usage",    href: "/admin/ai-usage", icon: BrainCircuit, sellerHidden: false, section: "admin" },
         { name: "Parceiros",   href: "/admin/partners", icon: Users,        sellerHidden: false, section: "admin" },

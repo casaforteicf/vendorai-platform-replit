@@ -39,6 +39,7 @@ export const GetMeResponse = zod.object({
   "userFunction": zod.enum(['vendedor', 'financeiro', 'suporte', 'entrega', 'administrador', 'outro']).optional().describe('Função\/tipo do usuário dentro do tenant'),
   "telefone": zod.string().nullish(),
   "active": zod.boolean(),
+  "forcePasswordReset": zod.boolean().describe('If true, user must change their password on next login.'),
   "tenantVertical": zod.string().nullish().describe('Segment\/vertical of the tenant (e.g. \"Construção & Reforma\")'),
   "createdAt": zod.coerce.date(),
   "updatedAt": zod.coerce.date()
@@ -61,6 +62,7 @@ export const RefreshTokenResponse = zod.object({
   "userFunction": zod.enum(['vendedor', 'financeiro', 'suporte', 'entrega', 'administrador', 'outro']).optional().describe('Função\/tipo do usuário dentro do tenant'),
   "telefone": zod.string().nullish(),
   "active": zod.boolean(),
+  "forcePasswordReset": zod.boolean().describe('If true, user must change their password on next login.'),
   "tenantVertical": zod.string().nullish().describe('Segment\/vertical of the tenant (e.g. \"Construção & Reforma\")'),
   "createdAt": zod.coerce.date(),
   "updatedAt": zod.coerce.date()
@@ -88,6 +90,7 @@ export const LoginResponse = zod.object({
   "userFunction": zod.enum(['vendedor', 'financeiro', 'suporte', 'entrega', 'administrador', 'outro']).optional().describe('Função\/tipo do usuário dentro do tenant'),
   "telefone": zod.string().nullish(),
   "active": zod.boolean(),
+  "forcePasswordReset": zod.boolean().describe('If true, user must change their password on next login.'),
   "tenantVertical": zod.string().nullish().describe('Segment\/vertical of the tenant (e.g. \"Construção & Reforma\")'),
   "createdAt": zod.coerce.date(),
   "updatedAt": zod.coerce.date()
@@ -116,6 +119,7 @@ export const DemoLoginResponse = zod.object({
   "userFunction": zod.enum(['vendedor', 'financeiro', 'suporte', 'entrega', 'administrador', 'outro']).optional().describe('Função\/tipo do usuário dentro do tenant'),
   "telefone": zod.string().nullish(),
   "active": zod.boolean(),
+  "forcePasswordReset": zod.boolean().describe('If true, user must change their password on next login.'),
   "tenantVertical": zod.string().nullish().describe('Segment\/vertical of the tenant (e.g. \"Construção & Reforma\")'),
   "createdAt": zod.coerce.date(),
   "updatedAt": zod.coerce.date()
@@ -315,6 +319,7 @@ export const ListUsersResponseItem = zod.object({
   "userFunction": zod.enum(['vendedor', 'financeiro', 'suporte', 'entrega', 'administrador', 'outro']).optional().describe('Função\/tipo do usuário dentro do tenant'),
   "telefone": zod.string().nullish(),
   "active": zod.boolean(),
+  "forcePasswordReset": zod.boolean().describe('If true, user must change their password on next login.'),
   "tenantVertical": zod.string().nullish().describe('Segment\/vertical of the tenant (e.g. \"Construção & Reforma\")'),
   "createdAt": zod.coerce.date(),
   "updatedAt": zod.coerce.date()
@@ -365,6 +370,7 @@ export const ChangePasswordResponse = zod.object({
   "userFunction": zod.enum(['vendedor', 'financeiro', 'suporte', 'entrega', 'administrador', 'outro']).optional().describe('Função\/tipo do usuário dentro do tenant'),
   "telefone": zod.string().nullish(),
   "active": zod.boolean(),
+  "forcePasswordReset": zod.boolean().describe('If true, user must change their password on next login.'),
   "tenantVertical": zod.string().nullish().describe('Segment\/vertical of the tenant (e.g. \"Construção & Reforma\")'),
   "createdAt": zod.coerce.date(),
   "updatedAt": zod.coerce.date()
@@ -388,6 +394,7 @@ export const GetUserResponse = zod.object({
   "userFunction": zod.enum(['vendedor', 'financeiro', 'suporte', 'entrega', 'administrador', 'outro']).optional().describe('Função\/tipo do usuário dentro do tenant'),
   "telefone": zod.string().nullish(),
   "active": zod.boolean(),
+  "forcePasswordReset": zod.boolean().describe('If true, user must change their password on next login.'),
   "tenantVertical": zod.string().nullish().describe('Segment\/vertical of the tenant (e.g. \"Construção & Reforma\")'),
   "createdAt": zod.coerce.date(),
   "updatedAt": zod.coerce.date()
@@ -422,6 +429,7 @@ export const UpdateUserResponse = zod.object({
   "userFunction": zod.enum(['vendedor', 'financeiro', 'suporte', 'entrega', 'administrador', 'outro']).optional().describe('Função\/tipo do usuário dentro do tenant'),
   "telefone": zod.string().nullish(),
   "active": zod.boolean(),
+  "forcePasswordReset": zod.boolean().describe('If true, user must change their password on next login.'),
   "tenantVertical": zod.string().nullish().describe('Segment\/vertical of the tenant (e.g. \"Construção & Reforma\")'),
   "createdAt": zod.coerce.date(),
   "updatedAt": zod.coerce.date()
@@ -4297,6 +4305,11 @@ export const ListTenantsResponseItem = zod.object({
   "subdomainSlug": zod.string().nullish().describe('Subdomain slug for \*.vendor.ai automatic assignment.'),
   "tipoFechamentoDefault": zod.enum(['pedido', 'contrato', 'pedido_e_contrato']).nullish().describe('Tipo de fechamento padrão para novos deals deste tenant. Null significa \'pedido\'.'),
   "mensalidadeValor": zod.number().nullish().describe('Valor da mensalidade recorrente (copiado do deal ao ganhar). Usado para cobrança mensal no dia 5.'),
+  "provisioningMethod": zod.enum(['self_service', 'manual', 'trial']).nullish().describe('How this tenant was created.'),
+  "createdByAdminId": zod.string().nullish(),
+  "accessSentAt": zod.coerce.date().nullish().describe('When the welcome\/access email was last sent by a super admin.'),
+  "firstLoginAt": zod.coerce.date().nullish().describe('Timestamp of the first login by this tenant\'s admin user.'),
+  "internalNotes": zod.string().nullish().describe('Internal notes visible only to super admins.'),
   "createdAt": zod.coerce.date(),
   "updatedAt": zod.coerce.date()
 })
@@ -4348,6 +4361,11 @@ export const GetTenantResponse = zod.object({
   "subdomainSlug": zod.string().nullish().describe('Subdomain slug for \*.vendor.ai automatic assignment.'),
   "tipoFechamentoDefault": zod.enum(['pedido', 'contrato', 'pedido_e_contrato']).nullish().describe('Tipo de fechamento padrão para novos deals deste tenant. Null significa \'pedido\'.'),
   "mensalidadeValor": zod.number().nullish().describe('Valor da mensalidade recorrente (copiado do deal ao ganhar). Usado para cobrança mensal no dia 5.'),
+  "provisioningMethod": zod.enum(['self_service', 'manual', 'trial']).nullish().describe('How this tenant was created.'),
+  "createdByAdminId": zod.string().nullish(),
+  "accessSentAt": zod.coerce.date().nullish().describe('When the welcome\/access email was last sent by a super admin.'),
+  "firstLoginAt": zod.coerce.date().nullish().describe('Timestamp of the first login by this tenant\'s admin user.'),
+  "internalNotes": zod.string().nullish().describe('Internal notes visible only to super admins.'),
   "createdAt": zod.coerce.date(),
   "updatedAt": zod.coerce.date()
 })
@@ -4398,6 +4416,11 @@ export const UpdateTenantResponse = zod.object({
   "subdomainSlug": zod.string().nullish().describe('Subdomain slug for \*.vendor.ai automatic assignment.'),
   "tipoFechamentoDefault": zod.enum(['pedido', 'contrato', 'pedido_e_contrato']).nullish().describe('Tipo de fechamento padrão para novos deals deste tenant. Null significa \'pedido\'.'),
   "mensalidadeValor": zod.number().nullish().describe('Valor da mensalidade recorrente (copiado do deal ao ganhar). Usado para cobrança mensal no dia 5.'),
+  "provisioningMethod": zod.enum(['self_service', 'manual', 'trial']).nullish().describe('How this tenant was created.'),
+  "createdByAdminId": zod.string().nullish(),
+  "accessSentAt": zod.coerce.date().nullish().describe('When the welcome\/access email was last sent by a super admin.'),
+  "firstLoginAt": zod.coerce.date().nullish().describe('Timestamp of the first login by this tenant\'s admin user.'),
+  "internalNotes": zod.string().nullish().describe('Internal notes visible only to super admins.'),
   "createdAt": zod.coerce.date(),
   "updatedAt": zod.coerce.date()
 })
@@ -4969,6 +4992,7 @@ export const ListTenantUsersResponseItem = zod.object({
   "userFunction": zod.enum(['vendedor', 'financeiro', 'suporte', 'entrega', 'administrador', 'outro']).optional().describe('Função\/tipo do usuário dentro do tenant'),
   "telefone": zod.string().nullish(),
   "active": zod.boolean(),
+  "forcePasswordReset": zod.boolean().describe('If true, user must change their password on next login.'),
   "tenantVertical": zod.string().nullish().describe('Segment\/vertical of the tenant (e.g. \"Construção & Reforma\")'),
   "createdAt": zod.coerce.date(),
   "updatedAt": zod.coerce.date()
@@ -6736,6 +6760,11 @@ export const LinkTenantPartnerResponse = zod.object({
   "subdomainSlug": zod.string().nullish().describe('Subdomain slug for \*.vendor.ai automatic assignment.'),
   "tipoFechamentoDefault": zod.enum(['pedido', 'contrato', 'pedido_e_contrato']).nullish().describe('Tipo de fechamento padrão para novos deals deste tenant. Null significa \'pedido\'.'),
   "mensalidadeValor": zod.number().nullish().describe('Valor da mensalidade recorrente (copiado do deal ao ganhar). Usado para cobrança mensal no dia 5.'),
+  "provisioningMethod": zod.enum(['self_service', 'manual', 'trial']).nullish().describe('How this tenant was created.'),
+  "createdByAdminId": zod.string().nullish(),
+  "accessSentAt": zod.coerce.date().nullish().describe('When the welcome\/access email was last sent by a super admin.'),
+  "firstLoginAt": zod.coerce.date().nullish().describe('Timestamp of the first login by this tenant\'s admin user.'),
+  "internalNotes": zod.string().nullish().describe('Internal notes visible only to super admins.'),
   "createdAt": zod.coerce.date(),
   "updatedAt": zod.coerce.date()
 })

@@ -24,6 +24,8 @@ import Propostas from "@/pages/Propostas";
 import PropostaPrint from "@/pages/PropostaPrint";
 import AdminAIUsage from "@/pages/AdminAIUsage";
 import AdminPartners from "@/pages/AdminPartners";
+import AdminTenants from "@/pages/AdminTenants";
+import ForcePasswordChange from "@/pages/ForcePasswordChange";
 import PartnerDashboard from "@/pages/PartnerDashboard";
 import AcceptInvite from "@/pages/AcceptInvite";
 import ForgotPassword from "@/pages/ForgotPassword";
@@ -386,11 +388,17 @@ function AppRoutes() {
       <Route path="/faturamento">
         <RedirectPage to="/configuracoes" />
       </Route>
+      <Route path="/admin/tenants">
+        {() => <SuperAdminRoute component={AdminTenants} />}
+      </Route>
       <Route path="/admin/ai-usage">
         {() => <SuperAdminRoute component={AdminAIUsage} />}
       </Route>
       <Route path="/admin/partners">
         {() => <SuperAdminRoute component={AdminPartners} />}
+      </Route>
+      <Route path="/trocar-senha">
+        <ForcePasswordChange />
       </Route>
       <Route path="/partner">
         {() => <PartnerRoute component={PartnerDashboard} />}
