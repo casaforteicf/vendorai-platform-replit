@@ -647,23 +647,31 @@ function GenerateAIImageButton({
   variationIndex,
   tenantId,
   onGenerated,
+  referenceImageUrl,
 }: {
   contentId: string;
   variationIndex: number;
   tenantId: string;
   onGenerated: (imageUrl: string) => void;
+  referenceImageUrl?: string | null;
 }) {
   const { toast } = useToast();
   const [loading, setLoading] = useState(false);
+  const [pendingUrl, setPendingUrl] = useState<string | null>(null);
 
   async function handleGenerate() {
     setLoading(true);
+    setPendingUrl(null);
     try {
       const res = await fetch(
         `/api/tenants/${tenantId}/content/${contentId}/variations/${variationIndex}/generate-image`,
         {
           method: "POST",
-          headers: { Authorization: `Bearer ${localStorage.getItem("vendorai_token")}` },
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${localStorage.getItem("vendorai_token")}`,
+          },
+          body: JSON.stringify(referenceImageUrl ? { referenceImageUrl } : {}),
         }
       );
       const data = (await res.json()) as { imageUrl?: string; error?: string };
@@ -671,13 +679,40 @@ function GenerateAIImageButton({
         toast({ title: "Erro ao gerar imagem", description: data.error ?? "Tente novamente.", variant: "destructive" });
         return;
       }
-      onGenerated(data.imageUrl);
-      toast({ title: "Imagem gerada!", description: "Imagem criada pela IA e associada à variação." });
+      setPendingUrl(data.imageUrl);
     } catch {
       toast({ title: "Erro ao gerar imagem", description: "Verifique sua conexão e tente novamente.", variant: "destructive" });
     } finally {
       setLoading(false);
     }
+  }
+
+  if (pendingUrl) {
+    return (
+      <div className="flex items-center gap-1">
+        <div className="relative rounded overflow-hidden border w-10 h-10 shrink-0">
+          <img src={pendingUrl} alt="Preview" className="w-full h-full object-cover" />
+        </div>
+        <Button
+          size="sm"
+          variant="default"
+          className="h-7 px-2 text-xs gap-1 bg-green-600 hover:bg-green-700"
+          onClick={() => { onGenerated(pendingUrl); setPendingUrl(null); toast({ title: "Imagem aplicada!" }); }}
+        >
+          <Check className="h-3 w-3" />
+          Usar
+        </Button>
+        <Button
+          size="sm"
+          variant="ghost"
+          className="h-7 px-2 text-xs gap-1 text-muted-foreground"
+          onClick={() => setPendingUrl(null)}
+        >
+          <X className="h-3 w-3" />
+          Descartar
+        </Button>
+      </div>
+    );
   }
 
   return (
@@ -686,11 +721,11 @@ function GenerateAIImageButton({
       size="sm"
       onClick={handleGenerate}
       disabled={loading}
-      title="Gerar imagem com IA (DALL-E)"
+      title={referenceImageUrl ? "Melhorar imagem do cliente com IA" : "Gerar imagem com IA"}
       className="h-7 px-2 text-xs gap-1"
     >
       {loading ? <Loader2 className="h-3 w-3 animate-spin" /> : <Wand2 className="h-3 w-3" />}
-      {loading ? "Gerando…" : "Imagem IA"}
+      {loading ? "Gerando…" : referenceImageUrl ? "Melhorar IA" : "Imagem IA"}
     </Button>
   );
 }
@@ -700,19 +735,23 @@ function RegenerateStyleButton({
   variationIndex,
   tenantId,
   onGenerated,
+  referenceImageUrl,
 }: {
   contentId: string;
   variationIndex: number;
   tenantId: string;
   onGenerated: (imageUrl: string) => void;
+  referenceImageUrl?: string | null;
 }) {
   const { toast } = useToast();
   const [loading, setLoading] = useState(false);
   const [style, setStyle] = useState("");
   const [showInput, setShowInput] = useState(false);
+  const [pendingUrl, setPendingUrl] = useState<string | null>(null);
 
   async function handleRegenerate() {
     setLoading(true);
+    setPendingUrl(null);
     try {
       const res = await fetch(
         `/api/tenants/${tenantId}/content/${contentId}/variations/${variationIndex}/regenerate-image`,
@@ -722,7 +761,7 @@ function RegenerateStyleButton({
             "Content-Type": "application/json",
             Authorization: `Bearer ${localStorage.getItem("vendorai_token")}`,
           },
-          body: JSON.stringify({ style: style || undefined, imageCount: 1 }),
+          body: JSON.stringify({ style: style || undefined, imageCount: 1, referenceImageUrl: referenceImageUrl || undefined }),
         }
       );
       const data = (await res.json()) as { imageUrls?: string[]; error?: string };
@@ -730,8 +769,7 @@ function RegenerateStyleButton({
         toast({ title: "Erro ao regenerar imagem", description: data.error ?? "Tente novamente.", variant: "destructive" });
         return;
       }
-      onGenerated(data.imageUrls[0]);
-      toast({ title: "Imagem regenerada!", description: `Novo estilo aplicado${style ? `: ${style}` : ""}` });
+      setPendingUrl(data.imageUrls[0]);
       setShowInput(false);
       setStyle("");
     } catch {
@@ -739,6 +777,24 @@ function RegenerateStyleButton({
     } finally {
       setLoading(false);
     }
+  }
+
+  if (pendingUrl) {
+    return (
+      <div className="flex items-center gap-1">
+        <div className="relative rounded overflow-hidden border w-10 h-10 shrink-0">
+          <img src={pendingUrl} alt="Preview" className="w-full h-full object-cover" />
+        </div>
+        <Button size="sm" variant="default" className="h-7 px-2 text-xs gap-1 bg-green-600 hover:bg-green-700"
+          onClick={() => { onGenerated(pendingUrl); setPendingUrl(null); toast({ title: "Imagem aplicada!" }); }}>
+          <Check className="h-3 w-3" />Usar
+        </Button>
+        <Button size="sm" variant="ghost" className="h-7 px-2 text-xs gap-1 text-muted-foreground"
+          onClick={() => setPendingUrl(null)}>
+          <X className="h-3 w-3" />Descartar
+        </Button>
+      </div>
+    );
   }
 
   if (showInput) {

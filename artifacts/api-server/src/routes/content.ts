@@ -17,6 +17,7 @@ import {
   generateStoriesContent,
   generateReelsScript,
   generateImagesForContent,
+  generateImagesWithReference,
   generateContentStrategy,
   describeImage,
 } from "../lib/content-generation.js";
@@ -95,7 +96,7 @@ router.post("/tenants/:tenantId/content/generate", async (req, res) => {
     return;
   }
 
-  const { type, theme, productId, productSource, variations, imageCount, imageUrl } = parsed.data;
+  const { type, theme, productId, productSource, variations, imageCount, imageUrl: referenceImageUrl } = parsed.data;
 
   const { used, limit, configId } = await getMonthlyUsage(tenantId);
   if (used >= limit) {
@@ -161,9 +162,9 @@ router.post("/tenants/:tenantId/content/generate", async (req, res) => {
   let result: { result: { variations: unknown[] }; tokensUsed: number };
   try {
     if (type === "feed") {
-      result = await generateFeedContent(profile ?? {}, tenantId, theme, productName, variations, imageCount, productExtra);
+      result = await generateFeedContent(profile ?? {}, tenantId, theme, productName, variations, imageCount, productExtra, referenceImageUrl ?? undefined);
     } else if (type === "stories") {
-      result = await generateStoriesContent(profile ?? {}, tenantId, theme, productName, variations, imageCount, productExtra);
+      result = await generateStoriesContent(profile ?? {}, tenantId, theme, productName, variations, imageCount, productExtra, referenceImageUrl ?? undefined);
     } else {
       result = await generateReelsScript(profile ?? {}, tenantId, theme, productName, variations, productExtra);
     }
@@ -173,15 +174,7 @@ router.post("/tenants/:tenantId/content/generate", async (req, res) => {
     return;
   }
 
-  // If caller uploaded an image, apply it to every variation
-  const finalResult = imageUrl
-    ? {
-        variations: (result.result.variations as Record<string, unknown>[]).map((v) => ({
-          ...v,
-          imageUrl,
-        })),
-      }
-    : result.result;
+  const finalResult = result.result;
 
   const [saved] = await db
     .insert(contentGenerationsTable)
@@ -282,7 +275,7 @@ const patchMediaBodySchema = z.object({
   field: z.enum(["imageUrl", "videoUrl"]).default("imageUrl"),
 });
 
-// POST .../variations/:idx/generate-image — gera imagem via DALL-E 3 e salva na variação
+// POST .../variations/:idx/generate-image — gera imagem via IA e salva na variação
 router.post("/tenants/:tenantId/content/:contentId/variations/:idx/generate-image", async (req, res) => {
   const tenantId = String(req.params["tenantId"]);
   const contentId = String(req.params["contentId"]);
@@ -308,17 +301,27 @@ router.post("/tenants/:tenantId/content/:contentId/variations/:idx/generate-imag
     .where(eq(businessProfilesTable.tenantId, tenantId));
 
   const format = gen.type === "stories" ? "stories" : "feed";
+  const referenceImageUrl: string | undefined = typeof req.body?.referenceImageUrl === "string" ? req.body.referenceImageUrl : undefined;
+
   let imageUrl: string | undefined;
   try {
-    const imageUrls = await generateImagesForContent(
-      profile ?? {},
-      tenantId,
-      gen.theme,
-      gen.productName ?? undefined,
-      format,
-      1,
-    );
-    imageUrl = imageUrls[0];
+    if (referenceImageUrl) {
+      const brand = (profile as any)?.nomeFantasia || "a empresa";
+      const formatLabel = format === "stories" ? "Stories (vertical 9:16)" : "Feed (square 1:1)";
+      const editPrompt = `Improve this product/marketing image for Instagram ${formatLabel} for the brand "${brand}". Subject: ${gen.theme}${gen.productName ? ` — product: ${gen.productName}` : ""}. Keep the same product and subject. Improve: lighting, sharpness, color, composition. Professional marketing quality. No text overlays. No watermarks.`;
+      const urls = await generateImagesWithReference(tenantId, referenceImageUrl, editPrompt, 1);
+      imageUrl = urls[0];
+    } else {
+      const imageUrls = await generateImagesForContent(
+        profile ?? {},
+        tenantId,
+        gen.theme,
+        gen.productName ?? undefined,
+        format,
+        1,
+      );
+      imageUrl = imageUrls[0];
+    }
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : "Falha ao gerar imagem";
     res.status(502).json({ error: `Erro ao gerar imagem: ${msg}` });

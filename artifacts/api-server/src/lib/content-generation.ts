@@ -1,6 +1,7 @@
 import { getOpenAIForTenant } from "./agent-engine.js";
 import { callOpenAI as gatewayCallOpenAI } from "./ai-gateway.js";
 import { ObjectStorageService } from "./objectStorage.js";
+import { toFile } from "openai";
 import type {
   FeedVariation,
   StoriesVariation,
@@ -51,11 +52,115 @@ function verticalHints(vertical: string | null | undefined): string {
 }
 
 const IMAGE_MODELS_PRIORITY = [
-  "dall-e-3",
   "gpt-image-1",
   "chatgpt-image-latest",
+  "dall-e-3",
   "dall-e-2",
 ];
+
+async function saveB64Image(b64: string): Promise<string> {
+  const buf = Buffer.from(b64, "base64");
+  const storage = new ObjectStorageService();
+  const objectPath = await storage.savePrivateBuffer(buf, "image/png", `${crypto.randomUUID()}.png`);
+  const servePath = objectPath.replace(/^\/objects\//, "");
+  return `/api/storage/objects/${servePath}`;
+}
+
+async function fetchImageBuffer(imageUrl: string): Promise<Buffer> {
+  const url = imageUrl.startsWith("/")
+    ? `http://localhost:${process.env["PORT"] ?? 8080}${imageUrl}`
+    : imageUrl;
+  const res = await fetch(url);
+  if (!res.ok) throw new Error(`Falha ao buscar imagem de referência: ${res.status}`);
+  return Buffer.from(await res.arrayBuffer());
+}
+
+// Generates images using the client's existing image as reference (AI editing/improvement)
+export async function generateImagesWithReference(
+  tenantId: string,
+  referenceImageUrl: string,
+  editPrompt: string,
+  imageCount: number = 1,
+): Promise<string[]> {
+  if (imageCount < 1) imageCount = 1;
+  if (imageCount > 10) imageCount = 10;
+  const openai = await getOpenAIForTenant(tenantId);
+  const results: string[] = [];
+
+  let referenceBuffer: Buffer;
+  try {
+    referenceBuffer = await fetchImageBuffer(referenceImageUrl);
+  } catch {
+    throw new Error("Não foi possível carregar a imagem de referência. Verifique se ela está acessível.");
+  }
+
+  for (let i = 0; i < imageCount; i++) {
+    const variantPrompt = imageCount > 1
+      ? `${editPrompt} Variation ${i + 1}: slightly different angle or perspective than other variations.`
+      : editPrompt;
+
+    let saved = false;
+    // Try image editing with gpt-image-1 models first
+    for (const model of ["gpt-image-1", "chatgpt-image-latest"]) {
+      try {
+        const imageFile = await toFile(referenceBuffer, "reference.png", { type: "image/png" });
+        const response = await (openai.images as any).edit({
+          model,
+          image: imageFile,
+          prompt: variantPrompt,
+          n: 1,
+          size: "1024x1024",
+        });
+        const item = Array.isArray(response?.data) ? response.data[0] : undefined;
+        if (!item) continue;
+        if (item.b64_json) {
+          results.push(await saveB64Image(item.b64_json));
+          saved = true;
+          break;
+        }
+        if (item.url) {
+          results.push(item.url);
+          saved = true;
+          break;
+        }
+      } catch {
+        // Try next model
+      }
+    }
+
+    // Fallback: generate from scratch with a descriptive prompt
+    if (!saved) {
+      for (const model of IMAGE_MODELS_PRIORITY) {
+        try {
+          const response = await openai.images.generate({
+            model,
+            prompt: variantPrompt,
+            n: 1,
+            size: "1024x1024",
+          } as Parameters<typeof openai.images.generate>[0]);
+          const item = Array.isArray(response?.data) ? response.data[0] : undefined;
+          if (!item) continue;
+          if ((item as any).b64_json) {
+            results.push(await saveB64Image((item as any).b64_json));
+            saved = true;
+            break;
+          }
+          if ((item as any).url) {
+            results.push((item as any).url);
+            saved = true;
+            break;
+          }
+        } catch {
+          // Try next model
+        }
+      }
+    }
+
+    if (!saved) throw new Error(`Nenhum modelo retornou resultado para imagem ${i + 1}`);
+  }
+
+  return results;
+}
 
 export async function generateImagesForContent(
   profile: TenantProfile,
@@ -64,11 +169,11 @@ export async function generateImagesForContent(
   productName: string | undefined,
   format: "feed" | "stories",
   imageCount: number = 1,
-  style?: string
+  style?: string,
+  referenceImageUrl?: string,
 ): Promise<string[]> {
   if (imageCount < 1) imageCount = 1;
   if (imageCount > 10) imageCount = 10;
-  const results: string[] = [];
   const openai = await getOpenAIForTenant(tenantId);
   const brand = profile.nomeFantasia || "a empresa";
   const subject = productName ? `${productName} — ${theme}` : theme;
@@ -84,6 +189,14 @@ export async function generateImagesForContent(
     }
   }
 
+  // When a reference image is available, use AI editing to improve it
+  if (referenceImageUrl) {
+    const formatLabel = format === "stories" ? "Stories (vertical, 9:16)" : "Feed (square, 1:1)";
+    const editPrompt = `Improve this product/marketing image for use in an Instagram ${formatLabel} post for the brand "${brand}". Subject: ${subject}. Keep the same product and subject matter. Improve: lighting quality, sharpness, color vibrancy, composition. The result must be suitable for professional Instagram marketing. Style: ${styleHint}. No text. No watermarks.`;
+    return generateImagesWithReference(tenantId, referenceImageUrl, editPrompt, imageCount);
+  }
+
+  const results: string[] = [];
   const formatLabel = format === "stories" ? "Stories (vertical format)" : "Feed (square format)";
   const basePrompt = `Professional marketing image for the Instagram ${formatLabel} of the brand "${brand}". Theme: ${subject}. Style: ${styleHint}. High quality, visually appealing, suitable for a business Instagram profile. No text overlays. No watermarks. Bright, well-lit, commercial photography aesthetic.`;
 
@@ -91,6 +204,7 @@ export async function generateImagesForContent(
     let lastError: unknown;
     const imagePrompt = imageCount > 1 ? `${basePrompt} Variation ${i + 1} of ${imageCount}. Each image should be unique and distinct.` : basePrompt;
 
+    let saved = false;
     for (const model of IMAGE_MODELS_PRIORITY) {
       try {
         const response = await openai.images.generate({
@@ -106,24 +220,21 @@ export async function generateImagesForContent(
 
         if ("url" in item && item.url) {
           results.push(item.url);
+          saved = true;
           break;
         }
 
         if ("b64_json" in item && item.b64_json) {
-          const buf = Buffer.from(item.b64_json, "base64");
-          const storage = new ObjectStorageService();
-          const objectPath = await storage.savePrivateBuffer(buf, "image/png", `${crypto.randomUUID()}.png`);
-          const servePath = objectPath.replace(/^\/objects\//, "");
-          results.push(`/api/storage/objects/${servePath}`);
+          results.push(await saveB64Image(item.b64_json));
+          saved = true;
           break;
         }
       } catch (err) {
         lastError = err;
-        // Try next model
       }
     }
 
-    if (results.length <= i) {
+    if (!saved) {
       throw lastError ?? new Error(`Nenhum modelo de imagem disponível retornou resultado para imagem ${i + 1}`);
     }
   }
@@ -152,7 +263,8 @@ export async function generateFeedContent(
   productName: string | undefined,
   variationsCount: number,
   imageCount: number = 1,
-  productExtra?: string
+  productExtra?: string,
+  referenceImageUrl?: string,
 ): Promise<{ result: ContentGenerationResult; tokensUsed: number }> {
   const brand = profile.nomeFantasia || "a empresa";
   const context = buildBrandContext(profile);
@@ -189,7 +301,7 @@ Retorne SOMENTE JSON válido no formato:
       [{ role: "user", content: prompt }],
       { model: "gpt-4o-mini", responseFormat: { type: "json_object" }, temperature: 0.85 },
     ),
-    generateImagesForContent(profile, tenantId, theme, productName, "feed", imageCount),
+    generateImagesForContent(profile, tenantId, theme, productName, "feed", imageCount, undefined, referenceImageUrl),
   ]);
 
   const tokensUsed = textResult.inputTokens + textResult.outputTokens;
@@ -197,7 +309,7 @@ Retorne SOMENTE JSON válido no formato:
     variations?: Omit<FeedVariation, "imageUrl">[];
   };
 
-  const variations: FeedVariation[] = (raw.variations ?? []).map((v, i) => ({
+  const variations: FeedVariation[] = (raw.variations ?? []).map((v) => ({
     ...v,
     imageUrl: imageUrls[0],
     imageUrls: imageUrls,
@@ -216,7 +328,8 @@ export async function generateStoriesContent(
   productName: string | undefined,
   variationsCount: number,
   imageCount: number = 1,
-  productExtra?: string
+  productExtra?: string,
+  referenceImageUrl?: string,
 ): Promise<{ result: ContentGenerationResult; tokensUsed: number }> {
   const brand = profile.nomeFantasia || "a empresa";
   const context = buildBrandContext(profile);
@@ -253,7 +366,7 @@ Retorne SOMENTE JSON válido no formato:
       [{ role: "user", content: prompt }],
       { model: "gpt-4o-mini", responseFormat: { type: "json_object" }, temperature: 0.85 },
     ),
-    generateImagesForContent(profile, tenantId, theme, productName, "stories", imageCount),
+    generateImagesForContent(profile, tenantId, theme, productName, "stories", imageCount, undefined, referenceImageUrl),
   ]);
 
   const tokensUsed = textResult.inputTokens + textResult.outputTokens;
