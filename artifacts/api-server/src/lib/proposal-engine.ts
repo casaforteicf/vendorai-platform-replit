@@ -20,7 +20,18 @@ import { callOpenAI as gatewayCallOpenAI, callAnthropic as gatewayCallAnthropic 
 import { logger } from "./logger.js";
 
 export const AI_PROVIDER = process.env.ANTHROPIC_API_KEY ? "anthropic" : "openai";
-export const AI_MODEL = process.env.ANTHROPIC_API_KEY ? "claude-sonnet-4-6" : "gpt-4o-mini";
+export const AI_MODEL = process.env.ANTHROPIC_API_KEY ? "claude-opus-4-8" : "gpt-4o";
+
+const PROPOSAL_SYSTEM_PROMPT = `Você é o melhor redator comercial do Brasil — especialista em copywriting B2B de alta conversão, narrativa SPIN e design de propostas comerciais. Você escreve como um consultor sênior que conhece profundamente o segmento do cliente.
+
+Suas regras de ouro:
+- Cada frase deve ganhar seu lugar. Sem enchimento, sem clichê.
+- Use dados e números concretos e plausíveis para o segmento (ex: "lojas que respondem em menos de 5 minutos têm 9x mais chances de fechar"). Invente dados realistas se não houver dados reais — eles precisam soar verdadeiros.
+- Escreva headlines que gerem curiosidade e urgência real, não genérica.
+- Os problemas e implicações devem causar um "é exatamente isso que acontece comigo" no leitor.
+- A solução deve soar inevitável — como se fosse a única escolha racional depois de ler os problemas.
+- Tom: adapte ao estilo real do cliente (formal/informal, direto/cuidadoso). Se não houver amostra de conversa, use tom profissional mas acessível.
+- Todos os textos em português brasileiro impecável. Sem anglicismos desnecessários.`;
 
 // ── AI caller — routes through gateway (BYOK + quota + logging) ──────────────
 export type AiMessage = { role: "user" | "assistant"; content: string };
@@ -32,15 +43,14 @@ export async function callProposalAI(
 ): Promise<{ content: string; provider: string; model: string }> {
   if (process.env.ANTHROPIC_API_KEY) {
     log.info({ provider: "anthropic", model: AI_MODEL }, "Calling Anthropic for proposal generation");
-    const system = messages.find((m) => m.role === "assistant")?.content;
     const userMessages = messages.filter((m) => m.role === "user");
     const result = await gatewayCallAnthropic(
       tenantId,
       "proposal_generator",
       userMessages.map((m) => ({ role: m.role as "user" | "assistant", content: m.content })),
-      { model: "claude-sonnet-4-6", maxTokens: 32000, system },
+      { model: "claude-opus-4-8", maxTokens: 32000, system: PROPOSAL_SYSTEM_PROMPT },
     );
-    return { content: result.content, provider: "anthropic", model: "claude-sonnet-4-6" };
+    return { content: result.content, provider: "anthropic", model: "claude-opus-4-8" };
   }
 
   log.info({ provider: "openai", model: AI_MODEL }, "Calling OpenAI for proposal generation");
@@ -48,9 +58,9 @@ export async function callProposalAI(
     tenantId,
     "proposal_generator",
     messages as Array<{ role: "user" | "assistant"; content: string }>,
-    { model: "gpt-4o-mini", maxTokens: 16000 },
+    { model: "gpt-4o", maxTokens: 16000 },
   );
-  return { content: result.content, provider: "openai", model: "gpt-4o-mini" };
+  return { content: result.content, provider: "openai", model: "gpt-4o" };
 }
 
 // ── Theme generation from client color ───────────────────────────────────────
@@ -168,104 +178,111 @@ export function buildProposalPrompt(ctx: {
     ? `\n## Segmento do cliente: "${ctx.mercadoSegmento}"\nIMPORTANTE: toda a proposta DEVE usar terminologia, exemplos, dores e oportunidades específicas deste segmento. Não use linguagem genérica de "empresa". Use jargão real do setor. Os problemas, implicações e módulos devem ser exemplos concretos do dia a dia de ${ctx.mercadoSegmento}. Se for varejo: fale em loja, vendedor, estoque, ticket médio, sazonalidade. Se for construção: obra, engenheiro, orçamento, cliente de obra. Se for saúde: paciente, consulta, agenda. Adapte para o segmento real.`
     : "";
 
-  return `Você é um redator comercial sênior ${tenantLabel}. Gere o conteúdo de uma proposta comercial personalizada em formato JSON estrito para o cliente abaixo.
+  return `Gere o conteúdo de uma proposta comercial personalizada em formato JSON estrito ${tenantLabel} para o cliente abaixo.
 
-## Dados do cliente
+━━━ DADOS DO CLIENTE ━━━
 - Nome: ${ctx.leadName}
 - Empresa: ${ctx.empresa || "Não informado"}
-- Objetivo: ${ctx.objetivo || "Não informado"}
+- Objetivo declarado: ${ctx.objetivo || "Não informado"}
 - Mercado/Segmento: ${ctx.mercadoSegmento || "Não informado"}
-- Cor de destaque: ${ctx.corDestaque}
+- Cor de destaque da marca: ${ctx.corDestaque}
 ${segmentoBlock}
 ${productsBlock}
 ${propostasBlock}
 ${briefingBlock}
 ${intelligenceBlock}
 
-## Amostra de conversa (ajuste o tom ao estilo real do cliente)
-${ctx.conversationSamples || "Nenhuma conversa disponível. Use tom profissional e direto."}
+━━━ AMOSTRA DE CONVERSA (calibre o tom exato ao estilo do cliente) ━━━
+${ctx.conversationSamples || "Sem conversa disponível. Use tom profissional, direto e respeitoso."}
 
-## Instruções OBRIGATÓRIAS
-1. Retorne APENAS um JSON válido, sem markdown, sem explicações, sem \`\`\`json.
-2. O JSON deve seguir EXATAMENTE esta estrutura:
+━━━ ESTRUTURA JSON OBRIGATÓRIA ━━━
+Retorne APENAS JSON válido — sem markdown, sem \`\`\`json, sem texto antes ou depois.
+
 {
   "hero": {
-    "tagline": "string curta (segmento do cliente)",
-    "headline": "string de impacto — título principal da proposta",
-    "subheadline": "string — parágrafo explicando o valor",
-    "ctaPrimary": "string",
-    "ctaSecondary": "string",
-    "forTag": "string — "Preparado para [Empresa] — [segmento]"
+    "tagline": "3-5 palavras do segmento. Ex: 'Para o varejo que quer crescer' ou 'Construção civil que não para'",
+    "headline": "O título principal — deve gerar curiosidade e urgência real. Máx 10 palavras. Exemplo de qualidade: 'Enquanto você demora 2h para responder, seu concorrente já fechou.' NÃO use headlines genéricas como 'Transforme seu negócio'.",
+    "subheadline": "2-3 frases que explicam o que será entregue e por que agora. Concreto, sem buzzwords.",
+    "ctaPrimary": "Ação clara e específica. Ex: 'Ver como funciona na prática'",
+    "ctaSecondary": "Ação secundária de baixo risco. Ex: 'Tirar dúvidas no WhatsApp'",
+    "forTag": "Preparado para [${ctx.empresa || ctx.leadName}] — [segmento específico]"
   },
   "situation": {
-    "title": "string",
-    "subtitle": "string",
+    "title": "Título que nomeia a situação atual com precisão — o cliente deve se reconhecer. Ex: 'O mercado de [segmento] mudou. A pergunta é: você mudou com ele?'",
+    "subtitle": "1-2 frases contextualizando o cenário atual do segmento com dados ou fatos reais.",
     "facts": [
-      { "num": "string", "label": "string" }
+      { "num": "dado numérico impactante (ex: '73%', 'R$ 12k', '4,2x')", "label": "o que esse número significa no contexto do cliente" }
     ],
-    "bridge": "string — parágrafo de transição"
+    "bridge": "Parágrafo de 2-3 frases que conecta a situação aos problemas. Deve criar antecipação. Use 'Mas existe um obstáculo...' ou similar."
   },
   "problem": {
-    "title": "string",
-    "subtitle": "string",
+    "title": "Nome o problema central de forma que doa. Ex: 'O silêncio que custa caro' ou 'A fila que nunca anda'",
+    "subtitle": "Frase que amplifica o impacto emocional do problema.",
     "cards": [
-      { "cod": "string", "title": "string", "text": "string" }
+      {
+        "cod": "Problema 01",
+        "title": "Nome curto e vívido do problema específico",
+        "text": "Descrição de 2-3 frases que pinta a cena exata. O cliente deve pensar 'isso é exatamente o que acontece aqui'. Use detalhes do segmento — não seja genérico."
+      }
     ]
   },
   "implication": {
-    "title": "string",
-    "subtitle": "string",
+    "title": "Título que mostra o custo real de não resolver. Ex: 'Cada dia sem resolver custa [algo concreto]'",
+    "subtitle": "Frase que amplifica a urgência.",
     "cascade": [
-      { "num": "string", "text": "string" }
+      { "num": "01", "text": "Implicação encadeada — cada passo piora o anterior. Use causa e efeito: 'Sem X, acontece Y. E Y leva a Z.' Seja específico e doloroso." }
     ],
-    "close": "string"
+    "close": "Frase de fechamento da seção de implicação — poética, impactante. Pode ser uma metáfora forte."
   },
   "value": {
-    "title": "string",
+    "title": "Pergunta ou afirmação que planta a semente da solução na mente do cliente",
     "questions": [
-      "string — pergunta retórica"
+      "Pergunta retórica que o cliente responde mentalmente com 'sim, eu quero isso'. Ex: 'E se cada lead recebesse uma resposta personalizada em menos de 30 segundos, às 2h da manhã, sem você levantar da cama?'"
     ],
-    "close": "string"
+    "close": "Frase que prepara a revelação da solução — cria expectativa."
   },
   "solution": {
-    "title": "string",
-    "subtitle": "string",
+    "title": "Nome da solução com clareza e impacto. Apresente como a resposta inevitável.",
+    "subtitle": "2 frases explicando como a solução resolve os problemas mencionados.",
     "agents": [
-      { "tag": "string", "title": "string", "text": "string" }
+      { "tag": "Nome do agente/feature (curto)", "title": "O que ele faz em uma linha", "text": "Como ele resolve especificamente um dos problemas do cliente. Seja concreto." }
     ],
     "ticket": {
-      "storeName": "string",
-      "clientBubble": "string",
-      "agentBubble": "string",
-      "responseTime": "string"
+      "storeName": "Nome da empresa do cliente (${ctx.empresa || ctx.leadName})",
+      "clientBubble": "Mensagem realista que um cliente do ${ctx.mercadoSegmento || "segmento"} enviaria (problema real, linguagem natural)",
+      "agentBubble": "Resposta do agente de IA — profissional, resolutiva, personalizada para o segmento",
+      "responseTime": "tempo de resposta realista do agente (ex: '8 segundos')"
     }
   },
   "modules": {
-    "title": "string",
-    "subtitle": "string",
+    "title": "Como a solução se encaixa na operação de ${ctx.empresa || ctx.leadName}",
+    "subtitle": "Frase explicando que os módulos foram pensados especificamente para o segmento do cliente.",
     "mods": [
-      { "cod": "string", "title": "string", "text": "string" }
+      { "cod": "01", "title": "Nome do módulo/serviço relevante ao segmento", "text": "O que este módulo faz e qual resultado direto gera para o cliente. Mínimo 2 frases." }
     ]
   },
   "cta": {
-    "title": "string",
-    "subtitle": "string",
-    "button": "string"
+    "title": "Chamada para ação final com urgência real — não artificial. Ex: 'Enquanto você lê isso, um lead seu pode estar esperando resposta.'",
+    "subtitle": "2 frases explicando o próximo passo e o que acontece quando o cliente entra em contato.",
+    "button": "Texto do botão — ação específica. Ex: 'Quero ver funcionando na minha empresa'"
   },
   "meta": {
-    "whatsappUrl": "string",
-    "clientName": "string"
+    "whatsappUrl": "https://wa.me/${ctx.tenantPhone ? ctx.tenantPhone.replace(/\D/g, "") : ""}",
+    "clientName": "${ctx.empresa || ctx.leadName}"
   }
 }
-3. Framework SPIN: Situação → Problema → Implicação → Valor → Solução → Módulos → CTA
-4. Anfore os PROBLEMAS e IMPLICAÇÕES aos dados do briefing — não invente problemas genéricos se briefing existir.
-5. Tom: ajuste baseado na amostra de conversa. Formal se o cliente for formal, direto se for direto.
-6. Se houver orçamentos, mencione valores/investimento na seção de valor/CTA.
-7. Se não houver briefing, use argumentos genéricos do segmento.
-8. Se não houver orçamentos, omita seção de investimento e foque em valor qualitativo.
-9. Módulos: selecione 4-6 módulos/serviços mais relevantes ao segmento e ao contexto do cliente, baseados nos produtos cadastrados (se houver) ou nos argumentos de valor da solução apresentada.
-10. Todos os textos em português brasileiro.
-11. Nunca retorne HTML. Sempre JSON com a estrutura acima.`;
+
+━━━ REGRAS DE QUALIDADE ━━━
+1. NUNCA use clichês como "transforme seu negócio", "leve ao próximo nível", "solução completa", "inovador", "robusto".
+2. situation.facts: exatamente 4 fatos com dados numéricos reais e impactantes do segmento "${ctx.mercadoSegmento || "informado"}". Use pesquisas, benchmarks do setor ou invente dados realistas e específicos.
+3. problem.cards: exatamente 3 cards, cada um descrevendo um problema real e distinto do segmento com linguagem específica do dia a dia.
+4. implication.cascade: exatamente 4 passos em cadeia — cada um piora o anterior logicamente.
+5. value.questions: exatamente 3 perguntas retóricas poderosas — o cliente deve responder mentalmente "sim" para todas.
+6. solution.agents: exatamente 3 agentes/funcionalidades com tags distintas.
+7. modules.mods: exatamente 5 módulos específicos ao segmento${ctx.products.length ? ` (baseie-se nos produtos: ${ctx.products.map((p) => p.nome).join(", ")})` : ""}.
+8. Se briefing existir, os problemas e implicações DEVEM refletir as respostas do briefing — não invente problemas que o cliente não mencionou.
+9. O ticket de suporte deve soar 100% real — use jargão do segmento ${ctx.mercadoSegmento || ""}.
+10. Retorne APENAS JSON válido. Nada antes ou depois.`;
 }
 
 // ── HTML renderer from JSON + theme ─────────────────────────────────────────
