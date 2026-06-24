@@ -401,8 +401,17 @@ export default function PropostaPrint() {
               </div>
             </div>
 
-            {/* Direita: número + datas + status */}
-            <div className="text-right shrink-0">
+            {/* Direita: logo do cliente + número + datas + status */}
+            <div className="text-right shrink-0 flex flex-col items-end gap-3">
+              {lead?.logoUrl && (
+                <img
+                  src={lead.logoUrl}
+                  alt={lead.nome ?? "Logo cliente"}
+                  className="h-12 w-auto object-contain rounded"
+                  style={{ maxWidth: "120px" }}
+                  onError={(e) => { (e.target as HTMLImageElement).style.display = "none"; }}
+                />
+              )}
               <div className="inline-block bg-gray-100 rounded-lg px-3 py-2">
                 <p className="text-xs text-gray-500 uppercase tracking-wide font-medium">Orçamento</p>
                 <p className="text-base sm:text-lg font-bold text-gray-900 font-mono">
