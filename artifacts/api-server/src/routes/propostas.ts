@@ -193,6 +193,13 @@ router.patch("/propostas/:id/status", async (req, res) => {
     } else {
       req.log.info({ propostaId: proposta.id, dealId: result.dealId, alreadyProcessed: result.alreadyProcessed }, "proposalAccepted executed via status transition");
     }
+  } else if (status === "aceita" && !proposta.dealId && proposta.leadId) {
+    // No deal linked — move lead directly to convertido so the card reaches "ganho"
+    await db
+      .update(leadsTable)
+      .set({ status: "convertido", updatedAt: new Date() })
+      .where(eq(leadsTable.id, proposta.leadId));
+    req.log.info({ propostaId: proposta.id, leadId: proposta.leadId }, "proposta aceita sem deal: lead movido para convertido");
   } else if (proposta.dealId && status !== "aceita") {
     // Auto-sync deal stage for non-aceita transitions (rejeitada, expirada, pendente)
     const dealEtapaMap: Record<string, string> = {
