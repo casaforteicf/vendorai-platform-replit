@@ -16,6 +16,8 @@ export interface UpdateBusinessProfileBody {
   telefone?: string;
   email?: string;
   vertical?: string;
+  /** Método de vendas configurado (consultiva, spin, challenger, etc.) */
+  metodoVendas?: string;
   logoUrl?: string;
   faviconUrl?: string;
   /** URL pública com informações da linha de produtos para a IA */

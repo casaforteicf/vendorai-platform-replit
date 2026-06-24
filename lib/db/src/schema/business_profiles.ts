@@ -33,6 +33,7 @@ export const businessProfilesTable = pgTable(
     publicoAlvo: text("publico_alvo"),
     concorrentes: jsonb("concorrentes").$type<string[]>(),
     canaisVenda: jsonb("canais_venda").$type<string[]>(),
+    metodoVendas: text("metodo_vendas"),
     discoveryCompletedAt: timestamp("discovery_completed_at"),
     discoveryData: jsonb("discovery_data").$type<Record<string, unknown>>(),
     createdAt: timestamp("created_at").notNull().defaultNow(),

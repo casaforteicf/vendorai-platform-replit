@@ -19,9 +19,12 @@ import {
   leadBriefingsTable,
   leadProposalsTable,
   updateLeadBriefingSchema,
+  businessProfilesTable,
 } from "@workspace/db";
 import { findLeadByDedup, storePhone } from "../lib/dedup.js";
 import { buildUserFunctionFilter, requireAdminOrUserFunction, type UserFunction } from "../middlewares/auth.js";
+import { resolveAIKey } from "../lib/ai-gateway.js";
+import OpenAI from "openai";
 
 const router: IRouter = Router();
 
@@ -643,6 +646,123 @@ router.put("/leads/:leadId/briefing", async (req, res) => {
       })
       .returning();
     res.status(201).json(created);
+  }
+});
+
+// ── POST /leads/:leadId/briefing/generate-questions ─────────────────────────
+// Uses AI to generate SPIN questions tailored to the lead's business and the
+// tenant's configured sales approach (metodoVendas).
+router.post("/leads/:leadId/briefing/generate-questions", async (req, res) => {
+  const leadId = String(req.params.leadId);
+
+  const [lead] = await db
+    .select({
+      id: leadsTable.id,
+      tenantId: leadsTable.tenantId,
+      nome: leadsTable.nome,
+      empresa: leadsTable.empresa,
+      mercadoSegmento: leadsTable.mercadoSegmento,
+      objetivo: leadsTable.objetivo,
+      assignedTo: leadsTable.assignedTo,
+    })
+    .from(leadsTable)
+    .where(eq(leadsTable.id, leadId));
+
+  if (!lead) {
+    res.status(404).json({ error: "Lead não encontrado" });
+    return;
+  }
+
+  if (req.user?.platformRole !== "super_admin" && lead.tenantId !== req.user?.tenantId) {
+    res.status(403).json({ error: "Acesso negado" });
+    return;
+  }
+
+  const tenantId = lead.tenantId;
+
+  const [profile] = await db
+    .select({
+      nomeFantasia: businessProfilesTable.nomeFantasia,
+      vertical: businessProfilesTable.vertical,
+      metodoVendas: businessProfilesTable.metodoVendas,
+      diferenciais: businessProfilesTable.diferenciais,
+      publicoAlvo: businessProfilesTable.publicoAlvo,
+      produtos: businessProfilesTable.produtos,
+    })
+    .from(businessProfilesTable)
+    .where(eq(businessProfilesTable.tenantId, tenantId));
+
+  const metodoMap: Record<string, string> = {
+    consultiva: "Venda Consultiva (foco na dor e contexto do cliente)",
+    spin: "SPIN Selling (situação, problema, implicação, necessidade-solução)",
+    challenger: "Challenger Sale (provocação, ensino, customização)",
+    social: "Social Selling (relacionamento e conteúdo)",
+    outbound: "Outbound (prospecção ativa)",
+    inbound: "Inbound (educação e conteúdo)",
+  };
+  const abordagem = metodoMap[(profile?.metodoVendas ?? "")] ?? (profile?.metodoVendas ?? "Venda Consultiva");
+
+  const produtosDesc = Array.isArray(profile?.produtos) && profile.produtos.length
+    ? profile.produtos.slice(0, 5).map((p: any) => p.nome).join(", ")
+    : "produtos/serviços do tenant";
+
+  const prompt = `Você é um especialista em vendas B2B. Gere perguntas de briefing personalizadas para um vendedor que vai conversar com o seguinte cliente:
+
+CLIENTE:
+- Nome/Empresa: ${lead.empresa ?? lead.nome}
+- Segmento de mercado: ${lead.mercadoSegmento ?? "não informado"}
+- Objetivo/contexto: ${lead.objetivo ?? "não informado"}
+
+EMPRESA VENDEDORA:
+- Nome: ${profile?.nomeFantasia ?? "nossa empresa"}
+- Vertical: ${profile?.vertical ?? "não especificado"}
+- Método de vendas: ${abordagem}
+- Público-alvo: ${profile?.publicoAlvo ?? "não especificado"}
+- Diferenciais: ${profile?.diferenciais ?? "não informados"}
+- Produtos/serviços: ${produtosDesc}
+
+TAREFA: Gere exatamente 3 perguntas para cada bloco SPIN, específicas para o contexto deste cliente e do método "${abordagem}". As perguntas devem ser conversacionais, naturais para WhatsApp/ligação, e explorar o contexto de negócio do CLIENTE (não da empresa vendedora).
+
+Retorne JSON válido neste formato exato:
+{
+  "situationQuestions": ["pergunta 1", "pergunta 2", "pergunta 3"],
+  "problemQuestions": ["pergunta 1", "pergunta 2", "pergunta 3"],
+  "implicationQuestions": ["pergunta 1", "pergunta 2", "pergunta 3"],
+  "needQuestions": ["pergunta 1", "pergunta 2", "pergunta 3"]
+}
+
+Não inclua nenhum texto além do JSON.`;
+
+  try {
+    const aiKey = await resolveAIKey(tenantId, "openai");
+    const openai = new OpenAI({ apiKey: aiKey.apiKey });
+
+    const completion = await openai.chat.completions.create({
+      model: "gpt-4o-mini",
+      messages: [{ role: "user", content: prompt }],
+      response_format: { type: "json_object" },
+      max_tokens: 1000,
+      temperature: 0.7,
+    });
+
+    const raw = completion.choices[0]?.message?.content ?? "{}";
+    let parsed: Record<string, string[]>;
+    try {
+      parsed = JSON.parse(raw);
+    } catch {
+      res.status(502).json({ error: "IA retornou formato inválido" });
+      return;
+    }
+
+    res.json({
+      situationQuestions: parsed.situationQuestions ?? [],
+      problemQuestions: parsed.problemQuestions ?? [],
+      implicationQuestions: parsed.implicationQuestions ?? [],
+      needQuestions: parsed.needQuestions ?? [],
+    });
+  } catch (err: any) {
+    req.log.error({ err }, "briefing/generate-questions error");
+    res.status(500).json({ error: "Erro ao gerar perguntas com IA" });
   }
 });
 

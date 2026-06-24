@@ -30,6 +30,7 @@ import {
   Flame,
   CloudSun,
   Snowflake,
+  Sparkles,
 } from "lucide-react";
 
 const SITUATION_QUESTIONS = [
@@ -163,6 +164,53 @@ export default function LeadBriefingTab({ leadId, tenantId }: LeadBriefingTabPro
   });
   const [isSaving, setIsSaving] = useState(false);
   const [hasChanges, setHasChanges] = useState(false);
+  const [isGeneratingQuestions, setIsGeneratingQuestions] = useState(false);
+
+  const handleGenerateQuestions = async () => {
+    setIsGeneratingQuestions(true);
+    try {
+      const res = await fetch(`/api/leads/${leadId}/briefing/generate-questions`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${localStorage.getItem("vendorai_token")}` },
+      });
+      const data = (await res.json()) as {
+        situationQuestions?: string[];
+        problemQuestions?: string[];
+        implicationQuestions?: string[];
+        needQuestions?: string[];
+        error?: string;
+      };
+      if (!res.ok || data.error) {
+        toast({ title: "Erro ao gerar perguntas", description: data.error ?? "Tente novamente.", variant: "destructive" });
+        return;
+      }
+      setForm((prev) => ({
+        ...prev,
+        situationAnswers: (data.situationQuestions ?? SITUATION_QUESTIONS).map((q, i) => ({
+          question: q,
+          answer: prev.situationAnswers[i]?.answer ?? "",
+        })),
+        problemAnswers: (data.problemQuestions ?? PROBLEM_QUESTIONS).map((q, i) => ({
+          question: q,
+          answer: prev.problemAnswers[i]?.answer ?? "",
+        })),
+        implicationAnswers: (data.implicationQuestions ?? IMPLICATION_QUESTIONS).map((q, i) => ({
+          question: q,
+          answer: prev.implicationAnswers[i]?.answer ?? "",
+        })),
+        needAnswers: (data.needQuestions ?? NEED_QUESTIONS).map((q, i) => ({
+          question: q,
+          answer: prev.needAnswers[i]?.answer ?? "",
+        })),
+      }));
+      setHasChanges(true);
+      toast({ title: "Perguntas geradas!", description: "Revise e preencha as respostas abaixo." });
+    } catch {
+      toast({ title: "Erro ao gerar perguntas", description: "Verifique sua conexão.", variant: "destructive" });
+    } finally {
+      setIsGeneratingQuestions(false);
+    }
+  };
 
   useEffect(() => {
     if (briefing) {
@@ -327,16 +375,29 @@ export default function LeadBriefingTab({ leadId, tenantId }: LeadBriefingTabPro
               </Badge>
             )}
           </div>
-          <Button
-            size="sm"
-            className="h-7 text-xs gap-1"
-            onClick={handleSave}
-            disabled={isSaving || !hasChanges}
-            data-testid="btn-salvar-briefing"
-          >
-            {isSaving ? <Loader2 className="h-3 w-3 animate-spin" /> : <Save className="h-3 w-3" />}
-            Salvar
-          </Button>
+          <div className="flex items-center gap-2">
+            <Button
+              size="sm"
+              variant="outline"
+              className="h-7 text-xs gap-1"
+              onClick={handleGenerateQuestions}
+              disabled={isGeneratingQuestions}
+              title="Gerar perguntas personalizadas para este cliente com IA"
+            >
+              {isGeneratingQuestions ? <Loader2 className="h-3 w-3 animate-spin" /> : <Sparkles className="h-3 w-3" />}
+              {isGeneratingQuestions ? "Gerando…" : "Gerar perguntas IA"}
+            </Button>
+            <Button
+              size="sm"
+              className="h-7 text-xs gap-1"
+              onClick={handleSave}
+              disabled={isSaving || !hasChanges}
+              data-testid="btn-salvar-briefing"
+            >
+              {isSaving ? <Loader2 className="h-3 w-3 animate-spin" /> : <Save className="h-3 w-3" />}
+              Salvar
+            </Button>
+          </div>
         </CardTitle>
       </CardHeader>
       <CardContent className="space-y-6">

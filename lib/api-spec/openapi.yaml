@@ -11702,6 +11702,10 @@ components:
         vertical:
           type: string
           nullable: true
+        metodoVendas:
+          type: string
+          nullable: true
+          description: Método de vendas configurado (consultiva, spin, challenger, etc.)
         logoUrl:
           type: string
           nullable: true
@@ -11773,6 +11777,9 @@ components:
           type: string
         vertical:
           type: string
+        metodoVendas:
+          type: string
+          description: Método de vendas configurado (consultiva, spin, challenger, etc.)
         logoUrl:
           type: string
         faviconUrl:
@@ -11823,6 +11830,9 @@ components:
           type: string
         vertical:
           type: string
+        metodoVendas:
+          type: string
+          description: Método de vendas configurado (consultiva, spin, challenger, etc.)
         logoUrl:
           type: string
         faviconUrl:

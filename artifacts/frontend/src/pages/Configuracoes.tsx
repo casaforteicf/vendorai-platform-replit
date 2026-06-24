@@ -159,6 +159,15 @@ const thresholdSchema = z.object({
 });
 type ThresholdForm = z.infer<typeof thresholdSchema>;
 
+const METODO_VENDAS_OPTIONS = [
+  { value: "consultiva", label: "Venda Consultiva" },
+  { value: "spin", label: "SPIN Selling" },
+  { value: "challenger", label: "Challenger Sale" },
+  { value: "social", label: "Social Selling" },
+  { value: "outbound", label: "Outbound" },
+  { value: "inbound", label: "Inbound" },
+] as const;
+
 const profileSchema = z.object({
   razaoSocial: z.string().min(2, "Obrigatório"),
   nomeFantasia: z.string().optional(),
@@ -167,6 +176,7 @@ const profileSchema = z.object({
   telefone: z.string().optional(),
   email: z.string().email("E-mail inválido").optional().or(z.literal("")),
   vertical: z.string().optional(),
+  metodoVendas: z.string().optional(),
   urlLinhaProdutos: z.string().url("URL inválida").optional().or(z.literal("")),
   logoUrl: z.string().optional(),
 });
@@ -602,7 +612,7 @@ export default function Configuracoes() {
 
   const profileForm = useForm<ProfileForm>({
     resolver: zodResolver(profileSchema),
-    defaultValues: { razaoSocial: "", nomeFantasia: "", cnpj: "", endereco: "", telefone: "", email: "", vertical: "", urlLinhaProdutos: "", logoUrl: "" },
+    defaultValues: { razaoSocial: "", nomeFantasia: "", cnpj: "", endereco: "", telefone: "", email: "", vertical: "", metodoVendas: "", urlLinhaProdutos: "", logoUrl: "" },
     values: profileQuery.data
       ? {
           razaoSocial:      profileQuery.data.razaoSocial ?? "",
@@ -612,6 +622,7 @@ export default function Configuracoes() {
           telefone:         profileQuery.data.telefone ?? "",
           email:            profileQuery.data.email ?? "",
           vertical:         profileQuery.data.vertical ?? "",
+          metodoVendas:     profileQuery.data.metodoVendas ?? "",
           urlLinhaProdutos: profileQuery.data.urlLinhaProdutos ?? "",
           logoUrl:          profileQuery.data.logoUrl ?? "",
         }
@@ -628,6 +639,7 @@ export default function Configuracoes() {
       telefone:         values.telefone || undefined,
       email:            values.email || undefined,
       vertical:         values.vertical || undefined,
+      metodoVendas:     values.metodoVendas || undefined,
       urlLinhaProdutos: values.urlLinhaProdutos || undefined,
       logoUrl:          values.logoUrl || undefined,
     };
@@ -1600,6 +1612,32 @@ export default function Configuracoes() {
                               ))}
                             </SelectContent>
                           </Select>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+                    <FormField
+                      control={profileForm.control}
+                      name="metodoVendas"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>Tipo de abordagem</FormLabel>
+                          <Select onValueChange={field.onChange} value={field.value || "__none__"}>
+                            <FormControl>
+                              <SelectTrigger>
+                                <SelectValue placeholder="Selecionar método..." />
+                              </SelectTrigger>
+                            </FormControl>
+                            <SelectContent>
+                              <SelectItem value="__none__">Não informado</SelectItem>
+                              {METODO_VENDAS_OPTIONS.map((m) => (
+                                <SelectItem key={m.value} value={m.value}>{m.label}</SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                          <p className="text-xs text-muted-foreground">
+                            Método usado pela IA para gerar perguntas de briefing.
+                          </p>
                           <FormMessage />
                         </FormItem>
                       )}

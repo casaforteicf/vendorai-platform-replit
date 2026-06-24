@@ -10,6 +10,7 @@
     "migrate-supermercado": "tsx ./src/migrate-supermercado.ts",
     "migrate-varejo": "tsx ./src/migrate-varejo.ts",
     "migrate-site-generator": "tsx ./src/migrate-site-generator.ts",
+    "migrate-metodo-vendas": "tsx ./src/migrate-metodo-vendas.ts",
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {

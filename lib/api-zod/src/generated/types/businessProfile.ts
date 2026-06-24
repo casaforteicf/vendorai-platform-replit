@@ -18,6 +18,8 @@ export interface BusinessProfile {
   telefone?: string | null;
   email?: string | null;
   vertical?: string | null;
+  /** Método de vendas configurado (consultiva, spin, challenger, etc.) */
+  metodoVendas?: string | null;
   logoUrl?: string | null;
   faviconUrl?: string | null;
   /** URL pública com informações da linha de produtos para a IA */
