@@ -213,6 +213,37 @@ export async function checkQuota(
     }
   }
 
+  const creditsUsd = Number(tenant.aiCreditsUsd ?? 0);
+
+  // 5b. Platform-subsidized mode: tenant has no plan and no credits but the
+  //     platform OPENAI_API_KEY is available. Allow the call through so the
+  //     system works out of the box for tenants that haven't been assigned a
+  //     plan yet. The daily ceiling check (step 3) still protects the platform.
+  if (quotaUsd === null && creditsUsd === 0) {
+    const hasPlatformKey = Boolean(process.env["OPENAI_API_KEY"] || process.env["ANTHROPIC_API_KEY"]);
+    if (hasPlatformKey) {
+      log?.debug({ tenantId }, "ai-gateway: platform-subsidized mode (no plan/credits)");
+      const startOfMonthPs = new Date(now.getFullYear(), now.getMonth(), 1);
+      const [monthlyRowPs] = await db
+        .select({ total: sql<number>`coalesce(sum(${aiUsageLogsTable.costEstimateUsd}), 0)` })
+        .from(aiUsageLogsTable)
+        .where(
+          and(
+            eq(aiUsageLogsTable.tenantId, tenantId as string),
+            gte(aiUsageLogsTable.createdAt, startOfMonthPs),
+          ),
+        );
+      return {
+        ok: true,
+        usedByok: false,
+        quotaUsd: null,
+        creditsUsd: 0,
+        spentThisMonthUsd: Number(monthlyRowPs?.total ?? 0),
+        remainingUsd: Infinity,
+      };
+    }
+  }
+
   // 6. Compute monthly spend from ai_usage_logs (this month)
   const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
   const [monthlyRow] = await db
@@ -225,7 +256,6 @@ export async function checkQuota(
       ),
     );
   const spentThisMonthUsd = Number(monthlyRow?.total ?? 0);
-  const creditsUsd = Number(tenant.aiCreditsUsd ?? 0);
   const remainingUsd = (quotaUsd ?? 0) + creditsUsd - spentThisMonthUsd;
 
   // 7. 80% alert

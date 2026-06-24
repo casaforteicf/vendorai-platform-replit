@@ -15,3 +15,4 @@
 - [Demo session auth](demo-session-auth.md) — demo login é "try-it" não-persistente; detectado pelo JWT email demo@demo.com + marker sessionStorage; token fica em localStorage vendorai_token.
 - [Prospector & pgvector](prospector-pgvector.md) — pgvector habilitado no Supabase; migração de tabela nova via DDL raw (push trunca tenant_domains); Places API New precisa GOOGLE_PLACES_API_KEY; leadId opcional exige checagem de tenant.
 - [api-server tsc/test limits](api-server-tsc-test-limits.md) — full tsc da api-server não termina no orçamento das ferramentas (use typecheck:libs + esbuild); 3 isolation tests dão timeout 5s flaky por import lento (~26s), não são falhas de asserção.
+- [AI Gateway Platform-Subsidized Mode](ai-gateway-platform-subsidized.md) — tenants sem plan_id e sem credits bloqueavam IA; fix: mode platform-subsidized usa chave da plataforma quando sem plano/créditos.
