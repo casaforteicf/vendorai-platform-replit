@@ -843,7 +843,7 @@ export default function LeadDetail() {
           body: JSON.stringify({
             name: newActivityAnexoFile.name,
             size: newActivityAnexoFile.size,
-            contentType: newActivityAnexoFile.type,
+            contentType: newActivityAnexoFile.type || "application/octet-stream",
           }),
         });
         if (!metaRes.ok) throw new Error("Falha ao obter URL de upload");
@@ -852,7 +852,7 @@ export default function LeadDetail() {
         const putRes = await fetch(uploadURL, {
           method: "PUT",
           body: newActivityAnexoFile,
-          headers: { "Content-Type": newActivityAnexoFile.type },
+          headers: { "Content-Type": newActivityAnexoFile.type || "application/octet-stream" },
         });
         if (!putRes.ok) throw new Error("Falha ao enviar anexo");
 
