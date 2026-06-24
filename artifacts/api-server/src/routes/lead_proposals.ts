@@ -275,6 +275,8 @@ router.post("/leads/:leadId/proposals", async (req, res) => {
   const primaryColor = ctx.lead.corDestaque || "#A78BFA";
   const theme = generateTheme(primaryColor);
 
+  const bodyImagens: string[] | null = Array.isArray(req.body?.imagens) ? req.body.imagens : null;
+
   const html = renderProposalHtml(
     json,
     theme,
@@ -282,7 +284,8 @@ router.post("/leads/:leadId/proposals", async (req, res) => {
     ctx.lead.empresa || ctx.lead.nome,
     ctx.tenantName || undefined,
     ctx.lead.websiteUrl || undefined,
-    ctx.tenantLogoUrl || undefined
+    ctx.tenantLogoUrl || undefined,
+    bodyImagens
   );
 
   const [proposal] = await db

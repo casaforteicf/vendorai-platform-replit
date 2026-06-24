@@ -36,6 +36,7 @@ import {
   Package,
   Upload,
   Globe,
+  ImagePlus,
 } from "lucide-react";
 import {
   useListLeadProposals,
@@ -82,6 +83,11 @@ export default function LeadPropostaTab({ leadId, tenantId, lead }: LeadProposta
   const logoInputRef = useRef<HTMLInputElement>(null);
   const requestUploadUrl = useRequestUploadUrl();
 
+  // Imagens da proposta
+  const [proposalImages, setProposalImages] = useState<string[]>([]);
+  const [imageUploading, setImageUploading] = useState(false);
+  const imageInputRef = useRef<HTMLInputElement>(null);
+
   // Product form
   const [newProductNome, setNewProductNome] = useState("");
   const [newProductImagem, setNewProductImagem] = useState("");
@@ -122,6 +128,22 @@ export default function LeadPropostaTab({ leadId, tenantId, lead }: LeadProposta
     setCorSecundaria(lead?.corSecundaria ?? "");
   }, [lead]);
 
+  async function uploadImageFile(file: File): Promise<string> {
+    const result = await new Promise<{ uploadURL: string; objectPath: string }>((resolve, reject) => {
+      requestUploadUrl.mutate(
+        { data: { name: file.name, size: file.size, contentType: file.type || "image/jpeg" } },
+        { onSuccess: resolve, onError: reject },
+      );
+    });
+    const uploadRes = await fetch(result.uploadURL, {
+      method: "PUT",
+      body: file,
+      headers: { "Content-Type": file.type || "image/jpeg" },
+    });
+    if (!uploadRes.ok) throw new Error("Upload falhou");
+    return `/api/storage/public-objects/${result.objectPath}`;
+  }
+
   async function handleLogoUpload(file: File) {
     if (!file.type.startsWith("image/")) {
       toast({ title: "Selecione um arquivo de imagem (PNG, JPG, SVG...)", variant: "destructive" });
@@ -147,6 +169,30 @@ export default function LeadPropostaTab({ leadId, tenantId, lead }: LeadProposta
       toast({ title: "Erro no upload. Tente novamente.", variant: "destructive" });
     } finally {
       setLogoUploading(false);
+    }
+  }
+
+  async function handleProposalImageUpload(files: FileList) {
+    setImageUploading(true);
+    const uploaded: string[] = [];
+    try {
+      for (const file of Array.from(files)) {
+        if (!file.type.startsWith("image/")) continue;
+        if (file.size > 10 * 1024 * 1024) {
+          toast({ title: `${file.name} excede 10MB`, variant: "destructive" });
+          continue;
+        }
+        const url = await uploadImageFile(file);
+        uploaded.push(url);
+      }
+      if (uploaded.length) {
+        setProposalImages((prev) => [...prev, ...uploaded]);
+        toast({ title: `${uploaded.length} imagem(ns) adicionada(s)` });
+      }
+    } catch {
+      toast({ title: "Erro no upload de imagem", variant: "destructive" });
+    } finally {
+      setImageUploading(false);
     }
   }
 
@@ -187,7 +233,9 @@ export default function LeadPropostaTab({ leadId, tenantId, lead }: LeadProposta
           websiteUrl: websiteUrl || undefined,
           corDestaque: corDestaque || undefined,
           corSecundaria: corSecundaria || undefined,
-        },
+          imagens: proposalImages.length > 0 ? proposalImages : undefined,
+          objetivo: lead?.objetivo || undefined,
+        } as any,
       });
       toast({ title: `Proposta v${created.version} gerada com sucesso` });
       queryClient.invalidateQueries({ queryKey: ["listLeadProposals", leadId] });
@@ -396,6 +444,75 @@ export default function LeadPropostaTab({ leadId, tenantId, lead }: LeadProposta
               </div>
             </div>
           </div>
+        </CardContent>
+      </Card>
+
+      {/* Imagens da Proposta */}
+      <Card>
+        <CardHeader className="pb-3">
+          <CardTitle className="text-sm font-semibold flex items-center gap-2">
+            <ImagePlus className="h-4 w-4" />
+            Imagens da Proposta
+            {proposalImages.length > 0 && (
+              <Badge variant="outline" className="text-xs ml-1">{proposalImages.length}</Badge>
+            )}
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          <p className="text-xs text-muted-foreground">
+            Adicione imagens que aparecerão em uma galeria visual na proposta gerada.
+          </p>
+
+          {/* Grid de imagens adicionadas */}
+          {proposalImages.length > 0 && (
+            <div className="grid grid-cols-3 gap-2">
+              {proposalImages.map((url, idx) => (
+                <div key={idx} className="relative group rounded-lg overflow-hidden border aspect-video bg-muted">
+                  <img
+                    src={url}
+                    alt={`Imagem ${idx + 1}`}
+                    className="w-full h-full object-cover"
+                    onError={(e) => { (e.target as HTMLImageElement).src = ""; }}
+                  />
+                  <button
+                    onClick={() => setProposalImages((prev) => prev.filter((_, i) => i !== idx))}
+                    className="absolute top-1 right-1 bg-black/60 text-white rounded-full p-0.5 opacity-0 group-hover:opacity-100 transition-opacity"
+                  >
+                    <X className="h-3 w-3" />
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {/* Upload */}
+          <input
+            ref={imageInputRef}
+            type="file"
+            accept="image/*"
+            multiple
+            className="hidden"
+            onChange={(e) => {
+              if (e.target.files?.length) {
+                handleProposalImageUpload(e.target.files);
+                e.target.value = "";
+              }
+            }}
+          />
+          <Button
+            variant="outline"
+            size="sm"
+            className="w-full h-8 text-xs gap-2"
+            disabled={imageUploading}
+            onClick={() => imageInputRef.current?.click()}
+          >
+            {imageUploading ? (
+              <Loader2 className="h-3 w-3 animate-spin" />
+            ) : (
+              <Upload className="h-3 w-3" />
+            )}
+            {imageUploading ? "Enviando..." : "Adicionar imagens"}
+          </Button>
         </CardContent>
       </Card>
 

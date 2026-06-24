@@ -12538,6 +12538,16 @@ components:
         corSecundaria:
           type: string
           nullable: true
+        imagens:
+          type: array
+          nullable: true
+          description: URLs of images to embed in the proposal visual gallery
+          items:
+            type: string
+        objetivo:
+          type: string
+          nullable: true
+          description: Client's business objective / what they want to achieve
 
     ProductPresentation:
       type: object

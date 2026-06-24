@@ -164,6 +164,10 @@ export function buildProposalPrompt(ctx: {
     : "";
 
   const tenantLabel = ctx.tenantName ? `da empresa "${ctx.tenantName}"` : "da empresa contratada";
+  const segmentoBlock = ctx.mercadoSegmento
+    ? `\n## Segmento do cliente: "${ctx.mercadoSegmento}"\nIMPORTANTE: toda a proposta DEVE usar terminologia, exemplos, dores e oportunidades específicas deste segmento. Não use linguagem genérica de "empresa". Use jargão real do setor. Os problemas, implicações e módulos devem ser exemplos concretos do dia a dia de ${ctx.mercadoSegmento}. Se for varejo: fale em loja, vendedor, estoque, ticket médio, sazonalidade. Se for construção: obra, engenheiro, orçamento, cliente de obra. Se for saúde: paciente, consulta, agenda. Adapte para o segmento real.`
+    : "";
+
   return `Você é um redator comercial sênior ${tenantLabel}. Gere o conteúdo de uma proposta comercial personalizada em formato JSON estrito para o cliente abaixo.
 
 ## Dados do cliente
@@ -172,6 +176,7 @@ export function buildProposalPrompt(ctx: {
 - Objetivo: ${ctx.objetivo || "Não informado"}
 - Mercado/Segmento: ${ctx.mercadoSegmento || "Não informado"}
 - Cor de destaque: ${ctx.corDestaque}
+${segmentoBlock}
 ${productsBlock}
 ${propostasBlock}
 ${briefingBlock}
@@ -290,7 +295,7 @@ export function renderProposalHtml(json: unknown, theme: {
   secondary: string; secondarySoft: string;
   concrete: string; concreteLine: string;
   ok: string; warn: string;
-}, logoUrl?: string | null, clientName?: string, tenantName?: string, websiteUrl?: string | null, tenantLogoUrl?: string | null): string {
+}, logoUrl?: string | null, clientName?: string, tenantName?: string, websiteUrl?: string | null, tenantLogoUrl?: string | null, imagens?: string[] | null): string {
   const d = json as Record<string, any>;
   const hero = d.hero || {};
   const situation = d.situation || {};
@@ -461,6 +466,9 @@ export function renderProposalHtml(json: unknown, theme: {
   .cta-final .hero-ctas{margin-top:28px}
   .cta-final .btn-ghost{border-color:rgba(255,255,255,0.4);color:#fff}
   footer{padding:30px 6vw;font-family:var(--mono);font-size:0.72rem;color:#8b84a8;background:var(--navy-deep);display:flex;justify-content:space-between;flex-wrap:wrap;gap:10px}
+  .gallery-section{padding:60px 6vw;background:var(--cream-2)}
+  .gallery-grid{display:grid;gap:12px;margin-top:28px;grid-template-columns:repeat(auto-fill,minmax(220px,1fr))}
+  .gallery-img{width:100%;aspect-ratio:4/3;object-fit:cover;border-radius:10px;border:1px solid var(--concrete-line);box-shadow:0 4px 16px -6px rgba(27,20,56,0.18)}
 </style>
 </head>
 <body>
@@ -487,6 +495,17 @@ export function renderProposalHtml(json: unknown, theme: {
       <div class="for-tag">${hero.forTag || ""}</div>
     </div>
   </section>
+
+  ${imagens && imagens.length > 0 ? `
+<section class="gallery-section" id="galeria">
+  <div class="container">
+    <div class="eyebrow-row"><span class="cod">Galeria</span><div class="eyebrow-line"></div></div>
+    <div class="gallery-grid">
+      ${imagens.map((url) => `<img src="${url}" class="gallery-img reveal" alt="" loading="lazy" onerror="this.style.display='none'" />`).join("\n      ")}
+    </div>
+  </div>
+</section>
+` : ""}
 
   <section id="situacao">
     <div class="container">

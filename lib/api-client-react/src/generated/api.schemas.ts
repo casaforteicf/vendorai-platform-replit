@@ -2313,6 +2313,10 @@ export interface GenerateLeadProposalBody {
   websiteUrl?: string | null;
   corDestaque?: string | null;
   corSecundaria?: string | null;
+  /** URLs of images to embed in the proposal visual gallery */
+  imagens?: string[] | null;
+  /** Client's business objective / what they want to achieve */
+  objetivo?: string | null;
 }
 
 export type ProductPresentationStatus = typeof ProductPresentationStatus[keyof typeof ProductPresentationStatus];
