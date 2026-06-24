@@ -187,7 +187,19 @@ router.post("/tenants/:tenantId/site-config/generate", async (req, res) => {
     return;
   }
 
-  const { tipo = "landing_page" } = req.body as { tipo?: string };
+  const {
+    tipo = "landing_page",
+    tom = "",
+    corPrimaria = "",
+    painPoint = "",
+    ctaText = "",
+  } = req.body as {
+    tipo?: string;
+    tom?: string;
+    corPrimaria?: string;
+    painPoint?: string;
+    ctaText?: string;
+  };
 
   const [[businessProfile], [tenant], produtos] = await Promise.all([
     db.select().from(businessProfilesTable).where(eq(businessProfilesTable.tenantId, tenantId)),
@@ -209,9 +221,28 @@ router.post("/tenants/:tenantId/site-config/generate", async (req, res) => {
 
   const isEcommerce = tipo === "ecommerce";
 
-  const systemPrompt = `Você é um especialista em copywriting e web design para pequenas e médias empresas brasileiras. 
-Gere conteúdo completo para um site profissional em português brasileiro.
-Responda APENAS com JSON válido, sem explicações, sem markdown.`;
+  const tomLabel: Record<string, string> = {
+    profissional: "Profissional e confiável — use linguagem formal, transmita segurança",
+    amigavel: "Amigável e próximo — use 'você', tom caloroso e acolhedor",
+    urgente: "Urgente e direto — use gatilhos de escassez, linguagem imperativa",
+    premium: "Premium e sofisticado — elegante, minimalista, palavras de alto valor percebido",
+    descontraido: "Descontraído e criativo — informal, bem-humorado, use expressões do dia a dia",
+  };
+  const tomInstrucao = tom ? (tomLabel[tom] ?? tom) : "Profissional e confiável";
+
+  const corInstrucao = corPrimaria
+    ? `Use ${corPrimaria} como cor primária e derive secundária e acento harmonicamente`
+    : cores
+    ? `Baseie-se nas cores da marca: ${cores}`
+    : "";
+
+  const systemPrompt = `Você é um especialista sênior em copywriting persuasivo e web design para pequenas e médias empresas brasileiras.
+Seu objetivo é gerar conteúdo de alta qualidade que CONVERTE — textos que vendem, não apenas descrevem.
+Regras obrigatórias:
+- Headlines: impactantes, focadas no benefício/resultado do cliente, não no produto
+- Depoimentos: realistas, com nome completo, cidade/empresa, detalhes específicos
+- Diferenciais: concretos, mensuráveis quando possível (ex: "Entrega em 24h" não "Entrega rápida")
+- Responda APENAS com JSON válido, sem explicações, sem markdown, sem comentários`;
 
   const userPrompt = `Gere um JSON completo para o site ${isEcommerce ? "e-commerce" : "landing page"} da empresa abaixo.
 
@@ -221,7 +252,10 @@ ${slogan ? `SLOGAN: ${slogan}` : ""}
 ${missao ? `MISSÃO: ${missao}` : ""}
 ${diferenciais ? `DIFERENCIAIS: ${diferenciais}` : ""}
 ${publicoAlvo ? `PÚBLICO-ALVO: ${publicoAlvo}` : ""}
-${cores ? `CORES DA MARCA: ${cores}` : ""}
+${painPoint ? `MAIOR DOR DO CLIENTE: ${painPoint}` : ""}
+${ctaText ? `AÇÃO PRINCIPAL (CTA): ${ctaText}` : ""}
+TOM DE VOZ: ${tomInstrucao}
+${corInstrucao ? `COR: ${corInstrucao}` : ""}
 ${produtosTexto ? `PRODUTOS/SERVIÇOS:\n${produtosTexto}` : ""}
 
 Gere um JSON com EXATAMENTE esta estrutura (todos os campos obrigatórios):
@@ -287,7 +321,7 @@ Gere um JSON com EXATAMENTE esta estrutura (todos os campos obrigatórios):
         { role: "system", content: systemPrompt },
         { role: "user", content: userPrompt },
       ],
-      { model: "gpt-4o-mini", temperature: 0.8, maxTokens: 2500, responseFormat: { type: "json_object" }, log: req.log },
+      { model: "gpt-4o", temperature: 0.75, maxTokens: 3500, responseFormat: { type: "json_object" }, log: req.log },
     );
 
     const raw = aiResult.content || "{}";
@@ -316,8 +350,8 @@ Gere um JSON com EXATAMENTE esta estrutura (todos os campos obrigatórios):
         tipo,
         generatedContent: generated,
         heroImageUrl,
-        status: "published",
-        ativo: true,
+        status: "draft",
+        ativo: false,
         corPrimaria: generated.cores?.primaria ?? null,
         tagline: generated.hero?.subheadline ?? null,
         updatedAt: new Date(),
@@ -332,8 +366,8 @@ Gere um JSON com EXATAMENTE esta estrutura (todos os campos obrigatórios):
         tipo,
         generatedContent: generated,
         heroImageUrl,
-        status: "published",
-        ativo: true,
+        status: "draft",
+        ativo: false,
         corPrimaria: generated.cores?.primaria ?? null,
         tagline: generated.hero?.subheadline ?? null,
       })
