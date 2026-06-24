@@ -18,7 +18,7 @@ import {
   intelligenceAnalysisLogTable,
   leadBriefingsTable,
   leadProposalsTable,
-  insertLeadBriefingSchema,
+  updateLeadBriefingSchema,
 } from "@workspace/db";
 import { findLeadByDedup, storePhone } from "../lib/dedup.js";
 import { buildUserFunctionFilter, requireAdminOrUserFunction, type UserFunction } from "../middlewares/auth.js";
@@ -560,7 +560,7 @@ router.put("/leads/:leadId/briefing", async (req, res) => {
     return;
   }
 
-  const parsed = insertLeadBriefingSchema.safeParse(req.body);
+  const parsed = updateLeadBriefingSchema.safeParse(req.body);
   if (!parsed.success) {
     res.status(422).json({ error: parsed.error.message });
     return;
