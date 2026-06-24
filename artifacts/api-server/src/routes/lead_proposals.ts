@@ -277,6 +277,33 @@ router.post("/leads/:leadId/proposals", async (req, res) => {
   const theme = generateTheme(primaryColor);
 
   const bodyImagens: string[] | null = Array.isArray(req.body?.imagens) ? req.body.imagens : null;
+  const bodyPropostaId: string | null = req.body?.propostaId ? String(req.body.propostaId) : null;
+
+  let orcamentoEmbed: {
+    titulo: string; numero?: string | null;
+    itens: Array<{ nome: string; quantidade: number; valorUnitario: number; sku?: string | null; descricao?: string | null }>;
+    valorTotal?: string | null; observacoes?: string | null;
+    formaPagamento?: string | null; condPagamento?: string | null; prazoEntrega?: string | null;
+  } | null = null;
+
+  if (bodyPropostaId) {
+    const [orc] = await db
+      .select()
+      .from(propostasTable)
+      .where(and(eq(propostasTable.id, bodyPropostaId), eq(propostasTable.tenantId, tenantId)));
+    if (orc) {
+      orcamentoEmbed = {
+        titulo: orc.titulo,
+        numero: orc.numero,
+        itens: (orc.itens || []) as Array<{ nome: string; quantidade: number; valorUnitario: number; sku?: string | null; descricao?: string | null }>,
+        valorTotal: orc.valorTotal,
+        observacoes: orc.observacoes,
+        formaPagamento: orc.formaPagamento,
+        condPagamento: orc.condPagamento,
+        prazoEntrega: orc.prazoEntrega,
+      };
+    }
+  }
 
   const html = renderProposalHtml(
     json,
@@ -286,7 +313,8 @@ router.post("/leads/:leadId/proposals", async (req, res) => {
     ctx.tenantName || undefined,
     ctx.lead.websiteUrl || undefined,
     ctx.tenantLogoUrl || undefined,
-    bodyImagens
+    bodyImagens,
+    orcamentoEmbed
   );
 
   const [proposal] = await db

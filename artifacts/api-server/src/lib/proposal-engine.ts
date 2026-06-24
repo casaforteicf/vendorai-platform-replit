@@ -304,7 +304,16 @@ export function renderProposalHtml(json: unknown, theme: {
   secondary: string; secondarySoft: string;
   concrete: string; concreteLine: string;
   ok: string; warn: string;
-}, logoUrl?: string | null, clientName?: string, tenantName?: string, websiteUrl?: string | null, tenantLogoUrl?: string | null, imagens?: string[] | null): string {
+}, logoUrl?: string | null, clientName?: string, tenantName?: string, websiteUrl?: string | null, tenantLogoUrl?: string | null, imagens?: string[] | null, orcamento?: {
+  titulo: string;
+  numero?: string | null;
+  itens: Array<{ nome: string; quantidade: number; valorUnitario: number; sku?: string | null; descricao?: string | null }>;
+  valorTotal?: string | null;
+  observacoes?: string | null;
+  formaPagamento?: string | null;
+  condPagamento?: string | null;
+  prazoEntrega?: string | null;
+} | null): string {
   const d = json as Record<string, any>;
   const hero = d.hero || {};
   const situation = d.situation || {};
@@ -478,6 +487,26 @@ export function renderProposalHtml(json: unknown, theme: {
   .gallery-section{padding:60px 6vw;background:var(--cream-2)}
   .gallery-grid{display:grid;gap:12px;margin-top:28px;grid-template-columns:repeat(auto-fill,minmax(220px,1fr))}
   .gallery-img{width:100%;aspect-ratio:4/3;object-fit:cover;border-radius:10px;border:1px solid var(--concrete-line);box-shadow:0 4px 16px -6px rgba(27,20,56,0.18)}
+  .client-badge{display:flex;align-items:center;gap:9px;background:rgba(255,255,255,0.82);border:1px solid var(--concrete-line);border-radius:50px;padding:5px 14px 5px 5px;width:fit-content;margin-bottom:8px;backdrop-filter:blur(4px)}
+  .client-badge-logo{height:28px;width:28px;object-fit:contain;border-radius:50%;border:1px solid var(--concrete-line);background:#fff;flex-shrink:0}
+  .client-badge-label{font-family:var(--mono);font-size:0.62rem;color:#8b84a8;text-transform:uppercase;letter-spacing:.08em}
+  .client-badge-name{font-family:var(--mono);font-size:0.74rem;color:var(--navy-mid);font-weight:600}
+  .orc-section{background:var(--cream);border-top:1px solid var(--concrete-line)}
+  .orc-table{width:100%;border-collapse:collapse;margin-top:28px;font-size:0.9rem}
+  .orc-table th{font-family:var(--mono);font-size:0.65rem;letter-spacing:.07em;text-transform:uppercase;color:#6b6485;border-bottom:2px solid var(--concrete-line);padding:8px 10px;text-align:left}
+  .orc-table th.r,.orc-table td.r{text-align:right}
+  .orc-table td{padding:12px 10px;border-bottom:1px solid var(--concrete-line);color:var(--ink);vertical-align:top}
+  .orc-table tr:last-child td{border-bottom:none}
+  .orc-table .desc{font-size:0.78rem;color:#6b6485;display:block;margin-top:2px}
+  .orc-total-row{display:flex;justify-content:flex-end;margin-top:20px}
+  .orc-total-box{background:linear-gradient(90deg,rgba(167,139,250,0.1),rgba(34,211,238,0.08));border:1px solid var(--indigo-soft);border-radius:10px;padding:14px 22px;text-align:right}
+  .orc-total-label{font-family:var(--mono);font-size:0.68rem;text-transform:uppercase;letter-spacing:.07em;color:#6b6485;display:block;margin-bottom:4px}
+  .orc-total-value{font-family:var(--display);font-size:1.9rem;color:var(--navy-deep);font-weight:700}
+  .orc-meta{display:flex;flex-wrap:wrap;gap:20px;margin-top:28px;padding-top:22px;border-top:1px solid var(--concrete-line)}
+  .orc-meta-item{display:flex;flex-direction:column;gap:3px}
+  .orc-meta-item span:first-child{font-family:var(--mono);font-size:0.62rem;text-transform:uppercase;letter-spacing:.07em;color:#8b84a8}
+  .orc-meta-item span:last-child{font-size:0.88rem;color:var(--ink);font-weight:600}
+  .orc-obs{margin-top:18px;padding:14px 16px;background:var(--cream-2);border-radius:8px;border:1px solid var(--concrete-line);font-size:0.88rem;color:#4a4368;line-height:1.6}
 </style>
 </head>
 <body>
@@ -495,6 +524,10 @@ export function renderProposalHtml(json: unknown, theme: {
   <section class="hero">
     <div class="container">
       <div class="hero-tag">${hero.tagline || ""}</div>
+      ${logoUrl ? `<div class="client-badge reveal">
+        <img src="${logoUrl}" alt="${clientName || "Cliente"}" class="client-badge-logo" onerror="this.style.display='none'" />
+        <div><span class="client-badge-label">Preparado para</span><br><span class="client-badge-name">${clientName || "Cliente"}</span></div>
+      </div>` : clientName ? `<div class="client-badge reveal"><div><span class="client-badge-label">Preparado para</span><br><span class="client-badge-name">${clientName}</span></div></div>` : ""}
       <h1 class="reveal">${hero.headline || ""}</h1>
       <p class="lead reveal">${hero.subheadline || ""}</p>
       <div class="hero-ctas">
@@ -582,11 +615,61 @@ export function renderProposalHtml(json: unknown, theme: {
     </div>
   </section>
 
+  ${orcamento ? (() => {
+  const fmtBRL = (v: number) => new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(v);
+  const FORMA_LABELS: Record<string, string> = {
+    pix: "PIX", boleto: "Boleto", cartao_credito: "Cartão de Crédito",
+    cartao_debito: "Cartão de Débito", transferencia: "Transferência",
+    dinheiro: "Dinheiro", a_combinar: "A Combinar",
+  };
+  const itensValidos = (orcamento.itens || []).filter((i) => i.nome);
+  const calculatedTotal = itensValidos.reduce((s, i) => s + i.quantidade * i.valorUnitario, 0);
+  const totalExibido = orcamento.valorTotal ? parseFloat(orcamento.valorTotal) : calculatedTotal;
+  const rows = itensValidos.map((i) => {
+    const subtotal = i.quantidade * i.valorUnitario;
+    return `<tr>
+      <td>${i.nome}${i.descricao ? `<span class="desc">${i.descricao}</span>` : ""}${i.sku ? `<span class="desc">SKU: ${i.sku}</span>` : ""}</td>
+      <td class="r">${i.quantidade}</td>
+      <td class="r">${fmtBRL(i.valorUnitario)}</td>
+      <td class="r">${fmtBRL(subtotal)}</td>
+    </tr>`;
+  }).join("");
+  const metaItems = [
+    orcamento.formaPagamento ? `<div class="orc-meta-item"><span>Forma de Pagamento</span><span>${FORMA_LABELS[orcamento.formaPagamento] || orcamento.formaPagamento}</span></div>` : "",
+    orcamento.condPagamento ? `<div class="orc-meta-item"><span>Condição</span><span>${orcamento.condPagamento}</span></div>` : "",
+    orcamento.prazoEntrega ? `<div class="orc-meta-item"><span>Prazo de Entrega</span><span>${orcamento.prazoEntrega}</span></div>` : "",
+  ].filter(Boolean).join("");
+  return `
+  <section class="orc-section" id="orcamento">
+    <div class="container">
+      <div class="eyebrow-row"><span class="cod">Orçamento${orcamento.numero ? " · " + orcamento.numero : ""}</span><div class="eyebrow-line"></div></div>
+      <h2 class="reveal">${orcamento.titulo}</h2>
+      ${itensValidos.length > 0 ? `
+      <table class="orc-table reveal">
+        <thead><tr><th>Item</th><th class="r">Qtd.</th><th class="r">Valor Unit.</th><th class="r">Subtotal</th></tr></thead>
+        <tbody>${rows}</tbody>
+      </table>
+      <div class="orc-total-row">
+        <div class="orc-total-box">
+          <span class="orc-total-label">Total</span>
+          <span class="orc-total-value">${fmtBRL(totalExibido)}</span>
+        </div>
+      </div>` : ""}
+      ${metaItems ? `<div class="orc-meta reveal">${metaItems}</div>` : ""}
+      ${orcamento.observacoes ? `<div class="orc-obs reveal">${orcamento.observacoes}</div>` : ""}
+    </div>
+  </section>`;
+})() : ""}
+
   <section class="cta-final" id="contato">
     <div class="container">
       <div class="eyebrow-row"><span class="cod">Cód. 07 — Próximo passo</span><div class="eyebrow-line"></div></div>
       <h2 class="reveal">${cta.title || ""}</h2>
       <p class="lead reveal">${cta.subtitle || ""}</p>
+      ${logoUrl ? `<div style="display:flex;align-items:center;gap:10px;margin-bottom:22px;opacity:0.75">
+        <img src="${logoUrl}" alt="${clientName || 'Cliente'}" style="height:32px;width:auto;object-fit:contain;border-radius:4px;filter:brightness(0) invert(1)" onerror="this.style.display='none'" />
+        <span style="font-family:var(--mono);font-size:0.78rem;color:#cfc9e6">${clientName || ""}</span>
+      </div>` : ""}
       <div class="hero-ctas">
         <a class="btn btn-primary" href="${meta.whatsappUrl || "#"}" target="_blank" rel="noopener">${cta.button || "Falar no WhatsApp"}</a>
       </div>
@@ -596,7 +679,10 @@ export function renderProposalHtml(json: unknown, theme: {
 
 <footer>
   <span>${navName}</span>
-  <span>Proposta preparada para ${clientName || meta.clientName || "Cliente"}${websiteUrl ? ` · <a href="${websiteUrl}" style="color:inherit;text-decoration:none" target="_blank" rel="noopener">${websiteUrl}</a>` : ""}</span>
+  <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;justify-content:flex-end">
+    ${logoUrl ? `<img src="${logoUrl}" alt="${clientName || 'Cliente'}" style="height:16px;width:auto;object-fit:contain;opacity:0.55;border-radius:2px" onerror="this.style.display='none'">` : ""}
+    <span>Proposta preparada para ${clientName || meta.clientName || "Cliente"}${websiteUrl ? ` · <a href="${websiteUrl}" style="color:inherit;text-decoration:none" target="_blank" rel="noopener">${websiteUrl}</a>` : ""}</span>
+  </div>
 </footer>
 
 <script>

@@ -79,6 +79,7 @@ export default function LeadPropostaTab({ leadId, tenantId, lead }: LeadProposta
   const [previewOpen, setPreviewOpen] = useState(false);
   const [activeVersion, setActiveVersion] = useState<number | null>(null);
   const [showProducts, setShowProducts] = useState(false);
+  const [selectedOrcamentoId, setSelectedOrcamentoId] = useState<string>("__none__");
 
   // Lead editable fields
   const [mercadoSegmento, setMercadoSegmento] = useState(lead?.mercadoSegmento ?? "");
@@ -253,6 +254,7 @@ export default function LeadPropostaTab({ leadId, tenantId, lead }: LeadProposta
           corSecundaria: corSecundaria || undefined,
           imagens: proposalImages.length > 0 ? proposalImages : undefined,
           objetivo: lead?.objetivo || undefined,
+          propostaId: selectedOrcamentoId !== "__none__" ? selectedOrcamentoId : undefined,
         } as any,
       });
       toast({ title: `Proposta v${created.version} gerada com sucesso` });
@@ -781,6 +783,42 @@ export default function LeadPropostaTab({ leadId, tenantId, lead }: LeadProposta
           </CardTitle>
         </CardHeader>
         <CardContent>
+          {/* Seletor de orçamento a incluir */}
+          {orcamentos.length > 0 && (
+            <div className="mb-4 space-y-1 pb-4 border-b">
+              <label className="text-xs text-muted-foreground font-medium">
+                Orçamento a incluir na proposta
+              </label>
+              <Select
+                value={selectedOrcamentoId}
+                onValueChange={setSelectedOrcamentoId}
+              >
+                <SelectTrigger className="h-8 text-sm">
+                  <SelectValue placeholder="Nenhum orçamento" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="__none__">Nenhum orçamento</SelectItem>
+                  {orcamentos.map((orc) => {
+                    const total = orc.valorTotal
+                      ? parseFloat(orc.valorTotal as string).toLocaleString("pt-BR", { style: "currency", currency: "BRL" })
+                      : null;
+                    return (
+                      <SelectItem key={orc.id} value={orc.id}>
+                        {orc.titulo}{total ? ` — ${total}` : ""}
+                        {orc.numero ? ` (Nº ${orc.numero})` : ""}
+                      </SelectItem>
+                    );
+                  })}
+                </SelectContent>
+              </Select>
+              {selectedOrcamentoId !== "__none__" && (
+                <p className="text-xs text-muted-foreground mt-1">
+                  O orçamento selecionado será embutido como seção de precificação na proposta gerada.
+                </p>
+              )}
+            </div>
+          )}
+
           {loadingProposals ? (
             <div className="space-y-2">
               {[1, 2].map((i) => (

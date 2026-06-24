@@ -16,4 +16,6 @@ export interface GenerateLeadProposalBody {
   imagens?: string[] | null;
   /** Client's business objective / what they want to achieve */
   objetivo?: string | null;
+  /** ID of the orçamento (proposta) to embed as a pricing section in the generated proposal */
+  propostaId?: string | null;
 }

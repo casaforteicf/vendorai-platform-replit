@@ -5831,7 +5831,8 @@ export const GenerateLeadProposalBody = zod.object({
   "corDestaque": zod.string().nullish(),
   "corSecundaria": zod.string().nullish(),
   "imagens": zod.array(zod.string()).nullish().describe('URLs of images to embed in the proposal visual gallery'),
-  "objetivo": zod.string().nullish().describe('Client\'s business objective \/ what they want to achieve')
+  "objetivo": zod.string().nullish().describe('Client\'s business objective \/ what they want to achieve'),
+  "propostaId": zod.string().nullish().describe('ID of the orçamento (proposta) to embed as a pricing section in the generated proposal')
 })
 
 export const GenerateLeadProposalResponse = zod.object({

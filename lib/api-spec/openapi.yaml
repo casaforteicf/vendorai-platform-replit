@@ -12558,6 +12558,10 @@ components:
           type: string
           nullable: true
           description: Client's business objective / what they want to achieve
+        propostaId:
+          type: string
+          nullable: true
+          description: ID of the orçamento (proposta) to embed as a pricing section in the generated proposal
 
     ProductPresentation:
       type: object
