@@ -2151,9 +2151,6 @@ export default function LeadDetail() {
         {/* Proposta Gerada */}
         <LeadPropostaTab leadId={id} tenantId={tenantId} lead={lead} />
 
-        {/* Apresentações de Produto */}
-        <LeadProductPresentationTab leadId={id} tenantId={tenantId} lead={lead} />
-
         {/* Orçamentos do Lead */}
         <Card data-testid="card-orcamentos">
           <CardHeader className="pb-3">
@@ -2262,6 +2259,10 @@ export default function LeadDetail() {
             )}
           </CardContent>
         </Card>
+
+        {/* Apresentações de Produto */}
+        <LeadProductPresentationTab leadId={id} tenantId={tenantId} lead={lead} />
+
       </div>
 
       {/* Dados do Lead — edit dialog */}
