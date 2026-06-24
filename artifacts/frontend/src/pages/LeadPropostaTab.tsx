@@ -41,6 +41,7 @@ import {
   CheckCircle2,
   ExternalLink,
   Clock,
+  MessageCircle,
 } from "lucide-react";
 import {
   useListLeadProposals,
@@ -286,6 +287,21 @@ export default function LeadPropostaTab({ leadId, tenantId, lead }: LeadProposta
     } catch {
       /* ignore */
     }
+  }
+
+  function openWhatsAppProposal(version: number) {
+    const raw = lead?.telefone ?? "";
+    const digits = raw.replace(/\D/g, "");
+    if (!digits) {
+      toast({ title: "Lead sem telefone cadastrado", variant: "destructive" });
+      return;
+    }
+    const phone = digits.startsWith("55") ? digits : `55${digits}`;
+    const nome = lead?.nome ? ` ${lead.nome.split(" ")[0]}` : "";
+    const msg = encodeURIComponent(
+      `Olá${nome}! Preparei a proposta v${version} do projeto para você. Posso compartilhar os detalhes e avançarmos juntos?`
+    );
+    window.open(`https://wa.me/${phone}?text=${msg}`, "_blank", "noopener");
   }
 
   function downloadProposal(version: number, format: "html" | "pdf" = "html") {
@@ -830,6 +846,15 @@ export default function LeadPropostaTab({ leadId, tenantId, lead }: LeadProposta
                         onClick={() => downloadProposal(p.version, "pdf")}
                       >
                         <FileText className="h-3.5 w-3.5" />
+                      </Button>
+                      <Button
+                        size="icon"
+                        variant="ghost"
+                        className="h-7 w-7 text-green-600 hover:text-green-700 hover:bg-green-50"
+                        title="Avançar no projeto via WhatsApp"
+                        onClick={() => openWhatsAppProposal(p.version)}
+                      >
+                        <MessageCircle className="h-3.5 w-3.5" />
                       </Button>
                     </div>
                   </div>
