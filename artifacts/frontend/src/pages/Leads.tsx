@@ -6,6 +6,8 @@ import {
   useListTenantLeads,
   getListTenantLeadsQueryKey,
   useCreateLead,
+  useCreateDeal,
+  getListDealsQueryKey,
   useListCustomerIntelligence,
   getListCustomerIntelligenceQueryKey,
   useListPropostas,
@@ -331,6 +333,7 @@ export default function Leads() {
   }
 
   const createLead = useCreateLead();
+  const createDeal = useCreateDeal();
 
   const form = useForm<z.infer<typeof formSchema>>({
     resolver: zodResolver(formSchema),
@@ -350,8 +353,24 @@ export default function Leads() {
         },
       },
       {
-        onSuccess: () => {
-          toast({ title: "Lead criado com sucesso." });
+        onSuccess: (newLead: any) => {
+          const leadId = newLead?.id;
+          createDeal.mutate(
+            {
+              data: {
+                tenantId,
+                titulo: values.empresa ? `${values.empresa} — ${values.nome}` : values.nome,
+                etapa: "novo",
+                leadId: leadId || undefined,
+              },
+            },
+            {
+              onSettled: () => {
+                queryClient.invalidateQueries({ queryKey: getListDealsQueryKey(tenantId) });
+              },
+            }
+          );
+          toast({ title: "Lead criado e adicionado à pipeline." });
           queryClient.invalidateQueries({ queryKey: getListTenantLeadsQueryKey(tenantId) });
           setIsDialogOpen(false);
           form.reset();
