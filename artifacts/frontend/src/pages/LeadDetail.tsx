@@ -2146,7 +2146,7 @@ export default function LeadDetail() {
         </div>
 
         {/* Briefing SPIN+PAS */}
-        <LeadBriefingTab leadId={id} tenantId={tenantId} />
+        <LeadBriefingTab leadId={id} tenantId={tenantId} lead={lead} />
 
         {/* Proposta Gerada */}
         <LeadPropostaTab leadId={id} tenantId={tenantId} lead={lead} />
