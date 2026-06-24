@@ -25,6 +25,7 @@ import {
   useListConversationMessages,
   getListConversationMessagesQueryKey,
   useUpdateLead,
+  useRequestUploadUrl,
   useListTenantUsers,
   getListTenantUsersQueryKey,
   useListAgendas,
@@ -97,6 +98,8 @@ import {
   Image,
   Gift,
   Package,
+  Upload,
+  Globe,
 } from "lucide-react";
 
 const STATUS_STYLES: Record<string, string> = {
@@ -343,7 +346,12 @@ export default function LeadDetail() {
     empresa: "",
     objetivo: "",
     urgencia: "",
+    logoUrl: "",
+    websiteUrl: "",
   });
+  const [logoUploading, setLogoUploading] = useState(false);
+  const logoInputRef = useRef<HTMLInputElement>(null);
+  const requestUploadUrl = useRequestUploadUrl();
 
   function openLeadDadosEdit() {
     if (!lead) return;
@@ -354,8 +362,38 @@ export default function LeadDetail() {
       empresa: lead.empresa ?? "",
       objetivo: lead.objetivo ?? "",
       urgencia: lead.urgencia ?? "",
+      logoUrl: (lead as any).logoUrl ?? "",
+      websiteUrl: (lead as any).websiteUrl ?? "",
     });
     setEditingLeadDados(true);
+  }
+
+  async function handleLeadLogoUpload(file: File) {
+    if (!file.type.startsWith("image/")) {
+      toast({ title: "Selecione um arquivo de imagem (PNG, JPG, SVG...)", variant: "destructive" });
+      return;
+    }
+    setLogoUploading(true);
+    try {
+      const result = await new Promise<{ uploadURL: string; objectPath: string }>((resolve, reject) => {
+        requestUploadUrl.mutate(
+          { data: { name: file.name, size: file.size, contentType: file.type } },
+          { onSuccess: resolve, onError: reject },
+        );
+      });
+      const uploadRes = await fetch(result.uploadURL, {
+        method: "PUT",
+        body: file,
+        headers: { "Content-Type": file.type },
+      });
+      if (!uploadRes.ok) throw new Error("Upload falhou");
+      setLeadDadosDraft((d) => ({ ...d, logoUrl: result.objectPath }));
+      toast({ title: "Logo carregada com sucesso!" });
+    } catch {
+      toast({ title: "Erro no upload. Tente novamente.", variant: "destructive" });
+    } finally {
+      setLogoUploading(false);
+    }
   }
 
   const { mutate: updateLeadDados, isPending: isUpdatingLeadDados } = useUpdateLead({
@@ -382,6 +420,8 @@ export default function LeadDetail() {
         empresa: leadDadosDraft.empresa || null,
         objetivo: leadDadosDraft.objetivo || null,
         urgencia: leadDadosDraft.urgencia || null,
+        logoUrl: leadDadosDraft.logoUrl || null,
+        websiteUrl: leadDadosDraft.websiteUrl || null,
       },
     });
   }
@@ -2291,6 +2331,56 @@ export default function LeadDetail() {
                 value={leadDadosDraft.objetivo}
                 onChange={(e) => setLeadDadosDraft((d) => ({ ...d, objetivo: e.target.value }))}
                 rows={3}
+              />
+            </div>
+            <div className="space-y-1.5">
+              <label className="text-sm font-medium">Logo do Cliente</label>
+              <div className="flex items-center gap-2">
+                {leadDadosDraft.logoUrl && (
+                  <img
+                    src={leadDadosDraft.logoUrl.startsWith("/objects/") ? `/api/storage${leadDadosDraft.logoUrl}` : leadDadosDraft.logoUrl}
+                    alt="Logo"
+                    className="h-8 w-8 object-contain rounded border bg-white shrink-0"
+                    onError={(e) => { (e.target as HTMLImageElement).style.display = "none"; }}
+                  />
+                )}
+                <Input
+                  placeholder="https://... ou faça upload →"
+                  value={leadDadosDraft.logoUrl}
+                  onChange={(e) => setLeadDadosDraft((d) => ({ ...d, logoUrl: e.target.value }))}
+                />
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  className="shrink-0"
+                  disabled={logoUploading}
+                  onClick={() => logoInputRef.current?.click()}
+                >
+                  {logoUploading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Upload className="h-4 w-4" />}
+                </Button>
+                <input
+                  ref={logoInputRef}
+                  type="file"
+                  accept="image/*"
+                  className="hidden"
+                  onChange={(e) => {
+                    const file = e.target.files?.[0];
+                    if (file) void handleLeadLogoUpload(file);
+                    e.target.value = "";
+                  }}
+                />
+              </div>
+            </div>
+            <div className="space-y-1.5">
+              <label className="text-sm font-medium flex items-center gap-1.5">
+                <Globe className="h-4 w-4 text-muted-foreground" />
+                URL do Site
+              </label>
+              <Input
+                placeholder="https://www.cliente.com.br"
+                value={leadDadosDraft.websiteUrl}
+                onChange={(e) => setLeadDadosDraft((d) => ({ ...d, websiteUrl: e.target.value }))}
               />
             </div>
           </div>

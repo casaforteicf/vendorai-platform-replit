@@ -2287,6 +2287,7 @@ export interface CreateLeadProductBody {
 export interface GenerateLeadProposalBody {
   segmento?: string | null;
   logoUrl?: string | null;
+  websiteUrl?: string | null;
   corDestaque?: string | null;
   corSecundaria?: string | null;
 }
@@ -2783,6 +2784,13 @@ export interface Lead {
   lastCampaignSentYear?: number | null;
   /** Lead optou por não receber mensagens de datas especiais. */
   specialDateMessagesOptOut?: boolean | null;
+  /** URL ou object path do logo do cliente. */
+  logoUrl?: string | null;
+  /** URL do site do cliente. */
+  websiteUrl?: string | null;
+  mercadoSegmento?: string | null;
+  corDestaque?: string | null;
+  corSecundaria?: string | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -2876,6 +2884,13 @@ export interface UpdateLeadBody {
   birthDay?: number | null;
   lastCampaignSentYear?: number | null;
   specialDateMessagesOptOut?: boolean | null;
+  /** URL ou object path do logo do cliente. */
+  logoUrl?: string | null;
+  /** URL do site do cliente. */
+  websiteUrl?: string | null;
+  mercadoSegmento?: string | null;
+  corDestaque?: string | null;
+  corSecundaria?: string | null;
 }
 
 export type ConversationMetadata = { [key: string]: unknown } | null;

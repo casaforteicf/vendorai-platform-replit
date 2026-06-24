@@ -289,7 +289,7 @@ export function renderProposalHtml(json: unknown, theme: {
   secondary: string; secondarySoft: string;
   concrete: string; concreteLine: string;
   ok: string; warn: string;
-}, logoUrl?: string | null, clientName?: string, tenantName?: string): string {
+}, logoUrl?: string | null, clientName?: string, tenantName?: string, websiteUrl?: string | null): string {
   const d = json as Record<string, any>;
   const hero = d.hero || {};
   const situation = d.situation || {};
@@ -566,7 +566,7 @@ export function renderProposalHtml(json: unknown, theme: {
 
 <footer>
   <span>Vendor.ai — Sistema Operacional Empresarial com IA</span>
-  <span>Proposta preparada para ${clientName || meta.clientName || "Cliente"}</span>
+  <span>Proposta preparada para ${clientName || meta.clientName || "Cliente"}${websiteUrl ? ` · <a href="${websiteUrl}" style="color:inherit;text-decoration:none" target="_blank" rel="noopener">${websiteUrl}</a>` : ""}</span>
 </footer>
 
 <script>

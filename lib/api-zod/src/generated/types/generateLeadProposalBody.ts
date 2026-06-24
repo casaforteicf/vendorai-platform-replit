@@ -9,6 +9,7 @@
 export interface GenerateLeadProposalBody {
   segmento?: string | null;
   logoUrl?: string | null;
+  websiteUrl?: string | null;
   corDestaque?: string | null;
   corSecundaria?: string | null;
 }

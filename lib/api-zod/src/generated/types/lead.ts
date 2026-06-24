@@ -53,6 +53,13 @@ export interface Lead {
   lastCampaignSentYear?: number | null;
   /** Lead optou por não receber mensagens de datas especiais. */
   specialDateMessagesOptOut?: boolean | null;
+  /** URL ou object path do logo do cliente. */
+  logoUrl?: string | null;
+  /** URL do site do cliente. */
+  websiteUrl?: string | null;
+  mercadoSegmento?: string | null;
+  corDestaque?: string | null;
+  corSecundaria?: string | null;
   createdAt: Date;
   updatedAt: Date;
 }

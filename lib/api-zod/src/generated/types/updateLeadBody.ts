@@ -40,4 +40,11 @@ export interface UpdateLeadBody {
   birthDay?: number | null;
   lastCampaignSentYear?: number | null;
   specialDateMessagesOptOut?: boolean | null;
+  /** URL ou object path do logo do cliente. */
+  logoUrl?: string | null;
+  /** URL do site do cliente. */
+  websiteUrl?: string | null;
+  mercadoSegmento?: string | null;
+  corDestaque?: string | null;
+  corSecundaria?: string | null;
 }

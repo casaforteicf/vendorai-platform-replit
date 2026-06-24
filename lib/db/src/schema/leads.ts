@@ -47,6 +47,7 @@ export const leadsTable = pgTable("leads", {
   // Proposta fields
   mercadoSegmento: text("mercado_segmento"),
   logoUrl: text("logo_url"),
+  websiteUrl: text("website_url"),
   corDestaque: text("cor_destaque"),
   corSecundaria: text("cor_secundaria"),
 

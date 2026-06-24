@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useToast } from "@/hooks/use-toast";
 import { useQueryClient } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -34,6 +34,8 @@ import {
   ChevronDown,
   ChevronUp,
   Package,
+  Upload,
+  Globe,
 } from "lucide-react";
 import {
   useListLeadProposals,
@@ -41,6 +43,7 @@ import {
   useGenerateLeadProposal,
   useCreateLeadProduct,
   useDeleteLeadProduct,
+  useRequestUploadUrl,
 } from "@workspace/api-client-react";
 
 interface LeadPropostaTabProps {
@@ -71,9 +74,13 @@ export default function LeadPropostaTab({ leadId, tenantId, lead }: LeadProposta
   // Lead editable fields
   const [mercadoSegmento, setMercadoSegmento] = useState(lead?.mercadoSegmento ?? "");
   const [logoUrl, setLogoUrl] = useState(lead?.logoUrl ?? "");
+  const [websiteUrl, setWebsiteUrl] = useState(lead?.websiteUrl ?? "");
   const [corDestaque, setCorDestaque] = useState(lead?.corDestaque ?? "#A78BFA");
   const [corSecundaria, setCorSecundaria] = useState(lead?.corSecundaria ?? "");
   const [savingLead, setSavingLead] = useState(false);
+  const [logoUploading, setLogoUploading] = useState(false);
+  const logoInputRef = useRef<HTMLInputElement>(null);
+  const requestUploadUrl = useRequestUploadUrl();
 
   // Product form
   const [newProductNome, setNewProductNome] = useState("");
@@ -110,9 +117,38 @@ export default function LeadPropostaTab({ leadId, tenantId, lead }: LeadProposta
     // Sync lead fields when lead prop changes
     setMercadoSegmento(lead?.mercadoSegmento ?? "");
     setLogoUrl(lead?.logoUrl ?? "");
+    setWebsiteUrl(lead?.websiteUrl ?? "");
     setCorDestaque(lead?.corDestaque ?? "#A78BFA");
     setCorSecundaria(lead?.corSecundaria ?? "");
   }, [lead]);
+
+  async function handleLogoUpload(file: File) {
+    if (!file.type.startsWith("image/")) {
+      toast({ title: "Selecione um arquivo de imagem (PNG, JPG, SVG...)", variant: "destructive" });
+      return;
+    }
+    setLogoUploading(true);
+    try {
+      const result = await new Promise<{ uploadURL: string; objectPath: string }>((resolve, reject) => {
+        requestUploadUrl.mutate(
+          { data: { name: file.name, size: file.size, contentType: file.type } },
+          { onSuccess: resolve, onError: reject },
+        );
+      });
+      const uploadRes = await fetch(result.uploadURL, {
+        method: "PUT",
+        body: file,
+        headers: { "Content-Type": file.type },
+      });
+      if (!uploadRes.ok) throw new Error("Upload falhou");
+      setLogoUrl(result.objectPath);
+      toast({ title: "Logo carregada com sucesso!" });
+    } catch {
+      toast({ title: "Erro no upload. Tente novamente.", variant: "destructive" });
+    } finally {
+      setLogoUploading(false);
+    }
+  }
 
   async function saveLeadFields() {
     if (!leadId || !token) return;
@@ -124,6 +160,7 @@ export default function LeadPropostaTab({ leadId, tenantId, lead }: LeadProposta
         body: JSON.stringify({
           mercadoSegmento: mercadoSegmento || null,
           logoUrl: logoUrl || null,
+          websiteUrl: websiteUrl || null,
           corDestaque: corDestaque || null,
           corSecundaria: corSecundaria || null,
         }),
@@ -147,6 +184,7 @@ export default function LeadPropostaTab({ leadId, tenantId, lead }: LeadProposta
         data: {
           segmento: mercadoSegmento || undefined,
           logoUrl: logoUrl || undefined,
+          websiteUrl: websiteUrl || undefined,
           corDestaque: corDestaque || undefined,
           corSecundaria: corSecundaria || undefined,
         },
@@ -272,13 +310,56 @@ export default function LeadPropostaTab({ leadId, tenantId, lead }: LeadProposta
               />
             </div>
             <div className="space-y-1">
-              <label className="text-xs text-muted-foreground">URL do Logo do Cliente</label>
-              <Input
-                value={logoUrl}
-                onChange={(e) => setLogoUrl(e.target.value)}
-                placeholder="https://..."
-                className="h-8 text-sm"
-              />
+              <label className="text-xs text-muted-foreground">Logo do Cliente</label>
+              <div className="flex items-center gap-2">
+                {logoUrl && (
+                  <img
+                    src={logoUrl.startsWith("/objects/") ? `/api/storage${logoUrl}` : logoUrl}
+                    alt="Logo"
+                    className="h-8 w-8 object-contain rounded border bg-white"
+                    onError={(e) => { (e.target as HTMLImageElement).style.display = "none"; }}
+                  />
+                )}
+                <Input
+                  value={logoUrl}
+                  onChange={(e) => setLogoUrl(e.target.value)}
+                  placeholder="https://... ou faça upload →"
+                  className="h-8 text-sm flex-1"
+                />
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  className="h-8 px-2 shrink-0"
+                  disabled={logoUploading}
+                  onClick={() => logoInputRef.current?.click()}
+                >
+                  {logoUploading ? <Loader2 className="h-3 w-3 animate-spin" /> : <Upload className="h-3 w-3" />}
+                </Button>
+                <input
+                  ref={logoInputRef}
+                  type="file"
+                  accept="image/*"
+                  className="hidden"
+                  onChange={(e) => {
+                    const file = e.target.files?.[0];
+                    if (file) void handleLogoUpload(file);
+                    e.target.value = "";
+                  }}
+                />
+              </div>
+            </div>
+            <div className="space-y-1">
+              <label className="text-xs text-muted-foreground">URL do Site do Cliente</label>
+              <div className="flex items-center gap-2">
+                <Globe className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+                <Input
+                  value={websiteUrl}
+                  onChange={(e) => setWebsiteUrl(e.target.value)}
+                  placeholder="https://www.cliente.com.br"
+                  className="h-8 text-sm"
+                />
+              </div>
             </div>
             <div className="space-y-1">
               <label className="text-xs text-muted-foreground">Cor Destaque (primária)</label>

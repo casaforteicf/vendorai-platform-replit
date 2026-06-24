@@ -12507,6 +12507,9 @@ components:
         logoUrl:
           type: string
           nullable: true
+        websiteUrl:
+          type: string
+          nullable: true
         corDestaque:
           type: string
           nullable: true
@@ -13540,6 +13543,23 @@ components:
           type: boolean
           nullable: true
           description: Lead optou por não receber mensagens de datas especiais.
+        logoUrl:
+          type: string
+          nullable: true
+          description: URL ou object path do logo do cliente.
+        websiteUrl:
+          type: string
+          nullable: true
+          description: URL do site do cliente.
+        mercadoSegmento:
+          type: string
+          nullable: true
+        corDestaque:
+          type: string
+          nullable: true
+        corSecundaria:
+          type: string
+          nullable: true
         createdAt:
           type: string
           format: date-time
@@ -13787,6 +13807,23 @@ components:
           nullable: true
         specialDateMessagesOptOut:
           type: boolean
+          nullable: true
+        logoUrl:
+          type: string
+          nullable: true
+          description: URL ou object path do logo do cliente.
+        websiteUrl:
+          type: string
+          nullable: true
+          description: URL do site do cliente.
+        mercadoSegmento:
+          type: string
+          nullable: true
+        corDestaque:
+          type: string
+          nullable: true
+        corSecundaria:
+          type: string
           nullable: true
 
     Conversation:

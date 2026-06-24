@@ -5036,6 +5036,11 @@ export const ListLeadsResponseItem = zod.object({
   "birthDay": zod.number().nullish().describe('Dia de nascimento (1-31).'),
   "lastCampaignSentYear": zod.number().nullish().describe('Ano da última campanha de data especial enviada.'),
   "specialDateMessagesOptOut": zod.boolean().nullish().describe('Lead optou por não receber mensagens de datas especiais.'),
+  "logoUrl": zod.string().nullish().describe('URL ou object path do logo do cliente.'),
+  "websiteUrl": zod.string().nullish().describe('URL do site do cliente.'),
+  "mercadoSegmento": zod.string().nullish(),
+  "corDestaque": zod.string().nullish(),
+  "corSecundaria": zod.string().nullish(),
   "createdAt": zod.coerce.date(),
   "updatedAt": zod.coerce.date()
 })
@@ -5137,6 +5142,11 @@ export const ListTenantLeadsResponseItem = zod.object({
   "birthDay": zod.number().nullish().describe('Dia de nascimento (1-31).'),
   "lastCampaignSentYear": zod.number().nullish().describe('Ano da última campanha de data especial enviada.'),
   "specialDateMessagesOptOut": zod.boolean().nullish().describe('Lead optou por não receber mensagens de datas especiais.'),
+  "logoUrl": zod.string().nullish().describe('URL ou object path do logo do cliente.'),
+  "websiteUrl": zod.string().nullish().describe('URL do site do cliente.'),
+  "mercadoSegmento": zod.string().nullish(),
+  "corDestaque": zod.string().nullish(),
+  "corSecundaria": zod.string().nullish(),
   "createdAt": zod.coerce.date(),
   "updatedAt": zod.coerce.date()
 })
@@ -5193,6 +5203,11 @@ export const GetLeadResponse = zod.object({
   "birthDay": zod.number().nullish().describe('Dia de nascimento (1-31).'),
   "lastCampaignSentYear": zod.number().nullish().describe('Ano da última campanha de data especial enviada.'),
   "specialDateMessagesOptOut": zod.boolean().nullish().describe('Lead optou por não receber mensagens de datas especiais.'),
+  "logoUrl": zod.string().nullish().describe('URL ou object path do logo do cliente.'),
+  "websiteUrl": zod.string().nullish().describe('URL do site do cliente.'),
+  "mercadoSegmento": zod.string().nullish(),
+  "corDestaque": zod.string().nullish(),
+  "corSecundaria": zod.string().nullish(),
   "createdAt": zod.coerce.date(),
   "updatedAt": zod.coerce.date()
 })
@@ -5242,7 +5257,12 @@ export const UpdateLeadBody = zod.object({
   "birthMonth": zod.number().nullish(),
   "birthDay": zod.number().nullish(),
   "lastCampaignSentYear": zod.number().nullish(),
-  "specialDateMessagesOptOut": zod.boolean().nullish()
+  "specialDateMessagesOptOut": zod.boolean().nullish(),
+  "logoUrl": zod.string().nullish().describe('URL ou object path do logo do cliente.'),
+  "websiteUrl": zod.string().nullish().describe('URL do site do cliente.'),
+  "mercadoSegmento": zod.string().nullish(),
+  "corDestaque": zod.string().nullish(),
+  "corSecundaria": zod.string().nullish()
 })
 
 export const updateLeadResponseTipoDefault = `cliente`;
@@ -5288,6 +5308,11 @@ export const UpdateLeadResponse = zod.object({
   "birthDay": zod.number().nullish().describe('Dia de nascimento (1-31).'),
   "lastCampaignSentYear": zod.number().nullish().describe('Ano da última campanha de data especial enviada.'),
   "specialDateMessagesOptOut": zod.boolean().nullish().describe('Lead optou por não receber mensagens de datas especiais.'),
+  "logoUrl": zod.string().nullish().describe('URL ou object path do logo do cliente.'),
+  "websiteUrl": zod.string().nullish().describe('URL do site do cliente.'),
+  "mercadoSegmento": zod.string().nullish(),
+  "corDestaque": zod.string().nullish(),
+  "corSecundaria": zod.string().nullish(),
   "createdAt": zod.coerce.date(),
   "updatedAt": zod.coerce.date()
 })
@@ -5353,6 +5378,11 @@ export const ListTenantDuplicateLeadsResponseItem = zod.object({
   "birthDay": zod.number().nullish().describe('Dia de nascimento (1-31).'),
   "lastCampaignSentYear": zod.number().nullish().describe('Ano da última campanha de data especial enviada.'),
   "specialDateMessagesOptOut": zod.boolean().nullish().describe('Lead optou por não receber mensagens de datas especiais.'),
+  "logoUrl": zod.string().nullish().describe('URL ou object path do logo do cliente.'),
+  "websiteUrl": zod.string().nullish().describe('URL do site do cliente.'),
+  "mercadoSegmento": zod.string().nullish(),
+  "corDestaque": zod.string().nullish(),
+  "corSecundaria": zod.string().nullish(),
   "createdAt": zod.coerce.date(),
   "updatedAt": zod.coerce.date()
 }).optional(),
@@ -5397,6 +5427,11 @@ export const ListTenantDuplicateLeadsResponseItem = zod.object({
   "birthDay": zod.number().nullish().describe('Dia de nascimento (1-31).'),
   "lastCampaignSentYear": zod.number().nullish().describe('Ano da última campanha de data especial enviada.'),
   "specialDateMessagesOptOut": zod.boolean().nullish().describe('Lead optou por não receber mensagens de datas especiais.'),
+  "logoUrl": zod.string().nullish().describe('URL ou object path do logo do cliente.'),
+  "websiteUrl": zod.string().nullish().describe('URL do site do cliente.'),
+  "mercadoSegmento": zod.string().nullish(),
+  "corDestaque": zod.string().nullish(),
+  "corSecundaria": zod.string().nullish(),
   "createdAt": zod.coerce.date(),
   "updatedAt": zod.coerce.date()
 }).optional()
@@ -5460,6 +5495,11 @@ export const MergeLeadResponse = zod.object({
   "birthDay": zod.number().nullish().describe('Dia de nascimento (1-31).'),
   "lastCampaignSentYear": zod.number().nullish().describe('Ano da última campanha de data especial enviada.'),
   "specialDateMessagesOptOut": zod.boolean().nullish().describe('Lead optou por não receber mensagens de datas especiais.'),
+  "logoUrl": zod.string().nullish().describe('URL ou object path do logo do cliente.'),
+  "websiteUrl": zod.string().nullish().describe('URL do site do cliente.'),
+  "mercadoSegmento": zod.string().nullish(),
+  "corDestaque": zod.string().nullish(),
+  "corSecundaria": zod.string().nullish(),
   "createdAt": zod.coerce.date(),
   "updatedAt": zod.coerce.date()
 }).optional(),
@@ -5520,6 +5560,11 @@ export const DismissDuplicateLeadResponse = zod.object({
   "birthDay": zod.number().nullish().describe('Dia de nascimento (1-31).'),
   "lastCampaignSentYear": zod.number().nullish().describe('Ano da última campanha de data especial enviada.'),
   "specialDateMessagesOptOut": zod.boolean().nullish().describe('Lead optou por não receber mensagens de datas especiais.'),
+  "logoUrl": zod.string().nullish().describe('URL ou object path do logo do cliente.'),
+  "websiteUrl": zod.string().nullish().describe('URL do site do cliente.'),
+  "mercadoSegmento": zod.string().nullish(),
+  "corDestaque": zod.string().nullish(),
+  "corSecundaria": zod.string().nullish(),
   "createdAt": zod.coerce.date(),
   "updatedAt": zod.coerce.date()
 }).optional()
@@ -5753,6 +5798,7 @@ export const GenerateLeadProposalParams = zod.object({
 export const GenerateLeadProposalBody = zod.object({
   "segmento": zod.string().nullish(),
   "logoUrl": zod.string().nullish(),
+  "websiteUrl": zod.string().nullish(),
   "corDestaque": zod.string().nullish(),
   "corSecundaria": zod.string().nullish()
 })

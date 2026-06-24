@@ -273,7 +273,8 @@ router.post("/leads/:leadId/proposals", async (req, res) => {
     theme,
     ctx.lead.logoUrl || undefined,
     ctx.lead.empresa || ctx.lead.nome,
-    ctx.tenantName || undefined
+    ctx.tenantName || undefined,
+    ctx.lead.websiteUrl || undefined
   );
 
   const [proposal] = await db
