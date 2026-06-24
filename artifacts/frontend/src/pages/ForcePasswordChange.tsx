@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { useAuth } from "@/contexts/AuthContext";
 import { useToast } from "@/hooks/use-toast";
+import { useLocation } from "wouter";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -13,6 +14,7 @@ export default function ForcePasswordChange() {
   const { token } = useAuth();
   const { toast } = useToast();
   const qc = useQueryClient();
+  const [, setLocation] = useLocation();
   const [newPassword, setNewPassword] = useState("");
   const [confirm, setConfirm] = useState("");
   const [saving, setSaving] = useState(false);
@@ -41,6 +43,7 @@ export default function ForcePasswordChange() {
       }
       toast({ title: "Senha alterada com sucesso! Bem-vindo(a)!" });
       await qc.invalidateQueries({ queryKey: getGetMeQueryKey() });
+      setLocation("/");
     } finally {
       setSaving(false);
     }
