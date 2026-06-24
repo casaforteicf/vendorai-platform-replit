@@ -67,6 +67,18 @@ router.post("/leads", async (req, res) => {
     possivelDuplicata: match.similar ? true : false,
     leadSimilarId: match.similar?.id ?? null,
   }).returning();
+
+  // Auto-create deal in pipeline (aquecimento) unless lead is pipeline-exempt
+  if (!lead.pipelineExempt) {
+    await db.insert(dealsTable).values({
+      tenantId: lead.tenantId,
+      leadId: lead.id,
+      titulo: lead.nome,
+      etapa: "em_aquecimento",
+      assignedTo: data.assignedTo ?? null,
+    });
+  }
+
   res.status(201).json(lead);
 });
 

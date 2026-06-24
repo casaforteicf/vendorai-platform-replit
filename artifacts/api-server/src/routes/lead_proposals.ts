@@ -11,6 +11,7 @@ import {
   messagesTable,
   customerIntelligenceTable,
   businessProfilesTable,
+  dealsTable,
 } from "@workspace/db";
 import { buildProposalPrompt, callProposalAI, renderProposalHtml, generateTheme, AI_PROVIDER, generateProposalPDF } from "../lib/proposal-engine.js";
 
@@ -300,6 +301,12 @@ router.post("/leads/:leadId/proposals", async (req, res) => {
       status: "ready",
     })
     .returning();
+
+  // Promote deal from em_aquecimento → novo when first proposal is created
+  await db
+    .update(dealsTable)
+    .set({ etapa: "novo", updatedAt: new Date() })
+    .where(and(eq(dealsTable.leadId, leadId), eq(dealsTable.tenantId, tenantId), eq(dealsTable.etapa, "em_aquecimento")));
 
   res.status(201).json({ ...proposal, _provider: result.provider, _model: result.model });
 });
