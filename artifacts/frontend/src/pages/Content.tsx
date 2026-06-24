@@ -25,7 +25,7 @@ import {
 import {
   Sparkles, Copy, Trash2, Loader2, Instagram, Clapperboard, Image,
   CheckCircle2, AlertCircle, ChevronDown, ChevronUp, ExternalLink, Upload,
-  Pencil, Check, X, Wand2, Download, Archive, Eye, RefreshCw, Palette,
+  Pencil, Check, X, Wand2, Download, Archive, Eye, RefreshCw,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import JSZip from "jszip";
@@ -642,44 +642,63 @@ function MediaUploadButton({
   );
 }
 
-function GenerateAIImageButton({
+function ImageActionPanel({
   contentId,
   variationIndex,
   tenantId,
   onGenerated,
   referenceImageUrl,
+  hasImage,
 }: {
   contentId: string;
   variationIndex: number;
   tenantId: string;
   onGenerated: (imageUrl: string) => void;
   referenceImageUrl?: string | null;
+  hasImage?: boolean;
 }) {
   const { toast } = useToast();
+  const [step, setStep] = useState<"idle" | "form" | "pending">("idle");
+  const [observations, setObservations] = useState("");
   const [loading, setLoading] = useState(false);
   const [pendingUrl, setPendingUrl] = useState<string | null>(null);
 
   async function handleGenerate() {
     setLoading(true);
-    setPendingUrl(null);
     try {
-      const res = await fetch(
-        `/api/tenants/${tenantId}/content/${contentId}/variations/${variationIndex}/generate-image`,
-        {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${localStorage.getItem("vendorai_token")}`,
-          },
-          body: JSON.stringify(referenceImageUrl ? { referenceImageUrl } : {}),
-        }
-      );
-      const data = (await res.json()) as { imageUrl?: string; error?: string };
-      if (!res.ok || !data.imageUrl) {
+      const endpoint = hasImage
+        ? `/api/tenants/${tenantId}/content/${contentId}/variations/${variationIndex}/regenerate-image`
+        : `/api/tenants/${tenantId}/content/${contentId}/variations/${variationIndex}/generate-image`;
+
+      let body: Record<string, unknown>;
+      if (hasImage) {
+        body = {
+          observations: observations.trim() || undefined,
+          imageCount: 1,
+          referenceImageUrl: referenceImageUrl || undefined,
+        };
+      } else {
+        body = referenceImageUrl ? { referenceImageUrl } : {};
+      }
+
+      const res = await fetch(endpoint, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${localStorage.getItem("vendorai_token")}`,
+        },
+        body: JSON.stringify(body),
+      });
+
+      const data = (await res.json()) as { imageUrl?: string; imageUrls?: string[]; error?: string };
+      const url = data.imageUrl ?? data.imageUrls?.[0];
+      if (!res.ok || !url) {
         toast({ title: "Erro ao gerar imagem", description: data.error ?? "Tente novamente.", variant: "destructive" });
         return;
       }
-      setPendingUrl(data.imageUrl);
+      setPendingUrl(url);
+      setStep("pending");
+      setObservations("");
     } catch {
       toast({ title: "Erro ao gerar imagem", description: "Verifique sua conexão e tente novamente.", variant: "destructive" });
     } finally {
@@ -687,160 +706,91 @@ function GenerateAIImageButton({
     }
   }
 
-  if (pendingUrl) {
+  if (step === "pending" && pendingUrl) {
     return (
-      <div className="flex items-center gap-1">
-        <div className="relative rounded overflow-hidden border w-10 h-10 shrink-0">
-          <img src={pendingUrl} alt="Preview" className="w-full h-full object-cover" />
-        </div>
-        <Button
-          size="sm"
-          variant="default"
-          className="h-7 px-2 text-xs gap-1 bg-green-600 hover:bg-green-700"
-          onClick={() => { onGenerated(pendingUrl); setPendingUrl(null); toast({ title: "Imagem aplicada!" }); }}
-        >
-          <Check className="h-3 w-3" />
-          Usar
-        </Button>
-        <Button
-          size="sm"
-          variant="ghost"
-          className="h-7 px-2 text-xs gap-1 text-muted-foreground"
-          onClick={() => setPendingUrl(null)}
-        >
-          <X className="h-3 w-3" />
-          Descartar
-        </Button>
-      </div>
-    );
-  }
-
-  return (
-    <Button
-      variant="outline"
-      size="sm"
-      onClick={handleGenerate}
-      disabled={loading}
-      title={referenceImageUrl ? "Melhorar imagem do cliente com IA" : "Gerar imagem com IA"}
-      className="h-7 px-2 text-xs gap-1"
-    >
-      {loading ? <Loader2 className="h-3 w-3 animate-spin" /> : <Wand2 className="h-3 w-3" />}
-      {loading ? "Gerando…" : referenceImageUrl ? "Melhorar IA" : "Imagem IA"}
-    </Button>
-  );
-}
-
-function RegenerateStyleButton({
-  contentId,
-  variationIndex,
-  tenantId,
-  onGenerated,
-  referenceImageUrl,
-}: {
-  contentId: string;
-  variationIndex: number;
-  tenantId: string;
-  onGenerated: (imageUrl: string) => void;
-  referenceImageUrl?: string | null;
-}) {
-  const { toast } = useToast();
-  const [loading, setLoading] = useState(false);
-  const [style, setStyle] = useState("");
-  const [showInput, setShowInput] = useState(false);
-  const [pendingUrl, setPendingUrl] = useState<string | null>(null);
-
-  async function handleRegenerate() {
-    setLoading(true);
-    setPendingUrl(null);
-    try {
-      const res = await fetch(
-        `/api/tenants/${tenantId}/content/${contentId}/variations/${variationIndex}/regenerate-image`,
-        {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${localStorage.getItem("vendorai_token")}`,
-          },
-          body: JSON.stringify({ style: style || undefined, imageCount: 1, referenceImageUrl: referenceImageUrl || undefined }),
-        }
-      );
-      const data = (await res.json()) as { imageUrls?: string[]; error?: string };
-      if (!res.ok || !data.imageUrls?.[0]) {
-        toast({ title: "Erro ao regenerar imagem", description: data.error ?? "Tente novamente.", variant: "destructive" });
-        return;
-      }
-      setPendingUrl(data.imageUrls[0]);
-      setShowInput(false);
-      setStyle("");
-    } catch {
-      toast({ title: "Erro ao regenerar imagem", description: "Verifique sua conexão e tente novamente.", variant: "destructive" });
-    } finally {
-      setLoading(false);
-    }
-  }
-
-  if (pendingUrl) {
-    return (
-      <div className="flex items-center gap-1">
-        <div className="relative rounded overflow-hidden border w-10 h-10 shrink-0">
-          <img src={pendingUrl} alt="Preview" className="w-full h-full object-cover" />
-        </div>
-        <Button size="sm" variant="default" className="h-7 px-2 text-xs gap-1 bg-green-600 hover:bg-green-700"
-          onClick={() => { onGenerated(pendingUrl); setPendingUrl(null); toast({ title: "Imagem aplicada!" }); }}>
-          <Check className="h-3 w-3" />Usar
-        </Button>
-        <Button size="sm" variant="ghost" className="h-7 px-2 text-xs gap-1 text-muted-foreground"
-          onClick={() => setPendingUrl(null)}>
-          <X className="h-3 w-3" />Descartar
-        </Button>
-      </div>
-    );
-  }
-
-  if (showInput) {
-    return (
-      <div className="flex items-center gap-1">
-        <input
-          value={style}
-          onChange={(e) => setStyle(e.target.value)}
-          placeholder="Estilo (ex: minimalista, vintage)"
-          className="text-xs border rounded px-2 py-1 w-40"
-          onKeyDown={(e) => { if (e.key === "Enter") handleRegenerate(); }}
-          autoFocus
+      <div className="mt-3 rounded-lg border bg-muted/20 p-3 space-y-3">
+        <p className="text-xs font-medium text-muted-foreground">Nova imagem gerada — aprovar?</p>
+        <img
+          src={pendingUrl}
+          alt="Imagem gerada para aprovação"
+          className="w-full rounded-lg object-cover max-h-72"
         />
-        <Button
-          variant="default"
-          size="sm"
-          className="h-7 px-2 text-xs"
-          onClick={handleRegenerate}
-          disabled={loading}
-        >
-          {loading ? <Loader2 className="h-3 w-3 animate-spin" /> : <Check className="h-3 w-3" />}
-        </Button>
-        <Button
-          variant="ghost"
-          size="sm"
-          className="h-7 px-2 text-xs"
-          onClick={() => { setShowInput(false); setStyle(""); }}
-        >
-          <X className="h-3 w-3" />
-        </Button>
+        <div className="flex gap-2">
+          <Button
+            className="flex-1 bg-green-600 hover:bg-green-700 gap-1.5"
+            onClick={() => { onGenerated(pendingUrl); setStep("idle"); setPendingUrl(null); toast({ title: "Imagem aprovada!" }); }}
+          >
+            <Check className="h-4 w-4" />
+            Aprovar
+          </Button>
+          <Button
+            variant="outline"
+            className="flex-1 gap-1.5"
+            onClick={() => { setStep("form"); setPendingUrl(null); }}
+          >
+            <RefreshCw className="h-4 w-4" />
+            Refazer
+          </Button>
+          <Button
+            variant="ghost"
+            className="px-3"
+            onClick={() => { setStep("idle"); setPendingUrl(null); }}
+          >
+            <X className="h-4 w-4" />
+          </Button>
+        </div>
+      </div>
+    );
+  }
+
+  if (step === "form") {
+    return (
+      <div className="mt-3 rounded-lg border bg-muted/20 p-3 space-y-2">
+        <p className="text-xs font-medium text-muted-foreground">
+          {hasImage ? "Observações para regeneração (opcional)" : "Gerar imagem com IA"}
+        </p>
+        <Textarea
+          value={observations}
+          onChange={(e) => setObservations(e.target.value)}
+          placeholder="Ex: ângulo frontal, fundo branco, mais luminoso, produto em primeiro plano..."
+          className="text-xs min-h-[64px] resize-none"
+          onKeyDown={(e) => { if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) handleGenerate(); }}
+        />
+        <div className="flex gap-2">
+          <Button
+            size="sm"
+            className="flex-1 gap-1.5"
+            onClick={handleGenerate}
+            disabled={loading}
+          >
+            {loading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Wand2 className="h-3.5 w-3.5" />}
+            {loading ? "Gerando..." : "Gerar imagem"}
+          </Button>
+          <Button
+            size="sm"
+            variant="ghost"
+            onClick={() => { setStep("idle"); setObservations(""); }}
+            disabled={loading}
+          >
+            Cancelar
+          </Button>
+        </div>
       </div>
     );
   }
 
   return (
-    <Button
-      variant="ghost"
-      size="sm"
-      onClick={() => setShowInput(true)}
-      disabled={loading}
-      title="Regenerar imagem com novo estilo"
-      className="h-7 px-2 text-xs gap-1 text-muted-foreground"
-    >
-      <Palette className="h-3 w-3" />
-      Estilo
-    </Button>
+    <div className="mt-3 flex justify-center">
+      <Button
+        variant="outline"
+        size="sm"
+        onClick={() => setStep("form")}
+        className="gap-1.5 text-xs"
+      >
+        <Wand2 className="h-3.5 w-3.5" />
+        {hasImage ? "Regenerar imagem" : "Gerar imagem com IA"}
+      </Button>
+    </div>
   );
 }
 
@@ -987,24 +937,6 @@ function VariationCard({
                     Editar
                   </Button>
                 )}
-                {type !== "reels" && contentId && tenantId && (
-                  <>
-                    <GenerateAIImageButton
-                      contentId={contentId}
-                      variationIndex={index}
-                      tenantId={tenantId}
-                      onGenerated={setLocalImageUrl}
-                      referenceImageUrl={referenceImageUrl}
-                    />
-                    <RegenerateStyleButton
-                      contentId={contentId}
-                      variationIndex={index}
-                      tenantId={tenantId}
-                      onGenerated={setLocalImageUrl}
-                      referenceImageUrl={referenceImageUrl}
-                    />
-                  </>
-                )}
                 {contentId && tenantId && (
                   <MediaUploadButton
                     contentId={contentId}
@@ -1050,6 +982,16 @@ function VariationCard({
           />
         )}
         {type === "reels" && <ReelsCard v={effectiveVariation as ReelsVariation} />}
+        {type !== "reels" && contentId && tenantId && (
+          <ImageActionPanel
+            contentId={contentId}
+            variationIndex={index}
+            tenantId={tenantId}
+            onGenerated={setLocalImageUrl}
+            referenceImageUrl={referenceImageUrl}
+            hasImage={hasImage}
+          />
+        )}
       </CardContent>
     </Card>
   );
@@ -1154,7 +1096,7 @@ export default function Content() {
   const [activeTab, setActiveTab] = useState<ContentType>("feed");
   const [theme, setTheme] = useState("");
   const [productId, setProductId] = useState<string>("none");
-  const [variations, setVariations] = useState(2);
+  const [variations, setVariations] = useState(1);
   const [imageCount, setImageCount] = useState(2);
   const [lastResult, setLastResult] = useState<ContentGeneration | null>(null);
   const [preImageUrl, setPreImageUrl] = useState<string | null>(null);
@@ -1480,23 +1422,6 @@ export default function Content() {
                             rows={4}
                             className="resize-none text-sm"
                           />
-                        </div>
-
-                        <div className="space-y-1.5">
-                          <Label>Nº de variações (texto)</Label>
-                          <div className="flex gap-2">
-                            {[2, 3].map((n) => (
-                              <Button
-                                key={n}
-                                variant={variations === n ? "default" : "outline"}
-                                size="sm"
-                                onClick={() => setVariations(n)}
-                                className="w-12"
-                              >
-                                {n}
-                              </Button>
-                            ))}
-                          </div>
                         </div>
 
                         <div className="space-y-1.5">

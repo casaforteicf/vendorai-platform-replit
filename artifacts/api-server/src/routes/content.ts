@@ -511,6 +511,7 @@ router.post("/tenants/:tenantId/content/:contentId/variations/:idx/regenerate-im
 
   const bodySchema = z.object({
     style: z.string().optional(),
+    observations: z.string().optional(),
     imageCount: z.coerce.number().int().min(1).max(10).default(1),
     referenceImageUrl: z.string().optional(),
   });
@@ -535,13 +536,14 @@ router.post("/tenants/:tenantId/content/:contentId/variations/:idx/regenerate-im
     .where(eq(businessProfilesTable.tenantId, tenantId));
 
   const format = gen.type === "stories" ? "stories" : "feed";
+  const observations = body.data.observations || body.data.style;
   try {
     let imageUrls: string[];
     if (body.data.referenceImageUrl) {
       const brand = (profile as any)?.nomeFantasia || "a empresa";
-      const styleNote = body.data.style ? ` Style: ${body.data.style}.` : "";
+      const obsNote = observations ? ` Client request: ${observations}.` : "";
       const formatLabel = format === "stories" ? "Stories (vertical 9:16)" : "Feed (square 1:1)";
-      const editPrompt = `Improve this product/marketing image for Instagram ${formatLabel} for "${brand}". Subject: ${gen.theme}${gen.productName ? ` — ${gen.productName}` : ""}.${styleNote} Keep the same product. Improve: lighting, sharpness, color, composition. Professional marketing quality. No text. No watermarks.`;
+      const editPrompt = `Improve this product/marketing image for Instagram ${formatLabel} for "${brand}". Subject: ${gen.theme}${gen.productName ? ` — ${gen.productName}` : ""}.${obsNote} Keep the same product. Improve: lighting, sharpness, color, composition. Professional marketing quality. No text. No watermarks.`;
       imageUrls = await generateImagesWithReference(tenantId, body.data.referenceImageUrl, editPrompt, body.data.imageCount);
     } else {
       imageUrls = await generateImagesForContent(
@@ -551,7 +553,9 @@ router.post("/tenants/:tenantId/content/:contentId/variations/:idx/regenerate-im
         gen.productName ?? undefined,
         format,
         body.data.imageCount,
-        body.data.style,
+        undefined,
+        undefined,
+        observations,
       );
     }
 

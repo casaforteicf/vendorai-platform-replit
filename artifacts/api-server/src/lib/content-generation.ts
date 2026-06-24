@@ -162,6 +162,14 @@ export async function generateImagesWithReference(
   return results;
 }
 
+const PHOTO_ANGLES = [
+  "straight-on front-facing shot at eye level, clean neutral background, subject perfectly centered",
+  "dynamic 45-degree 3/4 angle view, showing depth and dimension, premium studio lighting",
+  "overhead flat-lay top-down composition on an elegant styled surface, symmetrical arrangement",
+  "close-up macro detail shot at f/2.8 shallow depth of field, highlighting texture and craftsmanship",
+  "lifestyle contextual scene showing the product in its natural environment, authentic real-world setting",
+];
+
 export async function generateImagesForContent(
   profile: TenantProfile,
   tenantId: string,
@@ -171,6 +179,7 @@ export async function generateImagesForContent(
   imageCount: number = 1,
   style?: string,
   referenceImageUrl?: string,
+  observations?: string,
 ): Promise<string[]> {
   if (imageCount < 1) imageCount = 1;
   if (imageCount > 10) imageCount = 10;
@@ -189,20 +198,23 @@ export async function generateImagesForContent(
     }
   }
 
+  const observationsNote = observations ? `Client-specific request: ${observations}. ` : "";
+
   // When a reference image is available, use AI editing to improve it
   if (referenceImageUrl) {
     const formatLabel = format === "stories" ? "Stories (vertical, 9:16)" : "Feed (square, 1:1)";
-    const editPrompt = `Improve this product/marketing image for use in an Instagram ${formatLabel} post for the brand "${brand}". Subject: ${subject}. Keep the same product and subject matter. Improve: lighting quality, sharpness, color vibrancy, composition. The result must be suitable for professional Instagram marketing. Style: ${styleHint}. No text. No watermarks.`;
+    const editPrompt = `Improve this product/marketing image for use in an Instagram ${formatLabel} post for the brand "${brand}". Subject: ${subject}. Keep the same product and subject matter. ${observationsNote}Improve: lighting quality, sharpness, color vibrancy, composition. The result must be suitable for professional Instagram marketing. Style: ${styleHint}. No text. No watermarks.`;
     return generateImagesWithReference(tenantId, referenceImageUrl, editPrompt, imageCount);
   }
 
   const results: string[] = [];
-  const formatLabel = format === "stories" ? "Stories (vertical format)" : "Feed (square format)";
-  const basePrompt = `Professional marketing image for the Instagram ${formatLabel} of the brand "${brand}". Theme: ${subject}. Style: ${styleHint}. High quality, visually appealing, suitable for a business Instagram profile. No text overlays. No watermarks. Bright, well-lit, commercial photography aesthetic.`;
+  const formatLabel = format === "stories" ? "Stories (vertical format, 9:16 ratio)" : "Feed (square format, 1:1 ratio)";
+  const basePrompt = `Professional marketing photography for Instagram ${formatLabel} for the brand "${brand}". Subject: ${subject}. Style: ${styleHint}. ${observationsNote}High quality, visually compelling, suitable for a premium Instagram business profile. No text overlays. No watermarks. Perfect exposure, sharp focus, commercial photography aesthetic.`;
 
   for (let i = 0; i < imageCount; i++) {
     let lastError: unknown;
-    const imagePrompt = imageCount > 1 ? `${basePrompt} Variation ${i + 1} of ${imageCount}. Each image should be unique and distinct.` : basePrompt;
+    const angle = PHOTO_ANGLES[i % PHOTO_ANGLES.length];
+    const imagePrompt = `${basePrompt} Camera/shot type: ${angle}.`;
 
     let saved = false;
     for (const model of IMAGE_MODELS_PRIORITY) {
