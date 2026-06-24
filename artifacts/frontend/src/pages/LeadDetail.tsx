@@ -8,6 +8,7 @@ import { PropostaModal } from "./Propostas";
 import LeadBriefingTab from "./LeadBriefingTab";
 import LeadPropostaTab from "./LeadPropostaTab";
 import LeadProductPresentationTab from "./LeadProductPresentationTab";
+import LeadDuplicatasTab from "./LeadDuplicatasTab";
 import { useListProdutosCatalogo, getListProdutosCatalogoQueryKey } from "@workspace/api-client-react";
 import {
   useGetLead,
@@ -2262,6 +2263,9 @@ export default function LeadDetail() {
 
         {/* Apresentações de Produto */}
         <LeadProductPresentationTab leadId={id} tenantId={tenantId} lead={lead} />
+
+        {/* Duplicatas */}
+        <LeadDuplicatasTab leadId={id} tenantId={tenantId} />
 
       </div>
 
