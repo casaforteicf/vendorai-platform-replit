@@ -62,11 +62,18 @@ async function loadProposalContext(leadId: string, tenantId: string) {
   }
 
   const [bp] = await db
-    .select({ nomeFantasia: businessProfilesTable.nomeFantasia, telefone: businessProfilesTable.telefone })
+    .select({
+      nomeFantasia: businessProfilesTable.nomeFantasia,
+      razaoSocial: businessProfilesTable.razaoSocial,
+      telefone: businessProfilesTable.telefone,
+      logoUrl: businessProfilesTable.logoUrl,
+    })
     .from(businessProfilesTable)
     .where(eq(businessProfilesTable.tenantId, tenantId));
 
-  return { lead, briefing, intelligence, products, propostas, conversationSamples, tenantName: bp?.nomeFantasia, tenantPhone: bp?.telefone };
+  const tenantName = bp?.nomeFantasia || bp?.razaoSocial || null;
+
+  return { lead, briefing, intelligence, products, propostas, conversationSamples, tenantName, tenantPhone: bp?.telefone, tenantLogoUrl: bp?.logoUrl ?? null };
 }
 
 // ── GET /leads/:leadId/proposals ─────────────────────────────────────────────────
@@ -274,7 +281,8 @@ router.post("/leads/:leadId/proposals", async (req, res) => {
     ctx.lead.logoUrl || undefined,
     ctx.lead.empresa || ctx.lead.nome,
     ctx.tenantName || undefined,
-    ctx.lead.websiteUrl || undefined
+    ctx.lead.websiteUrl || undefined,
+    ctx.tenantLogoUrl || undefined
   );
 
   const [proposal] = await db

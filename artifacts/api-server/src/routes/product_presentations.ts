@@ -31,11 +31,18 @@ async function loadPresentationContext(leadId: string, tenantId: string) {
     .where(and(eq(customerIntelligenceTable.leadId, leadId), eq(customerIntelligenceTable.tenantId, tenantId)));
 
   const [bp] = await db
-    .select({ nomeFantasia: businessProfilesTable.nomeFantasia, telefone: businessProfilesTable.telefone })
+    .select({
+      nomeFantasia: businessProfilesTable.nomeFantasia,
+      razaoSocial: businessProfilesTable.razaoSocial,
+      telefone: businessProfilesTable.telefone,
+      logoUrl: businessProfilesTable.logoUrl,
+    })
     .from(businessProfilesTable)
     .where(eq(businessProfilesTable.tenantId, tenantId));
 
-  return { lead, briefing, intelligence, tenantName: bp?.nomeFantasia, tenantPhone: bp?.telefone };
+  const tenantName = bp?.nomeFantasia || bp?.razaoSocial || null;
+
+  return { lead, briefing, intelligence, tenantName, tenantPhone: bp?.telefone, tenantLogoUrl: bp?.logoUrl ?? null };
 }
 
 // ── GET /leads/:leadId/product-presentations ─────────────────────────────────
@@ -143,6 +150,7 @@ Intenção: ${ctx.intelligence.intentAnalysis || "Não identificado"}`
     leadIntelligence: leadIntelligence || null,
     tenantName: ctx.tenantName,
     tenantPhone: ctx.tenantPhone,
+    tenantLogoUrl: ctx.tenantLogoUrl,
     logoUrl: body.logoUrl || null,
     corDestaque: body.corDestaque || ctx.lead.corDestaque || "#6366F1",
   };

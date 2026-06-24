@@ -20,6 +20,7 @@ export interface ProductPresentationContext {
   leadIntelligence?: string | null;
   tenantName?: string | null;
   tenantPhone?: string | null;
+  tenantLogoUrl?: string | null;
   logoUrl?: string | null;
   corDestaque?: string | null;
 }
@@ -72,7 +73,8 @@ ${ctx.leadBriefing ? `\nBriefing:\n${ctx.leadBriefing}` : ""}
 ${ctx.leadIntelligence ? `\nInteligência:\n${ctx.leadIntelligence}` : ""}
 `;
 
-  return `Você é um redator comercial sênior da Vendor.ai. Gere uma apresentação de produto em HTML (via JSON) para o lead abaixo.
+  const tenantLabel = ctx.tenantName ? `da empresa "${ctx.tenantName}"` : "da empresa fornecedora";
+  return `Você é um redator comercial sênior ${tenantLabel}. Gere uma apresentação de produto em HTML (via JSON) para o lead abaixo.
 
 ## Produto
 - Nome: ${ctx.productName}
@@ -134,7 +136,8 @@ export function renderProductPresentationHtml(
   logoUrl?: string | null,
   clientName?: string,
   tenantName?: string,
-  webSources?: { url: string; title: string; snippet: string }[]
+  webSources?: { url: string; title: string; snippet: string }[],
+  tenantLogoUrl?: string | null
 ): string {
   const d = json;
   const hero = d.hero || {};
@@ -157,13 +160,13 @@ export function renderProductPresentationHtml(
     ).join("<br/>")}</div>`
     : "";
 
+  const navName = tenantName || "Apresentação Comercial";
+
   const logoHtml = logoUrl
-    ? `<img src="${logoUrl}" alt="${clientName || ""}" style="height:34px;object-fit:contain;max-width:160px;" onerror="this.style.display='none'" />`
+    ? `<img src="${logoUrl}" alt="${navName}" style="height:34px;object-fit:contain;max-width:160px;" onerror="this.style.display='none'" />`
     : `<div class="badge" aria-hidden="true"><svg width="20" height="20" viewBox="0 0 20 20"><defs><linearGradient id="g1" x1="0" y1="0" x2="20" y2="20"><stop offset="0%" stop-color="${theme.accentSoft}"/><stop offset="100%" stop-color="${theme.secondary}"/></linearGradient></defs><circle cx="10" cy="10" r="3.1" fill="url(#g1)"/><circle cx="3" cy="4" r="1.5" fill="url(#g1)" opacity="0.85"/><circle cx="17" cy="4" r="1.5" fill="url(#g1)" opacity="0.85"/><circle cx="3" cy="16" r="1.5" fill="url(#g1)" opacity="0.85"/><circle cx="17" cy="16" r="1.5" fill="url(#g1)" opacity="0.85"/><g stroke="url(#g1)" stroke-width="0.8" opacity="0.7"><line x1="3" y1="4" x2="10" y2="10"/><line x1="17" y1="4" x2="10" y2="10"/><line x1="3" y1="16" x2="10" y2="10"/><line x1="17" y1="16" x2="10" y2="10"/></g></svg></div>`;
 
-  const wordmark = logoUrl
-    ? `<div class="wordmark" style="font-family:var(--body);font-weight:700;font-size:1.1rem;">${clientName || meta.clientName || "Cliente"}</div>`
-    : `<div class="wordmark">Vendor<span class="ai grad-text">.ai</span></div>`;
+  const wordmark = `<div class="wordmark" style="font-family:var(--body);font-weight:700;font-size:1.1rem;">${navName}</div>`;
 
   return `<!DOCTYPE html>
 <html lang="pt-BR">
@@ -294,7 +297,7 @@ export function renderProductPresentationHtml(
 </main>
 
 <footer>
-  <span>Vendor.ai — Apresentação preparada para ${clientName || meta.clientName || "Cliente"}</span>
+  <span>${navName} — Apresentação preparada para ${clientName || meta.clientName || "Cliente"}</span>
 </footer>
 
 <script>
@@ -338,10 +341,11 @@ export async function generateProductPresentation(
   const html = renderProductPresentationHtml(
     json,
     theme,
-    ctx.logoUrl,
+    ctx.tenantLogoUrl,
     ctx.leadName,
     ctx.tenantName ?? undefined,
-    ctx.webSources
+    ctx.webSources,
+    ctx.tenantLogoUrl
   );
 
   return { json, html, sources: ctx.webSources || [] };

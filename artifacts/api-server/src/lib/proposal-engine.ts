@@ -163,7 +163,8 @@ export function buildProposalPrompt(ctx: {
     ? `\nInteligência do cliente:\n- Razões de churn: ${(ctx.intelligence.churnReasons || []).join("; ") || "Não identificado"}\n- Oportunidades: ${(ctx.intelligence.opportunities || []).join("; ") || "Não identificado"}\n- Análise de intenção: ${ctx.intelligence.intentAnalysis || "Não identificado"}`
     : "";
 
-  return `Você é um redator comercial sênior da Vendor.ai. Gere o conteúdo de uma proposta comercial personalizada em formato JSON estrito para o cliente abaixo.
+  const tenantLabel = ctx.tenantName ? `da empresa "${ctx.tenantName}"` : "da empresa contratada";
+  return `Você é um redator comercial sênior ${tenantLabel}. Gere o conteúdo de uma proposta comercial personalizada em formato JSON estrito para o cliente abaixo.
 
 ## Dados do cliente
 - Nome: ${ctx.leadName}
@@ -257,7 +258,7 @@ ${ctx.conversationSamples || "Nenhuma conversa disponível. Use tom profissional
 6. Se houver orçamentos, mencione valores/investimento na seção de valor/CTA.
 7. Se não houver briefing, use argumentos genéricos do segmento.
 8. Se não houver orçamentos, omita seção de investimento e foque em valor qualitativo.
-9. Módulos: selecione 4-6 módulos da Vendor.ai mais relevantes ao segmento (Omnichannel, CRM Hub, Sales/CPQ, Customer Intelligence, Executive Intelligence, Knowledge Hub, etc.).
+9. Módulos: selecione 4-6 módulos/serviços mais relevantes ao segmento e ao contexto do cliente, baseados nos produtos cadastrados (se houver) ou nos argumentos de valor da solução apresentada.
 10. Todos os textos em português brasileiro.
 11. Nunca retorne HTML. Sempre JSON com a estrutura acima.`;
 }
@@ -289,7 +290,7 @@ export function renderProposalHtml(json: unknown, theme: {
   secondary: string; secondarySoft: string;
   concrete: string; concreteLine: string;
   ok: string; warn: string;
-}, logoUrl?: string | null, clientName?: string, tenantName?: string, websiteUrl?: string | null): string {
+}, logoUrl?: string | null, clientName?: string, tenantName?: string, websiteUrl?: string | null, tenantLogoUrl?: string | null): string {
   const d = json as Record<string, any>;
   const hero = d.hero || {};
   const situation = d.situation || {};
@@ -325,13 +326,14 @@ export function renderProposalHtml(json: unknown, theme: {
     `<div class="mod reveal"><span class="cod">${m.cod}</span><h4>${m.title}</h4><p>${m.text}</p></div>`
   ).join("");
 
-  const logoHtml = logoUrl
-    ? `<img src="${logoUrl}" alt="${clientName || ""}" style="height:34px;object-fit:contain;max-width:160px;" onerror="this.style.display='none'" />`
+  const navLogoUrl = tenantLogoUrl || null;
+  const navName = tenantName || "Proposta Comercial";
+
+  const logoHtml = navLogoUrl
+    ? `<img src="${navLogoUrl}" alt="${navName}" style="height:34px;object-fit:contain;max-width:160px;" onerror="this.style.display='none'" />`
     : `<div class="badge" aria-hidden="true"><svg width="20" height="20" viewBox="0 0 20 20"><defs><linearGradient id="g1" x1="0" y1="0" x2="20" y2="20"><stop offset="0%" stop-color="${theme.accentSoft}"/><stop offset="100%" stop-color="${theme.secondary}"/></linearGradient></defs><circle cx="10" cy="10" r="3.1" fill="url(#g1)"/><circle cx="3" cy="4" r="1.5" fill="url(#g1)" opacity="0.85"/><circle cx="17" cy="4" r="1.5" fill="url(#g1)" opacity="0.85"/><circle cx="3" cy="16" r="1.5" fill="url(#g1)" opacity="0.85"/><circle cx="17" cy="16" r="1.5" fill="url(#g1)" opacity="0.85"/><g stroke="url(#g1)" stroke-width="0.8" opacity="0.7"><line x1="3" y1="4" x2="10" y2="10"/><line x1="17" y1="4" x2="10" y2="10"/><line x1="3" y1="16" x2="10" y2="10"/><line x1="17" y1="16" x2="10" y2="10"/></g></svg></div>`;
 
-  const wordmark = logoUrl
-    ? `<div class="wordmark" style="font-family:var(--body);font-weight:700;font-size:1.1rem;">${clientName || meta.clientName || "Cliente"}</div>`
-    : `<div class="wordmark">Vendor<span class="ai grad-text">.ai</span></div>`;
+  const wordmark = `<div class="wordmark" style="font-family:var(--body);font-weight:700;font-size:1.1rem;">${navName}</div>`;
 
   return `<!DOCTYPE html>
 <html lang="pt-BR">
@@ -535,7 +537,7 @@ export function renderProposalHtml(json: unknown, theme: {
           <div class="ticket-head"><span class="t">Nota de Atendimento</span><span class="n">Cód. PED-08145</span></div>
           <div class="ticket-store">${solution.ticket?.storeName || ""}</div>
           <div class="bubble client"><span class="who">Cliente · 09:14</span>${solution.ticket?.clientBubble || ""}</div>
-          <div class="bubble agent"><span class="who">Vendor SDR · 09:14</span>${solution.ticket?.agentBubble || ""}</div>
+          <div class="bubble agent"><span class="who">${navName} · 09:14</span>${solution.ticket?.agentBubble || ""}</div>
           <div class="ticket-perf"></div>
           <div class="ticket-foot"><span>Tempo de 1ª resposta</span><span class="time">${solution.ticket?.responseTime || "5 segundos"}</span></div>
         </div>
@@ -565,7 +567,7 @@ export function renderProposalHtml(json: unknown, theme: {
 </main>
 
 <footer>
-  <span>Vendor.ai — Sistema Operacional Empresarial com IA</span>
+  <span>${navName}</span>
   <span>Proposta preparada para ${clientName || meta.clientName || "Cliente"}${websiteUrl ? ` · <a href="${websiteUrl}" style="color:inherit;text-decoration:none" target="_blank" rel="noopener">${websiteUrl}</a>` : ""}</span>
 </footer>
 
