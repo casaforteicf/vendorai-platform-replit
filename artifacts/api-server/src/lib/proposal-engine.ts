@@ -686,3 +686,374 @@ ${imagens && imagens.length > 0 ? `
 </body>
 </html>`;
 }
+
+// ── Standalone orçamento PDF (capa + tabela) ─────────────────────────────────
+export function renderOrcamentoPdf(args: {
+  proposta: {
+    titulo: string;
+    numero?: string | null;
+    itens: Array<{ nome: string; quantidade: number; valorUnitario: number; sku?: string | null; descricao?: string | null }>;
+    valorTotal?: string | null;
+    observacoes?: string | null;
+    formaPagamento?: string | null;
+    condPagamento?: string | null;
+    prazoEntrega?: string | null;
+    validadeAte?: Date | string | null;
+    createdAt?: Date | string;
+  };
+  profile: {
+    nomeFantasia?: string | null;
+    razaoSocial: string;
+    logoUrl?: string | null;
+    diferenciais?: string | null;
+    produtos?: Array<{ nome: string; descricao?: string; preco?: number }> | null;
+    telefone?: string | null;
+    email?: string | null;
+    endereco?: string | null;
+    cnpj?: string | null;
+    publicoAlvo?: string | null;
+  } | null;
+  catalogItems: Array<{
+    nome: string;
+    descricao?: string | null;
+    categoria?: string | null;
+    precoBase: string;
+    unidade: string;
+    imagemUrl?: string | null;
+  }>;
+  lead: { nome: string; empresa?: string | null; telefone?: string | null; email?: string | null } | null;
+}): string {
+  const { proposta, profile, catalogItems, lead } = args;
+
+  const fmtBRL = (v: number) => new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(v);
+  const fmtDate = (d?: Date | string | null) => d ? new Date(d).toLocaleDateString("pt-BR") : "";
+
+  const companyName = profile?.nomeFantasia || profile?.razaoSocial || "Empresa";
+  const today = new Date().toLocaleDateString("pt-BR", { day: "2-digit", month: "long", year: "numeric" });
+
+  // Parse differentials — split by newlines and bullet chars
+  const difItems: string[] = (profile?.diferenciais ?? "")
+    .split(/\n|•|;/)
+    .map((s) => s.replace(/^[\s\-\*\•]+/, "").trim())
+    .filter((s) => s.length > 3)
+    .slice(0, 9);
+
+  // Products to show — prefer catalog, fallback to profile products
+  const showProducts = catalogItems.slice(0, 6);
+
+  // Items table
+  const itens = proposta.itens;
+  const calculatedTotal = itens.reduce((s, i) => s + i.quantidade * i.valorUnitario, 0);
+  const totalExibido = proposta.valorTotal ? parseFloat(proposta.valorTotal) : calculatedTotal;
+
+  const FORMA_LABELS: Record<string, string> = {
+    pix: "PIX", boleto: "Boleto", cartao_credito: "Cartão de Crédito",
+    cartao_debito: "Cartão de Débito", transferencia: "Transferência",
+    dinheiro: "Dinheiro", a_combinar: "A Combinar",
+  };
+
+  const difHtml = difItems.length > 0
+    ? difItems.map((d) => `<div class="dif-item"><span class="dif-bullet">✓</span><span>${d}</span></div>`).join("")
+    : `<div class="dif-item"><span class="dif-bullet">✓</span><span>Atendimento personalizado e ágil</span></div>
+       <div class="dif-item"><span class="dif-bullet">✓</span><span>Qualidade garantida em todos os produtos</span></div>
+       <div class="dif-item"><span class="dif-bullet">✓</span><span>Equipe especializada e experiente</span></div>`;
+
+  const prodHtml = showProducts.length > 0
+    ? showProducts.map((p) => `
+      <div class="prod-card">
+        ${p.categoria ? `<div class="prod-cat">${p.categoria}</div>` : ""}
+        <div class="prod-name">${p.nome}</div>
+        ${p.descricao ? `<div class="prod-desc">${p.descricao}</div>` : ""}
+        <div class="prod-price">${fmtBRL(parseFloat(p.precoBase))} <span class="prod-unit">/ ${p.unidade}</span></div>
+      </div>`).join("")
+    : "";
+
+  const rowsHtml = itens.map((i) => {
+    const sub = i.quantidade * i.valorUnitario;
+    return `<tr>
+      <td>${i.nome}${i.descricao ? `<br><span class="row-desc">${i.descricao}</span>` : ""}${i.sku ? `<br><span class="row-desc">SKU: ${i.sku}</span>` : ""}</td>
+      <td class="r">${i.quantidade}</td>
+      <td class="r">${fmtBRL(i.valorUnitario)}</td>
+      <td class="r fw">${fmtBRL(sub)}</td>
+    </tr>`;
+  }).join("");
+
+  const metaRows = [
+    proposta.formaPagamento ? `<div class="meta-item"><span>Forma de Pagamento</span><strong>${FORMA_LABELS[proposta.formaPagamento] ?? proposta.formaPagamento}</strong></div>` : "",
+    proposta.condPagamento  ? `<div class="meta-item"><span>Condição</span><strong>${proposta.condPagamento}</strong></div>` : "",
+    proposta.prazoEntrega   ? `<div class="meta-item"><span>Prazo de Entrega</span><strong>${proposta.prazoEntrega}</strong></div>` : "",
+    proposta.validadeAte    ? `<div class="meta-item"><span>Válida até</span><strong>${fmtDate(proposta.validadeAte)}</strong></div>` : "",
+  ].filter(Boolean).join("");
+
+  return `<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<title>${proposta.titulo}</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
+<style>
+  @page { size: A4; margin: 0; }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: "Inter", sans-serif;
+    font-size: 9.5pt;
+    line-height: 1.55;
+    color: #1e2a3b;
+    background: #fff;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+
+  /* ── pages ── */
+  .page {
+    width: 210mm;
+    min-height: 297mm;
+    page-break-after: always;
+    display: flex;
+    flex-direction: column;
+  }
+  .page:last-child { page-break-after: auto; }
+
+  /* ─── COVER PAGE ─── */
+  .cover {
+    background: linear-gradient(160deg, #0f1f35 60%, #1a3a5c 100%);
+    color: #fff;
+    padding: 14mm 16mm 12mm;
+  }
+  .cover-top {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 10mm;
+  }
+  .cover-logo-wrap { display: flex; align-items: center; gap: 8px; }
+  .cover-logo { height: 32px; object-fit: contain; max-width: 150px; filter: brightness(0) invert(1); }
+  .cover-company-name { font-weight: 800; font-size: 13pt; color: #fff; }
+  .cover-date { font-family: "JetBrains Mono", monospace; font-size: 7pt; color: rgba(255,255,255,.5); letter-spacing: .07em; text-transform: uppercase; }
+
+  .cover-hero { flex: 1; margin-bottom: 8mm; }
+  .cover-tagline { font-family: "JetBrains Mono", monospace; font-size: 7pt; text-transform: uppercase; letter-spacing: .12em; color: #7eb8ff; margin-bottom: 3mm; }
+  .cover-titulo { font-family: "Instrument Serif", serif; font-weight: 400; font-size: 24pt; line-height: 1.1; color: #fff; margin-bottom: 4mm; max-width: 22ch; }
+  .cover-prepared-label { font-size: 7.5pt; color: rgba(255,255,255,.55); text-transform: uppercase; letter-spacing: .07em; margin-bottom: 1mm; }
+  .cover-prepared-name { font-weight: 700; font-size: 11pt; color: #fff; }
+  .cover-prepared-empresa { font-size: 9pt; color: rgba(255,255,255,.7); }
+
+  /* ── diferenciais ── */
+  .dif-section { margin: 6mm 0; }
+  .section-label {
+    font-family: "JetBrains Mono", monospace;
+    font-size: 6.5pt;
+    text-transform: uppercase;
+    letter-spacing: .1em;
+    color: #7eb8ff;
+    margin-bottom: 3mm;
+  }
+  .dif-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 2.5mm; }
+  .dif-item {
+    display: flex;
+    align-items: flex-start;
+    gap: 5px;
+    background: rgba(255,255,255,.07);
+    border: 1px solid rgba(255,255,255,.12);
+    border-radius: 6px;
+    padding: 3mm 3.5mm;
+    font-size: 8pt;
+    color: rgba(255,255,255,.88);
+    line-height: 1.4;
+  }
+  .dif-bullet { color: #7eb8ff; font-size: 10pt; line-height: 1.2; flex-shrink: 0; }
+
+  /* ── produtos ── */
+  .prod-section { margin-top: 6mm; }
+  .prod-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 2.5mm; margin-top: 2mm; }
+  .prod-card {
+    background: rgba(255,255,255,.06);
+    border: 1px solid rgba(255,255,255,.1);
+    border-radius: 7px;
+    padding: 3.5mm 4mm;
+  }
+  .prod-cat { font-family: "JetBrains Mono", monospace; font-size: 6pt; text-transform: uppercase; letter-spacing: .08em; color: rgba(255,255,255,.45); margin-bottom: 1.5mm; }
+  .prod-name { font-weight: 700; font-size: 8.5pt; color: #fff; margin-bottom: 1mm; }
+  .prod-desc { font-size: 7.5pt; color: rgba(255,255,255,.65); margin-bottom: 1.5mm; line-height: 1.4; }
+  .prod-price { font-family: "Instrument Serif", serif; font-size: 11pt; color: #7eb8ff; }
+  .prod-unit { font-family: "Inter", sans-serif; font-size: 7pt; color: rgba(255,255,255,.45); }
+
+  /* ── cover footer ── */
+  .cover-footer {
+    margin-top: auto;
+    padding-top: 5mm;
+    border-top: 1px solid rgba(255,255,255,.15);
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-family: "JetBrains Mono", monospace;
+    font-size: 6.5pt;
+    color: rgba(255,255,255,.4);
+  }
+  .cover-contact { display: flex; gap: 5mm; }
+
+  /* ─── ORC PAGE ─── */
+  .orc-page { padding: 14mm 16mm 12mm; }
+  .doc-hdr {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding-bottom: 4mm;
+    margin-bottom: 6mm;
+    border-bottom: 1.5px solid #2563eb;
+  }
+  .doc-hdr-left { display: flex; align-items: center; gap: 5px; }
+  .doc-hdr-logo { height: 20px; object-fit: contain; max-width: 110px; }
+  .doc-hdr-name { font-weight: 700; font-size: 8.5pt; color: #1e2a3b; }
+  .doc-hdr-right { font-family: "JetBrains Mono", monospace; font-size: 6.5pt; letter-spacing: .08em; text-transform: uppercase; color: #6b7280; }
+
+  .orc-title { font-family: "Instrument Serif", serif; font-weight: 400; font-size: 16pt; color: #1e2a3b; margin-bottom: 1mm; }
+  .orc-num { font-family: "JetBrains Mono", monospace; font-size: 7.5pt; color: #6b7280; }
+  .orc-dates { font-size: 8pt; color: #6b7280; margin-top: 1mm; }
+
+  .client-box {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 5mm;
+    background: #f8fafc;
+    border: 1px solid #e2e8f0;
+    border-radius: 7px;
+    padding: 4mm 5mm;
+    margin: 4mm 0;
+    font-size: 8.5pt;
+  }
+  .client-lbl { font-family: "JetBrains Mono", monospace; font-size: 6pt; text-transform: uppercase; letter-spacing: .07em; color: #9ca3af; margin-bottom: 1.5mm; }
+  .client-name { font-weight: 700; font-size: 9.5pt; color: #1e2a3b; }
+  .client-detail { color: #6b7280; margin-top: 1px; }
+
+  table.items { width: 100%; border-collapse: collapse; margin-top: 3mm; font-size: 8.5pt; }
+  table.items th { font-family: "JetBrains Mono", monospace; font-size: 6.5pt; text-transform: uppercase; letter-spacing: .07em; color: #9ca3af; border-bottom: 1.5px solid #e2e8f0; padding: 2mm 2.5mm; text-align: left; }
+  table.items th.r, table.items td.r { text-align: right; }
+  table.items td { padding: 2.5mm 2.5mm; border-bottom: 1px solid #f1f5f9; vertical-align: top; }
+  table.items tr:last-child td { border-bottom: none; }
+  .row-desc { font-size: 7pt; color: #9ca3af; }
+  .fw { font-weight: 600; }
+
+  .total-row { display: flex; justify-content: flex-end; margin-top: 3mm; }
+  .total-box { border: 1px solid #bfdbfe; border-radius: 7px; padding: 3mm 5mm; text-align: right; background: #eff6ff; }
+  .total-lbl { font-family: "JetBrains Mono", monospace; font-size: 6.5pt; text-transform: uppercase; letter-spacing: .07em; color: #93c5fd; display: block; margin-bottom: 1mm; }
+  .total-val { font-family: "Instrument Serif", serif; font-size: 20pt; color: #1e3a5f; }
+
+  .meta-grid { display: flex; flex-wrap: wrap; gap: 5mm; margin-top: 4mm; padding-top: 3mm; border-top: 1px solid #e2e8f0; }
+  .meta-item { display: flex; flex-direction: column; gap: 1px; }
+  .meta-item span { font-family: "JetBrains Mono", monospace; font-size: 6pt; text-transform: uppercase; letter-spacing: .07em; color: #9ca3af; }
+  .meta-item strong { font-size: 9pt; color: #1e2a3b; }
+
+  .obs-box { margin-top: 4mm; padding: 3mm 4mm; background: #f8fafc; border-radius: 6px; border: 1px solid #e2e8f0; font-size: 8pt; color: #4b5563; line-height: 1.6; }
+
+  @media print {
+    body { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  }
+</style>
+</head>
+<body>
+
+<!-- ══ PAGE 1: CAPA ══ -->
+<div class="page cover">
+  <div class="cover-top">
+    <div class="cover-logo-wrap">
+      ${profile?.logoUrl ? `<img src="${profile.logoUrl}" alt="${companyName}" class="cover-logo" onerror="this.style.display='none'">` : ""}
+      <span class="cover-company-name">${companyName}</span>
+    </div>
+    <span class="cover-date">${today}</span>
+  </div>
+
+  <div class="cover-hero">
+    <div class="cover-tagline">Orçamento Comercial</div>
+    <h1 class="cover-titulo">${proposta.titulo}</h1>
+    ${lead ? `
+    <div style="margin-top:4mm;">
+      <div class="cover-prepared-label">Preparado para</div>
+      <div class="cover-prepared-name">${lead.nome}</div>
+      ${lead.empresa ? `<div class="cover-prepared-empresa">${lead.empresa}</div>` : ""}
+    </div>` : ""}
+  </div>
+
+  ${difItems.length > 0 || !profile?.diferenciais ? `
+  <div class="dif-section">
+    <div class="section-label">Nossos Diferenciais</div>
+    <div class="dif-grid">${difHtml}</div>
+  </div>` : ""}
+
+  ${showProducts.length > 0 ? `
+  <div class="prod-section">
+    <div class="section-label">Principais Produtos &amp; Serviços</div>
+    <div class="prod-grid">${prodHtml}</div>
+  </div>` : ""}
+
+  <div class="cover-footer">
+    <span>${companyName}${profile?.cnpj ? ` · CNPJ ${profile.cnpj}` : ""}</span>
+    <div class="cover-contact">
+      ${profile?.telefone ? `<span>${profile.telefone}</span>` : ""}
+      ${profile?.email ? `<span>${profile.email}</span>` : ""}
+      ${profile?.endereco ? `<span>${profile.endereco}</span>` : ""}
+    </div>
+  </div>
+</div>
+
+<!-- ══ PAGE 2: ORÇAMENTO ══ -->
+<div class="page orc-page">
+  <div class="doc-hdr">
+    <div class="doc-hdr-left">
+      ${profile?.logoUrl ? `<img src="${profile.logoUrl}" alt="${companyName}" class="doc-hdr-logo" onerror="this.style.display='none'">` : ""}
+      <span class="doc-hdr-name">${companyName}</span>
+    </div>
+    <span class="doc-hdr-right">Orçamento${proposta.numero ? ` · ${proposta.numero}` : ""}</span>
+  </div>
+
+  <div class="orc-title">${proposta.titulo}</div>
+  ${proposta.numero ? `<div class="orc-num">${proposta.numero}</div>` : ""}
+  <div class="orc-dates">
+    Emitido em ${fmtDate(proposta.createdAt ?? new Date())}
+    ${proposta.validadeAte ? ` · Válido até ${fmtDate(proposta.validadeAte)}` : ""}
+  </div>
+
+  ${lead ? `
+  <div class="client-box">
+    <div>
+      <div class="client-lbl">Cliente</div>
+      <div class="client-name">${lead.nome}</div>
+      ${lead.empresa ? `<div class="client-detail">${lead.empresa}</div>` : ""}
+      ${lead.telefone ? `<div class="client-detail">${lead.telefone}</div>` : ""}
+      ${lead.email ? `<div class="client-detail">${lead.email}</div>` : ""}
+    </div>
+    <div>
+      <div class="client-lbl">Empresa Emissora</div>
+      <div class="client-name">${companyName}</div>
+      ${profile?.telefone ? `<div class="client-detail">${profile.telefone}</div>` : ""}
+      ${profile?.email ? `<div class="client-detail">${profile.email}</div>` : ""}
+    </div>
+  </div>` : ""}
+
+  ${itens.length > 0 ? `
+  <table class="items">
+    <thead><tr>
+      <th>Descrição</th>
+      <th class="r">Qtd.</th>
+      <th class="r">Valor Unit.</th>
+      <th class="r">Subtotal</th>
+    </tr></thead>
+    <tbody>${rowsHtml}</tbody>
+  </table>
+
+  <div class="total-row">
+    <div class="total-box">
+      <span class="total-lbl">Total</span>
+      <span class="total-val">${fmtBRL(totalExibido)}</span>
+    </div>
+  </div>` : ""}
+
+  ${metaRows ? `<div class="meta-grid">${metaRows}</div>` : ""}
+  ${proposta.observacoes ? `<div class="obs-box">${proposta.observacoes}</div>` : ""}
+</div>
+
+</body>
+</html>`;
+}

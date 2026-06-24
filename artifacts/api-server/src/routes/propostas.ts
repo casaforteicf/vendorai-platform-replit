@@ -16,6 +16,7 @@ import {
 import { dispatchVendaWebhook } from "../services/erp-webhook.js";
 import { callOpenAI as gatewayCallOpenAI } from "../lib/ai-gateway.js";
 import { proposalAccepted } from "../lib/proposal-accepted.js";
+import { renderOrcamentoPdf, generateProposalPDF } from "../lib/proposal-engine.js";
 
 const router: IRouter = Router();
 
@@ -99,6 +100,85 @@ router.get("/propostas/:id", async (req, res) => {
   }
 
   res.json(proposta);
+});
+
+// ── GET /propostas/:id/pdf — capa + tabela A4 ─────────────────────────────
+router.get("/propostas/:id/pdf", async (req, res) => {
+  const [proposta] = await db
+    .select()
+    .from(propostasTable)
+    .where(eq(propostasTable.id, String(req.params.id)));
+
+  if (!proposta) {
+    res.status(404).json({ error: "Proposta not found" });
+    return;
+  }
+
+  if (req.user?.platformRole !== "super_admin" && proposta.tenantId !== req.user?.tenantId) {
+    res.status(403).json({ error: "Access denied to this tenant" });
+    return;
+  }
+
+  const [profile] = await db
+    .select()
+    .from(businessProfilesTable)
+    .where(eq(businessProfilesTable.tenantId, proposta.tenantId));
+
+  const catalogItems = await db
+    .select({
+      nome: produtosCatalogoTable.nome,
+      descricao: produtosCatalogoTable.descricao,
+      categoria: produtosCatalogoTable.categoria,
+      precoBase: produtosCatalogoTable.precoBase,
+      unidade: produtosCatalogoTable.unidade,
+      imagemUrl: produtosCatalogoTable.imagemUrl,
+    })
+    .from(produtosCatalogoTable)
+    .where(and(
+      eq(produtosCatalogoTable.tenantId, proposta.tenantId),
+      eq(produtosCatalogoTable.ativo, true),
+    ))
+    .limit(6);
+
+  const [lead] = proposta.leadId
+    ? await db
+        .select({ nome: leadsTable.nome, empresa: leadsTable.empresa, telefone: leadsTable.telefone, email: leadsTable.email })
+        .from(leadsTable)
+        .where(eq(leadsTable.id, proposta.leadId))
+    : [null];
+
+  const port = process.env.PORT ?? "5000";
+  const basePath = process.env.BASE_PATH ?? "";
+  const resolveUrl = (url: string | null | undefined): string | null => {
+    if (!url) return null;
+    if (url.startsWith("/objects/")) return `http://localhost:${port}${basePath}/api/storage${url}`;
+    return url;
+  };
+
+  const profileResolved = profile ? { ...profile, logoUrl: resolveUrl(profile.logoUrl) } : null;
+
+  const html = renderOrcamentoPdf({
+    proposta: {
+      ...proposta,
+      itens: (proposta.itens ?? []) as Array<{ nome: string; quantidade: number; valorUnitario: number; sku?: string | null; descricao?: string | null }>,
+    },
+    profile: profileResolved,
+    catalogItems,
+    lead: lead ?? null,
+  });
+
+  const pdfBuffer = await generateProposalPDF(html);
+  const safe = (proposta.numero ?? proposta.id.slice(-8)).replace(/[^a-zA-Z0-9\-_]/g, "_");
+  const fileName = `Orcamento_${safe}.pdf`;
+
+  const isPdf = pdfBuffer.length >= 4 && pdfBuffer[0] === 0x25 && pdfBuffer[1] === 0x50;
+  if (isPdf) {
+    res.setHeader("Content-Type", "application/pdf");
+    res.setHeader("Content-Disposition", `attachment; filename="${fileName}"`);
+  } else {
+    res.setHeader("Content-Type", "text/html; charset=utf-8");
+  }
+  return res.send(pdfBuffer);
 });
 
 router.patch("/propostas/:id", async (req, res) => {

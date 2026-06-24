@@ -1495,6 +1495,8 @@ function PropostaDetailSheet({
   onClose: () => void;
 }) {
   const [, navigate] = useLocation();
+  const { toast } = useToast();
+  const [downloadingPdf, setDownloadingPdf] = useState(false);
 
   if (!proposta) return null;
   const statusCfg = STATUS_CONFIG[proposta.status] ?? STATUS_CONFIG.rascunho;
@@ -1503,6 +1505,30 @@ function PropostaDetailSheet({
   function handleEditar() {
     onClose();
     navigate(`/propostas/${proposta!.id}`);
+  }
+
+  async function handleDownloadPdf() {
+    setDownloadingPdf(true);
+    try {
+      const token = localStorage.getItem("vendorai_token");
+      const res = await fetch(`/api/propostas/${proposta!.id}/pdf`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (!res.ok) throw new Error("Falha ao gerar PDF");
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `Orcamento_${proposta!.numero ?? proposta!.id.slice(-8)}.pdf`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    } catch {
+      toast({ title: "Erro ao gerar PDF", description: "Tente novamente.", variant: "destructive" });
+    } finally {
+      setDownloadingPdf(false);
+    }
   }
 
   return (
@@ -1539,10 +1565,11 @@ function PropostaDetailSheet({
                 size="sm"
                 variant="outline"
                 className="h-7 text-xs gap-1.5"
-                onClick={() => window.open(`/propostas/${proposta.id}/print`, "_blank")}
+                onClick={handleDownloadPdf}
+                disabled={downloadingPdf}
               >
-                <Printer className="h-3 w-3" />
-                PDF
+                {downloadingPdf ? <Loader2 className="h-3 w-3 animate-spin" /> : <Download className="h-3 w-3" />}
+                {downloadingPdf ? "Gerando…" : "PDF"}
               </Button>
             </div>
           </div>
@@ -1713,6 +1740,27 @@ function PropostaViewer({
     window.print();
   }
 
+  async function handleDownloadPdf() {
+    try {
+      const token = localStorage.getItem("vendorai_token");
+      const res = await fetch(`/api/propostas/${proposta.id}/pdf`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (!res.ok) throw new Error();
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `Orcamento_${proposta.numero ?? proposta.id.slice(-8)}.pdf`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    } catch {
+      handlePrint();
+    }
+  }
+
   function buildText() {
     const empresa = biz?.nomeFantasia || biz?.razaoSocial || "";
     const lines: string[] = [];
@@ -1770,8 +1818,8 @@ function PropostaViewer({
             <Button variant="outline" size="sm" onClick={handleEmail} className="hidden sm:inline-flex">
               <Mail className="h-4 w-4 mr-1.5" /> E-mail
             </Button>
-            <Button variant="outline" size="sm" onClick={handlePrint}>
-              <Printer className="h-4 w-4 mr-1.5" /> <span className="hidden sm:inline">Imprimir / </span>PDF
+            <Button variant="outline" size="sm" onClick={handleDownloadPdf}>
+              <Download className="h-4 w-4 mr-1.5" /> <span className="hidden sm:inline">Baixar </span>PDF
             </Button>
             {/* Mobile: dropdown */}
             <DropdownMenu>
@@ -1784,7 +1832,8 @@ function PropostaViewer({
                 <DropdownMenuItem onClick={handleWhatsApp}><MessageCircle className="h-4 w-4 mr-2 text-emerald-600" />Enviar WhatsApp</DropdownMenuItem>
                 <DropdownMenuItem onClick={handleEmail}><Mail className="h-4 w-4 mr-2" />Enviar E-mail</DropdownMenuItem>
                 <DropdownMenuSeparator />
-                <DropdownMenuItem onClick={handlePrint}><Printer className="h-4 w-4 mr-2" />Imprimir / PDF</DropdownMenuItem>
+                <DropdownMenuItem onClick={handleDownloadPdf}><Download className="h-4 w-4 mr-2" />Baixar PDF</DropdownMenuItem>
+                <DropdownMenuItem onClick={handlePrint}><Printer className="h-4 w-4 mr-2" />Imprimir</DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>
             <Button variant="ghost" size="icon" className="h-8 w-8" onClick={onClose}>
