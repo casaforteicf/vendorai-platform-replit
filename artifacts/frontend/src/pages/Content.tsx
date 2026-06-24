@@ -850,12 +850,14 @@ function VariationCard({
   variation,
   contentId,
   tenantId,
+  referenceImageUrl,
 }: {
   index: number;
   type: ContentType;
   variation: ContentVariation;
   contentId?: string;
   tenantId?: string;
+  referenceImageUrl?: string | null;
 }) {
   const [localImageUrl, setLocalImageUrl] = useState<string | undefined>(undefined);
   const [localVideoUrl, setLocalVideoUrl] = useState<string | undefined>(undefined);
@@ -992,12 +994,14 @@ function VariationCard({
                       variationIndex={index}
                       tenantId={tenantId}
                       onGenerated={setLocalImageUrl}
+                      referenceImageUrl={referenceImageUrl}
                     />
                     <RegenerateStyleButton
                       contentId={contentId}
                       variationIndex={index}
                       tenantId={tenantId}
                       onGenerated={setLocalImageUrl}
+                      referenceImageUrl={referenceImageUrl}
                     />
                   </>
                 )}
@@ -1514,7 +1518,7 @@ export default function Content() {
 
                         {/* Image upload */}
                         <div className="space-y-1.5">
-                          <Label>Imagem do cliente (opcional)</Label>
+                          <Label>Imagem de referência do cliente (opcional)</Label>
                           <input
                             ref={preImageInputRef}
                             type="file"
@@ -1687,7 +1691,7 @@ export default function Content() {
                           </Button>
                         </div>
                         {lastResult.result.variations.map((v, i) => (
-                          <VariationCard key={i} index={i} type={lastResult.type} variation={v} contentId={lastResult.id} tenantId={tenantId} />
+                          <VariationCard key={i} index={i} type={lastResult.type} variation={v} contentId={lastResult.id} tenantId={tenantId} referenceImageUrl={preImageUrl} />
                         ))}
                       </div>
                     )}

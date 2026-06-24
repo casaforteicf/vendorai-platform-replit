@@ -512,6 +512,7 @@ router.post("/tenants/:tenantId/content/:contentId/variations/:idx/regenerate-im
   const bodySchema = z.object({
     style: z.string().optional(),
     imageCount: z.coerce.number().int().min(1).max(10).default(1),
+    referenceImageUrl: z.string().optional(),
   });
   const body = bodySchema.safeParse(req.body);
   if (!body.success) {
@@ -535,15 +536,24 @@ router.post("/tenants/:tenantId/content/:contentId/variations/:idx/regenerate-im
 
   const format = gen.type === "stories" ? "stories" : "feed";
   try {
-    const imageUrls = await generateImagesForContent(
-      profile ?? {},
-      tenantId,
-      gen.theme,
-      gen.productName ?? undefined,
-      format,
-      body.data.imageCount,
-      body.data.style,
-    );
+    let imageUrls: string[];
+    if (body.data.referenceImageUrl) {
+      const brand = (profile as any)?.nomeFantasia || "a empresa";
+      const styleNote = body.data.style ? ` Style: ${body.data.style}.` : "";
+      const formatLabel = format === "stories" ? "Stories (vertical 9:16)" : "Feed (square 1:1)";
+      const editPrompt = `Improve this product/marketing image for Instagram ${formatLabel} for "${brand}". Subject: ${gen.theme}${gen.productName ? ` — ${gen.productName}` : ""}.${styleNote} Keep the same product. Improve: lighting, sharpness, color, composition. Professional marketing quality. No text. No watermarks.`;
+      imageUrls = await generateImagesWithReference(tenantId, body.data.referenceImageUrl, editPrompt, body.data.imageCount);
+    } else {
+      imageUrls = await generateImagesForContent(
+        profile ?? {},
+        tenantId,
+        gen.theme,
+        gen.productName ?? undefined,
+        format,
+        body.data.imageCount,
+        body.data.style,
+      );
+    }
 
     const variations = [...gen.result.variations] as (typeof gen.result.variations[number] & { imageUrl?: string; imageUrls?: string[] })[];
     if (!variations[idx]) { res.status(400).json({ error: "Variação inválida" }); return; }
