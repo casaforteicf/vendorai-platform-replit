@@ -38,7 +38,6 @@ import {
   Globe,
   ImagePlus,
   Receipt,
-  CheckCircle2,
   ExternalLink,
   Clock,
   MessageCircle,
@@ -107,10 +106,64 @@ export default function LeadPropostaTab({ leadId, tenantId, lead }: LeadProposta
     Authorization: `Bearer ${token}`,
   };
 
-  const [markingValid, setMarkingValid] = useState<string | null>(null);
+  const [changingLabel, setChangingLabel] = useState<string | null>(null);
   const updatePropostaStatus = useUpdatePropostaStatus({
     request: { headers: { Authorization: `Bearer ${token}` } },
   });
+
+  const ORCAMENTO_LABELS = [
+    { value: "em_analise", label: "Em Análise", color: "bg-blue-50 text-blue-700 border-blue-200",   targetStatus: "enviada" },
+    { value: "aprovado",   label: "Aprovado",   color: "bg-green-50 text-green-700 border-green-200", targetStatus: "aceita" },
+    { value: "descartado", label: "Descartado", color: "bg-red-50 text-red-600 border-red-200",       targetStatus: "rejeitada" },
+    { value: "finalizado", label: "Finalizado", color: "bg-gray-100 text-gray-600 border-gray-200",   targetStatus: "expirada" },
+  ] as const;
+  type OrcLabel = (typeof ORCAMENTO_LABELS)[number]["value"];
+
+  function getOrcLabel(status: string): OrcLabel {
+    if (status === "aceita")    return "aprovado";
+    if (status === "rejeitada") return "descartado";
+    if (status === "expirada")  return "finalizado";
+    return "em_analise";
+  }
+
+  function isTerminalStatus(status: string) {
+    return status === "aceita" || status === "rejeitada" || status === "expirada";
+  }
+
+  async function handleChangeLabel(orcId: string, currentStatus: string, newLabel: string) {
+    const cfg = ORCAMENTO_LABELS.find(l => l.value === newLabel);
+    if (!cfg || getOrcLabel(currentStatus) === newLabel) return;
+    setChangingLabel(orcId);
+    try {
+      await updatePropostaStatus.mutateAsync({ id: orcId, data: { status: cfg.targetStatus } });
+      queryClient.invalidateQueries({ queryKey: ["listPropostas", tenantId] });
+      toast({ title: `Orçamento marcado como "${cfg.label}"` });
+    } catch (e: any) {
+      toast({ title: "Não foi possível alterar etiqueta", description: e?.error || e?.message, variant: "destructive" });
+    } finally {
+      setChangingLabel(null);
+    }
+  }
+
+  async function downloadOrcamentoPdf(orcId: string, titulo: string) {
+    try {
+      const res = await fetch(`/api/propostas/${orcId}/pdf`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (!res.ok) throw new Error("Falha ao gerar PDF");
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `Orcamento_${orcId.slice(-8)}.pdf`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    } catch {
+      toast({ title: "Erro ao gerar PDF", variant: "destructive" });
+    }
+  }
 
   // React Query hooks
   const {
@@ -351,31 +404,6 @@ export default function LeadPropostaTab({ leadId, tenantId, lead }: LeadProposta
     }
   }
 
-  function statusBadge(status: Proposta["status"]) {
-    const map: Record<string, { label: string; className: string }> = {
-      rascunho:  { label: "Rascunho",  className: "bg-gray-100 text-gray-600 border-gray-200" },
-      enviada:   { label: "Enviada",   className: "bg-blue-100 text-blue-700 border-blue-200" },
-      pendente:  { label: "Pendente",  className: "bg-yellow-100 text-yellow-700 border-yellow-200" },
-      aceita:    { label: "Aceita ✓",  className: "bg-green-100 text-green-700 border-green-200" },
-      rejeitada: { label: "Rejeitada", className: "bg-red-100 text-red-600 border-red-200" },
-      expirada:  { label: "Expirada",  className: "bg-orange-100 text-orange-600 border-orange-200" },
-    };
-    const s = map[status] ?? { label: status, className: "bg-gray-100 text-gray-600 border-gray-200" };
-    return <span className={`inline-flex items-center px-2 py-0.5 rounded text-[10px] font-medium border ${s.className}`}>{s.label}</span>;
-  }
-
-  async function markOrcamentoAsValid(orcamentoId: string) {
-    setMarkingValid(orcamentoId);
-    try {
-      await updatePropostaStatus.mutateAsync({ id: orcamentoId, data: { status: "aceita" } });
-      queryClient.invalidateQueries({ queryKey: ["listPropostas", tenantId] });
-      toast({ title: "Orçamento marcado como aceito!" });
-    } catch {
-      toast({ title: "Erro ao atualizar status", variant: "destructive" });
-    } finally {
-      setMarkingValid(null);
-    }
-  }
 
   function formatCurrency(value?: string | null) {
     if (!value) return "—";
@@ -675,18 +703,23 @@ export default function LeadPropostaTab({ leadId, tenantId, lead }: LeadProposta
       {/* Orçamentos vinculados */}
       <Card data-testid="card-orcamentos-lead">
         <CardHeader className="pb-3">
-          <CardTitle className="text-sm font-semibold flex items-center gap-2">
-            <Receipt className="h-4 w-4" />
-            Orçamentos
-            {orcamentos.length > 0 && (
-              <Badge variant="outline" className="text-xs ml-1">{orcamentos.length}</Badge>
-            )}
+          <CardTitle className="text-sm font-semibold flex items-center justify-between">
+            <span className="flex items-center gap-2">
+              <Receipt className="h-4 w-4" />
+              Orçamentos
+              {orcamentos.length > 0 && (
+                <Badge variant="outline" className="text-xs">{orcamentos.length}</Badge>
+              )}
+            </span>
+            <a href="/propostas" className="text-xs font-normal text-muted-foreground hover:text-foreground underline underline-offset-2">
+              + Novo orçamento
+            </a>
           </CardTitle>
         </CardHeader>
         <CardContent>
           {loadingOrcamentos ? (
             <div className="space-y-2">
-              {[1, 2].map((i) => <div key={i} className="h-12 bg-muted animate-pulse rounded" />)}
+              {[1, 2].map((i) => <div key={i} className="h-14 bg-muted animate-pulse rounded" />)}
             </div>
           ) : orcamentos.length === 0 ? (
             <p className="text-xs text-muted-foreground py-2">
@@ -698,59 +731,68 @@ export default function LeadPropostaTab({ leadId, tenantId, lead }: LeadProposta
           ) : (
             <div className="space-y-2">
               {orcamentos.map((orc) => {
-                const isAceita = orc.status === "aceita";
-                const isMarking = markingValid === orc.id;
+                const currentLabel = getOrcLabel(orc.status);
+                const labelCfg = ORCAMENTO_LABELS.find(l => l.value === currentLabel)!;
+                const terminal = isTerminalStatus(orc.status);
+                const isChanging = changingLabel === orc.id;
                 const expirou = orc.validadeAte && new Date(orc.validadeAte) < new Date();
                 return (
                   <div
                     key={orc.id}
-                    className={`flex items-start justify-between gap-3 rounded-lg border p-3 transition-colors ${isAceita ? "border-green-200 bg-green-50/40 dark:bg-green-950/20" : "bg-muted/30"}`}
+                    className="flex items-start justify-between gap-3 rounded-lg border p-3 bg-muted/30 hover:bg-muted/50 transition-colors"
                   >
                     <div className="min-w-0 flex-1 space-y-1">
-                      <div className="flex items-center gap-2 flex-wrap">
-                        {orc.numero && (
-                          <span className="text-[10px] font-mono text-muted-foreground">{orc.numero}</span>
-                        )}
-                        {statusBadge(orc.status)}
-                      </div>
                       <p className="text-xs font-medium truncate">{orc.titulo}</p>
                       <div className="flex items-center gap-3 text-[11px] text-muted-foreground flex-wrap">
                         <span className="font-semibold text-foreground">{formatCurrency(orc.valorTotal)}</span>
+                        {orc.numero && <span className="font-mono">{orc.numero}</span>}
                         {orc.validadeAte && (
                           <span className={`flex items-center gap-1 ${expirou ? "text-orange-500" : ""}`}>
                             <Clock className="h-3 w-3" />
-                            Válido até {new Date(orc.validadeAte).toLocaleDateString("pt-BR")}
+                            {new Date(orc.validadeAte).toLocaleDateString("pt-BR")}
                           </span>
                         )}
                       </div>
                     </div>
                     <div className="flex items-center gap-1 shrink-0">
-                      <a
-                        href={`/propostas/${orc.id}/print`}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                      >
+                      {terminal ? (
+                        <span className={`inline-flex items-center px-2 py-0.5 rounded text-[10px] font-medium border ${labelCfg.color}`}>
+                          {labelCfg.label}
+                        </span>
+                      ) : (
+                        <Select
+                          value={currentLabel}
+                          onValueChange={(v) => handleChangeLabel(orc.id, orc.status, v)}
+                          disabled={isChanging}
+                        >
+                          <SelectTrigger className={`h-7 text-[10px] w-32 border font-medium focus:ring-0 ${labelCfg.color}`}>
+                            {isChanging ? <Loader2 className="h-3 w-3 animate-spin" /> : <SelectValue />}
+                          </SelectTrigger>
+                          <SelectContent>
+                            {ORCAMENTO_LABELS.map(l => (
+                              <SelectItem key={l.value} value={l.value} className="text-xs">
+                                <span className={`inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium border ${l.color}`}>
+                                  {l.label}
+                                </span>
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      )}
+                      <a href={`/propostas/${orc.id}/print`} target="_blank" rel="noopener noreferrer">
                         <Button size="icon" variant="ghost" className="h-7 w-7" title="Ver orçamento">
                           <ExternalLink className="h-3.5 w-3.5" />
                         </Button>
                       </a>
-                      {!isAceita && orcamentos.length > 1 && (
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          className="h-7 text-xs gap-1"
-                          disabled={isMarking}
-                          onClick={() => markOrcamentoAsValid(orc.id)}
-                          title="Marcar este orçamento como aceito"
-                        >
-                          {isMarking ? (
-                            <Loader2 className="h-3 w-3 animate-spin" />
-                          ) : (
-                            <CheckCircle2 className="h-3 w-3" />
-                          )}
-                          Marcar como válido
-                        </Button>
-                      )}
+                      <Button
+                        size="icon"
+                        variant="ghost"
+                        className="h-7 w-7"
+                        title="Baixar PDF"
+                        onClick={() => downloadOrcamentoPdf(orc.id, orc.titulo)}
+                      >
+                        <Download className="h-3.5 w-3.5" />
+                      </Button>
                     </div>
                   </div>
                 );

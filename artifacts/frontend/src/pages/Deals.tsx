@@ -57,7 +57,7 @@ import {
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
-import { Plus, GripVertical, DollarSign, User, TrendingUp, Link2, Copy, CheckCheck, FileUp, Loader2, Sparkles, BarChart3, RefreshCw, Users, Package, AlertTriangle, Paperclip, FileCheck, CreditCard, HandCoins, Flame, Cloud, Snowflake } from "lucide-react";
+import { Plus, GripVertical, DollarSign, User, TrendingUp, Link2, Copy, CheckCheck, FileUp, Loader2, Sparkles, BarChart3, RefreshCw, Users, Package, AlertTriangle, Paperclip, FileCheck, CreditCard, HandCoins, Flame, Cloud, Snowflake, FileText, Clock } from "lucide-react";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import {
   DealEtapaSaas,
@@ -1499,6 +1499,112 @@ function EditDealSheet({
 
 // ─── Main Board ───────────────────────────────────────────────────────────────
 
+// ─── Orçamentos Pipeline ──────────────────────────────────────────────────────
+type Proposta = {
+  id: string;
+  titulo: string;
+  status: string;
+  valorTotal?: string | null;
+  leadId?: string | null;
+  createdAt?: string | null;
+  numero?: string | null;
+};
+
+const ORC_LABELS = [
+  { value: "em_analise", label: "Em Análise", color: "border-blue-200 bg-blue-50", headerColor: "bg-blue-600", badgeColor: "bg-blue-100 text-blue-700", statuses: ["rascunho","enviada","pendente"] },
+  { value: "aprovado",   label: "Aprovado",   color: "border-green-200 bg-green-50", headerColor: "bg-green-600", badgeColor: "bg-green-100 text-green-700", statuses: ["aceita"] },
+  { value: "descartado", label: "Descartado", color: "border-red-200 bg-red-50", headerColor: "bg-red-500", badgeColor: "bg-red-100 text-red-600", statuses: ["rejeitada"] },
+  { value: "finalizado", label: "Finalizado", color: "border-gray-200 bg-gray-50", headerColor: "bg-gray-500", badgeColor: "bg-gray-100 text-gray-600", statuses: ["expirada"] },
+] as const;
+
+function formatOrcVal(v?: string | null) {
+  if (!v) return "—";
+  const n = parseFloat(v);
+  return isNaN(n) ? v : n.toLocaleString("pt-BR", { style: "currency", currency: "BRL", minimumFractionDigits: 2 });
+}
+
+function OrcamentosKanban({ propostas, leadMap }: { propostas: Proposta[]; leadMap: Map<string, string | undefined> }) {
+  const [, navigate] = useLocation();
+
+  if (propostas.length === 0) {
+    return (
+      <div className="flex flex-col items-center justify-center py-20 text-muted-foreground gap-2">
+        <FileText className="h-10 w-10 opacity-30" />
+        <p className="text-sm">Nenhum orçamento criado ainda.</p>
+        <p className="text-xs">Crie orçamentos em <a href="/propostas" className="underline">Orçamentos</a> e eles aparecerão aqui.</p>
+      </div>
+    );
+  }
+
+  const totalAnalise = propostas
+    .filter(p => ["rascunho","enviada","pendente"].includes(p.status))
+    .reduce((s, p) => s + (parseFloat(p.valorTotal ?? "0") || 0), 0);
+
+  return (
+    <div className="flex flex-col gap-4 h-full">
+      {totalAnalise > 0 && (
+        <div className="flex items-center gap-2 p-3 rounded-lg bg-blue-50 border border-blue-200 shrink-0">
+          <Clock className="h-4 w-4 text-blue-600" />
+          <span className="text-sm text-blue-800 font-medium">
+            {formatOrcVal(String(totalAnalise))} em análise no pipeline
+          </span>
+        </div>
+      )}
+      <div className="flex gap-4 overflow-x-auto pb-4 flex-1">
+        {ORC_LABELS.map((col) => {
+          const items = propostas.filter(p => (col.statuses as readonly string[]).includes(p.status));
+          const total = items.reduce((s, p) => s + (parseFloat(p.valorTotal ?? "0") || 0), 0);
+          return (
+            <div key={col.value} className={`w-72 shrink-0 flex flex-col rounded-xl border ${col.color} overflow-hidden`}>
+              <div className={`${col.headerColor} px-4 py-3 flex items-center justify-between`}>
+                <span className="text-sm font-semibold text-white">{col.label}</span>
+                <span className="text-xs text-white/80 bg-white/20 rounded-full px-2 py-0.5">{items.length}</span>
+              </div>
+              {total > 0 && (
+                <div className="px-4 py-1.5 bg-white/60 border-b border-gray-100">
+                  <span className="text-xs font-medium text-muted-foreground">{formatOrcVal(String(total))}</span>
+                </div>
+              )}
+              <div className="flex-1 overflow-y-auto p-3 space-y-2 min-h-[200px]">
+                {items.length === 0 ? (
+                  <p className="text-xs text-muted-foreground text-center py-4">Nenhum orçamento</p>
+                ) : (
+                  items.map(p => (
+                    <button
+                      key={p.id}
+                      type="button"
+                      className="w-full text-left rounded-lg border border-white bg-white shadow-sm hover:shadow-md transition-shadow p-3 space-y-1.5 cursor-pointer"
+                      onClick={() => p.leadId ? navigate(`/leads/${p.leadId}`) : navigate(`/propostas/${p.id}`)}
+                    >
+                      <p className="text-xs font-semibold truncate">{p.titulo}</p>
+                      {p.leadId && leadMap.get(p.leadId) && (
+                        <p className="text-[11px] text-muted-foreground truncate flex items-center gap-1">
+                          <User className="h-3 w-3" />{leadMap.get(p.leadId)}
+                        </p>
+                      )}
+                      <div className="flex items-center justify-between">
+                        <span className="text-xs font-bold text-foreground">{formatOrcVal(p.valorTotal)}</span>
+                        {p.createdAt && (
+                          <span className="text-[10px] text-muted-foreground">
+                            {new Date(p.createdAt).toLocaleDateString("pt-BR")}
+                          </span>
+                        )}
+                      </div>
+                      {p.numero && (
+                        <span className="text-[10px] font-mono text-muted-foreground">{p.numero}</span>
+                      )}
+                    </button>
+                  ))
+                )}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
 export default function Deals() {
   const { user } = useAuth();
   const tenantId = user?.tenantId ?? "";
@@ -2090,50 +2196,70 @@ export default function Deals() {
         </Dialog>
       </div>
 
-      {/* ── Pipeline Clássico ─────────────────────────────────────────────── */}
-      <div className="flex-1 min-h-0 flex flex-col">
-        {isLoading ? (
-          <div className="flex gap-4 overflow-x-auto pb-4">
-            {ETAPAS.map((e) => (
-              <div key={e.value} className="w-72 shrink-0 space-y-2">
-                <div className="h-5 bg-muted animate-pulse rounded w-24" />
-                <div className="h-[400px] bg-muted/30 animate-pulse rounded-lg" />
-              </div>
-            ))}
-          </div>
-        ) : (
-          <DndContext
-            sensors={sensors}
-            onDragStart={handleDragStart}
-            onDragOver={handleDragOver}
-            onDragEnd={handleDragEnd}
-          >
-            <div className="flex gap-4 overflow-x-auto pb-6 flex-1">
-              {ETAPAS.map((etapa) => (
-                <KanbanColumn
-                  key={etapa.value}
-                  etapa={etapa}
-                  deals={dealsByEtapa(etapa.value)}
-                  leadMap={leadMap}
-                  briefingMap={briefingMap}
-                  isOver={overColumn === etapa.value}
-                  onCardClick={handleCardClick}
-                />
+      {/* ── Tabs: Pipeline / Orçamentos ───────────────────────────────────── */}
+      <Tabs defaultValue="pipeline" className="flex-1 min-h-0 flex flex-col">
+        <TabsList className="shrink-0 self-start mb-4">
+          <TabsTrigger value="pipeline">Pipeline de Negócios</TabsTrigger>
+          <TabsTrigger value="orcamentos">
+            Orçamentos
+            {propostas.filter(p => ["rascunho","enviada","pendente"].includes(p.status)).length > 0 && (
+              <span className="ml-1.5 bg-blue-100 text-blue-700 text-[10px] font-semibold rounded-full px-1.5 py-0.5">
+                {propostas.filter(p => ["rascunho","enviada","pendente"].includes(p.status)).length} em análise
+              </span>
+            )}
+          </TabsTrigger>
+        </TabsList>
+
+        {/* ── Pipeline Clássico ─────────────────────────────────────────────── */}
+        <TabsContent value="pipeline" className="flex-1 min-h-0 flex flex-col mt-0">
+          {isLoading ? (
+            <div className="flex gap-4 overflow-x-auto pb-4">
+              {ETAPAS.map((e) => (
+                <div key={e.value} className="w-72 shrink-0 space-y-2">
+                  <div className="h-5 bg-muted animate-pulse rounded w-24" />
+                  <div className="h-[400px] bg-muted/30 animate-pulse rounded-lg" />
+                </div>
               ))}
             </div>
-            <DragOverlay dropAnimation={null}>
-              {activeDeal ? (
-                <DealCard
-                  deal={activeDeal}
-                  leadName={activeDeal.leadId ? leadMap.get(activeDeal.leadId) : undefined}
-                  briefing={activeDeal.leadId ? briefingMap.get(activeDeal.leadId) : undefined}
-                  overlay
-                />
-              ) : null}
-            </DragOverlay>
-          </DndContext>
-        )}
-      </div>
+          ) : (
+            <DndContext
+              sensors={sensors}
+              onDragStart={handleDragStart}
+              onDragOver={handleDragOver}
+              onDragEnd={handleDragEnd}
+            >
+              <div className="flex gap-4 overflow-x-auto pb-6 flex-1">
+                {ETAPAS.map((etapa) => (
+                  <KanbanColumn
+                    key={etapa.value}
+                    etapa={etapa}
+                    deals={dealsByEtapa(etapa.value)}
+                    leadMap={leadMap}
+                    briefingMap={briefingMap}
+                    isOver={overColumn === etapa.value}
+                    onCardClick={handleCardClick}
+                  />
+                ))}
+              </div>
+              <DragOverlay dropAnimation={null}>
+                {activeDeal ? (
+                  <DealCard
+                    deal={activeDeal}
+                    leadName={activeDeal.leadId ? leadMap.get(activeDeal.leadId) : undefined}
+                    briefing={activeDeal.leadId ? briefingMap.get(activeDeal.leadId) : undefined}
+                    overlay
+                  />
+                ) : null}
+              </DragOverlay>
+            </DndContext>
+          )}
+        </TabsContent>
+
+        {/* ── Orçamentos Pipeline ───────────────────────────────────────────── */}
+        <TabsContent value="orcamentos" className="flex-1 min-h-0 mt-0">
+          <OrcamentosKanban propostas={propostas} leadMap={leadMap} />
+        </TabsContent>
+      </Tabs>
 
       {/* ── Modal Motivo de Perda ─────────────────────────────────────────── */}
       <MotivosPerdaDialog
