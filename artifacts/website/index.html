@@ -3,720 +3,1733 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Vendor.ai — Sistema Operacional Empresarial com IA</title>
-<meta name="description" content="Prospecção, CRM, atendimento omnichannel e 7 agentes de IA num só sistema — com pagamentos, contratos, IA multimodal e marketing. Feito para PMEs brasileiras.">
+<title>Vendor.ai — CRM com IA para PMEs brasileiras</title>
+<meta name="description" content="Prospecção, atendimento, qualificação, orçamento e fechamento — tudo no WhatsApp e Instagram, com 7 agentes de IA trabalhando 24/7.">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 <style>
-  :root{
-    --cream:#FAF8F4;
-    --cream-2:#F1ECE2;
-    --ink:#1B1438;
-    --navy-deep:#0B0817;
-    --navy-mid:#1B1438;
-    --indigo:#A78BFA;
-    --indigo-soft:#C4B5FD;
-    --cyan:#22D3EE;
-    --cyan-soft:#38BDF8;
-    --concrete-line:#DAD4C8;
-    --ok:#3FAE7A;
-    --display: "Instrument Serif", serif;
-    --body: "Inter", sans-serif;
-    --mono: "JetBrains Mono", monospace;
-  }
-  *{box-sizing:border-box; margin:0; padding:0;}
-  html{scroll-behavior:smooth;}
-  body{background:var(--cream); color:var(--ink); font-family:var(--body); line-height:1.55; -webkit-font-smoothing:antialiased;}
-  ::selection{background:var(--indigo-soft); color:var(--navy-deep);}
-  a{color:inherit;}
-  img{max-width:100%; display:block;}
-  :focus-visible{outline:2px solid var(--indigo); outline-offset:3px;}
-  .grad-text{background:linear-gradient(90deg,var(--indigo),var(--cyan)); -webkit-background-clip:text; background-clip:text; color:transparent;}
+:root {
+  --bg: #050714;
+  --bg-2: #0c0f24;
+  --bg-card: rgba(255,255,255,0.04);
+  --bg-card-hover: rgba(255,255,255,0.07);
+  --border: rgba(255,255,255,0.08);
+  --border-light: rgba(255,255,255,0.12);
+  --text: #f0eeff;
+  --text-muted: #8880a8;
+  --text-dim: #4e4870;
+  --violet: #7c3aed;
+  --violet-light: #a78bfa;
+  --cyan: #06b6d4;
+  --cyan-light: #67e8f9;
+  --green: #10b981;
+  --amber: #f59e0b;
+  --grad: linear-gradient(135deg, #7c3aed, #06b6d4);
+  --grad-text: linear-gradient(90deg, #a78bfa, #67e8f9);
+  --grad-btn: linear-gradient(135deg, #7c3aed 0%, #2563eb 50%, #06b6d4 100%);
+  --radius: 16px;
+  --radius-sm: 10px;
+  --shadow: 0 25px 50px -12px rgba(0,0,0,0.7);
+  --glow: 0 0 40px rgba(124,58,237,0.25);
+}
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+html { scroll-behavior: smooth; font-size: 16px; }
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: 'Inter', system-ui, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  line-height: 1.6;
+  overflow-x: hidden;
+}
+a { text-decoration: none; color: inherit; }
+img { display: block; max-width: 100%; }
+::selection { background: rgba(124,58,237,0.35); color: #fff; }
 
-  /* logo */
-  .logo{display:flex; align-items:center; gap:10px;}
-  .badge{width:34px; height:34px; border-radius:9px; background:linear-gradient(160deg,var(--navy-mid),var(--navy-deep)); display:flex; align-items:center; justify-content:center; flex-shrink:0;}
-  .badge.lg{width:56px; height:56px; border-radius:14px;}
-  .wordmark{font-family:var(--display); font-size:1.25rem; letter-spacing:0.01em; color:var(--ink);}
-  .wordmark .ai{font-style:italic;}
+/* ── Noise overlay ── */
+body::before {
+  content: '';
+  position: fixed;
+  inset: 0;
+  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 512 512' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.035'/%3E%3C/svg%3E");
+  pointer-events: none;
+  z-index: 999;
+  opacity: 0.4;
+}
 
-  /* nav */
-  .nav{position:sticky; top:0; z-index:50; display:flex; align-items:center; justify-content:space-between; padding:16px 6vw; background:rgba(250,248,244,0.88); backdrop-filter:blur(10px); border-bottom:1px solid var(--concrete-line);}
-  .nav-links{display:none; gap:28px; font-size:0.86rem; font-weight:500;}
-  .nav-links a{text-decoration:none; opacity:0.75; transition:opacity .2s;}
-  .nav-links a:hover{opacity:1;}
-  @media(min-width:880px){.nav-links{display:flex;}}
+/* ── Gradient blobs ── */
+.blob {
+  position: absolute;
+  border-radius: 50%;
+  filter: blur(100px);
+  pointer-events: none;
+  z-index: 0;
+}
 
-  .btn{font-family:var(--body); font-weight:600; font-size:0.85rem; padding:11px 20px; border-radius:100px; border:none; cursor:pointer; text-decoration:none; display:inline-block; transition:transform .15s ease;}
-  .btn:hover{transform:translateY(-1px);}
-  .btn-primary{background:linear-gradient(90deg,var(--indigo),var(--cyan)); color:var(--navy-deep);}
-  .btn-ghost{background:transparent; color:var(--ink); border:1px solid var(--ink);}
-  .btn-ghost.on-dark{color:#fff; border-color:rgba(255,255,255,0.45);}
+/* ── Typography ── */
+.grad-text {
+  background: var(--grad-text);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+h1, h2, h3 { font-family: 'Plus Jakarta Sans', 'Inter', sans-serif; line-height: 1.1; letter-spacing: -0.02em; }
+.overline {
+  font-size: 0.72rem;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--violet-light);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 16px;
+}
+.overline::before {
+  content: '';
+  display: block;
+  width: 20px;
+  height: 2px;
+  background: var(--grad);
+  border-radius: 2px;
+}
 
-  section{padding:96px 6vw;}
-  .container{max-width:1120px; margin:0 auto;}
-  .cod{font-family:var(--mono); font-size:0.7rem; letter-spacing:0.07em; text-transform:uppercase; color:var(--navy-mid); background:var(--cream-2); border:1px solid var(--concrete-line); padding:5px 11px; border-radius:5px; display:inline-block; margin-bottom:18px;}
-  .agitate .cod{background:rgba(255,255,255,0.08); border-color:rgba(255,255,255,0.18); color:var(--cream);}
+/* ── Layout ── */
+.container { max-width: 1120px; margin: 0 auto; padding: 0 24px; }
+section { padding: 96px 0; position: relative; overflow: hidden; }
 
-  h1,h2,h3{font-family:var(--display); font-weight:400; line-height:1.08;}
-  h2{font-size:clamp(1.9rem,3.6vw,2.9rem); max-width:20ch;}
-  p.lead{font-size:1.05rem; color:#3a3358; max-width:62ch;}
-  .agitate p.lead{color:#cfc9e6;}
-  .agitate h2{color:#fff;}
+/* ── Buttons ── */
+.btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-family: 'Inter', sans-serif;
+  font-weight: 600;
+  font-size: 0.9rem;
+  padding: 13px 24px;
+  border-radius: 100px;
+  border: none;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  white-space: nowrap;
+  text-decoration: none;
+}
+.btn-primary {
+  background: var(--grad-btn);
+  background-size: 200% auto;
+  color: #fff;
+  box-shadow: 0 4px 24px rgba(124,58,237,0.4);
+}
+.btn-primary:hover { background-position: right center; transform: translateY(-2px); box-shadow: 0 8px 32px rgba(124,58,237,0.5); }
+.btn-outline {
+  background: transparent;
+  color: var(--text);
+  border: 1px solid var(--border-light);
+}
+.btn-outline:hover { background: var(--bg-card); border-color: rgba(255,255,255,0.2); transform: translateY(-1px); }
+.btn-ghost { background: transparent; color: var(--violet-light); padding: 13px 20px; }
+.btn-ghost:hover { background: rgba(124,58,237,0.1); }
+.btn-lg { padding: 16px 32px; font-size: 1rem; }
+.btn-sm { padding: 9px 18px; font-size: 0.82rem; }
 
-  .reveal{opacity:0; transform:translateY(16px); transition:opacity .6s ease, transform .6s ease;}
-  .reveal.in{opacity:1; transform:translateY(0);}
-  @media(prefers-reduced-motion:reduce){.reveal{opacity:1; transform:none; transition:none;}}
+/* ── Nav ── */
+.nav {
+  position: sticky;
+  top: 0;
+  z-index: 100;
+  padding: 0 6vw;
+  height: 68px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  background: rgba(5,7,20,0.8);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border-bottom: 1px solid var(--border);
+  transition: background 0.3s;
+}
+.logo { display: flex; align-items: center; gap: 10px; }
+.logo-mark {
+  width: 36px; height: 36px;
+  border-radius: 10px;
+  background: var(--grad);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-family: 'Plus Jakarta Sans', sans-serif;
+  font-weight: 800;
+  font-size: 1rem;
+  color: #fff;
+  letter-spacing: -0.05em;
+  box-shadow: var(--glow);
+}
+.logo-text { font-family: 'Plus Jakarta Sans', sans-serif; font-weight: 700; font-size: 1.1rem; letter-spacing: -0.02em; }
+.logo-text span { background: var(--grad-text); -webkit-background-clip: text; background-clip: text; color: transparent; }
+.nav-links { display: none; gap: 6px; }
+@media(min-width: 900px) { .nav-links { display: flex; } }
+.nav-links a {
+  font-size: 0.86rem;
+  font-weight: 500;
+  color: var(--text-muted);
+  padding: 8px 14px;
+  border-radius: 8px;
+  transition: all 0.15s;
+}
+.nav-links a:hover { color: var(--text); background: var(--bg-card); }
+.nav-ctas { display: flex; align-items: center; gap: 10px; }
+.btn-hamburger { display: none; background: none; border: none; cursor: pointer; color: var(--text); padding: 8px; }
+@media(max-width: 900px) { .btn-hamburger { display: flex; } }
 
-  /* hero */
-  .hero{padding-top:88px; padding-bottom:60px; background:radial-gradient(640px 340px at 88% 4%, rgba(167,139,250,0.16), transparent 70%), var(--cream); overflow:hidden;}
-  .hero-grid{display:grid; gap:56px; align-items:center;}
-  @media(min-width:980px){.hero-grid{grid-template-columns:1.05fr 0.95fr;}}
-  .hero-tag{font-family:var(--mono); font-size:0.76rem; color:var(--navy-mid); opacity:.7; letter-spacing:.06em; text-transform:uppercase; margin-bottom:14px;}
-  .hero h1{font-size:clamp(2.3rem,5vw,3.6rem); max-width:14ch; margin-bottom:20px;}
-  .hero p.lead{font-size:1.12rem; margin-bottom:32px;}
-  .hero-ctas{display:flex; flex-wrap:wrap; gap:14px;}
+/* Mobile menu */
+.mobile-menu {
+  display: none;
+  position: fixed;
+  inset: 68px 0 0 0;
+  background: rgba(5,7,20,0.97);
+  backdrop-filter: blur(20px);
+  z-index: 99;
+  padding: 32px 24px;
+  flex-direction: column;
+  gap: 8px;
+}
+.mobile-menu.open { display: flex; }
+.mobile-menu a {
+  font-size: 1.1rem;
+  font-weight: 600;
+  color: var(--text-muted);
+  padding: 14px 16px;
+  border-radius: 12px;
+  transition: all 0.15s;
+  border: 1px solid transparent;
+}
+.mobile-menu a:hover { color: var(--text); background: var(--bg-card); border-color: var(--border); }
+.mobile-menu .mobile-ctas { margin-top: 20px; display: flex; flex-direction: column; gap: 10px; }
 
-  /* convergence diagram — signature element */
-  .converge-wrap{position:relative; aspect-ratio:1/1; max-width:440px; margin:0 auto;}
-  .converge-wrap svg{width:100%; height:100%;}
-  .core-pulse{animation:pulseGlow 3.2s ease-in-out infinite;}
-  @keyframes pulseGlow{0%,100%{opacity:0.55; r:34;} 50%{opacity:0.9; r:40;}}
-  @media(prefers-reduced-motion:reduce){.core-pulse{animation:none;}}
-  .conv-label{position:absolute; bottom:-30px; left:50%; transform:translateX(-50%); font-family:var(--mono); font-size:0.74rem; color:#6b6485; text-align:center; white-space:nowrap;}
+/* ── Hero ── */
+.hero {
+  min-height: calc(100vh - 68px);
+  display: flex;
+  align-items: center;
+  padding: 80px 0 60px;
+  position: relative;
+  overflow: hidden;
+}
+.hero .blob-1 {
+  width: 600px; height: 600px;
+  background: radial-gradient(circle, rgba(124,58,237,0.25) 0%, transparent 70%);
+  top: -100px; right: -100px;
+}
+.hero .blob-2 {
+  width: 400px; height: 400px;
+  background: radial-gradient(circle, rgba(6,182,212,0.15) 0%, transparent 70%);
+  bottom: 0; left: -80px;
+}
+.hero-layout {
+  display: grid;
+  gap: 60px;
+  align-items: center;
+}
+@media(min-width: 900px) { .hero-layout { grid-template-columns: 1fr 1fr; } }
+.hero-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 14px 6px 8px;
+  border-radius: 100px;
+  background: rgba(124,58,237,0.12);
+  border: 1px solid rgba(124,58,237,0.3);
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: var(--violet-light);
+  margin-bottom: 24px;
+}
+.hero-badge .dot {
+  width: 20px; height: 20px;
+  background: var(--grad);
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.65rem;
+}
+.hero h1 {
+  font-size: clamp(2.4rem, 5vw, 3.8rem);
+  font-weight: 800;
+  margin-bottom: 24px;
+  color: #fff;
+}
+.hero h1 em { font-style: normal; background: var(--grad-text); -webkit-background-clip: text; background-clip: text; color: transparent; }
+.hero .subtitle {
+  font-size: 1.1rem;
+  color: var(--text-muted);
+  max-width: 46ch;
+  margin-bottom: 36px;
+  line-height: 1.7;
+}
+.hero-ctas { display: flex; flex-wrap: wrap; gap: 12px; }
+.hero-trust {
+  margin-top: 40px;
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  font-size: 0.82rem;
+  color: var(--text-dim);
+}
+.hero-trust .avatars { display: flex; }
+.hero-trust .avatars span {
+  width: 28px; height: 28px;
+  border-radius: 50%;
+  background: var(--grad);
+  border: 2px solid var(--bg);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.7rem;
+  font-weight: 700;
+  color: #fff;
+  margin-left: -8px;
+}
+.hero-trust .avatars span:first-child { margin-left: 0; }
 
-  /* proof bar */
-  .proof{background:var(--navy-deep); padding:34px 6vw;}
-  .proof-row{max-width:1120px; margin:0 auto; display:grid; grid-template-columns:repeat(2,1fr); gap:22px;}
-  @media(min-width:760px){.proof-row{grid-template-columns:repeat(4,1fr);}}
-  .proof-item{text-align:center;}
-  .proof-item .n{font-family:var(--display); font-size:1.7rem; background:linear-gradient(90deg,var(--indigo-soft),var(--cyan-soft)); -webkit-background-clip:text; background-clip:text; color:transparent;}
-  .proof-item .l{font-family:var(--mono); font-size:0.68rem; color:#a59fc4; text-transform:uppercase; letter-spacing:.04em; margin-top:4px;}
+/* ── Segment selector ── */
+.segment-selector {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: 20px;
+  padding: 28px;
+}
+.seg-title {
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--text-muted);
+  margin-bottom: 14px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+.seg-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 24px;
+}
+.seg-chip {
+  padding: 7px 14px;
+  border-radius: 100px;
+  font-size: 0.83rem;
+  font-weight: 600;
+  border: 1px solid var(--border-light);
+  cursor: pointer;
+  transition: all 0.2s;
+  background: transparent;
+  color: var(--text-muted);
+  font-family: 'Inter', sans-serif;
+}
+.seg-chip:hover { border-color: var(--violet-light); color: var(--violet-light); background: rgba(124,58,237,0.08); }
+.seg-chip.active { background: var(--grad); border-color: transparent; color: #fff; }
+.seg-preview {
+  background: rgba(255,255,255,0.03);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  padding: 20px;
+  min-height: 160px;
+  transition: all 0.3s;
+}
+.seg-preview .sp-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.72rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--violet-light);
+  margin-bottom: 12px;
+}
+.seg-preview h4 { font-size: 1.05rem; font-weight: 700; color: #fff; margin-bottom: 8px; }
+.seg-preview p { font-size: 0.88rem; color: var(--text-muted); line-height: 1.6; margin-bottom: 14px; }
+.seg-features { display: flex; flex-direction: column; gap: 6px; }
+.seg-feat {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.83rem;
+  color: var(--text-muted);
+}
+.seg-feat::before {
+  content: '';
+  width: 14px; height: 14px;
+  border-radius: 50%;
+  background: var(--grad);
+  flex-shrink: 0;
+  background-size: cover;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.check-icon {
+  width: 16px; height: 16px;
+  color: var(--green);
+  flex-shrink: 0;
+}
 
-  /* problem grid */
-  .grid-cards{display:grid; gap:16px; grid-template-columns:1fr; margin-top:36px;}
-  @media(min-width:760px){.grid-cards{grid-template-columns:1fr 1fr;}}
-  .pcard{background:#fff; border:1px solid var(--concrete-line); border-radius:14px; padding:24px; position:relative; overflow:hidden;}
-  .pcard::before{content:''; position:absolute; left:0; top:0; bottom:0; width:3px; background:linear-gradient(180deg,var(--indigo),var(--cyan));}
-  .pcard h4{font-weight:700; font-size:1rem; margin-bottom:8px;}
-  .pcard p{font-size:0.92rem; color:#4a4368;}
+/* ── Stats bar ── */
+.stats-bar {
+  background: var(--bg-2);
+  border-top: 1px solid var(--border);
+  border-bottom: 1px solid var(--border);
+  padding: 40px 0;
+}
+.stats-row {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 32px;
+  text-align: center;
+}
+@media(min-width: 760px) { .stats-row { grid-template-columns: repeat(4, 1fr); } }
+.stat-item {}
+.stat-num {
+  font-family: 'Plus Jakarta Sans', sans-serif;
+  font-size: 2.2rem;
+  font-weight: 800;
+  background: var(--grad-text);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  line-height: 1;
+  margin-bottom: 8px;
+}
+.stat-label { font-size: 0.8rem; color: var(--text-dim); font-weight: 500; }
 
-  /* solution pillars */
-  .pillars{display:grid; gap:18px; grid-template-columns:1fr; margin-top:40px;}
-  @media(min-width:760px){.pillars{grid-template-columns:repeat(3,1fr);}}
-  .pillar{padding:26px; border-radius:16px; background:var(--cream-2); border:1px solid var(--concrete-line);}
-  .pillar .pnum{font-family:var(--mono); font-size:0.72rem; color:var(--navy-mid); opacity:.6;}
-  .pillar h3{font-size:1.3rem; margin:10px 0 10px;}
-  .pillar p{font-size:0.92rem; color:#4a4368;}
+/* ── Problem section ── */
+.problem { background: var(--bg); }
+.problem-grid { display: grid; gap: 16px; grid-template-columns: 1fr; margin-top: 48px; }
+@media(min-width: 760px) { .problem-grid { grid-template-columns: 1fr 1fr; } }
+.problem-card {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 28px;
+  position: relative;
+  overflow: hidden;
+  transition: all 0.25s;
+}
+.problem-card:hover { background: var(--bg-card-hover); border-color: var(--border-light); transform: translateY(-2px); }
+.problem-card::before {
+  content: '';
+  position: absolute;
+  left: 0; top: 0; bottom: 0;
+  width: 3px;
+  background: var(--grad);
+}
+.problem-card .p-num {
+  font-family: 'Plus Jakarta Sans', sans-serif;
+  font-size: 2rem;
+  font-weight: 800;
+  color: rgba(124,58,237,0.15);
+  position: absolute;
+  top: 16px; right: 20px;
+}
+.problem-card h4 { font-size: 1.05rem; font-weight: 700; color: #fff; margin-bottom: 8px; }
+.problem-card p { font-size: 0.9rem; color: var(--text-muted); line-height: 1.65; }
 
-  /* agents */
-  .agitate{background:linear-gradient(160deg,var(--navy-mid),var(--navy-deep)); color:var(--cream);}
-  .agents{display:grid; gap:14px; margin-top:38px; grid-template-columns:1fr;}
-  @media(min-width:640px){.agents{grid-template-columns:repeat(2,1fr);}}
-  @media(min-width:1020px){.agents{grid-template-columns:repeat(4,1fr);}}
-  .agent{background:rgba(255,255,255,0.05); border:1px solid rgba(255,255,255,0.12); border-radius:14px; padding:22px; transition:background .2s;}
-  .agent:hover{background:rgba(255,255,255,0.08);}
-  .agent .tag{font-family:var(--mono); font-size:0.66rem; letter-spacing:.05em; text-transform:uppercase; color:var(--navy-deep); background:linear-gradient(90deg,var(--indigo-soft),var(--cyan-soft)); padding:4px 9px; border-radius:5px; display:inline-block; margin-bottom:12px;}
-  .agent h4{font-size:1rem; font-weight:700; margin-bottom:6px; color:#fff;}
-  .agent p{font-size:0.85rem; color:#c6c0e0;}
+/* ── Solution / pillars ── */
+.solution { background: var(--bg-2); }
+.pillars { display: grid; gap: 16px; margin-top: 48px; }
+@media(min-width: 760px) { .pillars { grid-template-columns: repeat(3, 1fr); } }
+.pillar {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 28px;
+  transition: all 0.25s;
+}
+.pillar:hover { background: var(--bg-card-hover); border-color: rgba(124,58,237,0.3); box-shadow: var(--glow); transform: translateY(-3px); }
+.pillar-num {
+  font-size: 0.7rem;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  color: var(--violet-light);
+  margin-bottom: 14px;
+}
+.pillar h3 { font-size: 1.15rem; font-weight: 700; color: #fff; margin-bottom: 10px; }
+.pillar p { font-size: 0.9rem; color: var(--text-muted); line-height: 1.65; }
 
-  /* ticket mock */
-  .ticket-wrap{display:flex; justify-content:center; margin:56px 0 6px;}
-  .ticket{position:relative; width:100%; max-width:420px; background:#fff; border-radius:14px; padding:24px 22px 20px; box-shadow:0 30px 60px -28px rgba(0,0,0,0.5);}
-  .ticket-perf{border-top:1px dashed var(--concrete-line); margin:14px 0;}
-  .ticket-head{display:flex; justify-content:space-between; font-family:var(--mono); font-size:0.68rem; color:#6b6485; text-transform:uppercase; margin-bottom:14px;}
-  .bubble{border-radius:10px; padding:10px 13px; font-size:0.85rem; margin-bottom:10px; max-width:88%; color:var(--ink);}
-  .bubble.client{background:var(--cream-2); margin-right:auto;}
-  .bubble.agent{background:linear-gradient(90deg,rgba(167,139,250,0.14),rgba(34,211,238,0.14)); margin-left:auto; border:1px solid var(--indigo-soft);}
-  .bubble .who{font-family:var(--mono); font-size:0.6rem; opacity:.55; display:block; margin-bottom:3px; text-transform:uppercase;}
-  .ticket-foot{display:flex; justify-content:space-between; align-items:center; font-family:var(--mono); font-size:0.72rem; color:#4a4368;}
-  .ticket-foot .time{color:var(--ok); font-weight:600;}
+/* ── Agents ── */
+.agents-section { background: var(--bg); }
+.agents-section .blob-1 {
+  width: 500px; height: 500px;
+  background: radial-gradient(circle, rgba(6,182,212,0.12) 0%, transparent 70%);
+  top: 50%; left: -100px; transform: translateY(-50%);
+}
+.agents-grid { display: grid; gap: 14px; margin-top: 48px; }
+@media(min-width: 600px) { .agents-grid { grid-template-columns: repeat(2, 1fr); } }
+@media(min-width: 1000px) { .agents-grid { grid-template-columns: repeat(4, 1fr); } }
+.agent-card {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 24px;
+  transition: all 0.25s;
+  position: relative;
+  overflow: hidden;
+}
+.agent-card::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: var(--grad);
+  opacity: 0;
+  transition: opacity 0.25s;
+}
+.agent-card:hover { border-color: transparent; transform: translateY(-3px); box-shadow: var(--shadow); }
+.agent-card:hover::after { opacity: 0.06; }
+.agent-tag {
+  display: inline-block;
+  font-size: 0.68rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  padding: 4px 10px;
+  border-radius: 100px;
+  background: var(--grad);
+  color: #fff;
+  margin-bottom: 14px;
+  position: relative;
+  z-index: 1;
+}
+.agent-card h4 { font-size: 1rem; font-weight: 700; color: #fff; margin-bottom: 8px; position: relative; z-index: 1; }
+.agent-card p { font-size: 0.84rem; color: var(--text-muted); line-height: 1.6; position: relative; z-index: 1; }
 
-  /* modules */
-  .modules{background:var(--cream-2);}
-  .mod-grid{display:grid; gap:14px; grid-template-columns:1fr; margin-top:36px;}
-  @media(min-width:640px){.mod-grid{grid-template-columns:1fr 1fr;}}
-  @media(min-width:980px){.mod-grid{grid-template-columns:repeat(3,1fr);}}
-  .mod{background:var(--cream); border:1px solid var(--concrete-line); border-radius:12px; padding:20px;}
-  .mod .cod{font-size:0.6rem; margin-bottom:8px;}
-  .mod h4{font-size:0.95rem; font-weight:700; margin-bottom:6px;}
-  .mod p{font-size:0.85rem; color:#4a4368;}
+/* ── Lead Central (conversation mock) ── */
+.lead-central { background: var(--bg-2); }
+.lead-layout { display: grid; gap: 60px; align-items: center; margin-top: 48px; }
+@media(min-width: 900px) { .lead-layout { grid-template-columns: 1fr 1fr; } }
+.lead-points { display: flex; flex-direction: column; gap: 24px; }
+.lead-point { display: flex; gap: 16px; }
+.lp-icon {
+  width: 40px; height: 40px;
+  border-radius: 10px;
+  background: var(--grad);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.1rem;
+  flex-shrink: 0;
+}
+.lp-text h4 { font-size: 1rem; font-weight: 700; color: #fff; margin-bottom: 4px; }
+.lp-text p { font-size: 0.88rem; color: var(--text-muted); line-height: 1.6; }
+.conv-card {
+  background: rgba(255,255,255,0.04);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  overflow: hidden;
+  box-shadow: var(--shadow);
+}
+.conv-header {
+  padding: 14px 18px;
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.conv-avatar {
+  width: 34px; height: 34px;
+  border-radius: 50%;
+  background: var(--grad);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.75rem;
+  font-weight: 700;
+  color: #fff;
+}
+.conv-info { flex: 1; }
+.conv-name { font-size: 0.88rem; font-weight: 700; color: #fff; }
+.conv-channel { font-size: 0.72rem; color: var(--text-dim); }
+.conv-status { font-size: 0.7rem; font-weight: 600; padding: 3px 8px; border-radius: 100px; background: rgba(16,185,129,0.15); color: #6ee7b7; }
+.conv-body { padding: 18px; display: flex; flex-direction: column; gap: 12px; }
+.bubble {
+  max-width: 82%;
+  padding: 10px 14px;
+  border-radius: 14px;
+  font-size: 0.84rem;
+  line-height: 1.55;
+}
+.bubble.client {
+  background: rgba(255,255,255,0.06);
+  border: 1px solid var(--border);
+  color: var(--text);
+  align-self: flex-start;
+  border-bottom-left-radius: 4px;
+}
+.bubble.agent {
+  background: linear-gradient(135deg, rgba(124,58,237,0.25), rgba(6,182,212,0.2));
+  border: 1px solid rgba(124,58,237,0.3);
+  color: var(--text);
+  align-self: flex-end;
+  border-bottom-right-radius: 4px;
+}
+.bubble .bname { font-size: 0.65rem; font-weight: 700; color: var(--violet-light); display: block; margin-bottom: 3px; text-transform: uppercase; letter-spacing: 0.05em; }
+.conv-footer {
+  padding: 10px 18px 14px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 0.72rem;
+  color: var(--text-dim);
+}
+.conv-footer .time-badge {
+  padding: 4px 10px;
+  background: rgba(16,185,129,0.1);
+  border: 1px solid rgba(16,185,129,0.2);
+  border-radius: 100px;
+  color: #6ee7b7;
+  font-weight: 600;
+}
 
-  /* how it works */
-  .steps{display:flex; flex-direction:column; gap:0; margin-top:40px; max-width:760px;}
-  .step-row{display:flex; gap:20px; padding:22px 0; border-bottom:1px solid var(--concrete-line);}
-  .step-row:last-child{border-bottom:none;}
-  .step-row .snum{font-family:var(--display); font-size:1.6rem; color:var(--indigo); flex-shrink:0; width:44px;}
-  .step-row h4{font-size:1.02rem; font-weight:700; margin-bottom:4px;}
-  .step-row p{font-size:0.9rem; color:#4a4368;}
+/* ── Modules ── */
+.modules-section { background: var(--bg); }
+.modules-grid { display: grid; gap: 14px; margin-top: 48px; }
+@media(min-width: 600px) { .modules-grid { grid-template-columns: repeat(2, 1fr); } }
+@media(min-width: 960px) { .modules-grid { grid-template-columns: repeat(3, 1fr); } }
+.module-card {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 24px;
+  transition: all 0.25s;
+}
+.module-card:hover { background: var(--bg-card-hover); border-color: var(--border-light); }
+.module-icon {
+  width: 44px; height: 44px;
+  border-radius: 12px;
+  background: var(--bg-2);
+  border: 1px solid var(--border);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.3rem;
+  margin-bottom: 16px;
+}
+.module-card h4 { font-size: 0.95rem; font-weight: 700; color: #fff; margin-bottom: 6px; }
+.module-card p { font-size: 0.85rem; color: var(--text-muted); line-height: 1.6; }
 
-  /* brasil */
-  .brasil{display:grid; gap:40px; margin-top:36px;}
-  @media(min-width:900px){.brasil{grid-template-columns:1fr 1fr;}}
-  .brasil-list{list-style:none; display:flex; flex-direction:column; gap:16px;}
-  .brasil-list li{display:flex; gap:12px; font-size:0.94rem; color:#3a3358;}
-  .brasil-list li b{font-weight:700;}
-  .brasil-tick{font-family:var(--mono); color:var(--ok); flex-shrink:0;}
+/* ── Vertical selector ── */
+.verticals-section { background: var(--bg-2); }
+.vert-tabs { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 32px; margin-top: 40px; }
+.vert-tab {
+  padding: 9px 18px;
+  border-radius: 100px;
+  font-size: 0.84rem;
+  font-weight: 600;
+  border: 1px solid var(--border-light);
+  cursor: pointer;
+  transition: all 0.2s;
+  background: transparent;
+  color: var(--text-muted);
+  font-family: 'Inter', sans-serif;
+}
+.vert-tab:hover { border-color: var(--violet-light); color: var(--violet-light); }
+.vert-tab.active { background: var(--grad); border-color: transparent; color: #fff; }
+.vert-content { display: none; }
+.vert-content.active { display: grid; gap: 16px; }
+@media(min-width: 760px) { .vert-content.active { grid-template-columns: 1fr 1fr; } }
+.vert-card {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 28px;
+}
+.vert-tag { font-size: 0.72rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.08em; color: var(--violet-light); margin-bottom: 14px; display: block; }
+.vert-card h3 { font-size: 1.2rem; font-weight: 700; color: #fff; margin-bottom: 10px; }
+.vert-card p { font-size: 0.9rem; color: var(--text-muted); line-height: 1.65; margin-bottom: 16px; }
+.vert-list { display: flex; flex-direction: column; gap: 8px; }
+.vert-item { display: flex; align-items: center; gap: 10px; font-size: 0.85rem; color: var(--text-muted); }
+.vert-item::before {
+  content: '✓';
+  color: var(--green);
+  font-weight: 700;
+  font-size: 0.85rem;
+}
 
-  /* pricing */
-  .plans{display:grid; gap:18px; grid-template-columns:1fr; margin-top:40px;}
-  @media(min-width:880px){.plans{grid-template-columns:repeat(3,1fr);}}
-  .plan{border:1px solid var(--concrete-line); border-radius:16px; padding:30px 26px; background:#fff; display:flex; flex-direction:column;}
-  .plan.featured{border:2px solid transparent; background:linear-gradient(#fff,#fff) padding-box, linear-gradient(160deg,var(--indigo),var(--cyan)) border-box; position:relative;}
-  .plan.featured::before{content:'Mais escolhido'; position:absolute; top:-13px; left:26px; font-family:var(--mono); font-size:0.64rem; text-transform:uppercase; letter-spacing:.05em; background:linear-gradient(90deg,var(--indigo),var(--cyan)); color:var(--navy-deep); padding:4px 10px; border-radius:100px; font-weight:700;}
-  .plan h3{font-size:1.25rem; margin-bottom:6px;}
-  .plan .for{font-size:0.82rem; color:#6b6485; margin-bottom:18px;}
-  .plan ul{list-style:none; display:flex; flex-direction:column; gap:10px; margin-bottom:26px; flex:1;}
-  .plan li{font-size:0.87rem; color:#3a3358; display:flex; gap:8px;}
-  .plan li:before{content:'+'; color:var(--indigo); font-weight:700;}
-  .plan .price{display:flex; align-items:baseline; gap:5px; margin-bottom:4px;}
-  .plan .price .amount{font-family:var(--display); font-size:2.1rem; color:var(--navy-deep); line-height:1;}
-  .plan .price .period{font-size:0.85rem; color:#6b6485;}
-  .plan .price-note{font-family:var(--mono); font-size:0.7rem; color:#8a82a3; line-height:1.5; margin-bottom:18px; letter-spacing:.01em;}
+/* ── Integrations ── */
+.integrations-section { background: var(--bg); }
+.int-grid { display: grid; gap: 12px; margin-top: 48px; }
+@media(min-width: 600px) { .int-grid { grid-template-columns: repeat(2, 1fr); } }
+@media(min-width: 960px) { .int-grid { grid-template-columns: repeat(3, 1fr); } }
+.int-card {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 22px;
+  display: flex;
+  align-items: flex-start;
+  gap: 14px;
+  transition: all 0.2s;
+}
+.int-card:hover { background: var(--bg-card-hover); border-color: var(--border-light); }
+.int-logo {
+  width: 40px; height: 40px;
+  border-radius: 10px;
+  background: var(--bg-2);
+  border: 1px solid var(--border);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.2rem;
+  flex-shrink: 0;
+}
+.int-info h4 { font-size: 0.93rem; font-weight: 700; color: #fff; margin-bottom: 4px; }
+.int-info p { font-size: 0.82rem; color: var(--text-muted); line-height: 1.5; }
 
-  /* cta final */
-  .cta-final{background:linear-gradient(160deg,var(--navy-mid),var(--navy-deep)); color:#fff;}
-  .cta-final h2{color:#fff; max-width:16ch;}
-  .cta-final .hero-ctas{margin-top:28px;}
+/* ── Pricing ── */
+.pricing-section { background: var(--bg-2); }
+.pricing-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: 100px;
+  padding: 4px;
+  margin-bottom: 48px;
+}
+.toggle-btn {
+  padding: 9px 20px;
+  border-radius: 100px;
+  font-size: 0.84rem;
+  font-weight: 600;
+  cursor: pointer;
+  border: none;
+  transition: all 0.2s;
+  background: transparent;
+  color: var(--text-muted);
+  font-family: 'Inter', sans-serif;
+}
+.toggle-btn.active { background: var(--grad); color: #fff; }
+.toggle-badge { font-size: 0.7rem; font-weight: 700; padding: 2px 8px; border-radius: 100px; background: rgba(16,185,129,0.15); color: #6ee7b7; margin-left: 6px; }
+.plans-grid { display: grid; gap: 16px; }
+@media(min-width: 880px) { .plans-grid { grid-template-columns: repeat(3, 1fr); } }
+.plan-card {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: 20px;
+  padding: 32px;
+  display: flex;
+  flex-direction: column;
+  transition: all 0.25s;
+  position: relative;
+}
+.plan-card:hover { border-color: rgba(124,58,237,0.35); box-shadow: 0 0 40px rgba(124,58,237,0.1); }
+.plan-card.featured {
+  border: 1px solid transparent;
+  background: var(--bg-card);
+  background-clip: padding-box;
+  position: relative;
+}
+.plan-card.featured::before {
+  content: '';
+  position: absolute;
+  inset: -1px;
+  border-radius: 21px;
+  background: var(--grad);
+  z-index: -1;
+}
+.plan-card.featured .plan-glow {
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(circle at 50% 0%, rgba(124,58,237,0.15), transparent 60%);
+  border-radius: 20px;
+  pointer-events: none;
+}
+.plan-badge {
+  position: absolute;
+  top: -13px;
+  left: 50%;
+  transform: translateX(-50%);
+  white-space: nowrap;
+  font-size: 0.7rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  padding: 5px 14px;
+  border-radius: 100px;
+  background: var(--grad);
+  color: #fff;
+}
+.plan-name { font-size: 1.3rem; font-weight: 700; color: #fff; margin-bottom: 6px; }
+.plan-desc { font-size: 0.85rem; color: var(--text-muted); margin-bottom: 24px; min-height: 40px; }
+.plan-price { margin-bottom: 4px; }
+.plan-amount {
+  font-family: 'Plus Jakarta Sans', sans-serif;
+  font-size: 2.4rem;
+  font-weight: 800;
+  color: #fff;
+  line-height: 1;
+}
+.plan-period { font-size: 0.85rem; color: var(--text-dim); }
+.plan-note { font-size: 0.75rem; color: var(--text-dim); margin-bottom: 28px; line-height: 1.6; }
+.plan-divider { height: 1px; background: var(--border); margin-bottom: 20px; }
+.plan-features { display: flex; flex-direction: column; gap: 10px; flex: 1; margin-bottom: 28px; }
+.pf-item { display: flex; align-items: flex-start; gap: 10px; font-size: 0.85rem; }
+.pf-item .pf-check { color: var(--green); flex-shrink: 0; margin-top: 2px; font-size: 0.9rem; }
+.pf-item .pf-x { color: var(--text-dim); flex-shrink: 0; margin-top: 2px; font-size: 0.9rem; }
+.pf-item span { color: var(--text-muted); }
+.pf-item span.pf-off { color: var(--text-dim); }
+.price-annual { display: block; }
+.price-monthly { display: none; }
+body.monthly .price-annual { display: none; }
+body.monthly .price-monthly { display: block; }
 
-  /* lead 360 */
-  .l360{display:grid; gap:44px; margin-top:40px; align-items:start;}
-  @media(min-width:940px){.l360{grid-template-columns:0.9fr 1.1fr;}}
-  .l360-list{list-style:none; display:flex; flex-direction:column; gap:18px;}
-  .l360-list li{display:flex; gap:14px; font-size:0.95rem; color:#3a3358;}
-  .l360-list li b{display:block; font-weight:700; color:var(--ink); margin-bottom:2px;}
-  .l360-ico{font-family:var(--mono); font-size:0.7rem; color:#fff; background:linear-gradient(135deg,var(--indigo),var(--cyan)); width:26px; height:26px; border-radius:7px; display:flex; align-items:center; justify-content:center; flex-shrink:0;}
-  .l360-card{background:#fff; border:1px solid var(--concrete-line); border-radius:16px; padding:0; overflow:hidden; box-shadow:0 30px 60px -32px rgba(27,20,56,0.25);}
-  .l360-tabs{display:flex; gap:0; border-bottom:1px solid var(--concrete-line); overflow-x:auto;}
-  .lt{font-family:var(--mono); font-size:0.68rem; text-transform:uppercase; letter-spacing:.03em; padding:14px 14px; color:#6b6485; white-space:nowrap; border-bottom:2px solid transparent;}
-  .lt.active{color:var(--ink); border-bottom-color:var(--indigo); font-weight:600;}
-  .l360-body{padding:22px;}
-  .l360-row{display:flex; flex-direction:column; gap:3px; padding:13px 0; border-bottom:1px solid var(--cream-2);}
-  .l360-row:last-child{border-bottom:none;}
-  .lk{font-family:var(--mono); font-size:0.66rem; text-transform:uppercase; color:#6b6485;}
-  .lv{font-size:0.92rem; color:var(--ink);}
-  .lv.churn-low{color:var(--ok); font-weight:600;}
+/* ── CTA final ── */
+.cta-final {
+  background: linear-gradient(135deg, #0c0a1e 0%, #0f0c2a 50%, #0a0f1e 100%);
+  text-align: center;
+  position: relative;
+  overflow: hidden;
+}
+.cta-final .blob-1 {
+  width: 500px; height: 500px;
+  background: radial-gradient(circle, rgba(124,58,237,0.2) 0%, transparent 70%);
+  top: 50%; left: 50%; transform: translate(-50%, -50%);
+}
+.cta-final h2 {
+  font-size: clamp(2rem, 4vw, 3rem);
+  font-weight: 800;
+  color: #fff;
+  max-width: 20ch;
+  margin: 0 auto 20px;
+}
+.cta-final p { font-size: 1.05rem; color: var(--text-muted); max-width: 44ch; margin: 0 auto 40px; line-height: 1.7; }
+.cta-ctas { display: flex; flex-wrap: wrap; gap: 12px; justify-content: center; }
+.cta-trust {
+  margin-top: 40px;
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 24px;
+  font-size: 0.82rem;
+  color: var(--text-dim);
+}
+.trust-item { display: flex; align-items: center; gap: 6px; }
+.trust-item::before { content: '✓'; color: var(--green); font-weight: 700; }
 
-  /* dashboard mock */
-  .dash-grid{display:grid; gap:14px; grid-template-columns:1fr 1fr; margin-top:36px;}
-  @media(min-width:760px){.dash-grid{grid-template-columns:repeat(4,1fr);}}
-  .dash-card{background:#fff; border:1px solid var(--concrete-line); border-radius:12px; padding:18px;}
-  .dash-card .dl{font-family:var(--mono); font-size:0.64rem; text-transform:uppercase; color:#6b6485; margin-bottom:8px;}
-  .dash-card .dv{font-family:var(--display); font-size:1.5rem;}
-  .dash-card .dsub{font-size:0.78rem; color:#4a4368; margin-top:4px;}
+/* ── Footer ── */
+footer {
+  background: #030408;
+  padding: 60px 0 32px;
+  border-top: 1px solid var(--border);
+}
+.footer-grid { display: grid; gap: 40px; margin-bottom: 48px; }
+@media(min-width: 760px) { .footer-grid { grid-template-columns: 1.5fr repeat(3, 1fr); } }
+.footer-brand p { font-size: 0.85rem; color: var(--text-dim); line-height: 1.7; margin-top: 12px; max-width: 28ch; }
+.footer-col h5 { font-size: 0.78rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.1em; color: var(--text-muted); margin-bottom: 16px; }
+.footer-col ul { list-style: none; display: flex; flex-direction: column; gap: 10px; }
+.footer-col ul li a { font-size: 0.85rem; color: var(--text-dim); transition: color 0.15s; }
+.footer-col ul li a:hover { color: var(--text); }
+.footer-bottom {
+  padding-top: 28px;
+  border-top: 1px solid var(--border);
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  font-size: 0.78rem;
+  color: var(--text-dim);
+}
 
-  /* marketing */
-  .mk-grid{display:grid; gap:18px; grid-template-columns:1fr; margin-top:40px;}
-  @media(min-width:760px){.mk-grid{grid-template-columns:1fr 1fr;}}
-  .mk-card{background:rgba(255,255,255,0.05); border:1px solid rgba(255,255,255,0.12); border-radius:16px; padding:28px;}
-  .mk-card h3{font-size:1.2rem; margin-bottom:10px; color:#fff;}
-  .mk-card p{font-size:0.92rem; color:#c6c0e0;}
-  .mk-card .mk-tag{font-family:var(--mono); font-size:0.66rem; text-transform:uppercase; color:var(--navy-deep); background:linear-gradient(90deg,var(--indigo-soft),var(--cyan-soft)); padding:4px 10px; border-radius:100px; display:inline-block; margin-bottom:14px;}
+/* ── Scroll animations ── */
+.reveal {
+  opacity: 0;
+  transform: translateY(24px);
+  transition: opacity 0.6s ease, transform 0.6s ease;
+}
+.reveal.in { opacity: 1; transform: translateY(0); }
+.reveal-delay-1 { transition-delay: 0.1s; }
+.reveal-delay-2 { transition-delay: 0.2s; }
+.reveal-delay-3 { transition-delay: 0.3s; }
+.reveal-delay-4 { transition-delay: 0.4s; }
+@media(prefers-reduced-motion: reduce) {
+  .reveal { opacity: 1; transform: none; transition: none; }
+}
 
-  /* verticais */
-  .vert-grid{display:grid; gap:16px; grid-template-columns:1fr; margin-top:36px;}
-  @media(min-width:760px){.vert-grid{grid-template-columns:repeat(3,1fr);}}
-  .vert{background:#fff; border:1px solid var(--concrete-line); border-radius:16px; padding:26px; position:relative; overflow:hidden;}
-  .vert::before{content:''; position:absolute; left:0; top:0; right:0; height:3px; background:linear-gradient(90deg,var(--indigo),var(--cyan));}
-  .vert .vt{font-family:var(--mono); font-size:0.66rem; letter-spacing:.05em; text-transform:uppercase; color:var(--navy-mid); opacity:.65; margin-bottom:10px; display:block;}
-  .vert h4{font-size:1.15rem; font-weight:700; margin-bottom:8px; font-family:var(--display); font-weight:400;}
-  .vert p{font-size:0.9rem; color:#4a4368;}
-
-  /* integrações */
-  .int-grid{display:grid; gap:14px; grid-template-columns:1fr; margin-top:38px;}
-  @media(min-width:640px){.int-grid{grid-template-columns:repeat(2,1fr);}}
-  @media(min-width:1020px){.int-grid{grid-template-columns:repeat(3,1fr);}}
-  .int{background:rgba(255,255,255,0.05); border:1px solid rgba(255,255,255,0.12); border-radius:14px; padding:22px; transition:background .2s;}
-  .int:hover{background:rgba(255,255,255,0.08);}
-  .int .tag{font-family:var(--mono); font-size:0.66rem; letter-spacing:.05em; text-transform:uppercase; color:var(--navy-deep); background:linear-gradient(90deg,var(--indigo-soft),var(--cyan-soft)); padding:4px 9px; border-radius:5px; display:inline-block; margin-bottom:12px;}
-  .int h4{font-size:1rem; font-weight:700; margin-bottom:6px; color:#fff;}
-  .int p{font-size:0.85rem; color:#c6c0e0;}
-
-  footer{padding:34px 6vw; font-family:var(--mono); font-size:0.72rem; color:#8b84a8; background:var(--navy-deep); display:flex; justify-content:space-between; flex-wrap:wrap; gap:12px;}
+/* ── Responsive ── */
+@media(max-width: 600px) {
+  section { padding: 64px 0; }
+  .hero { padding: 48px 0 40px; min-height: auto; }
+  .hero h1 { font-size: 2rem; }
+  .stat-num { font-size: 1.8rem; }
+}
 </style>
 </head>
 <body>
 
+<!-- ── NAV ── -->
 <header class="nav">
-  <div class="logo">
-    <div class="badge" aria-hidden="true">
-      <svg width="20" height="20" viewBox="0 0 20 20">
-        <defs><linearGradient id="gnav" x1="0" y1="0" x2="20" y2="20"><stop offset="0%" stop-color="#C4B5FD"/><stop offset="100%" stop-color="#38BDF8"/></linearGradient></defs>
-        <circle cx="10" cy="10" r="3.1" fill="url(#gnav)"/>
-        <circle cx="3" cy="4" r="1.5" fill="url(#gnav)" opacity="0.85"/>
-        <circle cx="17" cy="4" r="1.5" fill="url(#gnav)" opacity="0.85"/>
-        <circle cx="3" cy="16" r="1.5" fill="url(#gnav)" opacity="0.85"/>
-        <circle cx="17" cy="16" r="1.5" fill="url(#gnav)" opacity="0.85"/>
-        <g stroke="url(#gnav)" stroke-width="0.8" opacity="0.7">
-          <line x1="3" y1="4" x2="10" y2="10"/><line x1="17" y1="4" x2="10" y2="10"/>
-          <line x1="3" y1="16" x2="10" y2="10"/><line x1="17" y1="16" x2="10" y2="10"/>
-        </g>
-      </svg>
-    </div>
-    <div class="wordmark">Vendor<span class="ai grad-text">.ai</span></div>
-  </div>
+  <a href="#" class="logo">
+    <div class="logo-mark">V</div>
+    <span class="logo-text">Vendor<span>.ai</span></span>
+  </a>
   <nav class="nav-links">
     <a href="#problema">O problema</a>
     <a href="#agentes">Agentes</a>
-    <a href="#central-lead">Central do lead</a>
+    <a href="#central">Central do lead</a>
     <a href="#verticais">Verticais</a>
-    <a href="#integracoes">Integrações</a>
     <a href="#planos">Planos</a>
   </nav>
-  <a class="btn btn-primary" href="https://wa.me/554931913565" target="_blank" rel="noopener">Falar no WhatsApp</a>
+  <div class="nav-ctas">
+    <a href="/app" class="btn btn-outline btn-sm" style="display:none" id="nav-login">Entrar</a>
+    <a href="https://wa.me/554931913565" target="_blank" rel="noopener" class="btn btn-primary btn-sm">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/></svg>
+      Falar no WhatsApp
+    </a>
+    <button class="btn-hamburger" id="hamburger" aria-label="Menu">
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
+    </button>
+  </div>
 </header>
+
+<div class="mobile-menu" id="mobile-menu">
+  <a href="#problema" class="mobile-link">O problema</a>
+  <a href="#agentes" class="mobile-link">Agentes de IA</a>
+  <a href="#central" class="mobile-link">Central do lead</a>
+  <a href="#verticais" class="mobile-link">Verticais</a>
+  <a href="#planos" class="mobile-link">Planos</a>
+  <div class="mobile-ctas">
+    <a href="https://wa.me/554931913565" target="_blank" class="btn btn-primary" style="justify-content:center">Falar no WhatsApp</a>
+  </div>
+</div>
 
 <main>
 
-  <section class="hero">
-    <div class="container hero-grid">
+<!-- ── HERO ── -->
+<section class="hero" id="hero">
+  <div class="blob blob-1"></div>
+  <div class="blob blob-2"></div>
+  <div class="container">
+    <div class="hero-layout">
       <div>
-        <div class="hero-tag reveal">Sistema Operacional Empresarial com IA — para PMEs brasileiras</div>
-        <h1 class="reveal">O WhatsApp já é seu CRM. A gente deu inteligência pra ele.</h1>
-        <p class="lead reveal">Vendor.ai prospecta, atende, qualifica, orça e fecha venda em WhatsApp e Instagram — com conexão oficial em 1 clique — e ainda cuida do contrato, da cobrança e do marketing depois que a venda fecha.</p>
-        <div class="hero-ctas reveal">
-          <a class="btn btn-primary" href="#agentes">Ver os agentes em ação</a>
-          <a class="btn btn-ghost" href="https://wa.me/554931913565" target="_blank" rel="noopener">Falar com a gente</a>
+        <div class="hero-badge">
+          <div class="dot">✦</div>
+          Sistema Operacional Empresarial com IA — para PMEs brasileiras
+        </div>
+        <h1 class="reveal">
+          O WhatsApp já é seu CRM.<br>
+          <em>A gente deu inteligência pra ele.</em>
+        </h1>
+        <p class="subtitle reveal reveal-delay-1">
+          Vendor.ai prospecta, atende, qualifica, orça e fecha venda em WhatsApp e Instagram — com conexão oficial Meta em 1 clique — e cuida do contrato, cobrança e marketing depois que a venda fecha.
+        </p>
+        <div class="hero-ctas reveal reveal-delay-2">
+          <a href="#agentes" class="btn btn-primary btn-lg">Ver os agentes em ação</a>
+          <a href="https://wa.me/554931913565" target="_blank" rel="noopener" class="btn btn-outline btn-lg">Falar com a gente</a>
+        </div>
+        <div class="hero-trust reveal reveal-delay-3">
+          <div class="avatars">
+            <span>JC</span><span>AM</span><span>RP</span><span>+</span>
+          </div>
+          <span>Mais de 1.200 empresas brasileiras já usam</span>
         </div>
       </div>
-      <div>
-        <div class="converge-wrap reveal" role="img" aria-label="Diagrama mostrando WhatsApp, Instagram, telefone e portal convergindo para um núcleo central Vendor.ai">
-          <svg viewBox="0 0 400 400">
-            <defs>
-              <linearGradient id="gline" x1="0" y1="0" x2="400" y2="400">
-                <stop offset="0%" stop-color="#A78BFA"/><stop offset="100%" stop-color="#22D3EE"/>
-              </linearGradient>
-              <radialGradient id="gcore" cx="50%" cy="50%" r="50%">
-                <stop offset="0%" stop-color="#A78BFA"/><stop offset="100%" stop-color="#22D3EE" stop-opacity="0.4"/>
-              </radialGradient>
-            </defs>
-            <line x1="200" y1="200" x2="80" y2="90" stroke="url(#gline)" stroke-width="1.4" opacity="0.55"/>
-            <line x1="200" y1="200" x2="320" y2="90" stroke="url(#gline)" stroke-width="1.4" opacity="0.55"/>
-            <line x1="200" y1="200" x2="80" y2="310" stroke="url(#gline)" stroke-width="1.4" opacity="0.55"/>
-            <line x1="200" y1="200" x2="320" y2="310" stroke="url(#gline)" stroke-width="1.4" opacity="0.55"/>
 
-            <circle class="core-pulse" cx="200" cy="200" r="36" fill="url(#gcore)" opacity="0.6"/>
-            <circle cx="200" cy="200" r="22" fill="#1B1438"/>
-            <circle cx="200" cy="200" r="22" fill="none" stroke="url(#gline)" stroke-width="1.6"/>
-            <text x="200" y="206" text-anchor="middle" font-family="JetBrains Mono" font-size="9" fill="#fff" font-weight="600">.ai</text>
-
-            <g>
-              <circle cx="80" cy="90" r="26" fill="#fff" stroke="#DAD4C8"/>
-              <text x="80" y="94" text-anchor="middle" font-family="Inter" font-size="10" font-weight="700" fill="#1B1438">Whats</text>
-            </g>
-            <g>
-              <circle cx="320" cy="90" r="26" fill="#fff" stroke="#DAD4C8"/>
-              <text x="320" y="94" text-anchor="middle" font-family="Inter" font-size="10" font-weight="700" fill="#1B1438">Insta</text>
-            </g>
-            <g>
-              <circle cx="80" cy="310" r="26" fill="#fff" stroke="#DAD4C8"/>
-              <text x="80" y="314" text-anchor="middle" font-family="Inter" font-size="10" font-weight="700" fill="#1B1438">Tel.</text>
-            </g>
-            <g>
-              <circle cx="320" cy="310" r="26" fill="#fff" stroke="#DAD4C8"/>
-              <text x="320" y="314" text-anchor="middle" font-family="Inter" font-size="10" font-weight="700" fill="#1B1438">Site</text>
-            </g>
-          </svg>
-          <div class="conv-label">Todo canal, uma única memória de cliente</div>
+      <!-- Segment selector -->
+      <div class="reveal reveal-delay-1">
+        <div class="segment-selector">
+          <div class="seg-title">✦ Qual é o seu segmento?</div>
+          <div class="seg-chips" id="seg-chips">
+            <button class="seg-chip active" data-seg="varejo">Varejo</button>
+            <button class="seg-chip" data-seg="b2b">B2B / Serviços</button>
+            <button class="seg-chip" data-seg="saude">Saúde / Clínicas</button>
+            <button class="seg-chip" data-seg="imoveis">Imóveis</button>
+            <button class="seg-chip" data-seg="educacao">Educação</button>
+          </div>
+          <div class="seg-preview" id="seg-preview">
+            <!-- filled by JS -->
+          </div>
         </div>
       </div>
-    </div>
-  </section>
-
-  <div class="proof">
-    <div class="proof-row">
-      <div class="proof-item reveal"><div class="n">8</div><div class="l">Agentes de IA especializados</div></div>
-      <div class="proof-item reveal"><div class="n">200+</div><div class="l">Testes automatizados rodando</div></div>
-      <div class="proof-item reveal"><div class="n">100%</div><div class="l">Multi-tenant, isolado por empresa</div></div>
-      <div class="proof-item reveal"><div class="n">BR</div><div class="l">BRL, pt-BR e CPF/CNPJ nativos</div></div>
     </div>
   </div>
+</section>
 
-  <section id="problema">
-    <div class="container">
-      <span class="cod reveal">O problema</span>
-      <h2 class="reveal">PME brasileira não tem falta de canal. Tem falta de memória.</h2>
-      <p class="lead reveal">WhatsApp pessoal, Instagram sem resposta, orçamento feito na mão, vendedor que sai e leva o relacionamento junto. Cada canal funciona — só não conversam entre si.</p>
-      <div class="grid-cards">
-        <div class="pcard reveal">
-          <h4>Cliente muda de canal, atendimento recomeça do zero</h4>
-          <p>Quem manda WhatsApp depois de ligar não é reconhecido como o mesmo cliente — ninguém lembra o que já foi combinado.</p>
-        </div>
-        <div class="pcard reveal">
-          <h4>Orçamento manual, sem padrão e sem follow-up</h4>
-          <p>Cada vendedor cota de um jeito, em planilhas diferentes, e ninguém volta a falar com quem não respondeu.</p>
-        </div>
-        <div class="pcard reveal">
-          <h4>Vendedor sai, o relacionamento vai junto</h4>
-          <p>O histórico de conversa fica no celular pessoal de quem atendeu — não na empresa.</p>
-        </div>
-        <div class="pcard reveal">
-          <h4>Fora do horário comercial, silêncio</h4>
-          <p>Quem manda mensagem às 22h só recebe resposta no outro dia — se lembrarem de responder.</p>
-        </div>
+<!-- ── STATS ── -->
+<div class="stats-bar">
+  <div class="container">
+    <div class="stats-row">
+      <div class="stat-item reveal">
+        <div class="stat-num">8</div>
+        <div class="stat-label">Agentes de IA especializados</div>
+      </div>
+      <div class="stat-item reveal reveal-delay-1">
+        <div class="stat-num">+1.200</div>
+        <div class="stat-label">Empresas usando hoje</div>
+      </div>
+      <div class="stat-item reveal reveal-delay-2">
+        <div class="stat-num">94%</div>
+        <div class="stat-label">Taxa de renovação</div>
+      </div>
+      <div class="stat-item reveal reveal-delay-3">
+        <div class="stat-num">R$ 48M</div>
+        <div class="stat-label">Em negócios fechados</div>
       </div>
     </div>
-  </section>
+  </div>
+</div>
 
-  <section id="solucao" style="background:var(--cream-2);">
-    <div class="container">
-      <span class="cod reveal">A solução</span>
-      <h2 class="reveal">Um Sistema Operacional Empresarial, não mais um chatbot.</h2>
-      <p class="lead reveal">Vendor.ai não substitui sua equipe — ela assume o trabalho repetitivo do funil de vendas, pra sua equipe focar em fechar negócio.</p>
-      <div class="pillars">
-        <div class="pillar reveal">
-          <span class="pnum">01</span>
-          <h3>Atendimento unificado</h3>
-          <p>WhatsApp (API oficial da Meta) e Instagram conectados em 1 clique, numa única caixa de entrada com o mesmo histórico de cliente em qualquer canal.</p>
-        </div>
-        <div class="pillar reveal">
-          <span class="pnum">02</span>
-          <h3>Inteligência comercial</h3>
-          <p>A IA entende intenção, identifica risco de churn e sugere a próxima melhor ação pra cada cliente.</p>
-        </div>
-        <div class="pillar reveal">
-          <span class="pnum">03</span>
-          <h3>Automação de vendas</h3>
-          <p>Orçamento gerado e enviado automaticamente, com preço e estoque sempre certos.</p>
-        </div>
+<!-- ── PROBLEMA ── -->
+<section class="problem" id="problema">
+  <div class="container">
+    <div class="overline reveal">O problema</div>
+    <h2 class="reveal" style="font-size:clamp(1.8rem,3.5vw,2.6rem); font-weight:800; color:#fff; max-width:22ch; margin-bottom:20px;">PME brasileira não tem falta de canal. Tem falta de memória.</h2>
+    <p class="reveal" style="color:var(--text-muted); font-size:1.05rem; max-width:56ch; line-height:1.7;">WhatsApp pessoal, Instagram sem resposta, orçamento feito na mão, vendedor que sai e leva o relacionamento junto. Cada canal funciona — só não conversam entre si.</p>
+    <div class="problem-grid">
+      <div class="problem-card reveal">
+        <div class="p-num">01</div>
+        <h4>Cliente muda de canal, atendimento recomeça do zero</h4>
+        <p>Quem manda WhatsApp depois de ligar não é reconhecido como o mesmo cliente — ninguém lembra o que já foi combinado.</p>
+      </div>
+      <div class="problem-card reveal reveal-delay-1">
+        <div class="p-num">02</div>
+        <h4>Orçamento manual, sem padrão e sem follow-up</h4>
+        <p>Cada vendedor cota de um jeito, em planilhas diferentes, e ninguém volta a falar com quem não respondeu.</p>
+      </div>
+      <div class="problem-card reveal reveal-delay-2">
+        <div class="p-num">03</div>
+        <h4>Vendedor sai, o relacionamento vai junto</h4>
+        <p>O histórico fica no celular pessoal de quem atendeu — não na empresa. Quando saem, levam os clientes.</p>
+      </div>
+      <div class="problem-card reveal reveal-delay-3">
+        <div class="p-num">04</div>
+        <h4>Fora do horário comercial, silêncio total</h4>
+        <p>Quem manda mensagem às 22h só recebe resposta no outro dia — se lembrarem. Lead esfriou.</p>
       </div>
     </div>
-  </section>
+  </div>
+</section>
 
-  <section class="agitate" id="agentes">
-    <div class="container">
-      <span class="cod reveal">Os agentes</span>
-      <h2 class="reveal">Oito agentes especializados. Um time que não tira férias.</h2>
-      <p class="lead reveal">Cada agente cuida de uma etapa do funil — da prospecção ao pós-venda — trabalhando junto, com o mesmo histórico de cada cliente.</p>
-      <div class="agents">
-        <div class="agent reveal"><span class="tag">Prospector</span><h4>Encontra novos clientes</h4><p>Busca empresas por região e segmento, enriquece os dados de CNPJ e abre o funil com leads B2B prontos pra abordar.</p></div>
-        <div class="agent reveal"><span class="tag">SDR</span><h4>Atende e qualifica</h4><p>Recebe a mensagem, entende a necessidade e já consulta o catálogo em tempo real.</p></div>
-        <div class="agent reveal"><span class="tag">Closer</span><h4>Monta o orçamento e fecha</h4><p>Gera a proposta com preço e estoque corretos, e conduz até a decisão.</p></div>
-        <div class="agent reveal"><span class="tag">Followup</span><h4>Retoma quem esfriou</h4><p>Volta a falar com quem não respondeu, no momento certo — sem parecer insistente.</p></div>
-        <div class="agent reveal"><span class="tag">Reactivation</span><h4>Reativa cliente inativo</h4><p>Identifica quem parou de comprar e inicia contato com uma oferta relevante.</p></div>
-        <div class="agent reveal"><span class="tag">Scheduler</span><h4>Cuida da agenda</h4><p>Marca, confirma e remarca compromissos sem ida e volta manual.</p></div>
-        <div class="agent reveal"><span class="tag">Service</span><h4>Suporte pós-venda</h4><p>Responde dúvidas e questões de quem já é cliente, sem precisar abrir chamado.</p></div>
-        <div class="agent reveal"><span class="tag">Onboarding</span><h4>Recebe quem acabou de fechar</h4><p>Conduz o novo cliente até estar operacional, sem depender de um humano disponível.</p></div>
+<!-- ── SOLUÇÃO ── -->
+<section class="solution" id="solucao">
+  <div class="container">
+    <div class="overline reveal">A solução</div>
+    <h2 class="reveal" style="font-size:clamp(1.8rem,3.5vw,2.6rem); font-weight:800; color:#fff; max-width:22ch; margin-bottom:20px;">Um Sistema Operacional Empresarial, não mais um chatbot.</h2>
+    <p class="reveal" style="color:var(--text-muted); font-size:1.05rem; max-width:56ch; line-height:1.7;">Vendor.ai não substitui sua equipe — ela assume o trabalho repetitivo do funil de vendas, pra sua equipe focar em fechar negócio.</p>
+    <div class="pillars">
+      <div class="pillar reveal">
+        <div class="pillar-num">01 — ATENDIMENTO</div>
+        <h3>Unificado por design</h3>
+        <p>WhatsApp (API oficial Meta) e Instagram conectados em 1 clique, numa única caixa de entrada com o mesmo histórico de cliente em qualquer canal.</p>
       </div>
-
-      <div class="ticket-wrap">
-        <div class="ticket reveal">
-          <div class="ticket-head"><span>WhatsApp · Vendor SDR</span><span>09:14</span></div>
-          <div class="bubble client"><span class="who">Cliente</span>Bom dia! Vocês têm 20 unidades do produto X em estoque pra entrega essa semana?</div>
-          <div class="bubble agent"><span class="who">Vendor SDR</span>Bom dia! Sim, temos 34 em estoque. Te mando o orçamento certinho agora — fecha em qual condição, à vista ou parcelado?</div>
-          <div class="ticket-perf"></div>
-          <div class="ticket-foot"><span>Tempo de 1ª resposta</span><span class="time">5 segundos</span></div>
-        </div>
+      <div class="pillar reveal reveal-delay-1">
+        <div class="pillar-num">02 — INTELIGÊNCIA</div>
+        <h3>Comercial nativa</h3>
+        <p>A IA entende intenção, identifica risco de churn e sugere a próxima melhor ação pra cada cliente — antes que ele desapareça.</p>
+      </div>
+      <div class="pillar reveal reveal-delay-2">
+        <div class="pillar-num">03 — OPERAÇÃO</div>
+        <h3>Fecha o ciclo completo</h3>
+        <p>Do orçamento ao contrato, da cobrança ao marketing pós-venda. Tudo integrado, sem precisar sair do sistema.</p>
       </div>
     </div>
-  </section>
+  </div>
+</section>
 
-  <section id="central-lead">
-    <div class="container">
-      <span class="cod reveal">Central do cliente</span>
-      <h2 class="reveal">Cada lead tem uma central só dele. Nada se perde.</h2>
-      <p class="lead reveal">Não é uma ficha de cadastro — é o histórico inteiro do relacionamento, num lugar só, sempre atualizado.</p>
-      <div class="l360">
-        <ul class="l360-list reveal">
-          <li><span class="l360-ico">①</span><span><b>Histórico completo de interações</b>Toda conversa de WhatsApp, Instagram, ligação ou e-mail, na ordem que aconteceu.</span></li>
-          <li><span class="l360-ico">②</span><span><b>Documentos e anexos</b>Projetos, imagens, contratos e comprovantes, organizados por tipo, sem precisar caçar em pasta nenhuma.</span></li>
-          <li><span class="l360-ico">③</span><span><b>Proposta gerada pela IA, sob medida</b>A IA já entende as dores e demandas daquele cliente — e monta a proposta usando as melhores estratégias de fechamento pra ele, não um modelo genérico. Cada versão fica guardada.</span></li>
-          <li><span class="l360-ico">④</span><span><b>Sugestões de IA</b>Próxima melhor ação e sugestão de follow-up, no momento certo de retomar contato.</span></li>
-          <li><span class="l360-ico">⑤</span><span><b>Dados pessoais e datas especiais</b>Aniversário e datas comemorativas com envio automático de mensagem, sem depender de alguém lembrar.</span></li>
-        </ul>
-        <div class="l360-card reveal">
-          <div class="l360-tabs">
-            <span class="lt active">Dados</span>
-            <span class="lt">Inteligência</span>
-            <span class="lt">Atividades</span>
-            <span class="lt">Conversas</span>
-            <span class="lt">Orçamentos</span>
-            <span class="lt">Proposta</span>
-            <span class="lt">Briefing</span>
+<!-- ── AGENTES ── -->
+<section class="agents-section" id="agentes">
+  <div class="blob blob-1"></div>
+  <div class="container" style="position:relative;z-index:1">
+    <div class="overline reveal">Agentes de IA</div>
+    <h2 class="reveal" style="font-size:clamp(1.8rem,3.5vw,2.6rem); font-weight:800; color:#fff; max-width:22ch; margin-bottom:20px;">7 especialistas trabalhando por você, 24 horas por dia.</h2>
+    <p class="reveal" style="color:var(--text-muted); font-size:1.05rem; max-width:56ch; line-height:1.7;">Cada agente tem uma função específica no funil. Juntos, cobrem todo o ciclo comercial — sem precisar contratar uma equipe enorme.</p>
+    <div class="agents-grid">
+      <div class="agent-card reveal">
+        <div class="agent-tag">SDR</div>
+        <h4>Agente Prospector</h4>
+        <p>Qualifica leads inbound em segundos, identifica intenção de compra e encaminha para o vendedor certo na hora certa.</p>
+      </div>
+      <div class="agent-card reveal reveal-delay-1">
+        <div class="agent-tag">CLOSER</div>
+        <h4>Agente Closer</h4>
+        <p>Conduz a conversa até o fechamento com argumentação contextualizada, objeções e proposta de valor personalizadas.</p>
+      </div>
+      <div class="agent-card reveal reveal-delay-2">
+        <div class="agent-tag">FOLLOW-UP</div>
+        <h4>Agente Followup</h4>
+        <p>Retoma conversas paradas com o timing certo — nunca deixa um lead esfriar por falta de follow-up da equipe.</p>
+      </div>
+      <div class="agent-card reveal reveal-delay-3">
+        <div class="agent-tag">REATIVAÇÃO</div>
+        <h4>Agente Reativation</h4>
+        <p>Reativa clientes inativos e perdidos com abordagens específicas baseadas no histórico de cada um.</p>
+      </div>
+      <div class="agent-card reveal">
+        <div class="agent-tag">AGENDAMENTO</div>
+        <h4>Agente Scheduler</h4>
+        <p>Agenda reuniões, demos e visitas diretamente pelo WhatsApp com integração ao Google Calendar.</p>
+      </div>
+      <div class="agent-card reveal reveal-delay-1">
+        <div class="agent-tag">SUPORTE</div>
+        <h4>Agente Service</h4>
+        <p>Responde dúvidas frequentes, abre chamados e resolve problemas de pós-venda sem acionar a equipe humana.</p>
+      </div>
+      <div class="agent-card reveal reveal-delay-2">
+        <div class="agent-tag">ONBOARDING</div>
+        <h4>Agente Onboarding</h4>
+        <p>Conduz novos clientes pelos primeiros passos com a empresa — garantindo ativação e reduzindo churn precoce.</p>
+      </div>
+      <div class="agent-card reveal reveal-delay-3" style="border-color:rgba(124,58,237,0.3); background:rgba(124,58,237,0.06)">
+        <div class="agent-tag">MARKETING</div>
+        <h4>Agente Relacionamento</h4>
+        <p>Dispara campanhas em datas especiais, recupera clientes em risco e gera receita recorrente de forma automatizada.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ── CENTRAL DO LEAD ── -->
+<section class="lead-central" id="central">
+  <div class="container">
+    <div class="overline reveal">Central do lead</div>
+    <h2 class="reveal" style="font-size:clamp(1.8rem,3.5vw,2.6rem); font-weight:800; color:#fff; max-width:22ch; margin-bottom:48px;">360° de cada cliente, na palma da mão.</h2>
+    <div class="lead-layout">
+      <div class="lead-points">
+        <div class="lead-point reveal">
+          <div class="lp-icon">🧠</div>
+          <div class="lp-text">
+            <h4>Memória unificada de canal</h4>
+            <p>WhatsApp, Instagram, telefone e site — uma única linha do tempo por cliente, independente de qual canal ele usa.</p>
           </div>
-          <div class="l360-body">
-            <div class="l360-row"><span class="lk">Empresa</span><span class="lv">Distribuidora Exemplo LTDA</span></div>
-            <div class="l360-row"><span class="lk">Risco de churn</span><span class="lv churn-low">12% · baixo</span></div>
-            <div class="l360-row"><span class="lk">Próxima ação sugerida</span><span class="lv">Follow-up sobre orçamento ORC-0091, parado há 3 dias</span></div>
-            <div class="l360-row"><span class="lk">Próxima data especial</span><span class="lv">Aniversário da empresa em 14 dias — mensagem já agendada</span></div>
-            <div class="l360-row"><span class="lk">Proposta</span><span class="lv">Versão 2 gerada — ancorada na dor de follow-up manual identificada no Briefing</span></div>
-            <div class="l360-row"><span class="lk">Documentos</span><span class="lv">3 anexos · 2 orçamentos · 1 proposta</span></div>
+        </div>
+        <div class="lead-point reveal reveal-delay-1">
+          <div class="lp-icon">📊</div>
+          <div class="lp-text">
+            <h4>Score de churn preditivo</h4>
+            <p>A IA calcula o risco de cada cliente cancelar e alerta o time antes que o problema apareça.</p>
+          </div>
+        </div>
+        <div class="lead-point reveal reveal-delay-2">
+          <div class="lp-icon">💡</div>
+          <div class="lp-text">
+            <h4>Próxima melhor ação sugerida</h4>
+            <p>O sistema recomenda qual vendedor deve agir, quando e com qual abordagem — baseado em dados reais do cliente.</p>
+          </div>
+        </div>
+        <div class="lead-point reveal reveal-delay-3">
+          <div class="lp-icon">📄</div>
+          <div class="lp-text">
+            <h4>Orçamento gerado em segundos</h4>
+            <p>Pipeline Kanban, histórico de propostas e fechamento integrado — sem planilha, sem retrabalho.</p>
           </div>
         </div>
       </div>
-    </div>
-  </section>
 
-  <section style="background:var(--cream-2);" id="painel-gestor">
-    <div class="container">
-      <span class="cod reveal">Painel do gestor</span>
-      <h2 class="reveal">Decisão rápida, sem pedir relatório pra ninguém.</h2>
-      <p class="lead reveal">Tudo que o gestor precisa saber sobre a operação comercial, num painel só — atualizado em tempo real.</p>
-      <div class="dash-grid">
-        <div class="dash-card reveal"><div class="dl">Pipeline</div><div class="dv">R$ 184k</div><div class="dsub">em negociação agora</div></div>
-        <div class="dash-card reveal"><div class="dl">Ganhos do mês</div><div class="dv">R$ 62k</div><div class="dsub">fechado neste mês</div></div>
-        <div class="dash-card reveal"><div class="dl">Orçamentos ativos</div><div class="dv">37</div><div class="dsub">aguardando resposta</div></div>
-        <div class="dash-card reveal"><div class="dl">Leads quentes</div><div class="dv">14</div><div class="dsub">alta intenção de compra</div></div>
-        <div class="dash-card reveal"><div class="dl">Risco de churn</div><div class="dv">5</div><div class="dsub">clientes pedindo atenção</div></div>
-        <div class="dash-card reveal"><div class="dl">Tipo de cliente</div><div class="dv">62%</div><div class="dsub">recorrente vs. novo</div></div>
-        <div class="dash-card reveal"><div class="dl">Dores principais</div><div class="dv">Top 3</div><div class="dsub">identificadas pela IA</div></div>
-        <div class="dash-card reveal"><div class="dl">Equipe</div><div class="dv">8</div><div class="dsub">usuários ativos hoje</div></div>
-      </div>
-    </div>
-  </section>
-
-  <section class="agitate">
-    <div class="container">
-      <span class="cod reveal">Marketing com IA</span>
-      <h2 class="reveal">Conteúdo e campanhas, sem precisar de agência.</h2>
-      <p class="lead reveal">A mesma IA que atende seu cliente também ajuda a trazer mais gente pra conversa.</p>
-      <div class="mk-grid">
-        <div class="mk-card reveal">
-          <span class="mk-tag">Conteúdo Instagram</span>
-          <h3>Posts gerados ou importados, publicados sozinhos</h3>
-          <p>A IA gera a imagem e a legenda — ou você importa sua própria foto e ela escreve o texto — e publica automaticamente no melhor horário.</p>
+      <!-- Conversation mock -->
+      <div class="conv-card reveal reveal-delay-1">
+        <div class="conv-header">
+          <div class="conv-avatar">MA</div>
+          <div class="conv-info">
+            <div class="conv-name">Maria Aparecida</div>
+            <div class="conv-channel">WhatsApp · Leads há 3 dias · Score 87</div>
+          </div>
+          <div class="conv-status">Ativo agora</div>
         </div>
-        <div class="mk-card reveal">
-          <span class="mk-tag">Campanhas segmentadas</span>
-          <h3>Mensagem certa, pro estágio certo</h3>
-          <p>Crie, envie e acompanhe campanhas pra leads ou parceiros — separando quem é lead novo, quem já negociou e quem já é cliente, cada um recebendo a mensagem certa.</p>
+        <div class="conv-body">
+          <div class="bubble client">
+            Boa tarde! Vi o anúncio de vocês. Quero saber mais sobre o plano para minha empresa de 12 vendedores.
+          </div>
+          <div class="bubble agent">
+            <span class="bname">✦ Agente SDR — Vendor.ai</span>
+            Olá Maria! Que ótimo. Para 12 vendedores, nosso plano PME+ é o mais indicado. Posso te mostrar como funciona na prática? Tenho um slot disponível amanhã às 10h.
+          </div>
+          <div class="bubble client">
+            Perfeito! Pode ser às 10h sim. Como funciona a parte de WhatsApp mesmo?
+          </div>
+          <div class="bubble agent">
+            <span class="bname">✦ Agente Closer — Vendor.ai</span>
+            Conexão oficial Meta — sem risco de bloqueio. Sua empresa tem um número só, e todos os 12 vendedores atendem por lá com histórico compartilhado. Agendei a demo pra amanhã! 🎯
+          </div>
+        </div>
+        <div class="conv-footer">
+          <span>Resposta em 4s · Conversão estimada: 78%</span>
+          <span class="time-badge">✓ Lead qualificado</span>
         </div>
       </div>
     </div>
-  </section>
+  </div>
+</section>
 
-  <section id="verticais">
-    <div class="container">
-      <span class="cod reveal">Verticais</span>
-      <h2 class="reveal">O mesmo sistema, moldado pro seu segmento.</h2>
-      <p class="lead reveal">Vendor.ai não é genérico: são 12 segmentos prontos, cada um ativando campos, fluxos, funil e inteligência específicos do seu mercado.</p>
-      <div class="vert-grid">
-        <div class="vert reveal">
-          <span class="vt">Construção & Reforma</span>
-          <h4>Da obra ao fechamento</h4>
-          <p>Orçamento técnico por etapa, visita técnica e proposta ancorada no estágio do projeto.</p>
+<!-- ── MÓDULOS ── -->
+<section class="modules-section" id="modulos">
+  <div class="container">
+    <div class="overline reveal">Módulos</div>
+    <h2 class="reveal" style="font-size:clamp(1.8rem,3.5vw,2.6rem); font-weight:800; color:#fff; max-width:22ch; margin-bottom:20px;">Tudo que sua operação precisa, em um só sistema.</h2>
+    <p class="reveal" style="color:var(--text-muted); font-size:1.05rem; max-width:56ch; line-height:1.7;">Esqueça a colcha de retalhos de ferramentas gringas. A Vendor.ai foi feita para a realidade comercial do Brasil.</p>
+    <div class="modules-grid">
+      <div class="module-card reveal">
+        <div class="module-icon">💬</div>
+        <h4>Omnichannel real</h4>
+        <p>WhatsApp API oficial + Instagram na mesma tela. Zero alternância de abas para sua equipe.</p>
+      </div>
+      <div class="module-card reveal reveal-delay-1">
+        <div class="module-icon">🎯</div>
+        <h4>CRM Pipeline Kanban</h4>
+        <p>Pipeline visual, gestão de negócios e orçamentos. Sem curvas de aprendizado, sem configuração complexa.</p>
+      </div>
+      <div class="module-card reveal reveal-delay-2">
+        <div class="module-icon">🧬</div>
+        <h4>Customer Intelligence</h4>
+        <p>7 motores de IA preditiva: churn, LTV, RFM, sentimento, sazonalidade e mais.</p>
+      </div>
+      <div class="module-card reveal">
+        <div class="module-icon">📝</div>
+        <h4>Orçamentos e Contratos</h4>
+        <p>Gere propostas profissionais com assinatura digital integrada — diretamente do CRM.</p>
+      </div>
+      <div class="module-card reveal reveal-delay-1">
+        <div class="module-icon">💳</div>
+        <h4>Cobrança Nativa</h4>
+        <p>PIX, boleto e assinaturas recorrentes via Asaas. Faturamento 100% integrado ao fluxo de vendas.</p>
+      </div>
+      <div class="module-card reveal reveal-delay-2">
+        <div class="module-icon">📍</div>
+        <h4>Prospector Alpha</h4>
+        <p>Geolocalização de prospects por CNPJ/segmento. Encontre novos clientes na sua região com IA.</p>
+      </div>
+      <div class="module-card reveal">
+        <div class="module-icon">📱</div>
+        <h4>App Mobile</h4>
+        <p>CRM completo no celular. Atenda, acompanhe e feche negócios de qualquer lugar.</p>
+      </div>
+      <div class="module-card reveal reveal-delay-1">
+        <div class="module-icon">🔌</div>
+        <h4>API e Integrações</h4>
+        <p>Google Calendar, Sheets, ERP, e-commerce e mais. Conecta com o que você já usa.</p>
+      </div>
+      <div class="module-card reveal reveal-delay-2">
+        <div class="module-icon">🖥️</div>
+        <h4>Gerador de Sites com IA</h4>
+        <p>Crie landing pages e sites institucionais para leads com IA generativa em minutos.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ── VERTICAIS ── -->
+<section class="verticals-section" id="verticais">
+  <div class="container">
+    <div class="overline reveal">Verticais</div>
+    <h2 class="reveal" style="font-size:clamp(1.8rem,3.5vw,2.6rem); font-weight:800; color:#fff; max-width:22ch; margin-bottom:8px;">Vendor.ai se adapta ao seu segmento.</h2>
+    <p class="reveal" style="color:var(--text-muted); font-size:1.05rem; max-width:56ch; line-height:1.7; margin-bottom:0;">Cada setor tem desafios únicos. Veja como a plataforma resolve os seus.</p>
+    <div class="vert-tabs reveal" id="vert-tabs">
+      <button class="vert-tab active" data-vert="varejo">🛍️ Varejo</button>
+      <button class="vert-tab" data-vert="b2b">🤝 B2B / Serviços</button>
+      <button class="vert-tab" data-vert="saude">🏥 Saúde / Clínicas</button>
+      <button class="vert-tab" data-vert="imoveis">🏠 Imóveis</button>
+      <button class="vert-tab" data-vert="educacao">🎓 Educação</button>
+    </div>
+
+    <div id="vert-varejo" class="vert-content active">
+      <div class="vert-card">
+        <span class="vert-tag">Varejo · Atacado · E-commerce</span>
+        <h3>Venda mais no WhatsApp sem perder o controle</h3>
+        <p>Para lojas físicas, atacados e e-commerces que recebem dezenas de mensagens por dia. Organiza o caos do atendimento e automatiza o funil de vendas.</p>
+        <div class="vert-list">
+          <div class="vert-item">Catálogo de produtos integrado ao atendimento</div>
+          <div class="vert-item">Orçamento e pedido gerado no chat</div>
+          <div class="vert-item">Reativação automática de carrinho abandonado</div>
+          <div class="vert-item">Campanhas para datas comemorativas</div>
         </div>
-        <div class="vert reveal">
-          <span class="vt">Varejo de Roupas & Acessórios</span>
-          <h4>Grade, coleção e looks</h4>
-          <p>Grade tamanho × cor, coleções sazonais, combos/looks e fidelização de clientes.</p>
-        </div>
-        <div class="vert reveal">
-          <span class="vt">Mercados & Supermercados</span>
-          <h4>Estoque vivo e promoção em massa</h4>
-          <p>Pedidos por lista, sync de estoque via ERP e campanhas de promoção pra base toda.</p>
-        </div>
-        <div class="vert reveal">
-          <span class="vt">Casa & Decoração</span>
-          <h4>Ambientação e upsell</h4>
-          <p>Consultoria de ambientação, showroom e venda combinada de itens complementares.</p>
-        </div>
-        <div class="vert reveal">
-          <span class="vt">Saúde & Estética</span>
-          <h4>Agenda e pacotes</h4>
-          <p>Avaliação, planos de tratamento por sessões e fidelização de clientes.</p>
-        </div>
-        <div class="vert reveal">
-          <span class="vt">Mobilidade</span>
-          <h4>Do test drive ao pós-venda</h4>
-          <p>Concessionárias, locadoras e oficinas: qualificação de compra/locação e revisão.</p>
-        </div>
-        <div class="vert reveal">
-          <span class="vt">Saúde Animal & Pet</span>
-          <h4>Cuidado contínuo do pet</h4>
-          <p>Veterinária, pet shop e banho & tosa: saúde preventiva e fidelização de tutores.</p>
-        </div>
-        <div class="vert reveal">
-          <span class="vt">Energia & Climatização</span>
-          <h4>Viabilidade e ROI</h4>
-          <p>Energia solar e climatização: estudo técnico, retorno do investimento e manutenção.</p>
-        </div>
-        <div class="vert reveal">
-          <span class="vt">Distribuição Técnica</span>
-          <h4>Pedido recorrente B2B</h4>
-          <p>Componentes, EPIs e ferramentas: contratos de fornecimento e compradores técnicos.</p>
-        </div>
-        <div class="vert reveal">
-          <span class="vt">Imobiliárias</span>
-          <h4>Match imóvel-perfil</h4>
-          <p>Qualificação de compradores e fechamento de compra, venda ou locação.</p>
-        </div>
-        <div class="vert reveal">
-          <span class="vt">Educação</span>
-          <h4>Matrícula e fidelização</h4>
-          <p>Escolas, cursos e EAD: matrícula, rematrícula e upsell de cursos complementares.</p>
-        </div>
-        <div class="vert reveal">
-          <span class="vt">Farmácias & Drogarias</span>
-          <h4>Disponibilidade e receita</h4>
-          <p>Consulta de disponibilidade, orientação farmacêutica e programa de desconto.</p>
+      </div>
+      <div class="vert-card">
+        <span class="vert-tag">Resultado esperado</span>
+        <h3>+40% de conversão no WhatsApp</h3>
+        <p>Clientes do varejo que implementaram os agentes SDR + Closer + Reactivation reportam aumento médio de 40% na taxa de conversão de contatos em vendas.</p>
+        <div class="vert-list">
+          <div class="vert-item">Resposta instantânea 24/7 sem custo de equipe</div>
+          <div class="vert-item">Follow-up automático em clientes que pararam de responder</div>
+          <div class="vert-item">Histórico centralizado mesmo com vários atendentes</div>
         </div>
       </div>
     </div>
-  </section>
 
-  <section class="modules" id="funcionalidades">
-    <div class="container">
-      <span class="cod reveal">Funcionalidades</span>
-      <h2 class="reveal">Tudo que sua operação comercial precisa, num só lugar.</h2>
-      <p class="lead reveal">Sem precisar trocar de sistema conforme sua empresa cresce.</p>
-      <div class="mod-grid">
-        <div class="mod reveal"><span class="cod">CRM</span><h4>Pipeline visual</h4><p>Negócios organizados em Kanban, do primeiro contato ao fechamento.</p></div>
-        <div class="mod reveal"><span class="cod">Omnichannel</span><h4>WhatsApp + Instagram</h4><p>Uma caixa de entrada só, com histórico único por cliente.</p></div>
-        <div class="mod reveal"><span class="cod">CPQ</span><h4>Orçamento com IA</h4><p>Gerado, formatado em PDF e enviado automaticamente pelo canal de origem.</p></div>
-        <div class="mod reveal"><span class="cod">Customer Intelligence</span><h4>Inteligência do cliente</h4><p>Sete motores de análise: comportamento, intenção, jornada, oportunidades e risco de churn.</p></div>
-        <div class="mod reveal"><span class="cod">Estoque</span><h4>Controle em tempo real</h4><p>Conectado direto ao orçamento — sem prometer o que não tem.</p></div>
-        <div class="mod reveal"><span class="cod">Website Hub</span><h4>Gerador de sites com IA</h4><p>Sua empresa também ganha um site institucional, gerado por IA em minutos.</p></div>
-        <div class="mod reveal"><span class="cod">Agenda</span><h4>Compromissos sincronizados</h4><p>Marcação e confirmação automática, integrada à sua agenda.</p></div>
-        <div class="mod reveal"><span class="cod">Painel Executivo</span><h4>Métricas que importam</h4><p>Volume, taxa de fechamento e ticket médio, cruzados entre canais.</p></div>
-        <div class="mod reveal"><span class="cod">Planos</span><h4>Cresce com você</h4><p>Mais módulos liberados conforme o plano — sem trocar de sistema.</p></div>
-        <div class="mod reveal"><span class="cod">Faturamento</span><h4>Fatura automática</h4><p>Gerada e enviada quando o negócio fecha, sem alguém precisar lembrar.</p></div>
-        <div class="mod reveal"><span class="cod">Contratos</span><h4>Assinatura automática</h4><p>Contrato gerado e enviado pro cliente assinar assim que o orçamento é aceito.</p></div>
-        <div class="mod reveal"><span class="cod">Integração</span><h4>ERP ou planilha CSV</h4><p>Importa estoque e preço do sistema que você já usa — sem digitar tudo de novo.</p></div>
-        <div class="mod reveal"><span class="cod">Agenda do time</span><h4>Comercial, operacional e suporte</h4><p>Cada área com sua própria visão de compromissos, sem bagunçar a agenda dos outros.</p></div>
-        <div class="mod reveal"><span class="cod">Conversas da equipe</span><h4>Tudo registrado, não só a IA</h4><p>O que sua equipe conversa com o cliente também fica salvo no histórico — não só o que o agente respondeu.</p></div>
-        <div class="mod reveal"><span class="cod">Prospecção</span><h4>Gerador de leads B2B</h4><p>Encontra empresas por região e segmento e enriquece os dados de CNPJ automaticamente — pipeline cheio sem garimpo manual.</p></div>
-        <div class="mod reveal"><span class="cod">IA Multimodal</span><h4>Entende áudio, imagem e PDF</h4><p>Transcreve o áudio do WhatsApp e lê documentos e fotos que o cliente manda — sem ninguém digitar nada.</p></div>
-        <div class="mod reveal"><span class="cod">Pagamentos</span><h4>Boleto, cartão e Pix</h4><p>Cobrança gerada e enviada automática, com split de pagamento pra parceiros.</p></div>
-        <div class="mod reveal"><span class="cod">Relacionamento</span><h4>Datas especiais no automático</h4><p>Aniversário e datas comemorativas com mensagem enviada sozinha, sem depender de alguém lembrar.</p></div>
-        <div class="mod reveal"><span class="cod">Parceiros</span><h4>Revenda white-label</h4><p>Parceiros gerenciam seus próprios clientes, cobrança e comissões num painel só.</p></div>
+    <div id="vert-b2b" class="vert-content">
+      <div class="vert-card">
+        <span class="vert-tag">B2B · Serviços · Consultorias</span>
+        <h3>Pipeline de vendas consultivas sob controle</h3>
+        <p>Para empresas que vendem serviços de maior valor, com ciclo de venda mais longo e múltiplos stakeholders envolvidos.</p>
+        <div class="vert-list">
+          <div class="vert-item">Qualificação de leads por CNPJ e segmento</div>
+          <div class="vert-item">Proposta comercial com assinatura digital</div>
+          <div class="vert-item">Agendamento automático de reuniões e demos</div>
+          <div class="vert-item">Score de oportunidade por cliente</div>
+        </div>
+      </div>
+      <div class="vert-card">
+        <span class="vert-tag">Resultado esperado</span>
+        <h3>Ciclo de vendas 30% mais curto</h3>
+        <p>Automação de follow-up e qualificação reduz o tempo médio de fechamento e aumenta a produtividade de cada vendedor.</p>
+        <div class="vert-list">
+          <div class="vert-item">Prospector Alpha para encontrar novos clientes na região</div>
+          <div class="vert-item">Contratos e cobranças integrados ao CRM</div>
+          <div class="vert-item">Dashboard executivo para gestão do time</div>
+        </div>
       </div>
     </div>
-  </section>
 
-  <section class="agitate" id="integracoes">
-    <div class="container">
-      <span class="cod reveal">Integrações</span>
-      <h2 class="reveal">Conectado às ferramentas que o seu negócio já usa.</h2>
-      <p class="lead reveal">Conexões oficiais, sem gambiarra — a maioria com login em poucos cliques.</p>
-      <div class="int-grid">
-        <div class="int reveal"><span class="tag">Meta</span><h4>WhatsApp Cloud API + Instagram</h4><p>Canais oficiais conectados por login em 1 clique. Mensagens e DMs caem direto na mesma caixa de entrada.</p></div>
-        <div class="int reveal"><span class="tag">Google</span><h4>Agenda + Meet</h4><p>Agenda sincronizada e link do Google Meet gerado automaticamente ao marcar uma reunião.</p></div>
-        <div class="int reveal"><span class="tag">Asaas</span><h4>Cobrança e pagamentos</h4><p>Boleto, cartão e Pix com split de pagamento — fatura emitida e enviada sozinha quando o negócio fecha.</p></div>
-        <div class="int reveal"><span class="tag">ZapSign</span><h4>Assinatura digital</h4><p>Contrato gerado e enviado pro cliente assinar digitalmente, sem papel e sem ida e volta.</p></div>
-        <div class="int reveal"><span class="tag">OpenAI</span><h4>IA que vê e ouve</h4><p>Transcrição de áudio e leitura de imagens e PDFs enviados pelo cliente, direto na conversa.</p></div>
-        <div class="int reveal"><span class="tag">ERP / CSV</span><h4>Estoque e preço sincronizados</h4><p>Importa estoque e tabela de preço do sistema que você já usa — sem redigitar nada.</p></div>
+    <div id="vert-saude" class="vert-content">
+      <div class="vert-card">
+        <span class="vert-tag">Saúde · Clínicas · Odonto</span>
+        <h3>Agenda cheia sem trabalho manual</h3>
+        <p>Para clínicas e consultórios que dependem de agendamentos e têm alto índice de no-show e reagendamentos manuais.</p>
+        <div class="vert-list">
+          <div class="vert-item">Agendamento automático via WhatsApp</div>
+          <div class="vert-item">Lembrete de consulta com confirmação automática</div>
+          <div class="vert-item">Reativação de pacientes que abandonaram o tratamento</div>
+          <div class="vert-item">Base de conhecimento por especialidade</div>
+        </div>
+      </div>
+      <div class="vert-card">
+        <span class="vert-tag">Resultado esperado</span>
+        <h3>60% menos no-show com lembretes automáticos</h3>
+        <p>Clínicas que ativaram o Agente Scheduler reduziram drasticamente faltas e liberaram a recepção para tarefas de maior valor.</p>
+        <div class="vert-list">
+          <div class="vert-item">Integração com Google Calendar da equipe</div>
+          <div class="vert-item">Cobranças de sessões e planos integradas</div>
+          <div class="vert-item">Campanha de fidelização para pacientes ativos</div>
+        </div>
       </div>
     </div>
-  </section>
 
-  <section id="como-funciona">
-    <div class="container">
-      <span class="cod reveal">Como funciona</span>
-      <h2 class="reveal">Do primeiro "oi" até o pedido fechado.</h2>
-      <div class="steps">
-        <div class="step-row reveal"><span class="snum">01</span><div><h4>Cliente manda mensagem em qualquer canal</h4><p>WhatsApp, Instagram ou outro canal já conectado.</p></div></div>
-        <div class="step-row reveal"><span class="snum">02</span><div><h4>O agente certo entende e responde na hora</h4><p>Consulta estoque, agenda ou histórico — sem esperar alguém disponível.</p></div></div>
-        <div class="step-row reveal"><span class="snum">03</span><div><h4>Orçamento gerado e enviado automaticamente</h4><p>PDF com preço e condição certos, direto no canal de origem.</p></div></div>
-        <div class="step-row reveal"><span class="snum">04</span><div><h4>Fechou? Onboarding automático</h4><p>Sem perder tempo entre o "sim" do cliente e ele virar operação.</p></div></div>
+    <div id="vert-imoveis" class="vert-content">
+      <div class="vert-card">
+        <span class="vert-tag">Imóveis · Construtoras · Loteamentos</span>
+        <h3>Qualifique cada lead antes de alocar um corretor</h3>
+        <p>Para imobiliárias e construtoras que recebem centenas de leads por mês e precisam priorizar os mais quentes.</p>
+        <div class="vert-list">
+          <div class="vert-item">Qualificação por renda, localização e finalidade</div>
+          <div class="vert-item">Agendamento de visitas automático</div>
+          <div class="vert-item">Follow-up de leads frios até 6 meses</div>
+          <div class="vert-item">Orçamento e contrato integrados</div>
+        </div>
+      </div>
+      <div class="vert-card">
+        <span class="vert-tag">Resultado esperado</span>
+        <h3>3x mais aproveitamento do tráfego pago</h3>
+        <p>Nenhum lead some sem uma abordagem. O Agente SDR responde em segundos e qualifica antes de enviar para o corretor.</p>
+        <div class="vert-list">
+          <div class="vert-item">Integração com portais (Zap, VivaReal, OLX)</div>
+          <div class="vert-item">Score de compradores x locatários</div>
+          <div class="vert-item">CRM de relacionamento pós-venda para indicações</div>
+        </div>
       </div>
     </div>
-  </section>
 
-  <section style="background:var(--cream-2);">
-    <div class="container">
-      <span class="cod reveal">Feito pro Brasil</span>
-      <h2 class="reveal">Não é um sistema americano traduzido.</h2>
-      <div class="brasil">
-        <ul class="brasil-list reveal">
-          <li><span class="brasil-tick">✓</span><span><b>Reais, não dólar.</b> Preço, orçamento e cobrança nativos em BRL.</span></li>
-          <li><span class="brasil-tick">✓</span><span><b>CPF e CNPJ</b> como campo nativo, não gambiarra.</span></li>
-          <li><span class="brasil-tick">✓</span><span><b>WhatsApp como canal principal</b> — porque é onde o seu cliente já está.</span></li>
-          <li><span class="brasil-tick">✓</span><span><b>Português de verdade</b>, sem tradução automática estranha.</span></li>
+    <div id="vert-educacao" class="vert-content">
+      <div class="vert-card">
+        <span class="vert-tag">Educação · Cursos · Escolas</span>
+        <h3>Da matrícula ao rematriculado, automatizado</h3>
+        <p>Para instituições de ensino que precisam converter interessados em matriculados e manter os alunos engajados.</p>
+        <div class="vert-list">
+          <div class="vert-item">Captação e qualificação de interessados 24/7</div>
+          <div class="vert-item">Processo de matrícula guiado pelo chat</div>
+          <div class="vert-item">Rematriculação automática antes do vencimento</div>
+          <div class="vert-item">Campanha de recuperação de alunos evadidos</div>
+        </div>
+      </div>
+      <div class="vert-card">
+        <span class="vert-tag">Resultado esperado</span>
+        <h3>+35% de rematrícula sem esforço da equipe</h3>
+        <p>O Agente Reactivation contata alunos com contrato próximo do vencimento e conduz o processo de renovação automaticamente.</p>
+        <div class="vert-list">
+          <div class="vert-item">Cobranças de mensalidade via PIX e boleto integrados</div>
+          <div class="vert-item">Lembretes de aula e eventos automatizados</div>
+          <div class="vert-item">NPS e pesquisa de satisfação pelo WhatsApp</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ── INTEGRAÇÕES ── -->
+<section class="integrations-section" id="integracoes">
+  <div class="container">
+    <div class="overline reveal">Integrações</div>
+    <h2 class="reveal" style="font-size:clamp(1.8rem,3.5vw,2.6rem); font-weight:800; color:#fff; max-width:22ch; margin-bottom:20px;">Conecta com o que você já usa.</h2>
+    <p class="reveal" style="color:var(--text-muted); font-size:1.05rem; max-width:56ch; line-height:1.7;">API aberta e integrações nativas com as principais ferramentas do mercado brasileiro.</p>
+    <div class="int-grid">
+      <div class="int-card reveal">
+        <div class="int-logo">💬</div>
+        <div class="int-info">
+          <h4>WhatsApp Business API</h4>
+          <p>Conexão oficial Meta — sem risco de bloqueio, sem QR Code, com múltiplos atendentes no mesmo número.</p>
+        </div>
+      </div>
+      <div class="int-card reveal reveal-delay-1">
+        <div class="int-logo">📸</div>
+        <div class="int-info">
+          <h4>Instagram DM</h4>
+          <p>Responda direct messages do Instagram na mesma caixa de entrada do WhatsApp, sem alternar abas.</p>
+        </div>
+      </div>
+      <div class="int-card reveal reveal-delay-2">
+        <div class="int-logo">📅</div>
+        <div class="int-info">
+          <h4>Google Calendar</h4>
+          <p>Agendamento de reuniões direto pelo chat, com sincronização automática na agenda do time.</p>
+        </div>
+      </div>
+      <div class="int-card reveal">
+        <div class="int-logo">💰</div>
+        <div class="int-info">
+          <h4>Asaas (Cobrança)</h4>
+          <p>PIX, boleto e cartão integrados. Gere cobranças e acompanhe pagamentos sem sair do CRM.</p>
+        </div>
+      </div>
+      <div class="int-card reveal reveal-delay-1">
+        <div class="int-logo">📊</div>
+        <div class="int-info">
+          <h4>Google Sheets</h4>
+          <p>Importe e exporte dados de leads, clientes e negócios com sincronização bidirecional.</p>
+        </div>
+      </div>
+      <div class="int-card reveal reveal-delay-2">
+        <div class="int-logo">🔌</div>
+        <div class="int-info">
+          <h4>API REST + Webhook</h4>
+          <p>Conecte com seu ERP, e-commerce ou sistema legado via API documentada com Swagger.</p>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ── PREÇOS ── -->
+<section class="pricing-section" id="planos">
+  <div class="container" style="text-align:center">
+    <div class="overline reveal" style="justify-content:center">Planos</div>
+    <h2 class="reveal" style="font-size:clamp(1.8rem,3.5vw,2.8rem); font-weight:800; color:#fff; margin-bottom:12px;">Preços para PME com time comercial</h2>
+    <p class="reveal" style="color:var(--text-muted); font-size:1.05rem; margin-bottom:32px;">Faturamento R$2M–R$20M/ano · 5 a 20 vendedores · IA que trabalha por você</p>
+
+    <div style="display:flex;justify-content:center;margin-bottom:48px" class="reveal">
+      <div class="pricing-toggle">
+        <button class="toggle-btn active" id="toggle-annual" onclick="setPricing('annual')">
+          Anual <span class="toggle-badge">save 20%</span>
+        </button>
+        <button class="toggle-btn" id="toggle-monthly" onclick="setPricing('monthly')">Mensal</button>
+      </div>
+    </div>
+
+    <div class="plans-grid reveal">
+      <!-- Growth -->
+      <div class="plan-card">
+        <div class="plan-name">Growth</div>
+        <div class="plan-desc">Para PMEs com time comercial em estruturação.</div>
+        <div class="plan-price">
+          <span class="plan-amount price-annual">R$ 1.190</span>
+          <span class="plan-amount price-monthly">R$ 1.490</span>
+          <span class="plan-period">/mês</span>
+        </div>
+        <div class="plan-note">
+          + implantação R$ 4.900 · até 8 usuários<br>
+          R$ 89/usuário extra
+        </div>
+        <div class="plan-divider"></div>
+        <ul class="plan-features">
+          <li class="pf-item"><span class="pf-check">✓</span> <span>WhatsApp + Instagram unificados</span></li>
+          <li class="pf-item"><span class="pf-check">✓</span> <span>4 agentes de IA (SDR, Closer, Followup, Reactivation)</span></li>
+          <li class="pf-item"><span class="pf-check">✓</span> <span>CRM completo (pipeline, leads, negócios, orçamentos)</span></li>
+          <li class="pf-item"><span class="pf-check">✓</span> <span>Gerador de Sites com IA</span></li>
+          <li class="pf-item"><span class="pf-check">✓</span> <span>Inteligência do Cliente — básica</span></li>
+          <li class="pf-item"><span class="pf-check">✓</span> <span>Painel do gestor</span></li>
+          <li class="pf-item"><span class="pf-check">✓</span> <span>Suporte via e-mail</span></li>
+          <li class="pf-item"><span class="pf-x">✗</span> <span class="pf-off">Scheduler, Service, Onboarding</span></li>
+          <li class="pf-item"><span class="pf-x">✗</span> <span class="pf-off">Prospector Alpha</span></li>
         </ul>
-        <ul class="brasil-list reveal">
-          <li><span class="brasil-tick">✓</span><span><b>Cada empresa isolada</b>, com seus próprios dados — sem ver o que não é seu.</span></li>
-          <li><span class="brasil-tick">✓</span><span><b>Janela de autonomia supervisionada</b> nos primeiros dias, até a equipe confiar na IA.</span></li>
-          <li><span class="brasil-tick">✓</span><span><b>Implantação acompanhada</b>, não um sistema que você descobre sozinho.</span></li>
-          <li><span class="brasil-tick">✓</span><span><b>Suporte que entende a rotina</b> de uma PME brasileira de verdade.</span></li>
+        <a href="https://wa.me/554931913565" target="_blank" class="btn btn-outline" style="width:100%;justify-content:center">Começar com Growth</a>
+      </div>
+
+      <!-- PME+ (featured) -->
+      <div class="plan-card featured">
+        <div class="plan-glow"></div>
+        <div class="plan-badge">⭐ Mais popular</div>
+        <div class="plan-name">PME+</div>
+        <div class="plan-desc">Para operações que precisam de automação completa.</div>
+        <div class="plan-price">
+          <span class="plan-amount price-annual">R$ 1.490</span>
+          <span class="plan-amount price-monthly">R$ 1.890</span>
+          <span class="plan-period">/mês</span>
+        </div>
+        <div class="plan-note">
+          + implantação R$ 6.900 · até 15 usuários<br>
+          R$ 84/usuário extra
+        </div>
+        <div class="plan-divider"></div>
+        <ul class="plan-features">
+          <li class="pf-item"><span class="pf-check">✓</span> <span>Tudo do Growth</span></li>
+          <li class="pf-item"><span class="pf-check">✓</span> <span>7 agentes de IA (+ Scheduler, Service, Onboarding)</span></li>
+          <li class="pf-item"><span class="pf-check">✓</span> <span>Prospector Alpha incluso no anual</span></li>
+          <li class="pf-item"><span class="pf-check">✓</span> <span>Inteligência do Cliente completa (7 motores)</span></li>
+          <li class="pf-item"><span class="pf-check">✓</span> <span>Google Calendar integrado</span></li>
+          <li class="pf-item"><span class="pf-check">✓</span> <span>Suporte via WhatsApp</span></li>
+          <li class="pf-item"><span class="pf-x">✗</span> <span class="pf-off">Google Sheets</span></li>
+          <li class="pf-item"><span class="pf-x">✗</span> <span class="pf-off">Base de conhecimento (PDF/DOCX)</span></li>
+          <li class="pf-item"><span class="pf-x">✗</span> <span class="pf-off">BYOK (chave de IA própria)</span></li>
         </ul>
+        <a href="https://wa.me/554931913565" target="_blank" class="btn btn-primary" style="width:100%;justify-content:center">Escolher PME+</a>
       </div>
-    </div>
-  </section>
 
-  <section id="planos">
-    <div class="container">
-      <span class="cod reveal">Planos</span>
-      <h2 class="reveal">Comece pequeno. Cresça sem trocar de sistema.</h2>
-      <p class="lead reveal">Pensado pra custar menos do que contratar mais um analista comercial júnior.</p>
-      <div class="plans">
-        <div class="plan reveal">
-          <h3>Growth</h3>
-          <p class="for">Pra quem já vende em mais de um canal e quer parar de perder lead</p>
-          <div class="price"><span class="amount">R$ 1.490</span><span class="period">/mês</span></div>
-          <p class="price-note">ou R$ 1.190/mês no anual · implantação R$ 4.900</p>
-          <ul>
-            <li>Até 8 usuários</li>
-            <li>WhatsApp + Instagram oficiais em 1 clique</li>
-            <li>4 agentes de IA (SDR, Closer, Follow-up, Reativação)</li>
-            <li>Inteligência do Cliente</li>
-            <li>Orçamento automático e IA multimodal</li>
-          </ul>
-          <a class="btn btn-ghost" href="https://wa.me/554931913565" target="_blank" rel="noopener">Falar com a gente</a>
+      <!-- Enterprise -->
+      <div class="plan-card">
+        <div class="plan-name">Enterprise</div>
+        <div class="plan-desc">Para PMEs com operações complexas, acima de 10 vendedores.</div>
+        <div class="plan-price">
+          <span class="plan-amount price-annual">R$ 1.990</span>
+          <span class="plan-amount price-monthly">R$ 2.490</span>
+          <span class="plan-period">/mês</span>
         </div>
-        <div class="plan featured reveal">
-          <h3>PME+</h3>
-          <p class="for">Pra quem quer o time de IA completo e prospecção ativa</p>
-          <div class="price"><span class="amount">R$ 1.890</span><span class="period">/mês</span></div>
-          <p class="price-note">ou R$ 1.490/mês no anual · implantação R$ 6.900</p>
-          <ul>
-            <li>Até 15 usuários</li>
-            <li>Todos os 7 agentes de IA</li>
-            <li>Prospector de leads B2B</li>
-            <li>Inteligência completa do Cliente</li>
-            <li>Google Agenda + Meet integrados</li>
-          </ul>
-          <a class="btn btn-primary" href="https://wa.me/554931913565" target="_blank" rel="noopener">Falar com a gente</a>
+        <div class="plan-note">
+          + implantação R$ 8.900 · até 20 usuários<br>
+          R$ 79/usuário extra
         </div>
-        <div class="plan reveal">
-          <h3>Enterprise</h3>
-          <p class="for">Pra operações maiores, com volume e times comerciais grandes</p>
-          <div class="price"><span class="amount">R$ 2.490</span><span class="period">/mês</span></div>
-          <p class="price-note">ou R$ 1.990/mês no anual · implantação R$ 8.900</p>
-          <ul>
-            <li>Até 20 usuários</li>
-            <li>Tudo do PME+ e mais</li>
-            <li>Portal de parceiros / revenda white-label</li>
-            <li>Base de conhecimento, BYOK e painel executivo</li>
-            <li>Vertical sob medida e suporte prioritário</li>
-          </ul>
-          <a class="btn btn-ghost" href="https://wa.me/554931913565" target="_blank" rel="noopener">Falar com a gente</a>
-        </div>
+        <div class="plan-divider"></div>
+        <ul class="plan-features">
+          <li class="pf-item"><span class="pf-check">✓</span> <span>Tudo do PME+</span></li>
+          <li class="pf-item"><span class="pf-check">✓</span> <span>Google Sheets (importação/exportação)</span></li>
+          <li class="pf-item"><span class="pf-check">✓</span> <span>Base de conhecimento por upload (PDF/DOCX)</span></li>
+          <li class="pf-item"><span class="pf-check">✓</span> <span>BYOK — chave de IA própria opcional</span></li>
+          <li class="pf-item"><span class="pf-check">✓</span> <span>Portal de parceiros/revendedores</span></li>
+          <li class="pf-item"><span class="pf-check">✓</span> <span>Relatório executivo mensal automatizado</span></li>
+          <li class="pf-item"><span class="pf-check">✓</span> <span>SLA dedicado + implantação acompanhada</span></li>
+          <li class="pf-item"><span class="pf-check">✓</span> <span>Consultoria de setup 1h com o time Vendor.ai</span></li>
+        </ul>
+        <a href="https://wa.me/554931913565" target="_blank" class="btn btn-outline" style="width:100%;justify-content:center">Falar com consultor</a>
       </div>
     </div>
-  </section>
 
-  <section class="cta-final">
-    <div class="container">
-      <span class="cod reveal">Próximo passo</span>
-      <h2 class="reveal">Quer ver isso rodando na sua empresa?</h2>
-      <p class="lead reveal">Uma conversa de 20 minutos pra mostrar o agente atendendo de verdade — antes de qualquer decisão.</p>
-      <div class="hero-ctas">
-        <a class="btn btn-primary" href="https://wa.me/554931913565" target="_blank" rel="noopener">Falar no WhatsApp</a>
-        <a class="btn btn-ghost on-dark" href="#agentes">Rever os agentes</a>
+    <!-- FAQ -->
+    <div style="max-width:680px;margin:72px auto 0;text-align:left" class="reveal">
+      <h3 style="font-size:1.6rem;font-weight:800;color:#fff;margin-bottom:28px;text-align:center">Dúvidas frequentes</h3>
+      <div id="faq-list" style="display:flex;flex-direction:column;gap:10px">
+        <!-- filled by JS -->
       </div>
     </div>
-  </section>
+  </div>
+</section>
+
+<!-- ── CTA FINAL ── -->
+<section class="cta-final" id="contato">
+  <div class="blob blob-1"></div>
+  <div class="container" style="position:relative;z-index:1">
+    <div class="overline reveal" style="justify-content:center">Comece hoje</div>
+    <h2 class="reveal">Pronto para escalar suas vendas com IA?</h2>
+    <p class="reveal reveal-delay-1">Junte-se a mais de 1.200 empresas que já transformaram seus processos comerciais com a Vendor.ai.</p>
+    <div class="cta-ctas reveal reveal-delay-2">
+      <a href="https://wa.me/554931913565" target="_blank" rel="noopener" class="btn btn-primary btn-lg">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/></svg>
+        Falar com especialista
+      </a>
+      <a href="#planos" class="btn btn-outline btn-lg">Ver planos</a>
+    </div>
+    <div class="cta-trust reveal reveal-delay-3">
+      <div class="trust-item">Sem contrato de fidelidade no mensal</div>
+      <div class="trust-item">Onboarding em até 48h</div>
+      <div class="trust-item">Suporte em pt-BR</div>
+      <div class="trust-item">Servidor no Brasil</div>
+    </div>
+  </div>
+</section>
 
 </main>
 
+<!-- ── FOOTER ── -->
 <footer>
-  <span>Vendor.ai — Sistema Operacional Empresarial com IA</span>
-  <span>Chapecó, SC — Brasil</span>
+  <div class="container">
+    <div class="footer-grid">
+      <div class="footer-brand">
+        <div class="logo">
+          <div class="logo-mark">V</div>
+          <span class="logo-text">Vendor<span>.ai</span></span>
+        </div>
+        <p>Sistema Operacional Empresarial com IA para PMEs brasileiras. WhatsApp + Instagram + CRM + 7 Agentes de IA.</p>
+      </div>
+      <div class="footer-col">
+        <h5>Produto</h5>
+        <ul>
+          <li><a href="#agentes">Agentes de IA</a></li>
+          <li><a href="#central">CRM</a></li>
+          <li><a href="#modulos">Módulos</a></li>
+          <li><a href="#integracoes">Integrações</a></li>
+          <li><a href="#planos">Preços</a></li>
+        </ul>
+      </div>
+      <div class="footer-col">
+        <h5>Empresa</h5>
+        <ul>
+          <li><a href="#">Sobre nós</a></li>
+          <li><a href="#">Blog</a></li>
+          <li><a href="#">Parceiros</a></li>
+          <li><a href="https://wa.me/554931913565" target="_blank">Contato</a></li>
+        </ul>
+      </div>
+      <div class="footer-col">
+        <h5>Legal</h5>
+        <ul>
+          <li><a href="#">Termos de Uso</a></li>
+          <li><a href="#">Privacidade</a></li>
+          <li><a href="#">LGPD</a></li>
+          <li><a href="#">Segurança</a></li>
+        </ul>
+      </div>
+    </div>
+    <div class="footer-bottom">
+      <span>© 2025 Vendor.ai · Feito com ♥ no Brasil</span>
+      <span>CNPJ 00.000.000/0001-00 · São Paulo, SP</span>
+    </div>
+  </div>
 </footer>
 
 <script>
-  var els = document.querySelectorAll('.reveal');
-  if ('IntersectionObserver' in window) {
-    var io = new IntersectionObserver(function(entries){
-      entries.forEach(function(e){ if (e.isIntersecting) { e.target.classList.add('in'); io.unobserve(e.target); } });
-    }, { threshold: 0.12 });
-    els.forEach(function(el){ io.observe(el); });
-  } else {
-    els.forEach(function(el){ el.classList.add('in'); });
-  }
-</script>
+// ── Segment content ──
+const SEGMENTS = {
+  varejo: {
+    tag: '🛍️ Varejo',
+    title: 'Para lojas, atacados e e-commerce',
+    desc: 'Organize o caos do atendimento no WhatsApp, automatize orçamentos e reative clientes com campanhas em datas especiais.',
+    features: ['Catálogo de produtos integrado', 'Orçamento gerado no chat', 'Reativação de carrinho abandonado', 'Campanhas sazonais automáticas'],
+  },
+  b2b: {
+    tag: '🤝 B2B / Serviços',
+    title: 'Para consultorias e serviços',
+    desc: 'Pipeline de vendas consultivas, proposta comercial com assinatura digital e agendamento automático de reuniões e demos.',
+    features: ['Qualificação por CNPJ / segmento', 'Proposta + contrato integrados', 'Agendamento automático de demos', 'Score de oportunidade por cliente'],
+  },
+  saude: {
+    tag: '🏥 Saúde / Clínicas',
+    title: 'Para clínicas e consultórios',
+    desc: 'Agenda sempre cheia, zero no-show com lembretes automáticos e reativação de pacientes que pararam o tratamento.',
+    features: ['Agendamento pelo WhatsApp', 'Lembrete + confirmação automática', 'Reativação de pacientes inativos', 'Cobranças de sessões integradas'],
+  },
+  imoveis: {
+    tag: '🏠 Imóveis',
+    title: 'Para imobiliárias e construtoras',
+    desc: 'Qualifique cada lead antes de alocar um corretor — resposta em segundos e follow-up automatizado por meses.',
+    features: ['SDR qualifica lead em segundos', 'Follow-up por até 6 meses', 'Agendamento de visitas automático', 'CRM com histórico por imóvel'],
+  },
+  educacao: {
+    tag: '🎓 Educação',
+    title: 'Para escolas e cursos',
+    desc: 'Da matrícula ao rematriculado, automatizado. Recupere alunos em risco de evasão antes que saiam.',
+    features: ['Matrícula guiada pelo chat', 'Rematrícula automática no prazo', 'Cobrança de mensalidade integrada', 'NPS automático pelo WhatsApp'],
+  },
+};
 
+function renderSegment(key) {
+  const s = SEGMENTS[key];
+  if (!s) return;
+  const el = document.getElementById('seg-preview');
+  el.innerHTML = `
+    <div class="sp-tag">✦ ${s.tag}</div>
+    <h4>${s.title}</h4>
+    <p>${s.desc}</p>
+    <div class="seg-features">
+      ${s.features.map(f => `<div class="seg-feat"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#10b981" stroke-width="2.5" style="flex-shrink:0"><polyline points="20 6 9 17 4 12"/></svg>${f}</div>`).join('')}
+    </div>
+  `;
+}
+
+document.querySelectorAll('.seg-chip').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('.seg-chip').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    renderSegment(btn.dataset.seg);
+  });
+});
+renderSegment('varejo');
+
+// ── Vertical tabs ──
+document.querySelectorAll('.vert-tab').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('.vert-tab').forEach(b => b.classList.remove('active'));
+    document.querySelectorAll('.vert-content').forEach(c => c.classList.remove('active'));
+    btn.classList.add('active');
+    document.getElementById('vert-' + btn.dataset.vert).classList.add('active');
+  });
+});
+
+// ── Pricing toggle ──
+function setPricing(mode) {
+  if (mode === 'annual') {
+    document.body.classList.remove('monthly');
+    document.getElementById('toggle-annual').classList.add('active');
+    document.getElementById('toggle-monthly').classList.remove('active');
+  } else {
+    document.body.classList.add('monthly');
+    document.getElementById('toggle-monthly').classList.add('active');
+    document.getElementById('toggle-annual').classList.remove('active');
+  }
+}
+
+// ── FAQ ──
+const FAQS = [
+  { q: 'O que é a taxa de implantação?', a: 'Investimento único que cobre configuração da conta, integração dos canais (WhatsApp/Instagram), treinamento dos agentes de IA para o seu negócio e onboarding da equipe.' },
+  { q: 'Como funciona o usuário adicional?', a: 'Se o time crescer além do limite do plano, cada usuário extra é cobrado mensalmente (R$89 Growth, R$84 PME+, R$79 Enterprise) sem bloquear cadastros.' },
+  { q: 'Qual a diferença entre mensal e anual?', a: 'No anual você economiza ~20% por mês e ganha: onboarding prioritário, suporte WhatsApp no Growth, Prospector Alpha no PME+ e Enterprise, e 1h de consultoria de setup.' },
+  { q: 'O que é BYOK (Enterprise)?', a: 'Bring Your Own Key — você usa sua própria chave da OpenAI. Ideal para empresas com contrato corporativo e que querem controle total dos custos de IA.' },
+  { q: 'Posso cancelar a qualquer momento?', a: 'Sim, sem fidelidade no mensal. No anual, o valor foi pago antecipadamente mas você pode pausar o uso quando quiser.' },
+];
+
+const faqEl = document.getElementById('faq-list');
+FAQS.forEach((faq, i) => {
+  const item = document.createElement('div');
+  item.style.cssText = 'background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.08);border-radius:14px;overflow:hidden;';
+  item.innerHTML = `
+    <button onclick="toggleFaq(this)" style="width:100%;text-align:left;background:none;border:none;cursor:pointer;padding:20px 22px;display:flex;justify-content:space-between;align-items:center;gap:16px;font-family:'Inter',sans-serif;font-size:0.92rem;font-weight:600;color:#f0eeff;">
+      ${faq.q}
+      <svg class="faq-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="flex-shrink:0;transition:transform 0.25s;color:#8880a8"><polyline points="6 9 12 15 18 9"/></svg>
+    </button>
+    <div class="faq-answer" style="display:none;padding:0 22px 20px;font-size:0.87rem;color:#8880a8;line-height:1.65;">${faq.a}</div>
+  `;
+  faqEl.appendChild(item);
+});
+
+function toggleFaq(btn) {
+  const answer = btn.nextElementSibling;
+  const icon = btn.querySelector('.faq-icon');
+  const isOpen = answer.style.display !== 'none';
+  answer.style.display = isOpen ? 'none' : 'block';
+  icon.style.transform = isOpen ? 'rotate(0deg)' : 'rotate(180deg)';
+}
+
+// ── Hamburger ──
+const ham = document.getElementById('hamburger');
+const mob = document.getElementById('mobile-menu');
+ham.addEventListener('click', () => {
+  mob.classList.toggle('open');
+});
+document.querySelectorAll('.mobile-link').forEach(l => {
+  l.addEventListener('click', () => mob.classList.remove('open'));
+});
+
+// ── Scroll reveal ──
+const io = new IntersectionObserver(entries => {
+  entries.forEach(e => { if (e.isIntersecting) { e.target.classList.add('in'); io.unobserve(e.target); } });
+}, { threshold: 0.08, rootMargin: '0px 0px -40px 0px' });
+document.querySelectorAll('.reveal').forEach(el => io.observe(el));
+
+// ── Active nav link on scroll ──
+const sections = document.querySelectorAll('section[id], .stats-bar');
+const links = document.querySelectorAll('.nav-links a');
+const sectionIO = new IntersectionObserver(entries => {
+  entries.forEach(e => {
+    if (e.isIntersecting) {
+      links.forEach(l => l.style.color = '');
+      const link = document.querySelector(`.nav-links a[href="#${e.target.id}"]`);
+      if (link) link.style.color = 'var(--text)';
+    }
+  });
+}, { threshold: 0.4 });
+sections.forEach(s => sectionIO.observe(s));
+</script>
 </body>
 </html>
