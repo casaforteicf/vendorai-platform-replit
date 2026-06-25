@@ -1,6 +1,6 @@
 import { Router, type IRouter } from "express";
 import { desc, eq } from "drizzle-orm";
-import { db, generatedSitesTable, businessProfilesTable } from "@workspace/db";
+import { db, generatedSitesTable, businessProfilesTable, tenantsTable } from "@workspace/db";
 import type { SiteGeneratorConfig } from "@workspace/db";
 import Anthropic from "@anthropic-ai/sdk";
 import { getOpenAIForTenant } from "../lib/agent-engine.js";
@@ -12,6 +12,39 @@ const anthropic = useAnthropic ? new Anthropic({ apiKey: anthropicApiKey }) : nu
 
 const AI_PROVIDER = useAnthropic ? "anthropic" : "openai";
 const AI_MODEL = useAnthropic ? "claude-sonnet-4-6" : "gpt-4o-mini";
+
+// ─── Public router (no auth) — serves generated HTML sites ───────────────────
+export const publicSiteGeneratorRouter: IRouter = Router();
+
+publicSiteGeneratorRouter.get("/public/:tenantSlug/site-html", async (req, res) => {
+  const { tenantSlug } = req.params;
+
+  const [tenant] = await db
+    .select({ id: tenantsTable.id })
+    .from(tenantsTable)
+    .where(eq(tenantsTable.slug, tenantSlug));
+
+  if (!tenant) {
+    res.status(404).send("<!DOCTYPE html><html><body><h1>Site não encontrado</h1></body></html>");
+    return;
+  }
+
+  const [site] = await db
+    .select({ html: generatedSitesTable.html })
+    .from(generatedSitesTable)
+    .where(eq(generatedSitesTable.tenantId, tenant.id))
+    .orderBy(desc(generatedSitesTable.updatedAt))
+    .limit(1);
+
+  if (!site) {
+    res.status(404).send("<!DOCTYPE html><html><body><h1>Site não encontrado</h1></body></html>");
+    return;
+  }
+
+  res.setHeader("Content-Type", "text/html; charset=utf-8");
+  res.setHeader("X-Frame-Options", "SAMEORIGIN");
+  res.send(site.html);
+});
 
 const router: IRouter = Router();
 

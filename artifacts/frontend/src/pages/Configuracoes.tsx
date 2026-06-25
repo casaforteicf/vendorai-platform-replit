@@ -132,7 +132,7 @@ import {
   CalendarHeart,
   Receipt,
 } from "lucide-react";
-import MeuSite from "./MeuSite";
+import { SiteGeneratorTab } from "./SiteGenerator";
 import { FaturamentoTab } from "./FaturamentoTab";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
@@ -2023,7 +2023,7 @@ export default function Configuracoes() {
 
         {/* ── Tab: Site ───────────────────────────────────────────────────── */}
         <TabsContent value="site" className="space-y-5">
-          <MeuSite />
+          <SiteGeneratorTab />
 
           {/* ── Domain Card ─────────────────────────────────────────────── */}
           <div className="rounded-xl border bg-card p-6 space-y-5">

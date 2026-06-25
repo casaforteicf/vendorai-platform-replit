@@ -1,7 +1,7 @@
 import { useParams } from "wouter";
 import { useGetPublicSite, getGetPublicSiteQueryKey } from "@workspace/api-client-react";
 import { MessageCircle, Phone, Mail, Star, ChevronDown, ShoppingCart } from "lucide-react";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 interface GenContent {
@@ -53,11 +53,37 @@ export default function SiteLandingPage() {
   const params = useParams<{ tenantSlug: string }>();
   const tenantSlug = params.tenantSlug ?? "";
 
+  // Try HTML-first: check if a Claude-generated site exists for this tenant
+  const [htmlSiteStatus, setHtmlSiteStatus] = useState<"checking" | "available" | "unavailable">("checking");
+
+  useEffect(() => {
+    if (!tenantSlug) return;
+    fetch(`/api/public/${tenantSlug}/site-html`, { method: "HEAD" })
+      .then((r) => setHtmlSiteStatus(r.ok ? "available" : "unavailable"))
+      .catch(() => setHtmlSiteStatus("unavailable"));
+  }, [tenantSlug]);
+
+  // JSON fallback — always call hooks unconditionally
   const { data, isLoading, isError } = useGetPublicSite(tenantSlug, {
-    query: { queryKey: getGetPublicSiteQueryKey(tenantSlug), enabled: !!tenantSlug },
+    query: {
+      queryKey: getGetPublicSiteQueryKey(tenantSlug),
+      enabled: !!tenantSlug && htmlSiteStatus === "unavailable",
+    },
   });
 
-  if (isLoading) {
+  // If the HTML site exists, show it in a full-screen iframe (self-contained HTML/CSS/JS)
+  if (htmlSiteStatus === "available") {
+    return (
+      <iframe
+        src={`/api/public/${tenantSlug}/site-html`}
+        title="Site"
+        style={{ width: "100%", height: "100vh", border: "none", display: "block" }}
+        allow="fullscreen"
+      />
+    );
+  }
+
+  if (htmlSiteStatus === "checking" || isLoading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-white">
         <div className="animate-spin h-10 w-10 border-4 border-blue-600 border-t-transparent rounded-full" />
