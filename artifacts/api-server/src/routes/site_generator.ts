@@ -29,44 +29,218 @@ const TONE_LABELS: Record<string, string> = {
   descontraido: "descontraído e criativo",
 };
 
+function hexToRgb(hex: string): string {
+  const clean = hex.replace("#", "");
+  const r = parseInt(clean.substring(0, 2), 16);
+  const g = parseInt(clean.substring(2, 4), 16);
+  const b = parseInt(clean.substring(4, 6), 16);
+  return `${r}, ${g}, ${b}`;
+}
+
+function isDark(hex: string): boolean {
+  const clean = hex.replace("#", "");
+  const r = parseInt(clean.substring(0, 2), 16);
+  const g = parseInt(clean.substring(2, 4), 16);
+  const b = parseInt(clean.substring(4, 6), 16);
+  return (r * 299 + g * 587 + b * 114) / 1000 < 128;
+}
+
 function buildGeneratePrompt(config: SiteGeneratorConfig): string {
   const { type, name, sector, desc, pain, tone, color, cta, products = [] } = config;
+  const ctaText = cta || "Entre em contato";
+  const rgb = hexToRgb(color);
+  const dark = isDark(color);
+  const btnTextColor = dark ? "#ffffff" : "#0f0f0f";
+
+  const FONT_PAIRS: Record<string, { display: string; body: string; googleUrl: string }> = {
+    profissional: {
+      display: "'Playfair Display', serif",
+      body: "'Inter', sans-serif",
+      googleUrl: "https://fonts.googleapis.com/css2?family=Playfair+Display:wght@600;700;800&family=Inter:wght@400;500;600;700&display=swap",
+    },
+    amigavel: {
+      display: "'Plus Jakarta Sans', sans-serif",
+      body: "'Plus Jakarta Sans', sans-serif",
+      googleUrl: "https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap",
+    },
+    urgente: {
+      display: "'Barlow Condensed', sans-serif",
+      body: "'Barlow', sans-serif",
+      googleUrl: "https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@600;700;800;900&family=Barlow:wght@400;500;600&display=swap",
+    },
+    premium: {
+      display: "'Cormorant Garamond', serif",
+      body: "'DM Sans', sans-serif",
+      googleUrl: "https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@500;600;700&family=DM+Sans:wght@400;500;600;700&display=swap",
+    },
+    descontraido: {
+      display: "'Nunito', sans-serif",
+      body: "'Nunito', sans-serif",
+      googleUrl: "https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&display=swap",
+    },
+  };
+
+  const fonts = FONT_PAIRS[tone as string] ?? FONT_PAIRS.profissional;
 
   const productsBlock =
     type === "ecommerce" && products.length
-      ? `\nProdutos para listar:\n${products.map((p) => `- ${p.name}${p.price ? ": " + p.price : ""}`).join("\n")}`
+      ? `\nPRODUTOS (liste todos com destaque visual):\n${products.map((p) => `- ${p.name}${p.price ? " | " + p.price : ""}`).join("\n")}`
       : "";
 
-  return `Você é um especialista em desenvolvimento web e copywriting. Gere um site HTML completo e autocontido (HTML + CSS + JS em um único arquivo) para o seguinte negócio:
+  const structureByType: Record<string, string> = {
+    landing: `ESTRUTURA DA LANDING PAGE (nesta ordem exata):
+1. HEADER fixo — logo à esquerda (inicial do nome em círculo colorido + nome), nav âncoras à direita, botão CTA no canto, hamburger mobile
+2. HERO — título impactante (H1, problema que o cliente já sente), subtítulo com a promessa, 2 botões (primário + secundário outline), elemento visual decorativo (formas geométricas ou gradiente abstrato em CSS puro — sem imagens externas)
+3. DORES — seção escura/contrastante com 3-4 cards de dores reais do mercado (ícones SVG inline simples, título curto + descrição)
+4. SOLUÇÃO — como o negócio resolve cada dor, 3 pilares com ícone SVG + título + parágrafo
+5. BENEFÍCIOS / DIFERENCIAIS — grid 2x3 ou 3x2 de cards com número destacado ou ícone grande
+6. DEPOIMENTOS — 3 cards com avatar (iniciais em círculo colorido), nome fictício brasileiro, cidade, texto curto e persuasivo (inventados mas realistas para o setor)
+7. CTA FINAL — seção de fundo escuro/gradiente, headline forte, subtítulo, botão grande
+8. FOOTER — logo, links de âncora, copyright`,
 
-Tipo de site: ${TYPE_LABELS[type] || type}
-Nome do negócio: ${name}
-Setor / nicho: ${sector || "não informado"}
-Descrição: ${desc}
-Maior dor do cliente: ${pain || "não informada"}
+    ecommerce: `ESTRUTURA DO E-COMMERCE (nesta ordem exata):
+1. HEADER fixo — logo, nav, ícone de carrinho com badge contador, hamburger mobile
+2. HERO — headline de oferta, subtítulo, botão "Ver produtos", badge de frete/desconto
+3. GRID DE PRODUTOS — cards modernos com imagem placeholder (gradiente colorido com ícone SVG central), nome, descrição curta, preço em destaque, botão "Comprar pelo WhatsApp" (link wa.me)
+4. BENEFÍCIOS — 3 ícones com texto: entrega, pagamento, suporte
+5. DEPOIMENTOS — 2-3 clientes satisfeitos com nota 5 estrelas
+6. CTA FINAL — urgência, botão WhatsApp
+7. CARRINHO LATERAL (drawer) — ativado por JS ao clicar nos produtos, lista itens, total, botão finalizar via WhatsApp
+8. FOOTER`,
+
+    institutional: `ESTRUTURA DO SITE INSTITUCIONAL (nesta ordem exata):
+1. HEADER fixo — logo, nav âncoras, botão CTA, hamburger mobile
+2. HERO — headline sobre a empresa, subtítulo com proposta de valor, 2 botões, elemento visual
+3. SOBRE — história/missão em 2 colunas (texto + estatísticas em destaque: anos, clientes, projetos)
+4. SERVIÇOS — grid de 4-6 serviços com ícone SVG, título, descrição curta
+5. PROCESSO — timeline ou steps numerados explicando como funciona
+6. EQUIPE — 3-4 avatares placeholder (iniciais + cargo + mini-bio)
+7. DEPOIMENTOS — 3 clientes com nome, empresa e foto-avatar
+8. CONTATO — formulário (nome, email, telefone, mensagem) + informações de contato laterais
+9. FOOTER`,
+  };
+
+  const structure = structureByType[type] || structureByType.landing;
+
+  return `Você é um web designer e copywriter sênior especializado em sites de alta conversão para o mercado brasileiro. Sua missão é gerar um site HTML autocontido de QUALIDADE PROFISSIONAL — comparável aos melhores sites de agência — para o seguinte negócio.
+
+═══════════════════════════════════════
+BRIEFING DO CLIENTE
+═══════════════════════════════════════
+Tipo: ${TYPE_LABELS[type] || type}
+Negócio: ${name}
+Setor: ${sector || "a definir pelo contexto"}
+Sobre o negócio: ${desc}
+Maior dor do cliente-alvo: ${pain || "ineficiência e falta de resultados"}
 Tom de voz: ${TONE_LABELS[tone] || tone}
-Cor principal: ${color}
-CTA principal: ${cta || "Entre em contato"}
+Cor primária da marca: ${color} (RGB: ${rgb})
+CTA principal: ${ctaText}
 ${productsBlock}
 
-REGRAS OBRIGATÓRIAS:
-1. Use SPIN Selling: abra com a situação/problema que o cliente reconhece, amplie a implicação (custo do problema) ANTES de apresentar a solução
-2. Use ${color} como cor de destaque principal — gradientes suaves, botões, bordas de destaque
-3. Gere copy real e específica para o negócio — zero placeholder Lorem ipsum
-4. Site bonito, moderno, responsivo, fontes do Google Fonts incluídas via link
-5. Para landing page: hero (S+P) → custo do problema (I) → solução (N) → benefícios → depoimentos placeholder → CTA forte
-6. Para e-commerce: hero → grid de produtos com preços e botão "Adicionar ao carrinho" → carrinho lateral simples com JS → CTA de finalização
-7. Para institucional: hero → sobre a empresa → serviços → equipe (avatares placeholder) → contato com formulário
-8. Inclua um header fixo com logo (nome do negócio) e navegação suave com âncoras
-9. Footer com copyright e informações básicas
-10. Retorne APENAS o código HTML completo, sem explicações, sem markdown, sem \`\`\`html`;
+═══════════════════════════════════════
+SISTEMA DE DESIGN — SIGA À RISCA
+═══════════════════════════════════════
+
+VARIÁVEIS CSS (sempre no :root):
+  --primary: ${color};
+  --primary-rgb: ${rgb};
+  --primary-dark: (versão 20% mais escura da cor primária calculada manualmente);
+  --primary-light: (versão 90% mais clara, para backgrounds sutis);
+  --btn-text: ${btnTextColor};
+  --bg: #ffffff;
+  --bg-alt: #f8f9fc;
+  --bg-dark: #0f0f17;
+  --text: #111827;
+  --text-muted: #6b7280;
+  --text-light: #9ca3af;
+  --border: #e5e7eb;
+  --radius: 14px;
+  --radius-sm: 8px;
+  --shadow: 0 4px 24px rgba(0,0,0,0.08);
+  --shadow-lg: 0 20px 60px rgba(0,0,0,0.12);
+
+TIPOGRAFIA (Google Fonts já carregadas):
+  <link href="${fonts.googleUrl}" rel="stylesheet">
+  Títulos (h1-h3): font-family: ${fonts.display}; letter-spacing: -0.02em;
+  Corpo: font-family: ${fonts.body};
+  h1: clamp(2.2rem, 5vw, 3.8rem); font-weight: 800; line-height: 1.1;
+  h2: clamp(1.7rem, 3.5vw, 2.6rem); font-weight: 700; line-height: 1.2;
+  h3: 1.25rem; font-weight: 700;
+  p: 1rem; line-height: 1.7; color: var(--text-muted);
+
+BOTÕES:
+  .btn-primary → background: var(--primary); color: ${btnTextColor}; padding: 14px 28px; border-radius: 100px; font-weight: 700; font-size: 0.95rem; border: none; cursor: pointer; transition: all 0.2s; box-shadow: 0 4px 20px rgba(var(--primary-rgb), 0.35);
+  .btn-primary:hover → transform: translateY(-2px); box-shadow: 0 8px 28px rgba(var(--primary-rgb), 0.45);
+  .btn-outline → background: transparent; color: var(--text); border: 2px solid var(--border); padding: 12px 26px; border-radius: 100px; font-weight: 600; cursor: pointer; transition: all 0.2s;
+  .btn-outline:hover → border-color: var(--primary); color: var(--primary);
+
+CARDS:
+  background: #fff; border: 1px solid var(--border); border-radius: var(--radius); padding: 28px; transition: all 0.25s;
+  :hover → border-color: rgba(var(--primary-rgb), 0.3); box-shadow: var(--shadow); transform: translateY(-3px);
+  Accent top line: border-top: 3px solid var(--primary);
+
+NAV:
+  position: sticky; top: 0; z-index: 100; background: rgba(255,255,255,0.92); backdrop-filter: blur(12px); border-bottom: 1px solid var(--border);
+
+SEÇÕES:
+  padding: 88px 0; (mobile: 56px 0)
+  max-width: 1120px; margin: 0 auto; padding-left: 24px; padding-right: 24px;
+  Seções alternadas: bg-alt (#f8f9fc) para criar ritmo visual
+  Seções escuras: bg-dark (#0f0f17) com texto claro
+
+ANIMAÇÕES (CSS puro, sem bibliotecas externas):
+  .reveal { opacity: 0; transform: translateY(20px); transition: opacity 0.6s ease, transform 0.6s ease; }
+  .reveal.visible { opacity: 1; transform: translateY(0); }
+  JS: IntersectionObserver detecta .reveal e adiciona .visible
+  Delays: .d1{transition-delay:0.1s} .d2{transition-delay:0.2s} .d3{transition-delay:0.3s}
+
+GRADE RESPONSIVA:
+  Mobile-first. Grids com grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  Hamburger menu: toggle classe .open no nav mobile
+
+ÍCONES: Use SVG inline simples (viewBox, stroke ou fill) — não use bibliotecas externas.
+
+═══════════════════════════════════════
+${structure}
+═══════════════════════════════════════
+
+COPY — OBRIGATÓRIO:
+- Método SPIN: Situação (dor reconhecida) → Problema (implicações) → Implicação (custo de não resolver) → Necessidade (sua solução)
+- Hero headline: fala do problema/transformação, não do produto. Ex: "Chega de perder cliente por falta de resposta" em vez de "Sistema de atendimento"
+- Todas as seções com copy REAL específica para "${name}" no setor "${sector || "este mercado"}" — ZERO Lorem ipsum
+- Depoimentos fictícios mas realistas: nomes brasileiros, cidades, dores específicas do setor, resultados concretos (números quando possível)
+- CTA: verbo de ação + benefício. Ex: "Quero mais clientes", "Começar agora grátis", "Falar com especialista"
+
+QUALIDADE OBRIGATÓRIA:
+✓ Visual profissional — equivalente a sites feitos por agências de marketing digital
+✓ Nenhuma imagem externa (use gradientes CSS, SVGs inline, iniciais em círculo)
+✓ 100% responsivo — mobile impecável
+✓ Smooth scroll, hover states, animações sutis
+✓ Formulário de contato com validação JS básica (campos obrigatórios)
+✓ WhatsApp CTA abre wa.me (número fictício se não informado: 5511999999999)
+✓ Acessibilidade: alt em imagens, aria-labels, foco visível
+
+RETORNE APENAS o código HTML completo, sem explicações, sem markdown, sem blocos de código.
+Comece diretamente com <!DOCTYPE html>`;
 }
 
-function buildRefinePrompt(userMessage: string): string {
-  return `O usuário quer ajustar o site gerado. Pedido exato: "${userMessage}"
+function buildRefinePrompt(currentHtml: string, userMessage: string): string {
+  return `Você é o desenvolvedor web que criou o site abaixo. O cliente quer uma alteração específica.
 
-Aplique exatamente o que foi pedido e retorne APENAS o HTML completo e atualizado do site.
-Mantenha todas as outras seções inalteradas. Sem explicações, sem markdown.`;
+PEDIDO DO CLIENTE: "${userMessage}"
+
+SITE ATUAL (HTML completo):
+${currentHtml}
+
+INSTRUÇÕES:
+- Aplique EXATAMENTE o que foi pedido, nada mais
+- Mantenha toda a estrutura, estilos e conteúdo inalterados — altere apenas o necessário
+- Se for ajuste de cor: atualize as variáveis CSS --primary e as referências diretas
+- Se for ajuste de texto/copy: altere apenas aquele trecho
+- Se for nova seção: insira no lugar lógico mantendo o padrão visual do site
+- Retorne APENAS o HTML completo e atualizado
+- Sem explicações, sem markdown, sem blocos de código
+Comece diretamente com <!DOCTYPE html>`;
 }
 
 function extractHtml(text: string): string {
@@ -285,10 +459,9 @@ router.post("/tenants/:tenantId/site-generator/:siteId/refine", async (req, res)
     return;
   }
 
-  const refinePrompt = buildRefinePrompt(message);
+  const refinePrompt = buildRefinePrompt(existing.html ?? "", message);
 
   const refineMessages: AiMessage[] = [
-    ...history,
     { role: "user", content: refinePrompt },
   ];
 
