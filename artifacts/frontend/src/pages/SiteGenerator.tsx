@@ -1,4 +1,4 @@
-import { useState, useRef, useCallback } from "react";
+import { useState, useRef, useCallback, useEffect } from "react";
 import { useAuth } from "@/contexts/AuthContext";
 import { useGetBusinessProfileByTenant, getGetBusinessProfileByTenantQueryKey } from "@workspace/api-client-react";
 import { Button } from "@/components/ui/button";
@@ -15,7 +15,17 @@ import {
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
-import { Loader2, Download, MessageSquare, RotateCcw, Globe } from "lucide-react";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+  DialogFooter,
+} from "@/components/ui/dialog";
+import { ScrollArea } from "@/components/ui/scroll-area";
+import { Separator } from "@/components/ui/separator";
+import { Loader2, Download, MessageSquare, RotateCcw, Globe, Sparkles, Quote, ImageIcon, Plus, Trash2, Upload } from "lucide-react";
 
 // ── Constants ──────────────────────────────────────────────────────────────────
 
@@ -61,6 +71,13 @@ interface SiteConfig {
   products: Product[];
 }
 interface ChatMessage { role: "user" | "assistant"; content: string; }
+interface Testimonial {
+  id: string;
+  name: string;
+  company: string;
+  text: string;
+  photoUrl: string;
+}
 
 // ── Hook ───────────────────────────────────────────────────────────────────────
 
@@ -74,6 +91,30 @@ function useSiteGenerator(tenantId: string, token: string | null) {
   const authHeaders: Record<string, string> = token
     ? { "Content-Type": "application/json", Authorization: `Bearer ${token}` }
     : { "Content-Type": "application/json" };
+
+  const loadLatest = useCallback(async () => {
+    if (!tenantId) return;
+    try {
+      const res = await fetch(`/api/tenants/${tenantId}/site-generator/latest`, { headers: authHeaders });
+      if (!res.ok) return;
+      const site = await res.json();
+      setHtml(site.html);
+      setSiteId(site.id);
+      setStatus("ready");
+    } catch {
+      // No existing site — keep idle state
+    }
+  }, [tenantId, token]);
+
+  const saveHtml = useCallback(async (newHtml: string) => {
+    if (!siteId) return;
+    setHtml(newHtml);
+    await fetch(`/api/tenants/${tenantId}/site-generator/${siteId}/html`, {
+      method: "PATCH",
+      headers: authHeaders,
+      body: JSON.stringify({ html: newHtml }),
+    });
+  }, [siteId, tenantId, token]);
 
   const generate = useCallback(async (config: SiteConfig) => {
     setStatus("generating");
@@ -147,7 +188,7 @@ function useSiteGenerator(tenantId: string, token: string | null) {
     setError(null);
   }, []);
 
-  return { status, html, siteId, error, generate, refine, download, reset };
+  return { status, html, siteId, error, generate, refine, download, reset, loadLatest, saveHtml };
 }
 
 // ── ConfigForm ─────────────────────────────────────────────────────────────────
@@ -528,11 +569,395 @@ function RefinementChat({
   );
 }
 
+// ── RefineDialog ───────────────────────────────────────────────────────────────
+
+function RefineDialog({ onRefine }: { onRefine: (msg: string) => Promise<string> }) {
+  const [open, setOpen] = useState(false);
+  const [input, setInput] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [done, setDone] = useState(false);
+
+  async function apply() {
+    if (!input.trim() || loading) return;
+    setLoading(true);
+    try {
+      await onRefine(input.trim());
+      setDone(true);
+      setInput("");
+      setTimeout(() => { setDone(false); setOpen(false); }, 1400);
+    } catch {
+      // keep open on error
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  return (
+    <Dialog open={open} onOpenChange={setOpen}>
+      <DialogTrigger asChild>
+        <Button variant="outline" size="sm">
+          <Sparkles className="h-3.5 w-3.5 mr-1.5" />
+          Ajustar com IA
+        </Button>
+      </DialogTrigger>
+      <DialogContent className="sm:max-w-md">
+        <DialogHeader>
+          <DialogTitle>Ajustar site com IA</DialogTitle>
+        </DialogHeader>
+        <div className="flex flex-col gap-3 py-1">
+          <Textarea
+            rows={4}
+            placeholder="Descreva a melhoria... Ex: Muda a cor principal para verde, adiciona seção de FAQ, deixa o hero mais urgente..."
+            value={input}
+            onChange={(e) => setInput(e.target.value)}
+            disabled={loading}
+            autoFocus
+          />
+          <div className="flex flex-wrap gap-1.5">
+            {SUGGESTIONS.map((s) => (
+              <button
+                key={s}
+                type="button"
+                onClick={() => setInput(s)}
+                className="rounded-full border border-border bg-background px-3 py-1 text-xs text-muted-foreground hover:border-primary hover:text-primary cursor-pointer transition-colors"
+              >
+                {s}
+              </button>
+            ))}
+          </div>
+        </div>
+        <DialogFooter>
+          <Button onClick={apply} disabled={loading || !input.trim()} className="w-full">
+            {loading ? <><Loader2 className="h-4 w-4 mr-2 animate-spin" />Aplicando…</> : done ? "✓ Aplicado!" : "Aplicar ajuste"}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+// ── TestimonialsDialog ─────────────────────────────────────────────────────────
+
+function TestimonialsDialog({ onRefine }: { onRefine: (msg: string) => Promise<string> }) {
+  const [open, setOpen] = useState(false);
+  const [testimonials, setTestimonials] = useState<Testimonial[]>([
+    { id: crypto.randomUUID(), name: "", company: "", text: "", photoUrl: "" },
+  ]);
+  const [loading, setLoading] = useState(false);
+  const [done, setDone] = useState(false);
+
+  function add() {
+    setTestimonials((t) => [...t, { id: crypto.randomUUID(), name: "", company: "", text: "", photoUrl: "" }]);
+  }
+  function remove(id: string) {
+    setTestimonials((t) => t.filter((x) => x.id !== id));
+  }
+  function update(id: string, field: keyof Testimonial, value: string) {
+    setTestimonials((t) => t.map((x) => (x.id === id ? { ...x, [field]: value } : x)));
+  }
+  function handlePhoto(id: string, file: File) {
+    const reader = new FileReader();
+    reader.onload = (e) => update(id, "photoUrl", (e.target?.result as string) ?? "");
+    reader.readAsDataURL(file);
+  }
+
+  async function apply() {
+    const valid = testimonials.filter((t) => t.name.trim() && t.text.trim());
+    if (!valid.length || loading) return;
+
+    const list = valid.map((t, i) => {
+      const company = t.company ? `, ${t.company}` : "";
+      const photo = t.photoUrl
+        ? t.photoUrl.startsWith("data:")
+          ? `\n   Foto: [imagem enviada pelo usuário — use as iniciais "${t.name.split(" ").map((w) => w[0]).join("").toUpperCase()}" como avatar fallback]`
+          : `\n   Foto: ${t.photoUrl}`
+        : "";
+      return `${i + 1}. **${t.name}**${company}\n   "${t.text}"${photo}`;
+    }).join("\n\n");
+
+    const prompt = `Substitua TODOS os depoimentos existentes no site pelos depoimentos reais abaixo. Mantenha exatamente o mesmo design, layout e estilo HTML da seção de depoimentos — apenas troque os textos, nomes e imagens. Se houver URL de foto, use-a no <img> do depoimento. Se não houver foto, crie um avatar circular com as iniciais do cliente em CSS.\n\nDepoimentos reais:\n\n${list}`;
+
+    setLoading(true);
+    try {
+      await onRefine(prompt);
+      setDone(true);
+      setTimeout(() => { setDone(false); setOpen(false); }, 1500);
+    } catch {
+      // keep open
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  const hasValid = testimonials.some((t) => t.name.trim() && t.text.trim());
+
+  return (
+    <Dialog open={open} onOpenChange={setOpen}>
+      <DialogTrigger asChild>
+        <Button variant="outline" size="sm">
+          <Quote className="h-3.5 w-3.5 mr-1.5" />
+          Depoimentos reais
+        </Button>
+      </DialogTrigger>
+      <DialogContent className="sm:max-w-lg">
+        <DialogHeader>
+          <DialogTitle>Depoimentos reais de clientes</DialogTitle>
+        </DialogHeader>
+        <ScrollArea className="max-h-[58vh] pr-2">
+          <div className="flex flex-col gap-4 py-1">
+            {testimonials.map((t, i) => (
+              <div key={t.id} className="rounded-lg border p-4 flex flex-col gap-3">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-medium text-muted-foreground uppercase tracking-widest">
+                    Depoimento {i + 1}
+                  </span>
+                  {testimonials.length > 1 && (
+                    <button type="button" onClick={() => remove(t.id)} className="text-destructive hover:opacity-70 cursor-pointer transition-opacity">
+                      <Trash2 className="h-4 w-4" />
+                    </button>
+                  )}
+                </div>
+                <div className="grid grid-cols-2 gap-2">
+                  <div className="flex flex-col gap-1">
+                    <Label className="text-xs">Nome do cliente *</Label>
+                    <Input placeholder="Ex: João Silva" value={t.name} onChange={(e) => update(t.id, "name", e.target.value)} />
+                  </div>
+                  <div className="flex flex-col gap-1">
+                    <Label className="text-xs">Empresa (opcional)</Label>
+                    <Input placeholder="Ex: Padaria Central" value={t.company} onChange={(e) => update(t.id, "company", e.target.value)} />
+                  </div>
+                </div>
+                <div className="flex flex-col gap-1">
+                  <Label className="text-xs">Depoimento *</Label>
+                  <Textarea rows={2} placeholder="O que o cliente disse sobre você..." value={t.text} onChange={(e) => update(t.id, "text", e.target.value)} />
+                </div>
+                <div className="flex flex-col gap-1">
+                  <Label className="text-xs">Foto do cliente (opcional)</Label>
+                  <div className="flex gap-2 items-center">
+                    <Input
+                      placeholder="URL da foto"
+                      value={t.photoUrl.startsWith("data:") ? "(imagem enviada)" : t.photoUrl}
+                      onChange={(e) => update(t.id, "photoUrl", e.target.value)}
+                      className="flex-1 text-sm"
+                      readOnly={t.photoUrl.startsWith("data:")}
+                    />
+                    <label className="cursor-pointer shrink-0">
+                      <input type="file" accept="image/*" className="sr-only" onChange={(e) => { const f = e.target.files?.[0]; if (f) handlePhoto(t.id, f); }} />
+                      <Button variant="outline" size="icon" type="button" asChild>
+                        <span><Upload className="h-4 w-4" /></span>
+                      </Button>
+                    </label>
+                    {t.photoUrl && (
+                      <img src={t.photoUrl} alt="" className="h-8 w-8 rounded-full object-cover border shrink-0" />
+                    )}
+                  </div>
+                </div>
+              </div>
+            ))}
+            <Button type="button" variant="ghost" className="self-start text-primary text-sm" onClick={add}>
+              <Plus className="h-3.5 w-3.5 mr-1.5" /> Adicionar depoimento
+            </Button>
+          </div>
+        </ScrollArea>
+        <DialogFooter>
+          <Button onClick={apply} disabled={loading || !hasValid} className="w-full">
+            {loading ? <><Loader2 className="h-4 w-4 mr-2 animate-spin" />Aplicando depoimentos…</> : done ? "✓ Depoimentos aplicados!" : "Aplicar depoimentos ao site"}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+// ── MediaDialog ────────────────────────────────────────────────────────────────
+
+function MediaDialog({ html, onSave }: { html: string; onSave: (html: string) => Promise<void> }) {
+  const [open, setOpen] = useState(false);
+  const [logoUrl, setLogoUrl] = useState("");
+  const [heroUrl, setHeroUrl] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [done, setDone] = useState(false);
+
+  function readFile(file: File, setter: (url: string) => void) {
+    const reader = new FileReader();
+    reader.onload = (e) => setter((e.target?.result as string) ?? "");
+    reader.readAsDataURL(file);
+  }
+
+  function injectLogo(source: string, logoSrc: string): string {
+    // Replace first <img> inside nav or header
+    const navReplaced = source.replace(
+      /(<(?:nav|header)\b[^>]*>[\s\S]*?)<img([^>]*?\s)src=["'][^"']*["']/i,
+      (_, prefix, attrs) => `${prefix}<img${attrs}src="${logoSrc}"`
+    );
+    if (navReplaced !== source) return navReplaced;
+    // Fallback: first img with class containing logo
+    const logoClassReplaced = source.replace(
+      /<img([^>]*?class=["'][^"']*(?:logo|brand)[^"']*["'][^>]*?)src=["'][^"']*["']/i,
+      `<img$1src="${logoSrc}"`
+    );
+    if (logoClassReplaced !== source) return logoClassReplaced;
+    // Last fallback: very first img in document
+    return source.replace(/<img([^>]*?)src=["'][^"']*["']/, `<img$1src="${logoSrc}"`);
+  }
+
+  function injectHero(source: string, heroSrc: string): string {
+    // Try hero section img
+    const heroSection = source.replace(
+      /(<(?:section|div)\b[^>]*(?:id=["'][^"']*hero[^"']*["']|class=["'][^"']*hero[^"']*["'])[^>]*>[\s\S]{0,800}?)<img([^>]*?)src=["'][^"']*["']/i,
+      (_, prefix, attrs) => `${prefix}<img${attrs}src="${heroSrc}"`
+    );
+    if (heroSection !== source) return heroSection;
+    // Replace Unsplash URLs
+    const unsplashReplaced = source.replace(/https?:\/\/images\.unsplash\.com[^"'\s)]*/g, heroSrc);
+    if (unsplashReplaced !== source) return unsplashReplaced;
+    // Fallback: second img in document (first is usually logo)
+    let count = 0;
+    return source.replace(/<img([^>]*?)src=["'][^"']*["']/g, (match, attrs) => {
+      count++;
+      return count === 2 ? `<img${attrs}src="${heroSrc}"` : match;
+    });
+  }
+
+  async function apply() {
+    if ((!logoUrl && !heroUrl) || loading) return;
+    setLoading(true);
+    try {
+      let updated = html;
+      if (logoUrl) updated = injectLogo(updated, logoUrl);
+      if (heroUrl) updated = injectHero(updated, heroUrl);
+      await onSave(updated);
+      setDone(true);
+      setTimeout(() => { setDone(false); setOpen(false); }, 1200);
+    } catch {
+      // keep open
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  return (
+    <Dialog open={open} onOpenChange={setOpen}>
+      <DialogTrigger asChild>
+        <Button variant="outline" size="sm">
+          <ImageIcon className="h-3.5 w-3.5 mr-1.5" />
+          Logo & Fotos
+        </Button>
+      </DialogTrigger>
+      <DialogContent className="sm:max-w-md">
+        <DialogHeader>
+          <DialogTitle>Logo e fotos do site</DialogTitle>
+        </DialogHeader>
+        <div className="flex flex-col gap-5 py-1">
+          {/* Logo */}
+          <div className="flex flex-col gap-2">
+            <div>
+              <Label className="font-medium">Logotipo</Label>
+              <p className="text-xs text-muted-foreground mt-0.5">Inserido no cabeçalho/navegação do site</p>
+            </div>
+            <div className="flex gap-2 items-center">
+              <Input
+                placeholder="Cole a URL do logo"
+                value={logoUrl.startsWith("data:") ? "(arquivo carregado)" : logoUrl}
+                onChange={(e) => setLogoUrl(e.target.value)}
+                className="flex-1"
+                readOnly={logoUrl.startsWith("data:")}
+              />
+              <label className="cursor-pointer shrink-0">
+                <input type="file" accept="image/*" className="sr-only" onChange={(e) => { const f = e.target.files?.[0]; if (f) readFile(f, setLogoUrl); }} />
+                <Button variant="outline" size="icon" type="button" asChild>
+                  <span><Upload className="h-4 w-4" /></span>
+                </Button>
+              </label>
+            </div>
+            {logoUrl && (
+              <div className="rounded-lg border bg-muted/30 p-3 flex items-center justify-center h-16">
+                <img src={logoUrl} alt="Logo preview" className="max-h-full max-w-full object-contain" />
+              </div>
+            )}
+          </div>
+
+          <Separator />
+
+          {/* Hero photo */}
+          <div className="flex flex-col gap-2">
+            <div>
+              <Label className="font-medium">Foto principal (hero)</Label>
+              <p className="text-xs text-muted-foreground mt-0.5">Imagem de destaque no topo do site</p>
+            </div>
+            <div className="flex gap-2 items-center">
+              <Input
+                placeholder="Cole a URL da foto"
+                value={heroUrl.startsWith("data:") ? "(arquivo carregado)" : heroUrl}
+                onChange={(e) => setHeroUrl(e.target.value)}
+                className="flex-1"
+                readOnly={heroUrl.startsWith("data:")}
+              />
+              <label className="cursor-pointer shrink-0">
+                <input type="file" accept="image/*" className="sr-only" onChange={(e) => { const f = e.target.files?.[0]; if (f) readFile(f, setHeroUrl); }} />
+                <Button variant="outline" size="icon" type="button" asChild>
+                  <span><Upload className="h-4 w-4" /></span>
+                </Button>
+              </label>
+            </div>
+            {heroUrl && (
+              <div className="rounded-lg border overflow-hidden h-24">
+                <img src={heroUrl} alt="Hero preview" className="w-full h-full object-cover" />
+              </div>
+            )}
+          </div>
+        </div>
+        <DialogFooter>
+          <Button onClick={apply} disabled={loading || (!logoUrl && !heroUrl)} className="w-full">
+            {loading ? <><Loader2 className="h-4 w-4 mr-2 animate-spin" />Salvando…</> : done ? "✓ Aplicado!" : "Aplicar mídia ao site"}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+// ── PersonalizePanel ───────────────────────────────────────────────────────────
+
+function PersonalizePanel({
+  html,
+  onRefine,
+  onSave,
+}: {
+  html: string;
+  onRefine: (msg: string) => Promise<string>;
+  onSave: (html: string) => Promise<void>;
+}) {
+  return (
+    <div className="rounded-xl border border-green-200 bg-green-50/50 dark:border-green-900/40 dark:bg-green-950/20 p-4 flex flex-col gap-3">
+      <div className="flex items-center gap-2">
+        <span className="relative flex h-2 w-2">
+          <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75" />
+          <span className="relative inline-flex rounded-full h-2 w-2 bg-green-500" />
+        </span>
+        <span className="text-sm font-medium text-green-900 dark:text-green-300">
+          Site publicado — ajuste a qualquer momento
+        </span>
+      </div>
+      <div className="flex flex-wrap gap-2">
+        <RefineDialog onRefine={onRefine} />
+        <TestimonialsDialog onRefine={onRefine} />
+        <MediaDialog html={html} onSave={onSave} />
+      </div>
+    </div>
+  );
+}
+
 // ── Shared inner content (used by both standalone page and embedded tab) ────────
 
 function SiteGeneratorInner({ tenantId, token }: { tenantId: string; token: string | null }) {
   const [activeTab, setActiveTab] = useState("config");
-  const { status, html, error, generate, refine, download, reset } = useSiteGenerator(tenantId, token);
+  const { status, html, error, generate, refine, download, reset, loadLatest, saveHtml } = useSiteGenerator(tenantId, token);
+
+  // Auto-load existing site on mount so the panel is always available
+  useEffect(() => {
+    if (tenantId) loadLatest();
+  }, [tenantId]);
 
   async function handleGenerate(config: SiteConfig) {
     setActiveTab("preview");
@@ -544,6 +969,11 @@ function SiteGeneratorInner({ tenantId, token }: { tenantId: string; token: stri
 
   return (
     <div className="flex flex-col gap-4">
+      {/* Personalizar panel — always visible when a site exists */}
+      {status === "ready" && (
+        <PersonalizePanel html={html} onRefine={refine} onSave={saveHtml} />
+      )}
+
       <div className="flex items-center justify-between flex-wrap gap-2">
         <p className="text-sm text-muted-foreground">
           Crie landing pages, e-commerces e sites institucionais com IA em segundos.
@@ -555,7 +985,7 @@ function SiteGeneratorInner({ tenantId, token }: { tenantId: string; token: stri
             onClick={() => { reset(); setActiveTab("config"); }}
           >
             <RotateCcw className="h-3.5 w-3.5 mr-1.5" />
-            Novo site
+            Gerar novo site
           </Button>
         )}
       </div>
@@ -577,7 +1007,7 @@ function SiteGeneratorInner({ tenantId, token }: { tenantId: string; token: stri
             )}
           </TabsTrigger>
           <TabsTrigger value="refine" className="flex-1" disabled={!canRefine}>
-            ③ Refinar
+            ③ Chat IA
           </TabsTrigger>
         </TabsList>
 

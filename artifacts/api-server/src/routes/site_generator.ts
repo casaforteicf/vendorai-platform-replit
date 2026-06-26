@@ -545,4 +545,64 @@ router.delete("/tenants/:tenantId/site-generator/:siteId", async (req, res) => {
   return res.status(204).send();
 });
 
+// GET /tenants/:tenantId/site-generator/latest — load most recent site for a tenant
+router.get("/tenants/:tenantId/site-generator/latest", async (req, res) => {
+  const { tenantId } = req.params;
+  const user = (req as any).user;
+  const isSuperAdmin = user?.platformRole === "super_admin";
+  if (!isSuperAdmin && user?.tenantId !== tenantId) {
+    res.status(403).json({ error: "Access denied" });
+    return;
+  }
+
+  const [site] = await db
+    .select()
+    .from(generatedSitesTable)
+    .where(eq(generatedSitesTable.tenantId, tenantId))
+    .orderBy(desc(generatedSitesTable.updatedAt))
+    .limit(1);
+
+  if (!site) {
+    res.status(404).json({ error: "No site found" });
+    return;
+  }
+
+  return res.json(site);
+});
+
+// PATCH /tenants/:tenantId/site-generator/:siteId/html — save HTML after direct edits (logo/photo injection)
+router.patch("/tenants/:tenantId/site-generator/:siteId/html", async (req, res) => {
+  const { tenantId, siteId } = req.params;
+  const user = (req as any).user;
+  const isSuperAdmin = user?.platformRole === "super_admin";
+  if (!isSuperAdmin && user?.tenantId !== tenantId) {
+    res.status(403).json({ error: "Access denied" });
+    return;
+  }
+
+  const { html } = req.body as { html: string };
+  if (!html || typeof html !== "string") {
+    res.status(400).json({ error: "html é obrigatório" });
+    return;
+  }
+
+  const [existing] = await db
+    .select({ id: generatedSitesTable.id, tenantId: generatedSitesTable.tenantId })
+    .from(generatedSitesTable)
+    .where(eq(generatedSitesTable.id, siteId));
+
+  if (!existing || existing.tenantId !== tenantId) {
+    res.status(404).json({ error: "Site not found" });
+    return;
+  }
+
+  const [updated] = await db
+    .update(generatedSitesTable)
+    .set({ html, updatedAt: new Date() })
+    .where(eq(generatedSitesTable.id, siteId))
+    .returning({ id: generatedSitesTable.id });
+
+  return res.json(updated);
+});
+
 export default router;
