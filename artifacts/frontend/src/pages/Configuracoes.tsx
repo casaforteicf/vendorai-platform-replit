@@ -669,6 +669,103 @@ export default function Configuracoes() {
     }
   }
 
+  // ── Discovery / AI Context state ───────────────────────────────────────────
+  const [disc, setDisc] = useState({
+    diferenciais: "",
+    publicoAlvo: "",
+    concorrentes: [] as string[],
+    canaisVenda: [] as string[],
+    missao: "",
+    visao: "",
+    valores: [] as string[],
+    historia: "",
+    produtos: [] as Array<{ nome: string; descricao?: string; preco?: number }>,
+  });
+  const [discSaving, setDiscSaving] = useState(false);
+  // Temp inputs for tag fields
+  const [concorrenteInput, setConcorrenteInput] = useState("");
+  const [canalInput, setCanalInput] = useState("");
+  const [valorInput, setValorInput] = useState("");
+  // Temp inputs for new product
+  const [newProd, setNewProd] = useState({ nome: "", descricao: "", preco: "" });
+
+  useEffect(() => {
+    if (!profileQuery.data) return;
+    const dd = (profileQuery.data.discoveryData as Record<string, unknown>) ?? {};
+    setDisc({
+      diferenciais: profileQuery.data.diferenciais ?? "",
+      publicoAlvo:  profileQuery.data.publicoAlvo ?? "",
+      concorrentes: (profileQuery.data.concorrentes as string[]) ?? [],
+      canaisVenda:  (profileQuery.data.canaisVenda as string[]) ?? [],
+      missao:       typeof dd.missao === "string" ? dd.missao : "",
+      visao:        typeof dd.visao === "string" ? dd.visao : "",
+      valores:      Array.isArray(dd.valores) ? (dd.valores as string[]) : [],
+      historia:     typeof dd.historia === "string" ? dd.historia : "",
+      produtos:     (profileQuery.data.produtos as Array<{ nome: string; descricao?: string; preco?: number }>) ?? [],
+    });
+  }, [profileQuery.data]);
+
+  function addTag(field: "concorrentes" | "canaisVenda" | "valores", value: string) {
+    const trimmed = value.trim();
+    if (!trimmed) return;
+    setDisc((d) => ({ ...d, [field]: [...d[field], trimmed] }));
+    if (field === "concorrentes") setConcorrenteInput("");
+    if (field === "canaisVenda") setCanalInput("");
+    if (field === "valores") setValorInput("");
+  }
+
+  function removeTag(field: "concorrentes" | "canaisVenda" | "valores", idx: number) {
+    setDisc((d) => ({ ...d, [field]: d[field].filter((_, i) => i !== idx) }));
+  }
+
+  function addProduct() {
+    const nome = newProd.nome.trim();
+    if (!nome) return;
+    const preco = newProd.preco !== "" ? Number(newProd.preco) : undefined;
+    setDisc((d) => ({ ...d, produtos: [...d.produtos, { nome, descricao: newProd.descricao.trim() || undefined, preco }] }));
+    setNewProd({ nome: "", descricao: "", preco: "" });
+  }
+
+  function removeProduct(idx: number) {
+    setDisc((d) => ({ ...d, produtos: d.produtos.filter((_, i) => i !== idx) }));
+  }
+
+  function onSaveDiscovery() {
+    if (!profileQuery.data?.id) return;
+    setDiscSaving(true);
+    const dd = {
+      ...((profileQuery.data.discoveryData as Record<string, unknown>) ?? {}),
+      ...(disc.missao ? { missao: disc.missao } : {}),
+      ...(disc.visao  ? { visao:  disc.visao  } : {}),
+      ...(disc.valores.length > 0 ? { valores: disc.valores } : {}),
+      ...(disc.historia ? { historia: disc.historia } : {}),
+    };
+    updateProfile.mutate(
+      {
+        id: profileQuery.data.id,
+        data: {
+          diferenciais: disc.diferenciais || undefined,
+          publicoAlvo:  disc.publicoAlvo  || undefined,
+          concorrentes: disc.concorrentes.length > 0 ? disc.concorrentes : undefined,
+          canaisVenda:  disc.canaisVenda.length  > 0 ? disc.canaisVenda  : undefined,
+          produtos:     disc.produtos.length     > 0 ? disc.produtos     : undefined,
+          discoveryData: Object.keys(dd).length  > 0 ? dd                : undefined,
+        },
+      },
+      {
+        onSuccess: () => {
+          queryClient.invalidateQueries({ queryKey: profileQuery.queryKey });
+          toast({ title: "Contexto da IA atualizado com sucesso." });
+          setDiscSaving(false);
+        },
+        onError: () => {
+          toast({ title: "Erro ao salvar contexto.", variant: "destructive" });
+          setDiscSaving(false);
+        },
+      }
+    );
+  }
+
   function saveImageUrl(field: "logoUrl" | "faviconUrl", value: string) {
     const profileExists = !!profileQuery.data?.id;
     const data = { [field]: value };
@@ -1688,6 +1785,204 @@ export default function Configuracoes() {
                   </div>
                 </form>
               </Form>
+            )}
+          </div>
+
+          {/* ── Contexto para a IA ───────────────────────────────────────── */}
+          <div className="rounded-xl border bg-card p-6 space-y-6">
+            <div>
+              <h2 className="font-semibold text-base flex items-center gap-2">
+                <Brain className="h-4 w-4 text-primary" />
+                Contexto para a IA
+              </h2>
+              <p className="text-sm text-muted-foreground mt-0.5">
+                Informações que a IA usa para entender seu negócio — mantenha sempre atualizado ao mudar endereço, abrir filiais ou atualizar produtos.
+              </p>
+            </div>
+
+            {profileQuery.isLoading ? (
+              <div className="space-y-3">
+                {Array.from({ length: 4 }).map((_, i) => <Skeleton key={i} className="h-10 w-full" />)}
+              </div>
+            ) : (
+              <div className="space-y-6">
+
+                {/* Diferenciais + Público-alvo */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div className="space-y-1.5">
+                    <label className="text-sm font-medium">Diferenciais competitivos</label>
+                    <Textarea
+                      placeholder="O que nos torna únicos frente à concorrência..."
+                      rows={3}
+                      value={disc.diferenciais}
+                      onChange={(e) => setDisc((d) => ({ ...d, diferenciais: e.target.value }))}
+                    />
+                  </div>
+                  <div className="space-y-1.5">
+                    <label className="text-sm font-medium">Público-alvo</label>
+                    <Textarea
+                      placeholder="Perfil dos clientes ideais, segmentos atendidos..."
+                      rows={3}
+                      value={disc.publicoAlvo}
+                      onChange={(e) => setDisc((d) => ({ ...d, publicoAlvo: e.target.value }))}
+                    />
+                  </div>
+                </div>
+
+                {/* Concorrentes */}
+                <div className="space-y-2">
+                  <label className="text-sm font-medium">Concorrentes</label>
+                  <div className="flex gap-2">
+                    <Input
+                      placeholder="Nome do concorrente..."
+                      value={concorrenteInput}
+                      onChange={(e) => setConcorrenteInput(e.target.value)}
+                      onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); addTag("concorrentes", concorrenteInput); } }}
+                    />
+                    <Button type="button" variant="outline" size="sm" className="shrink-0" onClick={() => addTag("concorrentes", concorrenteInput)}>Adicionar</Button>
+                  </div>
+                  {disc.concorrentes.length > 0 && (
+                    <div className="flex flex-wrap gap-1.5 mt-1">
+                      {disc.concorrentes.map((c, i) => (
+                        <Badge key={i} variant="secondary" className="gap-1 pr-1">
+                          {c}
+                          <button type="button" onClick={() => removeTag("concorrentes", i)} className="ml-0.5 hover:text-destructive"><X className="h-3 w-3" /></button>
+                        </Badge>
+                      ))}
+                    </div>
+                  )}
+                </div>
+
+                {/* Canais de venda */}
+                <div className="space-y-2">
+                  <label className="text-sm font-medium">Canais de atendimento / venda</label>
+                  <div className="flex gap-2">
+                    <Input
+                      placeholder="Ex: WhatsApp, Instagram, Loja Física..."
+                      value={canalInput}
+                      onChange={(e) => setCanalInput(e.target.value)}
+                      onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); addTag("canaisVenda", canalInput); } }}
+                    />
+                    <Button type="button" variant="outline" size="sm" className="shrink-0" onClick={() => addTag("canaisVenda", canalInput)}>Adicionar</Button>
+                  </div>
+                  {disc.canaisVenda.length > 0 && (
+                    <div className="flex flex-wrap gap-1.5 mt-1">
+                      {disc.canaisVenda.map((c, i) => (
+                        <Badge key={i} variant="secondary" className="gap-1 pr-1">
+                          {c}
+                          <button type="button" onClick={() => removeTag("canaisVenda", i)} className="ml-0.5 hover:text-destructive"><X className="h-3 w-3" /></button>
+                        </Badge>
+                      ))}
+                    </div>
+                  )}
+                </div>
+
+                {/* Produtos / Serviços */}
+                <div className="space-y-2">
+                  <label className="text-sm font-medium">Produtos e Serviços</label>
+                  {disc.produtos.length > 0 && (
+                    <div className="border rounded-lg divide-y">
+                      {disc.produtos.map((p, i) => (
+                        <div key={i} className="flex items-start gap-3 p-3">
+                          <div className="flex-1 min-w-0">
+                            <p className="text-sm font-medium">{p.nome}</p>
+                            {p.descricao && <p className="text-xs text-muted-foreground">{p.descricao}</p>}
+                            {p.preco != null && <p className="text-xs text-muted-foreground">R$ {p.preco.toFixed(2)}</p>}
+                          </div>
+                          <Button type="button" variant="ghost" size="sm" className="shrink-0 h-7 w-7 p-0 text-muted-foreground hover:text-destructive" onClick={() => removeProduct(i)}><Trash2 className="h-3.5 w-3.5" /></Button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                    <Input
+                      placeholder="Nome do produto/serviço *"
+                      value={newProd.nome}
+                      onChange={(e) => setNewProd((p) => ({ ...p, nome: e.target.value }))}
+                    />
+                    <Input
+                      placeholder="Descrição (opcional)"
+                      value={newProd.descricao}
+                      onChange={(e) => setNewProd((p) => ({ ...p, descricao: e.target.value }))}
+                    />
+                    <div className="flex gap-2">
+                      <Input
+                        placeholder="Preço R$"
+                        type="number"
+                        min="0"
+                        step="0.01"
+                        value={newProd.preco}
+                        onChange={(e) => setNewProd((p) => ({ ...p, preco: e.target.value }))}
+                      />
+                      <Button type="button" variant="outline" size="sm" className="shrink-0" onClick={addProduct}>Add</Button>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Missão + Visão */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div className="space-y-1.5">
+                    <label className="text-sm font-medium">Missão</label>
+                    <Textarea
+                      placeholder="Por que a empresa existe..."
+                      rows={2}
+                      value={disc.missao}
+                      onChange={(e) => setDisc((d) => ({ ...d, missao: e.target.value }))}
+                    />
+                  </div>
+                  <div className="space-y-1.5">
+                    <label className="text-sm font-medium">Visão</label>
+                    <Textarea
+                      placeholder="Onde quer chegar no futuro..."
+                      rows={2}
+                      value={disc.visao}
+                      onChange={(e) => setDisc((d) => ({ ...d, visao: e.target.value }))}
+                    />
+                  </div>
+                </div>
+
+                {/* Valores */}
+                <div className="space-y-2">
+                  <label className="text-sm font-medium">Valores da empresa</label>
+                  <div className="flex gap-2">
+                    <Input
+                      placeholder="Ex: Honestidade, Inovação, Agilidade..."
+                      value={valorInput}
+                      onChange={(e) => setValorInput(e.target.value)}
+                      onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); addTag("valores", valorInput); } }}
+                    />
+                    <Button type="button" variant="outline" size="sm" className="shrink-0" onClick={() => addTag("valores", valorInput)}>Adicionar</Button>
+                  </div>
+                  {disc.valores.length > 0 && (
+                    <div className="flex flex-wrap gap-1.5 mt-1">
+                      {disc.valores.map((v, i) => (
+                        <Badge key={i} variant="secondary" className="gap-1 pr-1">
+                          {v}
+                          <button type="button" onClick={() => removeTag("valores", i)} className="ml-0.5 hover:text-destructive"><X className="h-3 w-3" /></button>
+                        </Badge>
+                      ))}
+                    </div>
+                  )}
+                </div>
+
+                {/* História */}
+                <div className="space-y-1.5">
+                  <label className="text-sm font-medium">História da empresa</label>
+                  <Textarea
+                    placeholder="Conte a trajetória, fundação, crescimento, conquistas importantes..."
+                    rows={4}
+                    value={disc.historia}
+                    onChange={(e) => setDisc((d) => ({ ...d, historia: e.target.value }))}
+                  />
+                </div>
+
+                <div className="flex justify-end pt-2">
+                  <Button onClick={onSaveDiscovery} disabled={discSaving || !profileQuery.data?.id} className="gap-2">
+                    <Save className="h-4 w-4" />
+                    {discSaving ? "Salvando..." : "Salvar Contexto"}
+                  </Button>
+                </div>
+              </div>
             )}
           </div>
 
