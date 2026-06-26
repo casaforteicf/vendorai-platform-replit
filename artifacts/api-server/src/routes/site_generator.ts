@@ -1,5 +1,5 @@
 import { Router, type IRouter } from "express";
-import { desc, eq } from "drizzle-orm";
+import { and, desc, eq } from "drizzle-orm";
 import { db, generatedSitesTable, businessProfilesTable, tenantsTable } from "@workspace/db";
 import type { SiteGeneratorConfig } from "@workspace/db";
 import Anthropic from "@anthropic-ai/sdk";
@@ -32,12 +32,12 @@ publicSiteGeneratorRouter.get("/public/:tenantSlug/site-html", async (req, res) 
   const [site] = await db
     .select({ html: generatedSitesTable.html })
     .from(generatedSitesTable)
-    .where(eq(generatedSitesTable.tenantId, tenant.id))
+    .where(and(eq(generatedSitesTable.tenantId, tenant.id), eq(generatedSitesTable.published, true)))
     .orderBy(desc(generatedSitesTable.updatedAt))
     .limit(1);
 
   if (!site) {
-    res.status(404).send("<!DOCTYPE html><html><body><h1>Site não encontrado</h1></body></html>");
+    res.status(404).send("<!DOCTYPE html><html><body style='font-family:sans-serif;display:flex;align-items:center;justify-content:center;min-height:100vh;margin:0'><div style='text-align:center'><p style='font-size:3rem'>🌐</p><h1 style='color:#374151'>Site não publicado</h1><p style='color:#6b7280'>Este site ainda não foi publicado pelo proprietário.</p></div></body></html>");
     return;
   }
 
@@ -543,6 +543,36 @@ router.delete("/tenants/:tenantId/site-generator/:siteId", async (req, res) => {
 
   await db.delete(generatedSitesTable).where(eq(generatedSitesTable.id, siteId));
   return res.status(204).send();
+});
+
+// POST /tenants/:tenantId/site-generator/:siteId/publish — make site public
+router.post("/tenants/:tenantId/site-generator/:siteId/publish", async (req, res) => {
+  const { tenantId, siteId } = req.params;
+  const user = (req as any).user;
+  const isSuperAdmin = user?.platformRole === "super_admin";
+  if (!isSuperAdmin && user?.tenantId !== tenantId) {
+    res.status(403).json({ error: "Access denied" });
+    return;
+  }
+
+  const [existing] = await db
+    .select({ id: generatedSitesTable.id, tenantId: generatedSitesTable.tenantId })
+    .from(generatedSitesTable)
+    .where(eq(generatedSitesTable.id, siteId));
+
+  if (!existing || existing.tenantId !== tenantId) {
+    res.status(404).json({ error: "Site not found" });
+    return;
+  }
+
+  const [updated] = await db
+    .update(generatedSitesTable)
+    .set({ published: true, updatedAt: new Date() })
+    .where(eq(generatedSitesTable.id, siteId))
+    .returning({ id: generatedSitesTable.id, published: generatedSitesTable.published });
+
+  req.log.info({ tenantId, siteId }, "Site published");
+  return res.json(updated);
 });
 
 // GET /tenants/:tenantId/site-generator/latest — load most recent site for a tenant

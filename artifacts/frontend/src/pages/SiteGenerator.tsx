@@ -85,6 +85,7 @@ function useSiteGenerator(tenantId: string, token: string | null) {
   const [status, setStatus] = useState<GeneratorStatus>("idle");
   const [html, setHtml] = useState("");
   const [siteId, setSiteId] = useState<string | null>(null);
+  const [isPublished, setIsPublished] = useState(false);
   const [history, setHistory] = useState<Array<{ role: "user" | "assistant"; content: string }>>([]);
   const [error, setError] = useState<string | null>(null);
 
@@ -100,11 +101,21 @@ function useSiteGenerator(tenantId: string, token: string | null) {
       const site = await res.json();
       setHtml(site.html);
       setSiteId(site.id);
+      setIsPublished(site.published ?? false);
       setStatus("ready");
     } catch {
       // No existing site — keep idle state
     }
   }, [tenantId, token]);
+
+  const publish = useCallback(async () => {
+    if (!siteId) return;
+    const res = await fetch(`/api/tenants/${tenantId}/site-generator/${siteId}/publish`, {
+      method: "POST",
+      headers: authHeaders,
+    });
+    if (res.ok) setIsPublished(true);
+  }, [siteId, tenantId, token]);
 
   const saveHtml = useCallback(async (newHtml: string) => {
     if (!siteId) return;
@@ -188,7 +199,7 @@ function useSiteGenerator(tenantId: string, token: string | null) {
     setError(null);
   }, []);
 
-  return { status, html, siteId, error, generate, refine, download, reset, loadLatest, saveHtml };
+  return { status, html, siteId, isPublished, error, generate, refine, download, reset, loadLatest, saveHtml, publish };
 }
 
 // ── ConfigForm ─────────────────────────────────────────────────────────────────
@@ -921,24 +932,70 @@ function MediaDialog({ html, onSave }: { html: string; onSave: (html: string) =>
 
 function PersonalizePanel({
   html,
+  isPublished,
   onRefine,
   onSave,
+  onPublish,
 }: {
   html: string;
+  isPublished: boolean;
   onRefine: (msg: string) => Promise<string>;
   onSave: (html: string) => Promise<void>;
+  onPublish: () => Promise<void>;
 }) {
+  const [publishing, setPublishing] = useState(false);
+
+  async function handlePublish() {
+    setPublishing(true);
+    try { await onPublish(); } finally { setPublishing(false); }
+  }
+
   return (
-    <div className="rounded-xl border border-green-200 bg-green-50/50 dark:border-green-900/40 dark:bg-green-950/20 p-4 flex flex-col gap-3">
-      <div className="flex items-center gap-2">
-        <span className="relative flex h-2 w-2">
-          <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75" />
-          <span className="relative inline-flex rounded-full h-2 w-2 bg-green-500" />
-        </span>
-        <span className="text-sm font-medium text-green-900 dark:text-green-300">
-          Site publicado — ajuste a qualquer momento
-        </span>
+    <div className={`rounded-xl border p-4 flex flex-col gap-3 ${
+      isPublished
+        ? "border-green-200 bg-green-50/50 dark:border-green-900/40 dark:bg-green-950/20"
+        : "border-amber-200 bg-amber-50/50 dark:border-amber-900/40 dark:bg-amber-950/20"
+    }`}>
+      <div className="flex items-center justify-between flex-wrap gap-2">
+        <div className="flex items-center gap-2">
+          {isPublished ? (
+            <>
+              <span className="relative flex h-2 w-2">
+                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75" />
+                <span className="relative inline-flex rounded-full h-2 w-2 bg-green-500" />
+              </span>
+              <span className="text-sm font-medium text-green-900 dark:text-green-300">
+                Site publicado e visível ao público
+              </span>
+            </>
+          ) : (
+            <>
+              <span className="relative flex h-2 w-2">
+                <span className="relative inline-flex rounded-full h-2 w-2 bg-amber-500" />
+              </span>
+              <span className="text-sm font-medium text-amber-900 dark:text-amber-300">
+                Rascunho — publique para deixar o site visível
+              </span>
+            </>
+          )}
+        </div>
+
+        {!isPublished && (
+          <Button
+            size="sm"
+            className="bg-green-600 hover:bg-green-700 text-white shrink-0"
+            onClick={handlePublish}
+            disabled={publishing}
+          >
+            {publishing ? (
+              <><Loader2 className="h-3.5 w-3.5 mr-1.5 animate-spin" />Publicando…</>
+            ) : (
+              <>🚀 Publicar site</>
+            )}
+          </Button>
+        )}
       </div>
+
       <div className="flex flex-wrap gap-2">
         <RefineDialog onRefine={onRefine} />
         <TestimonialsDialog onRefine={onRefine} />
@@ -952,7 +1009,7 @@ function PersonalizePanel({
 
 function SiteGeneratorInner({ tenantId, token }: { tenantId: string; token: string | null }) {
   const [activeTab, setActiveTab] = useState("config");
-  const { status, html, error, generate, refine, download, reset, loadLatest, saveHtml } = useSiteGenerator(tenantId, token);
+  const { status, html, isPublished, error, generate, refine, download, reset, loadLatest, saveHtml, publish } = useSiteGenerator(tenantId, token);
 
   // Auto-load existing site on mount so the panel is always available
   useEffect(() => {
@@ -971,7 +1028,7 @@ function SiteGeneratorInner({ tenantId, token }: { tenantId: string; token: stri
     <div className="flex flex-col gap-4">
       {/* Personalizar panel — always visible when a site exists */}
       {status === "ready" && (
-        <PersonalizePanel html={html} onRefine={refine} onSave={saveHtml} />
+        <PersonalizePanel html={html} isPublished={isPublished} onRefine={refine} onSave={saveHtml} onPublish={publish} />
       )}
 
       <div className="flex items-center justify-between flex-wrap gap-2">
