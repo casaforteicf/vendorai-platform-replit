@@ -74,3 +74,4 @@ export * from "./prospect_enrichments";
 export * from "./prospect_approvals";
 export * from "./prospect_campaigns";
 export * from "./proposta_templates";
+export * from "./obra_lancamentos";

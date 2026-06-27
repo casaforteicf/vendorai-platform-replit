@@ -58,6 +58,7 @@ import {
   Send, ThumbsUp, ThumbsDown, ChevronRight, AlertCircle,
   Search, Loader2, FileText, Download,
 } from "lucide-react";
+import TabFinanceiro from "./TabFinanceiro";
 import { format, differenceInCalendarDays, addDays, parseISO } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import type { ObraEtapa, ObraDiario, CompraObra } from "@workspace/api-client-react";
@@ -107,6 +108,7 @@ const TABS = [
   { id: "cronograma",   label: "Cronograma",     icon: Calendar },
   { id: "medicoes",     label: "Medições",       icon: ClipboardList },
   { id: "diario",       label: "Diário de Obra", icon: BookOpen },
+  { id: "financeiro",   label: "Financeiro",     icon: DollarSign },
   { id: "estoque",      label: "Estoque",        icon: Package },
   { id: "compras",      label: "Compras",        icon: ShoppingCart },
   { id: "orcamento",    label: "Orçamento",      icon: FileSpreadsheet },
@@ -2056,6 +2058,7 @@ export default function ObraDetalhe() {
         {activeTab === "cronograma"   && <Cronograma tenantId={tenantId} obraId={obraId} etapas={etapas} />}
         {activeTab === "medicoes"     && <Medicoes tenantId={tenantId} obraId={obraId} etapas={etapas} />}
         {activeTab === "diario"       && <DiarioDeObra tenantId={tenantId} obraId={obraId} />}
+        {activeTab === "financeiro"   && <TabFinanceiro tenantId={tenantId} obraId={obraId} etapas={etapas} />}
         {activeTab === "estoque"      && <EstoqueObra tenantId={tenantId} obraId={obraId} />}
         {activeTab === "compras"      && <Compras tenantId={tenantId} obraId={obraId} />}
         {activeTab === "orcamento"    && <TabOrcamento tenantId={tenantId} obraId={obraId} />}

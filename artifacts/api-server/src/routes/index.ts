@@ -46,6 +46,7 @@ import tenantDomainsRouter from "./tenant_domains";
 import notificationsRouter from "./notifications";
 import { intakeRouter } from "./intake";
 import construcaoRouter from "./construcao";
+import financeiroObraRouter from "./financeiro_obra";
 import portalRouter from "./portal";
 import varejoRouter from "./varejo";
 import supermercadoRouter from "./supermercado";
@@ -174,6 +175,7 @@ router.use(adminPlansRouter);
 
 // Construção Civil Hub
 router.use(construcaoRouter);
+router.use(financeiroObraRouter);
 
 // Varejo de Roupas & Acessórios Hub
 router.use(varejoRouter);
