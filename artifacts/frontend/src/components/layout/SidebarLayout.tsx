@@ -8,7 +8,7 @@ import {
   Settings, LogOut, Megaphone, FileText, Receipt, BrainCircuit,
   Store, Package, Menu, X, Sparkles, Globe, BookOpen, HardHat, Layers,
   Shirt, Tag, ShoppingCart, Heart, Gift, Truck, UtensilsCrossed, Megaphone as MegaphoneIcon,
-  BarChart3, ChevronRight, ChevronDown, Target, Trophy, Search, Clapperboard,
+  BarChart3, ChevronRight, ChevronDown, Target, Trophy, Search, Clapperboard, Building2,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
@@ -42,7 +42,7 @@ export function SidebarLayout({ children }: { children: React.ReactNode }) {
     { name: "Equipe",        href: "/usuarios",      icon: Users,           sellerHidden: false, section: "crm", fn: ["administrador"] as UserFunction[] },
     { name: "Configurações", href: "/configuracoes", icon: Settings,        sellerHidden: false, section: "crm", fn: ["administrador", "outro"] as UserFunction[] },
     { name: "Guia de Setup", href: "/guia-implantacao", icon: BookOpen,     sellerHidden: true,  section: "crm", fn: ["administrador", "outro"] as UserFunction[] },
-    { name: "Obras",         href: "/obras",                    icon: HardHat,     sellerHidden: false, section: "construcao", fn: ["administrador", "outro"] as UserFunction[] },
+    { name: "Obras",         href: "/obras",                    icon: Building2,   sellerHidden: false, section: "construcao", fn: ["administrador", "outro"] as UserFunction[] },
     { name: "Insumos",       href: "/insumos",                  icon: Package,     sellerHidden: false, section: "construcao", fn: ["administrador", "outro"] as UserFunction[] },
     { name: "Composições",   href: "/composicoes",              icon: Layers,      sellerHidden: false, section: "construcao", fn: ["administrador", "outro"] as UserFunction[] },
     { name: "Produtos",      href: "/varejo/produtos",          icon: Shirt,       sellerHidden: false, section: "varejo", fn: ["administrador", "outro"] as UserFunction[] },
