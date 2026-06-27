@@ -104,6 +104,10 @@ const tipoFechamentoOrNull = z
   .nullable()
   .optional();
 
+const provisioningMethodEnum = z
+  .enum(["trial", "self_service", "manual"])
+  .nullish();
+
 export const insertTenantSchema = createInsertSchema(tenantsTable)
   .omit({
     id: true,
@@ -119,6 +123,7 @@ export const insertTenantSchema = createInsertSchema(tenantsTable)
     maxAnalysesPerHour: positiveIntOrNull,
     billingCycle: billingCycleOrNull,
     tipoFechamentoDefault: tipoFechamentoOrNull,
+    provisioningMethod: provisioningMethodEnum,
   });
 
 export const updateTenantSchema = createSelectSchema(tenantsTable)
@@ -133,6 +138,7 @@ export const updateTenantSchema = createSelectSchema(tenantsTable)
     maxAnalysesPerHour: positiveIntOrNull,
     billingCycle: billingCycleOrNull,
     tipoFechamentoDefault: tipoFechamentoOrNull,
+    provisioningMethod: provisioningMethodEnum,
   })
   .partial();
 

@@ -1,7 +1,7 @@
 import { Router, type IRouter } from "express";
 import { and, desc, eq } from "drizzle-orm";
-import { db, generatedSitesTable, businessProfilesTable, tenantsTable } from "@workspace/db";
-import type { SiteGeneratorConfig } from "@workspace/db";
+import { db, generatedSitesTable, businessProfilesTable, tenantsTable, produtosCatalogoTable, inventoryItemsTable } from "@workspace/db";
+import type { SiteGeneratorConfig, SiteGeneratorProduct } from "@workspace/db";
 import Anthropic from "@anthropic-ai/sdk";
 import { getOpenAIForTenant } from "../lib/agent-engine.js";
 
@@ -115,9 +115,18 @@ function buildGeneratePrompt(config: SiteGeneratorConfig): string {
 
   const fonts = FONT_PAIRS[tone as string] ?? FONT_PAIRS.profissional;
 
+  const hasRealImages = products.some((p) => p.imageUrl);
   const productsBlock =
     type === "ecommerce" && products.length
-      ? `\nPRODUTOS (liste todos com destaque visual):\n${products.map((p) => `- ${p.name}${p.price ? " | " + p.price : ""}`).join("\n")}`
+      ? `\nPRODUTOS DO ESTOQUE (${products.length} itens — use EXATAMENTE estes produtos, na mesma ordem):\n${products.map((p) => {
+          const img = p.imageUrl ? ` | imagem: ${p.imageUrl}` : "";
+          const desc = p.description ? ` | ${p.description}` : "";
+          const marca = p.marca ? ` | Marca: ${p.marca}` : "";
+          const sku = p.sku ? ` | SKU: ${p.sku}` : "";
+          const stock = p.inStock !== undefined ? (p.inStock ? ` | ✓ em estoque (${p.stockQty ?? ""})` : " | ✗ fora de estoque") : "";
+          const feat = p.featured ? " ⭐DESTAQUE" : "";
+          return `- ${p.name}${feat} | ${p.price}${desc}${marca}${sku}${stock}${img}`;
+        }).join("\n")}`
       : "";
 
   const structureByType: Record<string, string> = {
@@ -134,11 +143,17 @@ function buildGeneratePrompt(config: SiteGeneratorConfig): string {
     ecommerce: `ESTRUTURA DO E-COMMERCE (nesta ordem exata):
 1. HEADER fixo — logo, nav, ícone de carrinho com badge contador, hamburger mobile
 2. HERO — headline de oferta, subtítulo, botão "Ver produtos", badge de frete/desconto
-3. GRID DE PRODUTOS — cards modernos com imagem placeholder (gradiente colorido com ícone SVG central), nome, descrição curta, preço em destaque, botão "Comprar pelo WhatsApp" (link wa.me)
+3. GRID DE PRODUTOS — cards modernos para cada produto listado no briefing:
+   ${hasRealImages
+     ? "• USE as imagens reais fornecidas (campo 'imagem'): <img src=\"URL\" alt=\"nome\" loading=\"lazy\" style=\"width:100%;height:220px;object-fit:cover\"> — NÃO use placeholders quando a URL estiver disponível; use placeholder (gradiente CSS + ícone SVG) apenas quando não houver URL"
+     : "• imagem placeholder: gradiente colorido com ícone SVG central"}
+   • nome do produto, descrição curta, preço em destaque
+   • badge de ⭐DESTAQUE para produtos marcados; badge "Esgotado" quando fora de estoque (cursor não-pointer, botão desabilitado)
+   • botão "Comprar pelo WhatsApp" (link wa.me com mensagem pré-preenchida incluindo nome do produto e preço)
 4. BENEFÍCIOS — 3 ícones com texto: entrega, pagamento, suporte
 5. DEPOIMENTOS — 2-3 clientes satisfeitos com nota 5 estrelas
 6. CTA FINAL — urgência, botão WhatsApp
-7. CARRINHO LATERAL (drawer) — ativado por JS ao clicar nos produtos, lista itens, total, botão finalizar via WhatsApp
+7. CARRINHO LATERAL (drawer) — ativado por JS ao clicar nos produtos, lista itens, total, botão finalizar via WhatsApp com resumo do pedido
 8. FOOTER`,
 
     institutional: `ESTRUTURA DO SITE INSTITUCIONAL (nesta ordem exata):
@@ -430,7 +445,53 @@ router.post("/tenants/:tenantId/site-generator/generate", async (req, res) => {
     return;
   }
 
-  const enrichedConfig = { ...config, name, sector, desc };
+  // For ecommerce: auto-populate products from tenant's catalog + inventory stock
+  let catalogProducts: SiteGeneratorProduct[] = [];
+  if (config.type === "ecommerce") {
+    const rows = await db
+      .select({
+        nome:             produtosCatalogoTable.nome,
+        precoBase:        produtosCatalogoTable.precoBase,
+        descricao:        produtosCatalogoTable.descricao,
+        imagemUrl:        produtosCatalogoTable.imagemUrl,
+        imagens:          produtosCatalogoTable.imagens,
+        sku:              produtosCatalogoTable.sku,
+        destaque:         produtosCatalogoTable.destaque,
+        marca:            produtosCatalogoTable.marca,
+        quantidadeAtual:  inventoryItemsTable.quantidadeAtual,
+      })
+      .from(produtosCatalogoTable)
+      .leftJoin(inventoryItemsTable, eq(inventoryItemsTable.produtoId, produtosCatalogoTable.id))
+      .where(and(eq(produtosCatalogoTable.tenantId, tenantId), eq(produtosCatalogoTable.ativo, true)))
+      .orderBy(desc(produtosCatalogoTable.destaque), produtosCatalogoTable.nome)
+      .limit(50);
+
+    catalogProducts = rows.map((r) => {
+      const firstImage = r.imagens?.[0] || r.imagemUrl || undefined;
+      const qty = r.quantidadeAtual != null ? parseFloat(r.quantidadeAtual) : null;
+      const preco = parseFloat(r.precoBase);
+      return {
+        name: r.nome,
+        price: `R$ ${preco.toFixed(2).replace(".", ",")}`,
+        description: r.descricao || undefined,
+        imageUrl: firstImage,
+        sku: r.sku || undefined,
+        inStock: qty !== null ? qty > 0 : undefined,
+        stockQty: qty !== null ? qty : undefined,
+        featured: r.destaque ?? false,
+        marca: r.marca || undefined,
+      };
+    });
+
+    req.log.info({ tenantId, catalogCount: catalogProducts.length }, "Site generator: catalog products fetched for ecommerce");
+  }
+
+  // Merge: catalog products first, then any manual overrides from config
+  const allProducts = catalogProducts.length > 0
+    ? [...catalogProducts, ...(config.products ?? [])]
+    : (config.products ?? []);
+
+  const enrichedConfig = { ...config, name, sector, desc, products: allProducts };
   const prompt = buildGeneratePrompt(enrichedConfig);
 
   let result;

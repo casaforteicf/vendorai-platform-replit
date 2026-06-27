@@ -6,6 +6,14 @@ import { tenantsTable } from "./tenants";
 export interface SiteGeneratorProduct {
   name: string;
   price: string;
+  description?: string;
+  imageUrl?: string;
+  sku?: string;
+  inStock?: boolean;
+  stockQty?: number;
+  featured?: boolean;
+  marca?: string;
+  tags?: string[];
 }
 
 export interface SiteGeneratorConfig {

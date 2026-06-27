@@ -331,6 +331,9 @@ function ConfigForm({ tenantId, onGenerate }: { tenantId: string; onGenerate: (c
           <Label className="text-xs font-mono uppercase tracking-widest text-muted-foreground">
             Produtos
           </Label>
+          <p className="text-xs text-muted-foreground rounded-md bg-muted/60 border border-dashed px-3 py-2">
+            🛒 Os produtos do seu <strong>Catálogo de Produtos</strong> serão incluídos automaticamente no site (com imagens, preços e estoque real). Você pode adicionar produtos extras abaixo se quiser.
+          </p>
           {products.map((p, i) => (
             <div key={i} className="flex gap-2 items-center">
               <Input
@@ -358,7 +361,7 @@ function ConfigForm({ tenantId, onGenerate }: { tenantId: string; onGenerate: (c
             </div>
           ))}
           <Button type="button" variant="ghost" className="self-start text-primary" onClick={addProduct}>
-            + Adicionar produto
+            + Adicionar produto extra
           </Button>
         </div>
       )}
