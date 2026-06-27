@@ -55,6 +55,7 @@ import tenantCalendarSettingsRouter from "./tenant_calendar_settings";
 import leadSpouseConsentRouter from "./lead_spouse_consent";
 import aiGatewayRouter from "./ai_gateway";
 import prospectorRouter from "./prospector";
+import contentStudioRouter from "./content_studio";
 import { authenticate, blockPartnerFromCRM, blockSuspendedTenants, blockExpiredDemo, requireRole, requireSameTenanOrSuperAdmin } from "../middlewares/auth";
 
 const router: IRouter = Router();
@@ -160,6 +161,7 @@ router.use(onboardingRouter);
 
 // Content Generation Hub
 router.use(contentRouter);
+router.use(contentStudioRouter);
 
 // Partner Hub (revendedor dashboard)
 router.use(partnerRouter);
