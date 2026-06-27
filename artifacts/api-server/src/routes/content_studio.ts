@@ -6,8 +6,8 @@ const router: IRouter = Router();
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 100 * 1024 * 1024 } });
 
 const HEYGEN_API_KEY = process.env["HEYGEN_API_KEY"];
-const HEYGEN_UPLOAD = "https://upload.heygen.com/v1/asset";
-const HEYGEN_BASE   = "https://api.heygen.com";
+const HEYGEN_UPLOAD  = "https://upload.heygen.com/v1/asset";
+const HEYGEN_BASE    = "https://api.heygen.com";
 
 function heygenHeaders(extra: Record<string, string> = {}) {
   return { "X-Api-Key": HEYGEN_API_KEY ?? "", ...extra };
@@ -58,6 +58,106 @@ router.post("/tenants/:tenantId/content-studio/generate", async (req, res) => {
   }
 });
 
+// ─── Product video storyboard (Anthropic Vision) ──────────────────────────────
+
+router.post(
+  "/tenants/:tenantId/content-studio/product-video",
+  upload.single("image"),
+  async (req, res) => {
+    const tenantId = String(req.params["tenantId"]);
+    if (req.user?.platformRole !== "super_admin" && req.user?.tenantId !== tenantId) {
+      res.status(403).json({ error: "Acesso negado" }); return;
+    }
+
+    const {
+      name        = "",
+      description = "",
+      price       = "",
+      benefits    = "",
+      cta         = "Compre agora",
+      format      = "reel",
+    } = req.body as Record<string, string>;
+
+    if (!name.trim()) {
+      res.status(422).json({ error: "Nome do produto é obrigatório" }); return;
+    }
+
+    const formatLabel = format === "story" ? "Stories (9:16 vertical, 5 telas)" : "Reels (15-30 segundos, roteiro sequencial)";
+
+    const textPrompt = `Você é um especialista em marketing de conteúdo para Instagram no Brasil.
+
+Crie um storyboard completo para ${formatLabel} de um produto com as seguintes informações:
+
+**Produto:** ${name}
+**Descrição:** ${description || "não informada"}
+**Preço:** ${price || "não informado"}
+**Benefícios principais:** ${benefits || "não informados"}
+**CTA final:** ${cta}
+${req.file ? "\nUma imagem do produto foi fornecida para referência visual." : ""}
+
+${format === "story"
+  ? `Crie exatamente 5 telas de Story (use o formato abaixo para cada tela):
+
+TELA 1 — GANCHO
+- Duração: 3s
+- Texto principal: [texto impactante, máx. 6 palavras]
+- Texto secundário: [frase de apoio opcional]
+- Visual: [descrição do visual/cena]
+
+[repita para Telas 2 a 5 com: INTERESSE, PROVA/BENEFÍCIO, OFERTA, CTA]`
+  : `Crie o roteiro completo do Reel com:
+
+GANCHO (0-3s): [texto e ação]
+PROBLEMA/DESEJO (3-10s): [contexto e identificação]
+SOLUÇÃO/PRODUTO (10-20s): [apresentação do produto e benefícios]
+PROVA SOCIAL (20-25s): [depoimento, número ou resultado]
+CTA (25-30s): [chamada para ação com ${cta}]
+
+Para cada seção: texto de tela, narração/legenda e indicação visual.`}
+
+Ao final, sugira:
+- 5 hashtags estratégicas
+- Melhor horário para postar
+- Música/áudio recomendado`;
+
+    try {
+      const imageBlock = req.file
+        ? [{
+            type: "image" as const,
+            source: {
+              type: "base64" as const,
+              media_type: (req.file.mimetype || "image/jpeg") as "image/jpeg" | "image/png" | "image/gif" | "image/webp",
+              data: req.file.buffer.toString("base64"),
+            },
+          }]
+        : [];
+
+      const message = await anthropic.messages.create({
+        model: "claude-sonnet-4-6",
+        max_tokens: 2048,
+        system: "Você é um especialista em marketing digital para Instagram no Brasil. Responda sempre em português de forma clara e estruturada.",
+        messages: [{
+          role: "user",
+          content: [
+            ...imageBlock,
+            { type: "text", text: textPrompt },
+          ],
+        }],
+      });
+
+      const result = message.content
+        .filter((b) => b.type === "text")
+        .map((b) => (b as { type: "text"; text: string }).text)
+        .join("\n");
+
+      res.json({ result, format });
+    } catch (err) {
+      req.log.error({ err }, "content-studio: product-video failed");
+      res.status(500).json({ error: err instanceof Error ? err.message : "Erro desconhecido" });
+    }
+  }
+);
+
 // ─── HeyGen helpers ───────────────────────────────────────────────────────────
 
 function requireHeygenKey(res: Parameters<Parameters<typeof router.post>[1]>[1]): boolean {
@@ -68,7 +168,7 @@ function requireHeygenKey(res: Parameters<Parameters<typeof router.post>[1]>[1])
   return true;
 }
 
-// ─── STEP 1: Upload vídeo → retorna asset_url ─────────────────────────────────
+// STEP 1: Upload vídeo → retorna asset_url
 router.post(
   "/tenants/:tenantId/content-studio/heygen/upload-video",
   upload.single("video"),
@@ -99,7 +199,7 @@ router.post(
   }
 );
 
-// ─── STEP 2: Criar avatar com o vídeo enviado ─────────────────────────────────
+// STEP 2: Criar avatar com o vídeo enviado
 router.post("/tenants/:tenantId/content-studio/heygen/create-avatar", async (req, res) => {
   const tenantId = String(req.params["tenantId"]);
   if (req.user?.platformRole !== "super_admin" && req.user?.tenantId !== tenantId) {
@@ -128,7 +228,7 @@ router.post("/tenants/:tenantId/content-studio/heygen/create-avatar", async (req
   }
 });
 
-// ─── STEP 3: Status do avatar (poll até "completed") ──────────────────────────
+// STEP 3: Status do avatar
 router.get("/tenants/:tenantId/content-studio/heygen/avatar-status/:avatarId", async (req, res) => {
   const tenantId = String(req.params["tenantId"]);
   if (req.user?.platformRole !== "super_admin" && req.user?.tenantId !== tenantId) {
@@ -152,7 +252,7 @@ router.get("/tenants/:tenantId/content-studio/heygen/avatar-status/:avatarId", a
   }
 });
 
-// ─── STEP 4: Gerar vídeo com o avatar ────────────────────────────────────────
+// STEP 4: Gerar vídeo com o avatar
 router.post("/tenants/:tenantId/content-studio/heygen/generate-video", async (req, res) => {
   const tenantId = String(req.params["tenantId"]);
   if (req.user?.platformRole !== "super_admin" && req.user?.tenantId !== tenantId) {
@@ -191,7 +291,7 @@ router.post("/tenants/:tenantId/content-studio/heygen/generate-video", async (re
   }
 });
 
-// ─── STEP 5: Status do vídeo (poll) ──────────────────────────────────────────
+// STEP 5: Status do vídeo
 router.get("/tenants/:tenantId/content-studio/heygen/video-status/:videoId", async (req, res) => {
   const tenantId = String(req.params["tenantId"]);
   if (req.user?.platformRole !== "super_admin" && req.user?.tenantId !== tenantId) {
