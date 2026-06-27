@@ -56,7 +56,7 @@ import {
   ChevronDown, ChevronUp, BookOpen, User, Building2,
   Upload, X, Image as ImageIcon, FileSpreadsheet, Copy,
   Send, ThumbsUp, ThumbsDown, ChevronRight, AlertCircle,
-  Search, Loader2,
+  Search, Loader2, FileText, Download,
 } from "lucide-react";
 import { format, differenceInCalendarDays, addDays, parseISO } from "date-fns";
 import { ptBR } from "date-fns/locale";
@@ -835,6 +835,40 @@ function DiarioDeObra({ tenantId, obraId }: { tenantId: string; obraId: string }
   const [form, setForm] = useState({ data: format(new Date(), "yyyy-MM-dd"), conteudo: "", responsavelNome: "", climaTempo: "", maoDeObra: "", observacoes: "", fotos: [] as Array<{ url: string; caption?: string; uploadedAt: string }> });
   const [uploadingFoto, setUploadingFoto] = useState(false);
 
+  // ── PDF report state ──
+  const [pdfOpen, setPdfOpen] = useState(false);
+  const [pdfForm, setPdfForm] = useState({ dataInicio: format(new Date(new Date().getFullYear(), new Date().getMonth(), 1), "yyyy-MM-dd"), dataFim: format(new Date(), "yyyy-MM-dd") });
+  const [pdfGenerating, setPdfGenerating] = useState(false);
+
+  async function handleGerarPdf(e: React.FormEvent) {
+    e.preventDefault();
+    setPdfGenerating(true);
+    try {
+      const token = localStorage.getItem("vendorai_token");
+      const res = await fetch(`/api/tenants/${tenantId}/obras/${obraId}/diario/relatorio-pdf`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+        body: JSON.stringify(pdfForm),
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({})) as any;
+        throw new Error(err.error ?? "Erro ao gerar relatório.");
+      }
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `diario-obra-${pdfForm.dataInicio}-${pdfForm.dataFim}.pdf`;
+      a.click();
+      URL.revokeObjectURL(url);
+      setPdfOpen(false);
+    } catch (err: any) {
+      alert(err.message ?? "Erro ao gerar relatório PDF.");
+    } finally {
+      setPdfGenerating(false);
+    }
+  }
+
   const { data: entradas = [], isLoading } = useListObraDiario(tenantId, obraId, {
     query: { enabled: !!obraId, queryKey: getListObraDiarioQueryKey(tenantId, obraId) },
   });
@@ -886,7 +920,40 @@ function DiarioDeObra({ tenantId, obraId }: { tenantId: string; obraId: string }
 
   return (
     <div className="space-y-4">
-      <div className="flex justify-end">
+      <div className="flex justify-end gap-2">
+        {/* ── Modal: Gerar Relatório PDF ── */}
+        <Dialog open={pdfOpen} onOpenChange={setPdfOpen}>
+          <DialogTrigger asChild>
+            <Button size="sm" variant="outline" className="gap-2 border-blue-200 text-blue-700 hover:bg-blue-50">
+              <FileText className="h-4 w-4" />Gerar Relatório
+            </Button>
+          </DialogTrigger>
+          <DialogContent className="max-w-sm">
+            <DialogHeader>
+              <DialogTitle className="flex items-center gap-2"><FileText className="h-4 w-4 text-blue-600" />Relatório PDF — Diário de Obra</DialogTitle>
+            </DialogHeader>
+            <form onSubmit={handleGerarPdf} className="space-y-4 mt-2">
+              <p className="text-sm text-muted-foreground">Selecione o período para gerar o relatório em PDF com todas as entradas, fotos e ocorrências.</p>
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-2">
+                  <Label>Data início *</Label>
+                  <Input type="date" required value={pdfForm.dataInicio} onChange={(e) => setPdfForm((f) => ({ ...f, dataInicio: e.target.value }))} />
+                </div>
+                <div className="space-y-2">
+                  <Label>Data fim *</Label>
+                  <Input type="date" required value={pdfForm.dataFim} min={pdfForm.dataInicio} onChange={(e) => setPdfForm((f) => ({ ...f, dataFim: e.target.value }))} />
+                </div>
+              </div>
+              <div className="flex gap-2 pt-1">
+                <Button type="button" variant="ghost" className="flex-1" onClick={() => setPdfOpen(false)} disabled={pdfGenerating}>Cancelar</Button>
+                <Button type="submit" className="flex-1 gap-2" disabled={pdfGenerating}>
+                  {pdfGenerating ? <><Loader2 className="h-4 w-4 animate-spin" />Gerando...</> : <><Download className="h-4 w-4" />Baixar PDF</>}
+                </Button>
+              </div>
+            </form>
+          </DialogContent>
+        </Dialog>
+
         <Dialog open={addOpen} onOpenChange={setAddOpen}>
           <DialogTrigger asChild>
             <Button size="sm" className="gap-2"><Plus className="h-4 w-4" />Nova entrada</Button>

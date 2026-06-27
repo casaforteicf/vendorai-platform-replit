@@ -1,9 +1,11 @@
 import { Router, type IRouter } from "express";
-import { and, eq, desc, asc, ilike, max, inArray } from "drizzle-orm";
+import { and, eq, desc, asc, ilike, max, inArray, gte, lte } from "drizzle-orm";
 import { searchSinapi } from "../data/sinapi";
+import { gerarRelatorioDiarioPdf } from "../lib/pdf-diario";
 import {
   db,
   obrasTable,
+  tenantsTable,
   obraEtapasTable,
   obraEtapaMedicoesTable,
   obraDiarioTable,
@@ -235,6 +237,49 @@ router.get("/tenants/:tenantId/obras/:obraId/diario", async (req, res) => {
 
   const rows = await db.select().from(obraDiarioTable).where(eq(obraDiarioTable.obraId, obraId)).orderBy(desc(obraDiarioTable.data));
   return res.json(rows);
+});
+
+// POST /tenants/:tenantId/obras/:obraId/diario/relatorio-pdf
+router.post("/tenants/:tenantId/obras/:obraId/diario/relatorio-pdf", async (req, res) => {
+  const { tenantId: tid, obraId } = req.params;
+  if (!canAccessTenant(req, tid)) return res.status(403).json({ error: "Forbidden" });
+
+  const { dataInicio, dataFim } = req.body as { dataInicio?: string; dataFim?: string };
+  if (!dataInicio || !dataFim) return res.status(422).json({ error: "dataInicio e dataFim são obrigatórios." });
+
+  const [obra] = await db.select().from(obrasTable).where(and(eq(obrasTable.id, obraId), eq(obrasTable.tenantId, tid)));
+  if (!obra) return res.status(404).json({ error: "Obra não encontrada." });
+
+  const [tenant] = await db.select({ name: tenantsTable.name }).from(tenantsTable).where(eq(tenantsTable.id, tid));
+
+  const entradas = await db
+    .select()
+    .from(obraDiarioTable)
+    .where(
+      and(
+        eq(obraDiarioTable.obraId, obraId),
+        gte(obraDiarioTable.data, dataInicio),
+        lte(obraDiarioTable.data, dataFim),
+      ),
+    )
+    .orderBy(asc(obraDiarioTable.data));
+
+  const pdf = await gerarRelatorioDiarioPdf({
+    tenantName: tenant?.name ?? "Construtora",
+    obraNome: obra.nome,
+    obraEndereco: obra.endereco,
+    dataInicio,
+    dataFim,
+    entradas,
+  });
+
+  const periodo = `${dataInicio}_${dataFim}`.replace(/-/g, "");
+  const filename = `diario-obra-${encodeURIComponent(obra.nome.replace(/\s+/g, "-").toLowerCase())}-${periodo}.pdf`;
+
+  res.setHeader("Content-Type", "application/pdf");
+  res.setHeader("Content-Disposition", `attachment; filename="${filename}"`);
+  res.setHeader("Content-Length", pdf.length);
+  return res.send(pdf);
 });
 
 router.post("/tenants/:tenantId/obras/:obraId/diario", async (req, res) => {
