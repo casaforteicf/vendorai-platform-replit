@@ -20,7 +20,26 @@ import {
 import { useToast } from "@/hooks/use-toast";
 import {
   Building2, Plus, Copy, Check, Mail, Loader2, RefreshCw, UserCheck, Clock,
+  HardHat, Stethoscope, Car, Warehouse, Shirt, UtensilsCrossed, Briefcase, Cpu,
 } from "lucide-react";
+
+interface VerticalDef {
+  key: string;
+  label: string;
+  icon: React.ElementType;
+  status: "ativo" | "em_breve";
+}
+
+const VERTICAIS: VerticalDef[] = [
+  { key: "Construção & Reforma",          label: "Construção Civil",                icon: HardHat,        status: "ativo"    },
+  { key: "Saúde e Beleza",                label: "Saúde e Beleza",                  icon: Stethoscope,    status: "em_breve" },
+  { key: "Auto Peças e Distribuidores",   label: "Auto Peças e Distribuidores",     icon: Car,            status: "em_breve" },
+  { key: "Materiais de Construção",       label: "Materiais de Construção",         icon: Warehouse,      status: "em_breve" },
+  { key: "Moda e Vestuário",              label: "Moda e Vestuário",                icon: Shirt,          status: "em_breve" },
+  { key: "Alimentação e Restaurantes",    label: "Alimentação e Restaurantes",      icon: UtensilsCrossed,status: "em_breve" },
+  { key: "Serviços Profissionais",        label: "Serviços Profissionais",          icon: Briefcase,      status: "em_breve" },
+  { key: "Tecnologia e SaaS",             label: "Tecnologia e SaaS",               icon: Cpu,            status: "em_breve" },
+];
 
 const STATUS_COLORS: Record<string, string> = {
   active:    "bg-emerald-100 text-emerald-700 border-emerald-200",
@@ -148,6 +167,9 @@ export default function AdminTenants() {
     setTimeout(() => setCopiedWa(false), 2000);
   }
 
+  const tenantCountByVertical = (key: string) =>
+    tenants.filter((t) => (t as any).vertical === key && t.status === "active").length;
+
   return (
     <div className="p-6 space-y-6 max-w-7xl mx-auto">
       <div className="flex items-center justify-between">
@@ -160,6 +182,100 @@ export default function AdminTenants() {
         <Button onClick={() => setFormOpen(true)} className="gap-2">
           <Plus className="h-4 w-4" /> Novo Tenant
         </Button>
+      </div>
+
+      {/* Verticais do Mercado */}
+      <div
+        className="rounded-2xl p-6 space-y-5"
+        style={{ background: "#1B1438" }}
+      >
+        <div className="flex items-center justify-between">
+          <div>
+            <h2 className="text-lg font-semibold text-white">Verticais do Mercado</h2>
+            <p className="text-sm mt-0.5" style={{ color: "#A78BFA99" }}>
+              Módulos especializados disponíveis na plataforma VendorAI
+            </p>
+          </div>
+          <div
+            className="text-xs font-semibold px-3 py-1 rounded-full"
+            style={{ background: "linear-gradient(90deg,#A78BFA22,#22D3EE22)", color: "#A78BFA", border: "1px solid #A78BFA44" }}
+          >
+            {VERTICAIS.filter((v) => v.status === "ativo").length} ativa
+            {VERTICAIS.filter((v) => v.status === "ativo").length !== 1 ? "s" : ""}
+          </div>
+        </div>
+
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
+          {VERTICAIS.map((v) => {
+            const Icon = v.icon;
+            const count = tenantCountByVertical(v.key);
+            const isAtivo = v.status === "ativo";
+            return (
+              <div
+                key={v.key}
+                className="relative rounded-xl p-4 flex flex-col gap-3 transition-all"
+                style={{
+                  background: isAtivo
+                    ? "linear-gradient(135deg,#A78BFA18,#22D3EE18)"
+                    : "#ffffff08",
+                  border: isAtivo
+                    ? "1px solid #A78BFA44"
+                    : "1px solid #ffffff12",
+                }}
+              >
+                <div className="flex items-start justify-between gap-2">
+                  <div
+                    className="h-9 w-9 rounded-lg flex items-center justify-center shrink-0"
+                    style={{
+                      background: isAtivo
+                        ? "linear-gradient(135deg,#A78BFA33,#22D3EE33)"
+                        : "#ffffff10",
+                    }}
+                  >
+                    <Icon
+                      className="h-4 w-4"
+                      style={{ color: isAtivo ? "#A78BFA" : "#ffffff40" }}
+                    />
+                  </div>
+                  <span
+                    className="text-[10px] font-semibold px-2 py-0.5 rounded-full shrink-0"
+                    style={
+                      isAtivo
+                        ? { background: "#A78BFA22", color: "#A78BFA", border: "1px solid #A78BFA55" }
+                        : { background: "#ffffff10", color: "#ffffff40", border: "1px solid #ffffff18" }
+                    }
+                  >
+                    {isAtivo ? "Ativo" : "Em breve"}
+                  </span>
+                </div>
+
+                <div>
+                  <p
+                    className="text-sm font-medium leading-tight"
+                    style={{ color: isAtivo ? "#fff" : "#ffffff60" }}
+                  >
+                    {v.label}
+                  </p>
+                  <p
+                    className="text-xs mt-1.5"
+                    style={{
+                      background: isAtivo
+                        ? "linear-gradient(90deg,#A78BFA,#22D3EE)"
+                        : "none",
+                      WebkitBackgroundClip: isAtivo ? "text" : undefined,
+                      WebkitTextFillColor: isAtivo ? "transparent" : undefined,
+                      color: isAtivo ? undefined : "#ffffff30",
+                    }}
+                  >
+                    {isAtivo
+                      ? `${count} tenant${count !== 1 ? "s" : ""} ativo${count !== 1 ? "s" : ""}`
+                      : "—"}
+                  </p>
+                </div>
+              </div>
+            );
+          })}
+        </div>
       </div>
 
       <Card>
