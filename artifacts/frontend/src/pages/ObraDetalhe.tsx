@@ -19,11 +19,25 @@ import {
   useListObraCompras,
   useCreateObraCompra,
   useUpdateCompraObra,
+  useListObraOrcamentos,
+  useCreateObraOrcamento,
+  useGetObraOrcamento,
+  useUpdateObraOrcamento,
+  useDeleteObraOrcamento,
+  useDuplicateObraOrcamento,
+  useCreateOrcamentoEtapa,
+  useUpdateOrcamentoEtapa,
+  useDeleteOrcamentoEtapa,
+  useCreateOrcamentoItem,
+  useUpdateOrcamentoItem,
+  useDeleteOrcamentoItem,
   getGetObraQueryKey,
   getListObraEtapasQueryKey,
   getListObraDiarioQueryKey,
   getGetObraEstoqueQueryKey,
   getListObraComprasQueryKey,
+  getListObraOrcamentosQueryKey,
+  getGetObraOrcamentoQueryKey,
 } from "@workspace/api-client-react";
 import { useQueryClient } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -40,7 +54,8 @@ import {
   ClipboardList, Package, ShoppingCart, BarChart3,
   CheckCircle2, Clock, PauseCircle, Pencil, Trash2,
   ChevronDown, ChevronUp, BookOpen, User, Building2,
-  Upload, X, Image as ImageIcon,
+  Upload, X, Image as ImageIcon, FileSpreadsheet, Copy,
+  Send, ThumbsUp, ThumbsDown, ChevronRight, AlertCircle,
 } from "lucide-react";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
@@ -90,6 +105,7 @@ const TABS = [
   { id: "diario",       label: "Diário de Obra", icon: BookOpen },
   { id: "estoque",      label: "Estoque",        icon: Package },
   { id: "compras",      label: "Compras",        icon: ShoppingCart },
+  { id: "orcamento",    label: "Orçamento",      icon: FileSpreadsheet },
 ];
 
 // ─── Sub-components ──────────────────────────────────────────────────────────
@@ -798,6 +814,577 @@ function Compras({ tenantId, obraId }: { tenantId: string; obraId: string }) {
   );
 }
 
+// ─── TabOrcamento ─────────────────────────────────────────────────────────────
+
+const ORC_STATUS: Record<string, { label: string; color: string }> = {
+  rascunho:  { label: "Rascunho",  color: "bg-slate-100 text-slate-600" },
+  enviado:   { label: "Enviado",   color: "bg-blue-100 text-blue-700" },
+  aprovado:  { label: "Aprovado",  color: "bg-emerald-100 text-emerald-700" },
+  rejeitado: { label: "Rejeitado", color: "bg-red-100 text-red-700" },
+};
+
+function fmtNum(v?: string | number | null) {
+  if (v === null || v === undefined || v === "") return "—";
+  return Number(v).toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
+
+function calcItemTotal(item: { quantidade: string; custoUnitario: string; bdi?: string | null }, bdiGlobal: string) {
+  const bdi = item.bdi != null ? parseFloat(item.bdi) : parseFloat(bdiGlobal ?? "0");
+  return parseFloat(item.quantidade) * parseFloat(item.custoUnitario) * (1 + bdi / 100);
+}
+
+function TabOrcamento({ tenantId, obraId }: { tenantId: string; obraId: string }) {
+  const qc = useQueryClient();
+  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [showNewOrcForm, setShowNewOrcForm] = useState(false);
+  const [newOrcTitulo, setNewOrcTitulo] = useState("");
+  const [newOrcBdi, setNewOrcBdi] = useState("0");
+
+  const [editingOrcamento, setEditingOrcamento] = useState(false);
+  const [editOrcTitulo, setEditOrcTitulo] = useState("");
+  const [editOrcBdi, setEditOrcBdi] = useState("0");
+
+  const [newEtapaNome, setNewEtapaNome] = useState("");
+  const [showNewEtapaForm, setShowNewEtapaForm] = useState(false);
+  const [editingEtapaId, setEditingEtapaId] = useState<string | null>(null);
+  const [editEtapaNome, setEditEtapaNome] = useState("");
+
+  const [addingItemEtapaId, setAddingItemEtapaId] = useState<string | null>(null);
+  const [newItem, setNewItem] = useState({ nome: "", unidade: "un", quantidade: "1", custoUnitario: "0", bdi: "" });
+  const [editingItem, setEditingItem] = useState<{ id: string; nome: string; unidade: string; quantidade: string; custoUnitario: string; bdi: string } | null>(null);
+
+  const { data: orcamentos = [] } = useListObraOrcamentos(tenantId, obraId, {
+    query: { enabled: !!tenantId && !!obraId, queryKey: getListObraOrcamentosQueryKey(tenantId, obraId) },
+  });
+
+  const { data: orcamento } = useGetObraOrcamento(tenantId, obraId, selectedId ?? "", {
+    query: { enabled: !!selectedId, queryKey: getGetObraOrcamentoQueryKey(tenantId, obraId, selectedId ?? "") },
+  });
+
+  const invalidateOrcamentos = () => {
+    qc.invalidateQueries({ queryKey: getListObraOrcamentosQueryKey(tenantId, obraId) });
+    if (selectedId) qc.invalidateQueries({ queryKey: getGetObraOrcamentoQueryKey(tenantId, obraId, selectedId) });
+  };
+
+  const createOrcamento = useCreateObraOrcamento();
+  const updateOrcamento = useUpdateObraOrcamento();
+  const deleteOrcamento = useDeleteObraOrcamento();
+  const duplicateOrcamento = useDuplicateObraOrcamento();
+  const createEtapa = useCreateOrcamentoEtapa();
+  const updateEtapa = useUpdateOrcamentoEtapa();
+  const deleteEtapa = useDeleteOrcamentoEtapa();
+  const createItem = useCreateOrcamentoItem();
+  const updateItem = useUpdateOrcamentoItem();
+  const deleteItem = useDeleteOrcamentoItem();
+
+  const locked = orcamento?.status === "aprovado";
+
+  function handleCreateOrcamento() {
+    createOrcamento.mutate(
+      { tenantId, obraId, data: { titulo: newOrcTitulo || undefined, bdiGlobal: newOrcBdi || "0" } },
+      {
+        onSuccess: (created) => {
+          invalidateOrcamentos();
+          setSelectedId(created.id);
+          setShowNewOrcForm(false);
+          setNewOrcTitulo("");
+          setNewOrcBdi("0");
+        },
+      }
+    );
+  }
+
+  function handleSaveEditOrcamento() {
+    if (!selectedId) return;
+    updateOrcamento.mutate(
+      { tenantId, obraId, orcamentoId: selectedId, data: { titulo: editOrcTitulo || undefined, bdiGlobal: editOrcBdi || "0" } },
+      { onSuccess: () => { invalidateOrcamentos(); setEditingOrcamento(false); } }
+    );
+  }
+
+  function handleChangeStatus(status: string) {
+    if (!selectedId) return;
+    updateOrcamento.mutate(
+      { tenantId, obraId, orcamentoId: selectedId, data: { status } },
+      { onSuccess: () => invalidateOrcamentos() }
+    );
+  }
+
+  function handleDuplicate() {
+    if (!selectedId) return;
+    duplicateOrcamento.mutate(
+      { tenantId, obraId, orcamentoId: selectedId },
+      { onSuccess: (novo) => { invalidateOrcamentos(); setSelectedId(novo.id); } }
+    );
+  }
+
+  function handleDeleteOrcamento() {
+    if (!selectedId) return;
+    deleteOrcamento.mutate(
+      { tenantId, obraId, orcamentoId: selectedId },
+      { onSuccess: () => { invalidateOrcamentos(); setSelectedId(null); } }
+    );
+  }
+
+  function handleCreateEtapa() {
+    if (!selectedId || !newEtapaNome.trim()) return;
+    createEtapa.mutate(
+      { tenantId, obraId, orcamentoId: selectedId, data: { nome: newEtapaNome } },
+      { onSuccess: () => { invalidateOrcamentos(); setShowNewEtapaForm(false); setNewEtapaNome(""); } }
+    );
+  }
+
+  function handleSaveEditEtapa() {
+    if (!selectedId || !editingEtapaId || !editEtapaNome.trim()) return;
+    updateEtapa.mutate(
+      { tenantId, obraId, orcamentoId: selectedId, etapaId: editingEtapaId, data: { nome: editEtapaNome } },
+      { onSuccess: () => { invalidateOrcamentos(); setEditingEtapaId(null); setEditEtapaNome(""); } }
+    );
+  }
+
+  function handleDeleteEtapa(etapaId: string) {
+    if (!selectedId) return;
+    deleteEtapa.mutate(
+      { tenantId, obraId, orcamentoId: selectedId, etapaId },
+      { onSuccess: () => invalidateOrcamentos() }
+    );
+  }
+
+  function handleCreateItem(etapaId: string) {
+    if (!selectedId) return;
+    createItem.mutate(
+      { tenantId, obraId, orcamentoId: selectedId, etapaId, data: { ...newItem, bdi: newItem.bdi || undefined } },
+      { onSuccess: () => { invalidateOrcamentos(); setAddingItemEtapaId(null); setNewItem({ nome: "", unidade: "un", quantidade: "1", custoUnitario: "0", bdi: "" }); } }
+    );
+  }
+
+  function handleSaveEditItem() {
+    if (!selectedId || !editingItem) return;
+    const etapa = orcamento?.etapas?.find((e) => e.itens?.some((i) => i.id === editingItem.id));
+    if (!etapa) return;
+    updateItem.mutate(
+      { tenantId, obraId, orcamentoId: selectedId, etapaId: etapa.id, itemId: editingItem.id, data: { nome: editingItem.nome, unidade: editingItem.unidade, quantidade: editingItem.quantidade, custoUnitario: editingItem.custoUnitario, bdi: editingItem.bdi || undefined } },
+      { onSuccess: () => { invalidateOrcamentos(); setEditingItem(null); } }
+    );
+  }
+
+  function handleDeleteItem(etapaId: string, itemId: string) {
+    if (!selectedId) return;
+    deleteItem.mutate(
+      { tenantId, obraId, orcamentoId: selectedId, etapaId, itemId },
+      { onSuccess: () => invalidateOrcamentos() }
+    );
+  }
+
+  const totalGeral = (orcamento?.etapas ?? []).reduce((acc, etapa) => {
+    const etapaTotal = (etapa.itens ?? []).reduce((s, item) => s + calcItemTotal(item as any, orcamento?.bdiGlobal ?? "0"), 0);
+    return acc + etapaTotal;
+  }, 0);
+
+  return (
+    <div className="space-y-4 pt-2">
+      {/* Versões (seletor de orçamentos) */}
+      <div className="flex items-center gap-2 flex-wrap">
+        {orcamentos.map((o) => {
+          const st = ORC_STATUS[o.status] ?? ORC_STATUS.rascunho;
+          return (
+            <button
+              key={o.id}
+              onClick={() => setSelectedId(o.id)}
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full border text-sm font-medium transition-all ${
+                selectedId === o.id
+                  ? "border-primary bg-primary/5 text-primary shadow-sm"
+                  : "border-border text-muted-foreground hover:border-muted-foreground"
+              }`}
+            >
+              <span>v{o.versao}</span>
+              {o.titulo && <span className="text-xs opacity-70">· {o.titulo}</span>}
+              <span className={`text-xs px-1.5 py-0.5 rounded-full ${st.color}`}>{st.label}</span>
+            </button>
+          );
+        })}
+
+        {showNewOrcForm ? (
+          <div className="flex items-center gap-2 border rounded-lg px-3 py-2 bg-muted/30">
+            <input
+              className="text-sm border-0 bg-transparent outline-none w-32 placeholder:text-muted-foreground"
+              placeholder="Título (opcional)"
+              value={newOrcTitulo}
+              onChange={(e) => setNewOrcTitulo(e.target.value)}
+            />
+            <input
+              type="number"
+              className="text-sm border-0 bg-transparent outline-none w-20 placeholder:text-muted-foreground"
+              placeholder="BDI %"
+              value={newOrcBdi}
+              onChange={(e) => setNewOrcBdi(e.target.value)}
+            />
+            <span className="text-xs text-muted-foreground">% BDI global</span>
+            <Button size="sm" variant="default" onClick={handleCreateOrcamento} disabled={createOrcamento.isPending}>
+              Criar
+            </Button>
+            <Button size="sm" variant="ghost" onClick={() => setShowNewOrcForm(false)}>
+              <X className="h-3.5 w-3.5" />
+            </Button>
+          </div>
+        ) : (
+          <Button size="sm" variant="outline" onClick={() => setShowNewOrcForm(true)}>
+            <Plus className="h-3.5 w-3.5 mr-1" /> Novo Orçamento
+          </Button>
+        )}
+      </div>
+
+      {/* Detalhe do orçamento selecionado */}
+      {!selectedId && (
+        <div className="flex flex-col items-center justify-center py-16 text-center text-muted-foreground gap-2">
+          <FileSpreadsheet className="h-10 w-10 opacity-30" />
+          <p className="text-sm">Selecione ou crie um orçamento para começar</p>
+        </div>
+      )}
+
+      {selectedId && orcamento && (
+        <div className="space-y-3">
+          {/* Header do orçamento */}
+          <Card>
+            <CardHeader className="pb-3">
+              <div className="flex items-start justify-between gap-3 flex-wrap">
+                <div className="flex items-center gap-2 flex-wrap">
+                  {editingOrcamento ? (
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <input
+                        className="text-sm border rounded px-2 py-1 w-40"
+                        placeholder="Título"
+                        value={editOrcTitulo}
+                        onChange={(e) => setEditOrcTitulo(e.target.value)}
+                      />
+                      <div className="flex items-center gap-1">
+                        <input
+                          type="number"
+                          className="text-sm border rounded px-2 py-1 w-20"
+                          placeholder="BDI %"
+                          value={editOrcBdi}
+                          onChange={(e) => setEditOrcBdi(e.target.value)}
+                        />
+                        <span className="text-xs text-muted-foreground">% BDI global</span>
+                      </div>
+                      <Button size="sm" onClick={handleSaveEditOrcamento} disabled={updateOrcamento.isPending}>Salvar</Button>
+                      <Button size="sm" variant="ghost" onClick={() => setEditingOrcamento(false)}><X className="h-3.5 w-3.5" /></Button>
+                    </div>
+                  ) : (
+                    <>
+                      <CardTitle className="text-base">
+                        v{orcamento.versao}{orcamento.titulo ? ` — ${orcamento.titulo}` : ""}
+                      </CardTitle>
+                      <span className="text-xs text-muted-foreground">BDI global: {orcamento.bdiGlobal}%</span>
+                    </>
+                  )}
+                  <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${ORC_STATUS[orcamento.status]?.color ?? "bg-muted text-muted-foreground"}`}>
+                    {ORC_STATUS[orcamento.status]?.label ?? orcamento.status}
+                  </span>
+                </div>
+
+                <div className="flex items-center gap-1.5 flex-wrap">
+                  {!locked && !editingOrcamento && (
+                    <Button size="sm" variant="ghost" onClick={() => { setEditOrcTitulo(orcamento.titulo ?? ""); setEditOrcBdi(orcamento.bdiGlobal ?? "0"); setEditingOrcamento(true); }}>
+                      <Pencil className="h-3.5 w-3.5" />
+                    </Button>
+                  )}
+                  {locked && (
+                    <span className="flex items-center gap-1 text-xs text-muted-foreground">
+                      <AlertCircle className="h-3.5 w-3.5" /> Aprovado — somente leitura
+                    </span>
+                  )}
+                  {orcamento.status === "rascunho" && !locked && (
+                    <Button size="sm" variant="outline" onClick={() => handleChangeStatus("enviado")} disabled={updateOrcamento.isPending}>
+                      <Send className="h-3.5 w-3.5 mr-1" /> Enviar
+                    </Button>
+                  )}
+                  {orcamento.status === "enviado" && (
+                    <>
+                      <Button size="sm" variant="outline" className="text-emerald-700 border-emerald-300" onClick={() => handleChangeStatus("aprovado")} disabled={updateOrcamento.isPending}>
+                        <ThumbsUp className="h-3.5 w-3.5 mr-1" /> Aprovar
+                      </Button>
+                      <Button size="sm" variant="outline" className="text-red-700 border-red-300" onClick={() => handleChangeStatus("rejeitado")} disabled={updateOrcamento.isPending}>
+                        <ThumbsDown className="h-3.5 w-3.5 mr-1" /> Rejeitar
+                      </Button>
+                    </>
+                  )}
+                  {(orcamento.status === "rejeitado" || orcamento.status === "aprovado") && (
+                    <Button size="sm" variant="outline" onClick={() => handleChangeStatus("rascunho")} disabled={updateOrcamento.isPending}>
+                      <ChevronDown className="h-3.5 w-3.5 mr-1" /> Reabrir
+                    </Button>
+                  )}
+                  <Button size="sm" variant="outline" onClick={handleDuplicate} disabled={duplicateOrcamento.isPending}>
+                    <Copy className="h-3.5 w-3.5 mr-1" /> Duplicar
+                  </Button>
+                  {!locked && (
+                    <AlertDialog>
+                      <AlertDialogTrigger asChild>
+                        <Button size="sm" variant="ghost" className="text-red-600 hover:text-red-700">
+                          <Trash2 className="h-3.5 w-3.5" />
+                        </Button>
+                      </AlertDialogTrigger>
+                      <AlertDialogContent>
+                        <AlertDialogHeader>
+                          <AlertDialogTitle>Excluir orçamento?</AlertDialogTitle>
+                          <AlertDialogDescription>Esta ação não pode ser desfeita. Todas as etapas e itens serão removidos.</AlertDialogDescription>
+                        </AlertDialogHeader>
+                        <AlertDialogFooter>
+                          <AlertDialogCancel>Cancelar</AlertDialogCancel>
+                          <AlertDialogAction onClick={handleDeleteOrcamento} className="bg-red-600 hover:bg-red-700">Excluir</AlertDialogAction>
+                        </AlertDialogFooter>
+                      </AlertDialogContent>
+                    </AlertDialog>
+                  )}
+                </div>
+              </div>
+            </CardHeader>
+          </Card>
+
+          {/* Etapas */}
+          {(orcamento.etapas ?? []).map((etapa) => {
+            const etapaTotal = (etapa.itens ?? []).reduce((s, item) => s + calcItemTotal(item as any, orcamento.bdiGlobal ?? "0"), 0);
+
+            return (
+              <Card key={etapa.id}>
+                <CardHeader className="pb-2">
+                  <div className="flex items-center justify-between gap-2">
+                    {editingEtapaId === etapa.id ? (
+                      <div className="flex items-center gap-2">
+                        <input
+                          className="text-sm border rounded px-2 py-1 w-48"
+                          value={editEtapaNome}
+                          onChange={(e) => setEditEtapaNome(e.target.value)}
+                          onKeyDown={(e) => e.key === "Enter" && handleSaveEditEtapa()}
+                          autoFocus
+                        />
+                        <Button size="sm" onClick={handleSaveEditEtapa} disabled={updateEtapa.isPending}>Salvar</Button>
+                        <Button size="sm" variant="ghost" onClick={() => setEditingEtapaId(null)}><X className="h-3.5 w-3.5" /></Button>
+                      </div>
+                    ) : (
+                      <div className="flex items-center gap-2">
+                        <CardTitle className="text-sm font-semibold">{etapa.nome}</CardTitle>
+                        {!locked && (
+                          <>
+                            <button onClick={() => { setEditingEtapaId(etapa.id); setEditEtapaNome(etapa.nome); }} className="text-muted-foreground hover:text-foreground">
+                              <Pencil className="h-3.5 w-3.5" />
+                            </button>
+                            <AlertDialog>
+                              <AlertDialogTrigger asChild>
+                                <button className="text-muted-foreground hover:text-red-600">
+                                  <Trash2 className="h-3.5 w-3.5" />
+                                </button>
+                              </AlertDialogTrigger>
+                              <AlertDialogContent>
+                                <AlertDialogHeader>
+                                  <AlertDialogTitle>Excluir etapa "{etapa.nome}"?</AlertDialogTitle>
+                                  <AlertDialogDescription>Todos os itens desta etapa serão removidos.</AlertDialogDescription>
+                                </AlertDialogHeader>
+                                <AlertDialogFooter>
+                                  <AlertDialogCancel>Cancelar</AlertDialogCancel>
+                                  <AlertDialogAction onClick={() => handleDeleteEtapa(etapa.id)} className="bg-red-600 hover:bg-red-700">Excluir</AlertDialogAction>
+                                </AlertDialogFooter>
+                              </AlertDialogContent>
+                            </AlertDialog>
+                          </>
+                        )}
+                      </div>
+                    )}
+                    <span className="text-sm font-semibold text-muted-foreground">
+                      Subtotal: {fmtBRL(etapaTotal)}
+                    </span>
+                  </div>
+                </CardHeader>
+
+                <CardContent className="pt-0">
+                  {/* Tabela de itens */}
+                  {((etapa.itens ?? []).length > 0 || addingItemEtapaId === etapa.id) && (
+                    <div className="overflow-x-auto">
+                      <table className="w-full text-xs">
+                        <thead>
+                          <tr className="border-b text-muted-foreground">
+                            <th className="text-left py-1.5 pr-2 font-medium w-full">Item</th>
+                            <th className="text-center py-1.5 px-2 font-medium whitespace-nowrap">Un</th>
+                            <th className="text-right py-1.5 px-2 font-medium whitespace-nowrap">Qtd</th>
+                            <th className="text-right py-1.5 px-2 font-medium whitespace-nowrap">R$/un</th>
+                            <th className="text-right py-1.5 px-2 font-medium whitespace-nowrap">BDI%</th>
+                            <th className="text-right py-1.5 px-2 font-medium whitespace-nowrap">Total</th>
+                            {!locked && <th className="w-12" />}
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {(etapa.itens ?? []).map((item) => {
+                            const isEditing = editingItem?.id === item.id;
+                            const total = calcItemTotal(item as any, orcamento.bdiGlobal ?? "0");
+
+                            if (isEditing) {
+                              return (
+                                <tr key={item.id} className="border-b bg-muted/20">
+                                  <td className="py-1 pr-2">
+                                    <input className="w-full text-xs border rounded px-1 py-0.5" value={editingItem.nome} onChange={(e) => setEditingItem({ ...editingItem, nome: e.target.value })} />
+                                  </td>
+                                  <td className="py-1 px-2">
+                                    <input className="w-14 text-xs border rounded px-1 py-0.5 text-center" value={editingItem.unidade} onChange={(e) => setEditingItem({ ...editingItem, unidade: e.target.value })} />
+                                  </td>
+                                  <td className="py-1 px-2">
+                                    <input type="number" className="w-16 text-xs border rounded px-1 py-0.5 text-right" value={editingItem.quantidade} onChange={(e) => setEditingItem({ ...editingItem, quantidade: e.target.value })} />
+                                  </td>
+                                  <td className="py-1 px-2">
+                                    <input type="number" className="w-20 text-xs border rounded px-1 py-0.5 text-right" value={editingItem.custoUnitario} onChange={(e) => setEditingItem({ ...editingItem, custoUnitario: e.target.value })} />
+                                  </td>
+                                  <td className="py-1 px-2">
+                                    <input type="number" className="w-14 text-xs border rounded px-1 py-0.5 text-right" placeholder={orcamento.bdiGlobal ?? "—"} value={editingItem.bdi} onChange={(e) => setEditingItem({ ...editingItem, bdi: e.target.value })} />
+                                  </td>
+                                  <td className="py-1 px-2 text-right text-muted-foreground">—</td>
+                                  <td className="py-1 px-2">
+                                    <div className="flex gap-1">
+                                      <button onClick={handleSaveEditItem} className="text-emerald-600 hover:text-emerald-700"><CheckCircle2 className="h-3.5 w-3.5" /></button>
+                                      <button onClick={() => setEditingItem(null)} className="text-muted-foreground hover:text-foreground"><X className="h-3.5 w-3.5" /></button>
+                                    </div>
+                                  </td>
+                                </tr>
+                              );
+                            }
+
+                            return (
+                              <tr key={item.id} className="border-b hover:bg-muted/10 group">
+                                <td className="py-1.5 pr-2">{item.nome}</td>
+                                <td className="py-1.5 px-2 text-center text-muted-foreground">{item.unidade}</td>
+                                <td className="py-1.5 px-2 text-right">{fmtNum(item.quantidade)}</td>
+                                <td className="py-1.5 px-2 text-right">{fmtNum(item.custoUnitario)}</td>
+                                <td className="py-1.5 px-2 text-right text-muted-foreground">
+                                  {item.bdi != null ? `${item.bdi}%` : <span className="opacity-50">global</span>}
+                                </td>
+                                <td className="py-1.5 px-2 text-right font-medium">{fmtBRL(total)}</td>
+                                {!locked && (
+                                  <td className="py-1.5 px-2">
+                                    <div className="flex gap-1 opacity-0 group-hover:opacity-100">
+                                      <button onClick={() => setEditingItem({ id: item.id, nome: item.nome, unidade: item.unidade, quantidade: item.quantidade, custoUnitario: item.custoUnitario, bdi: item.bdi ?? "" })} className="text-muted-foreground hover:text-foreground">
+                                        <Pencil className="h-3.5 w-3.5" />
+                                      </button>
+                                      <button onClick={() => handleDeleteItem(etapa.id, item.id)} className="text-muted-foreground hover:text-red-600">
+                                        <Trash2 className="h-3.5 w-3.5" />
+                                      </button>
+                                    </div>
+                                  </td>
+                                )}
+                              </tr>
+                            );
+                          })}
+
+                          {/* Linha de novo item */}
+                          {!locked && addingItemEtapaId === etapa.id && (
+                            <tr className="border-b bg-blue-50/40">
+                              <td className="py-1 pr-2">
+                                <input className="w-full text-xs border rounded px-1 py-0.5" placeholder="Nome do item" value={newItem.nome} onChange={(e) => setNewItem({ ...newItem, nome: e.target.value })} autoFocus />
+                              </td>
+                              <td className="py-1 px-2">
+                                <input className="w-14 text-xs border rounded px-1 py-0.5 text-center" placeholder="un" value={newItem.unidade} onChange={(e) => setNewItem({ ...newItem, unidade: e.target.value })} />
+                              </td>
+                              <td className="py-1 px-2">
+                                <input type="number" className="w-16 text-xs border rounded px-1 py-0.5 text-right" value={newItem.quantidade} onChange={(e) => setNewItem({ ...newItem, quantidade: e.target.value })} />
+                              </td>
+                              <td className="py-1 px-2">
+                                <input type="number" className="w-20 text-xs border rounded px-1 py-0.5 text-right" placeholder="0,00" value={newItem.custoUnitario} onChange={(e) => setNewItem({ ...newItem, custoUnitario: e.target.value })} />
+                              </td>
+                              <td className="py-1 px-2">
+                                <input type="number" className="w-14 text-xs border rounded px-1 py-0.5 text-right" placeholder={orcamento.bdiGlobal ?? "—"} value={newItem.bdi} onChange={(e) => setNewItem({ ...newItem, bdi: e.target.value })} />
+                              </td>
+                              <td className="py-1 px-2 text-right text-muted-foreground">—</td>
+                              <td className="py-1 px-2">
+                                <div className="flex gap-1">
+                                  <button onClick={() => handleCreateItem(etapa.id)} disabled={!newItem.nome.trim() || createItem.isPending} className="text-emerald-600 hover:text-emerald-700 disabled:opacity-40">
+                                    <CheckCircle2 className="h-3.5 w-3.5" />
+                                  </button>
+                                  <button onClick={() => setAddingItemEtapaId(null)} className="text-muted-foreground hover:text-foreground">
+                                    <X className="h-3.5 w-3.5" />
+                                  </button>
+                                </div>
+                              </td>
+                            </tr>
+                          )}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
+
+                  {!locked && (
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      className="mt-2 text-xs text-muted-foreground hover:text-foreground"
+                      onClick={() => { setAddingItemEtapaId(etapa.id); setEditingItem(null); }}
+                    >
+                      <Plus className="h-3.5 w-3.5 mr-1" /> Adicionar item
+                    </Button>
+                  )}
+
+                  {(etapa.itens ?? []).length === 0 && addingItemEtapaId !== etapa.id && (
+                    <p className="text-xs text-muted-foreground py-2">Nenhum item. {!locked && "Clique em \"Adicionar item\" para começar."}</p>
+                  )}
+                </CardContent>
+              </Card>
+            );
+          })}
+
+          {/* Botão nova etapa */}
+          {!locked && (
+            <div>
+              {showNewEtapaForm ? (
+                <div className="flex items-center gap-2 border rounded-lg px-3 py-2 bg-muted/30">
+                  <input
+                    className="text-sm border-0 bg-transparent outline-none flex-1 placeholder:text-muted-foreground"
+                    placeholder="Nome da etapa (ex: Fundações, Estrutura…)"
+                    value={newEtapaNome}
+                    onChange={(e) => setNewEtapaNome(e.target.value)}
+                    onKeyDown={(e) => e.key === "Enter" && handleCreateEtapa()}
+                    autoFocus
+                  />
+                  <Button size="sm" onClick={handleCreateEtapa} disabled={!newEtapaNome.trim() || createEtapa.isPending}>
+                    Adicionar
+                  </Button>
+                  <Button size="sm" variant="ghost" onClick={() => { setShowNewEtapaForm(false); setNewEtapaNome(""); }}>
+                    <X className="h-3.5 w-3.5" />
+                  </Button>
+                </div>
+              ) : (
+                <Button size="sm" variant="outline" onClick={() => setShowNewEtapaForm(true)}>
+                  <Plus className="h-3.5 w-3.5 mr-1" /> Nova Etapa
+                </Button>
+              )}
+            </div>
+          )}
+
+          {/* Rodapé — total geral */}
+          {(orcamento.etapas ?? []).length > 0 && (
+            <Card className="bg-muted/30">
+              <CardContent className="py-3">
+                <div className="flex items-center justify-between">
+                  <div className="space-y-0.5">
+                    <p className="text-xs text-muted-foreground">Total geral com BDI ({orcamento.bdiGlobal}%)</p>
+                    <p className="text-xl font-bold">{fmtBRL(totalGeral)}</p>
+                  </div>
+                  <div className="text-right text-xs text-muted-foreground space-y-0.5">
+                    {(orcamento.etapas ?? []).map((etapa) => {
+                      const t = (etapa.itens ?? []).reduce((s, item) => s + calcItemTotal(item as any, orcamento.bdiGlobal ?? "0"), 0);
+                      return (
+                        <div key={etapa.id} className="flex items-center gap-4 justify-end">
+                          <span>{etapa.nome}</span>
+                          <span className="font-medium">{fmtBRL(t)}</span>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ─── Main Page ────────────────────────────────────────────────────────────────
 
 export default function ObraDetalhe() {
@@ -918,6 +1505,7 @@ export default function ObraDetalhe() {
         {activeTab === "diario"       && <DiarioDeObra tenantId={tenantId} obraId={obraId} />}
         {activeTab === "estoque"      && <EstoqueObra tenantId={tenantId} obraId={obraId} />}
         {activeTab === "compras"      && <Compras tenantId={tenantId} obraId={obraId} />}
+        {activeTab === "orcamento"    && <TabOrcamento tenantId={tenantId} obraId={obraId} />}
       </div>
     </div>
   );

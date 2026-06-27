@@ -7501,6 +7501,216 @@ paths:
       responses:
         "204": { description: Deleted }
 
+  # ── Orçamentos de Obra ────────────────────────────────────────────────────
+  /tenants/{tenantId}/obras/{obraId}/orcamentos:
+    get:
+      operationId: listObraOrcamentos
+      summary: List orcamentos for obra
+      tags: [Construcao]
+      parameters:
+        - { name: tenantId, in: path, required: true, schema: { type: string } }
+        - { name: obraId, in: path, required: true, schema: { type: string } }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/ObraOrcamento" }
+    post:
+      operationId: createObraOrcamento
+      summary: Create orcamento
+      tags: [Construcao]
+      parameters:
+        - { name: tenantId, in: path, required: true, schema: { type: string } }
+        - { name: obraId, in: path, required: true, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/ObraOrcamentoInput" }
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ObraOrcamento" }
+
+  /tenants/{tenantId}/obras/{obraId}/orcamentos/{orcamentoId}:
+    get:
+      operationId: getObraOrcamento
+      summary: Get orcamento with etapas and itens
+      tags: [Construcao]
+      parameters:
+        - { name: tenantId, in: path, required: true, schema: { type: string } }
+        - { name: obraId, in: path, required: true, schema: { type: string } }
+        - { name: orcamentoId, in: path, required: true, schema: { type: string } }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ObraOrcamentoDetalhe" }
+        "404": { description: Not found }
+    put:
+      operationId: updateObraOrcamento
+      summary: Update orcamento (status, bdi, title)
+      tags: [Construcao]
+      parameters:
+        - { name: tenantId, in: path, required: true, schema: { type: string } }
+        - { name: obraId, in: path, required: true, schema: { type: string } }
+        - { name: orcamentoId, in: path, required: true, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/ObraOrcamentoUpdate" }
+      responses:
+        "200":
+          description: Updated
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ObraOrcamento" }
+        "404": { description: Not found }
+    delete:
+      operationId: deleteObraOrcamento
+      summary: Delete orcamento
+      tags: [Construcao]
+      parameters:
+        - { name: tenantId, in: path, required: true, schema: { type: string } }
+        - { name: obraId, in: path, required: true, schema: { type: string } }
+        - { name: orcamentoId, in: path, required: true, schema: { type: string } }
+      responses:
+        "204": { description: Deleted }
+
+  /tenants/{tenantId}/obras/{obraId}/orcamentos/{orcamentoId}/duplicate:
+    post:
+      operationId: duplicateObraOrcamento
+      summary: Duplicate orcamento as new version
+      tags: [Construcao]
+      parameters:
+        - { name: tenantId, in: path, required: true, schema: { type: string } }
+        - { name: obraId, in: path, required: true, schema: { type: string } }
+        - { name: orcamentoId, in: path, required: true, schema: { type: string } }
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ObraOrcamento" }
+
+  /tenants/{tenantId}/obras/{obraId}/orcamentos/{orcamentoId}/etapas:
+    post:
+      operationId: createOrcamentoEtapa
+      summary: Create etapa in orcamento
+      tags: [Construcao]
+      parameters:
+        - { name: tenantId, in: path, required: true, schema: { type: string } }
+        - { name: obraId, in: path, required: true, schema: { type: string } }
+        - { name: orcamentoId, in: path, required: true, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/OrcamentoEtapaInput" }
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/OrcamentoEtapa" }
+
+  /tenants/{tenantId}/obras/{obraId}/orcamentos/{orcamentoId}/etapas/{etapaId}:
+    put:
+      operationId: updateOrcamentoEtapa
+      summary: Update orcamento etapa
+      tags: [Construcao]
+      parameters:
+        - { name: tenantId, in: path, required: true, schema: { type: string } }
+        - { name: obraId, in: path, required: true, schema: { type: string } }
+        - { name: orcamentoId, in: path, required: true, schema: { type: string } }
+        - { name: etapaId, in: path, required: true, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/OrcamentoEtapaInput" }
+      responses:
+        "200":
+          description: Updated
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/OrcamentoEtapa" }
+    delete:
+      operationId: deleteOrcamentoEtapa
+      summary: Delete orcamento etapa
+      tags: [Construcao]
+      parameters:
+        - { name: tenantId, in: path, required: true, schema: { type: string } }
+        - { name: obraId, in: path, required: true, schema: { type: string } }
+        - { name: orcamentoId, in: path, required: true, schema: { type: string } }
+        - { name: etapaId, in: path, required: true, schema: { type: string } }
+      responses:
+        "204": { description: Deleted }
+
+  /tenants/{tenantId}/obras/{obraId}/orcamentos/{orcamentoId}/etapas/{etapaId}/itens:
+    post:
+      operationId: createOrcamentoItem
+      summary: Create item in orcamento etapa
+      tags: [Construcao]
+      parameters:
+        - { name: tenantId, in: path, required: true, schema: { type: string } }
+        - { name: obraId, in: path, required: true, schema: { type: string } }
+        - { name: orcamentoId, in: path, required: true, schema: { type: string } }
+        - { name: etapaId, in: path, required: true, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/OrcamentoItemInput" }
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/OrcamentoItem" }
+
+  /tenants/{tenantId}/obras/{obraId}/orcamentos/{orcamentoId}/etapas/{etapaId}/itens/{itemId}:
+    put:
+      operationId: updateOrcamentoItem
+      summary: Update orcamento item
+      tags: [Construcao]
+      parameters:
+        - { name: tenantId, in: path, required: true, schema: { type: string } }
+        - { name: obraId, in: path, required: true, schema: { type: string } }
+        - { name: orcamentoId, in: path, required: true, schema: { type: string } }
+        - { name: etapaId, in: path, required: true, schema: { type: string } }
+        - { name: itemId, in: path, required: true, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/OrcamentoItemUpdate" }
+      responses:
+        "200":
+          description: Updated
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/OrcamentoItem" }
+    delete:
+      operationId: deleteOrcamentoItem
+      summary: Delete orcamento item
+      tags: [Construcao]
+      parameters:
+        - { name: tenantId, in: path, required: true, schema: { type: string } }
+        - { name: obraId, in: path, required: true, schema: { type: string } }
+        - { name: orcamentoId, in: path, required: true, schema: { type: string } }
+        - { name: etapaId, in: path, required: true, schema: { type: string } }
+        - { name: itemId, in: path, required: true, schema: { type: string } }
+      responses:
+        "204": { description: Deleted }
+
   # ── Varejo ─────────────────────────────────────────────────────────────────
 
   /tenants/{tenantId}/varejo/colecoes:
@@ -14954,6 +15164,102 @@ components:
         status: { type: string }
         percentualExecutado: { type: string }
         responsavel: { type: string }
+
+    ObraOrcamento:
+      type: object
+      required: [id, tenantId, obraId, versao, status, bdiGlobal, createdAt, updatedAt]
+      properties:
+        id: { type: string }
+        tenantId: { type: string }
+        obraId: { type: string }
+        versao: { type: integer }
+        titulo: { type: ["string", "null"] }
+        descricao: { type: ["string", "null"] }
+        status: { type: string }
+        bdiGlobal: { type: string }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+
+    ObraOrcamentoInput:
+      type: object
+      properties:
+        titulo: { type: string }
+        descricao: { type: string }
+        bdiGlobal: { type: string }
+
+    ObraOrcamentoUpdate:
+      type: object
+      properties:
+        titulo: { type: string }
+        descricao: { type: string }
+        status: { type: string }
+        bdiGlobal: { type: string }
+
+    OrcamentoEtapa:
+      type: object
+      required: [id, orcamentoId, nome, ordem, createdAt, updatedAt]
+      properties:
+        id: { type: string }
+        orcamentoId: { type: string }
+        nome: { type: string }
+        ordem: { type: integer }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+        itens:
+          type: array
+          items: { $ref: "#/components/schemas/OrcamentoItem" }
+
+    OrcamentoEtapaInput:
+      type: object
+      required: [nome]
+      properties:
+        nome: { type: string }
+        ordem: { type: integer }
+
+    OrcamentoItem:
+      type: object
+      required: [id, etapaId, nome, unidade, quantidade, custoUnitario, ordem, createdAt, updatedAt]
+      properties:
+        id: { type: string }
+        etapaId: { type: string }
+        nome: { type: string }
+        unidade: { type: string }
+        quantidade: { type: string }
+        custoUnitario: { type: string }
+        bdi: { type: ["string", "null"] }
+        ordem: { type: integer }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+
+    OrcamentoItemInput:
+      type: object
+      required: [nome]
+      properties:
+        nome: { type: string }
+        unidade: { type: string }
+        quantidade: { type: string }
+        custoUnitario: { type: string }
+        bdi: { type: string }
+        ordem: { type: integer }
+
+    OrcamentoItemUpdate:
+      type: object
+      properties:
+        nome: { type: string }
+        unidade: { type: string }
+        quantidade: { type: string }
+        custoUnitario: { type: string }
+        bdi: { type: string }
+        ordem: { type: integer }
+
+    ObraOrcamentoDetalhe:
+      allOf:
+        - $ref: "#/components/schemas/ObraOrcamento"
+        - type: object
+          properties:
+            etapas:
+              type: array
+              items: { $ref: "#/components/schemas/OrcamentoEtapa" }
 
     ObraEtapaMedicao:
       type: object

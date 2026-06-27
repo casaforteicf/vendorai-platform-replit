@@ -187,9 +187,18 @@ import type {
   ObraEtapaMedicaoInput,
   ObraEtapaUpdate,
   ObraInput,
+  ObraOrcamento,
+  ObraOrcamentoDetalhe,
+  ObraOrcamentoInput,
+  ObraOrcamentoUpdate,
   ObraUpdate,
   OkResponse,
   OnboardingCompleteBody,
+  OrcamentoEtapa,
+  OrcamentoEtapaInput,
+  OrcamentoItem,
+  OrcamentoItemInput,
+  OrcamentoItemUpdate,
   Partner,
   PartnerTenant,
   PartnerTenantUsage,
@@ -20034,6 +20043,939 @@ export const useDeleteComposicao = <TError = ErrorType<unknown>,
         TContext
       > => {
       return useMutation(getDeleteComposicaoMutationOptions(options));
+    }
+
+export const getListObraOrcamentosUrl = (tenantId: string,
+    obraId: string,) => {
+
+
+
+
+  return `/api/tenants/${tenantId}/obras/${obraId}/orcamentos`
+}
+
+/**
+ * @summary List orcamentos for obra
+ */
+export const listObraOrcamentos = async (tenantId: string,
+    obraId: string, options?: RequestInit): Promise<ObraOrcamento[]> => {
+
+  return customFetch<ObraOrcamento[]>(getListObraOrcamentosUrl(tenantId,obraId),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getListObraOrcamentosQueryKey = (tenantId: string,
+    obraId: string,) => {
+    return [
+    `/api/tenants/${tenantId}/obras/${obraId}/orcamentos`
+    ] as const;
+    }
+
+
+export const getListObraOrcamentosQueryOptions = <TData = Awaited<ReturnType<typeof listObraOrcamentos>>, TError = ErrorType<unknown>>(tenantId: string,
+    obraId: string, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listObraOrcamentos>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getListObraOrcamentosQueryKey(tenantId,obraId);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof listObraOrcamentos>>> = ({ signal }) => listObraOrcamentos(tenantId,obraId, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, enabled: !!(tenantId && obraId), ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof listObraOrcamentos>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type ListObraOrcamentosQueryResult = NonNullable<Awaited<ReturnType<typeof listObraOrcamentos>>>
+export type ListObraOrcamentosQueryError = ErrorType<unknown>
+
+
+/**
+ * @summary List orcamentos for obra
+ */
+
+export function useListObraOrcamentos<TData = Awaited<ReturnType<typeof listObraOrcamentos>>, TError = ErrorType<unknown>>(
+ tenantId: string,
+    obraId: string, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listObraOrcamentos>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getListObraOrcamentosQueryOptions(tenantId,obraId,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+
+
+
+
+
+
+export const getCreateObraOrcamentoUrl = (tenantId: string,
+    obraId: string,) => {
+
+
+
+
+  return `/api/tenants/${tenantId}/obras/${obraId}/orcamentos`
+}
+
+/**
+ * @summary Create orcamento
+ */
+export const createObraOrcamento = async (tenantId: string,
+    obraId: string,
+    obraOrcamentoInput: ObraOrcamentoInput, options?: RequestInit): Promise<ObraOrcamento> => {
+
+  return customFetch<ObraOrcamento>(getCreateObraOrcamentoUrl(tenantId,obraId),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(
+      obraOrcamentoInput,)
+  }
+);}
+
+
+
+
+export const getCreateObraOrcamentoMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createObraOrcamento>>, TError,{tenantId: string;obraId: string;data: BodyType<ObraOrcamentoInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof createObraOrcamento>>, TError,{tenantId: string;obraId: string;data: BodyType<ObraOrcamentoInput>}, TContext> => {
+
+const mutationKey = ['createObraOrcamento'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof createObraOrcamento>>, {tenantId: string;obraId: string;data: BodyType<ObraOrcamentoInput>}> = (props) => {
+          const {tenantId,obraId,data} = props ?? {};
+
+          return  createObraOrcamento(tenantId,obraId,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type CreateObraOrcamentoMutationResult = NonNullable<Awaited<ReturnType<typeof createObraOrcamento>>>
+    export type CreateObraOrcamentoMutationBody = BodyType<ObraOrcamentoInput>
+    export type CreateObraOrcamentoMutationError = ErrorType<unknown>
+
+    /**
+ * @summary Create orcamento
+ */
+export const useCreateObraOrcamento = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createObraOrcamento>>, TError,{tenantId: string;obraId: string;data: BodyType<ObraOrcamentoInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof createObraOrcamento>>,
+        TError,
+        {tenantId: string;obraId: string;data: BodyType<ObraOrcamentoInput>},
+        TContext
+      > => {
+      return useMutation(getCreateObraOrcamentoMutationOptions(options));
+    }
+
+export const getGetObraOrcamentoUrl = (tenantId: string,
+    obraId: string,
+    orcamentoId: string,) => {
+
+
+
+
+  return `/api/tenants/${tenantId}/obras/${obraId}/orcamentos/${orcamentoId}`
+}
+
+/**
+ * @summary Get orcamento with etapas and itens
+ */
+export const getObraOrcamento = async (tenantId: string,
+    obraId: string,
+    orcamentoId: string, options?: RequestInit): Promise<ObraOrcamentoDetalhe> => {
+
+  return customFetch<ObraOrcamentoDetalhe>(getGetObraOrcamentoUrl(tenantId,obraId,orcamentoId),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetObraOrcamentoQueryKey = (tenantId: string,
+    obraId: string,
+    orcamentoId: string,) => {
+    return [
+    `/api/tenants/${tenantId}/obras/${obraId}/orcamentos/${orcamentoId}`
+    ] as const;
+    }
+
+
+export const getGetObraOrcamentoQueryOptions = <TData = Awaited<ReturnType<typeof getObraOrcamento>>, TError = ErrorType<void>>(tenantId: string,
+    obraId: string,
+    orcamentoId: string, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getObraOrcamento>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetObraOrcamentoQueryKey(tenantId,obraId,orcamentoId);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getObraOrcamento>>> = ({ signal }) => getObraOrcamento(tenantId,obraId,orcamentoId, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, enabled: !!(tenantId && obraId && orcamentoId), ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getObraOrcamento>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetObraOrcamentoQueryResult = NonNullable<Awaited<ReturnType<typeof getObraOrcamento>>>
+export type GetObraOrcamentoQueryError = ErrorType<void>
+
+
+/**
+ * @summary Get orcamento with etapas and itens
+ */
+
+export function useGetObraOrcamento<TData = Awaited<ReturnType<typeof getObraOrcamento>>, TError = ErrorType<void>>(
+ tenantId: string,
+    obraId: string,
+    orcamentoId: string, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getObraOrcamento>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetObraOrcamentoQueryOptions(tenantId,obraId,orcamentoId,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+
+
+
+
+
+
+export const getUpdateObraOrcamentoUrl = (tenantId: string,
+    obraId: string,
+    orcamentoId: string,) => {
+
+
+
+
+  return `/api/tenants/${tenantId}/obras/${obraId}/orcamentos/${orcamentoId}`
+}
+
+/**
+ * @summary Update orcamento (status, bdi, title)
+ */
+export const updateObraOrcamento = async (tenantId: string,
+    obraId: string,
+    orcamentoId: string,
+    obraOrcamentoUpdate: ObraOrcamentoUpdate, options?: RequestInit): Promise<ObraOrcamento> => {
+
+  return customFetch<ObraOrcamento>(getUpdateObraOrcamentoUrl(tenantId,obraId,orcamentoId),
+  {
+    ...options,
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(
+      obraOrcamentoUpdate,)
+  }
+);}
+
+
+
+
+export const getUpdateObraOrcamentoMutationOptions = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updateObraOrcamento>>, TError,{tenantId: string;obraId: string;orcamentoId: string;data: BodyType<ObraOrcamentoUpdate>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof updateObraOrcamento>>, TError,{tenantId: string;obraId: string;orcamentoId: string;data: BodyType<ObraOrcamentoUpdate>}, TContext> => {
+
+const mutationKey = ['updateObraOrcamento'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof updateObraOrcamento>>, {tenantId: string;obraId: string;orcamentoId: string;data: BodyType<ObraOrcamentoUpdate>}> = (props) => {
+          const {tenantId,obraId,orcamentoId,data} = props ?? {};
+
+          return  updateObraOrcamento(tenantId,obraId,orcamentoId,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type UpdateObraOrcamentoMutationResult = NonNullable<Awaited<ReturnType<typeof updateObraOrcamento>>>
+    export type UpdateObraOrcamentoMutationBody = BodyType<ObraOrcamentoUpdate>
+    export type UpdateObraOrcamentoMutationError = ErrorType<void>
+
+    /**
+ * @summary Update orcamento (status, bdi, title)
+ */
+export const useUpdateObraOrcamento = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updateObraOrcamento>>, TError,{tenantId: string;obraId: string;orcamentoId: string;data: BodyType<ObraOrcamentoUpdate>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof updateObraOrcamento>>,
+        TError,
+        {tenantId: string;obraId: string;orcamentoId: string;data: BodyType<ObraOrcamentoUpdate>},
+        TContext
+      > => {
+      return useMutation(getUpdateObraOrcamentoMutationOptions(options));
+    }
+
+export const getDeleteObraOrcamentoUrl = (tenantId: string,
+    obraId: string,
+    orcamentoId: string,) => {
+
+
+
+
+  return `/api/tenants/${tenantId}/obras/${obraId}/orcamentos/${orcamentoId}`
+}
+
+/**
+ * @summary Delete orcamento
+ */
+export const deleteObraOrcamento = async (tenantId: string,
+    obraId: string,
+    orcamentoId: string, options?: RequestInit): Promise<void> => {
+
+  return customFetch<void>(getDeleteObraOrcamentoUrl(tenantId,obraId,orcamentoId),
+  {
+    ...options,
+    method: 'DELETE'
+
+
+  }
+);}
+
+
+
+
+export const getDeleteObraOrcamentoMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof deleteObraOrcamento>>, TError,{tenantId: string;obraId: string;orcamentoId: string}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof deleteObraOrcamento>>, TError,{tenantId: string;obraId: string;orcamentoId: string}, TContext> => {
+
+const mutationKey = ['deleteObraOrcamento'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof deleteObraOrcamento>>, {tenantId: string;obraId: string;orcamentoId: string}> = (props) => {
+          const {tenantId,obraId,orcamentoId} = props ?? {};
+
+          return  deleteObraOrcamento(tenantId,obraId,orcamentoId,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type DeleteObraOrcamentoMutationResult = NonNullable<Awaited<ReturnType<typeof deleteObraOrcamento>>>
+
+    export type DeleteObraOrcamentoMutationError = ErrorType<unknown>
+
+    /**
+ * @summary Delete orcamento
+ */
+export const useDeleteObraOrcamento = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof deleteObraOrcamento>>, TError,{tenantId: string;obraId: string;orcamentoId: string}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof deleteObraOrcamento>>,
+        TError,
+        {tenantId: string;obraId: string;orcamentoId: string},
+        TContext
+      > => {
+      return useMutation(getDeleteObraOrcamentoMutationOptions(options));
+    }
+
+export const getDuplicateObraOrcamentoUrl = (tenantId: string,
+    obraId: string,
+    orcamentoId: string,) => {
+
+
+
+
+  return `/api/tenants/${tenantId}/obras/${obraId}/orcamentos/${orcamentoId}/duplicate`
+}
+
+/**
+ * @summary Duplicate orcamento as new version
+ */
+export const duplicateObraOrcamento = async (tenantId: string,
+    obraId: string,
+    orcamentoId: string, options?: RequestInit): Promise<ObraOrcamento> => {
+
+  return customFetch<ObraOrcamento>(getDuplicateObraOrcamentoUrl(tenantId,obraId,orcamentoId),
+  {
+    ...options,
+    method: 'POST'
+
+
+  }
+);}
+
+
+
+
+export const getDuplicateObraOrcamentoMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof duplicateObraOrcamento>>, TError,{tenantId: string;obraId: string;orcamentoId: string}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof duplicateObraOrcamento>>, TError,{tenantId: string;obraId: string;orcamentoId: string}, TContext> => {
+
+const mutationKey = ['duplicateObraOrcamento'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof duplicateObraOrcamento>>, {tenantId: string;obraId: string;orcamentoId: string}> = (props) => {
+          const {tenantId,obraId,orcamentoId} = props ?? {};
+
+          return  duplicateObraOrcamento(tenantId,obraId,orcamentoId,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type DuplicateObraOrcamentoMutationResult = NonNullable<Awaited<ReturnType<typeof duplicateObraOrcamento>>>
+
+    export type DuplicateObraOrcamentoMutationError = ErrorType<unknown>
+
+    /**
+ * @summary Duplicate orcamento as new version
+ */
+export const useDuplicateObraOrcamento = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof duplicateObraOrcamento>>, TError,{tenantId: string;obraId: string;orcamentoId: string}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof duplicateObraOrcamento>>,
+        TError,
+        {tenantId: string;obraId: string;orcamentoId: string},
+        TContext
+      > => {
+      return useMutation(getDuplicateObraOrcamentoMutationOptions(options));
+    }
+
+export const getCreateOrcamentoEtapaUrl = (tenantId: string,
+    obraId: string,
+    orcamentoId: string,) => {
+
+
+
+
+  return `/api/tenants/${tenantId}/obras/${obraId}/orcamentos/${orcamentoId}/etapas`
+}
+
+/**
+ * @summary Create etapa in orcamento
+ */
+export const createOrcamentoEtapa = async (tenantId: string,
+    obraId: string,
+    orcamentoId: string,
+    orcamentoEtapaInput: OrcamentoEtapaInput, options?: RequestInit): Promise<OrcamentoEtapa> => {
+
+  return customFetch<OrcamentoEtapa>(getCreateOrcamentoEtapaUrl(tenantId,obraId,orcamentoId),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(
+      orcamentoEtapaInput,)
+  }
+);}
+
+
+
+
+export const getCreateOrcamentoEtapaMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createOrcamentoEtapa>>, TError,{tenantId: string;obraId: string;orcamentoId: string;data: BodyType<OrcamentoEtapaInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof createOrcamentoEtapa>>, TError,{tenantId: string;obraId: string;orcamentoId: string;data: BodyType<OrcamentoEtapaInput>}, TContext> => {
+
+const mutationKey = ['createOrcamentoEtapa'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof createOrcamentoEtapa>>, {tenantId: string;obraId: string;orcamentoId: string;data: BodyType<OrcamentoEtapaInput>}> = (props) => {
+          const {tenantId,obraId,orcamentoId,data} = props ?? {};
+
+          return  createOrcamentoEtapa(tenantId,obraId,orcamentoId,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type CreateOrcamentoEtapaMutationResult = NonNullable<Awaited<ReturnType<typeof createOrcamentoEtapa>>>
+    export type CreateOrcamentoEtapaMutationBody = BodyType<OrcamentoEtapaInput>
+    export type CreateOrcamentoEtapaMutationError = ErrorType<unknown>
+
+    /**
+ * @summary Create etapa in orcamento
+ */
+export const useCreateOrcamentoEtapa = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createOrcamentoEtapa>>, TError,{tenantId: string;obraId: string;orcamentoId: string;data: BodyType<OrcamentoEtapaInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof createOrcamentoEtapa>>,
+        TError,
+        {tenantId: string;obraId: string;orcamentoId: string;data: BodyType<OrcamentoEtapaInput>},
+        TContext
+      > => {
+      return useMutation(getCreateOrcamentoEtapaMutationOptions(options));
+    }
+
+export const getUpdateOrcamentoEtapaUrl = (tenantId: string,
+    obraId: string,
+    orcamentoId: string,
+    etapaId: string,) => {
+
+
+
+
+  return `/api/tenants/${tenantId}/obras/${obraId}/orcamentos/${orcamentoId}/etapas/${etapaId}`
+}
+
+/**
+ * @summary Update orcamento etapa
+ */
+export const updateOrcamentoEtapa = async (tenantId: string,
+    obraId: string,
+    orcamentoId: string,
+    etapaId: string,
+    orcamentoEtapaInput: OrcamentoEtapaInput, options?: RequestInit): Promise<OrcamentoEtapa> => {
+
+  return customFetch<OrcamentoEtapa>(getUpdateOrcamentoEtapaUrl(tenantId,obraId,orcamentoId,etapaId),
+  {
+    ...options,
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(
+      orcamentoEtapaInput,)
+  }
+);}
+
+
+
+
+export const getUpdateOrcamentoEtapaMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updateOrcamentoEtapa>>, TError,{tenantId: string;obraId: string;orcamentoId: string;etapaId: string;data: BodyType<OrcamentoEtapaInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof updateOrcamentoEtapa>>, TError,{tenantId: string;obraId: string;orcamentoId: string;etapaId: string;data: BodyType<OrcamentoEtapaInput>}, TContext> => {
+
+const mutationKey = ['updateOrcamentoEtapa'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof updateOrcamentoEtapa>>, {tenantId: string;obraId: string;orcamentoId: string;etapaId: string;data: BodyType<OrcamentoEtapaInput>}> = (props) => {
+          const {tenantId,obraId,orcamentoId,etapaId,data} = props ?? {};
+
+          return  updateOrcamentoEtapa(tenantId,obraId,orcamentoId,etapaId,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type UpdateOrcamentoEtapaMutationResult = NonNullable<Awaited<ReturnType<typeof updateOrcamentoEtapa>>>
+    export type UpdateOrcamentoEtapaMutationBody = BodyType<OrcamentoEtapaInput>
+    export type UpdateOrcamentoEtapaMutationError = ErrorType<unknown>
+
+    /**
+ * @summary Update orcamento etapa
+ */
+export const useUpdateOrcamentoEtapa = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updateOrcamentoEtapa>>, TError,{tenantId: string;obraId: string;orcamentoId: string;etapaId: string;data: BodyType<OrcamentoEtapaInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof updateOrcamentoEtapa>>,
+        TError,
+        {tenantId: string;obraId: string;orcamentoId: string;etapaId: string;data: BodyType<OrcamentoEtapaInput>},
+        TContext
+      > => {
+      return useMutation(getUpdateOrcamentoEtapaMutationOptions(options));
+    }
+
+export const getDeleteOrcamentoEtapaUrl = (tenantId: string,
+    obraId: string,
+    orcamentoId: string,
+    etapaId: string,) => {
+
+
+
+
+  return `/api/tenants/${tenantId}/obras/${obraId}/orcamentos/${orcamentoId}/etapas/${etapaId}`
+}
+
+/**
+ * @summary Delete orcamento etapa
+ */
+export const deleteOrcamentoEtapa = async (tenantId: string,
+    obraId: string,
+    orcamentoId: string,
+    etapaId: string, options?: RequestInit): Promise<void> => {
+
+  return customFetch<void>(getDeleteOrcamentoEtapaUrl(tenantId,obraId,orcamentoId,etapaId),
+  {
+    ...options,
+    method: 'DELETE'
+
+
+  }
+);}
+
+
+
+
+export const getDeleteOrcamentoEtapaMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof deleteOrcamentoEtapa>>, TError,{tenantId: string;obraId: string;orcamentoId: string;etapaId: string}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof deleteOrcamentoEtapa>>, TError,{tenantId: string;obraId: string;orcamentoId: string;etapaId: string}, TContext> => {
+
+const mutationKey = ['deleteOrcamentoEtapa'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof deleteOrcamentoEtapa>>, {tenantId: string;obraId: string;orcamentoId: string;etapaId: string}> = (props) => {
+          const {tenantId,obraId,orcamentoId,etapaId} = props ?? {};
+
+          return  deleteOrcamentoEtapa(tenantId,obraId,orcamentoId,etapaId,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type DeleteOrcamentoEtapaMutationResult = NonNullable<Awaited<ReturnType<typeof deleteOrcamentoEtapa>>>
+
+    export type DeleteOrcamentoEtapaMutationError = ErrorType<unknown>
+
+    /**
+ * @summary Delete orcamento etapa
+ */
+export const useDeleteOrcamentoEtapa = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof deleteOrcamentoEtapa>>, TError,{tenantId: string;obraId: string;orcamentoId: string;etapaId: string}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof deleteOrcamentoEtapa>>,
+        TError,
+        {tenantId: string;obraId: string;orcamentoId: string;etapaId: string},
+        TContext
+      > => {
+      return useMutation(getDeleteOrcamentoEtapaMutationOptions(options));
+    }
+
+export const getCreateOrcamentoItemUrl = (tenantId: string,
+    obraId: string,
+    orcamentoId: string,
+    etapaId: string,) => {
+
+
+
+
+  return `/api/tenants/${tenantId}/obras/${obraId}/orcamentos/${orcamentoId}/etapas/${etapaId}/itens`
+}
+
+/**
+ * @summary Create item in orcamento etapa
+ */
+export const createOrcamentoItem = async (tenantId: string,
+    obraId: string,
+    orcamentoId: string,
+    etapaId: string,
+    orcamentoItemInput: OrcamentoItemInput, options?: RequestInit): Promise<OrcamentoItem> => {
+
+  return customFetch<OrcamentoItem>(getCreateOrcamentoItemUrl(tenantId,obraId,orcamentoId,etapaId),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(
+      orcamentoItemInput,)
+  }
+);}
+
+
+
+
+export const getCreateOrcamentoItemMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createOrcamentoItem>>, TError,{tenantId: string;obraId: string;orcamentoId: string;etapaId: string;data: BodyType<OrcamentoItemInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof createOrcamentoItem>>, TError,{tenantId: string;obraId: string;orcamentoId: string;etapaId: string;data: BodyType<OrcamentoItemInput>}, TContext> => {
+
+const mutationKey = ['createOrcamentoItem'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof createOrcamentoItem>>, {tenantId: string;obraId: string;orcamentoId: string;etapaId: string;data: BodyType<OrcamentoItemInput>}> = (props) => {
+          const {tenantId,obraId,orcamentoId,etapaId,data} = props ?? {};
+
+          return  createOrcamentoItem(tenantId,obraId,orcamentoId,etapaId,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type CreateOrcamentoItemMutationResult = NonNullable<Awaited<ReturnType<typeof createOrcamentoItem>>>
+    export type CreateOrcamentoItemMutationBody = BodyType<OrcamentoItemInput>
+    export type CreateOrcamentoItemMutationError = ErrorType<unknown>
+
+    /**
+ * @summary Create item in orcamento etapa
+ */
+export const useCreateOrcamentoItem = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createOrcamentoItem>>, TError,{tenantId: string;obraId: string;orcamentoId: string;etapaId: string;data: BodyType<OrcamentoItemInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof createOrcamentoItem>>,
+        TError,
+        {tenantId: string;obraId: string;orcamentoId: string;etapaId: string;data: BodyType<OrcamentoItemInput>},
+        TContext
+      > => {
+      return useMutation(getCreateOrcamentoItemMutationOptions(options));
+    }
+
+export const getUpdateOrcamentoItemUrl = (tenantId: string,
+    obraId: string,
+    orcamentoId: string,
+    etapaId: string,
+    itemId: string,) => {
+
+
+
+
+  return `/api/tenants/${tenantId}/obras/${obraId}/orcamentos/${orcamentoId}/etapas/${etapaId}/itens/${itemId}`
+}
+
+/**
+ * @summary Update orcamento item
+ */
+export const updateOrcamentoItem = async (tenantId: string,
+    obraId: string,
+    orcamentoId: string,
+    etapaId: string,
+    itemId: string,
+    orcamentoItemUpdate: OrcamentoItemUpdate, options?: RequestInit): Promise<OrcamentoItem> => {
+
+  return customFetch<OrcamentoItem>(getUpdateOrcamentoItemUrl(tenantId,obraId,orcamentoId,etapaId,itemId),
+  {
+    ...options,
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(
+      orcamentoItemUpdate,)
+  }
+);}
+
+
+
+
+export const getUpdateOrcamentoItemMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updateOrcamentoItem>>, TError,{tenantId: string;obraId: string;orcamentoId: string;etapaId: string;itemId: string;data: BodyType<OrcamentoItemUpdate>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof updateOrcamentoItem>>, TError,{tenantId: string;obraId: string;orcamentoId: string;etapaId: string;itemId: string;data: BodyType<OrcamentoItemUpdate>}, TContext> => {
+
+const mutationKey = ['updateOrcamentoItem'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof updateOrcamentoItem>>, {tenantId: string;obraId: string;orcamentoId: string;etapaId: string;itemId: string;data: BodyType<OrcamentoItemUpdate>}> = (props) => {
+          const {tenantId,obraId,orcamentoId,etapaId,itemId,data} = props ?? {};
+
+          return  updateOrcamentoItem(tenantId,obraId,orcamentoId,etapaId,itemId,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type UpdateOrcamentoItemMutationResult = NonNullable<Awaited<ReturnType<typeof updateOrcamentoItem>>>
+    export type UpdateOrcamentoItemMutationBody = BodyType<OrcamentoItemUpdate>
+    export type UpdateOrcamentoItemMutationError = ErrorType<unknown>
+
+    /**
+ * @summary Update orcamento item
+ */
+export const useUpdateOrcamentoItem = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updateOrcamentoItem>>, TError,{tenantId: string;obraId: string;orcamentoId: string;etapaId: string;itemId: string;data: BodyType<OrcamentoItemUpdate>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof updateOrcamentoItem>>,
+        TError,
+        {tenantId: string;obraId: string;orcamentoId: string;etapaId: string;itemId: string;data: BodyType<OrcamentoItemUpdate>},
+        TContext
+      > => {
+      return useMutation(getUpdateOrcamentoItemMutationOptions(options));
+    }
+
+export const getDeleteOrcamentoItemUrl = (tenantId: string,
+    obraId: string,
+    orcamentoId: string,
+    etapaId: string,
+    itemId: string,) => {
+
+
+
+
+  return `/api/tenants/${tenantId}/obras/${obraId}/orcamentos/${orcamentoId}/etapas/${etapaId}/itens/${itemId}`
+}
+
+/**
+ * @summary Delete orcamento item
+ */
+export const deleteOrcamentoItem = async (tenantId: string,
+    obraId: string,
+    orcamentoId: string,
+    etapaId: string,
+    itemId: string, options?: RequestInit): Promise<void> => {
+
+  return customFetch<void>(getDeleteOrcamentoItemUrl(tenantId,obraId,orcamentoId,etapaId,itemId),
+  {
+    ...options,
+    method: 'DELETE'
+
+
+  }
+);}
+
+
+
+
+export const getDeleteOrcamentoItemMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof deleteOrcamentoItem>>, TError,{tenantId: string;obraId: string;orcamentoId: string;etapaId: string;itemId: string}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof deleteOrcamentoItem>>, TError,{tenantId: string;obraId: string;orcamentoId: string;etapaId: string;itemId: string}, TContext> => {
+
+const mutationKey = ['deleteOrcamentoItem'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof deleteOrcamentoItem>>, {tenantId: string;obraId: string;orcamentoId: string;etapaId: string;itemId: string}> = (props) => {
+          const {tenantId,obraId,orcamentoId,etapaId,itemId} = props ?? {};
+
+          return  deleteOrcamentoItem(tenantId,obraId,orcamentoId,etapaId,itemId,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type DeleteOrcamentoItemMutationResult = NonNullable<Awaited<ReturnType<typeof deleteOrcamentoItem>>>
+
+    export type DeleteOrcamentoItemMutationError = ErrorType<unknown>
+
+    /**
+ * @summary Delete orcamento item
+ */
+export const useDeleteOrcamentoItem = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof deleteOrcamentoItem>>, TError,{tenantId: string;obraId: string;orcamentoId: string;etapaId: string;itemId: string}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof deleteOrcamentoItem>>,
+        TError,
+        {tenantId: string;obraId: string;orcamentoId: string;etapaId: string;itemId: string},
+        TContext
+      > => {
+      return useMutation(getDeleteOrcamentoItemMutationOptions(options));
     }
 
 export const getListVarejoColecoesUrl = (tenantId: string,) => {

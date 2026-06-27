@@ -3556,6 +3556,85 @@ export interface ObraEtapaUpdate {
   responsavel?: string;
 }
 
+export interface ObraOrcamento {
+  id: string;
+  tenantId: string;
+  obraId: string;
+  versao: number;
+  /** @nullable */
+  titulo?: string | null;
+  /** @nullable */
+  descricao?: string | null;
+  status: string;
+  bdiGlobal: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface ObraOrcamentoInput {
+  titulo?: string;
+  descricao?: string;
+  bdiGlobal?: string;
+}
+
+export interface ObraOrcamentoUpdate {
+  titulo?: string;
+  descricao?: string;
+  status?: string;
+  bdiGlobal?: string;
+}
+
+export interface OrcamentoItem {
+  id: string;
+  etapaId: string;
+  nome: string;
+  unidade: string;
+  quantidade: string;
+  custoUnitario: string;
+  /** @nullable */
+  bdi?: string | null;
+  ordem: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface OrcamentoEtapa {
+  id: string;
+  orcamentoId: string;
+  nome: string;
+  ordem: number;
+  createdAt: string;
+  updatedAt: string;
+  itens?: OrcamentoItem[];
+}
+
+export interface OrcamentoEtapaInput {
+  nome: string;
+  ordem?: number;
+}
+
+export interface OrcamentoItemInput {
+  nome: string;
+  unidade?: string;
+  quantidade?: string;
+  custoUnitario?: string;
+  bdi?: string;
+  ordem?: number;
+}
+
+export interface OrcamentoItemUpdate {
+  nome?: string;
+  unidade?: string;
+  quantidade?: string;
+  custoUnitario?: string;
+  bdi?: string;
+  ordem?: number;
+}
+
+export type ObraOrcamentoDetalhe = ObraOrcamento & {
+  etapas?: OrcamentoEtapa[];
+};
+
 export interface ObraEtapaMedicao {
   id: string;
   etapaId: string;

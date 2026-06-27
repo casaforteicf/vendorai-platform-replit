@@ -1,5 +1,5 @@
 import { Router, type IRouter } from "express";
-import { and, eq, desc, asc, ilike } from "drizzle-orm";
+import { and, eq, desc, asc, ilike, max, inArray } from "drizzle-orm";
 import {
   db,
   obrasTable,
@@ -13,6 +13,9 @@ import {
   composicoesTable,
   composicaoInsumosTable,
   comprasObrasTable,
+  obraOrcamentosTable,
+  obraOrcamentoEtapasTable,
+  obraOrcamentoItensTable,
   insertObraSchema,
   updateObraSchema,
   insertObraEtapaSchema,
@@ -20,6 +23,12 @@ import {
   insertObraEtapaMedicaoSchema,
   insertObraDiarioSchema,
   updateObraDiarioSchema,
+  insertObraOrcamentoSchema,
+  updateObraOrcamentoSchema,
+  insertObraOrcamentoEtapaSchema,
+  updateObraOrcamentoEtapaSchema,
+  insertObraOrcamentoItemSchema,
+  updateObraOrcamentoItemSchema,
 } from "@workspace/db";
 import { z } from "zod/v4";
 
@@ -574,6 +583,307 @@ router.delete("/tenants/:tenantId/composicoes/:composicaoId", async (req, res) =
   if (!canAccessTenant(req, tid)) return res.status(403).json({ error: "Forbidden" });
 
   await db.delete(composicoesTable).where(and(eq(composicoesTable.id, composicaoId), eq(composicoesTable.tenantId, tid)));
+  return res.status(204).end();
+});
+
+// ─── Orçamentos de Obra ───────────────────────────────────────────────────────
+
+async function getEtapasWithItens(orcamentoId: string) {
+  const etapas = await db
+    .select()
+    .from(obraOrcamentoEtapasTable)
+    .where(eq(obraOrcamentoEtapasTable.orcamentoId, orcamentoId))
+    .orderBy(asc(obraOrcamentoEtapasTable.ordem));
+
+  if (etapas.length === 0) return [];
+
+  const etapaIds = etapas.map((e) => e.id);
+  const allItens = await db
+    .select()
+    .from(obraOrcamentoItensTable)
+    .where(inArray(obraOrcamentoItensTable.etapaId, etapaIds))
+    .orderBy(asc(obraOrcamentoItensTable.ordem));
+
+  const byEtapa: Record<string, typeof allItens> = {};
+  for (const item of allItens) {
+    if (!byEtapa[item.etapaId]) byEtapa[item.etapaId] = [];
+    byEtapa[item.etapaId].push(item);
+  }
+
+  return etapas.map((e) => ({ ...e, itens: byEtapa[e.id] ?? [] }));
+}
+
+router.get("/tenants/:tenantId/obras/:obraId/orcamentos", async (req, res) => {
+  const { tenantId: tid, obraId } = req.params;
+  if (!canAccessTenant(req, tid)) return res.status(403).json({ error: "Forbidden" });
+
+  const rows = await db
+    .select()
+    .from(obraOrcamentosTable)
+    .where(and(eq(obraOrcamentosTable.tenantId, tid), eq(obraOrcamentosTable.obraId, obraId)))
+    .orderBy(asc(obraOrcamentosTable.versao));
+  return res.json(rows);
+});
+
+router.post("/tenants/:tenantId/obras/:obraId/orcamentos", async (req, res) => {
+  const { tenantId: tid, obraId } = req.params;
+  if (!canAccessTenant(req, tid)) return res.status(403).json({ error: "Forbidden" });
+
+  // auto-increment versao
+  const [maxRow] = await db
+    .select({ v: max(obraOrcamentosTable.versao) })
+    .from(obraOrcamentosTable)
+    .where(and(eq(obraOrcamentosTable.tenantId, tid), eq(obraOrcamentosTable.obraId, obraId)));
+  const nextVersao = (maxRow?.v ?? 0) + 1;
+
+  const parsed = insertObraOrcamentoSchema.safeParse({
+    ...req.body,
+    tenantId: tid,
+    obraId,
+    versao: nextVersao,
+  });
+  if (!parsed.success) return res.status(422).json({ error: parsed.error.message });
+
+  const [row] = await db.insert(obraOrcamentosTable).values(parsed.data).returning();
+  return res.status(201).json(row);
+});
+
+router.get("/tenants/:tenantId/obras/:obraId/orcamentos/:orcamentoId", async (req, res) => {
+  const { tenantId: tid, obraId, orcamentoId } = req.params;
+  if (!canAccessTenant(req, tid)) return res.status(403).json({ error: "Forbidden" });
+
+  const [orcamento] = await db
+    .select()
+    .from(obraOrcamentosTable)
+    .where(and(
+      eq(obraOrcamentosTable.id, orcamentoId),
+      eq(obraOrcamentosTable.tenantId, tid),
+      eq(obraOrcamentosTable.obraId, obraId),
+    ));
+  if (!orcamento) return res.status(404).json({ error: "Not found" });
+
+  const etapas = await getEtapasWithItens(orcamentoId);
+  return res.json({ ...orcamento, etapas });
+});
+
+router.put("/tenants/:tenantId/obras/:obraId/orcamentos/:orcamentoId", async (req, res) => {
+  const { tenantId: tid, obraId, orcamentoId } = req.params;
+  if (!canAccessTenant(req, tid)) return res.status(403).json({ error: "Forbidden" });
+
+  const parsed = updateObraOrcamentoSchema.safeParse(req.body);
+  if (!parsed.success) return res.status(422).json({ error: parsed.error.message });
+
+  const [row] = await db
+    .update(obraOrcamentosTable)
+    .set({ ...parsed.data, updatedAt: new Date() })
+    .where(and(
+      eq(obraOrcamentosTable.id, orcamentoId),
+      eq(obraOrcamentosTable.tenantId, tid),
+      eq(obraOrcamentosTable.obraId, obraId),
+    ))
+    .returning();
+  if (!row) return res.status(404).json({ error: "Not found" });
+  return res.json(row);
+});
+
+router.delete("/tenants/:tenantId/obras/:obraId/orcamentos/:orcamentoId", async (req, res) => {
+  const { tenantId: tid, obraId, orcamentoId } = req.params;
+  if (!canAccessTenant(req, tid)) return res.status(403).json({ error: "Forbidden" });
+
+  await db
+    .delete(obraOrcamentosTable)
+    .where(and(
+      eq(obraOrcamentosTable.id, orcamentoId),
+      eq(obraOrcamentosTable.tenantId, tid),
+      eq(obraOrcamentosTable.obraId, obraId),
+    ));
+  return res.status(204).end();
+});
+
+router.post("/tenants/:tenantId/obras/:obraId/orcamentos/:orcamentoId/duplicate", async (req, res) => {
+  const { tenantId: tid, obraId, orcamentoId } = req.params;
+  if (!canAccessTenant(req, tid)) return res.status(403).json({ error: "Forbidden" });
+
+  const [original] = await db
+    .select()
+    .from(obraOrcamentosTable)
+    .where(and(eq(obraOrcamentosTable.id, orcamentoId), eq(obraOrcamentosTable.tenantId, tid)));
+  if (!original) return res.status(404).json({ error: "Not found" });
+
+  const [maxRow] = await db
+    .select({ v: max(obraOrcamentosTable.versao) })
+    .from(obraOrcamentosTable)
+    .where(and(eq(obraOrcamentosTable.tenantId, tid), eq(obraOrcamentosTable.obraId, obraId)));
+  const nextVersao = (maxRow?.v ?? 0) + 1;
+
+  const [novo] = await db
+    .insert(obraOrcamentosTable)
+    .values({
+      tenantId: tid,
+      obraId,
+      versao: nextVersao,
+      titulo: original.titulo ? `${original.titulo} (cópia)` : null,
+      descricao: original.descricao,
+      status: "rascunho",
+      bdiGlobal: original.bdiGlobal,
+    })
+    .returning();
+
+  // duplicate etapas and itens
+  const etapasOriginais = await db
+    .select()
+    .from(obraOrcamentoEtapasTable)
+    .where(eq(obraOrcamentoEtapasTable.orcamentoId, orcamentoId))
+    .orderBy(asc(obraOrcamentoEtapasTable.ordem));
+
+  for (const etapa of etapasOriginais) {
+    const [novaEtapa] = await db
+      .insert(obraOrcamentoEtapasTable)
+      .values({ orcamentoId: novo.id, nome: etapa.nome, ordem: etapa.ordem })
+      .returning();
+
+    const itensOriginais = await db
+      .select()
+      .from(obraOrcamentoItensTable)
+      .where(eq(obraOrcamentoItensTable.etapaId, etapa.id))
+      .orderBy(asc(obraOrcamentoItensTable.ordem));
+
+    if (itensOriginais.length > 0) {
+      await db.insert(obraOrcamentoItensTable).values(
+        itensOriginais.map((i) => ({
+          etapaId: novaEtapa.id,
+          nome: i.nome,
+          unidade: i.unidade,
+          quantidade: i.quantidade,
+          custoUnitario: i.custoUnitario,
+          bdi: i.bdi,
+          ordem: i.ordem,
+        }))
+      );
+    }
+  }
+
+  return res.status(201).json(novo);
+});
+
+// ─── Etapas do orçamento ──────────────────────────────────────────────────────
+
+router.post("/tenants/:tenantId/obras/:obraId/orcamentos/:orcamentoId/etapas", async (req, res) => {
+  const { tenantId: tid, obraId, orcamentoId } = req.params;
+  if (!canAccessTenant(req, tid)) return res.status(403).json({ error: "Forbidden" });
+
+  // verify orcamento belongs to this tenant/obra
+  const [orc] = await db
+    .select({ id: obraOrcamentosTable.id, status: obraOrcamentosTable.status })
+    .from(obraOrcamentosTable)
+    .where(and(eq(obraOrcamentosTable.id, orcamentoId), eq(obraOrcamentosTable.tenantId, tid), eq(obraOrcamentosTable.obraId, obraId)));
+  if (!orc) return res.status(404).json({ error: "Orçamento not found" });
+  if (orc.status === "aprovado") return res.status(409).json({ error: "Orçamento aprovado não pode ser editado" });
+
+  const parsed = insertObraOrcamentoEtapaSchema.safeParse({ ...req.body, orcamentoId });
+  if (!parsed.success) return res.status(422).json({ error: parsed.error.message });
+
+  const [row] = await db.insert(obraOrcamentoEtapasTable).values(parsed.data).returning();
+  return res.status(201).json({ ...row, itens: [] });
+});
+
+router.put("/tenants/:tenantId/obras/:obraId/orcamentos/:orcamentoId/etapas/:etapaId", async (req, res) => {
+  const { tenantId: tid, obraId, orcamentoId, etapaId } = req.params;
+  if (!canAccessTenant(req, tid)) return res.status(403).json({ error: "Forbidden" });
+
+  const [orc] = await db
+    .select({ status: obraOrcamentosTable.status })
+    .from(obraOrcamentosTable)
+    .where(and(eq(obraOrcamentosTable.id, orcamentoId), eq(obraOrcamentosTable.tenantId, tid), eq(obraOrcamentosTable.obraId, obraId)));
+  if (!orc) return res.status(404).json({ error: "Orçamento not found" });
+  if (orc.status === "aprovado") return res.status(409).json({ error: "Orçamento aprovado não pode ser editado" });
+
+  const parsed = updateObraOrcamentoEtapaSchema.safeParse(req.body);
+  if (!parsed.success) return res.status(422).json({ error: parsed.error.message });
+
+  const [row] = await db
+    .update(obraOrcamentoEtapasTable)
+    .set({ ...parsed.data, updatedAt: new Date() })
+    .where(and(eq(obraOrcamentoEtapasTable.id, etapaId), eq(obraOrcamentoEtapasTable.orcamentoId, orcamentoId)))
+    .returning();
+  if (!row) return res.status(404).json({ error: "Etapa not found" });
+  return res.json(row);
+});
+
+router.delete("/tenants/:tenantId/obras/:obraId/orcamentos/:orcamentoId/etapas/:etapaId", async (req, res) => {
+  const { tenantId: tid, obraId, orcamentoId, etapaId } = req.params;
+  if (!canAccessTenant(req, tid)) return res.status(403).json({ error: "Forbidden" });
+
+  const [orc] = await db
+    .select({ status: obraOrcamentosTable.status })
+    .from(obraOrcamentosTable)
+    .where(and(eq(obraOrcamentosTable.id, orcamentoId), eq(obraOrcamentosTable.tenantId, tid), eq(obraOrcamentosTable.obraId, obraId)));
+  if (!orc) return res.status(404).json({ error: "Orçamento not found" });
+  if (orc.status === "aprovado") return res.status(409).json({ error: "Orçamento aprovado não pode ser editado" });
+
+  await db
+    .delete(obraOrcamentoEtapasTable)
+    .where(and(eq(obraOrcamentoEtapasTable.id, etapaId), eq(obraOrcamentoEtapasTable.orcamentoId, orcamentoId)));
+  return res.status(204).end();
+});
+
+// ─── Itens do orçamento ───────────────────────────────────────────────────────
+
+router.post("/tenants/:tenantId/obras/:obraId/orcamentos/:orcamentoId/etapas/:etapaId/itens", async (req, res) => {
+  const { tenantId: tid, obraId, orcamentoId, etapaId } = req.params;
+  if (!canAccessTenant(req, tid)) return res.status(403).json({ error: "Forbidden" });
+
+  const [orc] = await db
+    .select({ status: obraOrcamentosTable.status })
+    .from(obraOrcamentosTable)
+    .where(and(eq(obraOrcamentosTable.id, orcamentoId), eq(obraOrcamentosTable.tenantId, tid), eq(obraOrcamentosTable.obraId, obraId)));
+  if (!orc) return res.status(404).json({ error: "Orçamento not found" });
+  if (orc.status === "aprovado") return res.status(409).json({ error: "Orçamento aprovado não pode ser editado" });
+
+  const parsed = insertObraOrcamentoItemSchema.safeParse({ ...req.body, etapaId });
+  if (!parsed.success) return res.status(422).json({ error: parsed.error.message });
+
+  const [row] = await db.insert(obraOrcamentoItensTable).values(parsed.data).returning();
+  return res.status(201).json(row);
+});
+
+router.put("/tenants/:tenantId/obras/:obraId/orcamentos/:orcamentoId/etapas/:etapaId/itens/:itemId", async (req, res) => {
+  const { tenantId: tid, obraId, orcamentoId, etapaId, itemId } = req.params;
+  if (!canAccessTenant(req, tid)) return res.status(403).json({ error: "Forbidden" });
+
+  const [orc] = await db
+    .select({ status: obraOrcamentosTable.status })
+    .from(obraOrcamentosTable)
+    .where(and(eq(obraOrcamentosTable.id, orcamentoId), eq(obraOrcamentosTable.tenantId, tid), eq(obraOrcamentosTable.obraId, obraId)));
+  if (!orc) return res.status(404).json({ error: "Orçamento not found" });
+  if (orc.status === "aprovado") return res.status(409).json({ error: "Orçamento aprovado não pode ser editado" });
+
+  const parsed = updateObraOrcamentoItemSchema.safeParse(req.body);
+  if (!parsed.success) return res.status(422).json({ error: parsed.error.message });
+
+  const [row] = await db
+    .update(obraOrcamentoItensTable)
+    .set({ ...parsed.data, updatedAt: new Date() })
+    .where(and(eq(obraOrcamentoItensTable.id, itemId), eq(obraOrcamentoItensTable.etapaId, etapaId)))
+    .returning();
+  if (!row) return res.status(404).json({ error: "Item not found" });
+  return res.json(row);
+});
+
+router.delete("/tenants/:tenantId/obras/:obraId/orcamentos/:orcamentoId/etapas/:etapaId/itens/:itemId", async (req, res) => {
+  const { tenantId: tid, obraId, orcamentoId, etapaId, itemId } = req.params;
+  if (!canAccessTenant(req, tid)) return res.status(403).json({ error: "Forbidden" });
+
+  const [orc] = await db
+    .select({ status: obraOrcamentosTable.status })
+    .from(obraOrcamentosTable)
+    .where(and(eq(obraOrcamentosTable.id, orcamentoId), eq(obraOrcamentosTable.tenantId, tid), eq(obraOrcamentosTable.obraId, obraId)));
+  if (!orc) return res.status(404).json({ error: "Orçamento not found" });
+  if (orc.status === "aprovado") return res.status(409).json({ error: "Orçamento aprovado não pode ser editado" });
+
+  await db
+    .delete(obraOrcamentoItensTable)
+    .where(and(eq(obraOrcamentoItensTable.id, itemId), eq(obraOrcamentoItensTable.etapaId, etapaId)));
   return res.status(204).end();
 });
 

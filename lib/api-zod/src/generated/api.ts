@@ -7576,6 +7576,267 @@ export const DeleteComposicaoParams = zod.object({
 
 
 /**
+ * @summary List orcamentos for obra
+ */
+export const ListObraOrcamentosParams = zod.object({
+  "tenantId": zod.coerce.string(),
+  "obraId": zod.coerce.string()
+})
+
+export const ListObraOrcamentosResponseItem = zod.object({
+  "id": zod.string(),
+  "tenantId": zod.string(),
+  "obraId": zod.string(),
+  "versao": zod.number(),
+  "titulo": zod.string().nullish(),
+  "descricao": zod.string().nullish(),
+  "status": zod.string(),
+  "bdiGlobal": zod.string(),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date()
+})
+export const ListObraOrcamentosResponse = zod.array(ListObraOrcamentosResponseItem)
+
+
+/**
+ * @summary Create orcamento
+ */
+export const CreateObraOrcamentoParams = zod.object({
+  "tenantId": zod.coerce.string(),
+  "obraId": zod.coerce.string()
+})
+
+export const CreateObraOrcamentoBody = zod.object({
+  "titulo": zod.string().optional(),
+  "descricao": zod.string().optional(),
+  "bdiGlobal": zod.string().optional()
+})
+
+
+/**
+ * @summary Get orcamento with etapas and itens
+ */
+export const GetObraOrcamentoParams = zod.object({
+  "tenantId": zod.coerce.string(),
+  "obraId": zod.coerce.string(),
+  "orcamentoId": zod.coerce.string()
+})
+
+export const GetObraOrcamentoResponse = zod.object({
+  "id": zod.string(),
+  "tenantId": zod.string(),
+  "obraId": zod.string(),
+  "versao": zod.number(),
+  "titulo": zod.string().nullish(),
+  "descricao": zod.string().nullish(),
+  "status": zod.string(),
+  "bdiGlobal": zod.string(),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date()
+}).and(zod.object({
+  "etapas": zod.array(zod.object({
+  "id": zod.string(),
+  "orcamentoId": zod.string(),
+  "nome": zod.string(),
+  "ordem": zod.number(),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date(),
+  "itens": zod.array(zod.object({
+  "id": zod.string(),
+  "etapaId": zod.string(),
+  "nome": zod.string(),
+  "unidade": zod.string(),
+  "quantidade": zod.string(),
+  "custoUnitario": zod.string(),
+  "bdi": zod.string().nullish(),
+  "ordem": zod.number(),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date()
+})).optional()
+})).optional()
+}))
+
+
+/**
+ * @summary Update orcamento (status, bdi, title)
+ */
+export const UpdateObraOrcamentoParams = zod.object({
+  "tenantId": zod.coerce.string(),
+  "obraId": zod.coerce.string(),
+  "orcamentoId": zod.coerce.string()
+})
+
+export const UpdateObraOrcamentoBody = zod.object({
+  "titulo": zod.string().optional(),
+  "descricao": zod.string().optional(),
+  "status": zod.string().optional(),
+  "bdiGlobal": zod.string().optional()
+})
+
+export const UpdateObraOrcamentoResponse = zod.object({
+  "id": zod.string(),
+  "tenantId": zod.string(),
+  "obraId": zod.string(),
+  "versao": zod.number(),
+  "titulo": zod.string().nullish(),
+  "descricao": zod.string().nullish(),
+  "status": zod.string(),
+  "bdiGlobal": zod.string(),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date()
+})
+
+
+/**
+ * @summary Delete orcamento
+ */
+export const DeleteObraOrcamentoParams = zod.object({
+  "tenantId": zod.coerce.string(),
+  "obraId": zod.coerce.string(),
+  "orcamentoId": zod.coerce.string()
+})
+
+
+/**
+ * @summary Duplicate orcamento as new version
+ */
+export const DuplicateObraOrcamentoParams = zod.object({
+  "tenantId": zod.coerce.string(),
+  "obraId": zod.coerce.string(),
+  "orcamentoId": zod.coerce.string()
+})
+
+
+/**
+ * @summary Create etapa in orcamento
+ */
+export const CreateOrcamentoEtapaParams = zod.object({
+  "tenantId": zod.coerce.string(),
+  "obraId": zod.coerce.string(),
+  "orcamentoId": zod.coerce.string()
+})
+
+export const CreateOrcamentoEtapaBody = zod.object({
+  "nome": zod.string(),
+  "ordem": zod.number().optional()
+})
+
+
+/**
+ * @summary Update orcamento etapa
+ */
+export const UpdateOrcamentoEtapaParams = zod.object({
+  "tenantId": zod.coerce.string(),
+  "obraId": zod.coerce.string(),
+  "orcamentoId": zod.coerce.string(),
+  "etapaId": zod.coerce.string()
+})
+
+export const UpdateOrcamentoEtapaBody = zod.object({
+  "nome": zod.string(),
+  "ordem": zod.number().optional()
+})
+
+export const UpdateOrcamentoEtapaResponse = zod.object({
+  "id": zod.string(),
+  "orcamentoId": zod.string(),
+  "nome": zod.string(),
+  "ordem": zod.number(),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date(),
+  "itens": zod.array(zod.object({
+  "id": zod.string(),
+  "etapaId": zod.string(),
+  "nome": zod.string(),
+  "unidade": zod.string(),
+  "quantidade": zod.string(),
+  "custoUnitario": zod.string(),
+  "bdi": zod.string().nullish(),
+  "ordem": zod.number(),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date()
+})).optional()
+})
+
+
+/**
+ * @summary Delete orcamento etapa
+ */
+export const DeleteOrcamentoEtapaParams = zod.object({
+  "tenantId": zod.coerce.string(),
+  "obraId": zod.coerce.string(),
+  "orcamentoId": zod.coerce.string(),
+  "etapaId": zod.coerce.string()
+})
+
+
+/**
+ * @summary Create item in orcamento etapa
+ */
+export const CreateOrcamentoItemParams = zod.object({
+  "tenantId": zod.coerce.string(),
+  "obraId": zod.coerce.string(),
+  "orcamentoId": zod.coerce.string(),
+  "etapaId": zod.coerce.string()
+})
+
+export const CreateOrcamentoItemBody = zod.object({
+  "nome": zod.string(),
+  "unidade": zod.string().optional(),
+  "quantidade": zod.string().optional(),
+  "custoUnitario": zod.string().optional(),
+  "bdi": zod.string().optional(),
+  "ordem": zod.number().optional()
+})
+
+
+/**
+ * @summary Update orcamento item
+ */
+export const UpdateOrcamentoItemParams = zod.object({
+  "tenantId": zod.coerce.string(),
+  "obraId": zod.coerce.string(),
+  "orcamentoId": zod.coerce.string(),
+  "etapaId": zod.coerce.string(),
+  "itemId": zod.coerce.string()
+})
+
+export const UpdateOrcamentoItemBody = zod.object({
+  "nome": zod.string().optional(),
+  "unidade": zod.string().optional(),
+  "quantidade": zod.string().optional(),
+  "custoUnitario": zod.string().optional(),
+  "bdi": zod.string().optional(),
+  "ordem": zod.number().optional()
+})
+
+export const UpdateOrcamentoItemResponse = zod.object({
+  "id": zod.string(),
+  "etapaId": zod.string(),
+  "nome": zod.string(),
+  "unidade": zod.string(),
+  "quantidade": zod.string(),
+  "custoUnitario": zod.string(),
+  "bdi": zod.string().nullish(),
+  "ordem": zod.number(),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date()
+})
+
+
+/**
+ * @summary Delete orcamento item
+ */
+export const DeleteOrcamentoItemParams = zod.object({
+  "tenantId": zod.coerce.string(),
+  "obraId": zod.coerce.string(),
+  "orcamentoId": zod.coerce.string(),
+  "etapaId": zod.coerce.string(),
+  "itemId": zod.coerce.string()
+})
+
+
+/**
  * @summary List coleções
  */
 export const ListVarejoColecoesParams = zod.object({
