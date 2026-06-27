@@ -1,52 +1,71 @@
 import { useState, useRef } from "react";
 import { useAuth } from "@/contexts/AuthContext";
-import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
-import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Textarea } from "@/components/ui/textarea";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
 import {
   Loader2, Copy, CheckCheck, Sparkles, TrendingUp, Anchor, Clapperboard,
-  RefreshCw, Upload, X, Video, Image as ImageIcon,
+  RefreshCw, Upload, X, Video,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 const TABS = [
-  { id: "workflow",  label: "Fluxo",       icon: RefreshCw,    ph: "Ex: vendas B2B, nutrição, moda..." },
-  { id: "trends",   label: "Tendências",   icon: TrendingUp,   ph: "Ex: fitness, finanças pessoais..." },
-  { id: "hooks",    label: "Ganchos",      icon: Anchor,       ph: "Ex: marketing digital, emagrecimento..." },
-  { id: "script",   label: "Script",       icon: Clapperboard, ph: "Ex: Como dobrar suas vendas em 30 dias" },
+  { id: "workflow", label: "Fluxo",      ph: "Ex: vendas B2B, nutrição, moda..." },
+  { id: "trends",  label: "Tendências", ph: "Ex: fitness, finanças pessoais..." },
+  { id: "hooks",   label: "Ganchos",    ph: "Ex: marketing digital, emagrecimento..." },
+  { id: "script",  label: "Script",     ph: "Ex: Como dobrar suas vendas em 30 dias" },
 ] as const;
-
 type TabId = (typeof TABS)[number]["id"];
+
+type VStatus =
+  | "idle"
+  | "uploading"       // 1. enviando vídeo → HeyGen
+  | "creating_avatar" // 2. criando avatar
+  | "waiting_avatar"  // 3. aguardando processamento do avatar
+  | "generating"      // 4. gerando vídeo
+  | "polling"         // 5. aguardando vídeo ficar pronto
+  | "done"
+  | "error";
+
+const STATUS_LABEL: Record<VStatus, string> = {
+  idle:           "",
+  uploading:      "Enviando vídeo...",
+  creating_avatar:"Criando avatar com sua imagem...",
+  waiting_avatar: "Processando avatar (pode levar alguns minutos)...",
+  generating:     "Iniciando geração do vídeo...",
+  polling:        "Aguardando vídeo finalizar...",
+  done:           "",
+  error:          "",
+};
+
+function authHeader() {
+  return { Authorization: `Bearer ${localStorage.getItem("vendorai_token")}` };
+}
 
 export default function ContentStudio() {
   const { user } = useAuth();
   const tenantId = user?.tenantId ?? "";
   const { toast } = useToast();
 
-  const [tab, setTab]         = useState<TabId>("script");
-  const [input, setInput]     = useState("");
-  const [result, setResult]   = useState("");
+  // Script IA
+  const [tab, setTab]       = useState<TabId>("script");
+  const [input, setInput]   = useState("");
+  const [result, setResult] = useState("");
   const [loading, setLoading] = useState(false);
   const [copied, setCopied]   = useState(false);
 
-  const [photo, setPhoto]     = useState<File | null>(null);
-  const [preview, setPreview] = useState<string | null>(null);
-  const fileRef               = useRef<HTMLInputElement>(null);
-
-  const [apiKey, setApiKey]         = useState("");
-  const [showVideo, setShowVideo]   = useState(false);
-  const [vScript, setVScript]       = useState("");
-  const [vStatus, setVStatus]       = useState<"idle" | "uploading" | "generating" | "polling" | "done" | "error">("idle");
-  const [vUrl, setVUrl]             = useState("");
-  const [vError, setVError]         = useState("");
+  // Vídeo HeyGen
+  const [videoFile, setVideoFile]     = useState<File | null>(null);
+  const [videoPreview, setVideoPreview] = useState<string | null>(null);
+  const [showVideo, setShowVideo]     = useState(false);
+  const [vScript, setVScript]         = useState("");
+  const [vStatus, setVStatus]         = useState<VStatus>("idle");
+  const [vUrl, setVUrl]               = useState("");
+  const [vError, setVError]           = useState("");
+  const [avatarId, setAvatarId]       = useState("");
+  const fileRef = useRef<HTMLInputElement>(null);
 
   const currentTab = TABS.find((t) => t.id === tab)!;
 
+  // ── Script generation ──────────────────────────────────────────────────────
   const generate = async () => {
     if (!input.trim() || !tenantId) return;
     setLoading(true);
@@ -54,126 +73,18 @@ export default function ContentStudio() {
     try {
       const res = await fetch(`/api/tenants/${tenantId}/content-studio/generate`, {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${localStorage.getItem("vendorai_token")}`,
-        },
+        headers: { "Content-Type": "application/json", ...authHeader() },
         body: JSON.stringify({ tab, input: input.trim() }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Erro na geração");
       const text = data.result ?? "Sem resposta";
       setResult(text);
-      setVScript(text.substring(0, 800));
+      setVScript(text.substring(0, 1500));
     } catch (err) {
-      const msg = err instanceof Error ? err.message : "Erro ao conectar.";
-      toast({ title: "Erro", description: msg, variant: "destructive" });
+      toast({ title: "Erro", description: err instanceof Error ? err.message : "Erro ao conectar", variant: "destructive" });
     } finally {
       setLoading(false);
-    }
-  };
-
-  const handlePhoto = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const f = e.target.files?.[0];
-    if (!f) return;
-    setPhoto(f);
-    const reader = new FileReader();
-    reader.onload = (ev) => setPreview(ev.target?.result as string);
-    reader.readAsDataURL(f);
-  };
-
-  const removePhoto = () => {
-    setPhoto(null);
-    setPreview(null);
-    if (fileRef.current) fileRef.current.value = "";
-  };
-
-  const genVideo = async () => {
-    if (!apiKey || !photo || !vScript) return;
-    setVStatus("uploading");
-    setVError("");
-    setVUrl("");
-    try {
-      const b64 = await new Promise<string>((res, rej) => {
-        const r = new FileReader();
-        r.onload = () => res((r.result as string).split(",")[1]);
-        r.onerror = rej;
-        r.readAsDataURL(photo!);
-      });
-
-      const up = await fetch("https://upload.heygen.com/v1/asset", {
-        method: "POST",
-        headers: { "X-Api-Key": apiKey, "Content-Type": "image/jpeg" },
-        body: Uint8Array.from(atob(b64), (c) => c.charCodeAt(0)),
-      });
-      const upData = await up.json();
-      if (!upData.data?.url) throw new Error("Falha no upload da imagem");
-
-      setVStatus("generating");
-
-      const av = await fetch("https://api.heygen.com/v2/photo_avatar", {
-        method: "POST",
-        headers: { "X-Api-Key": apiKey, "Content-Type": "application/json" },
-        body: JSON.stringify({ image_url: upData.data.url, name: "Avatar" }),
-      });
-      const avData = await av.json();
-      if (!avData.data?.photo_avatar_id) throw new Error("Falha ao criar avatar");
-      const avatarId: string = avData.data.photo_avatar_id;
-
-      const vid = await fetch("https://api.heygen.com/v2/video/generate", {
-        method: "POST",
-        headers: { "X-Api-Key": apiKey, "Content-Type": "application/json" },
-        body: JSON.stringify({
-          video_inputs: [
-            {
-              character: { type: "avatar", avatar_id: avatarId, avatar_style: "normal" },
-              voice: { type: "text", input_text: vScript, voice_id: "en-US-JennyNeural" },
-            },
-          ],
-          dimension: { width: 1280, height: 720 },
-        }),
-      });
-      const vidData = await vid.json();
-      if (!vidData.data?.video_id) throw new Error("Falha ao iniciar geração do vídeo");
-      const videoId: string = vidData.data.video_id;
-
-      setVStatus("polling");
-
-      await new Promise<void>((resolve, reject) => {
-        let attempts = 0;
-        const MAX = 60;
-        const poll = setInterval(async () => {
-          attempts++;
-          if (attempts > MAX) {
-            clearInterval(poll);
-            reject(new Error("Tempo limite excedido aguardando o vídeo"));
-            return;
-          }
-          try {
-            const st = await fetch(
-              `https://api.heygen.com/v1/video_status.get?video_id=${videoId}`,
-              { headers: { "X-Api-Key": apiKey } },
-            );
-            const stData = await st.json();
-            const status = stData.data?.status as string | undefined;
-            if (status === "completed") {
-              clearInterval(poll);
-              setVUrl(stData.data.video_url ?? "");
-              setVStatus("done");
-              resolve();
-            } else if (status === "failed") {
-              clearInterval(poll);
-              reject(new Error(stData.data?.error ?? "Geração do vídeo falhou"));
-            }
-          } catch {
-            // continua tentando
-          }
-        }, 5000);
-      });
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : "Erro desconhecido";
-      setVError(msg);
-      setVStatus("error");
     }
   };
 
@@ -188,6 +99,123 @@ export default function ContentStudio() {
     if ((e.metaKey || e.ctrlKey) && e.key === "Enter") generate();
   };
 
+  // ── Vídeo upload preview ───────────────────────────────────────────────────
+  const handleVideoSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const f = e.target.files?.[0];
+    if (!f) return;
+    setVideoFile(f);
+    setVideoPreview(URL.createObjectURL(f));
+    setAvatarId("");
+    setVStatus("idle");
+    setVUrl("");
+    setVError("");
+  };
+
+  const removeVideo = () => {
+    setVideoFile(null);
+    setVideoPreview(null);
+    setAvatarId("");
+    setVStatus("idle");
+    setVUrl("");
+    setVError("");
+    if (fileRef.current) fileRef.current.value = "";
+  };
+
+  // ── HeyGen video generation (4 steps via backend) ─────────────────────────
+  const genVideo = async () => {
+    if (!videoFile || !vScript || !tenantId) return;
+    setVError("");
+    setVUrl("");
+
+    const base = `/api/tenants/${tenantId}/content-studio/heygen`;
+    const headers = authHeader();
+
+    try {
+      // STEP 1 — upload vídeo
+      setVStatus("uploading");
+      const formData = new FormData();
+      formData.append("video", videoFile);
+      const upRes = await fetch(`${base}/upload-video`, { method: "POST", headers, body: formData });
+      const upData = await upRes.json();
+      if (!upRes.ok) throw new Error(upData.error ?? "Falha no upload do vídeo");
+      const assetUrl: string = upData.assetUrl;
+
+      // STEP 2 — criar avatar (reutiliza se já existe)
+      let avId = avatarId;
+      if (!avId) {
+        setVStatus("creating_avatar");
+        const avRes = await fetch(`${base}/create-avatar`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json", ...headers },
+          body: JSON.stringify({ assetUrl }),
+        });
+        const avData = await avRes.json();
+        if (!avRes.ok) throw new Error(avData.error ?? "Falha ao criar avatar");
+        avId = avData.avatarId;
+        setAvatarId(avId);
+      }
+
+      // STEP 3 — aguardar avatar ficar pronto
+      setVStatus("waiting_avatar");
+      await new Promise<void>((resolve, reject) => {
+        let attempts = 0;
+        const MAX = 72; // 6 min (5s x 72)
+        const poll = setInterval(async () => {
+          attempts++;
+          if (attempts > MAX) { clearInterval(poll); reject(new Error("Tempo limite excedido no processamento do avatar")); return; }
+          try {
+            const stRes = await fetch(`${base}/avatar-status/${avId}`, { headers });
+            const stData = await stRes.json();
+            if (stData.status === "completed") { clearInterval(poll); resolve(); }
+            else if (stData.status === "failed") { clearInterval(poll); reject(new Error("Processamento do avatar falhou")); }
+          } catch { /* ignora e tenta novamente */ }
+        }, 5000);
+      });
+
+      // STEP 4 — gerar vídeo
+      setVStatus("generating");
+      const vidRes = await fetch(`${base}/generate-video`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", ...headers },
+        body: JSON.stringify({ avatarId: avId, script: vScript }),
+      });
+      const vidData = await vidRes.json();
+      if (!vidRes.ok) throw new Error(vidData.error ?? "Falha ao iniciar geração");
+      const videoId: string = vidData.videoId;
+
+      // STEP 5 — aguardar vídeo
+      setVStatus("polling");
+      await new Promise<void>((resolve, reject) => {
+        let attempts = 0;
+        const MAX = 72;
+        const poll = setInterval(async () => {
+          attempts++;
+          if (attempts > MAX) { clearInterval(poll); reject(new Error("Tempo limite excedido aguardando o vídeo")); return; }
+          try {
+            const stRes = await fetch(`${base}/video-status/${videoId}`, { headers });
+            const stData = await stRes.json();
+            if (stData.status === "completed") {
+              clearInterval(poll);
+              setVUrl(stData.videoUrl ?? "");
+              setVStatus("done");
+              resolve();
+            } else if (stData.status === "failed") {
+              clearInterval(poll);
+              reject(new Error(stData.error ?? "Geração do vídeo falhou"));
+            }
+          } catch { /* ignora */ }
+        }, 5000);
+      });
+
+    } catch (err) {
+      setVError(err instanceof Error ? err.message : "Erro desconhecido");
+      setVStatus("error");
+    }
+  };
+
+  const isProcessing = ["uploading","creating_avatar","waiting_avatar","generating","polling"].includes(vStatus);
+
+  // ── Render ─────────────────────────────────────────────────────────────────
   return (
     <div className="min-h-screen bg-gradient-to-br from-[#0f0b1e] via-[#1a1040] to-[#0a0818] text-[#e8e4f8]">
       <div className="max-w-2xl mx-auto px-4 py-6 space-y-5">
@@ -197,7 +225,7 @@ export default function ContentStudio() {
           <h1 className="text-2xl font-extrabold bg-gradient-to-r from-[#A78BFA] to-[#22D3EE] bg-clip-text text-transparent mb-1">
             Content Studio
           </h1>
-          <p className="text-sm text-gray-400">Gere scripts com IA e transforme em vídeos com sua foto</p>
+          <p className="text-sm text-gray-400">Gere scripts com IA e transforme em vídeos com sua imagem</p>
         </div>
 
         {/* ① Script com IA */}
@@ -249,44 +277,40 @@ export default function ContentStudio() {
           <section className="rounded-2xl bg-white/5 border border-white/10 p-4 space-y-3">
             <div className="flex items-center justify-between">
               <span className="text-xs text-gray-400 font-semibold">RESULTADO</span>
-              <div className="flex gap-2">
-                <button
-                  onClick={copyResult}
-                  className="flex items-center gap-1 text-xs text-gray-400 hover:text-cyan-400 transition-colors"
-                >
-                  {copied
-                    ? <><CheckCheck className="h-3.5 w-3.5 text-green-400" /> Copiado</>
-                    : <><Copy className="h-3.5 w-3.5" /> Copiar</>}
+              <div className="flex gap-3">
+                <button onClick={copyResult} className="flex items-center gap-1 text-xs text-gray-400 hover:text-cyan-400 transition-colors">
+                  {copied ? <><CheckCheck className="h-3.5 w-3.5 text-green-400" /> Copiado</> : <><Copy className="h-3.5 w-3.5" /> Copiar</>}
                 </button>
-                <button
-                  onClick={generate}
-                  disabled={loading}
-                  className="flex items-center gap-1 text-xs text-gray-400 hover:text-purple-400 transition-colors"
-                >
-                  <RefreshCw className={cn("h-3.5 w-3.5", loading && "animate-spin")} />
-                  Regerar
+                <button onClick={generate} disabled={loading} className="flex items-center gap-1 text-xs text-gray-400 hover:text-purple-400 transition-colors">
+                  <RefreshCw className={cn("h-3.5 w-3.5", loading && "animate-spin")} /> Regerar
                 </button>
               </div>
             </div>
-            <pre className="whitespace-pre-wrap text-sm leading-relaxed font-sans text-[#d4cff0]">
-              {result}
-            </pre>
+            <pre className="whitespace-pre-wrap text-sm leading-relaxed font-sans text-[#d4cff0]">{result}</pre>
           </section>
         )}
 
-        {/* ② Foto para o Avatar */}
+        {/* ② Vídeo para o Avatar */}
         <section>
-          <p className="text-xs text-gray-500 font-semibold mb-3">② FOTO PARA O AVATAR</p>
-          {preview ? (
+          <p className="text-xs text-gray-500 font-semibold mb-1">② VÍDEO PARA O AVATAR</p>
+          <p className="text-xs text-gray-600 mb-3">
+            Grave um vídeo curto falando diretamente para a câmera (3–10 segundos). O HeyGen vai usar seu rosto e voz para criar o avatar.
+          </p>
+          {videoPreview ? (
             <div className="relative w-fit">
-              <img src={preview} alt="Preview" className="h-32 w-32 object-cover rounded-2xl border border-white/10" />
+              <video src={videoPreview} className="h-32 w-56 object-cover rounded-2xl border border-white/10" muted playsInline />
               <button
-                onClick={removePhoto}
+                onClick={removeVideo}
                 className="absolute -top-2 -right-2 h-6 w-6 rounded-full bg-red-500 text-white flex items-center justify-center hover:bg-red-600 transition-colors"
               >
                 <X className="h-3 w-3" />
               </button>
-              <p className="mt-1.5 text-xs text-gray-500 truncate max-w-[128px]">{photo?.name}</p>
+              <p className="mt-1.5 text-xs text-gray-500 truncate max-w-[224px]">{videoFile?.name}</p>
+              {avatarId && (
+                <span className="mt-1 inline-flex items-center gap-1 text-xs text-emerald-400">
+                  <span className="h-1.5 w-1.5 rounded-full bg-emerald-400" /> Avatar criado — pronto para reusar
+                </span>
+              )}
             </div>
           ) : (
             <button
@@ -295,43 +319,25 @@ export default function ContentStudio() {
               className="flex flex-col items-center justify-center w-full h-28 rounded-2xl border-2 border-dashed border-white/10 hover:border-purple-500/40 hover:bg-purple-500/5 transition-all gap-2 text-gray-500"
             >
               <Upload className="h-5 w-5" />
-              <span className="text-sm">Clique para enviar uma foto sua</span>
-              <span className="text-xs">PNG, JPG ou WEBP</span>
+              <span className="text-sm">Clique para enviar um vídeo</span>
+              <span className="text-xs">MP4, MOV ou WEBM · máx. 100 MB</span>
             </button>
           )}
-          <input ref={fileRef} type="file" accept="image/*" className="hidden" onChange={handlePhoto} />
+          <input ref={fileRef} type="file" accept="video/*" className="hidden" onChange={handleVideoSelect} />
         </section>
 
-        {/* ③ Vídeo com HeyGen */}
+        {/* ③ Gerar Vídeo com HeyGen */}
         <section>
           <button
             onClick={() => setShowVideo((v) => !v)}
             className="flex items-center justify-between w-full text-left mb-3"
           >
-            <p className="text-xs text-gray-500 font-semibold">③ VÍDEO COM IA — HEYGEN</p>
+            <p className="text-xs text-gray-500 font-semibold">③ GERAR VÍDEO COM IA — HEYGEN</p>
             <span className="text-xs text-purple-400">{showVideo ? "Ocultar ▲" : "Expandir ▼"}</span>
           </button>
 
           {showVideo && (
             <div className="space-y-4 rounded-2xl bg-white/5 border border-white/10 p-4">
-              <div className="space-y-1.5">
-                <label className="text-xs text-gray-400 font-medium">API Key do HeyGen</label>
-                <input
-                  type="password"
-                  placeholder="Cole sua chave aqui"
-                  value={apiKey}
-                  onChange={(e) => setApiKey(e.target.value)}
-                  className="w-full rounded-xl bg-white/5 border border-white/10 text-sm text-[#e8e4f8] placeholder-gray-500 px-3 py-2.5 focus:outline-none focus:border-purple-500/50"
-                />
-                <p className="text-xs text-gray-600">
-                  Obtenha em{" "}
-                  <a href="https://app.heygen.com/settings?nav=API" target="_blank" rel="noopener noreferrer" className="text-cyan-500 underline">
-                    app.heygen.com/settings
-                  </a>
-                  . Não salva no servidor.
-                </p>
-              </div>
-
               <div className="space-y-1.5">
                 <label className="text-xs text-gray-400 font-medium">Script do vídeo</label>
                 <textarea
@@ -346,10 +352,10 @@ export default function ContentStudio() {
               {vStatus === "idle" && (
                 <button
                   onClick={genVideo}
-                  disabled={!apiKey || !photo || !vScript}
+                  disabled={!videoFile || !vScript}
                   className={cn(
                     "w-full py-3 rounded-xl font-semibold text-sm flex items-center justify-center gap-2 transition-all",
-                    !apiKey || !photo || !vScript
+                    !videoFile || !vScript
                       ? "bg-purple-900/30 text-purple-400/40 cursor-not-allowed"
                       : "bg-gradient-to-r from-purple-600 to-cyan-500 text-white hover:opacity-90"
                   )}
@@ -359,14 +365,26 @@ export default function ContentStudio() {
                 </button>
               )}
 
-              {(vStatus === "uploading" || vStatus === "generating" || vStatus === "polling") && (
-                <div className="flex items-center gap-3 p-3 rounded-xl bg-purple-500/10 border border-purple-500/20 text-sm text-purple-300">
-                  <Loader2 className="h-4 w-4 animate-spin shrink-0" />
-                  <span>
-                    {vStatus === "uploading"  && "Enviando imagem..."}
-                    {vStatus === "generating" && "Criando avatar e iniciando vídeo..."}
-                    {vStatus === "polling"    && "Aguardando geração (pode levar alguns minutos)..."}
-                  </span>
+              {/* Barra de progresso por etapas */}
+              {isProcessing && (
+                <div className="space-y-3">
+                  <div className="flex items-center gap-3 p-3 rounded-xl bg-purple-500/10 border border-purple-500/20 text-sm text-purple-300">
+                    <Loader2 className="h-4 w-4 animate-spin shrink-0" />
+                    <span>{STATUS_LABEL[vStatus]}</span>
+                  </div>
+                  <div className="flex gap-1">
+                    {(["uploading","creating_avatar","waiting_avatar","generating","polling"] as VStatus[]).map((s, i) => (
+                      <div
+                        key={s}
+                        className={cn(
+                          "h-1 flex-1 rounded-full transition-all",
+                          ["uploading","creating_avatar","waiting_avatar","generating","polling"].indexOf(vStatus) >= i
+                            ? "bg-purple-500"
+                            : "bg-white/10"
+                        )}
+                      />
+                    ))}
+                  </div>
                 </div>
               )}
 
@@ -375,10 +393,7 @@ export default function ContentStudio() {
                   <video src={vUrl} controls className="w-full rounded-xl border border-white/10" />
                   <div className="flex gap-2">
                     <a
-                      href={vUrl}
-                      download
-                      target="_blank"
-                      rel="noopener noreferrer"
+                      href={vUrl} download target="_blank" rel="noopener noreferrer"
                       className="px-4 py-2 rounded-xl text-xs font-semibold border border-white/15 text-gray-300 hover:border-purple-500/50 hover:text-purple-300 transition-colors"
                     >
                       Baixar vídeo
