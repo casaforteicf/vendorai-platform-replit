@@ -38,9 +38,10 @@ export default function ContentStudio() {
   const [preview, setPreview] = useState<string | null>(null);
   const fileRef               = useRef<HTMLInputElement>(null);
 
+  const [apiKey, setApiKey]         = useState("");
   const [showVideo, setShowVideo]   = useState(false);
   const [vScript, setVScript]       = useState("");
-  const [vStatus, setVStatus]       = useState<"idle" | "generating" | "done" | "error">("idle");
+  const [vStatus, setVStatus]       = useState<"idle" | "uploading" | "generating" | "polling" | "done" | "error">("idle");
   const [vUrl, setVUrl]             = useState("");
   const [vError, setVError]         = useState("");
 
@@ -85,6 +86,95 @@ export default function ContentStudio() {
     setPhoto(null);
     setPreview(null);
     if (fileRef.current) fileRef.current.value = "";
+  };
+
+  const genVideo = async () => {
+    if (!apiKey || !photo || !vScript) return;
+    setVStatus("uploading");
+    setVError("");
+    setVUrl("");
+    try {
+      const b64 = await new Promise<string>((res, rej) => {
+        const r = new FileReader();
+        r.onload = () => res((r.result as string).split(",")[1]);
+        r.onerror = rej;
+        r.readAsDataURL(photo!);
+      });
+
+      const up = await fetch("https://upload.heygen.com/v1/asset", {
+        method: "POST",
+        headers: { "X-Api-Key": apiKey, "Content-Type": "image/jpeg" },
+        body: Uint8Array.from(atob(b64), (c) => c.charCodeAt(0)),
+      });
+      const upData = await up.json();
+      if (!upData.data?.url) throw new Error("Falha no upload da imagem");
+
+      setVStatus("generating");
+
+      const av = await fetch("https://api.heygen.com/v2/photo_avatar", {
+        method: "POST",
+        headers: { "X-Api-Key": apiKey, "Content-Type": "application/json" },
+        body: JSON.stringify({ image_url: upData.data.url, name: "Avatar" }),
+      });
+      const avData = await av.json();
+      if (!avData.data?.photo_avatar_id) throw new Error("Falha ao criar avatar");
+      const avatarId: string = avData.data.photo_avatar_id;
+
+      const vid = await fetch("https://api.heygen.com/v2/video/generate", {
+        method: "POST",
+        headers: { "X-Api-Key": apiKey, "Content-Type": "application/json" },
+        body: JSON.stringify({
+          video_inputs: [
+            {
+              character: { type: "avatar", avatar_id: avatarId, avatar_style: "normal" },
+              voice: { type: "text", input_text: vScript, voice_id: "en-US-JennyNeural" },
+            },
+          ],
+          dimension: { width: 1280, height: 720 },
+        }),
+      });
+      const vidData = await vid.json();
+      if (!vidData.data?.video_id) throw new Error("Falha ao iniciar geração do vídeo");
+      const videoId: string = vidData.data.video_id;
+
+      setVStatus("polling");
+
+      await new Promise<void>((resolve, reject) => {
+        let attempts = 0;
+        const MAX = 60;
+        const poll = setInterval(async () => {
+          attempts++;
+          if (attempts > MAX) {
+            clearInterval(poll);
+            reject(new Error("Tempo limite excedido aguardando o vídeo"));
+            return;
+          }
+          try {
+            const st = await fetch(
+              `https://api.heygen.com/v1/video_status.get?video_id=${videoId}`,
+              { headers: { "X-Api-Key": apiKey } },
+            );
+            const stData = await st.json();
+            const status = stData.data?.status as string | undefined;
+            if (status === "completed") {
+              clearInterval(poll);
+              setVUrl(stData.data.video_url ?? "");
+              setVStatus("done");
+              resolve();
+            } else if (status === "failed") {
+              clearInterval(poll);
+              reject(new Error(stData.data?.error ?? "Geração do vídeo falhou"));
+            }
+          } catch {
+            // continua tentando
+          }
+        }, 5000);
+      });
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "Erro desconhecido";
+      setVError(msg);
+      setVStatus("error");
+    }
   };
 
   const copyResult = async () => {
@@ -257,7 +347,7 @@ export default function ContentStudio() {
           <div className="flex items-center justify-between">
             <CardTitle className="text-base flex items-center gap-2">
               <Video className="h-4 w-4" />
-              Vídeo com IA
+              Vídeo com IA — HeyGen
             </CardTitle>
             <Button
               variant="outline"
@@ -271,6 +361,29 @@ export default function ContentStudio() {
         {showVideo && (
           <CardContent className="space-y-4">
             <div className="space-y-2">
+              <Label htmlFor="heygen-key">API Key do HeyGen</Label>
+              <Input
+                id="heygen-key"
+                type="password"
+                placeholder="Sua chave da API HeyGen"
+                value={apiKey}
+                onChange={(e) => setApiKey(e.target.value)}
+              />
+              <p className="text-xs text-muted-foreground">
+                Obtenha em{" "}
+                <a
+                  href="https://app.heygen.com/settings?nav=API"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="underline"
+                >
+                  app.heygen.com/settings
+                </a>
+                . A chave não é salva no servidor.
+              </p>
+            </div>
+
+            <div className="space-y-2">
               <Label>Script para o vídeo</Label>
               <Textarea
                 value={vScript}
@@ -281,27 +394,89 @@ export default function ContentStudio() {
               />
             </div>
 
+            <div className="space-y-2">
+              <Label>Foto para o avatar (obrigatório)</Label>
+              {preview ? (
+                <div className="relative w-fit">
+                  <img
+                    src={preview}
+                    alt="Preview"
+                    className="h-24 w-24 object-cover rounded-lg border"
+                  />
+                  <Button
+                    variant="destructive"
+                    size="icon"
+                    className="absolute -top-2 -right-2 h-6 w-6 rounded-full"
+                    onClick={removePhoto}
+                  >
+                    <X className="h-3 w-3" />
+                  </Button>
+                </div>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => fileRef.current?.click()}
+                  className="flex items-center gap-2 px-4 py-2 border rounded-lg text-sm text-muted-foreground hover:bg-muted/50 transition-colors"
+                >
+                  <Upload className="h-4 w-4" />
+                  Selecionar foto
+                </button>
+              )}
+            </div>
+
             {vStatus === "idle" && (
-              <p className="text-sm text-muted-foreground">
-                Geração de vídeo disponível em breve. Gere um script acima para começar.
-              </p>
+              <Button
+                onClick={genVideo}
+                disabled={!apiKey || !photo || !vScript}
+                className="gap-2 w-full"
+              >
+                <Video className="h-4 w-4" />
+                Gerar vídeo com HeyGen
+              </Button>
             )}
-            {vStatus === "generating" && (
-              <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                <Loader2 className="h-4 w-4 animate-spin" />
-                Gerando vídeo...
+
+            {(vStatus === "uploading" || vStatus === "generating" || vStatus === "polling") && (
+              <div className="flex items-center gap-3 p-3 rounded-lg bg-muted text-sm">
+                <Loader2 className="h-4 w-4 animate-spin shrink-0" />
+                <span>
+                  {vStatus === "uploading"  && "Enviando imagem..."}
+                  {vStatus === "generating" && "Criando avatar e iniciando vídeo..."}
+                  {vStatus === "polling"    && "Aguardando geração do vídeo (pode levar alguns minutos)..."}
+                </span>
               </div>
             )}
+
             {vStatus === "done" && vUrl && (
+              <div className="space-y-3">
+                <video src={vUrl} controls className="w-full rounded-lg border" />
+                <div className="flex gap-2">
+                  <Button variant="outline" size="sm" asChild>
+                    <a href={vUrl} download target="_blank" rel="noopener noreferrer">
+                      Baixar vídeo
+                    </a>
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => { setVStatus("idle"); setVUrl(""); }}
+                  >
+                    Gerar outro
+                  </Button>
+                </div>
+              </div>
+            )}
+
+            {vStatus === "error" && (
               <div className="space-y-2">
-                <video src={vUrl} controls className="w-full rounded-lg" />
-                <Button variant="outline" size="sm" asChild>
-                  <a href={vUrl} download>Baixar vídeo</a>
+                <p className="text-sm text-destructive">{vError}</p>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setVStatus("idle")}
+                >
+                  Tentar novamente
                 </Button>
               </div>
-            )}
-            {vStatus === "error" && (
-              <p className="text-sm text-destructive">{vError}</p>
             )}
           </CardContent>
         )}
