@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useRoute, Link } from "wouter";
 import { useAuth } from "@/contexts/AuthContext";
 import {
@@ -56,6 +56,7 @@ import {
   ChevronDown, ChevronUp, BookOpen, User, Building2,
   Upload, X, Image as ImageIcon, FileSpreadsheet, Copy,
   Send, ThumbsUp, ThumbsDown, ChevronRight, AlertCircle,
+  Search, Loader2,
 } from "lucide-react";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
@@ -853,6 +854,38 @@ function TabOrcamento({ tenantId, obraId }: { tenantId: string; obraId: string }
   const [newItem, setNewItem] = useState({ nome: "", unidade: "un", quantidade: "1", custoUnitario: "0", bdi: "" });
   const [editingItem, setEditingItem] = useState<{ id: string; nome: string; unidade: string; quantidade: string; custoUnitario: string; bdi: string } | null>(null);
 
+  const [sinapiQuery, setSinapiQuery] = useState("");
+  const [sinapiResults, setSinapiResults] = useState<Array<{ codigo: string; descricao: string; unidade: string; preco: number }>>([]);
+  const [sinapiLoading, setSinapiLoading] = useState(false);
+  const sinapiRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (sinapiQuery.trim().length < 2) { setSinapiResults([]); return; }
+    const timer = setTimeout(async () => {
+      setSinapiLoading(true);
+      try {
+        const token = localStorage.getItem("vendorai_token");
+        const res = await fetch(`/api/obras/sinapi/search?q=${encodeURIComponent(sinapiQuery)}&limit=15`, {
+          headers: token ? { Authorization: `Bearer ${token}` } : {},
+        });
+        if (res.ok) setSinapiResults(await res.json());
+        else setSinapiResults([]);
+      } catch { setSinapiResults([]); }
+      setSinapiLoading(false);
+    }, 350);
+    return () => clearTimeout(timer);
+  }, [sinapiQuery]);
+
+  useEffect(() => {
+    if (!addingItemEtapaId) { setSinapiQuery(""); setSinapiResults([]); }
+  }, [addingItemEtapaId]);
+
+  function applySinapi(item: { codigo: string; descricao: string; unidade: string; preco: number }) {
+    setNewItem((prev) => ({ ...prev, nome: item.descricao, unidade: item.unidade.toLowerCase(), custoUnitario: String(item.preco) }));
+    setSinapiQuery("");
+    setSinapiResults([]);
+  }
+
   const { data: orcamentos = [] } = useListObraOrcamentos(tenantId, obraId, {
     query: { enabled: !!tenantId && !!obraId, queryKey: getListObraOrcamentosQueryKey(tenantId, obraId) },
   });
@@ -1272,11 +1305,58 @@ function TabOrcamento({ tenantId, obraId }: { tenantId: string; obraId: string }
                             );
                           })}
 
+                          {/* Busca SINAPI acima do novo item */}
+                          {!locked && addingItemEtapaId === etapa.id && (
+                            <tr>
+                              <td colSpan={7} className="pt-2 pb-1 px-0">
+                                <div ref={sinapiRef} className="relative">
+                                  <div className="flex items-center gap-1.5 border rounded px-2 py-1 bg-white focus-within:ring-1 focus-within:ring-blue-300">
+                                    <Search className="h-3 w-3 text-muted-foreground shrink-0" />
+                                    <input
+                                      className="text-xs flex-1 bg-transparent outline-none placeholder:text-muted-foreground"
+                                      placeholder="Buscar no SINAPI (ex: concreto fck 25, armação ca-50…)"
+                                      value={sinapiQuery}
+                                      onChange={(e) => setSinapiQuery(e.target.value)}
+                                      onKeyDown={(e) => e.key === "Escape" && setSinapiQuery("")}
+                                    />
+                                    {sinapiLoading && <Loader2 className="h-3 w-3 animate-spin text-muted-foreground shrink-0" />}
+                                    {sinapiQuery && !sinapiLoading && (
+                                      <button onClick={() => { setSinapiQuery(""); setSinapiResults([]); }} className="text-muted-foreground hover:text-foreground">
+                                        <X className="h-3 w-3" />
+                                      </button>
+                                    )}
+                                    <span className="text-[10px] text-muted-foreground border rounded px-1 shrink-0">SINAPI</span>
+                                  </div>
+                                  {sinapiResults.length > 0 && (
+                                    <div className="absolute z-50 top-full left-0 right-0 mt-0.5 bg-white border rounded-md shadow-lg max-h-52 overflow-y-auto">
+                                      {sinapiResults.map((item) => (
+                                        <button
+                                          key={item.codigo}
+                                          type="button"
+                                          onClick={() => applySinapi(item)}
+                                          className="w-full text-left px-2 py-1.5 text-xs hover:bg-blue-50 flex items-center gap-2 border-b last:border-0"
+                                        >
+                                          <span className="font-mono text-[10px] text-muted-foreground shrink-0 w-12">{item.codigo}</span>
+                                          <span className="flex-1 truncate">{item.descricao}</span>
+                                          <span className="text-muted-foreground whitespace-nowrap shrink-0">{item.unidade}</span>
+                                          <span className="font-medium whitespace-nowrap shrink-0">{fmtBRL(item.preco)}</span>
+                                        </button>
+                                      ))}
+                                    </div>
+                                  )}
+                                  {sinapiQuery.trim().length >= 2 && !sinapiLoading && sinapiResults.length === 0 && (
+                                    <p className="text-[10px] text-muted-foreground mt-1 px-1">Nenhum item SINAPI encontrado. Preencha manualmente abaixo.</p>
+                                  )}
+                                </div>
+                              </td>
+                            </tr>
+                          )}
+
                           {/* Linha de novo item */}
                           {!locked && addingItemEtapaId === etapa.id && (
                             <tr className="border-b bg-blue-50/40">
                               <td className="py-1 pr-2">
-                                <input className="w-full text-xs border rounded px-1 py-0.5" placeholder="Nome do item" value={newItem.nome} onChange={(e) => setNewItem({ ...newItem, nome: e.target.value })} autoFocus />
+                                <input className="w-full text-xs border rounded px-1 py-0.5" placeholder="Nome do item" value={newItem.nome} onChange={(e) => setNewItem({ ...newItem, nome: e.target.value })} />
                               </td>
                               <td className="py-1 px-2">
                                 <input className="w-14 text-xs border rounded px-1 py-0.5 text-center" placeholder="un" value={newItem.unidade} onChange={(e) => setNewItem({ ...newItem, unidade: e.target.value })} />

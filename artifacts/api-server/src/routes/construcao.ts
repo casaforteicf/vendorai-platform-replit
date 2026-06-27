@@ -1,5 +1,6 @@
 import { Router, type IRouter } from "express";
 import { and, eq, desc, asc, ilike, max, inArray } from "drizzle-orm";
+import { searchSinapi } from "../data/sinapi";
 import {
   db,
   obrasTable,
@@ -45,6 +46,15 @@ function isSuperAdmin(req: Express.Request) {
 function canAccessTenant(req: Express.Request, tid: string) {
   return isSuperAdmin(req) || tenantId(req) === tid;
 }
+
+// ─── SINAPI search (public lookup, auth-only) ──────────────────────────────────
+
+router.get("/obras/sinapi/search", (req, res) => {
+  const q = String(req.query.q ?? "");
+  const limit = Math.min(Number(req.query.limit ?? 20), 50);
+  const results = searchSinapi(q, limit);
+  return res.json(results);
+});
 
 // ─── Obras ────────────────────────────────────────────────────────────────────
 
