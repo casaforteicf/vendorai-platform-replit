@@ -13,6 +13,13 @@ import {
   composicoesTable,
   composicaoInsumosTable,
   comprasObrasTable,
+  insertObraSchema,
+  updateObraSchema,
+  insertObraEtapaSchema,
+  updateObraEtapaSchema,
+  insertObraEtapaMedicaoSchema,
+  insertObraDiarioSchema,
+  updateObraDiarioSchema,
 } from "@workspace/db";
 import { z } from "zod/v4";
 
@@ -47,8 +54,10 @@ router.post("/tenants/:tenantId/obras", async (req, res) => {
   const { tenantId: tid } = req.params;
   if (!canAccessTenant(req, tid)) return res.status(403).json({ error: "Forbidden" });
 
-  const body = req.body as Record<string, unknown>;
-  const [obra] = await db.insert(obrasTable).values({ ...body, tenantId: tid } as any).returning();
+  const parsed = insertObraSchema.safeParse({ ...req.body, tenantId: tid });
+  if (!parsed.success) return res.status(422).json({ error: parsed.error.message });
+
+  const [obra] = await db.insert(obrasTable).values(parsed.data).returning();
   return res.status(201).json(obra);
 });
 
@@ -73,20 +82,28 @@ router.put("/tenants/:tenantId/obras/:obraId", async (req, res) => {
   const { tenantId: tid, obraId } = req.params;
   if (!canAccessTenant(req, tid)) return res.status(403).json({ error: "Forbidden" });
 
+  const parsed = updateObraSchema.safeParse(req.body);
+  if (!parsed.success) return res.status(422).json({ error: parsed.error.message });
+
   const [obra] = await db.update(obrasTable)
-    .set({ ...req.body, updatedAt: new Date() })
+    .set({ ...parsed.data, updatedAt: new Date() })
     .where(and(eq(obrasTable.id, obraId), eq(obrasTable.tenantId, tid)))
     .returning();
   if (!obra) return res.status(404).json({ error: "Obra not found" });
   return res.json(obra);
 });
 
+// Arquivar obra (soft delete — status → arquivada)
 router.delete("/tenants/:tenantId/obras/:obraId", async (req, res) => {
   const { tenantId: tid, obraId } = req.params;
   if (!canAccessTenant(req, tid)) return res.status(403).json({ error: "Forbidden" });
 
-  await db.delete(obrasTable).where(and(eq(obrasTable.id, obraId), eq(obrasTable.tenantId, tid)));
-  return res.status(204).end();
+  const [obra] = await db.update(obrasTable)
+    .set({ status: "arquivada", updatedAt: new Date() })
+    .where(and(eq(obrasTable.id, obraId), eq(obrasTable.tenantId, tid)))
+    .returning();
+  if (!obra) return res.status(404).json({ error: "Obra not found" });
+  return res.json(obra);
 });
 
 // ─── Etapas ──────────────────────────────────────────────────────────────────
@@ -103,7 +120,10 @@ router.post("/tenants/:tenantId/obras/:obraId/etapas", async (req, res) => {
   const { tenantId: tid, obraId } = req.params;
   if (!canAccessTenant(req, tid)) return res.status(403).json({ error: "Forbidden" });
 
-  const [etapa] = await db.insert(obraEtapasTable).values({ ...req.body, obraId } as any).returning();
+  const parsed = insertObraEtapaSchema.safeParse({ ...req.body, obraId });
+  if (!parsed.success) return res.status(422).json({ error: parsed.error.message });
+
+  const [etapa] = await db.insert(obraEtapasTable).values(parsed.data).returning();
   return res.status(201).json(etapa);
 });
 
@@ -111,8 +131,11 @@ router.put("/tenants/:tenantId/obras/:obraId/etapas/:etapaId", async (req, res) 
   const { tenantId: tid, obraId, etapaId } = req.params;
   if (!canAccessTenant(req, tid)) return res.status(403).json({ error: "Forbidden" });
 
+  const parsed = updateObraEtapaSchema.safeParse(req.body);
+  if (!parsed.success) return res.status(422).json({ error: parsed.error.message });
+
   const [etapa] = await db.update(obraEtapasTable)
-    .set({ ...req.body, updatedAt: new Date() })
+    .set({ ...parsed.data, updatedAt: new Date() })
     .where(and(eq(obraEtapasTable.id, etapaId), eq(obraEtapasTable.obraId, obraId)))
     .returning();
   if (!etapa) return res.status(404).json({ error: "Etapa not found" });
@@ -124,6 +147,30 @@ router.delete("/tenants/:tenantId/obras/:obraId/etapas/:etapaId", async (req, re
   if (!canAccessTenant(req, tid)) return res.status(403).json({ error: "Forbidden" });
 
   await db.delete(obraEtapasTable).where(and(eq(obraEtapasTable.id, etapaId), eq(obraEtapasTable.obraId, obraId)));
+  return res.status(204).end();
+});
+
+// Conveniência: editar/deletar etapa por ID direto (sem obraId no path)
+router.put("/tenants/:tenantId/obras/etapas/:etapaId", async (req, res) => {
+  const { tenantId: tid, etapaId } = req.params;
+  if (!canAccessTenant(req, tid)) return res.status(403).json({ error: "Forbidden" });
+
+  const parsed = updateObraEtapaSchema.safeParse(req.body);
+  if (!parsed.success) return res.status(422).json({ error: parsed.error.message });
+
+  const [etapa] = await db.update(obraEtapasTable)
+    .set({ ...parsed.data, updatedAt: new Date() })
+    .where(eq(obraEtapasTable.id, etapaId))
+    .returning();
+  if (!etapa) return res.status(404).json({ error: "Etapa not found" });
+  return res.json(etapa);
+});
+
+router.delete("/tenants/:tenantId/obras/etapas/:etapaId", async (req, res) => {
+  const { tenantId: tid, etapaId } = req.params;
+  if (!canAccessTenant(req, tid)) return res.status(403).json({ error: "Forbidden" });
+
+  await db.delete(obraEtapasTable).where(eq(obraEtapasTable.id, etapaId));
   return res.status(204).end();
 });
 
@@ -175,26 +222,64 @@ router.post("/tenants/:tenantId/obras/:obraId/diario", async (req, res) => {
   const { tenantId: tid, obraId } = req.params;
   if (!canAccessTenant(req, tid)) return res.status(403).json({ error: "Forbidden" });
 
-  const [entry] = await db.insert(obraDiarioTable).values({
+  const parsed = insertObraDiarioSchema.safeParse({
     ...req.body,
     obraId,
     responsavelId: (req as any).user?.id,
-  } as any).returning();
+  });
+  if (!parsed.success) return res.status(422).json({ error: parsed.error.message });
+
+  const [entry] = await db.insert(obraDiarioTable).values(parsed.data).returning();
   return res.status(201).json(entry);
+});
+
+// Buscar entrada do diário por ID direto
+router.get("/tenants/:tenantId/obras/diario/:diarioId", async (req, res) => {
+  const { tenantId: tid, diarioId } = req.params;
+  if (!canAccessTenant(req, tid)) return res.status(403).json({ error: "Forbidden" });
+
+  const [entry] = await db.select().from(obraDiarioTable).where(eq(obraDiarioTable.id, diarioId));
+  if (!entry) return res.status(404).json({ error: "Diário not found" });
+  return res.json(entry);
+});
+
+// Conveniência: atualizar entrada do diário por ID direto (sem obraId no path)
+router.put("/tenants/:tenantId/obras/diario/:diarioId", async (req, res) => {
+  const { tenantId: tid, diarioId } = req.params;
+  if (!canAccessTenant(req, tid)) return res.status(403).json({ error: "Forbidden" });
+
+  const parsed = updateObraDiarioSchema.safeParse(req.body);
+  if (!parsed.success) return res.status(422).json({ error: parsed.error.message });
+
+  const extra: Record<string, unknown> = {};
+  if (req.body.status === "aprovado") {
+    extra.aprovadoPorId = (req as any).user?.id;
+    extra.aprovadoEm = new Date();
+  }
+
+  const [entry] = await db.update(obraDiarioTable)
+    .set({ ...parsed.data, ...extra, updatedAt: new Date() })
+    .where(eq(obraDiarioTable.id, diarioId))
+    .returning();
+  if (!entry) return res.status(404).json({ error: "Diário not found" });
+  return res.json(entry);
 });
 
 router.put("/tenants/:tenantId/obras/:obraId/diario/:diarioId", async (req, res) => {
   const { tenantId: tid, obraId, diarioId } = req.params;
   if (!canAccessTenant(req, tid)) return res.status(403).json({ error: "Forbidden" });
 
-  const updateData: Record<string, unknown> = { ...req.body, updatedAt: new Date() };
+  const parsed = updateObraDiarioSchema.safeParse(req.body);
+  if (!parsed.success) return res.status(422).json({ error: parsed.error.message });
+
+  const extra: Record<string, unknown> = {};
   if (req.body.status === "aprovado") {
-    updateData.aprovadoPorId = (req as any).user?.id;
-    updateData.aprovadoEm = new Date();
+    extra.aprovadoPorId = (req as any).user?.id;
+    extra.aprovadoEm = new Date();
   }
 
   const [entry] = await db.update(obraDiarioTable)
-    .set(updateData as any)
+    .set({ ...parsed.data, ...extra, updatedAt: new Date() })
     .where(and(eq(obraDiarioTable.id, diarioId), eq(obraDiarioTable.obraId, obraId)))
     .returning();
   if (!entry) return res.status(404).json({ error: "Not found" });
