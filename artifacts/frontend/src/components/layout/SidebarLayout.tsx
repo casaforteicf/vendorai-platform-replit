@@ -37,8 +37,6 @@ export function SidebarLayout({ children }: { children: React.ReactNode }) {
     { name: "Agenda",        href: "/agenda",        icon: Calendar,        sellerHidden: false, section: "crm", fn: ["vendedor", "suporte", "administrador", "outro"] as UserFunction[] },
     { name: "Orçamentos",    href: "/propostas",     icon: FileText,        sellerHidden: false, section: "crm", fn: ["vendedor", "financeiro", "entrega", "administrador", "outro"] as UserFunction[] },
     { name: "Estoque",       href: "/estoque",       icon: Package,         sellerHidden: false, section: "crm", fn: ["vendedor", "financeiro", "administrador", "outro"] as UserFunction[] },
-    { name: "Conteúdo",      href: "/content",       icon: Sparkles,        sellerHidden: false, section: "crm", fn: ["administrador", "outro"] as UserFunction[] },
-    { name: "Content Studio", href: "/content-studio", icon: Clapperboard,   sellerHidden: false, section: "crm", fn: ["administrador", "outro"] as UserFunction[] },
     { name: "Campanhas",     href: "/campanhas",     icon: Megaphone,       sellerHidden: true,  section: "crm", fn: ["administrador", "outro"] as UserFunction[] },
     { name: "Métricas de IA",href: "/analytics",     icon: BarChart3,     sellerHidden: true,  section: "crm", fn: ["administrador", "outro"] as UserFunction[] },
     { name: "Equipe",        href: "/usuarios",      icon: Users,           sellerHidden: false, section: "crm", fn: ["administrador"] as UserFunction[] },
@@ -108,10 +106,59 @@ export function SidebarLayout({ children }: { children: React.ReactNode }) {
 
   function NavLinks({ onNavigate }: { onNavigate?: () => void }) {
     const [relatoriosOpen, setRelatoriosOpen] = useState(false);
+    const [conteudoOpen, setConteudoOpen] = useState(false);
     const isRelatorio = location.startsWith("/relatorios/");
+    const isConteudo = location === "/content" || location === "/content-studio";
     return (
       <>
         {crmNav.map((item) => <NavItem key={item.name} item={item} onNavigate={onNavigate} />)}
+
+        {/* Conteúdo submenu */}
+        <div>
+          <button
+            onClick={() => setConteudoOpen((v) => !v)}
+            className={cn(
+              "w-full flex items-center justify-between px-3 py-2.5 rounded-md text-sm font-medium transition-colors min-h-[44px]",
+              isConteudo
+                ? "bg-primary text-primary-foreground"
+                : "text-muted-foreground hover:bg-muted hover:text-foreground"
+            )}
+          >
+            <div className="flex items-center gap-3">
+              <Sparkles className="h-4 w-4 shrink-0" />
+              Conteúdo
+            </div>
+            {conteudoOpen ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
+          </button>
+          {conteudoOpen && (
+            <div className="ml-6 mt-1 space-y-1">
+              <Link
+                href="/content"
+                onClick={onNavigate}
+                className={cn(
+                  "flex items-center gap-2 px-3 py-2 rounded-md text-sm transition-colors",
+                  location === "/content"
+                    ? "bg-primary/10 text-primary font-medium"
+                    : "text-muted-foreground hover:bg-muted hover:text-foreground"
+                )}
+              >
+                <Sparkles className="h-3.5 w-3.5" /> Gerador de Conteúdo
+              </Link>
+              <Link
+                href="/content-studio"
+                onClick={onNavigate}
+                className={cn(
+                  "flex items-center gap-2 px-3 py-2 rounded-md text-sm transition-colors",
+                  location === "/content-studio"
+                    ? "bg-primary/10 text-primary font-medium"
+                    : "text-muted-foreground hover:bg-muted hover:text-foreground"
+                )}
+              >
+                <Clapperboard className="h-3.5 w-3.5" /> Content Studio
+              </Link>
+            </div>
+          )}
+        </div>
 
         {/* Relatórios submenu */}
         <div>
