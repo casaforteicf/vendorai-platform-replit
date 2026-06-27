@@ -24,6 +24,7 @@ export const obrasTable = pgTable("obras", {
   custoRealizado: numeric("custo_realizado", { precision: 15, scale: 2 }).notNull().default("0"),
   responsavelId: text("responsavel_id").references(() => usersTable.id, { onDelete: "set null" }),
   linkCliente: text("link_cliente"),
+  portalToken: text("portal_token").unique().$defaultFn(() => crypto.randomUUID()),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow().$onUpdate(() => new Date()),
 });

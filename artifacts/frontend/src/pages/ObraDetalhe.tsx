@@ -1919,8 +1919,26 @@ export default function ObraDetalhe() {
             </h1>
             {obra.clienteNome && <p className="text-sm text-muted-foreground mt-0.5">{obra.clienteNome}</p>}
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 flex-wrap">
             <span className={`text-xs px-2.5 py-1 rounded-full font-medium ${obraStatus.color}`}>{obraStatus.label}</span>
+            {(obra as any).portalToken && (
+              <Button
+                variant="outline"
+                size="sm"
+                className="gap-1.5 text-xs h-7"
+                onClick={() => {
+                  const url = `${window.location.origin}/portal/obra/${(obra as any).portalToken}`;
+                  navigator.clipboard.writeText(url).then(() => {
+                    alert("Link do portal copiado!");
+                  }).catch(() => {
+                    window.open(url, "_blank");
+                  });
+                }}
+              >
+                <Copy className="h-3.5 w-3.5" />
+                Link do Portal
+              </Button>
+            )}
           </div>
         </div>
 

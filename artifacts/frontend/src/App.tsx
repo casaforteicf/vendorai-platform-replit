@@ -18,6 +18,7 @@ const Login              = lazy(() => import("@/pages/Login"));
 const Register           = lazy(() => import("@/pages/Register"));
 const ForgotPassword     = lazy(() => import("@/pages/ForgotPassword"));
 const ResetPassword      = lazy(() => import("@/pages/ResetPassword"));
+const PortalObra         = lazy(() => import("@/pages/PortalObra"));
 const ForcePasswordChange= lazy(() => import("@/pages/ForcePasswordChange"));
 const AcceptInvite       = lazy(() => import("@/pages/AcceptInvite"));
 const NotFound           = lazy(() => import("@/pages/not-found"));
@@ -339,6 +340,9 @@ function AppRoutes() {
         </Route>
         <Route path="/redefinir-senha">
           <PublicRoute component={ResetPassword} />
+        </Route>
+        <Route path="/portal/obra/:token">
+          <PublicRoute component={PortalObra} />
         </Route>
         <Route path="/onboarding">
           <OnboardingRoute />
