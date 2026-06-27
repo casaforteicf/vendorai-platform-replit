@@ -189,298 +189,226 @@ export default function ContentStudio() {
   };
 
   return (
-    <div className="max-w-3xl mx-auto p-6 space-y-6">
-      <div className="flex items-center gap-3">
-        <div className="p-2 rounded-lg bg-primary/10">
-          <Sparkles className="h-5 w-5 text-primary" />
-        </div>
+    <div className="min-h-screen bg-gradient-to-br from-[#0f0b1e] via-[#1a1040] to-[#0a0818] text-[#e8e4f8]">
+      <div className="max-w-2xl mx-auto px-4 py-6 space-y-5">
+
+        {/* Header */}
         <div>
-          <h1 className="text-2xl font-bold">Content Studio</h1>
-          <p className="text-sm text-muted-foreground">
-            Gere conteúdo para Instagram com IA em segundos
-          </p>
+          <h1 className="text-2xl font-extrabold bg-gradient-to-r from-[#A78BFA] to-[#22D3EE] bg-clip-text text-transparent mb-1">
+            Content Studio
+          </h1>
+          <p className="text-sm text-gray-400">Gere scripts com IA e transforme em vídeos com sua foto</p>
         </div>
-      </div>
 
-      <Card>
-        <CardContent className="pt-6 space-y-5">
-          <Tabs value={tab} onValueChange={(v) => setTab(v as TabId)}>
-            <TabsList className="grid grid-cols-4 w-full">
-              {TABS.map((t) => (
-                <TabsTrigger key={t.id} value={t.id} className="flex items-center gap-1.5 text-xs sm:text-sm">
-                  <t.icon className="h-3.5 w-3.5 shrink-0" />
-                  <span className="hidden sm:inline">{t.label}</span>
-                </TabsTrigger>
-              ))}
-            </TabsList>
-
+        {/* ① Script com IA */}
+        <section>
+          <p className="text-xs text-gray-500 font-semibold mb-3">① SCRIPT COM IA</p>
+          <div className="grid grid-cols-2 gap-2 mb-3">
             {TABS.map((t) => (
-              <TabsContent key={t.id} value={t.id} className="mt-4">
-                <div className="space-y-2">
-                  <Label htmlFor="studio-input">
-                    {t.id === "workflow"  && "Qual é o nicho ou tema do conteúdo?"}
-                    {t.id === "trends"   && "Em qual nicho você quer identificar tendências?"}
-                    {t.id === "hooks"    && "Sobre qual nicho ou produto você quer criar ganchos?"}
-                    {t.id === "script"   && "Qual é o tema do seu Reel?"}
-                  </Label>
-                  <Textarea
-                    id="studio-input"
-                    placeholder={t.ph}
-                    value={input}
-                    onChange={(e) => setInput(e.target.value)}
-                    onKeyDown={handleKeyDown}
-                    rows={3}
-                    className="resize-none"
-                  />
-                  <p className="text-xs text-muted-foreground">
-                    Pressione <kbd className="px-1 py-0.5 text-xs bg-muted rounded border">Ctrl+Enter</kbd> para gerar
-                  </p>
-                </div>
-              </TabsContent>
+              <button
+                key={t.id}
+                onClick={() => { setTab(t.id); setResult(""); setInput(""); }}
+                className={cn(
+                  "px-3 py-2.5 rounded-xl text-xs border text-left transition-colors",
+                  tab === t.id
+                    ? "border-purple-500/60 bg-purple-500/15 text-purple-300 font-semibold"
+                    : "border-white/[0.08] text-gray-400 hover:border-white/20 hover:text-gray-300"
+                )}
+              >
+                {t.label}
+              </button>
             ))}
-          </Tabs>
-
-          <div className="flex items-center gap-3">
-            <Button
-              onClick={generate}
-              disabled={loading || !input.trim()}
-              className="gap-2"
-            >
-              {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
-              {loading ? "Gerando..." : "Gerar com IA"}
-            </Button>
-            <Badge variant="outline" className="text-xs">
-              {currentTab.label}
-            </Badge>
           </div>
-        </CardContent>
-      </Card>
 
-      {result && (
-        <Card>
-          <CardHeader className="pb-3">
+          <textarea
+            placeholder={currentTab.ph}
+            value={input}
+            onChange={(e) => setInput(e.target.value)}
+            onKeyDown={handleKeyDown}
+            rows={3}
+            className="w-full rounded-xl bg-white/5 border border-white/10 text-sm text-[#e8e4f8] placeholder-gray-500 px-4 py-3 resize-none focus:outline-none focus:border-purple-500/50 focus:ring-1 focus:ring-purple-500/30 mb-3"
+          />
+
+          <button
+            onClick={generate}
+            disabled={loading || !input.trim()}
+            className={cn(
+              "w-full py-3 rounded-xl font-semibold text-sm flex items-center justify-center gap-2 transition-all",
+              loading || !input.trim()
+                ? "bg-purple-900/40 text-purple-400/50 cursor-not-allowed"
+                : "bg-gradient-to-r from-purple-600 to-cyan-500 text-white hover:opacity-90"
+            )}
+          >
+            {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
+            {loading ? "Gerando..." : "Gerar Script"}
+          </button>
+        </section>
+
+        {/* Resultado */}
+        {result && (
+          <section className="rounded-2xl bg-white/5 border border-white/10 p-4 space-y-3">
             <div className="flex items-center justify-between">
-              <CardTitle className="text-base">Resultado</CardTitle>
-              <div className="flex items-center gap-2">
-                <Button
-                  variant="ghost"
-                  size="sm"
+              <span className="text-xs text-gray-400 font-semibold">RESULTADO</span>
+              <div className="flex gap-2">
+                <button
                   onClick={copyResult}
-                  className="gap-1.5 text-xs"
+                  className="flex items-center gap-1 text-xs text-gray-400 hover:text-cyan-400 transition-colors"
                 >
                   {copied
-                    ? <><CheckCheck className="h-3.5 w-3.5 text-green-500" /> Copiado!</>
-                    : <><Copy className="h-3.5 w-3.5" /> Copiar</>
-                  }
-                </Button>
-                <Button
-                  variant="ghost"
-                  size="sm"
+                    ? <><CheckCheck className="h-3.5 w-3.5 text-green-400" /> Copiado</>
+                    : <><Copy className="h-3.5 w-3.5" /> Copiar</>}
+                </button>
+                <button
                   onClick={generate}
                   disabled={loading}
-                  className="gap-1.5 text-xs"
+                  className="flex items-center gap-1 text-xs text-gray-400 hover:text-purple-400 transition-colors"
                 >
                   <RefreshCw className={cn("h-3.5 w-3.5", loading && "animate-spin")} />
                   Regerar
-                </Button>
+                </button>
               </div>
             </div>
-          </CardHeader>
-          <CardContent>
-            <pre className="whitespace-pre-wrap text-sm leading-relaxed font-sans">
+            <pre className="whitespace-pre-wrap text-sm leading-relaxed font-sans text-[#d4cff0]">
               {result}
             </pre>
-          </CardContent>
-        </Card>
-      )}
+          </section>
+        )}
 
-      <Card>
-        <CardHeader className="pb-3">
-          <CardTitle className="text-base flex items-center gap-2">
-            <ImageIcon className="h-4 w-4" />
-            Imagem de referência (opcional)
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
+        {/* ② Foto para o Avatar */}
+        <section>
+          <p className="text-xs text-gray-500 font-semibold mb-3">② FOTO PARA O AVATAR</p>
           {preview ? (
             <div className="relative w-fit">
-              <img
-                src={preview}
-                alt="Preview"
-                className="h-40 w-40 object-cover rounded-lg border"
-              />
-              <Button
-                variant="destructive"
-                size="icon"
-                className="absolute -top-2 -right-2 h-6 w-6 rounded-full"
+              <img src={preview} alt="Preview" className="h-32 w-32 object-cover rounded-2xl border border-white/10" />
+              <button
                 onClick={removePhoto}
+                className="absolute -top-2 -right-2 h-6 w-6 rounded-full bg-red-500 text-white flex items-center justify-center hover:bg-red-600 transition-colors"
               >
                 <X className="h-3 w-3" />
-              </Button>
-              <p className="mt-2 text-xs text-muted-foreground truncate max-w-[160px]">
-                {photo?.name}
-              </p>
+              </button>
+              <p className="mt-1.5 text-xs text-gray-500 truncate max-w-[128px]">{photo?.name}</p>
             </div>
           ) : (
             <button
               type="button"
               onClick={() => fileRef.current?.click()}
-              className="flex flex-col items-center justify-center w-full h-28 border-2 border-dashed rounded-lg hover:bg-muted/50 transition-colors gap-2 text-muted-foreground"
+              className="flex flex-col items-center justify-center w-full h-28 rounded-2xl border-2 border-dashed border-white/10 hover:border-purple-500/40 hover:bg-purple-500/5 transition-all gap-2 text-gray-500"
             >
               <Upload className="h-5 w-5" />
-              <span className="text-sm">Clique para enviar uma imagem</span>
+              <span className="text-sm">Clique para enviar uma foto sua</span>
               <span className="text-xs">PNG, JPG ou WEBP</span>
             </button>
           )}
-          <input
-            ref={fileRef}
-            type="file"
-            accept="image/*"
-            className="hidden"
-            onChange={handlePhoto}
-          />
-        </CardContent>
-      </Card>
+          <input ref={fileRef} type="file" accept="image/*" className="hidden" onChange={handlePhoto} />
+        </section>
 
-      <Card>
-        <CardHeader className="pb-3">
-          <div className="flex items-center justify-between">
-            <CardTitle className="text-base flex items-center gap-2">
-              <Video className="h-4 w-4" />
-              Vídeo com IA — HeyGen
-            </CardTitle>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => setShowVideo((v) => !v)}
-            >
-              {showVideo ? "Ocultar" : "Expandir"}
-            </Button>
-          </div>
-        </CardHeader>
-        {showVideo && (
-          <CardContent className="space-y-4">
-            <div className="space-y-2">
-              <Label htmlFor="heygen-key">API Key do HeyGen</Label>
-              <Input
-                id="heygen-key"
-                type="password"
-                placeholder="Sua chave da API HeyGen"
-                value={apiKey}
-                onChange={(e) => setApiKey(e.target.value)}
-              />
-              <p className="text-xs text-muted-foreground">
-                Obtenha em{" "}
-                <a
-                  href="https://app.heygen.com/settings?nav=API"
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="underline"
-                >
-                  app.heygen.com/settings
-                </a>
-                . A chave não é salva no servidor.
-              </p>
-            </div>
+        {/* ③ Vídeo com HeyGen */}
+        <section>
+          <button
+            onClick={() => setShowVideo((v) => !v)}
+            className="flex items-center justify-between w-full text-left mb-3"
+          >
+            <p className="text-xs text-gray-500 font-semibold">③ VÍDEO COM IA — HEYGEN</p>
+            <span className="text-xs text-purple-400">{showVideo ? "Ocultar ▲" : "Expandir ▼"}</span>
+          </button>
 
-            <div className="space-y-2">
-              <Label>Script para o vídeo</Label>
-              <Textarea
-                value={vScript}
-                onChange={(e) => setVScript(e.target.value)}
-                placeholder="O script gerado aparecerá aqui automaticamente, ou escreva o seu..."
-                rows={4}
-                className="resize-none"
-              />
-            </div>
+          {showVideo && (
+            <div className="space-y-4 rounded-2xl bg-white/5 border border-white/10 p-4">
+              <div className="space-y-1.5">
+                <label className="text-xs text-gray-400 font-medium">API Key do HeyGen</label>
+                <input
+                  type="password"
+                  placeholder="Cole sua chave aqui"
+                  value={apiKey}
+                  onChange={(e) => setApiKey(e.target.value)}
+                  className="w-full rounded-xl bg-white/5 border border-white/10 text-sm text-[#e8e4f8] placeholder-gray-500 px-3 py-2.5 focus:outline-none focus:border-purple-500/50"
+                />
+                <p className="text-xs text-gray-600">
+                  Obtenha em{" "}
+                  <a href="https://app.heygen.com/settings?nav=API" target="_blank" rel="noopener noreferrer" className="text-cyan-500 underline">
+                    app.heygen.com/settings
+                  </a>
+                  . Não salva no servidor.
+                </p>
+              </div>
 
-            <div className="space-y-2">
-              <Label>Foto para o avatar (obrigatório)</Label>
-              {preview ? (
-                <div className="relative w-fit">
-                  <img
-                    src={preview}
-                    alt="Preview"
-                    className="h-24 w-24 object-cover rounded-lg border"
-                  />
-                  <Button
-                    variant="destructive"
-                    size="icon"
-                    className="absolute -top-2 -right-2 h-6 w-6 rounded-full"
-                    onClick={removePhoto}
-                  >
-                    <X className="h-3 w-3" />
-                  </Button>
-                </div>
-              ) : (
+              <div className="space-y-1.5">
+                <label className="text-xs text-gray-400 font-medium">Script do vídeo</label>
+                <textarea
+                  value={vScript}
+                  onChange={(e) => setVScript(e.target.value)}
+                  placeholder="Será preenchido automaticamente ao gerar o script acima..."
+                  rows={4}
+                  className="w-full rounded-xl bg-white/5 border border-white/10 text-sm text-[#e8e4f8] placeholder-gray-500 px-3 py-2.5 resize-none focus:outline-none focus:border-purple-500/50"
+                />
+              </div>
+
+              {vStatus === "idle" && (
                 <button
-                  type="button"
-                  onClick={() => fileRef.current?.click()}
-                  className="flex items-center gap-2 px-4 py-2 border rounded-lg text-sm text-muted-foreground hover:bg-muted/50 transition-colors"
+                  onClick={genVideo}
+                  disabled={!apiKey || !photo || !vScript}
+                  className={cn(
+                    "w-full py-3 rounded-xl font-semibold text-sm flex items-center justify-center gap-2 transition-all",
+                    !apiKey || !photo || !vScript
+                      ? "bg-purple-900/30 text-purple-400/40 cursor-not-allowed"
+                      : "bg-gradient-to-r from-purple-600 to-cyan-500 text-white hover:opacity-90"
+                  )}
                 >
-                  <Upload className="h-4 w-4" />
-                  Selecionar foto
+                  <Video className="h-4 w-4" />
+                  Gerar vídeo com HeyGen
                 </button>
               )}
-            </div>
 
-            {vStatus === "idle" && (
-              <Button
-                onClick={genVideo}
-                disabled={!apiKey || !photo || !vScript}
-                className="gap-2 w-full"
-              >
-                <Video className="h-4 w-4" />
-                Gerar vídeo com HeyGen
-              </Button>
-            )}
+              {(vStatus === "uploading" || vStatus === "generating" || vStatus === "polling") && (
+                <div className="flex items-center gap-3 p-3 rounded-xl bg-purple-500/10 border border-purple-500/20 text-sm text-purple-300">
+                  <Loader2 className="h-4 w-4 animate-spin shrink-0" />
+                  <span>
+                    {vStatus === "uploading"  && "Enviando imagem..."}
+                    {vStatus === "generating" && "Criando avatar e iniciando vídeo..."}
+                    {vStatus === "polling"    && "Aguardando geração (pode levar alguns minutos)..."}
+                  </span>
+                </div>
+              )}
 
-            {(vStatus === "uploading" || vStatus === "generating" || vStatus === "polling") && (
-              <div className="flex items-center gap-3 p-3 rounded-lg bg-muted text-sm">
-                <Loader2 className="h-4 w-4 animate-spin shrink-0" />
-                <span>
-                  {vStatus === "uploading"  && "Enviando imagem..."}
-                  {vStatus === "generating" && "Criando avatar e iniciando vídeo..."}
-                  {vStatus === "polling"    && "Aguardando geração do vídeo (pode levar alguns minutos)..."}
-                </span>
-              </div>
-            )}
-
-            {vStatus === "done" && vUrl && (
-              <div className="space-y-3">
-                <video src={vUrl} controls className="w-full rounded-lg border" />
-                <div className="flex gap-2">
-                  <Button variant="outline" size="sm" asChild>
-                    <a href={vUrl} download target="_blank" rel="noopener noreferrer">
+              {vStatus === "done" && vUrl && (
+                <div className="space-y-3">
+                  <video src={vUrl} controls className="w-full rounded-xl border border-white/10" />
+                  <div className="flex gap-2">
+                    <a
+                      href={vUrl}
+                      download
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="px-4 py-2 rounded-xl text-xs font-semibold border border-white/15 text-gray-300 hover:border-purple-500/50 hover:text-purple-300 transition-colors"
+                    >
                       Baixar vídeo
                     </a>
-                  </Button>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => { setVStatus("idle"); setVUrl(""); }}
-                  >
-                    Gerar outro
-                  </Button>
+                    <button
+                      onClick={() => { setVStatus("idle"); setVUrl(""); }}
+                      className="px-4 py-2 rounded-xl text-xs font-semibold text-gray-400 hover:text-gray-200 transition-colors"
+                    >
+                      Gerar outro
+                    </button>
+                  </div>
                 </div>
-              </div>
-            )}
+              )}
 
-            {vStatus === "error" && (
-              <div className="space-y-2">
-                <p className="text-sm text-destructive">{vError}</p>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => setVStatus("idle")}
-                >
-                  Tentar novamente
-                </Button>
-              </div>
-            )}
-          </CardContent>
-        )}
-      </Card>
+              {vStatus === "error" && (
+                <div className="space-y-2">
+                  <p className="text-sm text-red-400">{vError}</p>
+                  <button
+                    onClick={() => setVStatus("idle")}
+                    className="px-4 py-2 rounded-xl text-xs font-semibold border border-white/15 text-gray-300 hover:border-red-500/50 transition-colors"
+                  >
+                    Tentar novamente
+                  </button>
+                </div>
+              )}
+            </div>
+          )}
+        </section>
+
+      </div>
     </div>
   );
 }
