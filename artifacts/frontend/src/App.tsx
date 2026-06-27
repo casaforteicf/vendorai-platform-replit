@@ -45,6 +45,7 @@ const Marketplace        = lazy(() => import("@/pages/Marketplace"));
 const Estoque            = lazy(() => import("@/pages/Estoque"));
 const Onboarding         = lazy(() => import("@/pages/Onboarding"));
 const Content            = lazy(() => import("@/pages/Content"));
+const ContentStudio      = lazy(() => import("@/pages/ContentStudio"));
 const GuiaImplantacao    = lazy(() => import("@/pages/GuiaImplantacao"));
 const Questionario       = lazy(() => import("@/pages/Questionario"));
 const Analytics          = lazy(() => import("@/pages/Analytics"));
@@ -413,6 +414,9 @@ function AppRoutes() {
         </Route>
         <Route path="/content">
           {() => <ProtectedRoute component={Content} />}
+        </Route>
+        <Route path="/content-studio">
+          {() => <ProtectedRoute component={ContentStudio} />}
         </Route>
         <Route path="/guia-implantacao">
           {() => <ProtectedRoute component={GuiaImplantacao} />}
