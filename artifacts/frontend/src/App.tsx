@@ -2,68 +2,77 @@ import { Switch, Route, Router as WouterRouter, useLocation } from "wouter";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
-import NotFound from "@/pages/not-found";
 import { AuthProvider, useAuth } from "@/contexts/AuthContext";
 import { DemoBanner } from "@/components/DemoBanner";
 import { SidebarLayout } from "@/components/layout/SidebarLayout";
-import Login from "@/pages/Login";
-import Register from "@/pages/Register";
-import Dashboard from "@/pages/Dashboard";
-import Leads from "@/pages/Leads";
-import LeadDetail from "@/pages/LeadDetail";
-import Prospector from "@/pages/Prospector";
-import Duplicatas from "@/pages/Duplicatas";
-import Deals from "@/pages/Deals";
-import Conversations from "@/pages/Conversations";
-import Agenda from "@/pages/Agenda";
-import Configuracoes from "@/pages/Configuracoes";
-import Usuarios from "@/pages/Usuarios";
-import Campanhas from "@/pages/Campanhas";
-import Propostas from "@/pages/Propostas";
-import PropostaPrint from "@/pages/PropostaPrint";
-import AdminAIUsage from "@/pages/AdminAIUsage";
-import AdminPartners from "@/pages/AdminPartners";
-import AdminTenants from "@/pages/AdminTenants";
-import ForcePasswordChange from "@/pages/ForcePasswordChange";
-import PartnerDashboard from "@/pages/PartnerDashboard";
-import AcceptInvite from "@/pages/AcceptInvite";
-import ForgotPassword from "@/pages/ForgotPassword";
-import ResetPassword from "@/pages/ResetPassword";
-import SiteLandingPage from "@/pages/SiteLandingPage";
-import Marketplace from "@/pages/Marketplace";
-import Estoque from "@/pages/Estoque";
-import Onboarding from "@/pages/Onboarding";
-import Content from "@/pages/Content";
-import GuiaImplantacao from "@/pages/GuiaImplantacao";
-import Suspended from "@/pages/Suspended";
-import Questionario from "@/pages/Questionario";
-import Obras from "@/pages/Obras";
-import ObraDetalhe from "@/pages/ObraDetalhe";
-import Insumos from "@/pages/Insumos";
-import Composicoes from "@/pages/Composicoes";
-import VarejoProdutos from "@/pages/VarejoProdutos";
-import VarejoProdutoDetalhe from "@/pages/VarejoProdutoDetalhe";
-import VarejoColecoes from "@/pages/VarejoColecoes";
-import VarejoFornecedores from "@/pages/VarejoFornecedores";
-import VarejoCompras from "@/pages/VarejoCompras";
-import VarejoFidelidade from "@/pages/VarejoFidelidade";
-import VarejoCombos from "@/pages/VarejoCombos";
-import SupermercadoDashboard from "@/pages/supermercado/SupermercadoDashboard";
-import SupermercadoProdutos from "@/pages/supermercado/SupermercadoProdutos";
-import SupermercadoPedidos from "@/pages/supermercado/SupermercadoPedidos";
-import SupermercadoCampanhas from "@/pages/supermercado/SupermercadoCampanhas";
-import SupermercadoConfig from "@/pages/supermercado/SupermercadoConfig";
-import Analytics from "@/pages/Analytics";
-import RelatorioGanhosMes from "@/pages/RelatorioGanhosMes";
-import RelatorioTipoCliente from "@/pages/RelatorioTipoCliente";
-import RelatorioDores from "@/pages/RelatorioDores";
-import { useEffect } from "react";
+import { lazy, Suspense, useEffect } from "react";
 import {
   useGetTenant,
   getGetTenantQueryKey,
   useListInvoices,
   getListInvoicesQueryKey,
 } from "@workspace/api-client-react";
+
+// ── Lazy page imports (code splitting — each page loads only when navigated to) ──
+const Login              = lazy(() => import("@/pages/Login"));
+const Register           = lazy(() => import("@/pages/Register"));
+const ForgotPassword     = lazy(() => import("@/pages/ForgotPassword"));
+const ResetPassword      = lazy(() => import("@/pages/ResetPassword"));
+const ForcePasswordChange= lazy(() => import("@/pages/ForcePasswordChange"));
+const AcceptInvite       = lazy(() => import("@/pages/AcceptInvite"));
+const NotFound           = lazy(() => import("@/pages/not-found"));
+const Suspended          = lazy(() => import("@/pages/Suspended"));
+
+const Dashboard          = lazy(() => import("@/pages/Dashboard"));
+const Leads              = lazy(() => import("@/pages/Leads"));
+const LeadDetail         = lazy(() => import("@/pages/LeadDetail"));
+const Prospector         = lazy(() => import("@/pages/Prospector"));
+const Duplicatas         = lazy(() => import("@/pages/Duplicatas"));
+const Deals              = lazy(() => import("@/pages/Deals"));
+const Conversations      = lazy(() => import("@/pages/Conversations"));
+const Agenda             = lazy(() => import("@/pages/Agenda"));
+const Configuracoes      = lazy(() => import("@/pages/Configuracoes"));
+const Usuarios           = lazy(() => import("@/pages/Usuarios"));
+const Campanhas          = lazy(() => import("@/pages/Campanhas"));
+const Propostas          = lazy(() => import("@/pages/Propostas"));
+const PropostaPrint      = lazy(() => import("@/pages/PropostaPrint"));
+const AdminAIUsage       = lazy(() => import("@/pages/AdminAIUsage"));
+const AdminPartners      = lazy(() => import("@/pages/AdminPartners"));
+const AdminTenants       = lazy(() => import("@/pages/AdminTenants"));
+const PartnerDashboard   = lazy(() => import("@/pages/PartnerDashboard"));
+const SiteLandingPage    = lazy(() => import("@/pages/SiteLandingPage"));
+const Marketplace        = lazy(() => import("@/pages/Marketplace"));
+const Estoque            = lazy(() => import("@/pages/Estoque"));
+const Onboarding         = lazy(() => import("@/pages/Onboarding"));
+const Content            = lazy(() => import("@/pages/Content"));
+const GuiaImplantacao    = lazy(() => import("@/pages/GuiaImplantacao"));
+const Questionario       = lazy(() => import("@/pages/Questionario"));
+const Analytics          = lazy(() => import("@/pages/Analytics"));
+const RelatorioGanhosMes = lazy(() => import("@/pages/RelatorioGanhosMes"));
+const RelatorioTipoCliente = lazy(() => import("@/pages/RelatorioTipoCliente"));
+const RelatorioDores     = lazy(() => import("@/pages/RelatorioDores"));
+
+// Construção
+const Obras              = lazy(() => import("@/pages/Obras"));
+const ObraDetalhe        = lazy(() => import("@/pages/ObraDetalhe"));
+const Insumos            = lazy(() => import("@/pages/Insumos"));
+const Composicoes        = lazy(() => import("@/pages/Composicoes"));
+
+// Varejo
+const VarejoProdutos        = lazy(() => import("@/pages/VarejoProdutos"));
+const VarejoProdutoDetalhe  = lazy(() => import("@/pages/VarejoProdutoDetalhe"));
+const VarejoColecoes        = lazy(() => import("@/pages/VarejoColecoes"));
+const VarejoFornecedores    = lazy(() => import("@/pages/VarejoFornecedores"));
+const VarejoCompras         = lazy(() => import("@/pages/VarejoCompras"));
+const VarejoFidelidade      = lazy(() => import("@/pages/VarejoFidelidade"));
+const VarejoCombos          = lazy(() => import("@/pages/VarejoCombos"));
+
+// Supermercado
+const SupermercadoDashboard = lazy(() => import("@/pages/supermercado/SupermercadoDashboard"));
+const SupermercadoProdutos  = lazy(() => import("@/pages/supermercado/SupermercadoProdutos"));
+const SupermercadoPedidos   = lazy(() => import("@/pages/supermercado/SupermercadoPedidos"));
+const SupermercadoCampanhas = lazy(() => import("@/pages/supermercado/SupermercadoCampanhas"));
+const SupermercadoConfig    = lazy(() => import("@/pages/supermercado/SupermercadoConfig"));
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -316,168 +325,170 @@ function RegisterRoute() {
 
 function AppRoutes() {
   return (
-    <Switch>
-      <Route path="/login">
-        <PublicRoute component={Login} />
-      </Route>
-      <Route path="/register">
-        <RegisterRoute />
-      </Route>
-      <Route path="/esqueci-senha">
-        <PublicRoute component={ForgotPassword} />
-      </Route>
-      <Route path="/redefinir-senha">
-        <PublicRoute component={ResetPassword} />
-      </Route>
-      <Route path="/onboarding">
-        <OnboardingRoute />
-      </Route>
-      <Route path="/">
-        <ProtectedRoute component={Dashboard} />
-      </Route>
-      <Route path="/leads">
-        <ProtectedRoute component={Leads} />
-      </Route>
-      <Route path="/leads/:id">
-        <ProtectedRoute component={LeadDetail} />
-      </Route>
-      <Route path="/app/prospector">
-        <ProtectedRoute component={Prospector} />
-      </Route>
-      <Route path="/duplicatas">
-        <ProtectedRoute component={Duplicatas} />
-      </Route>
-      <Route path="/deals">
-        <ProtectedRoute component={Deals} />
-      </Route>
-      <Route path="/negocios">
-        <ProtectedRoute component={Deals} />
-      </Route>
-      <Route path="/conversations">
-        <ProtectedRoute component={Conversations} />
-      </Route>
-      <Route path="/agenda">
-        <ProtectedRoute component={Agenda} />
-      </Route>
-      <Route path="/configuracoes">
-        <ProtectedRoute component={Configuracoes} />
-      </Route>
-      <Route path="/usuarios">
-        <ProtectedRoute component={Usuarios} />
-      </Route>
-      <Route path="/propostas">
-        {() => <ProtectedRoute component={Propostas} />}
-      </Route>
-      <Route path="/propostas/:id/print">
-        {() => <ProtectedRoute component={PropostaPrint} />}
-      </Route>
-      <Route path="/propostas/:id">
-        {() => <ProtectedRoute component={PropostaPrint} />}
-      </Route>
-      <Route path="/campanhas">
-        <ProtectedRoute component={Campanhas} />
-      </Route>
-      <Route path="/estoque">
-        {() => <ProtectedRoute component={Estoque} />}
-      </Route>
-      <Route path="/faturamento">
-        <RedirectPage to="/configuracoes" />
-      </Route>
-      <Route path="/admin/tenants">
-        {() => <SuperAdminRoute component={AdminTenants} />}
-      </Route>
-      <Route path="/admin/ai-usage">
-        {() => <SuperAdminRoute component={AdminAIUsage} />}
-      </Route>
-      <Route path="/admin/partners">
-        {() => <SuperAdminRoute component={AdminPartners} />}
-      </Route>
-      <Route path="/trocar-senha">
-        <ForcePasswordChange />
-      </Route>
-      <Route path="/partner">
-        {() => <PartnerRoute component={PartnerDashboard} />}
-      </Route>
-      <Route path="/marketplace">
-        {() => <ProtectedRoute component={Marketplace} />}
-      </Route>
-      <Route path="/content">
-        {() => <ProtectedRoute component={Content} />}
-      </Route>
-      <Route path="/guia-implantacao">
-        {() => <ProtectedRoute component={GuiaImplantacao} />}
-      </Route>
-      <Route path="/analytics">
-        {() => <ProtectedRoute component={Analytics} />}
-      </Route>
-      <Route path="/relatorios/ganhos-mes">
-        {() => <ProtectedRoute component={RelatorioGanhosMes} />}
-      </Route>
-      <Route path="/relatorios/tipo-cliente">
-        {() => <ProtectedRoute component={RelatorioTipoCliente} />}
-      </Route>
-      <Route path="/relatorios/dores">
-        {() => <ProtectedRoute component={RelatorioDores} />}
-      </Route>
-      <Route path="/obras">
-        {() => <ConstrucaoRoute component={Obras} />}
-      </Route>
-      <Route path="/obras/:obraId">
-        {() => <ConstrucaoRoute component={ObraDetalhe} />}
-      </Route>
-      <Route path="/insumos">
-        {() => <ConstrucaoRoute component={Insumos} />}
-      </Route>
-      <Route path="/composicoes">
-        {() => <ConstrucaoRoute component={Composicoes} />}
-      </Route>
-      <Route path="/varejo/produtos">
-        {() => <VarejoRoute component={VarejoProdutos} />}
-      </Route>
-      <Route path="/varejo/produtos/:produtoId">
-        {() => <VarejoRoute component={VarejoProdutoDetalhe} />}
-      </Route>
-      <Route path="/varejo/colecoes">
-        {() => <VarejoRoute component={VarejoColecoes} />}
-      </Route>
-      <Route path="/varejo/fornecedores">
-        {() => <VarejoRoute component={VarejoFornecedores} />}
-      </Route>
-      <Route path="/varejo/compras">
-        {() => <VarejoRoute component={VarejoCompras} />}
-      </Route>
-      <Route path="/varejo/fidelidade">
-        {() => <VarejoRoute component={VarejoFidelidade} />}
-      </Route>
-      <Route path="/varejo/combos">
-        {() => <VarejoRoute component={VarejoCombos} />}
-      </Route>
-      <Route path="/supermercado">
-        {() => <SupermercadoRoute component={SupermercadoDashboard} />}
-      </Route>
-      <Route path="/supermercado/produtos">
-        {() => <SupermercadoRoute component={SupermercadoProdutos} />}
-      </Route>
-      <Route path="/supermercado/pedidos">
-        {() => <SupermercadoRoute component={SupermercadoPedidos} />}
-      </Route>
-      <Route path="/supermercado/campanhas">
-        {() => <SupermercadoRoute component={SupermercadoCampanhas} />}
-      </Route>
-      <Route path="/supermercado/config">
-        {() => <SupermercadoRoute component={SupermercadoConfig} />}
-      </Route>
-      <Route path="/invite/:token">
-        <AcceptInvite />
-      </Route>
-      <Route path="/site/:tenantSlug">
-        <SiteLandingPage />
-      </Route>
-      <Route path="/questionario/:tenantSlug">
-        <Questionario />
-      </Route>
-      <Route component={NotFound} />
-    </Switch>
+    <Suspense fallback={<Spinner />}>
+      <Switch>
+        <Route path="/login">
+          <PublicRoute component={Login} />
+        </Route>
+        <Route path="/register">
+          <RegisterRoute />
+        </Route>
+        <Route path="/esqueci-senha">
+          <PublicRoute component={ForgotPassword} />
+        </Route>
+        <Route path="/redefinir-senha">
+          <PublicRoute component={ResetPassword} />
+        </Route>
+        <Route path="/onboarding">
+          <OnboardingRoute />
+        </Route>
+        <Route path="/">
+          <ProtectedRoute component={Dashboard} />
+        </Route>
+        <Route path="/leads">
+          <ProtectedRoute component={Leads} />
+        </Route>
+        <Route path="/leads/:id">
+          <ProtectedRoute component={LeadDetail} />
+        </Route>
+        <Route path="/app/prospector">
+          <ProtectedRoute component={Prospector} />
+        </Route>
+        <Route path="/duplicatas">
+          <ProtectedRoute component={Duplicatas} />
+        </Route>
+        <Route path="/deals">
+          <ProtectedRoute component={Deals} />
+        </Route>
+        <Route path="/negocios">
+          <ProtectedRoute component={Deals} />
+        </Route>
+        <Route path="/conversations">
+          <ProtectedRoute component={Conversations} />
+        </Route>
+        <Route path="/agenda">
+          <ProtectedRoute component={Agenda} />
+        </Route>
+        <Route path="/configuracoes">
+          <ProtectedRoute component={Configuracoes} />
+        </Route>
+        <Route path="/usuarios">
+          <ProtectedRoute component={Usuarios} />
+        </Route>
+        <Route path="/propostas">
+          {() => <ProtectedRoute component={Propostas} />}
+        </Route>
+        <Route path="/propostas/:id/print">
+          {() => <ProtectedRoute component={PropostaPrint} />}
+        </Route>
+        <Route path="/propostas/:id">
+          {() => <ProtectedRoute component={PropostaPrint} />}
+        </Route>
+        <Route path="/campanhas">
+          <ProtectedRoute component={Campanhas} />
+        </Route>
+        <Route path="/estoque">
+          {() => <ProtectedRoute component={Estoque} />}
+        </Route>
+        <Route path="/faturamento">
+          <RedirectPage to="/configuracoes" />
+        </Route>
+        <Route path="/admin/tenants">
+          {() => <SuperAdminRoute component={AdminTenants} />}
+        </Route>
+        <Route path="/admin/ai-usage">
+          {() => <SuperAdminRoute component={AdminAIUsage} />}
+        </Route>
+        <Route path="/admin/partners">
+          {() => <SuperAdminRoute component={AdminPartners} />}
+        </Route>
+        <Route path="/trocar-senha">
+          <ForcePasswordChange />
+        </Route>
+        <Route path="/partner">
+          {() => <PartnerRoute component={PartnerDashboard} />}
+        </Route>
+        <Route path="/marketplace">
+          {() => <ProtectedRoute component={Marketplace} />}
+        </Route>
+        <Route path="/content">
+          {() => <ProtectedRoute component={Content} />}
+        </Route>
+        <Route path="/guia-implantacao">
+          {() => <ProtectedRoute component={GuiaImplantacao} />}
+        </Route>
+        <Route path="/analytics">
+          {() => <ProtectedRoute component={Analytics} />}
+        </Route>
+        <Route path="/relatorios/ganhos-mes">
+          {() => <ProtectedRoute component={RelatorioGanhosMes} />}
+        </Route>
+        <Route path="/relatorios/tipo-cliente">
+          {() => <ProtectedRoute component={RelatorioTipoCliente} />}
+        </Route>
+        <Route path="/relatorios/dores">
+          {() => <ProtectedRoute component={RelatorioDores} />}
+        </Route>
+        <Route path="/obras">
+          {() => <ConstrucaoRoute component={Obras} />}
+        </Route>
+        <Route path="/obras/:obraId">
+          {() => <ConstrucaoRoute component={ObraDetalhe} />}
+        </Route>
+        <Route path="/insumos">
+          {() => <ConstrucaoRoute component={Insumos} />}
+        </Route>
+        <Route path="/composicoes">
+          {() => <ConstrucaoRoute component={Composicoes} />}
+        </Route>
+        <Route path="/varejo/produtos">
+          {() => <VarejoRoute component={VarejoProdutos} />}
+        </Route>
+        <Route path="/varejo/produtos/:produtoId">
+          {() => <VarejoRoute component={VarejoProdutoDetalhe} />}
+        </Route>
+        <Route path="/varejo/colecoes">
+          {() => <VarejoRoute component={VarejoColecoes} />}
+        </Route>
+        <Route path="/varejo/fornecedores">
+          {() => <VarejoRoute component={VarejoFornecedores} />}
+        </Route>
+        <Route path="/varejo/compras">
+          {() => <VarejoRoute component={VarejoCompras} />}
+        </Route>
+        <Route path="/varejo/fidelidade">
+          {() => <VarejoRoute component={VarejoFidelidade} />}
+        </Route>
+        <Route path="/varejo/combos">
+          {() => <VarejoRoute component={VarejoCombos} />}
+        </Route>
+        <Route path="/supermercado">
+          {() => <SupermercadoRoute component={SupermercadoDashboard} />}
+        </Route>
+        <Route path="/supermercado/produtos">
+          {() => <SupermercadoRoute component={SupermercadoProdutos} />}
+        </Route>
+        <Route path="/supermercado/pedidos">
+          {() => <SupermercadoRoute component={SupermercadoPedidos} />}
+        </Route>
+        <Route path="/supermercado/campanhas">
+          {() => <SupermercadoRoute component={SupermercadoCampanhas} />}
+        </Route>
+        <Route path="/supermercado/config">
+          {() => <SupermercadoRoute component={SupermercadoConfig} />}
+        </Route>
+        <Route path="/invite/:token">
+          <AcceptInvite />
+        </Route>
+        <Route path="/site/:tenantSlug">
+          <SiteLandingPage />
+        </Route>
+        <Route path="/questionario/:tenantSlug">
+          <Questionario />
+        </Route>
+        <Route component={NotFound} />
+      </Switch>
+    </Suspense>
   );
 }
 
