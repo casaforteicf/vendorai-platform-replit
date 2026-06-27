@@ -2,12 +2,24 @@ import { createContext, useContext, useEffect, useState, ReactNode } from "react
 import { useGetMe, getGetMeQueryKey, User } from "@workspace/api-client-react";
 import { useLocation } from "wouter";
 
+const OVERRIDE_KEY = "vendorai_sa_tenant_override";
+
+export interface TenantOverride {
+  id: string;
+  name: string;
+  vertical: string;
+}
+
 interface AuthContextType {
   user: User | null;
+  rawUser: User | null;
   token: string | null;
   login: (token: string, user: User, options?: { isDemo?: boolean }) => void;
   logout: () => void;
   isLoading: boolean;
+  tenantOverride: TenantOverride | null;
+  setTenantOverride: (t: TenantOverride) => void;
+  clearTenantOverride: () => void;
 }
 
 const AuthContext = createContext<AuthContextType | null>(null);
@@ -17,8 +29,6 @@ const DEMO_SESSION_KEY = "vendorai_demo_session";
 const DEMO_EXPIRES_KEY = "vendorai_demo_expires_at";
 const DEMO_EMAIL = "demo@demo.com";
 
-// Reads the email claim from a JWT without verifying it (the server still
-// validates the token on every request — this is only used to decide UI flow).
 function decodeTokenEmail(token: string): string | null {
   try {
     const part = token.split(".")[1];
@@ -36,16 +46,9 @@ function isDemoToken(token: string): boolean {
   return decodeTokenEmail(token) === DEMO_EMAIL;
 }
 
-// Demo logins are "try-it" sessions: they should not survive reopening the app.
-// We keep the token in localStorage (so existing API calls keep working) and
-// drop a per-tab marker in sessionStorage. On a fresh open the marker is gone,
-// so a demo token (identified from its JWT email) is cleared and the user lands
-// back on the login page. Real logins persist as before. Detecting demo from
-// the token itself also clears legacy sticky demo sessions from before this fix.
 function readInitialToken(): string | null {
   const token = localStorage.getItem(TOKEN_KEY);
   if (!token) return null;
-
   const sameSession = sessionStorage.getItem(DEMO_SESSION_KEY) === "active";
   if (isDemoToken(token) && !sameSession) {
     localStorage.removeItem(TOKEN_KEY);
@@ -55,9 +58,19 @@ function readInitialToken(): string | null {
   return token;
 }
 
+function readInitialOverride(): TenantOverride | null {
+  try {
+    const raw = localStorage.getItem(OVERRIDE_KEY);
+    return raw ? (JSON.parse(raw) as TenantOverride) : null;
+  } catch {
+    return null;
+  }
+}
+
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [token, setToken] = useState<string | null>(readInitialToken);
-  const [user, setUser] = useState<User | null>(null);
+  const [rawUser, setRawUser] = useState<User | null>(null);
+  const [tenantOverride, setTenantOverrideState] = useState<TenantOverride | null>(readInitialOverride);
   const [, setLocation] = useLocation();
 
   const { data: meData, isLoading, isError } = useGetMe({
@@ -70,9 +83,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     if (meData) {
-      setUser(meData);
+      setRawUser(meData);
       if (meData.forcePasswordReset) {
         setLocation("/trocar-senha");
+      }
+      if (meData.platformRole !== "super_admin") {
+        setTenantOverrideState(null);
+        localStorage.removeItem(OVERRIDE_KEY);
       }
     }
   }, [meData]);
@@ -83,6 +100,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   }, [isError]);
 
+  const effectiveUser: User | null = rawUser
+    ? rawUser.platformRole === "super_admin" && tenantOverride
+      ? { ...rawUser, tenantId: tenantOverride.id, tenantVertical: tenantOverride.vertical }
+      : rawUser
+    : null;
+
   const login = (newToken: string, newUser: User, options?: { isDemo?: boolean }) => {
     localStorage.setItem(TOKEN_KEY, newToken);
     if (options?.isDemo) {
@@ -91,7 +114,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       sessionStorage.removeItem(DEMO_SESSION_KEY);
     }
     setToken(newToken);
-    setUser(newUser);
+    setRawUser(newUser);
+    if (newUser.platformRole !== "super_admin") {
+      setTenantOverrideState(null);
+      localStorage.removeItem(OVERRIDE_KEY);
+    }
     if (newUser.forcePasswordReset) {
       setLocation("/trocar-senha");
     } else {
@@ -102,14 +129,36 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const logout = () => {
     localStorage.removeItem(TOKEN_KEY);
     localStorage.removeItem(DEMO_EXPIRES_KEY);
+    localStorage.removeItem(OVERRIDE_KEY);
     sessionStorage.removeItem(DEMO_SESSION_KEY);
     setToken(null);
-    setUser(null);
+    setRawUser(null);
+    setTenantOverrideState(null);
     setLocation("/login");
   };
 
+  const setTenantOverride = (t: TenantOverride) => {
+    setTenantOverrideState(t);
+    localStorage.setItem(OVERRIDE_KEY, JSON.stringify(t));
+  };
+
+  const clearTenantOverride = () => {
+    setTenantOverrideState(null);
+    localStorage.removeItem(OVERRIDE_KEY);
+  };
+
   return (
-    <AuthContext.Provider value={{ user, token, login, logout, isLoading: isLoading && !!token }}>
+    <AuthContext.Provider value={{
+      user: effectiveUser,
+      rawUser,
+      token,
+      login,
+      logout,
+      isLoading: isLoading && !!token,
+      tenantOverride,
+      setTenantOverride,
+      clearTenantOverride,
+    }}>
       {children}
     </AuthContext.Provider>
   );

@@ -40,6 +40,7 @@ const PropostaPrint      = lazy(() => import("@/pages/PropostaPrint"));
 const AdminAIUsage       = lazy(() => import("@/pages/AdminAIUsage"));
 const AdminPartners      = lazy(() => import("@/pages/AdminPartners"));
 const AdminTenants       = lazy(() => import("@/pages/AdminTenants"));
+const AdminVerticals     = lazy(() => import("@/pages/AdminVerticals"));
 const PartnerDashboard   = lazy(() => import("@/pages/PartnerDashboard"));
 const SiteLandingPage    = lazy(() => import("@/pages/SiteLandingPage"));
 const Marketplace        = lazy(() => import("@/pages/Marketplace"));
@@ -231,19 +232,23 @@ function OnboardingRoute() {
 }
 
 function VarejoRoute({ component: Component, ...rest }: any) {
-  const { token, user, isLoading } = useAuth();
+  const { token, user, isLoading, tenantOverride } = useAuth();
   const [, setLocation] = useLocation();
+  const rawIsSA = !isLoading && !!token && user?.platformRole === "super_admin";
+  const effectiveVertical = rawIsSA && tenantOverride ? tenantOverride.vertical : user?.tenantVertical;
 
   useEffect(() => {
     if (!isLoading && !token) {
       setLocation("/login");
-    } else if (!isLoading && user && user.tenantVertical !== "Varejo de Roupas & Acessórios") {
+    } else if (!isLoading && user && !rawIsSA && effectiveVertical !== "Varejo de Roupas & Acessórios") {
       setLocation("/");
+    } else if (!isLoading && rawIsSA && effectiveVertical !== "Varejo de Roupas & Acessórios") {
+      setLocation("/admin/verticais");
     }
-  }, [token, user, isLoading, setLocation]);
+  }, [token, user, isLoading, effectiveVertical, rawIsSA, setLocation]);
 
   if (isLoading || !token || !user) return <Spinner />;
-  if (user.tenantVertical !== "Varejo de Roupas & Acessórios") return null;
+  if (effectiveVertical !== "Varejo de Roupas & Acessórios") return null;
 
   return (
     <SidebarLayout>
@@ -253,19 +258,23 @@ function VarejoRoute({ component: Component, ...rest }: any) {
 }
 
 function SupermercadoRoute({ component: Component, ...rest }: any) {
-  const { token, user, isLoading } = useAuth();
+  const { token, user, isLoading, tenantOverride } = useAuth();
   const [, setLocation] = useLocation();
+  const rawIsSA = !isLoading && !!token && user?.platformRole === "super_admin";
+  const effectiveVertical = rawIsSA && tenantOverride ? tenantOverride.vertical : user?.tenantVertical;
 
   useEffect(() => {
     if (!isLoading && !token) {
       setLocation("/login");
-    } else if (!isLoading && user && user.tenantVertical !== "Supermercado") {
+    } else if (!isLoading && user && !rawIsSA && effectiveVertical !== "Supermercado") {
       setLocation("/");
+    } else if (!isLoading && rawIsSA && effectiveVertical !== "Supermercado") {
+      setLocation("/admin/verticais");
     }
-  }, [token, user, isLoading, setLocation]);
+  }, [token, user, isLoading, effectiveVertical, rawIsSA, setLocation]);
 
   if (isLoading || !token || !user) return <Spinner />;
-  if (user.tenantVertical !== "Supermercado") return null;
+  if (effectiveVertical !== "Supermercado") return null;
 
   return (
     <SidebarLayout>
@@ -275,19 +284,23 @@ function SupermercadoRoute({ component: Component, ...rest }: any) {
 }
 
 function ConstrucaoRoute({ component: Component, ...rest }: any) {
-  const { token, user, isLoading } = useAuth();
+  const { token, user, isLoading, tenantOverride } = useAuth();
   const [, setLocation] = useLocation();
+  const rawIsSA = !isLoading && !!token && user?.platformRole === "super_admin";
+  const effectiveVertical = rawIsSA && tenantOverride ? tenantOverride.vertical : user?.tenantVertical;
 
   useEffect(() => {
     if (!isLoading && !token) {
       setLocation("/login");
-    } else if (!isLoading && user && user.tenantVertical !== "Construção & Reforma") {
+    } else if (!isLoading && user && !rawIsSA && effectiveVertical !== "Construção & Reforma") {
       setLocation("/");
+    } else if (!isLoading && rawIsSA && effectiveVertical !== "Construção & Reforma") {
+      setLocation("/admin/verticais");
     }
-  }, [token, user, isLoading, setLocation]);
+  }, [token, user, isLoading, effectiveVertical, rawIsSA, setLocation]);
 
   if (isLoading || !token || !user) return <Spinner />;
-  if (user.tenantVertical !== "Construção & Reforma") return null;
+  if (effectiveVertical !== "Construção & Reforma") return null;
 
   return (
     <SidebarLayout>
@@ -406,6 +419,9 @@ function AppRoutes() {
         </Route>
         <Route path="/admin/partners">
           {() => <SuperAdminRoute component={AdminPartners} />}
+        </Route>
+        <Route path="/admin/verticais">
+          {() => <SuperAdminRoute component={AdminVerticals} />}
         </Route>
         <Route path="/trocar-senha">
           <ForcePasswordChange />

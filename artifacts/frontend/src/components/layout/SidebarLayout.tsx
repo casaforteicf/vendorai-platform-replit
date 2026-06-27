@@ -8,24 +8,24 @@ import {
   Settings, LogOut, Megaphone, FileText, Receipt, BrainCircuit,
   Store, Package, Menu, X, Sparkles, Globe, BookOpen, HardHat, Layers,
   Shirt, Tag, ShoppingCart, Heart, Gift, Truck, UtensilsCrossed, Megaphone as MegaphoneIcon,
-  BarChart3, ChevronRight, ChevronDown, Target, Trophy, Search, Clapperboard, Building2,
+  BarChart3, ChevronRight, ChevronDown, Target, Trophy, Search, Clapperboard, Building2, AlertCircle,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import logoFull from "/logo-full-light.svg";
 
 export function SidebarLayout({ children }: { children: React.ReactNode }) {
-  const { user, logout } = useAuth();
+  const { user, logout, tenantOverride, clearTenantOverride } = useAuth();
   const [location] = useLocation();
   const [mobileOpen, setMobileOpen] = useState(false);
-
   const isSuperAdmin = user?.platformRole === "super_admin";
   const isTenantAdmin = user?.platformRole === "tenant_admin";
   const isSeller = user?.platformRole === "tenant_seller";
   const userFunction = user?.userFunction as UserFunction | undefined;
-  const isConstrucao = user?.tenantVertical === "Construção & Reforma";
-  const isVarejo = user?.tenantVertical === "Varejo de Roupas & Acessórios";
-  const isSupermercado = user?.tenantVertical === "Supermercado";
+  const effectiveVertical = isSuperAdmin && tenantOverride ? tenantOverride.vertical : user?.tenantVertical;
+  const isConstrucao = effectiveVertical === "Construção & Reforma";
+  const isVarejo = effectiveVertical === "Varejo de Roupas & Acessórios";
+  const isSupermercado = effectiveVertical === "Supermercado";
 
   const allNavItems = [
     { name: "Dashboard",     href: "/",             icon: LayoutDashboard, sellerHidden: false, section: "crm", fn: ["vendedor", "financeiro", "suporte", "entrega", "administrador", "outro"] as UserFunction[] },
@@ -73,10 +73,11 @@ export function SidebarLayout({ children }: { children: React.ReactNode }) {
 
   const adminNavigation = isSuperAdmin
     ? [
-        { name: "Tenants",     href: "/admin/tenants",  icon: Briefcase,    sellerHidden: false, section: "admin" },
-        { name: "Marketplace", href: "/marketplace",    icon: Store,        sellerHidden: false, section: "admin" },
-        { name: "AI Usage",    href: "/admin/ai-usage", icon: BrainCircuit, sellerHidden: false, section: "admin" },
-        { name: "Parceiros",   href: "/admin/partners", icon: Users,        sellerHidden: false, section: "admin" },
+        { name: "Tenants",     href: "/admin/tenants",   icon: Briefcase,    sellerHidden: false, section: "admin" },
+        { name: "Verticais",   href: "/admin/verticais", icon: Building2,    sellerHidden: false, section: "admin" },
+        { name: "Marketplace", href: "/marketplace",     icon: Store,        sellerHidden: false, section: "admin" },
+        { name: "AI Usage",    href: "/admin/ai-usage",  icon: BrainCircuit, sellerHidden: false, section: "admin" },
+        { name: "Parceiros",   href: "/admin/partners",  icon: Users,        sellerHidden: false, section: "admin" },
       ]
     : [];
 
@@ -340,6 +341,27 @@ export function SidebarLayout({ children }: { children: React.ReactNode }) {
           <img src={logoFull} alt="Vendor.ai" className="h-7 w-auto" />
         </header>
 
+        {isSuperAdmin && tenantOverride && (
+          <div className="shrink-0 flex items-center justify-between gap-3 px-4 py-2 bg-amber-50 border-b border-amber-200 text-amber-800 text-sm">
+            <div className="flex items-center gap-2 min-w-0">
+              <AlertCircle className="h-4 w-4 text-amber-600 shrink-0" />
+              <span className="truncate">
+                Visualizando módulo de{" "}
+                <strong>{tenantOverride.vertical}</strong> — Tenant:{" "}
+                <strong>{tenantOverride.name}</strong>
+              </span>
+            </div>
+            <Button
+              size="sm"
+              variant="ghost"
+              className="h-7 text-amber-700 hover:text-amber-900 hover:bg-amber-100 shrink-0 gap-1.5"
+              onClick={() => { clearTenantOverride(); }}
+            >
+              <LogOut className="h-3.5 w-3.5" />
+              Sair do tenant
+            </Button>
+          </div>
+        )}
         <main className="flex-1 overflow-y-auto p-4 md:p-8">
           {children}
         </main>
