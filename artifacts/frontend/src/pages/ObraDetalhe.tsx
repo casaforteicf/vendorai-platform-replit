@@ -58,9 +58,12 @@ import {
   Send, ThumbsUp, ThumbsDown, ChevronRight, AlertCircle,
   Search, Loader2,
 } from "lucide-react";
-import { format } from "date-fns";
+import { format, differenceInCalendarDays, addDays, parseISO } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import type { ObraEtapa, ObraDiario, CompraObra } from "@workspace/api-client-react";
+import {
+  BarChart, Bar, XAxis, YAxis, Tooltip, Cell, ResponsiveContainer, ReferenceLine,
+} from "recharts";
 
 const STATUS_MAP: Record<string, { label: string; color: string; icon: React.FC<any> }> = {
   planejamento:  { label: "Planejamento",  color: "bg-slate-100 text-slate-700", icon: Clock },
@@ -184,14 +187,113 @@ function VisaoGeral({ obra, etapas }: { obra: any; etapas: ObraEtapa[] }) {
   );
 }
 
+// ─── Gantt helpers ─────────────────────────────────────────────────────────────
+
+const GANTT_COLORS: Record<string, string> = {
+  concluida:    "#10b981",
+  em_andamento: "#6366f1",
+  pendente:     "#94a3b8",
+  pausada:      "#f59e0b",
+};
+
+function parseDate(d?: string | null) {
+  if (!d) return null;
+  return parseISO(d + "T12:00:00");
+}
+
+function ganttDays(a: Date | null, b: Date | null) {
+  if (!a || !b) return 0;
+  return Math.max(1, differenceInCalendarDays(b, a));
+}
+
+interface GanttRow {
+  id: string;
+  nome: string;
+  shortNome: string;
+  offset: number;
+  duration: number;
+  pct: number;
+  status: string;
+  inicio: string | null | undefined;
+  fim: string | null | undefined;
+  inicioReal: string | null | undefined;
+  fimReal: string | null | undefined;
+  responsavel: string | null | undefined;
+  etapa: ObraEtapa;
+}
+
+interface GanttBarShapeProps {
+  x?: number; y?: number; width?: number; height?: number;
+  payload?: GanttRow;
+}
+
+function GanttBarShape({ x = 0, y = 0, width = 0, height = 0, payload }: GanttBarShapeProps) {
+  if (!payload || width <= 0) return null;
+  const color = GANTT_COLORS[payload.status] ?? "#94a3b8";
+  const pctW = Math.max(0, Math.min(width, width * (payload.pct / 100)));
+  const r = 4;
+
+  return (
+    <g>
+      {/* Background bar (full duration) */}
+      <rect x={x} y={y + 3} width={width} height={height - 6} fill={color} fillOpacity={0.25} rx={r} />
+      {/* Progress fill */}
+      {pctW > 0 && (
+        <rect x={x} y={y + 3} width={pctW} height={height - 6} fill={color} fillOpacity={0.9} rx={r} />
+      )}
+      {/* Percentage label (only if bar is wide enough) */}
+      {width >= 36 && (
+        <text
+          x={x + width / 2} y={y + height / 2 + 1}
+          textAnchor="middle" dominantBaseline="middle"
+          fontSize={10} fontWeight="600" fill={payload.pct > 40 ? "#fff" : color}
+        >
+          {Math.round(payload.pct)}%
+        </text>
+      )}
+    </g>
+  );
+}
+
+// Transparent offset shape (spacer)
+function OffsetShape() { return null; }
+
+interface GanttTooltipProps { active?: boolean; payload?: any[] }
+function GanttTooltip({ active, payload }: GanttTooltipProps) {
+  if (!active || !payload?.length) return null;
+  const row: GanttRow = payload.find((p: any) => p.dataKey === "duration")?.payload;
+  if (!row) return null;
+  const color = GANTT_COLORS[row.status] ?? "#94a3b8";
+  const statusLabel = ETAPA_STATUS_MAP[row.status]?.label ?? row.status;
+  return (
+    <div className="bg-white border rounded-lg shadow-lg p-3 text-xs min-w-[180px]">
+      <p className="font-semibold mb-1 text-sm">{row.nome}</p>
+      <div className="flex items-center gap-1.5 mb-2">
+        <span className="inline-block w-2 h-2 rounded-full" style={{ background: color }} />
+        <span className="text-muted-foreground">{statusLabel}</span>
+      </div>
+      <div className="space-y-0.5 text-muted-foreground">
+        <p>Início: <span className="font-medium text-foreground">{fmt(row.inicio)}</span></p>
+        <p>Fim: <span className="font-medium text-foreground">{fmt(row.fim)}</span></p>
+        <p>Duração: <span className="font-medium text-foreground">{row.duration} dias</span></p>
+        <p>Progresso: <span className="font-medium text-foreground">{Math.round(row.pct)}%</span></p>
+        {row.responsavel && <p>Responsável: <span className="font-medium text-foreground">{row.responsavel}</span></p>}
+      </div>
+    </div>
+  );
+}
+
+// ─── Cronograma (Gantt) ────────────────────────────────────────────────────────
+
 function Cronograma({ tenantId, obraId, etapas }: { tenantId: string; obraId: string; etapas: ObraEtapa[] }) {
   const qc = useQueryClient();
   const [addOpen, setAddOpen] = useState(false);
   const [editEtapa, setEditEtapa] = useState<ObraEtapa | null>(null);
   const [form, setForm] = useState({ nome: "", dataInicioPrevista: "", dataFimPrevista: "", responsavel: "", status: "pendente" });
+  const [view, setView] = useState<"gantt" | "lista">("gantt");
 
   const { mutateAsync: createEtapa, isPending: isCreating } = useCreateObraEtapa();
-  const { mutateAsync: updateEtapa } = useUpdateObraEtapa();
+  const { mutateAsync: updateEtapa, isPending: isSaving } = useUpdateObraEtapa();
   const { mutateAsync: deleteEtapa } = useDeleteObraEtapa();
 
   async function handleCreate(e: React.FormEvent) {
@@ -202,132 +304,418 @@ function Cronograma({ tenantId, obraId, etapas }: { tenantId: string; obraId: st
     setForm({ nome: "", dataInicioPrevista: "", dataFimPrevista: "", responsavel: "", status: "pendente" });
   }
 
-  async function handleUpdate(etapaId: string, data: Partial<ObraEtapa>) {
-    await updateEtapa({ tenantId, obraId, etapaId, data: data as any });
+  async function handleUpdate() {
+    if (!editEtapa) return;
+    await updateEtapa({ tenantId, obraId, etapaId: editEtapa.id, data: editEtapa as any });
     await qc.invalidateQueries({ queryKey: getListObraEtapasQueryKey(tenantId, obraId) });
     setEditEtapa(null);
   }
 
+  // ── Gantt data preparation ─────────────────────────────────────────────────
+  const etapasComDatas = etapas.filter((e) => e.dataInicioPrevista && e.dataFimPrevista);
+  const etapasSemDatas = etapas.filter((e) => !e.dataInicioPrevista || !e.dataFimPrevista);
+
+  const allStarts = etapasComDatas.map((e) => parseDate(e.dataInicioPrevista)!);
+  const allEnds   = etapasComDatas.map((e) => parseDate(e.dataFimPrevista)!);
+  const projectStart = allStarts.length ? allStarts.reduce((m, d) => d < m ? d : m) : new Date();
+  const projectEnd   = allEnds.length   ? allEnds.reduce((m, d) => d > m ? d : m)   : new Date();
+  const totalDays    = Math.max(1, ganttDays(projectStart, projectEnd));
+
+  const ganttRows: GanttRow[] = etapasComDatas.map((e) => {
+    const start = parseDate(e.dataInicioPrevista)!;
+    const end   = parseDate(e.dataFimPrevista)!;
+    return {
+      id:          e.id,
+      nome:        e.nome,
+      shortNome:   e.nome.length > 22 ? e.nome.slice(0, 21) + "…" : e.nome,
+      offset:      ganttDays(projectStart, start),
+      duration:    ganttDays(start, end),
+      pct:         parseFloat(e.percentualExecutado ?? "0"),
+      status:      e.status,
+      inicio:      e.dataInicioPrevista,
+      fim:         e.dataFimPrevista,
+      inicioReal:  e.dataInicioReal,
+      fimReal:     e.dataFimReal,
+      responsavel: e.responsavel,
+      etapa:       e,
+    };
+  });
+
+  // Tick formatter: day offset → date label
+  const xTickFormatter = (dayOffset: number) => {
+    if (!allStarts.length) return "";
+    const d = addDays(projectStart, dayOffset);
+    return format(d, "dd/MM", { locale: ptBR });
+  };
+
+  // Today reference line offset
+  const todayOffset = ganttDays(projectStart, new Date());
+
+  // Bar height per row
+  const ROW_H = 44;
+  const chartHeight = Math.max(200, ganttRows.length * ROW_H + 60);
+
   return (
-    <div className="space-y-4">
-      <div className="flex justify-end">
-        <Dialog open={addOpen} onOpenChange={setAddOpen}>
-          <DialogTrigger asChild>
-            <Button size="sm" className="gap-2"><Plus className="h-4 w-4" />Adicionar etapa</Button>
-          </DialogTrigger>
-          <DialogContent>
-            <DialogHeader><DialogTitle>Nova etapa</DialogTitle></DialogHeader>
-            <form onSubmit={handleCreate} className="space-y-4">
-              <div className="space-y-2">
-                <Label>Nome *</Label>
-                <Input required value={form.nome} onChange={(e) => setForm((f) => ({ ...f, nome: e.target.value }))} />
-              </div>
-              <div className="grid grid-cols-2 gap-3">
+    <div className="space-y-4 pt-1">
+      {/* Toolbar */}
+      <div className="flex items-center justify-between flex-wrap gap-2">
+        <div className="flex items-center gap-3">
+          {allEnds.length > 0 && (
+            <div className="flex items-center gap-1.5 text-sm text-muted-foreground">
+              <Calendar className="h-4 w-4" />
+              <span>Conclusão prevista:</span>
+              <span className="font-semibold text-foreground">{fmt(format(projectEnd, "yyyy-MM-dd"))}</span>
+            </div>
+          )}
+        </div>
+        <div className="flex items-center gap-2">
+          {/* View toggle */}
+          <div className="flex border rounded-md overflow-hidden text-xs">
+            <button
+              className={`px-3 py-1.5 font-medium transition-colors ${view === "gantt" ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:bg-muted"}`}
+              onClick={() => setView("gantt")}
+            >
+              Gantt
+            </button>
+            <button
+              className={`px-3 py-1.5 font-medium transition-colors ${view === "lista" ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:bg-muted"}`}
+              onClick={() => setView("lista")}
+            >
+              Lista
+            </button>
+          </div>
+          <Dialog open={addOpen} onOpenChange={setAddOpen}>
+            <DialogTrigger asChild>
+              <Button size="sm" className="gap-1.5"><Plus className="h-3.5 w-3.5" />Adicionar etapa</Button>
+            </DialogTrigger>
+            <DialogContent>
+              <DialogHeader><DialogTitle>Nova etapa</DialogTitle></DialogHeader>
+              <form onSubmit={handleCreate} className="space-y-4">
                 <div className="space-y-2">
-                  <Label>Início previsto</Label>
-                  <Input type="date" value={form.dataInicioPrevista} onChange={(e) => setForm((f) => ({ ...f, dataInicioPrevista: e.target.value }))} />
+                  <Label>Nome *</Label>
+                  <Input required value={form.nome} onChange={(e) => setForm((f) => ({ ...f, nome: e.target.value }))} />
+                </div>
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="space-y-2">
+                    <Label>Início previsto</Label>
+                    <Input type="date" value={form.dataInicioPrevista} onChange={(e) => setForm((f) => ({ ...f, dataInicioPrevista: e.target.value }))} />
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Fim previsto</Label>
+                    <Input type="date" value={form.dataFimPrevista} onChange={(e) => setForm((f) => ({ ...f, dataFimPrevista: e.target.value }))} />
+                  </div>
                 </div>
                 <div className="space-y-2">
-                  <Label>Fim previsto</Label>
-                  <Input type="date" value={form.dataFimPrevista} onChange={(e) => setForm((f) => ({ ...f, dataFimPrevista: e.target.value }))} />
+                  <Label>Responsável</Label>
+                  <Input value={form.responsavel} onChange={(e) => setForm((f) => ({ ...f, responsavel: e.target.value }))} />
                 </div>
-              </div>
-              <div className="space-y-2">
-                <Label>Responsável</Label>
-                <Input value={form.responsavel} onChange={(e) => setForm((f) => ({ ...f, responsavel: e.target.value }))} />
-              </div>
-              <div className="flex justify-end gap-2">
-                <Button type="button" variant="outline" onClick={() => setAddOpen(false)}>Cancelar</Button>
-                <Button type="submit" disabled={isCreating}>{isCreating ? "Salvando..." : "Salvar"}</Button>
-              </div>
-            </form>
-          </DialogContent>
-        </Dialog>
+                <div className="flex justify-end gap-2">
+                  <Button type="button" variant="outline" onClick={() => setAddOpen(false)}>Cancelar</Button>
+                  <Button type="submit" disabled={isCreating}>{isCreating ? "Salvando…" : "Salvar"}</Button>
+                </div>
+              </form>
+            </DialogContent>
+          </Dialog>
+        </div>
       </div>
 
       {etapas.length === 0 ? (
-        <div className="text-center py-12 text-muted-foreground">
+        <div className="text-center py-16 text-muted-foreground">
           <Calendar className="h-10 w-10 mx-auto mb-2 opacity-20" />
-          <p>Nenhuma etapa cadastrada</p>
+          <p className="text-sm">Nenhuma etapa cadastrada.</p>
+          <p className="text-xs mt-1">Clique em "Adicionar etapa" para começar o cronograma.</p>
+        </div>
+      ) : view === "gantt" ? (
+        <div className="space-y-4">
+          {/* ── Gantt chart ── */}
+          {ganttRows.length === 0 ? (
+            <div className="border rounded-lg p-8 text-center text-muted-foreground text-sm">
+              <Calendar className="h-8 w-8 mx-auto mb-2 opacity-20" />
+              <p>Nenhuma etapa com datas definidas.</p>
+              <p className="text-xs mt-1">Edite as etapas para definir início e fim previstos.</p>
+            </div>
+          ) : (
+            <Card>
+              <CardContent className="pt-4 pb-2 pr-3">
+                {/* Legend */}
+                <div className="flex items-center gap-4 mb-3 flex-wrap text-xs text-muted-foreground">
+                  {Object.entries(GANTT_COLORS).map(([status, color]) => (
+                    <div key={status} className="flex items-center gap-1.5">
+                      <span className="w-3 h-3 rounded-sm inline-block" style={{ background: color, opacity: 0.9 }} />
+                      <span>{ETAPA_STATUS_MAP[status]?.label ?? status}</span>
+                    </div>
+                  ))}
+                  <div className="flex items-center gap-1.5">
+                    <span className="w-3 h-1 inline-block bg-red-400" />
+                    <span>Hoje</span>
+                  </div>
+                </div>
+
+                <ResponsiveContainer width="100%" height={chartHeight}>
+                  <BarChart
+                    layout="vertical"
+                    data={ganttRows}
+                    margin={{ top: 0, right: 8, left: 0, bottom: 8 }}
+                    barSize={ROW_H - 12}
+                    onClick={(e) => {
+                      if (e?.activePayload?.[0]?.payload) {
+                        setEditEtapa((e.activePayload[0].payload as GanttRow).etapa);
+                      }
+                    }}
+                  >
+                    <XAxis
+                      type="number"
+                      domain={[0, totalDays]}
+                      tickFormatter={xTickFormatter}
+                      tick={{ fontSize: 11 }}
+                      tickCount={Math.min(10, totalDays + 1)}
+                      tickLine={false}
+                      axisLine={{ stroke: "#e5e7eb" }}
+                    />
+                    <YAxis
+                      type="category"
+                      dataKey="shortNome"
+                      width={140}
+                      tick={{ fontSize: 12, fill: "#374151" }}
+                      tickLine={false}
+                      axisLine={false}
+                    />
+                    <Tooltip content={<GanttTooltip />} cursor={{ fill: "#f9fafb" }} />
+
+                    {/* Today reference line */}
+                    {todayOffset >= 0 && todayOffset <= totalDays && (
+                      <ReferenceLine x={todayOffset} stroke="#f87171" strokeWidth={1.5} strokeDasharray="4 3" label={{ value: "Hoje", position: "top", fontSize: 10, fill: "#f87171" }} />
+                    )}
+
+                    {/* Offset bar (transparent spacer) */}
+                    <Bar dataKey="offset" stackId="g" shape={<OffsetShape />} isAnimationActive={false} />
+
+                    {/* Duration bar (colored, with progress) */}
+                    <Bar dataKey="duration" stackId="g" shape={<GanttBarShape />} isAnimationActive={false} cursor="pointer">
+                      {ganttRows.map((row) => (
+                        <Cell key={row.id} fill={GANTT_COLORS[row.status] ?? "#94a3b8"} />
+                      ))}
+                    </Bar>
+                  </BarChart>
+                </ResponsiveContainer>
+              </CardContent>
+            </Card>
+          )}
+
+          {/* ── Summary table ── */}
+          <Card>
+            <CardHeader className="pb-2">
+              <CardTitle className="text-sm font-semibold">Resumo das etapas</CardTitle>
+            </CardHeader>
+            <CardContent className="pt-0">
+              <div className="overflow-x-auto">
+                <table className="w-full text-xs">
+                  <thead>
+                    <tr className="border-b text-muted-foreground">
+                      <th className="text-left py-2 pr-3 font-medium">Etapa</th>
+                      <th className="text-center py-2 px-2 font-medium whitespace-nowrap">Status</th>
+                      <th className="text-center py-2 px-2 font-medium whitespace-nowrap">Início prev.</th>
+                      <th className="text-center py-2 px-2 font-medium whitespace-nowrap">Fim prev.</th>
+                      <th className="text-right py-2 px-2 font-medium whitespace-nowrap">Dias</th>
+                      <th className="text-right py-2 px-2 font-medium whitespace-nowrap">% Conc.</th>
+                      <th className="text-center py-2 pl-2 font-medium">Responsável</th>
+                      <th className="w-12" />
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {etapas.map((etapa) => {
+                      const pct = parseFloat(etapa.percentualExecutado ?? "0");
+                      const dias = etapa.dataInicioPrevista && etapa.dataFimPrevista
+                        ? ganttDays(parseDate(etapa.dataInicioPrevista), parseDate(etapa.dataFimPrevista))
+                        : null;
+                      const st = ETAPA_STATUS_MAP[etapa.status];
+                      const color = GANTT_COLORS[etapa.status] ?? "#94a3b8";
+
+                      return (
+                        <tr key={etapa.id} className="border-b hover:bg-muted/10 group">
+                          <td className="py-2 pr-3 font-medium">{etapa.nome}</td>
+                          <td className="py-2 px-2 text-center">
+                            <span className={`text-xs px-1.5 py-0.5 rounded-full ${st?.color ?? "bg-muted"}`}>{st?.label ?? etapa.status}</span>
+                          </td>
+                          <td className="py-2 px-2 text-center text-muted-foreground">{fmt(etapa.dataInicioPrevista)}</td>
+                          <td className="py-2 px-2 text-center text-muted-foreground">{fmt(etapa.dataFimPrevista)}</td>
+                          <td className="py-2 px-2 text-right">{dias ?? "—"}</td>
+                          <td className="py-2 px-2 text-right">
+                            <div className="flex items-center justify-end gap-1.5">
+                              <div className="w-16 h-1.5 rounded-full bg-muted overflow-hidden">
+                                <div className="h-full rounded-full" style={{ width: `${pct}%`, background: color }} />
+                              </div>
+                              <span className="w-8 text-right font-mono">{pct.toFixed(0)}%</span>
+                            </div>
+                          </td>
+                          <td className="py-2 px-2 text-center text-muted-foreground">{etapa.responsavel ?? "—"}</td>
+                          <td className="py-2 pl-2">
+                            <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100">
+                              <button onClick={() => setEditEtapa(etapa)} className="text-muted-foreground hover:text-foreground p-0.5">
+                                <Pencil className="h-3.5 w-3.5" />
+                              </button>
+                              <AlertDialog>
+                                <AlertDialogTrigger asChild>
+                                  <button className="text-muted-foreground hover:text-red-600 p-0.5">
+                                    <Trash2 className="h-3.5 w-3.5" />
+                                  </button>
+                                </AlertDialogTrigger>
+                                <AlertDialogContent>
+                                  <AlertDialogHeader><AlertDialogTitle>Excluir etapa?</AlertDialogTitle><AlertDialogDescription>Esta ação não pode ser desfeita.</AlertDialogDescription></AlertDialogHeader>
+                                  <AlertDialogFooter>
+                                    <AlertDialogCancel>Cancelar</AlertDialogCancel>
+                                    <AlertDialogAction onClick={async () => { await deleteEtapa({ tenantId, obraId, etapaId: etapa.id }); qc.invalidateQueries({ queryKey: getListObraEtapasQueryKey(tenantId, obraId) }); }}>Excluir</AlertDialogAction>
+                                  </AlertDialogFooter>
+                                </AlertDialogContent>
+                              </AlertDialog>
+                            </div>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+
+              {etapasSemDatas.length > 0 && (
+                <p className="text-xs text-muted-foreground mt-3 flex items-center gap-1">
+                  <AlertCircle className="h-3.5 w-3.5" />
+                  {etapasSemDatas.length} etapa{etapasSemDatas.length > 1 ? "s" : ""} sem datas definidas — clique no lápis para editar.
+                </p>
+              )}
+            </CardContent>
+          </Card>
         </div>
       ) : (
+        /* ── Lista view (original) ── */
         <div className="space-y-2">
           {etapas.map((etapa, idx) => {
             const statusInfo = ETAPA_STATUS_MAP[etapa.status] ?? { label: etapa.status, color: "bg-muted" };
             const pct = parseFloat(etapa.percentualExecutado ?? "0");
-            const isEditing = editEtapa?.id === etapa.id;
 
             return (
               <Card key={etapa.id}>
                 <CardContent className="pt-4 pb-3">
-                  {isEditing ? (
-                    <form onSubmit={(e) => { e.preventDefault(); handleUpdate(etapa.id, { nome: editEtapa!.nome, status: editEtapa!.status, responsavel: editEtapa!.responsavel ?? undefined, dataInicioReal: editEtapa!.dataInicioReal ?? undefined, dataFimReal: editEtapa!.dataFimReal ?? undefined }); }} className="space-y-3">
-                      <div className="grid grid-cols-2 gap-3">
-                        <div className="space-y-1">
-                          <Label className="text-xs">Nome</Label>
-                          <Input value={editEtapa!.nome} onChange={(e) => setEditEtapa((p) => p ? { ...p, nome: e.target.value } : p)} />
-                        </div>
-                        <div className="space-y-1">
-                          <Label className="text-xs">Status</Label>
-                          <select className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm" value={editEtapa!.status} onChange={(e) => setEditEtapa((p) => p ? { ...p, status: e.target.value } : p)}>
-                            {Object.entries(ETAPA_STATUS_MAP).map(([v, { label }]) => <option key={v} value={v}>{label}</option>)}
-                          </select>
-                        </div>
-                        <div className="space-y-1">
-                          <Label className="text-xs">Início real</Label>
-                          <Input type="date" value={editEtapa!.dataInicioReal ?? ""} onChange={(e) => setEditEtapa((p) => p ? { ...p, dataInicioReal: e.target.value } : p)} />
-                        </div>
-                        <div className="space-y-1">
-                          <Label className="text-xs">Fim real</Label>
-                          <Input type="date" value={editEtapa!.dataFimReal ?? ""} onChange={(e) => setEditEtapa((p) => p ? { ...p, dataFimReal: e.target.value } : p)} />
-                        </div>
+                  <div className="space-y-2">
+                    <div className="flex items-center justify-between gap-2">
+                      <div className="flex items-center gap-2">
+                        <span className="text-xs font-mono text-muted-foreground w-5">{idx + 1}.</span>
+                        <span className="font-medium">{etapa.nome}</span>
+                        <span className={`text-xs px-2 py-0.5 rounded-full ${statusInfo.color}`}>{statusInfo.label}</span>
                       </div>
-                      <div className="flex justify-end gap-2">
-                        <Button type="button" size="sm" variant="outline" onClick={() => setEditEtapa(null)}>Cancelar</Button>
-                        <Button type="submit" size="sm">Salvar</Button>
-                      </div>
-                    </form>
-                  ) : (
-                    <div className="space-y-2">
-                      <div className="flex items-center justify-between gap-2">
-                        <div className="flex items-center gap-2">
-                          <span className="text-xs font-mono text-muted-foreground w-5">{idx + 1}.</span>
-                          <span className="font-medium">{etapa.nome}</span>
-                          <span className={`text-xs px-2 py-0.5 rounded-full ${statusInfo.color}`}>{statusInfo.label}</span>
-                        </div>
-                        <div className="flex items-center gap-1">
-                          <Button variant="ghost" size="sm" className="h-7 w-7 p-0" onClick={() => setEditEtapa(etapa)}><Pencil className="h-3.5 w-3.5" /></Button>
-                          <AlertDialog>
-                            <AlertDialogTrigger asChild>
-                              <Button variant="ghost" size="sm" className="h-7 w-7 p-0 text-destructive"><Trash2 className="h-3.5 w-3.5" /></Button>
-                            </AlertDialogTrigger>
-                            <AlertDialogContent>
-                              <AlertDialogHeader><AlertDialogTitle>Excluir etapa?</AlertDialogTitle><AlertDialogDescription>Esta ação não pode ser desfeita.</AlertDialogDescription></AlertDialogHeader>
-                              <AlertDialogFooter>
-                                <AlertDialogCancel>Cancelar</AlertDialogCancel>
-                                <AlertDialogAction onClick={async () => { await deleteEtapa({ tenantId, obraId, etapaId: etapa.id }); qc.invalidateQueries({ queryKey: getListObraEtapasQueryKey(tenantId, obraId) }); }}>Excluir</AlertDialogAction>
-                              </AlertDialogFooter>
-                            </AlertDialogContent>
-                          </AlertDialog>
-                        </div>
-                      </div>
-                      <div className="flex items-center gap-4 text-xs text-muted-foreground">
-                        <span>Previsto: {fmt(etapa.dataInicioPrevista)} → {fmt(etapa.dataFimPrevista)}</span>
-                        {etapa.dataInicioReal && <span>Real: {fmt(etapa.dataInicioReal)} → {fmt(etapa.dataFimReal)}</span>}
-                        {etapa.responsavel && <span className="flex items-center gap-1"><User className="h-3 w-3" />{etapa.responsavel}</span>}
-                      </div>
-                      <div className="flex items-center gap-3">
-                        <Progress value={pct} className={`h-2 flex-1 ${pct >= 100 ? "[&>div]:bg-emerald-500" : ""}`} />
-                        <span className="text-xs font-mono w-10 text-right">{pct.toFixed(1)}%</span>
+                      <div className="flex items-center gap-1">
+                        <Button variant="ghost" size="sm" className="h-7 w-7 p-0" onClick={() => setEditEtapa(etapa)}><Pencil className="h-3.5 w-3.5" /></Button>
+                        <AlertDialog>
+                          <AlertDialogTrigger asChild>
+                            <Button variant="ghost" size="sm" className="h-7 w-7 p-0 text-destructive"><Trash2 className="h-3.5 w-3.5" /></Button>
+                          </AlertDialogTrigger>
+                          <AlertDialogContent>
+                            <AlertDialogHeader><AlertDialogTitle>Excluir etapa?</AlertDialogTitle><AlertDialogDescription>Esta ação não pode ser desfeita.</AlertDialogDescription></AlertDialogHeader>
+                            <AlertDialogFooter>
+                              <AlertDialogCancel>Cancelar</AlertDialogCancel>
+                              <AlertDialogAction onClick={async () => { await deleteEtapa({ tenantId, obraId, etapaId: etapa.id }); qc.invalidateQueries({ queryKey: getListObraEtapasQueryKey(tenantId, obraId) }); }}>Excluir</AlertDialogAction>
+                            </AlertDialogFooter>
+                          </AlertDialogContent>
+                        </AlertDialog>
                       </div>
                     </div>
-                  )}
+                    <div className="flex items-center gap-4 text-xs text-muted-foreground">
+                      <span>Previsto: {fmt(etapa.dataInicioPrevista)} → {fmt(etapa.dataFimPrevista)}</span>
+                      {etapa.dataInicioReal && <span>Real: {fmt(etapa.dataInicioReal)} → {fmt(etapa.dataFimReal)}</span>}
+                      {etapa.responsavel && <span className="flex items-center gap-1"><User className="h-3 w-3" />{etapa.responsavel}</span>}
+                    </div>
+                    <div className="flex items-center gap-3">
+                      <Progress value={pct} className={`h-2 flex-1 ${pct >= 100 ? "[&>div]:bg-emerald-500" : ""}`} />
+                      <span className="text-xs font-mono w-10 text-right">{pct.toFixed(1)}%</span>
+                    </div>
+                  </div>
                 </CardContent>
               </Card>
             );
           })}
         </div>
       )}
+
+      {/* ── Edit Etapa Dialog ── */}
+      <Dialog open={!!editEtapa} onOpenChange={(o) => !o && setEditEtapa(null)}>
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle>Editar etapa</DialogTitle>
+          </DialogHeader>
+          {editEtapa && (
+            <div className="space-y-4">
+              <div className="grid grid-cols-2 gap-3">
+                <div className="col-span-2 space-y-1.5">
+                  <Label>Nome</Label>
+                  <Input value={editEtapa.nome} onChange={(e) => setEditEtapa((p) => p ? { ...p, nome: e.target.value } : p)} />
+                </div>
+                <div className="space-y-1.5">
+                  <Label>Status</Label>
+                  <select
+                    className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm"
+                    value={editEtapa.status}
+                    onChange={(e) => setEditEtapa((p) => p ? { ...p, status: e.target.value } : p)}
+                  >
+                    {Object.entries(ETAPA_STATUS_MAP).map(([v, { label }]) => <option key={v} value={v}>{label}</option>)}
+                  </select>
+                </div>
+                <div className="space-y-1.5">
+                  <Label>Responsável</Label>
+                  <Input value={editEtapa.responsavel ?? ""} onChange={(e) => setEditEtapa((p) => p ? { ...p, responsavel: e.target.value } : p)} />
+                </div>
+              </div>
+
+              <div className="border-t pt-3">
+                <p className="text-xs font-medium text-muted-foreground mb-2 uppercase tracking-wide">Datas previstas</p>
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="space-y-1.5">
+                    <Label className="text-xs">Início previsto</Label>
+                    <Input type="date" value={editEtapa.dataInicioPrevista ?? ""} onChange={(e) => setEditEtapa((p) => p ? { ...p, dataInicioPrevista: e.target.value } : p)} />
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label className="text-xs">Fim previsto</Label>
+                    <Input type="date" value={editEtapa.dataFimPrevista ?? ""} onChange={(e) => setEditEtapa((p) => p ? { ...p, dataFimPrevista: e.target.value } : p)} />
+                  </div>
+                </div>
+              </div>
+
+              <div className="border-t pt-3">
+                <p className="text-xs font-medium text-muted-foreground mb-2 uppercase tracking-wide">Datas reais</p>
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="space-y-1.5">
+                    <Label className="text-xs">Início real</Label>
+                    <Input type="date" value={editEtapa.dataInicioReal ?? ""} onChange={(e) => setEditEtapa((p) => p ? { ...p, dataInicioReal: e.target.value } : p)} />
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label className="text-xs">Fim real</Label>
+                    <Input type="date" value={editEtapa.dataFimReal ?? ""} onChange={(e) => setEditEtapa((p) => p ? { ...p, dataFimReal: e.target.value } : p)} />
+                  </div>
+                </div>
+              </div>
+
+              <div className="border-t pt-3">
+                <div className="space-y-1.5">
+                  <Label className="text-xs">% Executado: <span className="font-semibold">{parseFloat(editEtapa.percentualExecutado ?? "0").toFixed(0)}%</span></Label>
+                  <input
+                    type="range" min={0} max={100} step={1}
+                    value={parseFloat(editEtapa.percentualExecutado ?? "0")}
+                    onChange={(e) => setEditEtapa((p) => p ? { ...p, percentualExecutado: e.target.value } : p)}
+                    className="w-full accent-indigo-600"
+                  />
+                  <div className="flex justify-between text-[10px] text-muted-foreground">
+                    <span>0%</span><span>25%</span><span>50%</span><span>75%</span><span>100%</span>
+                  </div>
+                </div>
+              </div>
+
+              <div className="flex justify-end gap-2 pt-1">
+                <Button variant="outline" onClick={() => setEditEtapa(null)}>Cancelar</Button>
+                <Button onClick={handleUpdate} disabled={isSaving}>{isSaving ? "Salvando…" : "Salvar alterações"}</Button>
+              </div>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
