@@ -7,6 +7,7 @@ import {
   archAmbientesTable,
   archOrcamentoItensTable,
   archCenasTable,
+  archRendersTable,
   archCatalogoTable,
   archMarketplaceItemsTable,
   archMarketplacePedidosTable,
@@ -19,11 +20,14 @@ import {
   updateArchOrcamentoItemSchema,
   insertArchCatalogoSchema,
   updateArchCatalogoSchema,
+  insertArchCenaSchema,
+  updateArchCenaSchema,
 } from "@workspace/db";
 import { z } from "zod/v4";
 import { anthropic } from "@workspace/integrations-anthropic-ai";
 import { authenticate } from "../middlewares/auth.js";
 import { objectStorageClient } from "../lib/objectStorage.js";
+import { iniciarRender } from "../services/blenderService.js";
 
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 20 * 1024 * 1024 } });
 
@@ -357,6 +361,185 @@ router.delete("/arch/projetos/:id/ambientes/:ambId", authenticate, async (req, r
         eq(archAmbientesTable.projetoId, projetoId),
       ),
     );
+
+  return res.status(204).send();
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Cenas
+// ─────────────────────────────────────────────────────────────────────────────
+
+// GET /api/arch/projetos/:id/cenas
+router.get("/arch/projetos/:id/cenas", authenticate, async (req, res) => {
+  const projetoId = String(req.params.id);
+
+  const [projeto] = await db
+    .select({ tenantId: archProjetosTable.tenantId })
+    .from(archProjetosTable)
+    .where(eq(archProjetosTable.id, projetoId))
+    .limit(1);
+
+  if (!projeto) return res.status(404).json({ error: "Projeto não encontrado." });
+  if (!canAccessTenant(req, projeto.tenantId)) {
+    return res.status(403).json({ error: "Acesso negado." });
+  }
+
+  const cenas = await db
+    .select()
+    .from(archCenasTable)
+    .where(eq(archCenasTable.projetoId, projetoId))
+    .orderBy(desc(archCenasTable.createdAt));
+
+  return res.json(cenas);
+});
+
+// POST /api/arch/projetos/:id/cenas
+router.post("/arch/projetos/:id/cenas", authenticate, async (req, res) => {
+  const projetoId = String(req.params.id);
+
+  const [projeto] = await db
+    .select({ tenantId: archProjetosTable.tenantId })
+    .from(archProjetosTable)
+    .where(eq(archProjetosTable.id, projetoId))
+    .limit(1);
+
+  if (!projeto) return res.status(404).json({ error: "Projeto não encontrado." });
+  if (!canAccessTenant(req, projeto.tenantId)) {
+    return res.status(403).json({ error: "Acesso negado." });
+  }
+
+  const parsed = insertArchCenaSchema.safeParse({ ...req.body, projetoId });
+  if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
+
+  const [cena] = await db.insert(archCenasTable).values(parsed.data).returning();
+  return res.status(201).json(cena);
+});
+
+// PATCH /api/arch/cenas/:cenaId
+router.patch("/arch/cenas/:cenaId", authenticate, async (req, res) => {
+  const cenaId = String(req.params.cenaId);
+
+  const [cena] = await db
+    .select({ projetoId: archCenasTable.projetoId })
+    .from(archCenasTable)
+    .where(eq(archCenasTable.id, cenaId))
+    .limit(1);
+
+  if (!cena) return res.status(404).json({ error: "Cena não encontrada." });
+
+  const [projeto] = await db
+    .select({ tenantId: archProjetosTable.tenantId })
+    .from(archProjetosTable)
+    .where(eq(archProjetosTable.id, cena.projetoId))
+    .limit(1);
+
+  if (!projeto || !canAccessTenant(req, projeto.tenantId)) {
+    return res.status(403).json({ error: "Acesso negado." });
+  }
+
+  const parsed = updateArchCenaSchema.safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
+
+  const [updated] = await db
+    .update(archCenasTable)
+    .set({ ...parsed.data, updatedAt: new Date() })
+    .where(eq(archCenasTable.id, cenaId))
+    .returning();
+
+  return res.json(updated);
+});
+
+// POST /api/arch/cenas/:cenaId/renderizar
+router.post("/arch/cenas/:cenaId/renderizar", authenticate, async (req, res) => {
+  const cenaId = String(req.params.cenaId);
+
+  const [cena] = await db
+    .select({ projetoId: archCenasTable.projetoId, status: archCenasTable.status })
+    .from(archCenasTable)
+    .where(eq(archCenasTable.id, cenaId))
+    .limit(1);
+
+  if (!cena) return res.status(404).json({ error: "Cena não encontrada." });
+
+  const [projeto] = await db
+    .select({ tenantId: archProjetosTable.tenantId })
+    .from(archProjetosTable)
+    .where(eq(archProjetosTable.id, cena.projetoId))
+    .limit(1);
+
+  if (!projeto || !canAccessTenant(req, projeto.tenantId)) {
+    return res.status(403).json({ error: "Acesso negado." });
+  }
+
+  if (cena.status === "renderizando") {
+    return res.status(409).json({ error: "Render já em andamento." });
+  }
+
+  const result = await iniciarRender(cenaId);
+  return res.status(202).json(result);
+});
+
+// GET /api/arch/cenas/:cenaId/render-status
+router.get("/arch/cenas/:cenaId/render-status", authenticate, async (req, res) => {
+  const cenaId = String(req.params.cenaId);
+
+  const [cena] = await db
+    .select({ projetoId: archCenasTable.projetoId, status: archCenasTable.status, renderUrl: archCenasTable.renderUrl })
+    .from(archCenasTable)
+    .where(eq(archCenasTable.id, cenaId))
+    .limit(1);
+
+  if (!cena) return res.status(404).json({ error: "Cena não encontrada." });
+
+  const [projeto] = await db
+    .select({ tenantId: archProjetosTable.tenantId })
+    .from(archProjetosTable)
+    .where(eq(archProjetosTable.id, cena.projetoId))
+    .limit(1);
+
+  if (!projeto || !canAccessTenant(req, projeto.tenantId)) {
+    return res.status(403).json({ error: "Acesso negado." });
+  }
+
+  // Último render
+  const [ultimoRender] = await db
+    .select()
+    .from(archRendersTable)
+    .where(eq(archRendersTable.cenaId, cenaId))
+    .orderBy(desc(archRendersTable.createdAt))
+    .limit(1);
+
+  return res.json({
+    status:      cena.status,
+    renderUrl:   cena.renderUrl,
+    render:      ultimoRender ?? null,
+  });
+});
+
+// DELETE /api/arch/cenas/:cenaId
+router.delete("/arch/cenas/:cenaId", authenticate, async (req, res) => {
+  const cenaId = String(req.params.cenaId);
+
+  const [cena] = await db
+    .select({ projetoId: archCenasTable.projetoId })
+    .from(archCenasTable)
+    .where(eq(archCenasTable.id, cenaId))
+    .limit(1);
+
+  if (!cena) return res.status(404).json({ error: "Cena não encontrada." });
+
+  const [projeto] = await db
+    .select({ tenantId: archProjetosTable.tenantId })
+    .from(archProjetosTable)
+    .where(eq(archProjetosTable.id, cena.projetoId))
+    .limit(1);
+
+  if (!projeto || !canAccessTenant(req, projeto.tenantId)) {
+    return res.status(403).json({ error: "Acesso negado." });
+  }
+
+  // Renders são removidos por CASCADE (FK cena_id → arch_cenas)
+  await db.delete(archCenasTable).where(eq(archCenasTable.id, cenaId));
 
   return res.status(204).send();
 });
