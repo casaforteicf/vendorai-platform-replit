@@ -39,6 +39,7 @@ export const leadsTable = pgTable("leads", {
   discoveryData: jsonb("discovery_data").$type<Record<string, unknown>>(),
   tipo: text("tipo").notNull().default("cliente"),
   indicadoPor: text("indicado_por"),
+  partnerVisible: boolean("partner_visible").notNull().default(true),
   notasNutricao: text("notas_nutricao"),
   source: text("source").notNull().default("manual"),
   possivelDuplicata: boolean("possivel_duplicata").notNull().default(false),
