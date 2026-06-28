@@ -94,3 +94,5 @@ export * from "./arch_cenas";
 export * from "./arch_renders";
 export * from "./arch_marketplace_items";
 export * from "./arch_marketplace_pedidos";
+export * from "./arch_render_versoes";
+export * from "./arch_render_solicitacoes";
