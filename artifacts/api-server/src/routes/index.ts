@@ -65,6 +65,7 @@ import prospectorFlowsRouter from "./prospector-flows";
 import contentStudioRouter from "./content_studio";
 import beautyRouter from "./beauty";
 import clinicRouter from "./clinic";
+import scoutRouter from "./scout";
 import { authenticate, blockPartnerFromCRM, blockSuspendedTenants, blockExpiredDemo, requireRole, requireSameTenanOrSuperAdmin } from "../middlewares/auth";
 import { eq } from "drizzle-orm";
 import { db, tenantsTable } from "@workspace/db";
@@ -247,6 +248,9 @@ router.use(beautyRouter);
 
 // Clínica Hub
 router.use(clinicRouter);
+
+// Revenue Scout Hub
+router.use(scoutRouter);
 
 export { requireRole, requireSameTenanOrSuperAdmin };
 export default router;

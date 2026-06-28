@@ -17,6 +17,7 @@ import { runMonthlyBilling } from "../lib/billing.js";
 import { runPartnerCommissions } from "./partnerCommission.js";
 import { runPartnerProspectorJob } from "./partnerProspector.js";
 import { processFlowExecutions } from "./contentFlow.js";
+import { runRevenueScoutJob } from "../services/revenueScout.js";
 import { pollPendingRenders } from "../services/blenderService.js";
 import type { Logger } from "pino";
 import {
@@ -1143,7 +1144,14 @@ export function startScheduler(log: Logger): void {
     log.info("scheduler/blender-poll: ativado (a cada 30s)");
   }
 
-  log.info("scheduler: started (churn-check @:05, campaigns @:15, billing @day-5-08:00, reactivation @03:00, demo-expiration @06:00, demo-reset @02:00, special-dates @07:00, partner-commissions @day-1-06:00, partner-prospector @08:00, content-flow @*/5min, blender-poll @30s)");
+  // Job 12: Revenue Scout — daily at 09:00
+  cron.schedule("0 9 * * *", () => {
+    runRevenueScoutJob(log).catch((err) => {
+      log.error({ err }, "scheduler/revenue-scout: unhandled error");
+    });
+  });
+
+  log.info("scheduler: started (churn-check @:05, campaigns @:15, billing @day-5-08:00, reactivation @03:00, demo-expiration @06:00, demo-reset @02:00, special-dates @07:00, partner-commissions @day-1-06:00, partner-prospector @08:00, content-flow @*/5min, blender-poll @30s, revenue-scout @09:00)");
 }
 
 // ── Job 6: Reset demo tenants ──────────────────────────────────
