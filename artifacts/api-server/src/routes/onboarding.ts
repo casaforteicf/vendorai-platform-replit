@@ -10,10 +10,12 @@ import {
   funisTable,
   knowledgeBaseTable,
   segmentTemplatesTable,
+  onboardingProgressTable,
   AGENT_TYPES,
   type AgentsMap,
 } from "@workspace/db";
-import { requireSameTenanOrSuperAdmin } from "../middlewares/auth.js";
+import { authenticate, requireSameTenanOrSuperAdmin } from "../middlewares/auth.js";
+import { objectStorageClient } from "../lib/objectStorage.js";
 import { extractBusinessDataFromDocuments } from "../lib/document-extraction.js";
 import { generateSubdomainSlug } from "../lib/subdomain.js";
 
@@ -533,5 +535,305 @@ router.post(
     });
   }
 );
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Onboarding wizard (steps 1 & 2)  — rotas sem :tenantId, auth via JWT
+// ─────────────────────────────────────────────────────────────────────────────
+
+const uploadLogo = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 5 * 1024 * 1024 },
+  fileFilter: (_req, file, cb) => {
+    if (!file.mimetype.startsWith("image/")) {
+      cb(new Error("Apenas imagens são aceitas"));
+      return;
+    }
+    cb(null, true);
+  },
+});
+
+const step1Schema = z.object({
+  nomeEmpresa: z.string().min(1, "nomeEmpresa obrigatório"),
+  segmento: z.string().min(1, "segmento obrigatório"),
+  site: z.string().optional(),
+  descricao: z.string().optional(),
+  corPrimaria: z.string().regex(/^#[0-9A-Fa-f]{6}$/).optional(),
+});
+
+const step2Schema = z.object({
+  zapiInstanceId: z.string().min(1),
+  zapiToken: z.string().min(1),
+  numeroWhatsapp: z.string().min(1),
+});
+
+// ── GET /onboarding ───────────────────────────────────────────────────────────
+router.get("/onboarding", authenticate, async (req, res) => {
+  const tenantId = req.user!.tenantId;
+  if (!tenantId) { res.status(403).json({ error: "Tenant não identificado" }); return; }
+
+  const [existing] = await db
+    .select()
+    .from(onboardingProgressTable)
+    .where(eq(onboardingProgressTable.tenantId, tenantId));
+
+  if (existing) {
+    res.json(existing);
+    return;
+  }
+
+  const [created] = await db
+    .insert(onboardingProgressTable)
+    .values({ tenantId })
+    .returning();
+
+  res.status(201).json(created);
+});
+
+// ── PATCH /onboarding/step/1 ──────────────────────────────────────────────────
+router.patch("/onboarding/step/1", authenticate, async (req, res) => {
+  const tenantId = req.user!.tenantId;
+  if (!tenantId) { res.status(403).json({ error: "Tenant não identificado" }); return; }
+
+  const parsed = step1Schema.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(422).json({ error: parsed.error.message });
+    return;
+  }
+
+  const { nomeEmpresa, segmento, site, descricao, corPrimaria } = parsed.data;
+  const now = new Date();
+
+  await db
+    .update(tenantsTable)
+    .set({
+      nomeEmpresa,
+      segmento,
+      site: site ?? null,
+      descricao: descricao ?? null,
+      corPrimaria: corPrimaria ?? undefined,
+      updatedAt: now,
+    })
+    .where(eq(tenantsTable.id, tenantId));
+
+  const [existing] = await db
+    .select({ stepAtual: onboardingProgressTable.stepAtual })
+    .from(onboardingProgressTable)
+    .where(eq(onboardingProgressTable.tenantId, tenantId));
+
+  const nextStep = Math.max(existing?.stepAtual ?? 1, 2);
+
+  const [progress] = await db
+    .insert(onboardingProgressTable)
+    .values({
+      tenantId,
+      step1Completo: true,
+      stepAtual: nextStep,
+      dadosStep1: parsed.data as Record<string, unknown>,
+      updatedAt: now,
+    })
+    .onConflictDoUpdate({
+      target: onboardingProgressTable.tenantId,
+      set: {
+        step1Completo: true,
+        stepAtual: nextStep,
+        dadosStep1: parsed.data as Record<string, unknown>,
+        updatedAt: now,
+      },
+    })
+    .returning();
+
+  req.log.info({ tenantId }, "Onboarding step 1 saved");
+  res.json(progress);
+});
+
+// ── POST /onboarding/step/1/logo ──────────────────────────────────────────────
+router.post(
+  "/onboarding/step/1/logo",
+  authenticate,
+  uploadLogo.single("logo"),
+  async (req, res) => {
+    const tenantId = req.user!.tenantId;
+    if (!tenantId) { res.status(403).json({ error: "Tenant não identificado" }); return; }
+
+    const file = req.file;
+    if (!file) {
+      res.status(422).json({ error: "Campo 'logo' obrigatório" });
+      return;
+    }
+
+    const privateDir = process.env["PRIVATE_OBJECT_DIR"];
+    if (!privateDir) {
+      res.status(500).json({ error: "Object storage não configurado" });
+      return;
+    }
+
+    const ext = file.originalname.split(".").pop()?.toLowerCase() ?? "png";
+    const objectPath = `${privateDir}/logos/${tenantId}/logo.${ext}`;
+    const parts = objectPath.replace(/^\//, "").split("/");
+    const bucketName = parts[0];
+    const objectName = parts.slice(1).join("/");
+
+    const bucket = objectStorageClient.bucket(bucketName!);
+    const gcsFile = bucket.file(objectName!);
+    await gcsFile.save(file.buffer, { contentType: file.mimetype, resumable: false });
+
+    const logoUrl = `/api/storage/objects/logos/${tenantId}/logo.${ext}`;
+
+    await db
+      .update(tenantsTable)
+      .set({ logoUrl, updatedAt: new Date() })
+      .where(eq(tenantsTable.id, tenantId));
+
+    req.log.info({ tenantId, logoUrl }, "Onboarding: logo uploaded");
+    res.json({ logoUrl });
+  }
+);
+
+// ── PATCH /onboarding/step/2 ──────────────────────────────────────────────────
+router.patch("/onboarding/step/2", authenticate, async (req, res) => {
+  const tenantId = req.user!.tenantId;
+  if (!tenantId) { res.status(403).json({ error: "Tenant não identificado" }); return; }
+
+  const parsed = step2Schema.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(422).json({ error: parsed.error.message });
+    return;
+  }
+
+  const { zapiInstanceId, zapiToken, numeroWhatsapp } = parsed.data;
+
+  // Validate Z-API credentials
+  let zapiOk = false;
+  try {
+    const zapiRes = await fetch(
+      `https://api.z-api.io/instances/${zapiInstanceId}/token/${zapiToken}/status`,
+      {
+        headers: { "Client-Token": zapiToken },
+        signal: AbortSignal.timeout(8000),
+      }
+    );
+    zapiOk = zapiRes.ok;
+    if (!zapiOk) {
+      const body = await zapiRes.text();
+      req.log.warn({ status: zapiRes.status, body }, "Onboarding step 2: Z-API validation failed");
+      res.status(400).json({ error: "Credenciais Z-API inválidas" });
+      return;
+    }
+  } catch (err) {
+    req.log.warn({ err }, "Onboarding step 2: Z-API request error");
+    res.status(400).json({ error: "Credenciais Z-API inválidas" });
+    return;
+  }
+
+  const now = new Date();
+
+  // Save to agent_configs (upsert by tenantId)
+  const [existingConfig] = await db
+    .select({ id: agentConfigsTable.id })
+    .from(agentConfigsTable)
+    .where(eq(agentConfigsTable.tenantId, tenantId));
+
+  if (existingConfig) {
+    await db
+      .update(agentConfigsTable)
+      .set({ zapiInstanceId, zapiToken, zapiClientToken: zapiToken, updatedAt: now })
+      .where(eq(agentConfigsTable.id, existingConfig.id));
+  } else {
+    await db
+      .insert(agentConfigsTable)
+      .values({ tenantId, zapiInstanceId, zapiToken, zapiClientToken: zapiToken });
+  }
+
+  // Save phone to business profile
+  const [existingProfile] = await db
+    .select({ id: businessProfilesTable.id })
+    .from(businessProfilesTable)
+    .where(eq(businessProfilesTable.tenantId, tenantId));
+
+  if (existingProfile) {
+    await db
+      .update(businessProfilesTable)
+      .set({ telefone: numeroWhatsapp, updatedAt: now })
+      .where(eq(businessProfilesTable.id, existingProfile.id));
+  } else {
+    await db
+      .insert(businessProfilesTable)
+      .values({ tenantId, razaoSocial: "", telefone: numeroWhatsapp });
+  }
+
+  const [existingProgress] = await db
+    .select({ stepAtual: onboardingProgressTable.stepAtual })
+    .from(onboardingProgressTable)
+    .where(eq(onboardingProgressTable.tenantId, tenantId));
+
+  const nextStep = Math.max(existingProgress?.stepAtual ?? 2, 3);
+
+  const [progress] = await db
+    .insert(onboardingProgressTable)
+    .values({
+      tenantId,
+      step2Completo: true,
+      stepAtual: nextStep,
+      dadosStep2: { zapiInstanceId, numeroWhatsapp } as Record<string, unknown>,
+      updatedAt: now,
+    })
+    .onConflictDoUpdate({
+      target: onboardingProgressTable.tenantId,
+      set: {
+        step2Completo: true,
+        stepAtual: nextStep,
+        dadosStep2: { zapiInstanceId, numeroWhatsapp } as Record<string, unknown>,
+        updatedAt: now,
+      },
+    })
+    .returning();
+
+  req.log.info({ tenantId, zapiInstanceId }, "Onboarding step 2 saved");
+  res.json(progress);
+});
+
+// ── GET /onboarding/whatsapp/test ─────────────────────────────────────────────
+router.get("/onboarding/whatsapp/test", authenticate, async (req, res) => {
+  const tenantId = req.user!.tenantId;
+  if (!tenantId) { res.status(403).json({ error: "Tenant não identificado" }); return; }
+
+  const [config] = await db
+    .select({
+      zapiInstanceId: agentConfigsTable.zapiInstanceId,
+      zapiToken: agentConfigsTable.zapiToken,
+      zapiClientToken: agentConfigsTable.zapiClientToken,
+    })
+    .from(agentConfigsTable)
+    .where(eq(agentConfigsTable.tenantId, tenantId));
+
+  if (!config?.zapiInstanceId || !config?.zapiToken) {
+    res.json({ conectado: false, erro: "Credenciais não configuradas" });
+    return;
+  }
+
+  try {
+    const zapiRes = await fetch(
+      `https://api.z-api.io/instances/${config.zapiInstanceId}/token/${config.zapiToken}/status`,
+      {
+        headers: { "Client-Token": config.zapiClientToken ?? config.zapiToken },
+        signal: AbortSignal.timeout(8000),
+      }
+    );
+
+    if (!zapiRes.ok) {
+      res.json({ conectado: false, erro: `Z-API HTTP ${zapiRes.status}` });
+      return;
+    }
+
+    const data = await zapiRes.json() as Record<string, unknown>;
+    const conectado = data["connected"] === true || data["status"] === "connected";
+    const numero = typeof data["phone"] === "string" ? data["phone"] : undefined;
+
+    res.json({ conectado, numero });
+  } catch (err) {
+    req.log.warn({ err }, "Onboarding whatsapp test failed");
+    res.json({ conectado: false, erro: "Timeout ou erro de rede" });
+  }
+});
 
 export default router;
