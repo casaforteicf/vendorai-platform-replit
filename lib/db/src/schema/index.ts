@@ -77,3 +77,5 @@ export * from "./proposta_templates";
 export * from "./obra_lancamentos";
 export * from "./partner_commissions";
 export * from "./partner_indicators";
+export * from "./partner_leads";
+export * from "./partner_prospector_jobs";
