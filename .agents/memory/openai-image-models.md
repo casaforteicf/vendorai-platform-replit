@@ -18,3 +18,9 @@ description: DALL-E 2/3 não existem nesta conta; usar gpt-image-1 que retorna b
 4. Rota `/storage/objects/*` já está open (auth comentada) — imagem acessível sem token
 
 **Pattern implementado em:** `artifacts/api-server/src/lib/content-generation.ts` — `generateImageForContent()` tenta models em ordem de prioridade e faz upload automático se b64_json.
+
+**Parâmetros válidos para gpt-image-1:**
+- `quality`: `"low"` | `"medium"` | `"high"` | `"auto"` — NÃO aceita `"hd"` (retorna 400)
+- `size`: `"1024x1024"` | `"1536x1024"` | `"1024x1536"` | `"auto"` — NÃO aceita `"1792x1024"`
+
+**How to apply:** Ao gerar imagem com gpt-image-1, usar `quality: "high"` e size `"1536x1024"` para landscape.

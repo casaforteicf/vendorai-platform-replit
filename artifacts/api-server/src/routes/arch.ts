@@ -37,6 +37,9 @@ const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 20 
 
 const router: IRouter = Router();
 
+// Rotas públicas (sem autenticação) — registradas antes do middleware authenticate no index.ts
+const archPublicRouter: IRouter = Router();
+
 function tenantId(req: Express.Request): string {
   return (req as any).user?.tenantId as string;
 }
@@ -1362,7 +1365,7 @@ router.get("/arch/cenas/:cenaId/solicitacoes", authenticate, async (req, res) =>
 // POST /api/arch/cenas/:cenaId/solicitacoes (PÚBLICA — portal do cliente)
 // Criar solicitação e disparar render em background
 // ─────────────────────────────────────────────────────────────────────────────
-router.post("/arch/cenas/:cenaId/solicitacoes", async (req, res) => {
+archPublicRouter.post("/arch/cenas/:cenaId/solicitacoes", async (req, res) => {
   const cenaId = String(req.params.cenaId);
 
   // Verificar que a cena existe (sem checar tenant — rota pública)
@@ -1424,7 +1427,7 @@ router.post("/arch/cenas/:cenaId/solicitacoes", async (req, res) => {
 // ─────────────────────────────────────────────────────────────────────────────
 // GET /api/arch/cenas/:cenaId/solicitacoes/:solId/status (PÚBLICA — polling)
 // ─────────────────────────────────────────────────────────────────────────────
-router.get("/arch/cenas/:cenaId/solicitacoes/:solId/status", async (req, res) => {
+archPublicRouter.get("/arch/cenas/:cenaId/solicitacoes/:solId/status", async (req, res) => {
   const cenaId = String(req.params.cenaId);
   const solId  = String(req.params.solId);
 
@@ -1454,7 +1457,7 @@ router.get("/arch/cenas/:cenaId/solicitacoes/:solId/status", async (req, res) =>
       .where(eq(archRenderVersoesTable.id, sol.versaoGeradaId))
       .limit(1);
 
-    return res.json({ status: sol.status, imageUrl: versao?.imageUrl ?? null });
+    return res.json({ status: sol.status, imageUrl: versao?.imageUrl ?? null, versaoGeradaId: sol.versaoGeradaId });
   }
 
   // Se em processamento, verificar se a cena já tem renderUrl nova (via scheduler)
@@ -1577,4 +1580,5 @@ router.post("/arch/cenas/:cenaId/solicitacoes/:solId/retry", authenticate, async
   return res.json({ ok: true, status: "pendente" });
 });
 
+export { archPublicRouter };
 export default router;

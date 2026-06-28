@@ -501,15 +501,17 @@ export async function processarSolicitacao(solicitacaoId: string): Promise<void>
     if (texturasDesc) prompt += `. Wall/Floor/Ceiling — ${texturasDesc}`;
     prompt += ". Keep all other elements identical to the original composition";
 
-    // 5. Chamar gpt-image-1 (1792x1024, hd)
+    // 5. Chamar gpt-image-1 (1536x1024 landscape, quality high)
     // Nota: dall-e-3 não existe nesta conta — usar gpt-image-1 que retorna b64_json
+    // gpt-image-1 suporta quality: low|medium|high|auto (não 'hd')
+    // gpt-image-1 suporta size: 1024x1024|1536x1024|1024x1536|auto
     const openai = await getOpenAIForTenant(projeto.tenantId);
     const imgResponse = await (openai.images.generate as Function)({
       model:   "gpt-image-1",
       prompt,
       n:       1,
-      size:    "1792x1024",
-      quality: "hd",
+      size:    "1536x1024",
+      quality: "high",
     });
 
     const b64 = (imgResponse.data[0] as Record<string, unknown>)["b64_json"] as string | undefined;
