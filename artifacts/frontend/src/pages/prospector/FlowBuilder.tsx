@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { useLocation } from "wouter";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
@@ -7,13 +7,33 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Switch } from "@/components/ui/switch";
+import { Textarea } from "@/components/ui/textarea";
+import { Card, CardContent, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
+import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import {
   Dialog,
   DialogContent,
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { GitBranch, Plus } from "lucide-react";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import { ChevronDown, ChevronUp, GitBranch, Plus, Trash2 } from "lucide-react";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -25,6 +45,23 @@ type Flow = {
   createdAt: string;
   stepCount: number;
 };
+
+type Step = {
+  id: string;
+  flowId: string;
+  ordem: number;
+  canal: "whatsapp" | "email";
+  delayHoras: number;
+  mensagemTemplate: string | null;
+  materialTipo: string | null;
+  materialPrompt: string | null;
+  materialFonte: string | null;
+  materialUploadUrl: string | null;
+  materialUploadNome: string | null;
+  materialPromptVars: Record<string, unknown> | null;
+};
+
+type MaterialMode = "none" | "ia" | "upload";
 
 // ── API helper ────────────────────────────────────────────────────────────────
 
@@ -41,13 +78,321 @@ async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> {
     headers: { ...authHeaders(), ...(init?.headers ?? {}) },
   });
   if (!res.ok) {
-    const body = await res.json().catch(() => ({})) as { error?: string };
+    const body = (await res.json().catch(() => ({}))) as { error?: string };
     throw new Error(body?.error ?? `Erro ${res.status}`);
   }
   return res.json() as Promise<T>;
 }
 
-// ── Component ─────────────────────────────────────────────────────────────────
+// ── Variable chips ────────────────────────────────────────────────────────────
+
+const VARS = ["{{nome}}", "{{empresa}}", "{{cidade}}", "{{segmento}}"];
+
+function fonteModeFromServer(materialFonte: string | null): MaterialMode {
+  if (materialFonte === "ia") return "ia";
+  if (materialFonte === "upload") return "upload";
+  return "none";
+}
+
+// ── StepCard ──────────────────────────────────────────────────────────────────
+
+interface StepCardProps {
+  step: Step;
+  steps: Step[];
+  flowId: string;
+  onSaved: () => void;
+  onDeleted: () => void;
+}
+
+function StepCard({ step, steps, flowId, onSaved, onDeleted }: StepCardProps) {
+  const { toast } = useToast();
+  const qc = useQueryClient();
+
+  // Local draft state
+  const [canal, setCanal] = useState<"whatsapp" | "email">(step.canal);
+  const [delayHoras, setDelayHoras] = useState(step.delayHoras ?? 0);
+  const [mensagem, setMensagem] = useState(step.mensagemTemplate ?? "");
+  const [materialMode, setMaterialMode] = useState<MaterialMode>(
+    fonteModeFromServer(step.materialFonte),
+  );
+  const [deleteOpen, setDeleteOpen] = useState(false);
+
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
+
+  const isFirst = step.ordem === 1;
+  const isLast = step.ordem === Math.max(...steps.map((s) => s.ordem));
+
+  // Insert variable at cursor position
+  function insertVar(v: string) {
+    const el = textareaRef.current;
+    if (!el) {
+      setMensagem((prev) => prev + v);
+      return;
+    }
+    const start = el.selectionStart ?? mensagem.length;
+    const end = el.selectionEnd ?? mensagem.length;
+    const next = mensagem.slice(0, start) + v + mensagem.slice(end);
+    setMensagem(next);
+    requestAnimationFrame(() => {
+      el.focus();
+      const pos = start + v.length;
+      el.setSelectionRange(pos, pos);
+    });
+  }
+
+  // Save mutation
+  const saveMutation = useMutation({
+    mutationFn: () =>
+      apiFetch<Step>(`/api/prospector/flows/${flowId}/steps/${step.id}`, {
+        method: "PATCH",
+        body: JSON.stringify({
+          canal,
+          delayHoras,
+          mensagemTemplate: mensagem,
+          materialFonte: materialMode === "none" ? null : materialMode,
+        }),
+      }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["prospector-steps", flowId] });
+      qc.invalidateQueries({ queryKey: ["prospector-flows"] });
+      toast({ title: "Step salvo" });
+      onSaved();
+    },
+    onError: (err: Error) => toast({ title: err.message, variant: "destructive" }),
+  });
+
+  // Delete mutation
+  const deleteMutation = useMutation({
+    mutationFn: () =>
+      apiFetch<{ ok: boolean }>(
+        `/api/prospector/flows/${flowId}/steps/${step.id}`,
+        { method: "DELETE" },
+      ),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["prospector-steps", flowId] });
+      qc.invalidateQueries({ queryKey: ["prospector-flows"] });
+      toast({ title: "Step removido" });
+      onDeleted();
+    },
+    onError: (err: Error) => toast({ title: err.message, variant: "destructive" }),
+  });
+
+  // Reorder mutation — troca ordem com o step adjacente
+  const reorderMutation = useMutation({
+    mutationFn: async (direction: "up" | "down") => {
+      const sorted = [...steps].sort((a, b) => a.ordem - b.ordem);
+      const idx = sorted.findIndex((s) => s.id === step.id);
+      const swapIdx = direction === "up" ? idx - 1 : idx + 1;
+      if (swapIdx < 0 || swapIdx >= sorted.length) return;
+      const other = sorted[swapIdx]!;
+      await Promise.all([
+        apiFetch(`/api/prospector/flows/${flowId}/steps/${step.id}`, {
+          method: "PATCH",
+          body: JSON.stringify({ ordem: other.ordem }),
+        }),
+        apiFetch(`/api/prospector/flows/${flowId}/steps/${other.id}`, {
+          method: "PATCH",
+          body: JSON.stringify({ ordem: step.ordem }),
+        }),
+      ]);
+    },
+    onSuccess: () =>
+      qc.invalidateQueries({ queryKey: ["prospector-steps", flowId] }),
+    onError: (err: Error) => toast({ title: err.message, variant: "destructive" }),
+  });
+
+  return (
+    <>
+      <Card className="border shadow-sm">
+        <CardHeader className="pb-3">
+          <CardTitle className="text-sm font-semibold text-muted-foreground">
+            Step {step.ordem}
+          </CardTitle>
+        </CardHeader>
+
+        <CardContent className="space-y-5">
+          {/* ── ENTREGA ──────────────────────────────────────────────────── */}
+          <div className="space-y-4">
+            <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+              Entrega
+            </p>
+
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-1.5">
+                <Label className="text-xs">Canal</Label>
+                <Select
+                  value={canal}
+                  onValueChange={(v) => setCanal(v as "whatsapp" | "email")}
+                >
+                  <SelectTrigger className="h-8 text-sm">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="whatsapp">WhatsApp</SelectItem>
+                    <SelectItem value="email">E-mail</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div className="space-y-1.5">
+                <Label className="text-xs">
+                  Enviar X horas após step anterior
+                </Label>
+                <Input
+                  type="number"
+                  min={0}
+                  className="h-8 text-sm"
+                  value={delayHoras}
+                  onChange={(e) =>
+                    setDelayHoras(Math.max(0, Number(e.target.value)))
+                  }
+                />
+              </div>
+            </div>
+
+            <div className="space-y-1.5">
+              <Label className="text-xs">Mensagem</Label>
+              <Textarea
+                ref={textareaRef}
+                rows={4}
+                className="text-sm resize-none"
+                placeholder="Digite a mensagem... use as variáveis abaixo"
+                value={mensagem}
+                onChange={(e) => setMensagem(e.target.value)}
+              />
+              <div className="flex flex-wrap gap-1.5 pt-0.5">
+                {VARS.map((v) => (
+                  <button
+                    key={v}
+                    type="button"
+                    onClick={() => insertVar(v)}
+                    className="rounded border border-dashed px-2 py-0.5 text-xs font-mono text-primary hover:bg-primary/10 transition-colors"
+                  >
+                    {v}
+                  </button>
+                ))}
+              </div>
+            </div>
+          </div>
+
+          {/* ── MATERIAL ─────────────────────────────────────────────────── */}
+          <div className="space-y-3 pt-1">
+            <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+              Material
+            </p>
+
+            <RadioGroup
+              value={materialMode}
+              onValueChange={(v) => setMaterialMode(v as MaterialMode)}
+              className="flex gap-5"
+            >
+              {[
+                { value: "none", label: "Sem material" },
+                { value: "ia", label: "Gerar com IA" },
+                { value: "upload", label: "Upload manual" },
+              ].map(({ value, label }) => (
+                <div key={value} className="flex items-center gap-1.5">
+                  <RadioGroupItem
+                    value={value}
+                    id={`material-${step.id}-${value}`}
+                  />
+                  <Label
+                    htmlFor={`material-${step.id}-${value}`}
+                    className="text-sm font-normal cursor-pointer"
+                  >
+                    {label}
+                  </Label>
+                </div>
+              ))}
+            </RadioGroup>
+
+            {materialMode === "ia" && (
+              <p className="text-xs text-muted-foreground italic">
+                Em breve — configuração de prompt e geração com IA.
+              </p>
+            )}
+            {materialMode === "upload" && (
+              <p className="text-xs text-muted-foreground italic">
+                Em breve — upload de arquivo de material.
+              </p>
+            )}
+          </div>
+        </CardContent>
+
+        <CardFooter className="flex justify-between pt-2 pb-4">
+          {/* Reorder */}
+          <div className="flex gap-1">
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-7 w-7"
+              disabled={isFirst || reorderMutation.isPending}
+              onClick={() => reorderMutation.mutate("up")}
+              title="Mover para cima"
+            >
+              <ChevronUp className="h-4 w-4" />
+            </Button>
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-7 w-7"
+              disabled={isLast || reorderMutation.isPending}
+              onClick={() => reorderMutation.mutate("down")}
+              title="Mover para baixo"
+            >
+              <ChevronDown className="h-4 w-4" />
+            </Button>
+          </div>
+
+          {/* Save + Delete */}
+          <div className="flex gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => saveMutation.mutate()}
+              disabled={saveMutation.isPending}
+            >
+              {saveMutation.isPending ? "Salvando..." : "Salvar"}
+            </Button>
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-8 w-8 text-destructive hover:text-destructive"
+              onClick={() => setDeleteOpen(true)}
+              title="Excluir step"
+            >
+              <Trash2 className="h-4 w-4" />
+            </Button>
+          </div>
+        </CardFooter>
+      </Card>
+
+      {/* AlertDialog — confirmação de exclusão */}
+      <AlertDialog open={deleteOpen} onOpenChange={setDeleteOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Remover step {step.ordem}?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Esta ação não pode ser desfeita. O step será excluído
+              permanentemente.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancelar</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => deleteMutation.mutate()}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              Excluir
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+    </>
+  );
+}
+
+// ── FlowBuilder ───────────────────────────────────────────────────────────────
 
 export default function FlowBuilder() {
   const [, setLocation] = useLocation();
@@ -61,7 +406,7 @@ export default function FlowBuilder() {
   const [newSegmento, setNewSegmento] = useState("");
   const [newAtivo, setNewAtivo] = useState(true);
 
-  // ── Queries ──────────────────────────────────────────────────────────────────
+  // ── Flows query ───────────────────────────────────────────────────────────
 
   const { data: flows = [], isLoading } = useQuery<Flow[]>({
     queryKey: ["prospector-flows"],
@@ -70,7 +415,18 @@ export default function FlowBuilder() {
 
   const selectedFlow = flows.find((f) => f.id === selectedFlowId) ?? null;
 
-  // ── Mutations ─────────────────────────────────────────────────────────────────
+  // ── Steps query ───────────────────────────────────────────────────────────
+
+  const { data: steps = [], isLoading: stepsLoading } = useQuery<Step[]>({
+    queryKey: ["prospector-steps", selectedFlowId],
+    queryFn: () =>
+      apiFetch<Step[]>(`/api/prospector/flows/${selectedFlowId}/steps`),
+    enabled: !!selectedFlowId,
+  });
+
+  const sortedSteps = [...steps].sort((a, b) => a.ordem - b.ordem);
+
+  // ── Mutations ─────────────────────────────────────────────────────────────
 
   const createFlow = useMutation({
     mutationFn: (body: { nome: string; segmento?: string; ativo: boolean }) =>
@@ -92,7 +448,15 @@ export default function FlowBuilder() {
   });
 
   const patchFlow = useMutation({
-    mutationFn: ({ id, ...body }: { id: string; ativo?: boolean; nome?: string; segmento?: string | null }) =>
+    mutationFn: ({
+      id,
+      ...body
+    }: {
+      id: string;
+      ativo?: boolean;
+      nome?: string;
+      segmento?: string | null;
+    }) =>
       apiFetch<Flow>(`/api/prospector/flows/${id}`, {
         method: "PATCH",
         body: JSON.stringify(body),
@@ -102,7 +466,33 @@ export default function FlowBuilder() {
       toast({ title: err.message, variant: "destructive" }),
   });
 
-  // ── Handlers ──────────────────────────────────────────────────────────────────
+  const addStep = useMutation({
+    mutationFn: () => {
+      const nextOrdem =
+        sortedSteps.length > 0
+          ? sortedSteps[sortedSteps.length - 1]!.ordem + 1
+          : 1;
+      return apiFetch<Step>(
+        `/api/prospector/flows/${selectedFlowId}/steps`,
+        {
+          method: "POST",
+          body: JSON.stringify({
+            ordem: nextOrdem,
+            canal: "whatsapp",
+            delayHoras: 24,
+          }),
+        },
+      );
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["prospector-steps", selectedFlowId] });
+      qc.invalidateQueries({ queryKey: ["prospector-flows"] });
+    },
+    onError: (err: Error) =>
+      toast({ title: err.message, variant: "destructive" }),
+  });
+
+  // ── Handlers ──────────────────────────────────────────────────────────────
 
   function handleCreate() {
     if (!newNome.trim()) return;
@@ -120,7 +510,7 @@ export default function FlowBuilder() {
     setDialogOpen(true);
   }
 
-  // ── Render ────────────────────────────────────────────────────────────────────
+  // ── Render ────────────────────────────────────────────────────────────────
 
   return (
     <div className="flex h-screen overflow-hidden bg-background">
@@ -225,7 +615,9 @@ export default function FlowBuilder() {
                   variant="outline"
                   size="sm"
                   onClick={() =>
-                    setLocation(`/prospector/flows/${selectedFlow.id}/executions`)
+                    setLocation(
+                      `/prospector/flows/${selectedFlow.id}/executions`,
+                    )
                   }
                 >
                   Ver Execuções
@@ -233,8 +625,41 @@ export default function FlowBuilder() {
               </div>
             </div>
 
-            {/* Steps placeholder */}
-            <p className="text-sm text-muted-foreground">Carregando steps...</p>
+            {/* Steps */}
+            {stepsLoading ? (
+              <p className="text-sm text-muted-foreground">
+                Carregando steps...
+              </p>
+            ) : (
+              <div className="space-y-4">
+                {sortedSteps.length === 0 && (
+                  <p className="text-sm text-muted-foreground">
+                    Nenhum step ainda. Adicione o primeiro abaixo.
+                  </p>
+                )}
+
+                {sortedSteps.map((step) => (
+                  <StepCard
+                    key={step.id}
+                    step={step}
+                    steps={steps}
+                    flowId={selectedFlow.id}
+                    onSaved={() => {}}
+                    onDeleted={() => {}}
+                  />
+                ))}
+
+                <Button
+                  variant="outline"
+                  className="w-full border-dashed"
+                  onClick={() => addStep.mutate()}
+                  disabled={addStep.isPending}
+                >
+                  <Plus className="h-4 w-4 mr-1.5" />
+                  {addStep.isPending ? "Adicionando..." : "Adicionar Step"}
+                </Button>
+              </div>
+            )}
           </div>
         )}
       </main>
@@ -278,10 +703,7 @@ export default function FlowBuilder() {
             </div>
 
             <div className="flex justify-end gap-2 pt-2">
-              <Button
-                variant="outline"
-                onClick={() => setDialogOpen(false)}
-              >
+              <Button variant="outline" onClick={() => setDialogOpen(false)}>
                 Cancelar
               </Button>
               <Button
