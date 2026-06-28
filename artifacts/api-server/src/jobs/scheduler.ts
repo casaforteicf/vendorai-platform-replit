@@ -14,6 +14,7 @@
 import cron from "node-cron";
 import { and, desc, eq, gt, isNotNull, isNull, lte, gte, lt, inArray, sql } from "drizzle-orm";
 import { runMonthlyBilling } from "../lib/billing.js";
+import { runPartnerCommissions } from "./partnerCommission.js";
 import type { Logger } from "pino";
 import {
   db,
@@ -1107,7 +1108,14 @@ export function startScheduler(log: Logger): void {
     });
   });
 
-  log.info("scheduler: started (churn-check @:05, campaigns @:15, billing @day-5-08:00, reactivation @03:00, demo-expiration @06:00, demo-reset @02:00, special-dates @07:00)");
+  // Job 8: Partner commission calculator — day 1 of each month at 06:00
+  cron.schedule("0 6 1 * *", () => {
+    runPartnerCommissions(log).catch((err) => {
+      log.error({ err }, "scheduler/partner-commissions: unhandled error");
+    });
+  });
+
+  log.info("scheduler: started (churn-check @:05, campaigns @:15, billing @day-5-08:00, reactivation @03:00, demo-expiration @06:00, demo-reset @02:00, special-dates @07:00, partner-commissions @day-1-06:00)");
 }
 
 // ── Job 6: Reset demo tenants ──────────────────────────────────
