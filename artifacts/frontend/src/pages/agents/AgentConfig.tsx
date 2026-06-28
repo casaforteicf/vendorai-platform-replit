@@ -56,6 +56,7 @@ import {
   CalendarCheck,
   Star,
   Telescope,
+  Loader2,
   type LucideIcon,
 } from "lucide-react";
 
@@ -128,6 +129,21 @@ async function patchAgent(agentKey: string, body: Partial<AgentCardData>) {
     body: JSON.stringify(body),
   });
   if (!res.ok) throw new Error(`Erro ao salvar configuração: ${res.status}`);
+  return res.json();
+}
+
+type TestResult = { resposta: string; tokensUsed: number; tom: string };
+
+async function testAgent(agentKey: string, mensagem: string): Promise<TestResult> {
+  const res = await fetch(`/api/agent-configs/${agentKey}/test`, {
+    method: "POST",
+    headers: authHeaders(),
+    body: JSON.stringify({ mensagem }),
+  });
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({})) as { error?: string };
+    throw new Error(body.error ?? `Erro ${res.status}`);
+  }
   return res.json();
 }
 
@@ -264,6 +280,29 @@ function AgentConfigSheet({
     },
   });
 
+  // ── Aba Teste state ──
+  const [testMessage, setTestMessage]   = useState("");
+  const [testResult, setTestResult]     = useState<TestResult | null>(null);
+  const [testError, setTestError]       = useState<string | null>(null);
+
+  const testMutation = useMutation({
+    mutationFn: () => testAgent(agent.agentKey, testMessage),
+    onSuccess: (data) => {
+      setTestResult(data);
+      setTestError(null);
+    },
+    onError: (err) => {
+      setTestError(err instanceof Error ? err.message : "Erro ao chamar o agente");
+      setTestResult(null);
+    },
+  });
+
+  function handleClearTest() {
+    setTestMessage("");
+    setTestResult(null);
+    setTestError(null);
+  }
+
   // ── Mutation reset ──
   const resetMutation = useMutation({
     mutationFn: () => resetAgentPrompt(agent.agentKey),
@@ -398,14 +437,59 @@ function AgentConfigSheet({
           </TabsContent>
 
           {/* ABA TESTE */}
-          <TabsContent value="teste" className="flex-1 px-6 py-4">
-            <div className="flex flex-col items-center justify-center h-48 gap-3 text-center">
-              <div className="h-12 w-12 rounded-full bg-muted flex items-center justify-center">
-                <Icon className="h-6 w-6 text-muted-foreground" />
-              </div>
-              <p className="font-medium">Simulador de conversa</p>
-              <p className="text-sm text-muted-foreground">Em breve — teste o agente diretamente aqui.</p>
+          <TabsContent value="teste" className="flex-1 overflow-y-auto px-6 py-4 space-y-4">
+            <div className="space-y-2">
+              <Label htmlFor="testMessage">Mensagem de teste</Label>
+              <Textarea
+                id="testMessage"
+                value={testMessage}
+                onChange={(e) => setTestMessage(e.target.value)}
+                placeholder="Ex: Olá, vi o anúncio de vocês e queria mais informações"
+                rows={3}
+              />
             </div>
+
+            <div className="flex gap-2">
+              <Button
+                onClick={() => testMutation.mutate()}
+                disabled={testMutation.isPending || !testMessage.trim()}
+              >
+                {testMutation.isPending ? (
+                  <>
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    Testando…
+                  </>
+                ) : (
+                  "Testar agente"
+                )}
+              </Button>
+              <Button variant="outline" onClick={handleClearTest} disabled={testMutation.isPending}>
+                Limpar
+              </Button>
+            </div>
+
+            {testError && (
+              <Alert variant="destructive">
+                <AlertCircle className="h-4 w-4" />
+                <AlertDescription>{testError}</AlertDescription>
+              </Alert>
+            )}
+
+            {testResult && (
+              <div className="rounded-lg border bg-card overflow-hidden">
+                <div className="px-4 py-3">
+                  <p className="text-sm leading-relaxed whitespace-pre-wrap">{testResult.resposta}</p>
+                </div>
+                <div className="px-4 py-2 border-t bg-muted/40 flex items-center justify-between gap-2">
+                  <span className="text-xs text-muted-foreground">
+                    Tokens: {testResult.tokensUsed}
+                  </span>
+                  <Badge variant="secondary" className="text-xs capitalize">
+                    Tom: {testResult.tom}
+                  </Badge>
+                </div>
+              </div>
+            )}
           </TabsContent>
         </Tabs>
 

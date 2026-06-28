@@ -43,6 +43,7 @@ const AdminAIUsage       = lazy(() => import("@/pages/AdminAIUsage"));
 const AdminPartners      = lazy(() => import("@/pages/AdminPartners"));
 const AdminTenants       = lazy(() => import("@/pages/AdminTenants"));
 const AdminVerticals     = lazy(() => import("@/pages/AdminVerticals"));
+const AgentDefaults      = lazy(() => import("@/pages/admin/AgentDefaults"));
 const PartnerDashboard   = lazy(() => import("@/pages/PartnerDashboard"));
 const PartnerDash        = lazy(() => import("@/pages/partner/PartnerDashboard"));
 const PartnerLeads       = lazy(() => import("@/pages/partner/PartnerLeads"));
@@ -435,6 +436,9 @@ function AppRoutes() {
         </Route>
         <Route path="/admin/verticais">
           {() => <SuperAdminRoute component={AdminVerticals} />}
+        </Route>
+        <Route path="/admin/agent-defaults">
+          {() => <SuperAdminRoute component={AgentDefaults} />}
         </Route>
         <Route path="/trocar-senha">
           <ForcePasswordChange />

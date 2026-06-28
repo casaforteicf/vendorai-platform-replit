@@ -1,5 +1,5 @@
 import { Router, type IRouter } from "express";
-import { eq, sql } from "drizzle-orm";
+import { eq, sql, and } from "drizzle-orm";
 import {
   db,
   agentConfigsTable,
@@ -9,6 +9,7 @@ import {
   updateAgentConfigSchema,
   updateTenantAgentConfigSchema,
 } from "@workspace/db";
+import { getOpenAI } from "../lib/agent-engine.js";
 
 const KNOWN_AGENT_KEYS = new Set([
   "sdr", "closer", "financeiro", "cobranca",
@@ -177,6 +178,51 @@ router.post("/agent-configs/:agentKey/deactivate", async (req, res) => {
     });
 
   return res.json({ agentKey, ativo: false });
+});
+
+// ── POST /agent-configs/:agentKey/test — testa o agente com mensagem simulada ──
+router.post("/agent-configs/:agentKey/test", async (req, res, next) => {
+  const { agentKey } = req.params as { agentKey: string };
+  if (!KNOWN_AGENT_KEYS.has(agentKey)) return next();
+
+  const tenantId = req.user?.tenantId;
+  if (!tenantId) { res.status(401).json({ error: "Unauthorized" }); return; }
+
+  const { mensagem } = req.body as { mensagem?: string };
+  if (!mensagem?.trim()) { res.status(422).json({ error: "mensagem é obrigatória" }); return; }
+
+  const [[defaultCfg], [tenantCfg]] = await Promise.all([
+    db.select().from(agentDefaultsTable).where(eq(agentDefaultsTable.agentKey, agentKey)),
+    db.select().from(tenantAgentConfigsTable).where(
+      and(eq(tenantAgentConfigsTable.tenantId, tenantId), eq(tenantAgentConfigsTable.agentKey, agentKey))
+    ),
+  ]);
+
+  if (!defaultCfg) { res.status(404).json({ error: "Agente não encontrado" }); return; }
+
+  const systemPrompt = tenantCfg?.systemPromptCustom?.trim() || defaultCfg.systemPromptBase;
+  const tom          = tenantCfg?.tom ?? "profissional";
+  const TOM_INST: Record<string, string> = {
+    profissional: "Responda de forma profissional, clara e objetiva.",
+    amigavel:     "Responda de forma amigável, calorosa e acessível.",
+    tecnico:      "Responda com precisão técnica e detalhamento.",
+    vendedor:     "Responda com energia, foco em benefícios e chamadas para ação.",
+    neutro:       "Responda de forma neutra e informativa.",
+  };
+  const fullPrompt = [systemPrompt, TOM_INST[tom] ?? ""].filter(Boolean).join("\n\n");
+
+  const openai = getOpenAI();
+  const completion = await openai.chat.completions.create({
+    model:       "gpt-4o-mini",
+    messages:    [{ role: "system", content: fullPrompt }, { role: "user", content: mensagem.trim() }],
+    temperature: 0.7,
+    max_tokens:  600,
+  });
+
+  const resposta   = completion.choices[0]?.message?.content?.trim() ?? "";
+  const tokensUsed = completion.usage?.total_tokens ?? 0;
+
+  return res.json({ resposta, tokensUsed, tom });
 });
 
 // ── PATCH /agent-configs/:agentKey — salva perfil + prompt do tenant ───────────
