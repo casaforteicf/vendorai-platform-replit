@@ -9,7 +9,7 @@ import {
   Store, Package, Menu, X, Sparkles, Globe, BookOpen, HardHat, Layers,
   Shirt, Tag, ShoppingCart, Heart, Gift, Truck, UtensilsCrossed, Megaphone as MegaphoneIcon,
   BarChart3, ChevronRight, ChevronDown, Target, Trophy, Search, Clapperboard, Building2, AlertCircle, Bot,
-  DraftingCompass, FolderOpen, Scissors, User2, Stethoscope,
+  DraftingCompass, FolderOpen, Scissors, User2, Stethoscope, TrendingUp, Zap, ListChecks,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
@@ -68,14 +68,17 @@ export function SidebarLayout({ children }: { children: React.ReactNode }) {
     { name: "Agenda",        href: "/beauty/agenda",            icon: Calendar,    sellerHidden: false, section: "salao",    fn: ["administrador", "vendedor", "outro"] as UserFunction[] },
     { name: "Serviços",      href: "/beauty/servicos",          icon: Scissors,    sellerHidden: false, section: "salao",    fn: ["administrador", "outro"] as UserFunction[] },
     { name: "Profissionais", href: "/beauty/profissionais",     icon: User2,       sellerHidden: false, section: "salao",    fn: ["administrador", "outro"] as UserFunction[] },
-    { name: "Clínica",       href: "/clinic",                   icon: Stethoscope, sellerHidden: false, section: "clinica",  fn: ["administrador", "outro"] as UserFunction[] },
-    { name: "Agenda",        href: "/clinic/agenda",            icon: Calendar,    sellerHidden: false, section: "clinica",  fn: ["administrador", "vendedor", "outro"] as UserFunction[] },
-    { name: "Médicos",       href: "/clinic/medicos",           icon: User2,       sellerHidden: false, section: "clinica",  fn: ["administrador", "outro"] as UserFunction[] },
+    { name: "Clínica",       href: "/clinic",                   icon: Stethoscope, sellerHidden: false, section: "clinica",      fn: ["administrador", "outro"] as UserFunction[] },
+    { name: "Agenda",        href: "/clinic/agenda",            icon: Calendar,    sellerHidden: false, section: "clinica",      fn: ["administrador", "vendedor", "outro"] as UserFunction[] },
+    { name: "Médicos",       href: "/clinic/medicos",           icon: User2,       sellerHidden: false, section: "clinica",      fn: ["administrador", "outro"] as UserFunction[] },
+    { name: "Revenue Scout", href: "/scout",                    icon: TrendingUp,  sellerHidden: true,  section: "inteligencia", fn: ["administrador", "outro"] as UserFunction[] },
+    { name: "Regras",        href: "/scout/regras",             icon: Zap,         sellerHidden: true,  section: "inteligencia", fn: ["administrador", "outro"] as UserFunction[] },
+    { name: "Oportunidades", href: "/scout/oportunidades",      icon: ListChecks,  sellerHidden: true,  section: "inteligencia", fn: ["administrador", "outro"] as UserFunction[] },
   ];
 
   function isVisible(item: typeof allNavItems[0]) {
     if (isSeller && item.sellerHidden) return false;
-    const knownSections = ["crm", "construcao", "varejo", "supermercado", "arch", "salao", "clinica"];
+    const knownSections = ["crm", "construcao", "varejo", "supermercado", "arch", "salao", "clinica", "inteligencia"];
     if (!knownSections.includes(item.section)) return false;
     if (item.section === "construcao" && !isConstrucao) return false;
     if (item.section === "varejo" && !isVarejo) return false;
@@ -104,8 +107,9 @@ export function SidebarLayout({ children }: { children: React.ReactNode }) {
   const varejoNav = navigation.filter((i) => i.section === "varejo");
   const supermercadoNav = navigation.filter((i) => i.section === "supermercado");
   const archNav = navigation.filter((i) => i.section === "arch");
-  const salaoNav   = navigation.filter((i) => i.section === "salao");
-  const clinicaNav = navigation.filter((i) => i.section === "clinica");
+  const salaoNav       = navigation.filter((i) => i.section === "salao");
+  const clinicaNav     = navigation.filter((i) => i.section === "clinica");
+  const inteligenciaNav= navigation.filter((i) => i.section === "inteligencia");
 
   function NavItem({ item, onNavigate }: { item: any; onNavigate?: () => void }) {
     const isActive = location === item.href || (item.href !== "/" && location.startsWith(item.href));
@@ -298,6 +302,16 @@ export function SidebarLayout({ children }: { children: React.ReactNode }) {
               Clínica
             </p>
             {clinicaNav.map((item) => <NavItem key={item.href} item={item} onNavigate={onNavigate} />)}
+          </div>
+        )}
+
+        {inteligenciaNav.length > 0 && (
+          <div className="mt-3 pt-3 border-t">
+            <p className="px-3 mb-1 text-[10px] font-semibold uppercase tracking-widest text-muted-foreground/60 flex items-center gap-1.5">
+              <TrendingUp className="h-3 w-3" />
+              Inteligência
+            </p>
+            {inteligenciaNav.map((item) => <NavItem key={item.href} item={item} onNavigate={onNavigate} />)}
           </div>
         )}
 

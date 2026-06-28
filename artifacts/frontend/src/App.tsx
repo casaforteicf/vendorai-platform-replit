@@ -86,6 +86,11 @@ const VarejoCompras         = lazy(() => import("@/pages/VarejoCompras"));
 const VarejoFidelidade      = lazy(() => import("@/pages/VarejoFidelidade"));
 const VarejoCombos          = lazy(() => import("@/pages/VarejoCombos"));
 
+// Revenue Scout
+const RevenueDashboard   = lazy(() => import("@/pages/scout/RevenueDashboard"));
+const ScoutRegras        = lazy(() => import("@/pages/scout/Regras"));
+const ScoutOportunidades = lazy(() => import("@/pages/scout/Oportunidades"));
+
 // Clínica
 const ClinicDashboard    = lazy(() => import("@/pages/clinic/ClinicDashboard"));
 const AgendaClinica      = lazy(() => import("@/pages/clinic/AgendaClinica"));
@@ -561,6 +566,15 @@ function AppRoutes() {
         </Route>
         <Route path="/varejo/combos">
           {() => <VarejoRoute component={VarejoCombos} />}
+        </Route>
+        <Route path="/scout">
+          {() => <ProtectedRoute component={RevenueDashboard} />}
+        </Route>
+        <Route path="/scout/regras">
+          {() => <ProtectedRoute component={ScoutRegras} />}
+        </Route>
+        <Route path="/scout/oportunidades">
+          {() => <ProtectedRoute component={ScoutOportunidades} />}
         </Route>
         <Route path="/clinic">
           {() => <ProtectedRoute component={ClinicDashboard} />}
