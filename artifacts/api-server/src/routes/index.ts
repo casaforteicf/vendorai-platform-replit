@@ -38,6 +38,7 @@ import invitesRouter, { invitesProtectedRouter } from "./invites";
 import onboardingRouter from "./onboarding";
 import contentRouter from "./content";
 import partnerRouter from "./partner";
+import partnersRouter from "./partners";
 import adminPartnersRouter from "./admin_partners";
 import adminPlansRouter from "./admin_plans";
 import billingEventsRouter from "./billing_events";
@@ -166,8 +167,11 @@ router.use(onboardingRouter);
 router.use(contentRouter);
 router.use(contentStudioRouter);
 
-// Partner Hub (revendedor dashboard)
+// Partner Hub (revendedor dashboard — legacy)
 router.use(partnerRouter);
+
+// Partners Hub (módulo parceiros Etapa 2)
+router.use(partnersRouter);
 
 // Admin Partners Hub (super_admin management)
 router.use(adminPartnersRouter);

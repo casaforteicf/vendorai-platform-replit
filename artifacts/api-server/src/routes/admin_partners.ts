@@ -27,23 +27,7 @@ const linkTenantSchema = z.object({
   partnerId: z.string().nullable(),
 });
 
-router.get("/admin/partners", requireRole("super_admin"), async (req, res) => {
-  const partners = await db
-    .select({
-      id: partnersTable.id,
-      name: partnersTable.name,
-      email: partnersTable.email,
-      cnpj: partnersTable.cnpj,
-      phone: partnersTable.phone,
-      asaasWalletId: partnersTable.asaasWalletId,
-      userId: partnersTable.userId,
-      createdAt: partnersTable.createdAt,
-    })
-    .from(partnersTable)
-    .orderBy(partnersTable.createdAt);
-
-  res.json(partners);
-});
+// GET /admin/partners moved to routes/partners.ts (uses new schema fields)
 
 router.post("/admin/partners", requireRole("super_admin"), async (req, res) => {
   const parsed = createPartnerSchema.safeParse(req.body);

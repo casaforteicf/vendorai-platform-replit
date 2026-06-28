@@ -7,6 +7,7 @@ declare global {
   namespace Express {
     interface Request {
       user?: JwtPayload;
+      partnerId?: string; // set by requirePartner
     }
   }
 }
@@ -43,12 +44,29 @@ export function requireRole(...roles: PlatformRole[]): RequestHandler {
   };
 }
 
+export const requirePartner: RequestHandler = (req, res, next) => {
+  if (!req.user) {
+    res.status(401).json({ error: "Unauthenticated" });
+    return;
+  }
+  if (req.user.platformRole !== "partner") {
+    res.status(403).json({ error: "Requires partner role" });
+    return;
+  }
+  if (!req.user.partnerId) {
+    res.status(403).json({ error: "No partner record associated with this account" });
+    return;
+  }
+  req.partnerId = req.user.partnerId;
+  next();
+};
+
 export const blockPartnerFromCRM: RequestHandler = (req, res, next) => {
   if (req.user?.platformRole !== "partner") {
     next();
     return;
   }
-  const allowed = ["/partner/", "/auth/", "/admin/partners", "/healthz"];
+  const allowed = ["/partner/", "/partners/", "/auth/", "/admin/partners", "/admin/commissions", "/healthz"];
   const isAllowed = allowed.some((prefix) => req.path.startsWith(prefix));
   if (!isAllowed) {
     res.status(403).json({ error: "Partners cannot access CRM endpoints" });
