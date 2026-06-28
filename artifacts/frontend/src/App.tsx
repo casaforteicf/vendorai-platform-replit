@@ -28,6 +28,7 @@ const Dashboard          = lazy(() => import("@/pages/Dashboard"));
 const Leads              = lazy(() => import("@/pages/Leads"));
 const LeadDetail         = lazy(() => import("@/pages/LeadDetail"));
 const Prospector         = lazy(() => import("@/pages/Prospector"));
+const FlowBuilder        = lazy(() => import("@/pages/prospector/FlowBuilder"));
 const Duplicatas         = lazy(() => import("@/pages/Duplicatas"));
 const Deals              = lazy(() => import("@/pages/Deals"));
 const Conversations      = lazy(() => import("@/pages/Conversations"));
@@ -375,6 +376,9 @@ function AppRoutes() {
         </Route>
         <Route path="/app/prospector">
           <ProtectedRoute component={Prospector} />
+        </Route>
+        <Route path="/prospector/flows">
+          <ProtectedRoute component={FlowBuilder} />
         </Route>
         <Route path="/duplicatas">
           <ProtectedRoute component={Duplicatas} />
