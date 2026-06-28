@@ -82,6 +82,16 @@ export default function AdminTenants() {
   const [copiedWa, setCopiedWa] = useState(false);
 
   const [resendingId, setResendingId] = useState<string | null>(null);
+  const [updatingVertical, setUpdatingVertical] = useState<string | null>(null);
+
+  const VERTICAL_OPTIONS = [
+    { value: "__none__",                        label: "— CRM Geral —" },
+    { value: "Construção & Reforma",            label: "Construção & Reforma" },
+    { value: "Varejo de Roupas & Acessórios",   label: "Varejo de Roupas & Acessórios" },
+    { value: "Supermercado",                    label: "Supermercado" },
+    { value: "Salão de Beleza",                 label: "Salão de Beleza" },
+    { value: "Clínica",                         label: "Clínica" },
+  ];
 
   const filtered = tenants.filter((t) => {
     const matchStatus = filterStatus === "all" || t.status === filterStatus
@@ -133,6 +143,26 @@ export default function AdminTenants() {
       }
     } finally {
       setSendingEmail(false);
+    }
+  }
+
+  async function handleUpdateVertical(tenantId: string, vertical: string) {
+    setUpdatingVertical(tenantId);
+    try {
+      const body = vertical === "__none__" ? { vertical: null } : { vertical };
+      const res = await fetch(`/api/tenants/${tenantId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        body: JSON.stringify(body),
+      });
+      if (!res.ok) {
+        const data = await res.json();
+        toast({ title: data.error ?? "Erro ao atualizar vertical", variant: "destructive" });
+      } else {
+        void qc.invalidateQueries({ queryKey: getListTenantsQueryKey() });
+      }
+    } finally {
+      setUpdatingVertical(null);
     }
   }
 
@@ -312,6 +342,7 @@ export default function AdminTenants() {
                 <TableRow>
                   <TableHead>Empresa</TableHead>
                   <TableHead>Status</TableHead>
+                  <TableHead>Vertical</TableHead>
                   <TableHead>Origem</TableHead>
                   <TableHead>Primeiro acesso</TableHead>
                   <TableHead>Acesso enviado</TableHead>
@@ -321,7 +352,7 @@ export default function AdminTenants() {
               <TableBody>
                 {filtered.length === 0 && (
                   <TableRow>
-                    <TableCell colSpan={6} className="text-center text-muted-foreground py-8">
+                    <TableCell colSpan={7} className="text-center text-muted-foreground py-8">
                       Nenhum tenant encontrado
                     </TableCell>
                   </TableRow>
@@ -336,6 +367,24 @@ export default function AdminTenants() {
                       <Badge variant="outline" className={`text-xs ${STATUS_COLORS[t.status] ?? ""}`}>
                         {t.status}
                       </Badge>
+                    </TableCell>
+                    <TableCell>
+                      <Select
+                        value={(t as any).vertical ?? "__none__"}
+                        onValueChange={(v) => handleUpdateVertical(t.id, v)}
+                        disabled={updatingVertical === t.id}
+                      >
+                        <SelectTrigger className="h-7 text-xs w-44 border-dashed">
+                          <SelectValue placeholder="—" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {VERTICAL_OPTIONS.map((opt) => (
+                            <SelectItem key={opt.value} value={opt.value} className="text-xs">
+                              {opt.label}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
                     </TableCell>
                     <TableCell>
                       <span className="text-xs text-muted-foreground">

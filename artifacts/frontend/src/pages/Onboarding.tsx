@@ -377,11 +377,28 @@ export default function Onboarding() {
           {step === 1 && (
             <Card>
               <CardContent className="pt-6 space-y-5">
-                <div>
-                  <h2 className="text-xl font-bold">Vamos começar!</h2>
-                  <p className="text-sm text-muted-foreground mt-1">
-                    Conta-nos um pouco sobre a sua empresa.
-                  </p>
+                <div className="flex items-start justify-between gap-2">
+                  <div>
+                    <h2 className="text-xl font-bold">Vamos começar!</h2>
+                    <p className="text-sm text-muted-foreground mt-1">
+                      Conta-nos um pouco sobre a sua empresa.
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    className="text-xs text-muted-foreground hover:text-foreground underline underline-offset-2 shrink-0 mt-1"
+                    onClick={async () => {
+                      if (!user?.tenantId) return;
+                      try {
+                        await apiPatch(`/api/tenants/${user.tenantId}`, { setupCompletedAt: new Date().toISOString() });
+                        setLocation("/dashboard");
+                      } catch {
+                        setLocation("/dashboard");
+                      }
+                    }}
+                  >
+                    Pular configuração →
+                  </button>
                 </div>
 
                 <div className="space-y-2">
