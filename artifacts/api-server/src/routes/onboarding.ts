@@ -11,6 +11,7 @@ import {
   knowledgeBaseTable,
   segmentTemplatesTable,
   onboardingProgressTable,
+  plansTable,
   AGENT_TYPES,
   type AgentsMap,
 } from "@workspace/db";
@@ -894,7 +895,6 @@ router.patch("/onboarding/step/4", authenticate, async (req, res) => {
   const now = new Date();
 
   // Look up the plan
-  const { plansTable } = await import("@workspace/db");
   const [plan] = await db
     .select()
     .from(plansTable)
@@ -1029,6 +1029,20 @@ router.get("/onboarding/whatsapp/test", authenticate, async (req, res) => {
     req.log.warn({ err }, "Onboarding whatsapp test failed");
     res.json({ conectado: false, erro: "Timeout ou erro de rede" });
   }
+});
+
+// ── GET /onboarding/plans ──────────────────────────────────────────────────────
+router.get("/onboarding/plans", authenticate, async (req, res) => {
+  const plans = await db
+    .select({
+      id: plansTable.id,
+      name: plansTable.name,
+      monthlyPriceCents: plansTable.monthlyPriceCents,
+      monthlyPriceAnnualCents: plansTable.monthlyPriceAnnualCents,
+    })
+    .from(plansTable)
+    .orderBy(plansTable.monthlyPriceCents);
+  return res.json(plans);
 });
 
 export default router;
