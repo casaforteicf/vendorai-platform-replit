@@ -1,4 +1,4 @@
-import { pgTable, text, integer, numeric, timestamp, boolean, pgEnum, json, check } from "drizzle-orm/pg-core";
+import { pgTable, text, integer, numeric, timestamp, boolean, pgEnum, json, check, varchar } from "drizzle-orm/pg-core";
 import { sql } from "drizzle-orm";
 import { createInsertSchema, createSelectSchema } from "drizzle-zod";
 import { z } from "zod/v4";
@@ -70,6 +70,13 @@ export const tenantsTable = pgTable(
     accessSentAt: timestamp("access_sent_at"),
     firstLoginAt: timestamp("first_login_at"),
     internalNotes: text("internal_notes"),
+    onboardingConcluido: boolean("onboarding_concluido").notNull().default(false),
+    nomeEmpresa:  varchar("nome_empresa",  { length: 255 }),
+    segmento:     varchar("segmento",      { length: 100 }),
+    logoUrl:      varchar("logo_url",      { length: 500 }),
+    corPrimaria:  varchar("cor_primaria",  { length: 7   }).default("#A78BFA"),
+    site:         varchar("site",          { length: 255 }),
+    descricao:    text("descricao"),
     createdAt: timestamp("created_at").notNull().defaultNow(),
     updatedAt: timestamp("updated_at").notNull().defaultNow(),
   },

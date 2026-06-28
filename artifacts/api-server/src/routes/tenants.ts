@@ -23,6 +23,7 @@ import {
   inventoryItemsTable,
   customerIntelligenceTable,
   agentTasksTable,
+  onboardingProgressTable,
 } from "@workspace/db";
 import { requireRole, requireSameTenanOrSuperAdmin } from "../middlewares/auth";
 import { encrypt } from "../lib/crypto.js";
@@ -48,6 +49,7 @@ router.post("/tenants", requireRole("super_admin"), async (req, res) => {
 
   try {
     const [tenant] = await db.insert(tenantsTable).values(insertData).returning();
+    await db.insert(onboardingProgressTable).values({ tenantId: tenant.id }).onConflictDoNothing();
     res.status(201).json(tenant);
   } catch (err: unknown) {
     if (isUniqueViolation(err)) {
@@ -293,6 +295,8 @@ router.post("/admin/tenants/demo", requireRole("super_admin"), async (req, res) 
       planId: null,
     })
     .returning();
+
+  await db.insert(onboardingProgressTable).values({ tenantId: tenant.id }).onConflictDoNothing();
 
   // Popular com dados fake
   await seedDemoData(tenant.id);
@@ -659,6 +663,8 @@ router.post("/superadmin/tenants/provision", requireRole("super_admin"), async (
     }).returning();
 
     if (!tenant) throw new Error("Failed to create tenant");
+
+    await db.insert(onboardingProgressTable).values({ tenantId: tenant.id }).onConflictDoNothing();
 
     const [user] = await db.insert(usersTable).values({
       tenantId: tenant.id,

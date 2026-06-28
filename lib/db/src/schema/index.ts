@@ -84,3 +84,4 @@ export * from "./prospector_flow_steps";
 export * from "./prospector_flow_executions";
 export * from "./agent_defaults";
 export * from "./tenant_agent_configs";
+export * from "./onboarding_progress";
