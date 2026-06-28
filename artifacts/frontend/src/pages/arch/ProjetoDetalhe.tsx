@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { useRoute, Link } from "wouter";
 import { useAuth } from "@/contexts/AuthContext";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -7,6 +7,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Switch } from "@/components/ui/switch";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
@@ -22,7 +23,8 @@ import {
 import { useToast } from "@/hooks/use-toast";
 import {
   ArrowLeft, Plus, Sparkles, Loader2, Pencil, Trash2, Link2,
-  Search, LayoutGrid, DollarSign, Clock,
+  Search, LayoutGrid, DollarSign, Clock, Eye, ExternalLink,
+  Copy, CheckCircle, XCircle, RefreshCw, Globe, Image,
 } from "lucide-react";
 
 // ── Types ──────────────────────────────────────────────────────────────────
@@ -35,6 +37,19 @@ type Projeto = {
   areaM2: string | null;
   orcamentoTotal: string | null;
   portalAtivo: boolean;
+  portalToken: string | null;
+};
+
+type Cena = {
+  id: string;
+  projetoId: string;
+  ambienteId: string | null;
+  nome: string | null;
+  renderUrl: string | null;
+  thumbnailUrl: string | null;
+  status: string | null;
+  sceneData: Record<string, unknown> | null;
+  createdAt: string;
 };
 
 type Ambiente = {
@@ -98,6 +113,26 @@ const EMPTY_ITEM = {
 
 const EMPTY_AMB = { nome: "", areaM2: "", descricao: "" };
 
+const ESTILOS = ["Moderno", "Minimalista", "Rústico", "Clássico", "Industrial"] as const;
+const ILUMINACOES = ["Natural", "Artificial", "Mista"] as const;
+const PALETA_CORES = [
+  { label: "Branco",      hex: "#FFFFFF" },
+  { label: "Cinza",       hex: "#9CA3AF" },
+  { label: "Bege",        hex: "#D4B896" },
+  { label: "Azul-escuro", hex: "#1E3A5F" },
+  { label: "Verde-sage",  hex: "#7A9E7E" },
+  { label: "Terracota",   hex: "#C1694F" },
+];
+const EMPTY_CENA = {
+  nome: "",
+  ambienteId: "__none__",
+  estilo: "Moderno" as string,
+  paleta: [] as string[],
+  produtosIds: [] as string[],
+  iluminacao: "Natural" as string,
+  observacoes: "",
+};
+
 // ── Helpers ────────────────────────────────────────────────────────────────
 function getToken() { return localStorage.getItem("vendorai_token"); }
 function getBase()  { return (import.meta.env.BASE_URL ?? "/").replace(/\/$/, ""); }
@@ -150,6 +185,23 @@ export default function ProjetoDetalhe() {
   const [editingAmbiente, setEditingAmbiente]     = useState<Ambiente | null>(null);
   const [ambienteForm, setAmbienteForm]           = useState({ ...EMPTY_AMB });
   const [savingAmbiente, setSavingAmbiente]       = useState(false);
+
+  // ── Cenas state
+  const [cenas, setCenas]                   = useState<Cena[]>([]);
+  const [cenasLoading, setCenasLoading]     = useState(false);
+  const [cenasLoaded, setCenasLoaded]       = useState(false);
+  const [addCenaOpen, setAddCenaOpen]       = useState(false);
+  const [cenaForm, setCenaForm]             = useState({ ...EMPTY_CENA });
+  const [savingCena, setSavingCena]         = useState(false);
+  const [viewingCena, setViewingCena]       = useState<Cena | null>(null);
+  const [catalogBusca, setCatalogBusca]     = useState("");
+  const [catalogCenas, setCatalogCenas]     = useState<CatalogoProduto[]>([]);
+  const pollIntervalsRef = useRef<Record<string, ReturnType<typeof setInterval>>>({});
+
+  // ── Portal state
+  const [portalUrl, setPortalUrl]           = useState<string | null>(null);
+  const [ativandoPortal, setAtivandoPortal] = useState(false);
+  const [copiedUrl, setCopiedUrl]           = useState(false);
 
   // ── Data loaders ───────────────────────────────────────────────────────
   const loadProjeto = useCallback(async () => {
@@ -383,6 +435,156 @@ export default function ProjetoDetalhe() {
       await loadProjeto();
       toast({ title: "Ambiente removido." });
     }
+  }
+
+  // ── Cenas ──────────────────────────────────────────────────────────────
+  const loadCenas = useCallback(async () => {
+    if (!projetoId) return;
+    setCenasLoading(true);
+    const res = await fetch(`${getBase()}/api/arch/projetos/${projetoId}/cenas`, {
+      headers: { Authorization: `Bearer ${getToken()}` },
+    });
+    if (res.ok) setCenas(await res.json());
+    setCenasLoading(false);
+    setCenasLoaded(true);
+  }, [projetoId]);
+
+  function stopPolling(cenaId: string) {
+    if (pollIntervalsRef.current[cenaId]) {
+      clearInterval(pollIntervalsRef.current[cenaId]);
+      delete pollIntervalsRef.current[cenaId];
+    }
+  }
+
+  function startPolling(cenaId: string) {
+    stopPolling(cenaId);
+    pollIntervalsRef.current[cenaId] = setInterval(async () => {
+      const res = await fetch(`${getBase()}/api/arch/cenas/${cenaId}/render-status`, {
+        headers: { Authorization: `Bearer ${getToken()}` },
+      });
+      if (!res.ok) return;
+      const data: { status: string; renderUrl: string | null } = await res.json();
+      if (data.status === "concluido" || data.status === "erro") {
+        stopPolling(cenaId);
+        setCenas(prev => prev.map(c =>
+          c.id === cenaId
+            ? { ...c, status: data.status, renderUrl: data.renderUrl ?? c.renderUrl }
+            : c,
+        ));
+        if (data.status === "concluido")
+          toast({ title: "Render concluído!", description: "A cena 3D está pronta." });
+        else
+          toast({ title: "Falha no render.", variant: "destructive" });
+      }
+    }, 5000);
+  }
+
+  // Limpa polling ao desmontar
+  useEffect(() => {
+    return () => {
+      Object.values(pollIntervalsRef.current).forEach(clearInterval);
+    };
+  }, []);
+
+  // Inicializa portalUrl se projeto já tem portal ativo
+  useEffect(() => {
+    if (projeto?.portalAtivo && projeto.portalToken) {
+      setPortalUrl(`${window.location.origin}${getBase()}/arch/portal/${projeto.portalToken}`);
+    }
+  }, [projeto]);
+
+  async function searchCatalogoCenas(busca: string) {
+    if (!busca.trim()) { setCatalogCenas([]); return; }
+    const res = await fetch(
+      `${getBase()}/api/arch/catalogo?busca=${encodeURIComponent(busca)}&limit=10`,
+      { headers: { Authorization: `Bearer ${getToken()}` } },
+    );
+    if (res.ok) setCatalogCenas(await res.json());
+  }
+
+  async function handleSaveCena(e: React.FormEvent) {
+    e.preventDefault();
+    setSavingCena(true);
+    try {
+      const body = {
+        nome: cenaForm.nome || undefined,
+        ambienteId: cenaForm.ambienteId !== "__none__" ? cenaForm.ambienteId : undefined,
+        sceneData: {
+          estilo:      cenaForm.estilo,
+          paleta:      cenaForm.paleta,
+          produtosIds: cenaForm.produtosIds,
+          iluminacao:  cenaForm.iluminacao,
+          observacoes: cenaForm.observacoes || undefined,
+        },
+      };
+      const res = await fetch(`${getBase()}/api/arch/projetos/${projetoId}/cenas`, {
+        method: "POST",
+        headers: authH(),
+        body: JSON.stringify(body),
+      });
+      if (!res.ok) throw new Error("Falha ao criar cena.");
+      setAddCenaOpen(false);
+      await loadCenas();
+      toast({ title: "Cena criada!" });
+    } catch (e: any) {
+      toast({ title: "Erro", description: e.message, variant: "destructive" });
+    } finally {
+      setSavingCena(false);
+    }
+  }
+
+  async function renderizarCena(cenaId: string) {
+    setCenas(prev => prev.map(c => c.id === cenaId ? { ...c, status: "renderizando" } : c));
+    const res = await fetch(`${getBase()}/api/arch/cenas/${cenaId}/renderizar`, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${getToken()}` },
+    });
+    if (res.ok) {
+      startPolling(cenaId);
+    } else {
+      const err = await res.json().catch(() => ({}));
+      setCenas(prev => prev.map(c => c.id === cenaId ? { ...c, status: "rascunho" } : c));
+      toast({ title: "Erro ao iniciar render", description: err?.error, variant: "destructive" });
+    }
+  }
+
+  async function deleteCena(cenaId: string) {
+    stopPolling(cenaId);
+    const res = await fetch(`${getBase()}/api/arch/cenas/${cenaId}`, {
+      method: "DELETE",
+      headers: { Authorization: `Bearer ${getToken()}` },
+    });
+    if (res.ok || res.status === 204) {
+      setCenas(prev => prev.filter(c => c.id !== cenaId));
+      toast({ title: "Cena removida." });
+    }
+  }
+
+  // ── Portal ─────────────────────────────────────────────────────────────
+  async function handleActivatePortal() {
+    setAtivandoPortal(true);
+    try {
+      const res = await fetch(`${getBase()}/api/arch/projetos/${projetoId}/portal/ativar`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${getToken()}` },
+      });
+      if (!res.ok) throw new Error("Falha ao ativar portal.");
+      const data: { portalUrl: string } = await res.json();
+      setPortalUrl(data.portalUrl);
+      await loadProjeto();
+      toast({ title: "Portal ativado!", description: "Compartilhe o link com o cliente." });
+    } catch (e: any) {
+      toast({ title: "Erro", description: e.message, variant: "destructive" });
+    } finally {
+      setAtivandoPortal(false);
+    }
+  }
+
+  async function handleCopyUrl() {
+    if (!portalUrl) return;
+    await navigator.clipboard.writeText(portalUrl);
+    setCopiedUrl(true);
+    setTimeout(() => setCopiedUrl(false), 2000);
   }
 
   // ── Render ─────────────────────────────────────────────────────────────
@@ -646,25 +848,193 @@ export default function ProjetoDetalhe() {
         </TabsContent>
 
         {/* ═══════════════════════════════════════════════════════════════
-            ABA: CENAS 3D (placeholder)
+            ABA: CENAS 3D
         ════════════════════════════════════════════════════════════════ */}
-        <TabsContent value="cenas" className="mt-4">
-          <div className="rounded-lg border p-12 text-center">
-            <Clock className="h-10 w-10 mx-auto text-muted-foreground/40 mb-3" />
-            <p className="font-medium">Cenas 3D</p>
-            <p className="text-sm text-muted-foreground mt-1">Em breve — gere renders fotorrealistas dos ambientes com IA.</p>
+        <TabsContent value="cenas" className="mt-4"
+          onFocus={() => { if (!cenasLoaded) loadCenas(); }}
+          onClick={() => { if (!cenasLoaded) loadCenas(); }}
+        >
+          <div className="flex items-center justify-between mb-4">
+            <h3 className="font-semibold text-sm text-muted-foreground uppercase tracking-wide">Cenas 3D</h3>
+            <Button size="sm" onClick={() => { setCenaForm({ ...EMPTY_CENA }); setCatalogCenas([]); setCatalogBusca(""); setAddCenaOpen(true); }}>
+              <Plus className="h-4 w-4 mr-1" /> Nova Cena
+            </Button>
           </div>
+
+          {cenasLoading && (
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+              {[1,2,3].map(i => <Skeleton key={i} className="h-52 rounded-xl" />)}
+            </div>
+          )}
+
+          {!cenasLoading && cenasLoaded && cenas.length === 0 && (
+            <div className="rounded-lg border border-dashed p-12 text-center">
+              <Image className="h-10 w-10 mx-auto text-muted-foreground/30 mb-3" />
+              <p className="font-medium text-sm">Nenhuma cena ainda</p>
+              <p className="text-xs text-muted-foreground mt-1">Clique em "Nova Cena" para gerar renders fotorrealistas com IA.</p>
+            </div>
+          )}
+
+          {!cenasLoading && cenas.length > 0 && (
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+              {cenas.map(cena => {
+                const st = cena.status ?? "rascunho";
+                const badgeCls =
+                  st === "concluido"    ? "bg-green-50 text-green-700 border-green-200" :
+                  st === "renderizando" ? "bg-blue-50 text-blue-700 border-blue-200 animate-pulse" :
+                  st === "erro"         ? "bg-red-50 text-red-700 border-red-200" :
+                                          "bg-gray-100 text-gray-600 border-gray-200";
+                const badgeLbl =
+                  st === "concluido"    ? "Concluído" :
+                  st === "renderizando" ? "Renderizando…" :
+                  st === "erro"         ? "Erro" : "Rascunho";
+                const ambNome = ambientes.find(a => a.id === cena.ambienteId)?.nome;
+
+                return (
+                  <Card key={cena.id} className="overflow-hidden">
+                    {/* Thumbnail */}
+                    <div className="relative h-40 bg-muted flex items-center justify-center">
+                      {cena.renderUrl ? (
+                        <img
+                          src={cena.renderUrl}
+                          alt={cena.nome ?? "Render"}
+                          className="w-full h-full object-cover"
+                        />
+                      ) : (
+                        <Image className="h-12 w-12 text-muted-foreground/30" />
+                      )}
+                      {st === "renderizando" && (
+                        <div className="absolute inset-0 bg-black/30 flex items-center justify-center">
+                          <Loader2 className="h-8 w-8 text-white animate-spin" />
+                        </div>
+                      )}
+                    </div>
+
+                    <CardContent className="p-3 space-y-2">
+                      <div className="flex items-start justify-between gap-1">
+                        <div className="min-w-0">
+                          <p className="font-medium text-sm truncate">{cena.nome ?? "Sem nome"}</p>
+                          {ambNome && <p className="text-xs text-muted-foreground truncate">{ambNome}</p>}
+                        </div>
+                        <span className={`inline-flex shrink-0 items-center rounded-full border px-2 py-0.5 text-xs font-medium ${badgeCls}`}>
+                          {badgeLbl}
+                        </span>
+                      </div>
+
+                      <div className="flex gap-1.5 flex-wrap">
+                        {(st === "rascunho" || st === "erro") && (
+                          <Button size="sm" variant="default" className="h-7 text-xs" onClick={() => renderizarCena(cena.id)}>
+                            <RefreshCw className="h-3 w-3 mr-1" /> Renderizar
+                          </Button>
+                        )}
+                        {st === "concluido" && cena.renderUrl && (
+                          <Button size="sm" variant="outline" className="h-7 text-xs" onClick={() => setViewingCena(cena)}>
+                            <Eye className="h-3 w-3 mr-1" /> Ver
+                          </Button>
+                        )}
+                        <AlertDialog>
+                          <AlertDialogTrigger asChild>
+                            <Button size="sm" variant="ghost" className="h-7 text-xs text-destructive hover:text-destructive">
+                              <Trash2 className="h-3 w-3 mr-1" /> Excluir
+                            </Button>
+                          </AlertDialogTrigger>
+                          <AlertDialogContent>
+                            <AlertDialogHeader>
+                              <AlertDialogTitle>Excluir cena?</AlertDialogTitle>
+                              <AlertDialogDescription>
+                                A cena e o render serão removidos permanentemente.
+                              </AlertDialogDescription>
+                            </AlertDialogHeader>
+                            <AlertDialogFooter>
+                              <AlertDialogCancel>Cancelar</AlertDialogCancel>
+                              <AlertDialogAction onClick={() => deleteCena(cena.id)} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
+                                Excluir
+                              </AlertDialogAction>
+                            </AlertDialogFooter>
+                          </AlertDialogContent>
+                        </AlertDialog>
+                      </div>
+                    </CardContent>
+                  </Card>
+                );
+              })}
+            </div>
+          )}
         </TabsContent>
 
         {/* ═══════════════════════════════════════════════════════════════
-            ABA: PORTAL (placeholder)
+            ABA: PORTAL
         ════════════════════════════════════════════════════════════════ */}
-        <TabsContent value="portal" className="mt-4">
-          <div className="rounded-lg border p-12 text-center">
-            <Clock className="h-10 w-10 mx-auto text-muted-foreground/40 mb-3" />
-            <p className="font-medium">Portal do Cliente</p>
-            <p className="text-sm text-muted-foreground mt-1">Em breve — compartilhe o projeto com o cliente em um link seguro.</p>
-          </div>
+        <TabsContent value="portal" className="mt-4 space-y-5">
+          {/* Toggle */}
+          <Card>
+            <CardContent className="p-5">
+              <div className="flex items-center justify-between gap-4">
+                <div className="space-y-0.5">
+                  <p className="font-semibold text-sm">Portal do Cliente</p>
+                  <p className="text-xs text-muted-foreground">
+                    Gere um link seguro onde o cliente pode acompanhar o projeto, ver renders e o orçamento aprovado.
+                  </p>
+                </div>
+                <Switch
+                  checked={!!(projeto?.portalAtivo)}
+                  disabled={ativandoPortal || projeto?.portalAtivo}
+                  onCheckedChange={(checked) => { if (checked && !projeto?.portalAtivo) handleActivatePortal(); }}
+                />
+              </div>
+
+              {ativandoPortal && (
+                <div className="flex items-center gap-2 mt-4 text-sm text-muted-foreground">
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                  Ativando portal…
+                </div>
+              )}
+
+              {portalUrl && (
+                <div className="mt-4 space-y-3">
+                  <div className="flex items-center gap-2 p-3 bg-muted rounded-lg">
+                    <Globe className="h-4 w-4 shrink-0 text-green-600" />
+                    <span className="text-xs font-mono break-all flex-1">{portalUrl}</span>
+                    <div className="flex gap-1 shrink-0">
+                      <Button size="icon" variant="ghost" className="h-7 w-7" onClick={handleCopyUrl} title="Copiar link">
+                        {copiedUrl ? <CheckCircle className="h-3.5 w-3.5 text-green-600" /> : <Copy className="h-3.5 w-3.5" />}
+                      </Button>
+                      <a href={portalUrl} target="_blank" rel="noopener noreferrer">
+                        <Button size="icon" variant="ghost" className="h-7 w-7" title="Abrir portal">
+                          <ExternalLink className="h-3.5 w-3.5" />
+                        </Button>
+                      </a>
+                    </div>
+                  </div>
+                  <p className="text-xs text-green-700 font-medium flex items-center gap-1">
+                    <CheckCircle className="h-3.5 w-3.5" /> Portal ativo — qualquer pessoa com o link pode acessar.
+                  </p>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+
+          {/* Preview do que o cliente verá */}
+          <Card className="border-dashed">
+            <CardHeader className="pb-2">
+              <CardTitle className="text-sm text-muted-foreground font-medium">O que o cliente verá</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-2">
+              {[
+                { icon: <LayoutGrid className="h-4 w-4 text-indigo-500" />, label: "Visão geral do projeto", desc: "Status, tipo de obra e metragem" },
+                { icon: <Image className="h-4 w-4 text-violet-500" />,     label: "Renders 3D aprovados",   desc: "Cenas concluídas com visualização em tela cheia" },
+                { icon: <DollarSign className="h-4 w-4 text-green-600" />, label: "Orçamento resumido",     desc: "Itens agrupados por ambiente, sem preços unitários" },
+              ].map(({ icon, label, desc }) => (
+                <div key={label} className="flex items-start gap-3 p-3 rounded-lg bg-muted/50">
+                  <span className="mt-0.5">{icon}</span>
+                  <div>
+                    <p className="text-xs font-medium">{label}</p>
+                    <p className="text-xs text-muted-foreground">{desc}</p>
+                  </div>
+                </div>
+              ))}
+            </CardContent>
+          </Card>
         </TabsContent>
       </Tabs>
 
@@ -868,6 +1238,181 @@ export default function ProjetoDetalhe() {
               </Button>
             </div>
           </form>
+        </DialogContent>
+      </Dialog>
+
+      {/* ── Dialog: Nova Cena ─────────────────────────────────────────── */}
+      <Dialog open={addCenaOpen} onOpenChange={setAddCenaOpen}>
+        <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Nova Cena 3D</DialogTitle>
+          </DialogHeader>
+          <form onSubmit={handleSaveCena} className="space-y-4 mt-2">
+            {/* Nome */}
+            <div className="space-y-1.5">
+              <Label>Nome da cena</Label>
+              <Input
+                placeholder="Ex: Sala de Estar — Moderno"
+                value={cenaForm.nome}
+                onChange={e => setCenaForm(f => ({ ...f, nome: e.target.value }))}
+              />
+            </div>
+
+            {/* Ambiente */}
+            <div className="space-y-1.5">
+              <Label>Ambiente</Label>
+              <Select
+                value={cenaForm.ambienteId}
+                onValueChange={v => setCenaForm(f => ({ ...f, ambienteId: v }))}
+              >
+                <SelectTrigger><SelectValue placeholder="Sem ambiente" /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="__none__">Sem ambiente</SelectItem>
+                  {ambientes.map(a => (
+                    <SelectItem key={a.id} value={a.id}>{a.nome}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            {/* Estilo */}
+            <div className="space-y-1.5">
+              <Label>Estilo</Label>
+              <Select
+                value={cenaForm.estilo}
+                onValueChange={v => setCenaForm(f => ({ ...f, estilo: v }))}
+              >
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  {ESTILOS.map(e => <SelectItem key={e} value={e}>{e}</SelectItem>)}
+                </SelectContent>
+              </Select>
+            </div>
+
+            {/* Paleta de cores */}
+            <div className="space-y-1.5">
+              <Label>Paleta de cores <span className="text-muted-foreground text-xs">(selecione uma ou mais)</span></Label>
+              <div className="flex gap-2 flex-wrap">
+                {PALETA_CORES.map(cor => {
+                  const sel = cenaForm.paleta.includes(cor.hex);
+                  return (
+                    <button
+                      key={cor.hex}
+                      type="button"
+                      title={cor.label}
+                      onClick={() => setCenaForm(f => ({
+                        ...f,
+                        paleta: sel
+                          ? f.paleta.filter(h => h !== cor.hex)
+                          : [...f.paleta, cor.hex],
+                      }))}
+                      className={`w-8 h-8 rounded-full border-2 transition-transform ${sel ? "border-primary scale-110 shadow-md" : "border-gray-200"}`}
+                      style={{ backgroundColor: cor.hex }}
+                    />
+                  );
+                })}
+              </div>
+            </div>
+
+            {/* Iluminação */}
+            <div className="space-y-1.5">
+              <Label>Iluminação</Label>
+              <Select
+                value={cenaForm.iluminacao}
+                onValueChange={v => setCenaForm(f => ({ ...f, iluminacao: v }))}
+              >
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  {ILUMINACOES.map(i => <SelectItem key={i} value={i}>{i}</SelectItem>)}
+                </SelectContent>
+              </Select>
+            </div>
+
+            {/* Produtos do catálogo */}
+            <div className="space-y-1.5">
+              <Label>Produtos do catálogo <span className="text-muted-foreground text-xs">(opcional)</span></Label>
+              <div className="flex gap-2">
+                <Input
+                  placeholder="Buscar produto..."
+                  value={catalogBusca}
+                  onChange={e => { setCatalogBusca(e.target.value); searchCatalogoCenas(e.target.value); }}
+                />
+              </div>
+              {catalogCenas.length > 0 && (
+                <div className="rounded-md border divide-y max-h-36 overflow-y-auto">
+                  {catalogCenas.map(p => {
+                    const chosen = cenaForm.produtosIds.includes(p.id);
+                    return (
+                      <button
+                        key={p.id}
+                        type="button"
+                        onClick={() => setCenaForm(f => ({
+                          ...f,
+                          produtosIds: chosen
+                            ? f.produtosIds.filter(id => id !== p.id)
+                            : [...f.produtosIds, p.id],
+                        }))}
+                        className={`w-full text-left px-3 py-2 text-xs hover:bg-muted flex items-center gap-2 ${chosen ? "bg-primary/5" : ""}`}
+                      >
+                        {chosen
+                          ? <CheckCircle className="h-3.5 w-3.5 text-primary shrink-0" />
+                          : <div className="h-3.5 w-3.5 rounded-full border border-muted-foreground shrink-0" />}
+                        <span className="flex-1 truncate">{p.nome}</span>
+                        {p.categoria && <span className="text-muted-foreground">{p.categoria}</span>}
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
+              {cenaForm.produtosIds.length > 0 && (
+                <p className="text-xs text-primary">{cenaForm.produtosIds.length} produto(s) selecionado(s)</p>
+              )}
+            </div>
+
+            {/* Observações */}
+            <div className="space-y-1.5">
+              <Label>Observações</Label>
+              <Textarea
+                placeholder="Descreva detalhes adicionais para o render..."
+                rows={3}
+                value={cenaForm.observacoes}
+                onChange={e => setCenaForm(f => ({ ...f, observacoes: e.target.value }))}
+              />
+            </div>
+
+            <div className="flex justify-end gap-2 pt-2">
+              <Button type="button" variant="outline" onClick={() => setAddCenaOpen(false)}>Cancelar</Button>
+              <Button type="submit" disabled={savingCena}>
+                {savingCena ? <><Loader2 className="h-4 w-4 mr-2 animate-spin" />Criando…</> : "Criar Cena"}
+              </Button>
+            </div>
+          </form>
+        </DialogContent>
+      </Dialog>
+
+      {/* ── Dialog: Ver Render ────────────────────────────────────────── */}
+      <Dialog open={!!viewingCena} onOpenChange={() => setViewingCena(null)}>
+        <DialogContent className="max-w-3xl">
+          <DialogHeader>
+            <DialogTitle>{viewingCena?.nome ?? "Render 3D"}</DialogTitle>
+          </DialogHeader>
+          {viewingCena?.renderUrl && (
+            <div className="space-y-4">
+              <img
+                src={viewingCena.renderUrl}
+                alt={viewingCena.nome ?? "Render"}
+                className="w-full rounded-lg object-contain max-h-[60vh]"
+              />
+              <div className="flex justify-end gap-2">
+                <a href={viewingCena.renderUrl} download target="_blank" rel="noopener noreferrer">
+                  <Button variant="outline">
+                    <ExternalLink className="h-4 w-4 mr-2" /> Download / Abrir
+                  </Button>
+                </a>
+                <Button onClick={() => setViewingCena(null)}>Fechar</Button>
+              </div>
+            </div>
+          )}
         </DialogContent>
       </Dialog>
     </div>
