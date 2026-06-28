@@ -63,6 +63,7 @@ import prospectorRouter from "./prospector";
 import partnerProspectorRouter from "./partner-prospector";
 import prospectorFlowsRouter from "./prospector-flows";
 import contentStudioRouter from "./content_studio";
+import beautyRouter from "./beauty";
 import { authenticate, blockPartnerFromCRM, blockSuspendedTenants, blockExpiredDemo, requireRole, requireSameTenanOrSuperAdmin } from "../middlewares/auth";
 import { eq } from "drizzle-orm";
 import { db, tenantsTable } from "@workspace/db";
@@ -239,6 +240,9 @@ router.use(partnerProspectorRouter);
 
 // Arch Hub
 router.use(archRouter);
+
+// Beauty (Salão de Beleza) Hub
+router.use(beautyRouter);
 
 export { requireRole, requireSameTenanOrSuperAdmin };
 export default router;
