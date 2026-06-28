@@ -71,6 +71,8 @@ export const tenantsTable = pgTable(
     firstLoginAt: timestamp("first_login_at"),
     internalNotes: text("internal_notes"),
     onboardingConcluido: boolean("onboarding_concluido").notNull().default(false),
+    whatsappProvider: varchar("whatsapp_provider", { length: 20 }).default("zapi"),
+    instagramProvider: varchar("instagram_provider", { length: 20 }).default("meta"),
     nomeEmpresa:  varchar("nome_empresa",  { length: 255 }),
     segmento:     varchar("segmento",      { length: 100 }),
     logoUrl:      varchar("logo_url",      { length: 500 }),
