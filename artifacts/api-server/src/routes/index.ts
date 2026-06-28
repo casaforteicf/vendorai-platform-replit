@@ -59,6 +59,7 @@ import leadSpouseConsentRouter from "./lead_spouse_consent";
 import aiGatewayRouter from "./ai_gateway";
 import prospectorRouter from "./prospector";
 import partnerProspectorRouter from "./partner-prospector";
+import prospectorFlowsRouter from "./prospector-flows";
 import contentStudioRouter from "./content_studio";
 import { authenticate, blockPartnerFromCRM, blockSuspendedTenants, blockExpiredDemo, requireRole, requireSameTenanOrSuperAdmin } from "../middlewares/auth";
 
@@ -206,6 +207,7 @@ router.use(aiGatewayRouter);
 
 // Prospector Hub
 router.use(prospectorRouter);
+router.use(prospectorFlowsRouter);
 
 // Partner Prospector Hub (admin)
 router.use(partnerProspectorRouter);
