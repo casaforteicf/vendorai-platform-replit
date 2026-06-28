@@ -48,6 +48,7 @@ import tenantDomainsRouter from "./tenant_domains";
 import notificationsRouter from "./notifications";
 import { intakeRouter } from "./intake";
 import construcaoRouter from "./construcao";
+import archRouter from "./arch";
 import financeiroObraRouter from "./financeiro_obra";
 import portalRouter from "./portal";
 import varejoRouter from "./varejo";
@@ -234,6 +235,9 @@ router.use(prospectorFlowsRouter);
 
 // Partner Prospector Hub (admin)
 router.use(partnerProspectorRouter);
+
+// Arch Hub
+router.use(archRouter);
 
 export { requireRole, requireSameTenanOrSuperAdmin };
 export default router;
