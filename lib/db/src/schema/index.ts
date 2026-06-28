@@ -105,3 +105,6 @@ export * from "./clinic_convenios";
 export * from "./clinic_medicos";
 export * from "./clinic_consultas";
 export * from "./clinic_prontuarios";
+export * from "./scout_regras";
+export * from "./scout_oportunidades";
+export * from "./client_service_gaps";
