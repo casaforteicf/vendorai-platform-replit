@@ -11,6 +11,8 @@ import {
   archCatalogoTable,
   archMarketplaceItemsTable,
   archMarketplacePedidosTable,
+  archRenderVersoesTable,
+  archRenderSolicitacoesTable,
   notificationsTable,
   tenantsTable,
   insertArchProjetoSchema,
@@ -23,6 +25,7 @@ import {
   updateArchCatalogoSchema,
   insertArchCenaSchema,
   updateArchCenaSchema,
+  insertArchRenderSolicitacaoSchema,
 } from "@workspace/db";
 import { z } from "zod/v4";
 import { anthropic } from "@workspace/integrations-anthropic-ai";
@@ -1248,6 +1251,288 @@ Use preços de mercado brasileiro atuais. Seja detalhado e abrangente. Não incl
   await recalcularOrcamentoTotal(projetoId);
 
   return res.status(201).json({ count: inseridos.length, itens: inseridos });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Helper: processar solicitação em background (fire-and-forget)
+// ─────────────────────────────────────────────────────────────────────────────
+async function processarSolicitacaoBackground(solId: string, cenaId: string): Promise<void> {
+  try {
+    await db
+      .update(archRenderSolicitacoesTable)
+      .set({ status: "processando" })
+      .where(eq(archRenderSolicitacoesTable.id, solId));
+
+    if (!process.env.BLENDER_SERVER_URL) {
+      // Sem servidor Blender configurado — marcar como erro imediatamente
+      await db
+        .update(archRenderSolicitacoesTable)
+        .set({ status: "erro", processadoEm: new Date() })
+        .where(eq(archRenderSolicitacoesTable.id, solId));
+      return;
+    }
+
+    // Disparar render; o scheduler (pollPendingRenders) faz polling e
+    // atualiza arch_renders + arch_cenas.renderUrl quando concluído.
+    await iniciarRender(cenaId);
+
+    // Render em andamento — status permanece 'processando'
+    // Quando a cena.renderUrl for preenchida (via scheduler), o endpoint
+    // de status pode criar a versão e marcar como concluido.
+  } catch {
+    await db
+      .update(archRenderSolicitacoesTable)
+      .set({ status: "erro", processadoEm: new Date() })
+      .where(eq(archRenderSolicitacoesTable.id, solId))
+      .catch(() => undefined);
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Helper: resolver tenantId a partir do cenaId
+// ─────────────────────────────────────────────────────────────────────────────
+async function getCenaTenant(cenaId: string): Promise<{ cena: typeof archCenasTable.$inferSelect; tenantId: string; projetoNome: string | null } | null> {
+  const [cena] = await db
+    .select()
+    .from(archCenasTable)
+    .where(eq(archCenasTable.id, cenaId))
+    .limit(1);
+
+  if (!cena) return null;
+
+  const [projeto] = await db
+    .select({ tenantId: archProjetosTable.tenantId, nome: archProjetosTable.nome })
+    .from(archProjetosTable)
+    .where(eq(archProjetosTable.id, cena.projetoId))
+    .limit(1);
+
+  if (!projeto) return null;
+
+  return { cena, tenantId: projeto.tenantId, projetoNome: projeto.nome ?? null };
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// GET /api/arch/cenas/:cenaId/versoes (autenticado)
+// Listar versões de render ordenadas por versao desc
+// ─────────────────────────────────────────────────────────────────────────────
+router.get("/arch/cenas/:cenaId/versoes", authenticate, async (req, res) => {
+  const cenaId = String(req.params.cenaId);
+
+  const ctx = await getCenaTenant(cenaId);
+  if (!ctx) return res.status(404).json({ error: "Cena não encontrada." });
+  if (!canAccessTenant(req, ctx.tenantId)) return res.status(403).json({ error: "Acesso negado." });
+
+  const versoes = await db
+    .select({
+      id:        archRenderVersoesTable.id,
+      versao:    archRenderVersoesTable.versao,
+      imageUrl:  archRenderVersoesTable.imageUrl,
+      origem:    archRenderVersoesTable.origem,
+      createdAt: archRenderVersoesTable.createdAt,
+    })
+    .from(archRenderVersoesTable)
+    .where(eq(archRenderVersoesTable.cenaId, cenaId))
+    .orderBy(desc(archRenderVersoesTable.versao));
+
+  return res.json(versoes);
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// POST /api/arch/cenas/:cenaId/versoes/download (autenticado)
+// Registrar log de download e retornar URL original + nome sugerido
+// ─────────────────────────────────────────────────────────────────────────────
+router.post("/arch/cenas/:cenaId/versoes/download", authenticate, async (req, res) => {
+  const cenaId = String(req.params.cenaId);
+
+  const bodySchema = z.object({ versaoId: z.string().min(1) });
+  const parsed = bodySchema.safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: "versaoId é obrigatório." });
+
+  const ctx = await getCenaTenant(cenaId);
+  if (!ctx) return res.status(404).json({ error: "Cena não encontrada." });
+  if (!canAccessTenant(req, ctx.tenantId)) return res.status(403).json({ error: "Acesso negado." });
+
+  const [versao] = await db
+    .select({ id: archRenderVersoesTable.id, versao: archRenderVersoesTable.versao, imageUrl: archRenderVersoesTable.imageUrl })
+    .from(archRenderVersoesTable)
+    .where(and(eq(archRenderVersoesTable.id, parsed.data.versaoId), eq(archRenderVersoesTable.cenaId, cenaId)))
+    .limit(1);
+
+  if (!versao) return res.status(404).json({ error: "Versão não encontrada." });
+
+  const nomeProjeto = (ctx.projetoNome ?? "projeto")
+    .toLowerCase()
+    .replace(/\s+/g, "-")
+    .replace(/[^a-z0-9-]/g, "");
+
+  const nomeArquivo = `render-${nomeProjeto}-v${versao.versao}.png`;
+
+  // Log de download (sem modificar a imagem)
+  req.log.info({ versaoId: versao.id, cenaId, nomeArquivo }, "arch:download-versao");
+
+  return res.json({ imageUrl: versao.imageUrl, versao: versao.versao, nomeArquivo });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// GET /api/arch/cenas/:cenaId/solicitacoes (autenticado)
+// Listar solicitações da cena
+// ─────────────────────────────────────────────────────────────────────────────
+router.get("/arch/cenas/:cenaId/solicitacoes", authenticate, async (req, res) => {
+  const cenaId = String(req.params.cenaId);
+
+  const ctx = await getCenaTenant(cenaId);
+  if (!ctx) return res.status(404).json({ error: "Cena não encontrada." });
+  if (!canAccessTenant(req, ctx.tenantId)) return res.status(403).json({ error: "Acesso negado." });
+
+  const solicitacoes = await db
+    .select()
+    .from(archRenderSolicitacoesTable)
+    .where(eq(archRenderSolicitacoesTable.cenaId, cenaId))
+    .orderBy(desc(archRenderSolicitacoesTable.createdAt));
+
+  return res.json(solicitacoes);
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// POST /api/arch/cenas/:cenaId/solicitacoes (PÚBLICA — portal do cliente)
+// Criar solicitação e disparar render em background
+// ─────────────────────────────────────────────────────────────────────────────
+router.post("/arch/cenas/:cenaId/solicitacoes", async (req, res) => {
+  const cenaId = String(req.params.cenaId);
+
+  // Verificar que a cena existe (sem checar tenant — rota pública)
+  const [cena] = await db
+    .select({ id: archCenasTable.id })
+    .from(archCenasTable)
+    .where(eq(archCenasTable.id, cenaId))
+    .limit(1);
+
+  if (!cena) return res.status(404).json({ error: "Cena não encontrada." });
+
+  const solSchema = insertArchRenderSolicitacaoSchema.extend({
+    clienteNome:       z.string().max(255).optional(),
+    observacoes:       z.string().optional(),
+    itensAdicionados:  z.array(z.object({
+      tipo:    z.enum(["sofa", "mesa", "cadeira", "cama", "armario", "luminaria", "janela", "porta"]),
+      cor:     z.string(),
+      posicao: z.enum(["esquerda", "centro", "direita"]),
+    })).optional(),
+    texturasAlteradas: z.array(z.object({
+      superficie: z.enum(["parede", "piso", "teto"]),
+      material:   z.enum(["madeira", "marmore", "cimento", "tinta"]),
+      cor:        z.string(),
+    })).optional(),
+  }).omit({ cenaId: true, versaoGeradaId: true, status: true });
+
+  const parsed = solSchema.safeParse(req.body);
+  if (!parsed.success) {
+    return res.status(400).json({ error: "Dados inválidos.", detail: parsed.error.flatten() });
+  }
+
+  const { itensAdicionados, texturasAlteradas } = parsed.data;
+  const temItens    = itensAdicionados    && itensAdicionados.length > 0;
+  const temTexturas = texturasAlteradas   && texturasAlteradas.length > 0;
+
+  if (!temItens && !temTexturas) {
+    return res.status(400).json({ error: "Informe pelo menos 1 item ou 1 textura a alterar." });
+  }
+
+  const [solicitacao] = await db
+    .insert(archRenderSolicitacoesTable)
+    .values({ ...parsed.data, cenaId, status: "pendente" })
+    .returning({ id: archRenderSolicitacoesTable.id, status: archRenderSolicitacoesTable.status });
+
+  if (!solicitacao) return res.status(500).json({ error: "Falha ao criar solicitação." });
+
+  // Disparar processamento em background — não aguardar resposta
+  setImmediate(() => {
+    processarSolicitacaoBackground(solicitacao.id, cenaId).catch(() => undefined);
+  });
+
+  return res.status(201).json({
+    solicitacaoId: solicitacao.id,
+    status:        "pendente",
+    mensagem:      "Seu render está sendo gerado",
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// GET /api/arch/cenas/:cenaId/solicitacoes/:solId/status (PÚBLICA — polling)
+// ─────────────────────────────────────────────────────────────────────────────
+router.get("/arch/cenas/:cenaId/solicitacoes/:solId/status", async (req, res) => {
+  const cenaId = String(req.params.cenaId);
+  const solId  = String(req.params.solId);
+
+  const [sol] = await db
+    .select({
+      id:              archRenderSolicitacoesTable.id,
+      cenaId:          archRenderSolicitacoesTable.cenaId,
+      status:          archRenderSolicitacoesTable.status,
+      versaoGeradaId:  archRenderSolicitacoesTable.versaoGeradaId,
+    })
+    .from(archRenderSolicitacoesTable)
+    .where(
+      and(
+        eq(archRenderSolicitacoesTable.id, solId),
+        eq(archRenderSolicitacoesTable.cenaId, cenaId),
+      ),
+    )
+    .limit(1);
+
+  if (!sol) return res.status(404).json({ error: "Solicitação não encontrada." });
+
+  // Se já tem versão gerada, retornar imageUrl
+  if (sol.versaoGeradaId) {
+    const [versao] = await db
+      .select({ imageUrl: archRenderVersoesTable.imageUrl })
+      .from(archRenderVersoesTable)
+      .where(eq(archRenderVersoesTable.id, sol.versaoGeradaId))
+      .limit(1);
+
+    return res.json({ status: sol.status, imageUrl: versao?.imageUrl ?? null });
+  }
+
+  // Se em processamento, verificar se a cena já tem renderUrl nova (via scheduler)
+  if (sol.status === "processando") {
+    const [cena] = await db
+      .select({ renderUrl: archCenasTable.renderUrl, status: archCenasTable.status })
+      .from(archCenasTable)
+      .where(eq(archCenasTable.id, cenaId))
+      .limit(1);
+
+    if (cena?.renderUrl && cena.status !== "renderizando") {
+      // Render concluído — criar versão e vincular (lazy promotion)
+      const [ultimaVersao] = await db
+        .select({ versao: archRenderVersoesTable.versao })
+        .from(archRenderVersoesTable)
+        .where(eq(archRenderVersoesTable.cenaId, cenaId))
+        .orderBy(desc(archRenderVersoesTable.versao))
+        .limit(1);
+
+      const proximaVersao = (ultimaVersao?.versao ?? 0) + 1;
+
+      const [novaVersao] = await db
+        .insert(archRenderVersoesTable)
+        .values({
+          cenaId,
+          versao:   proximaVersao,
+          imageUrl: cena.renderUrl,
+          origem:   "solicitacao",
+        })
+        .returning({ id: archRenderVersoesTable.id, imageUrl: archRenderVersoesTable.imageUrl });
+
+      if (novaVersao) {
+        await db
+          .update(archRenderSolicitacoesTable)
+          .set({ status: "concluido", versaoGeradaId: novaVersao.id, processadoEm: new Date() })
+          .where(eq(archRenderSolicitacoesTable.id, solId));
+
+        return res.json({ status: "concluido", imageUrl: novaVersao.imageUrl });
+      }
+    }
+  }
+
+  return res.json({ status: sol.status, imageUrl: null });
 });
 
 export default router;
