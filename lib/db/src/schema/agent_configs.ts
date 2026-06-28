@@ -19,6 +19,8 @@ export type AgentType = (typeof AGENT_TYPES)[number];
 export const agentEntrySchema = z.object({
   enabled: z.boolean().default(false),
   prompt: z.string().optional(),
+  nomePerfil: z.string().optional(),
+  tom: z.string().optional(),
 });
 
 export const agentsMapSchema = z.object({

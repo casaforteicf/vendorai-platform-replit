@@ -792,6 +792,201 @@ router.patch("/onboarding/step/2", authenticate, async (req, res) => {
   res.json(progress);
 });
 
+// ── PATCH /onboarding/step/3 ──────────────────────────────────────────────────
+router.patch("/onboarding/step/3", authenticate, async (req, res) => {
+  const tenantId = req.user!.tenantId;
+  if (!tenantId) { res.status(403).json({ error: "Tenant não identificado" }); return; }
+
+  const step3Schema = z.object({
+    agentKey: z.enum(AGENT_TYPES),
+    nomePerfil: z.string().optional(),
+    tom: z.string().optional(),
+  });
+
+  const parsed = step3Schema.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(422).json({ error: parsed.error.message });
+    return;
+  }
+
+  const { agentKey, nomePerfil, tom } = parsed.data;
+  const now = new Date();
+
+  const [existingConfig] = await db
+    .select()
+    .from(agentConfigsTable)
+    .where(eq(agentConfigsTable.tenantId, tenantId));
+
+  if (existingConfig) {
+    const currentAgents: AgentsMap = (existingConfig.agents as AgentsMap) ?? {};
+    const currentEntry = currentAgents[agentKey] ?? {};
+    const updatedEntry = {
+      ...currentEntry,
+      enabled: true,
+      ...(nomePerfil !== undefined ? { nomePerfil } : {}),
+      ...(tom !== undefined ? { tom } : {}),
+    };
+    await db
+      .update(agentConfigsTable)
+      .set({ agents: { ...currentAgents, [agentKey]: updatedEntry }, updatedAt: now })
+      .where(eq(agentConfigsTable.id, existingConfig.id));
+  } else {
+    const newEntry = {
+      enabled: true,
+      ...(nomePerfil !== undefined ? { nomePerfil } : {}),
+      ...(tom !== undefined ? { tom } : {}),
+    };
+    await db.insert(agentConfigsTable).values({
+      tenantId,
+      agents: { [agentKey]: newEntry } as AgentsMap,
+    });
+  }
+
+  const [existingProgress] = await db
+    .select({ stepAtual: onboardingProgressTable.stepAtual })
+    .from(onboardingProgressTable)
+    .where(eq(onboardingProgressTable.tenantId, tenantId));
+
+  const nextStep = Math.max(existingProgress?.stepAtual ?? 3, 4);
+
+  const [progress] = await db
+    .insert(onboardingProgressTable)
+    .values({
+      tenantId,
+      step3Completo: true,
+      stepAtual: nextStep,
+      dadosStep3: { agentKey, nomePerfil, tom } as Record<string, unknown>,
+      updatedAt: now,
+    })
+    .onConflictDoUpdate({
+      target: onboardingProgressTable.tenantId,
+      set: {
+        step3Completo: true,
+        stepAtual: nextStep,
+        dadosStep3: { agentKey, nomePerfil, tom } as Record<string, unknown>,
+        updatedAt: now,
+      },
+    })
+    .returning();
+
+  req.log.info({ tenantId, agentKey }, "Onboarding step 3 saved");
+  res.json(progress);
+});
+
+// ── PATCH /onboarding/step/4 ──────────────────────────────────────────────────
+router.patch("/onboarding/step/4", authenticate, async (req, res) => {
+  const tenantId = req.user!.tenantId;
+  if (!tenantId) { res.status(403).json({ error: "Tenant não identificado" }); return; }
+
+  const step4Schema = z.object({
+    planoId: z.string().min(1),
+    ciclo: z.enum(["mensal", "anual"]),
+  });
+
+  const parsed = step4Schema.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(422).json({ error: parsed.error.message });
+    return;
+  }
+
+  const { planoId, ciclo } = parsed.data;
+  const billingCycle: "monthly" | "annual" = ciclo === "mensal" ? "monthly" : "annual";
+  const now = new Date();
+
+  // Look up the plan
+  const { plansTable } = await import("@workspace/db");
+  const [plan] = await db
+    .select()
+    .from(plansTable)
+    .where(eq(plansTable.id, planoId));
+
+  if (!plan) {
+    res.status(404).json({ error: "Plano não encontrado" });
+    return;
+  }
+
+  const priceCents = billingCycle === "annual"
+    ? (plan.monthlyPriceAnnualCents ?? plan.monthlyPriceCents ?? 0)
+    : (plan.monthlyPriceCents ?? 0);
+
+  // Try to create Asaas charge if configured
+  let asaasChargeId: string | null = null;
+  let invoiceUrl: string | null = null;
+
+  const { isAsaasConfigured, createOrGetCustomer, createCharge } = await import("../lib/asaas.js");
+
+  if (isAsaasConfigured() && priceCents > 0) {
+    try {
+      // Get tenant admin user for customer data
+      const { usersTable } = await import("@workspace/db");
+      const [adminUser] = await db
+        .select({ name: usersTable.name, email: usersTable.email })
+        .from(usersTable)
+        .where(and(eq(usersTable.tenantId, tenantId), eq(usersTable.platformRole, "tenant_admin")))
+        .limit(1);
+
+      const customer = await createOrGetCustomer({
+        name: adminUser?.name ?? plan.name,
+        email: adminUser?.email ?? `tenant-${tenantId}@vendorai.app`,
+      });
+
+      const dueDate = new Date(now);
+      dueDate.setDate(dueDate.getDate() + 3);
+      const dueDateStr = dueDate.toISOString().split("T")[0]!;
+
+      const charge = await createCharge({
+        customer: customer.id,
+        billingType: "PIX",
+        value: priceCents / 100,
+        dueDate: dueDateStr,
+        description: `VendorAI — ${plan.name} (${ciclo})`,
+        externalReference: `tenant:${tenantId}:plan:${planoId}`,
+      });
+
+      asaasChargeId = charge.id;
+      invoiceUrl = charge.invoiceUrl;
+    } catch (err) {
+      req.log.warn({ err, tenantId, planoId }, "Onboarding step 4: Asaas charge failed (non-fatal)");
+    }
+  }
+
+  // Update tenant plan + mark onboarding complete
+  await db
+    .update(tenantsTable)
+    .set({
+      planId: planoId,
+      billingCycle,
+      planStartedAt: now,
+      onboardingConcluido: true,
+      updatedAt: now,
+    })
+    .where(eq(tenantsTable.id, tenantId));
+
+  // Complete onboarding progress
+  await db
+    .insert(onboardingProgressTable)
+    .values({
+      tenantId,
+      step4Completo: true,
+      stepAtual: 4,
+      concluido: true,
+      concluidoEm: now,
+      updatedAt: now,
+    })
+    .onConflictDoUpdate({
+      target: onboardingProgressTable.tenantId,
+      set: {
+        step4Completo: true,
+        concluido: true,
+        concluidoEm: now,
+        updatedAt: now,
+      },
+    });
+
+  req.log.info({ tenantId, planoId, billingCycle, asaasChargeId }, "Onboarding step 4 complete");
+  res.json({ success: true, redirectTo: "/dashboard", asaasChargeId, invoiceUrl });
+});
+
 // ── GET /onboarding/whatsapp/test ─────────────────────────────────────────────
 router.get("/onboarding/whatsapp/test", authenticate, async (req, res) => {
   const tenantId = req.user!.tenantId;

@@ -63,6 +63,8 @@ import partnerProspectorRouter from "./partner-prospector";
 import prospectorFlowsRouter from "./prospector-flows";
 import contentStudioRouter from "./content_studio";
 import { authenticate, blockPartnerFromCRM, blockSuspendedTenants, blockExpiredDemo, requireRole, requireSameTenanOrSuperAdmin } from "../middlewares/auth";
+import { eq } from "drizzle-orm";
+import { db, tenantsTable } from "@workspace/db";
 
 const router: IRouter = Router();
 
@@ -87,6 +89,25 @@ router.use(authenticate);
 router.use(blockPartnerFromCRM);
 router.use(blockExpiredDemo);
 router.use(blockSuspendedTenants);
+
+// Onboarding gate — skip /onboarding/* and /auth/* paths; block unfinished tenants
+router.use(async (req, res, next) => {
+  const tenantId = req.user?.tenantId;
+  if (!tenantId) return next(); // super_admin or partner — skip
+  if (req.path.startsWith("/onboarding") || req.path.startsWith("/auth")) return next();
+
+  const [tenant] = await db
+    .select({ onboardingConcluido: tenantsTable.onboardingConcluido })
+    .from(tenantsTable)
+    .where(eq(tenantsTable.id, tenantId));
+
+  if (!tenant?.onboardingConcluido) {
+    res.status(403).json({ error: "ONBOARDING_REQUIRED", redirectTo: "/onboarding" });
+    return;
+  }
+
+  next();
+});
 
 // Auth — protected endpoints (me, refresh)
 router.use(authProtectedRouter);
