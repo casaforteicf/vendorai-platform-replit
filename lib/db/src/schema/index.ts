@@ -86,3 +86,7 @@ export * from "./agent_defaults";
 export * from "./tenant_agent_configs";
 export * from "./onboarding_progress";
 export * from "./tenant_channels";
+export * from "./arch_projetos";
+export * from "./arch_ambientes";
+export * from "./arch_orcamento_itens";
+export * from "./arch_catalogo";
