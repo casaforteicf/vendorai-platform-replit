@@ -24,7 +24,7 @@ const AcceptInvite       = lazy(() => import("@/pages/AcceptInvite"));
 const NotFound           = lazy(() => import("@/pages/not-found"));
 const Suspended          = lazy(() => import("@/pages/Suspended"));
 
-const Dashboard          = lazy(() => import("@/pages/Dashboard"));
+const Dashboard          = lazy(() => import("@/pages/dashboard/Dashboard"));
 const Leads              = lazy(() => import("@/pages/Leads"));
 const LeadDetail         = lazy(() => import("@/pages/LeadDetail"));
 const Prospector         = lazy(() => import("@/pages/Prospector"));
