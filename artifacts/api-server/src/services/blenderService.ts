@@ -1,12 +1,19 @@
 /**
- * blenderService — renderização de cenas via gpt-image-1
+ * blenderService — renderização de cenas via Blender Server externo.
  *
- * NOTA: gpt-image-1 retorna b64_json (não URL). Tamanhos suportados:
- *   1024x1024 | 1024x1536 | 1536x1024
- * dall-e-3 não está disponível nesta conta.
+ * Fluxo:
+ *   1. iniciarRender(cenaId) → monta sceneConfig, chama POST /render no servidor
+ *      Blender, salva blenderJobId em arch_renders, retorna imediatamente.
+ *   2. checkRenderStatus(renderId) → chama GET /render/:jobId no servidor Blender,
+ *      atualiza arch_renders e arch_cenas conforme o status retornado.
+ *   3. O scheduler chama checkRenderStatus a cada 30s para todos os renders
+ *      com status 'aguardando' ou 'renderizando'.
+ *
+ * Env vars necessárias:
+ *   BLENDER_SERVER_URL — ex: https://vendorai-blender-server.seuusuario.repl.co
+ *   BLENDER_SECRET     — mesmo valor configurado no servidor Blender
  */
 
-import OpenAI from "openai";
 import {
   db,
   archCenasTable,
@@ -14,8 +21,10 @@ import {
   archProjetosTable,
   archAmbientesTable,
 } from "@workspace/db";
-import { eq } from "drizzle-orm";
-import { objectStorageClient } from "../lib/objectStorage.js";
+import { eq, or } from "drizzle-orm";
+import { logger } from "../lib/logger.js";
+
+// ─── Tipos locais ──────────────────────────────────────────────────────────────
 
 type SceneData = {
   estilo?:       string;
@@ -23,50 +32,168 @@ type SceneData = {
   produtos?:     string[];
   iluminacao?:   string;
   observacoes?:  string;
+  // Campos extendidos (editor futuro)
+  resolution?:   [number, number];
+  samples?:      number;
+  hdri?:         string;
+  hdriStrength?: number;
+  room?:         Record<string, unknown>;
+  camera?:       Record<string, unknown>;
+  objects?:      BlenderObject[];
 };
 
-// ── helpers ──────────────────────────────────────────────────────────────────
+type BlenderObject = {
+  type:      string;
+  name:      string;
+  location:  [number, number, number];
+  rotation?: [number, number, number];
+  scale?:    [number, number, number];
+  color?:    [number, number, number];
+  metallic?: number;
+  roughness?: number;
+};
 
-function buildPrompt(sceneData: SceneData, ambienteNome: string | null): string {
-  const estilo    = sceneData.estilo     ?? "contemporary";
-  const cores     = sceneData.cores      ?? "neutral palette";
-  const ilum      = sceneData.iluminacao ?? "natural daylight";
-  const ambiente  = ambienteNome         ?? "interior space";
-  const produtos  = (sceneData.produtos ?? []).join(", ") || "modern furniture";
-  const obs       = sceneData.observacoes ? ` ${sceneData.observacoes}.` : "";
+type BlenderJobStatus = "aguardando" | "processando" | "concluido" | "erro" | "cancelado";
 
-  return (
-    `Photorealistic interior design render, ${estilo} style, ${ambiente}, ` +
-    `products: ${produtos}, lighting: ${ilum}, color palette: ${cores}, ` +
-    `Brazilian home, 4K quality, architectural visualization.${obs}`
-  );
+type BlenderStatusResponse = {
+  jobId:     string;
+  status:    BlenderJobStatus;
+  imageUrl?: string;
+  erro?:     string;
+  updatedAt?: string;
+};
+
+// ─── Config ───────────────────────────────────────────────────────────────────
+
+function getBlenderUrl(): string {
+  const url = process.env.BLENDER_SERVER_URL;
+  if (!url) throw new Error("BLENDER_SERVER_URL não configurado.");
+  return url.replace(/\/$/, "");
 }
 
-async function saveImageToStorage(
-  b64: string,
-  tenantId: string,
+function getBlenderSecret(): string {
+  const secret = process.env.BLENDER_SECRET;
+  if (!secret) throw new Error("BLENDER_SECRET não configurado.");
+  return secret;
+}
+
+function blenderHeaders() {
+  return {
+    "Content-Type":    "application/json",
+    "X-Blender-Secret": getBlenderSecret(),
+  };
+}
+
+// ─── Mapeamento sceneData → sceneConfig ───────────────────────────────────────
+
+const HDRI_MAP: Record<string, string> = {
+  rustico:       "interior_warm",
+  rústico:       "interior_warm",
+  quente:        "interior_warm",
+  madeira:       "interior_warm",
+  classico:      "interior_warm",
+  clássico:      "interior_warm",
+  moderno:       "interior_cool",
+  contemporaneo: "interior_cool",
+  contemporâneo: "interior_cool",
+  clean:         "interior_cool",
+  minimalista:   "interior_cool",
+  natural:       "natural",
+  luz:           "natural",
+};
+
+function pickHdri(estilo?: string): string {
+  if (!estilo) return "interior_warm";
+  const lower = estilo.toLowerCase();
+  for (const [key, val] of Object.entries(HDRI_MAP)) {
+    if (lower.includes(key)) return val;
+  }
+  return "interior_warm";
+}
+
+const PRODUCT_TYPE_MAP: Array<[string[], string, [number, number, number]]> = [
+  [["sofa", "sofá", "couch"],               "sofa",      [0.35, 0.30, 0.25]],
+  [["mesa", "table"],                        "mesa",      [0.60, 0.40, 0.25]],
+  [["cadeira", "chair"],                     "cadeira",   [0.50, 0.45, 0.40]],
+  [["cama", "bed"],                          "cama",      [0.85, 0.85, 0.90]],
+  [["armário", "armario", "wardrobe"],       "armario",   [0.70, 0.55, 0.40]],
+  [["luminária", "luminaria", "lamp"],       "luminaria", [0.90, 0.85, 0.70]],
+  [["janela", "window"],                     "janela",    [0.80, 0.80, 0.85]],
+  [["porta", "door"],                        "porta",     [0.55, 0.38, 0.22]],
+];
+
+function classifyProduct(nome: string): { type: string; color: [number, number, number] } {
+  const lower = nome.toLowerCase();
+  for (const [keywords, type, color] of PRODUCT_TYPE_MAP) {
+    if (keywords.some((k) => lower.includes(k))) return { type, color };
+  }
+  return { type: "cube", color: [0.75, 0.70, 0.65] };
+}
+
+function buildSceneConfig(
+  sceneData: SceneData,
+  ambienteNome: string | null,
+): Record<string, unknown> {
+  // Se o sceneData já traz um sceneConfig completo (editor futuro), usa direto
+  if (sceneData.objects && sceneData.objects.length > 0 && sceneData.hdri) {
+    return {
+      resolution:   sceneData.resolution  ?? [1920, 1080],
+      samples:      sceneData.samples     ?? 64,
+      hdri:         sceneData.hdri,
+      hdriStrength: sceneData.hdriStrength ?? 1.0,
+      room:         sceneData.room        ?? {},
+      camera:       sceneData.camera      ?? {},
+      objects:      sceneData.objects,
+    };
+  }
+
+  // Caso simples: monta a partir dos campos textuais
+  const hdri    = pickHdri(sceneData.estilo);
+  const produtos = sceneData.produtos ?? [];
+
+  const objects: BlenderObject[] = produtos.map((nome, i) => {
+    const { type, color } = classifyProduct(nome);
+    // Grade de posicionamento: 3 por linha, espaçamento de 2.5m
+    const col = i % 3;
+    const row = Math.floor(i / 3);
+    return {
+      type,
+      name:     nome,
+      location: [col * 2.5 - 2.5, row * 2.5, 0] as [number, number, number],
+      color,
+      metallic:  0.0,
+      roughness: 0.6,
+    };
+  });
+
+  return {
+    resolution:   [1920, 1080],
+    samples:      64,
+    hdri,
+    hdriStrength: 1.0,
+    room: {
+      width:          6.0,
+      depth:          6.0,
+      height:         2.8,
+      wallColor:      [0.92, 0.92, 0.92],
+      floorColor:     [0.55, 0.45, 0.35],
+      floorRoughness: 0.75,
+      floorMetallic:  0.0,
+    },
+    camera: {
+      location: [0, -5, 1.6],
+      target:   [0, 0, 1.0],
+      fov:      60,
+    },
+    objects,
+  };
+}
+
+// ─── iniciarRender ────────────────────────────────────────────────────────────
+
+export async function iniciarRender(
   cenaId: string,
-): Promise<string> {
-  const privateDir = process.env.PRIVATE_OBJECT_DIR;
-  if (!privateDir) throw new Error("PRIVATE_OBJECT_DIR não configurado.");
-
-  const ts         = Date.now();
-  const objectPath = `${privateDir}/arch-renders/${tenantId}/${cenaId}/${ts}.jpg`;
-  const parts      = objectPath.replace(/^\//, "").split("/");
-  const bucketName = parts[0]!;
-  const objectName = parts.slice(1).join("/");
-
-  const buffer = Buffer.from(b64, "base64");
-  const bucket = objectStorageClient.bucket(bucketName);
-  const file   = bucket.file(objectName);
-  await file.save(buffer, { contentType: "image/jpeg", resumable: false });
-
-  return `/api/storage/objects/arch-renders/${tenantId}/${cenaId}/${ts}.jpg`;
-}
-
-// ── renderCena (executa o render) ────────────────────────────────────────────
-
-export async function renderCena(cenaId: string, renderId: string): Promise<void> {
+): Promise<{ renderId: string; status: string }> {
   // 1. Buscar cena + projeto + ambiente
   const [cena] = await db
     .select()
@@ -94,81 +221,196 @@ export async function renderCena(cenaId: string, renderId: string): Promise<void
     ambienteNome = amb?.nome ?? null;
   }
 
-  // 2. Montar prompt
-  const sceneData = (cena.sceneData ?? {}) as SceneData;
-  const prompt    = buildPrompt(sceneData, ambienteNome ?? cena.nome);
-
-  // 3. Chamar gpt-image-1 (retorna b64_json)
-  const apiKey = process.env.OPENAI_API_KEY;
-  if (!apiKey) throw new Error("OPENAI_API_KEY não configurado.");
-
-  const openai = new OpenAI({ apiKey });
-
-  const response = await openai.images.generate({
-    model:           "gpt-image-1",
-    prompt,
-    n:               1,
-    size:            "1536x1024",
-    response_format: "b64_json",
-  } as Parameters<typeof openai.images.generate>[0]);
-
-  const b64 = response.data?.[0]?.b64_json;
-  if (!b64) throw new Error("gpt-image-1 não retornou imagem.");
-
-  // 4. Salvar em object storage
-  const imageUrl = await saveImageToStorage(b64, projeto.tenantId, cenaId);
-
-  // 5. Atualizar arch_renders
-  await db
-    .update(archRendersTable)
-    .set({ status: "concluido", imageUrl, tempoRenderMs: Date.now() })
-    .where(eq(archRendersTable.id, renderId));
-
-  // 6. Atualizar arch_cenas
-  await db
-    .update(archCenasTable)
-    .set({ status: "concluido", renderUrl: imageUrl, updatedAt: new Date() })
-    .where(eq(archCenasTable.id, cenaId));
-}
-
-// ── iniciarRender (lança em background) ──────────────────────────────────────
-
-export async function iniciarRender(
-  cenaId: string,
-): Promise<{ renderId: string; status: string }> {
-  // 1. Inserir registro de render em estado aguardando
+  // 2. Inserir registro de render (aguardando)
   const [render] = await db
     .insert(archRendersTable)
-    .values({ cenaId, status: "renderizando" })
+    .values({ cenaId, status: "aguardando" })
     .returning();
 
-  // 2. Marcar cena como renderizando
+  if (!render) throw new Error("Falha ao criar registro de render.");
+
+  // 3. Marcar cena como renderizando
   await db
     .update(archCenasTable)
     .set({ status: "renderizando", updatedAt: new Date() })
     .where(eq(archCenasTable.id, cenaId));
 
-  const startMs = Date.now();
+  // 4. Montar sceneConfig
+  const sceneData   = (cena.sceneData ?? {}) as SceneData;
+  const sceneConfig = buildSceneConfig(sceneData, ambienteNome ?? cena.nome);
 
-  // 3. Disparar em background (não await)
-  renderCena(cenaId, render.id)
-    .then(() => {
-      // sucesso já tratado dentro de renderCena
-    })
-    .catch(async (err: unknown) => {
-      const erroMsg = err instanceof Error ? err.message : String(err);
-      await db
-        .update(archRendersTable)
-        .set({ status: "erro", erroMsg, tempoRenderMs: Date.now() - startMs })
-        .where(eq(archRendersTable.id, render.id))
-        .catch(() => undefined);
+  // 5. Chamar o servidor Blender (POST /render)
+  const blenderUrl = getBlenderUrl();
+  const jobId      = render.id; // usamos o próprio renderId como jobId no servidor
 
-      await db
-        .update(archCenasTable)
-        .set({ status: "erro", updatedAt: new Date() })
-        .where(eq(archCenasTable.id, cenaId))
-        .catch(() => undefined);
+  let blenderJobId: string | null = null;
+
+  try {
+    const resp = await fetch(`${blenderUrl}/render`, {
+      method:  "POST",
+      headers: blenderHeaders(),
+      body:    JSON.stringify({
+        jobId:       jobId,
+        cenaId:      cenaId,
+        tenantId:    projeto.tenantId,
+        sceneConfig,
+      }),
+      signal: AbortSignal.timeout(15_000), // 15s timeout para o HTTP POST
     });
 
+    if (!resp.ok) {
+      const text = await resp.text().catch(() => "");
+      throw new Error(`Blender server retornou ${resp.status}: ${text}`);
+    }
+
+    const body = (await resp.json()) as { jobId?: string; status?: string };
+    blenderJobId = body.jobId ?? jobId;
+
+    // 6. Salvar blenderJobId no registro de render
+    await db
+      .update(archRendersTable)
+      .set({ blenderJobId, status: "renderizando" })
+      .where(eq(archRendersTable.id, render.id));
+
+    logger.info({ renderId: render.id, blenderJobId, cenaId }, "blenderService: job enviado");
+
+  } catch (err) {
+    // Falha ao contatar o servidor Blender — marcar como erro imediatamente
+    const erroMsg = err instanceof Error ? err.message : String(err);
+    await db
+      .update(archRendersTable)
+      .set({ status: "erro", erroMsg })
+      .where(eq(archRendersTable.id, render.id));
+    await db
+      .update(archCenasTable)
+      .set({ status: "erro", updatedAt: new Date() })
+      .where(eq(archCenasTable.id, cenaId));
+
+    logger.error({ err, cenaId }, "blenderService: falha ao contatar servidor Blender");
+    throw err;
+  }
+
   return { renderId: render.id, status: "renderizando" };
+}
+
+// ─── checkRenderStatus ────────────────────────────────────────────────────────
+
+export async function checkRenderStatus(renderId: string): Promise<void> {
+  // 1. Buscar render + blenderJobId
+  const [render] = await db
+    .select()
+    .from(archRendersTable)
+    .where(eq(archRendersTable.id, renderId))
+    .limit(1);
+
+  if (!render || !render.blenderJobId) return;
+
+  // 2. Consultar o servidor Blender
+  let statusResp: BlenderStatusResponse;
+  try {
+    const blenderUrl = getBlenderUrl();
+    const resp = await fetch(`${blenderUrl}/render/${render.blenderJobId}`, {
+      headers: blenderHeaders(),
+      signal:  AbortSignal.timeout(10_000),
+    });
+
+    if (!resp.ok) {
+      logger.warn(
+        { renderId, blenderJobId: render.blenderJobId, httpStatus: resp.status },
+        "blenderService/check: HTTP error do servidor Blender",
+      );
+      return;
+    }
+
+    statusResp = (await resp.json()) as BlenderStatusResponse;
+  } catch (err) {
+    logger.warn({ err, renderId }, "blenderService/check: falha ao consultar servidor Blender");
+    return;
+  }
+
+  const remoteStatus = statusResp.status;
+
+  // 3. Mapear status remoto → status local
+  //    aguardando   → aguardando
+  //    processando  → renderizando
+  //    concluido    → concluido
+  //    erro/cancelado → erro
+  let localStatus: string;
+  if (remoteStatus === "concluido")                     localStatus = "concluido";
+  else if (remoteStatus === "erro" || remoteStatus === "cancelado") localStatus = "erro";
+  else if (remoteStatus === "processando")              localStatus = "renderizando";
+  else                                                  localStatus = "aguardando";
+
+  // 4. Se ainda em andamento, nada a persistir além de já saber que está vivo
+  if (localStatus === "aguardando" || localStatus === "renderizando") {
+    if (render.status !== localStatus) {
+      await db
+        .update(archRendersTable)
+        .set({ status: localStatus })
+        .where(eq(archRendersTable.id, renderId));
+    }
+    return;
+  }
+
+  // 5. Concluído ou erro — atualizar render + cena
+  const imageUrl = statusResp.imageUrl ?? null;
+  const erroMsg  = statusResp.erro     ?? null;
+  const agora    = Date.now();
+
+  await db
+    .update(archRendersTable)
+    .set({
+      status:        localStatus,
+      imageUrl:      imageUrl ?? undefined,
+      erroMsg:       erroMsg  ?? undefined,
+      tempoRenderMs: render.createdAt
+        ? agora - render.createdAt.getTime()
+        : undefined,
+    })
+    .where(eq(archRendersTable.id, renderId));
+
+  await db
+    .update(archCenasTable)
+    .set({
+      status:    localStatus,
+      renderUrl: imageUrl ?? undefined,
+      updatedAt: new Date(),
+    })
+    .where(eq(archCenasTable.id, render.cenaId));
+
+  logger.info(
+    { renderId, blenderJobId: render.blenderJobId, localStatus, imageUrl },
+    "blenderService/check: render finalizado",
+  );
+}
+
+// ─── pollPendingRenders (chamado pelo scheduler) ──────────────────────────────
+
+export async function pollPendingRenders(log: typeof logger): Promise<void> {
+  // Busca renders aguardando ou renderizando que tenham um blenderJobId
+  const pendentes = await db
+    .select({ id: archRendersTable.id })
+    .from(archRendersTable)
+    .where(
+      or(
+        eq(archRendersTable.status, "aguardando"),
+        eq(archRendersTable.status, "renderizando"),
+      ),
+    );
+
+  const comJobId = pendentes.filter(
+    (r): r is typeof r & { id: string } => Boolean(r.id),
+  );
+
+  if (comJobId.length === 0) return;
+
+  log.info({ count: comJobId.length }, "blenderService/poll: verificando renders pendentes");
+
+  await Promise.allSettled(
+    comJobId.map((r) =>
+      checkRenderStatus(r.id).catch((err) => {
+        log.warn({ err, renderId: r.id }, "blenderService/poll: erro ao verificar render");
+      }),
+    ),
+  );
 }
