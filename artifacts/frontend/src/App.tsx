@@ -66,6 +66,7 @@ const RelatorioDores     = lazy(() => import("@/pages/RelatorioDores"));
 // Arch
 const ArchDashboard      = lazy(() => import("@/pages/arch/ArchDashboard"));
 const ArchProjetos       = lazy(() => import("@/pages/arch/Projetos"));
+const ArchProjetoDetalhe = lazy(() => import("@/pages/arch/ProjetoDetalhe"));
 
 // Construção
 const Obras              = lazy(() => import("@/pages/Obras"));
@@ -497,6 +498,9 @@ function AppRoutes() {
         </Route>
         <Route path="/arch/projetos/novo">
           {() => <ProtectedRoute component={ArchProjetos} />}
+        </Route>
+        <Route path="/arch/projetos/:id">
+          {() => <ProtectedRoute component={ArchProjetoDetalhe} />}
         </Route>
         <Route path="/arch/projetos">
           {() => <ProtectedRoute component={ArchProjetos} />}
