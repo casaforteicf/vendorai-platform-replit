@@ -42,6 +42,10 @@ const AdminPartners      = lazy(() => import("@/pages/AdminPartners"));
 const AdminTenants       = lazy(() => import("@/pages/AdminTenants"));
 const AdminVerticals     = lazy(() => import("@/pages/AdminVerticals"));
 const PartnerDashboard   = lazy(() => import("@/pages/PartnerDashboard"));
+const PartnerDash        = lazy(() => import("@/pages/partner/PartnerDashboard"));
+const PartnerLeads       = lazy(() => import("@/pages/partner/PartnerLeads"));
+const PartnerLeadDetail  = lazy(() => import("@/pages/partner/PartnerLeadDetail"));
+const PartnerCommissions = lazy(() => import("@/pages/partner/PartnerCommissions"));
 const SiteLandingPage    = lazy(() => import("@/pages/SiteLandingPage"));
 const Marketplace        = lazy(() => import("@/pages/Marketplace"));
 const Estoque            = lazy(() => import("@/pages/Estoque"));
@@ -425,6 +429,18 @@ function AppRoutes() {
         </Route>
         <Route path="/trocar-senha">
           <ForcePasswordChange />
+        </Route>
+        <Route path="/partner/dashboard">
+          {() => <PartnerRoute component={PartnerDash} />}
+        </Route>
+        <Route path="/partner/leads/:id">
+          {() => <PartnerRoute component={PartnerLeadDetail} />}
+        </Route>
+        <Route path="/partner/leads">
+          {() => <PartnerRoute component={PartnerLeads} />}
+        </Route>
+        <Route path="/partner/commissions">
+          {() => <PartnerRoute component={PartnerCommissions} />}
         </Route>
         <Route path="/partner">
           {() => <PartnerRoute component={PartnerDashboard} />}
