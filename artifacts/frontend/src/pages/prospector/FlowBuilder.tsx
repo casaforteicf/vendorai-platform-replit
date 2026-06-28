@@ -33,7 +33,8 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import { ChevronDown, ChevronUp, GitBranch, Plus, Trash2 } from "lucide-react";
+import { Spinner } from "@/components/ui/spinner";
+import { ChevronDown, ChevronUp, GitBranch, Plus, Trash2, UploadCloud } from "lucide-react";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -84,14 +85,52 @@ async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> {
   return res.json() as Promise<T>;
 }
 
-// ── Variable chips ────────────────────────────────────────────────────────────
+// ── Helpers ───────────────────────────────────────────────────────────────────
 
 const VARS = ["{{nome}}", "{{empresa}}", "{{cidade}}", "{{segmento}}"];
 
-function fonteModeFromServer(materialFonte: string | null): MaterialMode {
-  if (materialFonte === "ia") return "ia";
-  if (materialFonte === "upload") return "upload";
+function fonteModeFromServer(f: string | null): MaterialMode {
+  if (f === "ia") return "ia";
+  if (f === "upload") return "upload";
   return "none";
+}
+
+function insertAtCursor(
+  ref: React.RefObject<HTMLTextAreaElement | null>,
+  value: string,
+  setValue: (next: string) => void,
+  v: string,
+) {
+  const el = ref.current;
+  if (!el) { setValue(value + v); return; }
+  const start = el.selectionStart ?? value.length;
+  const end = el.selectionEnd ?? value.length;
+  const next = value.slice(0, start) + v + value.slice(end);
+  setValue(next);
+  requestAnimationFrame(() => {
+    el.focus();
+    const pos = start + v.length;
+    el.setSelectionRange(pos, pos);
+  });
+}
+
+// ── VarChips ─────────────────────────────────────────────────────────────────
+
+function VarChips({ onInsert }: { onInsert: (v: string) => void }) {
+  return (
+    <div className="flex flex-wrap gap-1.5 pt-0.5">
+      {VARS.map((v) => (
+        <button
+          key={v}
+          type="button"
+          onClick={() => onInsert(v)}
+          className="rounded border border-dashed px-2 py-0.5 text-xs font-mono text-primary hover:bg-primary/10 transition-colors"
+        >
+          {v}
+        </button>
+      ))}
+    </div>
+  );
 }
 
 // ── StepCard ──────────────────────────────────────────────────────────────────
@@ -108,39 +147,71 @@ function StepCard({ step, steps, flowId, onSaved, onDeleted }: StepCardProps) {
   const { toast } = useToast();
   const qc = useQueryClient();
 
-  // Local draft state
+  // ── Entrega state ─────────────────────────────────────────────────────────
   const [canal, setCanal] = useState<"whatsapp" | "email">(step.canal);
   const [delayHoras, setDelayHoras] = useState(step.delayHoras ?? 0);
   const [mensagem, setMensagem] = useState(step.mensagemTemplate ?? "");
+  const mensagemRef = useRef<HTMLTextAreaElement>(null);
+
+  // ── Material state ────────────────────────────────────────────────────────
   const [materialMode, setMaterialMode] = useState<MaterialMode>(
     fonteModeFromServer(step.materialFonte),
   );
-  const [deleteOpen, setDeleteOpen] = useState(false);
+  const [materialTipo, setMaterialTipo] = useState(step.materialTipo ?? "html");
+  const [materialPrompt, setMaterialPrompt] = useState(step.materialPrompt ?? "");
+  const promptRef = useRef<HTMLTextAreaElement>(null);
 
-  const textareaRef = useRef<HTMLTextAreaElement>(null);
+  // ── Upload state ──────────────────────────────────────────────────────────
+  const [uploadUrl, setUploadUrl] = useState<string | null>(step.materialUploadUrl);
+  const [uploadNome, setUploadNome] = useState<string | null>(step.materialUploadNome);
+  const [uploadLoading, setUploadLoading] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // ── Preview state ─────────────────────────────────────────────────────────
+  const [previewOpen, setPreviewOpen] = useState(false);
+  const [previewUrl, setPreviewUrl] = useState<string | null>(null);
+
+  // ── Dialog/Alert state ────────────────────────────────────────────────────
+  const [deleteOpen, setDeleteOpen] = useState(false);
 
   const isFirst = step.ordem === 1;
   const isLast = step.ordem === Math.max(...steps.map((s) => s.ordem));
 
-  // Insert variable at cursor position
-  function insertVar(v: string) {
-    const el = textareaRef.current;
-    if (!el) {
-      setMensagem((prev) => prev + v);
-      return;
+  // ── Upload handler ────────────────────────────────────────────────────────
+
+  async function handleUpload(file: File) {
+    setUploadLoading(true);
+    try {
+      const fd = new FormData();
+      fd.append("file", file);
+      const res = await fetch(
+        `/api/prospector/flows/${flowId}/steps/${step.id}/upload`,
+        {
+          method: "POST",
+          headers: { Authorization: `Bearer ${localStorage.getItem("vendorai_token")}` },
+          body: fd,
+        },
+      );
+      if (!res.ok) {
+        const body = (await res.json().catch(() => ({}))) as { error?: string };
+        throw new Error(body?.error ?? `Erro ${res.status}`);
+      }
+      const data = (await res.json()) as { url: string; originalName: string };
+      setUploadUrl(data.url);
+      setUploadNome(data.originalName);
+      toast({ title: "Arquivo enviado com sucesso" });
+    } catch (err) {
+      toast({
+        title: err instanceof Error ? err.message : "Erro no upload",
+        variant: "destructive",
+      });
+    } finally {
+      setUploadLoading(false);
     }
-    const start = el.selectionStart ?? mensagem.length;
-    const end = el.selectionEnd ?? mensagem.length;
-    const next = mensagem.slice(0, start) + v + mensagem.slice(end);
-    setMensagem(next);
-    requestAnimationFrame(() => {
-      el.focus();
-      const pos = start + v.length;
-      el.setSelectionRange(pos, pos);
-    });
   }
 
-  // Save mutation
+  // ── Mutations ─────────────────────────────────────────────────────────────
+
   const saveMutation = useMutation({
     mutationFn: () =>
       apiFetch<Step>(`/api/prospector/flows/${flowId}/steps/${step.id}`, {
@@ -150,6 +221,8 @@ function StepCard({ step, steps, flowId, onSaved, onDeleted }: StepCardProps) {
           delayHoras,
           mensagemTemplate: mensagem,
           materialFonte: materialMode === "none" ? null : materialMode,
+          materialTipo: materialMode === "ia" ? materialTipo : null,
+          materialPrompt: materialMode === "ia" ? materialPrompt : null,
         }),
       }),
     onSuccess: () => {
@@ -161,7 +234,6 @@ function StepCard({ step, steps, flowId, onSaved, onDeleted }: StepCardProps) {
     onError: (err: Error) => toast({ title: err.message, variant: "destructive" }),
   });
 
-  // Delete mutation
   const deleteMutation = useMutation({
     mutationFn: () =>
       apiFetch<{ ok: boolean }>(
@@ -177,7 +249,6 @@ function StepCard({ step, steps, flowId, onSaved, onDeleted }: StepCardProps) {
     onError: (err: Error) => toast({ title: err.message, variant: "destructive" }),
   });
 
-  // Reorder mutation — troca ordem com o step adjacente
   const reorderMutation = useMutation({
     mutationFn: async (direction: "up" | "down") => {
       const sorted = [...steps].sort((a, b) => a.ordem - b.ordem);
@@ -200,6 +271,21 @@ function StepCard({ step, steps, flowId, onSaved, onDeleted }: StepCardProps) {
       qc.invalidateQueries({ queryKey: ["prospector-steps", flowId] }),
     onError: (err: Error) => toast({ title: err.message, variant: "destructive" }),
   });
+
+  const previewMutation = useMutation({
+    mutationFn: () =>
+      apiFetch<{ url: string }>(
+        `/api/prospector/flows/${flowId}/steps/${step.id}/preview`,
+        { method: "POST", body: JSON.stringify({}) },
+      ),
+    onSuccess: ({ url }) => {
+      setPreviewUrl(url);
+      setPreviewOpen(true);
+    },
+    onError: (err: Error) => toast({ title: err.message, variant: "destructive" }),
+  });
+
+  // ── Render ────────────────────────────────────────────────────────────────
 
   return (
     <>
@@ -253,25 +339,18 @@ function StepCard({ step, steps, flowId, onSaved, onDeleted }: StepCardProps) {
             <div className="space-y-1.5">
               <Label className="text-xs">Mensagem</Label>
               <Textarea
-                ref={textareaRef}
+                ref={mensagemRef}
                 rows={4}
                 className="text-sm resize-none"
                 placeholder="Digite a mensagem... use as variáveis abaixo"
                 value={mensagem}
                 onChange={(e) => setMensagem(e.target.value)}
               />
-              <div className="flex flex-wrap gap-1.5 pt-0.5">
-                {VARS.map((v) => (
-                  <button
-                    key={v}
-                    type="button"
-                    onClick={() => insertVar(v)}
-                    className="rounded border border-dashed px-2 py-0.5 text-xs font-mono text-primary hover:bg-primary/10 transition-colors"
-                  >
-                    {v}
-                  </button>
-                ))}
-              </div>
+              <VarChips
+                onInsert={(v) =>
+                  insertAtCursor(mensagemRef, mensagem, setMensagem, v)
+                }
+              />
             </div>
           </div>
 
@@ -306,15 +385,122 @@ function StepCard({ step, steps, flowId, onSaved, onDeleted }: StepCardProps) {
               ))}
             </RadioGroup>
 
+            {/* ── IA ── */}
             {materialMode === "ia" && (
-              <p className="text-xs text-muted-foreground italic">
-                Em breve — configuração de prompt e geração com IA.
-              </p>
+              <div className="space-y-3 pt-1 rounded-md border bg-muted/20 p-3">
+                <div className="space-y-1.5">
+                  <Label className="text-xs">Tipo de material</Label>
+                  <Select value={materialTipo} onValueChange={setMaterialTipo}>
+                    <SelectTrigger className="h-8 text-sm">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="html">HTML</SelectItem>
+                      <SelectItem value="pdf">PDF</SelectItem>
+                      <SelectItem value="imagem">Imagem</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                <div className="space-y-1.5">
+                  <Label className="text-xs">Prompt</Label>
+                  <Textarea
+                    ref={promptRef}
+                    rows={6}
+                    className="text-sm resize-none"
+                    placeholder="Descreva o material. Use {{nome}}, {{empresa}}, {{cidade}}, {{segmento}} para personalizar."
+                    value={materialPrompt}
+                    onChange={(e) => setMaterialPrompt(e.target.value)}
+                  />
+                  <VarChips
+                    onInsert={(v) =>
+                      insertAtCursor(promptRef, materialPrompt, setMaterialPrompt, v)
+                    }
+                  />
+                </div>
+
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => previewMutation.mutate()}
+                  disabled={previewMutation.isPending || !materialPrompt.trim()}
+                >
+                  {previewMutation.isPending ? (
+                    <>
+                      <Spinner className="h-3.5 w-3.5 mr-1.5" />
+                      Gerando...
+                    </>
+                  ) : (
+                    "Preview"
+                  )}
+                </Button>
+              </div>
             )}
+
+            {/* ── UPLOAD ── */}
             {materialMode === "upload" && (
-              <p className="text-xs text-muted-foreground italic">
-                Em breve — upload de arquivo de material.
-              </p>
+              <div className="space-y-2 pt-1">
+                {uploadUrl && (
+                  <div className="flex items-center gap-2 rounded-md border bg-muted/20 px-3 py-2">
+                    <p className="text-xs text-muted-foreground truncate flex-1">
+                      {uploadNome ?? uploadUrl}
+                    </p>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="text-xs h-6 px-2 shrink-0"
+                      onClick={() => fileInputRef.current?.click()}
+                    >
+                      Substituir
+                    </Button>
+                  </div>
+                )}
+
+                <div
+                  className={[
+                    "flex flex-col items-center justify-center gap-2 rounded-lg border-2 border-dashed p-6 text-center transition-colors cursor-pointer",
+                    uploadLoading
+                      ? "opacity-50 pointer-events-none"
+                      : "hover:border-primary/50 hover:bg-muted/30",
+                  ].join(" ")}
+                  onClick={() => fileInputRef.current?.click()}
+                  onDragOver={(e) => e.preventDefault()}
+                  onDrop={(e) => {
+                    e.preventDefault();
+                    const file = e.dataTransfer.files[0];
+                    if (file) void handleUpload(file);
+                  }}
+                >
+                  {uploadLoading ? (
+                    <>
+                      <Spinner className="h-5 w-5" />
+                      <p className="text-sm text-muted-foreground">Enviando...</p>
+                    </>
+                  ) : (
+                    <>
+                      <UploadCloud className="h-6 w-6 text-muted-foreground/50" />
+                      <p className="text-sm text-muted-foreground">
+                        Arraste o arquivo ou clique para selecionar
+                      </p>
+                      <p className="text-xs text-muted-foreground/70">
+                        .html, .pdf, .jpg, .png
+                      </p>
+                    </>
+                  )}
+                </div>
+
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept=".html,.pdf,.jpg,.jpeg,.png"
+                  className="hidden"
+                  onChange={(e) => {
+                    const file = e.target.files?.[0];
+                    if (file) void handleUpload(file);
+                    e.target.value = "";
+                  }}
+                />
+              </div>
             )}
           </div>
         </CardContent>
@@ -388,6 +574,47 @@ function StepCard({ step, steps, flowId, onSaved, onDeleted }: StepCardProps) {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      {/* Dialog — Preview do material */}
+      <Dialog open={previewOpen} onOpenChange={setPreviewOpen}>
+        <DialogContent className="max-w-3xl">
+          <DialogHeader>
+            <DialogTitle>Preview do Material</DialogTitle>
+          </DialogHeader>
+          <div className="mt-2">
+            {previewUrl ? (
+              materialTipo === "imagem" ? (
+                <img
+                  src={previewUrl}
+                  alt="preview"
+                  style={{ maxWidth: "100%" }}
+                  className="rounded"
+                />
+              ) : materialTipo === "pdf" ? (
+                <a
+                  href={previewUrl}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="text-primary underline text-sm"
+                >
+                  Abrir PDF em nova aba
+                </a>
+              ) : (
+                <iframe
+                  src={previewUrl}
+                  title="preview-html"
+                  style={{ width: "100%", height: "500px", border: "none" }}
+                  className="rounded border"
+                />
+              )
+            ) : (
+              <p className="text-sm text-muted-foreground">
+                Nenhum preview disponível.
+              </p>
+            )}
+          </div>
+        </DialogContent>
+      </Dialog>
     </>
   );
 }
@@ -627,9 +854,10 @@ export default function FlowBuilder() {
 
             {/* Steps */}
             {stepsLoading ? (
-              <p className="text-sm text-muted-foreground">
+              <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                <Spinner className="h-4 w-4" />
                 Carregando steps...
-              </p>
+              </div>
             ) : (
               <div className="space-y-4">
                 {sortedSteps.length === 0 && (
