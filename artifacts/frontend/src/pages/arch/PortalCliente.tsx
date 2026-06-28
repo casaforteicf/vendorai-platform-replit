@@ -1,91 +1,492 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useRoute } from "wouter";
-import { MessageCircle, ImageIcon, DollarSign, Building2, ExternalLink } from "lucide-react";
+import {
+  MessageCircle, ImageIcon, DollarSign, Building2, ExternalLink,
+  Download, ChevronDown, ChevronUp, Loader2, CheckCircle2, AlertCircle,
+  Sparkles,
+} from "lucide-react";
 
-// ── Types ──────────────────────────────────────────────────────────────────
+// ── Types ──────────────────────────────────────────────────────────────────────
 type Projeto = {
-  id: string;
-  titulo: string;
-  clienteNome: string | null;
-  tipoObra: string | null;
-  areaM2: string | null;
-  orcamentoTotal: string | null;
-  arquitetoResponsavel: string | null;
+  id: string; titulo: string; clienteNome: string | null;
+  tipoObra: string | null; areaM2: string | null;
+  orcamentoTotal: string | null; arquitetoResponsavel: string | null;
   status: string;
 };
+type Ambiente  = { id: string; nome: string; areaM2: string | null; ordem: number };
+type OrcItem   = { id: string; ambienteId: string | null; categoria: string | null; descricao: string; quantidade: string | null; unidade: string | null; valorTotal: string | null };
+type Cena      = { id: string; nome: string | null; renderUrl: string | null; status: string | null };
+type Tenant    = { name: string; nomeEmpresa: string | null; logoUrl: string | null; site: string | null };
+type PortalData = { projeto: Projeto; ambientes: Ambiente[]; orcamento: OrcItem[]; cenas: Cena[]; tenant: Tenant | null };
 
-type Ambiente = {
-  id: string;
-  nome: string;
-  areaM2: string | null;
-  ordem: number;
-};
+type LocalVersao = { id: string; imageUrl: string; versao: number; origem: "original" | "solicitacao" };
+type ItemKey      = "sofa" | "mesa" | "cadeira" | "cama" | "armario" | "luminaria" | "janela" | "porta";
+type SuperficieKey = "parede" | "piso" | "teto";
+type MaterialKey  = "tinta" | "madeira" | "marmore" | "cimento";
+type PosicaoKey   = "esquerda" | "centro" | "direita";
+type SolStatus    = "idle" | "enviando" | "processando" | "concluido" | "erro";
 
-type OrcItem = {
-  id: string;
-  ambienteId: string | null;
-  categoria: string | null;
-  descricao: string;
-  quantidade: string | null;
-  unidade: string | null;
-  valorTotal: string | null;
-};
+// ── Config ─────────────────────────────────────────────────────────────────────
+const ITENS_CONFIG: Array<{ key: ItemKey; label: string; emoji: string }> = [
+  { key: "sofa",     label: "Sofá",          emoji: "🛋" },
+  { key: "mesa",     label: "Mesa de centro", emoji: "☕" },
+  { key: "cadeira",  label: "Cadeira",        emoji: "🪑" },
+  { key: "cama",     label: "Cama",           emoji: "🛏" },
+  { key: "armario",  label: "Armário",        emoji: "🗄" },
+  { key: "luminaria",label: "Luminária",      emoji: "💡" },
+  { key: "janela",   label: "Janela",         emoji: "🪟" },
+  { key: "porta",    label: "Porta",          emoji: "🚪" },
+];
+const MATERIAIS: Array<{ key: MaterialKey; label: string }> = [
+  { key: "tinta",   label: "Tinta lisa" },
+  { key: "madeira", label: "Madeira"    },
+  { key: "marmore", label: "Mármore"    },
+  { key: "cimento", label: "Cimento"    },
+];
+const POSICOES: Array<{ key: PosicaoKey; label: string }> = [
+  { key: "esquerda", label: "Esquerda" },
+  { key: "centro",   label: "Centro"   },
+  { key: "direita",  label: "Direita"  },
+];
+const SUPERFICIES: Array<{ key: SuperficieKey; label: string }> = [
+  { key: "parede", label: "Parede" },
+  { key: "piso",   label: "Piso"   },
+  { key: "teto",   label: "Teto"   },
+];
 
-type Cena = {
-  id: string;
-  nome: string | null;
-  renderUrl: string | null;
-  status: string | null;
-};
-
-type Tenant = {
-  name: string;
-  nomeEmpresa: string | null;
-  logoUrl: string | null;
-  site: string | null;
-};
-
-type PortalData = {
-  projeto: Projeto;
-  ambientes: Ambiente[];
-  orcamento: OrcItem[];
-  cenas: Cena[];
-  tenant: Tenant | null;
-};
-
-// ── Helpers ────────────────────────────────────────────────────────────────
+// ── Helpers ────────────────────────────────────────────────────────────────────
 function getBase() { return (import.meta.env.BASE_URL ?? "/").replace(/\/$/, ""); }
-function fmt(v: number) {
-  return v.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
+function fmt(v: number) { return v.toLocaleString("pt-BR", { style: "currency", currency: "BRL" }); }
+
+async function downloadBlob(imageUrl: string, filename: string) {
+  const base = getBase();
+  const url = imageUrl.startsWith("http") ? imageUrl : `${base}${imageUrl}`;
+  try {
+    const res = await fetch(url);
+    if (!res.ok) throw new Error("fetch failed");
+    const blob = await res.blob();
+    const href = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = href;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(href);
+  } catch {
+    window.open(url, "_blank");
+  }
 }
 
-const STATUS_LABEL: Record<string, string> = {
-  briefing:    "Briefing",
-  orcamento:   "Orçamento",
-  aprovado:    "Aprovado",
-  em_execucao: "Em Execução",
-  entregue:    "Entregue",
-  cancelado:   "Cancelado",
-};
+const STATUS_LABEL: Record<string, string> = { briefing:"Briefing", orcamento:"Orçamento", aprovado:"Aprovado", em_execucao:"Em Execução", entregue:"Entregue", cancelado:"Cancelado" };
+const STATUS_COLOR: Record<string, string> = { briefing:"bg-gray-100 text-gray-700", orcamento:"bg-blue-100 text-blue-700", aprovado:"bg-green-100 text-green-700", em_execucao:"bg-amber-100 text-amber-700", entregue:"bg-emerald-100 text-emerald-700", cancelado:"bg-red-100 text-red-700" };
 
-const STATUS_COLOR: Record<string, string> = {
-  briefing:    "bg-gray-100 text-gray-700",
-  orcamento:   "bg-blue-100 text-blue-700",
-  aprovado:    "bg-green-100 text-green-700",
-  em_execucao: "bg-amber-100 text-amber-700",
-  entregue:    "bg-emerald-100 text-emerald-700",
-  cancelado:   "bg-red-100 text-red-700",
-};
+// ── CenaCard ───────────────────────────────────────────────────────────────────
+function CenaCard({ cena, projetoNome }: { cena: Cena; projetoNome: string }) {
+  const base = getBase();
 
-// ── Main Component ─────────────────────────────────────────────────────────
+  // Versões locais — começa com renderUrl se disponível
+  const [versoes, setVersoes] = useState<LocalVersao[]>(() =>
+    cena.renderUrl ? [{ id: "original", imageUrl: cena.renderUrl, versao: 1, origem: "original" }] : []
+  );
+  const [acordionOpen, setAcordionOpen] = useState(false);
+
+  // Solicitação state
+  const [solStatus, setSolStatus] = useState<SolStatus>("idle");
+  const [erroMsg, setErroMsg]     = useState<string | null>(null);
+  const [novaImagem, setNovaImagem] = useState<string | null>(null);
+  const [novaImagemVisible, setNovaImagemVisible] = useState(false);
+  const pollingRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  // Form state
+  const [itens, setItens] = useState<Partial<Record<ItemKey, { posicao: PosicaoKey; cor: string }>>>({});
+  const [texturas, setTexturas] = useState<Record<SuperficieKey, { material: MaterialKey; cor: string; ativo: boolean }>>({
+    parede: { material: "tinta",   cor: "#F5F5F0", ativo: false },
+    piso:   { material: "madeira", cor: "#8B6914", ativo: false },
+    teto:   { material: "tinta",   cor: "#FFFFFF", ativo: false },
+  });
+  const [observacoes, setObservacoes] = useState("");
+  const [downloading, setDownloading] = useState<string | null>(null);
+
+  useEffect(() => () => { if (pollingRef.current) clearInterval(pollingRef.current); }, []);
+
+  const versaoMaisRecente = versoes.length > 0
+    ? versoes.reduce((acc, v) => v.versao > acc.versao ? v : acc)
+    : null;
+
+  function stopPolling() {
+    if (pollingRef.current) { clearInterval(pollingRef.current); pollingRef.current = null; }
+  }
+
+  function startPolling(solId: string) {
+    pollingRef.current = setInterval(async () => {
+      try {
+        const res = await fetch(`${base}/api/arch/cenas/${cena.id}/solicitacoes/${solId}/status`);
+        if (!res.ok) return;
+        const data = await res.json() as { status: string; imageUrl?: string };
+
+        if (data.status === "concluido" && data.imageUrl) {
+          stopPolling();
+          const nextN = versoes.length + 1;
+          const nova: LocalVersao = { id: `sol-${Date.now()}`, imageUrl: data.imageUrl, versao: nextN, origem: "solicitacao" };
+          setVersoes(prev => [...prev, nova]);
+          setNovaImagem(data.imageUrl);
+          setSolStatus("concluido");
+          // fade-in
+          setTimeout(() => setNovaImagemVisible(true), 50);
+        } else if (data.status === "erro") {
+          stopPolling();
+          setSolStatus("erro");
+          setErroMsg("Erro ao gerar o render. Tente novamente.");
+        }
+      } catch { /* ignore */ }
+    }, 5000);
+  }
+
+  async function handleDownload(v: LocalVersao) {
+    setDownloading(v.id);
+    const slug = projetoNome.toLowerCase().replace(/\s+/g, "-").replace(/[^a-z0-9-]/g, "");
+    await downloadBlob(v.imageUrl, `render-${slug}-v${v.versao}.png`);
+    setDownloading(null);
+  }
+
+  async function handleSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    setErroMsg(null);
+
+    const itensAdicionados = (Object.entries(itens) as Array<[ItemKey, { posicao: PosicaoKey; cor: string }]>)
+      .map(([tipo, v]) => ({ tipo, posicao: v.posicao, cor: v.cor }));
+
+    const texturasAlteradas = (Object.entries(texturas) as Array<[SuperficieKey, { material: MaterialKey; cor: string; ativo: boolean }]>)
+      .filter(([, v]) => v.ativo)
+      .map(([superficie, v]) => ({ superficie, material: v.material, cor: v.cor }));
+
+    if (itensAdicionados.length === 0 && texturasAlteradas.length === 0) {
+      setErroMsg("Selecione pelo menos 1 item ou 1 textura para personalizar.");
+      return;
+    }
+
+    setSolStatus("enviando");
+    try {
+      const res = await fetch(`${base}/api/arch/cenas/${cena.id}/solicitacoes`, {
+        method:  "POST",
+        headers: { "Content-Type": "application/json" },
+        body:    JSON.stringify({
+          itensAdicionados,
+          texturasAlteradas,
+          observacoes: observacoes.trim() || undefined,
+        }),
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({})) as { error?: string };
+        throw new Error(err.error ?? "Erro ao enviar solicitação");
+      }
+      const data = await res.json() as { solicitacaoId: string };
+      setSolStatus("processando");
+      setNovaImagemVisible(false);
+      startPolling(data.solicitacaoId);
+    } catch (err: unknown) {
+      setSolStatus("erro");
+      setErroMsg(err instanceof Error ? err.message : "Erro ao enviar.");
+    }
+  }
+
+  function resetForm() {
+    setSolStatus("idle");
+    setErroMsg(null);
+    setNovaImagem(null);
+    setNovaImagemVisible(false);
+    setItens({});
+    setTexturas({
+      parede: { material: "tinta",   cor: "#F5F5F0", ativo: false },
+      piso:   { material: "madeira", cor: "#8B6914", ativo: false },
+      teto:   { material: "tinta",   cor: "#FFFFFF", ativo: false },
+    });
+    setObservacoes("");
+  }
+
+  const isProcessing = solStatus === "enviando" || solStatus === "processando";
+
+  return (
+    <div className="rounded-2xl border bg-white shadow-sm overflow-hidden">
+      {/* ── Cabeçalho da cena ──────────────────────────────────────────────── */}
+      {cena.nome && (
+        <div className="px-5 py-3 border-b bg-gray-50 flex items-center gap-2">
+          <ImageIcon className="h-4 w-4 text-violet-500 shrink-0" />
+          <p className="font-semibold text-sm text-gray-700">{cena.nome}</p>
+        </div>
+      )}
+
+      {/* ── Imagem principal ───────────────────────────────────────────────── */}
+      <div className="relative">
+        {versaoMaisRecente ? (
+          <img
+            src={versaoMaisRecente.imageUrl.startsWith("/api") ? `${base}${versaoMaisRecente.imageUrl}` : versaoMaisRecente.imageUrl}
+            alt={cena.nome ?? "Render"}
+            className="w-full aspect-video object-cover"
+          />
+        ) : (
+          <div className="w-full aspect-video bg-gray-100 flex flex-col items-center justify-center gap-2 text-gray-400">
+            <ImageIcon className="h-10 w-10" />
+            <p className="text-sm">Render ainda não disponível</p>
+          </div>
+        )}
+
+        {/* Badge versão */}
+        {versaoMaisRecente && (
+          <span className="absolute top-3 left-3 bg-black/50 text-white text-xs rounded-full px-2.5 py-0.5 font-medium backdrop-blur-sm">
+            {versaoMaisRecente.origem === "original" ? "Original" : `Versão ${versaoMaisRecente.versao}`}
+          </span>
+        )}
+
+        {/* Botão download principal */}
+        {versaoMaisRecente && (
+          <button
+            onClick={() => handleDownload(versaoMaisRecente)}
+            disabled={downloading === versaoMaisRecente.id}
+            className="absolute top-3 right-3 inline-flex items-center gap-1.5 bg-white/90 hover:bg-white text-gray-800 text-xs font-medium rounded-lg px-3 py-1.5 shadow-sm transition-colors disabled:opacity-60 backdrop-blur-sm"
+          >
+            {downloading === versaoMaisRecente.id
+              ? <Loader2 className="h-3.5 w-3.5 animate-spin" />
+              : <Download className="h-3.5 w-3.5" />}
+            Baixar
+          </button>
+        )}
+      </div>
+
+      {/* ── Histório de versões (accordion) ────────────────────────────────── */}
+      {versoes.length > 1 && (
+        <div className="border-t">
+          <button
+            onClick={() => setAcordionOpen(o => !o)}
+            className="w-full flex items-center justify-between px-5 py-3 text-sm text-gray-600 hover:bg-gray-50 transition-colors"
+          >
+            <span className="font-medium">Histórico de versões ({versoes.length})</span>
+            {acordionOpen ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+          </button>
+
+          {acordionOpen && (
+            <div className="px-5 pb-4">
+              <div className="flex gap-3 overflow-x-auto pb-1">
+                {[...versoes].reverse().map(v => (
+                  <div key={v.id} className="shrink-0 w-32 group relative">
+                    <img
+                      src={v.imageUrl.startsWith("/api") ? `${base}${v.imageUrl}` : v.imageUrl}
+                      alt={`Versão ${v.versao}`}
+                      className="w-32 h-20 object-cover rounded-lg border"
+                    />
+                    <span className="absolute top-1.5 left-1.5 bg-black/50 text-white text-[10px] rounded-full px-1.5 py-0.5 font-medium">
+                      {v.versao === 1 ? "Original" : `V${v.versao}`}
+                    </span>
+                    <button
+                      onClick={() => handleDownload(v)}
+                      disabled={downloading === v.id}
+                      className="absolute top-1.5 right-1.5 bg-white/80 hover:bg-white rounded-md p-1 opacity-0 group-hover:opacity-100 transition-opacity"
+                    >
+                      {downloading === v.id
+                        ? <Loader2 className="h-3 w-3 animate-spin text-gray-600" />
+                        : <Download className="h-3 w-3 text-gray-600" />}
+                    </button>
+                    <p className="text-[11px] text-gray-500 mt-1 text-center truncate">
+                      {v.origem === "original" ? "Original" : `Versão ${v.versao}`}
+                    </p>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* ── Nova imagem gerada (fade-in) ────────────────────────────────────── */}
+      {solStatus === "concluido" && novaImagem && (
+        <div
+          className={`border-t p-5 transition-opacity duration-700 ${novaImagemVisible ? "opacity-100" : "opacity-0"}`}
+        >
+          <div className="flex items-center gap-2 mb-3">
+            <CheckCircle2 className="h-4 w-4 text-emerald-500" />
+            <p className="font-semibold text-sm text-emerald-700">Seu render personalizado está pronto!</p>
+          </div>
+          <img
+            src={novaImagem.startsWith("/api") ? `${base}${novaImagem}` : novaImagem}
+            alt="Nova versão"
+            className="w-full rounded-xl border"
+          />
+          <div className="flex gap-3 mt-3">
+            <button
+              onClick={() => handleDownload(versoes[versoes.length - 1]!)}
+              className="flex-1 inline-flex items-center justify-center gap-2 bg-violet-600 hover:bg-violet-700 text-white rounded-lg px-4 py-2.5 text-sm font-medium transition-colors"
+            >
+              <Download className="h-4 w-4" /> Baixar nova versão
+            </button>
+            <button
+              onClick={resetForm}
+              className="inline-flex items-center gap-2 border rounded-lg px-4 py-2.5 text-sm font-medium text-gray-600 hover:bg-gray-50 transition-colors"
+            >
+              Nova solicitação
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* ── Formulário de personalização ────────────────────────────────────── */}
+      {solStatus !== "concluido" && (
+        <form onSubmit={handleSubmit} className="border-t p-5 space-y-6">
+          <div className="flex items-center gap-2">
+            <Sparkles className="h-4 w-4 text-violet-500" />
+            <h3 className="font-semibold text-sm text-gray-800">Personalizar este ambiente</h3>
+          </div>
+
+          {/* PARTE 1 — Adicionar itens */}
+          <div>
+            <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-3">
+              1. Adicionar itens
+            </p>
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+              {ITENS_CONFIG.map(item => {
+                const selecionado = !!itens[item.key];
+                return (
+                  <div key={item.key} className={`rounded-xl border p-2.5 transition-colors ${selecionado ? "border-violet-400 bg-violet-50" : "border-gray-200 bg-white"}`}>
+                    <label className="flex items-center gap-2 cursor-pointer mb-2">
+                      <input
+                        type="checkbox"
+                        checked={selecionado}
+                        onChange={e => {
+                          if (e.target.checked) {
+                            setItens(prev => ({ ...prev, [item.key]: { posicao: "centro", cor: "#6B7280" } }));
+                          } else {
+                            setItens(prev => { const next = { ...prev }; delete next[item.key]; return next; });
+                          }
+                        }}
+                        className="rounded text-violet-600 focus:ring-violet-500"
+                      />
+                      <span className="text-sm">{item.emoji} {item.label}</span>
+                    </label>
+                    {selecionado && (
+                      <div className="space-y-1.5 pl-5">
+                        <select
+                          value={itens[item.key]!.posicao}
+                          onChange={e => setItens(prev => ({ ...prev, [item.key]: { ...prev[item.key]!, posicao: e.target.value as PosicaoKey } }))}
+                          className="w-full rounded-lg border border-gray-200 text-xs px-2 py-1 focus:ring-1 focus:ring-violet-400 outline-none"
+                        >
+                          {POSICOES.map(p => <option key={p.key} value={p.key}>{p.label}</option>)}
+                        </select>
+                        <div className="flex items-center gap-1.5">
+                          <input
+                            type="color"
+                            value={itens[item.key]!.cor}
+                            onChange={e => setItens(prev => ({ ...prev, [item.key]: { ...prev[item.key]!, cor: e.target.value } }))}
+                            className="h-6 w-8 rounded border-0 cursor-pointer p-0"
+                          />
+                          <span className="text-[11px] text-gray-400">{itens[item.key]!.cor}</span>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+
+          {/* PARTE 2 — Alterar texturas */}
+          <div>
+            <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-3">
+              2. Alterar texturas
+            </p>
+            <div className="space-y-2">
+              {SUPERFICIES.map(sup => {
+                const t = texturas[sup.key];
+                return (
+                  <div key={sup.key} className={`rounded-xl border p-3 transition-colors ${t.ativo ? "border-violet-400 bg-violet-50" : "border-gray-200"}`}>
+                    <label className="flex items-center gap-2 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={t.ativo}
+                        onChange={e => setTexturas(prev => ({ ...prev, [sup.key]: { ...prev[sup.key], ativo: e.target.checked } }))}
+                        className="rounded text-violet-600 focus:ring-violet-500"
+                      />
+                      <span className="text-sm font-medium text-gray-700 w-16">{sup.label}</span>
+                      {t.ativo && (
+                        <div className="flex items-center gap-2 ml-auto">
+                          <select
+                            value={t.material}
+                            onChange={e => setTexturas(prev => ({ ...prev, [sup.key]: { ...prev[sup.key], material: e.target.value as MaterialKey } }))}
+                            className="rounded-lg border border-gray-200 text-xs px-2 py-1 focus:ring-1 focus:ring-violet-400 outline-none"
+                          >
+                            {MATERIAIS.map(m => <option key={m.key} value={m.key}>{m.label}</option>)}
+                          </select>
+                          <input
+                            type="color"
+                            value={t.cor}
+                            onChange={e => setTexturas(prev => ({ ...prev, [sup.key]: { ...prev[sup.key], cor: e.target.value } }))}
+                            className="h-7 w-9 rounded border-0 cursor-pointer p-0"
+                          />
+                        </div>
+                      )}
+                    </label>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+
+          {/* PARTE 3 — Observações */}
+          <div>
+            <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">
+              3. Observações (opcional)
+            </p>
+            <textarea
+              value={observacoes}
+              onChange={e => setObservacoes(e.target.value)}
+              placeholder="Ex: quero um estilo mais aconchegante, tons terrosos..."
+              rows={3}
+              className="w-full rounded-xl border border-gray-200 text-sm px-3 py-2.5 focus:ring-1 focus:ring-violet-400 outline-none resize-none"
+            />
+          </div>
+
+          {/* Erro */}
+          {erroMsg && (
+            <div className="flex items-start gap-2 rounded-xl bg-red-50 border border-red-200 px-4 py-3">
+              <AlertCircle className="h-4 w-4 text-red-500 shrink-0 mt-0.5" />
+              <p className="text-sm text-red-700">{erroMsg}</p>
+            </div>
+          )}
+
+          {/* Loading */}
+          {isProcessing && (
+            <div className="flex items-center gap-3 rounded-xl bg-violet-50 border border-violet-200 px-4 py-4">
+              <Loader2 className="h-5 w-5 text-violet-600 animate-spin shrink-0" />
+              <div>
+                <p className="text-sm font-medium text-violet-700">Gerando seu render personalizado...</p>
+                <p className="text-xs text-violet-500 mt-0.5">Isso pode levar 1 minuto. Aguarde.</p>
+              </div>
+            </div>
+          )}
+
+          {/* Botão enviar */}
+          {!isProcessing && (
+            <button
+              type="submit"
+              className="w-full inline-flex items-center justify-center gap-2 bg-violet-600 hover:bg-violet-700 text-white rounded-xl px-5 py-3 font-semibold text-sm transition-colors disabled:opacity-50"
+            >
+              <Sparkles className="h-4 w-4" />
+              Gerar nova versão
+            </button>
+          )}
+        </form>
+      )}
+    </div>
+  );
+}
+
+// ── Main Component ─────────────────────────────────────────────────────────────
 export default function PortalCliente() {
   const [, params] = useRoute("/arch/portal/:token");
   const token = params?.token ?? "";
 
-  const [data, setData]       = useState<PortalData | null>(null);
-  const [loading, setLoading] = useState(true);
+  const [data, setData]         = useState<PortalData | null>(null);
+  const [loading, setLoading]   = useState(true);
   const [notFound, setNotFound] = useState(false);
-  const [viewingCena, setViewingCena] = useState<Cena | null>(null);
 
   useEffect(() => {
     if (!token) return;
@@ -98,49 +499,41 @@ export default function PortalCliente() {
       .catch(() => { setNotFound(true); setLoading(false); });
   }, [token]);
 
-  // ── Loading ─────────────────────────────────────────────────────────────
-  if (loading) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-gray-50">
-        <div className="animate-spin h-8 w-8 border-4 border-violet-600 border-t-transparent rounded-full" />
-      </div>
-    );
-  }
+  if (loading) return (
+    <div className="min-h-screen flex items-center justify-center bg-gray-50">
+      <div className="animate-spin h-8 w-8 border-4 border-violet-600 border-t-transparent rounded-full" />
+    </div>
+  );
 
-  // ── Not found ──────────────────────────────────────────────────────────
-  if (notFound || !data) {
-    return (
-      <div className="min-h-screen flex flex-col items-center justify-center bg-gray-50 px-4 text-center">
-        <Building2 className="h-14 w-14 text-gray-300 mb-4" />
-        <h1 className="text-xl font-bold text-gray-700">Projeto não disponível</h1>
-        <p className="text-gray-500 mt-2 max-w-sm">
-          Este link não está mais ativo ou o projeto foi desativado. Entre em contato com o arquiteto responsável.
-        </p>
-      </div>
-    );
-  }
+  if (notFound || !data) return (
+    <div className="min-h-screen flex flex-col items-center justify-center bg-gray-50 px-4 text-center">
+      <Building2 className="h-14 w-14 text-gray-300 mb-4" />
+      <h1 className="text-xl font-bold text-gray-700">Projeto não disponível</h1>
+      <p className="text-gray-500 mt-2 max-w-sm">
+        Este link não está mais ativo ou o projeto foi desativado. Entre em contato com o arquiteto responsável.
+      </p>
+    </div>
+  );
 
   const { projeto, ambientes, orcamento, cenas, tenant } = data;
+  const tenantNome = tenant?.nomeEmpresa ?? tenant?.name ?? "Arquiteto";
 
-  // Group orçamento by ambiente
+  // Orçamento por ambiente
   const byAmbiente: Record<string, { nome: string; itens: OrcItem[]; total: number }> = {};
   for (const item of orcamento) {
-    const key = item.ambienteId ?? "__sem__";
+    const key     = item.ambienteId ?? "__sem__";
     const ambNome = ambientes.find(a => a.id === item.ambienteId)?.nome ?? "Geral";
     if (!byAmbiente[key]) byAmbiente[key] = { nome: ambNome, itens: [], total: 0 };
     byAmbiente[key].itens.push(item);
     byAmbiente[key].total += Number(item.valorTotal ?? 0);
   }
-
   const totalGeral = orcamento.reduce((acc, i) => acc + Number(i.valorTotal ?? 0), 0);
-  const rendersFeitos = cenas.filter(c => c.status === "concluido" && c.renderUrl);
-  const tenantNome = tenant?.nomeEmpresa ?? tenant?.name ?? "Arquiteto";
 
   return (
     <div className="min-h-screen bg-gray-50">
-      {/* ── Header ──────────────────────────────────────────────────────── */}
+      {/* ── Header ──────────────────────────────────────────────────────────── */}
       <header className="bg-white border-b sticky top-0 z-10">
-        <div className="max-w-4xl mx-auto px-4 py-4 flex items-center justify-between gap-4">
+        <div className="max-w-3xl mx-auto px-4 py-4 flex items-center justify-between gap-4">
           <div className="flex items-center gap-3">
             {tenant?.logoUrl ? (
               <img
@@ -156,14 +549,9 @@ export default function PortalCliente() {
             <div>
               <p className="font-semibold text-sm leading-tight">{tenantNome}</p>
               {tenant?.site && (
-                <a
-                  href={tenant.site}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="text-xs text-violet-600 hover:underline flex items-center gap-0.5"
-                >
-                  {tenant.site.replace(/^https?:\/\//, "")}
-                  <ExternalLink className="h-2.5 w-2.5" />
+                <a href={tenant.site} target="_blank" rel="noopener noreferrer"
+                  className="text-xs text-violet-600 hover:underline flex items-center gap-0.5">
+                  {tenant.site.replace(/^https?:\/\//, "")} <ExternalLink className="h-2.5 w-2.5" />
                 </a>
               )}
             </div>
@@ -174,50 +562,35 @@ export default function PortalCliente() {
         </div>
       </header>
 
-      <main className="max-w-4xl mx-auto px-4 py-8 space-y-10">
-        {/* ── Visão geral ─────────────────────────────────────────────── */}
+      <main className="max-w-3xl mx-auto px-4 py-8 space-y-10">
+        {/* ── Visão geral ─────────────────────────────────────────────────── */}
         <section>
           <h1 className="text-3xl font-bold tracking-tight">{projeto.titulo}</h1>
           <div className="flex flex-wrap gap-x-6 gap-y-1 mt-3 text-sm text-gray-600">
-            {projeto.clienteNome     && <span>👤 {projeto.clienteNome}</span>}
-            {projeto.tipoObra        && <span>🏗 {projeto.tipoObra}</span>}
-            {projeto.areaM2          && <span>📐 {Number(projeto.areaM2).toFixed(0)} m²</span>}
+            {projeto.clienteNome          && <span>👤 {projeto.clienteNome}</span>}
+            {projeto.tipoObra             && <span>🏗 {projeto.tipoObra}</span>}
+            {projeto.areaM2               && <span>📐 {Number(projeto.areaM2).toFixed(0)} m²</span>}
             {projeto.arquitetoResponsavel && <span>🎨 {projeto.arquitetoResponsavel}</span>}
           </div>
         </section>
 
-        {/* ── Galeria de renders ───────────────────────────────────────── */}
-        {rendersFeitos.length > 0 && (
+        {/* ── Renders 3D com personalização ───────────────────────────────── */}
+        {cenas.length > 0 && (
           <section>
-            <div className="flex items-center gap-2 mb-4">
+            <div className="flex items-center gap-2 mb-5">
               <ImageIcon className="h-5 w-5 text-violet-600" />
               <h2 className="text-lg font-semibold">Renders 3D</h2>
-              <span className="text-sm text-gray-500">({rendersFeitos.length})</span>
+              <span className="text-sm text-gray-500">({cenas.length})</span>
             </div>
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-              {rendersFeitos.map(cena => (
-                <button
-                  key={cena.id}
-                  onClick={() => setViewingCena(cena)}
-                  className="rounded-xl overflow-hidden border bg-white aspect-video hover:shadow-md transition-shadow group relative"
-                >
-                  <img
-                    src={cena.renderUrl!}
-                    alt={cena.nome ?? "Render"}
-                    className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
-                  />
-                  {cena.nome && (
-                    <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/60 to-transparent p-2">
-                      <p className="text-white text-xs font-medium truncate">{cena.nome}</p>
-                    </div>
-                  )}
-                </button>
+            <div className="space-y-6">
+              {cenas.map(cena => (
+                <CenaCard key={cena.id} cena={cena} projetoNome={projeto.titulo} />
               ))}
             </div>
           </section>
         )}
 
-        {/* ── Orçamento por ambiente ───────────────────────────────────── */}
+        {/* ── Orçamento ───────────────────────────────────────────────────── */}
         {orcamento.length > 0 && (
           <section>
             <div className="flex items-center gap-2 mb-4">
@@ -234,12 +607,10 @@ export default function PortalCliente() {
                   <table className="w-full text-sm">
                     <tbody className="divide-y divide-gray-50">
                       {grupo.itens.map(item => (
-                        <tr key={item.id} className="px-4">
+                        <tr key={item.id}>
                           <td className="px-4 py-2.5">
                             <p className="font-medium text-gray-800">{item.descricao}</p>
-                            {item.categoria && (
-                              <p className="text-xs text-gray-400">{item.categoria}</p>
-                            )}
+                            {item.categoria && <p className="text-xs text-gray-400">{item.categoria}</p>}
                           </td>
                           <td className="px-4 py-2.5 text-right text-gray-500 text-xs whitespace-nowrap">
                             {item.quantidade} {item.unidade}
@@ -251,8 +622,6 @@ export default function PortalCliente() {
                 </div>
               ))}
             </div>
-
-            {/* Total geral */}
             <div className="mt-4 rounded-xl bg-violet-600 text-white px-6 py-4 flex items-center justify-between">
               <div>
                 <p className="text-violet-200 text-sm">Investimento total estimado</p>
@@ -263,7 +632,7 @@ export default function PortalCliente() {
           </section>
         )}
 
-        {/* ── Falar com arquiteto ─────────────────────────────────────── */}
+        {/* ── Falar com arquiteto ─────────────────────────────────────────── */}
         <section className="rounded-xl border bg-white p-6 text-center space-y-3">
           <MessageCircle className="h-10 w-10 mx-auto text-green-500" />
           <div>
@@ -275,9 +644,8 @@ export default function PortalCliente() {
             </p>
           </div>
           <a
-            href={`https://wa.me/?text=${encodeURIComponent(`Olá! Tenho interesse no projeto "${projeto.titulo}". Poderia me ajudar?`)}`}
-            target="_blank"
-            rel="noopener noreferrer"
+            href={`https://wa.me/?text=${encodeURIComponent(`Olá! Tenho uma dúvida sobre o projeto "${projeto.titulo}". Pode me ajudar?`)}`}
+            target="_blank" rel="noopener noreferrer"
             className="inline-flex items-center gap-2 bg-green-500 text-white rounded-lg px-5 py-2.5 font-medium hover:bg-green-600 transition-colors"
           >
             <MessageCircle className="h-4 w-4" />
@@ -285,47 +653,10 @@ export default function PortalCliente() {
           </a>
         </section>
 
-        {/* Footer */}
         <footer className="text-center text-xs text-gray-400 pb-4">
           Portal gerado por <span className="font-medium text-gray-500">VendorAI</span>
         </footer>
       </main>
-
-      {/* ── Lightbox de render ──────────────────────────────────────────── */}
-      {viewingCena && (
-        <div
-          className="fixed inset-0 z-50 bg-black/80 flex items-center justify-center p-4"
-          onClick={() => setViewingCena(null)}
-        >
-          <div className="max-w-4xl w-full" onClick={e => e.stopPropagation()}>
-            <img
-              src={viewingCena.renderUrl!}
-              alt={viewingCena.nome ?? "Render"}
-              className="w-full rounded-xl shadow-2xl"
-            />
-            {viewingCena.nome && (
-              <p className="text-white text-center mt-3 font-medium">{viewingCena.nome}</p>
-            )}
-            <div className="flex justify-center gap-3 mt-4">
-              <a
-                href={viewingCena.renderUrl!}
-                download
-                target="_blank"
-                rel="noopener noreferrer"
-                className="inline-flex items-center gap-2 bg-white text-gray-800 rounded-lg px-4 py-2 text-sm font-medium hover:bg-gray-100"
-              >
-                <ExternalLink className="h-4 w-4" /> Download
-              </a>
-              <button
-                onClick={() => setViewingCena(null)}
-                className="inline-flex items-center gap-2 bg-white/20 text-white rounded-lg px-4 py-2 text-sm font-medium hover:bg-white/30"
-              >
-                Fechar
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   );
 }
