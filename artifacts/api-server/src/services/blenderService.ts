@@ -1,15 +1,24 @@
 /**
- * blenderService — renderização de cenas via Blender Server externo.
+ * blenderService — renderização de cenas 3D e geração de imagens via IA.
  *
- * Fluxo:
+ * Fluxo principal (com BLENDER_SERVER_URL configurado):
  *   1. iniciarRender(cenaId) → monta sceneConfig, chama POST /render no servidor
  *      Blender, salva blenderJobId em arch_renders, retorna imediatamente.
  *   2. checkRenderStatus(renderId) → chama GET /render/:jobId no servidor Blender,
  *      atualiza arch_renders e arch_cenas conforme o status retornado.
- *   3. O scheduler chama checkRenderStatus a cada 30s para todos os renders
- *      com status 'aguardando' ou 'renderizando'.
+ *   3. O scheduler chama checkRenderStatus a cada 30s para renders pendentes.
  *
- * Env vars necessárias:
+ * Fallback automático (sem BLENDER_SERVER_URL):
+ *   iniciarRender dispara _renderComGPTImage em background via setImmediate.
+ *   Usa gpt-image-1 (quality: "high", size: "1536x1024") para gerar a imagem,
+ *   insere em arch_render_versoes (versao=1, origem="original") e atualiza
+ *   arch_renders/arch_cenas para status "concluido". O polling via render-status
+ *   resolve normalmente — checkRenderStatus ignora renders sem blenderJobId.
+ *
+ * Fluxo de solicitações (sempre usa gpt-image-1):
+ *   processarSolicitacao(solicitacaoId) → gpt-image-1 → nova versão em arch_render_versoes.
+ *
+ * Env vars opcionais (fallback ativo quando ausentes):
  *   BLENDER_SERVER_URL — ex: https://vendorai-blender-server.seuusuario.repl.co
  *   BLENDER_SECRET     — mesmo valor configurado no servidor Blender
  */
@@ -195,6 +204,131 @@ function buildSceneConfig(
   };
 }
 
+// ─── _renderComGPTImage — fallback quando BLENDER_SERVER_URL não está configurado ──
+
+async function _renderComGPTImage(params: {
+  renderId:        string;
+  renderCreatedAt: Date;
+  cenaId:          string;
+  tenantId:        string;
+  sceneData:       SceneData;
+  ambienteNome:    string | null;
+}): Promise<void> {
+  const { renderId, renderCreatedAt, cenaId, tenantId, sceneData, ambienteNome } = params;
+
+  try {
+    // Marcar como renderizando
+    await db
+      .update(archRendersTable)
+      .set({ status: "renderizando" })
+      .where(eq(archRendersTable.id, renderId));
+
+    // ── Montar prompt ────────────────────────────────────────────────────────
+    const estilo     = sceneData.estilo    ?? "moderno";
+    const ambiente   = ambienteNome        ?? "sala de estar";
+    const produtos   = (sceneData.produtos ?? []).join(", ") || "contemporary furniture";
+    const iluminacao = sceneData.iluminacao ?? "natural light";
+
+    // cores pode ser string hex, string descritiva ou JSON {parede, piso, teto}
+    let coresDesc = "";
+    if (sceneData.cores) {
+      try {
+        const obj = JSON.parse(String(sceneData.cores)) as Record<string, unknown>;
+        const parts: string[] = [];
+        if (obj.parede) parts.push(`wall color ${obj.parede}`);
+        if (obj.piso)   parts.push(`floor ${obj.piso}`);
+        if (obj.teto)   parts.push(`ceiling ${obj.teto}`);
+        coresDesc = parts.join(", ");
+      } catch {
+        coresDesc = `color scheme: ${sceneData.cores}`;
+      }
+    }
+
+    const prompt = [
+      "Photorealistic interior design architectural render",
+      `${estilo} style`,
+      ambiente,
+      coresDesc,
+      `lighting: ${iluminacao}`,
+      `furniture: ${produtos}`,
+      "Brazilian home",
+      "4K quality",
+      "wide angle lens",
+      "ray tracing",
+    ].filter(Boolean).join(", ");
+
+    // ── Chamar gpt-image-1 ───────────────────────────────────────────────────
+    // Nota: dall-e-3 não existe nesta conta — gpt-image-1 é o modelo correto
+    // quality: "high" (não "hd") | size: "1536x1024" (landscape suportado)
+    const openai = await getOpenAIForTenant(tenantId);
+    const imgResp = await (openai.images.generate as Function)({
+      model:   "gpt-image-1",
+      prompt,
+      n:       1,
+      size:    "1536x1024",
+      quality: "high",
+    });
+
+    const b64 = (imgResp.data[0] as Record<string, unknown>)["b64_json"] as string | undefined;
+    if (!b64) throw new Error("gpt-image-1 não retornou b64_json");
+
+    // ── Salvar no object storage ─────────────────────────────────────────────
+    const ts      = Date.now();
+    const buf     = Buffer.from(b64, "base64");
+    const storage = new ObjectStorageService();
+    const objectPath = await storage.savePrivateBuffer(
+      buf,
+      "image/png",
+      `render-${cenaId}-v${ts}.png`,
+    );
+    const servePath = objectPath.replace(/^\/objects\//, "");
+    const imageUrl  = `/api/storage/objects/${servePath}`;
+
+    const tempoRenderMs = Date.now() - renderCreatedAt.getTime();
+
+    // ── Inserir versão original (v=1, origem=original) ───────────────────────
+    await db
+      .insert(archRenderVersoesTable)
+      .values({
+        cenaId,
+        versao:    1,
+        imageUrl,
+        prompt,
+        sceneData: sceneData as Record<string, unknown>,
+        origem:    "original",
+      });
+
+    // ── Atualizar arch_renders ───────────────────────────────────────────────
+    await db
+      .update(archRendersTable)
+      .set({ status: "concluido", imageUrl, tempoRenderMs })
+      .where(eq(archRendersTable.id, renderId));
+
+    // ── Atualizar arch_cenas ─────────────────────────────────────────────────
+    await db
+      .update(archCenasTable)
+      .set({ status: "concluido", renderUrl: imageUrl, updatedAt: new Date() })
+      .where(eq(archCenasTable.id, cenaId));
+
+    logger.info(
+      { renderId, cenaId, imageUrl, tempoRenderMs },
+      "blenderService: fallback gpt-image-1 concluído",
+    );
+
+  } catch (err) {
+    const erroMsg = err instanceof Error ? err.message : String(err);
+    logger.error({ err, renderId, cenaId }, "blenderService: fallback gpt-image-1 falhou");
+    await db
+      .update(archRendersTable)
+      .set({ status: "erro", erroMsg })
+      .where(eq(archRendersTable.id, renderId));
+    await db
+      .update(archCenasTable)
+      .set({ status: "erro", updatedAt: new Date() })
+      .where(eq(archCenasTable.id, cenaId));
+  }
+}
+
 // ─── iniciarRender ────────────────────────────────────────────────────────────
 
 export async function iniciarRender(
@@ -245,9 +379,28 @@ export async function iniciarRender(
   const sceneData   = (cena.sceneData ?? {}) as SceneData;
   const sceneConfig = buildSceneConfig(sceneData, ambienteNome ?? cena.nome);
 
-  // 5. Chamar o servidor Blender (POST /render)
+  // 5. Verificar se o servidor Blender está configurado; se não, usar fallback gpt-image-1
+  if (!process.env.BLENDER_SERVER_URL?.trim()) {
+    logger.info(
+      { cenaId, renderId: render.id },
+      "blenderService: BLENDER_SERVER_URL ausente — usando fallback gpt-image-1",
+    );
+    setImmediate(() => {
+      _renderComGPTImage({
+        renderId:        render.id,
+        renderCreatedAt: render.createdAt ?? new Date(),
+        cenaId,
+        tenantId:        projeto.tenantId,
+        sceneData,
+        ambienteNome,
+      }).catch(() => undefined);
+    });
+    return { renderId: render.id, status: "renderizando" };
+  }
+
+  // 5b. Blender path — chamar servidor externo (POST /render)
   const blenderUrl = getBlenderUrl();
-  const jobId      = render.id; // usamos o próprio renderId como jobId no servidor
+  const jobId      = render.id;
 
   let blenderJobId: string | null = null;
 
@@ -261,7 +414,7 @@ export async function iniciarRender(
         tenantId:    projeto.tenantId,
         sceneConfig,
       }),
-      signal: AbortSignal.timeout(15_000), // 15s timeout para o HTTP POST
+      signal: AbortSignal.timeout(15_000),
     });
 
     if (!resp.ok) {
