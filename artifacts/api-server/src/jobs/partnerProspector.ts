@@ -6,15 +6,17 @@
  * For each job, searches Google Places for each nicho in the given city,
  * qualifies the result, and inserts into partner_leads when score >= 60.
  */
-import { and, eq, or, sql } from "drizzle-orm";
+import { and, eq, isNull, or, sql } from "drizzle-orm";
 import type { Logger } from "pino";
 import {
   db,
   partnerLeadsTable,
   partnerProspectorJobsTable,
   partnersTable,
+  prospectorFlowsTable,
 } from "@workspace/db";
 import { qualifyPartnerCandidate } from "../agents/sdrAgent.js";
+import { findBestFlow, triggerFlow } from "./contentFlow.js";
 
 // ── Google Places helper ───────────────────────────────────────────────────────
 
@@ -87,10 +89,34 @@ async function searchPlacesForPartner(
 
 // ── Partner flow trigger ───────────────────────────────────────────────────────
 
-async function triggerPartnerFlow(leadId: string, log: Logger): Promise<void> {
-  // Placeholder: initiate outreach to the qualified partner candidate.
-  // Future implementation: send WhatsApp, email, or assign to a sales rep.
-  log.info({ leadId }, "partner-prospector: partner lead ready for outreach");
+async function triggerPartnerFlow(
+  leadId: string,
+  nichos: string[],
+  log: Logger,
+): Promise<void> {
+  try {
+    const flow = await findBestFlow(nichos);
+
+    if (!flow) {
+      log.info({ leadId, nichos }, "partner-prospector: nenhum fluxo ativo encontrado para o nicho, ignorando");
+      return;
+    }
+
+    // Associa o lead ao tenant do fluxo (lead inserido sem tenant pelo job)
+    await db
+      .update(partnerLeadsTable)
+      .set({ tenantId: flow.tenantId })
+      .where(eq(partnerLeadsTable.id, leadId));
+
+    await triggerFlow(flow.id, leadId);
+
+    log.info(
+      { leadId, flowId: flow.id, tenantId: flow.tenantId },
+      "partner-prospector: fluxo ativado para o lead",
+    );
+  } catch (err) {
+    log.warn({ err, leadId }, "partner-prospector: erro ao acionar fluxo (não-fatal)");
+  }
 }
 
 // ── Sleep helper ───────────────────────────────────────────────────────────────
@@ -205,7 +231,7 @@ async function processJob(
               { leadId: inserted.id, score: qualification.score, perfil: qualification.perfil },
               "partner-prospector/job: lead inserted",
             );
-            await triggerPartnerFlow(inserted.id, log);
+            await triggerPartnerFlow(inserted.id, nichos, log);
           }
         }
 
