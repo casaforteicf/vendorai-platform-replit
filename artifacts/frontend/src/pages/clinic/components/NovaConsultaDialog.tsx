@@ -114,7 +114,7 @@ export default function NovaConsultaDialog({
     const dataHora = `${data}T${horario.length === 5 ? horario + ":00" : horario}`;
     mutation.mutate({
       pacienteId: selectedLead?.id ?? null,
-      pacienteNome: selectedLead?.nome ?? clienteSearch || null,
+      pacienteNome: (selectedLead?.nome ?? clienteSearch) || null,
       medicoId,
       especialidadeId: especialidadeId || null,
       dataHora,
