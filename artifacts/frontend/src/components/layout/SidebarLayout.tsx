@@ -9,6 +9,7 @@ import {
   Store, Package, Menu, X, Sparkles, Globe, BookOpen, HardHat, Layers,
   Shirt, Tag, ShoppingCart, Heart, Gift, Truck, UtensilsCrossed, Megaphone as MegaphoneIcon,
   BarChart3, ChevronRight, ChevronDown, Target, Trophy, Search, Clapperboard, Building2, AlertCircle, Bot,
+  DraftingCompass, FolderOpen,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
@@ -57,11 +58,13 @@ export function SidebarLayout({ children }: { children: React.ReactNode }) {
     { name: "Pedidos",       href: "/supermercado/pedidos",     icon: UtensilsCrossed, sellerHidden: false, section: "supermercado", fn: ["administrador", "outro"] as UserFunction[] },
     { name: "Campanhas",     href: "/supermercado/campanhas",   icon: MegaphoneIcon, sellerHidden: false, section: "supermercado", fn: ["administrador", "outro"] as UserFunction[] },
     { name: "Configurações", href: "/supermercado/config",      icon: Settings,    sellerHidden: false, section: "supermercado", fn: ["administrador", "outro"] as UserFunction[] },
+    { name: "Dashboard",     href: "/arch",                     icon: DraftingCompass, sellerHidden: true,  section: "arch", fn: ["administrador", "outro"] as UserFunction[] },
+    { name: "Projetos",      href: "/arch/projetos",            icon: FolderOpen,  sellerHidden: true,  section: "arch", fn: ["administrador", "outro"] as UserFunction[] },
   ];
 
   function isVisible(item: typeof allNavItems[0]) {
     if (isSeller && item.sellerHidden) return false;
-    if (item.section !== "crm" && item.section !== "construcao" && item.section !== "varejo" && item.section !== "supermercado") return false;
+    if (item.section !== "crm" && item.section !== "construcao" && item.section !== "varejo" && item.section !== "supermercado" && item.section !== "arch") return false;
     if (item.section === "construcao" && !isConstrucao) return false;
     if (item.section === "varejo" && !isVarejo) return false;
     if (item.section === "supermercado" && !isSupermercado) return false;
@@ -86,6 +89,7 @@ export function SidebarLayout({ children }: { children: React.ReactNode }) {
   const construcaoNav = navigation.filter((i) => i.section === "construcao");
   const varejoNav = navigation.filter((i) => i.section === "varejo");
   const supermercadoNav = navigation.filter((i) => i.section === "supermercado");
+  const archNav = navigation.filter((i) => i.section === "arch");
 
   function NavItem({ item, onNavigate }: { item: any; onNavigate?: () => void }) {
     const isActive = location === item.href || (item.href !== "/" && location.startsWith(item.href));
@@ -248,6 +252,16 @@ export function SidebarLayout({ children }: { children: React.ReactNode }) {
               Supermercado
             </p>
             {supermercadoNav.map((item) => <NavItem key={item.name} item={item} onNavigate={onNavigate} />)}
+          </div>
+        )}
+
+        {archNav.length > 0 && (
+          <div className="mt-3 pt-3 border-t">
+            <p className="px-3 mb-1 text-[10px] font-semibold uppercase tracking-widest text-muted-foreground/60 flex items-center gap-1.5">
+              <DraftingCompass className="h-3 w-3" />
+              Arch — Design
+            </p>
+            {archNav.map((item) => <NavItem key={item.name} item={item} onNavigate={onNavigate} />)}
           </div>
         )}
 
