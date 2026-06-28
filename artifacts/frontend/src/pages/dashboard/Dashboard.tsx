@@ -2,7 +2,6 @@ import { useEffect, useState } from "react";
 import { Link } from "wouter";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
-import { Progress } from "@/components/ui/progress";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
   Users,
@@ -16,6 +15,20 @@ import {
   X,
   Info,
 } from "lucide-react";
+import {
+  AreaChart,
+  Area,
+  XAxis,
+  YAxis,
+  Tooltip,
+  ResponsiveContainer,
+  PieChart,
+  Pie,
+  Cell,
+  Legend,
+  BarChart,
+  Bar,
+} from "recharts";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 interface DashboardAlerta {
@@ -54,6 +67,25 @@ interface DashboardData {
   periodo: { inicio: string; fim: string };
 }
 
+// ── Constants ─────────────────────────────────────────────────────────────────
+const STATUS_COLORS: Record<string, string> = {
+  novo:        "#8B85A8",
+  qualificado: "#A78BFA",
+  proposta:    "#38BDF8",
+  negociando:  "#F59E0B",
+  fechado:     "#10B981",
+  perdido:     "#EF4444",
+};
+
+const STATUS_LABELS: Record<string, string> = {
+  novo:        "Novo",
+  qualificado: "Qualificado",
+  proposta:    "Proposta",
+  negociando:  "Negociando",
+  fechado:     "Fechado",
+  perdido:     "Perdido",
+};
+
 // ── Helpers ───────────────────────────────────────────────────────────────────
 function getToken() { return localStorage.getItem("vendorai_token"); }
 function getBase()  { return (import.meta.env.BASE_URL ?? "/").replace(/\/$/, ""); }
@@ -68,7 +100,17 @@ function quotaColor(pct: number): string {
   return "bg-green-500";
 }
 
-// ── Skeleton placeholders ─────────────────────────────────────────────────────
+function fmtAxisDate(iso: string): string {
+  const [, mm, dd] = iso.split("-");
+  return `${dd}/${mm}`;
+}
+
+function fmtFullDate(iso: string): string {
+  const [yyyy, mm, dd] = iso.split("-");
+  return `${dd}/${mm}/${yyyy}`;
+}
+
+// ── Skeleton ──────────────────────────────────────────────────────────────────
 function CardSkeleton() {
   return (
     <Card>
@@ -83,11 +125,39 @@ function CardSkeleton() {
   );
 }
 
+function ChartSkeleton({ height = 240 }: { height?: number }) {
+  return (
+    <Card>
+      <CardHeader className="pb-2">
+        <Skeleton className="h-4 w-40" />
+      </CardHeader>
+      <CardContent>
+        <Skeleton className="w-full rounded-md" style={{ height }} />
+      </CardContent>
+    </Card>
+  );
+}
+
+// ── Custom Tooltip (LineChart) ────────────────────────────────────────────────
+function LeadTooltip({ active, payload, label }: {
+  active?: boolean;
+  payload?: { value: number }[];
+  label?: string;
+}) {
+  if (!active || !payload?.length) return null;
+  return (
+    <div className="rounded-lg border bg-background px-3 py-2 shadow-md text-sm">
+      <p className="font-medium">{label ? fmtFullDate(label) : ""}</p>
+      <p className="text-muted-foreground">{payload[0].value} leads</p>
+    </div>
+  );
+}
+
 // ── Main Component ────────────────────────────────────────────────────────────
 export default function Dashboard() {
-  const [data, setData]         = useState<DashboardData | null>(null);
-  const [loading, setLoading]   = useState(true);
-  const [error, setError]       = useState<string | null>(null);
+  const [data, setData]           = useState<DashboardData | null>(null);
+  const [loading, setLoading]     = useState(true);
+  const [error, setError]         = useState<string | null>(null);
   const [dismissed, setDismissed] = useState<Set<number>>(new Set());
 
   useEffect(() => {
@@ -110,9 +180,7 @@ export default function Dashboard() {
     setDismissed(prev => new Set(prev).add(idx));
   }
 
-  const alertas = data?.alertas.filter((_, i) => !dismissed.has(i)) ?? [];
-
-  // ── Loading state ───────────────────────────────────────────────────────────
+  // ── Loading ─────────────────────────────────────────────────────────────────
   if (loading) {
     return (
       <div className="p-6 space-y-6 max-w-7xl mx-auto">
@@ -123,11 +191,16 @@ export default function Dashboard() {
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
           {Array.from({ length: 3 }).map((_, i) => <CardSkeleton key={i} />)}
         </div>
+        <ChartSkeleton height={240} />
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <ChartSkeleton height={220} />
+          <ChartSkeleton height={220} />
+        </div>
       </div>
     );
   }
 
-  // ── Error state ─────────────────────────────────────────────────────────────
+  // ── Error ───────────────────────────────────────────────────────────────────
   if (error) {
     return (
       <div className="p-6 max-w-7xl mx-auto">
@@ -143,14 +216,24 @@ export default function Dashboard() {
   if (!data) return null;
 
   const { vendas, ia } = data;
-  const quotaBarColor = quotaColor(ia.quotaUsada);
+  const quotaBarColor  = quotaColor(ia.quotaUsada);
+  const quotaPct       = Math.min(ia.quotaUsada, 100);
 
-  // Estimate monthly token quota from usage (monthly limit from agent_configs not exposed here)
-  // Show quotaUsada% directly as the progress value
-  const quotaPct = Math.min(ia.quotaUsada, 100);
+  // Derived data for charts
+  const pieData = Object.entries(vendas.leadsPorStatus)
+    .filter(([, v]) => v > 0)
+    .map(([status, count]) => ({
+      status,
+      name:  STATUS_LABELS[status] ?? status,
+      count,
+      fill:  STATUS_COLORS[status] ?? "#94A3B8",
+    }));
+
+  const barData = ia.usosPorAgente.slice(0, 8);
 
   return (
     <div className="p-6 space-y-6 max-w-7xl mx-auto">
+
       {/* ── Page title ── */}
       <div>
         <h1 className="text-2xl font-bold tracking-tight">Dashboard</h1>
@@ -160,37 +243,28 @@ export default function Dashboard() {
       </div>
 
       {/* ── Alertas ── */}
-      {alertas.length > 0 && (
+      {data.alertas.some((_, i) => !dismissed.has(i)) && (
         <div className="space-y-2">
           {data.alertas.map((alerta, idx) => {
             if (dismissed.has(idx)) return null;
-
             const isCritico = alerta.severidade === "critico";
             const isAviso   = alerta.severidade === "aviso";
-
             const alertClass = isCritico
               ? ""
               : isAviso
               ? "border-amber-400/60 bg-amber-50 text-amber-900 dark:bg-amber-950/30 dark:text-amber-200 dark:border-amber-500/40 [&>svg]:text-amber-600 dark:[&>svg]:text-amber-400"
               : "";
-
             return (
               <Alert
                 key={alerta.tipo + idx}
                 variant={isCritico ? "destructive" : "default"}
                 className={`flex items-start gap-3 pr-3 ${alertClass}`}
               >
-                {isCritico ? (
-                  <AlertTriangle className="h-4 w-4 mt-0.5 shrink-0" />
-                ) : isAviso ? (
-                  <AlertTriangle className="h-4 w-4 mt-0.5 shrink-0" />
-                ) : (
-                  <Info className="h-4 w-4 mt-0.5 shrink-0" />
-                )}
+                {isAviso || isCritico
+                  ? <AlertTriangle className="h-4 w-4 mt-0.5 shrink-0" />
+                  : <Info className="h-4 w-4 mt-0.5 shrink-0" />}
                 <div className="flex-1 min-w-0">
-                  <AlertTitle className="capitalize">
-                    {isCritico ? "Crítico" : isAviso ? "Atenção" : "Info"}
-                  </AlertTitle>
+                  <AlertTitle>{isCritico ? "Crítico" : isAviso ? "Atenção" : "Info"}</AlertTitle>
                   <AlertDescription>{alerta.mensagem}</AlertDescription>
                 </div>
                 <button
@@ -207,81 +281,53 @@ export default function Dashboard() {
         </div>
       )}
 
-      {/* ════════════════════════════════════════
-          CARDS — VENDAS (4 cols desktop, 2 mobile)
-      ════════════════════════════════════════ */}
+      {/* ════════════════════════════════════
+          CARDS — VENDAS (4 cols / 2 mobile)
+      ════════════════════════════════════ */}
       <section className="space-y-3">
-        <h2 className="text-sm font-semibold uppercase tracking-wider text-muted-foreground">
-          Vendas
-        </h2>
+        <h2 className="text-sm font-semibold uppercase tracking-wider text-muted-foreground">Vendas</h2>
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
 
-          {/* Card 1 — Total de Leads */}
           <Card>
             <CardHeader className="flex flex-row items-center justify-between pb-2 space-y-0">
-              <CardTitle className="text-sm font-medium text-muted-foreground">
-                Total de Leads
-              </CardTitle>
+              <CardTitle className="text-sm font-medium text-muted-foreground">Total de Leads</CardTitle>
               <Users className="h-4 w-4 text-muted-foreground" />
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold">
-                {vendas.totalLeads.toLocaleString("pt-BR")}
-              </div>
-              <p className="text-xs text-muted-foreground mt-1">
-                +{vendas.leadsNovos} novos esta semana
-              </p>
+              <div className="text-2xl font-bold">{vendas.totalLeads.toLocaleString("pt-BR")}</div>
+              <p className="text-xs text-muted-foreground mt-1">+{vendas.leadsNovos} novos esta semana</p>
             </CardContent>
           </Card>
 
-          {/* Card 2 — Taxa de Conversão */}
           <Card>
             <CardHeader className="flex flex-row items-center justify-between pb-2 space-y-0">
-              <CardTitle className="text-sm font-medium text-muted-foreground">
-                Taxa de Conversão
-              </CardTitle>
+              <CardTitle className="text-sm font-medium text-muted-foreground">Taxa de Conversão</CardTitle>
               <TrendingUp className="h-4 w-4 text-muted-foreground" />
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold">
-                {vendas.taxaConversao.toFixed(1)}%
-              </div>
-              <p className="text-xs text-muted-foreground mt-1">
-                Leads → Clientes
-              </p>
+              <div className="text-2xl font-bold">{vendas.taxaConversao.toFixed(1)}%</div>
+              <p className="text-xs text-muted-foreground mt-1">Leads → Clientes</p>
             </CardContent>
           </Card>
 
-          {/* Card 3 — Ticket Médio */}
           <Card>
             <CardHeader className="flex flex-row items-center justify-between pb-2 space-y-0">
-              <CardTitle className="text-sm font-medium text-muted-foreground">
-                Ticket Médio
-              </CardTitle>
+              <CardTitle className="text-sm font-medium text-muted-foreground">Ticket Médio</CardTitle>
               <DollarSign className="h-4 w-4 text-muted-foreground" />
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold">
-                {formatCurrency(vendas.ticketMedio)}
-              </div>
-              <p className="text-xs text-muted-foreground mt-1">
-                Deals fechados no período
-              </p>
+              <div className="text-2xl font-bold">{formatCurrency(vendas.ticketMedio)}</div>
+              <p className="text-xs text-muted-foreground mt-1">Deals fechados no período</p>
             </CardContent>
           </Card>
 
-          {/* Card 4 — Mensagens Hoje */}
           <Card>
             <CardHeader className="flex flex-row items-center justify-between pb-2 space-y-0">
-              <CardTitle className="text-sm font-medium text-muted-foreground">
-                Mensagens Hoje
-              </CardTitle>
+              <CardTitle className="text-sm font-medium text-muted-foreground">Mensagens Hoje</CardTitle>
               <MessageSquare className="h-4 w-4 text-muted-foreground" />
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold">
-                {ia.mensagensHoje.toLocaleString("pt-BR")}
-              </div>
+              <div className="text-2xl font-bold">{ia.mensagensHoje.toLocaleString("pt-BR")}</div>
               <p className="text-xs text-muted-foreground mt-1">
                 {ia.agentesAtivos} agente{ia.agentesAtivos !== 1 ? "s" : ""} ativo{ia.agentesAtivos !== 1 ? "s" : ""}
               </p>
@@ -291,39 +337,27 @@ export default function Dashboard() {
         </div>
       </section>
 
-      {/* ════════════════════════════════════════
-          CARDS — IA (3 cols desktop, 1 mobile)
-      ════════════════════════════════════════ */}
+      {/* ════════════════════════════════════
+          CARDS — IA (3 cols / 1 mobile)
+      ════════════════════════════════════ */}
       <section className="space-y-3">
-        <h2 className="text-sm font-semibold uppercase tracking-wider text-muted-foreground">
-          Inteligência Artificial
-        </h2>
+        <h2 className="text-sm font-semibold uppercase tracking-wider text-muted-foreground">Inteligência Artificial</h2>
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
 
-          {/* Card 5 — Mensagens no Mês */}
           <Card>
             <CardHeader className="flex flex-row items-center justify-between pb-2 space-y-0">
-              <CardTitle className="text-sm font-medium text-muted-foreground">
-                Mensagens no Mês
-              </CardTitle>
+              <CardTitle className="text-sm font-medium text-muted-foreground">Mensagens no Mês</CardTitle>
               <Bot className="h-4 w-4 text-muted-foreground" />
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold">
-                {ia.mensagensMes.toLocaleString("pt-BR")}
-              </div>
-              <p className="text-xs text-muted-foreground mt-1">
-                Enviadas pelos agentes
-              </p>
+              <div className="text-2xl font-bold">{ia.mensagensMes.toLocaleString("pt-BR")}</div>
+              <p className="text-xs text-muted-foreground mt-1">Enviadas pelos agentes</p>
             </CardContent>
           </Card>
 
-          {/* Card 6 — Quota de IA */}
           <Card>
             <CardHeader className="flex flex-row items-center justify-between pb-2 space-y-0">
-              <CardTitle className="text-sm font-medium text-muted-foreground">
-                Quota de IA
-              </CardTitle>
+              <CardTitle className="text-sm font-medium text-muted-foreground">Quota de IA</CardTitle>
               <Zap className="h-4 w-4 text-muted-foreground" />
             </CardHeader>
             <CardContent className="space-y-2">
@@ -340,12 +374,9 @@ export default function Dashboard() {
             </CardContent>
           </Card>
 
-          {/* Card 7 — Agentes Ativos */}
           <Card>
             <CardHeader className="flex flex-row items-center justify-between pb-2 space-y-0">
-              <CardTitle className="text-sm font-medium text-muted-foreground">
-                Agentes Ativos
-              </CardTitle>
+              <CardTitle className="text-sm font-medium text-muted-foreground">Agentes Ativos</CardTitle>
               <Cpu className="h-4 w-4 text-muted-foreground" />
             </CardHeader>
             <CardContent>
@@ -354,10 +385,7 @@ export default function Dashboard() {
                 <span className="text-base font-normal text-muted-foreground"> / 8</span>
               </div>
               <p className="text-xs text-muted-foreground mt-1">
-                <Link
-                  href="/agents/config"
-                  className="text-primary hover:underline underline-offset-2"
-                >
+                <Link href="/agents/config" className="text-primary hover:underline underline-offset-2">
                   Configurar agentes →
                 </Link>
               </p>
@@ -366,6 +394,165 @@ export default function Dashboard() {
 
         </div>
       </section>
+
+      {/* ════════════════════════════════════
+          GRÁFICO 1 — Evolução de leads (full width)
+      ════════════════════════════════════ */}
+      <section className="space-y-3">
+        <h2 className="text-sm font-semibold uppercase tracking-wider text-muted-foreground">Evolução</h2>
+        <Card>
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm font-medium">Leads nos últimos 30 dias</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <ResponsiveContainer width="100%" height={240}>
+              <AreaChart data={vendas.evolucaoLeads} margin={{ top: 4, right: 8, left: -20, bottom: 0 }}>
+                <defs>
+                  <linearGradient id="grad-leads" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="5%"  stopColor="#A78BFA" stopOpacity={0.15} />
+                    <stop offset="95%" stopColor="#A78BFA" stopOpacity={0} />
+                  </linearGradient>
+                </defs>
+                <XAxis
+                  dataKey="data"
+                  tickFormatter={fmtAxisDate}
+                  tick={{ fontSize: 11, fill: "hsl(var(--muted-foreground))" }}
+                  axisLine={false}
+                  tickLine={false}
+                  interval="preserveStartEnd"
+                />
+                <YAxis
+                  tick={{ fontSize: 11, fill: "hsl(var(--muted-foreground))" }}
+                  axisLine={false}
+                  tickLine={false}
+                  allowDecimals={false}
+                />
+                <Tooltip content={<LeadTooltip />} />
+                <Area
+                  type="monotone"
+                  dataKey="count"
+                  stroke="#A78BFA"
+                  strokeWidth={2}
+                  fill="url(#grad-leads)"
+                  dot={false}
+                  activeDot={{ r: 4, strokeWidth: 0, fill: "#A78BFA" }}
+                />
+              </AreaChart>
+            </ResponsiveContainer>
+          </CardContent>
+        </Card>
+      </section>
+
+      {/* ════════════════════════════════════
+          GRÁFICOS 2 e 3 — grid 2 cols / 1 mobile
+      ════════════════════════════════════ */}
+      <section className="space-y-3">
+        <h2 className="text-sm font-semibold uppercase tracking-wider text-muted-foreground">Detalhes</h2>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+
+          {/* Gráfico 2 — Distribuição por status (Donut) */}
+          <Card>
+            <CardHeader className="pb-2">
+              <CardTitle className="text-sm font-medium">Distribuição por status</CardTitle>
+            </CardHeader>
+            <CardContent>
+              {pieData.length === 0 ? (
+                <div className="flex items-center justify-center h-[220px] text-sm text-muted-foreground">
+                  Nenhum lead no período
+                </div>
+              ) : (
+                <ResponsiveContainer width="100%" height={220}>
+                  <PieChart>
+                    <Pie
+                      data={pieData}
+                      dataKey="count"
+                      nameKey="name"
+                      innerRadius={60}
+                      outerRadius={90}
+                      strokeWidth={2}
+                      stroke="hsl(var(--background))"
+                    >
+                      {pieData.map((entry) => (
+                        <Cell key={entry.status} fill={entry.fill} />
+                      ))}
+                    </Pie>
+                    <Legend
+                      iconType="circle"
+                      iconSize={8}
+                      wrapperStyle={{ fontSize: 12 }}
+                    />
+                    <Tooltip
+                      formatter={(value: number, name: string) => [value, name]}
+                      contentStyle={{
+                        fontSize: 12,
+                        borderRadius: 8,
+                        border: "1px solid hsl(var(--border))",
+                        background: "hsl(var(--background))",
+                      }}
+                    />
+                  </PieChart>
+                </ResponsiveContainer>
+              )}
+            </CardContent>
+          </Card>
+
+          {/* Gráfico 3 — Uso por agente (Horizontal Bar) */}
+          <Card>
+            <CardHeader className="pb-2">
+              <CardTitle className="text-sm font-medium">Mensagens por agente</CardTitle>
+            </CardHeader>
+            <CardContent>
+              {barData.length === 0 ? (
+                <div className="flex items-center justify-center h-[220px] text-sm text-muted-foreground">
+                  Nenhum dado de uso no período
+                </div>
+              ) : (
+                <ResponsiveContainer width="100%" height={220}>
+                  <BarChart
+                    layout="vertical"
+                    data={barData}
+                    margin={{ top: 0, right: 16, left: 0, bottom: 0 }}
+                  >
+                    <defs>
+                      <linearGradient id="grad-agents" x1="0" y1="0" x2="1" y2="0">
+                        <stop offset="0%"   stopColor="#818CF8" />
+                        <stop offset="100%" stopColor="#22D3EE" />
+                      </linearGradient>
+                    </defs>
+                    <XAxis
+                      type="number"
+                      tick={{ fontSize: 11, fill: "hsl(var(--muted-foreground))" }}
+                      axisLine={false}
+                      tickLine={false}
+                      allowDecimals={false}
+                    />
+                    <YAxis
+                      type="category"
+                      dataKey="nome"
+                      width={90}
+                      tick={{ fontSize: 11, fill: "hsl(var(--muted-foreground))" }}
+                      axisLine={false}
+                      tickLine={false}
+                    />
+                    <Tooltip
+                      formatter={(value: number) => [value, "mensagens"]}
+                      contentStyle={{
+                        fontSize: 12,
+                        borderRadius: 8,
+                        border: "1px solid hsl(var(--border))",
+                        background: "hsl(var(--background))",
+                      }}
+                    />
+                    <Bar dataKey="count" fill="url(#grad-agents)" radius={[0, 4, 4, 0]} />
+                  </BarChart>
+                </ResponsiveContainer>
+              )}
+            </CardContent>
+          </Card>
+
+        </div>
+      </section>
+
     </div>
   );
 }
