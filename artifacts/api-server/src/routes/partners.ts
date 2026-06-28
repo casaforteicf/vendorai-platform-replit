@@ -365,11 +365,54 @@ router.get("/admin/partners", requireRole("super_admin"), async (req, res) => {
       asaasWalletId: partnersTable.asaasWalletId,
       userId: partnersTable.userId,
       createdAt: partnersTable.createdAt,
+      // aggregates
+      clientesAtivos: sql<number>`(
+        SELECT COUNT(*)::int FROM tenants
+        WHERE partner_id = ${partnersTable.id} AND status = 'active'
+      )`,
+      comissaoTotal: sql<string>`COALESCE((
+        SELECT SUM(valor) FROM partner_commissions
+        WHERE partner_id = ${partnersTable.id} AND status = 'paga'
+      ), 0)::text`,
     })
     .from(partnersTable)
     .orderBy(desc(partnersTable.dataCadastro));
 
   res.json(partners);
+});
+
+// ─── Admin: listar comissões ──────────────────────────────────────────────
+
+router.get("/admin/commissions", requireRole("super_admin"), async (req, res) => {
+  const statusFilter = req.query["status"] as string | undefined;
+
+  const conditions: ReturnType<typeof eq>[] = [];
+  if (statusFilter) {
+    conditions.push(eq(partnerCommissionsTable.status, statusFilter));
+  }
+
+  const commissions = await db
+    .select({
+      id: partnerCommissionsTable.id,
+      partnerId: partnerCommissionsTable.partnerId,
+      partnerName: partnersTable.nomeFantasia,
+      tenantId: partnerCommissionsTable.tenantId,
+      tenantName: tenantsTable.name,
+      tipo: partnerCommissionsTable.tipo,
+      valorBase: partnerCommissionsTable.valorBase,
+      percentual: partnerCommissionsTable.percentual,
+      valor: partnerCommissionsTable.valor,
+      dataReferencia: partnerCommissionsTable.dataReferencia,
+      status: partnerCommissionsTable.status,
+      createdAt: partnerCommissionsTable.createdAt,
+    })
+    .from(partnerCommissionsTable)
+    .leftJoin(partnersTable, eq(partnersTable.id, partnerCommissionsTable.partnerId))
+    .leftJoin(tenantsTable, eq(tenantsTable.id, partnerCommissionsTable.tenantId))
+    .where(conditions.length ? and(...conditions) : undefined)
+    .orderBy(desc(partnerCommissionsTable.createdAt));
+
+  res.json(commissions);
 });
 
 // ─── Admin: atualizar status do parceiro ─────────────────────────────────
