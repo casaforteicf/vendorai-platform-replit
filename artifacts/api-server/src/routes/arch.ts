@@ -1,5 +1,6 @@
 import { Router, type IRouter } from "express";
-import { and, eq, ilike, sql, desc, sum } from "drizzle-orm";
+import { and, eq, ilike, sql, desc, sum, ne, gte, lte } from "drizzle-orm";
+import multer from "multer";
 import {
   db,
   archProjetosTable,
@@ -7,16 +8,24 @@ import {
   archOrcamentoItensTable,
   archCenasTable,
   archCatalogoTable,
+  archMarketplaceItemsTable,
+  archMarketplacePedidosTable,
+  notificationsTable,
   insertArchProjetoSchema,
   updateArchProjetoSchema,
   insertArchAmbienteSchema,
   updateArchAmbienteSchema,
   insertArchOrcamentoItemSchema,
   updateArchOrcamentoItemSchema,
+  insertArchCatalogoSchema,
+  updateArchCatalogoSchema,
 } from "@workspace/db";
 import { z } from "zod/v4";
 import { anthropic } from "@workspace/integrations-anthropic-ai";
 import { authenticate } from "../middlewares/auth.js";
+import { objectStorageClient } from "../lib/objectStorage.js";
+
+const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 20 * 1024 * 1024 } });
 
 const router: IRouter = Router();
 
@@ -350,6 +359,311 @@ router.delete("/arch/projetos/:id/ambientes/:ambId", authenticate, async (req, r
     );
 
   return res.status(204).send();
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Catálogo
+// ─────────────────────────────────────────────────────────────────────────────
+
+// GET /api/arch/catalogo
+router.get("/arch/catalogo", authenticate, async (req, res) => {
+  const tid = tenantId(req);
+  const { categoria, fornecedor, busca, limit = "20", offset = "0" } =
+    req.query as Record<string, string | undefined>;
+
+  const conditions = [eq(archCatalogoTable.tenantId, tid), eq(archCatalogoTable.ativo, true)];
+  if (categoria) conditions.push(eq(archCatalogoTable.categoria, categoria));
+  if (fornecedor) conditions.push(ilike(archCatalogoTable.fornecedor, `%${fornecedor}%`));
+  if (busca)      conditions.push(ilike(archCatalogoTable.nome, `%${busca}%`));
+
+  const produtos = await db
+    .select()
+    .from(archCatalogoTable)
+    .where(and(...conditions))
+    .orderBy(desc(archCatalogoTable.createdAt))
+    .limit(Number(limit))
+    .offset(Number(offset));
+
+  return res.json(produtos);
+});
+
+// POST /api/arch/catalogo
+router.post("/arch/catalogo", authenticate, async (req, res) => {
+  const tid = tenantId(req);
+
+  const parsed = insertArchCatalogoSchema.safeParse({ ...req.body, tenantId: tid });
+  if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
+
+  const [produto] = await db.insert(archCatalogoTable).values(parsed.data).returning();
+  return res.status(201).json(produto);
+});
+
+// POST /api/arch/catalogo/:id/imagens
+router.post(
+  "/arch/catalogo/:id/imagens",
+  authenticate,
+  upload.array("imagens", 5),
+  async (req, res) => {
+    const id = String(req.params.id);
+    const tid = tenantId(req);
+
+    const [produto] = await db
+      .select({ tenantId: archCatalogoTable.tenantId, imagens: archCatalogoTable.imagens })
+      .from(archCatalogoTable)
+      .where(eq(archCatalogoTable.id, id))
+      .limit(1);
+
+    if (!produto) return res.status(404).json({ error: "Produto não encontrado." });
+    if (!canAccessTenant(req, produto.tenantId)) {
+      return res.status(403).json({ error: "Acesso negado." });
+    }
+
+    const files = req.files as Express.Multer.File[] | undefined;
+    if (!files?.length) return res.status(400).json({ error: "Nenhuma imagem enviada." });
+
+    const privateDir = process.env.PRIVATE_OBJECT_DIR;
+    if (!privateDir) return res.status(500).json({ error: "PRIVATE_OBJECT_DIR não configurado." });
+
+    const uploadedUrls: string[] = [];
+    for (const file of files) {
+      const ts   = Date.now();
+      const ext  = file.originalname.split(".").pop()?.toLowerCase() ?? "jpg";
+      const objectPath = `${privateDir}/arch-catalogo/${tid}/${id}/${ts}.${ext}`;
+      const parts      = objectPath.replace(/^\//, "").split("/");
+      const bucketName = parts[0]!;
+      const objectName = parts.slice(1).join("/");
+
+      const bucket  = objectStorageClient.bucket(bucketName);
+      const gcsFile = bucket.file(objectName);
+      await gcsFile.save(file.buffer, { contentType: file.mimetype, resumable: false });
+
+      uploadedUrls.push(`/api/storage/objects/arch-catalogo/${tid}/${id}/${ts}.${ext}`);
+    }
+
+    const existing  = (produto.imagens as string[] | null) ?? [];
+    const newImages = [...existing, ...uploadedUrls];
+
+    const [updated] = await db
+      .update(archCatalogoTable)
+      .set({ imagens: newImages })
+      .where(eq(archCatalogoTable.id, id))
+      .returning();
+
+    return res.json(updated);
+  },
+);
+
+// PATCH /api/arch/catalogo/:id
+router.patch("/arch/catalogo/:id", authenticate, async (req, res) => {
+  const id = String(req.params.id);
+
+  const [existing] = await db
+    .select({ tenantId: archCatalogoTable.tenantId })
+    .from(archCatalogoTable)
+    .where(eq(archCatalogoTable.id, id))
+    .limit(1);
+
+  if (!existing) return res.status(404).json({ error: "Produto não encontrado." });
+  if (!canAccessTenant(req, existing.tenantId)) {
+    return res.status(403).json({ error: "Acesso negado." });
+  }
+
+  const parsed = updateArchCatalogoSchema.safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
+
+  const [updated] = await db
+    .update(archCatalogoTable)
+    .set(parsed.data)
+    .where(eq(archCatalogoTable.id, id))
+    .returning();
+
+  return res.json(updated);
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Marketplace
+// ─────────────────────────────────────────────────────────────────────────────
+
+// GET /api/arch/marketplace
+router.get("/arch/marketplace", authenticate, async (req, res) => {
+  const tid = tenantId(req);
+  const { categoria, precoMin, precoMax, busca, limit = "20", offset = "0" } =
+    req.query as Record<string, string | undefined>;
+
+  const conditions = [
+    eq(archMarketplaceItemsTable.ativo, true),
+    ne(archMarketplaceItemsTable.vendedorTenantId, tid),
+  ];
+  if (categoria) conditions.push(eq(archMarketplaceItemsTable.categoria, categoria));
+  if (busca)     conditions.push(ilike(archMarketplaceItemsTable.nome, `%${busca}%`));
+  if (precoMin)  conditions.push(gte(archMarketplaceItemsTable.preco, precoMin));
+  if (precoMax)  conditions.push(lte(archMarketplaceItemsTable.preco, precoMax));
+
+  const items = await db
+    .select()
+    .from(archMarketplaceItemsTable)
+    .where(and(...conditions))
+    .orderBy(desc(archMarketplaceItemsTable.totalVendas))
+    .limit(Number(limit))
+    .offset(Number(offset));
+
+  return res.json(items);
+});
+
+// GET /api/arch/marketplace/meus-produtos
+router.get("/arch/marketplace/meus-produtos", authenticate, async (req, res) => {
+  const tid = tenantId(req);
+
+  const items = await db
+    .select()
+    .from(archMarketplaceItemsTable)
+    .where(eq(archMarketplaceItemsTable.vendedorTenantId, tid))
+    .orderBy(desc(archMarketplaceItemsTable.createdAt));
+
+  return res.json(items);
+});
+
+// GET /api/arch/marketplace/pedidos
+router.get("/arch/marketplace/pedidos", authenticate, async (req, res) => {
+  const tid = tenantId(req);
+
+  const pedidos = await db
+    .select()
+    .from(archMarketplacePedidosTable)
+    .where(eq(archMarketplacePedidosTable.compradorTenantId, tid))
+    .orderBy(desc(archMarketplacePedidosTable.createdAt));
+
+  return res.json(pedidos);
+});
+
+// GET /api/arch/marketplace/vendas
+router.get("/arch/marketplace/vendas", authenticate, async (req, res) => {
+  const tid = tenantId(req);
+
+  const vendas = await db
+    .select({
+      pedido:    archMarketplacePedidosTable,
+      itemNome:  archMarketplaceItemsTable.nome,
+    })
+    .from(archMarketplacePedidosTable)
+    .innerJoin(
+      archMarketplaceItemsTable,
+      eq(archMarketplacePedidosTable.itemId, archMarketplaceItemsTable.id),
+    )
+    .where(eq(archMarketplaceItemsTable.vendedorTenantId, tid))
+    .orderBy(desc(archMarketplacePedidosTable.createdAt));
+
+  const totalComissoes = vendas.reduce((acc, v) => acc + Number(v.pedido.comissao ?? 0), 0);
+
+  return res.json({ vendas, totalComissoes });
+});
+
+// POST /api/arch/marketplace
+router.post("/arch/marketplace", authenticate, async (req, res) => {
+  const tid = tenantId(req);
+
+  const bodySchema = z.object({
+    nome:           z.string().min(1),
+    descricao:      z.string().optional(),
+    categoria:      z.string().optional(),
+    preco:          z.coerce.number().nonnegative(),
+    especificacoes: z.record(z.string(), z.unknown()).optional(),
+  });
+
+  const parsed = bodySchema.safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
+
+  const [item] = await db
+    .insert(archMarketplaceItemsTable)
+    .values({
+      vendedorTenantId: tid,
+      nome:             parsed.data.nome,
+      descricao:        parsed.data.descricao,
+      categoria:        parsed.data.categoria,
+      preco:            String(parsed.data.preco),
+      especificacoes:   parsed.data.especificacoes,
+    })
+    .returning();
+
+  return res.status(201).json(item);
+});
+
+// POST /api/arch/marketplace/:itemId/comprar
+router.post("/arch/marketplace/:itemId/comprar", authenticate, async (req, res) => {
+  const itemId = String(req.params.itemId);
+  const tid    = tenantId(req);
+
+  const bodySchema = z.object({
+    quantidade: z.coerce.number().positive(),
+    projetoId:  z.string().optional(),
+  });
+
+  const parsed = bodySchema.safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
+
+  const [item] = await db
+    .select()
+    .from(archMarketplaceItemsTable)
+    .where(and(eq(archMarketplaceItemsTable.id, itemId), eq(archMarketplaceItemsTable.ativo, true)))
+    .limit(1);
+
+  if (!item) return res.status(404).json({ error: "Produto não encontrado no marketplace." });
+  if (item.vendedorTenantId === tid) {
+    return res.status(400).json({ error: "Não é possível comprar o próprio produto." });
+  }
+
+  const { quantidade, projetoId } = parsed.data;
+  const valorUnitario = Number(item.preco ?? 0);
+  const valorTotal    = quantidade * valorUnitario;
+  const comissao      = valorTotal * 0.10;
+
+  const [pedido] = await db
+    .insert(archMarketplacePedidosTable)
+    .values({
+      compradorTenantId: tid,
+      itemId,
+      projetoId:         projetoId ?? null,
+      quantidade:        String(quantidade),
+      valorUnitario:     String(valorUnitario),
+      valorTotal:        String(valorTotal.toFixed(2)),
+      comissao:          String(comissao.toFixed(2)),
+    })
+    .returning();
+
+  // Incrementar totalVendas do item
+  await db
+    .update(archMarketplaceItemsTable)
+    .set({ totalVendas: sql`${archMarketplaceItemsTable.totalVendas} + 1` })
+    .where(eq(archMarketplaceItemsTable.id, itemId));
+
+  // Se projetoId, adicionar ao orçamento do projeto
+  if (projetoId) {
+    const vTotal = valorTotal.toFixed(2);
+    await db.insert(archOrcamentoItensTable).values({
+      projetoId,
+      ambienteId:    null,
+      categoria:     item.categoria ?? "Marketplace",
+      descricao:     item.nome,
+      quantidade:    String(quantidade),
+      unidade:       "un",
+      valorUnitario: String(valorUnitario),
+      valorTotal:    vTotal,
+      fornecedor:    item.vendedorTenantId,
+      produtoId:     itemId,
+    });
+    await recalcularOrcamentoTotal(projetoId);
+  }
+
+  // Notificar vendedor
+  await db.insert(notificationsTable).values({
+    tenantId: item.vendedorTenantId,
+    title:    "Nova venda no Marketplace",
+    message:  `Seu produto "${item.nome}" foi comprado (qtd: ${quantidade}). Valor: R$ ${valorTotal.toFixed(2)} — Comissão VendorAI: R$ ${comissao.toFixed(2)}.`,
+    type:     "info",
+    category: "general",
+  });
+
+  return res.status(201).json({ pedido, comissao });
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
