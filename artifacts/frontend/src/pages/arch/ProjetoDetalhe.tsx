@@ -25,6 +25,7 @@ import {
   ArrowLeft, Plus, Sparkles, Loader2, Pencil, Trash2, Link2,
   Search, LayoutGrid, DollarSign, Clock, Eye, ExternalLink,
   Copy, CheckCircle, XCircle, RefreshCw, Globe, Image,
+  Download, AlertCircle, ClipboardList,
 } from "lucide-react";
 
 // ── Types ──────────────────────────────────────────────────────────────────
@@ -133,6 +134,49 @@ const EMPTY_CENA = {
   observacoes: "",
 };
 
+// ── Solicitação types & helpers ────────────────────────────────────────────
+type SolicitacaoAdmin = {
+  id: string;
+  cenaId: string;
+  cenaNome: string | null;
+  clienteNome: string | null;
+  status: string | null;
+  itensAdicionados:  Array<{ tipo: string; cor: string; posicao: string }> | null;
+  texturasAlteradas: Array<{ superficie: string; material: string; cor: string }> | null;
+  observacoes: string | null;
+  versaoGeradaId: string | null;
+  versaoNum: number | null;
+  imageUrl: string | null;
+  createdAt: string;
+  processadoEm: string | null;
+};
+
+const ITEM_LABELS: Record<string, string> = {
+  sofa: "Sofá", mesa: "Mesa de centro", cadeira: "Cadeira", cama: "Cama",
+  armario: "Armário", luminaria: "Luminária", janela: "Janela", porta: "Porta",
+};
+const MATERIAL_LABELS: Record<string, string> = {
+  tinta: "Tinta lisa", madeira: "Madeira", marmore: "Mármore", cimento: "Cimento",
+};
+const SUPERFICIE_LABELS: Record<string, string> = {
+  parede: "Parede", piso: "Piso", teto: "Teto",
+};
+
+function SolicitacaoBadge({ status }: { status: string }) {
+  const map: Record<string, { cls: string; label: string; pulse?: boolean }> = {
+    pendente:    { cls: "bg-gray-100 text-gray-600 border-gray-200",          label: "Pendente" },
+    processando: { cls: "bg-blue-50 text-blue-700 border-blue-200",           label: "Processando…", pulse: true },
+    concluido:   { cls: "bg-emerald-50 text-emerald-700 border-emerald-200",  label: "Concluído" },
+    erro:        { cls: "bg-red-50 text-red-700 border-red-200",              label: "Erro" },
+  };
+  const cfg = map[status] ?? { cls: "bg-gray-100 text-gray-600 border-gray-200", label: status };
+  return (
+    <span className={`inline-flex items-center rounded-full border px-2.5 py-0.5 text-xs font-medium ${cfg.cls} ${cfg.pulse ? "animate-pulse" : ""}`}>
+      {cfg.label}
+    </span>
+  );
+}
+
 // ── Helpers ────────────────────────────────────────────────────────────────
 function getToken() { return localStorage.getItem("vendorai_token"); }
 function getBase()  { return (import.meta.env.BASE_URL ?? "/").replace(/\/$/, ""); }
@@ -202,6 +246,14 @@ export default function ProjetoDetalhe() {
   const [portalUrl, setPortalUrl]           = useState<string | null>(null);
   const [ativandoPortal, setAtivandoPortal] = useState(false);
   const [copiedUrl, setCopiedUrl]           = useState(false);
+
+  // ── Solicitações state
+  const [solicitacoes, setSolicitacoes] = useState<SolicitacaoAdmin[]>([]);
+  const [solLoading, setSolLoading]     = useState(false);
+  const [solLoaded, setSolLoaded]       = useState(false);
+  const [viewingSol, setViewingSol]     = useState<SolicitacaoAdmin | null>(null);
+  const [retrying, setRetrying]         = useState(false);
+  const solRefreshRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   // ── Data loaders ───────────────────────────────────────────────────────
   const loadProjeto = useCallback(async () => {
@@ -449,6 +501,17 @@ export default function ProjetoDetalhe() {
     setCenasLoaded(true);
   }, [projetoId]);
 
+  const loadSolicitacoes = useCallback(async () => {
+    if (!projetoId) return;
+    setSolLoading(true);
+    const res = await fetch(`${getBase()}/api/arch/projetos/${projetoId}/solicitacoes`, {
+      headers: { Authorization: `Bearer ${getToken()}` },
+    });
+    if (res.ok) setSolicitacoes(await res.json());
+    setSolLoading(false);
+    setSolLoaded(true);
+  }, [projetoId]);
+
   function stopPolling(cenaId: string) {
     if (pollIntervalsRef.current[cenaId]) {
       clearInterval(pollIntervalsRef.current[cenaId]);
@@ -492,6 +555,16 @@ export default function ProjetoDetalhe() {
       setPortalUrl(`${window.location.origin}${getBase()}/arch/portal/${projeto.portalToken}`);
     }
   }, [projeto]);
+
+  // Auto-refresh de solicitações a cada 15s enquanto houver pendentes/processando
+  useEffect(() => {
+    if (solRefreshRef.current) { clearInterval(solRefreshRef.current); solRefreshRef.current = null; }
+    const temAtivos = solLoaded && solicitacoes.some(s => s.status === "pendente" || s.status === "processando");
+    if (temAtivos) {
+      solRefreshRef.current = setInterval(() => { void loadSolicitacoes(); }, 15000);
+    }
+    return () => { if (solRefreshRef.current) { clearInterval(solRefreshRef.current); solRefreshRef.current = null; } };
+  }, [solLoaded, solicitacoes, loadSolicitacoes]);
 
   async function searchCatalogoCenas(busca: string) {
     if (!busca.trim()) { setCatalogCenas([]); return; }
@@ -587,6 +660,29 @@ export default function ProjetoDetalhe() {
     setTimeout(() => setCopiedUrl(false), 2000);
   }
 
+  async function handleRetrySol(sol: SolicitacaoAdmin) {
+    setRetrying(true);
+    try {
+      const res = await fetch(
+        `${getBase()}/api/arch/cenas/${sol.cenaId}/solicitacoes/${sol.id}/retry`,
+        { method: "POST", headers: authH() },
+      );
+      if (!res.ok) throw new Error("Falha ao reprocessar.");
+      setSolicitacoes(prev => prev.map(s =>
+        s.id === sol.id ? { ...s, status: "pendente", imageUrl: null, versaoNum: null, versaoGeradaId: null } : s,
+      ));
+      setViewingSol(prev => prev?.id === sol.id
+        ? { ...prev, status: "pendente", imageUrl: null, versaoNum: null, versaoGeradaId: null }
+        : prev,
+      );
+      toast({ title: "Re-tentando…", description: "O render será gerado novamente." });
+    } catch (e: unknown) {
+      toast({ title: "Erro", description: e instanceof Error ? e.message : "Erro.", variant: "destructive" });
+    } finally {
+      setRetrying(false);
+    }
+  }
+
   // ── Render ─────────────────────────────────────────────────────────────
   if (loading) {
     return (
@@ -639,6 +735,15 @@ export default function ProjetoDetalhe() {
           <TabsTrigger value="ambientes">Ambientes</TabsTrigger>
           <TabsTrigger value="cenas">Cenas 3D</TabsTrigger>
           <TabsTrigger value="portal">Portal</TabsTrigger>
+          <TabsTrigger
+            value="solicitacoes"
+            onClick={() => { if (!solLoaded) loadSolicitacoes(); }}
+          >
+            {(() => {
+              const n = solicitacoes.filter(s => s.status === "pendente" || s.status === "processando").length;
+              return n > 0 ? `Solicitações (${n})` : "Solicitações";
+            })()}
+          </TabsTrigger>
         </TabsList>
 
         {/* ═══════════════════════════════════════════════════════════════
@@ -1036,6 +1141,103 @@ export default function ProjetoDetalhe() {
             </CardContent>
           </Card>
         </TabsContent>
+
+        {/* ═══════════════════════════════════════════════════════════════
+            ABA: SOLICITAÇÕES DE PERSONALIZAÇÃO
+        ════════════════════════════════════════════════════════════════ */}
+        <TabsContent
+          value="solicitacoes"
+          className="mt-4"
+          onFocus={() => { if (!solLoaded) loadSolicitacoes(); }}
+          onClick={() => { if (!solLoaded) loadSolicitacoes(); }}
+        >
+          <div className="flex items-center justify-between mb-4">
+            <h3 className="font-semibold text-sm text-muted-foreground uppercase tracking-wide">
+              Solicitações de personalização
+            </h3>
+            <Button variant="outline" size="sm" onClick={loadSolicitacoes} disabled={solLoading}>
+              <RefreshCw className={`h-3.5 w-3.5 mr-1 ${solLoading ? "animate-spin" : ""}`} /> Atualizar
+            </Button>
+          </div>
+
+          {solLoading && !solLoaded && (
+            <div className="space-y-2">
+              {Array.from({ length: 3 }).map((_, i) => (
+                <Skeleton key={i} className="h-12 w-full" />
+              ))}
+            </div>
+          )}
+
+          {solLoaded && solicitacoes.length === 0 && (
+            <div className="rounded-lg border border-dashed p-12 text-center">
+              <ClipboardList className="h-10 w-10 mx-auto text-muted-foreground/30 mb-3" />
+              <p className="font-medium text-sm">Nenhuma solicitação ainda</p>
+              <p className="text-xs text-muted-foreground mt-1">
+                Solicitações feitas pelo cliente no portal aparecerão aqui.
+              </p>
+            </div>
+          )}
+
+          {solLoaded && solicitacoes.length > 0 && (
+            <div className="rounded-lg border overflow-hidden">
+              <table className="w-full text-sm">
+                <thead className="bg-muted/40 border-b">
+                  <tr>
+                    <th className="px-4 py-2.5 text-left font-medium text-muted-foreground">Cliente</th>
+                    <th className="px-4 py-2.5 text-left font-medium text-muted-foreground">Cena</th>
+                    <th className="px-4 py-2.5 text-left font-medium text-muted-foreground hidden md:table-cell">Itens</th>
+                    <th className="px-4 py-2.5 text-left font-medium text-muted-foreground hidden lg:table-cell">Texturas</th>
+                    <th className="px-4 py-2.5 text-left font-medium text-muted-foreground">Status</th>
+                    <th className="px-4 py-2.5 text-left font-medium text-muted-foreground hidden sm:table-cell">Criado em</th>
+                    <th className="px-4 py-2.5 text-left font-medium text-muted-foreground hidden lg:table-cell">Versão</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y bg-background">
+                  {solicitacoes.map(sol => (
+                    <tr
+                      key={sol.id}
+                      onClick={() => setViewingSol(sol)}
+                      className="hover:bg-muted/20 cursor-pointer transition-colors"
+                    >
+                      <td className="px-4 py-3">
+                        {sol.clienteNome ?? <span className="text-muted-foreground text-xs">—</span>}
+                      </td>
+                      <td className="px-4 py-3 font-medium">
+                        {sol.cenaNome ?? sol.cenaId.slice(0, 8)}
+                      </td>
+                      <td className="px-4 py-3 hidden md:table-cell">
+                        {sol.itensAdicionados && sol.itensAdicionados.length > 0 ? (
+                          <span className="text-xs text-muted-foreground">
+                            {sol.itensAdicionados.map(i => ITEM_LABELS[i.tipo] ?? i.tipo).join(", ")}
+                          </span>
+                        ) : <span className="text-muted-foreground text-xs">—</span>}
+                      </td>
+                      <td className="px-4 py-3 hidden lg:table-cell">
+                        {sol.texturasAlteradas && sol.texturasAlteradas.length > 0 ? (
+                          <span className="text-xs text-muted-foreground">
+                            {sol.texturasAlteradas.map(t => SUPERFICIE_LABELS[t.superficie] ?? t.superficie).join(", ")}
+                          </span>
+                        ) : <span className="text-muted-foreground text-xs">—</span>}
+                      </td>
+                      <td className="px-4 py-3">
+                        <SolicitacaoBadge status={sol.status ?? "pendente"} />
+                      </td>
+                      <td className="px-4 py-3 hidden sm:table-cell text-xs text-muted-foreground whitespace-nowrap">
+                        {new Date(sol.createdAt).toLocaleDateString("pt-BR", {
+                          day: "2-digit", month: "2-digit", year: "2-digit",
+                          hour: "2-digit", minute: "2-digit",
+                        })}
+                      </td>
+                      <td className="px-4 py-3 hidden lg:table-cell text-xs text-muted-foreground">
+                        {sol.versaoNum != null ? `Versão ${sol.versaoNum}` : "—"}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </TabsContent>
       </Tabs>
 
       {/* ══════════════════════════════════════════════════════════════════
@@ -1411,6 +1613,131 @@ export default function ProjetoDetalhe() {
                 </a>
                 <Button onClick={() => setViewingCena(null)}>Fechar</Button>
               </div>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
+
+      {/* ── Dialog: Detalhe de Solicitação ──────────────────────────────── */}
+      <Dialog open={!!viewingSol} onOpenChange={o => { if (!o) setViewingSol(null); }}>
+        <DialogContent className="max-w-xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <ClipboardList className="h-4 w-4" />
+              Detalhes da Solicitação
+            </DialogTitle>
+          </DialogHeader>
+
+          {viewingSol && (
+            <div className="space-y-5 mt-2">
+              {/* Meta */}
+              <div className="flex flex-wrap gap-x-6 gap-y-1 text-sm text-muted-foreground">
+                {viewingSol.clienteNome && <span>👤 {viewingSol.clienteNome}</span>}
+                <span>🎬 Cena: <strong className="text-foreground">{viewingSol.cenaNome ?? "—"}</strong></span>
+                <span>📅 {new Date(viewingSol.createdAt).toLocaleString("pt-BR")}</span>
+              </div>
+
+              {/* Badge status */}
+              <SolicitacaoBadge status={viewingSol.status ?? "pendente"} />
+
+              {/* Itens adicionados */}
+              {viewingSol.itensAdicionados && viewingSol.itensAdicionados.length > 0 && (
+                <div>
+                  <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2">Itens solicitados</p>
+                  <div className="space-y-1.5">
+                    {viewingSol.itensAdicionados.map((item, idx) => (
+                      <div key={idx} className="flex items-center gap-3 rounded-lg bg-muted/40 px-3 py-2">
+                        <span className="text-sm font-medium flex-1">{ITEM_LABELS[item.tipo] ?? item.tipo}</span>
+                        <span className="text-xs text-muted-foreground">Posição: {item.posicao}</span>
+                        <div className="flex items-center gap-1.5">
+                          <div className="h-4 w-4 rounded-full border" style={{ backgroundColor: item.cor }} />
+                          <span className="text-xs text-muted-foreground font-mono">{item.cor}</span>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Texturas alteradas */}
+              {viewingSol.texturasAlteradas && viewingSol.texturasAlteradas.length > 0 && (
+                <div>
+                  <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2">Texturas alteradas</p>
+                  <div className="space-y-1.5">
+                    {viewingSol.texturasAlteradas.map((tex, idx) => (
+                      <div key={idx} className="flex items-center gap-3 rounded-lg bg-muted/40 px-3 py-2">
+                        <span className="text-sm font-medium w-16">{SUPERFICIE_LABELS[tex.superficie] ?? tex.superficie}</span>
+                        <span className="text-xs text-muted-foreground flex-1">{MATERIAL_LABELS[tex.material] ?? tex.material}</span>
+                        <div className="flex items-center gap-1.5">
+                          <div className="h-4 w-4 rounded-full border" style={{ backgroundColor: tex.cor }} />
+                          <span className="text-xs text-muted-foreground font-mono">{tex.cor}</span>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Observações */}
+              {viewingSol.observacoes && (
+                <div>
+                  <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-1">Observações</p>
+                  <p className="text-sm bg-muted/40 rounded-lg px-3 py-2">{viewingSol.observacoes}</p>
+                </div>
+              )}
+
+              {/* Imagem gerada */}
+              {viewingSol.status === "concluido" && viewingSol.imageUrl && (
+                <div>
+                  <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2">
+                    Versão gerada {viewingSol.versaoNum != null ? `(v${viewingSol.versaoNum})` : ""}
+                  </p>
+                  <img
+                    src={viewingSol.imageUrl.startsWith("/api")
+                      ? `${getBase()}${viewingSol.imageUrl}`
+                      : viewingSol.imageUrl}
+                    alt="Render gerado"
+                    className="w-full rounded-lg border object-contain max-h-64"
+                  />
+                  <div className="flex justify-end mt-2">
+                    <a
+                      href={viewingSol.imageUrl.startsWith("/api")
+                        ? `${getBase()}${viewingSol.imageUrl}`
+                        : viewingSol.imageUrl}
+                      download={`render-v${viewingSol.versaoNum ?? "x"}.png`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                    >
+                      <Button variant="outline" size="sm">
+                        <Download className="h-3.5 w-3.5 mr-1.5" /> Download
+                      </Button>
+                    </a>
+                  </div>
+                </div>
+              )}
+
+              {/* Erro + retry */}
+              {viewingSol.status === "erro" && (
+                <div className="flex items-start gap-3 rounded-lg bg-red-50 border border-red-200 px-4 py-3">
+                  <AlertCircle className="h-4 w-4 text-red-500 mt-0.5 shrink-0" />
+                  <div className="flex-1">
+                    <p className="text-sm font-medium text-red-700">Falha no processamento</p>
+                    <p className="text-xs text-red-600 mt-0.5">O render não pôde ser gerado. Tente novamente.</p>
+                  </div>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="border-red-300 text-red-700 hover:bg-red-50 shrink-0"
+                    disabled={retrying}
+                    onClick={() => handleRetrySol(viewingSol)}
+                  >
+                    {retrying
+                      ? <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                      : <><RefreshCw className="h-3.5 w-3.5 mr-1" />Re-tentar</>
+                    }
+                  </Button>
+                </div>
+              )}
             </div>
           )}
         </DialogContent>

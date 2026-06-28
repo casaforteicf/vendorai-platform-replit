@@ -1500,4 +1500,81 @@ router.get("/arch/cenas/:cenaId/solicitacoes/:solId/status", async (req, res) =>
   return res.json({ status: sol.status, imageUrl: null });
 });
 
+// ─────────────────────────────────────────────────────────────────────────────
+// GET /api/arch/projetos/:projetoId/solicitacoes (autenticado)
+// Listar todas as solicitações do projeto (todas as cenas), com join
+// ─────────────────────────────────────────────────────────────────────────────
+router.get("/arch/projetos/:projetoId/solicitacoes", authenticate, async (req, res) => {
+  const projetoId = String(req.params.projetoId);
+
+  const [projeto] = await db
+    .select({ tenantId: archProjetosTable.tenantId })
+    .from(archProjetosTable)
+    .where(eq(archProjetosTable.id, projetoId))
+    .limit(1);
+
+  if (!projeto) return res.status(404).json({ error: "Projeto não encontrado." });
+  if (!canAccessTenant(req, projeto.tenantId)) return res.status(403).json({ error: "Acesso negado." });
+
+  const rows = await db
+    .select({
+      id:                archRenderSolicitacoesTable.id,
+      cenaId:            archRenderSolicitacoesTable.cenaId,
+      cenaNome:          archCenasTable.nome,
+      clienteNome:       archRenderSolicitacoesTable.clienteNome,
+      status:            archRenderSolicitacoesTable.status,
+      itensAdicionados:  archRenderSolicitacoesTable.itensAdicionados,
+      texturasAlteradas: archRenderSolicitacoesTable.texturasAlteradas,
+      observacoes:       archRenderSolicitacoesTable.observacoes,
+      versaoGeradaId:    archRenderSolicitacoesTable.versaoGeradaId,
+      versaoNum:         archRenderVersoesTable.versao,
+      imageUrl:          archRenderVersoesTable.imageUrl,
+      createdAt:         archRenderSolicitacoesTable.createdAt,
+      processadoEm:      archRenderSolicitacoesTable.processadoEm,
+    })
+    .from(archRenderSolicitacoesTable)
+    .innerJoin(archCenasTable, eq(archRenderSolicitacoesTable.cenaId, archCenasTable.id))
+    .leftJoin(archRenderVersoesTable, eq(archRenderSolicitacoesTable.versaoGeradaId, archRenderVersoesTable.id))
+    .where(eq(archCenasTable.projetoId, projetoId))
+    .orderBy(desc(archRenderSolicitacoesTable.createdAt));
+
+  return res.json(rows);
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// POST /api/arch/cenas/:cenaId/solicitacoes/:solId/retry (autenticado)
+// Re-processar uma solicitação com erro
+// ─────────────────────────────────────────────────────────────────────────────
+router.post("/arch/cenas/:cenaId/solicitacoes/:solId/retry", authenticate, async (req, res) => {
+  const cenaId = String(req.params.cenaId);
+  const solId  = String(req.params.solId);
+
+  const ctx = await getCenaTenant(cenaId);
+  if (!ctx) return res.status(404).json({ error: "Cena não encontrada." });
+  if (!canAccessTenant(req, ctx.tenantId)) return res.status(403).json({ error: "Acesso negado." });
+
+  const [sol] = await db
+    .select({ id: archRenderSolicitacoesTable.id, status: archRenderSolicitacoesTable.status })
+    .from(archRenderSolicitacoesTable)
+    .where(and(
+      eq(archRenderSolicitacoesTable.id, solId),
+      eq(archRenderSolicitacoesTable.cenaId, cenaId),
+    ))
+    .limit(1);
+
+  if (!sol) return res.status(404).json({ error: "Solicitação não encontrada." });
+  if (sol.status === "processando") return res.status(409).json({ error: "Solicitação já está sendo processada." });
+
+  await db
+    .update(archRenderSolicitacoesTable)
+    .set({ status: "pendente", versaoGeradaId: null, processadoEm: null })
+    .where(eq(archRenderSolicitacoesTable.id, solId));
+
+  setImmediate(() => {
+    processarSolicitacao(solId).catch(() => undefined);
+  });
+
+  return res.json({ ok: true, status: "pendente" });
+});
+
 export default router;
