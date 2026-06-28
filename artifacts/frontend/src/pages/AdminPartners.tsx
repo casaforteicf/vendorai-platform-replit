@@ -18,6 +18,14 @@ import {
 } from "@/components/ui/table";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogFooter,
+} from "@/components/ui/dialog";
+import { Checkbox } from "@/components/ui/checkbox";
+import {
   RefreshCw,
   AlertTriangle,
   Building2,
@@ -31,6 +39,10 @@ import {
   Banknote,
   ShieldCheck,
   ShieldOff,
+  Search,
+  Plus,
+  Play,
+  MapPin,
 } from "lucide-react";
 import {
   useListPartners,
@@ -70,6 +82,19 @@ async function adminFetch<T>(path: string): Promise<T> {
   if (!res.ok) {
     const body = await res.json().catch(() => ({}));
     throw new Error((body as any).error ?? `HTTP ${res.status}`);
+  }
+  return res.json();
+}
+
+async function adminPost<T>(path: string, body: object): Promise<T> {
+  const res = await fetch(path, {
+    method: "POST",
+    headers: authHeaders(),
+    body: JSON.stringify(body),
+  });
+  if (!res.ok) {
+    const b = await res.json().catch(() => ({}));
+    throw new Error((b as any).error ?? `HTTP ${res.status}`);
   }
   return res.json();
 }
@@ -775,6 +800,501 @@ function LinkTenantSection() {
   );
 }
 
+// ── Partner Prospector Tab ─────────────────────────────────────────────────
+
+const PARTNER_NICHOS = [
+  "escritório de contabilidade",
+  "contador",
+  "contabilidade empresarial",
+  "consultoria empresarial",
+  "consultoria de gestão",
+  "consultor de negócios",
+  "agência de marketing digital",
+  "agência de publicidade",
+  "consultoria em tecnologia",
+  "assessoria empresarial",
+];
+
+interface ProspectorJob {
+  id: string;
+  cidade: string;
+  uf: string;
+  nichos: string[];
+  status: string;
+  totalEncontrados: number | null;
+  totalQualificados: number | null;
+  totalInseridos: number | null;
+  erroMsg: string | null;
+  createdAt: string;
+  finishedAt: string | null;
+}
+
+interface PartnerLead {
+  id: string;
+  nome: string;
+  telefone: string | null;
+  empresa: string | null;
+  objetivo: string | null;
+  status: string;
+  score: number | null;
+  googlePlaceId: string | null;
+  createdAt: string;
+}
+
+interface ProspectorJobDetail extends ProspectorJob {
+  leads: PartnerLead[];
+}
+
+function JobStatusBadge({ status }: { status: string }) {
+  const cfg: Record<string, string> = {
+    pendente:  "bg-muted text-muted-foreground border-0",
+    rodando:   "bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400 border-0",
+    concluido: "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400 border-0",
+    erro:      "bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400 border-0",
+  };
+  const labels: Record<string, string> = {
+    pendente: "Pendente",
+    rodando: "Rodando",
+    concluido: "Concluído",
+    erro: "Erro",
+  };
+  return (
+    <Badge className={cfg[status] ?? "border-0 bg-muted text-muted-foreground"}>
+      {labels[status] ?? status}
+    </Badge>
+  );
+}
+
+function NewJobDialog({
+  open,
+  onOpenChange,
+  onCreated,
+}: {
+  open: boolean;
+  onOpenChange: (v: boolean) => void;
+  onCreated: () => void;
+}) {
+  const { toast } = useToast();
+  const [cidade, setCidade] = useState("");
+  const [uf, setUf] = useState("");
+  const [selectedNichos, setSelectedNichos] = useState<string[]>([]);
+
+  const createJob = useMutation({
+    mutationFn: () =>
+      adminPost("/api/admin/partner-prospector/jobs", {
+        cidade: cidade.trim(),
+        uf: uf.trim().toUpperCase(),
+        nichos: selectedNichos,
+      }),
+    onSuccess: () => {
+      toast({ title: "Job de prospecção criado." });
+      setCidade("");
+      setUf("");
+      setSelectedNichos([]);
+      onOpenChange(false);
+      onCreated();
+    },
+    onError: (err: Error) =>
+      toast({ title: err.message, variant: "destructive" }),
+  });
+
+  const toggleNicho = (nicho: string) => {
+    setSelectedNichos((prev) =>
+      prev.includes(nicho) ? prev.filter((n) => n !== nicho) : [...prev, nicho]
+    );
+  };
+
+  const valid =
+    cidade.trim().length >= 2 &&
+    uf.trim().length === 2 &&
+    selectedNichos.length > 0;
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="max-w-md">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2">
+            <Search className="h-4 w-4" />
+            Novo Job de Prospecção
+          </DialogTitle>
+        </DialogHeader>
+
+        <div className="space-y-4 py-2">
+          <div className="flex gap-3">
+            <div className="flex-1 space-y-1.5">
+              <label className="text-sm font-medium">Cidade</label>
+              <Input
+                placeholder="São Paulo"
+                value={cidade}
+                onChange={(e) => setCidade(e.target.value)}
+              />
+            </div>
+            <div className="w-20 space-y-1.5">
+              <label className="text-sm font-medium">UF</label>
+              <Input
+                placeholder="SP"
+                maxLength={2}
+                value={uf}
+                onChange={(e) => setUf(e.target.value.toUpperCase())}
+              />
+            </div>
+          </div>
+
+          <div className="space-y-2">
+            <label className="text-sm font-medium">
+              Nichos{" "}
+              <span className="text-muted-foreground font-normal">
+                ({selectedNichos.length} selecionados)
+              </span>
+            </label>
+            <div className="rounded-md border divide-y max-h-56 overflow-y-auto">
+              {PARTNER_NICHOS.map((nicho) => (
+                <label
+                  key={nicho}
+                  className="flex items-center gap-3 px-3 py-2.5 cursor-pointer hover:bg-muted/50 transition-colors"
+                >
+                  <Checkbox
+                    checked={selectedNichos.includes(nicho)}
+                    onCheckedChange={() => toggleNicho(nicho)}
+                  />
+                  <span className="text-sm capitalize">{nicho}</span>
+                </label>
+              ))}
+            </div>
+          </div>
+        </div>
+
+        <DialogFooter>
+          <Button variant="outline" onClick={() => onOpenChange(false)}>
+            Cancelar
+          </Button>
+          <Button
+            disabled={!valid || createJob.isPending}
+            onClick={() => createJob.mutate()}
+          >
+            {createJob.isPending ? (
+              <RefreshCw className="h-4 w-4 animate-spin mr-2" />
+            ) : (
+              <Plus className="h-4 w-4 mr-2" />
+            )}
+            Criar Job
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+function JobDetailDialog({
+  jobId,
+  onClose,
+}: {
+  jobId: string | null;
+  onClose: () => void;
+}) {
+  const { data, isLoading, isError } = useQuery<ProspectorJobDetail>({
+    queryKey: ["partner-prospector-job", jobId],
+    queryFn: () => adminFetch(`/api/admin/partner-prospector/jobs/${jobId}`),
+    enabled: !!jobId,
+  });
+
+  return (
+    <Dialog open={!!jobId} onOpenChange={(v) => !v && onClose()}>
+      <DialogContent className="max-w-3xl max-h-[80vh] overflow-y-auto">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2">
+            <MapPin className="h-4 w-4" />
+            {data ? `${data.cidade}/${data.uf}` : "Detalhes do Job"}
+          </DialogTitle>
+        </DialogHeader>
+
+        {isLoading ? (
+          <div className="space-y-2 py-4">
+            {[1, 2, 3].map((i) => <Skeleton key={i} className="h-10 w-full" />)}
+          </div>
+        ) : isError || !data ? (
+          <div className="flex items-center gap-2 text-destructive text-sm py-4">
+            <AlertTriangle className="h-4 w-4" />
+            Erro ao carregar detalhes.
+          </div>
+        ) : (
+          <div className="space-y-5 py-2">
+            {/* Job summary */}
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+              {[
+                { label: "Encontrados", value: data.totalEncontrados ?? 0 },
+                { label: "Qualificados", value: data.totalQualificados ?? 0 },
+                { label: "Inseridos", value: data.totalInseridos ?? 0 },
+                { label: "Status", value: <JobStatusBadge status={data.status} /> },
+              ].map(({ label, value }) => (
+                <div key={label} className="rounded-lg border bg-muted/30 px-3 py-2.5">
+                  <p className="text-xs text-muted-foreground">{label}</p>
+                  <p className="text-lg font-semibold mt-0.5">{value}</p>
+                </div>
+              ))}
+            </div>
+
+            {/* Nichos */}
+            <div>
+              <p className="text-sm font-medium mb-2">Nichos buscados</p>
+              <div className="flex flex-wrap gap-1.5">
+                {data.nichos.map((n) => (
+                  <Badge key={n} variant="secondary" className="text-xs capitalize">
+                    {n}
+                  </Badge>
+                ))}
+              </div>
+            </div>
+
+            {/* Error message */}
+            {data.erroMsg && (
+              <div className="rounded-md bg-red-50 dark:bg-red-950/30 border border-red-200 dark:border-red-800 px-3 py-2.5 text-sm text-red-700 dark:text-red-400">
+                <span className="font-medium">Erro: </span>{data.erroMsg}
+              </div>
+            )}
+
+            {/* Leads generated */}
+            <div>
+              <p className="text-sm font-medium mb-2">
+                Leads gerados{" "}
+                <span className="text-muted-foreground font-normal">
+                  ({data.leads.length})
+                </span>
+              </p>
+
+              {data.leads.length === 0 ? (
+                <p className="text-sm text-muted-foreground py-4 text-center">
+                  Nenhum lead inserido neste job.
+                </p>
+              ) : (
+                <div className="rounded-md border overflow-x-auto">
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Nome / Empresa</TableHead>
+                        <TableHead>Telefone</TableHead>
+                        <TableHead>Objetivo / Perfil</TableHead>
+                        <TableHead className="text-right">Score</TableHead>
+                        <TableHead>Status</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {data.leads.map((lead) => (
+                        <TableRow key={lead.id}>
+                          <TableCell>
+                            <p className="font-medium text-sm leading-tight">
+                              {lead.nome}
+                            </p>
+                            {lead.empresa && lead.empresa !== lead.nome && (
+                              <p className="text-xs text-muted-foreground">
+                                {lead.empresa}
+                              </p>
+                            )}
+                          </TableCell>
+                          <TableCell className="text-sm text-muted-foreground">
+                            {lead.telefone ?? "—"}
+                          </TableCell>
+                          <TableCell className="text-sm text-muted-foreground max-w-48 truncate">
+                            {lead.objetivo ?? "—"}
+                          </TableCell>
+                          <TableCell className="text-right">
+                            <span
+                              className={cn(
+                                "font-semibold text-sm",
+                                (lead.score ?? 0) >= 80
+                                  ? "text-emerald-600"
+                                  : (lead.score ?? 0) >= 60
+                                  ? "text-amber-600"
+                                  : "text-muted-foreground",
+                              )}
+                            >
+                              {lead.score ?? 0}
+                            </span>
+                          </TableCell>
+                          <TableCell>
+                            <StatusPartnerBadge status={lead.status} />
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+
+        <DialogFooter>
+          <Button variant="outline" onClick={onClose}>
+            Fechar
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+function PartnerProspectorTab() {
+  const { toast } = useToast();
+  const qc = useQueryClient();
+  const [newJobOpen, setNewJobOpen] = useState(false);
+  const [selectedJobId, setSelectedJobId] = useState<string | null>(null);
+
+  const jobsQuery = useQuery<ProspectorJob[]>({
+    queryKey: ["partner-prospector-jobs"],
+    queryFn: () => adminFetch("/api/admin/partner-prospector/jobs"),
+  });
+
+  const runJob = useMutation({
+    mutationFn: (id: string) =>
+      adminPost(`/api/admin/partner-prospector/jobs/${id}/run`, {}),
+    onSuccess: () => {
+      toast({ title: "Execução iniciada em background." });
+      setTimeout(() => qc.invalidateQueries({ queryKey: ["partner-prospector-jobs"] }), 2000);
+    },
+    onError: (err: Error) =>
+      toast({ title: err.message, variant: "destructive" }),
+  });
+
+  const jobs = jobsQuery.data ?? [];
+
+  return (
+    <div className="space-y-4 pt-2">
+      <div className="flex items-center justify-between">
+        <div>
+          <p className="text-sm text-muted-foreground">
+            Busca automática de candidatos a parceiros via Google Places + qualificação com IA.
+          </p>
+        </div>
+        <Button
+          size="sm"
+          className="gap-2 shrink-0"
+          onClick={() => setNewJobOpen(true)}
+        >
+          <Plus className="h-4 w-4" />
+          Novo Job
+        </Button>
+      </div>
+
+      {jobsQuery.isPending ? (
+        <div className="space-y-2">
+          {[1, 2, 3].map((i) => <Skeleton key={i} className="h-12 w-full" />)}
+        </div>
+      ) : jobsQuery.isError ? (
+        <div className="flex items-center gap-2 text-destructive text-sm">
+          <AlertTriangle className="h-4 w-4" />
+          Erro ao carregar jobs.
+        </div>
+      ) : jobs.length === 0 ? (
+        <div className="rounded-xl border border-dashed py-12 text-center">
+          <Search className="h-8 w-8 mx-auto text-muted-foreground/40 mb-3" />
+          <p className="text-sm text-muted-foreground">
+            Nenhum job de prospecção criado ainda.
+          </p>
+          <Button
+            variant="outline"
+            size="sm"
+            className="mt-4 gap-2"
+            onClick={() => setNewJobOpen(true)}
+          >
+            <Plus className="h-4 w-4" />
+            Criar primeiro job
+          </Button>
+        </div>
+      ) : (
+        <div className="rounded-md border overflow-x-auto">
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Cidade/UF</TableHead>
+                <TableHead>Nichos</TableHead>
+                <TableHead>Status</TableHead>
+                <TableHead className="text-right">Encontrados</TableHead>
+                <TableHead className="text-right">Qualificados</TableHead>
+                <TableHead className="text-right">Inseridos</TableHead>
+                <TableHead>Data</TableHead>
+                <TableHead className="text-right">Ações</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {jobs.map((job) => {
+                const isRunning = runJob.isPending && runJob.variables === job.id;
+                const canRun = job.status === "pendente" || job.status === "erro";
+                return (
+                  <TableRow
+                    key={job.id}
+                    className="cursor-pointer hover:bg-muted/50"
+                    onClick={() => setSelectedJobId(job.id)}
+                  >
+                    <TableCell className="font-medium">
+                      {job.cidade}/{job.uf}
+                    </TableCell>
+                    <TableCell>
+                      <Badge variant="secondary" className="text-xs">
+                        {job.nichos?.length ?? 0} nichos
+                      </Badge>
+                    </TableCell>
+                    <TableCell>
+                      <JobStatusBadge status={job.status} />
+                    </TableCell>
+                    <TableCell className="text-right text-muted-foreground">
+                      {job.totalEncontrados ?? "—"}
+                    </TableCell>
+                    <TableCell className="text-right text-muted-foreground">
+                      {job.totalQualificados ?? "—"}
+                    </TableCell>
+                    <TableCell className="text-right font-medium text-emerald-600">
+                      {job.totalInseridos ?? "—"}
+                    </TableCell>
+                    <TableCell className="text-muted-foreground text-sm whitespace-nowrap">
+                      {new Date(job.createdAt).toLocaleDateString("pt-BR")}
+                    </TableCell>
+                    <TableCell className="text-right">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className={cn(
+                          "gap-1.5 h-7 text-xs",
+                          canRun
+                            ? "text-blue-600 border-blue-200 hover:bg-blue-50 dark:border-blue-900 dark:hover:bg-blue-950"
+                            : "opacity-40 cursor-not-allowed",
+                        )}
+                        disabled={!canRun || isRunning}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          runJob.mutate(job.id);
+                        }}
+                      >
+                        {isRunning ? (
+                          <RefreshCw className="h-3 w-3 animate-spin" />
+                        ) : (
+                          <Play className="h-3 w-3" />
+                        )}
+                        Executar
+                      </Button>
+                    </TableCell>
+                  </TableRow>
+                );
+              })}
+            </TableBody>
+          </Table>
+        </div>
+      )}
+
+      <NewJobDialog
+        open={newJobOpen}
+        onOpenChange={setNewJobOpen}
+        onCreated={() => qc.invalidateQueries({ queryKey: ["partner-prospector-jobs"] })}
+      />
+
+      <JobDetailDialog
+        jobId={selectedJobId}
+        onClose={() => setSelectedJobId(null)}
+      />
+    </div>
+  );
+}
+
 // ── Page ───────────────────────────────────────────────────────────────────
 
 export default function AdminPartners() {
@@ -811,6 +1331,10 @@ export default function AdminPartners() {
             <Link className="h-4 w-4" />
             Vincular
           </TabsTrigger>
+          <TabsTrigger value="prospeccao" className="gap-1.5">
+            <Search className="h-4 w-4" />
+            Prospecção Automática
+          </TabsTrigger>
         </TabsList>
 
         <TabsContent value="parceiros">
@@ -827,6 +1351,10 @@ export default function AdminPartners() {
 
         <TabsContent value="vincular" className="pt-4">
           <LinkTenantSection />
+        </TabsContent>
+
+        <TabsContent value="prospeccao" className="pt-4">
+          <PartnerProspectorTab />
         </TabsContent>
       </Tabs>
 
