@@ -7,7 +7,13 @@ import {
   tenantAgentConfigsTable,
   insertAgentConfigSchema,
   updateAgentConfigSchema,
+  updateTenantAgentConfigSchema,
 } from "@workspace/db";
+
+const KNOWN_AGENT_KEYS = new Set([
+  "sdr", "closer", "financeiro", "cobranca",
+  "suporte", "agendamento", "pos_venda", "prospector",
+]);
 
 const incrementCountSchema = {
   parse(body: unknown): number {
@@ -123,12 +129,16 @@ router.get("/agent-configs", async (req, res) => {
   const result = defaults.map((d) => {
     const tc = configMap.get(d.agentKey);
     return {
-      agentKey:   d.agentKey,
-      nome:       d.nome,
-      descricao:  d.descricao ?? "",
-      categoria:  d.categoria ?? "",
-      ativo:      tc ? tc.ativo : false,
-      nomePerfil: tc?.nomePerfil ?? null,
+      agentKey:           d.agentKey,
+      nome:               d.nome,
+      descricao:          d.descricao ?? "",
+      categoria:          d.categoria ?? "",
+      ativo:              tc ? tc.ativo : false,
+      nomePerfil:         tc?.nomePerfil ?? null,
+      tom:                tc?.tom ?? "profissional",
+      restricoes:         tc?.restricoes ?? null,
+      systemPromptBase:   d.systemPromptBase,
+      systemPromptCustom: tc?.systemPromptCustom ?? null,
     };
   });
 
@@ -167,6 +177,48 @@ router.post("/agent-configs/:agentKey/deactivate", async (req, res) => {
     });
 
   return res.json({ agentKey, ativo: false });
+});
+
+// ── PATCH /agent-configs/:agentKey — salva perfil + prompt do tenant ───────────
+// Falls through to PATCH /agent-configs/:id (UUID-based) if agentKey is unknown
+router.patch("/agent-configs/:agentKey", async (req, res, next) => {
+  const { agentKey } = req.params as { agentKey: string };
+  if (!KNOWN_AGENT_KEYS.has(agentKey)) return next();
+
+  const tenantId = req.user?.tenantId;
+  if (!tenantId) { res.status(401).json({ error: "Unauthorized" }); return; }
+
+  const parsed = updateTenantAgentConfigSchema.safeParse(req.body);
+  if (!parsed.success) { res.status(422).json({ error: parsed.error.message }); return; }
+
+  await db
+    .insert(tenantAgentConfigsTable)
+    .values({ tenantId, agentKey, ...parsed.data })
+    .onConflictDoUpdate({
+      target: [tenantAgentConfigsTable.tenantId, tenantAgentConfigsTable.agentKey],
+      set: { ...parsed.data, updatedAt: new Date() },
+    });
+
+  return res.json({ agentKey, ...parsed.data });
+});
+
+// ── POST /agent-configs/:agentKey/reset — limpa systemPromptCustom ────────────
+router.post("/agent-configs/:agentKey/reset", async (req, res, next) => {
+  const { agentKey } = req.params as { agentKey: string };
+  if (!KNOWN_AGENT_KEYS.has(agentKey)) return next();
+
+  const tenantId = req.user?.tenantId;
+  if (!tenantId) { res.status(401).json({ error: "Unauthorized" }); return; }
+
+  await db
+    .insert(tenantAgentConfigsTable)
+    .values({ tenantId, agentKey, systemPromptCustom: null })
+    .onConflictDoUpdate({
+      target: [tenantAgentConfigsTable.tenantId, tenantAgentConfigsTable.agentKey],
+      set: { systemPromptCustom: null, updatedAt: new Date() },
+    });
+
+  return res.json({ agentKey, systemPromptCustom: null });
 });
 
 router.get("/agent-configs/:id", async (req, res) => {

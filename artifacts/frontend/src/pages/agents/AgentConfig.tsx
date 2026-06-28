@@ -12,6 +12,41 @@ import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Alert, AlertDescription } from "@/components/ui/alert";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
+import {
+  Sheet,
+  SheetContent,
+  SheetHeader,
+  SheetTitle,
+  SheetFooter,
+  SheetClose,
+} from "@/components/ui/sheet";
+import {
+  Tabs,
+  TabsContent,
+  TabsList,
+  TabsTrigger,
+} from "@/components/ui/tabs";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog";
 import {
   UserSearch,
   Handshake,
@@ -33,7 +68,20 @@ type AgentCardData = {
   categoria: string;
   ativo: boolean;
   nomePerfil: string | null;
+  tom: string;
+  restricoes: string | null;
+  systemPromptBase: string;
+  systemPromptCustom: string | null;
 };
+
+type TomOption = { value: string; label: string };
+const TOM_OPTIONS: TomOption[] = [
+  { value: "profissional", label: "Profissional" },
+  { value: "amigavel",     label: "Amigável" },
+  { value: "tecnico",      label: "Técnico" },
+  { value: "vendedor",     label: "Vendedor" },
+  { value: "neutro",       label: "Neutro" },
+];
 
 // ── Metadados estáticos por agentKey ──────────────────────────────────────────
 
@@ -52,7 +100,9 @@ const AGENT_META: Record<string, { icon: LucideIcon; descricaoFallback: string }
 
 function authHeaders(): Record<string, string> {
   const token = localStorage.getItem("vendorai_token");
-  return token ? { Authorization: `Bearer ${token}` } : {};
+  return token
+    ? { Authorization: `Bearer ${token}`, "Content-Type": "application/json" }
+    : { "Content-Type": "application/json" };
 }
 
 async function fetchAgentConfigs(): Promise<AgentCardData[]> {
@@ -61,13 +111,32 @@ async function fetchAgentConfigs(): Promise<AgentCardData[]> {
   return res.json();
 }
 
-async function toggleAgent(agentKey: string, activate: boolean): Promise<{ agentKey: string; ativo: boolean }> {
+async function toggleAgent(agentKey: string, activate: boolean) {
   const action = activate ? "activate" : "deactivate";
   const res = await fetch(`/api/agent-configs/${agentKey}/${action}`, {
     method: "POST",
     headers: authHeaders(),
   });
   if (!res.ok) throw new Error(`Erro ao ${activate ? "ativar" : "desativar"} agente`);
+  return res.json() as Promise<{ agentKey: string; ativo: boolean }>;
+}
+
+async function patchAgent(agentKey: string, body: Partial<AgentCardData>) {
+  const res = await fetch(`/api/agent-configs/${agentKey}`, {
+    method: "PATCH",
+    headers: authHeaders(),
+    body: JSON.stringify(body),
+  });
+  if (!res.ok) throw new Error(`Erro ao salvar configuração: ${res.status}`);
+  return res.json();
+}
+
+async function resetAgentPrompt(agentKey: string) {
+  const res = await fetch(`/api/agent-configs/${agentKey}/reset`, {
+    method: "POST",
+    headers: authHeaders(),
+  });
+  if (!res.ok) throw new Error(`Erro ao resetar prompt: ${res.status}`);
   return res.json();
 }
 
@@ -155,6 +224,210 @@ function AgentCard({
   );
 }
 
+// ── Sheet de configuração ──────────────────────────────────────────────────────
+
+function AgentConfigSheet({
+  agent,
+  onClose,
+  onSaved,
+}: {
+  agent: AgentCardData;
+  onClose: () => void;
+  onSaved: (updated: Partial<AgentCardData>) => void;
+}) {
+  const { toast } = useToast();
+  const meta = AGENT_META[agent.agentKey];
+  const Icon = meta?.icon ?? UserSearch;
+
+  // ── Form state ──
+  const [nomePerfil, setNomePerfil]               = useState(agent.nomePerfil ?? "");
+  const [tom, setTom]                             = useState(agent.tom ?? "profissional");
+  const [restricoes, setRestricoes]               = useState(agent.restricoes ?? "");
+  const [systemPromptCustom, setSystemPromptCustom] = useState(agent.systemPromptCustom ?? "");
+
+  // ── Mutation salvar ──
+  const saveMutation = useMutation({
+    mutationFn: () =>
+      patchAgent(agent.agentKey, {
+        nomePerfil: nomePerfil || null,
+        tom,
+        restricoes: restricoes || null,
+        systemPromptCustom: systemPromptCustom || null,
+      }),
+    onSuccess: () => {
+      toast({ title: "Configuração salva", description: "As alterações foram aplicadas ao agente." });
+      onSaved({ nomePerfil: nomePerfil || null, tom, restricoes: restricoes || null, systemPromptCustom: systemPromptCustom || null });
+      onClose();
+    },
+    onError: () => {
+      toast({ title: "Erro ao salvar", description: "Não foi possível salvar as configurações.", variant: "destructive" });
+    },
+  });
+
+  // ── Mutation reset ──
+  const resetMutation = useMutation({
+    mutationFn: () => resetAgentPrompt(agent.agentKey),
+    onSuccess: () => {
+      setSystemPromptCustom("");
+      toast({ title: "Prompt resetado", description: "Voltou ao padrão Vendor.ai." });
+    },
+    onError: () => {
+      toast({ title: "Erro ao resetar", description: "Não foi possível resetar o prompt.", variant: "destructive" });
+    },
+  });
+
+  const nomePerfil_ = nomePerfil || agent.nome;
+
+  return (
+    <Sheet open onOpenChange={(open) => { if (!open) onClose(); }}>
+      <SheetContent side="right" className="w-full sm:max-w-[520px] flex flex-col gap-0 p-0">
+        {/* Header */}
+        <SheetHeader className="px-6 pt-6 pb-4 border-b">
+          <div className="flex items-center gap-3">
+            <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">
+              <Icon className="h-5 w-5" />
+            </div>
+            <div className="flex-1 min-w-0">
+              <SheetTitle className="text-base leading-tight truncate">{nomePerfil_}</SheetTitle>
+              <p className="text-xs text-muted-foreground capitalize">{agent.categoria}</p>
+            </div>
+            <Badge
+              variant={agent.ativo ? "default" : "secondary"}
+              className={agent.ativo ? "bg-emerald-100 text-emerald-700 border-emerald-200" : ""}
+            >
+              {agent.ativo ? "Ativo" : "Inativo"}
+            </Badge>
+          </div>
+        </SheetHeader>
+
+        {/* Tabs */}
+        <Tabs defaultValue="perfil" className="flex-1 flex flex-col overflow-hidden">
+          <TabsList className="mx-6 mt-4 mb-0 w-auto self-start">
+            <TabsTrigger value="perfil">Perfil</TabsTrigger>
+            <TabsTrigger value="prompt">Prompt</TabsTrigger>
+            <TabsTrigger value="teste">Teste</TabsTrigger>
+          </TabsList>
+
+          {/* ABA PERFIL */}
+          <TabsContent value="perfil" className="flex-1 overflow-y-auto px-6 py-4 space-y-5">
+            <div className="space-y-2">
+              <Label htmlFor="nomePerfil">Nome do perfil</Label>
+              <Input
+                id="nomePerfil"
+                value={nomePerfil}
+                onChange={(e) => setNomePerfil(e.target.value)}
+                placeholder={agent.nome}
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="tom">Tom de comunicação</Label>
+              <Select value={tom} onValueChange={setTom}>
+                <SelectTrigger id="tom">
+                  <SelectValue placeholder="Selecione o tom" />
+                </SelectTrigger>
+                <SelectContent>
+                  {TOM_OPTIONS.map((opt) => (
+                    <SelectItem key={opt.value} value={opt.value}>
+                      {opt.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="restricoes">Restrições</Label>
+              <Textarea
+                id="restricoes"
+                value={restricoes}
+                onChange={(e) => setRestricoes(e.target.value)}
+                placeholder="Ex: Nunca mencionar concorrentes. Não prometer prazos."
+                rows={4}
+              />
+            </div>
+          </TabsContent>
+
+          {/* ABA PROMPT */}
+          <TabsContent value="prompt" className="flex-1 overflow-y-auto px-6 py-4 space-y-5">
+            <div className="space-y-2">
+              <Label>Prompt padrão Vendor.ai</Label>
+              <Textarea
+                value={agent.systemPromptBase}
+                readOnly
+                rows={6}
+                className="bg-muted/50 text-muted-foreground resize-none cursor-default focus-visible:ring-0"
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="systemPromptCustom">Sua personalização</Label>
+              <Textarea
+                id="systemPromptCustom"
+                value={systemPromptCustom}
+                onChange={(e) => setSystemPromptCustom(e.target.value)}
+                placeholder="Deixe vazio para usar o padrão. Preencha para substituir."
+                rows={8}
+              />
+            </div>
+
+            <AlertDialog>
+              <AlertDialogTrigger asChild>
+                <Button variant="outline" size="sm" disabled={resetMutation.isPending}>
+                  {resetMutation.isPending ? "Resetando…" : "Resetar para padrão"}
+                </Button>
+              </AlertDialogTrigger>
+              <AlertDialogContent>
+                <AlertDialogHeader>
+                  <AlertDialogTitle>Resetar prompt personalizado?</AlertDialogTitle>
+                  <AlertDialogDescription>
+                    Isso irá remover toda a personalização de prompt deste agente e voltar ao padrão Vendor.ai. Essa ação não pode ser desfeita.
+                  </AlertDialogDescription>
+                </AlertDialogHeader>
+                <AlertDialogFooter>
+                  <AlertDialogCancel>Cancelar</AlertDialogCancel>
+                  <AlertDialogAction
+                    onClick={() => resetMutation.mutate()}
+                    className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                  >
+                    Confirmar reset
+                  </AlertDialogAction>
+                </AlertDialogFooter>
+              </AlertDialogContent>
+            </AlertDialog>
+          </TabsContent>
+
+          {/* ABA TESTE */}
+          <TabsContent value="teste" className="flex-1 px-6 py-4">
+            <div className="flex flex-col items-center justify-center h-48 gap-3 text-center">
+              <div className="h-12 w-12 rounded-full bg-muted flex items-center justify-center">
+                <Icon className="h-6 w-6 text-muted-foreground" />
+              </div>
+              <p className="font-medium">Simulador de conversa</p>
+              <p className="text-sm text-muted-foreground">Em breve — teste o agente diretamente aqui.</p>
+            </div>
+          </TabsContent>
+        </Tabs>
+
+        {/* Footer */}
+        <SheetFooter className="px-6 py-4 border-t flex flex-row gap-2 justify-end">
+          <SheetClose asChild>
+            <Button variant="outline" onClick={onClose}>
+              Cancelar
+            </Button>
+          </SheetClose>
+          <Button
+            onClick={() => saveMutation.mutate()}
+            disabled={saveMutation.isPending}
+          >
+            {saveMutation.isPending ? "Salvando…" : "Salvar"}
+          </Button>
+        </SheetFooter>
+      </SheetContent>
+    </Sheet>
+  );
+}
+
 // ── Página principal ───────────────────────────────────────────────────────────
 
 export default function AgentConfig() {
@@ -173,7 +446,7 @@ export default function AgentConfig() {
     enabled: !!user?.tenantId,
   });
 
-  const mutation = useMutation({
+  const toggleMutation = useMutation({
     mutationFn: ({ agentKey, activate }: { agentKey: string; activate: boolean }) =>
       toggleAgent(agentKey, activate),
     onMutate: async ({ agentKey, activate }) => {
@@ -209,11 +482,22 @@ export default function AgentConfig() {
   });
 
   function handleToggle(agentKey: string, activate: boolean) {
-    mutation.mutate({ agentKey, activate });
+    toggleMutation.mutate({ agentKey, activate });
   }
 
   function handleConfigure(agent: AgentCardData) {
     setSelectedAgent(agent);
+  }
+
+  function handleSheetClose() {
+    setSelectedAgent(null);
+  }
+
+  function handleSaved(agentKey: string, updated: Partial<AgentCardData>) {
+    queryClient.setQueryData<AgentCardData[]>(QUERY_KEY, (old) =>
+      old?.map((a) => (a.agentKey === agentKey ? { ...a, ...updated } : a)) ?? []
+    );
+    setSelectedAgent(null);
   }
 
   return (
@@ -249,9 +533,11 @@ export default function AgentConfig() {
       </div>
 
       {selectedAgent && (
-        <p className="text-xs text-muted-foreground text-center">
-          Configuração avançada de <strong>{selectedAgent.nomePerfil ?? selectedAgent.nome}</strong> disponível em breve.
-        </p>
+        <AgentConfigSheet
+          agent={selectedAgent}
+          onClose={handleSheetClose}
+          onSaved={(updated) => handleSaved(selectedAgent.agentKey, updated)}
+        />
       )}
     </div>
   );
