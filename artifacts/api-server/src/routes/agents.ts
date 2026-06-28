@@ -83,7 +83,7 @@ async function handleAgentProcess(
   const { leadId, mensagem } = parsed.data;
 
   const [config] = await db.select().from(agentConfigsTable).where(eq(agentConfigsTable.tenantId, tenantId));
-  if (!config) { res.status(404).json({ error: "Agent config not found for this tenant" }); return; }
+  if (!config) { res.status(400).json({ error: "Agente não configurado", code: "AGENT_NOT_CONFIGURED" }); return; }
 
   // Check plan authorization
   const planCheck = await checkAgentPlan(tenantId, agentName, req.log, leadId);
@@ -148,7 +148,7 @@ async function handleSchedulerProcess(req: Request, res: Response): Promise<void
   const { leadId, mensagem, agendamento: agendamentoInput } = parsed.data;
 
   const [config] = await db.select().from(agentConfigsTable).where(eq(agentConfigsTable.tenantId, tenantId));
-  if (!config) { res.status(404).json({ error: "Agent config not found for this tenant" }); return; }
+  if (!config) { res.status(400).json({ error: "Agente não configurado", code: "AGENT_NOT_CONFIGURED" }); return; }
 
   const agentCfg = config.agents?.scheduler;
   if (!agentCfg?.enabled) { res.status(422).json({ error: "Agent \"scheduler\" is not enabled for this tenant" }); return; }

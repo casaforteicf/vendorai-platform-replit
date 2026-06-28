@@ -50,7 +50,7 @@ router.get("/tenants/:tenantId/subscription", async (req, res) => {
     .where(eq(subscriptionsTable.tenantId, String(req.params.tenantId)));
 
   if (!subscription) {
-    res.status(404).json({ error: "Subscription not found for this tenant" });
+    res.json({ status: "sem_plano", subscription: null });
     return;
   }
 
