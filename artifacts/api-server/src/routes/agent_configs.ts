@@ -3,6 +3,8 @@ import { eq, sql } from "drizzle-orm";
 import {
   db,
   agentConfigsTable,
+  agentDefaultsTable,
+  tenantAgentConfigsTable,
   insertAgentConfigSchema,
   updateAgentConfigSchema,
 } from "@workspace/db";
@@ -104,6 +106,67 @@ router.get("/tenants/:tenantId/agent-config", async (req, res) => {
   const config = await selectConfigByTenantId(String(req.params.tenantId));
   if (!config) { res.status(404).json({ error: "Agent config not found" }); return; }
   res.json(config);
+});
+
+// ── GET /agent-configs — lista unificada de agent_defaults + tenant_agent_configs ──
+router.get("/agent-configs", async (req, res) => {
+  const tenantId = req.user?.tenantId;
+  if (!tenantId) { res.status(401).json({ error: "Unauthorized" }); return; }
+
+  const [defaults, tenantConfigs] = await Promise.all([
+    db.select().from(agentDefaultsTable).where(eq(agentDefaultsTable.ativo, true)),
+    db.select().from(tenantAgentConfigsTable).where(eq(tenantAgentConfigsTable.tenantId, tenantId)),
+  ]);
+
+  const configMap = new Map(tenantConfigs.map((c) => [c.agentKey, c]));
+
+  const result = defaults.map((d) => {
+    const tc = configMap.get(d.agentKey);
+    return {
+      agentKey:   d.agentKey,
+      nome:       d.nome,
+      descricao:  d.descricao ?? "",
+      categoria:  d.categoria ?? "",
+      ativo:      tc ? tc.ativo : false,
+      nomePerfil: tc?.nomePerfil ?? null,
+    };
+  });
+
+  return res.json(result);
+});
+
+// ── POST /agent-configs/:agentKey/activate ──────────────────────────────────────
+router.post("/agent-configs/:agentKey/activate", async (req, res) => {
+  const tenantId = req.user?.tenantId;
+  if (!tenantId) { res.status(401).json({ error: "Unauthorized" }); return; }
+  const { agentKey } = req.params as { agentKey: string };
+
+  await db
+    .insert(tenantAgentConfigsTable)
+    .values({ tenantId, agentKey, ativo: true })
+    .onConflictDoUpdate({
+      target: [tenantAgentConfigsTable.tenantId, tenantAgentConfigsTable.agentKey],
+      set: { ativo: true, updatedAt: new Date() },
+    });
+
+  return res.json({ agentKey, ativo: true });
+});
+
+// ── POST /agent-configs/:agentKey/deactivate ────────────────────────────────────
+router.post("/agent-configs/:agentKey/deactivate", async (req, res) => {
+  const tenantId = req.user?.tenantId;
+  if (!tenantId) { res.status(401).json({ error: "Unauthorized" }); return; }
+  const { agentKey } = req.params as { agentKey: string };
+
+  await db
+    .insert(tenantAgentConfigsTable)
+    .values({ tenantId, agentKey, ativo: false })
+    .onConflictDoUpdate({
+      target: [tenantAgentConfigsTable.tenantId, tenantAgentConfigsTable.agentKey],
+      set: { ativo: false, updatedAt: new Date() },
+    });
+
+  return res.json({ agentKey, ativo: false });
 });
 
 router.get("/agent-configs/:id", async (req, res) => {

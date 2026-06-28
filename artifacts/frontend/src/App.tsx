@@ -57,6 +57,7 @@ const ContentStudio      = lazy(() => import("@/pages/ContentStudio"));
 const GuiaImplantacao    = lazy(() => import("@/pages/GuiaImplantacao"));
 const Questionario       = lazy(() => import("@/pages/Questionario"));
 const Analytics          = lazy(() => import("@/pages/Analytics"));
+const AgentConfig        = lazy(() => import("@/pages/agents/AgentConfig"));
 const RelatorioGanhosMes = lazy(() => import("@/pages/RelatorioGanhosMes"));
 const RelatorioTipoCliente = lazy(() => import("@/pages/RelatorioTipoCliente"));
 const RelatorioDores     = lazy(() => import("@/pages/RelatorioDores"));
@@ -464,6 +465,9 @@ function AppRoutes() {
         </Route>
         <Route path="/guia-implantacao">
           {() => <ProtectedRoute component={GuiaImplantacao} />}
+        </Route>
+        <Route path="/agents/config">
+          {() => <ProtectedRoute component={AgentConfig} />}
         </Route>
         <Route path="/analytics">
           {() => <ProtectedRoute component={Analytics} />}
