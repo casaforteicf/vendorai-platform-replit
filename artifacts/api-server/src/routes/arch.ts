@@ -12,6 +12,7 @@ import {
   archMarketplaceItemsTable,
   archMarketplacePedidosTable,
   notificationsTable,
+  tenantsTable,
   insertArchProjetoSchema,
   updateArchProjetoSchema,
   insertArchAmbienteSchema,
@@ -76,7 +77,7 @@ router.get("/arch/portal/:token", async (req, res) => {
     return res.status(404).json({ error: "Portal não encontrado ou inativo." });
   }
 
-  const [ambientes, orcamento, cenas] = await Promise.all([
+  const [ambientes, orcamento, cenas, tenantRow] = await Promise.all([
     db
       .select()
       .from(archAmbientesTable)
@@ -90,9 +91,19 @@ router.get("/arch/portal/:token", async (req, res) => {
       .select()
       .from(archCenasTable)
       .where(eq(archCenasTable.projetoId, projeto.id)),
+    db
+      .select({
+        name:       tenantsTable.name,
+        nomeEmpresa: tenantsTable.nomeEmpresa,
+        logoUrl:    tenantsTable.logoUrl,
+        site:       tenantsTable.site,
+      })
+      .from(tenantsTable)
+      .where(eq(tenantsTable.id, projeto.tenantId))
+      .limit(1),
   ]);
 
-  return res.json({ projeto, ambientes, orcamento, cenas });
+  return res.json({ projeto, ambientes, orcamento, cenas, tenant: tenantRow[0] ?? null });
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -769,6 +780,49 @@ router.post("/arch/marketplace", authenticate, async (req, res) => {
     .returning();
 
   return res.status(201).json(item);
+});
+
+// PATCH /api/arch/marketplace/:itemId
+router.patch("/arch/marketplace/:itemId", authenticate, async (req, res) => {
+  const itemId = String(req.params.itemId);
+  const tid    = tenantId(req);
+
+  const [item] = await db
+    .select({ vendedorTenantId: archMarketplaceItemsTable.vendedorTenantId })
+    .from(archMarketplaceItemsTable)
+    .where(eq(archMarketplaceItemsTable.id, itemId))
+    .limit(1);
+
+  if (!item) return res.status(404).json({ error: "Produto não encontrado." });
+  if (item.vendedorTenantId !== tid && !isSuperAdmin(req)) {
+    return res.status(403).json({ error: "Acesso negado." });
+  }
+
+  const bodySchema = z.object({
+    nome:      z.string().optional(),
+    descricao: z.string().optional(),
+    categoria: z.string().optional(),
+    preco:     z.coerce.number().nonnegative().optional(),
+    ativo:     z.boolean().optional(),
+  });
+
+  const parsed = bodySchema.safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
+
+  const updates: Record<string, unknown> = {};
+  if (parsed.data.nome      !== undefined) updates.nome      = parsed.data.nome;
+  if (parsed.data.descricao !== undefined) updates.descricao = parsed.data.descricao;
+  if (parsed.data.categoria !== undefined) updates.categoria = parsed.data.categoria;
+  if (parsed.data.preco     !== undefined) updates.preco     = String(parsed.data.preco);
+  if (parsed.data.ativo     !== undefined) updates.ativo     = parsed.data.ativo;
+
+  const [updated] = await db
+    .update(archMarketplaceItemsTable)
+    .set(updates)
+    .where(eq(archMarketplaceItemsTable.id, itemId))
+    .returning();
+
+  return res.json(updated);
 });
 
 // POST /api/arch/marketplace/:itemId/comprar
