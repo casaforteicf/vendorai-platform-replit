@@ -79,3 +79,6 @@ export * from "./partner_commissions";
 export * from "./partner_indicators";
 export * from "./partner_leads";
 export * from "./partner_prospector_jobs";
+export * from "./prospector_flows";
+export * from "./prospector_flow_steps";
+export * from "./prospector_flow_executions";
