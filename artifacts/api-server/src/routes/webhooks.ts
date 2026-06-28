@@ -25,6 +25,7 @@ import { runAutoQuotePipeline } from "../services/auto-quote.js";
 import { transcribeAudio } from "../services/audio-transcription.js";
 import { interpretImage, interpretPdf } from "../services/media-interpretation.js";
 import { findLeadByDedup, storePhone } from "../lib/dedup.js";
+import { handleAppointmentConfirmation } from "../jobs/appointmentReminders.js";
 
 const router: IRouter = Router();
 
@@ -204,25 +205,39 @@ router.post("/tenants/:tenantId/webhooks/whatsapp", async (req, res) => {
     })
     .where(eq(conversationsTable.id, conversation.id));
 
-  // ── 7. Auto-quote pipeline for leads from WhatsApp channel ───────────
-  // Only for leads created by the channel (source === "whatsapp"), not manual leads.
-  if (lead.source === "whatsapp") {
-    const { generated, message: quoteMessage } = await runAutoQuotePipeline({
-      tenantId,
-      leadId: lead.id,
-      mensagem,
-      log: req.log,
-    });
+  // ── 7. Confirmação de agendamento (SIM/NÃO) — intercept antes do agente ──
+  const _apptHandled = await handleAppointmentConfirmation(tenantId, lead.id, mensagem, req.log);
 
-    if (generated) {
-      // Send the quote summary via WhatsApp
-      await sendOutgoingMessage(
-        { tenantId, leadId: lead.id, conteudo: quoteMessage, canal: "whatsapp", agentName: "auto-quote" },
-        req.log
-      );
-      req.log.info({ leadId: lead.id }, "webhook: auto-quote sent");
+  if (!_apptHandled) {
+    // ── 8. Auto-quote pipeline for leads from WhatsApp channel ─────────
+    // Only for leads created by the channel (source === "whatsapp"), not manual leads.
+    if (lead.source === "whatsapp") {
+      const { generated, message: quoteMessage } = await runAutoQuotePipeline({
+        tenantId,
+        leadId: lead.id,
+        mensagem,
+        log: req.log,
+      });
+
+      if (generated) {
+        // Send the quote summary via WhatsApp
+        await sendOutgoingMessage(
+          { tenantId, leadId: lead.id, conteudo: quoteMessage, canal: "whatsapp", agentName: "auto-quote" },
+          req.log
+        );
+        req.log.info({ leadId: lead.id }, "webhook: auto-quote sent");
+      } else {
+        // No quote generated — dispatch AI agent to handle the conversation
+        dispatchAgentBackground({
+          tenantId,
+          leadId: lead.id,
+          mensagem,
+          log: req.log,
+        });
+        req.log.info({ leadId: lead.id, conversationId: conversation.id }, "webhook: agent dispatch triggered");
+      }
     } else {
-      // No quote generated — dispatch AI agent to handle the conversation
+      // Manual lead — dispatch AI agent normally (no auto-quote)
       dispatchAgentBackground({
         tenantId,
         leadId: lead.id,
@@ -231,15 +246,6 @@ router.post("/tenants/:tenantId/webhooks/whatsapp", async (req, res) => {
       });
       req.log.info({ leadId: lead.id, conversationId: conversation.id }, "webhook: agent dispatch triggered");
     }
-  } else {
-    // Manual lead — dispatch AI agent normally (no auto-quote)
-    dispatchAgentBackground({
-      tenantId,
-      leadId: lead.id,
-      mensagem,
-      log: req.log,
-    });
-    req.log.info({ leadId: lead.id, conversationId: conversation.id }, "webhook: agent dispatch triggered");
   }
 
   res.status(200).json({
@@ -487,35 +493,40 @@ router.post("/tenants/:tenantId/webhooks/zapi", async (req, res) => {
     })
     .where(eq(conversationsTable.id, conversation.id));
 
-  // ── 8. Auto-quote pipeline for Z-API channel leads ─────────────────────────
-  if (lead.source === "whatsapp") {
-    const { generated, message: quoteMessage } = await runAutoQuotePipeline({
-      tenantId,
-      leadId: lead.id,
-      mensagem,
-      log: req.log,
-    });
+  // ── 8. Confirmação de agendamento (SIM/NÃO) — intercept antes do agente ──
+  const _zapiApptHandled = await handleAppointmentConfirmation(tenantId, lead.id, mensagem, req.log);
 
-    if (generated) {
-      await sendOutgoingMessage(
-        { tenantId, leadId: lead.id, conteudo: quoteMessage, canal: "whatsapp", agentName: "auto-quote" },
-        req.log
-      );
-      req.log.info({ leadId: lead.id }, "zapi-webhook: auto-quote sent");
+  if (!_zapiApptHandled) {
+    // ── 9. Auto-quote pipeline for Z-API channel leads ───────────────────
+    if (lead.source === "whatsapp") {
+      const { generated, message: quoteMessage } = await runAutoQuotePipeline({
+        tenantId,
+        leadId: lead.id,
+        mensagem,
+        log: req.log,
+      });
+
+      if (generated) {
+        await sendOutgoingMessage(
+          { tenantId, leadId: lead.id, conteudo: quoteMessage, canal: "whatsapp", agentName: "auto-quote" },
+          req.log
+        );
+        req.log.info({ leadId: lead.id }, "zapi-webhook: auto-quote sent");
+      } else {
+        dispatchAgentBackground({ tenantId, leadId: lead.id, mensagem, log: req.log });
+        req.log.info({ messageId: message.id, leadId: lead.id }, "zapi-webhook: agent dispatched");
+      }
     } else {
       dispatchAgentBackground({ tenantId, leadId: lead.id, mensagem, log: req.log });
       req.log.info({ messageId: message.id, leadId: lead.id }, "zapi-webhook: agent dispatched");
     }
-  } else {
-    dispatchAgentBackground({ tenantId, leadId: lead.id, mensagem, log: req.log });
-    req.log.info({ messageId: message.id, leadId: lead.id }, "zapi-webhook: agent dispatched");
   }
 
   res.status(200).json({
     leadId: lead.id,
     conversationId: conversation.id,
     messageId: message.id,
-    agentDispatched: true,
+    agentDispatched: !_zapiApptHandled,
   });
 });
 
@@ -1012,8 +1023,11 @@ router.post("/webhooks/meta/whatsapp", async (req, res) => {
 
           req.log.info({ messageId: message.id, tenantId, phone }, "meta-webhook: message processed");
 
-          // Dispatch AI agent
-          dispatchAgentBackground({ tenantId, leadId: lead.id, mensagem: textBody, log: req.log });
+          // Confirmação de agendamento (SIM/NÃO) ou dispatch AI agent
+          const _metaApptHandled = await handleAppointmentConfirmation(tenantId, lead.id, textBody, req.log);
+          if (!_metaApptHandled) {
+            dispatchAgentBackground({ tenantId, leadId: lead.id, mensagem: textBody, log: req.log });
+          }
         }
       }
     }
