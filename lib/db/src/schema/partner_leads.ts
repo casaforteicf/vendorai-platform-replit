@@ -11,7 +11,6 @@ export const partnerLeadsTable = pgTable(
       .primaryKey()
       .$defaultFn(() => crypto.randomUUID()),
     partnerId: text("partner_id")
-      .notNull()
       .references(() => partnersTable.id, { onDelete: "cascade" }),
     tenantId: text("tenant_id")
       .references(() => tenantsTable.id, { onDelete: "set null" }),

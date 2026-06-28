@@ -58,6 +58,7 @@ import tenantCalendarSettingsRouter from "./tenant_calendar_settings";
 import leadSpouseConsentRouter from "./lead_spouse_consent";
 import aiGatewayRouter from "./ai_gateway";
 import prospectorRouter from "./prospector";
+import partnerProspectorRouter from "./partner-prospector";
 import contentStudioRouter from "./content_studio";
 import { authenticate, blockPartnerFromCRM, blockSuspendedTenants, blockExpiredDemo, requireRole, requireSameTenanOrSuperAdmin } from "../middlewares/auth";
 
@@ -205,6 +206,9 @@ router.use(aiGatewayRouter);
 
 // Prospector Hub
 router.use(prospectorRouter);
+
+// Partner Prospector Hub (admin)
+router.use(partnerProspectorRouter);
 
 export { requireRole, requireSameTenanOrSuperAdmin };
 export default router;

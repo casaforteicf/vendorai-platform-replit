@@ -15,6 +15,7 @@ import cron from "node-cron";
 import { and, desc, eq, gt, isNotNull, isNull, lte, gte, lt, inArray, sql } from "drizzle-orm";
 import { runMonthlyBilling } from "../lib/billing.js";
 import { runPartnerCommissions } from "./partnerCommission.js";
+import { runPartnerProspectorJob } from "./partnerProspector.js";
 import type { Logger } from "pino";
 import {
   db,
@@ -1115,7 +1116,14 @@ export function startScheduler(log: Logger): void {
     });
   });
 
-  log.info("scheduler: started (churn-check @:05, campaigns @:15, billing @day-5-08:00, reactivation @03:00, demo-expiration @06:00, demo-reset @02:00, special-dates @07:00, partner-commissions @day-1-06:00)");
+  // Job 9: Partner prospector — daily at 08:00
+  cron.schedule("0 8 * * *", () => {
+    runPartnerProspectorJob(log).catch((err) => {
+      log.error({ err }, "scheduler/partner-prospector: unhandled error");
+    });
+  });
+
+  log.info("scheduler: started (churn-check @:05, campaigns @:15, billing @day-5-08:00, reactivation @03:00, demo-expiration @06:00, demo-reset @02:00, special-dates @07:00, partner-commissions @day-1-06:00, partner-prospector @08:00)");
 }
 
 // ── Job 6: Reset demo tenants ──────────────────────────────────
