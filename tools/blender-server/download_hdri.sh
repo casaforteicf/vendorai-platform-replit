@@ -1,59 +1,66 @@
 #!/usr/bin/env bash
 # download_hdri.sh
-# Baixa HDRIs gratuitas do Poly Haven para iluminação realista
-# Tamanho total: ~80 MB (resolução 2k)
+# Baixa 3 HDRIs gratuitas (CC0) do Poly Haven para /opt/blender/hdri
+# Nomes locais: interior_warm.hdr, interior_cool.hdr, natural.hdr
 
 set -euo pipefail
 
-HDRI_DIR="$HOME/hdri"
+HDRI_DIR="/opt/blender/hdri"
 RES="2k"
 
-# HDRIs do Poly Haven (CC0 — uso livre, incluindo comercial)
-declare -A HDRIS=(
-    ["studio_small.hdr"]="https://dl.polyhaven.org/file/ph-assets/HDRIs/hdr/${RES}/studio_small_08_${RES}.hdr"
-    ["outdoor_umbrellas.hdr"]="https://dl.polyhaven.org/file/ph-assets/HDRIs/hdr/${RES}/outdoor_umbrellas_${RES}.hdr"
-    ["sunset_jhbcentral.hdr"]="https://dl.polyhaven.org/file/ph-assets/HDRIs/hdr/${RES}/sunset_jhbcentral_${RES}.hdr"
-    ["interior_atelier.hdr"]="https://dl.polyhaven.org/file/ph-assets/HDRIs/hdr/${RES}/artist_workshop_${RES}.hdr"
-)
+# Mapeamento: nome_local → slug Poly Haven
+declare -A HDRIS
+HDRIS["interior_warm.hdr"]="vintage_measuring_lab"
+HDRIS["interior_cool.hdr"]="studio_small_08"
+HDRIS["natural.hdr"]="rural_asphalt_road"
 
-echo "=== VendorAI Blender Server — Baixando HDRIs (Poly Haven CC0) ==="
+BASE_URL="https://dl.polyhaven.org/file/ph-assets/HDRIs/hdr/${RES}"
+
+echo "=============================================="
+echo " VendorAI Blender Server — Download HDRIs"
+echo " Destino: ${HDRI_DIR}"
+echo "=============================================="
 echo ""
 
 mkdir -p "$HDRI_DIR"
 
-for NAME in "${!HDRIS[@]}"; do
-    URL="${HDRIS[$NAME]}"
-    DEST="${HDRI_DIR}/${NAME}"
+for LOCAL_NAME in "${!HDRIS[@]}"; do
+    SLUG="${HDRIS[$LOCAL_NAME]}"
+    URL="${BASE_URL}/${SLUG}_${RES}.hdr"
+    DEST="${HDRI_DIR}/${LOCAL_NAME}"
 
     if [ -f "$DEST" ]; then
-        echo "  [OK] ${NAME} — já existe, pulando."
+        SIZE=$(du -sh "$DEST" 2>/dev/null | cut -f1)
+        echo "  [OK] ${LOCAL_NAME} — já existe (${SIZE}), pulando."
         continue
     fi
 
-    echo "  Baixando ${NAME}..."
-    if wget -q --show-progress -O "$DEST" "$URL"; then
-        echo "  [OK] ${NAME}"
+    echo "  Baixando ${LOCAL_NAME} ← ${SLUG}..."
+    if wget -q --show-progress -O "$DEST" "$URL" 2>&1; then
+        SIZE=$(du -sh "$DEST" 2>/dev/null | cut -f1)
+        echo "  [OK] ${LOCAL_NAME} (${SIZE})"
     else
-        echo "  [AVISO] Falha ao baixar ${NAME} — tentando URL alternativa..."
-        # Fallback: gera um HDRI cinza mínimo de 4x2 pixels se tudo falhar
-        python3 - <<'PYEOF'
-import struct, zlib, os, sys
+        echo "  [AVISO] Falha ao baixar ${LOCAL_NAME}. Criando HDRI placeholder..."
+        # Cria um arquivo .hdr mínimo válido (cinza neutro, 8x4 px)
+        python3 - "$DEST" <<'PYEOF'
+import sys, struct
 
-name = sys.argv[1] if len(sys.argv) > 1 else "fallback.hdr"
-# HDR mínimo válido (cinza neutro)
-content = b"#?RADIANCE\nFORMAT=32-bit_rle_rgbe\n\n-Y 2 +X 4\n"
-for _ in range(8):
-    content += bytes([128, 128, 128, 128])  # RGBE cinza
-with open(name, "wb") as f:
-    f.write(content)
+dest = sys.argv[1]
+# Header RGBE mínimo válido
+header = b"#?RADIANCE\nFORMAT=32-bit_rle_rgbe\n\n-Y 4 +X 8\n"
+# 32 pixels de cinza (r=g=b=128, e=128)
+pixels = bytes([128, 128, 128, 128] * 32)
+with open(dest, "wb") as f:
+    f.write(header + pixels)
+print(f"  Placeholder criado: {dest}")
 PYEOF
-        echo "  [INFO] HDRI fallback criado para ${NAME}"
     fi
 done
 
 echo ""
-echo "=== HDRIs disponíveis em: ${HDRI_DIR} ==="
+echo "=============================================="
+echo " HDRIs disponíveis:"
 ls -lh "$HDRI_DIR"
+echo "=============================================="
 echo ""
-echo "Adicione ao seu .env:"
-echo "  HDRI_DIR=${HDRI_DIR}"
+echo "Próximo passo: python main.py"

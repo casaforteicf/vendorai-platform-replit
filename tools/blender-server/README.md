@@ -1,40 +1,46 @@
 # VendorAI Blender Server
 
-Servidor Python/Flask que executa **Blender headless** para gerar renders 3D de projetos de arquitetura/design de interiores. Integra com o banco Supabase do VendorAI para armazenar as imagens geradas.
+Servidor Python/Flask que executa o **Blender 3.6.5 em modo headless** para gerar renders 3D de projetos de interiores. Integra com o Supabase do VendorAI para armazenar as imagens geradas.
 
 ---
 
-## Passo a passo de instalação
+## Passo a passo de deploy
 
-### 1. Criar novo Replit (Python)
+### 1. Criar novo Replit Python
 
-1. Acesse [replit.com](https://replit.com) e clique em **Create Repl**
-2. Escolha o template **Python**
-3. Nomeie como `vendorai-blender-server`
+1. Acesse [replit.com](https://replit.com) → **Create Repl**
+2. Template: **Python**
+3. Nome: `vendorai-blender-server`
 4. Clique em **Create Repl**
+
+---
 
 ### 2. Copiar os arquivos
 
-No Shell do novo Replit, faça upload ou cole o conteúdo de cada arquivo:
+No editor do Replit, crie cada arquivo abaixo e cole o conteúdo correspondente:
 
-```
-main.py
-blender_render.py
-requirements.txt
-install_blender.sh
-download_hdri.sh
-.env.example  →  renomear para .env
-```
+| Arquivo | Descrição |
+|---|---|
+| `main.py` | Servidor Flask principal |
+| `blender_render.py` | Script executado dentro do Blender |
+| `requirements.txt` | Dependências Python |
+| `install_blender.sh` | Instala o Blender |
+| `download_hdri.sh` | Baixa as HDRIs de iluminação |
+| `.env` | Variáveis de ambiente (ver passo 5) |
 
-Você pode usar o botão **Upload file** na aba Files, ou criar cada arquivo manualmente pelo editor.
+Você pode usar o botão **Upload file** ou criar cada arquivo pelo editor.
+
+---
 
 ### 3. Instalar dependências Python
 
-No Shell:
+No **Shell** do Replit:
 
 ```bash
 pip install -r requirements.txt
 ```
+
+---
 
 ### 4. Instalar o Blender headless
 
@@ -42,55 +48,67 @@ pip install -r requirements.txt
 bash install_blender.sh
 ```
 
-Este script:
-- Instala dependências de sistema (libx11, libGL etc.)
-- Baixa o Blender 4.1 LTS (~220 MB)
-- Extrai em `~/blender/`
-- Imprime o caminho do binário ao final
+O script vai:
+- Instalar dependências de sistema (`libx11`, `libGL`, etc.)
+- Baixar o Blender 3.6.5 Linux x64 (~200 MB) de um mirror oficial
+- Extrair em `/opt/blender/`
+- Verificar o binário e imprimir a versão
+- Criar a pasta `/opt/blender/hdri/`
 
-⏱️ Tempo estimado: 3–5 minutos
+⏱️ Tempo estimado: **3–5 minutos**
 
-### 5. Baixar HDRIs de iluminação
+> **Nota**: se o Replit não tiver permissão de escrita em `/opt`, o script falhará.
+> Nesse caso, edite `install_blender.sh` e `main.py` trocando `/opt/blender` por `$HOME/blender`.
+
+---
+
+### 5. Baixar as HDRIs de iluminação
 
 ```bash
 bash download_hdri.sh
 ```
 
-Baixa 4 HDRIs gratuitas (CC0) do Poly Haven para iluminação realista de cenas:
-- `studio_small.hdr` — ambiente de estúdio neutro
-- `outdoor_umbrellas.hdr` — exterior com sombras
-- `sunset_jhbcentral.hdr` — pôr do sol
-- `interior_atelier.hdr` — ateliê interior
+Baixa 3 HDRIs gratuitas (CC0) do Poly Haven para `/opt/blender/hdri/`:
 
-⏱️ Tempo estimado: 1–2 minutos (~80 MB)
+| Arquivo local | Preset | Uso ideal |
+|---|---|---|
+| `interior_warm.hdr` | `"interior_warm"` | Sala de estar, quarto |
+| `interior_cool.hdr` | `"interior_cool"` | Escritório, cozinha |
+| `natural.hdr` | `"natural"` | Espaços com luz natural |
+
+⏱️ Tempo estimado: **1–2 minutos (~60–90 MB)**
+
+---
 
 ### 6. Configurar o arquivo `.env`
 
-Renomeie `.env.example` para `.env` e preencha:
+Crie o arquivo `.env` na raiz do Replit com o conteúdo abaixo:
 
 ```env
-# Gere um UUID em https://www.uuidgenerator.net/
+# Gere um UUID em: https://www.uuidgenerator.net/
 BLENDER_SECRET=xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx
 
 # URL e chave do seu projeto Supabase
 SUPABASE_URL=https://seu-projeto.supabase.co
 SUPABASE_KEY=sua-service-role-key
 
-# Caminhos (preenchidos automaticamente pelos scripts acima)
-BLENDER_PATH=/home/user/blender/blender
-HDRI_DIR=/home/user/hdri
-OUTPUT_DIR=/tmp/renders
-
 PORT=8080
 ```
 
-> **SUPABASE_KEY**: use a **service_role key** (não a anon key), pois o servidor precisa fazer upload de arquivos no bucket `arch-renders`.
+**Onde encontrar os valores do Supabase:**
 
-#### Criar o bucket no Supabase
+1. Acesse o painel do seu projeto Supabase → **Settings → API**
+2. Copie:
+   - **Project URL** → `SUPABASE_URL`
+   - **service_role (secret)** → `SUPABASE_KEY` *(não a anon key)*
 
-No painel do Supabase → **Storage** → **New bucket**:
+**Criar o bucket de imagens:**
+
+No Supabase → **Storage → New bucket**:
 - Nome: `arch-renders`
-- Visibilidade: **Public** (para que os URLs funcionem sem autenticação)
+- Visibilidade: **Public** ✓
+
+---
 
 ### 7. Rodar o servidor
 
@@ -99,24 +117,33 @@ python main.py
 ```
 
 Saída esperada:
+
 ```
-VendorAI Blender Server — porta 8080
-Blender: Blender 4.1.1
- * Running on http://0.0.0.0:8080
+  VendorAI Blender Server
+  Porta     : 8080
+  Blender   : Blender 3.6.5
+  Output dir: /tmp/renders
 ```
 
-### 8. Configurar o VendorAI principal
+Para manter o servidor rodando, você pode usar o botão **Run** do Replit (que executa `python main.py` automaticamente).
 
-1. Copie a URL do seu Replit. Ela segue o padrão:
+---
+
+### 8. Conectar ao VendorAI principal
+
+1. Copie a URL do seu Replit Blender Server. Ela segue o padrão:
    ```
    https://vendorai-blender-server.seuusuario.repl.co
    ```
 
-2. No **Replit do VendorAI principal**, adicione/atualize a secret:
-   ```
-   BLENDER_SERVER_URL = https://vendorai-blender-server.seuusuario.repl.co
-   BLENDER_SECRET     = (mesmo valor do .env do blender-server)
-   ```
+2. No **Replit do VendorAI principal**, adicione as secrets:
+
+   | Secret | Valor |
+   |---|---|
+   | `BLENDER_SERVER_URL` | `https://vendorai-blender-server.seuusuario.repl.co` |
+   | `BLENDER_SECRET` | Mesmo valor do `.env` do blender-server |
+
+3. O VendorAI já está configurado para usar essas variáveis ao chamar `POST /render`.
 
 ---
 
@@ -131,35 +158,68 @@ X-Blender-Secret: <valor do BLENDER_SECRET>
 
 ---
 
+### `GET /health`
+
+Verifica se o servidor e o Blender estão funcionando.
+
+**Sem autenticação.** Resposta:
+```json
+{
+  "status": "ok",
+  "blender_version": "Blender 3.6.5",
+  "timestamp": "2025-01-01T12:00:00Z"
+}
+```
+
+---
+
 ### `POST /render`
 
-Envia um job de render.
+Inicia um job de render em background.
 
 **Body JSON:**
 ```json
 {
   "jobId": "uuid-opcional",
-  "cenaId": "uuid-da-cena",
+  "cenaId": "uuid-da-cena-no-banco",
   "tenantId": "uuid-do-tenant",
   "sceneConfig": {
     "resolution": [1920, 1080],
     "samples": 64,
-    "hdri": "studio",
+    "hdri": "interior_warm",
     "hdriStrength": 1.0,
+    "room": {
+      "width": 6.0,
+      "depth": 6.0,
+      "height": 2.8,
+      "wallColor": [0.92, 0.92, 0.92],
+      "floorColor": [0.55, 0.45, 0.35],
+      "floorRoughness": 0.7,
+      "floorMetallic": 0.0
+    },
     "camera": {
-      "location": [0, -5, 2],
-      "rotation": [70, 0, 0]
+      "location": [0, -5, 1.6],
+      "target": [0, 0, 1.0],
+      "fov": 60
     },
     "objects": [
       {
-        "type": "cube",
-        "name": "Sofá",
-        "location": [0, 0, 0],
-        "rotation": [0, 0, 45],
-        "scale": [2, 1, 0.5],
-        "color": [0.3, 0.2, 0.15],
+        "type": "sofa",
+        "name": "Sofá Principal",
+        "location": [0, 1, 0],
+        "rotation": [0, 0, 0],
+        "scale": [1, 1, 1],
+        "color": [0.3, 0.25, 0.2],
         "metallic": 0.0,
         "roughness": 0.8
+      },
+      {
+        "type": "mesa",
+        "name": "Mesa de Centro",
+        "location": [0, -0.5, 0],
+        "color": [0.6, 0.4, 0.2],
+        "metallic": 0.1,
+        "roughness": 0.4
       }
     ]
   }
@@ -175,63 +235,66 @@ Envia um job de render.
 
 ### `GET /render/:jobId`
 
-Consulta o status de um job.
+Consulta o status de um job de render.
 
 **Resposta:**
 ```json
 {
   "jobId": "uuid",
-  "status": "aguardando | processando | concluido | erro | cancelado",
-  "imageUrl": "https://...supabase.co/storage/v1/object/public/arch-renders/...",
+  "status": "aguardando | processando | concluido | erro",
+  "imageUrl": "https://...supabase.co/storage/v1/object/public/arch-renders/.../uuid.png",
   "erro": null,
-  "updatedAt": "2025-01-01T12:00:00Z"
+  "updatedAt": "2025-01-01T12:05:00Z"
 }
 ```
 
----
-
-### `GET /health`
-
-Sem autenticação.
-
-```json
-{ "status": "ok", "blender_version": "Blender 4.1.1", "timestamp": "..." }
-```
-
----
-
-### `DELETE /render/:jobId`
-
-Marca job como cancelado (não interrompe render em andamento).
+O campo `imageUrl` é preenchido apenas quando `status == "concluido"`.  
+O campo `erro` é preenchido apenas quando `status == "erro"`.
 
 ---
 
 ### `GET /render`
 
-Lista todos os jobs em memória.
+Lista todos os jobs em memória (reiniciar o servidor apaga a lista).
 
 ---
 
-## Valores de `sceneConfig`
+## Tipos de objetos suportados
+
+| `type` | Geometria gerada |
+|---|---|
+| `sofa` | Base + encosto + 2 braços |
+| `mesa` | Tampo + 4 pernas |
+| `cadeira` | Assento + encosto + 4 pernas |
+| `cama` | Estrado + colchão + cabeceira |
+| `armario` | Corpo + 2 portas |
+| `luminaria` | Haste + cúpula emissiva + ponto de luz |
+| `janela` | Marco + vidro transparente |
+| `porta` | Folha + maçaneta metálica |
+
+## Parâmetros do `sceneConfig`
 
 | Campo | Tipo | Padrão | Descrição |
 |---|---|---|---|
 | `resolution` | `[w, h]` | `[1920, 1080]` | Resolução do render |
-| `samples` | `int` | `64` | Amostras Cycles (qualidade) |
-| `hdri` | `string` | `"studio"` | `studio`, `outdoor`, `sunset`, `interior` |
+| `samples` | `int` | `64` | Amostras Cycles (64 = rápido, 256+ = alta qualidade) |
+| `hdri` | `string` | `"interior_warm"` | `interior_warm`, `interior_cool`, `natural` |
 | `hdriStrength` | `float` | `1.0` | Intensidade da iluminação HDRI |
-| `camera.location` | `[x,y,z]` | `[0,-5,2]` | Posição da câmera |
-| `camera.rotation` | `[rx,ry,rz]` | `[70,0,0]` | Rotação em graus |
-| `objects[].type` | `string` | `"cube"` | `cube`, `sphere`, `cylinder`, `plane`, `cone` |
+| `room.width/depth/height` | `float` | `6/6/2.8` | Dimensões do ambiente em metros |
+| `room.wallColor` | `[r,g,b]` | `[0.92, 0.92, 0.92]` | Cor das paredes (0–1) |
+| `room.floorColor` | `[r,g,b]` | `[0.55, 0.45, 0.35]` | Cor do piso (0–1) |
+| `camera.location` | `[x,y,z]` | `[0,-5,1.6]` | Posição da câmera |
+| `camera.target` | `[x,y,z]` | `[0,0,1.0]` | Ponto para onde a câmera aponta |
+| `camera.fov` | `float` | `60` | Campo de visão em graus |
 | `objects[].color` | `[r,g,b]` | `[0.8,0.8,0.8]` | Cor base (0–1) |
-| `objects[].metallic` | `float` | `0.0` | 0 = plástico, 1 = metal |
-| `objects[].roughness` | `float` | `0.5` | 0 = espelho, 1 = fosco |
+| `objects[].metallic` | `float` | `0.0` | 0 = plástico / 1 = metal |
+| `objects[].roughness` | `float` | `0.5` | 0 = espelho / 1 = totalmente fosco |
 
 ---
 
-## Notas
+## Observações
 
-- **Memória**: jobs ficam em memória — reiniciar o servidor limpa a fila. Para persistência, substitua o dict `jobs` por uma tabela Supabase.
-- **GPU**: o script tenta usar CUDA automaticamente; se não houver GPU disponível, usa CPU (mais lento).
-- **Timeout**: cada render tem limite de 10 minutos (`timeout=600`).
-- **Concorrência**: cada job roda em uma thread separada; muitos jobs simultâneos podem esgotar a RAM.
+- **Memória**: os jobs ficam em `jobs_status` (dict em memória). Reiniciar o processo apaga todos. Para persistência, substitua por uma tabela Supabase.
+- **CPU**: o render usa Cycles CPU por padrão. Com GPU (CUDA), o servidor detecta e usa automaticamente — mas Replits padrão não têm GPU.
+- **Tempo**: 64 samples em 1920×1080 CPU leva ~3–8 min dependendo da complexidade. Reduza `samples` para 32 em testes rápidos.
+- **Timeout**: cada job tem limite de 10 minutos (`timeout=600` em `execute_render`).

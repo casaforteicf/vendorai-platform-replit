@@ -1,295 +1,533 @@
 """
 blender_render.py
-Executa Blender em modo headless e faz upload do render para o Supabase.
+Script Python executado DENTRO do Blender em modo headless:
+    /opt/blender/blender --background --python blender_render.py
+
+Lê o sceneConfig de os.environ['SCENE_CONFIG_PATH'] (arquivo JSON temporário).
+Salva o render PNG em os.environ['OUTPUT_PATH'].
+
+sceneConfig esperado:
+{
+  "resolution": [1920, 1080],
+  "samples": 64,
+  "hdri": "interior_warm" | "interior_cool" | "natural",
+  "hdriStrength": 1.0,
+  "room": {
+    "width": 6.0, "depth": 6.0, "height": 2.8,
+    "wallColor": [0.9, 0.9, 0.9],
+    "floorColor": [0.6, 0.5, 0.4],
+    "floorRoughness": 0.7,
+    "floorMetallic": 0.0
+  },
+  "camera": {
+    "location": [0, -5, 1.6],
+    "target":   [0, 0, 1.0],
+    "fov": 60
+  },
+  "objects": [
+    {
+      "type": "sofa",
+      "name": "Sofá Principal",
+      "location": [0, 1, 0],
+      "rotation": [0, 0, 0],
+      "scale": [1, 1, 1],
+      "color": [0.3, 0.25, 0.2],
+      "metallic": 0.0,
+      "roughness": 0.8
+    }
+  ]
+}
+
+Tipos de objeto suportados:
+  sofa, mesa, cadeira, cama, armario, luminaria, janela, porta
 """
 
+import bpy
 import os
+import sys
 import json
-import subprocess
-import tempfile
-import textwrap
-from pathlib import Path
-
-from dotenv import load_dotenv
-from supabase import create_client, Client
-
-load_dotenv()
-
-BLENDER_PATH = os.getenv("BLENDER_PATH", "/home/user/blender/blender")
-HDRI_DIR     = os.getenv("HDRI_DIR",     "/home/user/hdri")
-OUTPUT_DIR   = os.getenv("OUTPUT_DIR",   "/tmp/renders")
-SUPABASE_URL = os.getenv("SUPABASE_URL", "")
-SUPABASE_KEY = os.getenv("SUPABASE_KEY", "")
-
-BUCKET = "arch-renders"
+import math
 
 
-def _get_supabase() -> Client:
-    if not SUPABASE_URL or not SUPABASE_KEY:
-        raise RuntimeError("SUPABASE_URL / SUPABASE_KEY not configured")
-    return create_client(SUPABASE_URL, SUPABASE_KEY)
+# ─────────────────────────────────────────────────────────────────────────────
+# Helpers
+# ─────────────────────────────────────────────────────────────────────────────
+
+def load_config() -> dict:
+    path = os.environ.get("SCENE_CONFIG_PATH", "")
+    if not path or not os.path.exists(path):
+        print(f"ERRO: SCENE_CONFIG_PATH não definido ou arquivo não encontrado: {path}")
+        sys.exit(1)
+    with open(path, "r", encoding="utf-8") as f:
+        return json.load(f)
 
 
-def _pick_hdri(config: dict) -> str:
-    """
-    Retorna o caminho do arquivo HDRI a usar.
-    config pode ter { hdri: 'studio' | 'outdoor' | 'sunset' | 'path/custom.hdr' }
-    """
-    presets = {
-        "studio":  "studio_small.hdr",
-        "outdoor": "outdoor_umbrellas.hdr",
-        "sunset":  "sunset_jhbcentral.hdr",
-        "interior": "interior_atelier.hdr",
-    }
-    key = config.get("hdri", "studio")
-    filename = presets.get(key, presets["studio"])
-    full_path = os.path.join(HDRI_DIR, filename)
-    if os.path.exists(full_path):
-        return full_path
-    # fallback: any .hdr in HDRI_DIR
-    hdrs = list(Path(HDRI_DIR).glob("*.hdr")) + list(Path(HDRI_DIR).glob("*.exr"))
-    if hdrs:
-        return str(hdrs[0])
-    return ""
+def output_path() -> str:
+    path = os.environ.get("OUTPUT_PATH", "/tmp/render_output.png")
+    os.makedirs(os.path.dirname(path) or "/tmp", exist_ok=True)
+    return path
 
 
-def _build_blender_script(config: dict, output_path: str, hdri_path: str) -> str:
-    """
-    Gera um script Python que o Blender executa em modo headless.
-    config keys:
-      resolution    : [width, height]   default [1920, 1080]
-      samples       : int               default 64
-      camera        : { location: [x,y,z], rotation: [rx,ry,rz] }
-      objects       : [ { type, location, rotation, scale, color, metallic, roughness } ]
-      background    : { color: [r,g,b,a] } or { hdri: 'studio' }
-      hdriStrength  : float             default 1.0
-    """
-    res    = config.get("resolution",  [1920, 1080])
-    samples = config.get("samples",   64)
-    cam    = config.get("camera",      {})
-    objs   = config.get("objects",     [])
-    bg     = config.get("background",  {})
-    hdri_strength = float(config.get("hdriStrength", 1.0))
+def deg2rad(d):
+    return math.radians(d)
 
-    cam_loc = cam.get("location", [0, -5, 2])
-    cam_rot = cam.get("rotation", [70, 0, 0])
 
-    def _col(c, default=(0.8, 0.8, 0.8)):
-        if isinstance(c, (list, tuple)) and len(c) >= 3:
-            return list(c[:3])
-        return list(default)
-
-    objects_code = []
-    for i, obj in enumerate(objs):
-        obj_type  = obj.get("type", "cube").lower()
-        loc       = obj.get("location", [0, 0, 0])
-        rot       = obj.get("rotation", [0, 0, 0])
-        scale     = obj.get("scale",    [1, 1, 1])
-        color     = _col(obj.get("color"), (0.8, 0.8, 0.8))
-        metallic  = float(obj.get("metallic",  0.0))
-        roughness = float(obj.get("roughness", 0.5))
-        name      = obj.get("name", f"obj_{i}")
-
-        if obj_type == "sphere":
-            mesh_op = "bpy.ops.mesh.primitive_uv_sphere_add"
-            mesh_args = f"radius=1, location={loc}"
-        elif obj_type == "cylinder":
-            mesh_op = "bpy.ops.mesh.primitive_cylinder_add"
-            mesh_args = f"radius=1, depth=2, location={loc}"
-        elif obj_type == "plane":
-            mesh_op = "bpy.ops.mesh.primitive_plane_add"
-            mesh_args = f"size=2, location={loc}"
-        elif obj_type == "cone":
-            mesh_op = "bpy.ops.mesh.primitive_cone_add"
-            mesh_args = f"radius1=1, depth=2, location={loc}"
-        else:
-            mesh_op = "bpy.ops.mesh.primitive_cube_add"
-            mesh_args = f"size=2, location={loc}"
-
-        import math
-        rot_rad = [math.radians(r) for r in rot]
-
-        objects_code.append(textwrap.dedent(f"""
-        {mesh_op}({mesh_args})
-        obj_{i} = bpy.context.active_object
-        obj_{i}.name = {json.dumps(name)}
-        obj_{i}.rotation_euler = {tuple(rot_rad)}
-        obj_{i}.scale = {tuple(scale)}
-        mat_{i} = bpy.data.materials.new(name="mat_{i}")
-        mat_{i}.use_nodes = True
-        bsdf_{i} = mat_{i}.node_tree.nodes["Principled BSDF"]
-        bsdf_{i}.inputs["Base Color"].default_value = {tuple(color + [1.0])}
-        bsdf_{i}.inputs["Metallic"].default_value   = {metallic}
-        bsdf_{i}.inputs["Roughness"].default_value  = {roughness}
-        obj_{i}.data.materials.append(mat_{i})
-        """))
-
-    import math
-    cam_rot_rad = [math.radians(r) for r in cam_rot]
-
-    if hdri_path:
-        world_code = textwrap.dedent(f"""
-        world = bpy.data.worlds["World"]
-        world.use_nodes = True
-        env_node = world.node_tree.nodes.new("ShaderNodeTexEnvironment")
-        env_node.image = bpy.data.images.load({json.dumps(hdri_path)})
-        bg_node = world.node_tree.nodes["Background"]
-        bg_node.inputs["Strength"].default_value = {hdri_strength}
-        world.node_tree.links.new(env_node.outputs["Color"], bg_node.inputs["Color"])
-        """)
-    else:
-        bg_color = _col(bg.get("color"), (0.9, 0.9, 0.9))
-        world_code = textwrap.dedent(f"""
-        world = bpy.data.worlds["World"]
-        world.use_nodes = True
-        bg_node = world.node_tree.nodes["Background"]
-        bg_node.inputs["Color"].default_value    = {tuple(bg_color + [1.0])}
-        bg_node.inputs["Strength"].default_value = 1.0
-        """)
-
-    script = textwrap.dedent(f"""
-    import bpy, math, json
-
-    # --- Limpa cena ---
+def clear_scene():
     bpy.ops.object.select_all(action="SELECT")
-    bpy.ops.object.delete()
+    bpy.ops.object.delete(use_global=False)
+    for block in [bpy.data.meshes, bpy.data.materials, bpy.data.lights, bpy.data.cameras]:
+        for item in list(block):
+            block.remove(item)
 
-    # --- Render settings ---
+
+def new_material(name: str, color=(0.8, 0.8, 0.8), metallic=0.0, roughness=0.5,
+                 emission=(0, 0, 0), emission_strength=0.0, alpha=1.0):
+    mat = bpy.data.materials.new(name)
+    mat.use_nodes = True
+    mat.blend_method = "OPAQUE" if alpha >= 1.0 else "BLEND"
+    tree = mat.node_tree
+    tree.nodes.clear()
+
+    out  = tree.nodes.new("ShaderNodeOutputMaterial")
+    bsdf = tree.nodes.new("ShaderNodeBsdfPrincipled")
+    out.location  = (300, 0)
+    bsdf.location = (0, 0)
+
+    r, g, b = color
+    bsdf.inputs["Base Color"].default_value    = (r, g, b, alpha)
+    bsdf.inputs["Metallic"].default_value      = metallic
+    bsdf.inputs["Roughness"].default_value     = roughness
+    bsdf.inputs["Alpha"].default_value         = alpha
+
+    if any(v > 0 for v in emission):
+        er, eg, eb = emission
+        bsdf.inputs["Emission"].default_value         = (er, eg, eb, 1.0)
+        bsdf.inputs["Emission Strength"].default_value = emission_strength
+
+    tree.links.new(bsdf.outputs["BSDF"], out.inputs["Surface"])
+    return mat
+
+
+def assign_material(obj, mat):
+    if obj.data.materials:
+        obj.data.materials[0] = mat
+    else:
+        obj.data.materials.append(mat)
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Ambiente (paredes / piso / teto)
+# ─────────────────────────────────────────────────────────────────────────────
+
+def build_room(room: dict):
+    W  = float(room.get("width",  6.0))
+    D  = float(room.get("depth",  6.0))
+    H  = float(room.get("height", 2.8))
+    wc = room.get("wallColor",  [0.92, 0.92, 0.92])
+    fc = room.get("floorColor", [0.55, 0.45, 0.35])
+    fr = float(room.get("floorRoughness", 0.75))
+    fm = float(room.get("floorMetallic",  0.0))
+
+    mat_wall  = new_material("mat_wall",  color=wc,                        roughness=0.9)
+    mat_floor = new_material("mat_floor", color=fc, metallic=fm,           roughness=fr)
+    mat_ceil  = new_material("mat_ceil",  color=[0.98, 0.98, 0.98],        roughness=0.95)
+
+    hw = W / 2
+    hd = D / 2
+
+    def add_plane(name, loc, rot, sx, sy, mat):
+        bpy.ops.mesh.primitive_plane_add(size=1, location=loc)
+        obj = bpy.context.active_object
+        obj.name = name
+        obj.rotation_euler = [deg2rad(r) for r in rot]
+        obj.scale = (sx, sy, 1)
+        assign_material(obj, mat)
+        return obj
+
+    # Piso
+    add_plane("Piso",  (0, 0, 0),      (0,   0, 0),   W, D, mat_floor)
+    # Teto
+    add_plane("Teto",  (0, 0, H),      (180, 0, 0),   W, D, mat_ceil)
+    # Parede fundo (Y+)
+    add_plane("Parede_Fundo", (0, hd, H/2), (90, 0, 0),    W, H, mat_wall)
+    # Parede frente (Y-) — câmera passa por ela; sem teto para não bloquear
+    # Parede esquerda (X-)
+    add_plane("Parede_Esq",   (-hw, 0, H/2), (90, 0, 90), D, H, mat_wall)
+    # Parede direita (X+)
+    add_plane("Parede_Dir",   (hw,  0, H/2), (90, 0, -90), D, H, mat_wall)
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Objetos por tipo de produto
+# ─────────────────────────────────────────────────────────────────────────────
+
+def add_object(spec: dict):
+    obj_type  = str(spec.get("type", "cube")).lower()
+    name      = spec.get("name", obj_type)
+    loc       = spec.get("location", [0, 0, 0])
+    rot_deg   = spec.get("rotation", [0, 0, 0])
+    scale     = spec.get("scale",    [1, 1, 1])
+    color     = spec.get("color",    [0.8, 0.8, 0.8])
+    metallic  = float(spec.get("metallic",  0.0))
+    roughness = float(spec.get("roughness", 0.5))
+
+    mat = new_material(f"mat_{name}", color=color, metallic=metallic, roughness=roughness)
+
+    parts = []  # lista de objetos criados para este item
+
+    # ── Sofa ─────────────────────────────────────
+    if obj_type == "sofa":
+        # Base
+        bpy.ops.mesh.primitive_cube_add(size=1, location=(loc[0], loc[1], loc[2] + 0.25))
+        base = bpy.context.active_object
+        base.name = f"{name}_base"
+        base.scale = (scale[0] * 2.0, scale[1] * 0.9, scale[2] * 0.5)
+        assign_material(base, mat)
+        parts.append(base)
+        # Encosto
+        bpy.ops.mesh.primitive_cube_add(size=1, location=(loc[0], loc[1] + scale[1] * 0.4, loc[2] + 0.7))
+        back = bpy.context.active_object
+        back.name = f"{name}_back"
+        back.scale = (scale[0] * 2.0, scale[1] * 0.2, scale[2] * 0.7)
+        assign_material(back, mat)
+        parts.append(back)
+        # Braços
+        for dx in [-1, 1]:
+            bpy.ops.mesh.primitive_cube_add(size=1, location=(
+                loc[0] + dx * scale[0] * 1.05, loc[1], loc[2] + 0.45))
+            arm = bpy.context.active_object
+            arm.name = f"{name}_arm_{dx}"
+            arm.scale = (scale[0] * 0.12, scale[1] * 0.9, scale[2] * 0.4)
+            assign_material(arm, mat)
+            parts.append(arm)
+
+    # ── Mesa ─────────────────────────────────────
+    elif obj_type == "mesa":
+        h   = scale[2] * 0.75
+        top_t = 0.05
+        # Tampo
+        bpy.ops.mesh.primitive_cube_add(size=1, location=(loc[0], loc[1], loc[2] + h))
+        top = bpy.context.active_object
+        top.name = f"{name}_tampo"
+        top.scale = (scale[0] * 1.0, scale[1] * 0.6, top_t)
+        assign_material(top, mat)
+        parts.append(top)
+        # Pernas
+        for dx in [-0.45, 0.45]:
+            for dy in [-0.25, 0.25]:
+                bpy.ops.mesh.primitive_cube_add(size=1, location=(
+                    loc[0] + dx * scale[0], loc[1] + dy * scale[1], loc[2] + h / 2))
+                leg = bpy.context.active_object
+                leg.name = f"{name}_leg"
+                leg.scale = (0.03, 0.03, h / 2)
+                assign_material(leg, mat)
+                parts.append(leg)
+
+    # ── Cadeira ──────────────────────────────────
+    elif obj_type == "cadeira":
+        seat_h = scale[2] * 0.45
+        # Assento
+        bpy.ops.mesh.primitive_cube_add(size=1, location=(loc[0], loc[1], loc[2] + seat_h))
+        seat = bpy.context.active_object
+        seat.name = f"{name}_assento"
+        seat.scale = (scale[0] * 0.45, scale[1] * 0.45, 0.05)
+        assign_material(seat, mat)
+        parts.append(seat)
+        # Encosto
+        bpy.ops.mesh.primitive_cube_add(size=1, location=(loc[0], loc[1] + 0.2, loc[2] + seat_h + 0.3))
+        back = bpy.context.active_object
+        back.name = f"{name}_encosto"
+        back.scale = (scale[0] * 0.45, 0.04, 0.3)
+        assign_material(back, mat)
+        parts.append(back)
+        # Pernas
+        for dx in [-0.2, 0.2]:
+            for dy in [-0.2, 0.2]:
+                bpy.ops.mesh.primitive_cube_add(size=1, location=(
+                    loc[0] + dx, loc[1] + dy, loc[2] + seat_h / 2))
+                leg = bpy.context.active_object
+                leg.name = f"{name}_leg"
+                leg.scale = (0.025, 0.025, seat_h / 2)
+                assign_material(leg, mat)
+                parts.append(leg)
+
+    # ── Cama ─────────────────────────────────────
+    elif obj_type == "cama":
+        # Base/estrado
+        bpy.ops.mesh.primitive_cube_add(size=1, location=(loc[0], loc[1], loc[2] + 0.2))
+        base = bpy.context.active_object
+        base.name = f"{name}_base"
+        base.scale = (scale[0] * 1.0, scale[1] * 2.0, 0.2)
+        assign_material(base, mat)
+        parts.append(base)
+        # Colchão
+        mat_mattress = new_material(f"mat_{name}_col", color=[0.95, 0.95, 0.95], roughness=0.9)
+        bpy.ops.mesh.primitive_cube_add(size=1, location=(loc[0], loc[1], loc[2] + 0.45))
+        mattress = bpy.context.active_object
+        mattress.name = f"{name}_colchao"
+        mattress.scale = (scale[0] * 0.95, scale[1] * 1.9, 0.15)
+        assign_material(mattress, mat_mattress)
+        parts.append(mattress)
+        # Cabeceira
+        bpy.ops.mesh.primitive_cube_add(size=1, location=(loc[0], loc[1] - scale[1] * 1.05, loc[2] + 0.7))
+        head = bpy.context.active_object
+        head.name = f"{name}_cabeceira"
+        head.scale = (scale[0] * 1.0, 0.08, 0.55)
+        assign_material(head, mat)
+        parts.append(head)
+
+    # ── Armário ──────────────────────────────────
+    elif obj_type == "armario":
+        bpy.ops.mesh.primitive_cube_add(size=1, location=(loc[0], loc[1], loc[2] + scale[2] * 1.0))
+        body = bpy.context.active_object
+        body.name = f"{name}_corpo"
+        body.scale = (scale[0] * 1.0, scale[1] * 0.5, scale[2] * 1.0)
+        assign_material(body, mat)
+        parts.append(body)
+        # Portas (2)
+        mat_door = new_material(f"mat_{name}_door",
+                                color=[c * 0.85 for c in color],
+                                metallic=metallic, roughness=roughness * 0.8)
+        for dx in [-0.25, 0.25]:
+            bpy.ops.mesh.primitive_cube_add(size=1, location=(
+                loc[0] + dx * scale[0], loc[1] - scale[1] * 0.26, loc[2] + scale[2]))
+            door = bpy.context.active_object
+            door.name = f"{name}_porta"
+            door.scale = (scale[0] * 0.48, 0.02, scale[2] * 0.95)
+            assign_material(door, mat_door)
+            parts.append(door)
+
+    # ── Luminária ────────────────────────────────
+    elif obj_type == "luminaria":
+        # Haste
+        bpy.ops.mesh.primitive_cylinder_add(radius=0.03, depth=1.0,
+                                             location=(loc[0], loc[1], loc[2] + 0.5))
+        pole = bpy.context.active_object
+        pole.name = f"{name}_haste"
+        assign_material(pole, mat)
+        parts.append(pole)
+        # Cúpula (esfera achatada)
+        bpy.ops.mesh.primitive_uv_sphere_add(radius=0.2, location=(loc[0], loc[1], loc[2] + 1.05))
+        shade = bpy.context.active_object
+        shade.name = f"{name}_cupula"
+        shade.scale = (1, 1, 0.5)
+        mat_shade = new_material(f"mat_{name}_shade",
+                                 color=[0.9, 0.8, 0.6],
+                                 emission=[1.0, 0.9, 0.7], emission_strength=3.0)
+        assign_material(shade, mat_shade)
+        parts.append(shade)
+        # Ponto de luz
+        bpy.ops.object.light_add(type="POINT", location=(loc[0], loc[1], loc[2] + 1.0))
+        light = bpy.context.active_object
+        light.name = f"{name}_luz"
+        light.data.energy = 200
+        light.data.color  = (1.0, 0.95, 0.8)
+        parts.append(light)
+
+    # ── Janela ───────────────────────────────────
+    elif obj_type == "janela":
+        # Marco
+        mat_frame = new_material(f"mat_{name}_frame", color=[0.9, 0.9, 0.85], roughness=0.6)
+        bpy.ops.mesh.primitive_cube_add(size=1, location=(loc[0], loc[1], loc[2] + 1.0))
+        frame = bpy.context.active_object
+        frame.name = f"{name}_marco"
+        frame.scale = (scale[0] * 0.8, 0.05, scale[2] * 0.6)
+        assign_material(frame, mat_frame)
+        parts.append(frame)
+        # Vidro
+        mat_glass = new_material(f"mat_{name}_glass",
+                                 color=[0.7, 0.85, 0.95], metallic=0.0,
+                                 roughness=0.0, alpha=0.25)
+        mat_glass.blend_method = "BLEND"
+        bpy.ops.mesh.primitive_cube_add(size=1, location=(loc[0], loc[1] + 0.01, loc[2] + 1.0))
+        glass = bpy.context.active_object
+        glass.name = f"{name}_vidro"
+        glass.scale = (scale[0] * 0.75, 0.01, scale[2] * 0.55)
+        assign_material(glass, mat_glass)
+        parts.append(glass)
+
+    # ── Porta ────────────────────────────────────
+    elif obj_type == "porta":
+        bpy.ops.mesh.primitive_cube_add(size=1, location=(loc[0], loc[1], loc[2] + 1.05))
+        door = bpy.context.active_object
+        door.name = f"{name}_folha"
+        door.scale = (scale[0] * 0.45, 0.04, 1.05)
+        assign_material(door, mat)
+        parts.append(door)
+        # Maçaneta
+        mat_handle = new_material(f"mat_{name}_handle",
+                                  color=[0.8, 0.7, 0.3], metallic=0.9, roughness=0.2)
+        bpy.ops.mesh.primitive_uv_sphere_add(radius=0.03,
+                                              location=(loc[0] + scale[0] * 0.38,
+                                                        loc[1] - 0.06, loc[2] + 1.0))
+        handle = bpy.context.active_object
+        handle.name = f"{name}_maceta"
+        assign_material(handle, mat_handle)
+        parts.append(handle)
+
+    # ── Fallback ─────────────────────────────────
+    else:
+        bpy.ops.mesh.primitive_cube_add(size=1, location=loc)
+        obj = bpy.context.active_object
+        obj.name = name
+        obj.scale = tuple(scale)
+        assign_material(obj, mat)
+        parts.append(obj)
+
+    # Aplica rotação ao primeiro objeto (corpo principal)
+    if parts:
+        rot_rad = [deg2rad(r) for r in rot_deg]
+        parts[0].rotation_euler = rot_rad
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Câmera
+# ─────────────────────────────────────────────────────────────────────────────
+
+def setup_camera(cam_cfg: dict):
+    loc    = cam_cfg.get("location", [0, -5, 1.6])
+    target = cam_cfg.get("target",   [0, 0, 1.0])
+    fov    = float(cam_cfg.get("fov", 60))
+
+    bpy.ops.object.camera_add(location=loc)
+    cam_obj = bpy.context.active_object
+    cam_obj.name = "Camera"
+    bpy.context.scene.camera = cam_obj
+
+    cam_obj.data.angle = math.radians(fov)
+
+    # Aponta câmera para o target via Track To
+    bpy.ops.object.empty_add(location=target)
+    empty = bpy.context.active_object
+    empty.name = "CameraTarget"
+
+    constraint = cam_obj.constraints.new("TRACK_TO")
+    constraint.target    = empty
+    constraint.track_axis  = "TRACK_NEGATIVE_Z"
+    constraint.up_axis     = "UP_Y"
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Iluminação HDRI via World nodes
+# ─────────────────────────────────────────────────────────────────────────────
+
+HDRI_MAP = {
+    "interior_warm": "interior_warm.hdr",
+    "interior_cool": "interior_cool.hdr",
+    "natural":       "natural.hdr",
+}
+HDRI_DIR = "/opt/blender/hdri"
+
+
+def setup_hdri(hdri_key: str, strength: float = 1.0):
+    filename = HDRI_MAP.get(hdri_key, "interior_warm.hdr")
+    hdri_path = os.path.join(HDRI_DIR, filename)
+
+    world = bpy.data.worlds.get("World") or bpy.data.worlds.new("World")
+    bpy.context.scene.world = world
+    world.use_nodes = True
+    tree = world.node_tree
+    tree.nodes.clear()
+
+    out   = tree.nodes.new("ShaderNodeOutputWorld")
+    bg    = tree.nodes.new("ShaderNodeBackground")
+    out.location = (300, 0)
+    bg.location  = (0, 0)
+
+    if os.path.exists(hdri_path):
+        env  = tree.nodes.new("ShaderNodeTexEnvironment")
+        env.location = (-300, 0)
+        env.image = bpy.data.images.load(hdri_path)
+
+        mapping = tree.nodes.new("ShaderNodeMapping")
+        coord   = tree.nodes.new("ShaderNodeTexCoord")
+        mapping.location = (-600, 0)
+        coord.location   = (-900, 0)
+
+        tree.links.new(coord.outputs["Generated"], mapping.inputs["Vector"])
+        tree.links.new(mapping.outputs["Vector"],  env.inputs["Vector"])
+        tree.links.new(env.outputs["Color"],       bg.inputs["Color"])
+    else:
+        # Fallback: céu neutro branco-quente
+        bg.inputs["Color"].default_value = (0.9, 0.9, 1.0, 1.0)
+
+    bg.inputs["Strength"].default_value = strength
+    tree.links.new(bg.outputs["Background"], out.inputs["Surface"])
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Render settings
+# ─────────────────────────────────────────────────────────────────────────────
+
+def configure_render(config: dict, out_path: str):
     scene = bpy.context.scene
-    scene.render.engine          = "CYCLES"
-    scene.render.resolution_x   = {res[0]}
-    scene.render.resolution_y   = {res[1]}
+    res   = config.get("resolution", [1920, 1080])
+    samp  = int(config.get("samples", 64))
+
+    scene.render.engine               = "CYCLES"
+    scene.render.resolution_x         = int(res[0])
+    scene.render.resolution_y         = int(res[1])
     scene.render.resolution_percentage = 100
     scene.render.image_settings.file_format = "PNG"
-    scene.render.filepath        = {json.dumps(output_path)}
-    scene.cycles.samples         = {samples}
-    scene.cycles.use_denoising  = True
+    scene.render.filepath             = out_path
 
-    # GPU se disponível
-    prefs = bpy.context.preferences.addons["cycles"].preferences
-    prefs.compute_device_type = "CUDA"
-    try:
-        prefs.get_devices()
-        for d in prefs.devices:
-            d.use = True
-        scene.cycles.device = "GPU"
-    except Exception:
-        scene.cycles.device = "CPU"
+    scene.cycles.samples              = samp
+    scene.cycles.use_denoising        = True
+    scene.cycles.device               = "CPU"
 
-    # --- Objetos ---
-    {"".join(objects_code)}
-
-    # --- Câmera ---
-    bpy.ops.object.camera_add(location={tuple(cam_loc)})
-    cam_obj = bpy.context.active_object
-    cam_obj.rotation_euler = {tuple(cam_rot_rad)}
-    scene.camera = cam_obj
-
-    # --- Iluminação ---
-    bpy.ops.object.light_add(type="SUN", location=(5, 5, 10))
-    sun = bpy.context.active_object
-    sun.data.energy = 3.0
-
-    # --- World / HDRI ---
-    {world_code}
-
-    # --- Plano de chão ---
-    bpy.ops.mesh.primitive_plane_add(size=20, location=(0, 0, -1))
-    floor = bpy.context.active_object
-    floor.name = "Floor"
-    mat_floor = bpy.data.materials.new("Floor")
-    mat_floor.use_nodes = True
-    bsdf_f = mat_floor.node_tree.nodes["Principled BSDF"]
-    bsdf_f.inputs["Base Color"].default_value = (0.9, 0.9, 0.9, 1.0)
-    bsdf_f.inputs["Roughness"].default_value  = 0.8
-    floor.data.materials.append(mat_floor)
-
-    # --- Render ---
-    bpy.ops.render.render(write_still=True)
-    print("RENDER_DONE:" + {json.dumps(output_path)})
-    """)
-
-    return script
-
-
-def render_scene(job_id: str, cena_id: str, tenant_id: str, config: dict) -> str:
-    """
-    Executa Blender headless e faz upload da imagem.
-    Retorna a URL pública da imagem no Supabase.
-    """
-    os.makedirs(OUTPUT_DIR, exist_ok=True)
-
-    output_path = os.path.join(OUTPUT_DIR, f"{job_id}.png")
-    hdri_path   = _pick_hdri(config)
-    script_body = _build_blender_script(config, output_path, hdri_path)
-
-    # Escreve script temporário
-    with tempfile.NamedTemporaryFile(
-        mode="w", suffix=".py", delete=False, prefix=f"blender_{job_id}_"
-    ) as f:
-        f.write(script_body)
-        script_path = f.name
-
-    try:
-        cmd = [
-            BLENDER_PATH,
-            "--background",
-            "--python", script_path,
-        ]
-        result = subprocess.run(
-            cmd,
-            capture_output=True,
-            text=True,
-            timeout=600,  # 10 min max
-        )
-
-        if result.returncode != 0:
-            raise RuntimeError(
-                f"Blender exited with code {result.returncode}.\n"
-                f"STDOUT: {result.stdout[-2000:]}\n"
-                f"STDERR: {result.stderr[-2000:]}"
-            )
-
-        if not os.path.exists(output_path):
-            raise RuntimeError(
-                f"Blender finished but output file not found: {output_path}\n"
-                f"STDOUT: {result.stdout[-1000:]}"
-            )
-
-    finally:
+    # Tenta GPU se disponível
+    prefs = bpy.context.preferences.addons.get("cycles")
+    if prefs:
+        cprefs = prefs.preferences
+        cprefs.compute_device_type = "CUDA"
         try:
-            os.unlink(script_path)
-        except OSError:
-            pass
-
-    image_url = _upload_to_supabase(output_path, job_id, tenant_id, cena_id)
-
-    try:
-        os.unlink(output_path)
-    except OSError:
-        pass
-
-    return image_url
+            cprefs.get_devices()
+            for d in cprefs.devices:
+                d.use = True
+            scene.cycles.device = "GPU"
+            print("Usando GPU para render.")
+        except Exception:
+            scene.cycles.device = "CPU"
+            print("GPU não disponível — usando CPU.")
 
 
-def _upload_to_supabase(
-    local_path: str, job_id: str, tenant_id: str, cena_id: str
-) -> str:
-    client = _get_supabase()
+# ─────────────────────────────────────────────────────────────────────────────
+# Main
+# ─────────────────────────────────────────────────────────────────────────────
 
-    storage_key = f"{tenant_id}/{cena_id}/{job_id}.png"
+def main():
+    config   = load_config()
+    out_path = output_path()
 
-    with open(local_path, "rb") as f:
-        data = f.read()
+    print(f"=== VendorAI Blender Render ===")
+    print(f"Resolução : {config.get('resolution', [1920, 1080])}")
+    print(f"Samples   : {config.get('samples', 64)}")
+    print(f"HDRI      : {config.get('hdri', 'interior_warm')}")
+    print(f"Objetos   : {len(config.get('objects', []))}")
+    print(f"Saída     : {out_path}")
+    print("")
 
-    try:
-        client.storage.from_(BUCKET).upload(
-            path=storage_key,
-            file=data,
-            file_options={"content-type": "image/png", "upsert": "true"},
-        )
-    except Exception as e:
-        raise RuntimeError(f"Supabase upload failed: {e}")
+    clear_scene()
+    configure_render(config, out_path)
 
-    public = client.storage.from_(BUCKET).get_public_url(storage_key)
-    return public
+    room_cfg = config.get("room", {})
+    build_room(room_cfg)
+
+    hdri_key      = config.get("hdri", "interior_warm")
+    hdri_strength = float(config.get("hdriStrength", 1.0))
+    setup_hdri(hdri_key, hdri_strength)
+
+    for obj_spec in config.get("objects", []):
+        try:
+            add_object(obj_spec)
+        except Exception as e:
+            print(f"[AVISO] Erro ao adicionar objeto '{obj_spec.get('name', '?')}': {e}")
+
+    setup_camera(config.get("camera", {}))
+
+    print("Iniciando render...")
+    bpy.ops.render.render(write_still=True)
+    print(f"RENDER_DONE:{out_path}")
+
+
+main()
