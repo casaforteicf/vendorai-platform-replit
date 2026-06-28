@@ -20,9 +20,15 @@ import {
   archRendersTable,
   archProjetosTable,
   archAmbientesTable,
+  archRenderVersoesTable,
+  archRenderSolicitacoesTable,
+  type ItemAdicionado,
+  type TexturaAlterada,
 } from "@workspace/db";
-import { eq, or } from "drizzle-orm";
+import { eq, or, and, desc } from "drizzle-orm";
 import { logger } from "../lib/logger.js";
+import { getOpenAIForTenant } from "../lib/agent-engine.js";
+import { ObjectStorageService } from "../lib/objectStorage.js";
 
 // ─── Tipos locais ──────────────────────────────────────────────────────────────
 
@@ -382,6 +388,192 @@ export async function checkRenderStatus(renderId: string): Promise<void> {
     { renderId, blenderJobId: render.blenderJobId, localStatus, imageUrl },
     "blenderService/check: render finalizado",
   );
+}
+
+// ─── processarSolicitacao — gera nova versão de render via gpt-image-1 ────────
+
+export async function processarSolicitacao(solicitacaoId: string): Promise<void> {
+  // 1. Buscar solicitação
+  const [sol] = await db
+    .select()
+    .from(archRenderSolicitacoesTable)
+    .where(eq(archRenderSolicitacoesTable.id, solicitacaoId))
+    .limit(1);
+
+  if (!sol) {
+    logger.warn({ solicitacaoId }, "processarSolicitacao: não encontrada");
+    return;
+  }
+
+  // Marcar como processando imediatamente
+  await db
+    .update(archRenderSolicitacoesTable)
+    .set({ status: "processando" })
+    .where(eq(archRenderSolicitacoesTable.id, solicitacaoId));
+
+  try {
+    // Buscar cena
+    const [cena] = await db
+      .select()
+      .from(archCenasTable)
+      .where(eq(archCenasTable.id, sol.cenaId))
+      .limit(1);
+
+    if (!cena) throw new Error(`Cena ${sol.cenaId} não encontrada`);
+
+    // Buscar projeto (tenantId)
+    const [projeto] = await db
+      .select({ tenantId: archProjetosTable.tenantId })
+      .from(archProjetosTable)
+      .where(eq(archProjetosTable.id, cena.projetoId))
+      .limit(1);
+
+    if (!projeto) throw new Error(`Projeto não encontrado para cena ${sol.cenaId}`);
+
+    // Buscar versão original (versao=1) — base do prompt
+    const [versaoOriginal] = await db
+      .select({ prompt: archRenderVersoesTable.prompt })
+      .from(archRenderVersoesTable)
+      .where(
+        and(
+          eq(archRenderVersoesTable.cenaId, sol.cenaId),
+          eq(archRenderVersoesTable.versao, 1),
+        ),
+      )
+      .limit(1);
+
+    // 2. sceneData original da cena
+    const sceneDataOriginal = (cena.sceneData ?? {}) as Record<string, unknown>;
+
+    // 3. Novo sceneData — mesclar original preservando todos os campos
+    const newSceneData: Record<string, unknown> = { ...sceneDataOriginal };
+
+    // 3a. Adicionar itensAdicionados ao array produtos[]
+    const itens = sol.itensAdicionados as ItemAdicionado[] | null;
+    if (itens && itens.length > 0) {
+      const produtosOriginais: string[] = Array.isArray(newSceneData["produtos"])
+        ? (newSceneData["produtos"] as string[])
+        : [];
+      const novosItens = itens.map((it) => `${it.tipo} cor:${it.cor} pos:${it.posicao}`);
+      newSceneData["produtos"] = [...produtosOriginais, ...novosItens];
+    }
+
+    // 3b. Atualizar texturasAlteradas nas cores do ambiente
+    const texturas = sol.texturasAlteradas as TexturaAlterada[] | null;
+    if (texturas && texturas.length > 0) {
+      const coresOriginais: Record<string, string> =
+        typeof newSceneData["cores"] === "object" && newSceneData["cores"] !== null
+          ? { ...(newSceneData["cores"] as Record<string, string>) }
+          : {};
+
+      for (const tex of texturas) {
+        // parede | piso | teto → sceneData.cores.<superficie>
+        coresOriginais[tex.superficie] = tex.cor;
+      }
+      newSceneData["cores"] = coresOriginais;
+    }
+
+    // 4. Montar prompt enriquecido
+    const sceneEstilo = String(sceneDataOriginal["estilo"] ?? "moderno");
+    const sceneProdutos = Array.isArray(sceneDataOriginal["produtos"])
+      ? (sceneDataOriginal["produtos"] as string[]).join(", ")
+      : "";
+
+    const basePrompt =
+      versaoOriginal?.prompt ??
+      `Photorealistic interior design render, ${sceneEstilo} style` +
+        (sceneProdutos ? `, featuring: ${sceneProdutos}` : "");
+
+    const itensDesc =
+      itens && itens.length > 0
+        ? itens.map((it) => `${it.tipo} at the ${it.posicao} in color ${it.cor}`).join(", ")
+        : "";
+
+    const texturasDesc =
+      texturas && texturas.length > 0
+        ? texturas
+            .map((t) => `${t.superficie}: ${t.material} ${t.cor}`)
+            .join(", ")
+        : "";
+
+    let prompt = basePrompt;
+    if (itensDesc)    prompt += `. Additionally include: ${itensDesc}`;
+    if (texturasDesc) prompt += `. Wall/Floor/Ceiling — ${texturasDesc}`;
+    prompt += ". Keep all other elements identical to the original composition";
+
+    // 5. Chamar gpt-image-1 (1792x1024, hd)
+    // Nota: dall-e-3 não existe nesta conta — usar gpt-image-1 que retorna b64_json
+    const openai = await getOpenAIForTenant(projeto.tenantId);
+    const imgResponse = await (openai.images.generate as Function)({
+      model:   "gpt-image-1",
+      prompt,
+      n:       1,
+      size:    "1792x1024",
+      quality: "hd",
+    });
+
+    const b64 = (imgResponse.data[0] as Record<string, unknown>)["b64_json"] as string | undefined;
+    if (!b64) throw new Error("gpt-image-1 não retornou b64_json");
+
+    // 6. Salvar no object storage — nunca sobrescrever versão existente
+    const ts = Date.now();
+    const buf = Buffer.from(b64, "base64");
+    const storage = new ObjectStorageService();
+    const objectPath = await storage.savePrivateBuffer(
+      buf,
+      "image/png",
+      `render-${sol.cenaId}-v${ts}.png`,
+    );
+    const servePath = objectPath.replace(/^\/objects\//, "");
+    const imageUrl  = `/api/storage/objects/${servePath}`;
+
+    // 7. Próxima versão = última + 1
+    const [ultimaVersao] = await db
+      .select({ versao: archRenderVersoesTable.versao })
+      .from(archRenderVersoesTable)
+      .where(eq(archRenderVersoesTable.cenaId, sol.cenaId))
+      .orderBy(desc(archRenderVersoesTable.versao))
+      .limit(1);
+
+    const proximaVersao = (ultimaVersao?.versao ?? 0) + 1;
+
+    const [novaVersao] = await db
+      .insert(archRenderVersoesTable)
+      .values({
+        cenaId:    sol.cenaId,
+        versao:    proximaVersao,
+        imageUrl,
+        prompt,
+        sceneData: newSceneData,
+        origem:    "solicitacao",
+      })
+      .returning({ id: archRenderVersoesTable.id });
+
+    if (!novaVersao) throw new Error("Falha ao inserir em arch_render_versoes");
+
+    // 8. Marcar solicitação como concluída
+    await db
+      .update(archRenderSolicitacoesTable)
+      .set({
+        status:         "concluido",
+        versaoGeradaId: novaVersao.id,
+        processadoEm:   new Date(),
+      })
+      .where(eq(archRenderSolicitacoesTable.id, solicitacaoId));
+
+    logger.info(
+      { solicitacaoId, versao: proximaVersao, cenaId: sol.cenaId },
+      "arch:solicitacao:concluida",
+    );
+  } catch (err) {
+    // 9. Erro — não afetar versões anteriores
+    logger.error({ err, solicitacaoId }, "arch:processarSolicitacao:erro");
+    await db
+      .update(archRenderSolicitacoesTable)
+      .set({ status: "erro", processadoEm: new Date() })
+      .where(eq(archRenderSolicitacoesTable.id, solicitacaoId))
+      .catch(() => undefined);
+  }
 }
 
 // ─── pollPendingRenders (chamado pelo scheduler) ──────────────────────────────

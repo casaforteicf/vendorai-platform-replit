@@ -31,7 +31,7 @@ import { z } from "zod/v4";
 import { anthropic } from "@workspace/integrations-anthropic-ai";
 import { authenticate } from "../middlewares/auth.js";
 import { objectStorageClient } from "../lib/objectStorage.js";
-import { iniciarRender } from "../services/blenderService.js";
+import { iniciarRender, processarSolicitacao } from "../services/blenderService.js";
 
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 20 * 1024 * 1024 } });
 
@@ -1254,41 +1254,6 @@ Use preços de mercado brasileiro atuais. Seja detalhado e abrangente. Não incl
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Helper: processar solicitação em background (fire-and-forget)
-// ─────────────────────────────────────────────────────────────────────────────
-async function processarSolicitacaoBackground(solId: string, cenaId: string): Promise<void> {
-  try {
-    await db
-      .update(archRenderSolicitacoesTable)
-      .set({ status: "processando" })
-      .where(eq(archRenderSolicitacoesTable.id, solId));
-
-    if (!process.env.BLENDER_SERVER_URL) {
-      // Sem servidor Blender configurado — marcar como erro imediatamente
-      await db
-        .update(archRenderSolicitacoesTable)
-        .set({ status: "erro", processadoEm: new Date() })
-        .where(eq(archRenderSolicitacoesTable.id, solId));
-      return;
-    }
-
-    // Disparar render; o scheduler (pollPendingRenders) faz polling e
-    // atualiza arch_renders + arch_cenas.renderUrl quando concluído.
-    await iniciarRender(cenaId);
-
-    // Render em andamento — status permanece 'processando'
-    // Quando a cena.renderUrl for preenchida (via scheduler), o endpoint
-    // de status pode criar a versão e marcar como concluido.
-  } catch {
-    await db
-      .update(archRenderSolicitacoesTable)
-      .set({ status: "erro", processadoEm: new Date() })
-      .where(eq(archRenderSolicitacoesTable.id, solId))
-      .catch(() => undefined);
-  }
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
 // Helper: resolver tenantId a partir do cenaId
 // ─────────────────────────────────────────────────────────────────────────────
 async function getCenaTenant(cenaId: string): Promise<{ cena: typeof archCenasTable.$inferSelect; tenantId: string; projetoNome: string | null } | null> {
@@ -1446,7 +1411,7 @@ router.post("/arch/cenas/:cenaId/solicitacoes", async (req, res) => {
 
   // Disparar processamento em background — não aguardar resposta
   setImmediate(() => {
-    processarSolicitacaoBackground(solicitacao.id, cenaId).catch(() => undefined);
+    processarSolicitacao(solicitacao.id).catch(() => undefined);
   });
 
   return res.status(201).json({
