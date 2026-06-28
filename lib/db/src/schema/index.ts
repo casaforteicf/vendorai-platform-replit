@@ -100,3 +100,8 @@ export * from "./beauty_servicos";
 export * from "./beauty_profissionais";
 export * from "./beauty_agendamentos";
 export * from "./beauty_prontuarios";
+export * from "./clinic_especialidades";
+export * from "./clinic_convenios";
+export * from "./clinic_medicos";
+export * from "./clinic_consultas";
+export * from "./clinic_prontuarios";
