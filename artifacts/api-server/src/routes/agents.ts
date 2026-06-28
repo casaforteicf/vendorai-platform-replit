@@ -31,6 +31,8 @@ import {
   buildSchedulerPrompt,
   buildServicePrompt,
   buildOnboardingPrompt,
+  getAgentConfig,
+  AGENT_NAME_TO_KEY,
   type AgentName,
   type PromptBuilder,
 } from "../lib/agent-engine.js";
@@ -101,8 +103,24 @@ async function handleAgentProcess(
   const ctx = await loadContext(tenantId, leadId);
   if (!ctx) { res.status(404).json({ error: `Lead "${leadId}" not found in this tenant` }); return; }
 
+  // Resolve DB-driven system prompt (falls back to hardcoded if not found)
+  const agentKey = AGENT_NAME_TO_KEY[agentName];
+  let resolvedSystemPrompt: string | null = null;
+  if (agentKey) {
+    try {
+      const resolved = await getAgentConfig(tenantId, agentKey);
+      resolvedSystemPrompt = resolved?.systemPrompt ?? null;
+    } catch (err: unknown) {
+      if (err instanceof Error && (err as Error & { code?: string }).code === "AGENT_NOT_CONFIGURED") {
+        res.status(400).json({ error: "Agente não configurado", code: "AGENT_NOT_CONFIGURED" });
+        return;
+      }
+      req.log.warn({ err, agentName, tenantId }, "agents: getAgentConfig failed, using hardcoded fallback");
+    }
+  }
+
   const openaiMessages = [
-    { role: "system" as const, content: buildPrompt(agentCfg.prompt, ctx) },
+    { role: "system" as const, content: buildPrompt(agentCfg.prompt, ctx, undefined, resolvedSystemPrompt) },
     ...ctx.recentMessages.map(msgToOpenAI),
     { role: "user" as const, content: mensagem },
   ];
@@ -152,6 +170,19 @@ async function handleSchedulerProcess(req: Request, res: Response): Promise<void
 
   const agentCfg = config.agents?.scheduler;
   if (!agentCfg?.enabled) { res.status(422).json({ error: "Agent \"scheduler\" is not enabled for this tenant" }); return; }
+
+  // Resolve DB-driven system prompt for scheduler (agentKey = "agendamento")
+  let schedulerSystemPrompt: string | null = null;
+  try {
+    const resolved = await getAgentConfig(tenantId, "agendamento");
+    schedulerSystemPrompt = resolved?.systemPrompt ?? null;
+  } catch (err: unknown) {
+    if (err instanceof Error && (err as Error & { code?: string }).code === "AGENT_NOT_CONFIGURED") {
+      res.status(400).json({ error: "Agente não configurado", code: "AGENT_NOT_CONFIGURED" });
+      return;
+    }
+    req.log.warn({ err, tenantId }, "scheduler: getAgentConfig failed, using hardcoded fallback");
+  }
 
   const limits = computeLimits(config);
   if (!limits.ok) { res.status(limits.httpStatus).json(limits.body); return; }
@@ -244,7 +275,8 @@ async function handleSchedulerProcess(req: Request, res: Response): Promise<void
           local:          agendamentoInput.local,
           meetLink:       meetLinkGerado,
         }
-      : undefined
+      : undefined,
+    schedulerSystemPrompt
   );
 
   const openaiMessages = [

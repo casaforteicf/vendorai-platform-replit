@@ -28,6 +28,8 @@ import {
   msgToOpenAI,
   PROMPT_BUILDERS,
   daysSinceLastContact,
+  getAgentConfig,
+  AGENT_NAME_TO_KEY,
   type AgentName,
   getOpenAI,
   type AgentContext,
@@ -178,8 +180,21 @@ export async function processAgentInternal(params: {
     // 7. Build prompt and call OpenAI
     const buildPrompt = PROMPT_BUILDERS[resolvedAgentName];
     const scenario = params.scenario ?? null;
+
+    // Resolve DB-driven system prompt override
+    let dispatchSystemPrompt: string | null = null;
+    const dispatchAgentKey = AGENT_NAME_TO_KEY[resolvedAgentName];
+    if (dispatchAgentKey) {
+      try {
+        const resolved = await getAgentConfig(tenantId, dispatchAgentKey);
+        dispatchSystemPrompt = resolved?.systemPrompt ?? null;
+      } catch (err) {
+        log.warn({ err, agentName: resolvedAgentName, tenantId }, "dispatch: getAgentConfig failed, using hardcoded fallback");
+      }
+    }
+
     const openaiMessages = [
-      { role: "system" as const, content: buildPrompt(resolvedAgentCfg?.prompt, ctx, scenario) },
+      { role: "system" as const, content: buildPrompt(resolvedAgentCfg?.prompt, ctx, scenario, dispatchSystemPrompt) },
       ...ctx.recentMessages.map(msgToOpenAI),
       { role: "user" as const, content: mensagem },
     ];

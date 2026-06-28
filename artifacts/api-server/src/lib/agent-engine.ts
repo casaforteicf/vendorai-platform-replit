@@ -20,6 +20,8 @@ import {
   agentTasksTable,
   tenantsTable,
   produtosCatalogoTable,
+  tenantAgentConfigsTable,
+  agentDefaultsTable,
 } from "@workspace/db";
 import type { AgentTask, AiFeature } from "@workspace/db";
 import { executeTaskAction } from "../routes/agent_tasks.js";
@@ -50,7 +52,7 @@ type LimitExceeded = { ok: false; httpStatus: 429; body: object };
 export type LimitResult = LimitOk | LimitExceeded;
 
 export type AgentName    = "sdr" | "closer" | "followup" | "reactivation" | "scheduler" | "service" | "onboarding" | "relacionamento";
-export type PromptBuilder = (customPrompt: string | undefined, ctx: AgentContext, scenario?: Record<string, unknown> | null) => string;
+export type PromptBuilder = (customPrompt: string | undefined, ctx: AgentContext, scenario?: Record<string, unknown> | null, systemPromptOverride?: string | null) => string;
 
 export type RelacionamentoScenario = {
   type: "birthday_lead" | "birthday_family" | "deal_anniversary" | "commercial_date" | "spouse_welcome";
@@ -72,6 +74,86 @@ const AGENT_FEATURE_MAP: Record<AgentName, AiFeature> = {
   onboarding: "agent_onboarding",
   relacionamento: "agent_relacionamento",
 };
+
+// ── Agent config resolution (new DB-driven system) ───────────────────────────
+
+export type ResolvedAgentConfig = {
+  systemPrompt: string;
+  parametros: Record<string, unknown>;
+  tom: string;
+  restricoes: string | null;
+  knowledgeBaseIds: string[];
+};
+
+/** Maps legacy AgentName → new agentKey in tenant_agent_configs / agent_defaults */
+export const AGENT_NAME_TO_KEY: Partial<Record<AgentName, string>> = {
+  sdr:          "sdr",
+  closer:       "closer",
+  followup:     "sdr",
+  reactivation: "sdr",
+  scheduler:    "agendamento",
+  service:      "suporte",
+  onboarding:   "suporte",
+  relacionamento: "pos_venda",
+};
+
+const TOM_INSTRUCTIONS: Record<string, string> = {
+  profissional: "Mantenha tom formal e objetivo.",
+  amigavel:     "Use linguagem descontraída e próxima.",
+  tecnico:      "Seja preciso e técnico nas respostas.",
+  vendedor:     "Foque em gerar interesse e avançar na venda.",
+  neutro:       "",
+};
+
+/**
+ * Resolves the agent system prompt for a tenant:
+ * 1. Looks up tenant_agent_configs (tenant-specific override)
+ * 2. Falls back to agent_defaults (platform defaults)
+ * 3. Applies tom instruction + restricoes
+ * Throws {code: "AGENT_NOT_CONFIGURED"} if the agent is explicitly disabled for this tenant.
+ * Returns null if no config exists at all (caller may use hardcoded fallback).
+ */
+export async function getAgentConfig(tenantId: string, agentKey: string): Promise<ResolvedAgentConfig | null> {
+  const [tenantCfg] = await db
+    .select()
+    .from(tenantAgentConfigsTable)
+    .where(and(
+      eq(tenantAgentConfigsTable.tenantId, tenantId),
+      eq(tenantAgentConfigsTable.agentKey, agentKey),
+    ))
+    .limit(1);
+
+  if (tenantCfg && !tenantCfg.ativo) {
+    const err = new Error("Agente desativado para este tenant") as Error & { code: string };
+    err.code = "AGENT_NOT_CONFIGURED";
+    throw err;
+  }
+
+  const [defaults] = await db
+    .select()
+    .from(agentDefaultsTable)
+    .where(eq(agentDefaultsTable.agentKey, agentKey))
+    .limit(1);
+
+  const basePrompt = tenantCfg?.systemPromptCustom || defaults?.systemPromptBase;
+  if (!basePrompt) return null;
+
+  const tom = tenantCfg?.tom ?? "profissional";
+  const restricoes = tenantCfg?.restricoes ?? null;
+
+  const parts: string[] = [basePrompt];
+  const tomInstruction = TOM_INSTRUCTIONS[tom];
+  if (tomInstruction) parts.push(tomInstruction);
+  if (restricoes?.trim()) parts.push(`RESTRIÇÕES: ${restricoes.trim()}`);
+
+  return {
+    systemPrompt:    parts.join("\n\n"),
+    parametros:      ((tenantCfg?.parametros ?? defaults?.parametrosBase ?? {}) as Record<string, unknown>),
+    tom,
+    restricoes,
+    knowledgeBaseIds: ((tenantCfg?.knowledgeBaseIds ?? []) as string[]),
+  };
+}
 
 // ── OpenAI client (lazy) — kept for backward compat, migrate to gateway ──────
 export function getOpenAI(): OpenAI {
@@ -274,19 +356,23 @@ export function daysSinceLastContact(ctx: AgentContext): number | null {
 //  PROMPT BUILDERS
 // ═════════════════════════════════════════════════════════════════════════════
 
-export function buildSdrPrompt(customPrompt: string | undefined, ctx: AgentContext): string {
+export function buildSdrPrompt(customPrompt: string | undefined, ctx: AgentContext, _scenario?: Record<string, unknown> | null, systemPromptOverride?: string | null): string {
   const { lead, ci } = ctx;
   const parts: string[] = [];
-  parts.push(
-    "Você é um SDR (Sales Development Representative) experiente e consultivo.\n" +
-    "Missão: qualificar o lead, entender suas necessidades reais e avançar a conversa comercial de forma natural.\n" +
-    "Regras:\n" +
-    "- Responda em português brasileiro\n" +
-    "- Máximo 3 parágrafos curtos\n" +
-    "- Nunca invente informações sobre produtos ou preços\n" +
-    "- Se houver interesse claro, sugira agendar uma conversa com o time"
-  );
-  if (customPrompt?.trim()) parts.push("## INSTRUÇÕES DA EMPRESA\n" + customPrompt.trim());
+  if (systemPromptOverride?.trim()) {
+    parts.push(systemPromptOverride.trim());
+  } else {
+    parts.push(
+      "Você é um SDR (Sales Development Representative) experiente e consultivo.\n" +
+      "Missão: qualificar o lead, entender suas necessidades reais e avançar a conversa comercial de forma natural.\n" +
+      "Regras:\n" +
+      "- Responda em português brasileiro\n" +
+      "- Máximo 3 parágrafos curtos\n" +
+      "- Nunca invente informações sobre produtos ou preços\n" +
+      "- Se houver interesse claro, sugira agendar uma conversa com o time"
+    );
+    if (customPrompt?.trim()) parts.push("## INSTRUÇÕES DA EMPRESA\n" + customPrompt.trim());
+  }
   parts.push(buildLeadSection(lead));
   if (ci) {
     const lines = ["## INTELIGÊNCIA DE CLIENTE"];
@@ -300,23 +386,27 @@ export function buildSdrPrompt(customPrompt: string | undefined, ctx: AgentConte
   return parts.join("\n\n");
 }
 
-export function buildCloserPrompt(customPrompt: string | undefined, ctx: AgentContext, scenario?: Record<string, unknown> | null): string {
+export function buildCloserPrompt(customPrompt: string | undefined, ctx: AgentContext, scenario?: Record<string, unknown> | null, systemPromptOverride?: string | null): string {
   const { lead, ci } = ctx;
   const parts: string[] = [];
-  parts.push(
-    "Você é um Closer de vendas B2B especialista em SaaS.\n" +
-    "Missão: remover objeções, criar clareza sobre valor e avançar para o fechamento do negócio.\n" +
-    "Regras:\n" +
-    "- Responda em português brasileiro, tom confiante mas empático\n" +
-    "- Máximo 3 parágrafos curtos\n" +
-    "- Reconheça a objeção, valide-a, apresente contra-argumento com evidência\n" +
-    "- Se o lead estiver pronto, proponha o próximo passo concreto\n" +
-    "- Nunca invente dados, desconto ou funcionalidades não confirmadas\n" +
-    "- DETECÇÃO DE ACEITE: Se o lead disser algo como 'aceito', 'vamos em frente', 'fechado', 'pode fechar', 'tá bom', 'vamos nessa', 'quero sim', 'vamos fechar', 'confirmo', 'topa', 'está certo', 'aceito a proposta', 'tá aprovado', 'pode seguir' — ou qualquer variação clara de aceite da proposta/orçamento, você deve retornar EXATAMENTE a ação especial: `{{action:proposal_accept}}` (apenas isso, sem texto adicional).\n" +
-    "- Se a resposta for ambígua (ex: 'quero saber mais', 'pensei em aceitar', 'talvez', 'vou ver', 'me explica melhor'), NÃO use proposal_accept — continue a conversa normalmente pedindo confirmação explícita.\n" +
-    "- Se a resposta for claramente NÃO (ex: 'não quero', 'desisto', 'muito caro', 'não vou seguir'), não use proposal_accept — responda normalmente."
-  );
-  if (customPrompt?.trim()) parts.push("## INSTRUÇÕES DA EMPRESA\n" + customPrompt.trim());
+  if (systemPromptOverride?.trim()) {
+    parts.push(systemPromptOverride.trim());
+  } else {
+    parts.push(
+      "Você é um Closer de vendas B2B especialista em SaaS.\n" +
+      "Missão: remover objeções, criar clareza sobre valor e avançar para o fechamento do negócio.\n" +
+      "Regras:\n" +
+      "- Responda em português brasileiro, tom confiante mas empático\n" +
+      "- Máximo 3 parágrafos curtos\n" +
+      "- Reconheça a objeção, valide-a, apresente contra-argumento com evidência\n" +
+      "- Se o lead estiver pronto, proponha o próximo passo concreto\n" +
+      "- Nunca invente dados, desconto ou funcionalidades não confirmadas\n" +
+      "- DETECÇÃO DE ACEITE: Se o lead disser algo como 'aceito', 'vamos em frente', 'fechado', 'pode fechar', 'tá bom', 'vamos nessa', 'quero sim', 'vamos fechar', 'confirmo', 'topa', 'está certo', 'aceito a proposta', 'tá aprovado', 'pode seguir' — ou qualquer variação clara de aceite da proposta/orçamento, você deve retornar EXATAMENTE a ação especial: `{{action:proposal_accept}}` (apenas isso, sem texto adicional).\n" +
+      "- Se a resposta for ambígua (ex: 'quero saber mais', 'pensei em aceitar', 'talvez', 'vou ver', 'me explica melhor'), NÃO use proposal_accept — continue a conversa normalmente pedindo confirmação explícita.\n" +
+      "- Se a resposta for claramente NÃO (ex: 'não quero', 'desisto', 'muito caro', 'não vou seguir'), não use proposal_accept — responda normalmente."
+    );
+    if (customPrompt?.trim()) parts.push("## INSTRUÇÕES DA EMPRESA\n" + customPrompt.trim());
+  }
 
   // Product presentation scenario
   if (scenario?.type === "product_presentation") {
@@ -350,13 +440,15 @@ export function buildCloserPrompt(customPrompt: string | undefined, ctx: AgentCo
   return parts.join("\n\n");
 }
 
-export function buildFollowupPrompt(customPrompt: string | undefined, ctx: AgentContext): string {
+export function buildFollowupPrompt(customPrompt: string | undefined, ctx: AgentContext, _scenario?: Record<string, unknown> | null, systemPromptOverride?: string | null): string {
   const { lead, ci } = ctx;
   const dias = daysSinceLastContact(ctx);
   const isPrimeiroContato = !ctx.conversation && ctx.recentMessages.length === 0;
   const parts: string[] = [];
 
-  if (isPrimeiroContato) {
+  if (systemPromptOverride?.trim()) {
+    parts.push(systemPromptOverride.trim());
+  } else if (isPrimeiroContato) {
     parts.push(
       "Você é um especialista em primeiro contato comercial B2B.\n" +
       "Missão: apresentar-se de forma calorosa, colocar-se à disposição e despertar interesse genuíno — sem pressão.\n" +
@@ -369,6 +461,7 @@ export function buildFollowupPrompt(customPrompt: string | undefined, ctx: Agent
       "- Encerre perguntando se há algo específico que faça mais sentido abordar agora\n" +
       "- Seja breve, humano e deixe espaço para o lead responder"
     );
+    if (customPrompt?.trim()) parts.push("## INSTRUÇÕES DA EMPRESA\n" + customPrompt.trim());
   } else {
     parts.push(
       "Você é um especialista em follow-up de vendas B2B.\n" +
@@ -380,9 +473,8 @@ export function buildFollowupPrompt(customPrompt: string | undefined, ctx: Agent
       "- Traga algo de valor: uma dúvida, uma novidade relevante, ou um convite gentil para continuar" +
       (dias !== null && dias > 0 ? `\n- Contexto: o lead está sem atividade há ${dias} dia${dias > 1 ? "s" : ""}` : "")
     );
+    if (customPrompt?.trim()) parts.push("## INSTRUÇÕES DA EMPRESA\n" + customPrompt.trim());
   }
-
-  if (customPrompt?.trim()) parts.push("## INSTRUÇÕES DA EMPRESA\n" + customPrompt.trim());
   parts.push(buildLeadSection(lead));
   if (ci) {
     const lines = ["## INTELIGÊNCIA DE CLIENTE"];
@@ -396,7 +488,7 @@ export function buildFollowupPrompt(customPrompt: string | undefined, ctx: Agent
   return parts.join("\n\n");
 }
 
-export function buildReactivationPrompt(customPrompt: string | undefined, ctx: AgentContext): string {
+export function buildReactivationPrompt(customPrompt: string | undefined, ctx: AgentContext, _scenario?: Record<string, unknown> | null, systemPromptOverride?: string | null): string {
   const { lead, ci } = ctx;
   const dias = daysSinceLastContact(ctx);
   const isPrimeiroContato = !ctx.conversation && ctx.recentMessages.length === 0;
@@ -407,7 +499,9 @@ export function buildReactivationPrompt(customPrompt: string | undefined, ctx: A
 
   const parts: string[] = [];
 
-  if (isPrimeiroContato) {
+  if (systemPromptOverride?.trim()) {
+    parts.push(systemPromptOverride.trim());
+  } else if (isPrimeiroContato) {
     parts.push(
       "Você é um especialista em primeiro contato comercial B2B.\n" +
       "Missão: apresentar-se de forma calorosa, colocar-se à disposição e despertar interesse genuíno — sem pressão.\n" +
@@ -420,6 +514,7 @@ export function buildReactivationPrompt(customPrompt: string | undefined, ctx: A
       "- Encerre perguntando se há algo específico que faça mais sentido abordar agora\n" +
       "- Seja breve, humano e deixe espaço para o lead responder"
     );
+    if (customPrompt?.trim()) parts.push("## INSTRUÇÕES DA EMPRESA\n" + customPrompt.trim());
   } else {
     parts.push(
       "Você é um especialista em reativação de clientes e leads B2B.\n" +
@@ -433,9 +528,8 @@ export function buildReactivationPrompt(customPrompt: string | undefined, ctx: A
       (dias !== null && dias > 7 ? `\n- O lead está inativo há ${dias} dias` : "") +
       (churnAlert ? `\n- ${churnAlert}` : "")
     );
+    if (customPrompt?.trim()) parts.push("## INSTRUÇÕES DA EMPRESA\n" + customPrompt.trim());
   }
-
-  if (customPrompt?.trim()) parts.push("## INSTRUÇÕES DA EMPRESA\n" + customPrompt.trim());
   parts.push(buildLeadSection(lead));
   if (ci) {
     const lines = ["## INTELIGÊNCIA DE CLIENTE"];
@@ -461,7 +555,8 @@ export function buildReactivationPrompt(customPrompt: string | undefined, ctx: A
 export function buildSchedulerPrompt(
   customPrompt: string | undefined,
   ctx: AgentContext,
-  agendamento?: { tipo: string; dataHoraInicio: Date; dataHoraFim: Date; local?: string; meetLink?: string | null }
+  agendamento?: { tipo: string; dataHoraInicio: Date; dataHoraFim: Date; local?: string; meetLink?: string | null },
+  systemPromptOverride?: string | null
 ): string {
   const { lead, ci } = ctx;
 
@@ -475,18 +570,22 @@ export function buildSchedulerPrompt(
     : "Nenhum horário foi definido ainda. Sugira ao lead um próximo passo para confirmar data e formato da reunião.";
 
   const parts: string[] = [];
-  parts.push(
-    "Você é um especialista em agendamento comercial B2B.\n" +
-    "Missão: agendar ou confirmar uma reunião/visita com o lead de forma eficiente e profissional.\n" +
-    "Regras:\n" +
-    "- Responda em português brasileiro, tom profissional e objetivo\n" +
-    "- Máximo 2 parágrafos curtos\n" +
-    "- Seja claro sobre datas, horários e formato da reunião\n" +
-    "- Se a reunião já estiver agendada, confirme os detalhes e mostre entusiasmo\n" +
-    "- Se não houver horário definido, ofereça 2–3 opções concretas ou peça a disponibilidade do lead\n" +
-    `- ${agendadoInfo}`
-  );
-  if (customPrompt?.trim()) parts.push("## INSTRUÇÕES DA EMPRESA\n" + customPrompt.trim());
+  if (systemPromptOverride?.trim()) {
+    parts.push(systemPromptOverride.trim() + `\n\n${agendadoInfo}`);
+  } else {
+    parts.push(
+      "Você é um especialista em agendamento comercial B2B.\n" +
+      "Missão: agendar ou confirmar uma reunião/visita com o lead de forma eficiente e profissional.\n" +
+      "Regras:\n" +
+      "- Responda em português brasileiro, tom profissional e objetivo\n" +
+      "- Máximo 2 parágrafos curtos\n" +
+      "- Seja claro sobre datas, horários e formato da reunião\n" +
+      "- Se a reunião já estiver agendada, confirme os detalhes e mostre entusiasmo\n" +
+      "- Se não houver horário definido, ofereça 2–3 opções concretas ou peça a disponibilidade do lead\n" +
+      `- ${agendadoInfo}`
+    );
+    if (customPrompt?.trim()) parts.push("## INSTRUÇÕES DA EMPRESA\n" + customPrompt.trim());
+  }
   parts.push(buildLeadSection(lead));
   if (ci?.nextBestAction) {
     parts.push(`## CONTEXTO\nPróxima ação recomendada: ${ci.nextBestAction}`);
@@ -494,20 +593,24 @@ export function buildSchedulerPrompt(
   return parts.join("\n\n");
 }
 
-export function buildServicePrompt(customPrompt: string | undefined, ctx: AgentContext): string {
+export function buildServicePrompt(customPrompt: string | undefined, ctx: AgentContext, _scenario?: Record<string, unknown> | null, systemPromptOverride?: string | null): string {
   const { lead, ci } = ctx;
   const parts: string[] = [];
-  parts.push(
-    "Você é um especialista em suporte e atendimento pós-venda B2B.\n" +
-    "Missão: resolver dúvidas, problemas ou solicitações do cliente de forma rápida, clara e empática.\n" +
-    "Regras:\n" +
-    "- Responda em português brasileiro, tom prestativo e paciente\n" +
-    "- Máximo 3 parágrafos curtos\n" +
-    "- Confirme que entendeu o problema antes de propor a solução\n" +
-    "- Se não souber a resposta, seja honesto e indique o próximo passo (escalação, consulta interna)\n" +
-    "- Encerre sempre verificando se o cliente ficou satisfeito ou tem mais alguma dúvida"
-  );
-  if (customPrompt?.trim()) parts.push("## INSTRUÇÕES DA EMPRESA\n" + customPrompt.trim());
+  if (systemPromptOverride?.trim()) {
+    parts.push(systemPromptOverride.trim());
+  } else {
+    parts.push(
+      "Você é um especialista em suporte e atendimento pós-venda B2B.\n" +
+      "Missão: resolver dúvidas, problemas ou solicitações do cliente de forma rápida, clara e empática.\n" +
+      "Regras:\n" +
+      "- Responda em português brasileiro, tom prestativo e paciente\n" +
+      "- Máximo 3 parágrafos curtos\n" +
+      "- Confirme que entendeu o problema antes de propor a solução\n" +
+      "- Se não souber a resposta, seja honesto e indique o próximo passo (escalação, consulta interna)\n" +
+      "- Encerre sempre verificando se o cliente ficou satisfeito ou tem mais alguma dúvida"
+    );
+    if (customPrompt?.trim()) parts.push("## INSTRUÇÕES DA EMPRESA\n" + customPrompt.trim());
+  }
   parts.push(buildLeadSection(lead));
   if (ci) {
     const lines = ["## CONTEXTO DO CLIENTE"];
@@ -523,20 +626,24 @@ export function buildServicePrompt(customPrompt: string | undefined, ctx: AgentC
   return parts.join("\n\n");
 }
 
-export function buildOnboardingPrompt(customPrompt: string | undefined, ctx: AgentContext): string {
+export function buildOnboardingPrompt(customPrompt: string | undefined, ctx: AgentContext, _scenario?: Record<string, unknown> | null, systemPromptOverride?: string | null): string {
   const { lead, ci } = ctx;
   const parts: string[] = [];
-  parts.push(
-    "Você é um especialista em onboarding de novos clientes B2B SaaS.\n" +
-    "Missão: dar as boas-vindas ao novo cliente, explicar os próximos passos e garantir que ele se sinta acolhido e confiante para começar.\n" +
-    "Regras:\n" +
-    "- Responda em português brasileiro, tom entusiasmado e acolhedor\n" +
-    "- Máximo 3 parágrafos curtos\n" +
-    "- Explique os próximos 1–3 passos de forma clara e sem jargões técnicos\n" +
-    "- Mostre que você está disponível para ajudar durante toda a jornada\n" +
-    "- Se souber o objetivo principal do cliente, conecte os próximos passos a esse objetivo"
-  );
-  if (customPrompt?.trim()) parts.push("## INSTRUÇÕES DA EMPRESA\n" + customPrompt.trim());
+  if (systemPromptOverride?.trim()) {
+    parts.push(systemPromptOverride.trim());
+  } else {
+    parts.push(
+      "Você é um especialista em onboarding de novos clientes B2B SaaS.\n" +
+      "Missão: dar as boas-vindas ao novo cliente, explicar os próximos passos e garantir que ele se sinta acolhido e confiante para começar.\n" +
+      "Regras:\n" +
+      "- Responda em português brasileiro, tom entusiasmado e acolhedor\n" +
+      "- Máximo 3 parágrafos curtos\n" +
+      "- Explique os próximos 1–3 passos de forma clara e sem jargões técnicos\n" +
+      "- Mostre que você está disponível para ajudar durante toda a jornada\n" +
+      "- Se souber o objetivo principal do cliente, conecte os próximos passos a esse objetivo"
+    );
+    if (customPrompt?.trim()) parts.push("## INSTRUÇÕES DA EMPRESA\n" + customPrompt.trim());
+  }
   parts.push(buildLeadSection(lead));
   if (ci) {
     const lines = ["## CONTEXTO DO NOVO CLIENTE"];
@@ -551,7 +658,8 @@ export function buildOnboardingPrompt(customPrompt: string | undefined, ctx: Age
 export function buildRelacionamentoPrompt(
   customPrompt: string | undefined,
   ctx: AgentContext,
-  scenario?: Record<string, unknown> | null
+  scenario?: Record<string, unknown> | null,
+  systemPromptOverride?: string | null
 ): string {
   const s = scenario as RelacionamentoScenario | undefined;
   const { lead, ci } = ctx;
@@ -560,7 +668,9 @@ export function buildRelacionamentoPrompt(
   const isPersonal = s?.type === "birthday_lead" || s?.type === "birthday_family" || s?.type === "deal_anniversary" || s?.type === "spouse_welcome";
   const isCommercial = s?.type === "commercial_date";
 
-  if (isPersonal) {
+  if (systemPromptOverride?.trim()) {
+    parts.push(systemPromptOverride.trim());
+  } else if (isPersonal) {
     parts.push(
       "Você é um especialista em relacionamento e fidelização de clientes.\n" +
       "Missão: enviar uma mensagem calorosa e personalizada por uma data especial do lead ou de sua família.\n" +
@@ -571,6 +681,7 @@ export function buildRelacionamentoPrompt(
       "- Se houver produtos relevantes no catálogo, sugira de forma leve, sem pressão\n" +
       "- NUNCA invente preços ou produtos que não estejam no catálogo fornecido"
     );
+    if (customPrompt?.trim()) parts.push("## INSTRUÇÕES DA EMPRESA\n" + customPrompt.trim());
   } else if (isCommercial) {
     parts.push(
       "Você é um especialista em campanhas de datas comerciais.\n" +
@@ -582,6 +693,7 @@ export function buildRelacionamentoPrompt(
       "- Seja claro sobre a promoção ou sugestão, mas sem pressão excessiva\n" +
       "- NUNCA invente preços, descontos ou produtos que não estejam no catálogo"
     );
+    if (customPrompt?.trim()) parts.push("## INSTRUÇÕES DA EMPRESA\n" + customPrompt.trim());
   } else {
     parts.push(
       "Você é um especialista em relacionamento e fidelização de clientes.\n" +
@@ -591,9 +703,8 @@ export function buildRelacionamentoPrompt(
       "- Máximo 2 parágrafos curtos\n" +
       "- NUNCA invente preços ou produtos que não estejam no catálogo fornecido"
     );
+    if (customPrompt?.trim()) parts.push("## INSTRUÇÕES DA EMPRESA\n" + customPrompt.trim());
   }
-
-  if (customPrompt?.trim()) parts.push("## INSTRUÇÕES DA EMPRESA\n" + customPrompt.trim());
 
   // Lead profile
   const lines = ["## PERFIL DO LEAD"];
