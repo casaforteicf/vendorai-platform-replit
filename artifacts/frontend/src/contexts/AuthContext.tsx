@@ -122,7 +122,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     if (newUser.forcePasswordReset) {
       setLocation("/trocar-senha");
     } else {
-      setLocation(newUser.platformRole === "partner" ? "/partner" : "/");
+      setLocation(newUser.platformRole === "partner" ? "/partner" : "/dashboard");
     }
   };
 

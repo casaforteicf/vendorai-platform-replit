@@ -1,8 +1,12 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Link } from "wouter";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
+import { useAuth } from "@/contexts/AuthContext";
+import { formatDistanceToNow, format } from "date-fns";
+import { ptBR } from "date-fns/locale";
 import {
   Users,
   TrendingUp,
@@ -14,6 +18,9 @@ import {
   AlertTriangle,
   X,
   Info,
+  RefreshCw,
+  Star,
+  Activity,
 } from "lucide-react";
 import {
   AreaChart,
@@ -37,6 +44,14 @@ interface DashboardAlerta {
   severidade: "info" | "aviso" | "critico";
 }
 
+interface AtividadeItem {
+  tipo: string;
+  descricao: string;
+  entidade: string;
+  entidadeId: string;
+  createdAt: string;
+}
+
 interface DashboardData {
   vendas: {
     totalLeads: number;
@@ -54,15 +69,7 @@ interface DashboardData {
     quotaUsada: number;
     usosPorAgente: { agentKey: string; nome: string; count: number }[];
   };
-  atividade: {
-    ultimas20: {
-      tipo: string;
-      descricao: string;
-      entidade: string;
-      entidadeId: string;
-      createdAt: string;
-    }[];
-  };
+  atividade: { ultimas20: AtividadeItem[] };
   alertas: DashboardAlerta[];
   periodo: { inicio: string; fim: string };
 }
@@ -86,6 +93,8 @@ const STATUS_LABELS: Record<string, string> = {
   perdido:     "Perdido",
 };
 
+const REFRESH_INTERVAL_MS = 60_000;
+
 // ── Helpers ───────────────────────────────────────────────────────────────────
 function getToken() { return localStorage.getItem("vendorai_token"); }
 function getBase()  { return (import.meta.env.BASE_URL ?? "/").replace(/\/$/, ""); }
@@ -94,7 +103,7 @@ function formatCurrency(value: number): string {
   return value.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 }
 
-function quotaColor(pct: number): string {
+function quotaBgColor(pct: number): string {
   if (pct > 90) return "bg-red-500";
   if (pct >= 70) return "bg-amber-400";
   return "bg-green-500";
@@ -108,6 +117,45 @@ function fmtAxisDate(iso: string): string {
 function fmtFullDate(iso: string): string {
   const [yyyy, mm, dd] = iso.split("-");
   return `${dd}/${mm}/${yyyy}`;
+}
+
+function getGreeting(): string {
+  const h = new Date().getHours();
+  if (h < 12) return "Bom dia";
+  if (h < 18) return "Boa tarde";
+  return "Boa noite";
+}
+
+function todayFormatted(): string {
+  return format(new Date(), "EEEE, d 'de' MMMM 'de' yyyy", { locale: ptBR });
+}
+
+function relativeTime(iso: string): string {
+  try {
+    return formatDistanceToNow(new Date(iso), { addSuffix: true, locale: ptBR });
+  } catch {
+    return "";
+  }
+}
+
+function entidadeHref(entidade: string, entidadeId: string): string | null {
+  if (!entidadeId) return null;
+  if (entidade === "lead")  return `/leads/${entidadeId}`;
+  if (entidade === "deal")  return `/deals/${entidadeId}`;
+  return null;
+}
+
+// ── Activity icon ─────────────────────────────────────────────────────────────
+function AtividadeIcone({ tipo }: { tipo: string }) {
+  if (tipo === "lead_novo")
+    return <span className="flex h-8 w-8 items-center justify-center rounded-full bg-blue-100 dark:bg-blue-900/40"><Users className="h-4 w-4 text-blue-600 dark:text-blue-400" /></span>;
+  if (tipo === "agente_mensagem")
+    return <span className="flex h-8 w-8 items-center justify-center rounded-full bg-indigo-100 dark:bg-indigo-900/40"><Bot className="h-4 w-4 text-indigo-600 dark:text-indigo-400" /></span>;
+  if (tipo === "deal_atualizado")
+    return <span className="flex h-8 w-8 items-center justify-center rounded-full bg-amber-100 dark:bg-amber-900/40"><TrendingUp className="h-4 w-4 text-amber-600 dark:text-amber-400" /></span>;
+  if (tipo === "cliente_convertido")
+    return <span className="flex h-8 w-8 items-center justify-center rounded-full bg-green-100 dark:bg-green-900/40"><Star className="h-4 w-4 text-green-600 dark:text-green-400" /></span>;
+  return <span className="flex h-8 w-8 items-center justify-center rounded-full bg-muted"><Activity className="h-4 w-4 text-muted-foreground" /></span>;
 }
 
 // ── Skeleton ──────────────────────────────────────────────────────────────────
@@ -138,7 +186,7 @@ function ChartSkeleton({ height = 240 }: { height?: number }) {
   );
 }
 
-// ── Custom Tooltip (LineChart) ────────────────────────────────────────────────
+// ── Custom Tooltip (AreaChart) ────────────────────────────────────────────────
 function LeadTooltip({ active, payload, label }: {
   active?: boolean;
   payload?: { value: number }[];
@@ -155,26 +203,43 @@ function LeadTooltip({ active, payload, label }: {
 
 // ── Main Component ────────────────────────────────────────────────────────────
 export default function Dashboard() {
-  const [data, setData]           = useState<DashboardData | null>(null);
-  const [loading, setLoading]     = useState(true);
-  const [error, setError]         = useState<string | null>(null);
-  const [dismissed, setDismissed] = useState<Set<number>>(new Set());
+  const { user } = useAuth();
+
+  const [data, setData]             = useState<DashboardData | null>(null);
+  const [loading, setLoading]       = useState(true);
+  const [error, setError]           = useState<string | null>(null);
+  const [isRefreshing, setRefreshing] = useState(false);
+  const [dismissed, setDismissed]   = useState<Set<number>>(new Set());
+  const isFirstFetch                = useRef(true);
+
+  const fetchData = useCallback(async () => {
+    const initial = isFirstFetch.current;
+    if (initial) setLoading(true);
+    try {
+      const res = await fetch(`${getBase()}/api/dashboard`, {
+        headers: getToken() ? { Authorization: `Bearer ${getToken()}` } : {},
+      });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      setData(await res.json());
+      if (initial) setError(null);
+    } catch (err) {
+      if (initial) setError(err instanceof Error ? err.message : "Erro ao carregar dados");
+    } finally {
+      if (initial) { setLoading(false); isFirstFetch.current = false; }
+    }
+  }, []);
 
   useEffect(() => {
-    (async () => {
-      try {
-        const res = await fetch(`${getBase()}/api/dashboard`, {
-          headers: getToken() ? { Authorization: `Bearer ${getToken()}` } : {},
-        });
-        if (!res.ok) throw new Error(`HTTP ${res.status}`);
-        setData(await res.json());
-      } catch (err) {
-        setError(err instanceof Error ? err.message : "Erro ao carregar dados");
-      } finally {
-        setLoading(false);
-      }
-    })();
-  }, []);
+    fetchData();
+    const id = setInterval(fetchData, REFRESH_INTERVAL_MS);
+    return () => clearInterval(id);
+  }, [fetchData]);
+
+  async function handleRefresh() {
+    setRefreshing(true);
+    await fetchData();
+    setRefreshing(false);
+  }
 
   function dismiss(idx: number) {
     setDismissed(prev => new Set(prev).add(idx));
@@ -184,7 +249,13 @@ export default function Dashboard() {
   if (loading) {
     return (
       <div className="p-6 space-y-6 max-w-7xl mx-auto">
-        <Skeleton className="h-7 w-48" />
+        <div className="flex items-start justify-between">
+          <div className="space-y-1">
+            <Skeleton className="h-7 w-56" />
+            <Skeleton className="h-4 w-48" />
+          </div>
+          <Skeleton className="h-9 w-28" />
+        </div>
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
           {Array.from({ length: 4 }).map((_, i) => <CardSkeleton key={i} />)}
         </div>
@@ -196,6 +267,7 @@ export default function Dashboard() {
           <ChartSkeleton height={220} />
           <ChartSkeleton height={220} />
         </div>
+        <ChartSkeleton height={280} />
       </div>
     );
   }
@@ -216,10 +288,8 @@ export default function Dashboard() {
   if (!data) return null;
 
   const { vendas, ia } = data;
-  const quotaBarColor  = quotaColor(ia.quotaUsada);
-  const quotaPct       = Math.min(ia.quotaUsada, 100);
+  const quotaPct = Math.min(ia.quotaUsada, 100);
 
-  // Derived data for charts
   const pieData = Object.entries(vendas.leadsPorStatus)
     .filter(([, v]) => v > 0)
     .map(([status, count]) => ({
@@ -230,16 +300,31 @@ export default function Dashboard() {
     }));
 
   const barData = ia.usosPorAgente.slice(0, 8);
+  const atividades = data.atividade.ultimas20;
 
   return (
-    <div className="p-6 space-y-6 max-w-7xl mx-auto">
+    <div className="p-6 space-y-6 max-w-7xl mx-auto pb-12">
 
-      {/* ── Page title ── */}
-      <div>
-        <h1 className="text-2xl font-bold tracking-tight">Dashboard</h1>
-        <p className="text-sm text-muted-foreground mt-0.5">
-          Últimos 30 dias — {new Date(data.periodo.fim).toLocaleDateString("pt-BR")}
-        </p>
+      {/* ── Header ── */}
+      <div className="flex items-start justify-between gap-4">
+        <div>
+          <h1 className="text-2xl font-bold tracking-tight">
+            {getGreeting()}{user?.name ? `, ${user.name}` : ""}
+          </h1>
+          <p className="text-sm text-muted-foreground mt-0.5 capitalize">
+            {todayFormatted()}
+          </p>
+        </div>
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={handleRefresh}
+          disabled={isRefreshing}
+          className="shrink-0 gap-1.5"
+        >
+          <RefreshCw className={`h-3.5 w-3.5 ${isRefreshing ? "animate-spin" : ""}`} />
+          Atualizar
+        </Button>
       </div>
 
       {/* ── Alertas ── */}
@@ -249,9 +334,7 @@ export default function Dashboard() {
             if (dismissed.has(idx)) return null;
             const isCritico = alerta.severidade === "critico";
             const isAviso   = alerta.severidade === "aviso";
-            const alertClass = isCritico
-              ? ""
-              : isAviso
+            const alertClass = isCritico ? "" : isAviso
               ? "border-amber-400/60 bg-amber-50 text-amber-900 dark:bg-amber-950/30 dark:text-amber-200 dark:border-amber-500/40 [&>svg]:text-amber-600 dark:[&>svg]:text-amber-400"
               : "";
             return (
@@ -285,7 +368,7 @@ export default function Dashboard() {
           CARDS — VENDAS (4 cols / 2 mobile)
       ════════════════════════════════════ */}
       <section className="space-y-3">
-        <h2 className="text-sm font-semibold uppercase tracking-wider text-muted-foreground">Vendas</h2>
+        <h2 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Vendas</h2>
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
 
           <Card>
@@ -341,7 +424,7 @@ export default function Dashboard() {
           CARDS — IA (3 cols / 1 mobile)
       ════════════════════════════════════ */}
       <section className="space-y-3">
-        <h2 className="text-sm font-semibold uppercase tracking-wider text-muted-foreground">Inteligência Artificial</h2>
+        <h2 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Inteligência Artificial</h2>
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
 
           <Card>
@@ -364,7 +447,7 @@ export default function Dashboard() {
               <div className="text-2xl font-bold">{quotaPct}%</div>
               <div className="relative h-2 w-full overflow-hidden rounded-full bg-primary/20">
                 <div
-                  className={`h-full rounded-full transition-all ${quotaBarColor}`}
+                  className={`h-full rounded-full transition-all ${quotaBgColor(ia.quotaUsada)}`}
                   style={{ width: `${quotaPct}%` }}
                 />
               </div>
@@ -396,10 +479,10 @@ export default function Dashboard() {
       </section>
 
       {/* ════════════════════════════════════
-          GRÁFICO 1 — Evolução de leads (full width)
+          GRÁFICO 1 — Evolução de leads
       ════════════════════════════════════ */}
       <section className="space-y-3">
-        <h2 className="text-sm font-semibold uppercase tracking-wider text-muted-foreground">Evolução</h2>
+        <h2 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Evolução</h2>
         <Card>
           <CardHeader className="pb-2">
             <CardTitle className="text-sm font-medium">Leads nos últimos 30 dias</CardTitle>
@@ -444,13 +527,12 @@ export default function Dashboard() {
       </section>
 
       {/* ════════════════════════════════════
-          GRÁFICOS 2 e 3 — grid 2 cols / 1 mobile
+          GRÁFICOS 2 e 3 — grid 2 cols
       ════════════════════════════════════ */}
       <section className="space-y-3">
-        <h2 className="text-sm font-semibold uppercase tracking-wider text-muted-foreground">Detalhes</h2>
+        <h2 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Detalhes</h2>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
 
-          {/* Gráfico 2 — Distribuição por status (Donut) */}
           <Card>
             <CardHeader className="pb-2">
               <CardTitle className="text-sm font-medium">Distribuição por status</CardTitle>
@@ -476,11 +558,7 @@ export default function Dashboard() {
                         <Cell key={entry.status} fill={entry.fill} />
                       ))}
                     </Pie>
-                    <Legend
-                      iconType="circle"
-                      iconSize={8}
-                      wrapperStyle={{ fontSize: 12 }}
-                    />
+                    <Legend iconType="circle" iconSize={8} wrapperStyle={{ fontSize: 12 }} />
                     <Tooltip
                       formatter={(value: number, name: string) => [value, name]}
                       contentStyle={{
@@ -496,7 +574,6 @@ export default function Dashboard() {
             </CardContent>
           </Card>
 
-          {/* Gráfico 3 — Uso por agente (Horizontal Bar) */}
           <Card>
             <CardHeader className="pb-2">
               <CardTitle className="text-sm font-medium">Mensagens por agente</CardTitle>
@@ -508,11 +585,7 @@ export default function Dashboard() {
                 </div>
               ) : (
                 <ResponsiveContainer width="100%" height={220}>
-                  <BarChart
-                    layout="vertical"
-                    data={barData}
-                    margin={{ top: 0, right: 16, left: 0, bottom: 0 }}
-                  >
+                  <BarChart layout="vertical" data={barData} margin={{ top: 0, right: 16, left: 0, bottom: 0 }}>
                     <defs>
                       <linearGradient id="grad-agents" x1="0" y1="0" x2="1" y2="0">
                         <stop offset="0%"   stopColor="#818CF8" />
@@ -551,6 +624,51 @@ export default function Dashboard() {
           </Card>
 
         </div>
+      </section>
+
+      {/* ════════════════════════════════════
+          FEED — Atividade recente
+      ════════════════════════════════════ */}
+      <section className="space-y-3">
+        <h2 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Atividade recente</h2>
+        <Card>
+          <CardContent className="pt-4">
+            {atividades.length === 0 ? (
+              <div className="flex flex-col items-center justify-center gap-2 py-10 text-muted-foreground">
+                <Activity className="h-8 w-8 opacity-30" />
+                <p className="text-sm">Nenhuma atividade recente</p>
+              </div>
+            ) : (
+              <ul className="divide-y divide-border">
+                {atividades.map((item, idx) => {
+                  const href = entidadeHref(item.entidade, item.entidadeId);
+                  const inner = (
+                    <div className="flex items-start gap-3 py-3">
+                      <AtividadeIcone tipo={item.tipo} />
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm leading-snug line-clamp-2">{item.descricao}</p>
+                        <p className="text-xs text-muted-foreground mt-0.5">{relativeTime(item.createdAt)}</p>
+                      </div>
+                    </div>
+                  );
+
+                  return href ? (
+                    <li key={idx}>
+                      <Link
+                        href={href}
+                        className="block hover:bg-muted/50 rounded transition-colors -mx-1 px-1"
+                      >
+                        {inner}
+                      </Link>
+                    </li>
+                  ) : (
+                    <li key={idx}>{inner}</li>
+                  );
+                })}
+              </ul>
+            )}
+          </CardContent>
+        </Card>
       </section>
 
     </div>

@@ -371,6 +371,9 @@ function AppRoutes() {
         <Route path="/">
           <ProtectedRoute component={Dashboard} />
         </Route>
+        <Route path="/dashboard">
+          <ProtectedRoute component={Dashboard} />
+        </Route>
         <Route path="/leads">
           <ProtectedRoute component={Leads} />
         </Route>
