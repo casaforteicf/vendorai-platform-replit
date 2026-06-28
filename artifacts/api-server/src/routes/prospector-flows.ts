@@ -10,14 +10,15 @@ import { and, asc, desc, eq, sql } from "drizzle-orm";
 import multer from "multer";
 import {
   db,
+  partnerLeadsTable,
+  prospectorFlowExecutionsTable,
   prospectorFlowStepsTable,
   prospectorFlowsTable,
 } from "@workspace/db";
 import type { PartnerLead } from "@workspace/db";
 import { objectStorageClient } from "../lib/objectStorage.js";
-import {
-  generateMaterial,
-} from "../services/contentGenerator.js";
+import { generateMaterial } from "../services/contentGenerator.js";
+import { triggerFlow } from "../jobs/contentFlow.js";
 
 const router: IRouter = Router();
 
@@ -409,6 +410,135 @@ router.post("/prospector/flows/:id/steps/:stepId/preview", async (req, res) => {
 
   const url = await generateMaterial(previewStep, fakeLead);
   return res.json({ url });
+});
+
+// ── EXECUÇÕES ─────────────────────────────────────────────────────────────────
+
+// GET /prospector/flows/:id/executions — Lista execuções com dados do lead
+router.get("/prospector/flows/:id/executions", async (req, res) => {
+  const tenantId = getTenantId(req as any);
+  const flowId = String(req.params["id"]);
+  await assertFlowOwnership(flowId, tenantId);
+
+  const { status, lead_id } = req.query as Record<string, string | undefined>;
+
+  const conditions = [eq(prospectorFlowExecutionsTable.flowId, flowId)];
+  if (status) conditions.push(eq(prospectorFlowExecutionsTable.status, status));
+  if (lead_id) conditions.push(eq(prospectorFlowExecutionsTable.leadId, lead_id));
+
+  const rows = await db
+    .select({
+      id: prospectorFlowExecutionsTable.id,
+      flowId: prospectorFlowExecutionsTable.flowId,
+      leadId: prospectorFlowExecutionsTable.leadId,
+      stepId: prospectorFlowExecutionsTable.stepId,
+      status: prospectorFlowExecutionsTable.status,
+      materialGeradoUrl: prospectorFlowExecutionsTable.materialGeradoUrl,
+      agendadoPara: prospectorFlowExecutionsTable.agendadoPara,
+      executadoEm: prospectorFlowExecutionsTable.executadoEm,
+      erroMsg: prospectorFlowExecutionsTable.erroMsg,
+      leadNome: partnerLeadsTable.nome,
+      leadEmpresa: partnerLeadsTable.empresa,
+      leadStatus: partnerLeadsTable.status,
+    })
+    .from(prospectorFlowExecutionsTable)
+    .leftJoin(
+      partnerLeadsTable,
+      eq(prospectorFlowExecutionsTable.leadId, partnerLeadsTable.id),
+    )
+    .where(and(...conditions))
+    .orderBy(desc(prospectorFlowExecutionsTable.agendadoPara));
+
+  return res.json(rows);
+});
+
+// POST /prospector/leads/:leadId/trigger-flow — Disparar fluxo manualmente
+router.post("/prospector/leads/:leadId/trigger-flow", async (req, res) => {
+  const tenantId = getTenantId(req as any);
+  const leadId = String(req.params["leadId"]);
+
+  const parsed = z.object({ flowId: z.string().min(1) }).safeParse(req.body);
+  if (!parsed.success) {
+    res.status(422).json({ error: "flowId obrigatório" });
+    return;
+  }
+  const { flowId } = parsed.data;
+
+  // Verificar que o lead pertence ao tenant
+  const [lead] = await db
+    .select({ id: partnerLeadsTable.id })
+    .from(partnerLeadsTable)
+    .where(
+      and(
+        eq(partnerLeadsTable.id, leadId),
+        eq(partnerLeadsTable.tenantId, tenantId),
+      ),
+    )
+    .limit(1);
+  if (!lead) {
+    res.status(404).json({ error: "Lead não encontrado" });
+    return;
+  }
+
+  // Verificar que o fluxo pertence ao tenant
+  await assertFlowOwnership(flowId, tenantId);
+
+  // Cancelar execuções pendentes anteriores do mesmo lead
+  await db
+    .update(prospectorFlowExecutionsTable)
+    .set({ status: "cancelado" })
+    .where(
+      and(
+        eq(prospectorFlowExecutionsTable.leadId, leadId),
+        eq(prospectorFlowExecutionsTable.status, "pendente"),
+      ),
+    );
+
+  // Agendar novas execuções
+  await triggerFlow(flowId, leadId);
+
+  return res.json({ ok: true, leadId, flowId });
+});
+
+// POST /prospector/executions/:execId/retry — Re-tentar execução com status 'falhou'
+router.post("/prospector/executions/:execId/retry", async (req, res) => {
+  const tenantId = getTenantId(req as any);
+  const execId = String(req.params["execId"]);
+
+  // Buscar execução e validar que o fluxo pertence ao tenant (via JOIN)
+  const [row] = await db
+    .select({
+      id: prospectorFlowExecutionsTable.id,
+      status: prospectorFlowExecutionsTable.status,
+      flowTenantId: prospectorFlowsTable.tenantId,
+    })
+    .from(prospectorFlowExecutionsTable)
+    .innerJoin(
+      prospectorFlowsTable,
+      eq(prospectorFlowExecutionsTable.flowId, prospectorFlowsTable.id),
+    )
+    .where(eq(prospectorFlowExecutionsTable.id, execId))
+    .limit(1);
+
+  if (!row || row.flowTenantId !== tenantId) {
+    res.status(404).json({ error: "Execução não encontrada" });
+    return;
+  }
+
+  if (row.status !== "falhou") {
+    res.status(400).json({ error: `Apenas execuções com status 'falhou' podem ser refeitas (atual: '${row.status}')` });
+    return;
+  }
+
+  const agendadoPara = new Date(Date.now() + 2 * 60 * 1000); // now + 2 minutos
+
+  const [updated] = await db
+    .update(prospectorFlowExecutionsTable)
+    .set({ status: "pendente", erroMsg: null, agendadoPara })
+    .where(eq(prospectorFlowExecutionsTable.id, execId))
+    .returning();
+
+  return res.json(updated);
 });
 
 export default router;
