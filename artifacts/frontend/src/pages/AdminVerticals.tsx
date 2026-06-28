@@ -1,44 +1,363 @@
 import { useState } from "react";
 import { useLocation } from "wouter";
 import { useAuth } from "@/contexts/AuthContext";
-import { useListTenants, getListTenantsQueryKey } from "@workspace/api-client-react";
+import {
+  useListTenants,
+  getListTenantsQueryKey,
+  useListSegmentTemplates,
+  useApplySegmentTemplate,
+  getGetAgentConfigByTenantQueryKey,
+  type Tenant,
+} from "@workspace/api-client-react";
+import { useQueryClient } from "@tanstack/react-query";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
+  Sheet,
+  SheetContent,
+  SheetHeader,
+  SheetTitle,
+  SheetDescription,
+} from "@/components/ui/sheet";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { useToast } from "@/hooks/use-toast";
+import {
   HardHat, Shirt, ShoppingCart, Building2, Search, LogOut,
-  ExternalLink, AlertCircle,
+  ExternalLink, AlertCircle, Bot, GitBranch, Tag, Sparkles,
+  CheckCircle2, Loader2, Users, ChevronRight, Info, Layers,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
-const VERTICAL_META: Record<string, { label: string; icon: React.ElementType; color: string; href: string }> = {
+interface VerticalMeta {
+  label: string;
+  icon: React.ElementType;
+  color: string;
+  bgGradient: string;
+  href: string;
+  features: string[];
+}
+
+const VERTICAL_META: Record<string, VerticalMeta> = {
   "Construção & Reforma": {
     label: "Construção Civil",
     icon: HardHat,
-    color: "text-amber-600 bg-amber-50 border-amber-200",
+    color: "text-amber-700 bg-amber-50 border-amber-200",
+    bgGradient: "from-amber-50 to-orange-50",
     href: "/obras",
+    features: [
+      "Gestão de obras com etapas e medições",
+      "Orçamentos e composições de insumos",
+      "Controle financeiro por obra (DRE)",
+      "Upload e análise IA de NF/XML",
+      "Portal do cliente para acompanhamento",
+      "Lançamentos integrados com Asaas",
+    ],
   },
   "Varejo de Roupas & Acessórios": {
     label: "Varejo de Moda",
     icon: Shirt,
-    color: "text-pink-600 bg-pink-50 border-pink-200",
+    color: "text-pink-700 bg-pink-50 border-pink-200",
+    bgGradient: "from-pink-50 to-purple-50",
     href: "/varejo/produtos",
+    features: [
+      "Catálogo de produtos com variações (cor/tamanho)",
+      "Gestão de coleções e fornecedores",
+      "Controle de compras e estoque",
+      "Programa de fidelidade por pontos",
+      "Combos e looks sugeridos",
+      "Vitrine integrada com WhatsApp",
+    ],
   },
   "Supermercado": {
     label: "Supermercado",
     icon: ShoppingCart,
-    color: "text-emerald-600 bg-emerald-50 border-emerald-200",
+    color: "text-emerald-700 bg-emerald-50 border-emerald-200",
+    bgGradient: "from-emerald-50 to-teal-50",
     href: "/supermercado",
+    features: [
+      "Dashboard de pedidos e faturamento",
+      "Catálogo com categorias e preços",
+      "Gestão de pedidos e status de entrega",
+      "Campanhas de promoção por segmento",
+      "Configurações de área de cobertura",
+    ],
   },
 };
 
 const ACTIVE_VERTICALS = Object.keys(VERTICAL_META);
+
+interface VerticalDetailSheetProps {
+  vertical: string | null;
+  onClose: () => void;
+  tenants: Tenant[];
+}
+
+function VerticalDetailSheet({ vertical, onClose, tenants }: VerticalDetailSheetProps) {
+  const { setTenantOverride, tenantOverride } = useAuth();
+  const [, setLocation] = useLocation();
+  const { toast } = useToast();
+  const qc = useQueryClient();
+  const [targetTenantId, setTargetTenantId] = useState<string>("");
+  const [activating, setActivating] = useState(false);
+
+  const { data: templates = [] } = useListSegmentTemplates();
+  const applyMutation = useApplySegmentTemplate();
+
+  if (!vertical) return null;
+
+  const meta = VERTICAL_META[vertical];
+  if (!meta) return null;
+
+  const VertIcon = meta.icon;
+  const template = templates.find((t) => t.nome === vertical);
+
+  const tenantsWithVertical = tenants.filter((t) => (t as any).vertical === vertical);
+  const tenantsWithout = tenants.filter(
+    (t) => (t as any).vertical !== vertical && t.status === "active"
+  );
+
+  const promptCount = template
+    ? Object.values(template.promptsSugeridos ?? {}).filter(Boolean).length
+    : 0;
+
+  async function handleActivate() {
+    if (!targetTenantId || !template) return;
+    const tName = tenants.find((t) => t.id === targetTenantId)?.name ?? targetTenantId;
+    setActivating(true);
+    applyMutation.mutate(
+      { tenantId: targetTenantId, id: template.id },
+      {
+        onSuccess: () => {
+          setActivating(false);
+          toast({
+            title: `Vertical ativada para ${tName}`,
+            description: `O módulo "${vertical}" foi ativado com sucesso.`,
+          });
+          qc.invalidateQueries({ queryKey: getListTenantsQueryKey() });
+          qc.invalidateQueries({ queryKey: getGetAgentConfigByTenantQueryKey(targetTenantId) });
+          setTargetTenantId("");
+        },
+        onError: () => {
+          setActivating(false);
+          toast({
+            title: "Erro ao ativar vertical",
+            description: "Tente novamente.",
+            variant: "destructive",
+          });
+        },
+      }
+    );
+  }
+
+  function handleAccess(tenantId: string, tenantName: string) {
+    setTenantOverride({ id: tenantId, name: tenantName, vertical: vertical! });
+    setLocation(meta.href);
+    onClose();
+  }
+
+  return (
+    <Sheet open={!!vertical} onOpenChange={(o) => !o && onClose()}>
+      <SheetContent className="w-full sm:max-w-xl overflow-y-auto flex flex-col gap-0 p-0">
+        {/* ── Header ─────────────────────────────────────────── */}
+        <div className={cn("p-6 bg-gradient-to-br", meta.bgGradient)}>
+          <SheetHeader>
+            <SheetTitle className="flex items-center gap-3 text-xl">
+              <div className={cn("p-2 rounded-lg border", meta.color)}>
+                <VertIcon className="h-5 w-5" />
+              </div>
+              {meta.label}
+            </SheetTitle>
+            <SheetDescription className="text-sm mt-1">
+              {template?.descricao ?? `Módulo vertical para ${meta.label}`}
+            </SheetDescription>
+          </SheetHeader>
+
+          {/* Stats */}
+          <div className="grid grid-cols-3 gap-3 mt-5">
+            {[
+              { icon: Bot, label: "Agentes IA", value: promptCount },
+              { icon: GitBranch, label: "Etapas funil", value: template?.funilPadrao?.length ?? "—" },
+              { icon: Tag, label: "Categorias", value: template?.categoriasProdutoSugeridas?.length ?? "—" },
+            ].map(({ icon: Icon, label, value }) => (
+              <div key={label} className="flex flex-col items-center gap-1 rounded-xl bg-white/70 border border-white/80 p-3 text-center backdrop-blur-sm">
+                <Icon className="h-4 w-4 text-primary" />
+                <span className="text-lg font-bold text-foreground">{value}</span>
+                <span className="text-[10px] text-muted-foreground leading-tight">{label}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        <div className="flex-1 overflow-y-auto p-6 space-y-6">
+          {/* ── Funcionalidades do módulo ──────────────────────── */}
+          <section className="space-y-2">
+            <h3 className="text-sm font-semibold flex items-center gap-2">
+              <Layers className="h-4 w-4 text-primary" />
+              Funcionalidades incluídas
+            </h3>
+            <ul className="space-y-1.5">
+              {meta.features.map((f) => (
+                <li key={f} className="flex items-start gap-2 text-sm">
+                  <CheckCircle2 className="h-4 w-4 text-emerald-500 shrink-0 mt-0.5" />
+                  {f}
+                </li>
+              ))}
+            </ul>
+          </section>
+
+          {/* ── Funil padrão ──────────────────────────────────── */}
+          {template?.funilPadrao && template.funilPadrao.length > 0 && (
+            <section className="space-y-2">
+              <h3 className="text-sm font-semibold flex items-center gap-2">
+                <GitBranch className="h-4 w-4 text-primary" />
+                Funil de vendas padrão
+              </h3>
+              <div className="flex flex-wrap gap-1.5">
+                {template.funilPadrao.map((etapa, i) => (
+                  <Badge key={etapa} variant="secondary" className="text-xs gap-1">
+                    <span className="text-muted-foreground">{i + 1}.</span> {etapa}
+                  </Badge>
+                ))}
+              </div>
+            </section>
+          )}
+
+          {/* ── Agentes de IA ─────────────────────────────────── */}
+          {template && promptCount > 0 && (
+            <section className="space-y-2">
+              <h3 className="text-sm font-semibold flex items-center gap-2">
+                <Bot className="h-4 w-4 text-primary" />
+                Agentes de IA configurados
+              </h3>
+              <div className="flex flex-wrap gap-1.5">
+                {Object.keys(template.promptsSugeridos ?? {})
+                  .filter((k) => !!(template.promptsSugeridos as Record<string, string>)[k])
+                  .map((k) => (
+                    <Badge key={k} variant="outline" className="text-xs capitalize">
+                      <Sparkles className="h-3 w-3 mr-1 text-primary" />
+                      {k.replace(/([A-Z])/g, " $1").trim()}
+                    </Badge>
+                  ))}
+              </div>
+            </section>
+          )}
+
+          {/* ── Categorias de produto ─────────────────────────── */}
+          {template?.categoriasProdutoSugeridas && template.categoriasProdutoSugeridas.length > 0 && (
+            <section className="space-y-2">
+              <h3 className="text-sm font-semibold flex items-center gap-2">
+                <Tag className="h-4 w-4 text-primary" />
+                Categorias sugeridas
+              </h3>
+              <div className="flex flex-wrap gap-1.5">
+                {template.categoriasProdutoSugeridas.map((c) => (
+                  <Badge key={c} variant="outline" className="text-xs">{c}</Badge>
+                ))}
+              </div>
+            </section>
+          )}
+
+          {/* ── Tenants com esta vertical ─────────────────────── */}
+          <section className="space-y-2">
+            <h3 className="text-sm font-semibold flex items-center gap-2">
+              <Users className="h-4 w-4 text-primary" />
+              Tenants com este módulo
+              <Badge variant="secondary" className="text-xs">{tenantsWithVertical.length}</Badge>
+            </h3>
+            {tenantsWithVertical.length === 0 ? (
+              <p className="text-xs text-muted-foreground">Nenhum tenant ativo nesta vertical ainda.</p>
+            ) : (
+              <div className="space-y-2">
+                {tenantsWithVertical.map((t) => (
+                  <div
+                    key={t.id}
+                    className="flex items-center justify-between gap-2 rounded-lg border bg-muted/30 px-3 py-2"
+                  >
+                    <div className="min-w-0">
+                      <p className="text-sm font-medium truncate">{t.name}</p>
+                      <p className="text-xs text-muted-foreground">{t.status}</p>
+                    </div>
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      className="h-7 gap-1 shrink-0"
+                      onClick={() => handleAccess(t.id, t.name)}
+                    >
+                      <ExternalLink className="h-3.5 w-3.5" />
+                      Acessar
+                    </Button>
+                  </div>
+                ))}
+              </div>
+            )}
+          </section>
+
+          {/* ── Ativar para novo tenant ───────────────────────── */}
+          {template && (
+            <section className="space-y-3 rounded-xl border bg-muted/20 p-4">
+              <h3 className="text-sm font-semibold flex items-center gap-2">
+                <Sparkles className="h-4 w-4 text-primary" />
+                Ativar módulo para um tenant
+              </h3>
+              <p className="text-xs text-muted-foreground">
+                Selecione um tenant ativo que ainda não possui este módulo e aplique o template completo (agentes, funil, vertical).
+              </p>
+              <Select value={targetTenantId} onValueChange={setTargetTenantId}>
+                <SelectTrigger className="w-full">
+                  <SelectValue placeholder="Selecionar tenant..." />
+                </SelectTrigger>
+                <SelectContent>
+                  {tenantsWithout.length === 0 ? (
+                    <SelectItem value="__none__" disabled>
+                      Todos os tenants ativos já têm esta vertical
+                    </SelectItem>
+                  ) : (
+                    tenantsWithout.map((t) => (
+                      <SelectItem key={t.id} value={t.id}>
+                        {t.name}
+                      </SelectItem>
+                    ))
+                  )}
+                </SelectContent>
+              </Select>
+              <Button
+                className="w-full gap-2"
+                disabled={!targetTenantId || activating || tenantsWithout.length === 0}
+                onClick={handleActivate}
+              >
+                {activating ? (
+                  <>
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                    Ativando...
+                  </>
+                ) : (
+                  <>
+                    <CheckCircle2 className="h-4 w-4" />
+                    Ativar módulo
+                  </>
+                )}
+              </Button>
+            </section>
+          )}
+        </div>
+      </SheetContent>
+    </Sheet>
+  );
+}
 
 export default function AdminVerticals() {
   const { setTenantOverride, tenantOverride, clearTenantOverride } = useAuth();
   const [, setLocation] = useLocation();
   const [search, setSearch] = useState("");
   const [filterVertical, setFilterVertical] = useState<string | "all">("all");
+  const [detailVertical, setDetailVertical] = useState<string | null>(null);
 
   const { data: tenants = [], isLoading } = useListTenants({
     query: { queryKey: getListTenantsQueryKey() },
@@ -68,6 +387,7 @@ export default function AdminVerticals() {
 
   return (
     <div className="max-w-5xl mx-auto space-y-6 pb-10">
+      {/* ── Header ────────────────────────────────────────────── */}
       <div className="flex items-start justify-between gap-4 flex-wrap">
         <div>
           <h1 className="text-2xl font-bold tracking-tight flex items-center gap-2">
@@ -75,7 +395,7 @@ export default function AdminVerticals() {
             Verticais por Tenant
           </h1>
           <p className="text-muted-foreground text-sm mt-1">
-            Acesse os módulos verticais de qualquer tenant como super admin.
+            Acesse, visualize detalhes e ative módulos verticais para qualquer tenant.
           </p>
         </div>
         {tenantOverride && (
@@ -97,6 +417,39 @@ export default function AdminVerticals() {
         )}
       </div>
 
+      {/* ── Vitrine dos módulos verticais ─────────────────────── */}
+      <section className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+        {ACTIVE_VERTICALS.map((vertical) => {
+          const meta = VERTICAL_META[vertical]!;
+          const VertIcon = meta.icon;
+          const count = tenants.filter((t) => (t as any).vertical === vertical).length;
+          return (
+            <button
+              key={vertical}
+              onClick={() => setDetailVertical(vertical)}
+              className={cn(
+                "rounded-xl border text-left p-4 flex flex-col gap-3 transition-all hover:shadow-md hover:-translate-y-0.5 active:translate-y-0 group",
+                `bg-gradient-to-br ${meta.bgGradient}`
+              )}
+            >
+              <div className={cn("w-fit p-2 rounded-lg border", meta.color)}>
+                <VertIcon className="h-5 w-5" />
+              </div>
+              <div>
+                <p className="font-semibold text-sm">{meta.label}</p>
+                <p className="text-xs text-muted-foreground mt-0.5">{count} tenant{count !== 1 ? "s" : ""} ativos</p>
+              </div>
+              <div className="flex items-center gap-1 text-xs text-primary font-medium mt-auto group-hover:gap-2 transition-all">
+                <Info className="h-3.5 w-3.5" />
+                Ver detalhes
+                <ChevronRight className="h-3.5 w-3.5" />
+              </div>
+            </button>
+          );
+        })}
+      </section>
+
+      {/* ── Filtros ───────────────────────────────────────────── */}
       <div className="flex gap-3 flex-wrap">
         <div className="relative flex-1 min-w-48">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
@@ -107,7 +460,7 @@ export default function AdminVerticals() {
             onChange={(e) => setSearch(e.target.value)}
           />
         </div>
-        <div className="flex gap-2">
+        <div className="flex gap-2 flex-wrap">
           {["all", ...ACTIVE_VERTICALS].map((v) => {
             const meta = v !== "all" ? VERTICAL_META[v] : null;
             const Icon = meta?.icon;
@@ -139,6 +492,7 @@ export default function AdminVerticals() {
         </div>
       )}
 
+      {/* ── Lista por vertical ────────────────────────────────── */}
       {!isLoading && ACTIVE_VERTICALS.map((vertical) => {
         const items = grouped[vertical] ?? [];
         if (filterVertical !== "all" && filterVertical !== vertical) return null;
@@ -149,10 +503,18 @@ export default function AdminVerticals() {
 
         return (
           <section key={vertical}>
-            <div className={cn("flex items-center gap-2 px-3 py-1.5 rounded-md border w-fit mb-3", meta.color)}>
-              <VertIcon className="h-4 w-4" />
-              <span className="text-sm font-semibold">{meta.label}</span>
-              <Badge variant="secondary" className="ml-1 text-xs">{items.length}</Badge>
+            <div className="flex items-center gap-2 mb-3">
+              <div className={cn("flex items-center gap-2 px-3 py-1.5 rounded-md border w-fit", meta.color)}>
+                <VertIcon className="h-4 w-4" />
+                <span className="text-sm font-semibold">{meta.label}</span>
+                <Badge variant="secondary" className="ml-1 text-xs">{items.length}</Badge>
+              </div>
+              <button
+                onClick={() => setDetailVertical(vertical)}
+                className="text-xs text-primary hover:underline flex items-center gap-1"
+              >
+                <Info className="h-3 w-3" /> Ver detalhes do módulo
+              </button>
             </div>
 
             {items.length === 0 ? (
@@ -203,6 +565,13 @@ export default function AdminVerticals() {
           </section>
         );
       })}
+
+      {/* ── Detail Sheet ──────────────────────────────────────── */}
+      <VerticalDetailSheet
+        vertical={detailVertical}
+        onClose={() => setDetailVertical(null)}
+        tenants={tenants}
+      />
     </div>
   );
 }
