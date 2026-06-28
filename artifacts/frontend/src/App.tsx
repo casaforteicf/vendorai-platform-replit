@@ -86,6 +86,12 @@ const VarejoCompras         = lazy(() => import("@/pages/VarejoCompras"));
 const VarejoFidelidade      = lazy(() => import("@/pages/VarejoFidelidade"));
 const VarejoCombos          = lazy(() => import("@/pages/VarejoCombos"));
 
+// Beauty — Salão de Beleza
+const BeautyDashboard    = lazy(() => import("@/pages/beauty/BeautyDashboard"));
+const BeautyAgenda       = lazy(() => import("@/pages/beauty/Agenda"));
+const BeautyServicos     = lazy(() => import("@/pages/beauty/Servicos"));
+const BeautyProfissionais= lazy(() => import("@/pages/beauty/Profissionais"));
+
 // Supermercado
 const SupermercadoDashboard = lazy(() => import("@/pages/supermercado/SupermercadoDashboard"));
 const SupermercadoProdutos  = lazy(() => import("@/pages/supermercado/SupermercadoProdutos"));
@@ -549,6 +555,18 @@ function AppRoutes() {
         </Route>
         <Route path="/varejo/combos">
           {() => <VarejoRoute component={VarejoCombos} />}
+        </Route>
+        <Route path="/beauty">
+          {() => <ProtectedRoute component={BeautyDashboard} />}
+        </Route>
+        <Route path="/beauty/agenda">
+          {() => <ProtectedRoute component={BeautyAgenda} />}
+        </Route>
+        <Route path="/beauty/servicos">
+          {() => <ProtectedRoute component={BeautyServicos} />}
+        </Route>
+        <Route path="/beauty/profissionais">
+          {() => <ProtectedRoute component={BeautyProfissionais} />}
         </Route>
         <Route path="/supermercado">
           {() => <SupermercadoRoute component={SupermercadoDashboard} />}

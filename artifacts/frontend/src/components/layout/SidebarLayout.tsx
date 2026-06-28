@@ -9,7 +9,7 @@ import {
   Store, Package, Menu, X, Sparkles, Globe, BookOpen, HardHat, Layers,
   Shirt, Tag, ShoppingCart, Heart, Gift, Truck, UtensilsCrossed, Megaphone as MegaphoneIcon,
   BarChart3, ChevronRight, ChevronDown, Target, Trophy, Search, Clapperboard, Building2, AlertCircle, Bot,
-  DraftingCompass, FolderOpen,
+  DraftingCompass, FolderOpen, Scissors, User2,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
@@ -27,6 +27,7 @@ export function SidebarLayout({ children }: { children: React.ReactNode }) {
   const isConstrucao = effectiveVertical === "Construção & Reforma";
   const isVarejo = effectiveVertical === "Varejo de Roupas & Acessórios";
   const isSupermercado = effectiveVertical === "Supermercado";
+  const isSalao = effectiveVertical === "Salão de Beleza";
 
   const allNavItems = [
     { name: "Dashboard",     href: "/",             icon: LayoutDashboard, sellerHidden: false, section: "crm", fn: ["vendedor", "financeiro", "suporte", "entrega", "administrador", "outro"] as UserFunction[] },
@@ -62,14 +63,20 @@ export function SidebarLayout({ children }: { children: React.ReactNode }) {
     { name: "Projetos",      href: "/arch/projetos",            icon: FolderOpen,  sellerHidden: true,  section: "arch", fn: ["administrador", "outro"] as UserFunction[] },
     { name: "Catálogo",      href: "/arch/catalogo",            icon: Package,     sellerHidden: true,  section: "arch", fn: ["administrador", "outro"] as UserFunction[] },
     { name: "Marketplace",   href: "/arch/marketplace",         icon: Store,       sellerHidden: true,  section: "arch", fn: ["administrador", "outro"] as UserFunction[] },
+    { name: "Salão",         href: "/beauty",                   icon: Scissors,    sellerHidden: false, section: "salao", fn: ["administrador", "outro"] as UserFunction[] },
+    { name: "Agenda",        href: "/beauty/agenda",            icon: Calendar,    sellerHidden: false, section: "salao", fn: ["administrador", "vendedor", "outro"] as UserFunction[] },
+    { name: "Serviços",      href: "/beauty/servicos",          icon: Scissors,    sellerHidden: false, section: "salao", fn: ["administrador", "outro"] as UserFunction[] },
+    { name: "Profissionais", href: "/beauty/profissionais",     icon: User2,       sellerHidden: false, section: "salao", fn: ["administrador", "outro"] as UserFunction[] },
   ];
 
   function isVisible(item: typeof allNavItems[0]) {
     if (isSeller && item.sellerHidden) return false;
-    if (item.section !== "crm" && item.section !== "construcao" && item.section !== "varejo" && item.section !== "supermercado" && item.section !== "arch") return false;
+    const knownSections = ["crm", "construcao", "varejo", "supermercado", "arch", "salao"];
+    if (!knownSections.includes(item.section)) return false;
     if (item.section === "construcao" && !isConstrucao) return false;
     if (item.section === "varejo" && !isVarejo) return false;
     if (item.section === "supermercado" && !isSupermercado) return false;
+    if (item.section === "salao" && !isSalao) return false;
     const isAdmin = isSuperAdmin || isTenantAdmin;
     if (isAdmin) return true;
     return userFunction ? item.fn.includes(userFunction) : true;
@@ -92,6 +99,7 @@ export function SidebarLayout({ children }: { children: React.ReactNode }) {
   const varejoNav = navigation.filter((i) => i.section === "varejo");
   const supermercadoNav = navigation.filter((i) => i.section === "supermercado");
   const archNav = navigation.filter((i) => i.section === "arch");
+  const salaoNav = navigation.filter((i) => i.section === "salao");
 
   function NavItem({ item, onNavigate }: { item: any; onNavigate?: () => void }) {
     const isActive = location === item.href || (item.href !== "/" && location.startsWith(item.href));
@@ -264,6 +272,16 @@ export function SidebarLayout({ children }: { children: React.ReactNode }) {
               Arch — Design
             </p>
             {archNav.map((item) => <NavItem key={item.name} item={item} onNavigate={onNavigate} />)}
+          </div>
+        )}
+
+        {salaoNav.length > 0 && (
+          <div className="mt-3 pt-3 border-t">
+            <p className="px-3 mb-1 text-[10px] font-semibold uppercase tracking-widest text-muted-foreground/60 flex items-center gap-1.5">
+              <Scissors className="h-3 w-3" />
+              Salão de Beleza
+            </p>
+            {salaoNav.map((item) => <NavItem key={item.href} item={item} onNavigate={onNavigate} />)}
           </div>
         )}
 
