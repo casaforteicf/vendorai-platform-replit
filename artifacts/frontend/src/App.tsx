@@ -86,6 +86,12 @@ const VarejoCompras         = lazy(() => import("@/pages/VarejoCompras"));
 const VarejoFidelidade      = lazy(() => import("@/pages/VarejoFidelidade"));
 const VarejoCombos          = lazy(() => import("@/pages/VarejoCombos"));
 
+// Clínica
+const ClinicDashboard    = lazy(() => import("@/pages/clinic/ClinicDashboard"));
+const AgendaClinica      = lazy(() => import("@/pages/clinic/AgendaClinica"));
+const ClinicProntuario   = lazy(() => import("@/pages/clinic/Prontuario"));
+const ClinicMedicos      = lazy(() => import("@/pages/clinic/Medicos"));
+
 // Beauty — Salão de Beleza
 const BeautyDashboard    = lazy(() => import("@/pages/beauty/BeautyDashboard"));
 const BeautyAgenda       = lazy(() => import("@/pages/beauty/Agenda"));
@@ -555,6 +561,18 @@ function AppRoutes() {
         </Route>
         <Route path="/varejo/combos">
           {() => <VarejoRoute component={VarejoCombos} />}
+        </Route>
+        <Route path="/clinic">
+          {() => <ProtectedRoute component={ClinicDashboard} />}
+        </Route>
+        <Route path="/clinic/agenda">
+          {() => <ProtectedRoute component={AgendaClinica} />}
+        </Route>
+        <Route path="/clinic/prontuario/:consultaId">
+          {() => <ProtectedRoute component={ClinicProntuario} />}
+        </Route>
+        <Route path="/clinic/medicos">
+          {() => <ProtectedRoute component={ClinicMedicos} />}
         </Route>
         <Route path="/beauty">
           {() => <ProtectedRoute component={BeautyDashboard} />}

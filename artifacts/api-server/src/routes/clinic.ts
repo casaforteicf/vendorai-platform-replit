@@ -88,6 +88,19 @@ router.post("/tenants/:tenantId/clinic/medicos", async (req, res) => {
   return res.status(201).json(row);
 });
 
+router.patch("/tenants/:tenantId/clinic/medicos/:id", async (req, res) => {
+  const { tenantId, id } = req.params;
+  if (!canAccess(req, tenantId)) return res.status(403).json({ error: "Forbidden" });
+
+  const [row] = await db
+    .update(clinicMedicosTable)
+    .set(req.body as any)
+    .where(and(eq(clinicMedicosTable.id, id), eq(clinicMedicosTable.tenantId, tenantId)))
+    .returning();
+  if (!row) return res.status(404).json({ error: "Médico not found" });
+  return res.json(row);
+});
+
 // ─── Convênios ────────────────────────────────────────────────────────────────
 
 router.get("/tenants/:tenantId/clinic/convenios", async (req, res) => {
@@ -136,6 +149,12 @@ router.get("/tenants/:tenantId/clinic/consultas", async (req, res) => {
     const dayEnd   = new Date(`${req.query.data}T23:59:59.999`);
     filters.push(gte(clinicConsultasTable.dataHora, dayStart));
     filters.push(lte(clinicConsultasTable.dataHora, dayEnd));
+  }
+  if (req.query.dataInicio) {
+    filters.push(gte(clinicConsultasTable.dataHora, new Date(`${req.query.dataInicio}T00:00:00`)));
+  }
+  if (req.query.dataFim) {
+    filters.push(lte(clinicConsultasTable.dataHora, new Date(`${req.query.dataFim}T23:59:59.999`)));
   }
 
   const consultas = await db
@@ -331,6 +350,46 @@ router.patch("/tenants/:tenantId/clinic/consultas/:id/status", async (req, res) 
 });
 
 // ─── Prontuários ──────────────────────────────────────────────────────────────
+
+router.get("/tenants/:tenantId/clinic/prontuarios/consulta/:consultaId", async (req, res) => {
+  const { tenantId, consultaId } = req.params;
+  if (!canAccess(req, tenantId)) return res.status(403).json({ error: "Forbidden" });
+
+  const [row] = await db
+    .select()
+    .from(clinicProntuariosTable)
+    .where(
+      and(
+        eq(clinicProntuariosTable.tenantId, tenantId),
+        eq(clinicProntuariosTable.consultaId, consultaId),
+      ),
+    )
+    .limit(1);
+  return res.json(row ?? null);
+});
+
+router.get("/tenants/:tenantId/clinic/consultas/:id", async (req, res) => {
+  const { tenantId, id } = req.params;
+  if (!canAccess(req, tenantId)) return res.status(403).json({ error: "Forbidden" });
+
+  const [consulta] = await db
+    .select()
+    .from(clinicConsultasTable)
+    .where(and(eq(clinicConsultasTable.id, id), eq(clinicConsultasTable.tenantId, tenantId)))
+    .limit(1);
+  if (!consulta) return res.status(404).json({ error: "Consulta not found" });
+
+  const [paciente, medico] = await Promise.all([
+    consulta.pacienteId
+      ? db.select({ id: leadsTable.id, nome: leadsTable.nome }).from(leadsTable).where(eq(leadsTable.id, consulta.pacienteId)).limit(1).then((r) => r[0] ?? null)
+      : null,
+    consulta.medicoId
+      ? db.select({ id: clinicMedicosTable.id, nome: clinicMedicosTable.nome, crm: clinicMedicosTable.crm }).from(clinicMedicosTable).where(eq(clinicMedicosTable.id, consulta.medicoId)).limit(1).then((r) => r[0] ?? null)
+      : null,
+  ]);
+
+  return res.json({ ...consulta, paciente, medico });
+});
 
 router.get("/tenants/:tenantId/clinic/pacientes/:pacienteId/prontuarios", async (req, res) => {
   const { tenantId, pacienteId } = req.params;
