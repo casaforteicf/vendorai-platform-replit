@@ -7,6 +7,10 @@ import {
   customerIntelligenceTable,
   propostasTable,
   businessProfilesTable,
+  messagesTable,
+  aiUsageLogsTable,
+  agentConfigsTable,
+  whatsappConnectionsTable,
 } from "@workspace/db";
 import {
   eq,
@@ -25,6 +29,7 @@ import {
   gte,
 } from "drizzle-orm";
 import { callOpenAI as gatewayCallOpenAI } from "../lib/ai-gateway.js";
+import { authenticate } from "../middlewares/auth.js";
 
 const router: IRouter = Router();
 
@@ -682,6 +687,295 @@ Seja direto, use dados concretos e fale em segunda pessoa para o usuário do CRM
   const insight = aiResult.content || "Não foi possível gerar a análise.";
 
   res.json({ insight, generatedAt: new Date().toISOString() });
+});
+
+// ── GET /dashboard ─────────────────────────────────────────────────────────────
+// Endpoint unificado: retorna todos os dados do dashboard em uma só chamada.
+// Requer autenticação de tenant (tenantId extraído do JWT).
+router.get("/dashboard", authenticate, async (req, res) => {
+  const tenantId = req.user!.tenantId;
+  if (!tenantId) {
+    return res.status(403).json({ error: "Tenant não identificado" });
+  }
+
+  const now = new Date();
+  const thirtyDaysAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
+  const sevenDaysAgo  = new Date(now.getTime() - 7  * 24 * 60 * 60 * 1000);
+  const todayStart    = new Date(now);
+  todayStart.setUTCHours(0, 0, 0, 0);
+  const monthStart = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1));
+
+  const [
+    leadsCount,
+    leadsNovosCount,
+    leadsClienteCount,
+    leadsStatusRaw,
+    dealsFechadosRaw,
+    mensagensHojeCount,
+    mensagensMesCount,
+    tokensMesRaw,
+    usosPorAgenteRaw,
+    agentConfigRaw,
+    whatsappConnRaw,
+    atividadeLeadsRaw,
+    atividadeMessagesRaw,
+    atividadeDealsRaw,
+    atividadeClientesRaw,
+    evolucaoLeadsRaw,
+  ] = await Promise.all([
+    // totalLeads no período (30d)
+    db.select({ c: count() }).from(leadsTable)
+      .where(and(eq(leadsTable.tenantId, tenantId), gte(leadsTable.createdAt, thirtyDaysAgo))),
+
+    // leadsNovos (últimos 7d)
+    db.select({ c: count() }).from(leadsTable)
+      .where(and(eq(leadsTable.tenantId, tenantId), gte(leadsTable.createdAt, sevenDaysAgo))),
+
+    // leads convertidos (status='cliente') no período
+    db.select({ c: count() }).from(leadsTable)
+      .where(and(eq(leadsTable.tenantId, tenantId), eq(leadsTable.status, "cliente"), gte(leadsTable.createdAt, thirtyDaysAgo))),
+
+    // leads por status (estado atual, sem filtro de período)
+    db.select({ status: leadsTable.status, c: count() }).from(leadsTable)
+      .where(eq(leadsTable.tenantId, tenantId))
+      .groupBy(leadsTable.status),
+
+    // deals ganhos no período para ticket médio
+    db.select({ valor: dealsTable.valor }).from(dealsTable)
+      .where(and(
+        eq(dealsTable.tenantId, tenantId),
+        eq(dealsTable.etapa, "ganho"),
+        gte(dealsTable.dataFechamento, thirtyDaysAgo),
+      )),
+
+    // mensagens de agente hoje
+    db.select({ c: count() }).from(messagesTable)
+      .where(and(
+        eq(messagesTable.tenantId, tenantId),
+        eq(messagesTable.enviadoPor, "agente_ia"),
+        gte(messagesTable.createdAt, todayStart),
+      )),
+
+    // mensagens de agente no mês
+    db.select({ c: count() }).from(messagesTable)
+      .where(and(
+        eq(messagesTable.tenantId, tenantId),
+        eq(messagesTable.enviadoPor, "agente_ia"),
+        gte(messagesTable.createdAt, monthStart),
+      )),
+
+    // tokens consumidos no mês (input + output)
+    db.select({ total: sum(sql`${aiUsageLogsTable.inputTokens} + ${aiUsageLogsTable.outputTokens}`) })
+      .from(aiUsageLogsTable)
+      .where(and(eq(aiUsageLogsTable.tenantId, tenantId), gte(aiUsageLogsTable.createdAt, monthStart))),
+
+    // uso por feature no mês (para usosPorAgente)
+    db.select({ feature: aiUsageLogsTable.feature, c: count() })
+      .from(aiUsageLogsTable)
+      .where(and(eq(aiUsageLogsTable.tenantId, tenantId), gte(aiUsageLogsTable.createdAt, monthStart)))
+      .groupBy(aiUsageLogsTable.feature)
+      .orderBy(desc(count())),
+
+    // configuração de agentes do tenant
+    db.select({
+      agents:            agentConfigsTable.agents,
+      monthlyTokenLimit: agentConfigsTable.monthlyTokenLimit,
+      zapiInstanceId:    agentConfigsTable.zapiInstanceId,
+      metaPhoneNumberId: agentConfigsTable.metaPhoneNumberId,
+    }).from(agentConfigsTable).where(eq(agentConfigsTable.tenantId, tenantId)).limit(1),
+
+    // conexão WhatsApp ativa
+    db.select({ status: whatsappConnectionsTable.status })
+      .from(whatsappConnectionsTable)
+      .where(eq(whatsappConnectionsTable.tenantId, tenantId))
+      .limit(1),
+
+    // atividade: últimos leads criados
+    db.select({ id: leadsTable.id, nome: leadsTable.nome, createdAt: leadsTable.createdAt })
+      .from(leadsTable).where(eq(leadsTable.tenantId, tenantId))
+      .orderBy(desc(leadsTable.createdAt)).limit(20),
+
+    // atividade: mensagens de agente recentes
+    db.select({
+      id:        messagesTable.id,
+      agentName: messagesTable.agentName,
+      leadId:    messagesTable.leadId,
+      createdAt: messagesTable.createdAt,
+    }).from(messagesTable)
+      .where(and(eq(messagesTable.tenantId, tenantId), eq(messagesTable.enviadoPor, "agente_ia")))
+      .orderBy(desc(messagesTable.createdAt)).limit(20),
+
+    // atividade: deals atualizados recentemente
+    db.select({ id: dealsTable.id, titulo: dealsTable.titulo, etapa: dealsTable.etapa, leadId: dealsTable.leadId, updatedAt: dealsTable.updatedAt })
+      .from(dealsTable).where(eq(dealsTable.tenantId, tenantId))
+      .orderBy(desc(dealsTable.updatedAt)).limit(20),
+
+    // atividade: clientes convertidos recentemente
+    db.select({ id: leadsTable.id, nome: leadsTable.nome, createdAt: leadsTable.createdAt })
+      .from(leadsTable)
+      .where(and(eq(leadsTable.tenantId, tenantId), eq(leadsTable.status, "cliente")))
+      .orderBy(desc(leadsTable.createdAt)).limit(20),
+
+    // evolução de leads: agrupado por dia nos últimos 30d (SQL raw)
+    db.execute(sql`
+      SELECT date_trunc('day', created_at)::date::text AS data,
+             count(*)::int AS count
+      FROM leads
+      WHERE tenant_id = ${tenantId}
+        AND created_at >= ${thirtyDaysAgo}
+      GROUP BY date_trunc('day', created_at)::date
+      ORDER BY data ASC
+    `),
+  ]);
+
+  // ── vendas ───────────────────────────────────────────────────────────────
+  const totalLeads  = Number(leadsCount[0]?.c ?? 0);
+  const leadsNovos  = Number(leadsNovosCount[0]?.c ?? 0);
+  const leadsCliente = Number(leadsClienteCount[0]?.c ?? 0);
+  const taxaConversao = totalLeads > 0
+    ? Math.round((leadsCliente / totalLeads) * 1000) / 10
+    : 0;
+
+  const valoresFechados = dealsFechadosRaw
+    .map(d => parseFloat(d.valor ?? "0"))
+    .filter(v => v > 0);
+  const ticketMedio = valoresFechados.length > 0
+    ? Math.round(valoresFechados.reduce((a, b) => a + b, 0) / valoresFechados.length * 100) / 100
+    : 0;
+
+  const STATUS_KEYS = ["novo", "qualificado", "proposta", "negociando", "fechado", "perdido"] as const;
+  const leadsPorStatus: Record<string, number> = Object.fromEntries(STATUS_KEYS.map(k => [k, 0]));
+  for (const row of leadsStatusRaw) {
+    if (row.status in leadsPorStatus) leadsPorStatus[row.status] = Number(row.c);
+  }
+
+  // preenche dias sem leads com count=0
+  const evolucaoMap = new Map<string, number>();
+  for (const row of evolucaoLeadsRaw.rows as { data: string; count: number }[]) {
+    evolucaoMap.set(row.data, row.count);
+  }
+  const evolucaoLeads: { data: string; count: number }[] = [];
+  for (let i = 29; i >= 0; i--) {
+    const d = new Date(now.getTime() - i * 24 * 60 * 60 * 1000);
+    const key = d.toISOString().split("T")[0]!;
+    evolucaoLeads.push({ data: key, count: evolucaoMap.get(key) ?? 0 });
+  }
+
+  // ── ia ───────────────────────────────────────────────────────────────────
+  const mensagensHoje = Number(mensagensHojeCount[0]?.c ?? 0);
+  const mensagensMes  = Number(mensagensMesCount[0]?.c ?? 0);
+
+  const agentConfig  = agentConfigRaw[0] ?? null;
+  const agentsMap    = (agentConfig?.agents ?? {}) as Record<string, { enabled?: boolean; nomePerfil?: string } | undefined>;
+  const agentesAtivos = Object.values(agentsMap).filter(a => a?.enabled === true).length;
+
+  const tokensMes = parseInt(String(tokensMesRaw[0]?.total ?? "0"), 10) || 0;
+  const monthlyTokenLimit = agentConfig?.monthlyTokenLimit ?? 100000;
+  const quotaUsada = monthlyTokenLimit > 0
+    ? Math.round((tokensMes / monthlyTokenLimit) * 100)
+    : 0;
+
+  const AGENT_PREFIX = "agent_";
+  const usosPorAgente = usosPorAgenteRaw
+    .filter(row => row.feature?.startsWith(AGENT_PREFIX))
+    .map(row => {
+      const agentKey = row.feature.slice(AGENT_PREFIX.length);
+      return {
+        agentKey,
+        nome: agentsMap[agentKey]?.nomePerfil ?? agentKey,
+        count: Number(row.c),
+      };
+    });
+
+  // ── atividade ────────────────────────────────────────────────────────────
+  type AtividadeItem = {
+    tipo: string;
+    descricao: string;
+    entidade: string;
+    entidadeId: string;
+    createdAt: Date;
+  };
+  const atividades: AtividadeItem[] = [];
+
+  for (const l of atividadeLeadsRaw) {
+    atividades.push({ tipo: "lead_novo", descricao: `Novo lead: ${l.nome}`, entidade: "lead", entidadeId: l.id, createdAt: l.createdAt });
+  }
+  for (const m of atividadeMessagesRaw) {
+    atividades.push({ tipo: "agente_mensagem", descricao: `Agente enviou mensagem${m.agentName ? ` (${m.agentName})` : ""}`, entidade: "message", entidadeId: m.id, createdAt: m.createdAt });
+  }
+  for (const d of atividadeDealsRaw) {
+    atividades.push({ tipo: "deal_atualizado", descricao: `Deal atualizado: ${d.titulo}`, entidade: "deal", entidadeId: d.id, createdAt: d.updatedAt });
+  }
+  for (const c of atividadeClientesRaw) {
+    atividades.push({ tipo: "cliente_convertido", descricao: `Cliente convertido: ${c.nome}`, entidade: "lead", entidadeId: c.id, createdAt: c.createdAt });
+  }
+
+  const ultimas20 = atividades
+    .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime())
+    .slice(0, 20);
+
+  // ── alertas ──────────────────────────────────────────────────────────────
+  type Alerta = { tipo: string; mensagem: string; severidade: "info" | "aviso" | "critico" };
+  const alertas: Alerta[] = [];
+
+  if (agentesAtivos === 0) {
+    alertas.push({
+      tipo: "sem_agente",
+      mensagem: "Nenhum agente de IA está ativo. Ative pelo menos um agente para começar.",
+      severidade: "aviso",
+    });
+  }
+  if (quotaUsada >= 95) {
+    alertas.push({
+      tipo: "quota_critica",
+      mensagem: `Quota de IA em ${quotaUsada}% — risco de interrupção. Atualize seu plano.`,
+      severidade: "critico",
+    });
+  } else if (quotaUsada >= 80) {
+    alertas.push({
+      tipo: "quota_alta",
+      mensagem: `Quota de IA em ${quotaUsada}% do limite mensal.`,
+      severidade: "aviso",
+    });
+  }
+
+  const hasZapi   = !!(agentConfig?.zapiInstanceId);
+  const hasMeta   = !!(agentConfig?.metaPhoneNumberId);
+  const hasWaConn = whatsappConnRaw.length > 0 && whatsappConnRaw[0]?.status === "active";
+  if (!hasZapi && !hasMeta && !hasWaConn) {
+    alertas.push({
+      tipo: "whatsapp_desconectado",
+      mensagem: "WhatsApp não está conectado. Configure na seção de agentes.",
+      severidade: "critico",
+    });
+  }
+
+  return res.json({
+    vendas: {
+      totalLeads,
+      leadsNovos,
+      taxaConversao,
+      ticketMedio,
+      leadsPorStatus,
+      evolucaoLeads,
+    },
+    ia: {
+      mensagensHoje,
+      mensagensMes,
+      agentesAtivos,
+      tokensMes,
+      quotaUsada,
+      usosPorAgente,
+    },
+    atividade: {
+      ultimas20,
+    },
+    alertas,
+    periodo: {
+      inicio: thirtyDaysAgo.toISOString(),
+      fim:    now.toISOString(),
+    },
+  });
 });
 
 export default router;
