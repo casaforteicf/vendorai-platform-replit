@@ -17,25 +17,33 @@ const upload = multer({
   storage: multer.memoryStorage(),
   limits: { fileSize: 20 * 1024 * 1024 },
 });
+const uploadFields = upload.fields([
+  { name: "image",         maxCount: 1 },
+  { name: "materialImage", maxCount: 1 },
+]);
 
-router.post("/render/quick", upload.single("image"), async (req, res) => {
+router.post("/render/quick", uploadFields, async (req, res) => {
   const tenantId = req.user?.tenantId;
   if (!tenantId) {
     res.status(403).json({ error: "Tenant não identificado" });
     return;
   }
 
-  const file = req.file;
+  const files        = req.files as Record<string, Express.Multer.File[]> | undefined;
+  const file         = files?.["image"]?.[0];
+  const materialFile = files?.["materialImage"]?.[0];
+
   if (!file) {
     res.status(400).json({ error: "Envie uma imagem para renderizar" });
     return;
   }
 
-  const style    = String(req.body?.style    ?? "nenhum");
-  const angle    = String(req.body?.angle    ?? "frontal");
-  const lighting = String(req.body?.lighting ?? "auto");
-  const roomType = String(req.body?.roomType ?? "sala de estar");
-  const notes    = String(req.body?.notes    ?? "");
+  const style          = String(req.body?.style          ?? "nenhum");
+  const angle          = String(req.body?.angle          ?? "frontal");
+  const lighting       = String(req.body?.lighting       ?? "auto");
+  const roomType       = String(req.body?.roomType       ?? "sala de estar");
+  const notes          = String(req.body?.notes          ?? "");
+  const materialSurface = String(req.body?.materialSurface ?? "todos");
 
   const isExterior  = roomType === "fachada externa";
   const applyStyle  = style !== "nenhum";
@@ -111,10 +119,32 @@ router.post("/render/quick", upload.single("image"), async (req, res) => {
     ? "Brazilian residential architecture context."
     : `Context: ${roomType}, Brazilian home interior.`;
 
+  // ── Optional material/texture layer ────────────────────────────────────
+  const surfaceTargetMap: Record<string, string> = {
+    paredes:  "all walls and vertical surfaces",
+    piso:     "the floor surface",
+    teto:     "the ceiling surface",
+    fachada:  "the entire building facade and exterior cladding surfaces",
+    moveis:   "the main furniture upholstery and wood surfaces",
+    todos:    "all major surfaces (walls, floor, and ceiling)",
+  };
+  const surfaceLabel = surfaceTargetMap[materialSurface] ?? "all major surfaces";
+
+  const materialInstruction = materialFile
+    ? [
+        "MATERIAL REFERENCE — The second image in this request is a material/texture sample (NOT a scene to edit).",
+        `Extract from it: the exact color tone, surface texture pattern, grain direction, material finish (matte/satin/gloss), and any visible pattern or veining.`,
+        `Apply this extracted material ONLY to ${surfaceLabel} of the scene shown in the FIRST image.`,
+        "Keep EVERYTHING ELSE in the scene completely unchanged — same objects, furniture, positions, lighting, and geometry.",
+        "Scale and tile the texture naturally as it would look on a real architectural surface.",
+      ].join(" ")
+    : null;
+
   const prompt = [
     baseInstruction,
     styleInstruction,
     lightingInstruction,
+    materialInstruction,
     angleInstruction,
     contextInstruction,
     notes ? `Additional user request: ${notes}` : null,
@@ -127,9 +157,18 @@ router.post("/render/quick", upload.single("image"), async (req, res) => {
       type: file.mimetype,
     });
 
+    const imageInput = materialFile
+      ? [
+          imageFile,
+          await toFile(materialFile.buffer, materialFile.originalname || "material.png", {
+            type: materialFile.mimetype,
+          }),
+        ]
+      : imageFile;
+
     const result = await (openai.images.edit as Function)({
       model:   "gpt-image-1",
-      image:   imageFile,
+      image:   imageInput,
       prompt,
       n:       1,
       size:    "1536x1024",

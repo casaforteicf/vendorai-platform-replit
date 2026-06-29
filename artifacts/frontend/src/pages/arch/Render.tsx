@@ -80,27 +80,33 @@ export default function ArchRender() {
   const tenantId = user?.tenantId;
   const { toast } = useToast();
 
-  const [previewSrc, setPreviewSrc]     = useState<string | null>(null);
-  const [file, setFile]                 = useState<File | null>(null);
-  const [dragging, setDragging]         = useState(false);
-  const [style, setStyle]               = useState("nenhum");
-  const [lighting, setLighting]         = useState("auto");
-  const [angle, setAngle]               = useState("frontal");
-  const [roomType, setRoomType]         = useState("sala de estar");
-  const [notes, setNotes]               = useState("");
-  const [rendering, setRendering]       = useState(false);
-  const [resultUrl, setResultUrl]       = useState<string | null>(null);
-  const [refineOpen, setRefineOpen]     = useState(false);
-  const [refineNote, setRefineNote]     = useState("");
-  const [refining, setRefining]         = useState(false);
+  const [previewSrc, setPreviewSrc]         = useState<string | null>(null);
+  const [file, setFile]                     = useState<File | null>(null);
+  const [dragging, setDragging]             = useState(false);
+  const [style, setStyle]                   = useState("nenhum");
+  const [lighting, setLighting]             = useState("auto");
+  const [angle, setAngle]                   = useState("frontal");
+  const [roomType, setRoomType]             = useState("sala de estar");
+  const [notes, setNotes]                   = useState("");
+  const [rendering, setRendering]           = useState(false);
+  const [resultUrl, setResultUrl]           = useState<string | null>(null);
+  const [refineOpen, setRefineOpen]         = useState(false);
+  const [refineNote, setRefineNote]         = useState("");
+  const [refining, setRefining]             = useState(false);
+  // Material / Textura
+  const [materialFile, setMaterialFile]     = useState<File | null>(null);
+  const [materialPreview, setMaterialPreview] = useState<string | null>(null);
+  const [materialDragging, setMaterialDragging] = useState(false);
+  const [materialSurface, setMaterialSurface] = useState("todos");
+  const materialInputRef                    = useRef<HTMLInputElement>(null);
   // Salvar no Lead
-  const [saveOpen, setSaveOpen]         = useState(false);
-  const [leadSearch, setLeadSearch]     = useState("");
-  const [leads, setLeads]               = useState<{ id: string; nome: string; empresa?: string }[]>([]);
-  const [loadingLeads, setLoadingLeads] = useState(false);
-  const [selectedLead, setSelectedLead] = useState<{ id: string; nome: string } | null>(null);
-  const [savingLead, setSavingLead]     = useState(false);
-  const fileInputRef                    = useRef<HTMLInputElement>(null);
+  const [saveOpen, setSaveOpen]             = useState(false);
+  const [leadSearch, setLeadSearch]         = useState("");
+  const [leads, setLeads]                   = useState<{ id: string; nome: string; empresa?: string }[]>([]);
+  const [loadingLeads, setLoadingLeads]     = useState(false);
+  const [selectedLead, setSelectedLead]     = useState<{ id: string; nome: string } | null>(null);
+  const [savingLead, setSavingLead]         = useState(false);
+  const fileInputRef                        = useRef<HTMLInputElement>(null);
 
   const handleFile = (f: File) => {
     if (!f.type.startsWith("image/")) {
@@ -114,11 +120,29 @@ export default function ArchRender() {
     reader.readAsDataURL(f);
   };
 
+  const handleMaterialFile = (f: File) => {
+    if (!f.type.startsWith("image/")) {
+      toast({ title: "Formato inválido", description: "Envie uma imagem de textura.", variant: "destructive" });
+      return;
+    }
+    setMaterialFile(f);
+    const reader = new FileReader();
+    reader.onload = (e) => setMaterialPreview(e.target?.result as string);
+    reader.readAsDataURL(f);
+  };
+
   const onDrop = useCallback((e: React.DragEvent) => {
     e.preventDefault();
     setDragging(false);
     const f = e.dataTransfer.files[0];
     if (f) handleFile(f);
+  }, []);
+
+  const onMaterialDrop = useCallback((e: React.DragEvent) => {
+    e.preventDefault();
+    setMaterialDragging(false);
+    const f = e.dataTransfer.files[0];
+    if (f) handleMaterialFile(f);
   }, []);
 
   const onDragOver = (e: React.DragEvent) => { e.preventDefault(); setDragging(true); };
@@ -139,6 +163,10 @@ export default function ArchRender() {
       form.append("angle", angle);
       form.append("roomType", roomType);
       form.append("notes", notes);
+      if (materialFile) {
+        form.append("materialImage", materialFile);
+        form.append("materialSurface", materialSurface);
+      }
 
       const res = await fetch(`${getBase()}/api/render/quick`, {
         method: "POST",
@@ -242,6 +270,10 @@ export default function ArchRender() {
       form.append("angle", angle);
       form.append("roomType", roomType);
       form.append("notes", refineNote.trim());
+      if (materialFile) {
+        form.append("materialImage", materialFile);
+        form.append("materialSurface", materialSurface);
+      }
 
       const res = await fetch(`${getBase()}/api/render/quick`, {
         method: "POST",
@@ -326,6 +358,93 @@ export default function ArchRender() {
                 className="hidden"
                 onChange={(e) => { const f = e.target.files?.[0]; if (f) handleFile(f); }}
               />
+            </CardContent>
+          </Card>
+
+          {/* Material / Textura */}
+          <Card>
+            <CardHeader className="pb-2 pt-3 px-3">
+              <div className="flex items-center justify-between">
+                <CardTitle className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                  Material / Textura
+                  <span className="ml-1 normal-case font-normal">(opcional)</span>
+                </CardTitle>
+                {materialFile && (
+                  <button
+                    type="button"
+                    onClick={() => { setMaterialFile(null); setMaterialPreview(null); }}
+                    className="text-muted-foreground hover:text-foreground transition-colors"
+                  >
+                    <X className="h-3.5 w-3.5" />
+                  </button>
+                )}
+              </div>
+            </CardHeader>
+            <CardContent className="px-3 pb-3 space-y-2">
+              {materialPreview ? (
+                <div className="relative rounded-lg overflow-hidden">
+                  <img
+                    src={materialPreview}
+                    alt="Material"
+                    className="w-full h-24 object-cover rounded-lg"
+                  />
+                  <div className="absolute bottom-0 left-0 right-0 px-2 py-1 bg-gradient-to-t from-black/70 to-transparent">
+                    <p className="text-[10px] text-white/90 truncate">{materialFile?.name}</p>
+                  </div>
+                </div>
+              ) : (
+                <div
+                  onDrop={onMaterialDrop}
+                  onDragOver={(e) => { e.preventDefault(); setMaterialDragging(true); }}
+                  onDragLeave={() => setMaterialDragging(false)}
+                  onClick={() => materialInputRef.current?.click()}
+                  className={`border-2 border-dashed rounded-lg p-4 text-center cursor-pointer transition-colors ${
+                    materialDragging
+                      ? "border-orange-400 bg-orange-50 dark:bg-orange-950/20"
+                      : "border-muted-foreground/30 hover:border-orange-300 hover:bg-muted/30"
+                  }`}
+                >
+                  <Upload className="h-5 w-5 mx-auto mb-1.5 text-muted-foreground" />
+                  <p className="text-xs font-medium">Foto do material</p>
+                  <p className="text-[10px] text-muted-foreground mt-0.5">Pedra, madeira, cerâmica, tecido…</p>
+                </div>
+              )}
+              <input
+                ref={materialInputRef}
+                type="file"
+                accept="image/*"
+                className="hidden"
+                onChange={(e) => { const f = e.target.files?.[0]; if (f) handleMaterialFile(f); }}
+              />
+              {/* Superfície alvo */}
+              {materialFile && (
+                <div className="space-y-1.5">
+                  <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">Aplicar em:</p>
+                  <div className="grid grid-cols-2 gap-1">
+                    {[
+                      { value: "todos",   label: "Todas" },
+                      { value: "paredes", label: "Paredes" },
+                      { value: "piso",    label: "Piso" },
+                      { value: "teto",    label: "Teto" },
+                      { value: "fachada", label: "Fachada" },
+                      { value: "moveis",  label: "Móveis" },
+                    ].map((s) => (
+                      <button
+                        key={s.value}
+                        type="button"
+                        onClick={() => setMaterialSurface(s.value)}
+                        className={`rounded border px-2 py-1 text-[10px] font-medium transition-all cursor-pointer ${
+                          materialSurface === s.value
+                            ? "border-orange-400 bg-orange-50 dark:bg-orange-950/30 text-orange-700 dark:text-orange-300"
+                            : "border-border hover:border-orange-300 hover:bg-muted/40"
+                        }`}
+                      >
+                        {s.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
             </CardContent>
           </Card>
 
