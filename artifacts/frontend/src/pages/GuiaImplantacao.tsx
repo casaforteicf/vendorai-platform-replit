@@ -1,8 +1,8 @@
 import { useState } from "react";
+import { useLocation } from "wouter";
 import { cn } from "@/lib/utils";
 import {
   CheckCircle2,
-  Circle,
   ChevronDown,
   ChevronRight,
   Rocket,
@@ -18,6 +18,7 @@ import {
   FileText,
   Zap,
   BookOpen,
+  ArrowRight,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
@@ -32,6 +33,8 @@ type Step = {
   actions: string[];
   tips?: string;
   responsible: "cliente" | "equipe" | "ambos";
+  link?: string;
+  linkLabel?: string;
 };
 
 const STEPS: Step[] = [
@@ -50,6 +53,8 @@ const STEPS: Step[] = [
       "Login pela primeira vez — sistema detecta setup pendente e redireciona ao Onboarding",
     ],
     responsible: "ambos",
+    link: "/onboarding",
+    linkLabel: "Abrir Onboarding",
   },
   {
     id: "2",
@@ -68,6 +73,8 @@ const STEPS: Step[] = [
     tips:
       "Dica: o campo 'Vertical' define quais templates de funil e prompt-padrão serão usados. Escolher o segmento correto é essencial.",
     responsible: "cliente",
+    link: "/onboarding",
+    linkLabel: "Abrir Onboarding",
   },
   {
     id: "3",
@@ -86,6 +93,8 @@ const STEPS: Step[] = [
     tips:
       "Dica: quanto mais detalhada a Etapa 6, mais personalizado fica o atendimento automático da IA com cada tipo de lead.",
     responsible: "cliente",
+    link: "/onboarding",
+    linkLabel: "Abrir Onboarding",
   },
   {
     id: "4",
@@ -105,6 +114,8 @@ const STEPS: Step[] = [
       "Etapa 12 — Tecnologia atual (CRM, ERP) e integrações desejadas",
     ],
     responsible: "cliente",
+    link: "/onboarding",
+    linkLabel: "Abrir Onboarding",
   },
   {
     id: "5",
@@ -125,11 +136,13 @@ const STEPS: Step[] = [
     tips:
       "Ao concluir o wizard, a plataforma cria automaticamente: perfil da empresa, prompts dos agentes, artigos na base de conhecimento e o funil de vendas padrão do segmento.",
     responsible: "cliente",
+    link: "/onboarding",
+    linkLabel: "Abrir Onboarding",
   },
   {
     id: "6",
     phase: 2,
-    title: "Conectar WhatsApp via Z-API",
+    title: "Conectar WhatsApp",
     duration: "15 min",
     icon: MessageCircle,
     color: "text-green-500",
@@ -145,6 +158,8 @@ const STEPS: Step[] = [
     tips:
       "Atenção: o número do WhatsApp deve estar ativo no celular com a sessão autenticada na Z-API (escanear QR Code no painel da Z-API).",
     responsible: "equipe",
+    link: "/configuracoes?tab=integracoes",
+    linkLabel: "Abrir Integrações",
   },
   {
     id: "7",
@@ -165,6 +180,8 @@ const STEPS: Step[] = [
     tips:
       "Estrutura do payload esperado: { telefone, mensagem, nome }. Qualquer campo adicional é ignorado.",
     responsible: "equipe",
+    link: "/configuracoes?tab=integracoes",
+    linkLabel: "Abrir Integrações",
   },
   {
     id: "8",
@@ -183,6 +200,8 @@ const STEPS: Step[] = [
       "Configurar o webhook do Instagram Graph API para apontar para: POST /api/tenants/{tenantId}/webhooks/instagram",
     ],
     responsible: "equipe",
+    link: "/configuracoes?tab=agentes",
+    linkLabel: "Abrir Agentes",
   },
   {
     id: "9",
@@ -203,6 +222,8 @@ const STEPS: Step[] = [
     tips:
       "Os prompts gerados pelo onboarding são um ponto de partida. A qualidade aumenta muito com ajustes manuais baseados na realidade do negócio.",
     responsible: "equipe",
+    link: "/agents/config",
+    linkLabel: "Abrir Config. de Agentes",
   },
   {
     id: "10",
@@ -220,6 +241,8 @@ const STEPS: Step[] = [
       "Opcional: configurar webhook de sincronização com ERP em Configurações → Integrações",
     ],
     responsible: "cliente",
+    link: "/estoque",
+    linkLabel: "Abrir Estoque",
   },
   {
     id: "11",
@@ -238,6 +261,8 @@ const STEPS: Step[] = [
       "Repetir para cada membro da equipe",
     ],
     responsible: "cliente",
+    link: "/configuracoes?tab=equipe",
+    linkLabel: "Abrir Equipe",
   },
   {
     id: "12",
@@ -258,6 +283,8 @@ const STEPS: Step[] = [
     tips:
       "Use 2 a 3 leads de teste reais (membros da equipe) para validar o fluxo completo antes de ativar com leads de clientes.",
     responsible: "equipe",
+    link: "/leads",
+    linkLabel: "Abrir Leads",
   },
   {
     id: "13",
@@ -278,6 +305,8 @@ const STEPS: Step[] = [
     tips:
       "O período de 5 dias é uma salvaguarda. Recomendamos monitorar o Painel de Análise durante esse período para validar que os agentes estão se comportando conforme o esperado.",
     responsible: "equipe",
+    link: "/agents/config",
+    linkLabel: "Abrir Config. de Agentes",
   },
   {
     id: "14",
@@ -300,6 +329,8 @@ const STEPS: Step[] = [
     tips:
       "Recomendamos fazer uma sessão de treinamento de 30-60 min com o responsável do cliente mostrando como usar o Dashboard, Leads, Conversas e Configurações.",
     responsible: "equipe",
+    link: "/dashboard",
+    linkLabel: "Abrir Dashboard",
   },
 ];
 
@@ -317,6 +348,7 @@ const RESPONSIBLE_LABELS = {
 
 function StepCard({ step, defaultOpen = false }: { step: Step; defaultOpen?: boolean }) {
   const [open, setOpen] = useState(defaultOpen);
+  const [, navigate] = useLocation();
   const Icon = step.icon;
   const responsible = RESPONSIBLE_LABELS[step.responsible];
 
@@ -345,7 +377,7 @@ function StepCard({ step, defaultOpen = false }: { step: Step; defaultOpen?: boo
       </button>
 
       {open && (
-        <div className="border-t px-5 py-4 space-y-3 bg-muted/10">
+        <div className="border-t px-5 py-4 space-y-4 bg-muted/10">
           <div className="space-y-2">
             {step.actions.map((action, i) => (
               <div key={i} className="flex gap-3">
@@ -356,11 +388,25 @@ function StepCard({ step, defaultOpen = false }: { step: Step; defaultOpen?: boo
               </div>
             ))}
           </div>
+
           {step.tips && (
             <div className="rounded-lg bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800 px-4 py-3">
               <p className="text-xs text-amber-800 dark:text-amber-300 leading-relaxed">
                 <strong>💡 {step.tips}</strong>
               </p>
+            </div>
+          )}
+
+          {step.link && (
+            <div className="flex justify-end pt-1">
+              <Button
+                size="sm"
+                className="gap-1.5 text-xs"
+                onClick={() => navigate(step.link!)}
+              >
+                {step.linkLabel ?? "Ir para a página"}
+                <ArrowRight className="h-3.5 w-3.5" />
+              </Button>
             </div>
           )}
         </div>

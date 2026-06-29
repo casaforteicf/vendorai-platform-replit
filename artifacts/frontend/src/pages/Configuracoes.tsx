@@ -542,6 +542,11 @@ export default function Configuracoes() {
   const isAdmin = isTenantAdmin || isSuperAdmin;
   const showFaturamento = isAdmin || (userFunction && ["financeiro", "administrador", "outro"].includes(userFunction));
 
+  const [activeTab, setActiveTab] = useState<string>(() => {
+    const params = new URLSearchParams(window.location.search);
+    return params.get("tab") ?? "perfil";
+  });
+
   // ── Team Management ────────────────────────────────────────────────────────
   const [inviteEmail, setInviteEmail] = useState("");
   const [lastInviteUrl, setLastInviteUrl] = useState<string | null>(null);
@@ -1400,9 +1405,12 @@ export default function Configuracoes() {
       </div>
 
       <Tabs
-        defaultValue="perfil"
+        value={activeTab}
         className="space-y-6"
-        onValueChange={(tab) => { if (tab !== "integracoes") setIntegracoesUnlocked(false); }}
+        onValueChange={(tab) => {
+          setActiveTab(tab);
+          if (tab !== "integracoes") setIntegracoesUnlocked(false);
+        }}
       >
         <TabsList className={cn("grid w-full max-w-3xl", (isTenantAdmin && showFaturamento) ? "grid-cols-9" : (isTenantAdmin || showFaturamento) ? "grid-cols-8" : "grid-cols-7")}>
           <TabsTrigger value="perfil" className="gap-1.5">
