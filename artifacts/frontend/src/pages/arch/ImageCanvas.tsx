@@ -151,6 +151,7 @@ export default function ImageCanvas({ imageUrl, applied, draggingMat, onDrop, on
             return (
               <div
                 key={zone.name}
+                data-zone={zone.name}
                 onDragOver={handleZoneDragOver}
                 onDrop={e => handleZoneDrop(e, zone.name)}
                 style={{
