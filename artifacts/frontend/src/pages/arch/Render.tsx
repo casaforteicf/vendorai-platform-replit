@@ -5,6 +5,13 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogFooter,
+} from "@/components/ui/dialog";
+import {
   Upload,
   ImageIcon,
   Loader2,
@@ -14,6 +21,7 @@ import {
   X,
   Clapperboard,
   Sparkles,
+  Pencil,
 } from "lucide-react";
 
 function getBase() {
@@ -53,6 +61,9 @@ export default function ArchRender() {
   const [notes, setNotes]               = useState("");
   const [rendering, setRendering]       = useState(false);
   const [resultUrl, setResultUrl]       = useState<string | null>(null);
+  const [refineOpen, setRefineOpen]     = useState(false);
+  const [refineNote, setRefineNote]     = useState("");
+  const [refining, setRefining]         = useState(false);
   const fileInputRef                    = useRef<HTMLInputElement>(null);
 
   const handleFile = (f: File) => {
@@ -124,6 +135,43 @@ export default function ArchRender() {
     setResultUrl(null);
     setNotes("");
     if (fileInputRef.current) fileInputRef.current.value = "";
+  };
+
+  const handleRefine = async () => {
+    if (!resultUrl || !refineNote.trim()) return;
+    setRefining(true);
+    try {
+      // Fetch the generated image and use it as the new input
+      const imgRes = await fetch(`${getBase()}${resultUrl}`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (!imgRes.ok) throw new Error("Não foi possível carregar a imagem gerada");
+      const blob = await imgRes.blob();
+      const imgFile = new File([blob], "render-atual.png", { type: "image/png" });
+
+      const form = new FormData();
+      form.append("image", imgFile);
+      form.append("style", style);
+      form.append("roomType", roomType);
+      form.append("notes", refineNote.trim());
+
+      const res = await fetch(`${getBase()}/api/render/quick`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${token}` },
+        body: form,
+      });
+      const data = await res.json();
+      if (!res.ok || data.error) throw new Error(data.error ?? "Erro ao ajustar imagem");
+
+      setResultUrl(data.imageUrl);
+      setRefineOpen(false);
+      setRefineNote("");
+      toast({ title: "Imagem ajustada!", description: "O ajuste foi aplicado com sucesso." });
+    } catch (err: any) {
+      toast({ title: "Erro ao ajustar", description: err.message ?? "Tente novamente.", variant: "destructive" });
+    } finally {
+      setRefining(false);
+    }
   };
 
   return (
@@ -290,9 +338,12 @@ export default function ArchRender() {
                   Resultado
                 </CardTitle>
                 {resultUrl && (
-                  <div className="flex gap-2">
+                  <div className="flex gap-2 flex-wrap">
                     <Button size="sm" variant="outline" className="text-xs gap-1 h-7" onClick={handleReset}>
                       <RefreshCw className="h-3 w-3" /> Nova imagem
+                    </Button>
+                    <Button size="sm" variant="outline" className="text-xs gap-1 h-7 border-violet-300 text-violet-700 hover:bg-violet-50 dark:border-violet-700 dark:text-violet-300 dark:hover:bg-violet-950/40" onClick={() => { setRefineNote(""); setRefineOpen(true); }}>
+                      <Pencil className="h-3 w-3" /> Ajustar
                     </Button>
                     <Button size="sm" className="text-xs gap-1 h-7 bg-violet-600 hover:bg-violet-700" onClick={handleDownload}>
                       <Download className="h-3 w-3" /> Baixar
@@ -339,6 +390,54 @@ export default function ArchRender() {
           </Card>
         </div>
       </div>
+
+      {/* Diálogo de ajuste da imagem gerada */}
+      <Dialog open={refineOpen} onOpenChange={setRefineOpen}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Pencil className="h-4 w-4 text-violet-500" />
+              Ajustar imagem gerada
+            </DialogTitle>
+          </DialogHeader>
+
+          <div className="space-y-3 py-2">
+            <p className="text-sm text-muted-foreground">
+              Descreva o que deseja alterar na imagem atual. A IA usará a renderização gerada como base e aplicará apenas os ajustes solicitados.
+            </p>
+            <Textarea
+              autoFocus
+              placeholder="Ex: trocar a cor da parede para branco, adicionar cortinas bege, iluminação mais quente..."
+              className="min-h-[100px] resize-none text-sm"
+              value={refineNote}
+              onChange={(e) => setRefineNote(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) handleRefine();
+              }}
+            />
+            <p className="text-xs text-muted-foreground">
+              Dica: seja específico. Ex: "parede azul petróleo" em vez de "mudar a cor".
+            </p>
+          </div>
+
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setRefineOpen(false)} disabled={refining}>
+              Cancelar
+            </Button>
+            <Button
+              onClick={handleRefine}
+              disabled={refining || !refineNote.trim()}
+              className="bg-violet-600 hover:bg-violet-700 text-white gap-2"
+            >
+              {refining ? (
+                <><Loader2 className="h-3.5 w-3.5 animate-spin" /> Ajustando…</>
+              ) : (
+                <><Wand2 className="h-3.5 w-3.5" /> Aplicar ajuste</>
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
