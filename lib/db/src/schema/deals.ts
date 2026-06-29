@@ -16,6 +16,7 @@ export const dealEtapaEnum = pgEnum("deal_etapa", [
   "em_execucao",
   "entregue",
   "perdido",
+  "parceiro",
 ]);
 
 export const dealTipoFechamentoEnum = pgEnum("deal_tipo_fechamento", [
@@ -67,6 +68,7 @@ export const dealsTable = pgTable("deals", {
   probChurn: integer("prob_churn"),
   quoteFileUrl: text("quote_file_url"),
   skipAsaasBilling: text("skip_asaas_billing"),
+  aquecimentoTipo: text("aquecimento_tipo"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
 });

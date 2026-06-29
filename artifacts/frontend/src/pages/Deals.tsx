@@ -87,6 +87,7 @@ const ETAPAS: { value: DealEtapa; label: string; color: string; bg: string }[] =
   { value: "em_execucao",    label: "Em Execução",    color: "text-cyan-600",    bg: "bg-cyan-100" },
   { value: "entregue",       label: "Entregue",       color: "text-teal-600",    bg: "bg-teal-100" },
   { value: "perdido",        label: "Perdido",        color: "text-red-600",     bg: "bg-red-100" },
+  { value: "parceiro",       label: "Parceiros",      color: "text-purple-600",  bg: "bg-purple-100" },
 ];
 
 const ETAPA_PROBABILIDADE: Record<DealEtapa, number> = {
@@ -99,7 +100,156 @@ const ETAPA_PROBABILIDADE: Record<DealEtapa, number> = {
   em_execucao:    100,
   entregue:       100,
   perdido:        0,
+  parceiro:       5,
 };
+
+// ─── Kanban Column Definitions ────────────────────────────────────────────────
+// Each entry maps to a droppable zone. Two virtual columns split em_aquecimento
+// by aquecimentoTipo. parceiro is a separate stage outside the main funnel.
+
+interface KanbanColumnDef {
+  dropId: string;
+  label: string;
+  sublabel?: string;
+  color: string;
+  bg: string;
+  order: number;       // position in normal flow; -1 = special (no restriction)
+  isSpecial: boolean;  // perdido / parceiro — can receive from anywhere
+  onDrop: { etapa: DealEtapa; aquecimentoTipo?: string | null };
+}
+
+const KANBAN_COLUMNS: KanbanColumnDef[] = [
+  {
+    dropId: "parceiro",
+    label: "Parceiros",
+    color: "text-purple-600",
+    bg: "bg-purple-100",
+    order: -1,
+    isSpecial: true,
+    onDrop: { etapa: "parceiro" },
+  },
+  {
+    dropId: "aquecimento_nao_cliente",
+    label: "Aquecimento",
+    sublabel: "Leads",
+    color: "text-orange-600",
+    bg: "bg-orange-100",
+    order: 0,
+    isSpecial: false,
+    onDrop: { etapa: "em_aquecimento", aquecimentoTipo: "nao_cliente" },
+  },
+  {
+    dropId: "aquecimento_cliente",
+    label: "Aquecimento",
+    sublabel: "Clientes",
+    color: "text-rose-600",
+    bg: "bg-rose-100",
+    order: 0,
+    isSpecial: false,
+    onDrop: { etapa: "em_aquecimento", aquecimentoTipo: "cliente" },
+  },
+  {
+    dropId: "novo",
+    label: "Novo",
+    color: "text-slate-600",
+    bg: "bg-slate-100",
+    order: 1,
+    isSpecial: false,
+    onDrop: { etapa: "novo" },
+  },
+  {
+    dropId: "qualificado",
+    label: "Qualificado",
+    color: "text-blue-600",
+    bg: "bg-blue-100",
+    order: 2,
+    isSpecial: false,
+    onDrop: { etapa: "qualificado" },
+  },
+  {
+    dropId: "proposta",
+    label: "Orçamento",
+    color: "text-violet-600",
+    bg: "bg-violet-100",
+    order: 3,
+    isSpecial: false,
+    onDrop: { etapa: "proposta" },
+  },
+  {
+    dropId: "negociacao",
+    label: "Negociação",
+    color: "text-amber-600",
+    bg: "bg-amber-100",
+    order: 4,
+    isSpecial: false,
+    onDrop: { etapa: "negociacao" },
+  },
+  {
+    dropId: "ganho",
+    label: "Ganho",
+    color: "text-emerald-600",
+    bg: "bg-emerald-100",
+    order: 5,
+    isSpecial: false,
+    onDrop: { etapa: "ganho" },
+  },
+  {
+    dropId: "em_execucao",
+    label: "Em Execução",
+    color: "text-cyan-600",
+    bg: "bg-cyan-100",
+    order: 6,
+    isSpecial: false,
+    onDrop: { etapa: "em_execucao" },
+  },
+  {
+    dropId: "entregue",
+    label: "Entregue",
+    color: "text-teal-600",
+    bg: "bg-teal-100",
+    order: 7,
+    isSpecial: false,
+    onDrop: { etapa: "entregue" },
+  },
+  {
+    dropId: "perdido",
+    label: "Perdido",
+    color: "text-red-600",
+    bg: "bg-red-100",
+    order: -1,
+    isSpecial: true,
+    onDrop: { etapa: "perdido" },
+  },
+];
+
+/** Map deals to their visual column ID (handles the two aquecimento virtual splits). */
+function getColumnIdForDeal(deal: Deal): string {
+  if (deal.etapa === "em_aquecimento") {
+    return (deal as Deal & { aquecimentoTipo?: string | null }).aquecimentoTipo === "cliente"
+      ? "aquecimento_cliente"
+      : "aquecimento_nao_cliente";
+  }
+  return deal.etapa;
+}
+
+/** Filter deals belonging to a given kanban column. */
+function dealsForColumn(col: KanbanColumnDef, deals: Deal[]): Deal[] {
+  if (col.dropId === "aquecimento_nao_cliente") {
+    return deals.filter(
+      (d) => d.etapa === "em_aquecimento" &&
+        (d as Deal & { aquecimentoTipo?: string | null }).aquecimentoTipo !== "cliente"
+    );
+  }
+  if (col.dropId === "aquecimento_cliente") {
+    return deals.filter(
+      (d) => d.etapa === "em_aquecimento" &&
+        (d as Deal & { aquecimentoTipo?: string | null }).aquecimentoTipo === "cliente"
+    );
+  }
+  return deals.filter((d) => d.etapa === col.onDrop.etapa);
+}
+
+const TERMINAL_ETAPAS = new Set<string>(["ganho", "entregue", "perdido", "parceiro"]);
 
 const ETAPAS_SAAS: { value: DealEtapaSaas; label: string; color: string; bg: string; icon: React.ElementType }[] = [
   { value: "lead_qualificado",  label: "Lead Qualificado",  color: "text-slate-600",   bg: "bg-slate-50",    icon: User },
@@ -268,20 +418,33 @@ function DealCard({
     data: { deal },
   });
 
+  const deadline = deal.dataFechamentoPrevista ? new Date(deal.dataFechamentoPrevista) : null;
+  const isOverdue = !overlay && deadline && deadline < new Date() && !TERMINAL_ETAPAS.has(deal.etapa ?? "");
+
   return (
     <div
       ref={setNodeRef}
       {...attributes}
       {...listeners}
       style={{ opacity: isDragging && !overlay ? 0.4 : 1, touchAction: "none" }}
-      className={`group bg-card border border-border rounded-lg p-3 space-y-2 ${
+      className={`group bg-card border rounded-lg p-3 space-y-2 ${
         overlay
-          ? "shadow-2xl rotate-1 cursor-grabbing"
-          : "cursor-grab active:cursor-grabbing hover:border-primary/40 hover:shadow-sm transition-all"
+          ? "shadow-2xl rotate-1 cursor-grabbing border-border"
+          : isOverdue
+            ? "cursor-grab active:cursor-grabbing border-yellow-400 bg-yellow-50/40 shadow-[0_0_10px_rgba(234,179,8,0.35)] hover:shadow-[0_0_16px_rgba(234,179,8,0.55)] transition-all"
+            : "cursor-grab active:cursor-grabbing border-border hover:border-primary/40 hover:shadow-sm transition-all"
       }`}
       onClick={onClick}
       data-testid={`deal-card-${deal.id}`}
     >
+      {/* Atrasado badge */}
+      {isOverdue && (
+        <div className="flex items-center gap-1 rounded-full px-2 py-0.5 bg-yellow-100 border border-yellow-300 w-fit">
+          <AlertTriangle className="h-3 w-3 text-yellow-700" />
+          <span className="text-[10px] font-bold text-yellow-800 uppercase tracking-wide">Atrasado</span>
+        </div>
+      )}
+
       {/* Handle visual + title */}
       <div className="flex items-start gap-2">
         <GripVertical
@@ -298,6 +461,14 @@ function DealCard({
         <DollarSign className="h-3 w-3 shrink-0" />
         <span className="font-semibold text-foreground">{formatCurrency(deal.valor)}</span>
       </div>
+
+      {/* Prazo */}
+      {deadline && (
+        <div className={`flex items-center gap-1.5 text-xs pl-6 ${isOverdue ? "text-yellow-700 font-semibold" : "text-muted-foreground"}`}>
+          <Clock className="h-3 w-3 shrink-0" />
+          <span>Prazo: {deadline.toLocaleDateString("pt-BR")}</span>
+        </div>
+      )}
 
       {/* Lead name */}
       {leadName && (
@@ -448,7 +619,7 @@ function ClosureStatusBadge({
 // ─── Droppable Column ─────────────────────────────────────────────────────────
 
 function KanbanColumn({
-  etapa,
+  col,
   deals,
   leadMap,
   briefingMap,
@@ -457,7 +628,7 @@ function KanbanColumn({
   isOver,
   onCardClick,
 }: {
-  etapa: (typeof ETAPAS)[number];
+  col: KanbanColumnDef;
   deals: Deal[];
   leadMap: Map<string, string>;
   briefingMap: Map<string, LeadBriefing>;
@@ -466,12 +637,17 @@ function KanbanColumn({
   isOver: boolean;
   onCardClick: (deal: Deal) => void;
 }) {
-  const { setNodeRef } = useDroppable({ id: etapa.value });
+  const { setNodeRef } = useDroppable({ id: col.dropId });
 
   const total = deals.reduce((acc, d) => {
     const v = parseFloat(d.valor ?? "0");
     return acc + (isNaN(v) ? 0 : v);
   }, 0);
+
+  const overdueCount = deals.filter((d) => {
+    const dl = d.dataFechamentoPrevista ? new Date(d.dataFechamentoPrevista) : null;
+    return dl && dl < new Date() && !TERMINAL_ETAPAS.has(d.etapa ?? "");
+  }).length;
 
   return (
     <div className="flex flex-col w-72 shrink-0">
@@ -479,15 +655,28 @@ function KanbanColumn({
       <div className="flex items-center justify-between mb-3 px-1">
         <div className="flex items-center gap-2">
           <span
-            className={`inline-block h-2 w-2 rounded-full ${etapa.bg.replace("bg-", "bg-")} border ${etapa.color.replace("text-", "border-")}`}
+            className={`inline-block h-2 w-2 rounded-full border ${col.color.replace("text-", "border-")}`}
             style={{ background: "currentColor" }}
           />
-          <span className={`text-xs font-semibold uppercase tracking-wide ${etapa.color}`}>
-            {etapa.label}
-          </span>
+          <div className="flex flex-col leading-tight">
+            <span className={`text-xs font-semibold uppercase tracking-wide ${col.color}`}>
+              {col.label}
+            </span>
+            {col.sublabel && (
+              <span className={`text-[10px] font-medium ${col.color} opacity-70`}>
+                {col.sublabel}
+              </span>
+            )}
+          </div>
           <span className="text-xs text-muted-foreground bg-muted rounded-full px-1.5 py-0.5 font-medium">
             {deals.length}
           </span>
+          {overdueCount > 0 && (
+            <span className="inline-flex items-center gap-0.5 text-[10px] font-bold text-yellow-700 bg-yellow-100 border border-yellow-300 rounded-full px-1.5 py-0.5">
+              <AlertTriangle className="h-2.5 w-2.5" />
+              {overdueCount}
+            </span>
+          )}
         </div>
         {total > 0 && (
           <span className="text-xs font-semibold text-foreground font-mono">
@@ -504,7 +693,7 @@ function KanbanColumn({
             ? "bg-primary/5 border-2 border-dashed border-primary/30"
             : "bg-muted/30 border-2 border-transparent"
         }`}
-        data-testid={`column-${etapa.value}`}
+        data-testid={`column-${col.dropId}`}
       >
         {deals.map((deal) => {
           const proposta =
@@ -993,6 +1182,8 @@ const createSchema = z.object({
   probabilidade: z.coerce.number().min(0).max(100).optional(),
   tipoFechamento: z.enum(["pedido", "contrato", "pedido_e_contrato"]).optional(),
   skipAsaasBilling: z.boolean().default(false),
+  dataFechamentoPrevista: z.string().optional().or(z.literal("")),
+  aquecimentoTipo: z.enum(["cliente", "nao_cliente"]).optional(),
 });
 
 // ─── Edit Deal Sheet ──────────────────────────────────────────────────────────
@@ -1075,8 +1266,12 @@ function EditDealSheet({
           probabilidade: deal.probabilidade ?? undefined,
           tipoFechamento: (deal.tipoFechamento as "pedido" | "contrato" | "pedido_e_contrato" | undefined) ?? tenantDefault ?? "pedido",
           skipAsaasBilling: deal.skipAsaasBilling === "true",
+          dataFechamentoPrevista: deal.dataFechamentoPrevista
+            ? String(deal.dataFechamentoPrevista).slice(0, 10)
+            : "",
+          aquecimentoTipo: ((deal as any).aquecimentoTipo as "cliente" | "nao_cliente" | undefined) ?? "nao_cliente",
         }
-      : { titulo: "", etapa: "novo", tipoFechamento: tenantDefault ?? "pedido", skipAsaasBilling: false },
+      : { titulo: "", etapa: "novo", tipoFechamento: tenantDefault ?? "pedido", skipAsaasBilling: false, dataFechamentoPrevista: "", aquecimentoTipo: "nao_cliente" as const },
   });
 
   function onSubmit(values: z.infer<typeof createSchema>) {
@@ -1093,6 +1288,8 @@ function EditDealSheet({
           tipoFechamento: values.tipoFechamento as TipoFechamento | undefined,
           skipAsaasBilling: values.skipAsaasBilling,
           ...(quoteFileUrl !== deal.quoteFileUrl ? { quoteFileUrl } : {}),
+          ...(values.dataFechamentoPrevista ? { dataFechamentoPrevista: values.dataFechamentoPrevista } : {}),
+          aquecimentoTipo: values.aquecimentoTipo ?? null,
         },
       },
       {
@@ -1269,6 +1466,46 @@ function EditDealSheet({
                       ))}
                     </SelectContent>
                   </Select>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+            {/* Tipo de aquecimento — exibido apenas para a etapa em_aquecimento */}
+            {form.watch("etapa") === "em_aquecimento" && (
+              <FormField
+                control={form.control}
+                name="aquecimentoTipo"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Tipo de aquecimento</FormLabel>
+                    <Select onValueChange={field.onChange} value={field.value ?? "nao_cliente"}>
+                      <FormControl>
+                        <SelectTrigger>
+                          <SelectValue />
+                        </SelectTrigger>
+                      </FormControl>
+                      <SelectContent>
+                        <SelectItem value="nao_cliente">Lead (não cliente)</SelectItem>
+                        <SelectItem value="cliente">Ex-cliente (reativação)</SelectItem>
+                      </SelectContent>
+                    </Select>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+            )}
+            <FormField
+              control={form.control}
+              name="dataFechamentoPrevista"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel className="flex items-center gap-1.5">
+                    <Clock className="h-3.5 w-3.5 text-muted-foreground" />
+                    Prazo de fechamento
+                  </FormLabel>
+                  <FormControl>
+                    <Input type="date" {...field} value={field.value ?? ""} />
+                  </FormControl>
                   <FormMessage />
                 </FormItem>
               )}
@@ -1554,7 +1791,7 @@ export default function Deals() {
   const [, navigate] = useLocation();
   const [isCreateOpen, setIsCreateOpen] = useState(false);
   const [activeId, setActiveId] = useState<string | null>(null);
-  const [overColumn, setOverColumn] = useState<DealEtapa | null>(null);
+  const [overColumn, setOverColumn] = useState<string | null>(null);
   const [perdidoDialog, setPerdidoDialog] = useState<{ open: boolean; deal: Deal | null; novaProb: number }>({
     open: false,
     deal: null,
@@ -1736,8 +1973,8 @@ export default function Deals() {
 
   const handleDragOver = useCallback((event: DragOverEvent) => {
     const overId = event.over?.id as string | undefined;
-    const col = ETAPAS.find((e) => e.value === overId);
-    setOverColumn(col ? col.value : null);
+    const col = KANBAN_COLUMNS.find((c) => c.dropId === overId);
+    setOverColumn(col ? col.dropId : null);
   }, []);
 
   const handleDragEnd = useCallback(
@@ -1749,16 +1986,40 @@ export default function Deals() {
       if (!over) return;
 
       const draggedDeal = deals.find((d) => d.id === active.id);
-      const targetEtapa = ETAPAS.find((e) => e.value === over.id);
+      const targetCol = KANBAN_COLUMNS.find((c) => c.dropId === over.id);
 
-      if (!draggedDeal || !targetEtapa) return;
-      if (draggedDeal.etapa === targetEtapa.value) return;
+      if (!draggedDeal || !targetCol) return;
 
-      const novaProb = ETAPA_PROBABILIDADE[targetEtapa.value];
+      const sourceColId = getColumnIdForDeal(draggedDeal);
+      if (sourceColId === targetCol.dropId) return;
+
+      // ── Backward move prevention ─────────────────────────────────────────
+      const sourceCol = KANBAN_COLUMNS.find((c) => c.dropId === sourceColId);
+      const sourceOrder = sourceCol?.order ?? -1;
+      const targetOrder = targetCol.order;
+      const isGanhoToAquecimento =
+        sourceColId === "ganho" &&
+        (targetCol.dropId === "aquecimento_nao_cliente" || targetCol.dropId === "aquecimento_cliente");
+
+      if (
+        !targetCol.isSpecial &&
+        sourceOrder !== -1 &&
+        targetOrder !== -1 &&
+        targetOrder < sourceOrder &&
+        !isGanhoToAquecimento
+      ) {
+        toast({
+          title: "Movimento não permitido",
+          description: "Cards só podem avançar no funil. Retroceder é permitido apenas de Ganho → Aquecimento.",
+          variant: "destructive",
+        });
+        return;
+      }
+
+      const novaProb = ETAPA_PROBABILIDADE[targetCol.onDrop.etapa];
 
       // Interceptar movimento para "perdido" — exibir modal antes de confirmar
-      if (targetEtapa.value === "perdido") {
-        // Optimistic update visual (card aparece na coluna)
+      if (targetCol.onDrop.etapa === "perdido") {
         queryClient.setQueryData(
           getListDealsQueryKey(tenantId),
           (old: Deal[] | undefined) =>
@@ -1770,20 +2031,36 @@ export default function Deals() {
         return;
       }
 
-      // Optimistic update
+      // Optimistic update (inclui aquecimentoTipo quando relevante)
+      const newAquecimentoTipo =
+        targetCol.onDrop.aquecimentoTipo !== undefined
+          ? targetCol.onDrop.aquecimentoTipo
+          : (draggedDeal as any).aquecimentoTipo ?? null;
+
       queryClient.setQueryData(
         getListDealsQueryKey(tenantId),
         (old: Deal[] | undefined) =>
           (old ?? []).map((d) =>
-            d.id === draggedDeal.id ? { ...d, etapa: targetEtapa.value, probabilidade: novaProb } : d
+            d.id === draggedDeal.id
+              ? { ...d, etapa: targetCol.onDrop.etapa, probabilidade: novaProb, aquecimentoTipo: newAquecimentoTipo }
+              : d
           )
       );
 
+      const updateData: Record<string, unknown> = {
+        etapa: targetCol.onDrop.etapa,
+        probabilidade: novaProb,
+        tipoFechamento: draggedDeal.tipoFechamento ?? undefined,
+      };
+      if (targetCol.onDrop.aquecimentoTipo !== undefined) {
+        updateData.aquecimentoTipo = targetCol.onDrop.aquecimentoTipo;
+      }
+
       updateDeal.mutate(
-        { id: draggedDeal.id, data: { etapa: targetEtapa.value, probabilidade: novaProb, tipoFechamento: draggedDeal.tipoFechamento ?? undefined } },
+        { id: draggedDeal.id, data: updateData as Parameters<typeof updateDeal.mutate>[0]["data"] },
         {
           onSuccess: (data) => {
-            if (targetEtapa.value === "ganho") {
+            if (targetCol.onDrop.etapa === "ganho") {
               if ((data as any).inviteSent && (data as any).inviteEmail) {
                 toast({ title: `Convite de onboarding enviado para ${(data as any).inviteEmail}` });
               } else if ((data as any).inviteSkipReason === "no_email") {
@@ -1854,8 +2131,8 @@ export default function Deals() {
     setPerdidoDialog({ open: false, deal: null, novaProb: 0 });
   }
 
-  const dealsByEtapa = (etapa: DealEtapa) =>
-    deals.filter((d) => d.etapa === etapa);
+  // dealsForColumn is a module-level function; bind to local deals list
+  const dealsForKanbanColumn = (col: KanbanColumnDef) => dealsForColumn(col, deals);
 
   // ─── SaaS DnD ────────────────────────────────────────────────────────────────
 
@@ -2159,8 +2436,8 @@ export default function Deals() {
       <div className="flex-1 min-h-0 flex flex-col">
         {isLoading ? (
           <div className="flex gap-4 overflow-x-auto pb-4">
-            {ETAPAS.map((e) => (
-              <div key={e.value} className="w-72 shrink-0 space-y-2">
+            {KANBAN_COLUMNS.map((col) => (
+              <div key={col.dropId} className="w-72 shrink-0 space-y-2">
                 <div className="h-5 bg-muted animate-pulse rounded w-24" />
                 <div className="h-[400px] bg-muted/30 animate-pulse rounded-lg" />
               </div>
@@ -2174,16 +2451,16 @@ export default function Deals() {
             onDragEnd={handleDragEnd}
           >
             <div className="flex gap-4 overflow-x-auto pb-6 flex-1">
-              {ETAPAS.map((etapa) => (
+              {KANBAN_COLUMNS.map((col) => (
                 <KanbanColumn
-                  key={etapa.value}
-                  etapa={etapa}
-                  deals={dealsByEtapa(etapa.value)}
+                  key={col.dropId}
+                  col={col}
+                  deals={dealsForKanbanColumn(col)}
                   leadMap={leadMap}
                   briefingMap={briefingMap}
                   propostaByDealId={propostaByDealId}
                   propostaByLeadId={propostaByLeadId}
-                  isOver={overColumn === etapa.value}
+                  isOver={overColumn === col.dropId}
                   onCardClick={handleCardClick}
                 />
               ))}

@@ -1331,7 +1331,7 @@ export const CreateDealBody = zod.object({
   "leadId": zod.string().optional(),
   "titulo": zod.string(),
   "valor": zod.number().optional(),
-  "etapa": zod.enum(['em_aquecimento', 'novo', 'qualificado', 'proposta', 'negociacao', 'ganho', 'em_execucao', 'entregue', 'perdido']).optional(),
+  "etapa": zod.enum(['em_aquecimento', 'novo', 'qualificado', 'proposta', 'negociacao', 'ganho', 'em_execucao', 'entregue', 'perdido', 'parceiro']).optional(),
   "funilId": zod.string().optional(),
   "probabilidade": zod.number().min(createDealBodyProbabilidadeMin).max(createDealBodyProbabilidadeMax).optional(),
   "dataFechamentoPrevista": zod.coerce.date().optional(),
@@ -1345,7 +1345,8 @@ export const CreateDealBody = zod.object({
   "planoContratado": zod.string().optional(),
   "dataRenovacao": zod.coerce.date().optional(),
   "probChurn": zod.number().min(createDealBodyProbChurnMin).max(createDealBodyProbChurnMax).optional(),
-  "skipAsaasBilling": zod.boolean().nullish()
+  "skipAsaasBilling": zod.boolean().nullish(),
+  "aquecimentoTipo": zod.string().nullish().describe('Subtipo de aquecimento (\'cliente\' ou \'nao_cliente\')')
 })
 
 
@@ -1357,7 +1358,7 @@ export const ListDealsParams = zod.object({
 })
 
 export const ListDealsQueryParams = zod.object({
-  "etapa": zod.enum(['em_aquecimento', 'novo', 'qualificado', 'proposta', 'negociacao', 'ganho', 'em_execucao', 'entregue', 'perdido']).optional(),
+  "etapa": zod.enum(['em_aquecimento', 'novo', 'qualificado', 'proposta', 'negociacao', 'ganho', 'em_execucao', 'entregue', 'perdido', 'parceiro']).optional(),
   "funilId": zod.coerce.string().optional(),
   "leadId": zod.coerce.string().optional()
 })
@@ -1376,7 +1377,7 @@ export const ListDealsResponseItem = zod.object({
   "leadId": zod.string().nullish(),
   "titulo": zod.string(),
   "valor": zod.string().nullish().describe('Decimal stored as string (Postgres numeric)'),
-  "etapa": zod.enum(['em_aquecimento', 'novo', 'qualificado', 'proposta', 'negociacao', 'ganho', 'em_execucao', 'entregue', 'perdido']),
+  "etapa": zod.enum(['em_aquecimento', 'novo', 'qualificado', 'proposta', 'negociacao', 'ganho', 'em_execucao', 'entregue', 'perdido', 'parceiro']),
   "funilId": zod.string().nullish(),
   "probabilidade": zod.number().min(listDealsResponseProbabilidadeMin).max(listDealsResponseProbabilidadeMax).nullish(),
   "dataFechamentoPrevista": zod.coerce.date().nullish(),
@@ -1404,6 +1405,7 @@ export const ListDealsResponseItem = zod.object({
   "lostAt": zod.coerce.date().nullish().describe('When the deal was marked as lost'),
   "lostReason": zod.string().nullish().describe('Categoria de motivo de perda'),
   "lostReasonDetail": zod.string().nullish().describe('Detalhe do motivo de perda'),
+  "aquecimentoTipo": zod.string().nullish().describe('Subtipo de aquecimento — \'cliente\' (ex-cliente) ou \'nao_cliente\' (lead novo). Só relevante quando etapa=em_aquecimento.'),
   "createdAt": zod.coerce.date(),
   "updatedAt": zod.coerce.date()
 })
@@ -1448,7 +1450,7 @@ export const GetDealResponse = zod.object({
   "leadId": zod.string().nullish(),
   "titulo": zod.string(),
   "valor": zod.string().nullish().describe('Decimal stored as string (Postgres numeric)'),
-  "etapa": zod.enum(['em_aquecimento', 'novo', 'qualificado', 'proposta', 'negociacao', 'ganho', 'em_execucao', 'entregue', 'perdido']),
+  "etapa": zod.enum(['em_aquecimento', 'novo', 'qualificado', 'proposta', 'negociacao', 'ganho', 'em_execucao', 'entregue', 'perdido', 'parceiro']),
   "funilId": zod.string().nullish(),
   "probabilidade": zod.number().min(getDealResponseProbabilidadeMin).max(getDealResponseProbabilidadeMax).nullish(),
   "dataFechamentoPrevista": zod.coerce.date().nullish(),
@@ -1476,6 +1478,7 @@ export const GetDealResponse = zod.object({
   "lostAt": zod.coerce.date().nullish().describe('When the deal was marked as lost'),
   "lostReason": zod.string().nullish().describe('Categoria de motivo de perda'),
   "lostReasonDetail": zod.string().nullish().describe('Detalhe do motivo de perda'),
+  "aquecimentoTipo": zod.string().nullish().describe('Subtipo de aquecimento — \'cliente\' (ex-cliente) ou \'nao_cliente\' (lead novo). Só relevante quando etapa=em_aquecimento.'),
   "createdAt": zod.coerce.date(),
   "updatedAt": zod.coerce.date()
 })
@@ -1502,7 +1505,7 @@ export const UpdateDealBody = zod.object({
   "leadId": zod.string().optional(),
   "titulo": zod.string().optional(),
   "valor": zod.number().optional(),
-  "etapa": zod.enum(['em_aquecimento', 'novo', 'qualificado', 'proposta', 'negociacao', 'ganho', 'em_execucao', 'entregue', 'perdido']).optional(),
+  "etapa": zod.enum(['em_aquecimento', 'novo', 'qualificado', 'proposta', 'negociacao', 'ganho', 'em_execucao', 'entregue', 'perdido', 'parceiro']).optional(),
   "funilId": zod.string().optional(),
   "probabilidade": zod.number().min(updateDealBodyProbabilidadeMin).max(updateDealBodyProbabilidadeMax).optional(),
   "dataFechamentoPrevista": zod.coerce.date().optional(),
@@ -1520,7 +1523,8 @@ export const UpdateDealBody = zod.object({
   "probChurn": zod.number().min(updateDealBodyProbChurnMin).max(updateDealBodyProbChurnMax).optional(),
   "quoteFileUrl": zod.string().nullish(),
   "contractStatus": zod.enum(['pending', 'sent', 'signed', 'failed', 'skipped', 'na']).nullish().describe('Override contract status (e.g. retry after failure)'),
-  "skipAsaasBilling": zod.boolean().nullish().describe('When true, skip Asaas billing and treat as manually paid.')
+  "skipAsaasBilling": zod.boolean().nullish().describe('When true, skip Asaas billing and treat as manually paid.'),
+  "aquecimentoTipo": zod.string().nullish().describe('Subtipo de aquecimento (\'cliente\' ou \'nao_cliente\')')
 })
 
 export const updateDealResponseOneProbabilidadeMin = 0;
@@ -1537,7 +1541,7 @@ export const UpdateDealResponse = zod.object({
   "leadId": zod.string().nullish(),
   "titulo": zod.string(),
   "valor": zod.string().nullish().describe('Decimal stored as string (Postgres numeric)'),
-  "etapa": zod.enum(['em_aquecimento', 'novo', 'qualificado', 'proposta', 'negociacao', 'ganho', 'em_execucao', 'entregue', 'perdido']),
+  "etapa": zod.enum(['em_aquecimento', 'novo', 'qualificado', 'proposta', 'negociacao', 'ganho', 'em_execucao', 'entregue', 'perdido', 'parceiro']),
   "funilId": zod.string().nullish(),
   "probabilidade": zod.number().min(updateDealResponseOneProbabilidadeMin).max(updateDealResponseOneProbabilidadeMax).nullish(),
   "dataFechamentoPrevista": zod.coerce.date().nullish(),
@@ -1565,6 +1569,7 @@ export const UpdateDealResponse = zod.object({
   "lostAt": zod.coerce.date().nullish().describe('When the deal was marked as lost'),
   "lostReason": zod.string().nullish().describe('Categoria de motivo de perda'),
   "lostReasonDetail": zod.string().nullish().describe('Detalhe do motivo de perda'),
+  "aquecimentoTipo": zod.string().nullish().describe('Subtipo de aquecimento — \'cliente\' (ex-cliente) ou \'nao_cliente\' (lead novo). Só relevante quando etapa=em_aquecimento.'),
   "createdAt": zod.coerce.date(),
   "updatedAt": zod.coerce.date()
 }).and(zod.object({

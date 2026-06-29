@@ -48,4 +48,6 @@ export interface UpdateDealBody {
   contractStatus?: UpdateDealBodyContractStatus;
   /** When true, skip Asaas billing and treat as manually paid. */
   skipAsaasBilling?: boolean | null;
+  /** Subtipo de aquecimento ('cliente' ou 'nao_cliente') */
+  aquecimentoTipo?: string | null;
 }

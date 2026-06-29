@@ -39,4 +39,6 @@ export interface CreateDealBody {
      */
   probChurn?: number;
   skipAsaasBilling?: boolean | null;
+  /** Subtipo de aquecimento ('cliente' ou 'nao_cliente') */
+  aquecimentoTipo?: string | null;
 }

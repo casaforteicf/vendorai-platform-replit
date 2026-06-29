@@ -11277,7 +11277,7 @@ components:
 
     DealEtapa:
       type: string
-      enum: [em_aquecimento, novo, qualificado, proposta, negociacao, ganho, em_execucao, entregue, perdido]
+      enum: [em_aquecimento, novo, qualificado, proposta, negociacao, ganho, em_execucao, entregue, perdido, parceiro]
 
     DealEtapaSaas:
       type: string
@@ -11476,6 +11476,10 @@ components:
           type: string
           nullable: true
           description: Detalhe do motivo de perda
+        aquecimentoTipo:
+          type: string
+          nullable: true
+          description: Subtipo de aquecimento — 'cliente' (ex-cliente) ou 'nao_cliente' (lead novo). Só relevante quando etapa=em_aquecimento.
         createdAt:
           type: string
           format: date-time
@@ -11584,6 +11588,10 @@ components:
         skipAsaasBilling:
           type: boolean
           nullable: true
+        aquecimentoTipo:
+          type: string
+          nullable: true
+          description: Subtipo de aquecimento ('cliente' ou 'nao_cliente')
       required: [tenantId, titulo]
 
     UpdateDealBody:
@@ -11650,6 +11658,10 @@ components:
           type: boolean
           nullable: true
           description: When true, skip Asaas billing and treat as manually paid.
+        aquecimentoTipo:
+          type: string
+          nullable: true
+          description: Subtipo de aquecimento ('cliente' ou 'nao_cliente')
 
     IncrementBody:
       type: object

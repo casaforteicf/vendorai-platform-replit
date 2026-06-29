@@ -19,4 +19,5 @@ export const DealEtapa = {
   em_execucao: 'em_execucao',
   entregue: 'entregue',
   perdido: 'perdido',
+  parceiro: 'parceiro',
 } as const;

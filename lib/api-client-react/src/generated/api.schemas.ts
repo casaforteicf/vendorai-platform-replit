@@ -1495,6 +1495,7 @@ export const DealEtapa = {
   em_execucao: 'em_execucao',
   entregue: 'entregue',
   perdido: 'perdido',
+  parceiro: 'parceiro',
 } as const;
 
 /**
@@ -1612,6 +1613,8 @@ export interface Deal {
   lostReason?: string | null;
   /** Detalhe do motivo de perda */
   lostReasonDetail?: string | null;
+  /** Subtipo de aquecimento — 'cliente' (ex-cliente) ou 'nao_cliente' (lead novo). Só relevante quando etapa=em_aquecimento. */
+  aquecimentoTipo?: string | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -1673,6 +1676,8 @@ export interface CreateDealBody {
      */
   probChurn?: number;
   skipAsaasBilling?: boolean | null;
+  /** Subtipo de aquecimento ('cliente' ou 'nao_cliente') */
+  aquecimentoTipo?: string | null;
 }
 
 /**
@@ -1728,6 +1733,8 @@ export interface UpdateDealBody {
   contractStatus?: UpdateDealBodyContractStatus;
   /** When true, skip Asaas billing and treat as manually paid. */
   skipAsaasBilling?: boolean | null;
+  /** Subtipo de aquecimento ('cliente' ou 'nao_cliente') */
+  aquecimentoTipo?: string | null;
 }
 
 export interface IncrementBody {
