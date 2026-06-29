@@ -21,8 +21,6 @@ import {
 } from "@/components/ui/form";
 
 const configSchema = z.object({
-  zapiInstanceId: z.string().optional(),
-  zapiToken: z.string().optional(),
   botAtivo: z.boolean(),
   mensagemBoasVindas: z.string().optional(),
   campanhasAtivas: z.boolean(),
@@ -49,8 +47,6 @@ export default function SupermercadoConfig() {
   const form = useForm<ConfigForm>({
     resolver: zodResolver(configSchema),
     defaultValues: {
-      zapiInstanceId: "",
-      zapiToken: "",
       botAtivo: false,
       mensagemBoasVindas: "",
       campanhasAtivas: true,
@@ -65,8 +61,6 @@ export default function SupermercadoConfig() {
   useEffect(() => {
     if (config) {
       form.reset({
-        zapiInstanceId: config.zapiInstanceId ?? "",
-        zapiToken: config.zapiToken ?? "",
         botAtivo: config.botAtivo,
         mensagemBoasVindas: config.mensagemBoasVindas ?? "",
         campanhasAtivas: config.campanhasAtivas,
@@ -111,31 +105,18 @@ export default function SupermercadoConfig() {
       <Form {...form}>
         <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-5">
 
-          {/* WhatsApp (Z-API) */}
+          {/* WhatsApp (Meta Cloud API) */}
           <Card>
             <CardHeader className="pb-3">
               <CardTitle className="text-sm font-semibold flex items-center gap-2">
                 <MessageCircle className="h-4 w-4 text-green-500" />
-                WhatsApp via Z-API
+                WhatsApp (Meta Cloud API)
               </CardTitle>
             </CardHeader>
             <CardContent className="space-y-4">
-              <div className="grid grid-cols-2 gap-3">
-                <FormField control={form.control} name="zapiInstanceId" render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Instance ID</FormLabel>
-                    <FormControl><Input placeholder="Ex: 3DXV9..." {...field} /></FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )} />
-                <FormField control={form.control} name="zapiToken" render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Token</FormLabel>
-                    <FormControl><Input type="password" placeholder="Token de acesso" {...field} /></FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )} />
-              </div>
+              <p className="text-xs text-muted-foreground">
+                O envio de WhatsApp utiliza as credenciais Meta Cloud API configuradas em <strong>Configurações → Agente</strong>.
+              </p>
               <FormField control={form.control} name="botAtivo" render={({ field }) => (
                 <FormItem className="flex items-center gap-3">
                   <FormControl><Switch checked={field.value} onCheckedChange={field.onChange} /></FormControl>

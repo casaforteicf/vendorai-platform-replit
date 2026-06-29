@@ -22,12 +22,29 @@ import {
 } from "../services/omnichannel.js";
 import { dispatchAgentBackground } from "../services/agent-dispatch.js";
 import { runAutoQuotePipeline } from "../services/auto-quote.js";
-import { transcribeAudio } from "../services/audio-transcription.js";
+import { transcribeAudio, transcribeAudioBuffer } from "../services/audio-transcription.js";
 import { interpretImage, interpretPdf } from "../services/media-interpretation.js";
+
 import { findLeadByDedup, storePhone } from "../lib/dedup.js";
 import { handleAppointmentConfirmation } from "../jobs/appointmentReminders.js";
 
 const router: IRouter = Router();
+
+// ── Meta Cloud API media download ─────────────────────────────────────────────
+async function downloadMetaMedia(mediaId: string, accessToken: string): Promise<Buffer> {
+  const infoRes = await fetch(`https://graph.facebook.com/v20.0/${mediaId}`, {
+    headers: { Authorization: `Bearer ${accessToken}` },
+  });
+  if (!infoRes.ok) throw new Error(`Meta media info failed: ${infoRes.status}`);
+  const info = await infoRes.json() as { url?: string };
+  if (!info.url) throw new Error(`Meta media ${mediaId}: no download URL in response`);
+
+  const dataRes = await fetch(info.url, {
+    headers: { Authorization: `Bearer ${accessToken}` },
+  });
+  if (!dataRes.ok) throw new Error(`Meta media download failed: ${dataRes.status}`);
+  return Buffer.from(await dataRes.arrayBuffer());
+}
 
 // ── Dual-auth helper ─────────────────────────────────────────────────────────
 // Accepts either X-Webhook-Secret (n8n / agents) or Authorization: Bearer JWT
@@ -298,6 +315,7 @@ function normalizeZapiPhone(raw: string): string {
 }
 
 router.post("/tenants/:tenantId/webhooks/zapi", async (req, res) => {
+  req.log.warn({ tenantId: req.params.tenantId }, "webhooks/zapi: DEPRECATED — migrate to Meta Cloud API webhook (/webhooks/meta/whatsapp)");
   const { tenantId } = req.params;
   const secret = req.query["secret"];
 
@@ -931,7 +949,7 @@ router.post("/webhooks/meta/whatsapp", async (req, res) => {
 
         // Resolve tenant from phoneNumberId
         const [agentCfg] = await db
-          .select({ tenantId: agentConfigsTable.tenantId })
+          .select({ tenantId: agentConfigsTable.tenantId, metaAccessToken: agentConfigsTable.metaAccessToken })
           .from(agentConfigsTable)
           .where(eq(agentConfigsTable.metaPhoneNumberId, phoneNumberId))
           .limit(1);
@@ -945,13 +963,63 @@ router.post("/webhooks/meta/whatsapp", async (req, res) => {
         const contacts     = (value.contacts ?? []) as Array<Record<string, unknown>>;
 
         for (const msg of incomingMsgs) {
-          if (msg["type"] !== "text") continue;
-
-          const phone      = String(msg["from"] ?? "");
-          const textBody   = ((msg["text"] as Record<string, string>)?.body) ?? "";
-          if (!phone || !textBody) continue;
+          const msgType   = msg["type"] as string;
+          const phone     = String(msg["from"] ?? "");
+          if (!phone) continue;
 
           const senderName = (contacts[0] as any)?.profile?.name as string | undefined;
+
+          let mensagem     = "";
+          let tipoConteudo: "texto" | "audio" | "imagem" | "documento" = "texto";
+
+          if (msgType === "text") {
+            mensagem = ((msg["text"] as Record<string, string>)?.body) ?? "";
+            if (!mensagem) continue;
+
+          } else if (msgType === "audio" || msgType === "voice") {
+            if (!agentCfg.metaAccessToken) {
+              req.log.warn({ phone, msgType }, "meta-webhook: audio received but no access token — skipping");
+              continue;
+            }
+            const audioId = ((msg["audio"] ?? msg["voice"]) as Record<string, string>)?.id;
+            if (!audioId) continue;
+            try {
+              const buf = await downloadMetaMedia(audioId, agentCfg.metaAccessToken);
+              mensagem = await transcribeAudioBuffer(buf, tenantId, req.log);
+              tipoConteudo = "audio";
+              req.log.info({ audioId, chars: mensagem.length }, "meta-webhook: audio transcribed");
+            } catch (err) {
+              req.log.error({ err, audioId }, "meta-webhook: audio transcription failed — skipping");
+              continue;
+            }
+
+          } else if (msgType === "image") {
+            if (!agentCfg.metaAccessToken) {
+              req.log.warn({ phone }, "meta-webhook: image received but no access token — skipping");
+              continue;
+            }
+            const imageData = (msg["image"] as Record<string, string>) ?? {};
+            const imageId   = imageData.id;
+            const caption   = imageData.caption;
+            const mimeType  = (imageData as any).mime_type as string || "image/jpeg";
+            if (!imageId) continue;
+            try {
+              const buf    = await downloadMetaMedia(imageId, agentCfg.metaAccessToken);
+              const dataUrl = `data:${mimeType};base64,${buf.toString("base64")}`;
+              mensagem = await interpretImage(dataUrl, tenantId, caption, req.log);
+              tipoConteudo = "imagem";
+              req.log.info({ imageId, chars: mensagem.length }, "meta-webhook: image interpreted");
+            } catch (err) {
+              req.log.error({ err, imageId }, "meta-webhook: image interpretation failed — skipping");
+              continue;
+            }
+
+          } else {
+            req.log.info({ type: msgType, phone }, "meta-webhook: unsupported message type — skipping");
+            continue;
+          }
+
+          if (!mensagem.trim()) continue;
 
           // Find or create lead (dedup by normalized phone)
           const normalized = storePhone(phone) ?? phone;
@@ -1008,9 +1076,9 @@ router.post("/webhooks/meta/whatsapp", async (req, res) => {
             leadId: lead.id,
             direcao: "entrada",
             canal: "whatsapp",
-            conteudo: textBody,
+            conteudo: mensagem,
             enviadoPor: "lead",
-            tipoConteudo: "texto",
+            tipoConteudo,
             status: "entregue",
           }).returning();
 
@@ -1021,12 +1089,12 @@ router.post("/webhooks/meta/whatsapp", async (req, res) => {
             updatedAt: new Date(),
           }).where(eq(conversationsTable.id, conversation.id));
 
-          req.log.info({ messageId: message.id, tenantId, phone }, "meta-webhook: message processed");
+          req.log.info({ messageId: message.id, tenantId, phone, tipoConteudo }, "meta-webhook: message processed");
 
           // Confirmação de agendamento (SIM/NÃO) ou dispatch AI agent
-          const _metaApptHandled = await handleAppointmentConfirmation(tenantId, lead.id, textBody, req.log);
+          const _metaApptHandled = await handleAppointmentConfirmation(tenantId, lead.id, mensagem, req.log);
           if (!_metaApptHandled) {
-            dispatchAgentBackground({ tenantId, leadId: lead.id, mensagem: textBody, log: req.log });
+            dispatchAgentBackground({ tenantId, leadId: lead.id, mensagem, log: req.log });
           }
         }
       }

@@ -164,7 +164,7 @@ const SETUP_ITEMS: { key: keyof SetupStatus; label: string; href: string }[] = [
   { key: "businessProfileConfigured", label: "Perfil da empresa configurado",   href: "/configuracoes" },
   { key: "productsConfigured",        label: "Produtos/serviços cadastrados",   href: "/estoque" },
   { key: "agentConfigured",           label: "Agentes de IA configurados",      href: "/configuracoes" },
-  { key: "whatsappConnected",         label: "WhatsApp conectado (Z-API)",      href: "/configuracoes" },
+  { key: "whatsappConnected",         label: "WhatsApp conectado (Meta Cloud API)", href: "/configuracoes" },
   { key: "webhookConfigured",         label: "Webhook de entrada ativo",        href: "/configuracoes" },
   { key: "instagramConnected",        label: "Instagram conectado",             href: "/configuracoes" },
   { key: "firstLeadAdded",            label: "Primeiro lead cadastrado",        href: "/leads" },

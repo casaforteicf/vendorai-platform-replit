@@ -204,9 +204,8 @@ router.get("/tenants/:id/setup-status", requireSameTenanOrSuperAdmin(), async (r
       id: agentConfigsTable.id,
       setupCompletedAt: agentConfigsTable.setupCompletedAt,
       autonomyEnabledAt: agentConfigsTable.autonomyEnabledAt,
-      zapiInstanceId: agentConfigsTable.zapiInstanceId,
-      zapiToken: agentConfigsTable.zapiToken,
-      zapiClientToken: agentConfigsTable.zapiClientToken,
+      metaPhoneNumberId: agentConfigsTable.metaPhoneNumberId,
+      metaAccessToken: agentConfigsTable.metaAccessToken,
       instagramPageId: agentConfigsTable.instagramPageId,
       instagramPageAccessToken: agentConfigsTable.instagramPageAccessToken,
       webhookSecret: agentConfigsTable.webhookSecret,
@@ -221,7 +220,7 @@ router.get("/tenants/:id/setup-status", requireSameTenanOrSuperAdmin(), async (r
   const productsConfigured    = Array.isArray(businessProfile?.produtos) && (businessProfile.produtos as unknown[]).length > 0;
   const agentConfigured       = !!agentConfig?.setupCompletedAt;
   const autonomyEnabled       = !!agentConfig?.autonomyEnabledAt;
-  const whatsappConnected     = !!(agentConfig?.zapiInstanceId && agentConfig?.zapiToken && agentConfig?.zapiClientToken);
+  const whatsappConnected     = !!(agentConfig?.metaPhoneNumberId && agentConfig?.metaAccessToken);
   const instagramConnected    = !!(agentConfig?.instagramPageId && agentConfig?.instagramPageAccessToken);
   const webhookConfigured     = !!agentConfig?.webhookSecret;
   const firstLeadAdded        = (leadCountRow?.value ?? 0) > 0;

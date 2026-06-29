@@ -76,38 +76,10 @@ async function sendWhatsAppMedia(
   caption: string,
   log: Logger,
 ): Promise<void> {
-  const [config] = await db
-    .select({
-      zapiInstanceId: agentConfigsTable.zapiInstanceId,
-      zapiToken: agentConfigsTable.zapiToken,
-      zapiClientToken: agentConfigsTable.zapiClientToken,
-    })
-    .from(agentConfigsTable)
-    .where(eq(agentConfigsTable.tenantId, tenantId))
-    .limit(1);
-
-  if (config?.zapiInstanceId && config?.zapiToken && config?.zapiClientToken) {
-    const url = `https://api.z-api.io/instances/${config.zapiInstanceId}/token/${config.zapiToken}/send-image`;
-    const res = await fetch(url, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "Client-Token": config.zapiClientToken,
-      },
-      body: JSON.stringify({ phone, image: imageUrl, caption }),
-    });
-
-    if (res.ok) {
-      log.info({ phone }, "contentFlow: imagem enviada via Z-API");
-      return;
-    }
-    const body = await res.json().catch(() => ({}));
-    log.warn({ body, phone }, "contentFlow: Z-API send-image falhou, usando texto+link");
-  }
-
-  // Fallback: text + link
-  const fallback = caption ? `${caption}\n\n📎 ${imageUrl}` : `📎 ${imageUrl}`;
-  await sendDirectWhatsAppMessage(tenantId, phone, fallback, log);
+  // Meta Cloud API text send with image link (image-only messages require media upload endpoint)
+  const mensagem = caption ? `${caption}\n\n📎 ${imageUrl}` : `📎 ${imageUrl}`;
+  await sendDirectWhatsAppMessage(tenantId, phone, mensagem, log);
+  log.info({ phone }, "contentFlow: mensagem com link de imagem enviada via Meta Cloud API");
 }
 
 // ── Internal: Email via Resend ───────────────────────────────────────────────

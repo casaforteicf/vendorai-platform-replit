@@ -780,7 +780,6 @@ router.get("/dashboard", authenticate, async (req, res) => {
     db.select({
       agents:            agentConfigsTable.agents,
       monthlyTokenLimit: agentConfigsTable.monthlyTokenLimit,
-      zapiInstanceId:    agentConfigsTable.zapiInstanceId,
       metaPhoneNumberId: agentConfigsTable.metaPhoneNumberId,
     }).from(agentConfigsTable).where(eq(agentConfigsTable.tenantId, tenantId)).limit(1),
 
@@ -939,10 +938,9 @@ router.get("/dashboard", authenticate, async (req, res) => {
     });
   }
 
-  const hasZapi   = !!(agentConfig?.zapiInstanceId);
   const hasMeta   = !!(agentConfig?.metaPhoneNumberId);
   const hasWaConn = whatsappConnRaw.length > 0 && whatsappConnRaw[0]?.status === "active";
-  if (!hasZapi && !hasMeta && !hasWaConn) {
+  if (!hasMeta && !hasWaConn) {
     alertas.push({
       tipo: "whatsapp_desconectado",
       mensagem: "WhatsApp não está conectado. Configure na seção de agentes.",

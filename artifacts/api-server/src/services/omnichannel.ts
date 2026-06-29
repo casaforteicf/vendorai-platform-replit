@@ -145,38 +145,20 @@ export async function sendDirectWhatsAppMessage(
   message: string,
   log: Logger
 ): Promise<void> {
-  let config: { metaPhoneNumberId?: string | null; metaAccessToken?: string | null; zapiInstanceId?: string | null; zapiToken?: string | null; zapiClientToken?: string | null } | undefined;
-  try {
-    [config] = await db
-      .select({
-        metaPhoneNumberId: agentConfigsTable.metaPhoneNumberId,
-        metaAccessToken: agentConfigsTable.metaAccessToken,
-        zapiInstanceId: agentConfigsTable.zapiInstanceId,
-        zapiToken: agentConfigsTable.zapiToken,
-        zapiClientToken: agentConfigsTable.zapiClientToken,
-      })
-      .from(agentConfigsTable)
-      .where(eq(agentConfigsTable.tenantId, tenantId))
-      .limit(1);
-  } catch {
-    [config] = await db
-      .select({
-        zapiInstanceId: agentConfigsTable.zapiInstanceId,
-        zapiToken: agentConfigsTable.zapiToken,
-        zapiClientToken: agentConfigsTable.zapiClientToken,
-      })
-      .from(agentConfigsTable)
-      .where(eq(agentConfigsTable.tenantId, tenantId))
-      .limit(1);
-  }
+  const [config] = await db
+    .select({
+      metaPhoneNumberId: agentConfigsTable.metaPhoneNumberId,
+      metaAccessToken: agentConfigsTable.metaAccessToken,
+    })
+    .from(agentConfigsTable)
+    .where(eq(agentConfigsTable.tenantId, tenantId))
+    .limit(1);
 
-  if (config?.metaPhoneNumberId && config?.metaAccessToken) {
-    await sendMetaWhatsAppMessage(config.metaPhoneNumberId, config.metaAccessToken, phone, message, log);
-  } else if (config?.zapiInstanceId && config?.zapiToken && config?.zapiClientToken) {
-    await sendZapiWhatsAppMessage(config.zapiInstanceId, config.zapiToken, config.zapiClientToken, phone, message, log);
-  } else {
+  if (!config?.metaPhoneNumberId || !config?.metaAccessToken) {
     throw new WhatsAppNotConnectedError();
   }
+
+  await sendMetaWhatsAppMessage(config.metaPhoneNumberId, config.metaAccessToken, phone, message, log);
 }
 
 async function simulateTypingDelay(message: string, log: Logger): Promise<void> {
@@ -186,44 +168,6 @@ async function simulateTypingDelay(message: string, log: Logger): Promise<void> 
   const totalMs   = Math.min(baseMs + message.length * perChar + jitterMs, 12000);
   log.debug({ totalMs, chars: message.length }, "omnichannel: typing delay");
   await new Promise<void>((r) => setTimeout(r, totalMs));
-}
-
-async function sendZapiWhatsAppMessage(
-  instanceId: string,
-  token: string,
-  clientToken: string,
-  phone: string,
-  message: string,
-  log: Logger,
-  isAiResponse = false
-): Promise<void> {
-  if (isAiResponse) await simulateTypingDelay(message, log);
-
-  const url = `https://api.z-api.io/instances/${instanceId}/token/${token}/send-text`;
-  const normalizedPhone = normalizePhoneBR(phone);
-
-  const res = await fetch(url, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      "Client-Token": clientToken,
-    },
-    body: JSON.stringify({ phone: normalizedPhone, message }),
-  });
-
-  const body = await res.json().catch(() => ({})) as Record<string, unknown>;
-
-  if (!res.ok) {
-    log.error({ body, phone }, "omnichannel: zapi send failed (non-2xx)");
-    throw new Error(`Z-API error ${res.status}: ${JSON.stringify(body)}`);
-  }
-
-  if (body.value === false) {
-    log.error({ body, phone }, "omnichannel: zapi returned value=false (instance not connected or invalid phone)");
-    throw new Error(`Z-API rejected message: ${JSON.stringify(body)}`);
-  }
-
-  log.info({ phone, zaapId: body.zaapId ?? body.id }, "omnichannel: whatsapp message sent via z-api");
 }
 
 export async function sendOutgoingMessage(
@@ -295,57 +239,31 @@ export async function sendOutgoingMessage(
 
   // ── 2. WhatsApp: validate credentials + actually send
   if (canal === "whatsapp") {
-    let config: { metaPhoneNumberId?: string | null; metaAccessToken?: string | null; zapiInstanceId?: string | null; zapiToken?: string | null; zapiClientToken?: string | null } | undefined;
-    try {
-      [config] = await db
-        .select({
-          metaPhoneNumberId: agentConfigsTable.metaPhoneNumberId,
-          metaAccessToken: agentConfigsTable.metaAccessToken,
-          zapiInstanceId: agentConfigsTable.zapiInstanceId,
-          zapiToken: agentConfigsTable.zapiToken,
-          zapiClientToken: agentConfigsTable.zapiClientToken,
-        })
-        .from(agentConfigsTable)
-        .where(eq(agentConfigsTable.tenantId, tenantId))
-        .limit(1);
-    } catch {
-      [config] = await db
-        .select({
-          zapiInstanceId: agentConfigsTable.zapiInstanceId,
-          zapiToken: agentConfigsTable.zapiToken,
-          zapiClientToken: agentConfigsTable.zapiClientToken,
-        })
-        .from(agentConfigsTable)
-        .where(eq(agentConfigsTable.tenantId, tenantId))
-        .limit(1);
-    }
+    const [config] = await db
+      .select({
+        metaPhoneNumberId: agentConfigsTable.metaPhoneNumberId,
+        metaAccessToken: agentConfigsTable.metaAccessToken,
+      })
+      .from(agentConfigsTable)
+      .where(eq(agentConfigsTable.tenantId, tenantId))
+      .limit(1);
 
     if (!lead.telefone) {
       throw new WhatsAppPhoneMissingError(leadId);
     }
 
-    if (config?.metaPhoneNumberId && config?.metaAccessToken) {
-      await sendMetaWhatsAppMessage(
-        config.metaPhoneNumberId,
-        config.metaAccessToken,
-        lead.telefone,
-        conteudo,
-        log,
-        !!agentName
-      );
-    } else if (config?.zapiInstanceId && config?.zapiToken && config?.zapiClientToken) {
-      await sendZapiWhatsAppMessage(
-        config.zapiInstanceId,
-        config.zapiToken,
-        config.zapiClientToken,
-        lead.telefone,
-        conteudo,
-        log,
-        !!agentName
-      );
-    } else {
+    if (!config?.metaPhoneNumberId || !config?.metaAccessToken) {
       throw new WhatsAppNotConnectedError();
     }
+
+    await sendMetaWhatsAppMessage(
+      config.metaPhoneNumberId,
+      config.metaAccessToken,
+      lead.telefone,
+      conteudo,
+      log,
+      !!agentName
+    );
   }
 
   // ── 3. Instagram: validate credentials + actually send

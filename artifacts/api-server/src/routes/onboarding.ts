@@ -972,37 +972,35 @@ router.get("/onboarding/whatsapp/test", authenticate, async (req, res) => {
 
   const [config] = await db
     .select({
-      zapiInstanceId: agentConfigsTable.zapiInstanceId,
-      zapiToken: agentConfigsTable.zapiToken,
-      zapiClientToken: agentConfigsTable.zapiClientToken,
+      metaPhoneNumberId: agentConfigsTable.metaPhoneNumberId,
+      metaAccessToken: agentConfigsTable.metaAccessToken,
     })
     .from(agentConfigsTable)
     .where(eq(agentConfigsTable.tenantId, tenantId));
 
-  if (!config?.zapiInstanceId || !config?.zapiToken) {
-    res.json({ conectado: false, erro: "Credenciais não configuradas" });
+  if (!config?.metaPhoneNumberId || !config?.metaAccessToken) {
+    res.json({ conectado: false, erro: "Meta Cloud API não configurada" });
     return;
   }
 
   try {
-    const zapiRes = await fetch(
-      `https://api.z-api.io/instances/${config.zapiInstanceId}/token/${config.zapiToken}/status`,
+    const metaRes = await fetch(
+      `https://graph.facebook.com/v20.0/${config.metaPhoneNumberId}`,
       {
-        headers: { "Client-Token": config.zapiClientToken ?? config.zapiToken },
+        headers: { Authorization: `Bearer ${config.metaAccessToken}` },
         signal: AbortSignal.timeout(8000),
       }
     );
 
-    if (!zapiRes.ok) {
-      res.json({ conectado: false, erro: `Z-API HTTP ${zapiRes.status}` });
+    if (!metaRes.ok) {
+      res.json({ conectado: false, erro: `Meta Cloud API HTTP ${metaRes.status}` });
       return;
     }
 
-    const data = await zapiRes.json() as Record<string, unknown>;
-    const conectado = data["connected"] === true || data["status"] === "connected";
-    const numero = typeof data["phone"] === "string" ? data["phone"] : undefined;
+    const data = await metaRes.json() as Record<string, unknown>;
+    const numero = typeof data["display_phone_number"] === "string" ? data["display_phone_number"] : undefined;
 
-    res.json({ conectado, numero });
+    res.json({ conectado: true, numero });
   } catch (err) {
     req.log.warn({ err }, "Onboarding whatsapp test failed");
     res.json({ conectado: false, erro: "Timeout ou erro de rede" });

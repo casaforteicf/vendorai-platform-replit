@@ -11,6 +11,7 @@ import {
   leadsTable,
 } from "@workspace/db";
 import { callOpenAI as gatewayCallOpenAI } from "../lib/ai-gateway.js";
+import { sendDirectWhatsAppMessage } from "../services/omnichannel.js";
 
 const router: IRouter = Router();
 
@@ -350,25 +351,12 @@ router.post("/tenants/:tenantId/supermercado/campanhas/:campanhaId/disparar", as
       let erroMsg: string | undefined;
 
       try {
-        if (config?.zapiInstanceId && config?.zapiToken) {
-          const phone = lead.telefone.replace(/\D/g, "");
-          const zapiRes = await fetch(
-            `https://api.z-api.io/instances/${config.zapiInstanceId}/token/${config.zapiToken}/send-text`,
-            {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({ phone, message: campanha.conteudo }),
-            }
-          );
-          if (zapiRes.ok) { status = "enviado"; enviados++; }
-          else { erroMsg = `Z-API ${zapiRes.status}`; falhas++; }
-        } else {
-          // Z-API not configured: log but count as sent for demo
-          status = "enviado"; enviados++;
-        }
+        await sendDirectWhatsAppMessage(tenantId, lead.telefone, campanha.conteudo, req.log);
+        status = "enviado"; enviados++;
       } catch (err: any) {
         erroMsg = err?.message ?? "Unknown error";
         falhas++;
+        req.log.warn({ err: erroMsg, leadId: lead.id }, "supermercado/disparar: message failed");
       }
 
       await db.insert(supermercadoCampanhaEnvioTable).values({

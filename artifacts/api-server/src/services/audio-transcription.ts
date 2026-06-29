@@ -12,6 +12,23 @@ import type { Logger } from "pino";
 import { transcribeAudio as gatewayTranscribeAudio } from "../lib/ai-gateway.js";
 
 
+export async function transcribeAudioBuffer(buffer: Buffer, tenantId: string, log?: Logger): Promise<string> {
+  const tmpDir = await mkdtemp(join(tmpdir(), "audio-"));
+  const tmpPath = join(tmpDir, `audio_${Date.now()}.ogg`);
+  await writeFile(tmpPath, buffer);
+  try {
+    const { text } = await gatewayTranscribeAudio(tenantId, "audio_transcription", buffer, {
+      mimeType: "audio/ogg",
+      language: "pt",
+      log,
+    });
+    log?.info({ text: text.slice(0, 100) }, "audio: transcribed from buffer");
+    return text;
+  } finally {
+    await unlink(tmpPath).catch(() => {});
+  }
+}
+
 export async function transcribeAudio(audioUrl: string, tenantId: string, log?: Logger): Promise<string> {
   log?.info({ audioUrl: audioUrl.slice(0, 60) }, "audio: downloading");
 

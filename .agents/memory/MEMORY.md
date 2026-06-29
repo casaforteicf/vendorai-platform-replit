@@ -7,7 +7,7 @@
 - [Express route TS7030 fix](express-ts7030-fix.md) — handlers com `return res.xxx()` early-return E final `res.xxx()` sem return causam TS7030; fix: sed `s/^  res\./  return res./g` no arquivo de rotas.
 - [Drizzle jsonb default type](drizzle-jsonb-default.md) — `.default({})` em coluna com `.$type<T>()` causa TS2345; remover `.default({})` do schema TS (manter DEFAULT na SQL) resolve.
 - [Anthropic integration template cp danger](anthropic-template-cp.md) — `cp -r` do skill sobrescreve conversations.ts e messages.ts existentes; restaurar via `git show HEAD:lib/db/src/schema/<file> > <file>` após o cp.
-- [Meta WhatsApp Cloud API](meta-whatsapp-cloud-api.md) — substituição da Z-API; dispatchAgentBackground exige `mensagem` + `log` dentro do objeto (não 2º argumento); enviadoPor="lead" para entrada; `canal` não existe no leadsTable insert.
+- [Meta WhatsApp Cloud API](meta-whatsapp-cloud-api.md) — Z-API 100% removido; todos os envios via Meta; webhook Meta trata text/audio/image; media requer downloadMetaMedia(id, token) com Authorization header.
 - [Express router.use wildcard blocks downstream](express-router-use-wildcard.md) — router.use(requireRole) sem path bloqueia TODA request; sempre colocar guard em cada rota individualmente.
 - [executeSql vs Supabase](executesql-vs-supabase.md) — executeSql em code_execution conecta ao Postgres interno do Replit, NÃO ao Supabase; para produção usar pg com SUPABASE_DATABASE_URL diretamente.
 - [OpenAI image models](openai-image-models.md) — dall-e-2/3 não existem nesta conta; usar gpt-image-1 (retorna b64_json); upload → object storage → /api/storage/objects/*.

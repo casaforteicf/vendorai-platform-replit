@@ -1309,9 +1309,9 @@ function EditDealSheet({
             } else if ((data as any).whatsappSkipReason === "no_phone") {
               toast({ title: "WhatsApp não enviado — lead sem telefone.", variant: "destructive" });
             } else if ((data as any).whatsappSkipReason === "zapi_not_configured") {
-              toast({ title: "WhatsApp não enviado — Z-API não configurada.", variant: "destructive" });
+              toast({ title: "WhatsApp não enviado — Meta Cloud API não configurada.", variant: "destructive" });
             } else if ((data as any).whatsappSkipReason === "send_error") {
-              toast({ title: "WhatsApp não enviado — erro ao contatar Z-API.", description: "Verifique a conexão em Configurações → WhatsApp.", variant: "destructive" });
+              toast({ title: "WhatsApp não enviado — erro ao enviar mensagem.", description: "Verifique as credenciais Meta Cloud API em Configurações.", variant: "destructive" });
             }
             if ((data as any).chargeSkipReason === "manual_payment") {
               toast({ title: "Cobrança Asaas pulada", description: "Pagamento marcado como recebido manualmente.", variant: "default" });
@@ -2075,9 +2075,9 @@ export default function Deals() {
               } else if ((data as any).whatsappSkipReason === "no_phone") {
                 toast({ title: "WhatsApp não enviado — lead sem telefone.", variant: "destructive" });
               } else if ((data as any).whatsappSkipReason === "zapi_not_configured") {
-                toast({ title: "WhatsApp não enviado — Z-API não configurada.", variant: "destructive" });
+                toast({ title: "WhatsApp não enviado — Meta Cloud API não configurada.", variant: "destructive" });
               } else if ((data as any).whatsappSkipReason === "send_error") {
-                toast({ title: "WhatsApp não enviado — erro ao contatar Z-API.", description: "Verifique a conexão em Configurações → WhatsApp.", variant: "destructive" });
+                toast({ title: "WhatsApp não enviado — erro ao enviar mensagem.", description: "Verifique as credenciais Meta Cloud API em Configurações.", variant: "destructive" });
               }
             }
           },

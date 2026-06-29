@@ -141,14 +141,14 @@ const STEPS: Step[] = [
     description:
       "Conecta o número de WhatsApp da empresa para envio e recebimento de mensagens pelos agentes.",
     actions: [
-      { label: "Criar uma instância em app.z-api.io e copiar: Instance ID, Token e Client-Token" },
-      { label: "Acessar Configurações → Integrações (requer senha do usuário master)", link: "/configuracoes?tab=integracoes" },
-      { label: "Na seção WhatsApp — Z-API, colar as credenciais e salvar", link: "/configuracoes?tab=integracoes" },
+      { label: "Acessar o Meta Business Suite e criar um App com produto WhatsApp Business" },
+      { label: "Copiar o Phone Number ID e gerar um Token de Acesso Permanente" },
+      { label: "Acessar Configurações → Integrações e colar as credenciais Meta Cloud API", link: "/configuracoes?tab=integracoes" },
+      { label: "Registrar o webhook '/webhooks/meta/whatsapp' no painel Meta Developers" },
       { label: "Clicar em 'Testar conexão' para verificar se o WhatsApp está ativo", link: "/configuracoes?tab=integracoes" },
-      { label: "Clicar em 'Registrar webhook no Z-API' para ativar recebimento automático", link: "/configuracoes?tab=integracoes" },
     ],
     tips:
-      "Atenção: o número do WhatsApp deve estar ativo no celular com a sessão autenticada na Z-API (escanear QR Code no painel).",
+      "Atenção: utilize um Token de Acesso Permanente (gerado via conta de sistema no Meta Business) para evitar expiração.",
     responsible: "equipe",
   },
   {
