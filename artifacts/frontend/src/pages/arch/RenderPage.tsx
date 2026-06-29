@@ -59,33 +59,39 @@ export default function RenderPage() {
     }])
   }
 
-  async function doRender() {
-    if (!imageFile || rs.loading) return
+  const doRender = async () => {
     rs.setLoading(true)
-    try {
-      const matDesc = Object.values(rs.applied)
-        .map(m => `${m.zone}: ${m.promptFragment}`)
-        .join('; ')
-      const notes = rs.config.prompt || matDesc
-
-      const form = new FormData()
-      form.append('image', imageFile)
-      form.append('style', 'realistic')
-      form.append('angle', rs.config.angle)
-      form.append('lighting', rs.config.light)
-      form.append('notes', notes)
-
-      const res = await fetch('/api/render/quick', { method: 'POST', body: form })
-      const data = await res.json()
-      if (data.imageUrl) {
-        rs.setRenderResult(data.imageUrl)
-        rs.setStep(5)
-      }
-    } catch {
-      // silently ignore — UI feedback TBD
-    } finally {
-      rs.setLoading(false)
+    rs.setStep(3)
+    const mats = Object.entries(rs.applied)
+      .map(([zone, mat]) => `${zone} with ${mat.promptFragment}`)
+      .join(', ')
+    const lightMap: Record<string, string> = {
+      manha: 'morning light 8am',
+      tarde: 'afternoon 2pm',
+      golden: 'golden hour',
+      noturno: 'night interior lights',
+      nublado: 'overcast soft light',
+      auto: 'original lighting',
     }
+    const angleMap: Record<string, string> = {
+      frontal: 'frontal view',
+      '45': '45 degree perspective',
+      lateral: 'side view',
+      ampla: 'wide angle',
+      closeup: 'close-up',
+      aerea: 'aerial view',
+    }
+    const finalPrompt = `${rs.config.prompt}, ${mats}, ${lightMap[rs.config.light]}, ${angleMap[rs.config.angle]}, photorealistic, 4K, high quality`
+
+    const formData = new FormData()
+    formData.append('prompt', finalPrompt)
+    if (imageFile) formData.append('reference', imageFile)
+
+    const res = await fetch('/api/arch/render', { method: 'POST', body: formData })
+    const data = await res.json()
+    rs.setRenderResult(data.imageUrl)
+    rs.setLoading(false)
+    rs.setStep(4)
   }
 
   return (
