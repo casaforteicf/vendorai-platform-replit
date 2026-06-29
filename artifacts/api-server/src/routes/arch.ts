@@ -30,8 +30,10 @@ import {
 import { z } from "zod/v4";
 import { anthropic } from "@workspace/integrations-anthropic-ai";
 import { authenticate } from "../middlewares/auth.js";
-import { objectStorageClient } from "../lib/objectStorage.js";
+import { objectStorageClient, ObjectStorageService } from "../lib/objectStorage.js";
 import { iniciarRender, processarSolicitacao } from "../services/blenderService.js";
+import { toFile } from "openai";
+import { getOpenAIForTenant } from "../lib/agent-engine.js";
 
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 20 * 1024 * 1024 } });
 
@@ -1604,6 +1606,61 @@ router.post("/arch/cenas/:cenaId/solicitacoes/:solId/retry", authenticate, async
   });
 
   return res.json({ ok: true, status: "pendente" });
+});
+
+// ── POST /api/arch/render — Renderização rápida por IA (sem cena vinculada) ──
+router.post("/render", upload.single("reference"), async (req, res) => {
+  const tid = tenantId(req);
+  if (!tid) return res.status(403).json({ error: "Tenant não identificado" });
+
+  const { prompt } = req.body as { prompt?: string };
+  if (!prompt) return res.status(400).json({ error: "Campo 'prompt' obrigatório" });
+
+  try {
+    const openai  = await getOpenAIForTenant(tid);
+    const storage = new ObjectStorageService();
+
+    let b64: string | undefined;
+
+    if (req.file) {
+      // Com imagem de referência → images.edit
+      const refFile = await toFile(req.file.buffer, req.file.originalname || "reference.png", {
+        type: req.file.mimetype,
+      });
+      const result = await (openai.images.edit as Function)({
+        model:   "gpt-image-1",
+        image:   refFile,
+        prompt,
+        n:       1,
+        size:    "1536x1024",
+        quality: "high",
+      });
+      b64 = (result.data?.[0] as Record<string, unknown>)?.["b64_json"] as string | undefined;
+    } else {
+      // Sem referência → images.generate
+      const result = await (openai.images.generate as Function)({
+        model:   "gpt-image-1",
+        prompt,
+        n:       1,
+        size:    "1536x1024",
+        quality: "high",
+      });
+      b64 = (result.data?.[0] as Record<string, unknown>)?.["b64_json"] as string | undefined;
+    }
+
+    if (!b64) throw new Error("gpt-image-1 não retornou b64_json");
+
+    const buf      = Buffer.from(b64, "base64");
+    const objPath  = await storage.savePrivateBuffer(buf, "image/png", `arch-render-${tid}-${Date.now()}.png`);
+    const servePath = objPath.replace(/^\/objects\//, "");
+    const imageUrl  = `/api/storage/objects/${servePath}`;
+
+    req.log.info({ tenantId: tid }, "arch/render: concluído");
+    return res.json({ imageUrl });
+  } catch (err: any) {
+    req.log.error({ err }, "arch/render: erro");
+    return res.status(500).json({ error: err?.message ?? "Erro ao gerar render" });
+  }
 });
 
 export { archPublicRouter };
