@@ -48,7 +48,7 @@ export const agentConfigsTable = pgTable(
     agents: jsonb("agents").$type<AgentsMap>().notNull().default({}),
     dailyMessageLimit: integer("daily_message_limit").notNull().default(100),
     messagesSentToday: integer("messages_sent_today").notNull().default(0),
-    monthlyTokenLimit: integer("monthly_token_limit").notNull().default(100000),
+    monthlyTokenLimit: integer("monthly_token_limit").notNull().default(26_250_000),
     tokensUsedCurrentMonth: integer("tokens_used_current_month").notNull().default(0),
     webhookSecret: text("webhook_secret"),
     setupCompletedAt: timestamp("setup_completed_at"),

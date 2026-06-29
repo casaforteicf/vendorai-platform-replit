@@ -181,7 +181,9 @@ async function deliverPlan(
         tenantId: newTenant.id,
         agents: { onboarding: { enabled: true } },
         dailyMessageLimit: 100,
-        monthlyTokenLimit: 100_000,
+        monthlyTokenLimit: plan.aiQuotaUsd
+          ? Math.round(Number(plan.aiQuotaUsd) * 750_000)
+          : 26_250_000,
       })
       .onConflictDoUpdate({
         target: agentConfigsTable.tenantId,

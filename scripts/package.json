@@ -11,6 +11,7 @@
     "migrate-varejo": "tsx ./src/migrate-varejo.ts",
     "migrate-site-generator": "tsx ./src/migrate-site-generator.ts",
     "migrate-metodo-vendas": "tsx ./src/migrate-metodo-vendas.ts",
+    "migrate-agent-token-limits": "tsx ./src/migrate-agent-token-limits.ts",
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
