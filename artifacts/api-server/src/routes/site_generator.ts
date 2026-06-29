@@ -79,7 +79,12 @@ function isDark(hex: string): boolean {
 }
 
 function buildGeneratePrompt(config: SiteGeneratorConfig): string {
-  const { type, name, sector, desc, pain, tone, color, cta, products = [] } = config;
+  const { type, name, sector, desc, pain, tone, color, cta, logoUrl, products = [] } = config;
+
+  // Logo HTML block: real image if available, fallback to initial-in-circle
+  const logoHtml = logoUrl
+    ? `<img src="${logoUrl}" alt="${name}" style="height:40px;width:auto;max-width:160px;object-fit:contain;display:block">`
+    : `<span style="display:inline-flex;align-items:center;justify-content:center;width:40px;height:40px;border-radius:50%;background:var(--primary);color:var(--btn-text);font-weight:800;font-size:1.1rem">${name.charAt(0).toUpperCase()}</span>`;
   const ctaText = cta || "Entre em contato";
   const rgb = hexToRgb(color);
   const dark = isDark(color);
@@ -129,19 +134,23 @@ function buildGeneratePrompt(config: SiteGeneratorConfig): string {
         }).join("\n")}`
       : "";
 
+  const logoInstruction = logoUrl
+    ? `LOGO DO CLIENTE (use EXATAMENTE este HTML nos headers e footers — não substitua por texto nem por inicial): ${logoHtml}`
+    : `LOGO: use inicial do nome em círculo colorido (var(--primary)) + nome ao lado`;
+
   const structureByType: Record<string, string> = {
     landing: `ESTRUTURA DA LANDING PAGE (nesta ordem exata):
-1. HEADER fixo — logo à esquerda (inicial do nome em círculo colorido + nome), nav âncoras à direita, botão CTA no canto, hamburger mobile
+1. HEADER fixo — ${logoUrl ? `logo do cliente (HTML exato: ${logoHtml})` : "logo à esquerda (inicial do nome em círculo colorido + nome)"}, nav âncoras à direita, botão CTA no canto, hamburger mobile
 2. HERO — título impactante (H1, problema que o cliente já sente), subtítulo com a promessa, 2 botões (primário + secundário outline), elemento visual decorativo (formas geométricas ou gradiente abstrato em CSS puro — sem imagens externas)
 3. DORES — seção escura/contrastante com 3-4 cards de dores reais do mercado (ícones SVG inline simples, título curto + descrição)
 4. SOLUÇÃO — como o negócio resolve cada dor, 3 pilares com ícone SVG + título + parágrafo
 5. BENEFÍCIOS / DIFERENCIAIS — grid 2x3 ou 3x2 de cards com número destacado ou ícone grande
 6. DEPOIMENTOS — 3 cards com avatar (iniciais em círculo colorido), nome fictício brasileiro, cidade, texto curto e persuasivo (inventados mas realistas para o setor)
 7. CTA FINAL — seção de fundo escuro/gradiente, headline forte, subtítulo, botão grande
-8. FOOTER — logo, links de âncora, copyright`,
+8. FOOTER — ${logoUrl ? `logo do cliente (HTML exato: ${logoHtml})` : "logo"}, links de âncora, copyright`,
 
     ecommerce: `ESTRUTURA DO E-COMMERCE (nesta ordem exata):
-1. HEADER fixo — logo, nav, ícone de carrinho com badge contador, hamburger mobile
+1. HEADER fixo — ${logoUrl ? `logo do cliente (HTML exato: ${logoHtml})` : "logo"}, nav, ícone de carrinho com badge contador, hamburger mobile
 2. HERO — headline de oferta, subtítulo, botão "Ver produtos", badge de frete/desconto
 3. GRID DE PRODUTOS — cards modernos para cada produto listado no briefing:
    ${hasRealImages
@@ -157,7 +166,7 @@ function buildGeneratePrompt(config: SiteGeneratorConfig): string {
 8. FOOTER`,
 
     institutional: `ESTRUTURA DO SITE INSTITUCIONAL (nesta ordem exata):
-1. HEADER fixo — logo, nav âncoras, botão CTA, hamburger mobile
+1. HEADER fixo — ${logoUrl ? `logo do cliente (HTML exato: ${logoHtml})` : "logo"}, nav âncoras, botão CTA, hamburger mobile
 2. HERO — headline sobre a empresa, subtítulo com proposta de valor, 2 botões, elemento visual
 3. SOBRE — história/missão em 2 colunas (texto + estatísticas em destaque: anos, clientes, projetos)
 4. SERVIÇOS — grid de 4-6 serviços com ícone SVG, título, descrição curta
@@ -167,6 +176,8 @@ function buildGeneratePrompt(config: SiteGeneratorConfig): string {
 8. CONTATO — formulário (nome, email, telefone, mensagem) + informações de contato laterais
 9. FOOTER`,
   };
+
+  void logoInstruction; // referenced via structureByType strings above
 
   const structure = structureByType[type] || structureByType.landing;
 
@@ -449,13 +460,21 @@ router.post("/tenants/:tenantId/site-generator/generate", async (req, res) => {
 
   // Fallback to business_profile for missing fields
   const [bp] = await db
-    .select({ nomeFantasia: businessProfilesTable.nomeFantasia, razaoSocial: businessProfilesTable.razaoSocial, vertical: businessProfilesTable.vertical, diferenciais: businessProfilesTable.diferenciais, publicoAlvo: businessProfilesTable.publicoAlvo })
+    .select({
+      nomeFantasia: businessProfilesTable.nomeFantasia,
+      razaoSocial: businessProfilesTable.razaoSocial,
+      vertical: businessProfilesTable.vertical,
+      diferenciais: businessProfilesTable.diferenciais,
+      publicoAlvo: businessProfilesTable.publicoAlvo,
+      logoUrl: businessProfilesTable.logoUrl,
+    })
     .from(businessProfilesTable)
     .where(eq(businessProfilesTable.tenantId, tenantId));
 
   const name = config.name || bp?.nomeFantasia || bp?.razaoSocial || "";
   const sector = config.sector || bp?.vertical || "";
   const desc = config.desc || bp?.diferenciais || bp?.publicoAlvo || "";
+  const logoUrl = config.logoUrl || bp?.logoUrl || undefined;
 
   if (!name || !desc) {
     res.status(400).json({ error: "name e desc são obrigatórios. Preencha no cadastro da empresa (Configurações) ou no formulário." });
@@ -508,7 +527,7 @@ router.post("/tenants/:tenantId/site-generator/generate", async (req, res) => {
     ? [...catalogProducts, ...(config.products ?? [])]
     : (config.products ?? []);
 
-  const enrichedConfig = { ...config, name, sector, desc, products: allProducts };
+  const enrichedConfig = { ...config, name, sector, desc, logoUrl, products: allProducts };
   const prompt = buildGeneratePrompt(enrichedConfig);
 
   let result;

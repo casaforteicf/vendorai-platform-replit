@@ -25,6 +25,7 @@ export interface SiteGeneratorConfig {
   tone: string;
   cta?: string;
   color: string;
+  logoUrl?: string;
   products?: SiteGeneratorProduct[];
 }
 
