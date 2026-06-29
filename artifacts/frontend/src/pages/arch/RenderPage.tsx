@@ -11,6 +11,9 @@ type CustomMat = UserMat
 
 const STEPS = ['Imagem', 'Materiais', 'Config', 'Prompt', 'Render']
 
+function getBase() { return (import.meta.env.BASE_URL ?? '/').replace(/\/$/, '') }
+function getToken() { return localStorage.getItem('vendorai_token') ?? '' }
+
 export default function RenderPage() {
   const rs = useRenderState()
   const [draggingMat, setDraggingMat] = useState<CustomMat | null>(null)
@@ -113,17 +116,17 @@ export default function RenderPage() {
     }
     const finalPrompt = `${rs.config.prompt}, ${mats}, ${lightMap[rs.config.light]}, ${angleMap[rs.config.angle]}, photorealistic, 4K, high quality`
 
-    const formData = new FormData()
-    formData.append('prompt', finalPrompt)
-    if (imageFile) formData.append('reference', imageFile)
+    const prompt = finalPrompt
+    const imageUrl = rs.imageUrl
 
-    const base = (import.meta.env.BASE_URL ?? '/').replace(/\/$/, '')
-    const token = localStorage.getItem('vendorai_token') ?? ''
     try {
-      const res = await fetch(`${base}/api/arch/render`, {
+      const res = await fetch(`${getBase()}/api/arch/render`, {
         method: 'POST',
-        headers: { Authorization: `Bearer ${token}` },
-        body: formData,
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${getToken()}`
+        },
+        body: JSON.stringify({ prompt, referenceImageUrl: imageUrl })
       })
       const data = await res.json()
       if (!res.ok) throw new Error(data?.error ?? `Erro ${res.status}`)

@@ -12,8 +12,12 @@ export function useRenderState() {
   const [step, setStep] = useState<1|2|3|4|5>(1)
 
   const loadImage = useCallback((file: File) => {
-    setImageUrl(URL.createObjectURL(file))
-    setStep(2)
+    const reader = new FileReader()
+    reader.onload = (e) => {
+      setImageUrl((e.target?.result as string) ?? '')
+      setStep(2)
+    }
+    reader.readAsDataURL(file)
   }, [])
 
   const applyMaterial = useCallback((zone: string, mat: AppliedMaterial) => {

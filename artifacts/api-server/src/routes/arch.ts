@@ -1609,11 +1609,11 @@ router.post("/arch/cenas/:cenaId/solicitacoes/:solId/retry", authenticate, async
 });
 
 // ── POST /api/arch/render — Renderização rápida por IA (sem cena vinculada) ──
-router.post("/arch/render", upload.single("reference"), async (req, res) => {
+router.post("/arch/render", async (req, res) => {
   const tid = tenantId(req);
   if (!tid) return res.status(403).json({ error: "Tenant não identificado" });
 
-  const { prompt } = req.body as { prompt?: string };
+  const { prompt, referenceImageUrl } = req.body as { prompt?: string; referenceImageUrl?: string };
   if (!prompt) return res.status(400).json({ error: "Campo 'prompt' obrigatório" });
 
   try {
@@ -1622,11 +1622,14 @@ router.post("/arch/render", upload.single("reference"), async (req, res) => {
 
     let b64: string | undefined;
 
-    if (req.file) {
-      // Com imagem de referência → images.edit
-      const refFile = await toFile(req.file.buffer, req.file.originalname || "reference.png", {
-        type: req.file.mimetype,
-      });
+    if (referenceImageUrl) {
+      // Com imagem de referência (data URL base64) → images.edit
+      const dataUrlMatch = referenceImageUrl.match(/^data:([^;]+);base64,(.+)$/);
+      if (!dataUrlMatch) return res.status(400).json({ error: "referenceImageUrl inválida" });
+      const mimeType = dataUrlMatch[1];
+      const imgBuffer = Buffer.from(dataUrlMatch[2], "base64");
+      const ext = mimeType.split("/")[1] ?? "png";
+      const refFile = await toFile(imgBuffer, `reference.${ext}`, { type: mimeType });
       const result = await (openai.images.edit as Function)({
         model:   "gpt-image-1",
         image:   refFile,
