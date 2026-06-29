@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from 'react'
+import { useToast } from '@/hooks/use-toast'
 import { useRenderState } from './useRenderState'
 import MaterialBar from './MaterialBar'
 import ImageCanvas from './ImageCanvas'
@@ -16,6 +17,7 @@ function getToken() { return localStorage.getItem('vendorai_token') ?? '' }
 
 export default function RenderPage() {
   const rs = useRenderState()
+  const { toast } = useToast()
   const [draggingMat, setDraggingMat] = useState<CustomMat | null>(null)
   const [ghostPos, setGhostPos] = useState({ x: -200, y: -200 })
   const [imageFile, setImageFile] = useState<File | null>(null)
@@ -93,8 +95,6 @@ export default function RenderPage() {
   }
 
   const doRender = async () => {
-    rs.setLoading(true)
-    rs.setStep(3)
     const mats = Object.entries(rs.applied)
       .map(([zone, mat]) => `${zone} with ${mat.promptFragment}`)
       .join(', ')
@@ -114,27 +114,27 @@ export default function RenderPage() {
       closeup: 'close-up',
       aerea: 'aerial view',
     }
-    const finalPrompt = `${rs.config.prompt}, ${mats}, ${lightMap[rs.config.light]}, ${angleMap[rs.config.angle]}, photorealistic, 4K, high quality`
-
-    const prompt = finalPrompt
-    const imageUrl = rs.imageUrl
+    const prompt = `${rs.config.prompt}, ${mats}, ${lightMap[rs.config.light]}, ${angleMap[rs.config.angle]}, photorealistic, 4K, high quality`
+    const referenceImageUrl = rs.imageUrl
 
     try {
+      rs.setLoading(true)
+      rs.setStep(3)
       const res = await fetch(`${getBase()}/api/arch/render`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${getToken()}`
         },
-        body: JSON.stringify({ prompt, referenceImageUrl: imageUrl })
+        body: JSON.stringify({ prompt, referenceImageUrl })
       })
+      if (!res.ok) throw new Error(`Erro ${res.status}`)
       const data = await res.json()
-      if (!res.ok) throw new Error(data?.error ?? `Erro ${res.status}`)
       rs.setRenderResult(data.imageUrl)
       rs.setStep(4)
-    } catch (err: any) {
-      console.error('[doRender]', err)
-      alert(`Erro ao gerar render: ${err?.message ?? 'Tente novamente'}`)
+    } catch (err) {
+      console.error('Erro no render:', err)
+      toast({ variant: 'destructive', description: 'Erro ao gerar render. Tente novamente.' })
     } finally {
       rs.setLoading(false)
     }
