@@ -39,6 +39,10 @@ import {
   CheckCircle2,
   ShieldCheck,
   Zap,
+  FileEdit,
+  ChevronDown,
+  ChevronUp,
+  RefreshCw,
 } from "lucide-react";
 
 const SITUATION_QUESTIONS = [
@@ -143,6 +147,7 @@ export default function LeadBriefingTab({ leadId, tenantId, lead }: LeadBriefing
   const { user } = useAuth();
   const hints = getSegmentHints(user?.tenantVertical);
   const { toast } = useToast();
+  const queryClient = useQueryClient();
   const { data: briefing, isLoading: loadingBriefing } = useGetLeadBriefing(leadId, {
     query: { enabled: !!leadId, queryKey: getGetLeadBriefingQueryKey(leadId) },
   });
@@ -170,6 +175,9 @@ export default function LeadBriefingTab({ leadId, tenantId, lead }: LeadBriefing
   const [summary, setSummary] = useState<BriefingSummary | null>(null);
   const [isSummarizing, setIsSummarizing] = useState(false);
 
+  // "summary" = mostra só o resumo | "form" = mostra o formulário completo
+  const [activeView, setActiveView] = useState<"summary" | "form">("form");
+
   // Sincroniza quando o lead chega
   useEffect(() => {
     setDemanda(lead?.objetivo ?? "");
@@ -185,6 +193,16 @@ export default function LeadBriefingTab({ leadId, tenantId, lead }: LeadBriefing
     handleGenerateQuestions();
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [loadingBriefing, briefing]);
+
+  // Carrega aiSummary salvo no DB ao abrir o briefing
+  useEffect(() => {
+    if (!briefing) return;
+    const saved = (briefing as any).aiSummary;
+    if (saved) {
+      setSummary(saved as BriefingSummary);
+      setActiveView("summary");
+    }
+  }, [briefing]);
 
   const saveContext = async () => {
     setSavingContext(true);
@@ -278,7 +296,6 @@ export default function LeadBriefingTab({ leadId, tenantId, lead }: LeadBriefing
 
   const handleSummarize = async () => {
     setIsSummarizing(true);
-    setSummary(null);
     try {
       const res = await fetch(`/api/leads/${leadId}/briefing/summarize`, {
         method: "POST",
@@ -290,6 +307,9 @@ export default function LeadBriefingTab({ leadId, tenantId, lead }: LeadBriefing
         return;
       }
       setSummary(data);
+      setActiveView("summary");
+      // Invalida query para que o aiSummary salvo no DB seja refletido
+      void queryClient.invalidateQueries({ queryKey: getGetLeadBriefingQueryKey(leadId) });
     } catch {
       toast({ title: "Erro ao gerar resumo", description: "Verifique sua conexão.", variant: "destructive" });
     } finally {
@@ -413,8 +433,10 @@ export default function LeadBriefingTab({ leadId, tenantId, lead }: LeadBriefing
           freeNotes: form.freeNotes || undefined,
         },
       });
-      toast({ title: "Briefing salvo", description: "As informações foram atualizadas." });
       setHasChanges(false);
+      // Após salvar, gera automaticamente o resumo de fechamento
+      toast({ title: "Briefing salvo — gerando resumo…", description: "A IA está analisando as respostas." });
+      await handleSummarize();
     } catch (e) {
       toast({ title: "Erro ao salvar", description: String(e), variant: "destructive" });
     } finally {
@@ -434,6 +456,8 @@ export default function LeadBriefingTab({ leadId, tenantId, lead }: LeadBriefing
       </Card>
     );
   }
+
+  const hasSummary = !!(summary || (briefing as any)?.aiSummary);
 
   return (
     <Card data-testid="card-briefing">
@@ -461,31 +485,170 @@ export default function LeadBriefingTab({ leadId, tenantId, lead }: LeadBriefing
             )}
           </div>
           <div className="flex items-center gap-2">
-            <Button
-              size="sm"
-              variant="outline"
-              className="h-7 text-xs gap-1"
-              onClick={handleGenerateQuestions}
-              disabled={isGeneratingQuestions}
-              title="Regenerar perguntas personalizadas para este cliente com IA"
-            >
-              {isGeneratingQuestions ? <Loader2 className="h-3 w-3 animate-spin" /> : <Sparkles className="h-3 w-3" />}
-              {isGeneratingQuestions ? "Gerando…" : "Regenerar perguntas"}
-            </Button>
-            <Button
-              size="sm"
-              className="h-7 text-xs gap-1"
-              onClick={handleSave}
-              disabled={isSaving || !hasChanges}
-              data-testid="btn-salvar-briefing"
-            >
-              {isSaving ? <Loader2 className="h-3 w-3 animate-spin" /> : <Save className="h-3 w-3" />}
-              Salvar
-            </Button>
+            {activeView === "summary" && hasSummary ? (
+              <>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="h-7 text-xs gap-1"
+                  onClick={handleSummarize}
+                  disabled={isSummarizing}
+                  title="Regenerar resumo de fechamento"
+                >
+                  {isSummarizing ? <Loader2 className="h-3 w-3 animate-spin" /> : <RefreshCw className="h-3 w-3" />}
+                  {isSummarizing ? "Atualizando…" : "Atualizar resumo"}
+                </Button>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="h-7 text-xs gap-1"
+                  onClick={() => setActiveView("form")}
+                >
+                  <FileEdit className="h-3 w-3" />
+                  Editar briefing
+                </Button>
+              </>
+            ) : (
+              <>
+                {hasSummary && (
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="h-7 text-xs gap-1"
+                    onClick={() => setActiveView("summary")}
+                  >
+                    <ChevronUp className="h-3 w-3" />
+                    Ver resumo
+                  </Button>
+                )}
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="h-7 text-xs gap-1"
+                  onClick={handleGenerateQuestions}
+                  disabled={isGeneratingQuestions}
+                  title="Regenerar perguntas com IA"
+                >
+                  {isGeneratingQuestions ? <Loader2 className="h-3 w-3 animate-spin" /> : <Sparkles className="h-3 w-3" />}
+                  {isGeneratingQuestions ? "Gerando…" : "Regenerar perguntas"}
+                </Button>
+                <Button
+                  size="sm"
+                  className="h-7 text-xs gap-1"
+                  onClick={handleSave}
+                  disabled={isSaving || isSummarizing || !hasChanges}
+                  data-testid="btn-salvar-briefing"
+                >
+                  {(isSaving || isSummarizing) ? <Loader2 className="h-3 w-3 animate-spin" /> : <Save className="h-3 w-3" />}
+                  {isSummarizing ? "Gerando resumo…" : isSaving ? "Salvando…" : "Salvar"}
+                </Button>
+              </>
+            )}
           </div>
         </CardTitle>
       </CardHeader>
       <CardContent className="space-y-6">
+
+        {/* ══ VIEW: RESUMO DE FECHAMENTO ═══════════════════════════════════ */}
+        {activeView === "summary" && summary && (
+          <div className="space-y-4 text-xs">
+            <div className="flex items-center gap-2 font-semibold text-sm text-violet-700 dark:text-violet-300">
+              <BrainCircuit className="h-4 w-4" />
+              Resumo de Fechamento
+            </div>
+
+            {summary.resumoCliente && (
+              <div className="space-y-1">
+                <p className="font-medium text-muted-foreground uppercase tracking-wider text-[10px]">Perfil do Cliente</p>
+                <p className="text-sm leading-relaxed">{summary.resumoCliente}</p>
+              </div>
+            )}
+
+            {summary.doresPrincipais?.length > 0 && (
+              <div className="space-y-1.5">
+                <p className="font-medium text-muted-foreground uppercase tracking-wider text-[10px] flex items-center gap-1">
+                  <AlertTriangle className="h-3 w-3 text-amber-500" /> Dores Identificadas
+                </p>
+                <ul className="space-y-1">
+                  {summary.doresPrincipais.map((d, i) => (
+                    <li key={i} className="flex items-start gap-2">
+                      <span className="mt-0.5 h-1.5 w-1.5 rounded-full bg-amber-500 shrink-0" />
+                      <span>{d}</span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+
+            {summary.pontosDeForte?.length > 0 && (
+              <div className="space-y-1.5">
+                <p className="font-medium text-muted-foreground uppercase tracking-wider text-[10px] flex items-center gap-1">
+                  <CheckCircle2 className="h-3 w-3 text-emerald-500" /> Argumentos de Fechamento
+                </p>
+                <ul className="space-y-1">
+                  {summary.pontosDeForte.map((p, i) => (
+                    <li key={i} className="flex items-start gap-2">
+                      <span className="mt-0.5 h-1.5 w-1.5 rounded-full bg-emerald-500 shrink-0" />
+                      <span>{p}</span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+
+            {summary.comoContornarObjecoes?.length > 0 && (
+              <div className="space-y-2">
+                <p className="font-medium text-muted-foreground uppercase tracking-wider text-[10px] flex items-center gap-1">
+                  <ShieldCheck className="h-3 w-3 text-blue-500" /> Como Contornar Objeções
+                </p>
+                {summary.comoContornarObjecoes.map((o, i) => (
+                  <div key={i} className="rounded-md bg-muted/40 border border-border p-2.5 space-y-1">
+                    <p className="font-medium text-destructive/80">"{o.objecao}"</p>
+                    <p className="text-muted-foreground">{o.argumento}</p>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {summary.abordagemRecomendada && (
+              <div className="rounded-md bg-violet-100 dark:bg-violet-900/30 border border-violet-200 dark:border-violet-700 p-3 flex items-start gap-2">
+                <Zap className="h-3.5 w-3.5 text-violet-600 dark:text-violet-400 mt-0.5 shrink-0" />
+                <div>
+                  <p className="font-semibold text-violet-700 dark:text-violet-300 text-[10px] uppercase tracking-wider mb-0.5">Abordagem Recomendada</p>
+                  <p className="text-sm font-medium">{summary.abordagemRecomendada}</p>
+                </div>
+              </div>
+            )}
+
+            {summary.alertas?.length > 0 && (
+              <div className="space-y-1.5">
+                <p className="font-medium text-muted-foreground uppercase tracking-wider text-[10px] flex items-center gap-1">
+                  <AlertTriangle className="h-3 w-3 text-red-500" /> Alertas
+                </p>
+                <ul className="space-y-1">
+                  {summary.alertas.map((a, i) => (
+                    <li key={i} className="flex items-start gap-2 text-destructive/80">
+                      <span className="mt-0.5 h-1.5 w-1.5 rounded-full bg-red-500 shrink-0" />
+                      <span>{a}</span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Loading do resumo */}
+        {activeView === "summary" && isSummarizing && (
+          <div className="flex flex-col items-center gap-3 py-8 text-muted-foreground">
+            <Loader2 className="h-6 w-6 animate-spin text-violet-500" />
+            <p className="text-sm">Analisando briefing e gerando resumo…</p>
+          </div>
+        )}
+
+        {/* ══ VIEW: FORMULÁRIO ════════════════════════════════════════════ */}
+        {activeView === "form" && (
+          <>
         {/* ── Contexto do cliente ────────────────────────────────────────────── */}
         <div className="rounded-lg border border-primary/20 bg-primary/5 p-3 space-y-3">
           <div className="flex items-center justify-between">
@@ -752,119 +915,18 @@ export default function LeadBriefingTab({ leadId, tenantId, lead }: LeadBriefing
         </div>
 
         <div className="flex justify-end pt-2 border-t">
-          <Button size="sm" className="text-xs gap-1" onClick={handleSave} disabled={isSaving || !hasChanges}>
-            {isSaving ? <Loader2 className="h-3 w-3 animate-spin" /> : <Save className="h-3 w-3" />}
-            Salvar briefing
-          </Button>
-        </div>
-
-        {/* ── Resumo de Fechamento IA ──────────────────────────────────── */}
-        <div className="pt-2">
           <Button
-            onClick={handleSummarize}
-            disabled={isSummarizing}
             size="sm"
-            className="w-full gap-2 bg-gradient-to-r from-violet-600 to-indigo-600 hover:from-violet-700 hover:to-indigo-700 text-white text-xs"
+            className="text-xs gap-1"
+            onClick={handleSave}
+            disabled={isSaving || isSummarizing || !hasChanges}
+            data-testid="btn-salvar-briefing-bottom"
           >
-            {isSummarizing
-              ? <><Loader2 className="h-3.5 w-3.5 animate-spin" />Analisando briefing...</>
-              : <><BrainCircuit className="h-3.5 w-3.5" />Gerar Resumo de Fechamento</>
-            }
+            {(isSaving || isSummarizing) ? <Loader2 className="h-3 w-3 animate-spin" /> : <Save className="h-3 w-3" />}
+            {isSummarizing ? "Gerando resumo…" : isSaving ? "Salvando…" : "Salvar e gerar resumo"}
           </Button>
         </div>
-
-        {summary && (
-          <div className="rounded-lg border border-violet-200 bg-violet-50/50 dark:border-violet-800 dark:bg-violet-950/20 p-4 space-y-4 text-xs">
-            <div className="flex items-center gap-2 font-semibold text-sm text-violet-700 dark:text-violet-300">
-              <BrainCircuit className="h-4 w-4" />
-              Resumo de Fechamento
-            </div>
-
-            {/* Resumo do cliente */}
-            {summary.resumoCliente && (
-              <div className="space-y-1">
-                <p className="font-medium text-muted-foreground uppercase tracking-wider text-[10px]">Perfil do Cliente</p>
-                <p className="text-sm leading-relaxed">{summary.resumoCliente}</p>
-              </div>
-            )}
-
-            {/* Dores principais */}
-            {summary.doresPrincipais?.length > 0 && (
-              <div className="space-y-1.5">
-                <p className="font-medium text-muted-foreground uppercase tracking-wider text-[10px] flex items-center gap-1">
-                  <AlertTriangle className="h-3 w-3 text-amber-500" /> Dores Identificadas
-                </p>
-                <ul className="space-y-1">
-                  {summary.doresPrincipais.map((d, i) => (
-                    <li key={i} className="flex items-start gap-2">
-                      <span className="mt-0.5 h-1.5 w-1.5 rounded-full bg-amber-500 shrink-0" />
-                      <span>{d}</span>
-                    </li>
-                  ))}
-                </ul>
-              </div>
-            )}
-
-            {/* Pontos de fechamento */}
-            {summary.pontosDeForte?.length > 0 && (
-              <div className="space-y-1.5">
-                <p className="font-medium text-muted-foreground uppercase tracking-wider text-[10px] flex items-center gap-1">
-                  <CheckCircle2 className="h-3 w-3 text-emerald-500" /> Argumentos de Fechamento
-                </p>
-                <ul className="space-y-1">
-                  {summary.pontosDeForte.map((p, i) => (
-                    <li key={i} className="flex items-start gap-2">
-                      <span className="mt-0.5 h-1.5 w-1.5 rounded-full bg-emerald-500 shrink-0" />
-                      <span>{p}</span>
-                    </li>
-                  ))}
-                </ul>
-              </div>
-            )}
-
-            {/* Objeções */}
-            {summary.comoContornarObjecoes?.length > 0 && (
-              <div className="space-y-2">
-                <p className="font-medium text-muted-foreground uppercase tracking-wider text-[10px] flex items-center gap-1">
-                  <ShieldCheck className="h-3 w-3 text-blue-500" /> Como Contornar Objeções
-                </p>
-                {summary.comoContornarObjecoes.map((o, i) => (
-                  <div key={i} className="rounded-md bg-white dark:bg-white/5 border border-border p-2.5 space-y-1">
-                    <p className="font-medium text-destructive/80">"{o.objecao}"</p>
-                    <p className="text-muted-foreground">{o.argumento}</p>
-                  </div>
-                ))}
-              </div>
-            )}
-
-            {/* Abordagem recomendada */}
-            {summary.abordagemRecomendada && (
-              <div className="rounded-md bg-violet-100 dark:bg-violet-900/30 border border-violet-200 dark:border-violet-700 p-3 flex items-start gap-2">
-                <Zap className="h-3.5 w-3.5 text-violet-600 dark:text-violet-400 mt-0.5 shrink-0" />
-                <div>
-                  <p className="font-semibold text-violet-700 dark:text-violet-300 text-[10px] uppercase tracking-wider mb-0.5">Abordagem Recomendada</p>
-                  <p className="text-sm font-medium">{summary.abordagemRecomendada}</p>
-                </div>
-              </div>
-            )}
-
-            {/* Alertas */}
-            {summary.alertas?.length > 0 && (
-              <div className="space-y-1.5">
-                <p className="font-medium text-muted-foreground uppercase tracking-wider text-[10px] flex items-center gap-1">
-                  <AlertTriangle className="h-3 w-3 text-red-500" /> Alertas
-                </p>
-                <ul className="space-y-1">
-                  {summary.alertas.map((a, i) => (
-                    <li key={i} className="flex items-start gap-2 text-destructive/80">
-                      <span className="mt-0.5 h-1.5 w-1.5 rounded-full bg-red-500 shrink-0" />
-                      <span>{a}</span>
-                    </li>
-                  ))}
-                </ul>
-              </div>
-            )}
-          </div>
+          </>
         )}
       </CardContent>
     </Card>
