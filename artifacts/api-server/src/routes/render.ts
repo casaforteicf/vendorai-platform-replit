@@ -36,17 +36,28 @@ router.post("/render/quick", upload.single("image"), async (req, res) => {
   const notes    = String(req.body?.notes    ?? "");
 
   const isExterior = roomType === "fachada externa";
+
+  const preserveInstruction = isExterior
+    ? "PRESERVE EXACTLY from the reference image: the building shape, footprint, number of floors, window and door positions, roof geometry, structural proportions, and all architectural volumes. Do NOT alter the building's form or add new structural elements."
+    : "PRESERVE EXACTLY from the reference image: the room geometry, wall positions, window and door locations, ceiling height, furniture arrangement and placement, and all existing objects. Do NOT add, remove, or relocate any furniture or objects.";
+
+  const changeInstruction = isExterior
+    ? `ONLY CHANGE the surface finishes and materials: wall cladding texture and color, roof material, window frame style, facade details, and exterior lighting — to match the ${style} architectural style.`
+    : `ONLY CHANGE the surface materials and finishes: wall paint color and texture, floor material, ceiling treatment, upholstery colors, lighting fixtures, and decorative surface details — to match the ${style} interior design style.`;
+
+  const qualityInstruction = "Professional architectural photography quality. Natural, well-balanced lighting. Ultra-sharp details, high dynamic range, photorealistic rendering. 4K resolution.";
+
+  const contextInstruction = isExterior
+    ? "Brazilian residential architecture."
+    : `${roomType}, Brazilian home interior.`;
+
   const prompt = [
-    isExterior
-      ? "Photorealistic exterior architectural render, building facade"
-      : "Photorealistic interior design architectural render",
-    `${style} style`,
-    roomType,
-    "professional lighting, wide angle lens, ray tracing, 4K quality",
-    isExterior ? "Brazilian residential architecture" : "Brazilian home interior",
-    "keep exactly the same spatial layout and objects as the reference image — do NOT add, remove or replace any furniture, objects, or decorative elements not present in the original",
-    notes || null,
-  ].filter(Boolean).join(". ");
+    preserveInstruction,
+    changeInstruction,
+    contextInstruction,
+    qualityInstruction,
+    notes ? `Additional requests: ${notes}` : null,
+  ].filter(Boolean).join(" ");
 
   try {
     const openai = await getOpenAIForTenant(tenantId);
