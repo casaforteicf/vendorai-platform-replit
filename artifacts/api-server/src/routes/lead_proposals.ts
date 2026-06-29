@@ -265,6 +265,7 @@ router.post("/leads/:leadId/proposals", async (req, res) => {
     conversationSamples: ctx.conversationSamples,
     tenantName: ctx.tenantName,
     tenantPhone: ctx.tenantPhone,
+    refinementNotes: req.body?.refinementNotes ? String(req.body.refinementNotes) : null,
   });
 
   let result;

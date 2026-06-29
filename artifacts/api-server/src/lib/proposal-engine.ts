@@ -155,6 +155,7 @@ export function buildProposalPrompt(ctx: {
   conversationSamples: string;
   tenantName?: string | null;
   tenantPhone?: string | null;
+  refinementNotes?: string | null;
 }): string {
   const productsBlock = ctx.products.length
     ? `\nProdutos do cliente:\n${ctx.products.map((p) => `- ${p.nome}`).join("\n")}`
@@ -177,6 +178,10 @@ export function buildProposalPrompt(ctx: {
     ? `\n## Segmento do cliente: "${ctx.mercadoSegmento}"\nIMPORTANTE: toda a proposta DEVE usar terminologia, exemplos, dores e oportunidades específicas deste segmento. Não use linguagem genérica de "empresa". Use jargão real do setor. Os problemas, implicações e módulos devem ser exemplos concretos do dia a dia de ${ctx.mercadoSegmento}. Se for varejo: fale em loja, vendedor, estoque, ticket médio, sazonalidade. Se for construção: obra, engenheiro, orçamento, cliente de obra. Se for saúde: paciente, consulta, agenda. Adapte para o segmento real.`
     : "";
 
+  const refinementBlock = ctx.refinementNotes?.trim()
+    ? `\n━━━ INSTRUÇÕES ESPECÍFICAS (PRIORIDADE MÁXIMA) ━━━\n${ctx.refinementNotes.trim()}\nESSAS INSTRUÇÕES DEVEM SER APLICADAS FIELMENTE. Elas sobrepõem qualquer outra diretriz de estilo ou formato.`
+    : "";
+
   return `Gere o conteúdo de uma proposta comercial personalizada em formato JSON estrito ${tenantLabel} para o cliente abaixo.
 
 ━━━ DADOS DO CLIENTE ━━━
@@ -193,7 +198,7 @@ ${intelligenceBlock}
 
 ━━━ AMOSTRA DE CONVERSA (calibre o tom exato ao estilo do cliente) ━━━
 ${ctx.conversationSamples || "Sem conversa disponível. Use tom profissional, direto e respeitoso."}
-
+${refinementBlock}
 ━━━ ESTRUTURA JSON OBRIGATÓRIA ━━━
 Retorne APENAS JSON válido — sem markdown, sem \`\`\`json, sem texto antes ou depois.
 

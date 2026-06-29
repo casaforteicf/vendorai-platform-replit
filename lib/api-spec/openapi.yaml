@@ -12866,6 +12866,10 @@ components:
           type: string
           nullable: true
           description: ID of the orçamento (proposta) to embed as a pricing section in the generated proposal
+        refinementNotes:
+          type: string
+          nullable: true
+          description: Optional instructions for refining or improving the proposal (e.g. "use a more formal tone", "focus on price advantage", "highlight delivery deadline")
 
     ProductPresentation:
       type: object

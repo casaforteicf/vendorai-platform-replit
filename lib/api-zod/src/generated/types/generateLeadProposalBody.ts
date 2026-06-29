@@ -18,4 +18,6 @@ export interface GenerateLeadProposalBody {
   objetivo?: string | null;
   /** ID of the orçamento (proposta) to embed as a pricing section in the generated proposal */
   propostaId?: string | null;
+  /** Optional instructions for refining or improving the proposal (e.g. "use a more formal tone", "focus on price advantage", "highlight delivery deadline") */
+  refinementNotes?: string | null;
 }

@@ -80,6 +80,11 @@ export default function LeadPropostaTab({ leadId, tenantId, lead }: LeadProposta
   const [showProducts, setShowProducts] = useState(false);
   const [selectedOrcamentoId, setSelectedOrcamentoId] = useState<string>("__none__");
 
+  // Refinement dialog
+  const [refineOpen, setRefineOpen] = useState(false);
+  const [refineNotes, setRefineNotes] = useState("");
+  const [refineFromVersion, setRefineFromVersion] = useState<number | null>(null);
+
   // Lead editable fields
   const [mercadoSegmento, setMercadoSegmento] = useState(lead?.mercadoSegmento ?? "");
   const [logoUrl, setLogoUrl] = useState(lead?.logoUrl ?? "");
@@ -325,8 +330,15 @@ export default function LeadPropostaTab({ leadId, tenantId, lead }: LeadProposta
     }
   }
 
-  async function generateProposal() {
+  function openRefineDialog(fromVersion?: number) {
+    setRefineNotes("");
+    setRefineFromVersion(fromVersion ?? null);
+    setRefineOpen(true);
+  }
+
+  async function generateProposal(notes?: string) {
     if (!leadId || !token) return;
+    setRefineOpen(false);
     setGenerating(true);
     try {
       const created = await generateMutation.mutateAsync({
@@ -340,12 +352,12 @@ export default function LeadPropostaTab({ leadId, tenantId, lead }: LeadProposta
           imagens: proposalImages.length > 0 ? proposalImages : undefined,
           objetivo: lead?.objetivo || undefined,
           propostaId: selectedOrcamentoId !== "__none__" ? selectedOrcamentoId : undefined,
+          refinementNotes: notes?.trim() || undefined,
         } as any,
       });
       toast({ title: `Proposta v${created.version} gerada com sucesso` });
       queryClient.invalidateQueries({ queryKey: ["listLeadProposals", leadId] });
       setActiveVersion(created.version);
-      // Auto preview — use htmlContent from response directly (avoids extra round-trip)
       if (created.htmlContent) {
         setPreviewHtml(created.htmlContent);
         setPreviewOpen(true);
@@ -956,7 +968,7 @@ export default function LeadPropostaTab({ leadId, tenantId, lead }: LeadProposta
             <Button
               size="sm"
               className="h-7 text-xs gap-1"
-              onClick={generateProposal}
+              onClick={() => openRefineDialog()}
               disabled={generating}
             >
               {generating ? <Loader2 className="h-3 w-3 animate-spin" /> : <Sparkles className="h-3 w-3" />}
@@ -1015,7 +1027,7 @@ export default function LeadPropostaTab({ leadId, tenantId, lead }: LeadProposta
               <Button
                 size="sm"
                 className="gap-1"
-                onClick={generateProposal}
+                onClick={() => openRefineDialog()}
                 disabled={generating}
               >
                 {generating ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Sparkles className="h-3.5 w-3.5" />}
@@ -1070,6 +1082,15 @@ export default function LeadPropostaTab({ leadId, tenantId, lead }: LeadProposta
                       <Button
                         size="icon"
                         variant="ghost"
+                        className="h-7 w-7 text-violet-600 hover:text-violet-700 hover:bg-violet-50"
+                        title="Melhorar proposta"
+                        onClick={() => openRefineDialog(p.version)}
+                      >
+                        <Sparkles className="h-3.5 w-3.5" />
+                      </Button>
+                      <Button
+                        size="icon"
+                        variant="ghost"
                         className="h-7 w-7 text-green-600 hover:text-green-700 hover:bg-green-50"
                         title="Avançar no projeto via WhatsApp"
                         onClick={() => openWhatsAppProposal(p.version)}
@@ -1083,6 +1104,99 @@ export default function LeadPropostaTab({ leadId, tenantId, lead }: LeadProposta
           )}
         </CardContent>
       </Card>
+
+      {/* Refinement Dialog */}
+      <Dialog open={refineOpen} onOpenChange={setRefineOpen}>
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Sparkles className="h-4 w-4 text-violet-500" />
+              {refineFromVersion != null
+                ? `Melhorar proposta v${refineFromVersion}`
+                : "Gerar proposta"}
+            </DialogTitle>
+          </DialogHeader>
+
+          <div className="space-y-4 py-1">
+            <p className="text-sm text-muted-foreground">
+              {refineFromVersion != null
+                ? "Descreva o que deve mudar na nova versão. A IA vai gerar uma versão melhorada com suas instruções."
+                : "Adicione instruções opcionais para personalizar a proposta. Deixe em branco para gerar automaticamente."}
+            </p>
+
+            {/* Quick-pick chips */}
+            <div className="flex flex-wrap gap-1.5">
+              {[
+                "Tom mais formal",
+                "Tom mais direto e descontraído",
+                "Foco no custo-benefício",
+                "Destaque o prazo de entrega",
+                "Reforce os diferenciais",
+                "Seja mais conciso",
+                "Abordagem mais técnica",
+                "Mais ênfase nos resultados",
+              ].map((chip) => (
+                <button
+                  key={chip}
+                  type="button"
+                  onClick={() =>
+                    setRefineNotes((prev) =>
+                      prev.trim()
+                        ? `${prev.trim()}\n${chip}`
+                        : chip
+                    )
+                  }
+                  className="text-xs px-2.5 py-1 rounded-full border border-violet-200 bg-violet-50 text-violet-700 hover:bg-violet-100 transition-colors"
+                >
+                  + {chip}
+                </button>
+              ))}
+            </div>
+
+            <Textarea
+              placeholder="Ex: Use tom mais formal. Destaque a garantia de 12 meses. Inclua um CTA mais urgente no final."
+              value={refineNotes}
+              onChange={(e) => setRefineNotes(e.target.value)}
+              rows={4}
+              className="text-sm resize-none"
+            />
+          </div>
+
+          <DialogFooter className="gap-2 flex-wrap">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setRefineOpen(false)}
+            >
+              Cancelar
+            </Button>
+            {refineFromVersion == null && (
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => generateProposal(undefined)}
+                disabled={generating}
+              >
+                {generating ? <Loader2 className="h-3.5 w-3.5 animate-spin mr-1" /> : null}
+                Gerar sem instruções
+              </Button>
+            )}
+            <Button
+              size="sm"
+              className="gap-1.5 bg-violet-600 hover:bg-violet-700"
+              onClick={() => generateProposal(refineNotes || undefined)}
+              disabled={generating}
+            >
+              {generating ? (
+                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+              ) : (
+                <Sparkles className="h-3.5 w-3.5" />
+              )}
+              {refineFromVersion != null ? "Gerar versão melhorada" : "Gerar proposta"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* Preview Dialog */}
       <Dialog open={previewOpen} onOpenChange={setPreviewOpen}>
