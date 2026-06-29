@@ -38,6 +38,7 @@ const ROOM_TYPES = [
   { value: "varanda",         label: "Varanda" },
   { value: "área gourmet",    label: "Área Gourmet" },
   { value: "sala de jantar",  label: "Sala de Jantar" },
+  { value: "fachada externa", label: "Fachada Externa" },
 ];
 
 export default function ArchRender() {

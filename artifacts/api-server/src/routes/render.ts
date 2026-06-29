@@ -35,12 +35,15 @@ router.post("/render/quick", upload.single("image"), async (req, res) => {
   const roomType = String(req.body?.roomType ?? "sala de estar");
   const notes    = String(req.body?.notes    ?? "");
 
+  const isExterior = roomType === "fachada externa";
   const prompt = [
-    "Photorealistic interior design architectural render",
+    isExterior
+      ? "Photorealistic exterior architectural render, building facade"
+      : "Photorealistic interior design architectural render",
     `${style} style`,
     roomType,
     "professional lighting, wide angle lens, ray tracing, 4K quality",
-    "Brazilian home interior",
+    isExterior ? "Brazilian residential architecture" : "Brazilian home interior",
     notes || null,
   ].filter(Boolean).join(", ");
 
