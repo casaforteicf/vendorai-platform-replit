@@ -5645,6 +5645,17 @@ export const ListTenantBriefingsResponseItem = zod.object({
   "nextStepType": zod.string().nullish(),
   "nextStepDate": zod.string().nullish(),
   "freeNotes": zod.string().nullish(),
+  "aiSummary": zod.object({
+  "resumoCliente": zod.string().optional(),
+  "doresPrincipais": zod.array(zod.string()).optional(),
+  "pontosDeForte": zod.array(zod.string()).optional(),
+  "comoContornarObjecoes": zod.array(zod.object({
+  "objecao": zod.string().optional(),
+  "argumento": zod.string().optional()
+})).optional(),
+  "abordagemRecomendada": zod.string().optional(),
+  "alertas": zod.array(zod.string()).optional()
+}).nullish(),
   "createdAt": zod.coerce.date(),
   "updatedAt": zod.coerce.date()
 })
@@ -5696,6 +5707,17 @@ export const GetLeadBriefingResponse = zod.object({
   "nextStepType": zod.string().nullish(),
   "nextStepDate": zod.string().nullish(),
   "freeNotes": zod.string().nullish(),
+  "aiSummary": zod.object({
+  "resumoCliente": zod.string().optional(),
+  "doresPrincipais": zod.array(zod.string()).optional(),
+  "pontosDeForte": zod.array(zod.string()).optional(),
+  "comoContornarObjecoes": zod.array(zod.object({
+  "objecao": zod.string().optional(),
+  "argumento": zod.string().optional()
+})).optional(),
+  "abordagemRecomendada": zod.string().optional(),
+  "alertas": zod.array(zod.string()).optional()
+}).nullish(),
   "createdAt": zod.coerce.date(),
   "updatedAt": zod.coerce.date()
 })
@@ -5742,7 +5764,18 @@ export const UpsertLeadBriefingBody = zod.object({
   "presentationLink": zod.string().optional(),
   "nextStepType": zod.enum(['meeting_scheduled', 'callback', 'open_door']).optional(),
   "nextStepDate": zod.string().optional(),
-  "freeNotes": zod.string().optional()
+  "freeNotes": zod.string().optional(),
+  "aiSummary": zod.object({
+  "resumoCliente": zod.string().optional(),
+  "doresPrincipais": zod.array(zod.string()).optional(),
+  "pontosDeForte": zod.array(zod.string()).optional(),
+  "comoContornarObjecoes": zod.array(zod.object({
+  "objecao": zod.string().optional(),
+  "argumento": zod.string().optional()
+})).optional(),
+  "abordagemRecomendada": zod.string().optional(),
+  "alertas": zod.array(zod.string()).optional()
+}).nullish()
 })
 
 export const UpsertLeadBriefingResponse = zod.object({
@@ -5783,6 +5816,17 @@ export const UpsertLeadBriefingResponse = zod.object({
   "nextStepType": zod.string().nullish(),
   "nextStepDate": zod.string().nullish(),
   "freeNotes": zod.string().nullish(),
+  "aiSummary": zod.object({
+  "resumoCliente": zod.string().optional(),
+  "doresPrincipais": zod.array(zod.string()).optional(),
+  "pontosDeForte": zod.array(zod.string()).optional(),
+  "comoContornarObjecoes": zod.array(zod.object({
+  "objecao": zod.string().optional(),
+  "argumento": zod.string().optional()
+})).optional(),
+  "abordagemRecomendada": zod.string().optional(),
+  "alertas": zod.array(zod.string()).optional()
+}).nullish(),
   "createdAt": zod.coerce.date(),
   "updatedAt": zod.coerce.date()
 })

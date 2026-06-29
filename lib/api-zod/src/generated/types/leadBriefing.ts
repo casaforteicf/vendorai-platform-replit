@@ -5,6 +5,7 @@
  * API specification
  * OpenAPI spec version: 0.1.0
  */
+import type { LeadBriefingAiSummary } from './leadBriefingAiSummary';
 import type { LeadBriefingImplicationAnswersItem } from './leadBriefingImplicationAnswersItem';
 import type { LeadBriefingNeedAnswersItem } from './leadBriefingNeedAnswersItem';
 import type { LeadBriefingObjectionsItem } from './leadBriefingObjectionsItem';
@@ -34,6 +35,7 @@ export interface LeadBriefing {
   nextStepType?: string | null;
   nextStepDate?: string | null;
   freeNotes?: string | null;
+  aiSummary?: LeadBriefingAiSummary;
   createdAt: Date;
   updatedAt: Date;
 }

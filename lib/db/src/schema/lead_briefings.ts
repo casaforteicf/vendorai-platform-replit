@@ -50,6 +50,16 @@ export const leadBriefingsTable = pgTable("lead_briefings", {
   // 10. Notas livres
   freeNotes: text("free_notes"),
 
+  // 11. Resumo IA gerado após preenchimento (salvo para exibição rápida)
+  aiSummary: jsonb("ai_summary").$type<{
+    resumoCliente: string;
+    doresPrincipais: string[];
+    pontosDeForte: string[];
+    comoContornarObjecoes: { objecao: string; argumento: string }[];
+    abordagemRecomendada: string;
+    alertas: string[];
+  } | null>(),
+
   createdAt: timestamp("created_at").notNull().defaultNow(),
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
 });

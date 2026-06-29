@@ -5,6 +5,7 @@
  * API specification
  * OpenAPI spec version: 0.1.0
  */
+import type { UpsertLeadBriefingBodyAiSummary } from './upsertLeadBriefingBodyAiSummary';
 import type { UpsertLeadBriefingBodyContactType } from './upsertLeadBriefingBodyContactType';
 import type { UpsertLeadBriefingBodyImplicationAnswersItem } from './upsertLeadBriefingBodyImplicationAnswersItem';
 import type { UpsertLeadBriefingBodyNeedAnswersItem } from './upsertLeadBriefingBodyNeedAnswersItem';
@@ -35,4 +36,5 @@ export interface UpsertLeadBriefingBody {
   nextStepType?: UpsertLeadBriefingBodyNextStepType;
   nextStepDate?: string;
   freeNotes?: string;
+  aiSummary?: UpsertLeadBriefingBodyAiSummary;
 }

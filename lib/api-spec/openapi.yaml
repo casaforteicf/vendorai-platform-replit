@@ -12562,6 +12562,35 @@ components:
         freeNotes:
           type: string
           nullable: true
+        aiSummary:
+          type: object
+          nullable: true
+          properties:
+            resumoCliente:
+              type: string
+            doresPrincipais:
+              type: array
+              items:
+                type: string
+            pontosDeForte:
+              type: array
+              items:
+                type: string
+            comoContornarObjecoes:
+              type: array
+              items:
+                type: object
+                properties:
+                  objecao:
+                    type: string
+                  argumento:
+                    type: string
+            abordagemRecomendada:
+              type: string
+            alertas:
+              type: array
+              items:
+                type: string
         createdAt:
           type: string
           format: date-time
@@ -12658,6 +12687,35 @@ components:
           type: string
         freeNotes:
           type: string
+        aiSummary:
+          type: object
+          nullable: true
+          properties:
+            resumoCliente:
+              type: string
+            doresPrincipais:
+              type: array
+              items:
+                type: string
+            pontosDeForte:
+              type: array
+              items:
+                type: string
+            comoContornarObjecoes:
+              type: array
+              items:
+                type: object
+                properties:
+                  objecao:
+                    type: string
+                  argumento:
+                    type: string
+            abordagemRecomendada:
+              type: string
+            alertas:
+              type: array
+              items:
+                type: string
 
     LeadProposal:
       type: object

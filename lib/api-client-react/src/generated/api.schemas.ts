@@ -2158,6 +2158,20 @@ export type LeadBriefingObjectionsItem = {
   response?: string;
 };
 
+export type LeadBriefingAiSummaryComoContornarObjecoesItem = {
+  objecao?: string;
+  argumento?: string;
+};
+
+export type LeadBriefingAiSummary = {
+  resumoCliente?: string;
+  doresPrincipais?: string[];
+  pontosDeForte?: string[];
+  comoContornarObjecoes?: LeadBriefingAiSummaryComoContornarObjecoesItem[];
+  abordagemRecomendada?: string;
+  alertas?: string[];
+} | null;
+
 export interface LeadBriefing {
   id: string;
   tenantId: string;
@@ -2181,6 +2195,7 @@ export interface LeadBriefing {
   nextStepType?: string | null;
   nextStepDate?: string | null;
   freeNotes?: string | null;
+  aiSummary?: LeadBriefingAiSummary;
   createdAt: string;
   updatedAt: string;
 }
@@ -2246,6 +2261,20 @@ export const UpsertLeadBriefingBodyNextStepType = {
   open_door: 'open_door',
 } as const;
 
+export type UpsertLeadBriefingBodyAiSummaryComoContornarObjecoesItem = {
+  objecao?: string;
+  argumento?: string;
+};
+
+export type UpsertLeadBriefingBodyAiSummary = {
+  resumoCliente?: string;
+  doresPrincipais?: string[];
+  pontosDeForte?: string[];
+  comoContornarObjecoes?: UpsertLeadBriefingBodyAiSummaryComoContornarObjecoesItem[];
+  abordagemRecomendada?: string;
+  alertas?: string[];
+} | null;
+
 export interface UpsertLeadBriefingBody {
   channelsUsed?: string[];
   contactType?: UpsertLeadBriefingBodyContactType;
@@ -2266,6 +2295,7 @@ export interface UpsertLeadBriefingBody {
   nextStepType?: UpsertLeadBriefingBodyNextStepType;
   nextStepDate?: string;
   freeNotes?: string;
+  aiSummary?: UpsertLeadBriefingBodyAiSummary;
 }
 
 export type LeadProposalJsonContent = { [key: string]: unknown } | null;

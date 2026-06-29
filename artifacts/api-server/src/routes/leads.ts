@@ -905,15 +905,29 @@ Seja direto, prático e específico para este cliente. Não invente dados que n�
       return;
     }
 
-    req.log.info({ tenantId, leadId }, "briefing/summarize: ok");
-    res.json({
+    const summary = {
       resumoCliente:          parsed.resumoCliente          ?? "",
       doresPrincipais:        parsed.doresPrincipais        ?? [],
       pontosDeForte:          parsed.pontosDeForte          ?? [],
       comoContornarObjecoes:  parsed.comoContornarObjecoes  ?? [],
       abordagemRecomendada:   parsed.abordagemRecomendada   ?? "",
       alertas:                parsed.alertas                ?? [],
-    });
+    };
+
+    // Persist summary to DB so it shows on next load without re-generating
+    if (briefing) {
+      await db
+        .update(leadBriefingsTable)
+        .set({ aiSummary: summary, updatedAt: new Date() })
+        .where(eq(leadBriefingsTable.id, briefing.id));
+    } else {
+      await db
+        .insert(leadBriefingsTable)
+        .values({ tenantId, leadId, aiSummary: summary });
+    }
+
+    req.log.info({ tenantId, leadId }, "briefing/summarize: ok");
+    res.json(summary);
   } catch (err: any) {
     req.log.error({ err }, "briefing/summarize error");
     res.status(500).json({ error: "Erro ao gerar resumo com IA" });
