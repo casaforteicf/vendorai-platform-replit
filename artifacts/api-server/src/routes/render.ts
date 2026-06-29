@@ -32,6 +32,7 @@ router.post("/render/quick", upload.single("image"), async (req, res) => {
   }
 
   const style    = String(req.body?.style    ?? "nenhum");
+  const angle    = String(req.body?.angle    ?? "frontal");
   const roomType = String(req.body?.roomType ?? "sala de estar");
   const notes    = String(req.body?.notes    ?? "");
 
@@ -72,6 +73,18 @@ router.post("/render/quick", upload.single("image"), async (req, res) => {
         : `Style application (surface finishes ONLY, do not add or remove objects): reinterpret the existing wall finish, floor material, and ceiling treatment with a ${style} interior design aesthetic — keep all furniture and objects exactly as they are.`)
     : null;
 
+  const angleMap: Record<string, string> = {
+    frontal:   "straight-on frontal camera angle",
+    angular45: "45-degree diagonal perspective angle",
+    lateral:   "side view lateral camera angle",
+    ampla:     "wide-angle lens expansive view",
+    closeup:   "close-up detail shot, shallow depth of field",
+    aerea:     "aerial top-down bird's-eye view angle",
+  };
+  const angleInstruction = angleMap[angle]
+    ? `Camera angle: render from a ${angleMap[angle]}.`
+    : null;
+
   const contextInstruction = isExterior
     ? "Brazilian residential architecture context."
     : `Context: ${roomType}, Brazilian home interior.`;
@@ -79,6 +92,7 @@ router.post("/render/quick", upload.single("image"), async (req, res) => {
   const prompt = [
     baseInstruction,
     styleInstruction,
+    angleInstruction,
     contextInstruction,
     notes ? `Additional user request: ${notes}` : null,
   ].filter(Boolean).join(" ");

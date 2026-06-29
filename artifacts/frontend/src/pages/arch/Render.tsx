@@ -34,6 +34,15 @@ function getBase() {
   return (import.meta.env.BASE_URL ?? "/").replace(/\/$/, "");
 }
 
+const ANGLES = [
+  { value: "frontal",    label: "Frontal",         desc: "Vista direta" },
+  { value: "angular45",  label: "Angular 45°",     desc: "Perspectiva diagonal" },
+  { value: "lateral",    label: "Lateral",         desc: "Vista do lado" },
+  { value: "ampla",      label: "Vista Ampla",     desc: "Grande angular" },
+  { value: "closeup",    label: "Close-up",        desc: "Detalhe próximo" },
+  { value: "aerea",      label: "Vista Aérea",     desc: "De cima para baixo" },
+];
+
 const STYLES = [
   { value: "nenhum",       label: "Só melhorar qualidade" },
   { value: "moderno",      label: "Moderno" },
@@ -65,6 +74,7 @@ export default function ArchRender() {
   const [file, setFile]                 = useState<File | null>(null);
   const [dragging, setDragging]         = useState(false);
   const [style, setStyle]               = useState("nenhum");
+  const [angle, setAngle]               = useState("frontal");
   const [roomType, setRoomType]         = useState("sala de estar");
   const [notes, setNotes]               = useState("");
   const [rendering, setRendering]       = useState(false);
@@ -114,6 +124,7 @@ export default function ArchRender() {
       const form = new FormData();
       form.append("image", file);
       form.append("style", style);
+      form.append("angle", angle);
       form.append("roomType", roomType);
       form.append("notes", notes);
 
@@ -215,6 +226,7 @@ export default function ArchRender() {
       const form = new FormData();
       form.append("image", imgFile);
       form.append("style", style);
+      form.append("angle", angle);
       form.append("roomType", roomType);
       form.append("notes", refineNote.trim());
 
@@ -238,7 +250,7 @@ export default function ArchRender() {
   };
 
   return (
-    <div className="max-w-5xl mx-auto p-4 space-y-6">
+    <div className="w-full p-4 space-y-4">
       {/* Header */}
       <div className="flex items-center gap-3">
         <div className="p-2 rounded-lg bg-violet-100 dark:bg-violet-900/30">
@@ -252,25 +264,28 @@ export default function ArchRender() {
         </div>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {/* Coluna esquerda — Upload + Config */}
-        <div className="space-y-4">
+      {/* Layout principal — painel estreito esquerdo + resultado largo */}
+      <div className="flex flex-col xl:flex-row gap-4 items-start">
+
+        {/* Painel de configuração — largura fixa */}
+        <div className="w-full xl:w-72 shrink-0 space-y-3">
+
           {/* Upload */}
           <Card>
-            <CardHeader className="pb-2">
-              <CardTitle className="text-sm font-medium">Imagem de referência</CardTitle>
+            <CardHeader className="pb-2 pt-3 px-3">
+              <CardTitle className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Imagem de referência</CardTitle>
             </CardHeader>
-            <CardContent>
+            <CardContent className="px-3 pb-3">
               {previewSrc ? (
                 <div className="relative rounded-lg overflow-hidden">
-                  <img src={previewSrc} alt="Preview" className="w-full object-cover max-h-64 rounded-lg" />
+                  <img src={previewSrc} alt="Preview" className="w-full object-cover max-h-48 rounded-lg" />
                   <button
                     onClick={handleReset}
                     className="absolute top-2 right-2 bg-black/60 hover:bg-black/80 text-white rounded-full p-1 transition-colors"
                   >
-                    <X className="h-4 w-4" />
+                    <X className="h-3.5 w-3.5" />
                   </button>
-                  <div className="absolute bottom-2 left-2 bg-black/60 text-white text-xs px-2 py-1 rounded">
+                  <div className="absolute bottom-2 left-2 bg-black/60 text-white text-[10px] px-1.5 py-0.5 rounded truncate max-w-[80%]">
                     {file?.name}
                   </div>
                 </div>
@@ -280,16 +295,15 @@ export default function ArchRender() {
                   onDragOver={onDragOver}
                   onDragLeave={onDragLeave}
                   onClick={() => fileInputRef.current?.click()}
-                  className={`border-2 border-dashed rounded-lg p-10 text-center cursor-pointer transition-colors ${
+                  className={`border-2 border-dashed rounded-lg p-6 text-center cursor-pointer transition-colors ${
                     dragging
                       ? "border-violet-500 bg-violet-50 dark:bg-violet-950/20"
                       : "border-muted-foreground/30 hover:border-violet-400 hover:bg-muted/30"
                   }`}
                 >
-                  <Upload className="h-8 w-8 mx-auto mb-3 text-muted-foreground" />
-                  <p className="text-sm font-medium">Arraste uma imagem aqui</p>
-                  <p className="text-xs text-muted-foreground mt-1">ou clique para selecionar</p>
-                  <p className="text-xs text-muted-foreground mt-3">JPG, PNG, WEBP — máx. 20MB</p>
+                  <Upload className="h-6 w-6 mx-auto mb-2 text-muted-foreground" />
+                  <p className="text-xs font-medium">Arraste ou clique para selecionar</p>
+                  <p className="text-[10px] text-muted-foreground mt-1">JPG, PNG, WEBP — máx. 20MB</p>
                 </div>
               )}
               <input
@@ -302,20 +316,46 @@ export default function ArchRender() {
             </CardContent>
           </Card>
 
+          {/* Ângulo */}
+          <Card>
+            <CardHeader className="pb-2 pt-3 px-3">
+              <CardTitle className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Ângulo</CardTitle>
+            </CardHeader>
+            <CardContent className="px-3 pb-3">
+              <div className="grid grid-cols-2 gap-1.5">
+                {ANGLES.map((a) => (
+                  <button
+                    key={a.value}
+                    type="button"
+                    onClick={() => setAngle(a.value)}
+                    className={`rounded-lg border px-2 py-2 text-left transition-all cursor-pointer ${
+                      angle === a.value
+                        ? "border-violet-500 bg-violet-50 dark:bg-violet-950/30 text-violet-700 dark:text-violet-300"
+                        : "border-border hover:border-violet-300 hover:bg-muted/40"
+                    }`}
+                  >
+                    <p className="text-xs font-medium leading-tight">{a.label}</p>
+                    <p className="text-[10px] text-muted-foreground leading-tight mt-0.5">{a.desc}</p>
+                  </button>
+                ))}
+              </div>
+            </CardContent>
+          </Card>
+
           {/* Estilo */}
           <Card>
-            <CardHeader className="pb-2">
-              <CardTitle className="text-sm font-medium">Estilo <span className="text-muted-foreground font-normal">(opcional)</span></CardTitle>
+            <CardHeader className="pb-2 pt-3 px-3">
+              <CardTitle className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Estilo <span className="normal-case font-normal">(opcional)</span></CardTitle>
             </CardHeader>
-            <CardContent>
-              <div className="flex flex-wrap gap-2">
+            <CardContent className="px-3 pb-3">
+              <div className="flex flex-wrap gap-1.5">
                 {STYLES.map((s) => (
                   <Button
                     key={s.value}
                     type="button"
                     size="sm"
                     variant="outline"
-                    className={`text-xs ${style === s.value ? "bg-violet-600 text-white border-violet-600 hover:bg-violet-700 hover:text-white" : ""}`}
+                    className={`text-xs h-7 ${style === s.value ? "bg-violet-600 text-white border-violet-600 hover:bg-violet-700 hover:text-white" : ""}`}
                     onClick={() => setStyle(s.value)}
                   >
                     {s.label}
@@ -327,18 +367,18 @@ export default function ArchRender() {
 
           {/* Ambiente */}
           <Card>
-            <CardHeader className="pb-2">
-              <CardTitle className="text-sm font-medium">Ambiente</CardTitle>
+            <CardHeader className="pb-2 pt-3 px-3">
+              <CardTitle className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Ambiente</CardTitle>
             </CardHeader>
-            <CardContent>
-              <div className="flex flex-wrap gap-2">
+            <CardContent className="px-3 pb-3">
+              <div className="flex flex-wrap gap-1.5">
                 {ROOM_TYPES.map((r) => (
                   <Button
                     key={r.value}
                     type="button"
                     size="sm"
                     variant="outline"
-                    className={`text-xs ${roomType === r.value ? "bg-violet-600 text-white border-violet-600 hover:bg-violet-700 hover:text-white" : ""}`}
+                    className={`text-xs h-7 ${roomType === r.value ? "bg-violet-600 text-white border-violet-600 hover:bg-violet-700 hover:text-white" : ""}`}
                     onClick={() => setRoomType(r.value)}
                   >
                     {r.label}
@@ -350,15 +390,13 @@ export default function ArchRender() {
 
           {/* Instruções */}
           <Card>
-            <CardHeader className="pb-2">
-              <CardTitle className="text-sm font-medium">
-                Instruções adicionais <span className="text-muted-foreground font-normal">(opcional)</span>
-              </CardTitle>
+            <CardHeader className="pb-2 pt-3 px-3">
+              <CardTitle className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Instruções <span className="normal-case font-normal">(opcional)</span></CardTitle>
             </CardHeader>
-            <CardContent>
+            <CardContent className="px-3 pb-3">
               <Textarea
-                placeholder="Ex: adicionar sofá cinza, iluminação quente, piso de madeira..."
-                className="text-xs min-h-[80px] resize-none"
+                placeholder="Ex: iluminação quente, piso de madeira..."
+                className="text-xs min-h-[64px] resize-none"
                 value={notes}
                 onChange={(e) => setNotes(e.target.value)}
               />
@@ -372,30 +410,24 @@ export default function ArchRender() {
             className="w-full gap-2 bg-gradient-to-r from-violet-600 to-indigo-600 hover:from-violet-700 hover:to-indigo-700 text-white h-11"
           >
             {rendering ? (
-              <>
-                <Loader2 className="h-4 w-4 animate-spin" />
-                Renderizando com IA...
-              </>
+              <><Loader2 className="h-4 w-4 animate-spin" />Renderizando com IA...</>
             ) : (
-              <>
-                <Wand2 className="h-4 w-4" />
-                Renderizar
-              </>
+              <><Wand2 className="h-4 w-4" />Renderizar</>
             )}
           </Button>
 
           {rendering && (
             <p className="text-xs text-center text-muted-foreground animate-pulse">
-              A renderização pode levar até 60 segundos...
+              Pode levar até 60 segundos...
             </p>
           )}
         </div>
 
-        {/* Coluna direita — Resultado */}
-        <div>
-          <Card className="h-full min-h-[400px]">
-            <CardHeader className="pb-2">
-              <div className="flex items-center justify-between">
+        {/* Área de resultado — ocupa o restante da tela */}
+        <div className="flex-1 min-w-0">
+          <Card className="w-full">
+            <CardHeader className="pb-2 pt-3 px-4">
+              <div className="flex items-center justify-between flex-wrap gap-2">
                 <CardTitle className="text-sm font-medium flex items-center gap-2">
                   <Sparkles className="h-4 w-4 text-violet-500" />
                   Resultado
@@ -403,7 +435,7 @@ export default function ArchRender() {
                 {resultUrl && (
                   <div className="flex gap-2 flex-wrap">
                     <Button size="sm" variant="outline" className="text-xs gap-1 h-7" onClick={handleReset}>
-                      <RefreshCw className="h-3 w-3" /> Nova imagem
+                      <RefreshCw className="h-3 w-3" /> Nova
                     </Button>
                     <Button size="sm" variant="outline" className="text-xs gap-1 h-7 border-violet-300 text-violet-700 hover:bg-violet-50 dark:border-violet-700 dark:text-violet-300 dark:hover:bg-violet-950/40" onClick={() => { setRefineNote(""); setRefineOpen(true); }}>
                       <Pencil className="h-3 w-3" /> Ajustar
@@ -418,23 +450,25 @@ export default function ArchRender() {
                 )}
               </div>
             </CardHeader>
-            <CardContent className="flex items-center justify-center h-full min-h-[350px]">
+            <CardContent className="px-4 pb-4">
               {resultUrl ? (
-                <div className="w-full space-y-3">
+                <div className="space-y-3">
                   <img
                     src={`${getBase()}${resultUrl}`}
                     alt="Renderização gerada"
-                    className="w-full rounded-lg shadow-lg object-cover"
+                    className="w-full rounded-xl shadow-xl object-contain max-h-[75vh]"
                   />
                   <p className="text-xs text-center text-muted-foreground">
-                    {style === "nenhum" ? "Melhoria de qualidade" : <span>Estilo: <span className="font-medium">{style}</span></span>} · Ambiente: <span className="font-medium">{roomType}</span>
+                    {style === "nenhum" ? "Melhoria de qualidade" : <span>Estilo: <span className="font-medium">{style}</span></span>}
+                    {" · "}Ângulo: <span className="font-medium">{ANGLES.find(a => a.value === angle)?.label ?? angle}</span>
+                    {" · "}Ambiente: <span className="font-medium">{roomType}</span>
                   </p>
                 </div>
               ) : rendering ? (
-                <div className="flex flex-col items-center gap-4 text-muted-foreground">
+                <div className="flex flex-col items-center justify-center gap-4 text-muted-foreground min-h-[60vh]">
                   <div className="relative">
-                    <div className="h-16 w-16 rounded-full border-4 border-violet-200 dark:border-violet-800" />
-                    <div className="h-16 w-16 rounded-full border-4 border-t-violet-600 border-transparent absolute top-0 left-0 animate-spin" />
+                    <div className="h-20 w-20 rounded-full border-4 border-violet-200 dark:border-violet-800" />
+                    <div className="h-20 w-20 rounded-full border-4 border-t-violet-600 border-transparent absolute top-0 left-0 animate-spin" />
                   </div>
                   <div className="text-center">
                     <p className="text-sm font-medium">Gerando renderização...</p>
@@ -442,12 +476,12 @@ export default function ArchRender() {
                   </div>
                 </div>
               ) : (
-                <div className="flex flex-col items-center gap-3 text-muted-foreground">
-                  <ImageIcon className="h-16 w-16 text-muted-foreground/30" />
+                <div className="flex flex-col items-center justify-center gap-3 text-muted-foreground min-h-[60vh]">
+                  <ImageIcon className="h-24 w-24 text-muted-foreground/20" />
                   <div className="text-center">
                     <p className="text-sm font-medium">Aguardando renderização</p>
                     <p className="text-xs mt-1">
-                      Faça upload de uma imagem e configure<br />o estilo, depois clique em Renderizar
+                      Faça upload de uma imagem, configure as opções<br />e clique em Renderizar
                     </p>
                   </div>
                 </div>
