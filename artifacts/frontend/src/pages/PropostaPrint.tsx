@@ -284,7 +284,10 @@ export default function PropostaPrint() {
   );
 
   const nomeEmpresa = bp?.nomeFantasia || bp?.razaoSocial || "";
-  const logoUrl = bp?.logoUrl;
+  const rawLogoUrl = bp?.logoUrl;
+  const logoUrl = rawLogoUrl
+    ? (rawLogoUrl.startsWith("/objects/") ? `/api/storage${rawLogoUrl}` : rawLogoUrl)
+    : undefined;
   const jaVendido = proposta.status === "aceita";
   const podeVender = proposta.status === "rascunho" || proposta.status === "enviada" || proposta.status === "pendente";
   const isGerente = user?.platformRole === "super_admin" || user?.platformRole === "tenant_admin";
