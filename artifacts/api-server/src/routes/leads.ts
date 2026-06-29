@@ -769,4 +769,142 @@ Não inclua nenhum texto além do JSON.`;
   }
 });
 
+// ── POST /leads/:leadId/briefing/summarize ────────────────────────────────────
+// Reads all briefing data + lead context and asks AI to produce a structured
+// "client summary" with pain points and the best closing arguments.
+router.post("/leads/:leadId/briefing/summarize", async (req, res) => {
+  const leadId = String(req.params.leadId);
+
+  const [lead] = await db
+    .select({
+      id: leadsTable.id,
+      tenantId: leadsTable.tenantId,
+      nome: leadsTable.nome,
+      empresa: leadsTable.empresa,
+      mercadoSegmento: leadsTable.mercadoSegmento,
+      objetivo: leadsTable.objetivo,
+    })
+    .from(leadsTable)
+    .where(eq(leadsTable.id, leadId));
+
+  if (!lead) {
+    res.status(404).json({ error: "Lead não encontrado" });
+    return;
+  }
+  if (req.user?.platformRole !== "super_admin" && lead.tenantId !== req.user?.tenantId) {
+    res.status(403).json({ error: "Acesso negado" });
+    return;
+  }
+
+  const tenantId = lead.tenantId;
+
+  const [briefing] = await db
+    .select()
+    .from(leadBriefingsTable)
+    .where(eq(leadBriefingsTable.leadId, leadId));
+
+  const [profile] = await db
+    .select({
+      nomeFantasia: businessProfilesTable.nomeFantasia,
+      vertical: businessProfilesTable.vertical,
+      metodoVendas: businessProfilesTable.metodoVendas,
+      diferenciais: businessProfilesTable.diferenciais,
+      produtos: businessProfilesTable.produtos,
+    })
+    .from(businessProfilesTable)
+    .where(eq(businessProfilesTable.tenantId, tenantId));
+
+  // ── Format briefing sections for the prompt ──────────────────────────────
+  const fmt = (items: Array<{ question: string; answer: string }> | null | undefined) =>
+    (items ?? []).filter((i) => i.answer?.trim()).map((i) => `- P: ${i.question}\n  R: ${i.answer}`).join("\n");
+
+  const produtosDesc = Array.isArray(profile?.produtos) && profile.produtos.length
+    ? (profile.produtos as any[]).slice(0, 5).map((p: any) => p.nome).join(", ")
+    : "produtos/serviços da empresa";
+
+  const objecoesText = (briefing?.objections ?? [])
+    .map((o: any) => `  • Objeção: ${o.objection} → Resposta dada: ${o.response ?? "—"}`)
+    .join("\n") || "Nenhuma registrada";
+
+  const prompt = `Você é um coach de vendas especialista em fechamento. Analise o briefing abaixo e produza um resumo executivo do cliente para o vendedor usar na próxima abordagem de fechamento.
+
+EMPRESA VENDEDORA: ${profile?.nomeFantasia ?? "nossa empresa"} | Vertical: ${profile?.vertical ?? "—"} | Diferencial: ${profile?.diferenciais ?? "—"} | Produtos: ${produtosDesc}
+
+CLIENTE:
+- Nome/Empresa: ${lead.empresa ?? lead.nome}
+- Segmento: ${lead.mercadoSegmento ?? "não informado"}
+- Objetivo declarado: ${lead.objetivo ?? "não informado"}
+- Porte: ${briefing?.prospectSize ?? "não classificado"}
+- Canais usados: ${(briefing?.channelsUsed ?? []).join(", ") || "—"}
+
+SITUAÇÃO (SPIN):
+${fmt(briefing?.situationAnswers as any) || "Não preenchido"}
+
+PROBLEMAS IDENTIFICADOS:
+${fmt(briefing?.problemAnswers as any) || "Não preenchido"}
+Problema minimizado pelo cliente: ${briefing?.problemMinimized ? "Sim" : "Não"}
+
+IMPLICAÇÕES / IMPACTO FINANCEIRO:
+${fmt(briefing?.implicationAnswers as any) || "Não preenchido"}
+Valor estimado de perda: ${briefing?.implicationEstimatedValue ?? "não estimado"}
+
+NECESSIDADE / SOLUÇÃO DESEJADA:
+${fmt(briefing?.needAnswers as any) || "Não preenchido"}
+Termômetro de necessidade: ${briefing?.needThermometer ?? "—"}
+
+OBJEÇÕES:
+${objecoesText}
+
+PRÓXIMO PASSO COMBINADO: ${briefing?.nextStepType ?? "não definido"} | Data: ${briefing?.nextStepDate ?? "—"}
+
+NOTAS LIVRES: ${briefing?.freeNotes ?? "—"}
+
+TAREFA: Com base nesses dados, produza um JSON com o seguinte formato:
+{
+  "resumoCliente": "Parágrafo de 3-4 frases resumindo o perfil e momento do cliente",
+  "doresPrincipais": ["dor 1", "dor 2", "dor 3"],
+  "pontosDeForte": ["argumento de fechamento 1", "argumento 2", "argumento 3"],
+  "comoContornarObjecoes": [{"objecao": "texto da objeção", "argumento": "como rebater"}],
+  "abordagemRecomendada": "Frase curta com a estratégia ideal para fechar este cliente agora",
+  "alertas": ["alerta ou risco de perda 1", "alerta 2"]
+}
+
+Seja direto, prático e específico para este cliente. Não invente dados que não estão no briefing.`;
+
+  try {
+    const aiKey = await resolveAIKey(tenantId, "openai");
+    const openai = new OpenAI({ apiKey: aiKey.apiKey });
+
+    const completion = await openai.chat.completions.create({
+      model: "gpt-4o-mini",
+      messages: [{ role: "user", content: prompt }],
+      response_format: { type: "json_object" },
+      max_tokens: 1200,
+      temperature: 0.5,
+    });
+
+    const raw = completion.choices[0]?.message?.content ?? "{}";
+    let parsed: Record<string, unknown>;
+    try {
+      parsed = JSON.parse(raw);
+    } catch {
+      res.status(502).json({ error: "IA retornou formato inválido" });
+      return;
+    }
+
+    req.log.info({ tenantId, leadId }, "briefing/summarize: ok");
+    res.json({
+      resumoCliente:          parsed.resumoCliente          ?? "",
+      doresPrincipais:        parsed.doresPrincipais        ?? [],
+      pontosDeForte:          parsed.pontosDeForte          ?? [],
+      comoContornarObjecoes:  parsed.comoContornarObjecoes  ?? [],
+      abordagemRecomendada:   parsed.abordagemRecomendada   ?? "",
+      alertas:                parsed.alertas                ?? [],
+    });
+  } catch (err: any) {
+    req.log.error({ err }, "briefing/summarize error");
+    res.status(500).json({ error: "Erro ao gerar resumo com IA" });
+  }
+});
+
 export default router;
