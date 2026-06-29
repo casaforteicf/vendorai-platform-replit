@@ -1,9 +1,11 @@
-import { useState, useRef, useCallback } from "react";
+import { useState, useRef, useCallback, useEffect } from "react";
 import { useAuth } from "@/contexts/AuthContext";
 import { useToast } from "@/hooks/use-toast";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
+import { Input } from "@/components/ui/input";
+import { Badge } from "@/components/ui/badge";
 import {
   Dialog,
   DialogContent,
@@ -22,6 +24,10 @@ import {
   Clapperboard,
   Sparkles,
   Pencil,
+  BookmarkPlus,
+  Search,
+  Check,
+  User,
 } from "lucide-react";
 
 function getBase() {
@@ -50,7 +56,8 @@ const ROOM_TYPES = [
 ];
 
 export default function ArchRender() {
-  const { token } = useAuth();
+  const { token, user } = useAuth();
+  const tenantId = user?.tenantId;
   const { toast } = useToast();
 
   const [previewSrc, setPreviewSrc]     = useState<string | null>(null);
@@ -64,6 +71,13 @@ export default function ArchRender() {
   const [refineOpen, setRefineOpen]     = useState(false);
   const [refineNote, setRefineNote]     = useState("");
   const [refining, setRefining]         = useState(false);
+  // Salvar no Lead
+  const [saveOpen, setSaveOpen]         = useState(false);
+  const [leadSearch, setLeadSearch]     = useState("");
+  const [leads, setLeads]               = useState<{ id: string; nome: string; empresa?: string }[]>([]);
+  const [loadingLeads, setLoadingLeads] = useState(false);
+  const [selectedLead, setSelectedLead] = useState<{ id: string; nome: string } | null>(null);
+  const [savingLead, setSavingLead]     = useState(false);
   const fileInputRef                    = useRef<HTMLInputElement>(null);
 
   const handleFile = (f: File) => {
@@ -127,6 +141,54 @@ export default function ArchRender() {
     a.href = `${getBase()}${resultUrl}`;
     a.download = `render-${Date.now()}.png`;
     a.click();
+  };
+
+  // Busca leads ao abrir o diálogo
+  useEffect(() => {
+    if (!saveOpen || !tenantId) return;
+    setLoadingLeads(true);
+    setSelectedLead(null);
+    setLeadSearch("");
+    fetch(`${getBase()}/api/tenants/${tenantId}/leads?limit=200`, {
+      headers: { Authorization: `Bearer ${token}` },
+    })
+      .then((r) => r.json())
+      .then((d) => setLeads(Array.isArray(d) ? d : (d.data ?? [])))
+      .catch(() => setLeads([]))
+      .finally(() => setLoadingLeads(false));
+  }, [saveOpen, tenantId, token]);
+
+  const handleSaveToLead = async () => {
+    if (!selectedLead || !resultUrl || !tenantId) return;
+    setSavingLead(true);
+    try {
+      const res = await fetch(`${getBase()}/api/activities`, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${token}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          tenantId,
+          leadId:         selectedLead.id,
+          tipo:           "tarefa",
+          titulo:         `Renderização: ${style} — ${roomType}`,
+          descricao:      notes || undefined,
+          status:         "concluida",
+          anexoUrl:       resultUrl,
+          anexoNome:      `render-${Date.now()}.png`,
+          anexoMimeType:  "image/png",
+          anexoCategoria: "imagem",
+        }),
+      });
+      if (!res.ok) throw new Error("Falha ao salvar");
+      toast({ title: "Imagem salva!", description: `Adicionada ao card de ${selectedLead.nome}.` });
+      setSaveOpen(false);
+    } catch {
+      toast({ title: "Erro ao salvar", variant: "destructive" });
+    } finally {
+      setSavingLead(false);
+    }
   };
 
   const handleReset = () => {
@@ -345,6 +407,9 @@ export default function ArchRender() {
                     <Button size="sm" variant="outline" className="text-xs gap-1 h-7 border-violet-300 text-violet-700 hover:bg-violet-50 dark:border-violet-700 dark:text-violet-300 dark:hover:bg-violet-950/40" onClick={() => { setRefineNote(""); setRefineOpen(true); }}>
                       <Pencil className="h-3 w-3" /> Ajustar
                     </Button>
+                    <Button size="sm" variant="outline" className="text-xs gap-1 h-7 border-emerald-300 text-emerald-700 hover:bg-emerald-50 dark:border-emerald-700 dark:text-emerald-300 dark:hover:bg-emerald-950/40" onClick={() => setSaveOpen(true)}>
+                      <BookmarkPlus className="h-3 w-3" /> Salvar no Lead
+                    </Button>
                     <Button size="sm" className="text-xs gap-1 h-7 bg-violet-600 hover:bg-violet-700" onClick={handleDownload}>
                       <Download className="h-3 w-3" /> Baixar
                     </Button>
@@ -390,6 +455,100 @@ export default function ArchRender() {
           </Card>
         </div>
       </div>
+
+      {/* Diálogo — Salvar no Lead */}
+      <Dialog open={saveOpen} onOpenChange={setSaveOpen}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <BookmarkPlus className="h-4 w-4 text-emerald-500" />
+              Salvar imagem no card do lead
+            </DialogTitle>
+          </DialogHeader>
+
+          <div className="space-y-3 py-1">
+            {/* Busca */}
+            <div className="relative">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
+              <Input
+                autoFocus
+                placeholder="Buscar lead pelo nome ou empresa..."
+                className="pl-8 text-sm h-9"
+                value={leadSearch}
+                onChange={(e) => setLeadSearch(e.target.value)}
+              />
+            </div>
+
+            {/* Lista de leads */}
+            <div className="border rounded-lg max-h-52 overflow-y-auto divide-y text-sm">
+              {loadingLeads ? (
+                <div className="flex items-center justify-center gap-2 py-6 text-muted-foreground">
+                  <Loader2 className="h-4 w-4 animate-spin" /> Carregando leads...
+                </div>
+              ) : leads.length === 0 ? (
+                <div className="py-6 text-center text-muted-foreground text-xs">Nenhum lead encontrado</div>
+              ) : (
+                leads
+                  .filter((l) => {
+                    const q = leadSearch.toLowerCase();
+                    return !q || l.nome.toLowerCase().includes(q) || (l.empresa ?? "").toLowerCase().includes(q);
+                  })
+                  .slice(0, 50)
+                  .map((l) => (
+                    <button
+                      key={l.id}
+                      type="button"
+                      onClick={() => setSelectedLead(l)}
+                      className={`w-full flex items-center gap-3 px-3 py-2.5 text-left transition-colors cursor-pointer ${
+                        selectedLead?.id === l.id
+                          ? "bg-emerald-50 dark:bg-emerald-950/30"
+                          : "hover:bg-muted/50"
+                      }`}
+                    >
+                      <div className="flex-1 min-w-0">
+                        <p className="font-medium truncate">{l.nome}</p>
+                        {l.empresa && <p className="text-xs text-muted-foreground truncate">{l.empresa}</p>}
+                      </div>
+                      {selectedLead?.id === l.id && (
+                        <Check className="h-4 w-4 text-emerald-600 shrink-0" />
+                      )}
+                    </button>
+                  ))
+              )}
+            </div>
+
+            {selectedLead && (
+              <div className="flex items-center gap-2 p-2 rounded-lg bg-emerald-50 dark:bg-emerald-950/20 border border-emerald-200 dark:border-emerald-900/40">
+                <User className="h-3.5 w-3.5 text-emerald-600 shrink-0" />
+                <span className="text-xs font-medium text-emerald-800 dark:text-emerald-300">
+                  Salvar em: <span className="font-semibold">{selectedLead.nome}</span>
+                </span>
+              </div>
+            )}
+
+            <p className="text-xs text-muted-foreground">
+              A imagem será adicionada à seção de anexos do lead com categoria <Badge variant="secondary" className="text-[10px] px-1 py-0">Imagem</Badge>.
+            </p>
+          </div>
+
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setSaveOpen(false)} disabled={savingLead}>
+              Cancelar
+            </Button>
+            <Button
+              onClick={handleSaveToLead}
+              disabled={savingLead || !selectedLead}
+              className="bg-emerald-600 hover:bg-emerald-700 text-white gap-2"
+            >
+              {savingLead ? (
+                <><Loader2 className="h-3.5 w-3.5 animate-spin" /> Salvando…</>
+              ) : (
+                <><BookmarkPlus className="h-3.5 w-3.5" /> Salvar</>
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* Diálogo de ajuste da imagem gerada */}
       <Dialog open={refineOpen} onOpenChange={setRefineOpen}>
