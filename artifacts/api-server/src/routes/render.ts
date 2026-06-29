@@ -18,8 +18,8 @@ const upload = multer({
   limits: { fileSize: 20 * 1024 * 1024 },
 });
 const uploadFields = upload.fields([
-  { name: "image",         maxCount: 1 },
-  { name: "materialImage", maxCount: 1 },
+  { name: "image",          maxCount: 1 },
+  { name: "materialImages", maxCount: 8 },
 ]);
 
 router.post("/render/quick", uploadFields, async (req, res) => {
@@ -29,21 +29,27 @@ router.post("/render/quick", uploadFields, async (req, res) => {
     return;
   }
 
-  const files        = req.files as Record<string, Express.Multer.File[]> | undefined;
-  const file         = files?.["image"]?.[0];
-  const materialFile = files?.["materialImage"]?.[0];
+  const files         = req.files as Record<string, Express.Multer.File[]> | undefined;
+  const file          = files?.["image"]?.[0];
+  const materialFiles = files?.["materialImages"] ?? [];
 
   if (!file) {
     res.status(400).json({ error: "Envie uma imagem para renderizar" });
     return;
   }
 
-  const style          = String(req.body?.style          ?? "nenhum");
-  const angle          = String(req.body?.angle          ?? "frontal");
-  const lighting       = String(req.body?.lighting       ?? "auto");
-  const roomType       = String(req.body?.roomType       ?? "sala de estar");
-  const notes          = String(req.body?.notes          ?? "");
-  const materialSurface = String(req.body?.materialSurface ?? "todos");
+  const style    = String(req.body?.style    ?? "nenhum");
+  const angle    = String(req.body?.angle    ?? "frontal");
+  const lighting = String(req.body?.lighting ?? "auto");
+  const roomType = String(req.body?.roomType ?? "sala de estar");
+  const notes    = String(req.body?.notes    ?? "");
+
+  type MaterialPin = { materialIndex: number; percentX: number; percentY: number };
+  let materialPins: MaterialPin[] = [];
+  try {
+    const raw = req.body?.materialPins;
+    if (raw) materialPins = JSON.parse(String(raw));
+  } catch { /* ignore parse errors */ }
 
   const isExterior  = roomType === "fachada externa";
   const applyStyle  = style !== "nenhum";
@@ -119,24 +125,24 @@ router.post("/render/quick", uploadFields, async (req, res) => {
     ? "Brazilian residential architecture context."
     : `Context: ${roomType}, Brazilian home interior.`;
 
-  // ── Optional material/texture layer ────────────────────────────────────
-  const surfaceTargetMap: Record<string, string> = {
-    paredes:  "all walls and vertical surfaces",
-    piso:     "the floor surface",
-    teto:     "the ceiling surface",
-    fachada:  "the entire building facade and exterior cladding surfaces",
-    moveis:   "the main furniture upholstery and wood surfaces",
-    todos:    "all major surfaces (walls, floor, and ceiling)",
-  };
-  const surfaceLabel = surfaceTargetMap[materialSurface] ?? "all major surfaces";
+  // ── Optional material/texture pins ────────────────────────────────────
+  function describePosition(px: number, py: number): string {
+    const hLabel = px < 33 ? "left side" : px > 66 ? "right side" : "center";
+    const vLabel = py < 25 ? "ceiling/top area" : py > 75 ? "floor/bottom area" : py < 50 ? "upper-middle" : "lower-middle (walls)";
+    return `${hLabel}, ${vLabel} (${px}% from left, ${py}% from top)`;
+  }
 
-  const materialInstruction = materialFile
+  const hasMaterialPins = materialFiles.length > 0 && materialPins.length > 0;
+  const materialInstruction = hasMaterialPins
     ? [
-        "MATERIAL REFERENCE — The second image in this request is a material/texture sample (NOT a scene to edit).",
-        `Extract from it: the exact color tone, surface texture pattern, grain direction, material finish (matte/satin/gloss), and any visible pattern or veining.`,
-        `Apply this extracted material ONLY to ${surfaceLabel} of the scene shown in the FIRST image.`,
-        "Keep EVERYTHING ELSE in the scene completely unchanged — same objects, furniture, positions, lighting, and geometry.",
-        "Scale and tile the texture naturally as it would look on a real architectural surface.",
+        `MATERIAL APPLICATIONS — The following images (images 2 through ${1 + materialFiles.length}) are material/texture samples, NOT scenes to edit.`,
+        "For each sample below, extract its color tone, texture pattern, grain direction, surface finish (matte/satin/gloss/polished), and any veining or pattern repeat.",
+        "Apply each material ONLY to the pinned area indicated — leave every other surface, object, and element completely unchanged.",
+        ...materialPins.map((pin) => {
+          const imgIdx = pin.materialIndex + 2; // image 1 = scene, images 2+ = materials
+          return `• Image ${imgIdx}: apply to the scene area at ${describePosition(pin.percentX, pin.percentY)}.`;
+        }),
+        "Scale and tile each texture realistically as it would appear on an architectural surface at the correct viewing distance.",
       ].join(" ")
     : null;
 
@@ -157,13 +163,14 @@ router.post("/render/quick", uploadFields, async (req, res) => {
       type: file.mimetype,
     });
 
-    const imageInput = materialFile
-      ? [
-          imageFile,
-          await toFile(materialFile.buffer, materialFile.originalname || "material.png", {
-            type: materialFile.mimetype,
-          }),
-        ]
+    const materialOAIFiles = await Promise.all(
+      materialFiles.map((mf, i) =>
+        toFile(mf.buffer, mf.originalname || `material-${i}.png`, { type: mf.mimetype })
+      )
+    );
+
+    const imageInput = materialOAIFiles.length > 0
+      ? [imageFile, ...materialOAIFiles]
       : imageFile;
 
     const result = await (openai.images.edit as Function)({

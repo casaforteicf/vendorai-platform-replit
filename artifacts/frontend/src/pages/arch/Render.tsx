@@ -28,6 +28,7 @@ import {
   Search,
   Check,
   User,
+  Plus,
 } from "lucide-react";
 
 function getBase() {
@@ -63,6 +64,9 @@ const STYLES = [
   { value: "escandinavo",  label: "Escandinavo" },
 ];
 
+type MaterialItem = { id: string; file: File; preview: string; name: string };
+type MaterialPin  = { id: string; materialId: string; percentX: number; percentY: number };
+
 const ROOM_TYPES = [
   { value: "sala de estar",   label: "Sala de Estar" },
   { value: "quarto",          label: "Quarto" },
@@ -93,12 +97,13 @@ export default function ArchRender() {
   const [refineOpen, setRefineOpen]         = useState(false);
   const [refineNote, setRefineNote]         = useState("");
   const [refining, setRefining]             = useState(false);
-  // Material / Textura
-  const [materialFile, setMaterialFile]     = useState<File | null>(null);
-  const [materialPreview, setMaterialPreview] = useState<string | null>(null);
-  const [materialDragging, setMaterialDragging] = useState(false);
-  const [materialSurface, setMaterialSurface] = useState("todos");
+  // Materiais / Pins
+  const [materials, setMaterials]           = useState<MaterialItem[]>([]);
+  const [pins, setPins]                     = useState<MaterialPin[]>([]);
+  const [draggingMaterialId, setDraggingMaterialId] = useState<string | null>(null);
+  const [imgDropHover, setImgDropHover]     = useState(false);
   const materialInputRef                    = useRef<HTMLInputElement>(null);
+  const imgAreaRef                          = useRef<HTMLDivElement>(null);
   // Salvar no Lead
   const [saveOpen, setSaveOpen]             = useState(false);
   const [leadSearch, setLeadSearch]         = useState("");
@@ -120,15 +125,39 @@ export default function ArchRender() {
     reader.readAsDataURL(f);
   };
 
-  const handleMaterialFile = (f: File) => {
+  const addMaterial = (f: File) => {
     if (!f.type.startsWith("image/")) {
       toast({ title: "Formato inválido", description: "Envie uma imagem de textura.", variant: "destructive" });
       return;
     }
-    setMaterialFile(f);
     const reader = new FileReader();
-    reader.onload = (e) => setMaterialPreview(e.target?.result as string);
+    reader.onload = (ev) => {
+      const id = Math.random().toString(36).slice(2, 10);
+      setMaterials((prev) => [
+        ...prev,
+        { id, file: f, preview: ev.target?.result as string, name: f.name.replace(/\.[^.]+$/, "") },
+      ]);
+    };
     reader.readAsDataURL(f);
+  };
+
+  const removeMaterial = (id: string) => {
+    setMaterials((prev) => prev.filter((m) => m.id !== id));
+    setPins((prev) => prev.filter((p) => p.materialId !== id));
+  };
+
+  const handleImgAreaDrop = (e: React.DragEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    setImgDropHover(false);
+    const matId = e.dataTransfer.getData("materialId");
+    if (!matId || !imgAreaRef.current) return;
+    const rect = imgAreaRef.current.getBoundingClientRect();
+    const percentX = Math.max(4, Math.min(96, Math.round(((e.clientX - rect.left) / rect.width) * 100)));
+    const percentY = Math.max(4, Math.min(96, Math.round(((e.clientY - rect.top) / rect.height) * 100)));
+    setPins((prev) => [
+      ...prev,
+      { id: Math.random().toString(36).slice(2, 10), materialId: matId, percentX, percentY },
+    ]);
   };
 
   const onDrop = useCallback((e: React.DragEvent) => {
@@ -136,13 +165,6 @@ export default function ArchRender() {
     setDragging(false);
     const f = e.dataTransfer.files[0];
     if (f) handleFile(f);
-  }, []);
-
-  const onMaterialDrop = useCallback((e: React.DragEvent) => {
-    e.preventDefault();
-    setMaterialDragging(false);
-    const f = e.dataTransfer.files[0];
-    if (f) handleMaterialFile(f);
   }, []);
 
   const onDragOver = (e: React.DragEvent) => { e.preventDefault(); setDragging(true); };
@@ -163,10 +185,11 @@ export default function ArchRender() {
       form.append("angle", angle);
       form.append("roomType", roomType);
       form.append("notes", notes);
-      if (materialFile) {
-        form.append("materialImage", materialFile);
-        form.append("materialSurface", materialSurface);
-      }
+      materials.forEach((m) => form.append("materialImages", m.file));
+      const pinPayload = pins
+        .map((p) => ({ materialIndex: materials.findIndex((m) => m.id === p.materialId), percentX: p.percentX, percentY: p.percentY }))
+        .filter((p) => p.materialIndex >= 0);
+      if (pinPayload.length > 0) form.append("materialPins", JSON.stringify(pinPayload));
 
       const res = await fetch(`${getBase()}/api/render/quick`, {
         method: "POST",
@@ -248,6 +271,8 @@ export default function ArchRender() {
     setPreviewSrc(null);
     setResultUrl(null);
     setNotes("");
+    setMaterials([]);
+    setPins([]);
     if (fileInputRef.current) fileInputRef.current.value = "";
   };
 
@@ -270,10 +295,11 @@ export default function ArchRender() {
       form.append("angle", angle);
       form.append("roomType", roomType);
       form.append("notes", refineNote.trim());
-      if (materialFile) {
-        form.append("materialImage", materialFile);
-        form.append("materialSurface", materialSurface);
-      }
+      materials.forEach((m) => form.append("materialImages", m.file));
+      const pinPayload2 = pins
+        .map((p) => ({ materialIndex: materials.findIndex((m) => m.id === p.materialId), percentX: p.percentX, percentY: p.percentY }))
+        .filter((p) => p.materialIndex >= 0);
+      if (pinPayload2.length > 0) form.append("materialPins", JSON.stringify(pinPayload2));
 
       const res = await fetch(`${getBase()}/api/render/quick`, {
         method: "POST",
@@ -361,52 +387,73 @@ export default function ArchRender() {
             </CardContent>
           </Card>
 
-          {/* Material / Textura */}
+          {/* Paleta de Materiais / Texturas */}
           <Card>
             <CardHeader className="pb-2 pt-3 px-3">
               <div className="flex items-center justify-between">
-                <CardTitle className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                  Material / Textura
-                  <span className="ml-1 normal-case font-normal">(opcional)</span>
-                </CardTitle>
-                {materialFile && (
-                  <button
-                    type="button"
-                    onClick={() => { setMaterialFile(null); setMaterialPreview(null); }}
-                    className="text-muted-foreground hover:text-foreground transition-colors"
-                  >
-                    <X className="h-3.5 w-3.5" />
-                  </button>
-                )}
+                <div>
+                  <CardTitle className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                    Materiais / Texturas
+                  </CardTitle>
+                  {materials.length > 0 && (
+                    <p className="text-[10px] text-muted-foreground mt-0.5">
+                      Arraste sobre a imagem do projeto →
+                    </p>
+                  )}
+                </div>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="h-6 text-[10px] px-2 gap-1 border-orange-300 text-orange-700 hover:bg-orange-50 dark:border-orange-700 dark:text-orange-300"
+                  onClick={() => materialInputRef.current?.click()}
+                >
+                  <Plus className="h-3 w-3" /> Adicionar
+                </Button>
               </div>
             </CardHeader>
             <CardContent className="px-3 pb-3 space-y-2">
-              {materialPreview ? (
-                <div className="relative rounded-lg overflow-hidden">
-                  <img
-                    src={materialPreview}
-                    alt="Material"
-                    className="w-full h-24 object-cover rounded-lg"
-                  />
-                  <div className="absolute bottom-0 left-0 right-0 px-2 py-1 bg-gradient-to-t from-black/70 to-transparent">
-                    <p className="text-[10px] text-white/90 truncate">{materialFile?.name}</p>
-                  </div>
-                </div>
-              ) : (
+              {materials.length === 0 ? (
                 <div
-                  onDrop={onMaterialDrop}
-                  onDragOver={(e) => { e.preventDefault(); setMaterialDragging(true); }}
-                  onDragLeave={() => setMaterialDragging(false)}
                   onClick={() => materialInputRef.current?.click()}
-                  className={`border-2 border-dashed rounded-lg p-4 text-center cursor-pointer transition-colors ${
-                    materialDragging
-                      ? "border-orange-400 bg-orange-50 dark:bg-orange-950/20"
-                      : "border-muted-foreground/30 hover:border-orange-300 hover:bg-muted/30"
-                  }`}
+                  className="border-2 border-dashed border-muted-foreground/30 hover:border-orange-300 hover:bg-muted/30 rounded-lg p-4 text-center cursor-pointer transition-colors"
                 >
                   <Upload className="h-5 w-5 mx-auto mb-1.5 text-muted-foreground" />
                   <p className="text-xs font-medium">Foto do material</p>
                   <p className="text-[10px] text-muted-foreground mt-0.5">Pedra, madeira, cerâmica, tecido…</p>
+                </div>
+              ) : (
+                <div className="space-y-1.5">
+                  {materials.map((m) => (
+                    <div
+                      key={m.id}
+                      draggable
+                      onDragStart={(e) => {
+                        e.dataTransfer.setData("materialId", m.id);
+                        setDraggingMaterialId(m.id);
+                      }}
+                      onDragEnd={() => setDraggingMaterialId(null)}
+                      className={`flex items-center gap-2 rounded-lg border px-2 py-1.5 cursor-grab active:cursor-grabbing select-none transition-all ${
+                        draggingMaterialId === m.id
+                          ? "border-orange-400 bg-orange-50/60 dark:bg-orange-950/30 opacity-60"
+                          : "border-border hover:border-orange-300 hover:bg-muted/40"
+                      }`}
+                    >
+                      <img src={m.preview} alt={m.name} className="h-8 w-8 rounded object-cover flex-shrink-0 shadow-sm" />
+                      <span className="text-[11px] font-medium truncate flex-1">{m.name}</span>
+                      <button
+                        type="button"
+                        onClick={() => removeMaterial(m.id)}
+                        className="text-muted-foreground hover:text-red-500 transition-colors flex-shrink-0"
+                      >
+                        <X className="h-3.5 w-3.5" />
+                      </button>
+                    </div>
+                  ))}
+                  {pins.length > 0 && (
+                    <p className="text-[10px] text-muted-foreground text-center pt-1">
+                      {pins.length} {pins.length === 1 ? "pino marcado" : "pinos marcados"} na imagem
+                    </p>
+                  )}
                 </div>
               )}
               <input
@@ -414,37 +461,12 @@ export default function ArchRender() {
                 type="file"
                 accept="image/*"
                 className="hidden"
-                onChange={(e) => { const f = e.target.files?.[0]; if (f) handleMaterialFile(f); }}
+                onChange={(e) => {
+                  const f = e.target.files?.[0];
+                  if (f) addMaterial(f);
+                  if (materialInputRef.current) materialInputRef.current.value = "";
+                }}
               />
-              {/* Superfície alvo */}
-              {materialFile && (
-                <div className="space-y-1.5">
-                  <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">Aplicar em:</p>
-                  <div className="grid grid-cols-2 gap-1">
-                    {[
-                      { value: "todos",   label: "Todas" },
-                      { value: "paredes", label: "Paredes" },
-                      { value: "piso",    label: "Piso" },
-                      { value: "teto",    label: "Teto" },
-                      { value: "fachada", label: "Fachada" },
-                      { value: "moveis",  label: "Móveis" },
-                    ].map((s) => (
-                      <button
-                        key={s.value}
-                        type="button"
-                        onClick={() => setMaterialSurface(s.value)}
-                        className={`rounded border px-2 py-1 text-[10px] font-medium transition-all cursor-pointer ${
-                          materialSurface === s.value
-                            ? "border-orange-400 bg-orange-50 dark:bg-orange-950/30 text-orange-700 dark:text-orange-300"
-                            : "border-border hover:border-orange-300 hover:bg-muted/40"
-                        }`}
-                      >
-                        {s.label}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-              )}
             </CardContent>
           </Card>
 
@@ -588,7 +610,7 @@ export default function ArchRender() {
               <div className="flex items-center justify-between flex-wrap gap-2">
                 <CardTitle className="text-sm font-medium flex items-center gap-2">
                   <Sparkles className="h-4 w-4 text-violet-500" />
-                  Resultado
+                  {resultUrl ? "Resultado" : previewSrc && !rendering ? "Projeto — arraste materiais aqui" : "Resultado"}
                 </CardTitle>
                 {resultUrl && (
                   <div className="flex gap-2 flex-wrap">
@@ -605,6 +627,16 @@ export default function ArchRender() {
                       <Download className="h-3 w-3" /> Baixar
                     </Button>
                   </div>
+                )}
+                {previewSrc && !resultUrl && !rendering && pins.length > 0 && (
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="text-xs gap-1 h-7 text-muted-foreground"
+                    onClick={() => setPins([])}
+                  >
+                    <X className="h-3 w-3" /> Limpar pinos
+                  </Button>
                 )}
               </div>
             </CardHeader>
@@ -632,6 +664,79 @@ export default function ArchRender() {
                     <p className="text-sm font-medium">Gerando renderização...</p>
                     <p className="text-xs mt-1">A IA está transformando sua imagem</p>
                   </div>
+                </div>
+              ) : previewSrc ? (
+                /* ── Drop target: reference image + material pins overlay ── */
+                <div
+                  ref={imgAreaRef}
+                  className="relative select-none"
+                  onDragOver={(e) => {
+                    if (e.dataTransfer.types.includes("materialid") || draggingMaterialId) {
+                      e.preventDefault();
+                      setImgDropHover(true);
+                    }
+                  }}
+                  onDragLeave={(e) => {
+                    if (!imgAreaRef.current?.contains(e.relatedTarget as Node)) {
+                      setImgDropHover(false);
+                    }
+                  }}
+                  onDrop={handleImgAreaDrop}
+                >
+                  <img
+                    src={previewSrc}
+                    alt="Imagem de referência"
+                    className="w-full rounded-xl object-contain max-h-[75vh]"
+                    draggable={false}
+                  />
+
+                  {/* Pins overlay */}
+                  {pins.map((pin) => {
+                    const mat = materials.find((m) => m.id === pin.materialId);
+                    if (!mat) return null;
+                    return (
+                      <div
+                        key={pin.id}
+                        style={{ left: `${pin.percentX}%`, top: `${pin.percentY}%` }}
+                        className="absolute -translate-x-1/2 -translate-y-1/2 group z-10"
+                      >
+                        <div className="relative rounded-lg border-2 border-orange-400 shadow-lg overflow-hidden bg-white dark:bg-zinc-900">
+                          <img src={mat.preview} alt={mat.name} className="h-10 w-10 object-cover block" />
+                          <button
+                            type="button"
+                            onClick={() => setPins((prev) => prev.filter((p) => p.id !== pin.id))}
+                            className="absolute -top-1.5 -right-1.5 h-4 w-4 rounded-full bg-red-500 text-white flex items-center justify-center shadow opacity-0 group-hover:opacity-100 transition-opacity"
+                          >
+                            <X className="h-2.5 w-2.5" />
+                          </button>
+                        </div>
+                        {/* Tail */}
+                        <div className="absolute left-1/2 -translate-x-1/2 -bottom-1.5 w-0 h-0 border-l-[5px] border-l-transparent border-r-[5px] border-r-transparent border-t-[6px] border-t-orange-400" />
+                        {/* Tooltip */}
+                        <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 px-2 py-0.5 bg-black/75 text-white text-[10px] rounded whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none">
+                          {mat.name}
+                        </div>
+                      </div>
+                    );
+                  })}
+
+                  {/* Drop hover overlay */}
+                  {imgDropHover && (
+                    <div className="absolute inset-0 rounded-xl bg-orange-500/20 border-2 border-dashed border-orange-400 flex items-center justify-center pointer-events-none">
+                      <div className="bg-white/90 dark:bg-zinc-900/90 px-4 py-2 rounded-lg shadow-lg">
+                        <p className="text-orange-700 dark:text-orange-300 font-medium text-sm">Solte para marcar esta área</p>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Hint when materials exist but no pins yet */}
+                  {materials.length > 0 && pins.length === 0 && !imgDropHover && (
+                    <div className="absolute bottom-4 left-1/2 -translate-x-1/2 pointer-events-none">
+                      <div className="bg-black/65 backdrop-blur-sm text-white text-xs px-3 py-2 rounded-lg flex items-center gap-2">
+                        <span>Arraste um material da paleta e solte aqui</span>
+                      </div>
+                    </div>
+                  )}
                 </div>
               ) : (
                 <div className="flex flex-col items-center justify-center gap-3 text-muted-foreground min-h-[60vh]">
