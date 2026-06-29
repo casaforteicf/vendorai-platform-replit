@@ -5,8 +5,9 @@ import ImageCanvas from './ImageCanvas'
 import ConfigBar from './ConfigBar'
 import BottomBar from './BottomBar'
 import { MATERIALS, AppliedMaterial } from './render-types'
+import type { UserMat } from './MaterialBar'
 
-type CustomMat = typeof MATERIALS[number]
+type CustomMat = UserMat
 
 const STEPS = ['Imagem', 'Materiais', 'Config', 'Prompt', 'Render']
 
@@ -74,12 +75,13 @@ export default function RenderPage() {
 
   function handleImport(file: File, name: string, color: string) {
     setCustomMats(prev => [...prev, {
-      id: `custom-${Date.now()}`,
-      name,
-      cat: 'custom',
+      id: `user-${Date.now()}`,
+      name: name.slice(0, 10),
+      cat: 'usuario',
       c1: color,
       c2: color,
-      prompt: `${name} texture, photorealistic`,
+      prompt: 'texture from user image, photorealistic',
+      imageUrl: URL.createObjectURL(file),
     }])
   }
 
@@ -268,6 +270,7 @@ export default function RenderPage() {
       {/* Row 4 — MaterialBar */}
       <MaterialBar
         applied={rs.applied}
+        customMats={customMats}
         onDragStart={mat => {
           setDraggingMat(mat as CustomMat)
           setGhostPos({ x: -200, y: -200 })

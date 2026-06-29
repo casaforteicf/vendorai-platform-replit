@@ -1,9 +1,10 @@
 import { useState } from 'react'
 import { MATERIALS } from './render-types'
 
-type Mat = typeof MATERIALS[number]
+type BaseMat = typeof MATERIALS[number]
+export type UserMat = BaseMat & { imageUrl?: string }
 
-const CATS = [
+const STATIC_CATS = [
   { key: 'todos',    label: 'Todos' },
   { key: 'madeira',  label: 'Madeira' },
   { key: 'mdf',      label: 'MDF' },
@@ -15,7 +16,8 @@ const CATS = [
 
 interface MaterialBarProps {
   applied: Record<string, any>
-  onDragStart: (mat: Mat) => void
+  customMats: UserMat[]
+  onDragStart: (mat: UserMat) => void
   onImport: (file: File, name: string, color: string) => void
 }
 
@@ -38,10 +40,18 @@ async function readAvgColor(file: File): Promise<string> {
   })
 }
 
-export default function MaterialBar({ applied, onDragStart, onImport }: MaterialBarProps) {
+export default function MaterialBar({ applied, customMats, onDragStart, onImport }: MaterialBarProps) {
   const [cat, setCat] = useState('todos')
 
-  const filtered = cat === 'todos' ? MATERIALS : MATERIALS.filter(m => m.cat === cat)
+  const hasMeus = customMats.length > 0
+  const cats = hasMeus
+    ? [...STATIC_CATS, { key: 'usuario', label: 'Meus' }]
+    : STATIC_CATS
+
+  const allMats: UserMat[] = [...MATERIALS, ...customMats]
+  const filtered = cat === 'todos'
+    ? allMats
+    : allMats.filter(m => m.cat === cat)
 
   async function handleFiles(files: FileList | null) {
     if (!files) return
@@ -68,7 +78,7 @@ export default function MaterialBar({ applied, onDragStart, onImport }: Material
           Materiais
         </span>
         <div style={{ display: 'flex', gap: 4, overflowX: 'auto', flex: 1 }}>
-          {CATS.map(c => (
+          {cats.map(c => (
             <button
               key={c.key}
               onClick={() => setCat(c.key)}
@@ -124,6 +134,11 @@ export default function MaterialBar({ applied, onDragStart, onImport }: Material
       }}>
         {filtered.map(mat => {
           const isApplied = Object.values(applied).some((a: any) => a?.id === mat.id)
+          const borderStyle = isApplied
+            ? '1.5px solid rgba(139,92,246,0.9)'
+            : '1px solid rgba(255,255,255,0.15)'
+          const shadowStyle = isApplied ? '0 0 6px rgba(139,92,246,0.5)' : 'none'
+
           return (
             <div
               key={mat.id}
@@ -141,17 +156,34 @@ export default function MaterialBar({ applied, onDragStart, onImport }: Material
                 userSelect: 'none',
               }}
             >
-              <div style={{
-                width: 44,
-                height: 38,
-                borderRadius: 6,
-                background: `linear-gradient(135deg, ${mat.c1}, ${mat.c2})`,
-                border: isApplied
-                  ? '1.5px solid rgba(139,92,246,0.9)'
-                  : '1px solid rgba(255,255,255,0.15)',
-                boxShadow: isApplied ? '0 0 6px rgba(139,92,246,0.5)' : 'none',
-                transition: 'border 0.15s, box-shadow 0.15s',
-              }} />
+              {/* Card face — image or gradient */}
+              {mat.imageUrl ? (
+                <img
+                  src={mat.imageUrl}
+                  alt={mat.name}
+                  draggable={false}
+                  style={{
+                    width: 44,
+                    height: 38,
+                    borderRadius: 6,
+                    objectFit: 'cover',
+                    border: borderStyle,
+                    boxShadow: shadowStyle,
+                    display: 'block',
+                    pointerEvents: 'none',
+                  }}
+                />
+              ) : (
+                <div style={{
+                  width: 44,
+                  height: 38,
+                  borderRadius: 6,
+                  background: `linear-gradient(135deg, ${mat.c1}, ${mat.c2})`,
+                  border: borderStyle,
+                  boxShadow: shadowStyle,
+                  transition: 'border 0.15s, box-shadow 0.15s',
+                }} />
+              )}
               <span style={{
                 fontSize: 9,
                 color: 'rgba(255,255,255,0.55)',
