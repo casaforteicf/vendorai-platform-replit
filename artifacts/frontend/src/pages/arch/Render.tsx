@@ -35,6 +35,7 @@ function getBase() {
 }
 
 const STYLES = [
+  { value: "nenhum",       label: "Só melhorar qualidade" },
   { value: "moderno",      label: "Moderno" },
   { value: "rústico",      label: "Rústico" },
   { value: "clássico",     label: "Clássico" },
@@ -63,7 +64,7 @@ export default function ArchRender() {
   const [previewSrc, setPreviewSrc]     = useState<string | null>(null);
   const [file, setFile]                 = useState<File | null>(null);
   const [dragging, setDragging]         = useState(false);
-  const [style, setStyle]               = useState("moderno");
+  const [style, setStyle]               = useState("nenhum");
   const [roomType, setRoomType]         = useState("sala de estar");
   const [notes, setNotes]               = useState("");
   const [rendering, setRendering]       = useState(false);
@@ -304,7 +305,7 @@ export default function ArchRender() {
           {/* Estilo */}
           <Card>
             <CardHeader className="pb-2">
-              <CardTitle className="text-sm font-medium">Estilo</CardTitle>
+              <CardTitle className="text-sm font-medium">Estilo <span className="text-muted-foreground font-normal">(opcional)</span></CardTitle>
             </CardHeader>
             <CardContent>
               <div className="flex flex-wrap gap-2">
@@ -426,7 +427,7 @@ export default function ArchRender() {
                     className="w-full rounded-lg shadow-lg object-cover"
                   />
                   <p className="text-xs text-center text-muted-foreground">
-                    Estilo: <span className="font-medium">{style}</span> · Ambiente: <span className="font-medium">{roomType}</span>
+                    {style === "nenhum" ? "Melhoria de qualidade" : <span>Estilo: <span className="font-medium">{style}</span></span>} · Ambiente: <span className="font-medium">{roomType}</span>
                   </p>
                 </div>
               ) : rendering ? (

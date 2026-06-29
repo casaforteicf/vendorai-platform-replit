@@ -31,32 +31,56 @@ router.post("/render/quick", upload.single("image"), async (req, res) => {
     return;
   }
 
-  const style    = String(req.body?.style    ?? "moderno");
+  const style    = String(req.body?.style    ?? "nenhum");
   const roomType = String(req.body?.roomType ?? "sala de estar");
   const notes    = String(req.body?.notes    ?? "");
 
-  const isExterior = roomType === "fachada externa";
+  const isExterior  = roomType === "fachada externa";
+  const applyStyle  = style !== "nenhum";
 
-  const preserveInstruction = isExterior
-    ? "PRESERVE EXACTLY from the reference image: the building shape, footprint, number of floors, window and door positions, roof geometry, structural proportions, and all architectural volumes. Do NOT alter the building's form or add new structural elements."
-    : "PRESERVE EXACTLY from the reference image: the room geometry, wall positions, window and door locations, ceiling height, furniture arrangement and placement, and all existing objects. Do NOT add, remove, or relocate any furniture or objects.";
+  // ── Base: preserve everything, only enhance quality & lighting ──────────
+  const baseInstruction = isExterior
+    ? [
+        "You are a professional architectural visualization engine.",
+        "Transform this photo into a photorealistic architectural render.",
+        "STRICT RULES — NEVER BREAK THESE:",
+        "• Do NOT add any new elements (trees, cars, people, plants, decorations) not visible in the reference.",
+        "• Do NOT remove or alter any existing architectural element.",
+        "• Preserve EXACTLY: building shape, footprint, number of floors, window/door positions, roof geometry, all structural volumes.",
+        "ONLY ENHANCE:",
+        "• Lighting: simulate realistic sunlight/sky with proper shadows, ambient occlusion, and soft highlights on surfaces.",
+        "• Material quality: make existing surfaces (concrete, brick, glass, wood) look photorealistic with accurate texture detail.",
+        "• Image clarity: ultra-sharp details, high dynamic range, depth of field, 4K photorealistic quality.",
+      ].join(" ")
+    : [
+        "You are a professional architectural visualization engine.",
+        "Transform this photo into a photorealistic interior render.",
+        "STRICT RULES — NEVER BREAK THESE:",
+        "• Do NOT add any object, furniture, plant, decoration, or element not already present in the reference image.",
+        "• Do NOT remove, move, or replace any existing furniture or object.",
+        "• Preserve EXACTLY: room geometry, wall positions, window/door locations, ceiling height, and all furniture placement.",
+        "ONLY ENHANCE:",
+        "• Lighting: simulate realistic interior lighting from existing windows and light fixtures — add soft shadows, ambient occlusion, and warm/cool highlights that respect the room's existing light sources.",
+        "• Material quality: make existing surfaces (walls, floors, upholstery, wood, glass) look photorealistic with accurate texture and sheen.",
+        "• Image clarity: ultra-sharp details, high dynamic range, 4K photorealistic quality.",
+      ].join(" ");
 
-  const changeInstruction = isExterior
-    ? `ONLY CHANGE the surface finishes and materials: wall cladding texture and color, roof material, window frame style, facade details, and exterior lighting — to match the ${style} architectural style.`
-    : `ONLY CHANGE the surface materials and finishes: wall paint color and texture, floor material, ceiling treatment, upholstery colors, lighting fixtures, and decorative surface details — to match the ${style} interior design style.`;
-
-  const qualityInstruction = "Professional architectural photography quality. Natural, well-balanced lighting. Ultra-sharp details, high dynamic range, photorealistic rendering. 4K resolution.";
+  // ── Optional style layer — surface finishes only ────────────────────────
+  const styleInstruction = applyStyle
+    ? (isExterior
+        ? `Style application (surface finishes ONLY, do not add or remove elements): reinterpret the existing facade materials and colors with a ${style} architectural aesthetic — cladding texture, facade color palette, window frame finish.`
+        : `Style application (surface finishes ONLY, do not add or remove objects): reinterpret the existing wall finish, floor material, and ceiling treatment with a ${style} interior design aesthetic — keep all furniture and objects exactly as they are.`)
+    : null;
 
   const contextInstruction = isExterior
-    ? "Brazilian residential architecture."
-    : `${roomType}, Brazilian home interior.`;
+    ? "Brazilian residential architecture context."
+    : `Context: ${roomType}, Brazilian home interior.`;
 
   const prompt = [
-    preserveInstruction,
-    changeInstruction,
+    baseInstruction,
+    styleInstruction,
     contextInstruction,
-    qualityInstruction,
-    notes ? `Additional requests: ${notes}` : null,
+    notes ? `Additional user request: ${notes}` : null,
   ].filter(Boolean).join(" ");
 
   try {
