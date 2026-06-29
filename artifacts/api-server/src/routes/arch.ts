@@ -1609,7 +1609,7 @@ router.post("/arch/cenas/:cenaId/solicitacoes/:solId/retry", authenticate, async
 });
 
 // ── POST /api/arch/render — Renderização rápida por IA (sem cena vinculada) ──
-router.post("/render", upload.single("reference"), async (req, res) => {
+router.post("/arch/render", upload.single("reference"), async (req, res) => {
   const tid = tenantId(req);
   if (!tid) return res.status(403).json({ error: "Tenant não identificado" });
 

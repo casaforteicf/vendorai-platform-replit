@@ -117,11 +117,24 @@ export default function RenderPage() {
     formData.append('prompt', finalPrompt)
     if (imageFile) formData.append('reference', imageFile)
 
-    const res = await fetch('/api/arch/render', { method: 'POST', body: formData })
-    const data = await res.json()
-    rs.setRenderResult(data.imageUrl)
-    rs.setLoading(false)
-    rs.setStep(4)
+    const base = (import.meta.env.BASE_URL ?? '/').replace(/\/$/, '')
+    const token = localStorage.getItem('vendorai_token') ?? ''
+    try {
+      const res = await fetch(`${base}/api/arch/render`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}` },
+        body: formData,
+      })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data?.error ?? `Erro ${res.status}`)
+      rs.setRenderResult(data.imageUrl)
+      rs.setStep(4)
+    } catch (err: any) {
+      console.error('[doRender]', err)
+      alert(`Erro ao gerar render: ${err?.message ?? 'Tente novamente'}`)
+    } finally {
+      rs.setLoading(false)
+    }
   }
 
   return (
