@@ -31,8 +31,6 @@ import {
   Upload,
   X,
   ImageIcon,
-  Wifi,
-  WifiOff,
 } from "lucide-react";
 import logoLight from "/logo-full-light.svg";
 
@@ -116,11 +114,10 @@ export default function Onboarding() {
   const logoInputRef = useRef<HTMLInputElement>(null);
 
   // Step 2 state
-  const [s2InstanceId,  setS2InstanceId]  = useState("");
-  const [s2Token,       setS2Token]       = useState("");
-  const [s2Numero,      setS2Numero]      = useState("");
-  const [s2Testing,     setS2Testing]     = useState(false);
-  const [s2Status,      setS2Status]      = useState<"idle" | "ok" | "fail">("idle");
+  const [s2PhoneNumberId, setS2PhoneNumberId] = useState("");
+  const [s2AccessToken,   setS2AccessToken]   = useState("");
+  const [s2WabaId,        setS2WabaId]        = useState("");
+  const [s2Numero,        setS2Numero]        = useState("");
 
   // Step 3 state
   const [s3AgentKey,    setS3AgentKey]    = useState<string>("sdr");
@@ -199,23 +196,6 @@ export default function Onboarding() {
     }
   }
 
-  // ── WhatsApp test ───────────────────────────────────────────────────────────
-  async function handleWaTest() {
-    setS2Testing(true);
-    setS2Status("idle");
-    try {
-      const res = await fetch(`${getBase()}/api/onboarding/whatsapp/test`, {
-        headers: getToken() ? { Authorization: `Bearer ${getToken()}` } : {},
-      });
-      const data = await res.json().catch(() => ({})) as { conectado?: boolean };
-      setS2Status(data.conectado ? "ok" : "fail");
-    } catch {
-      setS2Status("fail");
-    } finally {
-      setS2Testing(false);
-    }
-  }
-
   // ── Step handlers ───────────────────────────────────────────────────────────
   async function handleStep1() {
     if (!s1NomeEmpresa.trim()) {
@@ -242,12 +222,27 @@ export default function Onboarding() {
   }
 
   async function handleStep2() {
+    const phoneId = s2PhoneNumberId.trim();
+    const token   = s2AccessToken.trim();
+
+    // If no credentials provided, skip without calling the API
+    if (!phoneId || !token) {
+      setStep(3);
+      return;
+    }
+
+    if (!s2Numero.trim()) {
+      toast({ title: "Informe o número WhatsApp", variant: "destructive" });
+      return;
+    }
+
     setSubmitting(true);
     try {
       await apiPatch("/api/onboarding/step/2", {
-        zapiInstanceId: s2InstanceId.trim() || undefined,
-        zapiToken: s2Token.trim() || undefined,
-        numeroWhatsapp: s2Numero.trim() || undefined,
+        metaPhoneNumberId: phoneId,
+        metaAccessToken:   token,
+        metaWabaId:        s2WabaId.trim() || undefined,
+        numeroWhatsapp:    s2Numero.trim(),
       });
       setStep(3);
     } catch (err) {
@@ -506,63 +501,52 @@ export default function Onboarding() {
                 <div>
                   <h2 className="text-xl font-bold">Conecte seu WhatsApp</h2>
                   <p className="text-sm text-muted-foreground mt-1">
-                    Informe as credenciais Z-API para ativar o canal de mensagens.{" "}
+                    Informe as credenciais da API Oficial Meta (WhatsApp Business Platform).{" "}
                     <span className="text-muted-foreground/70">(pode pular e configurar depois)</span>
                   </p>
                 </div>
 
                 <div className="space-y-2">
-                  <Label htmlFor="zapiInstance">ID da instância Z-API</Label>
+                  <Label htmlFor="metaPhoneNumberId">Phone Number ID</Label>
                   <Input
-                    id="zapiInstance"
-                    placeholder="Ex: 3D6B1A..."
-                    value={s2InstanceId}
-                    onChange={(e) => setS2InstanceId(e.target.value)}
+                    id="metaPhoneNumberId"
+                    placeholder="Ex: 123456789012345"
+                    value={s2PhoneNumberId}
+                    onChange={(e) => setS2PhoneNumberId(e.target.value)}
                   />
+                  <p className="text-xs text-muted-foreground">Encontrado no Meta Business Manager → WhatsApp → Configuração</p>
                 </div>
+
                 <div className="space-y-2">
-                  <Label htmlFor="zapiToken">Token da instância</Label>
+                  <Label htmlFor="metaAccessToken">Access Token</Label>
                   <Input
-                    id="zapiToken"
+                    id="metaAccessToken"
                     type="password"
-                    placeholder="Token Z-API"
-                    value={s2Token}
-                    onChange={(e) => setS2Token(e.target.value)}
+                    placeholder="Token de acesso permanente"
+                    value={s2AccessToken}
+                    onChange={(e) => setS2AccessToken(e.target.value)}
                   />
                 </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="metaWabaId">WABA ID <span className="text-muted-foreground/60">(opcional)</span></Label>
+                  <Input
+                    id="metaWabaId"
+                    placeholder="Ex: 987654321098765"
+                    value={s2WabaId}
+                    onChange={(e) => setS2WabaId(e.target.value)}
+                  />
+                </div>
+
                 <div className="space-y-2">
                   <Label htmlFor="waNumero">Número WhatsApp</Label>
                   <Input
                     id="waNumero"
-                    placeholder="5511999999999 (apenas números)"
+                    placeholder="5511999999999 (apenas números, com DDI)"
                     value={s2Numero}
                     onChange={(e) => setS2Numero(e.target.value)}
                   />
                 </div>
-
-                {s2InstanceId && s2Token && (
-                  <div className="flex items-center gap-3">
-                    <Button
-                      type="button" variant="outline" size="sm"
-                      onClick={handleWaTest}
-                      disabled={s2Testing}
-                      className="gap-2"
-                    >
-                      {s2Testing ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
-                      Testar conexão
-                    </Button>
-                    {s2Status === "ok" && (
-                      <span className="flex items-center gap-1.5 text-sm text-green-600 font-medium">
-                        <Wifi className="h-4 w-4" /> Conectado
-                      </span>
-                    )}
-                    {s2Status === "fail" && (
-                      <span className="flex items-center gap-1.5 text-sm text-destructive font-medium">
-                        <WifiOff className="h-4 w-4" /> Não conectado
-                      </span>
-                    )}
-                  </div>
-                )}
 
                 <div className="flex gap-3 pt-1">
                   <Button variant="ghost" onClick={() => setStep(1)} className="gap-1.5">
@@ -570,7 +554,7 @@ export default function Onboarding() {
                   </Button>
                   <Button className="flex-1 gap-2" disabled={submitting} onClick={handleStep2}>
                     {submitting ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
-                    {s2InstanceId && s2Token ? "Salvar e continuar" : "Pular por agora"}
+                    {s2PhoneNumberId && s2AccessToken ? "Salvar e continuar" : "Pular por agora"}
                     <ChevronRight className="h-4 w-4" />
                   </Button>
                 </div>

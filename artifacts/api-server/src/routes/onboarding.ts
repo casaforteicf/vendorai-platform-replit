@@ -562,9 +562,10 @@ const step1Schema = z.object({
 });
 
 const step2Schema = z.object({
-  zapiInstanceId: z.string().min(1),
-  zapiToken: z.string().min(1),
-  numeroWhatsapp: z.string().min(1),
+  metaPhoneNumberId: z.string().min(1),
+  metaAccessToken:   z.string().min(1),
+  metaWabaId:        z.string().optional(),
+  numeroWhatsapp:    z.string().min(1),
 });
 
 // ── GET /onboarding ───────────────────────────────────────────────────────────
@@ -701,34 +702,11 @@ router.patch("/onboarding/step/2", authenticate, async (req, res) => {
     return;
   }
 
-  const { zapiInstanceId, zapiToken, numeroWhatsapp } = parsed.data;
-
-  // Validate Z-API credentials
-  let zapiOk = false;
-  try {
-    const zapiRes = await fetch(
-      `https://api.z-api.io/instances/${zapiInstanceId}/token/${zapiToken}/status`,
-      {
-        headers: { "Client-Token": zapiToken },
-        signal: AbortSignal.timeout(8000),
-      }
-    );
-    zapiOk = zapiRes.ok;
-    if (!zapiOk) {
-      const body = await zapiRes.text();
-      req.log.warn({ status: zapiRes.status, body }, "Onboarding step 2: Z-API validation failed");
-      res.status(400).json({ error: "Credenciais Z-API inválidas" });
-      return;
-    }
-  } catch (err) {
-    req.log.warn({ err }, "Onboarding step 2: Z-API request error");
-    res.status(400).json({ error: "Credenciais Z-API inválidas" });
-    return;
-  }
+  const { metaPhoneNumberId, metaAccessToken, metaWabaId, numeroWhatsapp } = parsed.data;
 
   const now = new Date();
 
-  // Save to agent_configs (upsert by tenantId)
+  // Save Meta credentials to agent_configs (upsert by tenantId)
   const [existingConfig] = await db
     .select({ id: agentConfigsTable.id })
     .from(agentConfigsTable)
@@ -737,12 +715,12 @@ router.patch("/onboarding/step/2", authenticate, async (req, res) => {
   if (existingConfig) {
     await db
       .update(agentConfigsTable)
-      .set({ zapiInstanceId, zapiToken, zapiClientToken: zapiToken, updatedAt: now })
+      .set({ metaPhoneNumberId, metaAccessToken, metaWabaId: metaWabaId ?? null, updatedAt: now })
       .where(eq(agentConfigsTable.id, existingConfig.id));
   } else {
     await db
       .insert(agentConfigsTable)
-      .values({ tenantId, zapiInstanceId, zapiToken, zapiClientToken: zapiToken });
+      .values({ tenantId, metaPhoneNumberId, metaAccessToken, metaWabaId: metaWabaId ?? null });
   }
 
   // Save phone to business profile
@@ -775,7 +753,7 @@ router.patch("/onboarding/step/2", authenticate, async (req, res) => {
       tenantId,
       step2Completo: true,
       stepAtual: nextStep,
-      dadosStep2: { zapiInstanceId, numeroWhatsapp } as Record<string, unknown>,
+      dadosStep2: { metaPhoneNumberId, metaWabaId, numeroWhatsapp } as Record<string, unknown>,
       updatedAt: now,
     })
     .onConflictDoUpdate({
@@ -783,13 +761,13 @@ router.patch("/onboarding/step/2", authenticate, async (req, res) => {
       set: {
         step2Completo: true,
         stepAtual: nextStep,
-        dadosStep2: { zapiInstanceId, numeroWhatsapp } as Record<string, unknown>,
+        dadosStep2: { metaPhoneNumberId, metaWabaId, numeroWhatsapp } as Record<string, unknown>,
         updatedAt: now,
       },
     })
     .returning();
 
-  req.log.info({ tenantId, zapiInstanceId }, "Onboarding step 2 saved");
+  req.log.info({ tenantId, metaPhoneNumberId }, "Onboarding step 2 saved (Meta)");
   res.json(progress);
 });
 

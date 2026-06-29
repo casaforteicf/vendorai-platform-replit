@@ -348,7 +348,7 @@ function PublicRoute({ component: Component }: any) {
 
   useEffect(() => {
     if (!isLoading && token) {
-      setLocation("/");
+      setLocation("/dashboard");
     }
   }, [token, isLoading, setLocation]);
 
@@ -394,7 +394,7 @@ function AppRoutes() {
           <OnboardingRoute />
         </Route>
         <Route path="/">
-          <ProtectedRoute component={Dashboard} />
+          <PublicRoute component={Login} />
         </Route>
         <Route path="/dashboard">
           <ProtectedRoute component={Dashboard} />
