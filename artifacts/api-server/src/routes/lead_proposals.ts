@@ -77,11 +77,22 @@ async function loadProposalContext(leadId: string, tenantId: string) {
   return { lead, briefing, intelligence, products, propostas, conversationSamples, tenantName, tenantPhone: bp?.telefone, tenantLogoUrl: bp?.logoUrl ?? null };
 }
 
-/** Resolve object-storage relative paths to full API URLs for HTML embedding */
+/** Resolve object-storage relative paths to absolute URLs for HTML/PDF embedding */
 function resolveStorageUrl(url: string | null | undefined): string | undefined {
   if (!url) return undefined;
-  if (url.startsWith("/objects/")) return `/api/storage${url}`;
+  const port = process.env.PORT ?? "8080";
+  const base = process.env.BASE_PATH ?? "";
+  if (url.startsWith("/objects/")) return `http://localhost:${port}${base}/api/storage${url}`;
   return url;
+}
+
+/** Replace any remaining relative /api/storage or /objects/ paths in HTML with absolute localhost URLs */
+function absolutifyStorageUrls(html: string): string {
+  const port = process.env.PORT ?? "8080";
+  const base = process.env.BASE_PATH ?? "";
+  return html
+    .replace(/src="\/api\/storage\/objects\//g, `src="http://localhost:${port}${base}/api/storage/objects/`)
+    .replace(/src="\/objects\//g, `src="http://localhost:${port}${base}/api/storage/objects/`);
 }
 
 // ── GET /leads/:leadId/proposals ─────────────────────────────────────────────────
@@ -179,7 +190,7 @@ router.get("/leads/:leadId/proposals/:version/pdf", async (req, res) => {
   }
   const clientName = lead.empresa || lead.nome || "Cliente";
   const filename = `Proposta_${clientName.replace(/\s+/g, "_")}_v${version}.pdf`;
-  const pdfBuffer = await generateProposalPDF(row.htmlContent);
+  const pdfBuffer = await generateProposalPDF(absolutifyStorageUrls(row.htmlContent));
   const isPdf = pdfBuffer.length > 0 && pdfBuffer[0] === 0x25 && pdfBuffer[1] === 0x50 && pdfBuffer[2] === 0x44 && pdfBuffer[3] === 0x46; // %PDF
   if (isPdf) {
     res.setHeader("Content-Type", "application/pdf");
