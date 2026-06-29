@@ -392,6 +392,7 @@ export default function Leads() {
 
   const filteredLeads = (leads ?? [])
     .filter((lead) => {
+      if (lead.possivelDuplicata) return false;
       const matchesSearch =
         lead.nome.toLowerCase().includes(search.toLowerCase()) ||
         lead.email?.toLowerCase().includes(search.toLowerCase()) ||

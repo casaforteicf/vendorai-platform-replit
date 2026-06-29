@@ -63,12 +63,22 @@ router.post("/leads", async (req, res) => {
     return;
   }
 
+  if (match.similar) {
+    res.status(409).json({
+      error: "Já existe um lead com nome semelhante",
+      isDuplicate: true,
+      lead: match.similar,
+      matchBy: "nome",
+    });
+    return;
+  }
+
   const [lead] = await db.insert(leadsTable).values({
     ...data,
     telefone: storePhone(data.telefone),
     documento: data.documento ? data.documento.replace(/\D/g, "") : data.documento,
-    possivelDuplicata: match.similar ? true : false,
-    leadSimilarId: match.similar?.id ?? null,
+    possivelDuplicata: false,
+    leadSimilarId: null,
   }).returning();
 
   // Auto-create deal in pipeline (aquecimento) unless lead is pipeline-exempt
@@ -150,7 +160,10 @@ router.post("/tenants/:tenantId/leads/import", async (req, res) => {
 
 router.get("/tenants/:tenantId/leads", async (req, res) => {
   const tenantId = String(req.params["tenantId"]);
-  const conditions = [eq(leadsTable.tenantId, tenantId)];
+  const conditions = [
+    eq(leadsTable.tenantId, tenantId),
+    eq(leadsTable.possivelDuplicata, false),
+  ];
   conditions.push(...buildUserFunctionFilter(req, leadsTable));
 
   const leads = await db
