@@ -10420,6 +10420,11 @@ components:
           type: string
         intentAnalysis:
           type: string
+        dealEtapas:
+          type: array
+          items:
+            type: string
+          description: Filter leads by deal pipeline stage(s)
 
     Campaign:
       type: object
@@ -10437,6 +10442,12 @@ components:
           nullable: true
         mensagem:
           type: string
+        mensagensEtapa:
+          type: object
+          additionalProperties:
+            type: string
+          nullable: true
+          description: Per-pipeline-stage message overrides (etapa → mensagem)
         status:
           $ref: "#/components/schemas/CampaignStatus"
         agendadaPara:
@@ -10468,6 +10479,11 @@ components:
           $ref: "#/components/schemas/SegmentoFiltro"
         mensagem:
           type: string
+        mensagensEtapa:
+          type: object
+          additionalProperties:
+            type: string
+          nullable: true
         status:
           $ref: "#/components/schemas/CampaignStatus"
         agendadaPara:
@@ -10486,6 +10502,11 @@ components:
           $ref: "#/components/schemas/SegmentoFiltro"
         mensagem:
           type: string
+        mensagensEtapa:
+          type: object
+          additionalProperties:
+            type: string
+          nullable: true
         status:
           $ref: "#/components/schemas/CampaignStatus"
         agendadaPara:
@@ -10522,6 +10543,9 @@ components:
                 type: string
                 nullable: true
               nextBestAction:
+                type: string
+                nullable: true
+              dealEtapa:
                 type: string
                 nullable: true
       required: [count, filtersApplied, sample]

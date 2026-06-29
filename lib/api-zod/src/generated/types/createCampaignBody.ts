@@ -7,6 +7,7 @@
  */
 import type { CampaignStatus } from './campaignStatus';
 import type { CampaignTipo } from './campaignTipo';
+import type { CreateCampaignBodyMensagensEtapa } from './createCampaignBodyMensagensEtapa';
 import type { SegmentoFiltro } from './segmentoFiltro';
 
 export interface CreateCampaignBody {
@@ -15,6 +16,7 @@ export interface CreateCampaignBody {
   tipo: CampaignTipo;
   segmentoFiltro?: SegmentoFiltro;
   mensagem: string;
+  mensagensEtapa?: CreateCampaignBodyMensagensEtapa;
   status?: CampaignStatus;
   agendadaPara?: Date;
 }

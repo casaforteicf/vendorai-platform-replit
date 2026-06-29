@@ -3462,9 +3462,11 @@ export const CreateCampaignBody = zod.object({
 })]).optional(),
   "journeyStage": zod.string().optional(),
   "nextBestAction": zod.string().optional(),
-  "intentAnalysis": zod.string().optional()
+  "intentAnalysis": zod.string().optional(),
+  "dealEtapas": zod.array(zod.string()).optional().describe('Filter leads by deal pipeline stage(s)')
 }).optional(),
   "mensagem": zod.string(),
+  "mensagensEtapa": zod.record(zod.string(), zod.string()).nullish(),
   "status": zod.enum(['rascunho', 'agendada', 'enviando', 'concluida', 'pausada']).optional(),
   "agendadaPara": zod.coerce.date().optional()
 })
@@ -3492,9 +3494,11 @@ export const ListCampaignsResponseItem = zod.object({
 })]).optional(),
   "journeyStage": zod.string().optional(),
   "nextBestAction": zod.string().optional(),
-  "intentAnalysis": zod.string().optional()
+  "intentAnalysis": zod.string().optional(),
+  "dealEtapas": zod.array(zod.string()).optional().describe('Filter leads by deal pipeline stage(s)')
 }).nullish(),
   "mensagem": zod.string(),
+  "mensagensEtapa": zod.record(zod.string(), zod.string()).nullish().describe('Per-pipeline-stage message overrides (etapa → mensagem)'),
   "status": zod.enum(['rascunho', 'agendada', 'enviando', 'concluida', 'pausada']),
   "agendadaPara": zod.coerce.date().nullish(),
   "totalDestinatarios": zod.number(),
@@ -3529,14 +3533,16 @@ export const PreviewCampaignAudienceResponse = zod.object({
 })]).optional(),
   "journeyStage": zod.string().optional(),
   "nextBestAction": zod.string().optional(),
-  "intentAnalysis": zod.string().optional()
+  "intentAnalysis": zod.string().optional(),
+  "dealEtapas": zod.array(zod.string()).optional().describe('Filter leads by deal pipeline stage(s)')
 }).nullable(),
   "sample": zod.array(zod.object({
   "id": zod.string().optional(),
   "leadId": zod.string().optional(),
   "churnRisk": zod.number().nullish(),
   "journeyStage": zod.string().nullish(),
-  "nextBestAction": zod.string().nullish()
+  "nextBestAction": zod.string().nullish(),
+  "dealEtapa": zod.string().nullish()
 })).describe('Up to 10 matching customer_intelligence records')
 })
 
@@ -3563,9 +3569,11 @@ export const GetCampaignResponse = zod.object({
 })]).optional(),
   "journeyStage": zod.string().optional(),
   "nextBestAction": zod.string().optional(),
-  "intentAnalysis": zod.string().optional()
+  "intentAnalysis": zod.string().optional(),
+  "dealEtapas": zod.array(zod.string()).optional().describe('Filter leads by deal pipeline stage(s)')
 }).nullish(),
   "mensagem": zod.string(),
+  "mensagensEtapa": zod.record(zod.string(), zod.string()).nullish().describe('Per-pipeline-stage message overrides (etapa → mensagem)'),
   "status": zod.enum(['rascunho', 'agendada', 'enviando', 'concluida', 'pausada']),
   "agendadaPara": zod.coerce.date().nullish(),
   "totalDestinatarios": zod.number(),
@@ -3595,9 +3603,11 @@ export const UpdateCampaignBody = zod.object({
 })]).optional(),
   "journeyStage": zod.string().optional(),
   "nextBestAction": zod.string().optional(),
-  "intentAnalysis": zod.string().optional()
+  "intentAnalysis": zod.string().optional(),
+  "dealEtapas": zod.array(zod.string()).optional().describe('Filter leads by deal pipeline stage(s)')
 }).optional(),
   "mensagem": zod.string().optional(),
+  "mensagensEtapa": zod.record(zod.string(), zod.string()).nullish(),
   "status": zod.enum(['rascunho', 'agendada', 'enviando', 'concluida', 'pausada']).optional(),
   "agendadaPara": zod.coerce.date().optional(),
   "totalDestinatarios": zod.number().optional(),
@@ -3619,9 +3629,11 @@ export const UpdateCampaignResponse = zod.object({
 })]).optional(),
   "journeyStage": zod.string().optional(),
   "nextBestAction": zod.string().optional(),
-  "intentAnalysis": zod.string().optional()
+  "intentAnalysis": zod.string().optional(),
+  "dealEtapas": zod.array(zod.string()).optional().describe('Filter leads by deal pipeline stage(s)')
 }).nullish(),
   "mensagem": zod.string(),
+  "mensagensEtapa": zod.record(zod.string(), zod.string()).nullish().describe('Per-pipeline-stage message overrides (etapa → mensagem)'),
   "status": zod.enum(['rascunho', 'agendada', 'enviando', 'concluida', 'pausada']),
   "agendadaPara": zod.coerce.date().nullish(),
   "totalDestinatarios": zod.number(),

@@ -12,4 +12,6 @@ export interface SegmentoFiltro {
   journeyStage?: string;
   nextBestAction?: string;
   intentAnalysis?: string;
+  /** Filter leads by deal pipeline stage(s) */
+  dealEtapas?: string[];
 }

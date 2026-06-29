@@ -102,6 +102,20 @@ const TIPO_CONFIG: Record<string, { label: string; className: string }> = {
   instagram: { label: "Instagram", className: "bg-purple-100 text-purple-700 border-purple-200" },
 };
 
+// ── Pipeline stages config ────────────────────────────────────────────────────
+const PIPELINE_STAGES = [
+  { value: "em_aquecimento", label: "Em Aquecimento" },
+  { value: "novo",           label: "Novo" },
+  { value: "qualificado",    label: "Qualificado" },
+  { value: "proposta",       label: "Proposta" },
+  { value: "negociacao",     label: "Negociação" },
+  { value: "ganho",          label: "Ganho" },
+  { value: "em_execucao",    label: "Em Execução" },
+  { value: "entregue",       label: "Entregue" },
+  { value: "perdido",        label: "Perdido" },
+  { value: "parceiro",       label: "Parceiro" },
+] as const;
+
 // ── Form schema ───────────────────────────────────────────────────────────────
 const formSchema = z.object({
   nome: z.string().min(1, "Nome é obrigatório"),
@@ -114,6 +128,8 @@ const formSchema = z.object({
     .optional()
     .or(z.literal(undefined)),
   journeyStage: z.string().optional(),
+  dealEtapas: z.array(z.string()).optional(),
+  mensagensEtapa: z.record(z.string(), z.string()).optional(),
   agendadaPara: z.string().optional(),
 });
 
@@ -135,6 +151,9 @@ function buildSegmentoFiltro(values: FormValues) {
     filtro.churnRisk = { gte: values.churnRiskMin };
   }
   if (values.journeyStage) filtro.journeyStage = values.journeyStage;
+  if (values.dealEtapas && values.dealEtapas.length > 0) {
+    filtro.dealEtapas = values.dealEtapas;
+  }
   return Object.keys(filtro).length > 0 ? filtro : undefined;
 }
 
@@ -177,6 +196,8 @@ function CampaignModal({
           ? (editingCampaign.segmentoFiltro?.churnRisk as { gte?: number }).gte
           : undefined,
       journeyStage: editingCampaign?.segmentoFiltro?.journeyStage ?? "",
+      dealEtapas: (editingCampaign?.segmentoFiltro as any)?.dealEtapas ?? [],
+      mensagensEtapa: (editingCampaign?.mensagensEtapa as Record<string, string>) ?? {},
       agendadaPara: editingCampaign?.agendadaPara
         ? editingCampaign.agendadaPara.slice(0, 16)
         : "",
@@ -220,6 +241,9 @@ function CampaignModal({
           tipo: values.tipo,
           mensagem: values.mensagem,
           segmentoFiltro: buildSegmentoFiltro(values) as any,
+          mensagensEtapa: (values.mensagensEtapa && Object.keys(values.mensagensEtapa).length > 0)
+            ? values.mensagensEtapa
+            : undefined,
           agendadaPara: values.agendadaPara || undefined,
         },
       },
@@ -243,6 +267,9 @@ function CampaignModal({
           tipo: values.tipo,
           mensagem: values.mensagem,
           segmentoFiltro: buildSegmentoFiltro(values) as any,
+          mensagensEtapa: (values.mensagensEtapa && Object.keys(values.mensagensEtapa).length > 0)
+            ? values.mensagensEtapa
+            : undefined,
           agendadaPara: values.agendadaPara || undefined,
           status: "rascunho",
         },
@@ -335,7 +362,8 @@ function CampaignModal({
                           <TableRow>
                             <TableHead className="text-xs py-2">Lead</TableHead>
                             <TableHead className="text-xs py-2">Churn</TableHead>
-                            <TableHead className="text-xs py-2">Estágio</TableHead>
+                            <TableHead className="text-xs py-2">Jornada</TableHead>
+                            <TableHead className="text-xs py-2">Etapa Pipeline</TableHead>
                           </TableRow>
                         </TableHeader>
                         <TableBody>
@@ -363,6 +391,11 @@ function CampaignModal({
                               </TableCell>
                               <TableCell className="py-1.5 text-muted-foreground">
                                 {s.journeyStage ?? "—"}
+                              </TableCell>
+                              <TableCell className="py-1.5 text-muted-foreground">
+                                {(s as any).dealEtapa
+                                  ? (PIPELINE_STAGES.find(p => p.value === (s as any).dealEtapa)?.label ?? (s as any).dealEtapa)
+                                  : "—"}
                               </TableCell>
                             </TableRow>
                           ))}
@@ -477,9 +510,10 @@ function CampaignModal({
 
               {/* Segmento */}
               {(() => {
-                const churnVal   = form.watch("churnRiskMin");
-                const stageVal   = form.watch("journeyStage");
-                const activeCount = (churnVal !== undefined ? 1 : 0) + (stageVal ? 1 : 0);
+                const churnVal      = form.watch("churnRiskMin");
+                const stageVal      = form.watch("journeyStage");
+                const dealEtapasVal = form.watch("dealEtapas") ?? [];
+                const activeCount   = (churnVal !== undefined ? 1 : 0) + (stageVal ? 1 : 0) + (dealEtapasVal.length > 0 ? 1 : 0);
 
                 const CHURN_PRESETS = [
                   { label: "Todos os leads",  value: undefined,   className: "bg-muted text-foreground border-border" },
@@ -499,6 +533,7 @@ function CampaignModal({
                 ];
 
                 return (
+                  <>
                   <div className="rounded-lg border p-4 space-y-4 bg-muted/20">
                     {/* Header */}
                     <div className="flex items-center justify-between">
@@ -518,6 +553,8 @@ function CampaignModal({
                           onClick={() => {
                             form.setValue("churnRiskMin", undefined);
                             form.setValue("journeyStage", "");
+                            form.setValue("dealEtapas", []);
+                            form.setValue("mensagensEtapa", {});
                           }}
                         >
                           <X className="h-3 w-3" />
@@ -567,7 +604,7 @@ function CampaignModal({
                       render={({ field }) => (
                         <FormItem className="space-y-1.5">
                           <FormLabel className="text-xs text-muted-foreground">
-                            Estágio da Jornada
+                            Estágio da Jornada (IA)
                           </FormLabel>
                           <div className="flex flex-wrap gap-2">
                             {STAGES.map((stage) => {
@@ -594,6 +631,43 @@ function CampaignModal({
                       )}
                     />
 
+                    {/* Pipeline Stage multi-select */}
+                    <FormItem className="space-y-1.5">
+                      <FormLabel className="text-xs text-muted-foreground">
+                        Etapa da Pipeline (Deal)
+                      </FormLabel>
+                      <div className="flex flex-wrap gap-2">
+                        {PIPELINE_STAGES.map((stage) => {
+                          const isActive = dealEtapasVal.includes(stage.value);
+                          return (
+                            <button
+                              key={stage.value}
+                              type="button"
+                              onClick={() => {
+                                const current = form.getValues("dealEtapas") ?? [];
+                                if (isActive) {
+                                  form.setValue("dealEtapas", current.filter((e) => e !== stage.value));
+                                  const msgs = form.getValues("mensagensEtapa") ?? {};
+                                  const { [stage.value]: _removed, ...rest } = msgs;
+                                  form.setValue("mensagensEtapa", rest);
+                                } else {
+                                  form.setValue("dealEtapas", [...current, stage.value]);
+                                }
+                              }}
+                              className={[
+                                "px-3 py-1 rounded-full text-xs font-medium border transition-all",
+                                isActive
+                                  ? "bg-indigo-600 text-white border-indigo-600 shadow-sm"
+                                  : "bg-background text-muted-foreground border-border hover:border-indigo-400 hover:text-foreground",
+                              ].join(" ")}
+                            >
+                              {stage.label}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </FormItem>
+
                     {/* Active filter summary */}
                     {activeCount > 0 && (
                       <div className="flex flex-wrap gap-1.5 pt-1 border-t">
@@ -607,15 +681,66 @@ function CampaignModal({
                         )}
                         {stageVal && (
                           <span className="inline-flex items-center gap-1 text-xs bg-primary/10 text-primary rounded px-2 py-0.5">
-                            Estágio: {stageVal}
+                            Jornada: {stageVal}
                             <button type="button" onClick={() => form.setValue("journeyStage", "")}>
                               <X className="h-2.5 w-2.5" />
                             </button>
                           </span>
                         )}
+                        {dealEtapasVal.map((etapa) => (
+                          <span key={etapa} className="inline-flex items-center gap-1 text-xs bg-indigo-50 text-indigo-700 border border-indigo-200 rounded px-2 py-0.5">
+                            {PIPELINE_STAGES.find(p => p.value === etapa)?.label ?? etapa}
+                            <button
+                              type="button"
+                              onClick={() => {
+                                form.setValue("dealEtapas", dealEtapasVal.filter(e => e !== etapa));
+                                const msgs = form.getValues("mensagensEtapa") ?? {};
+                                const { [etapa]: _removed, ...rest } = msgs;
+                                form.setValue("mensagensEtapa", rest);
+                              }}
+                            >
+                              <X className="h-2.5 w-2.5" />
+                            </button>
+                          </span>
+                        ))}
                       </div>
                     )}
                   </div>
+
+                  {/* Per-stage messages — shown when pipeline stages are selected */}
+                  {dealEtapasVal.length > 0 && (
+                    <div className="rounded-lg border border-indigo-200 p-4 space-y-3 bg-indigo-50/30">
+                      <div>
+                        <p className="text-sm font-medium text-indigo-900">
+                          Mensagens por Etapa
+                        </p>
+                        <p className="text-xs text-muted-foreground mt-0.5">
+                          Personalize o conteúdo para cada etapa selecionada. Deixe em branco para usar a mensagem padrão.
+                        </p>
+                      </div>
+                      {dealEtapasVal.map((etapa) => {
+                        const stageLabel = PIPELINE_STAGES.find((p) => p.value === etapa)?.label ?? etapa;
+                        return (
+                          <div key={etapa} className="space-y-1">
+                            <label className="text-xs font-semibold text-indigo-700">
+                              {stageLabel}
+                            </label>
+                            <Textarea
+                              placeholder={mensagemPlaceholder}
+                              className="resize-none text-sm"
+                              rows={3}
+                              value={form.watch("mensagensEtapa")?.[etapa] ?? ""}
+                              onChange={(e) => {
+                                const msgs = form.getValues("mensagensEtapa") ?? {};
+                                form.setValue("mensagensEtapa", { ...msgs, [etapa]: e.target.value });
+                              }}
+                            />
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                  </>
                 );
               })()}
 

@@ -34,6 +34,7 @@ export const segmentoFiltroSchema = z
     journeyStage: z.string().optional(),
     nextBestAction: z.string().optional(),
     intentAnalysis: z.string().optional(),
+    dealEtapas: z.array(z.string()).optional(),
   })
   .optional();
 
@@ -51,6 +52,7 @@ export const campaignsTable = pgTable("campaigns", {
   tipo: campaignTipoEnum("tipo").notNull(),
   segmentoFiltro: jsonb("segmento_filtro").$type<SegmentoFiltro>(),
   mensagem: text("mensagem").notNull(),
+  mensagensEtapa: jsonb("mensagens_etapa").$type<Record<string, string>>(),
   status: campaignStatusEnum("status").notNull().default("rascunho"),
   agendadaPara: timestamp("agendada_para"),
   totalDestinatarios: integer("total_destinatarios").notNull().default(0),
@@ -62,11 +64,13 @@ export const campaignsTable = pgTable("campaigns", {
 export const insertCampaignSchema = createInsertSchema(campaignsTable, {
   segmentoFiltro: segmentoFiltroSchema,
   agendadaPara: z.coerce.date().optional(),
+  mensagensEtapa: z.record(z.string(), z.string()).optional(),
 }).omit({ id: true, createdAt: true, updatedAt: true });
 
 export const updateCampaignSchema = createSelectSchema(campaignsTable, {
   segmentoFiltro: segmentoFiltroSchema,
   agendadaPara: z.coerce.date().optional(),
+  mensagensEtapa: z.record(z.string(), z.string()).optional(),
 })
   .omit({ id: true, tenantId: true, createdAt: true, updatedAt: true })
   .partial();

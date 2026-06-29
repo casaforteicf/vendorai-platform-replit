@@ -12,4 +12,5 @@ export type CampaignAudiencePreviewSampleItem = {
   churnRisk?: number | null;
   journeyStage?: string | null;
   nextBestAction?: string | null;
+  dealEtapa?: string | null;
 };

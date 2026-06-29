@@ -1,9 +1,10 @@
 import { Router, type IRouter } from "express";
-import { and, eq, gt, gte, lt, lte, isNotNull } from "drizzle-orm";
+import { and, eq, gt, gte, lt, lte, isNotNull, inArray } from "drizzle-orm";
 import {
   db,
   campaignsTable,
   customerIntelligenceTable,
+  dealsTable,
   insertCampaignSchema,
   updateCampaignSchema,
   segmentoFiltroSchema,
@@ -118,6 +119,32 @@ router.get(
 
     const conditions = buildAudienceConditions(String(tenantId), filtro);
 
+    // If dealEtapas filter is set, resolve matching leadIds from deals table
+    let dealLeadIds: string[] | null = null;
+    if (filtro?.dealEtapas && filtro.dealEtapas.length > 0) {
+      const dealRows = await db
+        .select({ leadId: dealsTable.leadId })
+        .from(dealsTable)
+        .where(
+          and(
+            eq(dealsTable.tenantId, String(tenantId)),
+            inArray(dealsTable.etapa, filtro.dealEtapas as any[])
+          )
+        );
+      dealLeadIds = dealRows.map((r) => r.leadId);
+      if (dealLeadIds.length === 0) {
+        res.json({ count: 0, filtersApplied: filtro ?? null, sample: [] });
+        return;
+      }
+    }
+
+    const finalConditions = [...conditions];
+    if (dealLeadIds !== null) {
+      finalConditions.push(
+        inArray(customerIntelligenceTable.leadId, dealLeadIds)
+      );
+    }
+
     const rows = await db
       .select({
         id: customerIntelligenceTable.id,
@@ -127,12 +154,36 @@ router.get(
         nextBestAction: customerIntelligenceTable.nextBestAction,
       })
       .from(customerIntelligenceTable)
-      .where(and(...conditions));
+      .where(and(...finalConditions));
+
+    // For the sample, look up deal etapa for each lead
+    const sampleRows = rows.slice(0, 10);
+    const dealEtapaMap: Record<string, string> = {};
+    if (sampleRows.length > 0) {
+      const sampleLeadIds = sampleRows.map((r) => r.leadId);
+      const deals = await db
+        .select({ leadId: dealsTable.leadId, etapa: dealsTable.etapa })
+        .from(dealsTable)
+        .where(
+          and(
+            eq(dealsTable.tenantId, String(tenantId)),
+            inArray(dealsTable.leadId, sampleLeadIds)
+          )
+        );
+      for (const d of deals) {
+        dealEtapaMap[d.leadId] = d.etapa;
+      }
+    }
+
+    const sample = sampleRows.map((r) => ({
+      ...r,
+      dealEtapa: dealEtapaMap[r.leadId] ?? null,
+    }));
 
     res.json({
       count: rows.length,
       filtersApplied: filtro ?? null,
-      sample: rows.slice(0, 10),
+      sample,
     });
   }
 );

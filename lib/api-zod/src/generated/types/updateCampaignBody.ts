@@ -8,12 +8,14 @@
 import type { CampaignStatus } from './campaignStatus';
 import type { CampaignTipo } from './campaignTipo';
 import type { SegmentoFiltro } from './segmentoFiltro';
+import type { UpdateCampaignBodyMensagensEtapa } from './updateCampaignBodyMensagensEtapa';
 
 export interface UpdateCampaignBody {
   nome?: string;
   tipo?: CampaignTipo;
   segmentoFiltro?: SegmentoFiltro;
   mensagem?: string;
+  mensagensEtapa?: UpdateCampaignBodyMensagensEtapa;
   status?: CampaignStatus;
   agendadaPara?: Date;
   totalDestinatarios?: number;

@@ -5,6 +5,7 @@
  * API specification
  * OpenAPI spec version: 0.1.0
  */
+import type { CampaignMensagensEtapa } from './campaignMensagensEtapa';
 import type { CampaignStatus } from './campaignStatus';
 import type { CampaignTipo } from './campaignTipo';
 import type { SegmentoFiltro } from './segmentoFiltro';
@@ -16,6 +17,8 @@ export interface Campaign {
   tipo: CampaignTipo;
   segmentoFiltro?: SegmentoFiltro | null;
   mensagem: string;
+  /** Per-pipeline-stage message overrides (etapa → mensagem) */
+  mensagensEtapa?: CampaignMensagensEtapa;
   status: CampaignStatus;
   agendadaPara?: Date | null;
   totalDestinatarios: number;

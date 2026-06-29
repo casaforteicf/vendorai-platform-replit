@@ -938,7 +938,14 @@ export interface SegmentoFiltro {
   journeyStage?: string;
   nextBestAction?: string;
   intentAnalysis?: string;
+  /** Filter leads by deal pipeline stage(s) */
+  dealEtapas?: string[];
 }
+
+/**
+ * Per-pipeline-stage message overrides (etapa → mensagem)
+ */
+export type CampaignMensagensEtapa = {[key: string]: string} | null;
 
 export interface Campaign {
   id: string;
@@ -947,6 +954,8 @@ export interface Campaign {
   tipo: CampaignTipo;
   segmentoFiltro?: SegmentoFiltro | null;
   mensagem: string;
+  /** Per-pipeline-stage message overrides (etapa → mensagem) */
+  mensagensEtapa?: CampaignMensagensEtapa;
   status: CampaignStatus;
   agendadaPara?: string | null;
   totalDestinatarios: number;
@@ -955,21 +964,27 @@ export interface Campaign {
   updatedAt: string;
 }
 
+export type CreateCampaignBodyMensagensEtapa = {[key: string]: string} | null;
+
 export interface CreateCampaignBody {
   tenantId: string;
   nome: string;
   tipo: CampaignTipo;
   segmentoFiltro?: SegmentoFiltro;
   mensagem: string;
+  mensagensEtapa?: CreateCampaignBodyMensagensEtapa;
   status?: CampaignStatus;
   agendadaPara?: string;
 }
+
+export type UpdateCampaignBodyMensagensEtapa = {[key: string]: string} | null;
 
 export interface UpdateCampaignBody {
   nome?: string;
   tipo?: CampaignTipo;
   segmentoFiltro?: SegmentoFiltro;
   mensagem?: string;
+  mensagensEtapa?: UpdateCampaignBodyMensagensEtapa;
   status?: CampaignStatus;
   agendadaPara?: string;
   totalDestinatarios?: number;
@@ -982,6 +997,7 @@ export type CampaignAudiencePreviewSampleItem = {
   churnRisk?: number | null;
   journeyStage?: string | null;
   nextBestAction?: string | null;
+  dealEtapa?: string | null;
 };
 
 export interface CampaignAudiencePreview {

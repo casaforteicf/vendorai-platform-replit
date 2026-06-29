@@ -286,6 +286,22 @@ async function dispatchDueCampaigns(log: Logger): Promise<void> {
         leadIds = leads.map((l) => l.id);
       }
 
+      // If dealEtapas filter is set, narrow leadIds to those with a matching deal stage
+      const dealEtapas = (filtro as Record<string, unknown> | null)?.dealEtapas as string[] | undefined;
+      if (dealEtapas && dealEtapas.length > 0 && leadIds.length > 0) {
+        const dealRows = await db
+          .select({ leadId: dealsTable.leadId })
+          .from(dealsTable)
+          .where(
+            and(
+              eq(dealsTable.tenantId, campaign.tenantId),
+              inArray(dealsTable.etapa, dealEtapas as any[]),
+              inArray(dealsTable.leadId, leadIds)
+            )
+          );
+        leadIds = dealRows.map((r) => r.leadId);
+      }
+
       if (leadIds.length === 0) {
         log.info({ campaignId: campaign.id, tenantId: campaign.tenantId }, "scheduler/campaigns: no matching leads, marking concluida");
         await db
@@ -297,12 +313,32 @@ async function dispatchDueCampaigns(log: Logger): Promise<void> {
 
       log.info({ campaignId: campaign.id, leadCount: leadIds.length }, "scheduler/campaigns: creating tasks");
 
+      // Preload deal etapas so each lead gets the right stage-specific message
+      const mensagensEtapa = campaign.mensagensEtapa as Record<string, string> | null | undefined;
+      const leadEtapaMap: Record<string, string> = {};
+      if (mensagensEtapa && Object.keys(mensagensEtapa).length > 0 && leadIds.length > 0) {
+        const dealRows = await db
+          .select({ leadId: dealsTable.leadId, etapa: dealsTable.etapa })
+          .from(dealsTable)
+          .where(
+            and(
+              eq(dealsTable.tenantId, campaign.tenantId),
+              inArray(dealsTable.leadId, leadIds)
+            )
+          );
+        for (const d of dealRows) {
+          leadEtapaMap[d.leadId] = d.etapa;
+        }
+      }
+
       // Create one agent_task per lead
       const dispatchTime = new Date();
       let enviados = 0;
 
       for (const leadId of leadIds) {
         try {
+          const etapa = leadEtapaMap[leadId];
+          const mensagemParaLead = (etapa && mensagensEtapa?.[etapa]) || campaign.mensagem;
           const [task] = await db
             .insert(agentTasksTable)
             .values({
@@ -312,7 +348,7 @@ async function dispatchDueCampaigns(log: Logger): Promise<void> {
               actionType: "enviar_whatsapp",
               payload: {
                 leadId,
-                conteudo:   campaign.mensagem,
+                conteudo:   mensagemParaLead,
                 agentName:  "sdr",
                 canal:      campaign.tipo === "whatsapp" ? "whatsapp" : "whatsapp",
                 campaignId: campaign.id,
