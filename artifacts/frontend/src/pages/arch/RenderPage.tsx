@@ -59,6 +59,8 @@ export default function RenderPage() {
       color: mat.c1,
       promptFragment: mat.prompt,
     } as AppliedMaterial)
+    setDraggingMat(null)
+    setGhostPos({ x: -200, y: -200 })
   }
 
   // Called directly by each zone div's onMouseUp — most reliable drop detection

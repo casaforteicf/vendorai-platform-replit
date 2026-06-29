@@ -142,8 +142,6 @@ export default function MaterialBar({ applied, customMats, onDragStart, onImport
           return (
             <div
               key={mat.id}
-              draggable
-              onDragStart={() => onDragStart(mat)}
               onMouseDown={() => onDragStart(mat)}
               title={mat.name}
               style={{
