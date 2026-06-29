@@ -20,6 +20,7 @@ import { processFlowExecutions } from "./contentFlow.js";
 import { runRevenueScoutJob } from "../services/revenueScout.js";
 import { runAppointmentReminders } from "./appointmentReminders.js";
 import { pollPendingRenders } from "../services/blenderService.js";
+import { sendOutgoingMessage } from "../services/omnichannel.js";
 import type { Logger } from "pino";
 import {
   db,
@@ -1056,6 +1057,149 @@ async function orchestrateProspectCampaigns(log: Logger): Promise<void> {
   log.info({ advanced }, "scheduler/prospect-orchestrator: complete");
 }
 
+// ── Job 14: No-response closing message ──────────────────────────────────────
+// After the agent sends 3+ consecutive messages with no reply from the lead,
+// and 5 days have passed since the last outbound message, send a polite farewell
+// and move the lead to "aquecimento" status.
+
+const CLOSING_AGENT_TAG = "encerramento_auto";
+const FAREWELL_MESSAGE =
+  "Olá! Tentei entrar em contato algumas vezes, mas não obtive retorno. Vou encerrar nosso atendimento por ora — sem problemas! 😊\n\nCaso precise de qualquer apoio em outro momento, estarei à disposição. Até mais!";
+
+async function runNoResponseClosingMessage(log: Logger): Promise<void> {
+  log.info("scheduler/no-response-closing: starting");
+
+  const fiveDaysAgo   = new Date(Date.now() - 5  * 24 * 60 * 60 * 1000);
+  const sixtyDaysAgo  = new Date(Date.now() - 60 * 24 * 60 * 60 * 1000);
+  const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
+
+  // Get tenants with autonomous WhatsApp enabled
+  const autonomousTenants = await db
+    .select({ tenantId: agentConfigsTable.tenantId })
+    .from(agentConfigsTable)
+    .where(eq(agentConfigsTable.churnAutoWhatsapp, true));
+
+  if (autonomousTenants.length === 0) {
+    log.info("scheduler/no-response-closing: no autonomous tenants — done");
+    return;
+  }
+
+  const tenantIds = autonomousTenants.map((t) => t.tenantId);
+
+  // Find conversations inactive for 5-60 days (outbound last, lead has phone, not already aquecimento)
+  const candidates = await db
+    .select({
+      conversationId: conversationsTable.id,
+      leadId:         conversationsTable.leadId,
+      tenantId:       conversationsTable.tenantId,
+      channel:        conversationsTable.channel,
+      leadStatus:     leadsTable.status,
+      leadTelefone:   leadsTable.telefone,
+    })
+    .from(conversationsTable)
+    .innerJoin(leadsTable, eq(leadsTable.id, conversationsTable.leadId))
+    .where(
+      and(
+        inArray(conversationsTable.tenantId, tenantIds),
+        lte(conversationsTable.ultimaMensagemEm, fiveDaysAgo),
+        gte(conversationsTable.ultimaMensagemEm, sixtyDaysAgo),
+        isNotNull(leadsTable.telefone),
+      )
+    )
+    .limit(500);
+
+  let totalChecked = 0;
+  let totalClosed  = 0;
+  let totalSkipped = 0;
+
+  for (const conv of candidates) {
+    totalChecked++;
+    try {
+      // Already warm — nothing to do
+      if (conv.leadStatus === "aquecimento") {
+        totalSkipped++;
+        continue;
+      }
+
+      // Fetch last 10 messages to count consecutive outbound at the tail
+      const recentMsgs = await db
+        .select({ direcao: messagesTable.direcao, agentName: messagesTable.agentName })
+        .from(messagesTable)
+        .where(eq(messagesTable.conversationId, conv.conversationId))
+        .orderBy(desc(messagesTable.createdAt))
+        .limit(10);
+
+      if (recentMsgs.length === 0) {
+        totalSkipped++;
+        continue;
+      }
+
+      // Count consecutive outbound from the most-recent end
+      let consecutiveOut = 0;
+      for (const msg of recentMsgs) {
+        if (msg.direcao === "saida") consecutiveOut++;
+        else break;
+      }
+
+      if (consecutiveOut < 3) {
+        totalSkipped++;
+        continue;
+      }
+
+      // Dedup: skip if we already sent the closing message for this lead in the last 30 days
+      const [alreadyClosed] = await db
+        .select({ id: messagesTable.id })
+        .from(messagesTable)
+        .where(
+          and(
+            eq(messagesTable.tenantId, conv.tenantId),
+            eq(messagesTable.leadId, conv.leadId),
+            eq(messagesTable.agentName, CLOSING_AGENT_TAG),
+            gte(messagesTable.createdAt, thirtyDaysAgo),
+          )
+        )
+        .limit(1);
+
+      if (alreadyClosed) {
+        log.info({ leadId: conv.leadId }, "scheduler/no-response-closing: farewell already sent recently — skipping");
+        totalSkipped++;
+        continue;
+      }
+
+      // Determine channel (prefer whatsapp)
+      const validChannels = ["whatsapp", "instagram", "email", "chat"] as const;
+      const canal = validChannels.includes(conv.channel as typeof validChannels[number])
+        ? (conv.channel as "whatsapp" | "instagram" | "email" | "chat")
+        : "whatsapp";
+
+      // Send farewell
+      try {
+        await sendOutgoingMessage(
+          { tenantId: conv.tenantId, leadId: conv.leadId, conteudo: FAREWELL_MESSAGE, canal, agentName: CLOSING_AGENT_TAG },
+          log,
+        );
+      } catch (sendErr) {
+        log.warn({ err: sendErr, leadId: conv.leadId }, "scheduler/no-response-closing: send failed (non-fatal) — skipping lead");
+        totalSkipped++;
+        continue;
+      }
+
+      // Move lead to aquecimento
+      await db
+        .update(leadsTable)
+        .set({ status: "aquecimento", updatedAt: new Date() })
+        .where(eq(leadsTable.id, conv.leadId));
+
+      totalClosed++;
+      log.info({ leadId: conv.leadId, tenantId: conv.tenantId, consecutiveOut }, "scheduler/no-response-closing: farewell sent, lead → aquecimento");
+    } catch (err) {
+      log.error({ err, leadId: conv.leadId }, "scheduler/no-response-closing: error (non-fatal)");
+    }
+  }
+
+  log.info({ totalChecked, totalClosed, totalSkipped }, "scheduler/no-response-closing: complete");
+}
+
 export function startScheduler(log: Logger): void {
   // Job 1: Churn check — every hour at :05
   cron.schedule("5 * * * *", () => {
@@ -1159,7 +1303,14 @@ export function startScheduler(log: Logger): void {
     });
   });
 
-  log.info("scheduler: started (churn-check @:05, campaigns @:15, billing @day-5-08:00, reactivation @03:00, demo-expiration @06:00, demo-reset @02:00, special-dates @07:00, partner-commissions @day-1-06:00, partner-prospector @08:00, content-flow @*/5min, blender-poll @30s, revenue-scout @09:00, appointment-reminders @*/30min)");
+  // Job 14: No-response closing message — daily at 09:30
+  cron.schedule("30 9 * * *", () => {
+    runNoResponseClosingMessage(log).catch((err) => {
+      log.error({ err }, "scheduler/no-response-closing: unhandled error");
+    });
+  });
+
+  log.info("scheduler: started (churn-check @:05, campaigns @:15, billing @day-5-08:00, reactivation @03:00, demo-expiration @06:00, demo-reset @02:00, special-dates @07:00, partner-commissions @day-1-06:00, partner-prospector @08:00, content-flow @*/5min, blender-poll @30s, revenue-scout @09:00, appointment-reminders @*/30min, no-response-closing @09:30)");
 }
 
 // ── Job 6: Reset demo tenants ──────────────────────────────────
