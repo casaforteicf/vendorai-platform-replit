@@ -96,6 +96,13 @@ export default function LeadPropostaTab({ leadId, tenantId, lead }: LeadProposta
   const [imageUploading, setImageUploading] = useState(false);
   const imageInputRef = useRef<HTMLInputElement>(null);
 
+  // Seletor de imagens — aba ativa
+  const [imageSourceTab, setImageSourceTab] = useState<"upload" | "renders">("upload");
+  // Renders 3D disponíveis para seleção
+  const [renders, setRenders] = useState<{ id: string; imageUrl: string; cenaNome?: string | null; createdAt: string }[]>([]);
+  const [rendersLoading, setRendersLoading] = useState(false);
+  const [rendersLoaded, setRendersLoaded] = useState(false);
+
   // Product form
   const [newProductNome, setNewProductNome] = useState("");
   const [newProductImagem, setNewProductImagem] = useState("");
@@ -242,6 +249,31 @@ export default function LeadPropostaTab({ leadId, tenantId, lead }: LeadProposta
     } finally {
       setLogoUploading(false);
     }
+  }
+
+  async function fetchRenders() {
+    if (rendersLoaded) return;
+    setRendersLoading(true);
+    try {
+      const res = await fetch(api("/api/arch/renders/gallery?limit=40"), {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setRenders(Array.isArray(data) ? data : []);
+      }
+    } catch {
+      // ignorar — aba simplesmente ficará vazia
+    } finally {
+      setRendersLoading(false);
+      setRendersLoaded(true);
+    }
+  }
+
+  function toggleRenderImage(url: string) {
+    setProposalImages((prev) =>
+      prev.includes(url) ? prev.filter((u) => u !== url) : [...prev, url]
+    );
   }
 
   async function handleProposalImageUpload(files: FileList) {
@@ -555,65 +587,173 @@ export default function LeadPropostaTab({ leadId, tenantId, lead }: LeadProposta
             <ImagePlus className="h-4 w-4" />
             Imagens da Proposta
             {proposalImages.length > 0 && (
-              <Badge variant="outline" className="text-xs ml-1">{proposalImages.length}</Badge>
+              <Badge variant="secondary" className="text-xs ml-1">{proposalImages.length} selecionada{proposalImages.length > 1 ? "s" : ""}</Badge>
             )}
           </CardTitle>
         </CardHeader>
         <CardContent className="space-y-3">
-          <p className="text-xs text-muted-foreground">
-            Adicione imagens que aparecerão em uma galeria visual na proposta gerada.
-          </p>
-
-          {/* Grid de imagens adicionadas */}
+          {/* Imagens selecionadas — sempre visíveis no topo */}
           {proposalImages.length > 0 && (
-            <div className="grid grid-cols-3 gap-2">
-              {proposalImages.map((url, idx) => (
-                <div key={idx} className="relative group rounded-lg overflow-hidden border aspect-video bg-muted">
-                  <img
-                    src={url}
-                    alt={`Imagem ${idx + 1}`}
-                    className="w-full h-full object-cover"
-                    onError={(e) => { (e.target as HTMLImageElement).src = ""; }}
-                  />
-                  <button
-                    onClick={() => setProposalImages((prev) => prev.filter((_, i) => i !== idx))}
-                    className="absolute top-1 right-1 bg-black/60 text-white rounded-full p-0.5 opacity-0 group-hover:opacity-100 transition-opacity"
-                  >
-                    <X className="h-3 w-3" />
-                  </button>
-                </div>
-              ))}
+            <div className="space-y-1.5">
+              <p className="text-xs text-muted-foreground font-medium">
+                Selecionadas (1ª será destaque na capa):
+              </p>
+              <div className="grid grid-cols-4 gap-1.5">
+                {proposalImages.map((url, idx) => (
+                  <div key={idx} className="relative group rounded overflow-hidden border aspect-video bg-muted">
+                    {idx === 0 && (
+                      <span className="absolute top-0.5 left-0.5 z-10 bg-black/70 text-white text-[9px] font-medium px-1 py-0.5 rounded">
+                        Capa
+                      </span>
+                    )}
+                    <img
+                      src={url}
+                      alt={`Imagem ${idx + 1}`}
+                      className="w-full h-full object-cover"
+                      onError={(e) => { (e.target as HTMLImageElement).style.display = "none"; }}
+                    />
+                    <button
+                      onClick={() => setProposalImages((prev) => prev.filter((_, i) => i !== idx))}
+                      className="absolute top-0.5 right-0.5 bg-black/60 text-white rounded-full p-0.5 opacity-0 group-hover:opacity-100 transition-opacity"
+                    >
+                      <X className="h-2.5 w-2.5" />
+                    </button>
+                  </div>
+                ))}
+              </div>
             </div>
           )}
 
-          {/* Upload */}
-          <input
-            ref={imageInputRef}
-            type="file"
-            accept="image/*"
-            multiple
-            className="hidden"
-            onChange={(e) => {
-              if (e.target.files?.length) {
-                handleProposalImageUpload(e.target.files);
-                e.target.value = "";
-              }
-            }}
-          />
-          <Button
-            variant="outline"
-            size="sm"
-            className="w-full h-8 text-xs gap-2"
-            disabled={imageUploading}
-            onClick={() => imageInputRef.current?.click()}
-          >
-            {imageUploading ? (
-              <Loader2 className="h-3 w-3 animate-spin" />
-            ) : (
+          {/* Abas de fonte de imagem */}
+          <div className="flex rounded-md border overflow-hidden text-xs">
+            <button
+              onClick={() => setImageSourceTab("upload")}
+              className={`flex-1 flex items-center justify-center gap-1.5 py-1.5 transition-colors ${
+                imageSourceTab === "upload"
+                  ? "bg-primary text-primary-foreground font-medium"
+                  : "bg-transparent text-muted-foreground hover:bg-muted"
+              }`}
+            >
               <Upload className="h-3 w-3" />
-            )}
-            {imageUploading ? "Enviando..." : "Adicionar imagens"}
-          </Button>
+              Importar
+            </button>
+            <button
+              onClick={() => {
+                setImageSourceTab("renders");
+                void fetchRenders();
+              }}
+              className={`flex-1 flex items-center justify-center gap-1.5 py-1.5 border-l transition-colors ${
+                imageSourceTab === "renders"
+                  ? "bg-primary text-primary-foreground font-medium"
+                  : "bg-transparent text-muted-foreground hover:bg-muted"
+              }`}
+            >
+              <Sparkles className="h-3 w-3" />
+              Renderizações 3D
+            </button>
+          </div>
+
+          {/* Aba: Importar */}
+          {imageSourceTab === "upload" && (
+            <div className="space-y-2">
+              <p className="text-xs text-muted-foreground">
+                Envie imagens do seu computador para compor a proposta.
+              </p>
+              <input
+                ref={imageInputRef}
+                type="file"
+                accept="image/*"
+                multiple
+                className="hidden"
+                onChange={(e) => {
+                  if (e.target.files?.length) {
+                    void handleProposalImageUpload(e.target.files);
+                    e.target.value = "";
+                  }
+                }}
+              />
+              <Button
+                variant="outline"
+                size="sm"
+                className="w-full h-8 text-xs gap-2"
+                disabled={imageUploading}
+                onClick={() => imageInputRef.current?.click()}
+              >
+                {imageUploading ? (
+                  <Loader2 className="h-3 w-3 animate-spin" />
+                ) : (
+                  <Upload className="h-3 w-3" />
+                )}
+                {imageUploading ? "Enviando..." : "Selecionar arquivos"}
+              </Button>
+            </div>
+          )}
+
+          {/* Aba: Renderizações 3D */}
+          {imageSourceTab === "renders" && (
+            <div className="space-y-2">
+              {rendersLoading ? (
+                <div className="grid grid-cols-3 gap-2">
+                  {[1, 2, 3, 4, 5, 6].map((i) => (
+                    <div key={i} className="aspect-video bg-muted animate-pulse rounded" />
+                  ))}
+                </div>
+              ) : renders.length === 0 ? (
+                <div className="py-6 text-center">
+                  <p className="text-xs text-muted-foreground">
+                    Nenhuma renderização encontrada.
+                  </p>
+                  <p className="text-xs text-muted-foreground mt-1">
+                    Gere renders no módulo Arch para usar aqui.
+                  </p>
+                </div>
+              ) : (
+                <>
+                  <p className="text-xs text-muted-foreground">
+                    Clique para adicionar ou remover da seleção:
+                  </p>
+                  <div className="grid grid-cols-3 gap-2 max-h-64 overflow-y-auto pr-0.5">
+                    {renders.map((r) => {
+                      const selected = proposalImages.includes(r.imageUrl);
+                      return (
+                        <button
+                          key={r.id}
+                          onClick={() => toggleRenderImage(r.imageUrl)}
+                          className={`relative rounded overflow-hidden border-2 aspect-video bg-muted transition-all ${
+                            selected
+                              ? "border-primary ring-2 ring-primary/30"
+                              : "border-transparent hover:border-muted-foreground/40"
+                          }`}
+                          title={r.cenaNome ?? "Render"}
+                        >
+                          <img
+                            src={r.imageUrl}
+                            alt={r.cenaNome ?? "Render"}
+                            className="w-full h-full object-cover"
+                            onError={(e) => {
+                              (e.target as HTMLImageElement).closest("button")?.classList.add("hidden");
+                            }}
+                          />
+                          {selected && (
+                            <span className="absolute inset-0 bg-primary/20 flex items-center justify-center">
+                              <span className="bg-primary text-primary-foreground rounded-full w-5 h-5 flex items-center justify-center text-[10px] font-bold">
+                                {proposalImages.indexOf(r.imageUrl) + 1}
+                              </span>
+                            </span>
+                          )}
+                          {r.cenaNome && (
+                            <span className="absolute bottom-0 inset-x-0 bg-black/50 text-white text-[9px] px-1 py-0.5 truncate text-left">
+                              {r.cenaNome}
+                            </span>
+                          )}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </>
+              )}
+            </div>
+          )}
         </CardContent>
       </Card>
 

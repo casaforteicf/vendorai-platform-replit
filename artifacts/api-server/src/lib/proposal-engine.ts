@@ -529,9 +529,17 @@ export function renderProposalHtml(json: unknown, theme: {
   .orc-meta-item span:last-child { font-size: 9pt; font-weight: 600; color: ${theme.navyDeep}; }
   .orc-obs { margin-top: 3mm; padding: 3mm 4mm; background: ${theme.cream2}; border-radius: 6px; border: 1px solid ${theme.concreteLine}; font-size: 8pt; color: #4a4368; line-height: 1.55; }
 
+  /* ── hero image (cover visual) ── */
+  .img-hero-wrap { margin: 5mm 0 4mm; border-radius: 10px; overflow: hidden; border: 1px solid ${theme.concreteLine}; }
+  .img-hero-wrap img { width: 100%; max-height: 72mm; object-fit: cover; display: block; }
+
   /* ── gallery ── */
-  .gallery { display: grid; grid-template-columns: repeat(3, 1fr); gap: 3mm; margin: 3.5mm 0; }
-  .gallery img { width: 100%; aspect-ratio: 4/3; object-fit: cover; border-radius: 6px; border: 1px solid ${theme.concreteLine}; }
+  .gallery { display: grid; gap: 3mm; margin: 3.5mm 0; }
+  .gallery.gallery-1 { grid-template-columns: 1fr; }
+  .gallery.gallery-2 { grid-template-columns: 1fr 1fr; }
+  .gallery.gallery-3, .gallery.gallery-many { grid-template-columns: repeat(3, 1fr); }
+  .gallery img { width: 100%; aspect-ratio: 4/3; object-fit: cover; border-radius: 6px; border: 1px solid ${theme.concreteLine}; display: block; }
+  .gallery img.landscape { aspect-ratio: 16/9; }
 
   @media print {
     body { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
@@ -559,6 +567,7 @@ export function renderProposalHtml(json: unknown, theme: {
         : ""}
     <h1>${hero.headline || ""}</h1>
     <p class="cover-sub">${hero.subheadline || ""}</p>
+    ${imagens && imagens.length > 0 ? `<div class="img-hero-wrap"><img src="${imagens[0]}" alt="Visualização do projeto" onerror="this.style.display='none'" /></div>` : ""}
     <div class="cover-fortag">${hero.forTag || ""}</div>
   </div>
 
@@ -674,14 +683,18 @@ ${orcamento ? (() => {
 </div>`;
 })() : ""}
 
-${imagens && imagens.length > 0 ? `
+${imagens && imagens.length > 0 ? (() => {
+  const galleryImgs = imagens.length > 1 ? imagens.slice(1) : imagens;
+  const galleryClass = galleryImgs.length === 1 ? "gallery gallery-1" : galleryImgs.length === 2 ? "gallery gallery-2" : galleryImgs.length === 3 ? "gallery gallery-3" : "gallery gallery-many";
+  return `
 <div class="page">
-  ${docHdr(`Galeria · ${clientName || meta.clientName || "Cliente"}`)}
-  <div class="sec-label">Galeria de Produtos</div>
-  <div class="gallery">
-    ${imagens.map((url) => `<img src="${url}" alt="" loading="lazy" onerror="this.style.display='none'" />`).join("\n    ")}
+  ${docHdr(`Visualizações · ${clientName || meta.clientName || "Cliente"}`)}
+  <div class="sec-label">Visualizações do Projeto</div>
+  <div class="${galleryClass}">
+    ${galleryImgs.map((url) => `<img src="${url}" alt="" loading="lazy" onerror="this.parentElement.removeChild(this)" />`).join("\n    ")}
   </div>
-</div>` : ""}
+</div>`;
+})() : ""}
 
 </body>
 </html>`;

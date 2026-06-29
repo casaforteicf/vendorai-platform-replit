@@ -496,6 +496,32 @@ router.post("/arch/cenas/:cenaId/renderizar", authenticate, async (req, res) => 
   return res.status(202).json(result);
 });
 
+// GET /api/arch/renders/gallery — renders recentes do tenant para o seletor de imagens da proposta
+router.get("/arch/renders/gallery", authenticate, async (req, res) => {
+  const tid = tenantId(req);
+  const limit = Math.min(Number(req.query.limit) || 40, 80);
+
+  const rows = await db
+    .select({
+      id:        archRenderVersoesTable.id,
+      imageUrl:  archRenderVersoesTable.imageUrl,
+      versao:    archRenderVersoesTable.versao,
+      origem:    archRenderVersoesTable.origem,
+      createdAt: archRenderVersoesTable.createdAt,
+      cenaId:    archRenderVersoesTable.cenaId,
+      cenaNome:  archCenasTable.nome,
+      projetoId: archCenasTable.projetoId,
+    })
+    .from(archRenderVersoesTable)
+    .innerJoin(archCenasTable, eq(archCenasTable.id, archRenderVersoesTable.cenaId))
+    .innerJoin(archProjetosTable, eq(archProjetosTable.id, archCenasTable.projetoId))
+    .where(eq(archProjetosTable.tenantId, tid))
+    .orderBy(desc(archRenderVersoesTable.createdAt))
+    .limit(limit);
+
+  return res.json(rows);
+});
+
 // GET /api/arch/cenas/:cenaId/render-status
 router.get("/arch/cenas/:cenaId/render-status", authenticate, async (req, res) => {
   const cenaId = String(req.params.cenaId);
