@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useAuth } from "@/contexts/AuthContext";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -9,11 +9,12 @@ import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell,
 } from "recharts";
 import {
-  TrendingUp, Send, CheckCircle2, Percent, DollarSign, Plus, ArrowRight,
+  TrendingUp, Send, CheckCircle2, Percent, DollarSign, Plus, ArrowRight, Play, Loader2,
 } from "lucide-react";
 import { format, subDays, parseISO } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { Link } from "wouter";
+import { useToast } from "@/hooks/use-toast";
 
 const getBase = () => (import.meta.env.BASE_URL ?? "/").replace(/\/$/, "");
 function authHeaders() {
@@ -56,6 +57,29 @@ const STATUS_LABELS: Record<string, string> = {
 export default function RevenueDashboard() {
   const { user } = useAuth();
   const tenantId = user?.tenantId ?? "";
+  const qc = useQueryClient();
+  const { toast } = useToast();
+
+  const runScout = useMutation({
+    mutationFn: () =>
+      fetch(`${getBase()}/api/tenants/${tenantId}/scout/run`, {
+        method: "POST",
+        headers: authHeaders(),
+      }).then(async (r) => {
+        const data = await r.json().catch(() => ({}));
+        if (!r.ok) throw new Error(data.error ?? "Erro ao rodar o scout");
+        return data as { clientesAnalisados: number; oportunidadesGeradas: number };
+      }),
+    onSuccess: (data) => {
+      qc.invalidateQueries({ queryKey: ["scout-dashboard", tenantId] });
+      qc.invalidateQueries({ queryKey: ["scout-oportunidades", tenantId] });
+      toast({
+        title: "Scout concluído!",
+        description: `${data.clientesAnalisados} leads analisados · ${data.oportunidadesGeradas} nova(s) oportunidade(s) gerada(s).`,
+      });
+    },
+    onError: (e: any) => toast({ title: "Erro", description: e.message, variant: "destructive" }),
+  });
 
   const { data: dash, isLoading: loadingDash } = useQuery<any>({
     queryKey: ["scout-dashboard", tenantId],
@@ -141,6 +165,17 @@ export default function RevenueDashboard() {
           <Link href="/scout/regras">
             <Button variant="outline" size="sm">Gerenciar Regras</Button>
           </Link>
+          <Button
+            variant="outline"
+            size="sm"
+            disabled={runScout.isPending}
+            onClick={() => runScout.mutate()}
+          >
+            {runScout.isPending
+              ? <><Loader2 className="h-3.5 w-3.5 mr-1 animate-spin" /> Analisando...</>
+              : <><Play className="h-3.5 w-3.5 mr-1" /> Rodar Scout</>
+            }
+          </Button>
           <Link href="/scout/oportunidades">
             <Button size="sm">Ver Oportunidades <ArrowRight className="h-3.5 w-3.5 ml-1" /></Button>
           </Link>

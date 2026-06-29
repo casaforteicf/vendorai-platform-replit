@@ -5,6 +5,7 @@ import {
   scoutRegrasTable,
   scoutOportunidadesTable,
 } from "@workspace/db";
+import { runRevenueScoutForTenant } from "../services/revenueScout.js";
 
 const router: IRouter = Router();
 
@@ -158,6 +159,28 @@ router.get("/tenants/:tenantId/scout/dashboard", async (req, res) => {
     receitaEstimada: Number(receitaEstimada.toFixed(2)),
     receitaGerada:   Number(receitaGerada.toFixed(2)),
   });
+});
+
+// ─── Disparo manual do Revenue Scout ─────────────────────────────────────────
+
+router.post("/tenants/:tenantId/scout/run", async (req, res) => {
+  const { tenantId } = req.params;
+  if (!canAccess(req, tenantId)) return res.status(403).json({ error: "Forbidden" });
+
+  const log = (req as any).log ?? console;
+
+  const [hasRegras] = await db
+    .select({ id: scoutRegrasTable.id })
+    .from(scoutRegrasTable)
+    .where(and(eq(scoutRegrasTable.tenantId, tenantId), eq(scoutRegrasTable.ativo, true)))
+    .limit(1);
+
+  if (!hasRegras) {
+    return res.status(422).json({ error: "Nenhuma regra ativa encontrada. Configure pelo menos uma regra antes de rodar o scout." });
+  }
+
+  const result = await runRevenueScoutForTenant(tenantId, log);
+  return res.json({ ok: true, ...result });
 });
 
 // ─── Converter oportunidade ───────────────────────────────────────────────────

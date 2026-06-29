@@ -356,6 +356,80 @@ export async function processarOportunidades(
   }
 }
 
+// ─── runRevenueScoutForTenant — executa varredura para um único tenant ────────
+
+export async function runRevenueScoutForTenant(
+  tenantId: string,
+  log: Logger,
+): Promise<{ clientesAnalisados: number; oportunidadesGeradas: number }> {
+  const cutoff180 = new Date(Date.now() - 180 * 24 * 60 * 60 * 1000);
+
+  // Clientes com histórico beauty nos últimos 180 dias
+  const beautyClientes = await db
+    .select({ clienteId: beautyAgendamentosTable.clienteId })
+    .from(beautyAgendamentosTable)
+    .where(
+      and(
+        eq(beautyAgendamentosTable.tenantId, tenantId),
+        gte(beautyAgendamentosTable.dataHora, cutoff180),
+      ),
+    );
+
+  // Clientes com histórico clinic nos últimos 180 dias
+  const clinicClientes = await db
+    .select({ clienteId: clinicConsultasTable.pacienteId })
+    .from(clinicConsultasTable)
+    .where(
+      and(
+        eq(clinicConsultasTable.tenantId, tenantId),
+        gte(clinicConsultasTable.dataHora, cutoff180),
+      ),
+    );
+
+  // Todos os leads CRM do tenant (cobre verticais sem agendamentos beauty/clinic)
+  const crmLeads = await db
+    .select({ id: leadsTable.id })
+    .from(leadsTable)
+    .where(eq(leadsTable.tenantId, tenantId))
+    .limit(500);
+
+  const clienteIds = [
+    ...new Set([
+      ...beautyClientes.map((r) => r.clienteId),
+      ...clinicClientes.map((r) => r.clienteId),
+      ...crmLeads.map((r) => r.id),
+    ]),
+  ];
+
+  log.info({ tenantId, clientes: clienteIds.length }, "scout/run: analisando clientes");
+
+  const antesCount = await db
+    .select({ id: scoutOportunidadesTable.id })
+    .from(scoutOportunidadesTable)
+    .where(eq(scoutOportunidadesTable.tenantId, tenantId));
+
+  for (const clienteId of clienteIds) {
+    try {
+      await analisarCliente(tenantId, clienteId, log);
+    } catch (err) {
+      log.error({ err, tenantId, clienteId }, "scout/run: analisarCliente falhou (non-fatal)");
+    }
+  }
+
+  await processarOportunidades(tenantId, log);
+
+  const depoisCount = await db
+    .select({ id: scoutOportunidadesTable.id })
+    .from(scoutOportunidadesTable)
+    .where(eq(scoutOportunidadesTable.tenantId, tenantId));
+
+  const oportunidadesGeradas = Math.max(0, depoisCount.length - antesCount.length);
+
+  log.info({ tenantId, clientesAnalisados: clienteIds.length, oportunidadesGeradas }, "scout/run: concluído");
+
+  return { clientesAnalisados: clienteIds.length, oportunidadesGeradas };
+}
+
 // ─── runRevenueScoutJob — orquestrador diário ─────────────────────────────────
 
 export async function runRevenueScoutJob(log: Logger): Promise<void> {
@@ -366,53 +440,9 @@ export async function runRevenueScoutJob(log: Logger): Promise<void> {
     .from(tenantsTable)
     .where(eq(tenantsTable.status, "active"));
 
-  const cutoff180 = new Date(Date.now() - 180 * 24 * 60 * 60 * 1000);
-
   for (const tenant of tenants) {
     try {
-      // Clientes ativos nos últimos 180 dias — beauty
-      const beautyClientes = await db
-        .select({ clienteId: beautyAgendamentosTable.clienteId })
-        .from(beautyAgendamentosTable)
-        .where(
-          and(
-            eq(beautyAgendamentosTable.tenantId, tenant.id),
-            gte(beautyAgendamentosTable.dataHora, cutoff180),
-          ),
-        );
-
-      // Clientes ativos nos últimos 180 dias — clinic
-      const clinicClientes = await db
-        .select({ clienteId: clinicConsultasTable.pacienteId })
-        .from(clinicConsultasTable)
-        .where(
-          and(
-            eq(clinicConsultasTable.tenantId, tenant.id),
-            gte(clinicConsultasTable.dataHora, cutoff180),
-          ),
-        );
-
-      const clienteIds = [
-        ...new Set([
-          ...beautyClientes.map((r) => r.clienteId),
-          ...clinicClientes.map((r) => r.clienteId),
-        ]),
-      ];
-
-      log.info({ tenantId: tenant.id, clientes: clienteIds.length }, "scout/job: analisando clientes");
-
-      for (const clienteId of clienteIds) {
-        try {
-          await analisarCliente(tenant.id, clienteId, log);
-        } catch (err) {
-          log.error({ err, tenantId: tenant.id, clienteId }, "scout/job: analisarCliente falhou (non-fatal)");
-        }
-      }
-
-      // Depois de analisar: processar oportunidades pendentes
-      await processarOportunidades(tenant.id, log);
-
-      log.info({ tenantId: tenant.id, clientes: clienteIds.length }, "scout/job: tenant concluído");
+      await runRevenueScoutForTenant(tenant.id, log);
     } catch (err) {
       log.error({ err, tenantId: tenant.id }, "scout/job: tenant falhou (non-fatal)");
     }
