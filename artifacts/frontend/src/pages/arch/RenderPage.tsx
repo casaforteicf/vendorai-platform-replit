@@ -31,24 +31,8 @@ export default function RenderPage() {
       setGhostPos({ x: e.clientX, y: e.clientY })
     }
 
-    function onUp(e: MouseEvent) {
-      // Hide ghost synchronously before elementFromPoint so it doesn't block the hit-test
-      if (ghostRef.current) ghostRef.current.style.display = 'none'
-
-      const mat = draggingMatRef.current
-      if (mat) {
-        const el = document.elementFromPoint(e.clientX, e.clientY)
-        const zoneEl = el?.closest('[data-zone]') as HTMLElement | null
-        if (zoneEl?.dataset.zone) {
-          const zoneName = zoneEl.dataset.zone
-          rs.applyMaterial(zoneName, {
-            zone: zoneName,
-            name: mat.name,
-            color: mat.c1,
-            promptFragment: mat.prompt,
-          } as AppliedMaterial)
-        }
-      }
+    function onUp() {
+      // Global mouseup = cleanup only; material application is handled by onMouseUpZone on each zone div
       setDraggingMat(null)
       setGhostPos({ x: -200, y: -200 })
     }
@@ -75,6 +59,20 @@ export default function RenderPage() {
       color: mat.c1,
       promptFragment: mat.prompt,
     } as AppliedMaterial)
+  }
+
+  // Called directly by each zone div's onMouseUp — most reliable drop detection
+  function onMouseUpZone(zoneName: string) {
+    const mat = draggingMatRef.current
+    if (!mat) return
+    rs.applyMaterial(zoneName, {
+      zone: zoneName,
+      name: mat.name,
+      color: mat.c1,
+      promptFragment: mat.prompt,
+    } as AppliedMaterial)
+    setDraggingMat(null)
+    setGhostPos({ x: -200, y: -200 })
   }
 
   function handleImport(file: File, name: string, color: string) {
@@ -262,6 +260,7 @@ export default function RenderPage() {
         applied={rs.applied}
         draggingMat={draggingMat}
         onDrop={applyDraggingToZone}
+        onMouseUpZone={onMouseUpZone}
         onLoadImage={handleLoadImage}
       />
 

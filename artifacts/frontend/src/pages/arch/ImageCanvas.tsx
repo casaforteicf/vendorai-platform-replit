@@ -30,10 +30,11 @@ interface ImageCanvasProps {
   applied: Record<string, AppliedMaterial>
   draggingMat: any
   onDrop: (zone: string) => void
+  onMouseUpZone: (zone: string) => void
   onLoadImage: (file: File) => void
 }
 
-export default function ImageCanvas({ imageUrl, applied, draggingMat, onDrop, onLoadImage }: ImageCanvasProps) {
+export default function ImageCanvas({ imageUrl, applied, draggingMat, onDrop, onMouseUpZone, onLoadImage }: ImageCanvasProps) {
   const fileRef = useRef<HTMLInputElement>(null)
 
   function handleFileDrop(e: React.DragEvent) {
@@ -154,6 +155,7 @@ export default function ImageCanvas({ imageUrl, applied, draggingMat, onDrop, on
                 data-zone={zone.name}
                 onDragOver={(e) => e.preventDefault()}
                 onDrop={e => { e.preventDefault(); e.stopPropagation(); onDrop(zone.name) }}
+                onMouseUp={e => { e.stopPropagation(); onMouseUpZone(zone.name) }}
                 style={{
                   position: 'absolute',
                   top: zone.top,
