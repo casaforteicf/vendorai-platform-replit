@@ -152,8 +152,8 @@ export default function ImageCanvas({ imageUrl, applied, draggingMat, onDrop, on
               <div
                 key={zone.name}
                 data-zone={zone.name}
-                onDragOver={handleZoneDragOver}
-                onDrop={e => handleZoneDrop(e, zone.name)}
+                onDragOver={(e) => e.preventDefault()}
+                onDrop={e => { e.preventDefault(); e.stopPropagation(); onDrop(zone.name) }}
                 style={{
                   position: 'absolute',
                   top: zone.top,
@@ -165,14 +165,14 @@ export default function ImageCanvas({ imageUrl, applied, draggingMat, onDrop, on
                     : isDraggingOver
                       ? 'rgba(139,92,246,0.08)'
                       : 'transparent',
-                  outline: mat
-                    ? `2px dashed ${mat.color}`
+                  border: mat
+                    ? `2px solid ${hexToRgba(mat.color, 0.7)}`
                     : isDraggingOver
                       ? '1.5px dashed rgba(139,92,246,0.5)'
-                      : 'none',
+                      : '1px dashed rgba(255,255,255,0.08)',
                   borderRadius: 3,
                   cursor: draggingMat ? 'copy' : 'default',
-                  transition: 'background 0.2s, outline 0.2s',
+                  transition: 'background 0.2s, border 0.2s',
                   zIndex: 10,
                   display: 'flex',
                   alignItems: 'flex-start',
@@ -181,22 +181,30 @@ export default function ImageCanvas({ imageUrl, applied, draggingMat, onDrop, on
                   boxSizing: 'border-box',
                 }}
               >
-                {mat && (
+                {mat ? (
                   <span style={{
                     fontSize: 9,
                     fontWeight: 600,
-                    color: mat.color,
-                    background: 'rgba(0,0,0,0.55)',
+                    color: '#fff',
+                    background: 'rgba(0,0,0,0.6)',
                     borderRadius: 3,
                     padding: '1px 5px',
                     backdropFilter: 'blur(4px)',
-                    letterSpacing: '0.04em',
-                    textTransform: 'uppercase',
+                    letterSpacing: '0.03em',
+                    pointerEvents: 'none',
+                    whiteSpace: 'nowrap',
+                  }}>
+                    {zone.name} · {mat.name}
+                  </span>
+                ) : isDraggingOver ? (
+                  <span style={{
+                    fontSize: 9,
+                    color: 'rgba(167,139,250,0.7)',
                     pointerEvents: 'none',
                   }}>
                     {zone.name}
                   </span>
-                )}
+                ) : null}
               </div>
             )
           })}

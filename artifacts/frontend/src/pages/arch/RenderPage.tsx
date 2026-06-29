@@ -18,8 +18,9 @@ export default function RenderPage() {
   const [imageFile, setImageFile] = useState<File | null>(null)
   const [customMats, setCustomMats] = useState<CustomMat[]>([])
 
-  // Keep a ref so event listeners always see the latest draggingMat
+  // Keep refs so event listeners always see latest values without stale closures
   const draggingMatRef = useRef<CustomMat | null>(null)
+  const ghostRef = useRef<HTMLDivElement>(null)
   draggingMatRef.current = draggingMat
 
   // Attach global mouse listeners only while dragging
@@ -31,6 +32,9 @@ export default function RenderPage() {
     }
 
     function onUp(e: MouseEvent) {
+      // Hide ghost synchronously before elementFromPoint so it doesn't block the hit-test
+      if (ghostRef.current) ghostRef.current.style.display = 'none'
+
       const mat = draggingMatRef.current
       if (mat) {
         const el = document.elementFromPoint(e.clientX, e.clientY)
@@ -292,6 +296,7 @@ export default function RenderPage() {
       {/* Drag ghost */}
       {draggingMat && (
         <div
+          ref={ghostRef}
           style={{
             position: 'fixed',
             left: ghostPos.x - 20,
