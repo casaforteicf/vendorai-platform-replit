@@ -101,6 +101,8 @@ import {
   Package,
   Upload,
   Globe,
+  Maximize2,
+  Download,
 } from "lucide-react";
 
 const STATUS_STYLES: Record<string, string> = {
@@ -269,6 +271,8 @@ export default function LeadDetail() {
   const queryClient = useQueryClient();
 
   const [propostaModalOpen, setPropostaModalOpen] = useState(false);
+  const [lightboxUrl, setLightboxUrl] = useState<string | null>(null);
+  const [lightboxTitle, setLightboxTitle] = useState<string>("");
 
   const { data: catalog = [] } = useListProdutosCatalogo(tenantId, {
     query: { queryKey: getListProdutosCatalogoQueryKey(tenantId), enabled: !!tenantId },
@@ -2265,9 +2269,116 @@ export default function LeadDetail() {
         <LeadProductPresentationTab leadId={id} tenantId={tenantId} lead={lead} />
 
         {/* Duplicatas */}
+        {/* Imagens da Proposta */}
+        {(() => {
+          const renderImages = (activities ?? []).filter(
+            (a) => a.anexoCategoria === "imagem" && a.anexoUrl
+          ).sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+          return (
+            <Card data-testid="card-imagens-proposta">
+              <CardHeader className="pb-3">
+                <CardTitle className="text-sm font-semibold flex items-center gap-2">
+                  <Image className="h-4 w-4" />
+                  Imagens da Proposta
+                  {renderImages.length > 0 && (
+                    <Badge variant="outline" className="text-xs ml-1">{renderImages.length}</Badge>
+                  )}
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                {activitiesLoading ? (
+                  <div className="grid grid-cols-3 sm:grid-cols-4 lg:grid-cols-5 gap-2">
+                    {[1,2,3].map((i) => (
+                      <div key={i} className="aspect-video bg-muted animate-pulse rounded-lg" />
+                    ))}
+                  </div>
+                ) : renderImages.length === 0 ? (
+                  <div className="py-8 text-center space-y-2">
+                    <Image className="h-10 w-10 mx-auto text-muted-foreground/30" />
+                    <p className="text-sm text-muted-foreground">Nenhuma imagem salva para este lead.</p>
+                    <p className="text-xs text-muted-foreground/70">
+                      Gere uma renderização em{" "}
+                      <span className="font-medium">Módulo Arch → Renderização</span>{" "}
+                      e clique em "Salvar no Lead".
+                    </p>
+                  </div>
+                ) : (
+                  <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-3">
+                    {renderImages.map((activity) => (
+                      <button
+                        key={activity.id}
+                        type="button"
+                        onClick={() => {
+                          setLightboxUrl(activity.anexoUrl!);
+                          setLightboxTitle(activity.titulo ?? "Imagem da Proposta");
+                        }}
+                        className="group relative aspect-video rounded-lg overflow-hidden border border-border bg-muted hover:border-violet-400 transition-all shadow-sm hover:shadow-md focus:outline-none focus:ring-2 focus:ring-violet-500"
+                      >
+                        <img
+                          src={activity.anexoUrl!}
+                          alt={activity.titulo ?? "Imagem"}
+                          className="w-full h-full object-cover transition-transform duration-200 group-hover:scale-105"
+                          loading="lazy"
+                        />
+                        {/* Overlay */}
+                        <div className="absolute inset-0 bg-black/0 group-hover:bg-black/30 transition-colors flex items-center justify-center">
+                          <Maximize2 className="h-6 w-6 text-white opacity-0 group-hover:opacity-100 transition-opacity drop-shadow-lg" />
+                        </div>
+                        {/* Date badge */}
+                        <div className="absolute bottom-0 left-0 right-0 px-2 py-1 bg-gradient-to-t from-black/70 to-transparent">
+                          <p className="text-[10px] text-white/90 truncate">
+                            {new Intl.DateTimeFormat("pt-BR", { day: "2-digit", month: "2-digit", year: "2-digit" }).format(new Date(activity.createdAt))}
+                          </p>
+                        </div>
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          );
+        })()}
+
         <LeadDuplicatasTab leadId={id} tenantId={tenantId} />
 
       </div>
+
+      {/* Lightbox */}
+      <Dialog open={!!lightboxUrl} onOpenChange={(open) => { if (!open) setLightboxUrl(null); }}>
+        <DialogContent className="max-w-5xl w-full p-0 overflow-hidden bg-black border-black">
+          <div className="relative">
+            <div className="absolute top-3 right-3 flex gap-2 z-10">
+              <a
+                href={lightboxUrl ?? "#"}
+                download
+                onClick={(e) => e.stopPropagation()}
+                className="inline-flex items-center gap-1.5 bg-black/60 hover:bg-black/80 text-white text-xs rounded-md px-3 py-1.5 transition-colors backdrop-blur-sm"
+              >
+                <Download className="h-3.5 w-3.5" />
+                Baixar
+              </a>
+              <button
+                onClick={() => setLightboxUrl(null)}
+                className="bg-black/60 hover:bg-black/80 text-white rounded-md p-1.5 transition-colors backdrop-blur-sm"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+            {lightboxUrl && (
+              <img
+                src={lightboxUrl}
+                alt={lightboxTitle}
+                className="w-full max-h-[85vh] object-contain"
+              />
+            )}
+            {lightboxTitle && (
+              <div className="absolute bottom-0 left-0 right-0 px-4 py-3 bg-gradient-to-t from-black/80 to-transparent">
+                <p className="text-sm text-white font-medium">{lightboxTitle}</p>
+              </div>
+            )}
+          </div>
+        </DialogContent>
+      </Dialog>
 
       {/* Dados do Lead — edit dialog */}
       <Dialog open={editingLeadDados} onOpenChange={setEditingLeadDados}>
