@@ -44,8 +44,9 @@ router.post("/render/quick", upload.single("image"), async (req, res) => {
     roomType,
     "professional lighting, wide angle lens, ray tracing, 4K quality",
     isExterior ? "Brazilian residential architecture" : "Brazilian home interior",
+    "keep exactly the same spatial layout and objects as the reference image — do NOT add, remove or replace any furniture, objects, or decorative elements not present in the original",
     notes || null,
-  ].filter(Boolean).join(", ");
+  ].filter(Boolean).join(". ");
 
   try {
     const openai = await getOpenAIForTenant(tenantId);
