@@ -23,8 +23,7 @@ import {
 } from "@workspace/db";
 import { findLeadByDedup, storePhone } from "../lib/dedup.js";
 import { buildUserFunctionFilter, requireAdminOrUserFunction, type UserFunction } from "../middlewares/auth.js";
-import { resolveAIKey } from "../lib/ai-gateway.js";
-import OpenAI from "openai";
+import { callOpenAI } from "../lib/ai-gateway.js";
 
 const router: IRouter = Router();
 
@@ -750,21 +749,16 @@ Retorne JSON válido neste formato exato:
 Não inclua nenhum texto além do JSON.`;
 
   try {
-    const aiKey = await resolveAIKey(tenantId, "openai");
-    const openai = new OpenAI({ apiKey: aiKey.apiKey });
+    const result = await callOpenAI(
+      tenantId,
+      "briefing_generator",
+      [{ role: "user", content: prompt }],
+      { model: "gpt-4o-mini", maxTokens: 1000, temperature: 0.7, responseFormat: { type: "json_object" }, log: req.log },
+    );
 
-    const completion = await openai.chat.completions.create({
-      model: "gpt-4o-mini",
-      messages: [{ role: "user", content: prompt }],
-      response_format: { type: "json_object" },
-      max_tokens: 1000,
-      temperature: 0.7,
-    });
-
-    const raw = completion.choices[0]?.message?.content ?? "{}";
     let parsed: Record<string, string[]>;
     try {
-      parsed = JSON.parse(raw);
+      parsed = JSON.parse(result.content);
     } catch {
       res.status(502).json({ error: "IA retornou formato inválido" });
       return;
@@ -778,7 +772,8 @@ Não inclua nenhum texto além do JSON.`;
     });
   } catch (err: any) {
     req.log.error({ err }, "briefing/generate-questions error");
-    res.status(500).json({ error: "Erro ao gerar perguntas com IA" });
+    const status = (err as any)?.httpStatus ?? 500;
+    res.status(status).json({ error: err?.message ?? "Erro ao gerar perguntas com IA" });
   }
 });
 
@@ -885,21 +880,16 @@ TAREFA: Com base nesses dados, produza um JSON com o seguinte formato:
 Seja direto, prático e específico para este cliente. Não invente dados que não estão no briefing.`;
 
   try {
-    const aiKey = await resolveAIKey(tenantId, "openai");
-    const openai = new OpenAI({ apiKey: aiKey.apiKey });
+    const result = await callOpenAI(
+      tenantId,
+      "briefing_generator",
+      [{ role: "user", content: prompt }],
+      { model: "gpt-4o-mini", maxTokens: 1200, temperature: 0.5, responseFormat: { type: "json_object" }, log: req.log },
+    );
 
-    const completion = await openai.chat.completions.create({
-      model: "gpt-4o-mini",
-      messages: [{ role: "user", content: prompt }],
-      response_format: { type: "json_object" },
-      max_tokens: 1200,
-      temperature: 0.5,
-    });
-
-    const raw = completion.choices[0]?.message?.content ?? "{}";
     let parsed: Record<string, unknown>;
     try {
-      parsed = JSON.parse(raw);
+      parsed = JSON.parse(result.content);
     } catch {
       res.status(502).json({ error: "IA retornou formato inválido" });
       return;
@@ -930,7 +920,8 @@ Seja direto, prático e específico para este cliente. Não invente dados que n�
     res.json(summary);
   } catch (err: any) {
     req.log.error({ err }, "briefing/summarize error");
-    res.status(500).json({ error: "Erro ao gerar resumo com IA" });
+    const status = (err as any)?.httpStatus ?? 500;
+    res.status(status).json({ error: err?.message ?? "Erro ao gerar resumo com IA" });
   }
 });
 
