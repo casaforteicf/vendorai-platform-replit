@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { useRenderState } from './useRenderState'
 import MaterialBar from './MaterialBar'
 import ImageCanvas from './ImageCanvas'
@@ -17,35 +17,59 @@ export default function RenderPage() {
   const [imageFile, setImageFile] = useState<File | null>(null)
   const [customMats, setCustomMats] = useState<CustomMat[]>([])
 
+  // Keep a ref so event listeners always see the latest draggingMat
+  const draggingMatRef = useRef<CustomMat | null>(null)
+  draggingMatRef.current = draggingMat
+
+  // Attach global mouse listeners only while dragging
+  useEffect(() => {
+    if (!draggingMat) return
+
+    function onMove(e: MouseEvent) {
+      setGhostPos({ x: e.clientX, y: e.clientY })
+    }
+
+    function onUp(e: MouseEvent) {
+      const mat = draggingMatRef.current
+      if (mat) {
+        const el = document.elementFromPoint(e.clientX, e.clientY)
+        const zoneEl = el?.closest('[data-zone]') as HTMLElement | null
+        if (zoneEl?.dataset.zone) {
+          const zoneName = zoneEl.dataset.zone
+          rs.applyMaterial(zoneName, {
+            zone: zoneName,
+            name: mat.name,
+            color: mat.c1,
+            promptFragment: mat.prompt,
+          } as AppliedMaterial)
+        }
+      }
+      setDraggingMat(null)
+      setGhostPos({ x: -200, y: -200 })
+    }
+
+    document.addEventListener('mousemove', onMove)
+    document.addEventListener('mouseup', onUp)
+    return () => {
+      document.removeEventListener('mousemove', onMove)
+      document.removeEventListener('mouseup', onUp)
+    }
+  }, [draggingMat])
+
   function handleLoadImage(file: File) {
     setImageFile(file)
     rs.loadImage(file)
   }
 
   function applyDraggingToZone(zoneName: string) {
-    if (!draggingMat) return
+    const mat = draggingMatRef.current
+    if (!mat) return
     rs.applyMaterial(zoneName, {
       zone: zoneName,
-      name: draggingMat.name,
-      color: draggingMat.c1,
-      promptFragment: draggingMat.prompt,
+      name: mat.name,
+      color: mat.c1,
+      promptFragment: mat.prompt,
     } as AppliedMaterial)
-  }
-
-  function handleMouseMove(e: React.MouseEvent) {
-    if (!draggingMat) return
-    setGhostPos({ x: e.clientX, y: e.clientY })
-  }
-
-  function handleMouseUp(e: React.MouseEvent) {
-    if (!draggingMat) return
-    const el = document.elementFromPoint(e.clientX, e.clientY)
-    const zoneEl = el?.closest('[data-zone]') as HTMLElement | null
-    if (zoneEl?.dataset.zone) {
-      applyDraggingToZone(zoneEl.dataset.zone)
-    }
-    setDraggingMat(null)
-    setGhostPos({ x: -200, y: -200 })
   }
 
   function handleImport(file: File, name: string, color: string) {
@@ -96,8 +120,6 @@ export default function RenderPage() {
 
   return (
     <div
-      onMouseMove={handleMouseMove}
-      onMouseUp={handleMouseUp}
       style={{
         display: 'grid',
         gridTemplateRows: '36px 1fr 36px 110px 36px',
@@ -271,8 +293,8 @@ export default function RenderPage() {
             position: 'fixed',
             left: ghostPos.x - 20,
             top: ghostPos.y - 17,
-            width: 40,
-            height: 34,
+            width: 44,
+            height: 38,
             background: `linear-gradient(135deg, ${draggingMat.c1}, ${draggingMat.c2})`,
             borderRadius: 6,
             border: '1px solid rgba(255,255,255,0.3)',
