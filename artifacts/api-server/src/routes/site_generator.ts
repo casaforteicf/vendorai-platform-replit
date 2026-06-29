@@ -387,6 +387,23 @@ async function callAI(
   };
 }
 
+// GET /tenants/:tenantId/site-generator/latest — get most recently updated site
+router.get("/tenants/:tenantId/site-generator/latest", async (req, res) => {
+  const { tenantId } = req.params;
+  const [site] = await db
+    .select()
+    .from(generatedSitesTable)
+    .where(eq(generatedSitesTable.tenantId, tenantId))
+    .orderBy(desc(generatedSitesTable.updatedAt))
+    .limit(1);
+
+  if (!site) {
+    res.status(404).json({ error: "Nenhum site encontrado" });
+    return;
+  }
+  return res.json(site);
+});
+
 // GET /tenants/:tenantId/site-generator — list generated sites
 router.get("/tenants/:tenantId/site-generator", async (req, res) => {
   const { tenantId } = req.params;

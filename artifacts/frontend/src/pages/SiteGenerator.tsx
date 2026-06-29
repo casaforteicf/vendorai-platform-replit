@@ -25,7 +25,7 @@ import {
 } from "@/components/ui/dialog";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Separator } from "@/components/ui/separator";
-import { Loader2, Download, MessageSquare, RotateCcw, Globe, Sparkles, Quote, ImageIcon, Plus, Trash2, Upload } from "lucide-react";
+import { Loader2, Download, MessageSquare, RotateCcw, Globe, Sparkles, Quote, ImageIcon, Plus, Trash2, Upload, ShoppingCart, LayoutTemplate } from "lucide-react";
 
 // ── Constants ──────────────────────────────────────────────────────────────────
 
@@ -81,6 +81,8 @@ interface Testimonial {
 
 // ── Hook ───────────────────────────────────────────────────────────────────────
 
+interface SiteSummary { id: string; name: string; siteType: string; updatedAt: string; }
+
 function useSiteGenerator(tenantId: string, token: string | null) {
   const [status, setStatus] = useState<GeneratorStatus>("idle");
   const [html, setHtml] = useState("");
@@ -88,10 +90,37 @@ function useSiteGenerator(tenantId: string, token: string | null) {
   const [isPublished, setIsPublished] = useState(false);
   const [history, setHistory] = useState<Array<{ role: "user" | "assistant"; content: string }>>([]);
   const [error, setError] = useState<string | null>(null);
+  const [currentSiteType, setCurrentSiteType] = useState<string | null>(null);
+  const [currentConfig, setCurrentConfig] = useState<SiteConfig | null>(null);
+  const [sitesList, setSitesList] = useState<SiteSummary[]>([]);
 
   const authHeaders: Record<string, string> = token
     ? { "Content-Type": "application/json", Authorization: `Bearer ${token}` }
     : { "Content-Type": "application/json" };
+
+  const loadAll = useCallback(async () => {
+    if (!tenantId) return;
+    try {
+      const res = await fetch(`/api/tenants/${tenantId}/site-generator`, { headers: authHeaders });
+      if (!res.ok) return;
+      const sites = await res.json();
+      setSitesList(sites ?? []);
+    } catch {}
+  }, [tenantId, token]);
+
+  const loadSite = useCallback(async (id: string) => {
+    try {
+      const res = await fetch(`/api/tenants/${tenantId}/site-generator/${id}`, { headers: authHeaders });
+      if (!res.ok) return;
+      const site = await res.json();
+      setHtml(site.html ?? "");
+      setSiteId(site.id);
+      setIsPublished(site.published ?? false);
+      setCurrentSiteType(site.siteType ?? null);
+      setCurrentConfig(site.config ?? null);
+      setStatus("ready");
+    } catch {}
+  }, [tenantId, token]);
 
   const loadLatest = useCallback(async () => {
     if (!tenantId) return;
@@ -99,9 +128,11 @@ function useSiteGenerator(tenantId: string, token: string | null) {
       const res = await fetch(`/api/tenants/${tenantId}/site-generator/latest`, { headers: authHeaders });
       if (!res.ok) return;
       const site = await res.json();
-      setHtml(site.html);
+      setHtml(site.html ?? "");
       setSiteId(site.id);
       setIsPublished(site.published ?? false);
+      setCurrentSiteType(site.siteType ?? null);
+      setCurrentConfig(site.config ?? null);
       setStatus("ready");
     } catch {
       // No existing site — keep idle state
@@ -133,6 +164,8 @@ function useSiteGenerator(tenantId: string, token: string | null) {
     setHtml("");
     setSiteId(null);
     setHistory([]);
+    setCurrentSiteType(config.type);
+    setCurrentConfig(config);
 
     try {
       const res = await fetch(`/api/tenants/${tenantId}/site-generator/generate`, {
@@ -147,11 +180,18 @@ function useSiteGenerator(tenantId: string, token: string | null) {
       const site = await res.json();
       setHtml(site.html);
       setSiteId(site.id);
+      setCurrentSiteType(site.siteType ?? config.type);
+      setCurrentConfig(site.config ?? config);
       setHistory([
         { role: "user", content: `Gerar site para: ${config.name}` },
         { role: "assistant", content: site.html },
       ]);
       setStatus("ready");
+      // Refresh sites list
+      setSitesList((prev) => {
+        const filtered = prev.filter((s) => s.id !== site.id);
+        return [{ id: site.id, name: site.name, siteType: site.siteType, updatedAt: site.updatedAt }, ...filtered];
+      });
     } catch (err: any) {
       setStatus("error");
       setError(err.message ?? "Erro desconhecido");
@@ -197,9 +237,11 @@ function useSiteGenerator(tenantId: string, token: string | null) {
     setSiteId(null);
     setHistory([]);
     setError(null);
+    setCurrentSiteType(null);
+    setCurrentConfig(null);
   }, []);
 
-  return { status, html, siteId, isPublished, error, generate, refine, download, reset, loadLatest, saveHtml, publish };
+  return { status, html, siteId, isPublished, error, currentSiteType, currentConfig, sitesList, generate, refine, download, reset, loadLatest, loadAll, loadSite, saveHtml, publish };
 }
 
 // ── ConfigForm ─────────────────────────────────────────────────────────────────
@@ -933,18 +975,34 @@ function MediaDialog({ html, onSave }: { html: string; onSave: (html: string) =>
 
 // ── PersonalizePanel ───────────────────────────────────────────────────────────
 
+const SITE_TYPE_LABELS: Record<string, string> = {
+  landing:      "Landing Page",
+  ecommerce:    "E-commerce",
+  institutional: "Institucional",
+};
+
+const SITE_TYPE_ICONS: Record<string, React.ReactNode> = {
+  landing:      <LayoutTemplate className="h-3.5 w-3.5" />,
+  ecommerce:    <ShoppingCart className="h-3.5 w-3.5" />,
+  institutional: <Globe className="h-3.5 w-3.5" />,
+};
+
 function PersonalizePanel({
   html,
   isPublished,
+  currentSiteType,
   onRefine,
   onSave,
   onPublish,
+  onGenerateEcommerce,
 }: {
   html: string;
   isPublished: boolean;
+  currentSiteType: string | null;
   onRefine: (msg: string) => Promise<string>;
   onSave: (html: string) => Promise<void>;
   onPublish: () => Promise<void>;
+  onGenerateEcommerce: () => void;
 }) {
   const [publishing, setPublishing] = useState(false);
 
@@ -1003,6 +1061,12 @@ function PersonalizePanel({
         <RefineDialog onRefine={onRefine} />
         <TestimonialsDialog onRefine={onRefine} />
         <MediaDialog html={html} onSave={onSave} />
+        {currentSiteType !== "ecommerce" && (
+          <Button variant="outline" size="sm" onClick={onGenerateEcommerce} className="border-indigo-300 text-indigo-700 hover:bg-indigo-50 dark:border-indigo-700 dark:text-indigo-300 dark:hover:bg-indigo-950/40">
+            <ShoppingCart className="h-3.5 w-3.5 mr-1.5" />
+            Gerar E-commerce
+          </Button>
+        )}
       </div>
     </div>
   );
@@ -1012,11 +1076,19 @@ function PersonalizePanel({
 
 function SiteGeneratorInner({ tenantId, token }: { tenantId: string; token: string | null }) {
   const [activeTab, setActiveTab] = useState("config");
-  const { status, html, isPublished, error, generate, refine, download, reset, loadLatest, saveHtml, publish } = useSiteGenerator(tenantId, token);
+  const {
+    status, html, siteId, isPublished, error,
+    currentSiteType, currentConfig, sitesList,
+    generate, refine, download, reset,
+    loadLatest, loadAll, loadSite, saveHtml, publish,
+  } = useSiteGenerator(tenantId, token);
 
-  // Auto-load existing site on mount so the panel is always available
+  // Auto-load latest site + list on mount
   useEffect(() => {
-    if (tenantId) loadLatest();
+    if (tenantId) {
+      loadLatest();
+      loadAll();
+    }
   }, [tenantId]);
 
   async function handleGenerate(config: SiteConfig) {
@@ -1024,14 +1096,70 @@ function SiteGeneratorInner({ tenantId, token }: { tenantId: string; token: stri
     await generate(config);
   }
 
+  async function handleGenerateEcommerce() {
+    const base = currentConfig ?? { name: "", sector: "", desc: "", pain: "", tone: "profissional", cta: "", color: "#6366F1", products: [] };
+    setActiveTab("preview");
+    await generate({ ...base, type: "ecommerce" });
+  }
+
+  async function handleSwitchSite(id: string) {
+    if (id === siteId) return;
+    await loadSite(id);
+    setActiveTab("preview");
+  }
+
   const canPreview = status !== "idle";
   const canRefine = status === "ready";
 
+  // Group sites by type for the switcher
+  const sitesByType = sitesList.reduce<Record<string, SiteSummary>>((acc, s) => {
+    // Keep most recent per type
+    if (!acc[s.siteType] || new Date(s.updatedAt) > new Date(acc[s.siteType].updatedAt)) {
+      acc[s.siteType] = s;
+    }
+    return acc;
+  }, {});
+  const switcherTypes = Object.keys(sitesByType);
+
   return (
     <div className="flex flex-col gap-4">
+      {/* Sites switcher — shown when more than one type exists */}
+      {switcherTypes.length > 0 && (
+        <div className="flex items-center gap-2 flex-wrap">
+          <span className="text-xs text-muted-foreground font-medium shrink-0">Meus sites:</span>
+          {switcherTypes.map((type) => {
+            const s = sitesByType[type];
+            const isActive = s.id === siteId;
+            return (
+              <button
+                key={type}
+                onClick={() => handleSwitchSite(s.id)}
+                className={`flex items-center gap-1.5 rounded-full border px-3 py-1 text-xs font-medium transition-all cursor-pointer ${
+                  isActive
+                    ? "border-primary bg-primary text-primary-foreground"
+                    : "border-border bg-background text-muted-foreground hover:border-primary hover:text-primary"
+                }`}
+              >
+                {SITE_TYPE_ICONS[type]}
+                {SITE_TYPE_LABELS[type] ?? type}
+                {isActive && <span className="ml-0.5">✓</span>}
+              </button>
+            );
+          })}
+        </div>
+      )}
+
       {/* Personalizar panel — always visible when a site exists */}
       {status === "ready" && (
-        <PersonalizePanel html={html} isPublished={isPublished} onRefine={refine} onSave={saveHtml} onPublish={publish} />
+        <PersonalizePanel
+          html={html}
+          isPublished={isPublished}
+          currentSiteType={currentSiteType}
+          onRefine={refine}
+          onSave={saveHtml}
+          onPublish={publish}
+          onGenerateEcommerce={handleGenerateEcommerce}
+        />
       )}
 
       <div className="flex items-center justify-between flex-wrap gap-2">
