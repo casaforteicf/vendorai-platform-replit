@@ -33,44 +33,66 @@ router.post("/render/quick", upload.single("image"), async (req, res) => {
 
   const style    = String(req.body?.style    ?? "nenhum");
   const angle    = String(req.body?.angle    ?? "frontal");
+  const lighting = String(req.body?.lighting ?? "auto");
   const roomType = String(req.body?.roomType ?? "sala de estar");
   const notes    = String(req.body?.notes    ?? "");
 
   const isExterior  = roomType === "fachada externa";
   const applyStyle  = style !== "nenhum";
+  const applyLighting = lighting !== "auto";
 
-  // ── Base: preserve everything, only enhance quality & lighting ──────────
+  // ── Lighting time-of-day map ────────────────────────────────────────────
+  const lightingMap: Record<string, string> = {
+    manha:     "Early morning daylight (7–9 am): soft warm sunlight entering from a low angle, long gentle shadows, clear sky, golden-warm color temperature; activate any visible ceiling/wall lamps in the scene as if just switched off after sunrise.",
+    tarde:     "Bright midday/afternoon light (1–4 pm): strong overhead daylight, crisp shadows, neutral-white color temperature, high brightness.",
+    golden:    "Golden hour (5–6 pm): warm amber-orange sunlight raking across surfaces, very long soft shadows, romantic golden glow, sky transitions to peach-pink.",
+    pordosol:  "Sunset (6–7 pm): dramatic orange-red sky visible through windows/exterior, warm directional light, rich reflections on glass and polished surfaces.",
+    noturno:   "Night scene (8 pm+): TURN ON all lamps, pendant lights, floor lamps, wall sconces, and exterior fixtures that are physically present in the image; dark sky outside; warm pool of artificial light; no daylight through windows.",
+    nublado:   "Overcast cloudy day: soft diffuse light with no direct sun, cool neutral tones, no hard shadows, even illumination.",
+  };
+
+  const lightingInstruction = applyLighting && lightingMap[lighting]
+    ? `LIGHTING CONDITION — apply this to the entire scene: ${lightingMap[lighting]}`
+    : null;
+
+  // ── Base: preserve EVERYTHING, only enhance quality ─────────────────────
   const baseInstruction = isExterior
     ? [
         "You are a professional architectural visualization engine.",
         "Transform this photo into a photorealistic architectural render.",
-        "STRICT RULES — NEVER BREAK THESE:",
-        "• Do NOT add any new elements (trees, cars, people, plants, decorations) not visible in the reference.",
-        "• Do NOT remove or alter any existing architectural element.",
-        "• Preserve EXACTLY: building shape, footprint, number of floors, window/door positions, roof geometry, all structural volumes.",
-        "ONLY ENHANCE:",
-        "• Lighting: simulate realistic sunlight/sky with proper shadows, ambient occlusion, and soft highlights on surfaces.",
-        "• Material quality: make existing surfaces (concrete, brick, glass, wood) look photorealistic with accurate texture detail.",
-        "• Image clarity: ultra-sharp details, high dynamic range, depth of field, 4K photorealistic quality.",
+        "ABSOLUTE PRESERVATION RULES — NEVER BREAK:",
+        "• DO NOT add any new element (trees, cars, people, plants, decorations, furniture) not already visible in the reference.",
+        "• DO NOT remove, move, or alter any existing architectural element.",
+        "• DO NOT change viewpoint, perspective, or camera position.",
+        "• Preserve PIXEL-EXACTLY: building shape, footprint, number of floors, all window positions, all door positions, roof geometry, every structural volume.",
+        "PERMITTED ENHANCEMENTS ONLY:",
+        "• Material quality: make existing surfaces (concrete, brick, glass, steel, wood) look photorealistic — accurate texture, specularity, and surface detail.",
+        "• Image clarity: ultra-sharp 4K detail, high dynamic range, depth of field.",
+        applyLighting
+          ? "• Lighting: apply the specified lighting condition below while keeping all architectural elements unchanged."
+          : "• Lighting: simulate realistic natural sunlight with proper shadows, ambient occlusion, and soft highlights on existing surfaces.",
       ].join(" ")
     : [
         "You are a professional architectural visualization engine.",
         "Transform this photo into a photorealistic interior render.",
-        "STRICT RULES — NEVER BREAK THESE:",
-        "• Do NOT add any object, furniture, plant, decoration, or element not already present in the reference image.",
-        "• Do NOT remove, move, or replace any existing furniture or object.",
-        "• Preserve EXACTLY: room geometry, wall positions, window/door locations, ceiling height, and all furniture placement.",
-        "ONLY ENHANCE:",
-        "• Lighting: simulate realistic interior lighting from existing windows and light fixtures — add soft shadows, ambient occlusion, and warm/cool highlights that respect the room's existing light sources.",
-        "• Material quality: make existing surfaces (walls, floors, upholstery, wood, glass) look photorealistic with accurate texture and sheen.",
-        "• Image clarity: ultra-sharp details, high dynamic range, 4K photorealistic quality.",
+        "ABSOLUTE PRESERVATION RULES — NEVER BREAK:",
+        "• DO NOT add any object, furniture, plant, decoration, or element not already present in the reference image.",
+        "• DO NOT remove, move, reposition, or replace any existing furniture or object.",
+        "• DO NOT change viewpoint, perspective, or camera angle.",
+        "• Preserve PIXEL-EXACTLY: room geometry, all wall positions, all window/door locations, ceiling height, every piece of furniture in its exact place.",
+        "PERMITTED ENHANCEMENTS ONLY:",
+        "• Material quality: make existing surfaces (walls, floors, upholstery, wood, glass, fabric) look photorealistic — accurate texture, sheen, and surface detail.",
+        "• Image clarity: ultra-sharp 4K detail, high dynamic range.",
+        applyLighting
+          ? "• Lighting: apply the specified lighting condition below — activate only lamps/fixtures that are physically present in the image."
+          : "• Lighting: simulate realistic interior lighting from existing windows and fixtures — soft shadows, ambient occlusion, warm/cool highlights.",
       ].join(" ");
 
   // ── Optional style layer — surface finishes only ────────────────────────
   const styleInstruction = applyStyle
     ? (isExterior
-        ? `Style application (surface finishes ONLY, do not add or remove elements): reinterpret the existing facade materials and colors with a ${style} architectural aesthetic — cladding texture, facade color palette, window frame finish.`
-        : `Style application (surface finishes ONLY, do not add or remove objects): reinterpret the existing wall finish, floor material, and ceiling treatment with a ${style} interior design aesthetic — keep all furniture and objects exactly as they are.`)
+        ? `Style application (surface finishes ONLY — do NOT add or remove any element): reinterpret the existing facade materials and colors with a ${style} architectural aesthetic — cladding texture, facade color palette, window frame finish only.`
+        : `Style application (surface finishes ONLY — do NOT add, remove, or move any object): reinterpret the existing wall finish, floor material, and ceiling treatment with a ${style} interior design aesthetic; keep all furniture and objects exactly as they are.`)
     : null;
 
   const angleMap: Record<string, string> = {
@@ -92,6 +114,7 @@ router.post("/render/quick", upload.single("image"), async (req, res) => {
   const prompt = [
     baseInstruction,
     styleInstruction,
+    lightingInstruction,
     angleInstruction,
     contextInstruction,
     notes ? `Additional user request: ${notes}` : null,

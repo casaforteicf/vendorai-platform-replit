@@ -34,6 +34,16 @@ function getBase() {
   return (import.meta.env.BASE_URL ?? "/").replace(/\/$/, "");
 }
 
+const LIGHTING_TIMES = [
+  { value: "auto",     label: "Automático",  desc: "Manter original",    icon: "🔆" },
+  { value: "manha",    label: "Manhã",       desc: "07h – 09h",          icon: "🌅" },
+  { value: "tarde",    label: "Tarde",       desc: "13h – 16h",          icon: "☀️" },
+  { value: "golden",   label: "Golden Hour", desc: "17h – 18h",          icon: "🌇" },
+  { value: "pordosol", label: "Pôr do Sol",  desc: "18h – 19h",          icon: "🌆" },
+  { value: "noturno",  label: "Noturno",     desc: "20h+ (luminárias on)", icon: "🌙" },
+  { value: "nublado",  label: "Nublado",     desc: "Luz difusa",         icon: "☁️" },
+];
+
 const ANGLES = [
   { value: "frontal",    label: "Frontal",         desc: "Vista direta" },
   { value: "angular45",  label: "Angular 45°",     desc: "Perspectiva diagonal" },
@@ -74,6 +84,7 @@ export default function ArchRender() {
   const [file, setFile]                 = useState<File | null>(null);
   const [dragging, setDragging]         = useState(false);
   const [style, setStyle]               = useState("nenhum");
+  const [lighting, setLighting]         = useState("auto");
   const [angle, setAngle]               = useState("frontal");
   const [roomType, setRoomType]         = useState("sala de estar");
   const [notes, setNotes]               = useState("");
@@ -124,6 +135,7 @@ export default function ArchRender() {
       const form = new FormData();
       form.append("image", file);
       form.append("style", style);
+      form.append("lighting", lighting);
       form.append("angle", angle);
       form.append("roomType", roomType);
       form.append("notes", notes);
@@ -226,6 +238,7 @@ export default function ArchRender() {
       const form = new FormData();
       form.append("image", imgFile);
       form.append("style", style);
+      form.append("lighting", lighting);
       form.append("angle", angle);
       form.append("roomType", roomType);
       form.append("notes", refineNote.trim());
@@ -313,6 +326,32 @@ export default function ArchRender() {
                 className="hidden"
                 onChange={(e) => { const f = e.target.files?.[0]; if (f) handleFile(f); }}
               />
+            </CardContent>
+          </Card>
+
+          {/* Iluminação — Horário */}
+          <Card>
+            <CardHeader className="pb-2 pt-3 px-3">
+              <CardTitle className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Horário da Iluminação</CardTitle>
+            </CardHeader>
+            <CardContent className="px-3 pb-3">
+              <div className="grid grid-cols-2 gap-1.5">
+                {LIGHTING_TIMES.map((lt) => (
+                  <button
+                    key={lt.value}
+                    type="button"
+                    onClick={() => setLighting(lt.value)}
+                    className={`rounded-lg border px-2 py-2 text-left transition-all cursor-pointer ${
+                      lighting === lt.value
+                        ? "border-amber-400 bg-amber-50 dark:bg-amber-950/30 text-amber-700 dark:text-amber-300"
+                        : "border-border hover:border-amber-300 hover:bg-muted/40"
+                    }`}
+                  >
+                    <p className="text-xs font-medium leading-tight">{lt.icon} {lt.label}</p>
+                    <p className="text-[10px] text-muted-foreground leading-tight mt-0.5">{lt.desc}</p>
+                  </button>
+                ))}
+              </div>
             </CardContent>
           </Card>
 
