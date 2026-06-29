@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react'
+import { useState } from 'react'
 import { MATERIALS } from './render-types'
 
 type Mat = typeof MATERIALS[number]
@@ -40,7 +40,6 @@ async function readAvgColor(file: File): Promise<string> {
 
 export default function MaterialBar({ applied, onDragStart, onImport }: MaterialBarProps) {
   const [cat, setCat] = useState('todos')
-  const fileRef = useRef<HTMLInputElement>(null)
 
   const filtered = cat === 'todos' ? MATERIALS : MATERIALS.filter(m => m.cat === cat)
 
@@ -90,8 +89,7 @@ export default function MaterialBar({ applied, onDragStart, onImport }: Material
             </button>
           ))}
         </div>
-        <button
-          onClick={() => fileRef.current?.click()}
+        <label
           style={{
             padding: '3px 10px',
             borderRadius: 6,
@@ -104,15 +102,14 @@ export default function MaterialBar({ applied, onDragStart, onImport }: Material
           }}
         >
           Importar
-        </button>
-        <input
-          ref={fileRef}
-          type="file"
-          accept="image/*"
-          multiple
-          style={{ display: 'none' }}
-          onChange={e => handleFiles(e.target.files)}
-        />
+          <input
+            type="file"
+            accept="image/*"
+            multiple
+            style={{ display: 'none' }}
+            onChange={e => handleFiles(e.target.files)}
+          />
+        </label>
       </div>
 
       {/* Row 2 — material cards */}
