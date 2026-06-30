@@ -46,6 +46,47 @@ export function usePartnerDashboard(partnerId: string | undefined) {
   });
 }
 
+// ── Dashboard V2 (GET /api/partner/dashboard) ──────────────────────────────
+
+export interface PartnerTenantSummary {
+  id: string;
+  name: string;
+  slug: string;
+  status: string;
+  vertical: string | null;
+  setupCompletedAt: string | null;
+  createdAt: string;
+}
+
+export interface PartnerCommissionRecord {
+  id: string;
+  partnerId: string;
+  tenantId: string;
+  valor: string;
+  dataReferencia: string;
+  status: string;
+  dataPagamento: string | null;
+  descricao: string | null;
+}
+
+export interface PartnerDashboardV2Data {
+  summary: {
+    activeTenants: number;
+    commissionThisMonth: number;
+    commissionThisYear: number;
+    nextPaymentDate: string;
+  };
+  tenants: PartnerTenantSummary[];
+  commissions: PartnerCommissionRecord[];
+}
+
+export function usePartnerDashboardV2() {
+  return useQuery<PartnerDashboardV2Data>({
+    queryKey: ["partner-dashboard-v2"],
+    queryFn: () => apiFetch("/api/partner/dashboard"),
+  });
+}
+
 // ── Leads ──────────────────────────────────────────────────────────────────
 
 export interface PartnerLead {

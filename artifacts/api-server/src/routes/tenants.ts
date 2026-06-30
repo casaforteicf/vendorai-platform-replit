@@ -74,7 +74,7 @@ router.get("/tenants/:id", requireSameTenanOrSuperAdmin(), async (req, res) => {
   res.json(tenant);
 });
 
-router.patch("/tenants/:id", requireSameTenanOrSuperAdmin(), async (req, res) => {
+router.patch("/tenants/:id", requireRole("super_admin", "tenant_admin"), requireSameTenanOrSuperAdmin(), async (req, res) => {
   const parsed = updateTenantSchema.safeParse(req.body);
   if (!parsed.success) {
     res.status(422).json({ error: parsed.error.message });
@@ -139,7 +139,7 @@ router.get("/tenants/:id/integration-settings", requireSameTenanOrSuperAdmin(), 
   });
 });
 
-router.patch("/tenants/:id/integration-settings", requireSameTenanOrSuperAdmin(), async (req, res) => {
+router.patch("/tenants/:id/integration-settings", requireRole("super_admin", "tenant_admin"), requireSameTenanOrSuperAdmin(), async (req, res) => {
   const { webhookEstoqueUrl, integrationType } = req.body as { webhookEstoqueUrl?: string | null; integrationType?: "n8n" | "api" | null };
 
   const [tenant] = await db
@@ -568,7 +568,7 @@ router.get("/tenants/:id/uso-ia", requireSameTenanOrSuperAdmin(), async (req, re
 // ── PATCH /tenants/:id/openai-key ───────────────────────────────────────────────
 // Configura a chave OpenAI própria do tenant (BYOK). Requer super_admin ou admin do tenant.
 
-router.patch("/tenants/:id/openai-key", requireSameTenanOrSuperAdmin(), async (req, res) => {
+router.patch("/tenants/:id/openai-key", requireRole("super_admin", "tenant_admin"), requireSameTenanOrSuperAdmin(), async (req, res) => {
   const tenantId = String(req.params.id);
   const { apiKey } = req.body;
 

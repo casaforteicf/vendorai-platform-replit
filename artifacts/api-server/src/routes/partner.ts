@@ -1,5 +1,5 @@
 import { Router, type IRouter } from "express";
-import { eq, and, gte, lt, sum, count } from "drizzle-orm";
+import { eq, and, gte, lt, sum, count, desc } from "drizzle-orm";
 import { db, tenantsTable, partnerCommissionsTable } from "@workspace/db";
 import { requireRole } from "../middlewares/auth.js";
 
@@ -127,7 +127,7 @@ router.get("/partner/dashboard", requireRole("partner"), async (req, res) => {
       .select()
       .from(partnerCommissionsTable)
       .where(eq(partnerCommissionsTable.partnerId, partnerId))
-      .orderBy(partnerCommissionsTable.dataReferencia)
+      .orderBy(desc(partnerCommissionsTable.dataReferencia))
       .limit(24),
   ]);
 
