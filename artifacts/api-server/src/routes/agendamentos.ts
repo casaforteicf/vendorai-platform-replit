@@ -246,6 +246,17 @@ router.patch("/agendamentos/:id", async (req, res) => {
     return;
   }
 
+  const isAdminPatch = req.user?.platformRole === "super_admin" || req.user?.platformRole === "tenant_admin";
+  const isSellerPatch = req.user?.platformRole === "tenant_seller";
+  const userFnPatch = req.user?.userFunction as string | undefined;
+  const userIdPatch = req.user?.sub;
+  if (!isAdminPatch && userIdPatch && (isSellerPatch || userFnPatch === "vendedor" || userFnPatch === "entrega")) {
+    if (existing.responsavelId !== userIdPatch) {
+      res.status(403).json({ error: "Acesso negado: este agendamento pertence a outro responsável" });
+      return;
+    }
+  }
+
   const data = parsed.data;
   if (
     data.dataHoraInicio &&
@@ -305,6 +316,17 @@ router.delete("/agendamentos/:id", async (req, res) => {
   if (req.user?.platformRole !== "super_admin" && existing.tenantId !== req.user?.tenantId) {
     res.status(403).json({ error: "Access denied to this tenant" });
     return;
+  }
+
+  const isAdminDelete = req.user?.platformRole === "super_admin" || req.user?.platformRole === "tenant_admin";
+  const isSellerDelete = req.user?.platformRole === "tenant_seller";
+  const userFnDelete = req.user?.userFunction as string | undefined;
+  const userIdDelete = req.user?.sub;
+  if (!isAdminDelete && userIdDelete && (isSellerDelete || userFnDelete === "vendedor" || userFnDelete === "entrega")) {
+    if (existing.responsavelId !== userIdDelete) {
+      res.status(403).json({ error: "Acesso negado: este agendamento pertence a outro responsável" });
+      return;
+    }
   }
 
   await db.delete(agendamentosTable).where(eq(agendamentosTable.id, existing.id));

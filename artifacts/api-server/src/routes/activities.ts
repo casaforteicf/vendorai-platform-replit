@@ -188,7 +188,7 @@ router.patch("/activities/:id", async (req, res) => {
   }
 
   const [existing] = await db
-    .select({ id: activitiesTable.id, tenantId: activitiesTable.tenantId, agendaId: activitiesTable.agendaId, googleEventId: activitiesTable.googleEventId })
+    .select({ id: activitiesTable.id, tenantId: activitiesTable.tenantId, agendaId: activitiesTable.agendaId, googleEventId: activitiesTable.googleEventId, responsavelId: activitiesTable.responsavelId })
     .from(activitiesTable)
     .where(eq(activitiesTable.id, String(req.params.id)));
 
@@ -200,6 +200,17 @@ router.patch("/activities/:id", async (req, res) => {
   if (req.user?.platformRole !== "super_admin" && existing.tenantId !== req.user?.tenantId) {
     res.status(403).json({ error: "Access denied to this tenant" });
     return;
+  }
+
+  const isAdminPatch = req.user?.platformRole === "super_admin" || req.user?.platformRole === "tenant_admin";
+  const isSellerPatch = req.user?.platformRole === "tenant_seller";
+  const userFnPatch = req.user?.userFunction as string | undefined;
+  const userIdPatch = req.user?.sub;
+  if (!isAdminPatch && userIdPatch && (isSellerPatch || userFnPatch === "vendedor" || userFnPatch === "entrega")) {
+    if (existing.responsavelId !== userIdPatch) {
+      res.status(403).json({ error: "Acesso negado: esta atividade pertence a outro responsável" });
+      return;
+    }
   }
 
   const data = { ...parsed.data, updatedAt: new Date() };
@@ -242,7 +253,7 @@ router.patch("/activities/:id", async (req, res) => {
 
 router.delete("/activities/:id", async (req, res) => {
   const [existing] = await db
-    .select({ id: activitiesTable.id, tenantId: activitiesTable.tenantId, agendaId: activitiesTable.agendaId, googleEventId: activitiesTable.googleEventId })
+    .select({ id: activitiesTable.id, tenantId: activitiesTable.tenantId, agendaId: activitiesTable.agendaId, googleEventId: activitiesTable.googleEventId, responsavelId: activitiesTable.responsavelId })
     .from(activitiesTable)
     .where(eq(activitiesTable.id, String(req.params.id)));
 
@@ -254,6 +265,17 @@ router.delete("/activities/:id", async (req, res) => {
   if (req.user?.platformRole !== "super_admin" && existing.tenantId !== req.user?.tenantId) {
     res.status(403).json({ error: "Access denied to this tenant" });
     return;
+  }
+
+  const isAdminDelete = req.user?.platformRole === "super_admin" || req.user?.platformRole === "tenant_admin";
+  const isSellerDelete = req.user?.platformRole === "tenant_seller";
+  const userFnDelete = req.user?.userFunction as string | undefined;
+  const userIdDelete = req.user?.sub;
+  if (!isAdminDelete && userIdDelete && (isSellerDelete || userFnDelete === "vendedor" || userFnDelete === "entrega")) {
+    if (existing.responsavelId !== userIdDelete) {
+      res.status(403).json({ error: "Acesso negado: esta atividade pertence a outro responsável" });
+      return;
+    }
   }
 
   await db.delete(activitiesTable).where(eq(activitiesTable.id, existing.id));
