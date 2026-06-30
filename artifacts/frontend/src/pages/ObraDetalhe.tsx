@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect } from "react";
 import { useRoute, Link } from "wouter";
 import { useAuth } from "@/contexts/AuthContext";
 import {
@@ -390,14 +390,14 @@ function Cronograma({ tenantId, obraId, etapas }: { tenantId: string; obraId: st
             <DialogTrigger asChild>
               <Button size="sm" className="gap-1.5"><Plus className="h-3.5 w-3.5" />Adicionar etapa</Button>
             </DialogTrigger>
-            <DialogContent>
+            <DialogContent className="w-full max-w-lg max-h-[90vh] overflow-y-auto">
               <DialogHeader><DialogTitle>Nova etapa</DialogTitle></DialogHeader>
               <form onSubmit={handleCreate} className="space-y-4">
                 <div className="space-y-2">
                   <Label>Nome *</Label>
                   <Input required value={form.nome} onChange={(e) => setForm((f) => ({ ...f, nome: e.target.value }))} />
                 </div>
-                <div className="grid grid-cols-2 gap-3">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   <div className="space-y-2">
                     <Label>Início previsto</Label>
                     <Input type="date" value={form.dataInicioPrevista} onChange={(e) => setForm((f) => ({ ...f, dataInicioPrevista: e.target.value }))} />
@@ -640,14 +640,14 @@ function Cronograma({ tenantId, obraId, etapas }: { tenantId: string; obraId: st
 
       {/* ── Edit Etapa Dialog ── */}
       <Dialog open={!!editEtapa} onOpenChange={(o) => !o && setEditEtapa(null)}>
-        <DialogContent className="max-w-lg">
+        <DialogContent className="w-full max-w-lg max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>Editar etapa</DialogTitle>
           </DialogHeader>
           {editEtapa && (
             <div className="space-y-4">
-              <div className="grid grid-cols-2 gap-3">
-                <div className="col-span-2 space-y-1.5">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div className="col-span-1 sm:col-span-2 space-y-1.5">
                   <Label>Nome</Label>
                   <Input value={editEtapa.nome} onChange={(e) => setEditEtapa((p) => p ? { ...p, nome: e.target.value } : p)} />
                 </div>
@@ -669,7 +669,7 @@ function Cronograma({ tenantId, obraId, etapas }: { tenantId: string; obraId: st
 
               <div className="border-t pt-3">
                 <p className="text-xs font-medium text-muted-foreground mb-2 uppercase tracking-wide">Datas previstas</p>
-                <div className="grid grid-cols-2 gap-3">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   <div className="space-y-1.5">
                     <Label className="text-xs">Início previsto</Label>
                     <Input type="date" value={editEtapa.dataInicioPrevista ?? ""} onChange={(e) => setEditEtapa((p) => p ? { ...p, dataInicioPrevista: e.target.value } : p)} />
@@ -683,7 +683,7 @@ function Cronograma({ tenantId, obraId, etapas }: { tenantId: string; obraId: st
 
               <div className="border-t pt-3">
                 <p className="text-xs font-medium text-muted-foreground mb-2 uppercase tracking-wide">Datas reais</p>
-                <div className="grid grid-cols-2 gap-3">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   <div className="space-y-1.5">
                     <Label className="text-xs">Início real</Label>
                     <Input type="date" value={editEtapa.dataInicioReal ?? ""} onChange={(e) => setEditEtapa((p) => p ? { ...p, dataInicioReal: e.target.value } : p)} />
@@ -760,13 +760,13 @@ function Medicoes({ tenantId, obraId, etapas }: { tenantId: string; obraId: stri
               <DialogTrigger asChild>
                 <Button size="sm" className="gap-2" disabled={!selectedEtapa}><Plus className="h-4 w-4" />Registrar medição</Button>
               </DialogTrigger>
-              <DialogContent>
+              <DialogContent className="w-full max-w-lg max-h-[90vh] overflow-y-auto">
                 <DialogHeader><DialogTitle>Nova medição — {currentEtapa?.nome}</DialogTitle></DialogHeader>
                 <form onSubmit={handleCreate} className="space-y-4">
                   <div className="p-3 rounded-lg bg-muted/50 text-sm">
                     Progresso atual: <strong>{parseFloat(currentEtapa?.percentualExecutado ?? "0").toFixed(1)}%</strong>
                   </div>
-                  <div className="grid grid-cols-2 gap-3">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                     <div className="space-y-2">
                       <Label>Data *</Label>
                       <Input type="date" required value={form.data} onChange={(e) => setForm((f) => ({ ...f, data: e.target.value }))} />
@@ -930,13 +930,13 @@ function DiarioDeObra({ tenantId, obraId }: { tenantId: string; obraId: string }
               <FileText className="h-4 w-4" />Gerar Relatório
             </Button>
           </DialogTrigger>
-          <DialogContent className="max-w-sm">
+          <DialogContent className="w-full max-w-sm max-h-[90vh] overflow-y-auto">
             <DialogHeader>
               <DialogTitle className="flex items-center gap-2"><FileText className="h-4 w-4 text-blue-600" />Relatório PDF — Diário de Obra</DialogTitle>
             </DialogHeader>
             <form onSubmit={handleGerarPdf} className="space-y-4 mt-2">
               <p className="text-sm text-muted-foreground">Selecione o período para gerar o relatório em PDF com todas as entradas, fotos e ocorrências.</p>
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div className="space-y-2">
                   <Label>Data início *</Label>
                   <Input type="date" required value={pdfForm.dataInicio} onChange={(e) => setPdfForm((f) => ({ ...f, dataInicio: e.target.value }))} />
@@ -960,10 +960,10 @@ function DiarioDeObra({ tenantId, obraId }: { tenantId: string; obraId: string }
           <DialogTrigger asChild>
             <Button size="sm" className="gap-2"><Plus className="h-4 w-4" />Nova entrada</Button>
           </DialogTrigger>
-          <DialogContent className="max-w-lg">
+          <DialogContent className="w-full max-w-lg max-h-[90vh] overflow-y-auto">
             <DialogHeader><DialogTitle>Diário de obra — nova entrada</DialogTitle></DialogHeader>
             <form onSubmit={handleCreate} className="space-y-4">
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div className="space-y-2">
                   <Label>Data *</Label>
                   <Input type="date" required value={form.data} onChange={(e) => setForm((f) => ({ ...f, data: e.target.value }))} />
@@ -977,7 +977,7 @@ function DiarioDeObra({ tenantId, obraId }: { tenantId: string; obraId: string }
                 <Label>Relatório do dia *</Label>
                 <Textarea required rows={5} value={form.conteudo} onChange={(e) => setForm((f) => ({ ...f, conteudo: e.target.value }))} placeholder="Descreva as atividades realizadas hoje..." />
               </div>
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div className="space-y-2">
                   <Label>Clima/Tempo</Label>
                   <Input value={form.climaTempo} onChange={(e) => setForm((f) => ({ ...f, climaTempo: e.target.value }))} placeholder="Ex: Ensolarado" />
@@ -1183,14 +1183,14 @@ function Compras({ tenantId, obraId }: { tenantId: string; obraId: string }) {
           <DialogTrigger asChild>
             <Button size="sm" className="gap-2"><Plus className="h-4 w-4" />Nova compra</Button>
           </DialogTrigger>
-          <DialogContent className="max-w-lg">
+          <DialogContent className="w-full max-w-lg max-h-[90vh] overflow-y-auto">
             <DialogHeader><DialogTitle>Registrar compra</DialogTitle></DialogHeader>
             <form onSubmit={handleCreate} className="space-y-4">
               <div className="space-y-2">
                 <Label>Descrição *</Label>
                 <Input required value={form.descricao} onChange={(e) => setForm((f) => ({ ...f, descricao: e.target.value }))} />
               </div>
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div className="space-y-2">
                   <Label>Fornecedor</Label>
                   <Input value={form.fornecedor} onChange={(e) => setForm((f) => ({ ...f, fornecedor: e.target.value }))} />
@@ -1207,7 +1207,7 @@ function Compras({ tenantId, obraId }: { tenantId: string; obraId: string }) {
                   <Label>Valor unitário (R$)</Label>
                   <Input type="number" step="0.01" value={form.valorUnitario} onChange={(e) => setForm((f) => ({ ...f, valorUnitario: e.target.value }))} />
                 </div>
-                <div className="col-span-2 space-y-2">
+                <div className="col-span-1 sm:col-span-2 space-y-2">
                   <Label>Valor total (R$)</Label>
                   <Input type="number" step="0.01" value={form.valorTotal} onChange={(e) => setForm((f) => ({ ...f, valorTotal: e.target.value }))} />
                 </div>
@@ -1314,7 +1314,6 @@ function TabOrcamento({ tenantId, obraId }: { tenantId: string; obraId: string }
   const [sinapiQuery, setSinapiQuery] = useState("");
   const [sinapiResults, setSinapiResults] = useState<Array<{ codigo: string; descricao: string; unidade: string; preco: number }>>([]);
   const [sinapiLoading, setSinapiLoading] = useState(false);
-  const sinapiRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     if (sinapiQuery.trim().length < 2) { setSinapiResults([]); return; }
@@ -1688,7 +1687,7 @@ function TabOrcamento({ tenantId, obraId }: { tenantId: string; obraId: string }
 
                 <CardContent className="pt-0">
                   {/* Tabela de itens */}
-                  {((etapa.itens ?? []).length > 0 || addingItemEtapaId === etapa.id) && (
+                  {(etapa.itens ?? []).length > 0 && (
                     <div className="overflow-x-auto">
                       <table className="w-full text-xs">
                         <thead>
@@ -1704,38 +1703,7 @@ function TabOrcamento({ tenantId, obraId }: { tenantId: string; obraId: string }
                         </thead>
                         <tbody>
                           {(etapa.itens ?? []).map((item) => {
-                            const isEditing = editingItem?.id === item.id;
                             const total = calcItemTotal(item as any, orcamento.bdiGlobal ?? "0");
-
-                            if (isEditing) {
-                              return (
-                                <tr key={item.id} className="border-b bg-muted/20">
-                                  <td className="py-1 pr-2">
-                                    <input className="w-full text-xs border rounded px-1 py-0.5" value={editingItem.nome} onChange={(e) => setEditingItem({ ...editingItem, nome: e.target.value })} />
-                                  </td>
-                                  <td className="py-1 px-2">
-                                    <input className="w-14 text-xs border rounded px-1 py-0.5 text-center" value={editingItem.unidade} onChange={(e) => setEditingItem({ ...editingItem, unidade: e.target.value })} />
-                                  </td>
-                                  <td className="py-1 px-2">
-                                    <input type="number" className="w-16 text-xs border rounded px-1 py-0.5 text-right" value={editingItem.quantidade} onChange={(e) => setEditingItem({ ...editingItem, quantidade: e.target.value })} />
-                                  </td>
-                                  <td className="py-1 px-2">
-                                    <input type="number" className="w-20 text-xs border rounded px-1 py-0.5 text-right" value={editingItem.custoUnitario} onChange={(e) => setEditingItem({ ...editingItem, custoUnitario: e.target.value })} />
-                                  </td>
-                                  <td className="py-1 px-2">
-                                    <input type="number" className="w-14 text-xs border rounded px-1 py-0.5 text-right" placeholder={orcamento.bdiGlobal ?? "—"} value={editingItem.bdi} onChange={(e) => setEditingItem({ ...editingItem, bdi: e.target.value })} />
-                                  </td>
-                                  <td className="py-1 px-2 text-right text-muted-foreground">—</td>
-                                  <td className="py-1 px-2">
-                                    <div className="flex gap-1">
-                                      <button onClick={handleSaveEditItem} className="text-emerald-600 hover:text-emerald-700"><CheckCircle2 className="h-3.5 w-3.5" /></button>
-                                      <button onClick={() => setEditingItem(null)} className="text-muted-foreground hover:text-foreground"><X className="h-3.5 w-3.5" /></button>
-                                    </div>
-                                  </td>
-                                </tr>
-                              );
-                            }
-
                             return (
                               <tr key={item.id} className="border-b hover:bg-muted/10 group">
                                 <td className="py-1.5 pr-2">{item.nome}</td>
@@ -1761,99 +1729,102 @@ function TabOrcamento({ tenantId, obraId }: { tenantId: string; obraId: string }
                               </tr>
                             );
                           })}
-
-                          {/* Busca SINAPI acima do novo item */}
-                          {!locked && addingItemEtapaId === etapa.id && (
-                            <tr>
-                              <td colSpan={7} className="pt-2 pb-1 px-0">
-                                <div ref={sinapiRef} className="relative">
-                                  <div className="flex items-center gap-1.5 border rounded px-2 py-1 bg-white focus-within:ring-1 focus-within:ring-blue-300">
-                                    <Search className="h-3 w-3 text-muted-foreground shrink-0" />
-                                    <input
-                                      className="text-xs flex-1 bg-transparent outline-none placeholder:text-muted-foreground"
-                                      placeholder="Buscar no SINAPI (ex: concreto fck 25, armação ca-50…)"
-                                      value={sinapiQuery}
-                                      onChange={(e) => setSinapiQuery(e.target.value)}
-                                      onKeyDown={(e) => e.key === "Escape" && setSinapiQuery("")}
-                                    />
-                                    {sinapiLoading && <Loader2 className="h-3 w-3 animate-spin text-muted-foreground shrink-0" />}
-                                    {sinapiQuery && !sinapiLoading && (
-                                      <button onClick={() => { setSinapiQuery(""); setSinapiResults([]); }} className="text-muted-foreground hover:text-foreground">
-                                        <X className="h-3 w-3" />
-                                      </button>
-                                    )}
-                                    <span className="text-[10px] text-muted-foreground border rounded px-1 shrink-0">SINAPI</span>
-                                  </div>
-                                  {sinapiResults.length > 0 && (
-                                    <div className="absolute z-50 top-full left-0 right-0 mt-0.5 bg-white border rounded-md shadow-lg max-h-52 overflow-y-auto">
-                                      {sinapiResults.map((item) => (
-                                        <button
-                                          key={item.codigo}
-                                          type="button"
-                                          onClick={() => applySinapi(item)}
-                                          className="w-full text-left px-2 py-1.5 text-xs hover:bg-blue-50 flex items-center gap-2 border-b last:border-0"
-                                        >
-                                          <span className="font-mono text-[10px] text-muted-foreground shrink-0 w-12">{item.codigo}</span>
-                                          <span className="flex-1 truncate">{item.descricao}</span>
-                                          <span className="text-muted-foreground whitespace-nowrap shrink-0">{item.unidade}</span>
-                                          <span className="font-medium whitespace-nowrap shrink-0">{fmtBRL(item.preco)}</span>
-                                        </button>
-                                      ))}
-                                    </div>
-                                  )}
-                                  {sinapiQuery.trim().length >= 2 && !sinapiLoading && sinapiResults.length === 0 && (
-                                    <p className="text-[10px] text-muted-foreground mt-1 px-1">Nenhum item SINAPI encontrado. Preencha manualmente abaixo.</p>
-                                  )}
-                                </div>
-                              </td>
-                            </tr>
-                          )}
-
-                          {/* Linha de novo item */}
-                          {!locked && addingItemEtapaId === etapa.id && (
-                            <tr className="border-b bg-blue-50/40">
-                              <td className="py-1 pr-2">
-                                <input className="w-full text-xs border rounded px-1 py-0.5" placeholder="Nome do item" value={newItem.nome} onChange={(e) => setNewItem({ ...newItem, nome: e.target.value })} />
-                              </td>
-                              <td className="py-1 px-2">
-                                <input className="w-14 text-xs border rounded px-1 py-0.5 text-center" placeholder="un" value={newItem.unidade} onChange={(e) => setNewItem({ ...newItem, unidade: e.target.value })} />
-                              </td>
-                              <td className="py-1 px-2">
-                                <input type="number" className="w-16 text-xs border rounded px-1 py-0.5 text-right" value={newItem.quantidade} onChange={(e) => setNewItem({ ...newItem, quantidade: e.target.value })} />
-                              </td>
-                              <td className="py-1 px-2">
-                                <input type="number" className="w-20 text-xs border rounded px-1 py-0.5 text-right" placeholder="0,00" value={newItem.custoUnitario} onChange={(e) => setNewItem({ ...newItem, custoUnitario: e.target.value })} />
-                              </td>
-                              <td className="py-1 px-2">
-                                <input type="number" className="w-14 text-xs border rounded px-1 py-0.5 text-right" placeholder={orcamento.bdiGlobal ?? "—"} value={newItem.bdi} onChange={(e) => setNewItem({ ...newItem, bdi: e.target.value })} />
-                              </td>
-                              <td className="py-1 px-2 text-right text-muted-foreground">—</td>
-                              <td className="py-1 px-2">
-                                <div className="flex gap-1">
-                                  <button onClick={() => handleCreateItem(etapa.id)} disabled={!newItem.nome.trim() || createItem.isPending} className="text-emerald-600 hover:text-emerald-700 disabled:opacity-40">
-                                    <CheckCircle2 className="h-3.5 w-3.5" />
-                                  </button>
-                                  <button onClick={() => setAddingItemEtapaId(null)} className="text-muted-foreground hover:text-foreground">
-                                    <X className="h-3.5 w-3.5" />
-                                  </button>
-                                </div>
-                              </td>
-                            </tr>
-                          )}
                         </tbody>
                       </table>
                     </div>
                   )}
 
+                  {/* Dialog: Adicionar item */}
                   {!locked && (
-                    <Button
-                      size="sm"
-                      variant="ghost"
-                      className="mt-2 text-xs text-muted-foreground hover:text-foreground"
-                      onClick={() => { setAddingItemEtapaId(etapa.id); setEditingItem(null); }}
-                    >
-                      <Plus className="h-3.5 w-3.5 mr-1" /> Adicionar item
-                    </Button>
+                    <Dialog open={addingItemEtapaId === etapa.id} onOpenChange={(open) => { if (!open) { setAddingItemEtapaId(null); setSinapiQuery(""); setSinapiResults([]); setNewItem({ nome: "", unidade: "un", quantidade: "1", custoUnitario: "0", bdi: "" }); } }}>
+                      <DialogTrigger asChild>
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          className="mt-2 text-xs text-muted-foreground hover:text-foreground"
+                          onClick={() => { setAddingItemEtapaId(etapa.id); setEditingItem(null); }}
+                        >
+                          <Plus className="h-3.5 w-3.5 mr-1" /> Adicionar item
+                        </Button>
+                      </DialogTrigger>
+                      <DialogContent className="w-full max-w-lg max-h-[90vh] overflow-y-auto">
+                        <DialogHeader><DialogTitle>Adicionar item — {etapa.nome}</DialogTitle></DialogHeader>
+                        <div className="space-y-4">
+                          {/* SINAPI search */}
+                          <div className="space-y-1.5">
+                            <Label className="text-xs text-muted-foreground">Buscar no SINAPI (opcional)</Label>
+                            <div className="relative">
+                              <div className="flex items-center gap-1.5 border rounded px-3 py-2 bg-white focus-within:ring-1 focus-within:ring-blue-300">
+                                <Search className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+                                <input
+                                  className="text-sm flex-1 bg-transparent outline-none placeholder:text-muted-foreground"
+                                  placeholder="Ex: concreto fck 25, armação ca-50…"
+                                  value={sinapiQuery}
+                                  onChange={(e) => setSinapiQuery(e.target.value)}
+                                  onKeyDown={(e) => e.key === "Escape" && setSinapiQuery("")}
+                                />
+                                {sinapiLoading && <Loader2 className="h-3.5 w-3.5 animate-spin text-muted-foreground shrink-0" />}
+                                {sinapiQuery && !sinapiLoading && (
+                                  <button onClick={() => { setSinapiQuery(""); setSinapiResults([]); }} className="text-muted-foreground hover:text-foreground">
+                                    <X className="h-3.5 w-3.5" />
+                                  </button>
+                                )}
+                                <span className="text-[10px] text-muted-foreground border rounded px-1 shrink-0">SINAPI</span>
+                              </div>
+                              {sinapiResults.length > 0 && (
+                                <div className="absolute z-50 top-full left-0 right-0 mt-0.5 bg-white border rounded-md shadow-lg max-h-52 overflow-y-auto">
+                                  {sinapiResults.map((sr) => (
+                                    <button
+                                      key={sr.codigo}
+                                      type="button"
+                                      onClick={() => applySinapi(sr)}
+                                      className="w-full text-left px-3 py-2 text-xs hover:bg-blue-50 flex items-center gap-2 border-b last:border-0"
+                                    >
+                                      <span className="font-mono text-[10px] text-muted-foreground shrink-0 w-12">{sr.codigo}</span>
+                                      <span className="flex-1 min-w-0 truncate">{sr.descricao}</span>
+                                      <span className="text-muted-foreground whitespace-nowrap shrink-0">{sr.unidade}</span>
+                                      <span className="font-medium whitespace-nowrap shrink-0">{fmtBRL(sr.preco)}</span>
+                                    </button>
+                                  ))}
+                                </div>
+                              )}
+                              {sinapiQuery.trim().length >= 2 && !sinapiLoading && sinapiResults.length === 0 && (
+                                <p className="text-xs text-muted-foreground mt-1">Nenhum item SINAPI encontrado. Preencha manualmente abaixo.</p>
+                              )}
+                            </div>
+                          </div>
+
+                          <div className="space-y-2">
+                            <Label>Nome do item *</Label>
+                            <Input placeholder="Ex: Concreto fck 25 MPa" value={newItem.nome} onChange={(e) => setNewItem({ ...newItem, nome: e.target.value })} />
+                          </div>
+                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                            <div className="space-y-2">
+                              <Label>Unidade</Label>
+                              <Input placeholder="un, m², m³, kg…" value={newItem.unidade} onChange={(e) => setNewItem({ ...newItem, unidade: e.target.value })} />
+                            </div>
+                            <div className="space-y-2">
+                              <Label>Quantidade</Label>
+                              <Input type="number" step="0.001" value={newItem.quantidade} onChange={(e) => setNewItem({ ...newItem, quantidade: e.target.value })} />
+                            </div>
+                            <div className="space-y-2">
+                              <Label>Custo unitário (R$)</Label>
+                              <Input type="number" step="0.01" placeholder="0,00" value={newItem.custoUnitario} onChange={(e) => setNewItem({ ...newItem, custoUnitario: e.target.value })} />
+                            </div>
+                            <div className="space-y-2">
+                              <Label>BDI% <span className="text-muted-foreground font-normal">(padrão: {orcamento.bdiGlobal ?? "0"}%)</span></Label>
+                              <Input type="number" step="0.1" placeholder={`global (${orcamento.bdiGlobal ?? "0"}%)`} value={newItem.bdi} onChange={(e) => setNewItem({ ...newItem, bdi: e.target.value })} />
+                            </div>
+                          </div>
+                          <div className="flex justify-end gap-2 pt-1">
+                            <Button variant="outline" onClick={() => { setAddingItemEtapaId(null); setSinapiQuery(""); setSinapiResults([]); setNewItem({ nome: "", unidade: "un", quantidade: "1", custoUnitario: "0", bdi: "" }); }}>Cancelar</Button>
+                            <Button onClick={() => handleCreateItem(etapa.id)} disabled={!newItem.nome.trim() || createItem.isPending}>
+                              {createItem.isPending ? "Salvando…" : "Adicionar"}
+                            </Button>
+                          </div>
+                        </div>
+                      </DialogContent>
+                    </Dialog>
                   )}
 
                   {(etapa.itens ?? []).length === 0 && addingItemEtapaId !== etapa.id && (
@@ -1864,7 +1835,45 @@ function TabOrcamento({ tenantId, obraId }: { tenantId: string; obraId: string }
             );
           })}
 
-          {/* Botão nova etapa */}
+          {/* Dialog: Editar item de orçamento */}
+          <Dialog open={!!editingItem} onOpenChange={(open) => { if (!open) setEditingItem(null); }}>
+            <DialogContent className="w-full max-w-lg max-h-[90vh] overflow-y-auto">
+              <DialogHeader><DialogTitle>Editar item</DialogTitle></DialogHeader>
+              {editingItem && (
+                <div className="space-y-4">
+                  <div className="space-y-2">
+                    <Label>Nome do item *</Label>
+                    <Input value={editingItem.nome} onChange={(e) => setEditingItem({ ...editingItem, nome: e.target.value })} />
+                  </div>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div className="space-y-2">
+                      <Label>Unidade</Label>
+                      <Input placeholder="un, m², m³, kg…" value={editingItem.unidade} onChange={(e) => setEditingItem({ ...editingItem, unidade: e.target.value })} />
+                    </div>
+                    <div className="space-y-2">
+                      <Label>Quantidade</Label>
+                      <Input type="number" step="0.001" value={editingItem.quantidade} onChange={(e) => setEditingItem({ ...editingItem, quantidade: e.target.value })} />
+                    </div>
+                    <div className="space-y-2">
+                      <Label>Custo unitário (R$)</Label>
+                      <Input type="number" step="0.01" value={editingItem.custoUnitario} onChange={(e) => setEditingItem({ ...editingItem, custoUnitario: e.target.value })} />
+                    </div>
+                    <div className="space-y-2">
+                      <Label>BDI% <span className="text-muted-foreground font-normal">(padrão: {orcamento.bdiGlobal ?? "0"}%)</span></Label>
+                      <Input type="number" step="0.1" placeholder={`global (${orcamento.bdiGlobal ?? "0"}%)`} value={editingItem.bdi} onChange={(e) => setEditingItem({ ...editingItem, bdi: e.target.value })} />
+                    </div>
+                  </div>
+                  <div className="flex justify-end gap-2 pt-1">
+                    <Button variant="outline" onClick={() => setEditingItem(null)}>Cancelar</Button>
+                    <Button onClick={handleSaveEditItem} disabled={!editingItem.nome.trim() || updateItem.isPending}>
+                      {updateItem.isPending ? "Salvando…" : "Salvar alterações"}
+                    </Button>
+                  </div>
+                </div>
+              )}
+            </DialogContent>
+          </Dialog>
+
           {!locked && (
             <div>
               {showNewEtapaForm ? (
