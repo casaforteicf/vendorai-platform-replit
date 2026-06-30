@@ -77,6 +77,8 @@ export interface Deal {
   lostReasonDetail?: string | null;
   /** Subtipo de aquecimento — 'cliente' (ex-cliente) ou 'nao_cliente' (lead novo). Só relevante quando etapa=em_aquecimento. */
   aquecimentoTipo?: string | null;
+  /** UUID do usuário responsável pelo deal */
+  assignedTo?: string | null;
   createdAt: Date;
   updatedAt: Date;
 }

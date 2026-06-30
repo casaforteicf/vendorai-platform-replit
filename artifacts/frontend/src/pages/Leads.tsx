@@ -14,6 +14,8 @@ import {
   getListPropostasQueryKey,
   useListTenantBriefings,
   getListTenantBriefingsQueryKey,
+  useListTenantUsers,
+  getListTenantUsersQueryKey,
   Lead,
 } from "@workspace/api-client-react";
 import { Card, CardContent } from "@/components/ui/card";
@@ -310,6 +312,12 @@ export default function Leads() {
       queryKey: getListTenantBriefingsQueryKey(tenantId),
     },
   });
+
+  const { data: tenantUsers = [] } = useListTenantUsers(tenantId, {
+    query: { enabled: !!tenantId, queryKey: getListTenantUsersQueryKey(tenantId) },
+  });
+
+  const userMap = new Map(tenantUsers.map((u) => [u.id, u.name || u.email || u.id]));
 
   const ciMap = new Map(ciList?.map((ci) => [ci.leadId, ci]) ?? []);
 
@@ -716,6 +724,11 @@ export default function Leads() {
                         <p className="font-medium text-sm truncate">{lead.nome}</p>
                       </div>
                       {lead.empresa && <p className="text-xs text-muted-foreground truncate">{lead.empresa}</p>}
+                      {lead.assignedTo && userMap.get(lead.assignedTo) && (
+                        <p className="text-xs text-muted-foreground truncate">
+                          👤 {userMap.get(lead.assignedTo)}
+                        </p>
+                      )}
                       <div className="flex items-center gap-2 flex-wrap pt-0.5">
                         <Badge variant="outline" className={`text-xs ${STATUS_STYLES[lead.status] ?? ""}`}>
                           {LEAD_STATUSES.find((s) => s.value === lead.status)?.label ?? lead.status}
@@ -746,6 +759,7 @@ export default function Leads() {
                   <TableHead>Empresa</TableHead>
                   <TableHead>Telefone</TableHead>
                   <TableHead>Status</TableHead>
+                  <TableHead>Responsável</TableHead>
                   <TableHead className="text-right">Orçamento</TableHead>
                   <TableHead>
                     <button
@@ -780,7 +794,7 @@ export default function Leads() {
                 ) : filteredLeads.length === 0 ? (
                   <TableRow>
                     <TableCell
-                      colSpan={7}
+                      colSpan={8}
                       className="text-center py-12 text-muted-foreground"
                     >
                       {leads?.length === 0
@@ -821,6 +835,9 @@ export default function Leads() {
                             {LEAD_STATUSES.find((s) => s.value === lead.status)?.label ??
                               lead.status}
                           </Badge>
+                        </TableCell>
+                        <TableCell className="text-sm text-muted-foreground">
+                          {lead.assignedTo ? (userMap.get(lead.assignedTo) ?? "—") : "—"}
                         </TableCell>
                         <TableCell className="text-right font-mono text-sm text-emerald-700">
                           {formatCurrency(leadValorMap.get(lead.id)) || "—"}

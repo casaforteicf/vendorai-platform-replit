@@ -14,6 +14,8 @@ import {
   getListPropostasQueryKey,
   useListTenantBriefings,
   getListTenantBriefingsQueryKey,
+  useListTenantUsers,
+  getListTenantUsersQueryKey,
   LeadBriefing,
   Deal,
   DealEtapa,
@@ -57,7 +59,7 @@ import {
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
-import { Plus, GripVertical, DollarSign, User, TrendingUp, Link2, Copy, CheckCheck, FileUp, Loader2, Sparkles, BarChart3, RefreshCw, Users, Package, AlertTriangle, Paperclip, FileCheck, CreditCard, HandCoins, Flame, Cloud, Snowflake, FileText, Clock } from "lucide-react";
+import { Plus, GripVertical, DollarSign, User, UserRound, TrendingUp, Link2, Copy, CheckCheck, FileUp, Loader2, Sparkles, BarChart3, RefreshCw, Users, Package, AlertTriangle, Paperclip, FileCheck, CreditCard, HandCoins, Flame, Cloud, Snowflake, FileText, Clock } from "lucide-react";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import {
   DealEtapaSaas,
@@ -399,6 +401,7 @@ function DealCard({
   leadName,
   briefing,
   proposta,
+  assignedToName,
   onClick,
   overlay = false,
 }: {
@@ -406,6 +409,7 @@ function DealCard({
   leadName: string | undefined;
   briefing: LeadBriefing | undefined;
   proposta?: PropostaSnap;
+  assignedToName?: string;
   onClick?: () => void;
   overlay?: boolean;
 }) {
@@ -471,6 +475,14 @@ function DealCard({
         <div className="flex items-center gap-1.5 text-xs text-muted-foreground pl-6">
           <User className="h-3 w-3 shrink-0" />
           <span className="truncate">{leadName}</span>
+        </div>
+      )}
+
+      {/* Responsável */}
+      {assignedToName && (
+        <div className="flex items-center gap-1.5 text-xs text-muted-foreground pl-6">
+          <UserRound className="h-3 w-3 shrink-0" />
+          <span className="truncate">{assignedToName}</span>
         </div>
       )}
 
@@ -621,6 +633,7 @@ function KanbanColumn({
   briefingMap,
   propostaByDealId,
   propostaByLeadId,
+  userMap,
   isOver,
   onCardClick,
 }: {
@@ -630,6 +643,7 @@ function KanbanColumn({
   briefingMap: Map<string, LeadBriefing>;
   propostaByDealId: Map<string, PropostaSnap>;
   propostaByLeadId: Map<string, PropostaSnap>;
+  userMap: Map<string, string>;
   isOver: boolean;
   onCardClick: (deal: Deal) => void;
 }) {
@@ -702,6 +716,7 @@ function KanbanColumn({
               leadName={deal.leadId ? leadMap.get(deal.leadId) : undefined}
               briefing={deal.leadId ? briefingMap.get(deal.leadId) : undefined}
               proposta={proposta}
+              assignedToName={deal.assignedTo ? userMap.get(deal.assignedTo) : undefined}
               onClick={() => onCardClick(deal)}
             />
           );
@@ -721,11 +736,13 @@ function KanbanColumn({
 function SaasDealCard({
   deal,
   leadName,
+  assignedToName,
   onClick,
   overlay = false,
 }: {
   deal: Deal;
   leadName: string | undefined;
+  assignedToName?: string;
   onClick?: () => void;
   overlay?: boolean;
 }) {
@@ -809,6 +826,14 @@ function SaasDealCard({
         )}
       </div>
 
+      {/* Responsável */}
+      {assignedToName && (
+        <div className="pl-6 flex items-center gap-1.5 text-xs text-muted-foreground">
+          <UserRound className="h-3 w-3 shrink-0" />
+          <span className="truncate">{assignedToName}</span>
+        </div>
+      )}
+
       {/* Stage badge */}
       {etapaCfg && (
         <div className="pl-6">
@@ -827,12 +852,14 @@ function SaasKanbanColumn({
   etapa,
   deals,
   leadMap,
+  userMap,
   isOver,
   onCardClick,
 }: {
   etapa: (typeof ETAPAS_SAAS)[number];
   deals: Deal[];
   leadMap: Map<string, string>;
+  userMap: Map<string, string>;
   isOver: boolean;
   onCardClick: (deal: Deal) => void;
 }) {
@@ -877,6 +904,7 @@ function SaasKanbanColumn({
             key={deal.id}
             deal={deal}
             leadName={deal.leadId ? leadMap.get(deal.leadId) : undefined}
+            assignedToName={deal.assignedTo ? userMap.get(deal.assignedTo) : undefined}
             onClick={() => onCardClick(deal)}
           />
         ))}
@@ -1835,6 +1863,12 @@ export default function Deals() {
   const tenantDefault: "pedido" | "contrato" | null =
     rawTenantDefault === "pedido_e_contrato" ? null : rawTenantDefault;
 
+  const { data: tenantUsers = [] } = useListTenantUsers(tenantId, {
+    query: { enabled: !!tenantId, queryKey: getListTenantUsersQueryKey(tenantId) },
+  });
+
+  const userMap = new Map(tenantUsers.map((u) => [u.id, u.name || u.email || u.id]));
+
   const leadMap = new Map(leads.map((l) => [l.id, l.nome]));
 
   const briefingMap = new Map(briefings.map((b) => [b.leadId, b]));
@@ -2481,6 +2515,12 @@ export default function Deals() {
                     <span className="truncate">{leadMap.get(deal.leadId)}</span>
                   </div>
                 )}
+                {deal.assignedTo && userMap.get(deal.assignedTo) && (
+                  <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                    <UserRound className="h-3 w-3 shrink-0" />
+                    <span className="truncate">{userMap.get(deal.assignedTo)}</span>
+                  </div>
+                )}
                 {deal.dataFechamentoPrevista && (
                   <div className={[
                     "flex items-center gap-1.5 text-xs",
@@ -2563,6 +2603,7 @@ export default function Deals() {
                   briefingMap={briefingMap}
                   propostaByDealId={propostaByDealId}
                   propostaByLeadId={propostaByLeadId}
+                  userMap={userMap}
                   isOver={overColumn === col.dropId}
                   onCardClick={handleCardClick}
                 />
@@ -2574,6 +2615,7 @@ export default function Deals() {
                   deal={activeDeal}
                   leadName={activeDeal.leadId ? leadMap.get(activeDeal.leadId) : undefined}
                   briefing={activeDeal.leadId ? briefingMap.get(activeDeal.leadId) : undefined}
+                  assignedToName={activeDeal.assignedTo ? userMap.get(activeDeal.assignedTo) : undefined}
                   overlay
                 />
               ) : null}

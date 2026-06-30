@@ -1067,6 +1067,19 @@ export default function LeadDetail() {
                     <dd className="text-foreground leading-snug">{lead.objetivo}</dd>
                   </div>
                 )}
+                {lead.assignedTo && (() => {
+                  const responsible = tenantUsers?.find((u) => u.id === lead.assignedTo);
+                  const name = responsible?.name || responsible?.email || lead.assignedTo;
+                  return (
+                    <div className="grid grid-cols-[7rem_1fr] gap-x-2 items-start">
+                      <dt className="flex items-center gap-1.5 text-muted-foreground shrink-0 pt-px">
+                        <UserRound className="h-3.5 w-3.5 shrink-0" />
+                        <span className="text-xs">Responsável</span>
+                      </dt>
+                      <dd className="text-foreground">{name}</dd>
+                    </div>
+                  );
+                })()}
               </dl>
               <div className="mt-3 pt-2.5 border-t">
                 <p className="text-xs text-muted-foreground">

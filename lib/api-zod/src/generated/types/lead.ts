@@ -60,6 +60,8 @@ export interface Lead {
   mercadoSegmento?: string | null;
   corDestaque?: string | null;
   corSecundaria?: string | null;
+  /** UUID do usuário responsável pelo lead */
+  assignedTo?: string | null;
   createdAt: Date;
   updatedAt: Date;
 }

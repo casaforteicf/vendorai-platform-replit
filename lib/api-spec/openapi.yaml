@@ -11504,6 +11504,10 @@ components:
           type: string
           nullable: true
           description: Subtipo de aquecimento — 'cliente' (ex-cliente) ou 'nao_cliente' (lead novo). Só relevante quando etapa=em_aquecimento.
+        assignedTo:
+          type: string
+          nullable: true
+          description: UUID do usuário responsável pelo deal
         createdAt:
           type: string
           format: date-time
@@ -13918,6 +13922,10 @@ components:
         corSecundaria:
           type: string
           nullable: true
+        assignedTo:
+          type: string
+          nullable: true
+          description: UUID do usuário responsável pelo lead
         createdAt:
           type: string
           format: date-time

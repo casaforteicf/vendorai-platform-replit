@@ -1406,6 +1406,7 @@ export const ListDealsResponseItem = zod.object({
   "lostReason": zod.string().nullish().describe('Categoria de motivo de perda'),
   "lostReasonDetail": zod.string().nullish().describe('Detalhe do motivo de perda'),
   "aquecimentoTipo": zod.string().nullish().describe('Subtipo de aquecimento — \'cliente\' (ex-cliente) ou \'nao_cliente\' (lead novo). Só relevante quando etapa=em_aquecimento.'),
+  "assignedTo": zod.string().nullish().describe('UUID do usuário responsável pelo deal'),
   "createdAt": zod.coerce.date(),
   "updatedAt": zod.coerce.date()
 })
@@ -1479,6 +1480,7 @@ export const GetDealResponse = zod.object({
   "lostReason": zod.string().nullish().describe('Categoria de motivo de perda'),
   "lostReasonDetail": zod.string().nullish().describe('Detalhe do motivo de perda'),
   "aquecimentoTipo": zod.string().nullish().describe('Subtipo de aquecimento — \'cliente\' (ex-cliente) ou \'nao_cliente\' (lead novo). Só relevante quando etapa=em_aquecimento.'),
+  "assignedTo": zod.string().nullish().describe('UUID do usuário responsável pelo deal'),
   "createdAt": zod.coerce.date(),
   "updatedAt": zod.coerce.date()
 })
@@ -1570,6 +1572,7 @@ export const UpdateDealResponse = zod.object({
   "lostReason": zod.string().nullish().describe('Categoria de motivo de perda'),
   "lostReasonDetail": zod.string().nullish().describe('Detalhe do motivo de perda'),
   "aquecimentoTipo": zod.string().nullish().describe('Subtipo de aquecimento — \'cliente\' (ex-cliente) ou \'nao_cliente\' (lead novo). Só relevante quando etapa=em_aquecimento.'),
+  "assignedTo": zod.string().nullish().describe('UUID do usuário responsável pelo deal'),
   "createdAt": zod.coerce.date(),
   "updatedAt": zod.coerce.date()
 }).and(zod.object({
@@ -5087,6 +5090,7 @@ export const ListLeadsResponseItem = zod.object({
   "mercadoSegmento": zod.string().nullish(),
   "corDestaque": zod.string().nullish(),
   "corSecundaria": zod.string().nullish(),
+  "assignedTo": zod.string().nullish().describe('UUID do usuário responsável pelo lead'),
   "createdAt": zod.coerce.date(),
   "updatedAt": zod.coerce.date()
 })
@@ -5193,6 +5197,7 @@ export const ListTenantLeadsResponseItem = zod.object({
   "mercadoSegmento": zod.string().nullish(),
   "corDestaque": zod.string().nullish(),
   "corSecundaria": zod.string().nullish(),
+  "assignedTo": zod.string().nullish().describe('UUID do usuário responsável pelo lead'),
   "createdAt": zod.coerce.date(),
   "updatedAt": zod.coerce.date()
 })
@@ -5254,6 +5259,7 @@ export const GetLeadResponse = zod.object({
   "mercadoSegmento": zod.string().nullish(),
   "corDestaque": zod.string().nullish(),
   "corSecundaria": zod.string().nullish(),
+  "assignedTo": zod.string().nullish().describe('UUID do usuário responsável pelo lead'),
   "createdAt": zod.coerce.date(),
   "updatedAt": zod.coerce.date()
 })
@@ -5359,6 +5365,7 @@ export const UpdateLeadResponse = zod.object({
   "mercadoSegmento": zod.string().nullish(),
   "corDestaque": zod.string().nullish(),
   "corSecundaria": zod.string().nullish(),
+  "assignedTo": zod.string().nullish().describe('UUID do usuário responsável pelo lead'),
   "createdAt": zod.coerce.date(),
   "updatedAt": zod.coerce.date()
 })
@@ -5429,6 +5436,7 @@ export const ListTenantDuplicateLeadsResponseItem = zod.object({
   "mercadoSegmento": zod.string().nullish(),
   "corDestaque": zod.string().nullish(),
   "corSecundaria": zod.string().nullish(),
+  "assignedTo": zod.string().nullish().describe('UUID do usuário responsável pelo lead'),
   "createdAt": zod.coerce.date(),
   "updatedAt": zod.coerce.date()
 }).optional(),
@@ -5478,6 +5486,7 @@ export const ListTenantDuplicateLeadsResponseItem = zod.object({
   "mercadoSegmento": zod.string().nullish(),
   "corDestaque": zod.string().nullish(),
   "corSecundaria": zod.string().nullish(),
+  "assignedTo": zod.string().nullish().describe('UUID do usuário responsável pelo lead'),
   "createdAt": zod.coerce.date(),
   "updatedAt": zod.coerce.date()
 }).optional()
@@ -5546,6 +5555,7 @@ export const MergeLeadResponse = zod.object({
   "mercadoSegmento": zod.string().nullish(),
   "corDestaque": zod.string().nullish(),
   "corSecundaria": zod.string().nullish(),
+  "assignedTo": zod.string().nullish().describe('UUID do usuário responsável pelo lead'),
   "createdAt": zod.coerce.date(),
   "updatedAt": zod.coerce.date()
 }).optional(),
@@ -5611,6 +5621,7 @@ export const DismissDuplicateLeadResponse = zod.object({
   "mercadoSegmento": zod.string().nullish(),
   "corDestaque": zod.string().nullish(),
   "corSecundaria": zod.string().nullish(),
+  "assignedTo": zod.string().nullish().describe('UUID do usuário responsável pelo lead'),
   "createdAt": zod.coerce.date(),
   "updatedAt": zod.coerce.date()
 }).optional()
