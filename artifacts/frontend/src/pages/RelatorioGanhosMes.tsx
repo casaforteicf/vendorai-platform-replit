@@ -169,43 +169,60 @@ export default function RelatorioGanhosMes() {
           </Button>
         </CardHeader>
         <CardContent className="p-0">
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="border-b bg-muted/40">
-                  <th className="text-left text-xs font-medium text-muted-foreground px-4 py-2">Lead</th>
-                  <th className="text-right text-xs font-medium text-muted-foreground px-4 py-2">Valor</th>
-                  <th className="text-left text-xs font-medium text-muted-foreground px-4 py-2">Data Fechamento</th>
-                  <th className="text-left text-xs font-medium text-muted-foreground px-4 py-2">Etapa</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y">
+          {ganhosMes.length === 0 ? (
+            <p className="px-4 py-8 text-center text-sm text-muted-foreground">Nenhum negócio fechado este mês.</p>
+          ) : (
+            <>
+              {/* Mobile cards */}
+              <div className="md:hidden divide-y">
                 {ganhosMes.map((d) => (
-                  <tr key={d.id} className="hover:bg-muted/30">
-                    <td className="px-4 py-3 font-medium">{leadMap.get(d.leadId ?? "") ?? "—"}</td>
-                    <td className="px-4 py-3 text-right font-mono">
-                      {parseFloat(String(d.valor ?? "0")).toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}
-                    </td>
-                    <td className="px-4 py-3 text-muted-foreground">
-                      {d.updatedAt ? format(new Date(d.updatedAt), "dd/MM/yyyy") : "—"}
-                    </td>
-                    <td className="px-4 py-3">
-                      <span className="inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium bg-emerald-100 text-emerald-700">
-                        Ganho
-                      </span>
-                    </td>
-                  </tr>
+                  <div key={d.id} className="px-4 py-3 space-y-1">
+                    <div className="flex items-start justify-between gap-2">
+                      <p className="font-medium text-sm">{leadMap.get(d.leadId ?? "") ?? "—"}</p>
+                      <p className="font-mono text-sm font-medium shrink-0">
+                        {parseFloat(String(d.valor ?? "0")).toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}
+                      </p>
+                    </div>
+                    <div className="flex items-center justify-between">
+                      <p className="text-xs text-muted-foreground">{d.updatedAt ? format(new Date(d.updatedAt), "dd/MM/yyyy") : "—"}</p>
+                      <span className="inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium bg-emerald-100 text-emerald-700">Ganho</span>
+                    </div>
+                  </div>
                 ))}
-                {ganhosMes.length === 0 && (
-                  <tr>
-                    <td colSpan={4} className="px-4 py-8 text-center text-muted-foreground">
-                      Nenhum negócio fechado este mês.
-                    </td>
-                  </tr>
-                )}
-              </tbody>
-            </table>
-          </div>
+              </div>
+              {/* Desktop table */}
+              <div className="hidden md:block">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="border-b bg-muted/40">
+                      <th className="text-left text-xs font-medium text-muted-foreground px-4 py-2">Lead</th>
+                      <th className="text-right text-xs font-medium text-muted-foreground px-4 py-2">Valor</th>
+                      <th className="text-left text-xs font-medium text-muted-foreground px-4 py-2">Data Fechamento</th>
+                      <th className="text-left text-xs font-medium text-muted-foreground px-4 py-2">Etapa</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y">
+                    {ganhosMes.map((d) => (
+                      <tr key={d.id} className="hover:bg-muted/30">
+                        <td className="px-4 py-3 font-medium">{leadMap.get(d.leadId ?? "") ?? "—"}</td>
+                        <td className="px-4 py-3 text-right font-mono">
+                          {parseFloat(String(d.valor ?? "0")).toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}
+                        </td>
+                        <td className="px-4 py-3 text-muted-foreground">
+                          {d.updatedAt ? format(new Date(d.updatedAt), "dd/MM/yyyy") : "—"}
+                        </td>
+                        <td className="px-4 py-3">
+                          <span className="inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium bg-emerald-100 text-emerald-700">
+                            Ganho
+                          </span>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </>
+          )}
         </CardContent>
       </Card>
     </div>

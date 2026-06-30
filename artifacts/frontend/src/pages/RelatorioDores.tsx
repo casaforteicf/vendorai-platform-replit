@@ -106,33 +106,45 @@ export default function RelatorioDores() {
           <CardTitle className="text-sm font-semibold">Detalhamento</CardTitle>
         </CardHeader>
         <CardContent className="p-0">
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="border-b bg-muted/40">
-                  <th className="text-left text-xs font-medium text-muted-foreground px-4 py-2">Dor</th>
-                  <th className="text-right text-xs font-medium text-muted-foreground px-4 py-2">Frequência</th>
-                  <th className="text-right text-xs font-medium text-muted-foreground px-4 py-2">% do Total</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y">
+          {sortedDores.length === 0 ? (
+            <p className="px-4 py-8 text-center text-sm text-muted-foreground">Nenhuma dor identificada ainda.</p>
+          ) : (
+            <>
+              {/* Mobile cards */}
+              <div className="md:hidden divide-y">
                 {sortedDores.map((d) => (
-                  <tr key={d.name} className="hover:bg-muted/30 cursor-pointer" onClick={() => navigate("/leads")}>
-                    <td className="px-4 py-3 font-medium">{d.name}</td>
-                    <td className="px-4 py-3 text-right">{d.value}</td>
-                    <td className="px-4 py-3 text-right">{total > 0 ? Math.round((d.value / total) * 100) : 0}%</td>
-                  </tr>
+                  <div key={d.name} className="px-4 py-3 flex items-center justify-between gap-2 cursor-pointer hover:bg-muted/30" onClick={() => navigate("/leads")}>
+                    <p className="font-medium text-sm">{d.name}</p>
+                    <div className="shrink-0 text-right">
+                      <p className="text-sm font-medium">{d.value}×</p>
+                      <p className="text-xs text-muted-foreground">{total > 0 ? Math.round((d.value / total) * 100) : 0}%</p>
+                    </div>
+                  </div>
                 ))}
-                {sortedDores.length === 0 && (
-                  <tr>
-                    <td colSpan={3} className="px-4 py-8 text-center text-muted-foreground">
-                      Nenhuma dor identificada ainda.
-                    </td>
-                  </tr>
-                )}
-              </tbody>
-            </table>
-          </div>
+              </div>
+              {/* Desktop table */}
+              <div className="hidden md:block">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="border-b bg-muted/40">
+                      <th className="text-left text-xs font-medium text-muted-foreground px-4 py-2">Dor</th>
+                      <th className="text-right text-xs font-medium text-muted-foreground px-4 py-2">Frequência</th>
+                      <th className="text-right text-xs font-medium text-muted-foreground px-4 py-2">% do Total</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y">
+                    {sortedDores.map((d) => (
+                      <tr key={d.name} className="hover:bg-muted/30 cursor-pointer" onClick={() => navigate("/leads")}>
+                        <td className="px-4 py-3 font-medium">{d.name}</td>
+                        <td className="px-4 py-3 text-right">{d.value}</td>
+                        <td className="px-4 py-3 text-right">{total > 0 ? Math.round((d.value / total) * 100) : 0}%</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </>
+          )}
         </CardContent>
       </Card>
     </div>

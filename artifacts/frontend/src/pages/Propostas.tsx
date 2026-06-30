@@ -388,6 +388,7 @@ function CatalogoModal({
               <p className="text-xs">Use "Importar CSV" para adicionar vários produtos de uma vez</p>
             </div>
           ) : (
+            <div className="overflow-x-auto">
             <Table>
               <TableHeader>
                 <TableRow>
@@ -469,6 +470,7 @@ function CatalogoModal({
                 ))}
               </TableBody>
             </Table>
+            </div>
           )}
         </DialogContent>
       </Dialog>
@@ -613,28 +615,30 @@ function CatalogoModal({
             Mostrando até 5 linhas. Confirme para importar <strong>todos</strong> os produtos do arquivo.
           </p>
           {csvPreview.length > 0 && (
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Nome</TableHead>
-                  <TableHead>SKU</TableHead>
-                  <TableHead>Categoria</TableHead>
-                  <TableHead>Preço</TableHead>
-                  <TableHead>Un.</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {csvPreview.map((row, i) => (
-                  <TableRow key={i}>
-                    <TableCell className="font-medium">{row.nome || <span className="text-destructive text-xs">vazio!</span>}</TableCell>
-                    <TableCell className="text-muted-foreground text-xs">{row.sku || "—"}</TableCell>
-                    <TableCell className="text-muted-foreground text-xs">{row.categoria || "—"}</TableCell>
-                    <TableCell className="font-mono text-xs">{row.preco_base || <span className="text-destructive">inválido</span>}</TableCell>
-                    <TableCell className="text-xs">{row.unidade || "un"}</TableCell>
+            <div className="overflow-x-auto">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Nome</TableHead>
+                    <TableHead>SKU</TableHead>
+                    <TableHead>Categoria</TableHead>
+                    <TableHead>Preço</TableHead>
+                    <TableHead>Un.</TableHead>
                   </TableRow>
-                ))}
-              </TableBody>
-            </Table>
+                </TableHeader>
+                <TableBody>
+                  {csvPreview.map((row, i) => (
+                    <TableRow key={i}>
+                      <TableCell className="font-medium">{row.nome || <span className="text-destructive text-xs">vazio!</span>}</TableCell>
+                      <TableCell className="text-muted-foreground text-xs">{row.sku || "—"}</TableCell>
+                      <TableCell className="text-muted-foreground text-xs">{row.categoria || "—"}</TableCell>
+                      <TableCell className="font-mono text-xs">{row.preco_base || <span className="text-destructive">inválido</span>}</TableCell>
+                      <TableCell className="text-xs">{row.unidade || "un"}</TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </div>
           )}
           <div className="flex gap-2 mt-4">
             <Button variant="outline" className="flex-1" onClick={() => setImportPreviewOpen(false)}>Cancelar</Button>
@@ -1121,7 +1125,7 @@ export function PropostaModal({
                     <Plus className="h-3.5 w-3.5 mr-1" /> Adicionar item
                   </Button>
                 </div>
-                <div className="rounded-md border overflow-hidden">
+                <div className="rounded-md border overflow-hidden overflow-x-auto">
                   <Table>
                     <TableHeader>
                       <TableRow>
@@ -1222,7 +1226,7 @@ export function PropostaModal({
                       <Plus className="h-3.5 w-3.5 mr-1" /> Adicionar item
                     </Button>
                   </div>
-                  <div className="rounded-md border overflow-hidden">
+                  <div className="rounded-md border overflow-hidden overflow-x-auto">
                     <Table>
                       <TableHeader>
                         <TableRow>
@@ -1919,7 +1923,26 @@ function PropostaViewer({
           {/* Items table */}
           <div>
             <p className="text-xs font-semibold uppercase tracking-widest text-gray-400 mb-3">Itens</p>
-            <table className="w-full border-collapse text-sm">
+            {/* Mobile cards */}
+            <div className="md:hidden space-y-2">
+              {proposta.itens.map((item, i) => (
+                <div key={i} className="rounded border border-gray-200 p-3 text-sm">
+                  <p className="font-medium text-gray-800">{item.nome}</p>
+                  <div className="flex items-center justify-between mt-1.5 text-xs text-gray-500">
+                    <span>{item.quantidade}× {fmtCurrency(item.valorUnitario)}</span>
+                    <span className="font-mono font-semibold text-gray-800">{fmtCurrency(item.quantidade * item.valorUnitario)}</span>
+                  </div>
+                </div>
+              ))}
+              <div className="flex justify-end pt-2 border-t-2 border-gray-900">
+                <div className="text-right">
+                  <span className="text-xs font-semibold uppercase tracking-wide text-gray-500 mr-3">Total</span>
+                  <span className="font-mono text-lg font-bold text-gray-900">{fmtCurrency(total)}</span>
+                </div>
+              </div>
+            </div>
+            {/* Desktop table */}
+            <table className="hidden md:table w-full border-collapse text-sm">
               <thead>
                 <tr className="border-b-2 border-gray-900">
                   <th className="text-left py-2 font-semibold text-gray-700">Descrição</th>

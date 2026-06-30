@@ -642,59 +642,90 @@ export default function Dashboard() {
               Nenhum negócio aberto com probabilidade definida.
             </p>
           ) : (
-            <div className="overflow-x-auto">
-              <table className="w-full text-sm">
-                <thead>
-                  <tr className="border-b border-border bg-muted/40">
-                    <th className="text-left text-xs font-medium text-muted-foreground px-6 py-2">#</th>
-                    <th className="text-left text-xs font-medium text-muted-foreground px-3 py-2">Lead</th>
-                    <th className="text-left text-xs font-medium text-muted-foreground px-3 py-2">Negócio</th>
-                    <th className="text-right text-xs font-medium text-muted-foreground px-3 py-2">Valor</th>
-                    <th className="text-center text-xs font-medium text-muted-foreground px-3 py-2">Prob.</th>
-                    <th className="text-center text-xs font-medium text-muted-foreground px-6 py-2">Etapa</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-border">
-                  {dashboard.topOportunidades.map((deal, idx) => {
-                    const prob = deal.probabilidade ?? 0;
-                    return (
-                      <tr key={deal.dealId} className="hover:bg-muted/30 transition-colors cursor-pointer" onClick={() => navigate(`/leads/${deal.leadId}`)}>
-                        <td className="px-6 py-3 text-xs text-muted-foreground w-8">{idx + 1}</td>
-                        <td className="px-3 py-3 min-w-[120px]">
-                          <p className="font-medium truncate max-w-[140px]">
-                            {deal.leadNome ?? "—"}
-                          </p>
-                        </td>
-                        <td className="px-3 py-3 min-w-[140px]">
-                          <p className="text-muted-foreground truncate max-w-[180px]">{deal.titulo}</p>
-                        </td>
-                        <td className="px-3 py-3 text-right font-medium whitespace-nowrap">
-                          {deal.valor ? formatCurrency(deal.valor) : "—"}
-                        </td>
-                        <td className="px-3 py-3 w-28">
-                          <div className="flex items-center gap-2">
-                            <div className="flex-1 h-1.5 rounded-full bg-muted overflow-hidden">
-                              <div
-                                className={`h-full rounded-full ${probColor(prob)}`}
-                                style={{ width: `${prob}%` }}
-                              />
-                            </div>
-                            <span className="text-xs font-medium w-8 text-right">{prob}%</span>
+            <>
+              {/* Mobile card list */}
+              <div className="md:hidden divide-y divide-border">
+                {dashboard.topOportunidades.map((deal, idx) => {
+                  const prob = deal.probabilidade ?? 0;
+                  return (
+                    <div
+                      key={deal.dealId}
+                      className="px-4 py-3 cursor-pointer hover:bg-muted/30 transition-colors"
+                      onClick={() => navigate(`/leads/${deal.leadId}`)}
+                    >
+                      <div className="flex items-start justify-between gap-2">
+                        <div className="min-w-0">
+                          <div className="flex items-center gap-1.5">
+                            <span className="text-xs text-muted-foreground font-medium">{idx + 1}.</span>
+                            <p className="font-medium text-sm truncate">{deal.leadNome ?? "—"}</p>
                           </div>
-                        </td>
-                        <td className="px-6 py-3 text-center">
-                          <span
-                            className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${ETAPA_BADGE[deal.etapa] ?? "bg-muted text-muted-foreground"}`}
-                          >
+                          <p className="text-xs text-muted-foreground truncate mt-0.5">{deal.titulo}</p>
+                        </div>
+                        <div className="shrink-0 text-right">
+                          <p className="text-sm font-medium">{deal.valor ? formatCurrency(deal.valor) : "—"}</p>
+                          <span className={`inline-flex items-center rounded-full px-1.5 py-0.5 text-xs font-medium ${ETAPA_BADGE[deal.etapa] ?? "bg-muted text-muted-foreground"}`}>
                             {ETAPA_LABELS[deal.etapa] ?? deal.etapa}
                           </span>
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-2 mt-2">
+                        <div className="flex-1 h-1.5 rounded-full bg-muted overflow-hidden">
+                          <div className={`h-full rounded-full ${probColor(prob)}`} style={{ width: `${prob}%` }} />
+                        </div>
+                        <span className="text-xs text-muted-foreground">{prob}%</span>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+              {/* Desktop table */}
+              <div className="hidden md:block overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="border-b border-border bg-muted/40">
+                      <th className="text-left text-xs font-medium text-muted-foreground px-6 py-2">#</th>
+                      <th className="text-left text-xs font-medium text-muted-foreground px-3 py-2">Lead</th>
+                      <th className="text-left text-xs font-medium text-muted-foreground px-3 py-2">Negócio</th>
+                      <th className="text-right text-xs font-medium text-muted-foreground px-3 py-2">Valor</th>
+                      <th className="text-center text-xs font-medium text-muted-foreground px-3 py-2">Prob.</th>
+                      <th className="text-center text-xs font-medium text-muted-foreground px-6 py-2">Etapa</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-border">
+                    {dashboard.topOportunidades.map((deal, idx) => {
+                      const prob = deal.probabilidade ?? 0;
+                      return (
+                        <tr key={deal.dealId} className="hover:bg-muted/30 transition-colors cursor-pointer" onClick={() => navigate(`/leads/${deal.leadId}`)}>
+                          <td className="px-6 py-3 text-xs text-muted-foreground w-8">{idx + 1}</td>
+                          <td className="px-3 py-3 min-w-[120px]">
+                            <p className="font-medium truncate max-w-[140px]">{deal.leadNome ?? "—"}</p>
+                          </td>
+                          <td className="px-3 py-3 min-w-[140px]">
+                            <p className="text-muted-foreground truncate max-w-[180px]">{deal.titulo}</p>
+                          </td>
+                          <td className="px-3 py-3 text-right font-medium whitespace-nowrap">
+                            {deal.valor ? formatCurrency(deal.valor) : "—"}
+                          </td>
+                          <td className="px-3 py-3 w-28">
+                            <div className="flex items-center gap-2">
+                              <div className="flex-1 h-1.5 rounded-full bg-muted overflow-hidden">
+                                <div className={`h-full rounded-full ${probColor(prob)}`} style={{ width: `${prob}%` }} />
+                              </div>
+                              <span className="text-xs font-medium w-8 text-right">{prob}%</span>
+                            </div>
+                          </td>
+                          <td className="px-6 py-3 text-center">
+                            <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${ETAPA_BADGE[deal.etapa] ?? "bg-muted text-muted-foreground"}`}>
+                              {ETAPA_LABELS[deal.etapa] ?? deal.etapa}
+                            </span>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            </>
           )}
         </CardContent>
       </Card>

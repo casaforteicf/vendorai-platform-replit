@@ -183,7 +183,33 @@ export default function RelatorioTipoCliente() {
           <CardTitle className="text-sm font-semibold">Resumo por Segmento</CardTitle>
         </CardHeader>
         <CardContent className="p-0">
-          <div className="overflow-x-auto">
+          {/* Mobile cards */}
+          <div className="md:hidden divide-y">
+            {[
+              { label: "B2B", leads: tipoCounts.B2B, ticket: ticketMedioB2B, receita: receitaB2B },
+              { label: "B2C", leads: tipoCounts.B2C, ticket: ticketMedioB2C, receita: receitaB2C },
+            ].map((row) => (
+              <div key={row.label} className="px-4 py-3 space-y-1">
+                <p className="font-medium text-sm">{row.label}</p>
+                <div className="grid grid-cols-3 gap-2 text-xs text-muted-foreground">
+                  <div>
+                    <p className="font-medium text-foreground">{row.leads}</p>
+                    <p>Leads</p>
+                  </div>
+                  <div>
+                    <p className="font-medium text-foreground font-mono">{row.ticket.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}</p>
+                    <p>Ticket Médio</p>
+                  </div>
+                  <div>
+                    <p className="font-medium text-foreground font-mono">{row.receita.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}</p>
+                    <p>Receita</p>
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+          {/* Desktop table */}
+          <div className="hidden md:block">
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b bg-muted/40">
