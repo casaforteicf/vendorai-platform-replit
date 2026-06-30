@@ -24,6 +24,10 @@ import {
   Globe,
   Copy,
   Check,
+  Handshake,
+  Trophy,
+  Wallet,
+  ClipboardList,
 } from "lucide-react";
 import {
   AreaChart,
@@ -63,6 +67,13 @@ interface DashboardData {
     ticketMedio: number;
     leadsPorStatus: Record<string, number>;
     evolucaoLeads: { data: string; count: number }[];
+  };
+  negociacao: {
+    leadsEmNegociacao: number;
+    dealsAbertos: number;
+    dealsAbertosValor: number;
+    dealsGanhosMes: number;
+    dealsGanhosMesValor: number;
   };
   ia: {
     mensagensHoje: number;
@@ -292,7 +303,7 @@ export default function Dashboard() {
 
   if (!data) return null;
 
-  const { vendas, ia } = data;
+  const { vendas, ia, negociacao } = data;
   const quotaPct = Math.min(ia.quotaUsada, 100);
   const subdomainSlug = data.tenant?.subdomainSlug ?? null;
 
@@ -419,6 +430,64 @@ export default function Dashboard() {
               <div className="text-2xl font-bold">{ia.mensagensHoje.toLocaleString("pt-BR")}</div>
               <p className="text-xs text-muted-foreground mt-1">
                 {ia.agentesAtivos} agente{ia.agentesAtivos !== 1 ? "s" : ""} ativo{ia.agentesAtivos !== 1 ? "s" : ""}
+              </p>
+            </CardContent>
+          </Card>
+
+        </div>
+      </section>
+
+      {/* ════════════════════════════════════
+          CARDS — EM NEGOCIAÇÃO (4 cols / 2 mobile)
+      ════════════════════════════════════ */}
+      <section className="space-y-3">
+        <h2 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Em Negociação</h2>
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+
+          <Card>
+            <CardHeader className="flex flex-row items-center justify-between pb-2 space-y-0">
+              <CardTitle className="text-sm font-medium text-muted-foreground">Leads Ativos</CardTitle>
+              <Handshake className="h-4 w-4 text-muted-foreground" />
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold">{negociacao.leadsEmNegociacao.toLocaleString("pt-BR")}</div>
+              <p className="text-xs text-muted-foreground mt-1">Em proposta ou negociando</p>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader className="flex flex-row items-center justify-between pb-2 space-y-0">
+              <CardTitle className="text-sm font-medium text-muted-foreground">Deals Abertos</CardTitle>
+              <ClipboardList className="h-4 w-4 text-muted-foreground" />
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold">{negociacao.dealsAbertos.toLocaleString("pt-BR")}</div>
+              <p className="text-xs text-muted-foreground mt-1">Oportunidades em andamento</p>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader className="flex flex-row items-center justify-between pb-2 space-y-0">
+              <CardTitle className="text-sm font-medium text-muted-foreground">Valor no Pipeline</CardTitle>
+              <Wallet className="h-4 w-4 text-muted-foreground" />
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold">{formatCurrency(negociacao.dealsAbertosValor)}</div>
+              <p className="text-xs text-muted-foreground mt-1">Total em deals abertos</p>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader className="flex flex-row items-center justify-between pb-2 space-y-0">
+              <CardTitle className="text-sm font-medium text-muted-foreground">Ganhos este Mês</CardTitle>
+              <Trophy className="h-4 w-4 text-muted-foreground" />
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold">{negociacao.dealsGanhosMes.toLocaleString("pt-BR")}</div>
+              <p className="text-xs text-muted-foreground mt-1">
+                {negociacao.dealsGanhosMesValor > 0
+                  ? formatCurrency(negociacao.dealsGanhosMesValor)
+                  : "Nenhum deal fechado"}
               </p>
             </CardContent>
           </Card>

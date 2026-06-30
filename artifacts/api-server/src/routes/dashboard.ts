@@ -730,6 +730,8 @@ router.get("/dashboard", authenticate, async (req, res) => {
     atividadeDealsRaw,
     atividadeClientesRaw,
     evolucaoLeadsRaw,
+    dealsAbertosRaw,
+    dealsGanhosMesRaw,
   ] = await Promise.all([
     // totalLeads no período (30d)
     db.select({ c: count() }).from(leadsTable)
@@ -833,6 +835,29 @@ router.get("/dashboard", authenticate, async (req, res) => {
       GROUP BY date_trunc('day', created_at)::date
       ORDER BY data ASC
     `),
+
+    // deals abertos (em negociação — not ganho/perdido)
+    db.select({
+      total: count(),
+      somaValor: sum(dealsTable.valor),
+    })
+      .from(dealsTable)
+      .where(and(
+        eq(dealsTable.tenantId, tenantId),
+        notInArray(dealsTable.etapa, ["ganho", "perdido"]),
+      )),
+
+    // deals ganhos este mês
+    db.select({
+      total: count(),
+      somaValor: sum(dealsTable.valor),
+    })
+      .from(dealsTable)
+      .where(and(
+        eq(dealsTable.tenantId, tenantId),
+        eq(dealsTable.etapa, "ganho"),
+        gte(dealsTable.updatedAt, monthStart),
+      )),
   ]);
 
   // ── vendas ───────────────────────────────────────────────────────────────
@@ -956,6 +981,13 @@ router.get("/dashboard", authenticate, async (req, res) => {
     });
   }
 
+  // ── negociação ────────────────────────────────────────────────────────────
+  const dealsAbertos      = Number(dealsAbertosRaw[0]?.total ?? 0);
+  const dealsAbertosValor = parseFloat(dealsAbertosRaw[0]?.somaValor ?? "0") || 0;
+  const dealsGanhosMes      = Number(dealsGanhosMesRaw[0]?.total ?? 0);
+  const dealsGanhosMesValor = parseFloat(dealsGanhosMesRaw[0]?.somaValor ?? "0") || 0;
+  const leadsEmNegociacao   = (leadsPorStatus["negociando"] ?? 0) + (leadsPorStatus["proposta"] ?? 0);
+
   return res.json({
     vendas: {
       totalLeads,
@@ -964,6 +996,13 @@ router.get("/dashboard", authenticate, async (req, res) => {
       ticketMedio,
       leadsPorStatus,
       evolucaoLeads,
+    },
+    negociacao: {
+      leadsEmNegociacao,
+      dealsAbertos,
+      dealsAbertosValor,
+      dealsGanhosMes,
+      dealsGanhosMesValor,
     },
     ia: {
       mensagensHoje,
