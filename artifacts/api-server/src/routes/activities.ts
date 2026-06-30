@@ -165,6 +165,18 @@ router.get("/activities/:id", async (req, res) => {
     return;
   }
 
+  const actRole = req.user?.platformRole;
+  const actFn = req.user?.userFunction as string | undefined;
+  const actIsSeller =
+    actRole === "tenant_seller" || actFn === "vendedor" || actFn === "entrega";
+  const actIsAdmin =
+    actRole === "super_admin" || actRole === "tenant_admin";
+
+  if (!actIsAdmin && actIsSeller && activity.responsavelId !== req.user?.sub) {
+    res.status(403).json({ error: "Access denied to this activity" });
+    return;
+  }
+
   res.json(activity);
 });
 

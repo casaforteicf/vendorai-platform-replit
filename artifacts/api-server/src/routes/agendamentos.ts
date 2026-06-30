@@ -209,6 +209,18 @@ router.get("/agendamentos/:id", async (req, res) => {
     return;
   }
 
+  const role = req.user?.platformRole;
+  const fn = req.user?.userFunction as string | undefined;
+  const isSeller =
+    role === "tenant_seller" || fn === "vendedor" || fn === "entrega";
+  const isAdmin =
+    role === "super_admin" || role === "tenant_admin";
+
+  if (!isAdmin && isSeller && agendamento.responsavelId !== req.user?.sub) {
+    res.status(403).json({ error: "Access denied to this agendamento" });
+    return;
+  }
+
   res.json(agendamento);
 });
 
