@@ -1,10 +1,19 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Link } from "wouter";
+import { Link, useLocation } from "wouter";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
+import {
+  Sheet,
+  SheetContent,
+  SheetHeader,
+  SheetTitle,
+  SheetDescription,
+} from "@/components/ui/sheet";
 import { useAuth } from "@/contexts/AuthContext";
+import { useGetLead } from "@workspace/api-client-react";
 import { formatDistanceToNow, format } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import {
@@ -28,6 +37,11 @@ import {
   Trophy,
   Wallet,
   ClipboardList,
+  Phone,
+  Mail,
+  ExternalLink,
+  Tag,
+  Calendar,
 } from "lucide-react";
 import {
   AreaChart,
@@ -230,6 +244,140 @@ function LeadTooltip({ active, payload, label }: {
   );
 }
 
+// ── LeadQuickSheet ────────────────────────────────────────────────────────────
+const STATUS_BADGE: Record<string, string> = {
+  novo:        "bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300",
+  qualificado: "bg-violet-100 text-violet-700 dark:bg-violet-900 dark:text-violet-300",
+  proposta:    "bg-sky-100 text-sky-700 dark:bg-sky-900 dark:text-sky-300",
+  negociando:  "bg-amber-100 text-amber-700 dark:bg-amber-900 dark:text-amber-300",
+  cliente:     "bg-green-100 text-green-700 dark:bg-green-900 dark:text-green-300",
+  perdido:     "bg-red-100 text-red-700 dark:bg-red-900 dark:text-red-300",
+};
+
+function LeadQuickSheet({
+  leadId,
+  onClose,
+}: {
+  leadId: string | null;
+  onClose: () => void;
+}) {
+  const [, navigate] = useLocation();
+  const { data: lead, isLoading } = useGetLead(leadId ?? "", {
+    query: { enabled: !!leadId },
+  });
+
+  return (
+    <Sheet open={!!leadId} onOpenChange={(open) => { if (!open) onClose(); }}>
+      <SheetContent side="right" className="w-full sm:max-w-md flex flex-col gap-0 p-0">
+        {isLoading || !lead ? (
+          <div className="p-6 space-y-4">
+            <Skeleton className="h-6 w-48" />
+            <Skeleton className="h-4 w-32" />
+            <Skeleton className="h-4 w-40" />
+            <Skeleton className="h-4 w-36" />
+          </div>
+        ) : (
+          <>
+            {/* Header */}
+            <div className="px-6 pt-8 pb-4 border-b">
+              <SheetHeader className="text-left gap-1">
+                <div className="flex items-start justify-between gap-3 pr-6">
+                  <SheetTitle className="text-xl leading-tight">{lead.nome ?? "Lead sem nome"}</SheetTitle>
+                  {lead.status && (
+                    <span className={`text-xs px-2 py-0.5 rounded-full font-medium shrink-0 mt-1 ${STATUS_BADGE[lead.status] ?? "bg-muted text-muted-foreground"}`}>
+                      {lead.status.charAt(0).toUpperCase() + lead.status.slice(1)}
+                    </span>
+                  )}
+                </div>
+                <SheetDescription className="text-sm">
+                  {lead.origem ? `Origem: ${lead.origem}` : "Sem origem registrada"}
+                </SheetDescription>
+              </SheetHeader>
+            </div>
+
+            {/* Body */}
+            <div className="flex-1 overflow-y-auto px-6 py-4 space-y-5">
+              {/* Contato */}
+              <div className="space-y-2">
+                <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Contato</p>
+                {lead.telefone ? (
+                  <div className="flex items-center gap-2 text-sm">
+                    <Phone className="h-4 w-4 text-muted-foreground shrink-0" />
+                    <a href={`tel:${lead.telefone}`} className="hover:underline">{lead.telefone}</a>
+                  </div>
+                ) : (
+                  <p className="text-sm text-muted-foreground flex items-center gap-2"><Phone className="h-4 w-4" /> Sem telefone</p>
+                )}
+                {lead.email ? (
+                  <div className="flex items-center gap-2 text-sm">
+                    <Mail className="h-4 w-4 text-muted-foreground shrink-0" />
+                    <a href={`mailto:${lead.email}`} className="hover:underline truncate">{lead.email}</a>
+                  </div>
+                ) : (
+                  <p className="text-sm text-muted-foreground flex items-center gap-2"><Mail className="h-4 w-4" /> Sem e-mail</p>
+                )}
+              </div>
+
+              {/* Tags / segmento */}
+              {(lead.tags?.length || lead.segmento) && (
+                <div className="space-y-2">
+                  <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Segmentação</p>
+                  <div className="flex flex-wrap gap-1.5">
+                    {lead.segmento && (
+                      <span className="text-xs bg-muted px-2 py-0.5 rounded-full flex items-center gap-1">
+                        <Tag className="h-3 w-3" />{lead.segmento}
+                      </span>
+                    )}
+                    {lead.tags?.map((t: string) => (
+                      <span key={t} className="text-xs bg-muted px-2 py-0.5 rounded-full">{t}</span>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Datas */}
+              <div className="space-y-2">
+                <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Histórico</p>
+                {lead.createdAt && (
+                  <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                    <Calendar className="h-4 w-4 shrink-0" />
+                    Cadastrado {formatDistanceToNow(new Date(lead.createdAt), { addSuffix: true, locale: ptBR })}
+                  </div>
+                )}
+                {lead.updatedAt && (
+                  <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                    <Activity className="h-4 w-4 shrink-0" />
+                    Atualizado {formatDistanceToNow(new Date(lead.updatedAt), { addSuffix: true, locale: ptBR })}
+                  </div>
+                )}
+              </div>
+
+              {/* Observações */}
+              {lead.observacoes && (
+                <div className="space-y-2">
+                  <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Observações</p>
+                  <p className="text-sm text-muted-foreground leading-relaxed">{lead.observacoes}</p>
+                </div>
+              )}
+            </div>
+
+            {/* Footer */}
+            <div className="px-6 py-4 border-t">
+              <Button
+                className="w-full gap-2"
+                onClick={() => { onClose(); navigate(`/leads/${lead.id}`); }}
+              >
+                <ExternalLink className="h-4 w-4" />
+                Abrir perfil completo
+              </Button>
+            </div>
+          </>
+        )}
+      </SheetContent>
+    </Sheet>
+  );
+}
+
 // ── Main Component ────────────────────────────────────────────────────────────
 export default function Dashboard() {
   const { user } = useAuth();
@@ -240,6 +388,7 @@ export default function Dashboard() {
   const [isRefreshing, setRefreshing] = useState(false);
   const [dismissed, setDismissed]   = useState<Set<number>>(new Set());
   const [copied, setCopied]         = useState(false);
+  const [selectedLeadId, setSelectedLeadId] = useState<string | null>(null);
   const isFirstFetch                = useRef(true);
 
   const fetchData = useCallback(async () => {
