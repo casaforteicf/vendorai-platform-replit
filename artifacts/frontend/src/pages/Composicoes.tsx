@@ -37,7 +37,34 @@ function ComposicaoDetail({ tenantId, composicaoId }: { tenantId: string; compos
 
   return (
     <div className="space-y-2">
-      <table className="w-full text-xs">
+      {/* Mobile: labeled rows */}
+      <div className="md:hidden space-y-2">
+        {(data as any).itens.map((item: any) => {
+          const preco = parseFloat(item.precoUnitario ?? item.insumo?.precoUnitario ?? "0");
+          const custo = preco * parseFloat(item.quantidade ?? "0");
+          return (
+            <div key={item.id} className="flex items-center justify-between gap-2 text-xs border-b pb-2">
+              <div className="min-w-0">
+                <p className="font-medium truncate">{item.insumo?.nome ?? "—"}</p>
+                <p className="text-muted-foreground font-mono">
+                  {parseFloat(item.quantidade).toLocaleString("pt-BR")} {item.insumo?.unidade ?? ""}
+                </p>
+              </div>
+              <span className="font-mono shrink-0 text-right">
+                {custo > 0 ? `R$ ${custo.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}` : "—"}
+              </span>
+            </div>
+          );
+        })}
+        {total > 0 && (
+          <div className="flex items-center justify-between text-xs pt-1">
+            <span className="text-muted-foreground">Total estimado</span>
+            <span className="font-mono font-semibold">R$ {total.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}</span>
+          </div>
+        )}
+      </div>
+      {/* Desktop: table */}
+      <table className="hidden md:table w-full text-xs">
         <thead>
           <tr className="border-b text-muted-foreground">
             <th className="text-left py-1.5 pr-3">Insumo</th>
