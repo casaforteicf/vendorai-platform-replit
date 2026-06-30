@@ -49,7 +49,9 @@ import {
   prospectCampaignsTable,
   prospectApprovalsTable,
   reactivationQueueTable,
+  tenantDomainsTable,
 } from "@workspace/db";
+import { getCustomHostname } from "../lib/cloudflare.js";
 import type { SegmentoFiltro } from "@workspace/db";
 import { evaluateForLead } from "../routes/rules.js";
 import { dispatchAgentBackground, processAgentInternal, type DispatchResult } from "../services/agent-dispatch.js";
@@ -1374,7 +1376,56 @@ export function startScheduler(log: Logger): void {
     });
   });
 
-  log.info("scheduler: started (churn-check @:05, campaigns @:15, billing @day-5-08:00, reactivation @03:00, demo-expiration @06:00, demo-reset @02:00, special-dates @07:00, partner-commissions @day-1-06:00, partner-prospector @08:00, content-flow @*/5min, blender-poll @30s, revenue-scout @09:00, appointment-reminders @*/30min, no-response-closing @09:30)");
+  // Job 15: Custom domain verification — every 5 minutes
+  cron.schedule("*/5 * * * *", () => {
+    runDomainVerification(log).catch((err) => {
+      log.error({ err }, "scheduler/domain-verify: unhandled error");
+    });
+  });
+
+  log.info("scheduler: started (churn-check @:05, campaigns @:15, billing @day-5-08:00, reactivation @03:00, demo-expiration @06:00, demo-reset @02:00, special-dates @07:00, partner-commissions @day-1-06:00, partner-prospector @08:00, content-flow @*/5min, blender-poll @30s, revenue-scout @09:00, appointment-reminders @*/30min, no-response-closing @09:30, domain-verify @*/5min)");
+}
+
+// ── Job 15: Custom domain verification ────────────────────────────────────────
+
+async function runDomainVerification(log: Logger): Promise<void> {
+  const pending = await db
+    .select()
+    .from(tenantDomainsTable)
+    .where(
+      and(
+        isNotNull(tenantDomainsTable.cloudflareCustomHostnameId),
+        inArray(tenantDomainsTable.status, ["pending_dns", "pending_ssl"])
+      )
+    );
+
+  if (pending.length === 0) return;
+
+  log.info({ count: pending.length }, "scheduler/domain-verify: checking pending domains");
+
+  for (const domain of pending) {
+    try {
+      const cf = await getCustomHostname(domain.cloudflareCustomHostnameId!);
+      let newStatus: "pending_dns" | "pending_ssl" | "active" | "failed";
+      if (cf.status === "active" && cf.sslStatus === "active") {
+        newStatus = "active";
+      } else if (cf.status === "active") {
+        newStatus = "pending_ssl";
+      } else {
+        newStatus = "pending_dns";
+      }
+
+      if (newStatus !== domain.status) {
+        await db
+          .update(tenantDomainsTable)
+          .set({ status: newStatus, updatedAt: new Date() })
+          .where(eq(tenantDomainsTable.id, domain.id));
+        log.info({ domainId: domain.id, domain: domain.domain, status: newStatus }, "scheduler/domain-verify: status updated");
+      }
+    } catch (err) {
+      log.warn({ err, domainId: domain.id }, "scheduler/domain-verify: CF check failed");
+    }
+  }
 }
 
 // ── Job 6: Reset demo tenants ──────────────────────────────────

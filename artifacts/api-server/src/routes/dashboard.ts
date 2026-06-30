@@ -705,6 +705,13 @@ router.get("/dashboard", authenticate, async (req, res) => {
   todayStart.setUTCHours(0, 0, 0, 0);
   const monthStart = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1));
 
+  const tenantRow = await db
+    .select({ subdomainSlug: tenantsTable.subdomainSlug })
+    .from(tenantsTable)
+    .where(eq(tenantsTable.id, tenantId))
+    .limit(1);
+  const subdomainSlug = tenantRow[0]?.subdomainSlug ?? null;
+
   const [
     leadsCount,
     leadsNovosCount,
@@ -972,6 +979,9 @@ router.get("/dashboard", authenticate, async (req, res) => {
     periodo: {
       inicio: thirtyDaysAgo.toISOString(),
       fim:    now.toISOString(),
+    },
+    tenant: {
+      subdomainSlug,
     },
   });
 });

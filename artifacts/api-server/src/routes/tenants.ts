@@ -28,6 +28,8 @@ import {
 import { requireRole, requireSameTenanOrSuperAdmin } from "../middlewares/auth";
 import { encrypt } from "../lib/crypto.js";
 import { sendWelcomeEmail } from "../lib/email.js";
+import { generateSubdomainSlug } from "../lib/subdomain.js";
+import { createCustomHostname } from "../lib/cloudflare.js";
 
 const router: IRouter = Router();
 
@@ -647,6 +649,8 @@ router.post("/superadmin/tenants/provision", requireRole("super_admin"), async (
     .replace(/[^a-z0-9-]/g, "")
     .substring(0, 40) + "-" + Math.random().toString(36).substring(2, 6);
 
+  const subdomainSlug = await generateSubdomainSlug(companyName);
+
   const tempPassword = generateTempPassword(8);
   const hashed = await bcrypt.hash(tempPassword, 12);
 
@@ -654,6 +658,7 @@ router.post("/superadmin/tenants/provision", requireRole("super_admin"), async (
     const [tenant] = await db.insert(tenantsTable).values({
       name: companyName,
       slug,
+      subdomainSlug,
       status: "active",
       provisioningMethod: "manual",
       createdByAdminId: req.user?.sub,
@@ -664,6 +669,9 @@ router.post("/superadmin/tenants/provision", requireRole("super_admin"), async (
     if (!tenant) throw new Error("Failed to create tenant");
 
     await db.insert(onboardingProgressTable).values({ tenantId: tenant.id }).onConflictDoNothing();
+
+    // Create Cloudflare custom hostname for {slug}.vendor.ai (fire-and-forget, non-critical)
+    createCustomHostname(`${subdomainSlug}.vendor.ai`).catch(() => { /* CF not configured or error */ });
 
     const [user] = await db.insert(usersTable).values({
       tenantId: tenant.id,

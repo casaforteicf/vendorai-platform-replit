@@ -21,6 +21,9 @@ import {
   RefreshCw,
   Star,
   Activity,
+  Globe,
+  Copy,
+  Check,
 } from "lucide-react";
 import {
   AreaChart,
@@ -72,6 +75,7 @@ interface DashboardData {
   atividade: { ultimas20: AtividadeItem[] };
   alertas: DashboardAlerta[];
   periodo: { inicio: string; fim: string };
+  tenant?: { subdomainSlug: string | null };
 }
 
 // ── Constants ─────────────────────────────────────────────────────────────────
@@ -289,6 +293,8 @@ export default function Dashboard() {
 
   const { vendas, ia } = data;
   const quotaPct = Math.min(ia.quotaUsada, 100);
+  const subdomainSlug = data.tenant?.subdomainSlug ?? null;
+  const [copied, setCopied] = useState(false);
 
   const pieData = Object.entries(vendas.leadsPorStatus)
     .filter(([, v]) => v > 0)
@@ -477,6 +483,52 @@ export default function Dashboard() {
 
         </div>
       </section>
+
+      {/* ════════════════════════════════════
+          CARD — Seu site (subdomínio)
+      ════════════════════════════════════ */}
+      {subdomainSlug && (
+        <section className="space-y-3">
+          <h2 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Seu Site</h2>
+          <Card>
+            <CardHeader className="flex flex-row items-center justify-between pb-2 space-y-0">
+              <CardTitle className="text-sm font-medium text-muted-foreground">Endereço do site</CardTitle>
+              <Globe className="h-4 w-4 text-muted-foreground" />
+            </CardHeader>
+            <CardContent>
+              <div className="flex items-center gap-2">
+                <span className="font-mono text-sm font-medium">{subdomainSlug}.vendor.ai</span>
+                <button
+                  type="button"
+                  className="text-muted-foreground hover:text-foreground transition-colors"
+                  title="Copiar endereço"
+                  onClick={() => {
+                    navigator.clipboard.writeText(`https://${subdomainSlug}.vendor.ai`);
+                    setCopied(true);
+                    setTimeout(() => setCopied(false), 2000);
+                  }}
+                >
+                  {copied ? <Check className="h-4 w-4 text-green-500" /> : <Copy className="h-4 w-4" />}
+                </button>
+                <a
+                  href={`https://${subdomainSlug}.vendor.ai`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-muted-foreground hover:text-foreground transition-colors"
+                  title="Abrir site"
+                >
+                  <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M15 3h6v6"/><path d="M10 14 21 3"/><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/></svg>
+                </a>
+              </div>
+              <p className="text-xs text-muted-foreground mt-1">
+                <Link href="/configuracoes?tab=dominio" className="hover:underline underline-offset-2">
+                  Configurar domínio personalizado →
+                </Link>
+              </p>
+            </CardContent>
+          </Card>
+        </section>
+      )}
 
       {/* ════════════════════════════════════
           GRÁFICO 1 — Evolução de leads
