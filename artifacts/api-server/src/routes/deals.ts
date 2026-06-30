@@ -19,6 +19,7 @@ import {
   billingRecordsTable,
   automationLogsTable,
   activitiesTable,
+  reactivationQueueTable,
 } from "@workspace/db";
 import { dispatchVendaWebhook } from "../services/erp-webhook.js";
 import { sendDirectWhatsAppMessage, WhatsAppNotConnectedError } from "../services/omnichannel.js";
@@ -787,11 +788,13 @@ router.patch("/deals/:id", async (req, res) => {
     }
   }
 
-  // ── Trigger perda: capturar motivo e data ─────────────────────────────────
+  // ── Trigger perda: capturar motivo, data, activity e fila de reativação ───
   if (parsed.data.etapa === "perdido" && existing.etapa !== "perdido") {
+    const primaryReason = parsed.data.lostReason ?? parsed.data.categoriaPerda ?? null;
+    const primaryDetail = parsed.data.lostReasonDetail ?? parsed.data.motivoPerda ?? null;
+
+    // 1. Setar campos de perda
     try {
-      const primaryReason = parsed.data.lostReason ?? parsed.data.categoriaPerda ?? null;
-      const primaryDetail = parsed.data.lostReasonDetail ?? parsed.data.motivoPerda ?? null;
       await db
         .update(dealsTable)
         .set({
@@ -804,6 +807,37 @@ router.patch("/deals/:id", async (req, res) => {
       req.log.info({ dealId: deal.id }, "deal marked as lost");
     } catch (err) {
       req.log.warn({ err, dealId: deal.id }, "deal-perdido: failed to update lost fields");
+    }
+
+    // 2. Criar activity deal_lost (requer leadId)
+    if (deal.leadId) {
+      try {
+        await db.insert(activitiesTable).values({
+          tenantId: deal.tenantId,
+          leadId: deal.leadId,
+          dealId: deal.id,
+          tipo: "tarefa",
+          titulo: "Deal perdido",
+          descricao: `Perdido. Motivo: ${primaryReason ?? "não informado"}`,
+          status: "concluida",
+        });
+      } catch (err) {
+        req.log.warn({ err, dealId: deal.id }, "deal-perdido: failed to create activity");
+      }
+    }
+
+    // 3. Enfileirar para reativação em 30 dias
+    try {
+      const scheduledFor = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
+      await db.insert(reactivationQueueTable).values({
+        dealId: deal.id,
+        scheduledFor,
+        status: "pending",
+        lossReason: primaryReason,
+      });
+      req.log.info({ dealId: deal.id, scheduledFor }, "deal-perdido: enqueued for reactivation");
+    } catch (err) {
+      req.log.warn({ err, dealId: deal.id }, "deal-perdido: failed to enqueue reactivation");
     }
   }
 

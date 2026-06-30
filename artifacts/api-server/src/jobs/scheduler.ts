@@ -28,6 +28,7 @@ import {
   campaignsTable,
   leadsTable,
   dealsTable,
+  funisTable,
   customerIntelligenceTable,
   agentConfigsTable,
   agentTasksTable,
@@ -47,6 +48,7 @@ import {
   leadCampaignLogTable,
   prospectCampaignsTable,
   prospectApprovalsTable,
+  reactivationQueueTable,
 } from "@workspace/db";
 import type { SegmentoFiltro } from "@workspace/db";
 import { evaluateForLead } from "../routes/rules.js";
@@ -411,103 +413,129 @@ async function dispatchDueCampaigns(log: Logger): Promise<void> {
 async function runLostDealReactivation(log: Logger): Promise<void> {
   log.info("scheduler/reactivation: starting");
 
-  const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
+  const now = new Date();
 
-  // Fetch ALL lost deals with leadId, ordered by most recent lostAt first.
-  // Then deduplicate by lead so we keep the most recent loss per lead
-  // (regardless of age), and only after deduplication filter by >30 days.
-  const allLostDeals = await db
+  // Buscar itens da fila cujo scheduled_for já passou e status ainda é pending
+  const pendingItems = await db
     .select({
-      dealId: dealsTable.id,
-      leadId: dealsTable.leadId,
-      tenantId: dealsTable.tenantId,
-      lostAt: dealsTable.lostAt,
+      queueId: reactivationQueueTable.id,
+      dealId: reactivationQueueTable.dealId,
+      lossReason: reactivationQueueTable.lossReason,
     })
-    .from(dealsTable)
+    .from(reactivationQueueTable)
     .where(
       and(
-        eq(dealsTable.etapa, "perdido"),
-        isNotNull(dealsTable.leadId),
-        isNotNull(dealsTable.lostAt)
+        eq(reactivationQueueTable.status, "pending"),
+        lte(reactivationQueueTable.scheduledFor, now)
       )
-    )
-    .orderBy(desc(dealsTable.lostAt));
+    );
 
-  // Deduplicate by lead: keep the most recent lost deal per lead
-  const byLead = new Map<string, typeof allLostDeals[0]>();
-  for (const d of allLostDeals) {
-    const leadId = d.leadId!;
-    if (!byLead.has(leadId)) {
-      byLead.set(leadId, d);
-    }
-  }
-
-  if (byLead.size === 0) {
-    log.debug("scheduler/reactivation: no lost deals found");
+  if (pendingItems.length === 0) {
+    log.debug("scheduler/reactivation: no pending items in reactivation_queue");
     return;
   }
 
-  // Filter to only leads whose most recent lost deal is >=30 days old
-  const readyDeals: typeof allLostDeals[0][] = [];
-  for (const deal of byLead.values()) {
-    if (deal.lostAt && deal.lostAt <= thirtyDaysAgo) {
-      readyDeals.push(deal);
-    }
-  }
-
-  if (readyDeals.length === 0) {
-    log.debug("scheduler/reactivation: no deals ready for reactivation (most recent loss <30 days)");
-    return;
-  }
-
-  let requeued = 0;
+  let executed = 0;
   let dispatched = 0;
 
-  for (const deal of readyDeals) {
-    const leadId = deal.leadId!;
+  for (const item of pendingItems) {
+    const dealId = item.dealId;
+    if (!dealId) continue;
+
     try {
-      // Check if lead already requeued
-      const [lead] = await db
-        .select({ status: leadsTable.status, tenantId: leadsTable.tenantId })
-        .from(leadsTable)
-        .where(eq(leadsTable.id, leadId))
+      // Fetch deal com leadId e funilId
+      const [deal] = await db
+        .select({
+          id: dealsTable.id,
+          tenantId: dealsTable.tenantId,
+          leadId: dealsTable.leadId,
+          funilId: dealsTable.funilId,
+          etapa: dealsTable.etapa,
+        })
+        .from(dealsTable)
+        .where(eq(dealsTable.id, dealId))
         .limit(1);
 
-      if (!lead || lead.status === "aquecimento") {
-        log.info({ leadId, dealId: deal.dealId }, "scheduler/reactivation: skip — lead already in aquecimento");
+      if (!deal) {
+        log.warn({ dealId, queueId: item.queueId }, "scheduler/reactivation: deal not found, skipping");
+        await db
+          .update(reactivationQueueTable)
+          .set({ status: "skipped", executedAt: now })
+          .where(eq(reactivationQueueTable.id, item.queueId));
         continue;
       }
 
-      // Verify lead belongs to same tenant as deal
-      if (lead.tenantId !== deal.tenantId) {
-        log.warn({ leadId, dealId: deal.dealId }, "scheduler/reactivation: tenant mismatch — skipping");
-        continue;
+      // Determinar o primeiro estágio do funil do deal
+      let targetEtapa = "novo";
+      if (deal.funilId) {
+        const [funil] = await db
+          .select({ etapas: funisTable.etapas })
+          .from(funisTable)
+          .where(eq(funisTable.id, deal.funilId))
+          .limit(1);
+        if (funil && Array.isArray(funil.etapas) && funil.etapas.length > 0) {
+          targetEtapa = funil.etapas[0] as string;
+        }
       }
 
-      // Update lead to aquecimento
+      // 1. Mover deal para o primeiro estágio do funil
       await db
-        .update(leadsTable)
-        .set({ status: "aquecimento", updatedAt: new Date() })
-        .where(eq(leadsTable.id, leadId));
-      requeued++;
-      log.info({ leadId, dealId: deal.dealId }, "scheduler/reactivation: lead requeued to aquecimento");
+        .update(dealsTable)
+        .set({ etapa: targetEtapa, updatedAt: now })
+        .where(eq(dealsTable.id, dealId));
+      log.info({ dealId, targetEtapa }, "scheduler/reactivation: deal moved to first stage");
 
-      // Dispatch reactivation agent (forced)
-      dispatchAgentBackground({
-        tenantId: deal.tenantId,
-        leadId,
-        mensagem: "PROATIVO: reativação automática — deal perdido há mais de 30 dias, tentando reengajamento.",
-        forcedAgent: "reactivation",
-        log,
-      });
-      dispatched++;
-      log.info({ leadId, dealId: deal.dealId }, "scheduler/reactivation: reactivation agent dispatched");
+      // 2. Criar activity reactivation_scheduled (requer leadId)
+      if (deal.leadId) {
+        await db.insert(activitiesTable).values({
+          tenantId: deal.tenantId,
+          leadId: deal.leadId,
+          dealId,
+          tipo: "tarefa",
+          titulo: "Reativação agendada",
+          descricao: `Deal reativado automaticamente após 30 dias. Motivo da perda: ${item.lossReason ?? "não informado"}`,
+          status: "pendente",
+        }).catch((err) => {
+          log.warn({ err, dealId }, "scheduler/reactivation: failed to create reactivation activity");
+        });
+
+        // 3. Chamar o Agente Reativação
+        const [lead] = await db
+          .select({ status: leadsTable.status, tenantId: leadsTable.tenantId })
+          .from(leadsTable)
+          .where(eq(leadsTable.id, deal.leadId))
+          .limit(1);
+
+        if (lead && lead.tenantId === deal.tenantId && lead.status !== "aquecimento") {
+          await db
+            .update(leadsTable)
+            .set({ status: "aquecimento", updatedAt: now })
+            .where(eq(leadsTable.id, deal.leadId));
+
+          dispatchAgentBackground({
+            tenantId: deal.tenantId,
+            leadId: deal.leadId,
+            mensagem: `PROATIVO: reativação automática — deal perdido (motivo: ${item.lossReason ?? "não informado"}), tentando reengajamento.`,
+            forcedAgent: "reactivation",
+            log,
+          });
+          dispatched++;
+          log.info({ dealId, leadId: deal.leadId }, "scheduler/reactivation: reactivation agent dispatched");
+        }
+      }
+
+      // 4. Marcar como executed
+      await db
+        .update(reactivationQueueTable)
+        .set({ status: "executed", executedAt: now })
+        .where(eq(reactivationQueueTable.id, item.queueId));
+      executed++;
     } catch (err) {
-      log.error({ err, leadId, dealId: deal.dealId }, "scheduler/reactivation: lead failed (non-fatal)");
+      log.error({ err, dealId, queueId: item.queueId }, "scheduler/reactivation: item failed (non-fatal)");
     }
   }
 
-  log.info({ readyDeals: readyDeals.length, leadsRequeued: requeued, agentsDispatched: dispatched }, "scheduler/reactivation: complete");
+  log.info({ total: pendingItems.length, executed, agentsDispatched: dispatched }, "scheduler/reactivation: complete");
 }
 
 // ── Job 5: Expiração de demos ───────────────────────────────────────────────

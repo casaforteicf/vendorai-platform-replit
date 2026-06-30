@@ -272,12 +272,13 @@ const ETAPA_SAAS_PROBABILIDADE: Record<DealEtapaSaas, number> = {
 };
 
 const MOTIVOS_PERDA: { value: string; label: string }[] = [
-  { value: "preco_alto",       label: "Preço alto" },
-  { value: "concorrente",      label: "Concorrente" },
-  { value: "sem_orcamento",    label: "Sem orçamento" },
-  { value: "nao_momento",      label: "Não é o momento" },
-  { value: "perda_contato",    label: "Perda de contato" },
-  { value: "outro",            label: "Outro" },
+  { value: "preco_alto",         label: "Preço alto" },
+  { value: "concorrente",        label: "Escolheu concorrente" },
+  { value: "sem_budget",         label: "Sem budget" },
+  { value: "timing_ruim",        label: "Timing ruim" },
+  { value: "sem_resposta",       label: "Sem resposta" },
+  { value: "produto_nao_atende", label: "Produto não atende" },
+  { value: "outro",              label: "Outro" },
 ];
 
 function formatCurrency(value: string | null | undefined): string {
@@ -346,22 +347,17 @@ function MotivosPerdaDialog({
               </SelectContent>
             </Select>
           </div>
-          {lostReason === "outro" && (
-            <div className="space-y-1.5">
-              <label className="text-sm font-medium text-foreground">
-                Detalhe <span className="text-red-500">*</span>
-              </label>
-              <textarea
-                className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring resize-none"
-                rows={3}
-                placeholder="Descreva o motivo específico..."
-                value={lostReasonDetail}
-                onChange={(e) => setLostReasonDetail(e.target.value)}
-                required={lostReason === "outro"}
-                data-testid="textarea-lost-detail"
-              />
-            </div>
-          )}
+          <div className="space-y-1.5">
+            <label className="text-sm font-medium text-foreground">Observações</label>
+            <textarea
+              className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring resize-none"
+              rows={3}
+              placeholder="Observações adicionais (opcional)..."
+              value={lostReasonDetail}
+              onChange={(e) => setLostReasonDetail(e.target.value)}
+              data-testid="textarea-lost-detail"
+            />
+          </div>
           <div className="flex gap-2 justify-end pt-1">
             <Button type="button" variant="outline" size="sm" onClick={handleCancel}>
               Cancelar
@@ -371,7 +367,7 @@ function MotivosPerdaDialog({
               size="sm"
               className="bg-red-600 hover:bg-red-700 text-white"
               onClick={handleConfirm}
-              disabled={!lostReason || (lostReason === "outro" && !lostReasonDetail.trim())}
+              disabled={!lostReason}
             >
               Confirmar perda
             </Button>

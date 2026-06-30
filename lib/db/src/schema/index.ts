@@ -111,3 +111,4 @@ export * from "./client_service_gaps";
 export * from "./contracts";
 export * from "./billing_records";
 export * from "./automation_logs";
+export * from "./reactivation_queue";
