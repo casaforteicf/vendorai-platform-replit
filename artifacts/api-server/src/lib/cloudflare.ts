@@ -125,6 +125,6 @@ export function getDnsInstructions(domain: string): {
   return {
     recordType: "CNAME",
     name: domain,
-    value: `${process.env.CLOUDFLARE_SAAS_ORIGIN ?? "origin.vendor.ai"}`,
+    value: `${process.env.CLOUDFLARE_SAAS_ORIGIN ?? "origin.appvendorai.com"}`,
   };
 }

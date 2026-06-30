@@ -52,7 +52,7 @@ router.get("/tenants/:tenantId/domains", requireSameTenanOrSuperAdmin(), async (
     .orderBy(tenantDomainsTable.createdAt);
 
   const subdomainUrl = tenant.subdomainSlug
-    ? `https://${tenant.subdomainSlug}.vendor.ai`
+    ? `https://${tenant.subdomainSlug}.appvendorai.com`
     : null;
 
   const publicSiteUrl = `/api/public/${tenant.slug}/site`;

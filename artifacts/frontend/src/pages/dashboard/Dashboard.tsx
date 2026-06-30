@@ -497,13 +497,13 @@ export default function Dashboard() {
             </CardHeader>
             <CardContent>
               <div className="flex items-center gap-2">
-                <span className="font-mono text-sm font-medium">{subdomainSlug}.vendor.ai</span>
+                <span className="font-mono text-sm font-medium">{subdomainSlug}.appvendorai.com</span>
                 <button
                   type="button"
                   className="text-muted-foreground hover:text-foreground transition-colors"
                   title="Copiar endereço"
                   onClick={() => {
-                    navigator.clipboard.writeText(`https://${subdomainSlug}.vendor.ai`);
+                    navigator.clipboard.writeText(`https://${subdomainSlug}.appvendorai.com`);
                     setCopied(true);
                     setTimeout(() => setCopied(false), 2000);
                   }}
@@ -511,7 +511,7 @@ export default function Dashboard() {
                   {copied ? <Check className="h-4 w-4 text-green-500" /> : <Copy className="h-4 w-4" />}
                 </button>
                 <a
-                  href={`https://${subdomainSlug}.vendor.ai`}
+                  href={`https://${subdomainSlug}.appvendorai.com`}
                   target="_blank"
                   rel="noopener noreferrer"
                   className="text-muted-foreground hover:text-foreground transition-colors"

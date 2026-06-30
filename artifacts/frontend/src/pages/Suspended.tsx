@@ -34,8 +34,8 @@ export default function Suspended() {
         <div className="space-y-2">
           <p className="text-xs text-muted-foreground">
             Dúvidas? Entre em contato:{" "}
-            <a href="mailto:suporte@vendor.ai" className="underline hover:text-foreground">
-              suporte@vendor.ai
+            <a href="mailto:suporte@appvendorai.com" className="underline hover:text-foreground">
+              suporte@appvendorai.com
             </a>
           </p>
           <Button variant="outline" size="sm" onClick={logout}>

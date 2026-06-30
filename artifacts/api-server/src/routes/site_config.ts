@@ -41,8 +41,8 @@ async function resolveTenantByHost(req: express.Request): Promise<{ id: string; 
     return tenant ?? null;
   }
 
-  // Subdomain: *.vendor.ai
-  const subdomainSuffix = ".vendor.ai";
+  // Subdomain: *.appvendorai.com
+  const subdomainSuffix = ".appvendorai.com";
   if (hostLower.endsWith(subdomainSuffix)) {
     const slug = hostLower.slice(0, -subdomainSuffix.length);
     const [tenant] = await db

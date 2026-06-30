@@ -670,8 +670,8 @@ router.post("/superadmin/tenants/provision", requireRole("super_admin"), async (
 
     await db.insert(onboardingProgressTable).values({ tenantId: tenant.id }).onConflictDoNothing();
 
-    // Create Cloudflare custom hostname for {slug}.vendor.ai (fire-and-forget, non-critical)
-    createCustomHostname(`${subdomainSlug}.vendor.ai`).catch(() => { /* CF not configured or error */ });
+    // Create Cloudflare custom hostname for {slug}.appvendorai.com (fire-and-forget, non-critical)
+    createCustomHostname(`${subdomainSlug}.appvendorai.com`).catch(() => { /* CF not configured or error */ });
 
     const [user] = await db.insert(usersTable).values({
       tenantId: tenant.id,

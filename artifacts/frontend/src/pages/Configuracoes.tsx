@@ -2349,14 +2349,14 @@ export default function Configuracoes() {
               {tenantQuery.data?.subdomainSlug ? (
                 <div className="flex items-center gap-3">
                   <code className="text-sm bg-background border rounded px-3 py-1.5 font-mono">
-                    https://{tenantQuery.data.subdomainSlug}.vendor.ai
+                    https://{tenantQuery.data.subdomainSlug}.appvendorai.com
                   </code>
                   <Button
                     variant="outline"
                     size="sm"
                     className="gap-1.5 h-8"
                     onClick={() => {
-                      const url = `https://${tenantQuery.data?.subdomainSlug}.vendor.ai`;
+                      const url = `https://${tenantQuery.data?.subdomainSlug}.appvendorai.com`;
                       navigator.clipboard.writeText(url);
                       toast({ title: "URL copiada." });
                     }}
