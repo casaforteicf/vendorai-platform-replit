@@ -1,6 +1,7 @@
 import { useState, useRef, useCallback, useEffect } from "react";
 import { useAuth } from "@/contexts/AuthContext";
-import { useGetBusinessProfileByTenant, getGetBusinessProfileByTenantQueryKey } from "@workspace/api-client-react";
+import { useGetBusinessProfileByTenant, getGetBusinessProfileByTenantQueryKey, useRequestUploadUrl } from "@workspace/api-client-react";
+import { useToast } from "@/hooks/use-toast";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -827,17 +828,39 @@ function TestimonialsDialog({ onRefine }: { onRefine: (msg: string) => Promise<s
 
 // ── MediaDialog ────────────────────────────────────────────────────────────────
 
-function MediaDialog({ html, onSave }: { html: string; onSave: (html: string) => Promise<void> }) {
+function MediaDialog({ html, onSave, tenantId }: { html: string; onSave: (html: string) => Promise<void>; tenantId: string }) {
   const [open, setOpen] = useState(false);
   const [logoUrl, setLogoUrl] = useState("");
   const [heroUrl, setHeroUrl] = useState("");
   const [loading, setLoading] = useState(false);
+  const [uploading, setUploading] = useState<"logo" | "hero" | null>(null);
   const [done, setDone] = useState(false);
+  const { toast } = useToast();
+  const requestUploadUrl = useRequestUploadUrl();
 
-  function readFile(file: File, setter: (url: string) => void) {
-    const reader = new FileReader();
-    reader.onload = (e) => setter((e.target?.result as string) ?? "");
-    reader.readAsDataURL(file);
+  async function uploadFile(file: File, field: "logo" | "hero") {
+    setUploading(field);
+    try {
+      const result = await new Promise<{ uploadURL: string; objectPath: string }>((resolve, reject) => {
+        requestUploadUrl.mutate(
+          { data: { name: file.name, size: file.size, contentType: file.type || "image/png" } },
+          { onSuccess: resolve, onError: reject },
+        );
+      });
+      const uploadRes = await fetch(result.uploadURL, {
+        method: "PUT",
+        body: file,
+        headers: { "Content-Type": file.type || "image/png" },
+      });
+      if (!uploadRes.ok) throw new Error("Upload falhou");
+      const permanentUrl = `/api/storage/public-objects/${result.objectPath}`;
+      if (field === "logo") setLogoUrl(permanentUrl);
+      else setHeroUrl(permanentUrl);
+    } catch {
+      toast({ title: "Erro ao fazer upload da imagem. Tente novamente.", variant: "destructive" });
+    } finally {
+      setUploading(null);
+    }
   }
 
   function injectLogo(source: string, logoSrc: string): string {
@@ -914,15 +937,14 @@ function MediaDialog({ html, onSave }: { html: string; onSave: (html: string) =>
             <div className="flex gap-2 items-center">
               <Input
                 placeholder="Cole a URL do logo"
-                value={logoUrl.startsWith("data:") ? "(arquivo carregado)" : logoUrl}
+                value={logoUrl}
                 onChange={(e) => setLogoUrl(e.target.value)}
                 className="flex-1"
-                readOnly={logoUrl.startsWith("data:")}
               />
               <label className="cursor-pointer shrink-0">
-                <input type="file" accept="image/*" className="sr-only" onChange={(e) => { const f = e.target.files?.[0]; if (f) readFile(f, setLogoUrl); }} />
-                <Button variant="outline" size="icon" type="button" asChild>
-                  <span><Upload className="h-4 w-4" /></span>
+                <input type="file" accept="image/*" className="sr-only" onChange={(e) => { const f = e.target.files?.[0]; if (f) uploadFile(f, "logo"); }} />
+                <Button variant="outline" size="icon" type="button" asChild disabled={uploading === "logo"}>
+                  <span>{uploading === "logo" ? <Loader2 className="h-4 w-4 animate-spin" /> : <Upload className="h-4 w-4" />}</span>
                 </Button>
               </label>
             </div>
@@ -944,15 +966,14 @@ function MediaDialog({ html, onSave }: { html: string; onSave: (html: string) =>
             <div className="flex gap-2 items-center">
               <Input
                 placeholder="Cole a URL da foto"
-                value={heroUrl.startsWith("data:") ? "(arquivo carregado)" : heroUrl}
+                value={heroUrl}
                 onChange={(e) => setHeroUrl(e.target.value)}
                 className="flex-1"
-                readOnly={heroUrl.startsWith("data:")}
               />
               <label className="cursor-pointer shrink-0">
-                <input type="file" accept="image/*" className="sr-only" onChange={(e) => { const f = e.target.files?.[0]; if (f) readFile(f, setHeroUrl); }} />
-                <Button variant="outline" size="icon" type="button" asChild>
-                  <span><Upload className="h-4 w-4" /></span>
+                <input type="file" accept="image/*" className="sr-only" onChange={(e) => { const f = e.target.files?.[0]; if (f) uploadFile(f, "hero"); }} />
+                <Button variant="outline" size="icon" type="button" asChild disabled={uploading === "hero"}>
+                  <span>{uploading === "hero" ? <Loader2 className="h-4 w-4 animate-spin" /> : <Upload className="h-4 w-4" />}</span>
                 </Button>
               </label>
             </div>
@@ -964,7 +985,7 @@ function MediaDialog({ html, onSave }: { html: string; onSave: (html: string) =>
           </div>
         </div>
         <DialogFooter>
-          <Button onClick={apply} disabled={loading || (!logoUrl && !heroUrl)} className="w-full">
+          <Button onClick={apply} disabled={loading || !!uploading || (!logoUrl && !heroUrl)} className="w-full">
             {loading ? <><Loader2 className="h-4 w-4 mr-2 animate-spin" />Salvando…</> : done ? "✓ Aplicado!" : "Aplicar mídia ao site"}
           </Button>
         </DialogFooter>
@@ -991,6 +1012,7 @@ function PersonalizePanel({
   html,
   isPublished,
   currentSiteType,
+  tenantId,
   onRefine,
   onSave,
   onPublish,
@@ -999,6 +1021,7 @@ function PersonalizePanel({
   html: string;
   isPublished: boolean;
   currentSiteType: string | null;
+  tenantId: string;
   onRefine: (msg: string) => Promise<string>;
   onSave: (html: string) => Promise<void>;
   onPublish: () => Promise<void>;
@@ -1060,7 +1083,7 @@ function PersonalizePanel({
       <div className="flex flex-wrap gap-2">
         <RefineDialog onRefine={onRefine} />
         <TestimonialsDialog onRefine={onRefine} />
-        <MediaDialog html={html} onSave={onSave} />
+        <MediaDialog html={html} onSave={onSave} tenantId={tenantId} />
         {currentSiteType !== "ecommerce" && (
           <Button variant="outline" size="sm" onClick={onGenerateEcommerce} className="border-indigo-300 text-indigo-700 hover:bg-indigo-50 dark:border-indigo-700 dark:text-indigo-300 dark:hover:bg-indigo-950/40">
             <ShoppingCart className="h-3.5 w-3.5 mr-1.5" />
@@ -1155,6 +1178,7 @@ function SiteGeneratorInner({ tenantId, token }: { tenantId: string; token: stri
           html={html}
           isPublished={isPublished}
           currentSiteType={currentSiteType}
+          tenantId={tenantId}
           onRefine={refine}
           onSave={saveHtml}
           onPublish={publish}
