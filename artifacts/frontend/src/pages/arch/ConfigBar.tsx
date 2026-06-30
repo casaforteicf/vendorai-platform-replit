@@ -22,11 +22,12 @@ const LUZES: ChipDef<LightOption>[] = [
 ]
 
 const ANGULOS: ChipDef<AngleOption>[] = [
-  { value: 'frontal',  label: 'Frontal' },
-  { value: '45',       label: '45°' },
-  { value: 'lateral',  label: 'Lateral' },
-  { value: 'ampla',    label: 'Ampla' },
-  { value: 'aerea',    label: 'Aérea' },
+  { value: 'frontal',     label: 'Frontal' },
+  { value: '45',          label: '45°' },
+  { value: 'lateral_esq', label: 'Lat. Esq.' },
+  { value: 'lateral_dir', label: 'Lat. Dir.' },
+  { value: 'ampla',       label: 'Ampla' },
+  { value: 'aerea',       label: 'Aérea' },
 ]
 
 const BASE_CHIP: React.CSSProperties = {

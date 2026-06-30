@@ -5,6 +5,7 @@ import MaterialBar from './MaterialBar'
 import ImageCanvas from './ImageCanvas'
 import ConfigBar from './ConfigBar'
 import BottomBar from './BottomBar'
+import SuggestionsCard from './SuggestionsCard'
 import { MATERIALS, AppliedMaterial } from './render-types'
 import type { UserMat } from './MaterialBar'
 
@@ -22,6 +23,7 @@ export default function RenderPage() {
   const [ghostPos, setGhostPos] = useState({ x: -200, y: -200 })
   const [imageFile, setImageFile] = useState<File | null>(null)
   const [customMats, setCustomMats] = useState<CustomMat[]>([])
+  const [showSuggestions, setShowSuggestions] = useState(false)
 
   // Keep refs so event listeners always see latest values without stale closures
   const draggingMatRef = useRef<CustomMat | null>(null)
@@ -95,28 +97,6 @@ export default function RenderPage() {
   }
 
   const doRender = async () => {
-    const mats = Object.entries(rs.applied)
-      .map(([zone, mat]) => `${zone} with ${mat.promptFragment}`)
-      .join(', ')
-    const lightMap: Record<string, string> = {
-      manha: 'morning light 8am',
-      tarde: 'afternoon 2pm',
-      golden: 'golden hour',
-      noturno: 'night interior lights',
-      nublado: 'overcast soft light',
-      auto: 'original lighting',
-    }
-    const angleMap: Record<string, string> = {
-      frontal: 'frontal view',
-      '45': '45 degree perspective',
-      lateral: 'side view',
-      ampla: 'wide angle',
-      closeup: 'close-up',
-      aerea: 'aerial view',
-    }
-    const prompt = `${rs.config.prompt}, ${mats}, ${lightMap[rs.config.light]}, ${angleMap[rs.config.angle]}, photorealistic, 4K, high quality`
-    const referenceImageUrl = rs.imageUrl
-
     try {
       rs.setLoading(true)
       rs.setStep(3)
@@ -124,17 +104,31 @@ export default function RenderPage() {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${getToken()}`
+          'Authorization': `Bearer ${getToken()}`,
         },
-        body: JSON.stringify({ prompt, referenceImageUrl })
+        body: JSON.stringify({
+          referenceImageUrl: rs.imageUrl || undefined,
+          lighting:  rs.config.light,
+          angle:     rs.config.angle,
+          roomType:  'fachada externa',
+          materials: Object.entries(rs.applied).map(([zone, mat]) => ({
+            zone,
+            materialName:   mat.name,
+            promptFragment: mat.promptFragment,
+          })),
+          userNotes: rs.config.prompt || undefined,
+        }),
       })
-      if (!res.ok) throw new Error(`Erro ${res.status}`)
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}))
+        throw new Error((body as any).error ?? `Erro ${res.status}`)
+      }
       const data = await res.json()
       rs.setRenderResult(data.imageUrl)
       rs.setStep(4)
-    } catch (err) {
+    } catch (err: any) {
       console.error('Erro no render:', err)
-      toast({ variant: 'destructive', description: 'Erro ao gerar render. Tente novamente.' })
+      toast({ variant: 'destructive', description: err?.message ?? 'Erro ao gerar render. Tente novamente.' })
     } finally {
       rs.setLoading(false)
     }
@@ -252,6 +246,17 @@ export default function RenderPage() {
           <button style={topBtn} disabled>
             Salvar no Lead
           </button>
+          <button
+            onClick={() => setShowSuggestions(v => !v)}
+            style={{
+              ...topBtn,
+              background: showSuggestions ? 'rgba(139,92,246,0.2)' : undefined,
+              border: showSuggestions ? '0.5px solid rgba(139,92,246,0.45)' : undefined,
+              color: showSuggestions ? '#a78bfa' : undefined,
+            }}
+          >
+            ✨ Sugestões
+          </button>
           {rs.renderResult && (
             <a
               href={rs.renderResult}
@@ -271,6 +276,18 @@ export default function RenderPage() {
           )}
         </div>
       </div>
+
+      {/* Suggestions floating panel */}
+      {showSuggestions && (
+        <div style={{
+          position: 'fixed',
+          bottom: 160,
+          right: 16,
+          zIndex: 100,
+        }}>
+          <SuggestionsCard referenceImageUrl={rs.imageUrl || undefined} />
+        </div>
+      )}
 
       {/* Row 2 — ImageCanvas */}
       <ImageCanvas

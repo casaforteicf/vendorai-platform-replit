@@ -1,6 +1,6 @@
 export type RenderMode = 'hd' | 'full' | 'chat'
 export type LightOption = 'auto' | 'manha' | 'tarde' | 'golden' | 'noturno' | 'nublado'
-export type AngleOption = 'frontal' | '45' | 'lateral' | 'ampla' | 'closeup' | 'aerea'
+export type AngleOption = 'frontal' | '45' | 'lateral_esq' | 'lateral_dir' | 'ampla' | 'aerea'
 
 export interface AppliedMaterial {
   zone: string

@@ -13,6 +13,9 @@ import {
   archMarketplacePedidosTable,
   archRenderVersoesTable,
   archRenderSolicitacoesTable,
+  archSuggestionsTable,
+  renderSurfacesTable,
+  renderSurfaceMaterialsTable,
   notificationsTable,
   tenantsTable,
   insertArchProjetoSchema,
@@ -26,6 +29,9 @@ import {
   insertArchCenaSchema,
   updateArchCenaSchema,
   insertArchRenderSolicitacaoSchema,
+  insertRenderSurfaceSchema,
+  updateRenderSurfaceSchema,
+  insertRenderSurfaceMaterialSchema,
 } from "@workspace/db";
 import { z } from "zod/v4";
 import { anthropic } from "@workspace/integrations-anthropic-ai";
@@ -1608,29 +1614,113 @@ router.post("/arch/cenas/:cenaId/solicitacoes/:solId/retry", authenticate, async
   return res.json({ ok: true, status: "pendente" });
 });
 
-// ── POST /api/arch/render — Renderização rápida por IA (sem cena vinculada) ──
+// ── Schemas de validação ────────────────────────────────────────────────────
+const archRenderBodySchema = z.object({
+  referenceImageUrl: z.string().optional(),
+  lighting: z.enum(["auto", "manha", "tarde", "golden", "noturno", "nublado"]).default("auto"),
+  angle:    z.enum(["frontal", "45", "lateral_esq", "lateral_dir", "ampla", "aerea"]).default("frontal"),
+  roomType: z.string().default("fachada externa"),
+  materials: z.array(z.object({
+    zone:             z.string(),
+    materialName:     z.string(),
+    promptFragment:   z.string(),
+  })).default([]),
+  userNotes: z.string().optional(),
+});
+
+const lightingMapArch: Record<string, string> = {
+  manha:   "Early morning daylight (7–9 am): soft warm sunlight from low angle, gentle shadows, golden-warm color temperature.",
+  tarde:   "Bright midday/afternoon (1–4 pm): strong overhead daylight, crisp shadows, neutral-white color temperature.",
+  golden:  "Golden hour (5–6 pm): warm amber-orange sunlight raking across surfaces, long soft shadows, romantic golden glow.",
+  noturno: "Night scene (8 pm+): TURN ON all lamps, exterior fixtures, and lighting elements physically present; dark sky; warm artificial light; no daylight.",
+  nublado: "Overcast cloudy day: soft diffuse light with no direct sun, cool neutral tones, no hard shadows, even illumination.",
+};
+
+const angleMapArch: Record<string, string> = {
+  frontal:     "straight-on frontal camera angle",
+  "45":        "45-degree diagonal perspective angle",
+  lateral_esq: "side view from the left (−90° Y-axis rotation from frontal view)",
+  lateral_dir: "side view from the right (+90° Y-axis rotation from frontal view)",
+  ampla:       "wide-angle lens expansive view",
+  aerea:       "aerial top-down bird's-eye view",
+};
+
+// ── POST /api/arch/render — Renderização por IA com preservação estrutural ──
 router.post("/arch/render", async (req, res) => {
   const tid = tenantId(req);
-  if (!tid) return res.status(403).json({ error: "Tenant não identificado" });
+  if (!tid) return res.status(403).json({ success: false, error: "Tenant não identificado" });
 
-  const { prompt, referenceImageUrl } = req.body as { prompt?: string; referenceImageUrl?: string };
-  if (!prompt) return res.status(400).json({ error: "Campo 'prompt' obrigatório" });
+  const parsed = archRenderBodySchema.safeParse(req.body);
+  if (!parsed.success) {
+    return res.status(400).json({
+      success: false,
+      error: "Parâmetros inválidos",
+      details: parsed.error.issues.map(i => i.message).join("; "),
+    });
+  }
+
+  const { referenceImageUrl, lighting, angle, roomType, materials, userNotes } = parsed.data;
+  const isExterior = !roomType || roomType === "fachada externa";
+
+  const preservationRules = isExterior
+    ? [
+        "ABSOLUTE PRESERVATION RULES — NEVER BREAK:",
+        "• DO NOT add any new element (trees, cars, people, plants, decorations) not already visible in the reference.",
+        "• DO NOT remove, move, or alter any existing architectural element.",
+        "• DO NOT change viewpoint, perspective, or camera position.",
+        "• Preserve PIXEL-EXACTLY: building shape, footprint, number of floors, all window positions, all door positions, roof geometry, every structural volume.",
+        "PERMITTED CHANGES ONLY: material quality and texture on specified surfaces, lighting condition.",
+      ].join(" ")
+    : [
+        "ABSOLUTE PRESERVATION RULES — NEVER BREAK:",
+        "• DO NOT add any object, furniture, plant, decoration, or element not already present in the reference.",
+        "• DO NOT remove, move, reposition, or replace any existing furniture or object.",
+        "• DO NOT change viewpoint, perspective, or camera angle.",
+        "• Preserve PIXEL-EXACTLY: room geometry, all wall/window/door positions, ceiling height, every piece of furniture in its exact place.",
+        "PERMITTED CHANGES ONLY: material quality and texture on specified surfaces, lighting condition.",
+      ].join(" ");
+
+  const materialInstructions = materials.length > 0
+    ? [
+        "MATERIAL APPLICATIONS (apply only to each specified zone — leave ALL other surfaces unchanged):",
+        ...materials.map(m => `• ${m.zone}: ${m.promptFragment} — photorealistic texture, correct scale and perspective`),
+      ].join(" ")
+    : null;
+
+  const lightingInstruction = lighting !== "auto" && lightingMapArch[lighting]
+    ? `LIGHTING CONDITION: ${lightingMapArch[lighting]}`
+    : null;
+
+  const angleInstruction = angleMapArch[angle]
+    ? `CAMERA ANGLE: render from a ${angleMapArch[angle]}.`
+    : null;
+
+  const prompt = [
+    "You are a professional architectural visualization engine.",
+    `Transform this ${isExterior ? "architectural photo" : "interior photo"} into a photorealistic render.`,
+    preservationRules,
+    materialInstructions,
+    lightingInstruction,
+    angleInstruction,
+    userNotes ? `Additional notes: ${userNotes}` : null,
+    "Output: ultra-sharp 4K detail, high dynamic range, photorealistic, Brazilian architecture context.",
+  ].filter(Boolean).join(" ");
 
   try {
     const openai  = await getOpenAIForTenant(tid);
     const storage = new ObjectStorageService();
-
     let b64: string | undefined;
 
     if (referenceImageUrl) {
-      // Com imagem de referência (data URL base64) → images.edit
-      const dataUrlMatch = referenceImageUrl.match(/^data:([^;]+);base64,(.+)$/);
-      if (!dataUrlMatch) return res.status(400).json({ error: "referenceImageUrl inválida" });
-      const mimeType = dataUrlMatch[1];
+      const dataUrlMatch = referenceImageUrl.match(/^data:([^;]+);base64,([\s\S]+)$/);
+      if (!dataUrlMatch) {
+        return res.status(400).json({ success: false, error: "referenceImageUrl deve ser um data URL base64 válido (data:<mime>;base64,<dados>)" });
+      }
+      const mimeType  = dataUrlMatch[1];
       const imgBuffer = Buffer.from(dataUrlMatch[2], "base64");
-      const ext = mimeType.split("/")[1] ?? "png";
-      const refFile = await toFile(imgBuffer, `reference.${ext}`, { type: mimeType });
-      const result = await (openai.images.edit as Function)({
+      const ext       = mimeType.split("/")[1] ?? "png";
+      const refFile   = await toFile(imgBuffer, `reference.${ext}`, { type: mimeType });
+      const result    = await (openai.images.edit as Function)({
         model:   "gpt-image-1",
         image:   refFile,
         prompt,
@@ -1640,7 +1730,6 @@ router.post("/arch/render", async (req, res) => {
       });
       b64 = (result.data?.[0] as Record<string, unknown>)?.["b64_json"] as string | undefined;
     } else {
-      // Sem referência → images.generate
       const result = await (openai.images.generate as Function)({
         model:   "gpt-image-1",
         prompt,
@@ -1651,19 +1740,232 @@ router.post("/arch/render", async (req, res) => {
       b64 = (result.data?.[0] as Record<string, unknown>)?.["b64_json"] as string | undefined;
     }
 
-    if (!b64) throw new Error("gpt-image-1 não retornou b64_json");
+    if (!b64) throw new Error("gpt-image-1 não retornou imagem");
 
-    const buf      = Buffer.from(b64, "base64");
-    const objPath  = await storage.savePrivateBuffer(buf, "image/png", `arch-render-${tid}-${Date.now()}.png`);
+    const buf       = Buffer.from(b64, "base64");
+    const objPath   = await storage.savePrivateBuffer(buf, "image/png", `arch-render-${tid}-${Date.now()}.png`);
     const servePath = objPath.replace(/^\/objects\//, "");
     const imageUrl  = `/api/storage/objects/${servePath}`;
 
-    req.log.info({ tenantId: tid }, "arch/render: concluído");
-    return res.json({ imageUrl });
+    req.log.info({ tenantId: tid, lighting, angle }, "arch/render: concluído");
+    return res.json({ success: true, imageUrl, prompt });
   } catch (err: any) {
-    req.log.error({ err }, "arch/render: erro");
-    return res.status(500).json({ error: err?.message ?? "Erro ao gerar render" });
+    req.log.error({ err, tenantId: tid }, "arch/render: erro");
+    const httpStatus = (err?.status ?? err?.statusCode ?? 500) as number;
+    const safeStatus = httpStatus >= 400 && httpStatus < 600 ? httpStatus : 500;
+    return res.status(safeStatus).json({ success: false, error: err?.message ?? "Erro ao gerar render" });
   }
+});
+
+// ── POST /api/arch/suggestions — Card de sugestões de decoração por IA ──────
+const archSuggestionsBodySchema = z.object({
+  style:             z.enum(["minimalista", "atemporal", "provencal", "neoclassico", "moderno"]),
+  projectId:         z.string().optional(),
+  referenceImageUrl: z.string().optional(),
+});
+
+const stylePromptsMap: Record<string, string> = {
+  minimalista:  "minimalist interior design: clean lines, very few elements, neutral palette (white/grey/beige), functional furniture with simple forms, open empty spaces, no clutter, soft diffuse natural lighting",
+  atemporal:    "timeless interior design: classic discreet elements, balanced neutral palette, quality materials (solid wood, stone, linen), refined simplicity, warm ambient light, no trendy items",
+  provencal:    "Provençal rustic French interior: aged distressed wood furniture, pastel tones (lavender, cream, sage green), wrought iron details, linen curtains, dried flower arrangements, terracotta accents, warm natural light",
+  neoclassico:  "neoclassical interior: symmetrical layout, ivory and gold tones, ornamental columns or pilasters, high ceiling with plaster moldings, elegant curved-leg furniture, crystal chandelier lighting",
+  moderno:      "modern contemporary interior: bold geometric forms, industrial materials (exposed concrete, glass, steel), contrasting dark/light palette, integrated technology, architectural statement lighting, abstract artwork",
+};
+
+router.post("/arch/suggestions", async (req, res) => {
+  const tid = tenantId(req);
+  if (!tid) return res.status(403).json({ success: false, error: "Tenant não identificado" });
+
+  const parsed = archSuggestionsBodySchema.safeParse(req.body);
+  if (!parsed.success) {
+    return res.status(400).json({
+      success: false,
+      error: "Parâmetros inválidos",
+      details: parsed.error.issues.map(i => i.message).join("; "),
+    });
+  }
+
+  const { style, projectId, referenceImageUrl } = parsed.data;
+  const styleDesc = stylePromptsMap[style] ?? style;
+
+  const suggestionPrompt = referenceImageUrl
+    ? `Use this room as the spatial reference and transform it into an inspiring decoration concept with ${styleDesc}. You MAY freely add furniture, decorative objects, plants, art, rugs, and atmospheric lighting to fill the space. This is a decoration INSPIRATION image — creative additions are welcome and encouraged. Photorealistic render, 4K quality.`
+    : `Generate an inspiring interior decoration concept with ${styleDesc}. A beautifully decorated room filled with furniture, plants, art objects, rugs, and atmospheric lighting. Photorealistic render, 4K quality, Brazilian residential context.`;
+
+  try {
+    const openai  = await getOpenAIForTenant(tid);
+    const storage = new ObjectStorageService();
+    let b64: string | undefined;
+
+    if (referenceImageUrl) {
+      const dataUrlMatch = referenceImageUrl.match(/^data:([^;]+);base64,([\s\S]+)$/);
+      if (!dataUrlMatch) {
+        return res.status(400).json({ success: false, error: "referenceImageUrl deve ser um data URL base64 válido" });
+      }
+      const mimeType  = dataUrlMatch[1];
+      const imgBuffer = Buffer.from(dataUrlMatch[2], "base64");
+      const ext       = mimeType.split("/")[1] ?? "png";
+      const refFile   = await toFile(imgBuffer, `reference.${ext}`, { type: mimeType });
+      const result    = await (openai.images.edit as Function)({
+        model:   "gpt-image-1",
+        image:   refFile,
+        prompt:  suggestionPrompt,
+        n:       1,
+        size:    "1024x1024",
+        quality: "medium",
+      });
+      b64 = (result.data?.[0] as Record<string, unknown>)?.["b64_json"] as string | undefined;
+    } else {
+      const result = await (openai.images.generate as Function)({
+        model:   "gpt-image-1",
+        prompt:  suggestionPrompt,
+        n:       1,
+        size:    "1024x1024",
+        quality: "medium",
+      });
+      b64 = (result.data?.[0] as Record<string, unknown>)?.["b64_json"] as string | undefined;
+    }
+
+    if (!b64) throw new Error("gpt-image-1 não retornou imagem");
+
+    const buf       = Buffer.from(b64, "base64");
+    const objPath   = await storage.savePrivateBuffer(buf, "image/png", `arch-suggestion-${tid}-${Date.now()}.png`);
+    const servePath = objPath.replace(/^\/objects\//, "");
+    const imageUrl  = `/api/storage/objects/${servePath}`;
+
+    let suggestionId: string | undefined;
+    try {
+      const [saved] = await db
+        .insert(archSuggestionsTable)
+        .values({ tenantId: tid, projectId: projectId ?? null, style, imageUrl })
+        .returning({ id: archSuggestionsTable.id });
+      suggestionId = saved?.id;
+    } catch (dbErr) {
+      req.log.warn({ dbErr }, "arch/suggestions: falha ao persistir no DB");
+    }
+
+    req.log.info({ tenantId: tid, style }, "arch/suggestions: concluído");
+    return res.json({ success: true, imageUrl, suggestionId });
+  } catch (err: any) {
+    req.log.error({ err, tenantId: tid }, "arch/suggestions: erro");
+    return res.status(500).json({ success: false, error: err?.message ?? "Erro ao gerar sugestão" });
+  }
+});
+
+// ── GET /api/arch/surfaces/:projectId — Listar superfícies do projeto ────────
+router.get("/arch/surfaces/:projectId", async (req, res) => {
+  const tid = tenantId(req);
+  if (!tid) return res.status(403).json({ error: "Tenant não identificado" });
+
+  const { projectId } = req.params;
+
+  const [projeto] = await db
+    .select({ id: archProjetosTable.id })
+    .from(archProjetosTable)
+    .where(and(eq(archProjetosTable.id, projectId), eq(archProjetosTable.tenantId, tid)));
+
+  if (!projeto) return res.status(404).json({ error: "Projeto não encontrado" });
+
+  const surfaces = await db
+    .select()
+    .from(renderSurfacesTable)
+    .where(eq(renderSurfacesTable.projectId, projectId))
+    .orderBy(renderSurfacesTable.displayOrder, renderSurfacesTable.createdAt);
+
+  return res.json(surfaces);
+});
+
+// ── POST /api/arch/surfaces — Criar superfície ───────────────────────────────
+router.post("/arch/surfaces", async (req, res) => {
+  const tid = tenantId(req);
+  if (!tid) return res.status(403).json({ error: "Tenant não identificado" });
+
+  const parsed = insertRenderSurfaceSchema.safeParse(req.body);
+  if (!parsed.success) {
+    return res.status(400).json({ error: "Dados inválidos", details: parsed.error.issues.map(i => i.message).join("; ") });
+  }
+
+  const [projeto] = await db
+    .select({ id: archProjetosTable.id })
+    .from(archProjetosTable)
+    .where(and(eq(archProjetosTable.id, parsed.data.projectId), eq(archProjetosTable.tenantId, tid)));
+
+  if (!projeto) return res.status(404).json({ error: "Projeto não encontrado" });
+
+  const [surface] = await db
+    .insert(renderSurfacesTable)
+    .values(parsed.data)
+    .returning();
+
+  return res.status(201).json(surface);
+});
+
+// ── PATCH /api/arch/surfaces/:surfaceId — Atualizar superfície ───────────────
+router.patch("/arch/surfaces/:surfaceId", async (req, res) => {
+  const tid = tenantId(req);
+  if (!tid) return res.status(403).json({ error: "Tenant não identificado" });
+
+  const { surfaceId } = req.params;
+  const parsed = updateRenderSurfaceSchema.safeParse(req.body);
+  if (!parsed.success) {
+    return res.status(400).json({ error: "Dados inválidos", details: parsed.error.issues.map(i => i.message).join("; ") });
+  }
+
+  const [existing] = await db
+    .select({ projectId: renderSurfacesTable.projectId })
+    .from(renderSurfacesTable)
+    .where(eq(renderSurfacesTable.id, surfaceId));
+
+  if (!existing) return res.status(404).json({ error: "Superfície não encontrada" });
+
+  const [projeto] = await db
+    .select({ id: archProjetosTable.id })
+    .from(archProjetosTable)
+    .where(and(eq(archProjetosTable.id, existing.projectId), eq(archProjetosTable.tenantId, tid)));
+
+  if (!projeto) return res.status(403).json({ error: "Acesso negado" });
+
+  const [updated] = await db
+    .update(renderSurfacesTable)
+    .set(parsed.data)
+    .where(eq(renderSurfacesTable.id, surfaceId))
+    .returning();
+
+  return res.json(updated);
+});
+
+// ── POST /api/arch/surfaces/:surfaceId/material — Aplicar material ────────────
+router.post("/arch/surfaces/:surfaceId/material", async (req, res) => {
+  const tid = tenantId(req);
+  if (!tid) return res.status(403).json({ error: "Tenant não identificado" });
+
+  const { surfaceId } = req.params;
+
+  const parsed = insertRenderSurfaceMaterialSchema.omit({ surfaceId: true }).safeParse(req.body);
+  if (!parsed.success) {
+    return res.status(400).json({ error: "Dados inválidos", details: parsed.error.issues.map(i => i.message).join("; ") });
+  }
+
+  const [existing] = await db
+    .select({ projectId: renderSurfacesTable.projectId })
+    .from(renderSurfacesTable)
+    .where(eq(renderSurfacesTable.id, surfaceId));
+
+  if (!existing) return res.status(404).json({ error: "Superfície não encontrada" });
+
+  const [projeto] = await db
+    .select({ id: archProjetosTable.id })
+    .from(archProjetosTable)
+    .where(and(eq(archProjetosTable.id, existing.projectId), eq(archProjetosTable.tenantId, tid)));
+
+  if (!projeto) return res.status(403).json({ error: "Acesso negado" });
+
+  const [applied] = await db
+    .insert(renderSurfaceMaterialsTable)
+    .values({ ...parsed.data, surfaceId, appliedBy: (req as any).user?.id ?? null })
+    .returning();
+
+  return res.status(201).json(applied);
 });
 
 export { archPublicRouter };

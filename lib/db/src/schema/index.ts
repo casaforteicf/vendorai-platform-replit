@@ -96,6 +96,8 @@ export * from "./arch_marketplace_items";
 export * from "./arch_marketplace_pedidos";
 export * from "./arch_render_versoes";
 export * from "./arch_render_solicitacoes";
+export * from "./arch_suggestions";
+export * from "./arch_render_surfaces";
 export * from "./beauty_servicos";
 export * from "./beauty_profissionais";
 export * from "./beauty_agendamentos";
