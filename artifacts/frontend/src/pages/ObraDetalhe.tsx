@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useRoute, Link } from "wouter";
 import { useAuth } from "@/contexts/AuthContext";
 import {
@@ -2006,7 +2006,17 @@ export default function ObraDetalhe() {
   const [, params] = useRoute("/obras/:obraId");
   const obraId = params?.obraId ?? "";
   const [activeTab, setActiveTab] = useState("visao-geral");
+  const tabBarRef = useRef<HTMLDivElement>(null);
   const qc = useQueryClient();
+
+  useEffect(() => {
+    if (tabBarRef.current) {
+      const activeBtn = tabBarRef.current.querySelector('[data-active="true"]') as HTMLElement | null;
+      if (activeBtn) {
+        activeBtn.scrollIntoView({ behavior: "smooth", block: "nearest", inline: "center" });
+      }
+    }
+  }, [activeTab]);
 
   const { data: obra, isLoading } = useGetObra(tenantId, obraId, {
     query: { enabled: !!obraId && !!tenantId, queryKey: getGetObraQueryKey(tenantId, obraId) },
@@ -2109,19 +2119,20 @@ export default function ObraDetalhe() {
       </div>
 
       {/* Tabs */}
-      <div className="border-b overflow-x-auto">
+      <div className="border-b overflow-x-auto scrollbar-none" ref={tabBarRef}>
         <div className="flex gap-0 min-w-max">
           {TABS.map((tab) => (
             <button
               key={tab.id}
+              data-active={activeTab === tab.id}
               onClick={() => setActiveTab(tab.id)}
-              className={`flex items-center gap-1.5 px-4 py-2.5 text-sm font-medium border-b-2 transition-colors whitespace-nowrap ${
+              className={`flex items-center gap-1.5 px-3 sm:px-4 py-2.5 text-sm font-medium border-b-2 transition-colors whitespace-nowrap ${
                 activeTab === tab.id
                   ? "border-primary text-primary"
                   : "border-transparent text-muted-foreground hover:text-foreground"
               }`}
             >
-              <tab.icon className="h-3.5 w-3.5" />
+              <tab.icon className="h-3.5 w-3.5 shrink-0" />
               {tab.label}
             </button>
           ))}
