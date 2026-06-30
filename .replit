@@ -38,7 +38,7 @@ integrations = ["google-calendar:1.0.0"]
 
 [postMerge]
 path = "scripts/post-merge.sh"
-timeoutMs = 60000
+timeoutMs = 180000
 
 [[ports]]
 localPort = 8080
