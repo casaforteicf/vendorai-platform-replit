@@ -572,7 +572,7 @@ export function renderProposalHtml(json: unknown, theme: {
         : ""}
     <h1>${hero.headline || ""}</h1>
     <p class="cover-sub">${hero.subheadline || ""}</p>
-    ${imagens && imagens.length > 0 ? `<div class="img-hero-wrap"><img src="${imagens[0]}" alt="Visualização do projeto" onerror="this.style.display='none'" /></div>` : ""}
+    ${imagens && imagens.length > 0 ? `<div class="img-hero-wrap"><img src="${imagens[0]}" alt="Visualização do projeto" loading="eager" onerror="this.style.display='none'" /></div>` : ""}
     <div class="cover-fortag">${hero.forTag || ""}</div>
   </div>
 
@@ -688,18 +688,14 @@ ${orcamento ? (() => {
 </div>`;
 })() : ""}
 
-${imagens && imagens.length > 0 ? (() => {
-  const galleryImgs = imagens.length > 1 ? imagens.slice(1) : imagens;
-  const galleryClass = galleryImgs.length === 1 ? "gallery gallery-1" : galleryImgs.length === 2 ? "gallery gallery-2" : galleryImgs.length === 3 ? "gallery gallery-3" : "gallery gallery-many";
-  return `
+${imagens && imagens.length > 1 ? imagens.slice(1).map((url, idx) => `
 <div class="page">
   ${docHdr(`Visualizações · ${clientName || meta.clientName || "Cliente"}`)}
-  <div class="sec-label">Visualizações do Projeto</div>
-  <div class="${galleryClass}">
-    ${galleryImgs.map((url) => `<img src="${url}" alt="" loading="lazy" onerror="this.parentElement.removeChild(this)" />`).join("\n    ")}
+  <div class="sec-label">Visualização do Projeto${imagens.length > 2 ? ` · ${idx + 1}` : ""}</div>
+  <div style="flex:1;display:flex;align-items:center;justify-content:center;margin:4mm 0;">
+    <img src="${url}" alt="Visualização do projeto" style="max-width:100%;max-height:220mm;object-fit:contain;border-radius:8px;border:1px solid #e2e8f0;" onerror="this.style.display='none'" />
   </div>
-</div>`;
-})() : ""}
+</div>`).join("\n") : ""}
 
 </body>
 </html>`;

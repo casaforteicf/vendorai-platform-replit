@@ -90,9 +90,12 @@ function resolveStorageUrl(url: string | null | undefined): string | undefined {
 function absolutifyStorageUrls(html: string): string {
   const port = process.env.PORT ?? "8080";
   const base = process.env.BASE_PATH ?? "";
+  const abs = (path: string) => `http://localhost:${port}${base}${path}`;
   return html
-    .replace(/src="\/api\/storage\/objects\//g, `src="http://localhost:${port}${base}/api/storage/objects/`)
-    .replace(/src="\/objects\//g, `src="http://localhost:${port}${base}/api/storage/objects/`);
+    .replace(/src="\/api\/storage\/public-objects\/objects\//g, abs("/api/storage/objects/"))
+    .replace(/src="\/api\/storage\/objects\//g, abs("/api/storage/objects/"))
+    .replace(/src="\/api\/storage\/public-objects\//g, abs("/api/storage/public-objects/"))
+    .replace(/src="\/objects\//g, abs("/api/storage/objects/"));
 }
 
 // ── GET /leads/:leadId/proposals ─────────────────────────────────────────────────
