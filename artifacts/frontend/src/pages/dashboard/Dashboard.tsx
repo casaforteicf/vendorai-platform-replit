@@ -13,7 +13,7 @@ import {
   SheetDescription,
 } from "@/components/ui/sheet";
 import { useAuth } from "@/contexts/AuthContext";
-import { useGetLead } from "@workspace/api-client-react";
+import { useGetLead, getGetLeadQueryKey } from "@workspace/api-client-react";
 import { formatDistanceToNow, format } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import {
@@ -263,14 +263,14 @@ function LeadQuickSheet({
 }) {
   const [, navigate] = useLocation();
   const { data: lead, isLoading } = useGetLead(leadId ?? "", {
-    query: { enabled: !!leadId },
+    query: { enabled: !!leadId, queryKey: getGetLeadQueryKey(leadId ?? "") },
   });
 
   return (
     <Sheet open={!!leadId} onOpenChange={(open) => { if (!open) onClose(); }}>
       <SheetContent side="right" className="w-full sm:max-w-md flex flex-col gap-0 p-0">
         {isLoading || !lead ? (
-          <div className="p-6 space-y-4">
+          <div className="p-6 space-y-4 pt-10">
             <Skeleton className="h-6 w-48" />
             <Skeleton className="h-4 w-32" />
             <Skeleton className="h-4 w-40" />
@@ -282,15 +282,13 @@ function LeadQuickSheet({
             <div className="px-6 pt-8 pb-4 border-b">
               <SheetHeader className="text-left gap-1">
                 <div className="flex items-start justify-between gap-3 pr-6">
-                  <SheetTitle className="text-xl leading-tight">{lead.nome ?? "Lead sem nome"}</SheetTitle>
-                  {lead.status && (
-                    <span className={`text-xs px-2 py-0.5 rounded-full font-medium shrink-0 mt-1 ${STATUS_BADGE[lead.status] ?? "bg-muted text-muted-foreground"}`}>
-                      {lead.status.charAt(0).toUpperCase() + lead.status.slice(1)}
-                    </span>
-                  )}
+                  <SheetTitle className="text-xl leading-tight">{lead.nome}</SheetTitle>
+                  <span className={`text-xs px-2 py-0.5 rounded-full font-medium shrink-0 mt-1 ${STATUS_BADGE[lead.status] ?? "bg-muted text-muted-foreground"}`}>
+                    {lead.status.charAt(0).toUpperCase() + lead.status.slice(1)}
+                  </span>
                 </div>
                 <SheetDescription className="text-sm">
-                  {lead.origem ? `Origem: ${lead.origem}` : "Sem origem registrada"}
+                  {lead.empresa ?? "Sem empresa registrada"}
                 </SheetDescription>
               </SheetHeader>
             </div>
@@ -318,47 +316,50 @@ function LeadQuickSheet({
                 )}
               </div>
 
-              {/* Tags / segmento */}
-              {(lead.tags?.length || lead.segmento) && (
+              {/* Segmento / dor */}
+              {(lead.mercadoSegmento || lead.dorPrincipal) && (
                 <div className="space-y-2">
-                  <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Segmentação</p>
-                  <div className="flex flex-wrap gap-1.5">
-                    {lead.segmento && (
-                      <span className="text-xs bg-muted px-2 py-0.5 rounded-full flex items-center gap-1">
-                        <Tag className="h-3 w-3" />{lead.segmento}
-                      </span>
-                    )}
-                    {lead.tags?.map((t: string) => (
-                      <span key={t} className="text-xs bg-muted px-2 py-0.5 rounded-full">{t}</span>
-                    ))}
-                  </div>
+                  <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Contexto</p>
+                  {lead.mercadoSegmento && (
+                    <div className="flex items-center gap-2 text-sm">
+                      <Tag className="h-4 w-4 text-muted-foreground shrink-0" />
+                      {lead.mercadoSegmento}
+                    </div>
+                  )}
+                  {lead.dorPrincipal && (
+                    <p className="text-sm text-muted-foreground leading-relaxed">{lead.dorPrincipal}</p>
+                  )}
+                </div>
+              )}
+
+              {/* Objetivo / próxima ação */}
+              {(lead.objetivo || lead.proximaAcao) && (
+                <div className="space-y-2">
+                  <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Negócio</p>
+                  {lead.objetivo && (
+                    <p className="text-sm text-muted-foreground">{lead.objetivo}</p>
+                  )}
+                  {lead.proximaAcao && (
+                    <div className="flex items-center gap-2 text-sm">
+                      <Activity className="h-4 w-4 text-muted-foreground shrink-0" />
+                      <span className="font-medium">Próxima ação:</span> {lead.proximaAcao}
+                    </div>
+                  )}
                 </div>
               )}
 
               {/* Datas */}
               <div className="space-y-2">
                 <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Histórico</p>
-                {lead.createdAt && (
-                  <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                    <Calendar className="h-4 w-4 shrink-0" />
-                    Cadastrado {formatDistanceToNow(new Date(lead.createdAt), { addSuffix: true, locale: ptBR })}
-                  </div>
-                )}
-                {lead.updatedAt && (
-                  <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                    <Activity className="h-4 w-4 shrink-0" />
-                    Atualizado {formatDistanceToNow(new Date(lead.updatedAt), { addSuffix: true, locale: ptBR })}
-                  </div>
-                )}
-              </div>
-
-              {/* Observações */}
-              {lead.observacoes && (
-                <div className="space-y-2">
-                  <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Observações</p>
-                  <p className="text-sm text-muted-foreground leading-relaxed">{lead.observacoes}</p>
+                <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                  <Calendar className="h-4 w-4 shrink-0" />
+                  Cadastrado {formatDistanceToNow(new Date(lead.createdAt), { addSuffix: true, locale: ptBR })}
                 </div>
-              )}
+                <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                  <Activity className="h-4 w-4 shrink-0" />
+                  Atualizado {formatDistanceToNow(new Date(lead.updatedAt), { addSuffix: true, locale: ptBR })}
+                </div>
+              </div>
             </div>
 
             {/* Footer */}
@@ -483,6 +484,7 @@ export default function Dashboard() {
   const atividades = data.atividade.ultimas20;
 
   return (
+    <>
     <div className="p-4 md:p-6 space-y-6 max-w-7xl mx-auto pb-12">
 
       {/* ── Header ── */}
@@ -645,16 +647,16 @@ export default function Dashboard() {
                         </div>
                       ) : (
                         pipeline[col.key].map(lead => (
-                          <Link
+                          <button
                             key={lead.id}
-                            href={`/leads/${lead.id}`}
-                            className="block rounded-md border bg-card px-3 py-2 shadow-sm hover:shadow-md hover:border-primary/40 transition-all"
+                            onClick={() => setSelectedLeadId(lead.id)}
+                            className="w-full text-left block rounded-md border bg-card px-3 py-2 shadow-sm hover:shadow-md hover:border-primary/40 transition-all"
                           >
                             <p className="text-xs font-medium truncate leading-snug">{lead.nome}</p>
                             {lead.telefone && (
                               <p className="text-[10px] text-muted-foreground truncate mt-0.5">{lead.telefone}</p>
                             )}
-                          </Link>
+                          </button>
                         ))
                       )}
                     </div>
@@ -772,12 +774,12 @@ export default function Dashboard() {
                           <div className="text-[10px] text-muted-foreground">sem análise</div>
                         </div>
                       )}
-                      <Link
-                        href={`/leads/${lead.leadId}`}
+                      <button
+                        onClick={() => setSelectedLeadId(lead.leadId)}
                         className="text-xs text-primary underline-offset-2 hover:underline whitespace-nowrap"
                       >
                         Ver lead
-                      </Link>
+                      </button>
                     </div>
                   </li>
                 ))}
@@ -1085,5 +1087,11 @@ export default function Dashboard() {
       </section>
 
     </div>
+
+    <LeadQuickSheet
+      leadId={selectedLeadId}
+      onClose={() => setSelectedLeadId(null)}
+    />
+    </>
   );
 }
