@@ -12,6 +12,7 @@
     "migrate-site-generator": "tsx ./src/migrate-site-generator.ts",
     "migrate-metodo-vendas": "tsx ./src/migrate-metodo-vendas.ts",
     "migrate-agent-token-limits": "tsx ./src/migrate-agent-token-limits.ts",
+    "seed-test-site": "tsx ./src/seed-test-site.ts",
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
