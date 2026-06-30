@@ -1,0 +1,875 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Programa de Parceiros — Vendor.ai</title>
+<meta name="description" content="Seja o representante exclusivo da Vendor.ai na sua cidade. Licença territorial, treinamento completo e comissões de até 40%.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+:root {
+  --bg: #050714;
+  --bg-2: #0c0f24;
+  --bg-card: rgba(255,255,255,0.04);
+  --bg-card-hover: rgba(255,255,255,0.07);
+  --border: rgba(255,255,255,0.08);
+  --border-light: rgba(255,255,255,0.12);
+  --text: #f0eeff;
+  --text-muted: #8880a8;
+  --text-dim: #4e4870;
+  --violet: #7c3aed;
+  --violet-light: #a78bfa;
+  --cyan: #06b6d4;
+  --cyan-light: #67e8f9;
+  --green: #10b981;
+  --amber: #f59e0b;
+  --gold: #f59e0b;
+  --grad: linear-gradient(135deg, #7c3aed, #06b6d4);
+  --grad-text: linear-gradient(90deg, #a78bfa, #67e8f9);
+  --grad-btn: linear-gradient(135deg, #7c3aed 0%, #2563eb 50%, #06b6d4 100%);
+  --radius: 16px;
+  --radius-sm: 10px;
+  --shadow: 0 25px 50px -12px rgba(0,0,0,0.7);
+  --glow: 0 0 40px rgba(124,58,237,0.25);
+}
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+html { scroll-behavior: smooth; }
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: 'Inter', system-ui, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  line-height: 1.6;
+  overflow-x: hidden;
+  min-height: 100vh;
+}
+a { text-decoration: none; color: inherit; }
+::selection { background: rgba(124,58,237,0.35); color: #fff; }
+
+body::before {
+  content: '';
+  position: fixed;
+  inset: 0;
+  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 512 512' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.035'/%3E%3C/svg%3E");
+  pointer-events: none;
+  z-index: 999;
+  opacity: 0.4;
+}
+
+.container { max-width: 1100px; margin: 0 auto; padding: 0 24px; }
+section { padding: 88px 0; position: relative; overflow: hidden; }
+
+h1, h2, h3, h4 {
+  font-family: 'Plus Jakarta Sans', 'Inter', sans-serif;
+  line-height: 1.1;
+  letter-spacing: -0.02em;
+}
+
+.grad-text {
+  background: var(--grad-text);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+
+.overline {
+  font-size: 0.72rem;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--violet-light);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 16px;
+}
+.overline::before {
+  content: '';
+  display: block;
+  width: 20px; height: 2px;
+  background: var(--grad);
+  border-radius: 2px;
+}
+
+/* ── Nav ── */
+.nav {
+  position: sticky;
+  top: 0;
+  z-index: 100;
+  padding: 0 6vw;
+  height: 68px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  background: rgba(5,7,20,0.85);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border-bottom: 1px solid var(--border);
+}
+.logo { display: flex; align-items: center; gap: 10px; }
+.logo-mark {
+  width: 36px; height: 36px;
+  border-radius: 10px;
+  background: var(--grad);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-family: 'Plus Jakarta Sans', sans-serif;
+  font-weight: 800;
+  font-size: 1rem;
+  color: #fff;
+  box-shadow: var(--glow);
+}
+.logo-text {
+  font-family: 'Plus Jakarta Sans', sans-serif;
+  font-weight: 700;
+  font-size: 1.1rem;
+  letter-spacing: -0.02em;
+}
+.logo-text span { background: var(--grad-text); -webkit-background-clip: text; background-clip: text; color: transparent; }
+
+.btn-back {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.85rem;
+  font-weight: 500;
+  color: var(--text-muted);
+  padding: 8px 16px;
+  border-radius: 100px;
+  border: 1px solid var(--border-light);
+  background: transparent;
+  cursor: pointer;
+  transition: all 0.2s;
+  text-decoration: none;
+}
+.btn-back:hover { color: var(--text); border-color: rgba(255,255,255,0.2); background: var(--bg-card); }
+
+/* ── Buttons ── */
+.btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-family: 'Inter', sans-serif;
+  font-weight: 600;
+  font-size: 0.9rem;
+  padding: 14px 28px;
+  border-radius: 100px;
+  border: none;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  white-space: nowrap;
+  text-decoration: none;
+}
+.btn-primary {
+  background: var(--grad-btn);
+  background-size: 200% auto;
+  color: #fff;
+  box-shadow: 0 4px 24px rgba(124,58,237,0.4);
+}
+.btn-primary:hover:not(:disabled) { background-position: right center; transform: translateY(-2px); box-shadow: 0 8px 32px rgba(124,58,237,0.5); }
+.btn-primary:disabled { opacity: 0.6; cursor: not-allowed; }
+.btn-outline {
+  background: transparent;
+  color: var(--text);
+  border: 1px solid var(--border-light);
+}
+.btn-outline:hover { background: var(--bg-card); border-color: rgba(255,255,255,0.2); transform: translateY(-1px); }
+.btn-lg { padding: 16px 36px; font-size: 1rem; }
+
+/* ── Hero ── */
+.hero {
+  padding: 100px 0 112px;
+  text-align: center;
+  overflow: hidden;
+}
+.hero-blob-1 {
+  position: absolute;
+  width: 700px; height: 700px;
+  border-radius: 50%;
+  background: rgba(124,58,237,0.1);
+  filter: blur(120px);
+  top: -150px; left: -100px;
+  pointer-events: none;
+}
+.hero-blob-2 {
+  position: absolute;
+  width: 500px; height: 500px;
+  border-radius: 50%;
+  background: rgba(6,182,212,0.07);
+  filter: blur(90px);
+  bottom: -100px; right: -50px;
+  pointer-events: none;
+}
+.hero-eyebrow {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.78rem;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--violet-light);
+  background: rgba(124,58,237,0.12);
+  border: 1px solid rgba(124,58,237,0.28);
+  padding: 6px 18px;
+  border-radius: 100px;
+  margin-bottom: 32px;
+}
+.hero-eyebrow::before {
+  content: '';
+  width: 6px; height: 6px;
+  border-radius: 50%;
+  background: var(--violet-light);
+}
+.hero h1 {
+  font-size: clamp(2.2rem, 5vw, 4rem);
+  font-weight: 800;
+  color: var(--text);
+  max-width: 840px;
+  margin: 0 auto 24px;
+}
+.hero p {
+  font-size: 1.1rem;
+  color: var(--text-muted);
+  max-width: 600px;
+  margin: 0 auto 44px;
+  line-height: 1.75;
+}
+.hero-ctas { display: flex; align-items: center; justify-content: center; gap: 14px; flex-wrap: wrap; }
+
+/* ── Licença ── */
+.licenca-section { padding: 88px 0; background: var(--bg-2); border-top: 1px solid var(--border); border-bottom: 1px solid var(--border); }
+.licenca-layout {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 48px;
+  align-items: start;
+}
+@media(max-width: 780px) { .licenca-layout { grid-template-columns: 1fr; } }
+
+.licenca-intro h2 {
+  font-size: clamp(1.8rem, 3vw, 2.6rem);
+  font-weight: 800;
+  margin-bottom: 16px;
+}
+.licenca-intro p {
+  font-size: 1rem;
+  color: var(--text-muted);
+  line-height: 1.75;
+  margin-bottom: 24px;
+}
+.terr-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: var(--green);
+  background: rgba(16,185,129,0.1);
+  border: 1px solid rgba(16,185,129,0.25);
+  padding: 6px 14px;
+  border-radius: 100px;
+}
+
+.licenca-card {
+  background: linear-gradient(135deg, rgba(124,58,237,0.12), rgba(6,182,212,0.06));
+  border: 1px solid rgba(124,58,237,0.3);
+  border-radius: 24px;
+  padding: 36px;
+  position: relative;
+  overflow: hidden;
+}
+.licenca-card::before {
+  content: '';
+  position: absolute;
+  top: 0; left: 0; right: 0;
+  height: 2px;
+  background: var(--grad);
+}
+.licenca-price {
+  margin-bottom: 28px;
+}
+.licenca-price .amount {
+  font-family: 'Plus Jakarta Sans', sans-serif;
+  font-size: 3.2rem;
+  font-weight: 800;
+  line-height: 1;
+  background: var(--grad-text);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+.licenca-price .label {
+  font-size: 0.82rem;
+  color: var(--text-muted);
+  margin-top: 6px;
+}
+.licenca-includes { list-style: none; display: flex; flex-direction: column; gap: 12px; }
+.licenca-includes li {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  font-size: 0.9rem;
+  font-weight: 500;
+  color: var(--text);
+}
+.check-icon {
+  width: 20px; height: 20px;
+  border-radius: 50%;
+  background: rgba(16,185,129,0.15);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  margin-top: 1px;
+}
+.check-icon svg { width: 11px; height: 11px; }
+
+/* ── Comissões ── */
+.comissoes-section { padding: 88px 0; }
+.comissoes-header { text-align: center; max-width: 640px; margin: 0 auto 56px; }
+.comissoes-header h2 { font-size: clamp(1.8rem, 3vw, 2.6rem); font-weight: 800; margin-bottom: 16px; }
+.comissoes-header p { color: var(--text-muted); font-size: 1rem; line-height: 1.7; }
+
+.tiers-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 20px;
+}
+@media(max-width: 720px) { .tiers-grid { grid-template-columns: 1fr; } }
+
+.tier-card {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: 20px;
+  padding: 32px 28px;
+  position: relative;
+  transition: all 0.2s;
+  overflow: hidden;
+}
+.tier-card:hover { background: var(--bg-card-hover); transform: translateY(-3px); }
+.tier-card.featured {
+  background: linear-gradient(135deg, rgba(124,58,237,0.12), rgba(6,182,212,0.06));
+  border-color: rgba(124,58,237,0.35);
+}
+.tier-card.featured::before {
+  content: '';
+  position: absolute;
+  top: 0; left: 0; right: 0;
+  height: 2px;
+  background: var(--grad);
+}
+
+.tier-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  padding: 4px 12px;
+  border-radius: 100px;
+  margin-bottom: 20px;
+}
+.tier-badge.bronze { background: rgba(180,120,60,0.15); color: #cd853f; border: 1px solid rgba(180,120,60,0.3); }
+.tier-badge.prata  { background: rgba(148,163,184,0.12); color: #94a3b8; border: 1px solid rgba(148,163,184,0.25); }
+.tier-badge.ouro   { background: rgba(245,158,11,0.12); color: var(--gold); border: 1px solid rgba(245,158,11,0.3); }
+
+.tier-pct {
+  font-family: 'Plus Jakarta Sans', sans-serif;
+  font-size: 3rem;
+  font-weight: 800;
+  line-height: 1;
+  margin-bottom: 4px;
+}
+.tier-card.featured .tier-pct { background: var(--grad-text); -webkit-background-clip: text; background-clip: text; color: transparent; }
+.tier-sub { font-size: 0.82rem; color: var(--text-muted); margin-bottom: 24px; }
+
+.tier-req {
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  margin-bottom: 8px;
+}
+.tier-req-val { font-size: 0.9rem; font-weight: 600; color: var(--text); margin-bottom: 20px; }
+
+.tier-example {
+  background: rgba(255,255,255,0.04);
+  border-radius: 10px;
+  padding: 14px;
+}
+.tier-example .ex-label { font-size: 0.72rem; color: var(--text-dim); margin-bottom: 6px; font-weight: 600; letter-spacing: 0.05em; text-transform: uppercase; }
+.tier-example .ex-calc { font-size: 0.88rem; color: var(--text-muted); margin-bottom: 4px; }
+.tier-example .ex-result { font-size: 1rem; font-weight: 700; color: var(--green); }
+
+/* ── Como funciona ── */
+.como-section { padding: 88px 0; background: var(--bg-2); border-top: 1px solid var(--border); border-bottom: 1px solid var(--border); }
+.como-header { text-align: center; max-width: 600px; margin: 0 auto 56px; }
+.como-header h2 { font-size: clamp(1.8rem, 3vw, 2.6rem); font-weight: 800; margin-bottom: 16px; }
+.como-header p { color: var(--text-muted); font-size: 1rem; line-height: 1.7; }
+
+.passos-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 24px;
+  position: relative;
+}
+@media(max-width: 860px) { .passos-grid { grid-template-columns: repeat(2, 1fr); } }
+@media(max-width: 480px) { .passos-grid { grid-template-columns: 1fr; } }
+
+.passo-card {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: 20px;
+  padding: 28px 24px;
+  position: relative;
+  transition: all 0.2s;
+}
+.passo-card:hover { background: var(--bg-card-hover); border-color: rgba(124,58,237,0.25); transform: translateY(-2px); }
+.passo-num {
+  font-family: 'Plus Jakarta Sans', sans-serif;
+  font-size: 2.4rem;
+  font-weight: 800;
+  background: var(--grad-text);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  line-height: 1;
+  margin-bottom: 16px;
+}
+.passo-emoji { font-size: 1.6rem; margin-bottom: 12px; }
+.passo-card h4 { font-size: 1rem; font-weight: 700; margin-bottom: 8px; }
+.passo-card p { font-size: 0.85rem; color: var(--text-muted); line-height: 1.6; }
+
+/* ── Formulário ── */
+.form-section { padding: 88px 0; }
+.form-wrapper {
+  max-width: 680px;
+  margin: 0 auto;
+}
+.form-header { text-align: center; margin-bottom: 48px; }
+.form-header h2 { font-size: clamp(1.7rem, 3vw, 2.4rem); font-weight: 800; margin-bottom: 12px; }
+.form-header p { color: var(--text-muted); font-size: 1rem; line-height: 1.7; }
+
+.form-card {
+  background: var(--bg-2);
+  border: 1px solid var(--border-light);
+  border-radius: 24px;
+  padding: 40px;
+}
+@media(max-width: 540px) { .form-card { padding: 24px; } }
+
+.form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+@media(max-width: 540px) { .form-row { grid-template-columns: 1fr; } }
+
+.form-group { display: flex; flex-direction: column; gap: 6px; margin-bottom: 16px; }
+.form-label {
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--text-muted);
+  letter-spacing: 0.04em;
+}
+.required-star { color: #f87171; margin-left: 2px; }
+.form-input, .form-select {
+  background: rgba(255,255,255,0.05);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  color: var(--text);
+  font-family: 'Inter', sans-serif;
+  font-size: 0.9rem;
+  padding: 12px 14px;
+  transition: border-color 0.15s, background 0.15s;
+  width: 100%;
+  outline: none;
+  -webkit-appearance: none;
+  appearance: none;
+}
+.form-input:focus, .form-select:focus {
+  border-color: rgba(124,58,237,0.5);
+  background: rgba(124,58,237,0.06);
+}
+.form-input::placeholder { color: var(--text-dim); }
+.form-select { background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='14' height='14' viewBox='0 0 24 24' fill='none' stroke='%238880a8' stroke-width='2'%3E%3Cpolyline points='6 9 12 15 18 9'/%3E%3C/svg%3E"); background-repeat: no-repeat; background-position: right 14px center; padding-right: 40px; }
+.form-select option { background: #0c0f24; color: var(--text); }
+
+.form-submit-btn {
+  width: 100%;
+  padding: 16px;
+  background: var(--grad-btn);
+  background-size: 200% auto;
+  color: #fff;
+  border: none;
+  border-radius: 100px;
+  font-family: 'Inter', sans-serif;
+  font-weight: 700;
+  font-size: 1rem;
+  cursor: pointer;
+  transition: all 0.2s;
+  margin-top: 8px;
+  letter-spacing: 0.01em;
+}
+.form-submit-btn:hover:not(:disabled) { background-position: right center; transform: translateY(-1px); box-shadow: 0 8px 32px rgba(124,58,237,0.4); }
+.form-submit-btn:disabled { opacity: 0.6; cursor: not-allowed; }
+
+.form-note {
+  text-align: center;
+  font-size: 0.78rem;
+  color: var(--text-dim);
+  margin-top: 16px;
+  line-height: 1.6;
+}
+
+/* ── Success ── */
+.success-box {
+  text-align: center;
+  padding: 48px 32px;
+}
+.success-emoji { font-size: 3.5rem; margin-bottom: 20px; }
+.success-box h3 { font-size: 1.6rem; font-weight: 700; margin-bottom: 12px; }
+.success-box p { color: var(--text-muted); font-size: 0.95rem; line-height: 1.7; max-width: 400px; margin: 0 auto 28px; }
+
+/* ── Footer ── */
+footer {
+  background: var(--bg-2);
+  border-top: 1px solid var(--border);
+  padding: 40px 0 32px;
+}
+.footer-inner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 20px;
+}
+.footer-copy {
+  font-size: 0.82rem;
+  color: var(--text-dim);
+}
+.footer-links {
+  display: flex;
+  gap: 24px;
+}
+.footer-links a {
+  font-size: 0.82rem;
+  color: var(--text-muted);
+  transition: color 0.15s;
+}
+.footer-links a:hover { color: var(--text); }
+
+/* ── Reveal ── */
+.reveal { opacity: 0; transform: translateY(20px); transition: opacity 0.55s ease, transform 0.55s ease; }
+.reveal.in { opacity: 1; transform: none; }
+</style>
+</head>
+<body>
+
+<!-- ── Nav ── -->
+<nav class="nav">
+  <a href="/website/" class="logo">
+    <div class="logo-mark">V</div>
+    <span class="logo-text">Vendor<span>.ai</span></span>
+  </a>
+  <a href="/website/" class="btn-back">
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="15 18 9 12 15 6"/></svg>
+    Voltar ao site
+  </a>
+</nav>
+
+<!-- ── Hero ── -->
+<section class="hero">
+  <div class="hero-blob-1"></div>
+  <div class="hero-blob-2"></div>
+  <div class="container" style="position:relative;z-index:1">
+    <div class="hero-eyebrow">✦ Programa de Parceiros</div>
+    <h1>Seja o dono da <span class="grad-text">Vendor.ai</span> na sua cidade</h1>
+    <p>Adquira uma licença territorial exclusiva, revenda a plataforma para PMEs da sua região e ganhe comissões recorrentes de até 40% — todo mês, sem limite.</p>
+    <div class="hero-ctas">
+      <a href="#formulario" class="btn btn-primary btn-lg">
+        Quero ser parceiro
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg>
+      </a>
+      <a href="#como-funciona" class="btn btn-outline btn-lg">Como funciona</a>
+    </div>
+  </div>
+</section>
+
+<!-- ── Licença ── -->
+<section class="licenca-section">
+  <div class="container">
+    <div class="licenca-layout">
+      <div class="licenca-intro reveal">
+        <div class="overline">Licença territorial</div>
+        <h2>Exclusividade no seu<br><span class="grad-text">território</span></h2>
+        <p>Ao adquirir a licença, você recebe o direito exclusivo de representar a Vendor.ai na sua cidade ou região. Nenhum outro parceiro pode atuar no mesmo território.</p>
+        <p>Você cuida da venda e relacionamento com os clientes. Nós cuidamos de toda a tecnologia, suporte técnico e evolução da plataforma.</p>
+        <div class="terr-badge">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7z"/><circle cx="12" cy="9" r="2.5"/></svg>
+          Exclusividade territorial garantida em contrato
+        </div>
+      </div>
+      <div class="licenca-card reveal">
+        <div class="licenca-price">
+          <div class="amount">R$ 9.900</div>
+          <div class="label">Investimento único · Licença vitalícia</div>
+        </div>
+        <ul class="licenca-includes">
+          <li>
+            <div class="check-icon"><svg viewBox="0 0 24 24" fill="none" stroke="#10b981" stroke-width="3"><polyline points="20 6 9 17 4 12"/></svg></div>
+            Exclusividade territorial na cidade/região escolhida
+          </li>
+          <li>
+            <div class="check-icon"><svg viewBox="0 0 24 24" fill="none" stroke="#10b981" stroke-width="3"><polyline points="20 6 9 17 4 12"/></svg></div>
+            Treinamento completo: produto, vendas e onboarding
+          </li>
+          <li>
+            <div class="check-icon"><svg viewBox="0 0 24 24" fill="none" stroke="#10b981" stroke-width="3"><polyline points="20 6 9 17 4 12"/></svg></div>
+            Acesso ao portal do parceiro com métricas em tempo real
+          </li>
+          <li>
+            <div class="check-icon"><svg viewBox="0 0 24 24" fill="none" stroke="#10b981" stroke-width="3"><polyline points="20 6 9 17 4 12"/></svg></div>
+            Material de vendas, proposta e pitch deck personalizados
+          </li>
+          <li>
+            <div class="check-icon"><svg viewBox="0 0 24 24" fill="none" stroke="#10b981" stroke-width="3"><polyline points="20 6 9 17 4 12"/></svg></div>
+            Suporte direto com a equipe Vendor.ai (canal prioritário)
+          </li>
+          <li>
+            <div class="check-icon"><svg viewBox="0 0 24 24" fill="none" stroke="#10b981" stroke-width="3"><polyline points="20 6 9 17 4 12"/></svg></div>
+            Comissões recorrentes enquanto o cliente estiver ativo
+          </li>
+        </ul>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ── Comissões ── -->
+<section class="comissoes-section">
+  <div class="container">
+    <div class="comissoes-header reveal">
+      <div class="overline">Comissões</div>
+      <h2>Quanto você pode <span class="grad-text">ganhar</span></h2>
+      <p>Quanto mais clientes você gerencia, maior o seu percentual de comissão. Os valores são calculados sobre a mensalidade de cada cliente ativo.</p>
+    </div>
+    <div class="tiers-grid">
+      <div class="tier-card reveal">
+        <div class="tier-badge bronze">🥉 Bronze</div>
+        <div class="tier-pct" style="color:#cd853f">30%</div>
+        <div class="tier-sub">de comissão mensal</div>
+        <div class="tier-req">Clientes ativos</div>
+        <div class="tier-req-val">1 – 9 clientes</div>
+        <div class="tier-example">
+          <div class="ex-label">Exemplo</div>
+          <div class="ex-calc">5 clientes × R$ 597/mês × 30%</div>
+          <div class="ex-result">= R$ 895 / mês</div>
+        </div>
+      </div>
+      <div class="tier-card featured reveal">
+        <div class="tier-badge prata">🥈 Prata</div>
+        <div class="tier-pct">35%</div>
+        <div class="tier-sub">de comissão mensal</div>
+        <div class="tier-req">Clientes ativos</div>
+        <div class="tier-req-val">10 – 29 clientes</div>
+        <div class="tier-example">
+          <div class="ex-label">Exemplo</div>
+          <div class="ex-calc">15 clientes × R$ 597/mês × 35%</div>
+          <div class="ex-result">= R$ 3.133 / mês</div>
+        </div>
+      </div>
+      <div class="tier-card reveal">
+        <div class="tier-badge ouro">🥇 Ouro</div>
+        <div class="tier-pct" style="color:#f59e0b">40%</div>
+        <div class="tier-sub">de comissão mensal</div>
+        <div class="tier-req">Clientes ativos</div>
+        <div class="tier-req-val">30+ clientes</div>
+        <div class="tier-example">
+          <div class="ex-label">Exemplo</div>
+          <div class="ex-calc">40 clientes × R$ 597/mês × 40%</div>
+          <div class="ex-result">= R$ 9.552 / mês</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ── Como funciona ── -->
+<section class="como-section" id="como-funciona">
+  <div class="container">
+    <div class="como-header reveal">
+      <div class="overline">Como funciona</div>
+      <h2>4 passos para começar a <span class="grad-text">receber</span></h2>
+      <p>Do cadastro à primeira comissão, o processo é simples e guiado pela nossa equipe.</p>
+    </div>
+    <div class="passos-grid">
+      <div class="passo-card reveal">
+        <div class="passo-num">01</div>
+        <div class="passo-emoji">📋</div>
+        <h4>Adquirir a licença</h4>
+        <p>Escolha sua cidade, assine o contrato de exclusividade territorial e faça o investimento inicial de R$ 9.900.</p>
+      </div>
+      <div class="passo-card reveal">
+        <div class="passo-num">02</div>
+        <div class="passo-emoji">🎓</div>
+        <h4>Treinamento</h4>
+        <p>Imersão completa: entenda a plataforma por dentro, aprenda o pitch de vendas e receba todo o material de apoio.</p>
+      </div>
+      <div class="passo-card reveal">
+        <div class="passo-num">03</div>
+        <div class="passo-emoji">🤝</div>
+        <h4>Vender e onboarding</h4>
+        <p>Prospecte PMEs da sua região, apresente a demo e conduza o onboarding com suporte da equipe Vendor.ai.</p>
+      </div>
+      <div class="passo-card reveal">
+        <div class="passo-num">04</div>
+        <div class="passo-emoji">💰</div>
+        <h4>Receber todo mês</h4>
+        <p>Comissões depositadas mensalmente enquanto o cliente estiver ativo. Quanto mais você vende, maior a comissão.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ── Formulário ── -->
+<section class="form-section" id="formulario">
+  <div class="container">
+    <div class="form-wrapper">
+      <div class="form-header reveal">
+        <div class="overline" style="justify-content:center">Cadastro de interesse</div>
+        <h2>Quero ser parceiro <span class="grad-text">Vendor.ai</span></h2>
+        <p>Preencha os dados abaixo e nossa equipe de parcerias entrará em contato em até 24h.</p>
+      </div>
+      <div class="form-card reveal" id="form-card">
+        <form id="parceiros-form">
+          <div class="form-row">
+            <div class="form-group">
+              <label class="form-label" for="f-nome">Nome completo <span class="required-star">*</span></label>
+              <input class="form-input" id="f-nome" name="nome" required placeholder="João Silva">
+            </div>
+            <div class="form-group">
+              <label class="form-label" for="f-whatsapp">WhatsApp <span class="required-star">*</span></label>
+              <input class="form-input" id="f-whatsapp" name="whatsapp" required placeholder="(11) 99999-9999" type="tel">
+            </div>
+          </div>
+          <div class="form-row">
+            <div class="form-group">
+              <label class="form-label" for="f-email">E-mail <span class="required-star">*</span></label>
+              <input class="form-input" id="f-email" name="email" required placeholder="joao@empresa.com" type="email">
+            </div>
+            <div class="form-group">
+              <label class="form-label" for="f-cidade">Cidade desejada <span class="required-star">*</span></label>
+              <input class="form-input" id="f-cidade" name="cidade" required placeholder="São Paulo – SP">
+            </div>
+          </div>
+          <div class="form-group">
+            <label class="form-label" for="f-perfil">Seu perfil <span class="required-star">*</span></label>
+            <select class="form-select" id="f-perfil" name="perfil" required>
+              <option value="" disabled selected>Selecione...</option>
+              <option value="empreendedor">Empreendedor independente</option>
+              <option value="consultor_vendas">Consultor de vendas</option>
+              <option value="agencia_marketing">Agência de marketing / comunicação</option>
+              <option value="consultor_ti">Consultor de TI / tecnologia</option>
+              <option value="empresa_contabilidade">Empresa de contabilidade</option>
+              <option value="outro">Outro</option>
+            </select>
+          </div>
+          <button class="form-submit-btn" type="submit" id="submit-btn">
+            Enviar cadastro de interesse
+          </button>
+          <p class="form-note">Ao enviar, você concorda que nossa equipe de parcerias entrará em contato pelo WhatsApp e e-mail informados. Sem spam, prometemos.</p>
+        </form>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ── Footer ── -->
+<footer>
+  <div class="container">
+    <div class="footer-inner">
+      <div class="logo" style="gap:10px">
+        <div class="logo-mark" style="width:30px;height:30px;font-size:0.85rem">V</div>
+        <span class="logo-text" style="font-size:1rem">Vendor<span>.ai</span></span>
+      </div>
+      <p class="footer-copy">© 2025 Vendor.ai · Programa de Parceiros</p>
+      <div class="footer-links">
+        <a href="/website/">Site principal</a>
+        <a href="/website/#planos">Planos</a>
+        <a href="https://wa.me/554931913565" target="_blank" rel="noopener">WhatsApp</a>
+      </div>
+    </div>
+  </div>
+</footer>
+
+<script>
+(function () {
+  const API_BASE = '/api';
+
+  // ── Scroll reveal ──────────────────────────────────────────────────────────
+  const io = new IntersectionObserver(entries => {
+    entries.forEach(e => { if (e.isIntersecting) { e.target.classList.add('in'); io.unobserve(e.target); } });
+  }, { threshold: 0.08, rootMargin: '0px 0px -40px 0px' });
+  document.querySelectorAll('.reveal').forEach(el => io.observe(el));
+
+  // ── Form submit ────────────────────────────────────────────────────────────
+  document.getElementById('parceiros-form').addEventListener('submit', async function (e) {
+    e.preventDefault();
+
+    const btn = document.getElementById('submit-btn');
+    btn.disabled = true;
+    btn.textContent = 'Enviando...';
+
+    const nome    = document.getElementById('f-nome').value.trim();
+    const wpp     = document.getElementById('f-whatsapp').value.trim();
+    const email   = document.getElementById('f-email').value.trim();
+    const cidade  = document.getElementById('f-cidade').value.trim();
+    const perfil  = document.getElementById('f-perfil').value;
+
+    const mensagem =
+      `Interesse no Programa de Parceiros Vendor.ai.\n` +
+      `Cidade desejada: ${cidade}\n` +
+      `Perfil: ${perfil}\n` +
+      `WhatsApp: ${wpp}`;
+
+    try {
+      const res = await fetch(`${API_BASE}/site/contato`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          nome,
+          email,
+          telefone: wpp,
+          mensagem,
+          origem: 'parceiro_interesse',
+        }),
+      });
+
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        throw new Error((body.details || []).join(', ') || body.error || 'Erro ao enviar');
+      }
+
+      // Success
+      document.getElementById('form-card').innerHTML = `
+        <div class="success-box">
+          <div class="success-emoji">🎉</div>
+          <h3>Cadastro recebido!</h3>
+          <p>Obrigado, <strong>${nome}</strong>! Nossa equipe de parcerias vai entrar em contato pelo WhatsApp <strong>${wpp}</strong> em até 24 horas com todos os detalhes da licença em <strong>${cidade}</strong>.</p>
+          <a href="/website/" class="btn btn-primary">← Voltar ao site</a>
+        </div>
+      `;
+    } catch (err) {
+      btn.disabled = false;
+      btn.textContent = 'Enviar cadastro de interesse';
+      alert('Erro ao enviar: ' + (err.message || 'Tente novamente.'));
+    }
+  });
+})();
+</script>
+</body>
+</html>

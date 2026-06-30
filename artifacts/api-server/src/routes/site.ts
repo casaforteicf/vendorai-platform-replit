@@ -59,6 +59,7 @@ const contatoSchema = z.object({
       "plano_growth",
       "plano_pme",
       "plano_enterprise",
+      "parceiro_interesse",
     ])
     .optional(),
 });

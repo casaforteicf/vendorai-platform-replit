@@ -34,6 +34,10 @@ const server = http.createServer((req, res) => {
   if (urlPath.match(/^\/verticais\/[^/]+\/?$/)) {
     urlPath = '/verticais.html';
   }
+  // Parceiros page
+  if (urlPath === '/parceiros' || urlPath === '/parceiros/') {
+    urlPath = '/parceiros.html';
+  }
 
   const filePath = path.join(__dirname, urlPath);
   const ext = path.extname(filePath).toLowerCase();
