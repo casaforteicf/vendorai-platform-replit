@@ -115,3 +115,5 @@ export * from "./billing_records";
 export * from "./automation_logs";
 export * from "./reactivation_queue";
 export * from "./partner_tenants";
+export * from "./site_verticais";
+export * from "./site_contatos";
