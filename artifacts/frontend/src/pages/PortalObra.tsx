@@ -1,5 +1,13 @@
 import { useState, useEffect } from "react";
 import { useRoute, useLocation, useSearch } from "wouter";
+import {
+  TAB_VALUES,
+  type TabId,
+  tokenStorageKey,
+  obraStorageKey,
+  resolveTabPreference,
+  saveTabPreference,
+} from "../lib/portalTabStorage";
 import { format, parseISO, differenceInCalendarDays } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import {
@@ -124,9 +132,6 @@ function ProgressBar({ value, color }: { value: number; color: string }) {
 
 // ─── Main component ───────────────────────────────────────────────────────────
 
-const TAB_VALUES = ["dados", "orcamento", "cronograma", "diario"] as const;
-type TabId = typeof TAB_VALUES[number];
-
 function tabFromSearch(search: string): TabId {
   const t = new URLSearchParams(search).get("tab");
   return TAB_VALUES.includes(t as TabId) ? (t as TabId) : "dados";
@@ -146,10 +151,10 @@ export default function PortalObra() {
   const [expandedDiario, setExpandedDiario] = useState<string | null>(null);
   const [lightbox, setLightbox] = useState<string | null>(null);
   // Token-keyed entry — used only as a migration source; obra ID is not yet known at mount time
-  const TOKEN_STORAGE_KEY = `portal_tab_${token}`;
+  const TOKEN_STORAGE_KEY = tokenStorageKey(token);
 
   // Stable key keyed by obra ID; set once the fetch resolves and we know the ID
-  const [obraStorageKey, setObraStorageKey] = useState<string | null>(null);
+  const [activeObraKey, setActiveObraKey] = useState<string | null>(null);
 
   const [activeTab, setActiveTab] = useState<TabId>(() => {
     const fromUrl = tabFromSearch(search);
@@ -163,20 +168,21 @@ export default function PortalObra() {
     }
   });
 
-  // Sync tab state when URL changes (back/forward navigation)
+  // Sync tab state when URL changes (back/forward navigation).
+  // Only update storage when the URL actually carries a ?tab param — if it
+  // doesn't, we leave the existing localStorage value alone so that the
+  // fetch .then() migration can read and promote it correctly.
   useEffect(() => {
+    const params = new URLSearchParams(search);
+    if (!params.has("tab")) return;
     const tab = tabFromSearch(search);
     setActiveTab(tab);
-    try {
-      localStorage.setItem(obraStorageKey ?? TOKEN_STORAGE_KEY, tab);
-    } catch { /* ignore */ }
-  }, [search, obraStorageKey, TOKEN_STORAGE_KEY]);
+    saveTabPreference(activeObraKey ?? TOKEN_STORAGE_KEY, tab);
+  }, [search, activeObraKey, TOKEN_STORAGE_KEY]);
 
   function handleTabChange(tab: TabId) {
     if (tab === activeTab) return;
-    try {
-      localStorage.setItem(obraStorageKey ?? TOKEN_STORAGE_KEY, tab);
-    } catch { /* ignore */ }
+    saveTabPreference(activeObraKey ?? TOKEN_STORAGE_KEY, tab);
     const p = new URLSearchParams(search);
     p.set("tab", tab);
     navigate(`/portal/obra/${token}?${p.toString()}`);
@@ -192,38 +198,15 @@ export default function PortalObra() {
         setLoading(false);
 
         // Migrate tab preference to the stable obra-keyed key so it survives link regeneration
-        const obraKey = `portal_tab_obra_${d.obra.id}`;
-        setObraStorageKey(obraKey);
-        try {
-          const obraValue = localStorage.getItem(obraKey);
-          const tokenValue = localStorage.getItem(TOKEN_STORAGE_KEY);
-          if (obraValue && TAB_VALUES.includes(obraValue as TabId)) {
-            // A previous visit already wrote to the obra key — honour it (it may be from a different token)
-            // Only apply if the URL doesn't already carry an explicit tab preference
-            if (!new URLSearchParams(search).has("tab")) {
-              setActiveTab(obraValue as TabId);
-              const p = new URLSearchParams(search);
-              p.set("tab", obraValue);
-              navigate(`/portal/obra/${token}?${p.toString()}`, { replace: true });
-            }
-          } else if (tokenValue && TAB_VALUES.includes(tokenValue as TabId)) {
-            // First visit with this token — migrate the token-keyed value to the obra key
-            localStorage.setItem(obraKey, tokenValue);
-          }
-          // Always remove the token-keyed entry; the obra key is now authoritative
-          localStorage.removeItem(TOKEN_STORAGE_KEY);
-
-          // Evict obra-keyed entries beyond the cap (keep at most 10 different obras)
-          const PORTAL_OBRA_PREFIX = "portal_tab_obra_";
-          const MAX_OBRA_KEYS = 10;
-          const obraKeys = Object.keys(localStorage).filter((k) => k.startsWith(PORTAL_OBRA_PREFIX));
-          if (obraKeys.length > MAX_OBRA_KEYS) {
-            obraKeys
-              .filter((k) => k !== obraKey)
-              .slice(0, obraKeys.length - MAX_OBRA_KEYS)
-              .forEach((k) => localStorage.removeItem(k));
-          }
-        } catch { /* localStorage may be unavailable */ }
+        const obraKey = obraStorageKey(d.obra.id);
+        setActiveObraKey(obraKey);
+        const migratedTab = resolveTabPreference(token, d.obra.id);
+        if (migratedTab && !new URLSearchParams(search).has("tab")) {
+          setActiveTab(migratedTab);
+          const p = new URLSearchParams(search);
+          p.set("tab", migratedTab);
+          navigate(`/portal/obra/${token}?${p.toString()}`, { replace: true });
+        }
       })
       .catch((e: any) => {
         // Remove stale tab preference for an invalid/expired token
