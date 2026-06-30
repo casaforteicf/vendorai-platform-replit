@@ -83,6 +83,12 @@ interface DashboardData {
     quotaUsada: number;
     usosPorAgente: { agentKey: string; nome: string; count: number }[];
   };
+  pipeline: Record<"novo" | "qualificado" | "proposta" | "negociando", {
+    id: string;
+    nome: string;
+    telefone: string | null;
+    updatedAt: string | null;
+  }[]>;
   riscoPerda: {
     leadId: string;
     nome: string;
@@ -311,7 +317,7 @@ export default function Dashboard() {
 
   if (!data) return null;
 
-  const { vendas, ia, negociacao, riscoPerda } = data;
+  const { vendas, ia, negociacao, riscoPerda, pipeline } = data;
   const quotaPct = Math.min(ia.quotaUsada, 100);
   const subdomainSlug = data.tenant?.subdomainSlug ?? null;
 
@@ -444,6 +450,72 @@ export default function Dashboard() {
 
         </div>
       </section>
+
+      {/* ════════════════════════════════════
+          PIPELINE — colunas por etapa
+      ════════════════════════════════════ */}
+      {(() => {
+        const COLS = [
+          { key: "novo" as const,        label: "Novo",        color: "bg-slate-400" },
+          { key: "qualificado" as const,  label: "Qualificado", color: "bg-violet-400" },
+          { key: "proposta" as const,     label: "Proposta",    color: "bg-sky-400"   },
+          { key: "negociando" as const,   label: "Negociando",  color: "bg-amber-400" },
+        ];
+        const total = COLS.reduce((s, c) => s + pipeline[c.key].length, 0);
+        return (
+          <section className="space-y-3">
+            <div className="flex items-center justify-between">
+              <h2 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Pipeline de Leads</h2>
+              {total > 0 && (
+                <a href="/leads" className="text-xs text-primary hover:underline underline-offset-2">
+                  Ver todos
+                </a>
+              )}
+            </div>
+            {total === 0 ? (
+              <Card>
+                <CardContent className="py-8 text-center text-sm text-muted-foreground">
+                  Nenhum lead ativo na pipeline no momento.
+                </CardContent>
+              </Card>
+            ) : (
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                {COLS.map(col => (
+                  <div key={col.key} className="space-y-2">
+                    <div className="flex items-center gap-2">
+                      <span className={`w-2 h-2 rounded-full ${col.color}`} />
+                      <span className="text-xs font-medium text-muted-foreground">
+                        {col.label}
+                        <span className="ml-1 tabular-nums">({pipeline[col.key].length})</span>
+                      </span>
+                    </div>
+                    <div className="space-y-1.5">
+                      {pipeline[col.key].length === 0 ? (
+                        <div className="rounded-md border border-dashed px-3 py-3 text-center text-xs text-muted-foreground">
+                          Nenhum
+                        </div>
+                      ) : (
+                        pipeline[col.key].map(lead => (
+                          <a
+                            key={lead.id}
+                            href={`/leads/${lead.id}`}
+                            className="block rounded-md border bg-card px-3 py-2 shadow-sm hover:shadow-md hover:border-primary/40 transition-all"
+                          >
+                            <p className="text-xs font-medium truncate leading-snug">{lead.nome}</p>
+                            {lead.telefone && (
+                              <p className="text-[10px] text-muted-foreground truncate mt-0.5">{lead.telefone}</p>
+                            )}
+                          </a>
+                        ))
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </section>
+        );
+      })()}
 
       {/* ════════════════════════════════════
           CARDS — EM NEGOCIAÇÃO (4 cols / 2 mobile)

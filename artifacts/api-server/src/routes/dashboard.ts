@@ -735,6 +735,7 @@ router.get("/dashboard", authenticate, async (req, res) => {
     dealsGanhosMesRaw,
     riscoChurnRaw,
     leadsSemContatoRaw,
+    pipelineRaw,
   ] = await Promise.all([
     // totalLeads no período (30d)
     db.select({ c: count() }).from(leadsTable)
@@ -895,6 +896,21 @@ router.get("/dashboard", authenticate, async (req, res) => {
       ))
       .orderBy(asc(leadsTable.updatedAt))
       .limit(8),
+
+    // pipeline — leads ativos por etapa (máx 6 por coluna)
+    db.select({
+      id:        leadsTable.id,
+      nome:      leadsTable.nome,
+      status:    leadsTable.status,
+      telefone:  leadsTable.telefone,
+      updatedAt: leadsTable.updatedAt,
+    })
+      .from(leadsTable)
+      .where(and(
+        eq(leadsTable.tenantId, tenantId),
+        inArray(leadsTable.status, ["novo", "qualificado", "proposta", "negociando"]),
+      ))
+      .orderBy(desc(leadsTable.updatedAt)),
   ]);
 
   // ── vendas ───────────────────────────────────────────────────────────────
@@ -1018,6 +1034,19 @@ router.get("/dashboard", authenticate, async (req, res) => {
     });
   }
 
+  // ── pipeline ─────────────────────────────────────────────────────────────
+  const PIPELINE_STAGES = ["novo", "qualificado", "proposta", "negociando"] as const;
+  type PipelineStage = typeof PIPELINE_STAGES[number];
+  const pipeline: Record<PipelineStage, { id: string; nome: string; telefone: string | null; updatedAt: Date | null }[]> = {
+    novo: [], qualificado: [], proposta: [], negociando: [],
+  };
+  for (const lead of pipelineRaw) {
+    const stage = lead.status as PipelineStage;
+    if (pipeline[stage] && pipeline[stage].length < 6) {
+      pipeline[stage].push({ id: lead.id, nome: lead.nome ?? "Sem nome", telefone: lead.telefone ?? null, updatedAt: lead.updatedAt });
+    }
+  }
+
   // ── risco de perda ───────────────────────────────────────────────────────
   // Merge: prioriza leads com churnRisk da IA; complementa com leads sem contato há 7d
   const riscoChurnIds = new Set(riscoChurnRaw.map(r => r.leadId));
@@ -1069,6 +1098,7 @@ router.get("/dashboard", authenticate, async (req, res) => {
       dealsGanhosMes,
       dealsGanhosMesValor,
     },
+    pipeline,
     riscoPerda,
     ia: {
       mensagensHoje,
