@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { useRoute } from "wouter";
+import { useRoute, useLocation, useSearch } from "wouter";
 import { format, parseISO, differenceInCalendarDays } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import {
@@ -124,9 +124,19 @@ function ProgressBar({ value, color }: { value: number; color: string }) {
 
 // ─── Main component ───────────────────────────────────────────────────────────
 
+const TAB_VALUES = ["dados", "orcamento", "cronograma", "diario"] as const;
+type TabId = typeof TAB_VALUES[number];
+
+function tabFromSearch(search: string): TabId {
+  const t = new URLSearchParams(search).get("tab");
+  return TAB_VALUES.includes(t as TabId) ? (t as TabId) : "dados";
+}
+
 export default function PortalObra() {
   const [, params] = useRoute("/portal/obra/:token");
   const token = params?.token ?? "";
+  const [, navigate] = useLocation();
+  const search = useSearch();
 
   const [data, setData] = useState<PortalData | null>(null);
   const [loading, setLoading] = useState(true);
@@ -136,14 +146,26 @@ export default function PortalObra() {
   const [expandedDiario, setExpandedDiario] = useState<string | null>(null);
   const [lightbox, setLightbox] = useState<string | null>(null);
   const STORAGE_KEY = `portal_tab_${token}`;
-  const [activeTab, setActiveTab] = useState<"dados" | "orcamento" | "cronograma" | "diario">(() => {
+  const [activeTab, setActiveTab] = useState<TabId>(() => {
+    const fromUrl = tabFromSearch(search);
+    if (fromUrl !== "dados") return fromUrl;
     const saved = localStorage.getItem(STORAGE_KEY);
-    return (saved as "dados" | "orcamento" | "cronograma" | "diario" | null) ?? "dados";
+    return TAB_VALUES.includes(saved as TabId) ? (saved as TabId) : "dados";
   });
 
-  function changeTab(tab: "dados" | "orcamento" | "cronograma" | "diario") {
-    localStorage.setItem(STORAGE_KEY, tab);
+  // Sync tab when URL changes (back/forward navigation)
+  useEffect(() => {
+    const tab = tabFromSearch(search);
     setActiveTab(tab);
+    localStorage.setItem(STORAGE_KEY, tab);
+  }, [search, STORAGE_KEY]);
+
+  function handleTabChange(tab: TabId) {
+    if (tab === activeTab) return;
+    localStorage.setItem(STORAGE_KEY, tab);
+    const params = new URLSearchParams(search);
+    params.set("tab", tab);
+    navigate(`/portal/obra/${token}?${params.toString()}`);
   }
 
   useEffect(() => {
@@ -322,7 +344,7 @@ export default function PortalObra() {
           <div className="sm:hidden">
             <select
               value={activeTab}
-              onChange={(e) => changeTab(e.target.value as "dados" | "orcamento" | "cronograma" | "diario")}
+              onChange={(e) => handleTabChange(e.target.value as TabId)}
               className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2.5 text-sm font-medium text-gray-700 focus:outline-none focus:ring-2 focus:ring-indigo-400"
             >
               <option value="dados">Dados da Obra</option>
@@ -344,7 +366,7 @@ export default function PortalObra() {
             ).map((tab) => (
               <button
                 key={tab.id}
-                onClick={() => changeTab(tab.id)}
+                onClick={() => handleTabChange(tab.id)}
                 className={`flex items-center gap-2 px-5 py-3 text-sm font-medium border-b-2 whitespace-nowrap transition-colors ${
                   activeTab === tab.id
                     ? "border-indigo-600 text-indigo-700"
