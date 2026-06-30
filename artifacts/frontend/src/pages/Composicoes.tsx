@@ -145,8 +145,8 @@ function ComposicaoForm({
 
   return (
     <form onSubmit={handleSubmit} className="space-y-4">
-      <div className="grid grid-cols-2 gap-3">
-        <div className="col-span-2 space-y-2">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+        <div className="sm:col-span-2 space-y-2">
           <Label>Nome *</Label>
           <Input required value={form.nome} onChange={(e) => setForm((f) => ({ ...f, nome: e.target.value }))} />
         </div>
@@ -160,7 +160,7 @@ function ComposicaoForm({
           <Label>Código interno</Label>
           <Input value={form.codigo} onChange={(e) => setForm((f) => ({ ...f, codigo: e.target.value }))} />
         </div>
-        <div className="col-span-2 space-y-2">
+        <div className="sm:col-span-2 space-y-2">
           <Label>Descrição</Label>
           <Input value={form.descricao} onChange={(e) => setForm((f) => ({ ...f, descricao: e.target.value }))} />
         </div>
@@ -188,12 +188,21 @@ function ComposicaoForm({
             {itens.map((item, idx) => {
               const ins = allInsumos.find((i) => i.id === item.insumoId);
               return (
-                <div key={item.insumoId} className="flex items-center gap-2 text-sm">
-                  <span className="flex-1 truncate">{ins?.nome ?? item.insumoId}</span>
-                  <Input type="number" step="0.001" min="0.001" value={item.quantidade} onChange={(e) => setItens((prev) => prev.map((i, j) => j === idx ? { ...i, quantidade: e.target.value } : i))} className="w-24 h-8 text-xs" placeholder="Qtd" />
-                  <span className="text-xs text-muted-foreground w-8 shrink-0">{ins?.unidade}</span>
-                  <Input type="number" step="0.0001" min="0" value={item.precoUnitario} onChange={(e) => setItens((prev) => prev.map((i, j) => j === idx ? { ...i, precoUnitario: e.target.value } : i))} className="w-28 h-8 text-xs" placeholder="R$/un" />
-                  <button type="button" onClick={() => setItens((prev) => prev.filter((_, j) => j !== idx))}><X className="h-4 w-4 text-muted-foreground" /></button>
+                <div key={item.insumoId} className="flex flex-col gap-1.5 rounded-md border p-2 sm:border-0 sm:p-0 sm:flex-row sm:items-center sm:gap-2 text-sm">
+                  <div className="flex items-center justify-between gap-2 sm:flex-1 sm:min-w-0">
+                    <span className="flex-1 truncate font-medium sm:font-normal">{ins?.nome ?? item.insumoId}</span>
+                    <button type="button" className="sm:hidden text-muted-foreground" onClick={() => setItens((prev) => prev.filter((_, j) => j !== idx))}>
+                      <X className="h-4 w-4" />
+                    </button>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <Input type="number" step="0.001" min="0.001" value={item.quantidade} onChange={(e) => setItens((prev) => prev.map((i, j) => j === idx ? { ...i, quantidade: e.target.value } : i))} className="w-20 h-8 text-xs" placeholder="Qtd" />
+                    <span className="text-xs text-muted-foreground w-8 shrink-0">{ins?.unidade}</span>
+                    <Input type="number" step="0.0001" min="0" value={item.precoUnitario} onChange={(e) => setItens((prev) => prev.map((i, j) => j === idx ? { ...i, precoUnitario: e.target.value } : i))} className="flex-1 sm:w-28 sm:flex-none h-8 text-xs" placeholder="R$/un" />
+                    <button type="button" className="hidden sm:block text-muted-foreground" onClick={() => setItens((prev) => prev.filter((_, j) => j !== idx))}>
+                      <X className="h-4 w-4" />
+                    </button>
+                  </div>
                 </div>
               );
             })}
@@ -247,7 +256,7 @@ export default function Composicoes() {
           <DialogTrigger asChild>
             <Button size="sm" className="gap-2"><Plus className="h-4 w-4" />Nova composição</Button>
           </DialogTrigger>
-          <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
+          <DialogContent className="w-full max-w-lg max-h-[90vh] overflow-y-auto">
             <DialogHeader><DialogTitle>Nova composição</DialogTitle></DialogHeader>
             <ComposicaoForm tenantId={tenantId} onSave={handleCreate} onCancel={() => setAddOpen(false)} isPending={isCreating} />
           </DialogContent>

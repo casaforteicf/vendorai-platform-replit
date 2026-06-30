@@ -50,8 +50,8 @@ function InsumoForm({
 
   return (
     <form onSubmit={handleSubmit} className="space-y-4">
-      <div className="grid grid-cols-2 gap-3">
-        <div className="col-span-2 space-y-2">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+        <div className="sm:col-span-2 space-y-2">
           <Label>Nome *</Label>
           <Input required value={form.nome} onChange={(e) => setForm((f) => ({ ...f, nome: e.target.value }))} />
         </div>
@@ -76,7 +76,7 @@ function InsumoForm({
           <Label>Código interno</Label>
           <Input value={form.codigo} onChange={(e) => setForm((f) => ({ ...f, codigo: e.target.value }))} />
         </div>
-        <div className="col-span-2 space-y-2">
+        <div className="sm:col-span-2 space-y-2">
           <Label>Descrição</Label>
           <Input value={form.descricao as string} onChange={(e) => setForm((f) => ({ ...f, descricao: e.target.value }))} />
         </div>
@@ -105,7 +105,7 @@ function EditDialog({ tenantId, insumo }: { tenantId: string; insumo: Insumo }) 
       <DialogTrigger asChild>
         <Button variant="ghost" size="sm" className="h-7 w-7 p-0"><Pencil className="h-3.5 w-3.5" /></Button>
       </DialogTrigger>
-      <DialogContent className="max-w-lg">
+      <DialogContent className="w-full max-w-lg max-h-[90vh] overflow-y-auto">
         <DialogHeader><DialogTitle>Editar insumo</DialogTitle></DialogHeader>
         <InsumoForm initial={insumo} onSave={handleSave} onCancel={() => setOpen(false)} isPending={isPending} />
       </DialogContent>
@@ -161,7 +161,7 @@ export default function Insumos() {
           <DialogTrigger asChild>
             <Button size="sm" className="gap-2"><Plus className="h-4 w-4" />Novo insumo</Button>
           </DialogTrigger>
-          <DialogContent className="max-w-lg">
+          <DialogContent className="w-full max-w-lg max-h-[90vh] overflow-y-auto">
             <DialogHeader><DialogTitle>Novo insumo</DialogTitle></DialogHeader>
             <InsumoForm onSave={handleCreate} onCancel={() => setAddOpen(false)} isPending={isCreating} />
           </DialogContent>
