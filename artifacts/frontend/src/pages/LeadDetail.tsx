@@ -862,7 +862,7 @@ export default function LeadDetail() {
         if (!putRes.ok) throw new Error("Falha ao enviar anexo");
 
         anexoNome = newActivityAnexoFile.name;
-        anexoUrl = `/api/storage/public-objects/${objectPath}`;
+        anexoUrl = `/api/storage/${objectPath}`;
         anexoMimeType = newActivityAnexoFile.type;
         anexoTamanho = newActivityAnexoFile.size;
         anexoCategoria = newActivityAnexoCategoria;

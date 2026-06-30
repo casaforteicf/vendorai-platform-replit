@@ -287,7 +287,7 @@ function ConfigForm({ tenantId, onGenerate }: { tenantId: string; onGenerate: (c
         headers: { "Content-Type": file.type || "image/jpeg" },
       });
       if (!putRes.ok) throw new Error("Upload falhou");
-      setImages((prev) => [...prev, `${window.location.origin}/api/storage/public-objects/${result.objectPath}`]);
+      setImages((prev) => [...prev, `${window.location.origin}/api/storage/${result.objectPath}`]);
     } catch {
       toast({ title: `Erro ao enviar "${file.name}". Tente novamente.`, variant: "destructive" });
     } finally {
@@ -966,7 +966,7 @@ function MediaDialog({ html, onSave, tenantId }: { html: string; onSave: (html: 
         headers: { "Content-Type": file.type || "image/png" },
       });
       if (!uploadRes.ok) throw new Error("Upload falhou");
-      const permanentUrl = `/api/storage/public-objects/${result.objectPath}`;
+      const permanentUrl = `/api/storage/${result.objectPath}`;
       if (field === "logo") setLogoUrl(permanentUrl);
       else setHeroUrl(permanentUrl);
     } catch {

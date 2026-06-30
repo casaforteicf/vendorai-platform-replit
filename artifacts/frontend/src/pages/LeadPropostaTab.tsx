@@ -272,7 +272,7 @@ export default function LeadPropostaTab({ leadId, tenantId, lead }: LeadProposta
       headers: { "Content-Type": file.type || "image/jpeg" },
     });
     if (!uploadRes.ok) throw new Error("Upload falhou");
-    return `/api/storage/public-objects/${result.objectPath}`;
+    return `/api/storage/${result.objectPath}`;
   }
 
   async function handleLogoUpload(file: File) {

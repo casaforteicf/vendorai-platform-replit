@@ -950,7 +950,7 @@ function DiarioDeObra({ tenantId, obraId, portalToken }: { tenantId: string; obr
       const { uploadURL, objectPath } = await metaRes.json() as { uploadURL: string; objectPath: string };
       const putRes = await fetch(uploadURL, { method: "PUT", body: file, headers: { "Content-Type": file.type } });
       if (!putRes.ok) throw new Error("Falha no upload");
-      const url = `/api/storage/public-objects/${objectPath}`;
+      const url = `/api/storage/${objectPath}`;
       setForm((f) => ({ ...f, fotos: [...f.fotos, { url, caption: file.name, uploadedAt: new Date().toISOString() }] }));
     } catch (err) {
       alert("Erro ao enviar foto: " + (err as Error).message);
