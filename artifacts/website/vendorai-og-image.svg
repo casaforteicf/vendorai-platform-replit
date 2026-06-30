@@ -1,0 +1,51 @@
+<svg width="1200" height="630" viewBox="0 0 1200 630" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <radialGradient id="glow1" cx="80%" cy="10%" r="60%">
+      <stop offset="0%" stop-color="#6D4FE8" stop-opacity="0.35"/>
+      <stop offset="100%" stop-color="#6D4FE8" stop-opacity="0"/>
+    </radialGradient>
+    <radialGradient id="glow2" cx="10%" cy="90%" r="50%">
+      <stop offset="0%" stop-color="#3FE0C5" stop-opacity="0.12"/>
+      <stop offset="100%" stop-color="#3FE0C5" stop-opacity="0"/>
+    </radialGradient>
+  </defs>
+
+  <rect width="1200" height="630" fill="#08060F"/>
+  <rect width="1200" height="630" fill="url(#glow1)"/>
+  <rect width="1200" height="630" fill="url(#glow2)"/>
+
+  <g transform="translate(90,90)">
+    <rect width="84" height="84" rx="20" fill="#15102B"/>
+    <circle cx="42" cy="24" r="4.4" fill="#9B85F0"/>
+    <circle cx="24" cy="44" r="4" fill="#6D4FE8"/>
+    <circle cx="60" cy="44" r="4" fill="#6D4FE8"/>
+    <circle cx="31" cy="62" r="3.4" fill="#7d5df0"/>
+    <circle cx="53" cy="62" r="3.4" fill="#7d5df0"/>
+    <circle cx="42" cy="42" r="4.6" fill="#C9BCF7"/>
+    <line x1="42" y1="24" x2="42" y2="42" stroke="#6D4FE8" stroke-width="2" opacity="0.7"/>
+    <line x1="24" y1="44" x2="42" y2="42" stroke="#6D4FE8" stroke-width="2" opacity="0.7"/>
+    <line x1="60" y1="44" x2="42" y2="42" stroke="#6D4FE8" stroke-width="2" opacity="0.7"/>
+    <line x1="31" y1="62" x2="42" y2="42" stroke="#6D4FE8" stroke-width="2" opacity="0.5"/>
+    <line x1="53" y1="62" x2="42" y2="42" stroke="#6D4FE8" stroke-width="2" opacity="0.5"/>
+  </g>
+
+  <text x="194" y="148" font-family="Inter, Arial, sans-serif" font-size="36" font-weight="700" fill="#ffffff">Vendor<tspan fill="#9B85F0">.ai</tspan></text>
+
+  <text x="90" y="290" font-family="Georgia, 'Times New Roman', serif" font-size="64" fill="#ffffff">O WhatsApp já é seu CRM.</text>
+  <text x="90" y="360" font-family="Georgia, 'Times New Roman', serif" font-size="64" font-style="italic" fill="#9B85F0">A gente deu inteligência pra ele.</text>
+
+  <text x="90" y="430" font-family="Inter, Arial, sans-serif" font-size="24" fill="#9089AC">Sistema Operacional Empresarial com IA para PMEs brasileiras</text>
+
+  <g transform="translate(90,480)">
+    <rect width="195" height="48" rx="24" fill="rgba(255,255,255,0.04)" stroke="rgba(255,255,255,0.12)"/>
+    <text x="28" y="30" font-family="Inter, Arial, sans-serif" font-size="18" font-weight="600" fill="#ffffff">8 agentes de IA</text>
+  </g>
+  <g transform="translate(305,480)">
+    <rect width="180" height="48" rx="24" fill="rgba(255,255,255,0.04)" stroke="rgba(255,255,255,0.12)"/>
+    <text x="28" y="30" font-family="Inter, Arial, sans-serif" font-size="18" font-weight="600" fill="#ffffff">+1.200 empresas</text>
+  </g>
+  <g transform="translate(505,480)">
+    <rect width="165" height="48" rx="24" fill="rgba(109,79,232,0.18)" stroke="rgba(109,79,232,0.4)"/>
+    <text x="28" y="30" font-family="Inter, Arial, sans-serif" font-size="18" font-weight="600" fill="#C9BCF7">appvendorai.com</text>
+  </g>
+</svg>
