@@ -120,6 +120,14 @@ router.get("/tenants/:tenantId/agendamentos", async (req, res) => {
     eq(agendamentosTable.tenantId, String(req.params.tenantId)),
   ];
 
+  const isAdmin = req.user?.platformRole === "super_admin" || req.user?.platformRole === "tenant_admin";
+  const isSeller = req.user?.platformRole === "tenant_seller";
+  const userFn = req.user?.userFunction as string | undefined;
+  const userId = req.user?.sub;
+  if (!isAdmin && userId && (isSeller || userFn === "vendedor" || userFn === "entrega")) {
+    conditions.push(eq(agendamentosTable.responsavelId, userId));
+  }
+
   if (leadId) conditions.push(eq(agendamentosTable.leadId, leadId));
   if (agendaId) conditions.push(eq(agendamentosTable.agendaId, agendaId));
   if (status)

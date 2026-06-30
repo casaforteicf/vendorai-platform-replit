@@ -99,6 +99,15 @@ router.get("/tenants/:tenantId/activities", async (req, res) => {
   const { leadId, dealId, status } = req.query as Record<string, string | undefined>;
 
   const conditions = [eq(activitiesTable.tenantId, String(req.params.tenantId))];
+
+  const isAdmin = req.user?.platformRole === "super_admin" || req.user?.platformRole === "tenant_admin";
+  const isSeller = req.user?.platformRole === "tenant_seller";
+  const userFn = req.user?.userFunction as string | undefined;
+  const userId = req.user?.sub;
+  if (!isAdmin && userId && (isSeller || userFn === "vendedor" || userFn === "entrega")) {
+    conditions.push(eq(activitiesTable.responsavelId, userId));
+  }
+
   if (leadId) conditions.push(eq(activitiesTable.leadId, leadId));
   if (dealId) conditions.push(eq(activitiesTable.dealId, dealId));
   if (status)
@@ -116,17 +125,25 @@ router.get("/tenants/:tenantId/activities", async (req, res) => {
 });
 
 router.get("/tenants/:tenantId/activities/overdue", async (req, res) => {
+  const overdueConditions = [
+    eq(activitiesTable.tenantId, String(req.params.tenantId)),
+    eq(activitiesTable.status, "pendente"),
+    isNotNull(activitiesTable.dataVencimento),
+    lt(activitiesTable.dataVencimento, new Date()),
+  ];
+
+  const isAdminOverdue = req.user?.platformRole === "super_admin" || req.user?.platformRole === "tenant_admin";
+  const isSellerOverdue = req.user?.platformRole === "tenant_seller";
+  const userFnOverdue = req.user?.userFunction as string | undefined;
+  const userIdOverdue = req.user?.sub;
+  if (!isAdminOverdue && userIdOverdue && (isSellerOverdue || userFnOverdue === "vendedor" || userFnOverdue === "entrega")) {
+    overdueConditions.push(eq(activitiesTable.responsavelId, userIdOverdue));
+  }
+
   const activities = await db
     .select()
     .from(activitiesTable)
-    .where(
-      and(
-        eq(activitiesTable.tenantId, String(req.params.tenantId)),
-        eq(activitiesTable.status, "pendente"),
-        isNotNull(activitiesTable.dataVencimento),
-        lt(activitiesTable.dataVencimento, new Date())
-      )
-    )
+    .where(and(...overdueConditions))
     .orderBy(activitiesTable.dataVencimento);
 
   res.json(activities);
