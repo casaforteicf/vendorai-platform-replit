@@ -28,9 +28,20 @@ import { callOpenAI } from "../lib/ai-gateway.js";
 const router: IRouter = Router();
 
 router.get("/leads", async (req, res) => {
+  const conditions: ReturnType<typeof eq>[] = [];
+  if (req.user?.platformRole !== "super_admin") {
+    if (!req.user?.tenantId) {
+      res.status(403).json({ error: "Access denied" });
+      return;
+    }
+    conditions.push(eq(leadsTable.tenantId, req.user.tenantId));
+  }
+  conditions.push(...buildUserFunctionFilter(req, leadsTable));
+
   const leads = await db
     .select()
     .from(leadsTable)
+    .where(conditions.length > 0 ? and(...conditions) : undefined)
     .orderBy(leadsTable.createdAt);
   res.json(leads);
 });
