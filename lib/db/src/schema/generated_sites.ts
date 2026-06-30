@@ -27,6 +27,9 @@ export interface SiteGeneratorConfig {
   color: string;
   logoUrl?: string;
   products?: SiteGeneratorProduct[];
+  whatsapp?: string;
+  images?: string[];
+  servicos?: string;
 }
 
 export const generatedSitesTable = pgTable("generated_sites", {

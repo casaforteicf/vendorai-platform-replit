@@ -70,6 +70,9 @@ interface SiteConfig {
   cta: string;
   color: string;
   products: Product[];
+  whatsapp?: string;
+  images?: string[];
+  servicos?: string;
 }
 interface ChatMessage { role: "user" | "assistant"; content: string; }
 interface Testimonial {
@@ -252,6 +255,11 @@ function ConfigForm({ tenantId, onGenerate }: { tenantId: string; onGenerate: (c
   const [color, setColor] = useState("#6366F1");
   const [tone, setTone] = useState("profissional");
   const [products, setProducts] = useState<Product[]>([{ name: "", price: "" }]);
+  const [images, setImages] = useState<string[]>([]);
+  const [uploadingImg, setUploadingImg] = useState(false);
+
+  const requestUploadUrl = useRequestUploadUrl();
+  const { toast } = useToast();
 
   const { data: bp } = useGetBusinessProfileByTenant(tenantId, {
     query: { queryKey: getGetBusinessProfileByTenantQueryKey(tenantId), enabled: !!tenantId },
@@ -259,9 +267,32 @@ function ConfigForm({ tenantId, onGenerate }: { tenantId: string; onGenerate: (c
 
   const nomeNegocio = bp?.nomeFantasia ?? bp?.razaoSocial ?? "";
   const setor = bp?.vertical ?? "";
-  const descricao = bp?.diferenciais ?? "";
-  const publico = bp?.publicoAlvo ?? "";
-  const descNegocio = descricao || publico || "";
+  const descNegocio = bp?.diferenciais || bp?.publicoAlvo || "";
+  const telefone = bp?.telefone ?? "";
+  const logoUrl = bp?.logoUrl ?? "";
+
+  async function handleImageUpload(file: File) {
+    setUploadingImg(true);
+    try {
+      const result = await new Promise<{ uploadURL: string; objectPath: string }>((resolve, reject) => {
+        requestUploadUrl.mutate(
+          { data: { name: file.name, size: file.size, contentType: file.type || "image/jpeg" } },
+          { onSuccess: resolve, onError: reject },
+        );
+      });
+      const putRes = await fetch(result.uploadURL, {
+        method: "PUT",
+        body: file,
+        headers: { "Content-Type": file.type || "image/jpeg" },
+      });
+      if (!putRes.ok) throw new Error("Upload falhou");
+      setImages((prev) => [...prev, `/api/storage/public-objects/${result.objectPath}`]);
+    } catch {
+      toast({ title: "Erro ao fazer upload da imagem. Tente novamente.", variant: "destructive" });
+    } finally {
+      setUploadingImg(false);
+    }
+  }
 
   function addProduct() { setProducts((p) => [...p, { name: "", price: "" }]); }
   function removeProduct(i: number) { setProducts((p) => p.filter((_, idx) => idx !== i)); }
@@ -274,24 +305,37 @@ function ConfigForm({ tenantId, onGenerate }: { tenantId: string; onGenerate: (c
     const fd = new FormData(e.currentTarget);
     onGenerate({
       type: siteType,
-      name: (fd.get("name") as string) || nomeNegocio || "",
-      sector: (fd.get("sector") as string) || setor || "",
-      desc: (fd.get("desc") as string) || descNegocio || "",
+      name: nomeNegocio || (fd.get("name") as string) || "",
+      sector: setor || (fd.get("sector") as string) || "",
+      desc: descNegocio || (fd.get("desc") as string) || "",
       pain: fd.get("pain") as string,
       tone,
       cta: fd.get("cta") as string,
       color,
       products: products.filter((p) => p.name.trim()),
+      whatsapp: telefone || (fd.get("whatsapp") as string) || "",
+      images: images.filter(Boolean),
+      servicos: (fd.get("servicos") as string) || "",
     });
   }
 
+  const missingName = !nomeNegocio;
+  const missingSetor = !setor;
+  const missingDesc = !descNegocio;
+
+  const profileItems = [
+    nomeNegocio && { label: "Nome", value: nomeNegocio },
+    setor && { label: "Setor", value: setor },
+    descNegocio && { label: "Descrição", value: descNegocio.length > 80 ? descNegocio.slice(0, 80) + "…" : descNegocio },
+    telefone && { label: "WhatsApp", value: telefone },
+  ].filter(Boolean) as Array<{ label: string; value: string }>;
+
   return (
-    <form onSubmit={handleSubmit} className="flex flex-col gap-6">
-      {/* Tipo de site */}
+    <form onSubmit={handleSubmit} className="flex flex-col gap-5">
+
+      {/* ── Tipo de site ── */}
       <div className="flex flex-col gap-2">
-        <Label className="text-xs font-mono uppercase tracking-widest text-muted-foreground">
-          Tipo de site
-        </Label>
+        <Label className="text-xs font-mono uppercase tracking-widest text-muted-foreground">Tipo de site</Label>
         <div className="grid grid-cols-3 gap-2">
           {SITE_TYPES.map((t) => (
             <button
@@ -311,105 +355,176 @@ function ConfigForm({ tenantId, onGenerate }: { tenantId: string; onGenerate: (c
         </div>
       </div>
 
-      {/* Dados básicos */}
-      <div className="grid grid-cols-2 gap-3">
-        <div className="flex flex-col gap-1.5">
-          <Label htmlFor="sg-name">Nome do negócio *</Label>
-          <Input
-            id="sg-name"
-            name="name"
-            required
-            placeholder="Ex: Floricultura Primavera"
-            defaultValue={nomeNegocio}
-            readOnly={!!nomeNegocio}
-            className={nomeNegocio ? "bg-muted/50" : ""}
-          />
-          {nomeNegocio && (
-            <span className="text-[10px] text-muted-foreground">Preenchido automaticamente do cadastro da empresa</span>
-          )}
-        </div>
-        <div className="flex flex-col gap-1.5">
-          <Label htmlFor="sg-sector">Setor / nicho</Label>
-          <Input
-            id="sg-sector"
-            name="sector"
-            placeholder="Ex: floricultura, consultoria"
-            defaultValue={setor}
-            readOnly={!!setor}
-            className={setor ? "bg-muted/50" : ""}
-          />
-          {setor && (
-            <span className="text-[10px] text-muted-foreground">Preenchido automaticamente do cadastro da empresa</span>
-          )}
-        </div>
-        <div className="col-span-2 flex flex-col gap-1.5">
-          <Label htmlFor="sg-desc">O que o negócio faz *</Label>
-          <Textarea
-            id="sg-desc"
-            name="desc"
-            rows={3}
-            required
-            placeholder="Descreva em 1-2 frases o que o negócio faz e para quem..."
-            defaultValue={descNegocio}
-            readOnly={!!descNegocio}
-            className={descNegocio ? "bg-muted/50" : ""}
-          />
-          {descNegocio && (
-            <span className="text-[10px] text-muted-foreground">Preenchido automaticamente do cadastro da empresa</span>
-          )}
-        </div>
-        <div className="col-span-2 flex flex-col gap-1.5">
-          <Label htmlFor="sg-pain">Maior dor do cliente (SPIN — Implicação)</Label>
-          <Input
-            id="sg-pain"
-            name="pain"
-            placeholder="Ex: difícil encontrar flores frescas de qualidade na cidade"
-          />
-        </div>
-      </div>
-
-      {/* Produtos — só e-commerce */}
-      {siteType === "ecommerce" && (
-        <div className="flex flex-col gap-2">
-          <Label className="text-xs font-mono uppercase tracking-widest text-muted-foreground">
-            Produtos
-          </Label>
-          <p className="text-xs text-muted-foreground rounded-md bg-muted/60 border border-dashed px-3 py-2">
-            🛒 Os produtos do seu <strong>Catálogo de Produtos</strong> serão incluídos automaticamente no site (com imagens, preços e estoque real). Você pode adicionar produtos extras abaixo se quiser.
-          </p>
-          {products.map((p, i) => (
-            <div key={i} className="flex gap-2 items-center">
-              <Input
-                placeholder="Nome do produto"
-                value={p.name}
-                onChange={(e) => updateProduct(i, "name", e.target.value)}
-              />
-              <Input
-                placeholder="R$ 0,00"
-                value={p.price}
-                onChange={(e) => updateProduct(i, "price", e.target.value)}
-                className="w-28"
-              />
-              {products.length > 1 && (
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="icon"
-                  onClick={() => removeProduct(i)}
-                  className="shrink-0 text-destructive hover:border-destructive hover:text-destructive"
-                >
-                  ✕
-                </Button>
-              )}
-            </div>
-          ))}
-          <Button type="button" variant="ghost" className="self-start text-primary" onClick={addProduct}>
-            + Adicionar produto extra
-          </Button>
+      {/* ── Dados do perfil (auto-preenchidos) ── */}
+      {profileItems.length > 0 && (
+        <div className="rounded-lg border border-green-200 bg-green-50/50 dark:border-green-900/40 dark:bg-green-950/20 px-4 py-3 flex flex-col gap-2">
+          <div className="flex items-center justify-between">
+            <span className="text-xs font-semibold text-green-800 dark:text-green-400 uppercase tracking-wider">✓ Do seu perfil</span>
+            <a href="/configuracoes?tab=perfil" target="_blank" rel="noreferrer" className="text-[10px] text-green-700 dark:text-green-500 underline underline-offset-2 hover:no-underline">
+              Editar perfil →
+            </a>
+          </div>
+          <div className="grid grid-cols-2 gap-x-4 gap-y-1">
+            {profileItems.map((f) => (
+              <div key={f.label} className="flex items-start gap-1.5 text-xs col-span-1">
+                <span className="text-muted-foreground shrink-0 w-20">{f.label}:</span>
+                <span className="text-foreground font-medium line-clamp-1">{f.value}</span>
+              </div>
+            ))}
+            {logoUrl && (
+              <div className="flex items-center gap-1.5 text-xs col-span-1">
+                <span className="text-muted-foreground shrink-0 w-20">Logo:</span>
+                <img
+                  src={logoUrl.startsWith("/objects/") ? `/api/storage${logoUrl}` : logoUrl}
+                  alt="Logo"
+                  className="h-5 w-auto max-w-[70px] object-contain rounded"
+                />
+              </div>
+            )}
+          </div>
         </div>
       )}
 
-      {/* Aparência e tom */}
+      {/* ── Campos ausentes do perfil ── */}
+      {(missingName || missingSetor || missingDesc) && (
+        <div className="rounded-lg border border-amber-200 bg-amber-50/40 dark:border-amber-900/40 dark:bg-amber-950/20 px-4 py-3 flex flex-col gap-3">
+          <p className="text-xs text-amber-800 dark:text-amber-400">
+            ⚠ Dados não encontrados no perfil. Preencha aqui ou{" "}
+            <a href="/configuracoes?tab=perfil" target="_blank" rel="noreferrer" className="underline underline-offset-2">complete seu perfil</a>.
+          </p>
+          {missingName && (
+            <div className="flex flex-col gap-1">
+              <Label htmlFor="sg-name" className="text-xs">Nome do negócio *</Label>
+              <Input id="sg-name" name="name" required placeholder="Ex: Floricultura Primavera" />
+            </div>
+          )}
+          {missingSetor && (
+            <div className="flex flex-col gap-1">
+              <Label htmlFor="sg-sector" className="text-xs">Setor / nicho</Label>
+              <Input id="sg-sector" name="sector" placeholder="Ex: floricultura, consultoria" />
+            </div>
+          )}
+          {missingDesc && (
+            <div className="flex flex-col gap-1">
+              <Label htmlFor="sg-desc" className="text-xs">O que o negócio faz *</Label>
+              <Textarea id="sg-desc" name="desc" rows={2} required placeholder="Descreva em 1-2 frases o que o negócio faz e para quem" />
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* ── Questionário ── */}
+      <div className="flex flex-col gap-3">
+        <Label className="text-xs font-mono uppercase tracking-widest text-muted-foreground">Perguntas para o site</Label>
+
+        <div className="flex flex-col gap-1.5">
+          <Label htmlFor="sg-pain" className="text-sm font-medium">
+            Qual a maior dificuldade do seu cliente ideal? <span className="text-destructive">*</span>
+          </Label>
+          <Input
+            id="sg-pain"
+            name="pain"
+            required
+            placeholder="Ex: não consigo encontrar flores frescas de qualidade na cidade"
+          />
+          <p className="text-[10px] text-muted-foreground">Usado para criar um headline que ressoa com o problema real do cliente</p>
+        </div>
+
+        <div className="flex flex-col gap-1.5">
+          <Label htmlFor="sg-cta" className="text-sm font-medium">O que você quer que o visitante faça?</Label>
+          <Input id="sg-cta" name="cta" placeholder="Ex: Solicitar orçamento, Comprar agora, Agendar visita" />
+        </div>
+
+        {!telefone && (
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor="sg-whatsapp" className="text-sm font-medium">WhatsApp para contato</Label>
+            <Input id="sg-whatsapp" name="whatsapp" placeholder="Ex: 5511999999999 (com código do país)" />
+          </div>
+        )}
+
+        <div className="flex flex-col gap-1.5">
+          <Label htmlFor="sg-servicos" className="text-sm font-medium">
+            Principais serviços / produtos{" "}
+            <span className="font-normal text-muted-foreground">(opcional)</span>
+          </Label>
+          <Textarea
+            id="sg-servicos"
+            name="servicos"
+            rows={2}
+            placeholder="Ex: Buquês personalizados, arranjos para eventos, coroas, delivery"
+          />
+          <p className="text-[10px] text-muted-foreground">Liste o que aparece no site — o mais completo, melhor o resultado</p>
+        </div>
+      </div>
+
+      {/* ── Fotos da empresa/serviços ── */}
+      <div className="flex flex-col gap-2">
+        <div className="flex items-center justify-between">
+          <Label className="text-xs font-mono uppercase tracking-widest text-muted-foreground">Fotos da empresa</Label>
+          <span className="text-[10px] text-muted-foreground">Opcional — mas melhora muito o resultado</span>
+        </div>
+        {images.length > 0 && (
+          <div className="flex flex-wrap gap-2">
+            {images.map((url, i) => (
+              <div key={i} className="relative group">
+                <img
+                  src={url}
+                  alt={`Foto ${i + 1}`}
+                  className="h-20 w-20 object-cover rounded-lg border border-border"
+                />
+                <button
+                  type="button"
+                  onClick={() => setImages((prev) => prev.filter((_, idx) => idx !== i))}
+                  className="absolute -top-1.5 -right-1.5 h-5 w-5 rounded-full bg-destructive text-destructive-foreground text-[10px] flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
+                >
+                  ✕
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
+        <label className={`cursor-pointer ${uploadingImg ? "pointer-events-none opacity-60" : ""}`}>
+          <input
+            type="file"
+            accept="image/*"
+            multiple
+            className="sr-only"
+            onChange={(e) => {
+              const files = Array.from(e.target.files ?? []);
+              files.forEach((f) => handleImageUpload(f));
+              e.target.value = "";
+            }}
+          />
+          <div className="flex items-center gap-2 rounded-lg border border-dashed border-border px-4 py-3 text-sm text-muted-foreground hover:border-primary hover:text-primary transition-colors">
+            {uploadingImg
+              ? <><Loader2 className="h-4 w-4 animate-spin shrink-0" />Enviando foto…</>
+              : <><Upload className="h-4 w-4 shrink-0" />+ Adicionar fotos do local, produto ou serviço</>
+            }
+          </div>
+        </label>
+      </div>
+
+      {/* ── Produtos — só e-commerce ── */}
+      {siteType === "ecommerce" && (
+        <div className="flex flex-col gap-2">
+          <Label className="text-xs font-mono uppercase tracking-widest text-muted-foreground">Produtos</Label>
+          <p className="text-xs text-muted-foreground rounded-md bg-muted/60 border border-dashed px-3 py-2">
+            🛒 Os produtos do seu <strong>Catálogo de Produtos</strong> serão incluídos automaticamente (com imagens, preços e estoque real). Adicione extras abaixo se quiser.
+          </p>
+          {products.map((p, i) => (
+            <div key={i} className="flex gap-2 items-center">
+              <Input placeholder="Nome do produto" value={p.name} onChange={(e) => updateProduct(i, "name", e.target.value)} />
+              <Input placeholder="R$ 0,00" value={p.price} onChange={(e) => updateProduct(i, "price", e.target.value)} className="w-28" />
+              {products.length > 1 && (
+                <Button type="button" variant="outline" size="icon" onClick={() => removeProduct(i)} className="shrink-0 text-destructive hover:border-destructive hover:text-destructive">✕</Button>
+              )}
+            </div>
+          ))}
+          <Button type="button" variant="ghost" className="self-start text-primary" onClick={addProduct}>+ Adicionar produto extra</Button>
+        </div>
+      )}
+
+      {/* ── Aparência e tom ── */}
       <div className="grid grid-cols-2 gap-3">
         <div className="flex flex-col gap-2">
           <Label>Cor principal</Label>
@@ -422,9 +537,7 @@ function ConfigForm({ tenantId, onGenerate }: { tenantId: string; onGenerate: (c
                 aria-label={c.label}
                 aria-pressed={color === c.hex}
                 onClick={() => setColor(c.hex)}
-                className={`w-7 h-7 rounded-full border-2 transition-all cursor-pointer ${
-                  color === c.hex ? "border-foreground scale-110" : "border-transparent"
-                }`}
+                className={`w-7 h-7 rounded-full border-2 transition-all cursor-pointer ${color === c.hex ? "border-foreground scale-110" : "border-transparent"}`}
                 style={{ background: c.hex }}
               />
             ))}
@@ -433,9 +546,7 @@ function ConfigForm({ tenantId, onGenerate }: { tenantId: string; onGenerate: (c
         <div className="flex flex-col gap-1.5">
           <Label htmlFor="sg-tone">Tom de voz</Label>
           <Select value={tone} onValueChange={setTone}>
-            <SelectTrigger id="sg-tone">
-              <SelectValue />
-            </SelectTrigger>
+            <SelectTrigger id="sg-tone"><SelectValue /></SelectTrigger>
             <SelectContent>
               <SelectItem value="profissional">Profissional e confiável</SelectItem>
               <SelectItem value="amigavel">Amigável e próximo</SelectItem>
@@ -445,18 +556,13 @@ function ConfigForm({ tenantId, onGenerate }: { tenantId: string; onGenerate: (c
             </SelectContent>
           </Select>
         </div>
-        <div className="col-span-2 flex flex-col gap-1.5">
-          <Label htmlFor="sg-cta">CTA principal</Label>
-          <Input
-            id="sg-cta"
-            name="cta"
-            placeholder="Ex: Solicitar orçamento, Comprar agora, Agendar visita"
-          />
-        </div>
       </div>
 
-      <Button type="submit" size="lg" className="mt-1 w-full font-semibold">
-        ✦ Gerar site com IA
+      <Button type="submit" size="lg" className="mt-1 w-full font-semibold" disabled={uploadingImg}>
+        {uploadingImg
+          ? <><Loader2 className="h-4 w-4 mr-2 animate-spin" />Enviando fotos…</>
+          : "✦ Gerar site com IA"
+        }
       </Button>
     </form>
   );

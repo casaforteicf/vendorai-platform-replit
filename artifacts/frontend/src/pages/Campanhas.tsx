@@ -632,10 +632,10 @@ function CampaignModal({
                     />
 
                     {/* Pipeline Stage multi-select */}
-                    <FormItem className="space-y-1.5">
-                      <FormLabel className="text-xs text-muted-foreground">
+                    <div className="space-y-1.5">
+                      <label className="text-xs font-medium text-muted-foreground">
                         Etapa da Pipeline (Deal)
-                      </FormLabel>
+                      </label>
                       <div className="flex flex-wrap gap-2">
                         {PIPELINE_STAGES.map((stage) => {
                           const isActive = dealEtapasVal.includes(stage.value);
@@ -666,7 +666,7 @@ function CampaignModal({
                           );
                         })}
                       </div>
-                    </FormItem>
+                    </div>
 
                     {/* Active filter summary */}
                     {activeCount > 0 && (

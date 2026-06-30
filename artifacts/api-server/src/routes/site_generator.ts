@@ -79,7 +79,8 @@ function isDark(hex: string): boolean {
 }
 
 function buildGeneratePrompt(config: SiteGeneratorConfig): string {
-  const { type, name, sector, desc, pain, tone, color, cta, logoUrl, products = [] } = config;
+  const { type, name, sector, desc, pain, tone, color, cta, logoUrl, products = [], whatsapp, images = [], servicos } = config;
+  const waNumber = whatsapp?.replace(/\D/g, "") || "5511999999999";
 
   // Logo HTML block: real image if available, fallback to initial-in-circle
   const logoHtml = logoUrl
@@ -121,6 +122,12 @@ function buildGeneratePrompt(config: SiteGeneratorConfig): string {
   const fonts = FONT_PAIRS[tone as string] ?? FONT_PAIRS.profissional;
 
   const hasRealImages = products.some((p) => p.imageUrl);
+  const imagesBlock = images.length > 0
+    ? `\nFOTOS REAIS DA EMPRESA (${images.length} foto${images.length > 1 ? "s" : ""} — USE-AS no site, não invente imagens externas):\n${images.map((url, i) => `- Foto ${i + 1}: ${url}`).join("\n")}\nUse estas fotos nas seções de hero, galeria, serviços ou sobre. Tag: <img src="URL_AQUI" alt="${name}" loading="lazy" style="width:100%;height:240px;object-fit:cover;border-radius:12px">`
+    : "";
+  const servicosBlock = servicos
+    ? `\nServiços/produtos principais: ${servicos}`
+    : "";
   const productsBlock =
     type === "ecommerce" && products.length
       ? `\nPRODUTOS DO ESTOQUE (${products.length} itens — use EXATAMENTE estes produtos, na mesma ordem):\n${products.map((p) => {
@@ -141,12 +148,12 @@ function buildGeneratePrompt(config: SiteGeneratorConfig): string {
   const structureByType: Record<string, string> = {
     landing: `ESTRUTURA DA LANDING PAGE (nesta ordem exata):
 1. HEADER fixo — ${logoUrl ? `logo do cliente (HTML exato: ${logoHtml})` : "logo à esquerda (inicial do nome em círculo colorido + nome)"}, nav âncoras à direita, botão CTA no canto, hamburger mobile
-2. HERO — título impactante (H1, problema que o cliente já sente), subtítulo com a promessa, 2 botões (primário + secundário outline), elemento visual decorativo (formas geométricas ou gradiente abstrato em CSS puro — sem imagens externas)
+2. HERO — título impactante (H1, problema que o cliente já sente), subtítulo com a promessa, 2 botões (primário + secundário outline)${images.length > 0 ? `, imagem real da empresa como elemento visual (use a Foto 1 do briefing)` : ", elemento visual decorativo (formas geométricas ou gradiente abstrato em CSS puro — sem imagens externas)"}
 3. DORES — seção escura/contrastante com 3-4 cards de dores reais do mercado (ícones SVG inline simples, título curto + descrição)
 4. SOLUÇÃO — como o negócio resolve cada dor, 3 pilares com ícone SVG + título + parágrafo
 5. BENEFÍCIOS / DIFERENCIAIS — grid 2x3 ou 3x2 de cards com número destacado ou ícone grande
-6. DEPOIMENTOS — 3 cards com avatar (iniciais em círculo colorido), nome fictício brasileiro, cidade, texto curto e persuasivo (inventados mas realistas para o setor)
-7. CTA FINAL — seção de fundo escuro/gradiente, headline forte, subtítulo, botão grande
+6. NÚMEROS & CONQUISTAS — seção com 3-4 estatísticas marcantes plausíveis para o setor de "${sector || name}" (ex: "500+ clientes atendidos", "10 anos de experiência") — sem inventar nomes de pessoas reais
+7. CTA FINAL — seção de fundo escuro/gradiente, headline forte, subtítulo, botão grande com wa.me/${waNumber}
 8. FOOTER — ${logoUrl ? `logo do cliente (HTML exato: ${logoHtml})` : "logo"}, links de âncora, copyright`,
 
     ecommerce: `ESTRUTURA DO E-COMMERCE (nesta ordem exata):
@@ -158,22 +165,22 @@ function buildGeneratePrompt(config: SiteGeneratorConfig): string {
      : "• imagem placeholder: gradiente colorido com ícone SVG central"}
    • nome do produto, descrição curta, preço em destaque
    • badge de ⭐DESTAQUE para produtos marcados; badge "Esgotado" quando fora de estoque (cursor não-pointer, botão desabilitado)
-   • botão "Comprar pelo WhatsApp" (link wa.me com mensagem pré-preenchida incluindo nome do produto e preço)
+   • botão "Comprar pelo WhatsApp" (link wa.me/${waNumber} com mensagem pré-preenchida incluindo nome do produto e preço)
 4. BENEFÍCIOS — 3 ícones com texto: entrega, pagamento, suporte
-5. DEPOIMENTOS — 2-3 clientes satisfeitos com nota 5 estrelas
-6. CTA FINAL — urgência, botão WhatsApp
+5. GARANTIAS & DIFERENCIAIS — 3-4 cards de garantias (ex: satisfação garantida, entrega rápida) — sem inventar nomes de clientes
+6. CTA FINAL — urgência, botão WhatsApp wa.me/${waNumber}
 7. CARRINHO LATERAL (drawer) — ativado por JS ao clicar nos produtos, lista itens, total, botão finalizar via WhatsApp com resumo do pedido
 8. FOOTER`,
 
     institutional: `ESTRUTURA DO SITE INSTITUCIONAL (nesta ordem exata):
 1. HEADER fixo — ${logoUrl ? `logo do cliente (HTML exato: ${logoHtml})` : "logo"}, nav âncoras, botão CTA, hamburger mobile
-2. HERO — headline sobre a empresa, subtítulo com proposta de valor, 2 botões, elemento visual
-3. SOBRE — história/missão em 2 colunas (texto + estatísticas em destaque: anos, clientes, projetos)
-4. SERVIÇOS — grid de 4-6 serviços com ícone SVG, título, descrição curta
+2. HERO — headline sobre a empresa, subtítulo com proposta de valor, 2 botões${images.length > 0 ? `, imagem real da empresa (use a Foto 1 do briefing)` : ", elemento visual"}
+3. SOBRE — história/missão em 2 colunas (texto + estatísticas em destaque: anos, clientes, projetos)${images.length > 1 ? " + galeria das fotos reais fornecidas" : ""}
+4. SERVIÇOS — grid de 4-6 serviços com ícone SVG, título, descrição curta (baseados nos serviços informados no briefing)
 5. PROCESSO — timeline ou steps numerados explicando como funciona
-6. EQUIPE — 3-4 avatares placeholder (iniciais + cargo + mini-bio)
-7. DEPOIMENTOS — 3 clientes com nome, empresa e foto-avatar
-8. CONTATO — formulário (nome, email, telefone, mensagem) + informações de contato laterais
+6. DIFERENCIAIS — grid 2×3 ou 3×2 de vantagens competitivas reais do negócio com ícone SVG e texto
+7. NÚMEROS & CONQUISTAS — estatísticas do negócio em formato visual (sem inventar nomes de pessoas)
+8. CONTATO — formulário (nome, email, telefone, mensagem) + informações de contato laterais, botão WhatsApp wa.me/${waNumber}
 9. FOOTER`,
   };
 
@@ -189,12 +196,13 @@ BRIEFING DO CLIENTE
 Tipo: ${TYPE_LABELS[type] || type}
 Negócio: ${name}
 Setor: ${sector || "a definir pelo contexto"}
-Sobre o negócio: ${desc}
+Sobre o negócio: ${desc}${servicosBlock}
 Maior dor do cliente-alvo: ${pain || "ineficiência e falta de resultados"}
 Tom de voz: ${TONE_LABELS[tone] || tone}
 Cor primária da marca: ${color} (RGB: ${rgb})
 CTA principal: ${ctaText}
-${productsBlock}
+WhatsApp de contato: wa.me/${waNumber}
+${productsBlock}${imagesBlock}
 
 ═══════════════════════════════════════
 SISTEMA DE DESIGN — SIGA À RISCA
@@ -267,16 +275,16 @@ COPY — OBRIGATÓRIO:
 - Método SPIN: Situação (dor reconhecida) → Problema (implicações) → Implicação (custo de não resolver) → Necessidade (sua solução)
 - Hero headline: fala do problema/transformação, não do produto. Ex: "Chega de perder cliente por falta de resposta" em vez de "Sistema de atendimento"
 - Todas as seções com copy REAL específica para "${name}" no setor "${sector || "este mercado"}" — ZERO Lorem ipsum
-- Depoimentos fictícios mas realistas: nomes brasileiros, cidades, dores específicas do setor, resultados concretos (números quando possível)
+- Não invente pessoas reais, nomes de clientes, depoimentos fictícios ou equipes imaginárias
 - CTA: verbo de ação + benefício. Ex: "Quero mais clientes", "Começar agora grátis", "Falar com especialista"
 
 QUALIDADE OBRIGATÓRIA:
 ✓ Visual profissional — equivalente a sites feitos por agências de marketing digital
-✓ Nenhuma imagem externa (use gradientes CSS, SVGs inline, iniciais em círculo)
+✓ Imagens externas SOMENTE as fornecidas no briefing; demais elementos: gradientes CSS, SVGs inline, iniciais em círculo
 ✓ 100% responsivo — mobile impecável
 ✓ Smooth scroll, hover states, animações sutis
 ✓ Formulário de contato com validação JS básica (campos obrigatórios)
-✓ WhatsApp CTA abre wa.me (número fictício se não informado: 5511999999999)
+✓ WhatsApp CTA abre wa.me/${waNumber}
 ✓ Acessibilidade: alt em imagens, aria-labels, foco visível
 
 RETORNE APENAS o código HTML completo, sem explicações, sem markdown, sem blocos de código.
