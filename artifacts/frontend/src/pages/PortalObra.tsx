@@ -135,6 +135,7 @@ export default function PortalObra() {
   const [approved, setApproved] = useState(false);
   const [expandedDiario, setExpandedDiario] = useState<string | null>(null);
   const [lightbox, setLightbox] = useState<string | null>(null);
+  const [activeTab, setActiveTab] = useState<"dados" | "orcamento" | "cronograma" | "diario">("dados");
 
   useEffect(() => {
     if (!token) return;
@@ -284,8 +285,50 @@ export default function PortalObra() {
           </div>
         )}
 
+        {/* ── Tab bar ── */}
+        <div className="mb-6">
+          {/* Mobile: native select, < 640px */}
+          <div className="sm:hidden">
+            <select
+              value={activeTab}
+              onChange={(e) => setActiveTab(e.target.value as "dados" | "orcamento" | "cronograma" | "diario")}
+              className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2.5 text-sm font-medium text-gray-700 focus:outline-none focus:ring-2 focus:ring-indigo-400"
+            >
+              <option value="dados">Dados da Obra</option>
+              <option value="orcamento">Orçamento</option>
+              <option value="cronograma">Cronograma</option>
+              <option value="diario">Diário da Obra</option>
+            </select>
+          </div>
+
+          {/* Desktop: horizontal tab bar, ≥ 640px */}
+          <div className="hidden sm:flex border-b border-gray-200 overflow-x-auto">
+            {(
+              [
+                { id: "dados",      label: "Dados da Obra",  icon: <Building2 className="h-4 w-4" /> },
+                { id: "orcamento",  label: "Orçamento",      icon: <CircleDollarSign className="h-4 w-4" /> },
+                { id: "cronograma", label: "Cronograma",     icon: <Layers className="h-4 w-4" /> },
+                { id: "diario",     label: "Diário da Obra", icon: <FileText className="h-4 w-4" /> },
+              ] as const
+            ).map((tab) => (
+              <button
+                key={tab.id}
+                onClick={() => setActiveTab(tab.id)}
+                className={`flex items-center gap-2 px-5 py-3 text-sm font-medium border-b-2 whitespace-nowrap transition-colors ${
+                  activeTab === tab.id
+                    ? "border-indigo-600 text-indigo-700"
+                    : "border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300"
+                }`}
+              >
+                {tab.icon}
+                {tab.label}
+              </button>
+            ))}
+          </div>
+        </div>
+
         {/* ── Dados da obra ── */}
-        <Section title="Dados da Obra" icon={<Building2 className="h-5 w-5" />}>
+        {activeTab === "dados" && <Section title="Dados da Obra" icon={<Building2 className="h-5 w-5" />}>
           <InfoGrid items={[
             { label: "Início", value: fmt(obra.dataInicio) },
             { label: "Conclusão prevista", value: fmt(obra.dataFimPrevista) },
@@ -297,10 +340,10 @@ export default function PortalObra() {
               value: `${pct(obra.custoRealizado, obra.orcamentoTotal) ?? "—"}%`,
             }] : []),
           ]} />
-        </Section>
+        </Section>}
 
         {/* ── Orçamento ── */}
-        <Section title="Orçamento" icon={<CircleDollarSign className="h-5 w-5" />}>
+        {activeTab === "orcamento" && <Section title="Orçamento" icon={<CircleDollarSign className="h-5 w-5" />}>
           {!orcamento ? (
             <div className="text-center py-8 text-gray-400">
               <FileText className="h-8 w-8 mx-auto mb-2 opacity-40" />
@@ -378,10 +421,10 @@ export default function PortalObra() {
               </div>
             </>
           )}
-        </Section>
+        </Section>}
 
         {/* ── Cronograma ── */}
-        <Section title="Cronograma" icon={<Layers className="h-5 w-5" />}>
+        {activeTab === "cronograma" && <Section title="Cronograma" icon={<Layers className="h-5 w-5" />}>
           {etapas.length === 0 ? (
             <div className="text-center py-8 text-gray-400">
               <Calendar className="h-8 w-8 mx-auto mb-2 opacity-40" />
@@ -423,10 +466,10 @@ export default function PortalObra() {
               })}
             </div>
           )}
-        </Section>
+        </Section>}
 
         {/* ── Diário da Obra ── */}
-        <Section title="Diário da Obra" icon={<FileText className="h-5 w-5" />}>
+        {activeTab === "diario" && <Section title="Diário da Obra" icon={<FileText className="h-5 w-5" />}>
           {diario.length === 0 ? (
             <div className="text-center py-8 text-gray-400">
               <FileText className="h-8 w-8 mx-auto mb-2 opacity-40" />
@@ -499,7 +542,7 @@ export default function PortalObra() {
               })}
             </div>
           )}
-        </Section>
+        </Section>}
 
         {/* Footer */}
         <footer className="text-center text-xs text-gray-400 py-6 border-t border-gray-200 mt-4">
