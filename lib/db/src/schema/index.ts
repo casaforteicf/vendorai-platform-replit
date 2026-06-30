@@ -108,3 +108,6 @@ export * from "./clinic_prontuarios";
 export * from "./scout_regras";
 export * from "./scout_oportunidades";
 export * from "./client_service_gaps";
+export * from "./contracts";
+export * from "./billing_records";
+export * from "./automation_logs";

@@ -15,6 +15,10 @@ import {
   plansTable,
   planAssignmentLogTable,
   dealClosingStatusTable,
+  contractsTable,
+  billingRecordsTable,
+  automationLogsTable,
+  activitiesTable,
 } from "@workspace/db";
 import { dispatchVendaWebhook } from "../services/erp-webhook.js";
 import { sendDirectWhatsAppMessage, WhatsAppNotConnectedError } from "../services/omnichannel.js";
@@ -119,7 +123,7 @@ router.patch("/deals/:id", async (req, res) => {
   }
 
   const [existing] = await db
-    .select({ id: dealsTable.id, tenantId: dealsTable.tenantId, etapa: dealsTable.etapa, assignedTo: dealsTable.assignedTo })
+    .select({ id: dealsTable.id, tenantId: dealsTable.tenantId, etapa: dealsTable.etapa, assignedTo: dealsTable.assignedTo, wonAt: dealsTable.wonAt })
     .from(dealsTable)
     .where(eq(dealsTable.id, String(req.params.id)));
 
@@ -146,6 +150,23 @@ router.patch("/deals/:id", async (req, res) => {
     .where(eq(dealsTable.id, existing.id))
     .returning();
 
+  // helper: log a step to automation_logs without throwing
+  const logAutomation = async (step: string, status: string, errorMessage?: string) => {
+    try {
+      await db.insert(automationLogsTable).values({ flow: "deal_won", dealId: deal.id, step, status, errorMessage: errorMessage?.slice(0, 1000) });
+    } catch { /* ignore */ }
+  };
+
+  // ── Update lead status when deal is won (sync — fast DB update)
+  if (parsed.data.etapa === "ganho" && existing.etapa !== "ganho" && deal.leadId) {
+    await db
+      .update(leadsTable)
+      .set({ status: "convertido", updatedAt: new Date() })
+      .where(eq(leadsTable.id, deal.leadId));
+    req.log.info({ dealId: deal.id, leadId: deal.leadId }, "deal-ganho: lead status updated to convertido");
+  }
+
+  // tracking vars used inside the ganho block (kept for internal flow control)
   let inviteSent = false;
   let inviteEmail: string | undefined;
   let inviteSkipReason: string | undefined;
@@ -159,16 +180,7 @@ router.patch("/deals/:id", async (req, res) => {
   let onboardingSent = false;
   let onboardingSkipReason: string | undefined;
 
-  // ── Update lead status when deal is won
-  if (parsed.data.etapa === "ganho" && existing.etapa !== "ganho" && deal.leadId) {
-    await db
-      .update(leadsTable)
-      .set({ status: "convertido", updatedAt: new Date() })
-      .where(eq(leadsTable.id, deal.leadId));
-    req.log.info({ dealId: deal.id, leadId: deal.leadId }, "deal-ganho: lead status updated to convertido");
-  }
-
-  // ── Trigger ganho: idempotent closure (contract-only retry for failed/skipped) ─────
+  // ── Trigger ganho: idempotent via won_at (contract-only retry for failed/skipped) ─────
   if (parsed.data.etapa === "ganho" && existing.etapa !== "ganho") {
     // ── Validação: plano obrigatório antes de fechar ────────────────────────
     if (!deal.planoContratado) {
@@ -217,8 +229,22 @@ router.patch("/deals/:id", async (req, res) => {
     if (deal.closureTriggeredAt && !isContractRetry) {
       req.log.info({ dealId: deal.id }, "deal-ganho: already triggered and succeeded, skipping");
     } else {
+      // ── Responder imediatamente — I/O pesado roda async (fire-and-forget) ────
+      const [earlyDeal] = await db.select().from(dealsTable).where(eq(dealsTable.id, deal.id));
+      res.json(earlyDeal);
+      const bgLog = req.log;
+
+      void (async () => {
       try {
         // Marcar início do fechamento (ou manter data no retry)
+        // Setar won_at como idempotência — só na primeira vez
+        if (!existing.wonAt) {
+          await db
+            .update(dealsTable)
+            .set({ wonAt: new Date() })
+            .where(eq(dealsTable.id, deal.id));
+        }
+
         await db
           .update(dealsTable)
           .set({
@@ -384,13 +410,15 @@ router.patch("/deals/:id", async (req, res) => {
               const plataforma = tenant?.name ?? "VendorAI";
               const whatsappMessage = inviteUrl
                 ? `Olá, ${nome}! 🎉\n\nSeu acesso à plataforma ${plataforma} foi liberado.\n\nClique no link abaixo para criar sua senha e acessar:\n${inviteUrl}`
-                : `Olá, ${nome}! 🎉\n\nSeu negócio foi fechado com sucesso na plataforma ${plataforma}. Em breve nossa equipe entrará em contato com mais informações.`;
+                : `Olá ${nome}! Seja bem-vindo à Vendor.ai! Seu contrato foi enviado para assinatura. — Equipe Vendor.ai`;
               await sendDirectWhatsAppMessage(tenantId, lead.telefone, whatsappMessage, req.log);
               whatsappSent = true;
+              await logAutomation("whatsapp_welcome", "success");
               req.log.info({ dealId: deal.id }, "whatsapp invite sent");
             } catch (err) {
               whatsappSkipReason =
                 err instanceof WhatsAppNotConnectedError ? "zapi_not_configured" : "send_error";
+              await logAutomation("whatsapp_welcome", "error", err instanceof Error ? err.message : String(err));
               req.log.warn({ dealId: deal.id, err }, "whatsapp invite failed");
             }
           }
@@ -538,6 +566,19 @@ router.patch("/deals/:id", async (req, res) => {
                   })
                   .where(eq(dealsTable.id, deal.id));
 
+                // Salvar contrato na tabela contracts
+                const signUrl = doc.signers?.[0]?.sign_url ?? null;
+                await db.insert(contractsTable).values({
+                  tenantId,
+                  dealId: deal.id,
+                  contractType: partes,
+                  status: "sent_for_signature",
+                  zapsignDocId: doc.token,
+                  zapsignSignUrl: signUrl,
+                  sentAt: new Date(),
+                }).catch((e) => req.log.warn({ err: e }, "deal-ganho: contracts insert failed"));
+
+                await logAutomation("zapsign_contract", "success");
                 req.log.info(
                   { dealId: deal.id, docToken: doc.token, signers: signers.length, partes },
                   "deal-ganho: contrato ZapSign criado",
@@ -551,6 +592,7 @@ router.patch("/deals/:id", async (req, res) => {
                 .update(dealsTable)
                 .set({ contractStatus: "failed", contractError: errMsg.slice(0, 500), updatedAt: new Date() })
                 .where(eq(dealsTable.id, deal.id));
+              await logAutomation("zapsign_contract", "error", errMsg);
               req.log.warn({ err, dealId: deal.id }, "deal-ganho: ZapSign falhou (non-fatal)");
             }
           }
@@ -664,8 +706,23 @@ router.patch("/deals/:id", async (req, res) => {
               { dealId: deal.id, chargeId: charge.id, split: !!partnerWalletId, partnerWalletId },
               "Asaas charge created",
             );
+
+            // Salvar cobrança na tabela billing_records
+            await db.insert(billingRecordsTable).values({
+              tenantId,
+              dealId: deal.id,
+              asaasPaymentId: charge.id,
+              invoiceUrl: charge.invoiceUrl ?? charge.bankSlipUrl ?? null,
+              valor: deal.valor ?? null,
+              status: charge.status ?? "pending",
+              partnerWalletId: partnerWalletId ?? null,
+              splitPercent: partnerWalletId ? "40" : null,
+            }).catch((e) => req.log.warn({ err: e }, "deal-ganho: billing_records insert failed"));
+
+            await logAutomation("asaas_charge", "success");
           } catch (err) {
             chargeSkipReason = "asaas_error";
+            await logAutomation("asaas_charge", "error", err instanceof Error ? err.message : String(err));
             req.log.warn({ err, dealId: deal.id }, "Asaas charge creation failed");
           }
         }
@@ -687,9 +744,30 @@ router.patch("/deals/:id", async (req, res) => {
             req.log,
           );
         }
+
+        // ── Criar activity "deal_won" no deal ────────────────────────────────
+        if (deal.leadId) {
+          try {
+            await db.insert(activitiesTable).values({
+              tenantId,
+              leadId: deal.leadId,
+              dealId: deal.id,
+              tipo: "tarefa",
+              titulo: "Deal ganho",
+              descricao: "Contrato enviado, cobrança criada.",
+              status: "concluida",
+              concluidaEm: new Date(),
+            });
+            await logAutomation("activity_created", "success");
+          } catch (err) {
+            await logAutomation("activity_created", "error", err instanceof Error ? err.message : String(err));
+            req.log.warn({ err, dealId: deal.id }, "deal-ganho: activity insert failed (non-fatal)");
+          }
+        }
       } catch (err) {
         const errStr = err instanceof Error ? err.stack || err.message : String(err);
         console.error("=== deal-ganho: CRITICAL ERROR ===", errStr);
+        await logAutomation("deal_won_flow", "error", errStr.slice(0, 500));
         req.log.warn({ err }, "deal-ganho: trigger processing failed");
         // Marcar deal_closing_status como travado para permitir retry manual
         await db
@@ -702,6 +780,10 @@ router.patch("/deals/:id", async (req, res) => {
           .where(eq(dealClosingStatusTable.dealId, deal.id))
           .catch(() => { /* ignore */ });
       }
+      })().catch((asyncErr) => {
+        bgLog.warn({ err: asyncErr, dealId: deal.id }, "deal-ganho: async flow uncaught error");
+      });
+      return; // response already sent above — skip perdido and default response
     }
   }
 
@@ -728,21 +810,7 @@ router.patch("/deals/:id", async (req, res) => {
   // Re-fetch deal atualizado para retornar estado fresco
   const [finalDeal] = await db.select().from(dealsTable).where(eq(dealsTable.id, deal.id));
 
-  res.json({
-    ...finalDeal,
-    inviteSent,
-    inviteEmail,
-    inviteSkipReason,
-    whatsappSent,
-    whatsappSkipReason,
-    chargeId,
-    chargeLink,
-    chargeSkipReason,
-    contractSent,
-    contractSkipReason,
-    onboardingSent,
-    onboardingSkipReason,
-  });
+  res.json(finalDeal);
 });
 
 // ─── Quote extraction ─────────────────────────────────────────────────────────

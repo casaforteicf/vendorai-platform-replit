@@ -49,6 +49,8 @@ export const dealsTable = pgTable("deals", {
   onboardingStatus: text("onboarding_status"),
   onboardingError: text("onboarding_error"),
   zapsignDocId: text("zapsign_doc_id"),
+  // Won deal tracking
+  wonAt: timestamp("won_at"),
   // Lost deal tracking
   lostAt: timestamp("lost_at"),
   lostReason: text("lost_reason"),
