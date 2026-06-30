@@ -286,7 +286,7 @@ function ConfigForm({ tenantId, onGenerate }: { tenantId: string; onGenerate: (c
         headers: { "Content-Type": file.type || "image/jpeg" },
       });
       if (!putRes.ok) throw new Error("Upload falhou");
-      setImages((prev) => [...prev, `/api/storage/public-objects/${result.objectPath}`]);
+      setImages((prev) => [...prev, `${window.location.origin}/api/storage/public-objects/${result.objectPath}`]);
     } catch {
       toast({ title: `Erro ao enviar "${file.name}". Tente novamente.`, variant: "destructive" });
     } finally {

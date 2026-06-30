@@ -535,7 +535,13 @@ router.post("/tenants/:tenantId/site-generator/generate", async (req, res) => {
     ? [...catalogProducts, ...(config.products ?? [])]
     : (config.products ?? []);
 
-  const enrichedConfig = { ...config, name, sector, desc, logoUrl, products: allProducts };
+  // Normalize image URLs to absolute so they work in downloaded HTML files
+  const baseOrigin = `${req.protocol}://${req.get("host")}`;
+  const absoluteImages = (config.images ?? []).map((url) =>
+    url.startsWith("/") ? `${baseOrigin}${url}` : url,
+  );
+
+  const enrichedConfig = { ...config, name, sector, desc, logoUrl, products: allProducts, images: absoluteImages };
   const prompt = buildGeneratePrompt(enrichedConfig);
 
   let result;
