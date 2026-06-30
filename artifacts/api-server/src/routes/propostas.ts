@@ -628,9 +628,16 @@ router.post("/propostas/:id/accept", async (req, res) => {
   });
 });
 
-// ── Canal C: Marcação manual pelo vendedor ──────────────────────────────────
+// ── Canal C: Marcação manual pelo vendedor (manual ou via WhatsApp) ─────────
+
+const acceptManualBodySchema = z.object({
+  via: z.enum(["manual", "whatsapp"]).optional().default("manual"),
+});
 
 router.post("/propostas/:id/accept-manual", async (req, res) => {
+  const bodyParsed = acceptManualBodySchema.safeParse(req.body);
+  const via = bodyParsed.success ? bodyParsed.data.via : "manual";
+
   const [proposta] = await db
     .select()
     .from(propostasTable)
@@ -641,12 +648,17 @@ router.post("/propostas/:id/accept-manual", async (req, res) => {
     return;
   }
 
+  if (proposta.status === "aceita") {
+    res.status(409).json({ error: "Proposta já aceita", propostaId: proposta.id });
+    return;
+  }
+
   if (req.user?.platformRole !== "super_admin" && proposta.tenantId !== req.user?.tenantId) {
     res.status(403).json({ error: "Access denied to this tenant" });
     return;
   }
 
-  const result = await proposalAccepted(proposta.id, "manual", {
+  const result = await proposalAccepted(proposta.id, via as "manual" | "whatsapp", {
     nome: req.user?.email ?? undefined,
   });
 
@@ -661,7 +673,7 @@ router.post("/propostas/:id/accept-manual", async (req, res) => {
   }
 
   res.status(200).json({
-    message: "Proposta accepted manually",
+    message: `Proposta accepted via ${via}`,
     propostaId: result.propostaId,
     dealId: result.dealId,
   });

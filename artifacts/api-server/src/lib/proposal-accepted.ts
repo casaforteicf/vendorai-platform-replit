@@ -68,19 +68,24 @@ export async function proposalAccepted(
     log.info("proposalAccepted: proposta already accepted, checking deal closure");
   }
 
+  const now = new Date();
+
   // 2. Mark proposta as accepted (idempotent — no-op if already aceita)
   const [updatedProposta] = await db
     .update(propostasTable)
     .set({
       status: "aceita" as typeof propostasTable.$inferInsert.status,
+      acceptedAt: proposta.status === "aceita" ? proposta.acceptedAt : now,
+      acceptedVia: proposta.status === "aceita" ? proposta.acceptedVia : channel,
+      acceptedBy: proposta.status === "aceita" ? proposta.acceptedBy : (metadata?.nome ?? null),
       acceptanceMetadata: {
         channel,
-        acceptedAt: new Date().toISOString(),
+        acceptedAt: now.toISOString(),
         ...(metadata?.ip ? { ip: metadata.ip } : {}),
         ...(metadata?.nome ? { nome: metadata.nome } : {}),
         ...(metadata?.documento ? { documento: metadata.documento } : {}),
       },
-      updatedAt: new Date(),
+      updatedAt: now,
     })
     .where(eq(propostasTable.id, propostaId))
     .returning();

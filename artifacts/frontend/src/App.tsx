@@ -19,6 +19,7 @@ const Register           = lazy(() => import("@/pages/Register"));
 const ForgotPassword     = lazy(() => import("@/pages/ForgotPassword"));
 const ResetPassword      = lazy(() => import("@/pages/ResetPassword"));
 const PortalObra         = lazy(() => import("@/pages/PortalObra"));
+const PublicProposta     = lazy(() => import("@/pages/PublicProposta"));
 const ForcePasswordChange= lazy(() => import("@/pages/ForcePasswordChange"));
 const AcceptInvite       = lazy(() => import("@/pages/AcceptInvite"));
 const NotFound           = lazy(() => import("@/pages/not-found"));
@@ -389,6 +390,9 @@ function AppRoutes() {
         </Route>
         <Route path="/portal/obra/:token">
           <PublicRoute component={PortalObra} />
+        </Route>
+        <Route path="/p/:token">
+          {() => <PublicProposta />}
         </Route>
         <Route path="/onboarding">
           <OnboardingRoute />

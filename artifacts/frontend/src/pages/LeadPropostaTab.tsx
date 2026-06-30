@@ -41,7 +41,15 @@ import {
   ExternalLink,
   Clock,
   MessageCircle,
+  CheckSquare,
+  Link2,
 } from "lucide-react";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import {
   useListLeadProposals,
   useListLeadProducts,
@@ -119,9 +127,48 @@ export default function LeadPropostaTab({ leadId, tenantId, lead }: LeadProposta
   };
 
   const [changingLabel, setChangingLabel] = useState<string | null>(null);
+  const [acceptingId, setAcceptingId] = useState<string | null>(null);
   const updatePropostaStatus = useUpdatePropostaStatus({
     request: { headers: { Authorization: `Bearer ${token}` } },
   });
+
+  async function handleAcceptProposal(propostaId: string, via: "manual" | "whatsapp") {
+    setAcceptingId(propostaId);
+    try {
+      const res = await fetch(api(`/api/propostas/${propostaId}/accept-manual`), {
+        method: "POST",
+        headers: { ...headers },
+        body: JSON.stringify({ via }),
+      });
+      const body = await res.json().catch(() => ({}));
+      if (res.status === 409) {
+        toast({ title: "Proposta já aceita anteriormente" });
+      } else if (!res.ok) {
+        throw new Error(body.error ?? "Erro ao aceitar proposta");
+      } else {
+        toast({ title: via === "whatsapp" ? "Proposta marcada como aceita via WhatsApp!" : "Proposta marcada como aceita manualmente!" });
+        queryClient.invalidateQueries({ queryKey: ["listLeadProposals", leadId] });
+        queryClient.invalidateQueries({ queryKey: ["listPropostas", tenantId] });
+      }
+    } catch (e: any) {
+      toast({ title: "Erro ao aceitar proposta", description: e?.message, variant: "destructive" });
+    } finally {
+      setAcceptingId(null);
+    }
+  }
+
+  function copyPublicLink(publicToken: string | null | undefined) {
+    if (!publicToken) {
+      toast({ title: "Link público não disponível para esta proposta", variant: "destructive" });
+      return;
+    }
+    const url = `${window.location.origin}/p/${publicToken}`;
+    navigator.clipboard.writeText(url).then(() => {
+      toast({ title: "Link copiado para a área de transferência!" });
+    }).catch(() => {
+      toast({ title: `Link: ${url}` });
+    });
+  }
 
   const ORCAMENTO_LABELS = [
     { value: "em_analise", label: "Em Análise", color: "bg-blue-50 text-blue-700 border-blue-200",   targetStatus: "enviada" },
@@ -1097,6 +1144,42 @@ export default function LeadPropostaTab({ leadId, tenantId, lead }: LeadProposta
                       >
                         <MessageCircle className="h-3.5 w-3.5" />
                       </Button>
+                      <Button
+                        size="icon"
+                        variant="ghost"
+                        className="h-7 w-7 text-blue-500 hover:text-blue-700 hover:bg-blue-50"
+                        title="Copiar link público"
+                        onClick={() => copyPublicLink((p as any).publicToken)}
+                      >
+                        <Link2 className="h-3.5 w-3.5" />
+                      </Button>
+                      {p.status !== "accepted" && p.status !== "rejected" && (
+                        <DropdownMenu>
+                          <DropdownMenuTrigger asChild>
+                            <Button
+                              size="icon"
+                              variant="ghost"
+                              className="h-7 w-7 text-green-700 hover:text-green-800 hover:bg-green-50"
+                              title="Marcar como aceita"
+                              disabled={acceptingId === p.id}
+                            >
+                              {acceptingId === p.id
+                                ? <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                                : <CheckSquare className="h-3.5 w-3.5" />}
+                            </Button>
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent align="end" className="min-w-[160px]">
+                            <DropdownMenuItem onClick={() => handleAcceptProposal(p.id, "whatsapp")}>
+                              <MessageCircle className="h-4 w-4 mr-2 text-green-600" />
+                              Via WhatsApp
+                            </DropdownMenuItem>
+                            <DropdownMenuItem onClick={() => handleAcceptProposal(p.id, "manual")}>
+                              <CheckSquare className="h-4 w-4 mr-2 text-blue-600" />
+                              Manualmente
+                            </DropdownMenuItem>
+                          </DropdownMenuContent>
+                        </DropdownMenu>
+                      )}
                     </div>
                   </div>
                 ))}

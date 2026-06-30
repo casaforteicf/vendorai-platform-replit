@@ -47,6 +47,7 @@ import tokenPurchasesRouter from "./token_purchases";
 import tenantDomainsRouter from "./tenant_domains";
 import notificationsRouter from "./notifications";
 import { intakeRouter } from "./intake";
+import publicProposalsRouter from "./public_proposals";
 import construcaoRouter from "./construcao";
 import archRouter, { archPublicRouter } from "./arch";
 import financeiroObraRouter from "./financeiro_obra";
@@ -89,6 +90,7 @@ router.use(archPublicRouter);
 router.use(googleCallbackRouter);
 router.use(instagramCallbackRouter);
 router.use(whatsappCallbackRouter);
+router.use(publicProposalsRouter);
 
 // Protected — all routes below require a valid JWT
 router.use(authenticate);
