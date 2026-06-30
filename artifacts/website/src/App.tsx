@@ -12,6 +12,7 @@ import Demo from "@/pages/Demo";
 import Privacy from "@/pages/Privacy";
 import Terms from "@/pages/Terms";
 import VerticalPage from "@/pages/site/VerticalPage";
+import ParceirosPage from "@/pages/site/ParceirosPage";
 import Navbar from "@/components/Navbar";
 import Footer from "@/components/Footer";
 
@@ -20,8 +21,9 @@ const queryClient = new QueryClient();
 function Router() {
   return (
     <Switch>
-      {/* Vertical pages — own nav, no global Navbar/Footer */}
+      {/* Public standalone pages — own nav, no global Navbar/Footer */}
       <Route path="/verticais/:slug" component={VerticalPage} />
+      <Route path="/parceiros" component={ParceirosPage} />
 
       {/* All other pages — standard layout */}
       <Route>

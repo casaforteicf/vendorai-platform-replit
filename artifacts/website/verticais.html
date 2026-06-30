@@ -484,14 +484,7 @@ h1, h2, h3 {
   </div>
 </div>
 
-<!-- ── Contact Modal ── -->
-<div class="modal-overlay" id="modal-overlay">
-  <div class="modal">
-    <button class="modal-close" id="modal-close" aria-label="Fechar">✕</button>
-    <div id="modal-content"></div>
-  </div>
-</div>
-
+<script src="/website/js/contact-modal.js"></script>
 <script>
 (function() {
   // ── Helpers ──────────────────────────────────────────────────────────────
@@ -572,7 +565,7 @@ h1, h2, h3 {
           <h1>${v.titulo || v.nome}</h1>
           ${v.descricao ? `<p>${v.descricao}</p>` : ''}
           <div class="hero-ctas">
-            <button class="btn btn-primary btn-lg" onclick="openModal()">
+            <button class="btn btn-primary btn-lg" onclick="_openVerticalModal()">
               Falar sobre ${v.nome}
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg>
             </button>
@@ -605,7 +598,7 @@ h1, h2, h3 {
           <h2>Pronto para transformar seu negócio de <span class="grad-text">${v.nome.toLowerCase()}</span>?</h2>
           <p>Veja nossos planos e escolha o que melhor se encaixa na sua operação.</p>
           <div class="cta-buttons">
-            <button class="btn btn-primary btn-lg" onclick="openModal()">Falar com especialista</button>
+            <button class="btn btn-primary btn-lg" onclick="_openVerticalModal()">Falar com especialista</button>
             <a href="/website/#planos" class="btn btn-outline btn-lg">Ver planos →</a>
           </div>
         </div>
@@ -614,103 +607,17 @@ h1, h2, h3 {
 
     // Store vertical info for modal
     window._currentVertical = { nome: v.nome, slug: v.slug };
-    renderModalForm();
   }
 
-  // ── Modal ─────────────────────────────────────────────────────────────────
-  function renderModalForm() {
-    const v = window._currentVertical || { nome: 'esta vertical', slug: '' };
-    modalContent.innerHTML = `
-      <h3>Falar sobre ${v.nome}</h3>
-      <p class="modal-sub">Preencha abaixo e nossa equipe especializada retorna em breve.</p>
-      <form id="contato-form">
-        <div class="form-row">
-          <div class="form-group">
-            <label class="form-label" for="f-nome">Nome *</label>
-            <input class="form-input" id="f-nome" name="nome" required placeholder="João Silva">
-          </div>
-          <div class="form-group">
-            <label class="form-label" for="f-empresa">Empresa</label>
-            <input class="form-input" id="f-empresa" name="empresa" placeholder="Sua Empresa">
-          </div>
-        </div>
-        <div class="form-row">
-          <div class="form-group">
-            <label class="form-label" for="f-email">E-mail *</label>
-            <input class="form-input" id="f-email" name="email" type="email" required placeholder="joao@empresa.com">
-          </div>
-          <div class="form-group">
-            <label class="form-label" for="f-telefone">Telefone</label>
-            <input class="form-input" id="f-telefone" name="telefone" placeholder="(11) 99999-9999">
-          </div>
-        </div>
-        <div class="form-group">
-          <label class="form-label" for="f-mensagem">Mensagem *</label>
-          <textarea class="form-textarea" id="f-mensagem" name="mensagem" required>Tenho interesse na vertical ${v.nome}</textarea>
-        </div>
-        <button class="form-submit" type="submit" id="form-submit-btn">Enviar mensagem</button>
-      </form>
-    `;
-
-    document.getElementById('contato-form').addEventListener('submit', submitForm);
-  }
-
-  async function submitForm(e) {
-    e.preventDefault();
-    const btn = document.getElementById('form-submit-btn');
-    btn.disabled = true;
-    btn.textContent = 'Enviando...';
-
+  // ── Open shared contact modal with vertical context ───────────────────────
+  window._openVerticalModal = function() {
     const v = window._currentVertical || { nome: '', slug: '' };
-    const data = {
-      nome: document.getElementById('f-nome').value,
-      email: document.getElementById('f-email').value,
-      empresa: document.getElementById('f-empresa').value,
-      telefone: document.getElementById('f-telefone').value,
-      mensagem: document.getElementById('f-mensagem').value,
-      origem: `vertical_${v.slug}`,
-    };
-
-    try {
-      const res = await fetch(`${API_BASE}/site/contato`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(data),
-      });
-      if (!res.ok) {
-        const body = await res.json().catch(() => ({}));
-        throw new Error(body.details?.join(', ') || body.error || 'Erro ao enviar');
-      }
-      // Success state
-      modalContent.innerHTML = `
-        <div class="success-state">
-          <div class="success-icon">✅</div>
-          <h3>Mensagem enviada!</h3>
-          <p>Recebemos seu contato.<br>Nossa equipe especializada em <strong>${v.nome}</strong> retornará em breve.</p>
-          <button class="btn btn-primary" onclick="closeModal()">Fechar</button>
-        </div>
-      `;
-    } catch (err) {
-      btn.disabled = false;
-      btn.textContent = 'Enviar mensagem';
-      alert('Erro ao enviar: ' + (err.message || 'Tente novamente.'));
-    }
-  }
-
-  // ── Modal open/close ──────────────────────────────────────────────────────
-  window.openModal = function() {
-    renderModalForm();
-    overlay.classList.add('open');
-    document.body.style.overflow = 'hidden';
+    openContactModal({
+      origem: 'vertical_' + v.slug,
+      mensagemPreenchida: 'Tenho interesse na vertical ' + v.nome,
+      titulo: 'Falar sobre ' + v.nome,
+    });
   };
-  window.closeModal = function() {
-    overlay.classList.remove('open');
-    document.body.style.overflow = '';
-  };
-
-  document.getElementById('modal-close').addEventListener('click', closeModal);
-  overlay.addEventListener('click', e => { if (e.target === overlay) closeModal(); });
-  document.addEventListener('keydown', e => { if (e.key === 'Escape') closeModal(); });
 })();
 </script>
 </body>
