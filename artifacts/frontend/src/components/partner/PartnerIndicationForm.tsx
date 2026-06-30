@@ -9,6 +9,7 @@ import {
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { PhoneInput } from "@/components/ui/phone-input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import {
@@ -143,9 +144,8 @@ export function PartnerIndicationForm({
           <div className="grid grid-cols-2 gap-3">
             <div className="space-y-1.5">
               <Label htmlFor="telefone">Telefone</Label>
-              <Input
+              <PhoneInput
                 id="telefone"
-                placeholder="(11) 99999-9999"
                 {...register("telefone")}
               />
             </div>

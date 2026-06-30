@@ -4,6 +4,7 @@ import { useGetBusinessProfileByTenant, getGetBusinessProfileByTenantQueryKey, u
 import { useToast } from "@/hooks/use-toast";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { PhoneInput } from "@/components/ui/phone-input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import {
@@ -444,7 +445,7 @@ function ConfigForm({ tenantId, onGenerate }: { tenantId: string; onGenerate: (c
         {!telefone && (
           <div className="flex flex-col gap-1.5">
             <Label htmlFor="sg-whatsapp" className="text-sm font-medium">WhatsApp para contato</Label>
-            <Input id="sg-whatsapp" name="whatsapp" placeholder="Ex: 5511999999999 (com código do país)" />
+            <PhoneInput id="sg-whatsapp" name="whatsapp" />
           </div>
         )}
 

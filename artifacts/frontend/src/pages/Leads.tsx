@@ -23,6 +23,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Plus, Search, ChevronRight, AlertTriangle, ArrowDown, ArrowUp, ArrowUpDown, Upload, FileDown, CheckCircle2, XCircle, Flame, Cloud, Snowflake } from "lucide-react";
 import { Input } from "@/components/ui/input";
+import { PhoneInput } from "@/components/ui/phone-input";
 import {
   Select,
   SelectContent,
@@ -599,7 +600,7 @@ export default function Leads() {
                       <FormItem>
                         <FormLabel>Telefone</FormLabel>
                         <FormControl>
-                          <Input data-testid="input-telefone" placeholder="(11) 99999-9999" {...field} />
+                          <PhoneInput data-testid="input-telefone" {...field} />
                         </FormControl>
                         <FormMessage />
                       </FormItem>

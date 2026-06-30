@@ -69,6 +69,7 @@ import {
   FormMessage,
 } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
+import { PhoneInput } from "@/components/ui/phone-input";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
@@ -1679,7 +1680,7 @@ export default function Configuracoes() {
                         <FormItem>
                           <FormLabel>Telefone</FormLabel>
                           <FormControl>
-                            <Input placeholder="+55 11 99999-9999" {...field} />
+                            <PhoneInput {...field} />
                           </FormControl>
                           <FormMessage />
                         </FormItem>
