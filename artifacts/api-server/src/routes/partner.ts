@@ -1,6 +1,6 @@
 import { Router, type IRouter } from "express";
-import { eq, and, gte, lt, sum, count, desc } from "drizzle-orm";
-import { db, tenantsTable, partnerCommissionsTable } from "@workspace/db";
+import { eq, and, gte, lt, sum, count, desc, sql } from "drizzle-orm";
+import { db, tenantsTable, partnerCommissionsTable, plansTable } from "@workspace/db";
 import { requireRole } from "../middlewares/auth.js";
 
 const router: IRouter = Router();
@@ -74,7 +74,7 @@ router.get("/partner/tenants/:id/usage", requireRole("partner"), async (req, res
   });
 });
 
-// ── GET /partner/dashboard — summary + tenants + commissions ─────────────────
+// ── GET /partner/dashboard — summary + tenants (with plan + monthly commission) + commissions ──
 router.get("/partner/dashboard", requireRole("partner"), async (req, res) => {
   const partnerId = req.user!.partnerId;
   if (!partnerId) {
@@ -87,8 +87,10 @@ router.get("/partner/dashboard", requireRole("partner"), async (req, res) => {
   const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
   const monthEnd = new Date(now.getFullYear(), now.getMonth() + 1, 1);
   const nextPayment = new Date(now.getFullYear(), now.getMonth() + 1, 5);
+  const monthStartStr = monthStart.toISOString().slice(0, 10);
+  const monthEndStr = monthEnd.toISOString().slice(0, 10);
 
-  const [tenants, commissionsThisMonth, commissionsThisYear, allCommissions] = await Promise.all([
+  const [tenants, commissionsThisMonth, commissionsThisYear, allCommissions, tenantMonthlyCommissions] = await Promise.all([
     db
       .select({
         id: tenantsTable.id,
@@ -98,8 +100,11 @@ router.get("/partner/dashboard", requireRole("partner"), async (req, res) => {
         vertical: tenantsTable.vertical,
         setupCompletedAt: tenantsTable.setupCompletedAt,
         createdAt: tenantsTable.createdAt,
+        planName: plansTable.name,
+        planSlug: plansTable.slug,
       })
       .from(tenantsTable)
+      .leftJoin(plansTable, eq(tenantsTable.planId, plansTable.id))
       .where(eq(tenantsTable.partnerId, partnerId)),
 
     db
@@ -108,8 +113,8 @@ router.get("/partner/dashboard", requireRole("partner"), async (req, res) => {
       .where(
         and(
           eq(partnerCommissionsTable.partnerId, partnerId),
-          gte(partnerCommissionsTable.dataReferencia, monthStart.toISOString().slice(0, 10)),
-          lt(partnerCommissionsTable.dataReferencia, monthEnd.toISOString().slice(0, 10))
+          gte(partnerCommissionsTable.dataReferencia, monthStartStr),
+          lt(partnerCommissionsTable.dataReferencia, monthEndStr)
         )
       ),
 
@@ -129,7 +134,26 @@ router.get("/partner/dashboard", requireRole("partner"), async (req, res) => {
       .where(eq(partnerCommissionsTable.partnerId, partnerId))
       .orderBy(desc(partnerCommissionsTable.dataReferencia))
       .limit(24),
+
+    db
+      .select({
+        tenantId: partnerCommissionsTable.tenantId,
+        monthlyCommission: sum(partnerCommissionsTable.valor),
+      })
+      .from(partnerCommissionsTable)
+      .where(
+        and(
+          eq(partnerCommissionsTable.partnerId, partnerId),
+          gte(partnerCommissionsTable.dataReferencia, monthStartStr),
+          lt(partnerCommissionsTable.dataReferencia, monthEndStr)
+        )
+      )
+      .groupBy(partnerCommissionsTable.tenantId),
   ]);
+
+  const monthlyByTenant = new Map(
+    tenantMonthlyCommissions.map((r) => [r.tenantId, parseFloat(r.monthlyCommission ?? "0") || 0])
+  );
 
   const activeTenants = tenants.filter((t) => t.status === "active").length;
 
@@ -140,7 +164,10 @@ router.get("/partner/dashboard", requireRole("partner"), async (req, res) => {
       commissionThisYear: parseFloat(commissionsThisYear[0]?.total ?? "0") || 0,
       nextPaymentDate: nextPayment.toISOString().slice(0, 10),
     },
-    tenants,
+    tenants: tenants.map((t) => ({
+      ...t,
+      monthlyCommission: monthlyByTenant.get(t.id) ?? 0,
+    })),
     commissions: allCommissions,
   });
 });

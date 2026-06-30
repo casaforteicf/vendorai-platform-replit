@@ -177,20 +177,22 @@ export default function PartnerDashboard() {
                   <thead>
                     <tr className="border-b bg-muted/40">
                       <th className="text-left px-4 py-3 font-medium text-muted-foreground">Nome</th>
+                      <th className="text-left px-4 py-3 font-medium text-muted-foreground">Plano</th>
                       <th className="text-left px-4 py-3 font-medium text-muted-foreground">Status</th>
-                      <th className="text-left px-4 py-3 font-medium text-muted-foreground">Vertical</th>
                       <th className="text-left px-4 py-3 font-medium text-muted-foreground">Ativação</th>
+                      <th className="text-left px-4 py-3 font-medium text-muted-foreground">Comissão Mensal</th>
                     </tr>
                   </thead>
                   <tbody>
                     {data.tenants.map((t: PartnerTenantSummary) => (
                       <tr key={t.id} className="border-b last:border-0 hover:bg-muted/20">
                         <td className="px-4 py-3 font-medium">{t.name}</td>
+                        <td className="px-4 py-3 text-muted-foreground">{t.planName ?? "—"}</td>
                         <td className="px-4 py-3">{statusBadge(t.status)}</td>
-                        <td className="px-4 py-3 text-muted-foreground capitalize">{t.vertical ?? "—"}</td>
                         <td className="px-4 py-3 text-muted-foreground">
                           {t.setupCompletedAt ? fmtDate(t.setupCompletedAt) : fmtDate(t.createdAt)}
                         </td>
+                        <td className="px-4 py-3 text-emerald-600 font-medium">{fmt(t.monthlyCommission)}</td>
                       </tr>
                     ))}
                   </tbody>

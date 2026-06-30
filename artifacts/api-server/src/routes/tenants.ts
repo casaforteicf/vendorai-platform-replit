@@ -117,7 +117,7 @@ router.patch("/tenants/:id", requireRole("super_admin", "tenant_admin"), require
 
 // ── Integration Settings ──────────────────────────────────────────────────────
 
-router.get("/tenants/:id/integration-settings", requireSameTenanOrSuperAdmin(), async (req, res) => {
+router.get("/tenants/:id/integration-settings", requireRole("super_admin", "tenant_admin"), requireSameTenanOrSuperAdmin(), async (req, res) => {
   const [tenant] = await db
     .select({
       webhookEstoqueUrl: tenantsTable.webhookEstoqueUrl,

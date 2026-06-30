@@ -56,6 +56,9 @@ export interface PartnerTenantSummary {
   vertical: string | null;
   setupCompletedAt: string | null;
   createdAt: string;
+  planName: string | null;
+  planSlug: string | null;
+  monthlyCommission: number;
 }
 
 export interface PartnerCommissionRecord {
