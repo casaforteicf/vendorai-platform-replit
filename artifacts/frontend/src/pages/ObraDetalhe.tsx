@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from "react";
 import { useRoute, Link } from "wouter";
 import { useAuth } from "@/contexts/AuthContext";
+import { useToast } from "@/hooks/use-toast";
 import {
   useGetObra,
   useUpdateObra,
@@ -873,7 +874,8 @@ function Medicoes({ tenantId, obraId, etapas }: { tenantId: string; obraId: stri
   );
 }
 
-function DiarioDeObra({ tenantId, obraId }: { tenantId: string; obraId: string }) {
+function DiarioDeObra({ tenantId, obraId, portalToken }: { tenantId: string; obraId: string; portalToken?: string | null }) {
+  const { toast } = useToast();
   const qc = useQueryClient();
   const [addOpen, setAddOpen] = useState(false);
   const [expandedId, setExpandedId] = useState<string | null>(null);
@@ -963,9 +965,23 @@ function DiarioDeObra({ tenantId, obraId }: { tenantId: string; obraId: string }
     await qc.invalidateQueries({ queryKey: getListObraDiarioQueryKey(tenantId, obraId) });
   }
 
+  function copyDiarioLink() {
+    if (!portalToken) return;
+    const url = `${window.location.origin}/portal/obra/${portalToken}?tab=diario`;
+    navigator.clipboard.writeText(url)
+      .then(() => toast({ title: "Link do Diário copiado!", description: "Cole e compartilhe com o cliente." }))
+      .catch(() => toast({ title: "Não foi possível copiar", description: url, variant: "destructive" }));
+  }
+
   return (
     <div className="space-y-4">
       <div className="flex justify-end gap-2">
+        {portalToken && (
+          <Button size="sm" variant="outline" className="gap-1.5 text-xs" onClick={copyDiarioLink}>
+            <Copy className="h-3.5 w-3.5" />
+            Copiar link do Diário
+          </Button>
+        )}
         {/* ── Modal: Gerar Relatório PDF ── */}
         <Dialog open={pdfOpen} onOpenChange={setPdfOpen}>
           <DialogTrigger asChild>
@@ -1401,7 +1417,8 @@ function calcItemTotal(item: { quantidade: string; custoUnitario: string; bdi?: 
   return parseFloat(item.quantidade) * parseFloat(item.custoUnitario) * (1 + bdi / 100);
 }
 
-function TabOrcamento({ tenantId, obraId }: { tenantId: string; obraId: string }) {
+function TabOrcamento({ tenantId, obraId, portalToken }: { tenantId: string; obraId: string; portalToken?: string | null }) {
+  const { toast } = useToast();
   const qc = useQueryClient();
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [showNewOrcForm, setShowNewOrcForm] = useState(false);
@@ -1580,9 +1597,18 @@ function TabOrcamento({ tenantId, obraId }: { tenantId: string; obraId: string }
     return acc + etapaTotal;
   }, 0);
 
+  function copyOrcamentoLink() {
+    if (!portalToken) return;
+    const url = `${window.location.origin}/portal/obra/${portalToken}?tab=orcamento`;
+    navigator.clipboard.writeText(url)
+      .then(() => toast({ title: "Link do Orçamento copiado!", description: "Cole e compartilhe com o cliente." }))
+      .catch(() => toast({ title: "Não foi possível copiar", description: url, variant: "destructive" }));
+  }
+
   return (
     <div className="space-y-4 pt-2">
-      {/* Versões (seletor de orçamentos) */}
+      {/* Versões (seletor de orçamentos) + copy link */}
+      <div className="flex items-center justify-between gap-2 flex-wrap">
       <div className="flex items-center gap-2 flex-wrap">
         {orcamentos.map((o) => {
           const st = ORC_STATUS[o.status] ?? ORC_STATUS.rascunho;
@@ -1631,6 +1657,13 @@ function TabOrcamento({ tenantId, obraId }: { tenantId: string; obraId: string }
             <Plus className="h-3.5 w-3.5 mr-1" /> Novo Orçamento
           </Button>
         )}
+      </div>
+      {portalToken && (
+        <Button size="sm" variant="outline" className="gap-1.5 text-xs shrink-0" onClick={copyOrcamentoLink}>
+          <Copy className="h-3.5 w-3.5" />
+          Copiar link do Orçamento
+        </Button>
+      )}
       </div>
 
       {/* Detalhe do orçamento selecionado */}
@@ -2045,6 +2078,7 @@ function TabOrcamento({ tenantId, obraId }: { tenantId: string; obraId: string }
 
 export default function ObraDetalhe() {
   const { user } = useAuth();
+  const { toast } = useToast();
   const tenantId = user?.tenantId ?? "";
   const [, params] = useRoute("/obras/:obraId");
   const obraId = params?.obraId ?? "";
@@ -2126,11 +2160,9 @@ export default function ObraDetalhe() {
                 className="gap-1.5 text-xs h-7"
                 onClick={() => {
                   const url = `${window.location.origin}/portal/obra/${(obra as any).portalToken}`;
-                  navigator.clipboard.writeText(url).then(() => {
-                    alert("Link do portal copiado!");
-                  }).catch(() => {
-                    window.open(url, "_blank");
-                  });
+                  navigator.clipboard.writeText(url)
+                    .then(() => toast({ title: "Link do portal copiado!", description: "Cole e compartilhe com o cliente." }))
+                    .catch(() => toast({ title: "Não foi possível copiar", description: url, variant: "destructive" }));
                 }}
               >
                 <Copy className="h-3.5 w-3.5" />
@@ -2190,11 +2222,11 @@ export default function ObraDetalhe() {
         {activeTab === "visao-geral"  && <VisaoGeral obra={obra} etapas={etapas} />}
         {activeTab === "cronograma"   && <Cronograma tenantId={tenantId} obraId={obraId} etapas={etapas} />}
         {activeTab === "medicoes"     && <Medicoes tenantId={tenantId} obraId={obraId} etapas={etapas} />}
-        {activeTab === "diario"       && <DiarioDeObra tenantId={tenantId} obraId={obraId} />}
+        {activeTab === "diario"       && <DiarioDeObra tenantId={tenantId} obraId={obraId} portalToken={(obra as any).portalToken} />}
         {activeTab === "financeiro"   && <TabFinanceiro tenantId={tenantId} obraId={obraId} etapas={etapas} />}
         {activeTab === "estoque"      && <EstoqueObra tenantId={tenantId} obraId={obraId} />}
         {activeTab === "compras"      && <Compras tenantId={tenantId} obraId={obraId} />}
-        {activeTab === "orcamento"    && <TabOrcamento tenantId={tenantId} obraId={obraId} />}
+        {activeTab === "orcamento"    && <TabOrcamento tenantId={tenantId} obraId={obraId} portalToken={(obra as any).portalToken} />}
       </div>
     </div>
   );
