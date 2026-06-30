@@ -467,9 +467,9 @@ export default function Dashboard() {
             <div className="flex items-center justify-between">
               <h2 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Pipeline de Leads</h2>
               {total > 0 && (
-                <a href="/leads" className="text-xs text-primary hover:underline underline-offset-2">
+                <Link href="/leads" className="text-xs text-primary hover:underline underline-offset-2">
                   Ver todos
-                </a>
+                </Link>
               )}
             </div>
             {total === 0 ? (
@@ -496,7 +496,7 @@ export default function Dashboard() {
                         </div>
                       ) : (
                         pipeline[col.key].map(lead => (
-                          <a
+                          <Link
                             key={lead.id}
                             href={`/leads/${lead.id}`}
                             className="block rounded-md border bg-card px-3 py-2 shadow-sm hover:shadow-md hover:border-primary/40 transition-all"
@@ -505,7 +505,7 @@ export default function Dashboard() {
                             {lead.telefone && (
                               <p className="text-[10px] text-muted-foreground truncate mt-0.5">{lead.telefone}</p>
                             )}
-                          </a>
+                          </Link>
                         ))
                       )}
                     </div>
@@ -623,12 +623,12 @@ export default function Dashboard() {
                           <div className="text-[10px] text-muted-foreground">sem análise</div>
                         </div>
                       )}
-                      <a
+                      <Link
                         href={`/leads/${lead.leadId}`}
                         className="text-xs text-primary underline-offset-2 hover:underline whitespace-nowrap"
                       >
                         Ver lead
-                      </a>
+                      </Link>
                     </div>
                   </li>
                 ))}
