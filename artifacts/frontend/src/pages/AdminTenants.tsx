@@ -336,45 +336,54 @@ export default function AdminTenants() {
             <div className="flex items-center justify-center py-12">
               <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
             </div>
+          ) : filtered.length === 0 ? (
+            <p className="text-center text-muted-foreground py-8 text-sm">Nenhum tenant encontrado</p>
           ) : (
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Empresa</TableHead>
-                  <TableHead>Status</TableHead>
-                  <TableHead>Vertical</TableHead>
-                  <TableHead>Origem</TableHead>
-                  <TableHead>Primeiro acesso</TableHead>
-                  <TableHead>Acesso enviado</TableHead>
-                  <TableHead className="text-right">Ações</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {filtered.length === 0 && (
-                  <TableRow>
-                    <TableCell colSpan={7} className="text-center text-muted-foreground py-8">
-                      Nenhum tenant encontrado
-                    </TableCell>
-                  </TableRow>
-                )}
+            <>
+              {/* Mobile cards */}
+              <div className="divide-y sm:hidden">
                 {filtered.map((t) => (
-                  <TableRow key={t.id}>
-                    <TableCell>
-                      <div className="font-medium">{t.name}</div>
-                      <div className="text-xs text-muted-foreground">{t.slug}</div>
-                    </TableCell>
-                    <TableCell>
-                      <Badge variant="outline" className={`text-xs ${STATUS_COLORS[t.status] ?? ""}`}>
+                  <div key={t.id} className="px-4 py-4 space-y-3">
+                    <div className="flex items-start justify-between gap-2">
+                      <div>
+                        <p className="font-medium text-sm">{t.name}</p>
+                        <p className="text-xs text-muted-foreground">{t.slug}</p>
+                      </div>
+                      <Badge variant="outline" className={`text-xs shrink-0 ${STATUS_COLORS[t.status] ?? ""}`}>
                         {t.status}
                       </Badge>
-                    </TableCell>
-                    <TableCell>
+                    </div>
+                    <div className="grid grid-cols-2 gap-x-4 gap-y-2 text-xs">
+                      <div>
+                        <p className="text-muted-foreground mb-1">Origem</p>
+                        <p>{t.provisioningMethod ? PROV_LABELS[t.provisioningMethod] ?? t.provisioningMethod : "—"}</p>
+                      </div>
+                      <div>
+                        <p className="text-muted-foreground mb-1">Acesso enviado</p>
+                        <p>{t.accessSentAt ? new Intl.DateTimeFormat("pt-BR", { day: "2-digit", month: "2-digit", year: "2-digit" }).format(new Date(t.accessSentAt)) : "—"}</p>
+                      </div>
+                      <div>
+                        <p className="text-muted-foreground mb-1">Primeiro acesso</p>
+                        {t.firstLoginAt ? (
+                          <span className="flex items-center gap-1 text-emerald-600">
+                            <UserCheck className="h-3 w-3" />
+                            {new Intl.DateTimeFormat("pt-BR", { day: "2-digit", month: "2-digit", year: "2-digit" }).format(new Date(t.firstLoginAt))}
+                          </span>
+                        ) : (
+                          <span className="flex items-center gap-1 text-muted-foreground">
+                            <Clock className="h-3 w-3" /> nunca
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                    <div>
+                      <p className="text-xs text-muted-foreground mb-1">Vertical</p>
                       <Select
                         value={(t as any).vertical ?? "__none__"}
                         onValueChange={(v) => handleUpdateVertical(t.id, v)}
                         disabled={updatingVertical === t.id}
                       >
-                        <SelectTrigger className="h-7 text-xs w-44 border-dashed">
+                        <SelectTrigger className="h-8 text-xs border-dashed">
                           <SelectValue placeholder="—" />
                         </SelectTrigger>
                         <SelectContent>
@@ -385,49 +394,109 @@ export default function AdminTenants() {
                           ))}
                         </SelectContent>
                       </Select>
-                    </TableCell>
-                    <TableCell>
-                      <span className="text-xs text-muted-foreground">
-                        {t.provisioningMethod ? PROV_LABELS[t.provisioningMethod] ?? t.provisioningMethod : "—"}
-                      </span>
-                    </TableCell>
-                    <TableCell>
-                      {t.firstLoginAt ? (
-                        <span className="flex items-center gap-1 text-xs text-emerald-600">
-                          <UserCheck className="h-3.5 w-3.5" />
-                          {new Intl.DateTimeFormat("pt-BR", { day: "2-digit", month: "2-digit", year: "2-digit" }).format(new Date(t.firstLoginAt))}
-                        </span>
-                      ) : (
-                        <span className="flex items-center gap-1 text-xs text-muted-foreground">
-                          <Clock className="h-3.5 w-3.5" /> nunca
-                        </span>
-                      )}
-                    </TableCell>
-                    <TableCell>
-                      <span className="text-xs text-muted-foreground">
-                        {t.accessSentAt
-                          ? new Intl.DateTimeFormat("pt-BR", { day: "2-digit", month: "2-digit", year: "2-digit" }).format(new Date(t.accessSentAt))
-                          : "—"}
-                      </span>
-                    </TableCell>
-                    <TableCell className="text-right">
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        className="h-7 text-xs gap-1"
-                        onClick={() => handleResend(t.id)}
-                        disabled={resendingId === t.id}
-                      >
-                        {resendingId === t.id
-                          ? <Loader2 className="h-3 w-3 animate-spin" />
-                          : <RefreshCw className="h-3 w-3" />}
-                        Reenviar acesso
-                      </Button>
-                    </TableCell>
-                  </TableRow>
+                    </div>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="h-8 text-xs gap-1 w-full"
+                      onClick={() => handleResend(t.id)}
+                      disabled={resendingId === t.id}
+                    >
+                      {resendingId === t.id ? <Loader2 className="h-3 w-3 animate-spin" /> : <RefreshCw className="h-3 w-3" />}
+                      Reenviar acesso
+                    </Button>
+                  </div>
                 ))}
-              </TableBody>
-            </Table>
+              </div>
+
+              {/* Desktop table */}
+              <div className="hidden sm:block">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Empresa</TableHead>
+                      <TableHead>Status</TableHead>
+                      <TableHead>Vertical</TableHead>
+                      <TableHead>Origem</TableHead>
+                      <TableHead>Primeiro acesso</TableHead>
+                      <TableHead>Acesso enviado</TableHead>
+                      <TableHead className="text-right">Ações</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {filtered.map((t) => (
+                      <TableRow key={t.id}>
+                        <TableCell>
+                          <div className="font-medium">{t.name}</div>
+                          <div className="text-xs text-muted-foreground">{t.slug}</div>
+                        </TableCell>
+                        <TableCell>
+                          <Badge variant="outline" className={`text-xs ${STATUS_COLORS[t.status] ?? ""}`}>
+                            {t.status}
+                          </Badge>
+                        </TableCell>
+                        <TableCell>
+                          <Select
+                            value={(t as any).vertical ?? "__none__"}
+                            onValueChange={(v) => handleUpdateVertical(t.id, v)}
+                            disabled={updatingVertical === t.id}
+                          >
+                            <SelectTrigger className="h-7 text-xs w-44 border-dashed">
+                              <SelectValue placeholder="—" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {VERTICAL_OPTIONS.map((opt) => (
+                                <SelectItem key={opt.value} value={opt.value} className="text-xs">
+                                  {opt.label}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        </TableCell>
+                        <TableCell>
+                          <span className="text-xs text-muted-foreground">
+                            {t.provisioningMethod ? PROV_LABELS[t.provisioningMethod] ?? t.provisioningMethod : "—"}
+                          </span>
+                        </TableCell>
+                        <TableCell>
+                          {t.firstLoginAt ? (
+                            <span className="flex items-center gap-1 text-xs text-emerald-600">
+                              <UserCheck className="h-3.5 w-3.5" />
+                              {new Intl.DateTimeFormat("pt-BR", { day: "2-digit", month: "2-digit", year: "2-digit" }).format(new Date(t.firstLoginAt))}
+                            </span>
+                          ) : (
+                            <span className="flex items-center gap-1 text-xs text-muted-foreground">
+                              <Clock className="h-3.5 w-3.5" /> nunca
+                            </span>
+                          )}
+                        </TableCell>
+                        <TableCell>
+                          <span className="text-xs text-muted-foreground">
+                            {t.accessSentAt
+                              ? new Intl.DateTimeFormat("pt-BR", { day: "2-digit", month: "2-digit", year: "2-digit" }).format(new Date(t.accessSentAt))
+                              : "—"}
+                          </span>
+                        </TableCell>
+                        <TableCell className="text-right">
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            className="h-7 text-xs gap-1"
+                            onClick={() => handleResend(t.id)}
+                            disabled={resendingId === t.id}
+                          >
+                            {resendingId === t.id
+                              ? <Loader2 className="h-3 w-3 animate-spin" />
+                              : <RefreshCw className="h-3 w-3" />}
+                            Reenviar acesso
+                          </Button>
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </div>
+            </>
           )}
         </CardContent>
       </Card>

@@ -194,100 +194,138 @@ function PartnersTable() {
   }
 
   return (
-    <div className="rounded-md border mt-4 overflow-x-auto">
-      <Table>
-        <TableHeader>
-          <TableRow>
-            <TableHead>Nome</TableHead>
-            <TableHead>CNPJ</TableHead>
-            <TableHead>Cidade/UF</TableHead>
-            <TableHead>Nível</TableHead>
-            <TableHead className="text-right">Clientes Ativos</TableHead>
-            <TableHead className="text-right">Comissão Total</TableHead>
-            <TableHead>Status</TableHead>
-            <TableHead className="text-right">Ações</TableHead>
-          </TableRow>
-        </TableHeader>
-        <TableBody>
-          {partners.map((p) => {
-            const row = p as any;
-            const isAtivo = row.status === "ativo";
-            const isBusy =
-              toggleStatus.isPending &&
-              (toggleStatus.variables as any)?.id === row.id;
-
-            return (
-              <TableRow key={row.id}>
-                <TableCell>
-                  <div>
-                    <p className="font-medium leading-tight">
-                      {row.nomeFantasia || row.name}
-                    </p>
-                    <p className="text-xs text-muted-foreground">{row.email}</p>
-                  </div>
-                </TableCell>
-                <TableCell className="text-muted-foreground text-sm">
-                  {row.cnpj ?? "—"}
-                </TableCell>
-                <TableCell className="text-muted-foreground text-sm">
-                  {row.cidade && row.uf
-                    ? `${row.cidade}/${row.uf}`
-                    : row.cidade ?? row.uf ?? "—"}
-                </TableCell>
-                <TableCell>
+    <div className="mt-4">
+      {/* Mobile cards */}
+      <div className="divide-y border rounded-md sm:hidden">
+        {partners.map((p) => {
+          const row = p as any;
+          const isAtivo = row.status === "ativo";
+          const isBusy = toggleStatus.isPending && (toggleStatus.variables as any)?.id === row.id;
+          return (
+            <div key={row.id} className="px-4 py-4 space-y-3">
+              <div className="flex items-start justify-between gap-2">
+                <div className="min-w-0">
+                  <p className="font-medium text-sm leading-tight">{row.nomeFantasia || row.name}</p>
+                  <p className="text-xs text-muted-foreground truncate">{row.email}</p>
+                </div>
+                <div className="flex items-center gap-1.5 shrink-0">
                   <NivelBadge nivel={row.nivel ?? 1} />
-                </TableCell>
-                <TableCell className="text-right font-medium">
-                  {row.clientesAtivos ?? 0}
-                </TableCell>
-                <TableCell className="text-right font-medium text-emerald-600">
-                  {formatBRL(row.comissaoTotal)}
-                </TableCell>
-                <TableCell>
                   <StatusPartnerBadge status={row.status ?? "ativo"} />
-                </TableCell>
-                <TableCell className="text-right">
-                  {isAtivo ? (
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      className="gap-1.5 text-red-600 border-red-200 hover:bg-red-50 dark:border-red-900 dark:hover:bg-red-950"
-                      disabled={isBusy}
-                      onClick={() =>
-                        toggleStatus.mutate({ id: row.id, status: "suspenso" })
-                      }
-                    >
-                      {isBusy ? (
-                        <RefreshCw className="h-3.5 w-3.5 animate-spin" />
-                      ) : (
-                        <ShieldOff className="h-3.5 w-3.5" />
-                      )}
-                      Suspender
-                    </Button>
-                  ) : (
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      className="gap-1.5 text-emerald-600 border-emerald-200 hover:bg-emerald-50 dark:border-emerald-900 dark:hover:bg-emerald-950"
-                      disabled={isBusy || row.status === "cancelado"}
-                      onClick={() =>
-                        toggleStatus.mutate({ id: row.id, status: "ativo" })
-                      }
-                    >
-                      {isBusy ? (
-                        <RefreshCw className="h-3.5 w-3.5 animate-spin" />
-                      ) : (
-                        <ShieldCheck className="h-3.5 w-3.5" />
-                      )}
-                      Ativar
-                    </Button>
-                  )}
-                </TableCell>
-              </TableRow>
-            );
-          })}
-        </TableBody>
-      </Table>
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-x-4 gap-y-1.5 text-xs">
+                <div>
+                  <p className="text-muted-foreground">CNPJ</p>
+                  <p>{row.cnpj ?? "—"}</p>
+                </div>
+                <div>
+                  <p className="text-muted-foreground">Cidade/UF</p>
+                  <p>{row.cidade && row.uf ? `${row.cidade}/${row.uf}` : row.cidade ?? row.uf ?? "—"}</p>
+                </div>
+                <div>
+                  <p className="text-muted-foreground">Clientes ativos</p>
+                  <p className="font-medium">{row.clientesAtivos ?? 0}</p>
+                </div>
+                <div>
+                  <p className="text-muted-foreground">Comissão total</p>
+                  <p className="font-medium text-emerald-600">{formatBRL(row.comissaoTotal)}</p>
+                </div>
+              </div>
+              {isAtivo ? (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="w-full gap-1.5 text-red-600 border-red-200 hover:bg-red-50 dark:border-red-900 dark:hover:bg-red-950"
+                  disabled={isBusy}
+                  onClick={() => toggleStatus.mutate({ id: row.id, status: "suspenso" })}
+                >
+                  {isBusy ? <RefreshCw className="h-3.5 w-3.5 animate-spin" /> : <ShieldOff className="h-3.5 w-3.5" />}
+                  Suspender
+                </Button>
+              ) : (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="w-full gap-1.5 text-emerald-600 border-emerald-200 hover:bg-emerald-50 dark:border-emerald-900 dark:hover:bg-emerald-950"
+                  disabled={isBusy || row.status === "cancelado"}
+                  onClick={() => toggleStatus.mutate({ id: row.id, status: "ativo" })}
+                >
+                  {isBusy ? <RefreshCw className="h-3.5 w-3.5 animate-spin" /> : <ShieldCheck className="h-3.5 w-3.5" />}
+                  Ativar
+                </Button>
+              )}
+            </div>
+          );
+        })}
+      </div>
+
+      {/* Desktop table */}
+      <div className="hidden sm:block rounded-md border overflow-x-auto">
+        <Table>
+          <TableHeader>
+            <TableRow>
+              <TableHead>Nome</TableHead>
+              <TableHead>CNPJ</TableHead>
+              <TableHead>Cidade/UF</TableHead>
+              <TableHead>Nível</TableHead>
+              <TableHead className="text-right">Clientes Ativos</TableHead>
+              <TableHead className="text-right">Comissão Total</TableHead>
+              <TableHead>Status</TableHead>
+              <TableHead className="text-right">Ações</TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {partners.map((p) => {
+              const row = p as any;
+              const isAtivo = row.status === "ativo";
+              const isBusy = toggleStatus.isPending && (toggleStatus.variables as any)?.id === row.id;
+              return (
+                <TableRow key={row.id}>
+                  <TableCell>
+                    <div>
+                      <p className="font-medium leading-tight">{row.nomeFantasia || row.name}</p>
+                      <p className="text-xs text-muted-foreground">{row.email}</p>
+                    </div>
+                  </TableCell>
+                  <TableCell className="text-muted-foreground text-sm">{row.cnpj ?? "—"}</TableCell>
+                  <TableCell className="text-muted-foreground text-sm">
+                    {row.cidade && row.uf ? `${row.cidade}/${row.uf}` : row.cidade ?? row.uf ?? "—"}
+                  </TableCell>
+                  <TableCell><NivelBadge nivel={row.nivel ?? 1} /></TableCell>
+                  <TableCell className="text-right font-medium">{row.clientesAtivos ?? 0}</TableCell>
+                  <TableCell className="text-right font-medium text-emerald-600">{formatBRL(row.comissaoTotal)}</TableCell>
+                  <TableCell><StatusPartnerBadge status={row.status ?? "ativo"} /></TableCell>
+                  <TableCell className="text-right">
+                    {isAtivo ? (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="gap-1.5 text-red-600 border-red-200 hover:bg-red-50 dark:border-red-900 dark:hover:bg-red-950"
+                        disabled={isBusy}
+                        onClick={() => toggleStatus.mutate({ id: row.id, status: "suspenso" })}
+                      >
+                        {isBusy ? <RefreshCw className="h-3.5 w-3.5 animate-spin" /> : <ShieldOff className="h-3.5 w-3.5" />}
+                        Suspender
+                      </Button>
+                    ) : (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="gap-1.5 text-emerald-600 border-emerald-200 hover:bg-emerald-50 dark:border-emerald-900 dark:hover:bg-emerald-950"
+                        disabled={isBusy || row.status === "cancelado"}
+                        onClick={() => toggleStatus.mutate({ id: row.id, status: "ativo" })}
+                      >
+                        {isBusy ? <RefreshCw className="h-3.5 w-3.5 animate-spin" /> : <ShieldCheck className="h-3.5 w-3.5" />}
+                        Ativar
+                      </Button>
+                    )}
+                  </TableCell>
+                </TableRow>
+              );
+            })}
+          </TableBody>
+        </Table>
+      </div>
     </div>
   );
 }
@@ -357,61 +395,85 @@ function PendingCommissionsPanel() {
           Nenhuma comissão pendente. ✓
         </p>
       ) : (
-        <div className="rounded-md border overflow-x-auto">
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Parceiro</TableHead>
-                <TableHead>Cliente</TableHead>
-                <TableHead>Tipo</TableHead>
-                <TableHead className="text-right">Valor</TableHead>
-                <TableHead>Mês Ref.</TableHead>
-                <TableHead className="text-right">Ações</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {(commissions ?? []).map((c) => {
-                const isBusy =
-                  markPaid.isPending && markPaid.variables === c.id;
-                return (
-                  <TableRow key={c.id}>
-                    <TableCell className="font-medium">
-                      {c.partnerName ?? c.partnerId.slice(0, 8) + "…"}
-                    </TableCell>
-                    <TableCell className="text-muted-foreground">
-                      {c.tenantName ?? c.tenantId.slice(0, 8) + "…"}
-                    </TableCell>
-                    <TableCell className="capitalize text-muted-foreground">
-                      {c.tipo ?? "—"}
-                    </TableCell>
-                    <TableCell className="text-right font-medium text-emerald-600">
-                      {formatBRL(c.valor)}
-                    </TableCell>
-                    <TableCell className="text-muted-foreground">
-                      {c.dataReferencia ?? "—"}
-                    </TableCell>
-                    <TableCell className="text-right">
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        className="gap-1.5 text-emerald-600 border-emerald-200 hover:bg-emerald-50 dark:border-emerald-900 dark:hover:bg-emerald-950"
-                        disabled={isBusy}
-                        onClick={() => markPaid.mutate(c.id)}
-                      >
-                        {isBusy ? (
-                          <RefreshCw className="h-3.5 w-3.5 animate-spin" />
-                        ) : (
-                          <Check className="h-3.5 w-3.5" />
-                        )}
-                        Marcar como Pago
-                      </Button>
-                    </TableCell>
-                  </TableRow>
-                );
-              })}
-            </TableBody>
-          </Table>
-        </div>
+        <>
+          {/* Mobile cards */}
+          <div className="divide-y border rounded-md sm:hidden">
+            {(commissions ?? []).map((c) => {
+              const isBusy = markPaid.isPending && markPaid.variables === c.id;
+              return (
+                <div key={c.id} className="px-4 py-4 space-y-2">
+                  <div className="flex items-start justify-between gap-2">
+                    <div>
+                      <p className="text-sm font-medium">{c.partnerName ?? c.partnerId.slice(0, 8) + "…"}</p>
+                      <p className="text-xs text-muted-foreground">{c.tenantName ?? c.tenantId.slice(0, 8) + "…"}</p>
+                    </div>
+                    <p className="text-sm font-medium text-emerald-600 shrink-0">{formatBRL(c.valor)}</p>
+                  </div>
+                  <div className="flex items-center gap-3 text-xs text-muted-foreground">
+                    <span className="capitalize">{c.tipo ?? "—"}</span>
+                    {c.dataReferencia && <span>Ref: {c.dataReferencia}</span>}
+                  </div>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="w-full gap-1.5 text-emerald-600 border-emerald-200 hover:bg-emerald-50 dark:border-emerald-900 dark:hover:bg-emerald-950"
+                    disabled={isBusy}
+                    onClick={() => markPaid.mutate(c.id)}
+                  >
+                    {isBusy ? <RefreshCw className="h-3.5 w-3.5 animate-spin" /> : <Check className="h-3.5 w-3.5" />}
+                    Marcar como Pago
+                  </Button>
+                </div>
+              );
+            })}
+          </div>
+
+          {/* Desktop table */}
+          <div className="hidden sm:block rounded-md border overflow-x-auto">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Parceiro</TableHead>
+                  <TableHead>Cliente</TableHead>
+                  <TableHead>Tipo</TableHead>
+                  <TableHead className="text-right">Valor</TableHead>
+                  <TableHead>Mês Ref.</TableHead>
+                  <TableHead className="text-right">Ações</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {(commissions ?? []).map((c) => {
+                  const isBusy = markPaid.isPending && markPaid.variables === c.id;
+                  return (
+                    <TableRow key={c.id}>
+                      <TableCell className="font-medium">
+                        {c.partnerName ?? c.partnerId.slice(0, 8) + "…"}
+                      </TableCell>
+                      <TableCell className="text-muted-foreground">
+                        {c.tenantName ?? c.tenantId.slice(0, 8) + "…"}
+                      </TableCell>
+                      <TableCell className="capitalize text-muted-foreground">{c.tipo ?? "—"}</TableCell>
+                      <TableCell className="text-right font-medium text-emerald-600">{formatBRL(c.valor)}</TableCell>
+                      <TableCell className="text-muted-foreground">{c.dataReferencia ?? "—"}</TableCell>
+                      <TableCell className="text-right">
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="gap-1.5 text-emerald-600 border-emerald-200 hover:bg-emerald-50 dark:border-emerald-900 dark:hover:bg-emerald-950"
+                          disabled={isBusy}
+                          onClick={() => markPaid.mutate(c.id)}
+                        >
+                          {isBusy ? <RefreshCw className="h-3.5 w-3.5 animate-spin" /> : <Check className="h-3.5 w-3.5" />}
+                          Marcar como Pago
+                        </Button>
+                      </TableCell>
+                    </TableRow>
+                  );
+                })}
+              </TableBody>
+            </Table>
+          </div>
+        </>
       )}
     </div>
   );
@@ -1202,83 +1264,128 @@ function PartnerProspectorTab() {
           </Button>
         </div>
       ) : (
-        <div className="rounded-md border overflow-x-auto">
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Cidade/UF</TableHead>
-                <TableHead>Nichos</TableHead>
-                <TableHead>Status</TableHead>
-                <TableHead className="text-right">Encontrados</TableHead>
-                <TableHead className="text-right">Qualificados</TableHead>
-                <TableHead className="text-right">Inseridos</TableHead>
-                <TableHead>Data</TableHead>
-                <TableHead className="text-right">Ações</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {jobs.map((job) => {
-                const isRunning = runJob.isPending && runJob.variables === job.id;
-                const canRun = job.status === "pendente" || job.status === "erro";
-                return (
-                  <TableRow
-                    key={job.id}
-                    className="cursor-pointer hover:bg-muted/50"
-                    onClick={() => setSelectedJobId(job.id)}
-                  >
-                    <TableCell className="font-medium">
-                      {job.cidade}/{job.uf}
-                    </TableCell>
-                    <TableCell>
-                      <Badge variant="secondary" className="text-xs">
-                        {job.nichos?.length ?? 0} nichos
-                      </Badge>
-                    </TableCell>
-                    <TableCell>
+        <>
+          {/* Mobile cards */}
+          <div className="divide-y border rounded-md sm:hidden">
+            {jobs.map((job) => {
+              const isRunning = runJob.isPending && runJob.variables === job.id;
+              const canRun = job.status === "pendente" || job.status === "erro";
+              return (
+                <div
+                  key={job.id}
+                  className="px-4 py-4 space-y-3 cursor-pointer"
+                  onClick={() => setSelectedJobId(job.id)}
+                >
+                  <div className="flex items-start justify-between gap-2">
+                    <div>
+                      <p className="font-medium text-sm">{job.cidade}/{job.uf}</p>
+                      <p className="text-xs text-muted-foreground">{new Date(job.createdAt).toLocaleDateString("pt-BR")}</p>
+                    </div>
+                    <div className="flex items-center gap-1.5 shrink-0">
+                      <Badge variant="secondary" className="text-xs">{job.nichos?.length ?? 0} nichos</Badge>
                       <JobStatusBadge status={job.status} />
-                    </TableCell>
-                    <TableCell className="text-right text-muted-foreground">
-                      {job.totalEncontrados ?? "—"}
-                    </TableCell>
-                    <TableCell className="text-right text-muted-foreground">
-                      {job.totalQualificados ?? "—"}
-                    </TableCell>
-                    <TableCell className="text-right font-medium text-emerald-600">
-                      {job.totalInseridos ?? "—"}
-                    </TableCell>
-                    <TableCell className="text-muted-foreground text-sm whitespace-nowrap">
-                      {new Date(job.createdAt).toLocaleDateString("pt-BR")}
-                    </TableCell>
-                    <TableCell className="text-right">
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        className={cn(
-                          "gap-1.5 h-7 text-xs",
-                          canRun
-                            ? "text-blue-600 border-blue-200 hover:bg-blue-50 dark:border-blue-900 dark:hover:bg-blue-950"
-                            : "opacity-40 cursor-not-allowed",
-                        )}
-                        disabled={!canRun || isRunning}
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          runJob.mutate(job.id);
-                        }}
-                      >
-                        {isRunning ? (
-                          <RefreshCw className="h-3 w-3 animate-spin" />
-                        ) : (
-                          <Play className="h-3 w-3" />
-                        )}
-                        Executar
-                      </Button>
-                    </TableCell>
-                  </TableRow>
-                );
-              })}
-            </TableBody>
-          </Table>
-        </div>
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-3 gap-3 text-xs">
+                    <div>
+                      <p className="text-muted-foreground">Encontrados</p>
+                      <p className="font-medium">{job.totalEncontrados ?? "—"}</p>
+                    </div>
+                    <div>
+                      <p className="text-muted-foreground">Qualificados</p>
+                      <p className="font-medium">{job.totalQualificados ?? "—"}</p>
+                    </div>
+                    <div>
+                      <p className="text-muted-foreground">Inseridos</p>
+                      <p className="font-medium text-emerald-600">{job.totalInseridos ?? "—"}</p>
+                    </div>
+                  </div>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className={cn(
+                      "w-full gap-1.5 text-xs",
+                      canRun
+                        ? "text-blue-600 border-blue-200 hover:bg-blue-50 dark:border-blue-900 dark:hover:bg-blue-950"
+                        : "opacity-40 cursor-not-allowed",
+                    )}
+                    disabled={!canRun || isRunning}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      runJob.mutate(job.id);
+                    }}
+                  >
+                    {isRunning ? <RefreshCw className="h-3 w-3 animate-spin" /> : <Play className="h-3 w-3" />}
+                    Executar
+                  </Button>
+                </div>
+              );
+            })}
+          </div>
+
+          {/* Desktop table */}
+          <div className="hidden sm:block rounded-md border overflow-x-auto">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Cidade/UF</TableHead>
+                  <TableHead>Nichos</TableHead>
+                  <TableHead>Status</TableHead>
+                  <TableHead className="text-right">Encontrados</TableHead>
+                  <TableHead className="text-right">Qualificados</TableHead>
+                  <TableHead className="text-right">Inseridos</TableHead>
+                  <TableHead>Data</TableHead>
+                  <TableHead className="text-right">Ações</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {jobs.map((job) => {
+                  const isRunning = runJob.isPending && runJob.variables === job.id;
+                  const canRun = job.status === "pendente" || job.status === "erro";
+                  return (
+                    <TableRow
+                      key={job.id}
+                      className="cursor-pointer hover:bg-muted/50"
+                      onClick={() => setSelectedJobId(job.id)}
+                    >
+                      <TableCell className="font-medium">{job.cidade}/{job.uf}</TableCell>
+                      <TableCell>
+                        <Badge variant="secondary" className="text-xs">{job.nichos?.length ?? 0} nichos</Badge>
+                      </TableCell>
+                      <TableCell><JobStatusBadge status={job.status} /></TableCell>
+                      <TableCell className="text-right text-muted-foreground">{job.totalEncontrados ?? "—"}</TableCell>
+                      <TableCell className="text-right text-muted-foreground">{job.totalQualificados ?? "—"}</TableCell>
+                      <TableCell className="text-right font-medium text-emerald-600">{job.totalInseridos ?? "—"}</TableCell>
+                      <TableCell className="text-muted-foreground text-sm whitespace-nowrap">
+                        {new Date(job.createdAt).toLocaleDateString("pt-BR")}
+                      </TableCell>
+                      <TableCell className="text-right">
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className={cn(
+                            "gap-1.5 h-7 text-xs",
+                            canRun
+                              ? "text-blue-600 border-blue-200 hover:bg-blue-50 dark:border-blue-900 dark:hover:bg-blue-950"
+                              : "opacity-40 cursor-not-allowed",
+                          )}
+                          disabled={!canRun || isRunning}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            runJob.mutate(job.id);
+                          }}
+                        >
+                          {isRunning ? <RefreshCw className="h-3 w-3 animate-spin" /> : <Play className="h-3 w-3" />}
+                          Executar
+                        </Button>
+                      </TableCell>
+                    </TableRow>
+                  );
+                })}
+              </TableBody>
+            </Table>
+          </div>
+        </>
       )}
 
       <NewJobDialog

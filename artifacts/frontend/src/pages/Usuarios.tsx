@@ -254,85 +254,21 @@ export default function Usuarios() {
             <div className="text-center py-12 text-muted-foreground">
               Carregando...
             </div>
+          ) : filteredUsers?.length === 0 ? (
+            <p className="text-center text-muted-foreground py-12 text-sm">Nenhum usuário encontrado</p>
           ) : (
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Nome</TableHead>
-                  <TableHead>E-mail</TableHead>
-                  <TableHead>Função</TableHead>
-                  <TableHead>Status</TableHead>
-                  <TableHead>Telefone</TableHead>
-                  <TableHead className="text-right">Ações</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {filteredUsers?.length === 0 && (
-                  <TableRow>
-                    <TableCell
-                      colSpan={6}
-                      className="text-center text-muted-foreground py-12"
-                    >
-                      Nenhum usuário encontrado
-                    </TableCell>
-                  </TableRow>
-                )}
+            <>
+              {/* Mobile cards */}
+              <div className="divide-y -mx-6 sm:hidden">
                 {filteredUsers?.map((u) => (
-                  <TableRow key={u.id}>
-                    <TableCell className="font-medium">{u.name}</TableCell>
-                    <TableCell className="text-muted-foreground">
-                      {u.email}
-                    </TableCell>
-                    <TableCell>
-                      <Badge
-                        variant="outline"
-                        className={
-                          FUNCAO_BADGES[u.userFunction ?? "outro"] ??
-                          FUNCAO_BADGES.outro
-                        }
-                      >
-                        <Shield className="h-3 w-3 mr-1" />
-                        {FUNCAO_LABELS[u.userFunction ?? "outro"]}
-                      </Badge>
-                    </TableCell>
-                    <TableCell>
-                      {u.active ? (
-                        <Badge
-                          variant="outline"
-                          className="bg-green-100 text-green-800 border-green-200"
-                        >
-                          <CheckCircle2 className="h-3 w-3 mr-1" />
-                          Ativo
-                        </Badge>
-                      ) : (
-                        <Badge
-                          variant="outline"
-                          className="bg-gray-100 text-gray-800 border-gray-200"
-                        >
-                          <XCircle className="h-3 w-3 mr-1" />
-                          Inativo
-                        </Badge>
-                      )}
-                    </TableCell>
-                    <TableCell>
-                      {u.telefone ? (
-                        <span className="flex items-center gap-1 text-muted-foreground text-sm">
-                          <Phone className="h-3 w-3" />
-                          {u.telefone}
-                        </span>
-                      ) : (
-                        <span className="text-muted-foreground text-sm">
-                          —
-                        </span>
-                      )}
-                    </TableCell>
-                    <TableCell className="text-right">
-                      <div className="flex items-center justify-end gap-1">
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => openEdit(u)}
-                        >
+                  <div key={u.id} className="px-6 py-4 space-y-2">
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="min-w-0">
+                        <p className="font-medium text-sm truncate">{u.name}</p>
+                        <p className="text-xs text-muted-foreground truncate">{u.email}</p>
+                      </div>
+                      <div className="flex items-center gap-1 shrink-0">
+                        <Button variant="ghost" size="sm" onClick={() => openEdit(u)}>
                           <Pencil className="h-4 w-4" />
                         </Button>
                         <Button
@@ -344,11 +280,123 @@ export default function Usuarios() {
                           <Trash2 className="h-4 w-4" />
                         </Button>
                       </div>
-                    </TableCell>
-                  </TableRow>
+                    </div>
+                    <div className="flex flex-wrap items-center gap-2">
+                      <Badge
+                        variant="outline"
+                        className={FUNCAO_BADGES[u.userFunction ?? "outro"] ?? FUNCAO_BADGES.outro}
+                      >
+                        <Shield className="h-3 w-3 mr-1" />
+                        {FUNCAO_LABELS[u.userFunction ?? "outro"]}
+                      </Badge>
+                      {u.active ? (
+                        <Badge variant="outline" className="bg-green-100 text-green-800 border-green-200">
+                          <CheckCircle2 className="h-3 w-3 mr-1" />
+                          Ativo
+                        </Badge>
+                      ) : (
+                        <Badge variant="outline" className="bg-gray-100 text-gray-800 border-gray-200">
+                          <XCircle className="h-3 w-3 mr-1" />
+                          Inativo
+                        </Badge>
+                      )}
+                      {u.telefone && (
+                        <span className="flex items-center gap-1 text-muted-foreground text-xs">
+                          <Phone className="h-3 w-3" />
+                          {u.telefone}
+                        </span>
+                      )}
+                    </div>
+                  </div>
                 ))}
-              </TableBody>
-            </Table>
+              </div>
+
+              {/* Desktop table */}
+              <div className="hidden sm:block">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Nome</TableHead>
+                      <TableHead>E-mail</TableHead>
+                      <TableHead>Função</TableHead>
+                      <TableHead>Status</TableHead>
+                      <TableHead>Telefone</TableHead>
+                      <TableHead className="text-right">Ações</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {filteredUsers?.map((u) => (
+                      <TableRow key={u.id}>
+                        <TableCell className="font-medium">{u.name}</TableCell>
+                        <TableCell className="text-muted-foreground">
+                          {u.email}
+                        </TableCell>
+                        <TableCell>
+                          <Badge
+                            variant="outline"
+                            className={
+                              FUNCAO_BADGES[u.userFunction ?? "outro"] ??
+                              FUNCAO_BADGES.outro
+                            }
+                          >
+                            <Shield className="h-3 w-3 mr-1" />
+                            {FUNCAO_LABELS[u.userFunction ?? "outro"]}
+                          </Badge>
+                        </TableCell>
+                        <TableCell>
+                          {u.active ? (
+                            <Badge
+                              variant="outline"
+                              className="bg-green-100 text-green-800 border-green-200"
+                            >
+                              <CheckCircle2 className="h-3 w-3 mr-1" />
+                              Ativo
+                            </Badge>
+                          ) : (
+                            <Badge
+                              variant="outline"
+                              className="bg-gray-100 text-gray-800 border-gray-200"
+                            >
+                              <XCircle className="h-3 w-3 mr-1" />
+                              Inativo
+                            </Badge>
+                          )}
+                        </TableCell>
+                        <TableCell>
+                          {u.telefone ? (
+                            <span className="flex items-center gap-1 text-muted-foreground text-sm">
+                              <Phone className="h-3 w-3" />
+                              {u.telefone}
+                            </span>
+                          ) : (
+                            <span className="text-muted-foreground text-sm">—</span>
+                          )}
+                        </TableCell>
+                        <TableCell className="text-right">
+                          <div className="flex items-center justify-end gap-1">
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => openEdit(u)}
+                            >
+                              <Pencil className="h-4 w-4" />
+                            </Button>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              className="text-red-600 hover:text-red-700"
+                              onClick={() => handleDelete(u.id)}
+                            >
+                              <Trash2 className="h-4 w-4" />
+                            </Button>
+                          </div>
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </div>
+            </>
           )}
         </CardContent>
       </Card>

@@ -416,7 +416,7 @@ export default function AdminAIUsage() {
         </div>
       </div>
 
-      <div className="grid grid-cols-4 gap-4">
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
         <Card>
           <CardHeader className="pb-2">
             <CardTitle className="text-sm font-medium text-muted-foreground flex items-center gap-1.5">
@@ -510,146 +510,170 @@ export default function AdminAIUsage() {
 
       <Card>
         <CardContent className="p-0">
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead className="pl-6">
-                  <SortButton
-                    field="name"
-                    current={sortField}
-                    dir={sortDir}
-                    onSort={handleSort}
-                  >
-                    Tenant
-                  </SortButton>
-                </TableHead>
-                <TableHead>Status</TableHead>
-                <TableHead className="text-right">
-                  <SortButton
-                    field="totalCalls"
-                    current={sortField}
-                    dir={sortDir}
-                    onSort={handleSort}
-                  >
-                    AI Calls
-                  </SortButton>
-                </TableHead>
-                <TableHead className="text-right pr-6">
-                  <SortButton
-                    field="totalCost"
-                    current={sortField}
-                    dir={sortDir}
-                    onSort={handleSort}
-                  >
-                    Cost (USD)
-                  </SortButton>
-                </TableHead>
-                <TableHead className="text-right pr-6">
-                  <SortButton
-                    field="byokRatio"
-                    current={sortField}
-                    dir={sortDir}
-                    onSort={handleSort}
-                  >
-                    BYOK
-                  </SortButton>
-                </TableHead>
-                <TableHead className="text-right pr-6">Ações</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {tenantsLoading ? (
-                <TableRow>
-                  <TableCell colSpan={6} className="h-32 text-center">
-                    <Loader2 className="h-5 w-5 animate-spin mx-auto text-muted-foreground" />
-                  </TableCell>
-                </TableRow>
-              ) : sorted.length === 0 ? (
-                <TableRow>
-                  <TableCell
-                    colSpan={6}
-                    className="h-32 text-center text-muted-foreground"
-                  >
-                    No tenants found.
-                  </TableCell>
-                </TableRow>
-              ) : (
-                sorted.map((row) => {
+          {tenantsLoading ? (
+            <div className="h-32 flex items-center justify-center">
+              <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
+            </div>
+          ) : sorted.length === 0 ? (
+            <p className="h-32 flex items-center justify-center text-muted-foreground text-sm">
+              No tenants found.
+            </p>
+          ) : (
+            <>
+              {/* Mobile cards */}
+              <div className="divide-y sm:hidden">
+                {sorted.map((row) => {
                   const { tenant, usage } = row;
                   const byokRatio = usage && (usage.totalCalls ?? 0) > 0
                     ? Math.round(((usage.byokCalls ?? 0) / (usage.totalCalls ?? 1)) * 100)
                     : 0;
                   return (
-                    <TableRow key={tenant.id}>
-                      <TableCell className="pl-6">
+                    <div key={tenant.id} className="px-4 py-4 space-y-3">
+                      <div className="flex items-start justify-between gap-2">
                         <div>
-                          <p className="font-medium">{tenant.name}</p>
-                          <p className="text-xs text-muted-foreground font-mono">
-                            {tenant.slug}
-                          </p>
+                          <p className="font-medium text-sm">{tenant.name}</p>
+                          <p className="text-xs text-muted-foreground font-mono">{tenant.slug}</p>
                         </div>
-                      </TableCell>
-                      <TableCell>
                         <Badge
-                          variant={
-                            tenant.status === "active"
-                              ? "default"
-                              : tenant.status === "suspended"
-                              ? "destructive"
-                              : "secondary"
-                          }
-                          className="capitalize text-xs"
+                          variant={tenant.status === "active" ? "default" : tenant.status === "suspended" ? "destructive" : "secondary"}
+                          className="capitalize text-xs shrink-0"
                         >
                           {tenant.status}
                         </Badge>
-                      </TableCell>
-                      <TableCell className="text-right">
-                        {usageLoading ? (
-                          <div className="h-4 w-12 bg-muted animate-pulse rounded ml-auto" />
-                        ) : (
-                          <span className="font-mono">
-                            {formatNumber(usage?.totalCalls ?? 0)}
-                          </span>
-                        )}
-                      </TableCell>
-                      <TableCell className="text-right pr-6">
-                        {usageLoading ? (
-                          <div className="h-4 w-16 bg-muted animate-pulse rounded ml-auto" />
-                        ) : (
-                          <span className="font-mono font-medium">
-                            ${Number(usage?.totalCost ?? 0).toFixed(2)}
-                          </span>
-                        )}
-                      </TableCell>
-                      <TableCell className="text-right pr-6">
-                        {usageLoading ? (
-                          <div className="h-4 w-12 bg-muted animate-pulse rounded ml-auto" />
-                        ) : usage && (usage.totalCalls ?? 0) > 0 ? (
-                          <div className="flex items-center justify-end gap-1">
-                            <Key className="h-3 w-3 text-muted-foreground" />
-                            <span className="text-xs font-mono">{byokRatio}%</span>
-                          </div>
-                        ) : (
-                          <span className="text-xs text-muted-foreground">—</span>
-                        )}
-                      </TableCell>
-                      <TableCell className="text-right pr-6">
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          className="gap-1.5 text-xs"
-                          onClick={() => setInviteDialogTenant(tenant)}
-                        >
-                          <Mail className="h-3.5 w-3.5" />
-                          Convidar
-                        </Button>
-                      </TableCell>
-                    </TableRow>
+                      </div>
+                      <div className="grid grid-cols-3 gap-3 text-xs">
+                        <div>
+                          <p className="text-muted-foreground mb-0.5">AI Calls</p>
+                          <p className="font-mono font-medium">{usageLoading ? "…" : formatNumber(usage?.totalCalls ?? 0)}</p>
+                        </div>
+                        <div>
+                          <p className="text-muted-foreground mb-0.5">Cost (USD)</p>
+                          <p className="font-mono font-medium">{usageLoading ? "…" : `$${Number(usage?.totalCost ?? 0).toFixed(2)}`}</p>
+                        </div>
+                        <div>
+                          <p className="text-muted-foreground mb-0.5">BYOK</p>
+                          {usageLoading ? (
+                            <p className="text-muted-foreground">…</p>
+                          ) : usage && (usage.totalCalls ?? 0) > 0 ? (
+                            <p className="flex items-center gap-1 font-mono">
+                              <Key className="h-3 w-3 text-muted-foreground" />
+                              {byokRatio}%
+                            </p>
+                          ) : (
+                            <p className="text-muted-foreground">—</p>
+                          )}
+                        </div>
+                      </div>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="gap-1.5 text-xs w-full"
+                        onClick={() => setInviteDialogTenant(tenant)}
+                      >
+                        <Mail className="h-3.5 w-3.5" />
+                        Convidar
+                      </Button>
+                    </div>
                   );
-                })
-              )}
-            </TableBody>
-          </Table>
+                })}
+              </div>
+
+              {/* Desktop table */}
+              <div className="hidden sm:block">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead className="pl-6">
+                        <SortButton field="name" current={sortField} dir={sortDir} onSort={handleSort}>
+                          Tenant
+                        </SortButton>
+                      </TableHead>
+                      <TableHead>Status</TableHead>
+                      <TableHead className="text-right">
+                        <SortButton field="totalCalls" current={sortField} dir={sortDir} onSort={handleSort}>
+                          AI Calls
+                        </SortButton>
+                      </TableHead>
+                      <TableHead className="text-right pr-6">
+                        <SortButton field="totalCost" current={sortField} dir={sortDir} onSort={handleSort}>
+                          Cost (USD)
+                        </SortButton>
+                      </TableHead>
+                      <TableHead className="text-right pr-6">
+                        <SortButton field="byokRatio" current={sortField} dir={sortDir} onSort={handleSort}>
+                          BYOK
+                        </SortButton>
+                      </TableHead>
+                      <TableHead className="text-right pr-6">Ações</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {sorted.map((row) => {
+                      const { tenant, usage } = row;
+                      const byokRatio = usage && (usage.totalCalls ?? 0) > 0
+                        ? Math.round(((usage.byokCalls ?? 0) / (usage.totalCalls ?? 1)) * 100)
+                        : 0;
+                      return (
+                        <TableRow key={tenant.id}>
+                          <TableCell className="pl-6">
+                            <div>
+                              <p className="font-medium">{tenant.name}</p>
+                              <p className="text-xs text-muted-foreground font-mono">{tenant.slug}</p>
+                            </div>
+                          </TableCell>
+                          <TableCell>
+                            <Badge
+                              variant={tenant.status === "active" ? "default" : tenant.status === "suspended" ? "destructive" : "secondary"}
+                              className="capitalize text-xs"
+                            >
+                              {tenant.status}
+                            </Badge>
+                          </TableCell>
+                          <TableCell className="text-right">
+                            {usageLoading ? (
+                              <div className="h-4 w-12 bg-muted animate-pulse rounded ml-auto" />
+                            ) : (
+                              <span className="font-mono">{formatNumber(usage?.totalCalls ?? 0)}</span>
+                            )}
+                          </TableCell>
+                          <TableCell className="text-right pr-6">
+                            {usageLoading ? (
+                              <div className="h-4 w-16 bg-muted animate-pulse rounded ml-auto" />
+                            ) : (
+                              <span className="font-mono font-medium">${Number(usage?.totalCost ?? 0).toFixed(2)}</span>
+                            )}
+                          </TableCell>
+                          <TableCell className="text-right pr-6">
+                            {usageLoading ? (
+                              <div className="h-4 w-12 bg-muted animate-pulse rounded ml-auto" />
+                            ) : usage && (usage.totalCalls ?? 0) > 0 ? (
+                              <div className="flex items-center justify-end gap-1">
+                                <Key className="h-3 w-3 text-muted-foreground" />
+                                <span className="text-xs font-mono">{byokRatio}%</span>
+                              </div>
+                            ) : (
+                              <span className="text-xs text-muted-foreground">—</span>
+                            )}
+                          </TableCell>
+                          <TableCell className="text-right pr-6">
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              className="gap-1.5 text-xs"
+                              onClick={() => setInviteDialogTenant(tenant)}
+                            >
+                              <Mail className="h-3.5 w-3.5" />
+                              Convidar
+                            </Button>
+                          </TableCell>
+                        </TableRow>
+                      );
+                    })}
+                  </TableBody>
+                </Table>
+              </div>
+            </>
+          )}
         </CardContent>
       </Card>
 
