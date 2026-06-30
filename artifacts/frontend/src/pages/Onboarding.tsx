@@ -62,6 +62,8 @@ const PLAN_DISPLAY = [
   { label: "Enterprise", implantacao: 8900, quotaIA: "US$50", popular: false },
 ];
 
+const PLANO_PARAM_INDEX: Record<string, number> = { growth: 0, pme: 1, enterprise: 2 };
+
 const TOM_OPTIONS = [
   { value: "profissional", label: "Profissional" },
   { value: "amigavel",     label: "Amigável" },
@@ -132,6 +134,15 @@ export default function Onboarding() {
 
   const { data: segments = [], isLoading: segmentsLoading } = useListSegmentTemplates();
 
+  // ── Persist ?plano= query param across login redirect ───────────────────────
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const plano = params.get("plano")?.toLowerCase();
+    if (plano && PLANO_PARAM_INDEX[plano] !== undefined) {
+      sessionStorage.setItem("vendorai_selected_plano", plano);
+    }
+  }, []);
+
   // ── Load progress on mount ──────────────────────────────────────────────────
   useEffect(() => {
     if (!user?.tenantId) return;
@@ -158,9 +169,13 @@ export default function Onboarding() {
     setPlansLoading(true);
     apiGet("/api/onboarding/plans")
       .then((data) => {
-        const arr = data as PlanFromApi[];
-        setPlans(arr.slice(0, 3));
-        if (arr.length > 0 && !s4PlanoId) setS4PlanoId(arr[0].id);
+        const arr = (data as PlanFromApi[]).slice(0, 3);
+        setPlans(arr);
+        if (arr.length > 0 && !s4PlanoId) {
+          const stored = sessionStorage.getItem("vendorai_selected_plano");
+          const idx = stored !== null ? (PLANO_PARAM_INDEX[stored] ?? 0) : 0;
+          setS4PlanoId(arr[Math.min(idx, arr.length - 1)].id);
+        }
       })
       .catch(() => {/* ignore */})
       .finally(() => setPlansLoading(false));
