@@ -99,10 +99,10 @@ function ConvItem({
     <button
       onClick={onClick}
       data-testid={`conv-item-${conv.id}`}
-      className={`w-full text-left px-4 py-3 border-b border-border transition-colors flex gap-3 items-start ${
+      className={`w-full text-left px-4 py-3 min-h-[3rem] border-b border-border transition-colors flex gap-3 items-center ${
         selected
           ? "bg-primary/10 border-l-2 border-l-primary"
-          : "hover:bg-muted/50"
+          : "hover:bg-muted/50 active:bg-muted"
       }`}
     >
       {/* Avatar */}
@@ -318,10 +318,11 @@ function ChatPanel({
       <div className="flex items-center gap-3 px-4 md:px-6 py-4 border-b border-border shrink-0">
         {onBack && (
           <Button
-            variant="ghost"
+            variant="outline"
             size="icon"
-            className="md:hidden h-9 w-9 shrink-0"
+            className="md:hidden h-10 w-10 shrink-0 border-border shadow-sm"
             onClick={onBack}
+            aria-label="Voltar para conversas"
           >
             <ChevronLeft className="h-5 w-5" />
           </Button>
@@ -425,6 +426,7 @@ export default function Conversations() {
   const initialConvId = new URLSearchParams(window.location.search).get("conv");
   const [selectedId, setSelectedId] = useState<string | null>(initialConvId);
   const [showMobileChat, setShowMobileChat] = useState(!!initialConvId);
+  const [channelFilter, setChannelFilter] = useState<string>("all");
 
   const { data: conversations = [], isLoading: convsLoading } =
     useListTenantConversations(tenantId, {
@@ -447,11 +449,30 @@ export default function Conversations() {
   const markRead = useMarkConversationRead();
 
   // Sort conversations by ultimaMensagemEm desc
-  const sorted = [...conversations].sort((a, b) => {
-    const ta = a.ultimaMensagemEm ? new Date(a.ultimaMensagemEm).getTime() : 0;
-    const tb = b.ultimaMensagemEm ? new Date(b.ultimaMensagemEm).getTime() : 0;
-    return tb - ta;
-  });
+  const sorted = [...conversations]
+    .sort((a, b) => {
+      const ta = a.ultimaMensagemEm ? new Date(a.ultimaMensagemEm).getTime() : 0;
+      const tb = b.ultimaMensagemEm ? new Date(b.ultimaMensagemEm).getTime() : 0;
+      return tb - ta;
+    })
+    .filter((c) => channelFilter === "all" || c.channel === channelFilter);
+
+  const channelCounts = conversations.reduce<Record<string, number>>(
+    (acc, c) => {
+      const ch = c.channel ?? "other";
+      acc[ch] = (acc[ch] ?? 0) + 1;
+      return acc;
+    },
+    {}
+  );
+
+  const filterChips: { key: string; label: string }[] = [
+    { key: "all", label: "Todas" },
+    ...(channelCounts["whatsapp"] ? [{ key: "whatsapp", label: "WhatsApp" }] : []),
+    ...(channelCounts["instagram"] ? [{ key: "instagram", label: "Instagram" }] : []),
+    ...(channelCounts["email"] ? [{ key: "email", label: "E-mail" }] : []),
+    ...(channelCounts["chat"] ? [{ key: "chat", label: "Chat" }] : []),
+  ];
 
   const selectedConv = sorted.find((c) => c.id === selectedId) ?? null;
 
@@ -475,12 +496,15 @@ export default function Conversations() {
     [tenantId, markRead, queryClient]
   );
 
-  // Auto-select first conversation on load
+  // Auto-select first conversation on load (or when filter changes and current selection disappears)
   useEffect(() => {
-    if (!selectedId && sorted.length > 0) {
-      setSelectedId(sorted[0].id);
+    const stillVisible = sorted.some((c) => c.id === selectedId);
+    if (!stillVisible) {
+      const first = sorted[0]?.id ?? null;
+      setSelectedId(first);
+      if (!first) setShowMobileChat(false);
     }
-  }, [sorted.length, selectedId]);
+  }, [sorted.length, channelFilter]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const totalUnread = conversations.reduce((acc, c) => acc + c.naoLidas, 0);
 
@@ -499,6 +523,26 @@ export default function Conversations() {
             )}
           </div>
         </div>
+
+        {/* Channel filter chips */}
+        {filterChips.length > 1 && (
+          <div className="flex gap-2 px-4 py-2 overflow-x-auto scrollbar-none border-b border-border shrink-0">
+            {filterChips.map((chip) => (
+              <button
+                key={chip.key}
+                onClick={() => setChannelFilter(chip.key)}
+                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium whitespace-nowrap shrink-0 transition-colors ${
+                  channelFilter === chip.key
+                    ? "bg-primary text-primary-foreground"
+                    : "bg-muted text-muted-foreground hover:bg-muted/80 active:bg-muted/60"
+                }`}
+              >
+                {chip.key !== "all" && channelIcon(chip.key)}
+                {chip.label}
+              </button>
+            ))}
+          </div>
+        )}
 
         {/* Conversation list */}
         <ScrollArea className="flex-1">
