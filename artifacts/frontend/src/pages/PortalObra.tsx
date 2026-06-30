@@ -135,7 +135,16 @@ export default function PortalObra() {
   const [approved, setApproved] = useState(false);
   const [expandedDiario, setExpandedDiario] = useState<string | null>(null);
   const [lightbox, setLightbox] = useState<string | null>(null);
-  const [activeTab, setActiveTab] = useState<"dados" | "orcamento" | "cronograma" | "diario">("dados");
+  const STORAGE_KEY = `portal_tab_${token}`;
+  const [activeTab, setActiveTab] = useState<"dados" | "orcamento" | "cronograma" | "diario">(() => {
+    const saved = localStorage.getItem(STORAGE_KEY);
+    return (saved as "dados" | "orcamento" | "cronograma" | "diario" | null) ?? "dados";
+  });
+
+  function changeTab(tab: "dados" | "orcamento" | "cronograma" | "diario") {
+    localStorage.setItem(STORAGE_KEY, tab);
+    setActiveTab(tab);
+  }
 
   useEffect(() => {
     if (!token) return;
@@ -291,7 +300,7 @@ export default function PortalObra() {
           <div className="sm:hidden">
             <select
               value={activeTab}
-              onChange={(e) => setActiveTab(e.target.value as "dados" | "orcamento" | "cronograma" | "diario")}
+              onChange={(e) => changeTab(e.target.value as "dados" | "orcamento" | "cronograma" | "diario")}
               className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2.5 text-sm font-medium text-gray-700 focus:outline-none focus:ring-2 focus:ring-indigo-400"
             >
               <option value="dados">Dados da Obra</option>
@@ -313,7 +322,7 @@ export default function PortalObra() {
             ).map((tab) => (
               <button
                 key={tab.id}
-                onClick={() => setActiveTab(tab.id)}
+                onClick={() => changeTab(tab.id)}
                 className={`flex items-center gap-2 px-5 py-3 text-sm font-medium border-b-2 whitespace-nowrap transition-colors ${
                   activeTab === tab.id
                     ? "border-indigo-600 text-indigo-700"
