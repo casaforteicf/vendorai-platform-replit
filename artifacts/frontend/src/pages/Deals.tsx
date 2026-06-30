@@ -1786,6 +1786,7 @@ export default function Deals() {
 
   const [, navigate] = useLocation();
   const [isCreateOpen, setIsCreateOpen] = useState(false);
+  const [mobileCol, setMobileCol] = useState<string>("novo");
   const [activeId, setActiveId] = useState<string | null>(null);
   const [overColumn, setOverColumn] = useState<string | null>(null);
   const [perdidoDialog, setPerdidoDialog] = useState<{ open: boolean; deal: Deal | null; novaProb: number }>({
@@ -2428,8 +2429,114 @@ export default function Deals() {
         </Dialog>
       </div>
 
-      {/* ── Pipeline Clássico ─────────────────────────────────────────────── */}
-      <div className="flex-1 min-h-0 flex flex-col">
+      {/* ── Pipeline Clássico — Mobile column picker ────────────────────── */}
+      <div className="md:hidden flex flex-col gap-3 flex-1 min-h-0">
+        <div className="flex gap-2 overflow-x-auto pb-1 shrink-0">
+          {KANBAN_COLUMNS.map((col) => {
+            const count = dealsForKanbanColumn(col).length;
+            const isSelected = mobileCol === col.dropId;
+            return (
+              <button
+                key={col.dropId}
+                onClick={() => setMobileCol(col.dropId)}
+                className={[
+                  "flex items-center gap-1 px-3 py-1.5 rounded-full text-xs font-semibold whitespace-nowrap border shrink-0 transition-colors",
+                  isSelected
+                    ? col.bg + " " + col.color + " border-current"
+                    : "bg-card border-border text-muted-foreground",
+                ].join(" ")}
+              >
+                {col.label}
+                {count > 0 && <span className="ml-0.5 opacity-70">({count})</span>}
+              </button>
+            );
+          })}
+        </div>
+
+        <div className="space-y-2 overflow-y-auto flex-1 pb-6">
+          {isLoading ? (
+            [0, 1, 2].map((i) => (
+              <div key={i} className="h-24 bg-muted animate-pulse rounded-xl" />
+            ))
+          ) : (() => {
+            const col = KANBAN_COLUMNS.find((c) => c.dropId === mobileCol);
+            const colDeals = col ? dealsForKanbanColumn(col) : [];
+            if (colDeals.length === 0) {
+              return (
+                <div className="flex flex-col items-center justify-center py-12 text-muted-foreground gap-2">
+                  <Package className="h-8 w-8 opacity-20" />
+                  <p className="text-sm">Nenhum negócio nesta etapa</p>
+                </div>
+              );
+            }
+            return colDeals.map((deal) => (
+              <div key={deal.id} className="bg-card border border-border rounded-xl p-4 space-y-2">
+                <div className="flex items-start justify-between gap-2">
+                  <p className="font-medium text-sm leading-tight flex-1">{deal.titulo}</p>
+                  <span className="text-sm font-semibold font-mono shrink-0">{formatCurrency(deal.valor)}</span>
+                </div>
+                {deal.leadId && leadMap.get(deal.leadId) && (
+                  <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                    <User className="h-3 w-3 shrink-0" />
+                    <span className="truncate">{leadMap.get(deal.leadId)}</span>
+                  </div>
+                )}
+                {deal.dataFechamentoPrevista && (
+                  <div className={[
+                    "flex items-center gap-1.5 text-xs",
+                    new Date(deal.dataFechamentoPrevista) < new Date() && !TERMINAL_ETAPAS.has(deal.etapa ?? "")
+                      ? "text-yellow-600 font-semibold"
+                      : "text-muted-foreground",
+                  ].join(" ")}>
+                    <Clock className="h-3 w-3 shrink-0" />
+                    <span>Prazo: {new Date(deal.dataFechamentoPrevista).toLocaleDateString("pt-BR")}</span>
+                  </div>
+                )}
+                <div className="flex items-center gap-2 pt-1 border-t border-border/50">
+                  <Select
+                    value={deal.etapa ?? "novo"}
+                    onValueChange={(etapa) => {
+                      const e = etapa as DealEtapa;
+                      const prob = ETAPA_PROBABILIDADE[e] ?? deal.probabilidade;
+                      if (e === "perdido" && deal.etapa !== "perdido") {
+                        setPerdidoDialog({ open: true, deal, novaProb: prob ?? 0 });
+                        return;
+                      }
+                      updateDeal.mutate(
+                        { id: deal.id, data: { etapa: e, probabilidade: prob } },
+                        {
+                          onSuccess: () => queryClient.invalidateQueries({ queryKey: getListDealsQueryKey(tenantId) }),
+                          onError: () => toast({ title: "Erro ao mover negócio", variant: "destructive" }),
+                        }
+                      );
+                    }}
+                  >
+                    <SelectTrigger className="flex-1 h-8 text-xs">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {ETAPAS.map((e) => (
+                        <SelectItem key={e.value} value={e.value}>{e.label}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="h-8 text-xs text-primary px-2 shrink-0"
+                    onClick={() => handleCardClick(deal)}
+                  >
+                    Orçamento →
+                  </Button>
+                </div>
+              </div>
+            ));
+          })()}
+        </div>
+      </div>
+
+      {/* ── Pipeline Clássico — Desktop Kanban ──────────────────────────── */}
+      <div className="hidden md:flex md:flex-col flex-1 min-h-0">
         {isLoading ? (
           <div className="flex gap-4 overflow-x-auto pb-4">
             {KANBAN_COLUMNS.map((col) => (

@@ -252,7 +252,7 @@ export default function Dashboard() {
   // ── Loading ─────────────────────────────────────────────────────────────────
   if (loading) {
     return (
-      <div className="p-6 space-y-6 max-w-7xl mx-auto">
+      <div className="p-4 md:p-6 space-y-6 max-w-7xl mx-auto">
         <div className="flex items-start justify-between">
           <div className="space-y-1">
             <Skeleton className="h-7 w-56" />
@@ -309,7 +309,7 @@ export default function Dashboard() {
   const atividades = data.atividade.ultimas20;
 
   return (
-    <div className="p-6 space-y-6 max-w-7xl mx-auto pb-12">
+    <div className="p-4 md:p-6 space-y-6 max-w-7xl mx-auto pb-12">
 
       {/* ── Header ── */}
       <div className="flex items-start justify-between gap-4">

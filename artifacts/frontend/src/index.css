@@ -167,4 +167,7 @@
   body {
     @apply font-sans antialiased bg-background text-foreground;
   }
+  button, a {
+    touch-action: manipulation;
+  }
 }
