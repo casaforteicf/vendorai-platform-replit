@@ -26,6 +26,7 @@ const whatsappPayloadSchema = z.object({
   conteudo: z.string().min(1),
   agentName: z.string().optional(),
   agentKey: z.string().optional(),
+  attachmentNames: z.array(z.string()).optional(),
   canal: z
     .enum(["whatsapp", "instagram", "email", "chat"])
     .optional()
@@ -70,7 +71,7 @@ export async function executeTaskAction(
     return updated;
   }
 
-  const { leadId, conteudo, agentName, agentKey, canal } = parsedPayload.data;
+  const { leadId, conteudo, agentName, agentKey, attachmentNames, canal } = parsedPayload.data;
 
   try {
     const { message, telefoneDestino } = await sendOutgoingMessage(
@@ -78,8 +79,8 @@ export async function executeTaskAction(
       log
     );
 
-    // ── Send agent attachments (if any configured for this agentKey) ──────────
-    if (agentKey && telefoneDestino && canal === "whatsapp") {
+    // ── Send AI-chosen attachments (specific files the AI decided to send) ────
+    if (agentKey && telefoneDestino && canal === "whatsapp" && attachmentNames && attachmentNames.length > 0) {
       const [tenantAgentCfg] = await db
         .select({ parametros: tenantAgentConfigsTable.parametros })
         .from(tenantAgentConfigsTable)
@@ -91,15 +92,19 @@ export async function executeTaskAction(
         )
         .limit(1);
 
-      const params = tenantAgentCfg?.parametros as Record<string, unknown> | null ?? {};
-      const rawAttachments = params["attachments"];
-      const attachments: AgentAttachment[] = Array.isArray(rawAttachments)
-        ? (rawAttachments as AgentAttachment[]).filter((a) => a?.objectPath && a?.name)
+      const params = (tenantAgentCfg?.parametros as Record<string, unknown> | null) ?? {};
+      const allAttachments: AgentAttachment[] = Array.isArray(params["attachments"])
+        ? (params["attachments"] as AgentAttachment[]).filter((a) => a?.objectPath && a?.name)
         : [];
 
-      if (attachments.length > 0) {
-        log.info({ agentKey, count: attachments.length }, "agent_task: sending attachments");
-        await sendAgentAttachments(task.tenantId, telefoneDestino, attachments, log);
+      // Match only the specific files the AI chose (by exact name)
+      const chosen = allAttachments.filter((a) => attachmentNames.includes(a.name));
+
+      if (chosen.length > 0) {
+        log.info({ agentKey, chosen: chosen.map((a) => a.name) }, "agent_task: sending AI-chosen attachments");
+        await sendAgentAttachments(task.tenantId, telefoneDestino, chosen, log);
+      } else {
+        log.warn({ agentKey, attachmentNames }, "agent_task: AI requested attachments not found in config");
       }
     }
 

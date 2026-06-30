@@ -146,6 +146,24 @@ export async function getAgentConfig(tenantId: string, agentKey: string): Promis
   if (tomInstruction) parts.push(tomInstruction);
   if (restricoes?.trim()) parts.push(`RESTRIÇÕES: ${restricoes.trim()}`);
 
+  // ── Inject available attachments section ────────────────────────────────────
+  const resolvedParametros = (tenantCfg?.parametros ?? defaults?.parametrosBase ?? {}) as Record<string, unknown>;
+  const availableAttachments = Array.isArray(resolvedParametros["attachments"])
+    ? (resolvedParametros["attachments"] as Array<{ name: string }>).filter((a) => a?.name)
+    : [];
+
+  if (availableAttachments.length > 0) {
+    const fileList = availableAttachments.map((a) => `- ${a.name}`).join("\n");
+    parts.push(
+      `ARQUIVOS DISPONÍVEIS PARA ENVIO:\n` +
+      `Quando achar adequado ao contexto do lead, você pode enviar um arquivo. ` +
+      `Para isso, inclua exatamente o seguinte marcador no início ou fim da sua mensagem (fora do texto principal):\n` +
+      `[[ENVIAR_ARQUIVO:nome_exato_do_arquivo]]\n\n` +
+      `Arquivos disponíveis:\n${fileList}\n\n` +
+      `Use o nome exato como listado acima. Envie apenas um arquivo por mensagem e somente quando agregar valor ao lead.`
+    );
+  }
+
   return {
     systemPrompt:    parts.join("\n\n"),
     parametros:      ((tenantCfg?.parametros ?? defaults?.parametrosBase ?? {}) as Record<string, unknown>),
@@ -308,6 +326,21 @@ export async function insertAndRun(params: {
 }): Promise<AgentTask> {
   const { tenantId, leadId, agentName, actionType, resposta, extraPayload, isAutonomous, now, log } = params;
 
+  // ── Parse [[ENVIAR_ARQUIVO:...]] marker from AI response ────────────────────
+  const ATTACHMENT_RE = /\[\[ENVIAR_ARQUIVO:([^\]]+)\]\]/g;
+  let conteudo = resposta;
+  const attachmentNames: string[] = [];
+  let match: RegExpExecArray | null;
+  while ((match = ATTACHMENT_RE.exec(resposta)) !== null) {
+    attachmentNames.push(match[1]!.trim());
+  }
+  if (attachmentNames.length > 0) {
+    conteudo = resposta.replace(/\[\[ENVIAR_ARQUIVO:[^\]]+\]\]/g, "").trim();
+    log.info({ agentName, attachmentNames }, "agent_engine: attachment markers found in response");
+  }
+
+  const agentKey = AGENT_NAME_TO_KEY[agentName] ?? null;
+
   const [task] = await db
     .insert(agentTasksTable)
     .values({
@@ -315,7 +348,15 @@ export async function insertAndRun(params: {
       leadId,
       agentName,
       actionType,
-      payload: { leadId, conteudo: resposta, agentName, agentKey: AGENT_NAME_TO_KEY[agentName] ?? null, canal: "whatsapp", ...extraPayload },
+      payload: {
+        leadId,
+        conteudo,
+        agentName,
+        agentKey,
+        ...(attachmentNames.length > 0 ? { attachmentNames } : {}),
+        canal: "whatsapp",
+        ...extraPayload,
+      },
       status:  isAutonomous ? "executando" : "pendente_aprovacao",
       ...(isAutonomous && { executedAt: now }),
     })

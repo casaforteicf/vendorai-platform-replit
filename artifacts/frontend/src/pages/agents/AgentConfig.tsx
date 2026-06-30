@@ -509,7 +509,7 @@ function AgentConfigSheet({
             <div className="space-y-1">
               <p className="text-sm font-medium">Arquivos do agente</p>
               <p className="text-xs text-muted-foreground">
-                Estes arquivos serão enviados automaticamente pelo agente via WhatsApp após cada mensagem de texto.
+                A IA conhece estes arquivos e decide quando enviar cada um com base no contexto do lead. Você pode ter arquivos diferentes para segmentos distintos — a IA escolhe o mais adequado.
               </p>
             </div>
 
