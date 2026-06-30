@@ -44,6 +44,19 @@ router.post("/storage/uploads/request-url", async (req: Request, res: Response) 
 });
 
 /**
+ * GET /storage/public-objects/objects/*
+ *
+ * Compatibility redirect: old frontend builds incorrectly prepended "public-objects/"
+ * to objectPaths that already start with "objects/", producing doubled paths like
+ * /storage/public-objects/objects/uploads/UUID. Redirect to the correct route.
+ */
+router.get("/storage/public-objects/objects/*path", (req: Request, res: Response) => {
+  const raw = req.params.path;
+  const rest = Array.isArray(raw) ? raw.join("/") : raw;
+  res.redirect(301, `/api/storage/objects/${rest}`);
+});
+
+/**
  * GET /storage/public-objects/*
  *
  * Serve public assets from PUBLIC_OBJECT_SEARCH_PATHS.
