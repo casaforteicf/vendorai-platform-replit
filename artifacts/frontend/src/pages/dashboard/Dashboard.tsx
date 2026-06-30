@@ -214,6 +214,7 @@ export default function Dashboard() {
   const [error, setError]           = useState<string | null>(null);
   const [isRefreshing, setRefreshing] = useState(false);
   const [dismissed, setDismissed]   = useState<Set<number>>(new Set());
+  const [copied, setCopied]         = useState(false);
   const isFirstFetch                = useRef(true);
 
   const fetchData = useCallback(async () => {
@@ -294,7 +295,6 @@ export default function Dashboard() {
   const { vendas, ia } = data;
   const quotaPct = Math.min(ia.quotaUsada, 100);
   const subdomainSlug = data.tenant?.subdomainSlug ?? null;
-  const [copied, setCopied] = useState(false);
 
   const pieData = Object.entries(vendas.leadsPorStatus)
     .filter(([, v]) => v > 0)
