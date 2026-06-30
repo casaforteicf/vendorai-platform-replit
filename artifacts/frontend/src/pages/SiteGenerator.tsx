@@ -256,7 +256,7 @@ function ConfigForm({ tenantId, onGenerate }: { tenantId: string; onGenerate: (c
   const [tone, setTone] = useState("profissional");
   const [products, setProducts] = useState<Product[]>([{ name: "", price: "" }]);
   const [images, setImages] = useState<string[]>([]);
-  const [uploadingImg, setUploadingImg] = useState(false);
+  const [uploadingCount, setUploadingCount] = useState(0);
 
   const requestUploadUrl = useRequestUploadUrl();
   const { toast } = useToast();
@@ -271,8 +271,8 @@ function ConfigForm({ tenantId, onGenerate }: { tenantId: string; onGenerate: (c
   const telefone = bp?.telefone ?? "";
   const logoUrl = bp?.logoUrl ?? "";
 
-  async function handleImageUpload(file: File) {
-    setUploadingImg(true);
+  async function uploadOneImage(file: File): Promise<void> {
+    setUploadingCount((n) => n + 1);
     try {
       const result = await new Promise<{ uploadURL: string; objectPath: string }>((resolve, reject) => {
         requestUploadUrl.mutate(
@@ -288,9 +288,15 @@ function ConfigForm({ tenantId, onGenerate }: { tenantId: string; onGenerate: (c
       if (!putRes.ok) throw new Error("Upload falhou");
       setImages((prev) => [...prev, `/api/storage/public-objects/${result.objectPath}`]);
     } catch {
-      toast({ title: "Erro ao fazer upload da imagem. Tente novamente.", variant: "destructive" });
+      toast({ title: `Erro ao enviar "${file.name}". Tente novamente.`, variant: "destructive" });
     } finally {
-      setUploadingImg(false);
+      setUploadingCount((n) => n - 1);
+    }
+  }
+
+  async function handleImagesUpload(files: File[]) {
+    for (const file of files) {
+      await uploadOneImage(file);
     }
   }
 
@@ -483,7 +489,7 @@ function ConfigForm({ tenantId, onGenerate }: { tenantId: string; onGenerate: (c
             ))}
           </div>
         )}
-        <label className={`cursor-pointer ${uploadingImg ? "pointer-events-none opacity-60" : ""}`}>
+        <label className={`cursor-pointer ${uploadingCount > 0 ? "pointer-events-none opacity-60" : ""}`}>
           <input
             type="file"
             accept="image/*"
@@ -491,13 +497,13 @@ function ConfigForm({ tenantId, onGenerate }: { tenantId: string; onGenerate: (c
             className="sr-only"
             onChange={(e) => {
               const files = Array.from(e.target.files ?? []);
-              files.forEach((f) => handleImageUpload(f));
+              handleImagesUpload(files);
               e.target.value = "";
             }}
           />
           <div className="flex items-center gap-2 rounded-lg border border-dashed border-border px-4 py-3 text-sm text-muted-foreground hover:border-primary hover:text-primary transition-colors">
-            {uploadingImg
-              ? <><Loader2 className="h-4 w-4 animate-spin shrink-0" />Enviando foto…</>
+            {uploadingCount > 0
+              ? <><Loader2 className="h-4 w-4 animate-spin shrink-0" />Enviando foto {uploadingCount > 1 ? `(${uploadingCount} restantes)` : ""}…</>
               : <><Upload className="h-4 w-4 shrink-0" />+ Adicionar fotos do local, produto ou serviço</>
             }
           </div>
@@ -558,8 +564,8 @@ function ConfigForm({ tenantId, onGenerate }: { tenantId: string; onGenerate: (c
         </div>
       </div>
 
-      <Button type="submit" size="lg" className="mt-1 w-full font-semibold" disabled={uploadingImg}>
-        {uploadingImg
+      <Button type="submit" size="lg" className="mt-1 w-full font-semibold" disabled={uploadingCount > 0}>
+        {uploadingCount > 0
           ? <><Loader2 className="h-4 w-4 mr-2 animate-spin" />Enviando fotos…</>
           : "✦ Gerar site com IA"
         }
