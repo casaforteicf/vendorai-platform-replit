@@ -303,9 +303,13 @@ export default function Prospector() {
           });
         },
         onError: (err) => {
+          const msg = err instanceof Error ? err.message : "";
+          const isPermission = msg.includes("403") || msg.includes("permission") || msg.includes("PERMISSION");
           toast({
             title: "Falha na busca",
-            description: err instanceof Error ? err.message : undefined,
+            description: isPermission
+              ? "A chave do Google Places não tem permissão. Ative a 'Places API (New)' no Google Cloud Console e certifique-se de que o faturamento está habilitado no projeto."
+              : msg || "Erro desconhecido. Tente novamente.",
             variant: "destructive",
           });
         },
