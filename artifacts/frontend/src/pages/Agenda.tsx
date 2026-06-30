@@ -100,9 +100,17 @@ import {
   endOfWeek,
   addWeeks,
   subWeeks,
+  addDays,
+  subDays,
+  startOfMonth,
+  endOfMonth,
+  addMonths,
+  subMonths,
+  getDay,
   eachDayOfInterval,
   isToday,
   isSameDay,
+  isSameMonth,
   parseISO,
 } from "date-fns";
 import { ptBR } from "date-fns/locale";
@@ -550,6 +558,110 @@ function AgendaChip({
   );
 }
 
+// ─── Calendar view type ───────────────────────────────────────────────────────
+
+type CalendarView = "day" | "week" | "month";
+
+// ─── Month grid view ──────────────────────────────────────────────────────────
+
+function MonthView({
+  month,
+  selectedDay,
+  onSelectDay,
+  countDay,
+}: {
+  month: Date;
+  selectedDay: Date;
+  onSelectDay: (d: Date) => void;
+  countDay: (d: Date) => number;
+}) {
+  const monthStart = startOfMonth(month);
+  const monthEnd = endOfMonth(month);
+  const days = eachDayOfInterval({ start: monthStart, end: monthEnd });
+  // Monday-first: getDay returns 0=Sun,1=Mon..6=Sat; pad to align Mon
+  const rawPad = getDay(monthStart);
+  const startPad = rawPad === 0 ? 6 : rawPad - 1;
+  const paddedDays: (Date | null)[] = [
+    ...Array<null>(startPad).fill(null),
+    ...days,
+  ];
+
+  return (
+    <div className="bg-card border border-border rounded-xl p-3 select-none">
+      <div className="grid grid-cols-7 gap-0.5 text-center text-[10px] font-semibold text-muted-foreground mb-1.5">
+        {["Seg", "Ter", "Qua", "Qui", "Sex", "Sáb", "Dom"].map((d) => (
+          <div key={d}>{d}</div>
+        ))}
+      </div>
+      <div className="grid grid-cols-7 gap-0.5">
+        {paddedDays.map((d, i) =>
+          d === null ? (
+            <div key={`pad-${i}`} />
+          ) : (
+            <button
+              key={d.toISOString()}
+              onClick={() => onSelectDay(d)}
+              data-testid={`month-day-${format(d, "yyyy-MM-dd")}`}
+              className={`flex flex-col items-center py-1.5 rounded-lg text-xs transition-colors ${
+                isSameDay(d, selectedDay)
+                  ? "bg-primary text-primary-foreground shadow-sm"
+                  : isToday(d)
+                  ? "bg-primary/10 text-primary font-semibold"
+                  : !isSameMonth(d, month)
+                  ? "opacity-30 hover:bg-muted"
+                  : "hover:bg-muted"
+              }`}
+            >
+              <span className="font-medium leading-none">{format(d, "d")}</span>
+              {countDay(d) > 0 && (
+                <span
+                  className={`w-1.5 h-1.5 rounded-full mt-1 ${
+                    isSameDay(d, selectedDay) ? "bg-white/70" : "bg-primary"
+                  }`}
+                />
+              )}
+            </button>
+          )
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ─── View picker ──────────────────────────────────────────────────────────────
+
+function ViewPicker({
+  view,
+  onChange,
+}: {
+  view: CalendarView;
+  onChange: (v: CalendarView) => void;
+}) {
+  const options: { value: CalendarView; label: string }[] = [
+    { value: "day", label: "Dia" },
+    { value: "week", label: "Semana" },
+    { value: "month", label: "Mês" },
+  ];
+  return (
+    <div className="flex items-center rounded-lg border border-border bg-muted/40 p-0.5 gap-0.5" role="group">
+      {options.map((opt) => (
+        <button
+          key={opt.value}
+          onClick={() => onChange(opt.value)}
+          data-testid={`view-picker-${opt.value}`}
+          className={`px-3 py-1.5 rounded-md text-xs font-medium transition-colors ${
+            view === opt.value
+              ? "bg-background text-foreground shadow-sm"
+              : "text-muted-foreground hover:text-foreground"
+          }`}
+        >
+          {opt.label}
+        </button>
+      ))}
+    </div>
+  );
+}
+
 // ─── Form schemas ─────────────────────────────────────────────────────────────
 
 const createFormSchema = z.object({
@@ -594,6 +706,11 @@ export default function AgendaPage() {
 
   const [selectedDay, setSelectedDay] = useState(new Date());
   const [selectedAgendaId, setSelectedAgendaId] = useState<string | null>(null);
+  const [view, setView] = useState<CalendarView>(() =>
+    typeof window !== "undefined" && window.innerWidth < 768 ? "day" : "week"
+  );
+  // currentMonth drives month-view navigation independently of selectedDay
+  const [currentMonth, setCurrentMonth] = useState(() => startOfMonth(new Date()));
 
   // Agendamento create dialog
   const [isCreateOpen, setIsCreateOpen] = useState(false);
@@ -926,59 +1043,64 @@ export default function AgendaPage() {
             </p>
           </div>
 
-          {/* Desktop: full button */}
-          <Dialog open={isCreateOpen} onOpenChange={setIsCreateOpen}>
-            <DialogTrigger asChild>
-              <Button
-                className="hidden md:flex"
-                onClick={openCreate}
-                data-testid="button-novo-agendamento"
-              >
-                <Plus className="h-4 w-4 mr-2" />
-                Novo Agendamento
-              </Button>
-            </DialogTrigger>
-            <DialogContent className="max-w-md">
-              <DialogHeader>
-                <DialogTitle>Novo Agendamento</DialogTitle>
-              </DialogHeader>
-              <AgendamentoForm
-                form={form}
-                onSubmit={onSubmit}
-                leads={leads}
-                agendas={agendas}
-                tenantUsers={tenantUsers}
-                isPending={createAg.isPending}
-              />
-            </DialogContent>
-          </Dialog>
+          <div className="flex items-center gap-2">
+            {/* View picker */}
+            <ViewPicker view={view} onChange={setView} />
 
-          {/* Mobile: icon button */}
-          <Dialog open={isCreateOpen} onOpenChange={setIsCreateOpen}>
-            <DialogTrigger asChild>
-              <Button
-                size="icon"
-                className="md:hidden shrink-0 rounded-xl"
-                onClick={openCreate}
-                data-testid="button-novo-agendamento-mobile"
-              >
-                <Plus className="h-4 w-4" />
-              </Button>
-            </DialogTrigger>
-            <DialogContent className="max-w-md">
-              <DialogHeader>
-                <DialogTitle>Novo Agendamento</DialogTitle>
-              </DialogHeader>
-              <AgendamentoForm
-                form={form}
-                onSubmit={onSubmit}
-                leads={leads}
-                agendas={agendas}
-                tenantUsers={tenantUsers}
-                isPending={createAg.isPending}
-              />
-            </DialogContent>
-          </Dialog>
+            {/* Desktop: full button */}
+            <Dialog open={isCreateOpen} onOpenChange={setIsCreateOpen}>
+              <DialogTrigger asChild>
+                <Button
+                  className="hidden md:flex"
+                  onClick={openCreate}
+                  data-testid="button-novo-agendamento"
+                >
+                  <Plus className="h-4 w-4 mr-2" />
+                  Novo Agendamento
+                </Button>
+              </DialogTrigger>
+              <DialogContent className="max-w-md">
+                <DialogHeader>
+                  <DialogTitle>Novo Agendamento</DialogTitle>
+                </DialogHeader>
+                <AgendamentoForm
+                  form={form}
+                  onSubmit={onSubmit}
+                  leads={leads}
+                  agendas={agendas}
+                  tenantUsers={tenantUsers}
+                  isPending={createAg.isPending}
+                />
+              </DialogContent>
+            </Dialog>
+
+            {/* Mobile: icon button */}
+            <Dialog open={isCreateOpen} onOpenChange={setIsCreateOpen}>
+              <DialogTrigger asChild>
+                <Button
+                  size="icon"
+                  className="md:hidden shrink-0 rounded-xl"
+                  onClick={openCreate}
+                  data-testid="button-novo-agendamento-mobile"
+                >
+                  <Plus className="h-4 w-4" />
+                </Button>
+              </DialogTrigger>
+              <DialogContent className="max-w-md">
+                <DialogHeader>
+                  <DialogTitle>Novo Agendamento</DialogTitle>
+                </DialogHeader>
+                <AgendamentoForm
+                  form={form}
+                  onSubmit={onSubmit}
+                  leads={leads}
+                  agendas={agendas}
+                  tenantUsers={tenantUsers}
+                  isPending={createAg.isPending}
+                />
+              </DialogContent>
+            </Dialog>
+          </div>
         </div>
 
         {/* ── Agenda filter chips — mobile only ── */}
@@ -1027,86 +1149,163 @@ export default function AgendaPage() {
           )}
         </div>
 
+        {/* ── Day view navigation ── */}
+        {view === "day" && (
+          <div className="bg-card border border-border rounded-xl p-3">
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => setSelectedDay((d) => subDays(d, 1))}
+                className="p-3 rounded-xl hover:bg-muted transition-colors active:scale-95"
+                data-testid="day-prev"
+                aria-label="Dia anterior"
+              >
+                <ChevronLeft className="h-5 w-5" />
+              </button>
+              <button
+                className="flex-1 flex flex-col items-center py-1 rounded-xl hover:bg-muted transition-colors"
+                onClick={() => setSelectedDay(new Date())}
+                title="Ir para hoje"
+              >
+                <span className="text-sm font-semibold capitalize">
+                  {isToday(selectedDay)
+                    ? "Hoje"
+                    : format(selectedDay, "EEEE", { locale: ptBR })}
+                </span>
+                <span className="text-xs text-muted-foreground">
+                  {format(selectedDay, "d 'de' MMMM yyyy", { locale: ptBR })}
+                </span>
+              </button>
+              <button
+                onClick={() => setSelectedDay((d) => addDays(d, 1))}
+                className="p-3 rounded-xl hover:bg-muted transition-colors active:scale-95"
+                data-testid="day-next"
+                aria-label="Próximo dia"
+              >
+                <ChevronRight className="h-5 w-5" />
+              </button>
+            </div>
+          </div>
+        )}
+
         {/* ── Week strip ── */}
-        <div className="bg-card border border-border rounded-xl p-3">
-          <div className="flex items-center gap-2 mb-3">
-            <button
-              onClick={() => setWeekStart((w) => subWeeks(w, 1))}
-              className="p-1.5 rounded-lg hover:bg-muted transition-colors"
-              data-testid="week-prev"
-            >
-              <ChevronLeft className="h-4 w-4" />
-            </button>
-            <span className="text-xs md:text-sm font-semibold flex-1 text-center">
-              {format(weekStart, "d 'de' MMM", { locale: ptBR })}
-              {" – "}
-              {format(weekEnd, "d 'de' MMM yyyy", { locale: ptBR })}
-            </span>
-            <button
-              onClick={() => setWeekStart((w) => addWeeks(w, 1))}
-              className="p-1.5 rounded-lg hover:bg-muted transition-colors"
-              data-testid="week-next"
-            >
-              <ChevronRight className="h-4 w-4" />
-            </button>
-          </div>
-
-          <div className="flex gap-1 overflow-x-auto pb-1">
-            {weekDays.map((d) => (
-              <WeekDayBtn
-                key={d.toISOString()}
-                date={d}
-                count={countDay(d)}
-                selected={isSameDay(d, selectedDay)}
-                onClick={() => setSelectedDay(d)}
-              />
-            ))}
-          </div>
-        </div>
-
-        {/* ── Day list ── */}
-        <div className="space-y-3">
-          <div className="flex items-center gap-2">
-            <Calendar className="h-4 w-4 text-muted-foreground" />
-            <h2 className="text-sm font-semibold capitalize">
-              {isToday(selectedDay)
-                ? "Hoje"
-                : format(selectedDay, "EEEE, d 'de' MMMM", { locale: ptBR })}
-            </h2>
-            <span className="text-xs text-muted-foreground">
-              — {selectedAgs.length} agendamento{selectedAgs.length !== 1 ? "s" : ""}
-            </span>
-          </div>
-
-          {isLoading ? (
-            <div className="space-y-2">
-              {[...Array(3)].map((_, i) => (
-                <div key={i} className="h-20 bg-muted animate-pulse rounded-xl" />
-              ))}
+        {view === "week" && (
+          <div className="bg-card border border-border rounded-xl p-3">
+            <div className="flex items-center gap-2 mb-3">
+              <button
+                onClick={() => setWeekStart((w) => subWeeks(w, 1))}
+                className="p-1.5 rounded-lg hover:bg-muted transition-colors"
+                data-testid="week-prev"
+              >
+                <ChevronLeft className="h-4 w-4" />
+              </button>
+              <span className="text-xs md:text-sm font-semibold flex-1 text-center">
+                {format(weekStart, "d 'de' MMM", { locale: ptBR })}
+                {" – "}
+                {format(weekEnd, "d 'de' MMM yyyy", { locale: ptBR })}
+              </span>
+              <button
+                onClick={() => setWeekStart((w) => addWeeks(w, 1))}
+                className="p-1.5 rounded-lg hover:bg-muted transition-colors"
+                data-testid="week-next"
+              >
+                <ChevronRight className="h-4 w-4" />
+              </button>
             </div>
-          ) : selectedAgs.length === 0 ? (
-            <div className="flex flex-col items-center justify-center py-14 gap-3 text-muted-foreground">
-              <Calendar className="h-10 w-10 opacity-20" />
-              <p className="text-sm">Nenhum agendamento neste dia</p>
-              <Button variant="outline" size="sm" onClick={() => setIsCreateOpen(true)}>
-                <Plus className="h-3.5 w-3.5 mr-1.5" />
-                Criar agendamento
-              </Button>
-            </div>
-          ) : (
-            <div className="space-y-2">
-              {selectedAgs.map((ag) => (
-                <AgendamentoRow
-                  key={ag.id}
-                  ag={ag}
-                  leadName={leadMap.get(ag.leadId)}
-                  agendaColor={ag.agendaId ? agendaMap.get(ag.agendaId)?.cor : undefined}
-                  onUpdate={handleUpdate}
+
+            <div className="flex gap-1 overflow-x-auto pb-1">
+              {weekDays.map((d) => (
+                <WeekDayBtn
+                  key={d.toISOString()}
+                  date={d}
+                  count={countDay(d)}
+                  selected={isSameDay(d, selectedDay)}
+                  onClick={() => setSelectedDay(d)}
                 />
               ))}
             </div>
-          )}
-        </div>
+          </div>
+        )}
+
+        {/* ── Month view ── */}
+        {view === "month" && (
+          <div className="space-y-2">
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => setCurrentMonth((m) => subMonths(m, 1))}
+                className="p-1.5 rounded-lg hover:bg-muted transition-colors"
+                data-testid="month-prev"
+              >
+                <ChevronLeft className="h-4 w-4" />
+              </button>
+              <span className="text-sm font-semibold flex-1 text-center capitalize">
+                {format(currentMonth, "MMMM yyyy", { locale: ptBR })}
+              </span>
+              <button
+                onClick={() => setCurrentMonth((m) => addMonths(m, 1))}
+                className="p-1.5 rounded-lg hover:bg-muted transition-colors"
+                data-testid="month-next"
+              >
+                <ChevronRight className="h-4 w-4" />
+              </button>
+            </div>
+            <MonthView
+              month={currentMonth}
+              selectedDay={selectedDay}
+              onSelectDay={(d) => {
+                setSelectedDay(d);
+                setView("day");
+              }}
+              countDay={countDay}
+            />
+          </div>
+        )}
+
+        {/* ── Day list (shown for day + week views) ── */}
+        {view !== "month" && (
+          <div className="space-y-3">
+            <div className="flex items-center gap-2">
+              <Calendar className="h-4 w-4 text-muted-foreground" />
+              <h2 className="text-sm font-semibold capitalize">
+                {isToday(selectedDay)
+                  ? "Hoje"
+                  : format(selectedDay, "EEEE, d 'de' MMMM", { locale: ptBR })}
+              </h2>
+              <span className="text-xs text-muted-foreground">
+                — {selectedAgs.length} agendamento{selectedAgs.length !== 1 ? "s" : ""}
+              </span>
+            </div>
+
+            {isLoading ? (
+              <div className="space-y-2">
+                {[...Array(3)].map((_, i) => (
+                  <div key={i} className="h-20 bg-muted animate-pulse rounded-xl" />
+                ))}
+              </div>
+            ) : selectedAgs.length === 0 ? (
+              <div className="flex flex-col items-center justify-center py-14 gap-3 text-muted-foreground">
+                <Calendar className="h-10 w-10 opacity-20" />
+                <p className="text-sm">Nenhum agendamento neste dia</p>
+                <Button variant="outline" size="sm" onClick={() => setIsCreateOpen(true)}>
+                  <Plus className="h-3.5 w-3.5 mr-1.5" />
+                  Criar agendamento
+                </Button>
+              </div>
+            ) : (
+              <div className="space-y-2">
+                {selectedAgs.map((ag) => (
+                  <AgendamentoRow
+                    key={ag.id}
+                    ag={ag}
+                    leadName={leadMap.get(ag.leadId)}
+                    agendaColor={ag.agendaId ? agendaMap.get(ag.agendaId)?.cor : undefined}
+                    onUpdate={handleUpdate}
+                  />
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+      
       </div>
 
       {/* ── Conflict dialog ── */}
