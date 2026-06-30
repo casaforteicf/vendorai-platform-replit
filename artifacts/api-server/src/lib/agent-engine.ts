@@ -315,7 +315,7 @@ export async function insertAndRun(params: {
       leadId,
       agentName,
       actionType,
-      payload: { leadId, conteudo: resposta, agentName, canal: "whatsapp", ...extraPayload },
+      payload: { leadId, conteudo: resposta, agentName, agentKey: AGENT_NAME_TO_KEY[agentName] ?? null, canal: "whatsapp", ...extraPayload },
       status:  isAutonomous ? "executando" : "pendente_aprovacao",
       ...(isAutonomous && { executedAt: now }),
     })

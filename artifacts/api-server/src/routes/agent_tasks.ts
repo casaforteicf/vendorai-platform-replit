@@ -11,8 +11,11 @@ import type { AgentTask, AgentType } from "@workspace/db";
 import { z } from "zod";
 import {
   sendOutgoingMessage,
+  sendAgentAttachments,
   LeadNotFoundError,
+  type AgentAttachment,
 } from "../services/omnichannel.js";
+import { tenantAgentConfigsTable } from "@workspace/db";
 import type { Logger } from "pino";
 
 const router: IRouter = Router();
@@ -22,6 +25,7 @@ const whatsappPayloadSchema = z.object({
   leadId: z.string().min(1),
   conteudo: z.string().min(1),
   agentName: z.string().optional(),
+  agentKey: z.string().optional(),
   canal: z
     .enum(["whatsapp", "instagram", "email", "chat"])
     .optional()
@@ -66,13 +70,38 @@ export async function executeTaskAction(
     return updated;
   }
 
-  const { leadId, conteudo, agentName, canal } = parsedPayload.data;
+  const { leadId, conteudo, agentName, agentKey, canal } = parsedPayload.data;
 
   try {
     const { message, telefoneDestino } = await sendOutgoingMessage(
       { tenantId: task.tenantId, leadId, conteudo, agentName, canal },
       log
     );
+
+    // ── Send agent attachments (if any configured for this agentKey) ──────────
+    if (agentKey && telefoneDestino && canal === "whatsapp") {
+      const [tenantAgentCfg] = await db
+        .select({ parametros: tenantAgentConfigsTable.parametros })
+        .from(tenantAgentConfigsTable)
+        .where(
+          and(
+            eq(tenantAgentConfigsTable.tenantId, task.tenantId),
+            eq(tenantAgentConfigsTable.agentKey, agentKey)
+          )
+        )
+        .limit(1);
+
+      const params = tenantAgentCfg?.parametros as Record<string, unknown> | null ?? {};
+      const rawAttachments = params["attachments"];
+      const attachments: AgentAttachment[] = Array.isArray(rawAttachments)
+        ? (rawAttachments as AgentAttachment[]).filter((a) => a?.objectPath && a?.name)
+        : [];
+
+      if (attachments.length > 0) {
+        log.info({ agentKey, count: attachments.length }, "agent_task: sending attachments");
+        await sendAgentAttachments(task.tenantId, telefoneDestino, attachments, log);
+      }
+    }
 
     const [updated] = await db
       .update(agentTasksTable)

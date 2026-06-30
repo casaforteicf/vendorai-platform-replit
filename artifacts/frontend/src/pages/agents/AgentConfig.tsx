@@ -57,10 +57,21 @@ import {
   Star,
   Telescope,
   Loader2,
+  Paperclip,
+  Upload,
+  X,
+  FileText,
   type LucideIcon,
 } from "lucide-react";
 
 // ── Tipos ──────────────────────────────────────────────────────────────────────
+
+type AgentAttachment = {
+  name: string;
+  objectPath: string;
+  mimeType: string;
+  size?: number;
+};
 
 type AgentCardData = {
   agentKey: string;
@@ -73,6 +84,7 @@ type AgentCardData = {
   restricoes: string | null;
   systemPromptBase: string;
   systemPromptCustom: string | null;
+  parametros: Record<string, unknown> | null;
 };
 
 type TomOption = { value: string; label: string };
@@ -261,6 +273,52 @@ function AgentConfigSheet({
   const [restricoes, setRestricoes]               = useState(agent.restricoes ?? "");
   const [systemPromptCustom, setSystemPromptCustom] = useState(agent.systemPromptCustom ?? "");
 
+  // ── Arquivos state ──
+  const initAttachments = (): AgentAttachment[] => {
+    const raw = agent.parametros?.["attachments"];
+    return Array.isArray(raw) ? (raw as AgentAttachment[]) : [];
+  };
+  const [attachments, setAttachments] = useState<AgentAttachment[]>(initAttachments);
+  const [uploading, setUploading]     = useState(false);
+
+  async function handleFileUpload(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    e.target.value = "";
+    if (!file) return;
+    setUploading(true);
+    try {
+      const token = localStorage.getItem("vendorai_token") ?? "";
+      const presignRes = await fetch("/api/storage/uploads/request-url", {
+        method: "POST",
+        headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+        body: JSON.stringify({ fileName: file.name, fileSize: file.size, contentType: file.type, isPublic: false }),
+      });
+      if (!presignRes.ok) throw new Error("Erro ao obter URL de upload");
+      const { uploadUrl, objectPath } = await presignRes.json() as { uploadUrl: string; objectPath: string };
+
+      const putRes = await fetch(uploadUrl, { method: "PUT", headers: { "Content-Type": file.type }, body: file });
+      if (!putRes.ok) throw new Error("Erro ao enviar arquivo");
+
+      const newAttachment: AgentAttachment = { name: file.name, objectPath, mimeType: file.type, size: file.size };
+      const next = [...attachments, newAttachment];
+      setAttachments(next);
+
+      await patchAgent(agent.agentKey, { parametros: { ...((agent.parametros ?? {}) as Record<string,unknown>), attachments: next } } as Partial<AgentCardData>);
+      toast({ title: "Arquivo enviado", description: file.name });
+    } catch (err) {
+      toast({ title: "Erro no upload", description: err instanceof Error ? err.message : "Falha ao enviar arquivo", variant: "destructive" });
+    } finally {
+      setUploading(false);
+    }
+  }
+
+  async function handleRemoveAttachment(idx: number) {
+    const next = attachments.filter((_, i) => i !== idx);
+    setAttachments(next);
+    await patchAgent(agent.agentKey, { parametros: { ...((agent.parametros ?? {}) as Record<string,unknown>), attachments: next } } as Partial<AgentCardData>);
+    toast({ title: "Arquivo removido" });
+  }
+
   // ── Mutation salvar ──
   const saveMutation = useMutation({
     mutationFn: () =>
@@ -269,7 +327,8 @@ function AgentConfigSheet({
         tom,
         restricoes: restricoes || null,
         systemPromptCustom: systemPromptCustom || null,
-      }),
+        parametros: { ...((agent.parametros ?? {}) as Record<string,unknown>), attachments },
+      } as Partial<AgentCardData>),
     onSuccess: () => {
       toast({ title: "Configuração salva", description: "As alterações foram aplicadas ao agente." });
       onSaved({ nomePerfil: nomePerfil || null, tom, restricoes: restricoes || null, systemPromptCustom: systemPromptCustom || null });
@@ -344,6 +403,15 @@ function AgentConfigSheet({
           <TabsList className="mx-6 mt-4 mb-0 w-auto self-start">
             <TabsTrigger value="perfil">Perfil</TabsTrigger>
             <TabsTrigger value="prompt">Prompt</TabsTrigger>
+            <TabsTrigger value="arquivos">
+              <Paperclip className="h-3.5 w-3.5 mr-1.5" />
+              Arquivos
+              {attachments.length > 0 && (
+                <span className="ml-1.5 rounded-full bg-primary/15 text-primary text-[10px] font-semibold px-1.5 py-0.5 leading-none">
+                  {attachments.length}
+                </span>
+              )}
+            </TabsTrigger>
             <TabsTrigger value="teste">Teste</TabsTrigger>
           </TabsList>
 
@@ -434,6 +502,79 @@ function AgentConfigSheet({
                 </AlertDialogFooter>
               </AlertDialogContent>
             </AlertDialog>
+          </TabsContent>
+
+          {/* ABA ARQUIVOS */}
+          <TabsContent value="arquivos" className="flex-1 overflow-y-auto px-6 py-4 space-y-4">
+            <div className="space-y-1">
+              <p className="text-sm font-medium">Arquivos do agente</p>
+              <p className="text-xs text-muted-foreground">
+                Estes arquivos serão enviados automaticamente pelo agente via WhatsApp após cada mensagem de texto.
+              </p>
+            </div>
+
+            {/* Upload button */}
+            <div>
+              <Label
+                htmlFor="file-upload"
+                className={`inline-flex items-center gap-2 px-4 py-2 rounded-md border text-sm font-medium cursor-pointer transition-colors
+                  ${uploading
+                    ? "opacity-50 cursor-not-allowed bg-muted text-muted-foreground"
+                    : "bg-background hover:bg-accent text-foreground border-input"
+                  }`}
+              >
+                {uploading ? (
+                  <><Loader2 className="h-4 w-4 animate-spin" />Enviando…</>
+                ) : (
+                  <><Upload className="h-4 w-4" />Adicionar arquivo</>
+                )}
+              </Label>
+              <input
+                id="file-upload"
+                type="file"
+                className="sr-only"
+                disabled={uploading}
+                onChange={handleFileUpload}
+                accept=".pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,.png,.jpg,.jpeg,.gif,.webp,.mp4,.mp3"
+              />
+            </div>
+
+            {/* File list */}
+            {attachments.length === 0 ? (
+              <div className="flex flex-col items-center justify-center py-10 rounded-lg border border-dashed text-muted-foreground gap-2">
+                <Paperclip className="h-8 w-8 opacity-30" />
+                <p className="text-sm">Nenhum arquivo adicionado</p>
+              </div>
+            ) : (
+              <ul className="space-y-2">
+                {attachments.map((att, idx) => (
+                  <li
+                    key={idx}
+                    className="flex items-center gap-3 rounded-lg border bg-card px-3 py-2"
+                  >
+                    <FileText className="h-4 w-4 shrink-0 text-muted-foreground" />
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-medium truncate">{att.name}</p>
+                      {att.size !== undefined && (
+                        <p className="text-xs text-muted-foreground">
+                          {att.size < 1024 * 1024
+                            ? `${(att.size / 1024).toFixed(1)} KB`
+                            : `${(att.size / (1024 * 1024)).toFixed(1)} MB`}
+                        </p>
+                      )}
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => handleRemoveAttachment(idx)}
+                      className="shrink-0 rounded-sm p-0.5 text-muted-foreground hover:text-destructive transition-colors"
+                      title="Remover arquivo"
+                    >
+                      <X className="h-4 w-4" />
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            )}
           </TabsContent>
 
           {/* ABA TESTE */}

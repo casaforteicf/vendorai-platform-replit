@@ -10,6 +10,16 @@ import {
 } from "@workspace/db";
 import type { Message, Conversation } from "@workspace/db";
 import type { Logger } from "pino";
+import { ObjectStorageService } from "../lib/objectStorage.js";
+
+export interface AgentAttachment {
+  name: string;
+  objectPath: string;
+  mimeType: string;
+  size?: number;
+}
+
+const objectStorage = new ObjectStorageService();
 
 export interface SendOutgoingMessageInput {
   tenantId: string;
@@ -137,6 +147,122 @@ async function sendMetaWhatsAppMessage(
 
   const metaMessageId = (body.messages as Array<{ id: string }>)?.[0]?.id;
   log.info({ phone, metaMessageId }, "omnichannel: whatsapp message sent via meta cloud api");
+}
+
+/**
+ * Upload a file buffer to Meta's Media API and return the media_id.
+ */
+async function uploadMediaToMeta(
+  phoneNumberId: string,
+  accessToken: string,
+  buffer: Buffer,
+  mimeType: string,
+  filename: string,
+  log: Logger
+): Promise<string> {
+  const url = `https://graph.facebook.com/v20.0/${phoneNumberId}/media`;
+  const formData = new FormData();
+  formData.append("messaging_product", "whatsapp");
+  formData.append("type", mimeType);
+  formData.append("file", new Blob([new Uint8Array(buffer)], { type: mimeType }), filename);
+
+  const res = await fetch(url, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${accessToken}` },
+    body: formData,
+  });
+
+  const data = await res.json().catch(() => ({})) as Record<string, unknown>;
+  if (!res.ok) {
+    log.error({ data, phoneNumberId }, "omnichannel: meta media upload failed");
+    throw new Error(`Meta Media Upload error ${res.status}: ${JSON.stringify(data)}`);
+  }
+
+  const mediaId = String(data["id"] ?? "");
+  if (!mediaId) throw new Error("Meta Media Upload: no media id returned");
+  return mediaId;
+}
+
+/**
+ * Send a media file (document or image) via Meta WhatsApp Cloud API.
+ * Downloads from object storage, uploads to Meta, then sends the message.
+ */
+async function sendMetaWhatsAppMedia(
+  phoneNumberId: string,
+  accessToken: string,
+  phone: string,
+  attachment: AgentAttachment,
+  log: Logger
+): Promise<void> {
+  const normalizedPhone = phone.replace(/\D/g, "").replace(/^0+/, "");
+
+  // 1. Download from GCS
+  const file = await objectStorage.getObjectEntityFile(attachment.objectPath);
+  const [buffer] = await file.download();
+
+  // 2. Upload to Meta Media API
+  const mediaId = await uploadMediaToMeta(
+    phoneNumberId,
+    accessToken,
+    buffer,
+    attachment.mimeType,
+    attachment.name,
+    log
+  );
+
+  // 3. Determine message type
+  const isImage = attachment.mimeType.startsWith("image/");
+  const url = `https://graph.facebook.com/v20.0/${phoneNumberId}/messages`;
+
+  const messageBody = isImage
+    ? { messaging_product: "whatsapp", to: normalizedPhone, type: "image", image: { id: mediaId, caption: attachment.name } }
+    : { messaging_product: "whatsapp", to: normalizedPhone, type: "document", document: { id: mediaId, filename: attachment.name } };
+
+  const res = await fetch(url, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Authorization: `Bearer ${accessToken}` },
+    body: JSON.stringify(messageBody),
+  });
+
+  const data = await res.json().catch(() => ({})) as Record<string, unknown>;
+  if (!res.ok) {
+    log.error({ data, phone }, "omnichannel: meta media send failed");
+    throw new Error(`Meta WhatsApp Media error ${res.status}: ${JSON.stringify(data)}`);
+  }
+
+  log.info({ phone, filename: attachment.name, isImage }, "omnichannel: whatsapp media sent");
+}
+
+/**
+ * Send all agent attachments to a lead's WhatsApp.
+ * Silently skips individual files that fail (logs the error).
+ */
+export async function sendAgentAttachments(
+  tenantId: string,
+  phone: string,
+  attachments: AgentAttachment[],
+  log: Logger
+): Promise<void> {
+  if (!attachments.length) return;
+
+  const [config] = await db
+    .select({ metaPhoneNumberId: agentConfigsTable.metaPhoneNumberId, metaAccessToken: agentConfigsTable.metaAccessToken })
+    .from(agentConfigsTable)
+    .where(eq(agentConfigsTable.tenantId, tenantId))
+    .limit(1);
+
+  if (!config?.metaPhoneNumberId || !config?.metaAccessToken) {
+    log.warn({ tenantId }, "omnichannel: skipping attachments — no meta credentials");
+    return;
+  }
+
+  for (const attachment of attachments) {
+    try {
+      await sendMetaWhatsAppMedia(config.metaPhoneNumberId, config.metaAccessToken, phone, attachment, log);
+    } catch (err) {
+      log.error({ err, filename: attachment.name }, "omnichannel: failed to send attachment — skipping");
+    }
+  }
 }
 
 export async function sendDirectWhatsAppMessage(
