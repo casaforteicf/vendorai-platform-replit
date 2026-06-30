@@ -1108,38 +1108,75 @@ function EstoqueObra({ tenantId, obraId }: { tenantId: string; obraId: string })
         <p className="text-xs mt-1">Use movimentações de estoque para alocar materiais</p>
       </div>
     ) : (
-      <Card>
-        <CardContent className="p-0">
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="border-b bg-muted/30">
-                <th className="text-left px-4 py-3 font-medium text-muted-foreground">Material</th>
-                <th className="text-left px-4 py-3 font-medium text-muted-foreground">Unidade</th>
-                <th className="text-right px-4 py-3 font-medium text-muted-foreground">Quantidade atual</th>
-                <th className="text-right px-4 py-3 font-medium text-muted-foreground">Qtd. mínima</th>
-              </tr>
-            </thead>
-            <tbody>
-              {itens.map((item) => {
-                const baixo = parseFloat(item.quantidadeAtual) <= parseFloat(item.quantidadeMinima);
-                return (
-                  <tr key={item.id} className={`border-b hover:bg-muted/20 ${baixo ? "bg-red-50 dark:bg-red-950/20" : ""}`}>
-                    <td className="px-4 py-3">
-                      <div className="font-medium">{(item as any).insumo?.nome ?? "—"}</div>
-                      {(item as any).insumo?.categoria && <div className="text-xs text-muted-foreground">{(item as any).insumo.categoria}</div>}
-                    </td>
-                    <td className="px-4 py-3"><span className="px-2 py-0.5 bg-muted rounded text-xs font-mono">{(item as any).insumo?.unidade ?? "—"}</span></td>
-                    <td className={`px-4 py-3 text-right font-mono font-semibold ${baixo ? "text-red-600" : ""}`}>
-                      {parseFloat(item.quantidadeAtual).toLocaleString("pt-BR")}
-                    </td>
-                    <td className="px-4 py-3 text-right font-mono text-muted-foreground">{parseFloat(item.quantidadeMinima).toLocaleString("pt-BR")}</td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        </CardContent>
-      </Card>
+      <>
+        {/* Mobile cards */}
+        <div className="sm:hidden space-y-2">
+          {itens.map((item) => {
+            const baixo = parseFloat(item.quantidadeAtual) <= parseFloat(item.quantidadeMinima);
+            return (
+              <Card key={item.id} className={baixo ? "border-red-300 bg-red-50 dark:bg-red-950/20" : ""}>
+                <CardContent className="p-4 space-y-2">
+                  <div className="font-medium">{(item as any).insumo?.nome ?? "—"}</div>
+                  {(item as any).insumo?.categoria && (
+                    <div className="text-xs text-muted-foreground">{(item as any).insumo.categoria}</div>
+                  )}
+                  <div className="flex items-center justify-between text-sm">
+                    <div className="flex items-center gap-2">
+                      <span className="text-muted-foreground">Unidade</span>
+                      <span className="px-2 py-0.5 bg-muted rounded text-xs font-mono">{(item as any).insumo?.unidade ?? "—"}</span>
+                    </div>
+                    <div className="text-right">
+                      <div className={`font-mono font-semibold ${baixo ? "text-red-600" : ""}`}>
+                        {parseFloat(item.quantidadeAtual).toLocaleString("pt-BR")}
+                      </div>
+                      <div className="text-xs text-muted-foreground">
+                        mín. {parseFloat(item.quantidadeMinima).toLocaleString("pt-BR")}
+                      </div>
+                    </div>
+                  </div>
+                  {baixo && (
+                    <div className="text-xs text-red-600 font-medium">Estoque abaixo do mínimo</div>
+                  )}
+                </CardContent>
+              </Card>
+            );
+          })}
+        </div>
+
+        {/* Desktop table */}
+        <Card className="hidden sm:block">
+          <CardContent className="p-0">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b bg-muted/30">
+                  <th className="text-left px-4 py-3 font-medium text-muted-foreground">Material</th>
+                  <th className="text-left px-4 py-3 font-medium text-muted-foreground">Unidade</th>
+                  <th className="text-right px-4 py-3 font-medium text-muted-foreground">Quantidade atual</th>
+                  <th className="text-right px-4 py-3 font-medium text-muted-foreground">Qtd. mínima</th>
+                </tr>
+              </thead>
+              <tbody>
+                {itens.map((item) => {
+                  const baixo = parseFloat(item.quantidadeAtual) <= parseFloat(item.quantidadeMinima);
+                  return (
+                    <tr key={item.id} className={`border-b hover:bg-muted/20 ${baixo ? "bg-red-50 dark:bg-red-950/20" : ""}`}>
+                      <td className="px-4 py-3">
+                        <div className="font-medium">{(item as any).insumo?.nome ?? "—"}</div>
+                        {(item as any).insumo?.categoria && <div className="text-xs text-muted-foreground">{(item as any).insumo.categoria}</div>}
+                      </td>
+                      <td className="px-4 py-3"><span className="px-2 py-0.5 bg-muted rounded text-xs font-mono">{(item as any).insumo?.unidade ?? "—"}</span></td>
+                      <td className={`px-4 py-3 text-right font-mono font-semibold ${baixo ? "text-red-600" : ""}`}>
+                        {parseFloat(item.quantidadeAtual).toLocaleString("pt-BR")}
+                      </td>
+                      <td className="px-4 py-3 text-right font-mono text-muted-foreground">{parseFloat(item.quantidadeMinima).toLocaleString("pt-BR")}</td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </CardContent>
+        </Card>
+      </>
     );
 }
 
@@ -1228,45 +1265,75 @@ function Compras({ tenantId, obraId }: { tenantId: string; obraId: string }) {
           <p>Nenhuma compra registrada</p>
         </div>
       ) : (
-        <Card>
-          <CardContent className="p-0">
-            <div className="overflow-x-auto">
-              <table className="w-full text-sm">
-                <thead>
-                  <tr className="border-b bg-muted/30">
-                    <th className="text-left px-4 py-3 font-medium text-muted-foreground">Descrição</th>
-                    <th className="text-left px-4 py-3 font-medium text-muted-foreground">Fornecedor</th>
-                    <th className="text-left px-4 py-3 font-medium text-muted-foreground">Status</th>
-                    <th className="text-right px-4 py-3 font-medium text-muted-foreground">Valor total</th>
-                    <th className="text-left px-4 py-3 font-medium text-muted-foreground">Data</th>
-                    <th className="px-4 py-3" />
-                  </tr>
-                </thead>
-                <tbody>
-                  {compras.map((c) => {
-                    const sInfo = COMPRA_STATUS[c.status] ?? { label: c.status, color: "bg-muted" };
-                    return (
-                      <tr key={c.id} className="border-b hover:bg-muted/20">
-                        <td className="px-4 py-3 font-medium">{c.descricao}</td>
-                        <td className="px-4 py-3 text-muted-foreground">{c.fornecedor ?? "—"}</td>
-                        <td className="px-4 py-3">
-                          <span className={`text-xs px-2 py-0.5 rounded-full ${sInfo.color}`}>{sInfo.label}</span>
-                        </td>
-                        <td className="px-4 py-3 text-right font-mono">{fmtBRL(c.valorTotal)}</td>
-                        <td className="px-4 py-3 text-muted-foreground text-xs">{c.dataPrevista ? fmt(c.dataPrevista) : "—"}</td>
-                        <td className="px-4 py-3">
-                          <select className="text-xs border rounded px-1.5 py-1 bg-transparent" value={c.status} onChange={(e) => changeStatus(c.id, e.target.value)}>
-                            {Object.entries(COMPRA_STATUS).map(([v, { label }]) => <option key={v} value={v}>{label}</option>)}
-                          </select>
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
-          </CardContent>
-        </Card>
+        <>
+          {/* Mobile cards */}
+          <div className="sm:hidden space-y-2">
+            {compras.map((c) => {
+              const sInfo = COMPRA_STATUS[c.status] ?? { label: c.status, color: "bg-muted" };
+              return (
+                <Card key={c.id}>
+                  <CardContent className="p-4 space-y-3">
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="font-medium leading-snug">{c.descricao}</div>
+                      <span className={`shrink-0 text-xs px-2 py-0.5 rounded-full ${sInfo.color}`}>{sInfo.label}</span>
+                    </div>
+                    <div className="flex items-center justify-between text-sm">
+                      <div className="text-muted-foreground text-xs">{c.fornecedor ?? "—"}</div>
+                      <div className="font-mono font-semibold">{fmtBRL(c.valorTotal)}</div>
+                    </div>
+                    <div className="flex items-center justify-between">
+                      <div className="text-xs text-muted-foreground">{c.dataPrevista ? fmt(c.dataPrevista) : "Sem data"}</div>
+                      <select className="text-xs border rounded px-1.5 py-1 bg-transparent" value={c.status} onChange={(e) => changeStatus(c.id, e.target.value)}>
+                        {Object.entries(COMPRA_STATUS).map(([v, { label }]) => <option key={v} value={v}>{label}</option>)}
+                      </select>
+                    </div>
+                  </CardContent>
+                </Card>
+              );
+            })}
+          </div>
+
+          {/* Desktop table */}
+          <Card className="hidden sm:block">
+            <CardContent className="p-0">
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="border-b bg-muted/30">
+                      <th className="text-left px-4 py-3 font-medium text-muted-foreground">Descrição</th>
+                      <th className="text-left px-4 py-3 font-medium text-muted-foreground">Fornecedor</th>
+                      <th className="text-left px-4 py-3 font-medium text-muted-foreground">Status</th>
+                      <th className="text-right px-4 py-3 font-medium text-muted-foreground">Valor total</th>
+                      <th className="text-left px-4 py-3 font-medium text-muted-foreground">Data</th>
+                      <th className="px-4 py-3" />
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {compras.map((c) => {
+                      const sInfo = COMPRA_STATUS[c.status] ?? { label: c.status, color: "bg-muted" };
+                      return (
+                        <tr key={c.id} className="border-b hover:bg-muted/20">
+                          <td className="px-4 py-3 font-medium">{c.descricao}</td>
+                          <td className="px-4 py-3 text-muted-foreground">{c.fornecedor ?? "—"}</td>
+                          <td className="px-4 py-3">
+                            <span className={`text-xs px-2 py-0.5 rounded-full ${sInfo.color}`}>{sInfo.label}</span>
+                          </td>
+                          <td className="px-4 py-3 text-right font-mono">{fmtBRL(c.valorTotal)}</td>
+                          <td className="px-4 py-3 text-muted-foreground text-xs">{c.dataPrevista ? fmt(c.dataPrevista) : "—"}</td>
+                          <td className="px-4 py-3">
+                            <select className="text-xs border rounded px-1.5 py-1 bg-transparent" value={c.status} onChange={(e) => changeStatus(c.id, e.target.value)}>
+                              {Object.entries(COMPRA_STATUS).map(([v, { label }]) => <option key={v} value={v}>{label}</option>)}
+                            </select>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            </CardContent>
+          </Card>
+        </>
       )}
     </div>
   );
