@@ -114,6 +114,49 @@ const TABS = [
   { id: "orcamento",    label: "Orçamento",      icon: FileSpreadsheet },
 ];
 
+function MobileTabDropdown({ activeTab, onSelect }: { activeTab: string; onSelect: (id: string) => void }) {
+  const [open, setOpen] = useState(false);
+  const active = TABS.find((t) => t.id === activeTab)!;
+  return (
+    <div className="sm:hidden relative">
+      {open && (
+        <div
+          className="fixed inset-0 z-40"
+          onClick={() => setOpen(false)}
+        />
+      )}
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        className="flex items-center gap-2 w-full px-3 py-2 border rounded-lg bg-background text-sm font-medium"
+        aria-haspopup="listbox"
+        aria-expanded={open}
+      >
+        <active.icon className="h-4 w-4 shrink-0 text-primary" />
+        <span className="flex-1 text-left text-foreground">{active.label}</span>
+        <ChevronDown className={`h-4 w-4 text-muted-foreground transition-transform ${open ? "rotate-180" : ""}`} />
+      </button>
+      {open && (
+        <div className="absolute left-0 right-0 top-full mt-1 z-50 bg-background border rounded-lg shadow-lg overflow-hidden">
+          {TABS.map((tab) => (
+            <button
+              key={tab.id}
+              type="button"
+              onClick={() => { onSelect(tab.id); setOpen(false); }}
+              className={`flex items-center gap-3 w-full px-4 py-3 text-sm text-left transition-colors hover:bg-muted ${
+                activeTab === tab.id ? "bg-primary/5 text-primary font-medium" : "text-foreground"
+              }`}
+            >
+              <tab.icon className="h-4 w-4 shrink-0" />
+              {tab.label}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ─── Sub-components ──────────────────────────────────────────────────────────
 
 function VisaoGeral({ obra, etapas }: { obra: any; etapas: ObraEtapa[] }) {
@@ -2118,8 +2161,11 @@ export default function ObraDetalhe() {
         </div>
       </div>
 
-      {/* Tabs */}
-      <div className="border-b overflow-x-auto scrollbar-none" ref={tabBarRef}>
+      {/* Tabs — mobile dropdown */}
+      <MobileTabDropdown activeTab={activeTab} onSelect={setActiveTab} />
+
+      {/* Tabs — desktop scrollable bar */}
+      <div className="hidden sm:block border-b overflow-x-auto scrollbar-none" ref={tabBarRef}>
         <div className="flex gap-0 min-w-max">
           {TABS.map((tab) => (
             <button
