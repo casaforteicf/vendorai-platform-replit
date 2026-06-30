@@ -1,16 +1,27 @@
 import { useState } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { useAuth } from "@/contexts/AuthContext";
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
 import { cn } from "@/lib/utils";
 import logoFull from "/logo-full-light.svg";
-import { LogOut, Building2, RefreshCw, AlertTriangle, ArrowLeft, Zap, MessageSquare, CheckCircle2, Circle } from "lucide-react";
 import {
-  useListPartnerTenants,
+  LogOut, Building2, RefreshCw, AlertTriangle, ArrowLeft, Zap,
+  MessageSquare, CheckCircle2, Circle, DollarSign, TrendingUp, Calendar,
+} from "lucide-react";
+import {
   useGetPartnerTenantUsage,
   useGetTenantSetupStatus,
   getGetTenantSetupStatusQueryKey,
 } from "@workspace/api-client-react";
+function api(path: string) {
+  const base = (import.meta.env.BASE_URL ?? "/").replace(/\/$/, "");
+  return `${base}${path}`;
+}
+
+function fmt(val: number) {
+  return val.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
+}
 
 function StatusBadge({ status }: { status: string }) {
   const variants: Record<string, string> = {
@@ -95,7 +106,7 @@ function TenantDetail({ tenantId, onBack }: { tenantId: string; onBack: () => vo
             <p className="text-sm text-muted-foreground mt-1">/{data.tenant.slug}</p>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div className="rounded-xl border bg-card p-5 space-y-4">
               <div className="flex items-center gap-2 text-sm font-semibold">
                 <Zap className="h-4 w-4 text-amber-500" />
@@ -139,7 +150,6 @@ function TenantDetail({ tenantId, onBack }: { tenantId: string; onBack: () => vo
             </div>
           </div>
 
-          {/* Setup status checklist */}
           {setupStatus && (
             <div className="rounded-xl border bg-card p-5 space-y-4">
               <div className="flex items-center justify-between">
@@ -196,17 +206,73 @@ function TenantDetail({ tenantId, onBack }: { tenantId: string; onBack: () => vo
   );
 }
 
+interface DashboardData {
+  summary: {
+    activeTenants: number;
+    commissionThisMonth: number;
+    commissionThisYear: number;
+    nextPaymentDate: string;
+  };
+  tenants: Array<{
+    id: string;
+    name: string;
+    slug: string;
+    status: string;
+    vertical: string | null;
+    setupCompletedAt: string | null;
+    createdAt: string;
+  }>;
+  commissions: Array<{
+    id: string;
+    tenantId: string;
+    tipo: string | null;
+    valor: string | null;
+    dataReferencia: string | null;
+    status: string;
+    createdAt: string;
+  }>;
+}
+
+function SummaryCard({ icon: Icon, label, value, sub, color }: {
+  icon: React.ElementType;
+  label: string;
+  value: string;
+  sub?: string;
+  color: string;
+}) {
+  return (
+    <div className="rounded-xl border bg-card p-4 space-y-2">
+      <div className={cn("flex items-center gap-2 text-xs font-medium text-muted-foreground")}>
+        <Icon className={cn("h-4 w-4", color)} />
+        {label}
+      </div>
+      <p className="text-2xl font-bold tracking-tight">{value}</p>
+      {sub && <p className="text-xs text-muted-foreground">{sub}</p>}
+    </div>
+  );
+}
+
 export default function PartnerDashboard() {
   const { user, logout } = useAuth();
   const [selectedTenantId, setSelectedTenantId] = useState<string | null>(null);
+  const token = (user as any)?.token ?? localStorage.getItem("vendorai_token") ?? "";
 
-  const { data: tenants, isLoading, isError } = useListPartnerTenants();
+  const { data: dashboard, isLoading, isError } = useQuery<DashboardData>({
+    queryKey: ["partnerDashboard"],
+    queryFn: async () => {
+      const res = await fetch(api("/api/partner/dashboard"), {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (!res.ok) throw new Error("Failed to load dashboard");
+      return res.json();
+    },
+    staleTime: 60_000,
+  });
 
   return (
     <div className="min-h-screen bg-muted/20">
-      {/* Header */}
       <header className="bg-card border-b sticky top-0 z-10">
-        <div className="max-w-5xl mx-auto px-6 py-4 flex items-center justify-between">
+        <div className="max-w-5xl mx-auto px-4 sm:px-6 py-4 flex items-center justify-between">
           <img src={logoFull} alt="Vendor.ai" className="h-9 w-auto" />
           <div className="flex items-center gap-4">
             <div className="text-right hidden sm:block">
@@ -221,12 +287,11 @@ export default function PartnerDashboard() {
         </div>
       </header>
 
-      {/* Main */}
-      <main className="max-w-5xl mx-auto px-6 py-8">
+      <main className="max-w-5xl mx-auto px-4 sm:px-6 py-8">
         {selectedTenantId ? (
           <TenantDetail tenantId={selectedTenantId} onBack={() => setSelectedTenantId(null)} />
         ) : (
-          <div className="space-y-6">
+          <div className="space-y-8">
             <div>
               <h1 className="text-2xl font-bold tracking-tight">Painel do Parceiro</h1>
               <p className="text-muted-foreground text-sm mt-1">
@@ -237,67 +302,134 @@ export default function PartnerDashboard() {
             {isLoading ? (
               <div className="flex items-center justify-center py-16 text-muted-foreground gap-2">
                 <RefreshCw className="h-4 w-4 animate-spin" />
-                Carregando clientes...
+                Carregando dados...
               </div>
-            ) : isError ? (
+            ) : isError || !dashboard ? (
               <div className="flex items-center gap-2 text-destructive py-8">
                 <AlertTriangle className="h-4 w-4" />
-                Erro ao carregar lista de clientes.
-              </div>
-            ) : !tenants || tenants.length === 0 ? (
-              <div className="rounded-xl border bg-card p-12 text-center space-y-2">
-                <Building2 className="h-10 w-10 mx-auto text-muted-foreground/40" />
-                <p className="text-sm font-medium">Nenhum cliente associado</p>
-                <p className="text-xs text-muted-foreground">
-                  Entre em contato com o administrador da plataforma para vincular tenants à sua conta.
-                </p>
+                Erro ao carregar dashboard.
               </div>
             ) : (
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                {tenants.map((tenant) => {
-                  const tokenPct = tenant.monthlyTokenLimit
-                    ? Math.round((tenant.tokensUsedCurrentMonth / tenant.monthlyTokenLimit) * 100)
-                    : null;
+              <>
+                {/* Summary cards */}
+                <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
+                  <SummaryCard
+                    icon={Building2}
+                    label="Tenants ativos"
+                    value={String(dashboard.summary.activeTenants)}
+                    sub={`${dashboard.tenants.length} total`}
+                    color="text-blue-500"
+                  />
+                  <SummaryCard
+                    icon={DollarSign}
+                    label="Comissão do mês"
+                    value={fmt(dashboard.summary.commissionThisMonth)}
+                    color="text-emerald-500"
+                  />
+                  <SummaryCard
+                    icon={TrendingUp}
+                    label="Acumulado anual"
+                    value={fmt(dashboard.summary.commissionThisYear)}
+                    color="text-amber-500"
+                  />
+                  <SummaryCard
+                    icon={Calendar}
+                    label="Próximo pagamento"
+                    value={new Date(dashboard.summary.nextPaymentDate + "T12:00:00").toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit" })}
+                    sub="Dia 5 do mês seguinte"
+                    color="text-purple-500"
+                  />
+                </div>
 
-                  return (
-                    <div key={tenant.id} className="rounded-xl border bg-card p-5 space-y-4 hover:shadow-sm transition-shadow">
-                      <div className="flex items-start justify-between">
-                        <div>
-                          <h3 className="font-semibold text-base">{tenant.name}</h3>
-                          <p className="text-xs text-muted-foreground">/{tenant.slug}</p>
-                        </div>
-                        <StatusBadge status={tenant.status} />
-                      </div>
-
-                      <div className="space-y-2">
-                        <UsageBar
-                          used={tenant.tokensUsedCurrentMonth}
-                          limit={tenant.monthlyTokenLimit}
-                          label="Tokens/mês"
-                        />
-                        <UsageBar
-                          used={tenant.messagesSentToday}
-                          limit={tenant.dailyMessageLimit}
-                          label="Mensagens/dia"
-                        />
-                      </div>
-
-                      <div className="flex items-center justify-between">
-                        <span className="text-xs text-muted-foreground">
-                          {tenant.setupCompletedAt ? "Setup concluído" : "Setup pendente"}
-                        </span>
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={() => setSelectedTenantId(tenant.id)}
-                        >
-                          Ver detalhes
-                        </Button>
+                {/* Tenants table */}
+                {dashboard.tenants.length === 0 ? (
+                  <div className="rounded-xl border bg-card p-12 text-center space-y-2">
+                    <Building2 className="h-10 w-10 mx-auto text-muted-foreground/40" />
+                    <p className="text-sm font-medium">Nenhum cliente associado</p>
+                    <p className="text-xs text-muted-foreground">
+                      Entre em contato com o administrador da plataforma para vincular tenants à sua conta.
+                    </p>
+                  </div>
+                ) : (
+                  <div className="space-y-3">
+                    <h2 className="text-sm font-semibold">Seus clientes</h2>
+                    <div className="rounded-xl border bg-card overflow-hidden">
+                      <div className="overflow-x-auto">
+                        <table className="w-full text-sm">
+                          <thead>
+                            <tr className="border-b bg-muted/40">
+                              <th className="text-left py-3 px-4 font-medium text-muted-foreground">Nome</th>
+                              <th className="text-left py-3 px-4 font-medium text-muted-foreground hidden sm:table-cell">Vertical</th>
+                              <th className="text-left py-3 px-4 font-medium text-muted-foreground">Status</th>
+                              <th className="text-left py-3 px-4 font-medium text-muted-foreground hidden md:table-cell">Ativação</th>
+                              <th className="py-3 px-4" />
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {dashboard.tenants.map((t) => (
+                              <tr key={t.id} className="border-b last:border-0 hover:bg-muted/20 transition-colors">
+                                <td className="py-3 px-4 font-medium">{t.name}</td>
+                                <td className="py-3 px-4 text-muted-foreground hidden sm:table-cell">{t.vertical ?? "—"}</td>
+                                <td className="py-3 px-4"><StatusBadge status={t.status} /></td>
+                                <td className="py-3 px-4 text-muted-foreground hidden md:table-cell">
+                                  {t.setupCompletedAt ? new Date(t.setupCompletedAt).toLocaleDateString("pt-BR") : "Pendente"}
+                                </td>
+                                <td className="py-3 px-4">
+                                  <Button variant="ghost" size="sm" onClick={() => setSelectedTenantId(t.id)}>
+                                    Detalhes
+                                  </Button>
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
                       </div>
                     </div>
-                  );
-                })}
-              </div>
+                  </div>
+                )}
+
+                {/* Commissions history */}
+                {dashboard.commissions.length > 0 && (
+                  <div className="space-y-3">
+                    <h2 className="text-sm font-semibold">Histórico de comissões</h2>
+                    <div className="rounded-xl border bg-card overflow-hidden">
+                      <div className="overflow-x-auto">
+                        <table className="w-full text-sm">
+                          <thead>
+                            <tr className="border-b bg-muted/40">
+                              <th className="text-left py-3 px-4 font-medium text-muted-foreground">Referência</th>
+                              <th className="text-left py-3 px-4 font-medium text-muted-foreground hidden sm:table-cell">Tipo</th>
+                              <th className="text-right py-3 px-4 font-medium text-muted-foreground">Valor</th>
+                              <th className="text-left py-3 px-4 font-medium text-muted-foreground">Status</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {[...dashboard.commissions].reverse().map((c) => (
+                              <tr key={c.id} className="border-b last:border-0 hover:bg-muted/20 transition-colors">
+                                <td className="py-3 px-4 text-muted-foreground">
+                                  {c.dataReferencia ? new Date(c.dataReferencia + "T12:00:00").toLocaleDateString("pt-BR", { month: "long", year: "numeric" }) : "—"}
+                                </td>
+                                <td className="py-3 px-4 text-muted-foreground hidden sm:table-cell">{c.tipo ?? "—"}</td>
+                                <td className="py-3 px-4 text-right font-medium">{c.valor ? fmt(parseFloat(c.valor)) : "—"}</td>
+                                <td className="py-3 px-4">
+                                  <span className={cn(
+                                    "inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium",
+                                    c.status === "pago"
+                                      ? "bg-emerald-100 text-emerald-700"
+                                      : "bg-amber-100 text-amber-700"
+                                  )}>
+                                    {c.status === "pago" ? "Pago" : "Pendente"}
+                                  </span>
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </>
             )}
           </div>
         )}

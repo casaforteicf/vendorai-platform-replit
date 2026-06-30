@@ -112,12 +112,10 @@ export function buildUserFunctionFilter(req: Express.Request, table: { tenantId:
   const conditions: any[] = [];
   const userFn = req.user?.userFunction as UserFunction | undefined;
   const isAdmin = req.user?.platformRole === "super_admin" || req.user?.platformRole === "tenant_admin";
+  const isSeller = req.user?.platformRole === "tenant_seller";
   const userId = req.user?.sub;
 
-  if (!isAdmin && userFn === "vendedor" && userId) {
-    conditions.push(eq(table.assignedTo, userId));
-  }
-  if (!isAdmin && userFn === "entrega" && userId) {
+  if (!isAdmin && userId && (userFn === "vendedor" || userFn === "entrega" || isSeller)) {
     conditions.push(eq(table.assignedTo, userId));
   }
 

@@ -2,6 +2,7 @@ import { Router, type IRouter } from "express";
 import { eq } from "drizzle-orm";
 import bcrypt from "bcryptjs";
 import { db, usersTable, insertUserSchema, updateUserSchema } from "@workspace/db";
+import { requireRole } from "../middlewares/auth.js";
 
 const router: IRouter = Router();
 
@@ -52,7 +53,7 @@ router.get("/users", async (req, res) => {
   res.json(users);
 });
 
-router.post("/users", async (req, res) => {
+router.post("/users", requireRole("super_admin", "tenant_admin"), async (req, res) => {
   const parsed = insertUserSchema.safeParse(req.body);
   if (!parsed.success) {
     res.status(422).json({ error: parsed.error.message });
@@ -190,7 +191,7 @@ router.patch("/users/:id/password", async (req, res) => {
   res.json(user);
 });
 
-router.delete("/users/:id", async (req, res) => {
+router.delete("/users/:id", requireRole("super_admin", "tenant_admin"), async (req, res) => {
   const [existing] = await db
     .select({ id: usersTable.id, tenantId: usersTable.tenantId })
     .from(usersTable)
