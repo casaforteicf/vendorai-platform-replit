@@ -331,8 +331,9 @@ function GanttTooltip({ active, payload }: GanttTooltipProps) {
 
 // ─── Cronograma (Gantt) ────────────────────────────────────────────────────────
 
-function Cronograma({ tenantId, obraId, etapas }: { tenantId: string; obraId: string; etapas: ObraEtapa[] }) {
+function Cronograma({ tenantId, obraId, etapas, portalToken }: { tenantId: string; obraId: string; etapas: ObraEtapa[]; portalToken?: string | null }) {
   const qc = useQueryClient();
+  const { toast } = useToast();
   const [addOpen, setAddOpen] = useState(false);
   const [editEtapa, setEditEtapa] = useState<ObraEtapa | null>(null);
   const [form, setForm] = useState({ nome: "", dataInicioPrevista: "", dataFimPrevista: "", responsavel: "", status: "pendente" });
@@ -401,6 +402,14 @@ function Cronograma({ tenantId, obraId, etapas }: { tenantId: string; obraId: st
   const ROW_H = 44;
   const chartHeight = Math.max(200, ganttRows.length * ROW_H + 60);
 
+  function copyCronogramaLink() {
+    if (!portalToken) return;
+    const url = `${window.location.origin}/portal/obra/${portalToken}?tab=cronograma`;
+    navigator.clipboard.writeText(url)
+      .then(() => toast({ title: "Link do Cronograma copiado!", description: "Cole e compartilhe com o cliente." }))
+      .catch(() => toast({ title: "Não foi possível copiar", description: url, variant: "destructive" }));
+  }
+
   return (
     <div className="space-y-4 pt-1">
       {/* Toolbar */}
@@ -415,6 +424,12 @@ function Cronograma({ tenantId, obraId, etapas }: { tenantId: string; obraId: st
           )}
         </div>
         <div className="flex items-center gap-2">
+          {portalToken && (
+            <Button size="sm" variant="outline" className="gap-1.5 text-xs" onClick={copyCronogramaLink}>
+              <Copy className="h-3.5 w-3.5" />
+              Copiar link do Cronograma
+            </Button>
+          )}
           {/* View toggle */}
           <div className="flex border rounded-md overflow-hidden text-xs">
             <button
@@ -2220,7 +2235,7 @@ export default function ObraDetalhe() {
       {/* Tab content */}
       <div>
         {activeTab === "visao-geral"  && <VisaoGeral obra={obra} etapas={etapas} />}
-        {activeTab === "cronograma"   && <Cronograma tenantId={tenantId} obraId={obraId} etapas={etapas} />}
+        {activeTab === "cronograma"   && <Cronograma tenantId={tenantId} obraId={obraId} etapas={etapas} portalToken={(obra as any).portalToken} />}
         {activeTab === "medicoes"     && <Medicoes tenantId={tenantId} obraId={obraId} etapas={etapas} />}
         {activeTab === "diario"       && <DiarioDeObra tenantId={tenantId} obraId={obraId} portalToken={(obra as any).portalToken} />}
         {activeTab === "financeiro"   && <TabFinanceiro tenantId={tenantId} obraId={obraId} etapas={etapas} />}
