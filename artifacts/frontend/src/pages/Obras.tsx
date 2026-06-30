@@ -88,7 +88,7 @@ function NovaObraDialog({ tenantId }: { tenantId: string }) {
             <Label>Nome da obra *</Label>
             <Input value={form.nome} onChange={(e) => setForm((f) => ({ ...f, nome: e.target.value }))} required />
           </div>
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div className="space-y-2">
               <Label>Nome do cliente</Label>
               <Input value={form.clienteNome} onChange={(e) => setForm((f) => ({ ...f, clienteNome: e.target.value }))} />
@@ -102,7 +102,7 @@ function NovaObraDialog({ tenantId }: { tenantId: string }) {
             <Label>Endereço</Label>
             <Input value={form.endereco} onChange={(e) => setForm((f) => ({ ...f, endereco: e.target.value }))} />
           </div>
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div className="space-y-2">
               <Label>Data de início</Label>
               <Input type="date" value={form.dataInicio} onChange={(e) => setForm((f) => ({ ...f, dataInicio: e.target.value }))} />
@@ -145,7 +145,7 @@ export default function Obras() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
+      <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h1 className="text-2xl font-bold flex items-center gap-2">
             <HardHat className="h-6 w-6 text-amber-500" />
@@ -170,7 +170,7 @@ export default function Obras() {
                 <kpi.icon className={`h-3.5 w-3.5 ${kpi.color}`} />
                 {kpi.label}
               </div>
-              <div className="text-2xl font-bold">{kpi.value}</div>
+              <div className="text-xl sm:text-2xl font-bold truncate">{kpi.value}</div>
             </CardContent>
           </Card>
         ))}
@@ -229,9 +229,13 @@ export default function Obras() {
                         <span className="truncate">{obra.endereco}</span>
                       </div>
                     )}
-                    <div className="flex items-center gap-3 text-xs text-muted-foreground">
-                      <Calendar className="h-3 w-3 shrink-0" />
-                      <span>{fmt(obra.dataInicio)} → {fmt(obra.dataFimPrevista)}</span>
+                    <div className="flex items-start gap-1.5 text-xs text-muted-foreground">
+                      <Calendar className="h-3 w-3 shrink-0 mt-0.5" />
+                      <span className="flex flex-wrap gap-x-1">
+                        <span>{fmt(obra.dataInicio)}</span>
+                        <span>→</span>
+                        <span>{fmt(obra.dataFimPrevista)}</span>
+                      </span>
                     </div>
                     {obra.orcamentoTotal && (
                       <div className="space-y-1">
