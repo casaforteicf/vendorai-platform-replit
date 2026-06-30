@@ -941,18 +941,32 @@ function TestimonialsDialog({ onRefine }: { onRefine: (msg: string) => Promise<s
 
 // ── MediaDialog ────────────────────────────────────────────────────────────────
 
+type GalleryItem = { src: string; originalSrc: string };
+
 function MediaDialog({ html, onSave, tenantId }: { html: string; onSave: (html: string) => Promise<void>; tenantId: string }) {
   const [open, setOpen] = useState(false);
   const [logoUrl, setLogoUrl] = useState("");
   const [heroUrl, setHeroUrl] = useState("");
+  const [galleryItems, setGalleryItems] = useState<GalleryItem[]>([]);
+  const [newPhotos, setNewPhotos] = useState<string[]>([]);
   const [loading, setLoading] = useState(false);
-  const [uploading, setUploading] = useState<"logo" | "hero" | null>(null);
+  const [uploading, setUploading] = useState<string | null>(null);
   const [done, setDone] = useState(false);
   const { toast } = useToast();
   const requestUploadUrl = useRequestUploadUrl();
 
-  async function uploadFile(file: File, field: "logo" | "hero") {
-    setUploading(field);
+  useEffect(() => {
+    if (!open) return;
+    const matches = [...html.matchAll(/<img[^>]*?\ssrc=["']([^"']+)["'][^>]*>/gi)];
+    const items = matches.slice(2).map(m => ({ src: m[1], originalSrc: m[1] }));
+    setGalleryItems(items);
+    setNewPhotos([]);
+    setLogoUrl("");
+    setHeroUrl("");
+  }, [open]);
+
+  async function uploadImage(file: File, key: string): Promise<string> {
+    setUploading(key);
     try {
       const result = await new Promise<{ uploadURL: string; objectPath: string }>((resolve, reject) => {
         requestUploadUrl.mutate(
@@ -966,44 +980,60 @@ function MediaDialog({ html, onSave, tenantId }: { html: string; onSave: (html: 
         headers: { "Content-Type": file.type || "image/png" },
       });
       if (!uploadRes.ok) throw new Error("Upload falhou");
-      const permanentUrl = `/api/storage/${result.objectPath}`;
-      if (field === "logo") setLogoUrl(permanentUrl);
-      else setHeroUrl(permanentUrl);
-    } catch {
-      toast({ title: "Erro ao fazer upload da imagem. Tente novamente.", variant: "destructive" });
+      return `/api/storage/${result.objectPath}`;
     } finally {
       setUploading(null);
     }
   }
 
+  async function handleLogoFile(file: File) {
+    try { setLogoUrl(await uploadImage(file, "logo")); }
+    catch { toast({ title: "Erro ao enviar logo. Tente novamente.", variant: "destructive" }); }
+  }
+
+  async function handleHeroFile(file: File) {
+    try { setHeroUrl(await uploadImage(file, "hero")); }
+    catch { toast({ title: "Erro ao enviar foto principal. Tente novamente.", variant: "destructive" }); }
+  }
+
+  async function handleReplaceGallery(index: number, file: File) {
+    try {
+      const url = await uploadImage(file, `gallery-${index}`);
+      setGalleryItems(prev => prev.map((item, i) => i === index ? { ...item, src: url } : item));
+    } catch { toast({ title: "Erro ao enviar foto. Tente novamente.", variant: "destructive" }); }
+  }
+
+  async function handleAddPhotos(files: File[]) {
+    for (const file of files) {
+      try {
+        const url = await uploadImage(file, "gallery-new");
+        setNewPhotos(prev => [...prev, url]);
+      } catch { toast({ title: "Erro ao enviar foto. Tente novamente.", variant: "destructive" }); }
+    }
+  }
+
   function injectLogo(source: string, logoSrc: string): string {
-    // Replace first <img> inside nav or header
     const navReplaced = source.replace(
       /(<(?:nav|header)\b[^>]*>[\s\S]*?)<img([^>]*?\s)src=["'][^"']*["']/i,
       (_, prefix, attrs) => `${prefix}<img${attrs}src="${logoSrc}"`
     );
     if (navReplaced !== source) return navReplaced;
-    // Fallback: first img with class containing logo
     const logoClassReplaced = source.replace(
       /<img([^>]*?class=["'][^"']*(?:logo|brand)[^"']*["'][^>]*?)src=["'][^"']*["']/i,
       `<img$1src="${logoSrc}"`
     );
     if (logoClassReplaced !== source) return logoClassReplaced;
-    // Last fallback: very first img in document
     return source.replace(/<img([^>]*?)src=["'][^"']*["']/, `<img$1src="${logoSrc}"`);
   }
 
   function injectHero(source: string, heroSrc: string): string {
-    // Try hero section img
     const heroSection = source.replace(
       /(<(?:section|div)\b[^>]*(?:id=["'][^"']*hero[^"']*["']|class=["'][^"']*hero[^"']*["'])[^>]*>[\s\S]{0,800}?)<img([^>]*?)src=["'][^"']*["']/i,
       (_, prefix, attrs) => `${prefix}<img${attrs}src="${heroSrc}"`
     );
     if (heroSection !== source) return heroSection;
-    // Replace Unsplash URLs
     const unsplashReplaced = source.replace(/https?:\/\/images\.unsplash\.com[^"'\s)]*/g, heroSrc);
     if (unsplashReplaced !== source) return unsplashReplaced;
-    // Fallback: second img in document (first is usually logo)
     let count = 0;
     return source.replace(/<img([^>]*?)src=["'][^"']*["']/g, (match, attrs) => {
       count++;
@@ -1012,12 +1042,31 @@ function MediaDialog({ html, onSave, tenantId }: { html: string; onSave: (html: 
   }
 
   async function apply() {
-    if ((!logoUrl && !heroUrl) || loading) return;
+    const hasChanges = !!(logoUrl || heroUrl || galleryItems.some(g => g.src !== g.originalSrc) || newPhotos.length > 0);
+    if (!hasChanges || loading) return;
     setLoading(true);
     try {
       let updated = html;
       if (logoUrl) updated = injectLogo(updated, logoUrl);
       if (heroUrl) updated = injectHero(updated, heroUrl);
+      for (const item of galleryItems) {
+        if (item.src !== item.originalSrc) {
+          const escaped = item.originalSrc.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+          updated = updated.replace(new RegExp(`src=["']${escaped}["']`, "g"), `src="${item.src}"`);
+        }
+      }
+      if (newPhotos.length > 0) {
+        const newImgs = newPhotos
+          .map(url => `<img src="${url}" alt="Foto" style="width:100%;height:200px;object-fit:cover;border-radius:8px;" />`)
+          .join("\n");
+        const injected = updated.replace(
+          /(<(?:section|div)\b[^>]*class=["'][^"']*(?:gallery|galeria|fotos|grid|photos|portfolio|services|servic)[^"']*["'][^>]*>[\s\S]*?)(<\/(?:section|div)>)/i,
+          (_, body, close) => `${body}\n${newImgs}\n${close}`
+        );
+        updated = injected !== updated
+          ? injected
+          : updated.replace(/<\/body>/i, `<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;padding:16px">\n${newImgs}\n</div>\n</body>`);
+      }
       await onSave(updated);
       setDone(true);
       setTimeout(() => { setDone(false); setOpen(false); }, 1200);
@@ -1028,6 +1077,8 @@ function MediaDialog({ html, onSave, tenantId }: { html: string; onSave: (html: 
     }
   }
 
+  const hasChanges = !!(logoUrl || heroUrl || galleryItems.some(g => g.src !== g.originalSrc) || newPhotos.length > 0);
+
   return (
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild>
@@ -1036,7 +1087,7 @@ function MediaDialog({ html, onSave, tenantId }: { html: string; onSave: (html: 
           Logo & Fotos
         </Button>
       </DialogTrigger>
-      <DialogContent className="sm:max-w-md">
+      <DialogContent className="sm:max-w-lg max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>Logo e fotos do site</DialogTitle>
         </DialogHeader>
@@ -1055,7 +1106,7 @@ function MediaDialog({ html, onSave, tenantId }: { html: string; onSave: (html: 
                 className="flex-1"
               />
               <label className="cursor-pointer shrink-0">
-                <input type="file" accept="image/*" className="sr-only" onChange={(e) => { const f = e.target.files?.[0]; if (f) uploadFile(f, "logo"); }} />
+                <input type="file" accept="image/*" className="sr-only" onChange={(e) => { const f = e.target.files?.[0]; if (f) handleLogoFile(f); }} />
                 <Button variant="outline" size="icon" type="button" asChild disabled={uploading === "logo"}>
                   <span>{uploading === "logo" ? <Loader2 className="h-4 w-4 animate-spin" /> : <Upload className="h-4 w-4" />}</span>
                 </Button>
@@ -1084,7 +1135,7 @@ function MediaDialog({ html, onSave, tenantId }: { html: string; onSave: (html: 
                 className="flex-1"
               />
               <label className="cursor-pointer shrink-0">
-                <input type="file" accept="image/*" className="sr-only" onChange={(e) => { const f = e.target.files?.[0]; if (f) uploadFile(f, "hero"); }} />
+                <input type="file" accept="image/*" className="sr-only" onChange={(e) => { const f = e.target.files?.[0]; if (f) handleHeroFile(f); }} />
                 <Button variant="outline" size="icon" type="button" asChild disabled={uploading === "hero"}>
                   <span>{uploading === "hero" ? <Loader2 className="h-4 w-4 animate-spin" /> : <Upload className="h-4 w-4" />}</span>
                 </Button>
@@ -1096,10 +1147,92 @@ function MediaDialog({ html, onSave, tenantId }: { html: string; onSave: (html: 
               </div>
             )}
           </div>
+
+          <Separator />
+
+          {/* Gallery */}
+          <div className="flex flex-col gap-3">
+            <div>
+              <Label className="font-medium">Galeria de fotos</Label>
+              <p className="text-xs text-muted-foreground mt-0.5">
+                Clique em uma foto para substituir · adicione novas fotos ao site
+              </p>
+            </div>
+            {galleryItems.length > 0 && (
+              <div className="grid grid-cols-3 gap-2">
+                {galleryItems.map((item, i) => (
+                  <label key={i} className="relative cursor-pointer group rounded-lg overflow-hidden border aspect-square block bg-muted/30">
+                    <input
+                      type="file"
+                      accept="image/*"
+                      className="sr-only"
+                      disabled={!!uploading}
+                      onChange={(e) => { const f = e.target.files?.[0]; if (f) handleReplaceGallery(i, f); e.target.value = ""; }}
+                    />
+                    <img
+                      src={item.src}
+                      alt={`Foto ${i + 1}`}
+                      className="w-full h-full object-cover"
+                      onError={(e) => { (e.target as HTMLImageElement).style.opacity = "0.2"; }}
+                    />
+                    {uploading === `gallery-${i}` ? (
+                      <div className="absolute inset-0 bg-black/50 flex items-center justify-center">
+                        <Loader2 className="h-5 w-5 text-white animate-spin" />
+                      </div>
+                    ) : (
+                      <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity flex flex-col items-center justify-center gap-1">
+                        <Upload className="h-4 w-4 text-white" />
+                        <span className="text-[11px] text-white font-medium">Trocar</span>
+                      </div>
+                    )}
+                    {item.src !== item.originalSrc && (
+                      <div className="absolute top-1 right-1 w-2.5 h-2.5 rounded-full bg-blue-400 border border-white" title="Alterada" />
+                    )}
+                  </label>
+                ))}
+                {newPhotos.map((url, i) => (
+                  <div key={`new-${i}`} className="relative rounded-lg overflow-hidden border aspect-square bg-muted/30">
+                    <img src={url} alt="Nova foto" className="w-full h-full object-cover" />
+                    <div className="absolute top-1 left-1 px-1.5 py-0.5 rounded text-[10px] font-semibold bg-green-500 text-white leading-none">novo</div>
+                    <button
+                      type="button"
+                      className="absolute top-1 right-1 w-5 h-5 rounded-full bg-black/60 flex items-center justify-center text-white text-xs leading-none hover:bg-red-600 transition-colors"
+                      onClick={() => setNewPhotos(prev => prev.filter((_, j) => j !== i))}
+                    >
+                      ×
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+            {galleryItems.length === 0 && (
+              <p className="text-xs text-muted-foreground py-1">Nenhuma foto de galeria detectada no site atual.</p>
+            )}
+            <label className="cursor-pointer">
+              <input
+                type="file"
+                accept="image/*"
+                multiple
+                className="sr-only"
+                disabled={!!uploading}
+                onChange={(e) => {
+                  const files = Array.from(e.target.files ?? []);
+                  if (files.length) handleAddPhotos(files);
+                  e.target.value = "";
+                }}
+              />
+              <Button variant="outline" size="sm" type="button" asChild disabled={uploading === "gallery-new"} className="w-full">
+                <span className="flex items-center gap-2">
+                  {uploading === "gallery-new" ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />}
+                  Adicionar fotos
+                </span>
+              </Button>
+            </label>
+          </div>
         </div>
         <DialogFooter>
-          <Button onClick={apply} disabled={loading || !!uploading || (!logoUrl && !heroUrl)} className="w-full">
-            {loading ? <><Loader2 className="h-4 w-4 mr-2 animate-spin" />Salvando…</> : done ? "✓ Aplicado!" : "Aplicar mídia ao site"}
+          <Button onClick={apply} disabled={loading || !!uploading || !hasChanges} className="w-full">
+            {loading ? <><Loader2 className="h-4 w-4 mr-2 animate-spin" />Salvando…</> : done ? "✓ Aplicado!" : "Aplicar ao site"}
           </Button>
         </DialogFooter>
       </DialogContent>
