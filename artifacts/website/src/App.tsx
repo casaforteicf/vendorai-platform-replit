@@ -11,6 +11,7 @@ import Contato from "@/pages/Contato";
 import Demo from "@/pages/Demo";
 import Privacy from "@/pages/Privacy";
 import Terms from "@/pages/Terms";
+import VerticalPage from "@/pages/site/VerticalPage";
 import Navbar from "@/components/Navbar";
 import Footer from "@/components/Footer";
 
@@ -18,23 +19,31 @@ const queryClient = new QueryClient();
 
 function Router() {
   return (
-    <div className="flex flex-col min-h-screen">
-      <Navbar />
-      <main className="flex-1">
-        <Switch>
-          <Route path="/" component={Home} />
-          <Route path="/funcionalidades" component={Funcionalidades} />
-          <Route path="/precos" component={Precos} />
-          <Route path="/sobre" component={Sobre} />
-          <Route path="/contato" component={Contato} />
-          <Route path="/demo" component={Demo} />
-          <Route path="/privacy" component={Privacy} />
-          <Route path="/terms" component={Terms} />
-          <Route component={NotFound} />
-        </Switch>
-      </main>
-      <Footer />
-    </div>
+    <Switch>
+      {/* Vertical pages — own nav, no global Navbar/Footer */}
+      <Route path="/verticais/:slug" component={VerticalPage} />
+
+      {/* All other pages — standard layout */}
+      <Route>
+        <div className="flex flex-col min-h-screen">
+          <Navbar />
+          <main className="flex-1">
+            <Switch>
+              <Route path="/" component={Home} />
+              <Route path="/funcionalidades" component={Funcionalidades} />
+              <Route path="/precos" component={Precos} />
+              <Route path="/sobre" component={Sobre} />
+              <Route path="/contato" component={Contato} />
+              <Route path="/demo" component={Demo} />
+              <Route path="/privacy" component={Privacy} />
+              <Route path="/terms" component={Terms} />
+              <Route component={NotFound} />
+            </Switch>
+          </main>
+          <Footer />
+        </div>
+      </Route>
+    </Switch>
   );
 }
 

@@ -30,6 +30,10 @@ const server = http.createServer((req, res) => {
   if (urlPath === '/demo') {
     urlPath = '/demo.html';
   }
+  // Vertical pages: /verticais/:slug → serve verticais.html
+  if (urlPath.match(/^\/verticais\/[^/]+\/?$/)) {
+    urlPath = '/verticais.html';
+  }
 
   const filePath = path.join(__dirname, urlPath);
   const ext = path.extname(filePath).toLowerCase();
