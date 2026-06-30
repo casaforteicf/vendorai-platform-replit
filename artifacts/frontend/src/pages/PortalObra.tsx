@@ -148,11 +148,33 @@ export default function PortalObra() {
 
   useEffect(() => {
     if (!token) return;
+
+    const PORTAL_TAB_PREFIX = "portal_tab_";
+    const MAX_PORTAL_TAB_KEYS = 10;
+
+    // Evict old portal_tab_* keys beyond the cap, always keeping the current one
+    try {
+      const allKeys = Object.keys(localStorage).filter((k) => k.startsWith(PORTAL_TAB_PREFIX));
+      if (allKeys.length > MAX_PORTAL_TAB_KEYS) {
+        allKeys
+          .filter((k) => k !== STORAGE_KEY)
+          .slice(0, allKeys.length - MAX_PORTAL_TAB_KEYS)
+          .forEach((k) => localStorage.removeItem(k));
+      }
+    } catch {
+      // localStorage may be unavailable (e.g. private browsing with strict settings)
+    }
+
     fetch(`${API}/portal/obra/${token}`)
       .then((r) => r.ok ? r.json() : r.json().then((e: any) => Promise.reject(e.error)))
       .then((d: PortalData) => { setData(d); setLoading(false); })
-      .catch((e: any) => { setError(typeof e === "string" ? e : "Erro ao carregar o portal."); setLoading(false); });
-  }, [token]);
+      .catch((e: any) => {
+        // Remove stale tab preference for an invalid/expired token
+        try { localStorage.removeItem(STORAGE_KEY); } catch { /* ignore */ }
+        setError(typeof e === "string" ? e : "Erro ao carregar o portal.");
+        setLoading(false);
+      });
+  }, [token, STORAGE_KEY]);
 
   async function handleAprovar() {
     setApproving(true);
