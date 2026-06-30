@@ -27,6 +27,7 @@ import {
   avg,
   sql,
   desc,
+  asc,
   gte,
 } from "drizzle-orm";
 import { callOpenAI as gatewayCallOpenAI } from "../lib/ai-gateway.js";
@@ -732,6 +733,8 @@ router.get("/dashboard", authenticate, async (req, res) => {
     evolucaoLeadsRaw,
     dealsAbertosRaw,
     dealsGanhosMesRaw,
+    riscoChurnRaw,
+    leadsSemContatoRaw,
   ] = await Promise.all([
     // totalLeads no período (30d)
     db.select({ c: count() }).from(leadsTable)
@@ -858,6 +861,40 @@ router.get("/dashboard", authenticate, async (req, res) => {
         eq(dealsTable.etapa, "ganho"),
         gte(dealsTable.updatedAt, monthStart),
       )),
+
+    // leads em risco — alto churnRisk (IA analisou)
+    db.select({
+      leadId:    customerIntelligenceTable.leadId,
+      churnRisk: customerIntelligenceTable.churnRisk,
+      nome:      leadsTable.nome,
+      status:    leadsTable.status,
+    })
+      .from(customerIntelligenceTable)
+      .innerJoin(leadsTable, eq(customerIntelligenceTable.leadId, leadsTable.id))
+      .where(and(
+        eq(customerIntelligenceTable.tenantId, tenantId),
+        isNotNull(customerIntelligenceTable.churnRisk),
+        sql`${customerIntelligenceTable.churnRisk} > 60`,
+        notInArray(leadsTable.status, ["cliente", "perdido"]),
+      ))
+      .orderBy(desc(customerIntelligenceTable.churnRisk))
+      .limit(8),
+
+    // leads em negociação sem contato há mais de 7 dias (sem dado de IA)
+    db.select({
+      leadId:  leadsTable.id,
+      nome:    leadsTable.nome,
+      status:  leadsTable.status,
+      ultimoContato: leadsTable.updatedAt,
+    })
+      .from(leadsTable)
+      .where(and(
+        eq(leadsTable.tenantId, tenantId),
+        inArray(leadsTable.status, ["negociando", "proposta"]),
+        lt(leadsTable.updatedAt, sevenDaysAgo),
+      ))
+      .orderBy(asc(leadsTable.updatedAt))
+      .limit(8),
   ]);
 
   // ── vendas ───────────────────────────────────────────────────────────────
@@ -981,6 +1018,34 @@ router.get("/dashboard", authenticate, async (req, res) => {
     });
   }
 
+  // ── risco de perda ───────────────────────────────────────────────────────
+  // Merge: prioriza leads com churnRisk da IA; complementa com leads sem contato há 7d
+  const riscoChurnIds = new Set(riscoChurnRaw.map(r => r.leadId));
+  const STATUS_LABEL: Record<string, string> = {
+    novo: "Novo", qualificado: "Qualificado", proposta: "Proposta",
+    negociando: "Negociando", fechado: "Fechado", perdido: "Perdido",
+  };
+  const riscoPerda = [
+    ...riscoChurnRaw.map(r => ({
+      leadId:    r.leadId,
+      nome:      r.nome ?? "Lead sem nome",
+      status:    r.status ?? "",
+      statusLabel: STATUS_LABEL[r.status ?? ""] ?? r.status ?? "",
+      churnRisk: r.churnRisk ?? null,
+      motivo:    "ia" as const,
+    })),
+    ...leadsSemContatoRaw
+      .filter(r => !riscoChurnIds.has(r.leadId))
+      .map(r => ({
+        leadId:    r.leadId,
+        nome:      r.nome ?? "Lead sem nome",
+        status:    r.status ?? "",
+        statusLabel: STATUS_LABEL[r.status ?? ""] ?? r.status ?? "",
+        churnRisk: null,
+        motivo:    "sem_contato" as const,
+      })),
+  ].slice(0, 8);
+
   // ── negociação ────────────────────────────────────────────────────────────
   const dealsAbertos      = Number(dealsAbertosRaw[0]?.total ?? 0);
   const dealsAbertosValor = parseFloat(dealsAbertosRaw[0]?.somaValor ?? "0") || 0;
@@ -1004,6 +1069,7 @@ router.get("/dashboard", authenticate, async (req, res) => {
       dealsGanhosMes,
       dealsGanhosMesValor,
     },
+    riscoPerda,
     ia: {
       mensagensHoje,
       mensagensMes,

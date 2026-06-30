@@ -83,6 +83,14 @@ interface DashboardData {
     quotaUsada: number;
     usosPorAgente: { agentKey: string; nome: string; count: number }[];
   };
+  riscoPerda: {
+    leadId: string;
+    nome: string;
+    status: string;
+    statusLabel: string;
+    churnRisk: number | null;
+    motivo: "ia" | "sem_contato";
+  }[];
   atividade: { ultimas20: AtividadeItem[] };
   alertas: DashboardAlerta[];
   periodo: { inicio: string; fim: string };
@@ -303,7 +311,7 @@ export default function Dashboard() {
 
   if (!data) return null;
 
-  const { vendas, ia, negociacao } = data;
+  const { vendas, ia, negociacao, riscoPerda } = data;
   const quotaPct = Math.min(ia.quotaUsada, 100);
   const subdomainSlug = data.tenant?.subdomainSlug ?? null;
 
@@ -494,6 +502,69 @@ export default function Dashboard() {
 
         </div>
       </section>
+
+      {/* ════════════════════════════════════
+          LISTA — RISCO DE PERDA
+      ════════════════════════════════════ */}
+      {riscoPerda.length > 0 && (
+        <section className="space-y-3">
+          <h2 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground flex items-center gap-2">
+            <AlertTriangle className="h-3.5 w-3.5 text-amber-500" />
+            Leads com Risco de Perda
+          </h2>
+          <Card>
+            <CardContent className="p-0">
+              <ul className="divide-y divide-border">
+                {riscoPerda.map((lead) => (
+                  <li key={lead.leadId} className="flex items-center justify-between px-4 py-3 hover:bg-muted/40 transition-colors">
+                    <div className="flex items-center gap-3 min-w-0">
+                      <div className="flex-shrink-0 w-8 h-8 rounded-full bg-amber-100 dark:bg-amber-900/30 flex items-center justify-center">
+                        <AlertTriangle className="h-4 w-4 text-amber-500" />
+                      </div>
+                      <div className="min-w-0">
+                        <p className="text-sm font-medium truncate">{lead.nome}</p>
+                        <p className="text-xs text-muted-foreground">
+                          {lead.statusLabel}
+                          {lead.motivo === "sem_contato" && " · Sem contato há +7 dias"}
+                        </p>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-3 flex-shrink-0 ml-3">
+                      {lead.churnRisk !== null ? (
+                        <div className="text-right">
+                          <div
+                            className={`text-sm font-bold ${
+                              lead.churnRisk >= 80
+                                ? "text-red-500"
+                                : lead.churnRisk >= 60
+                                ? "text-amber-500"
+                                : "text-yellow-500"
+                            }`}
+                          >
+                            {lead.churnRisk}%
+                          </div>
+                          <div className="text-[10px] text-muted-foreground">risco IA</div>
+                        </div>
+                      ) : (
+                        <div className="text-right">
+                          <div className="text-sm font-bold text-amber-500">—</div>
+                          <div className="text-[10px] text-muted-foreground">sem análise</div>
+                        </div>
+                      )}
+                      <a
+                        href={`/leads/${lead.leadId}`}
+                        className="text-xs text-primary underline-offset-2 hover:underline whitespace-nowrap"
+                      >
+                        Ver lead
+                      </a>
+                    </div>
+                  </li>
+                ))}
+              </ul>
+            </CardContent>
+          </Card>
+        </section>
+      )}
 
       {/* ════════════════════════════════════
           CARDS — IA (3 cols / 1 mobile)
