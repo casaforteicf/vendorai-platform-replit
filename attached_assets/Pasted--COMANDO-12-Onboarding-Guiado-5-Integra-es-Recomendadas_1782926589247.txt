@@ -1,0 +1,221 @@
+# COMANDO 12 — Onboarding Guiado: 5 Integrações Recomendadas
+
+**Stack:** Node + Drizzle + Supabase · React frontend  
+**Contexto:** Tenant ativa pela primeira vez e é guiado pelas integrações recomendadas  
+**Objetivo:** Tela de onboarding step-by-step com 5 integrações: WhatsApp, Google Calendar, Instagram, Asaas, ZapSign
+
+---
+
+## Parte A — Lógica de ativação do onboarding
+
+```javascript
+// Ao criar um tenant novo (ou no primeiro login), verificar se onboarding foi concluído
+// Se tenants.onboarding_completed = false → redirecionar para /onboarding
+
+// Tabela: adicionar campos de controle
+ALTER TABLE tenants ADD COLUMN IF NOT EXISTS onboarding_completed boolean DEFAULT false;
+ALTER TABLE tenants ADD COLUMN IF NOT EXISTS onboarding_step int DEFAULT 0;
+ALTER TABLE tenants ADD COLUMN IF NOT EXISTS onboarding_skipped_at timestamptz;
+```
+
+---
+
+## Parte B — Rota e tela do onboarding (/onboarding)
+
+Tela em fullscreen (sem sidebar), progress bar no topo mostrando 5 etapas.
+
+### Layout geral
+
+```
+┌─────────────────────────────────────────┐
+│  ● ─ ─ ─ ○ ─ ─ ─ ○ ─ ─ ─ ○ ─ ─ ─ ○   │  ← progress bar
+│  WhatsApp  Calendar  Instagram  Asaas  ZapSign
+├─────────────────────────────────────────┤
+│                                          │
+│  [Conteúdo da etapa atual]               │
+│                                          │
+│  [Pular esta etapa]  [Conectar →]        │
+└─────────────────────────────────────────┘
+```
+
+---
+
+## Parte C — As 5 etapas
+
+### ETAPA 1 — WhatsApp
+
+```
+Ícone: WhatsApp verde
+Título: "Conecte seu WhatsApp"
+Subtítulo: "Receba e responda mensagens dos seus clientes direto na plataforma"
+
+Opção A: Z-API (recomendado para quem usa WhatsApp Business App)
+  → Botão "Conectar via QR Code"
+  → Abre modal com QR Code gerado pelo Z-API
+  → Quando escanear: salva z_api_instance_id no tenant, marca etapa como concluída
+
+Opção B: Meta Cloud API (para número dedicado)
+  → Botão "Usar número dedicado"
+  → Instrução: "Seu número não pode estar no WhatsApp app"
+  → Campo para inserir o número
+  → Inicia fluxo de verificação Meta
+
+Status após conectar: ✅ WhatsApp conectado — (49) 99999-0000
+```
+
+### ETAPA 2 — Google Calendar
+
+```
+Ícone: Google Calendar
+Título: "Sincronize sua agenda"
+Subtítulo: "Agendamentos feitos na plataforma aparecem automaticamente no seu Google Calendar"
+
+→ Botão "Conectar Google Calendar" (OAuth já implementado)
+→ Abre popup OAuth Google
+→ Quando autorizar: salva google_calendar_token no tenant, marca etapa concluída
+
+Status após conectar: ✅ Google Calendar — nome@gmail.com
+```
+
+### ETAPA 3 — Instagram
+
+```
+Ícone: Instagram roxo
+Título: "Conecte seu Instagram Business"
+Subtítulo: "Receba DMs e gere conteúdo para o Instagram direto pela Vendor.ai"
+
+→ Botão "Conectar Instagram" (OAuth Meta — já implementado no cmd-11)
+→ Abre popup OAuth Meta
+→ Quando autorizar: salva instagram_access_token, instagram_username no tenant
+
+Status após conectar: ✅ Instagram — @nomedaempresa
+```
+
+### ETAPA 4 — Asaas
+
+```
+Ícone: Asaas
+Título: "Ative a cobrança automática"
+Subtítulo: "Gere boletos, Pix e cobranças recorrentes automaticamente quando fechar uma venda"
+
+→ Campo: "Cole sua chave de API do Asaas"
+  Instrução: "Acesse app.asaas.com → Minha conta → Integrações → Chave de API"
+  Link: "Abrir Asaas →"
+→ Botão "Verificar e salvar"
+→ Sistema testa a chave com GET /api/v3/myAccount
+→ Se válida: salva asaas_api_key (criptografada) no tenant, marca concluída
+
+Status após conectar: ✅ Asaas — conta verificada
+```
+
+### ETAPA 5 — ZapSign
+
+```
+Ícone: ZapSign
+Título: "Ative contratos digitais"
+Subtítulo: "Envie contratos para assinatura eletrônica automaticamente quando fechar uma venda"
+
+→ Campo: "Cole sua chave de API do ZapSign"
+  Instrução: "Acesse app.zapsign.com.br → Configurações → API Token"
+  Link: "Abrir ZapSign →"
+→ Botão "Verificar e salvar"
+→ Sistema testa a chave com GET /api/v1/users/me/
+→ Se válida: salva zapsign_api_key (criptografada) no tenant, marca concluída
+
+Status após conectar: ✅ ZapSign — conta verificada
+```
+
+---
+
+## Parte D — Tela de conclusão
+
+Após completar todas as etapas (ou pular algumas):
+
+```
+┌─────────────────────────────────────┐
+│         🎉 Tudo pronto!              │
+│                                      │
+│  Sua plataforma está configurada.    │
+│                                      │
+│  ✅ WhatsApp conectado               │
+│  ✅ Google Calendar sincronizado     │
+│  ⏭️ Instagram (pulado)               │
+│  ✅ Asaas ativo                      │
+│  ⏭️ ZapSign (pulado)                 │
+│                                      │
+│  As etapas puladas podem ser         │
+│  configuradas depois em              │
+│  Configurações → Integrações         │
+│                                      │
+│  [Ir para o Dashboard →]             │
+└─────────────────────────────────────┘
+```
+
+```javascript
+// Ao clicar "Ir para o Dashboard":
+await db.update(tenants)
+  .set({ onboarding_completed: true })
+  .where(eq(tenants.id, tenantId));
+
+redirect('/dashboard');
+```
+
+---
+
+## Parte E — Retomar onboarding em Configurações
+
+Em Configurações → Integrações, mostrar card para cada integração pendente:
+
+```
+┌─────────────────────────────────────┐
+│ ⚠️ Integrações pendentes (2)         │
+│                                      │
+│ 📸 Instagram    [Conectar]           │
+│ ✍️ ZapSign      [Configurar]         │
+└─────────────────────────────────────┘
+```
+
+---
+
+## Parte F — Middleware de redirecionamento
+
+```javascript
+// Em todas as rotas autenticadas do tenant:
+if (!tenant.onboarding_completed && !tenant.onboarding_skipped_at) {
+  if (req.path !== '/onboarding') {
+    return redirect('/onboarding');
+  }
+}
+```
+
+Exceção: super_admin e partner não passam pelo onboarding de tenant.
+
+---
+
+## Migration completa
+
+```sql
+ALTER TABLE tenants ADD COLUMN IF NOT EXISTS onboarding_completed boolean DEFAULT false;
+ALTER TABLE tenants ADD COLUMN IF NOT EXISTS onboarding_step int DEFAULT 0;
+ALTER TABLE tenants ADD COLUMN IF NOT EXISTS onboarding_skipped_at timestamptz;
+ALTER TABLE tenants ADD COLUMN IF NOT EXISTS z_api_instance_id text;
+ALTER TABLE tenants ADD COLUMN IF NOT EXISTS asaas_api_key text;
+ALTER TABLE tenants ADD COLUMN IF NOT EXISTS zapsign_api_key text;
+-- instagram_access_token e google_calendar_token já foram adicionados em cmds anteriores
+```
+
+---
+
+## Critérios de aceite
+
+- [ ] Tenant novo é redirecionado para /onboarding no primeiro acesso
+- [ ] Progress bar mostra etapa atual
+- [ ] Cada etapa tem botão "Pular esta etapa"
+- [ ] WhatsApp conecta via QR Code (Z-API) ou número dedicado (Meta)
+- [ ] Google Calendar conecta via OAuth com 1 clique
+- [ ] Instagram conecta via OAuth Meta
+- [ ] Asaas valida a chave antes de salvar
+- [ ] ZapSign valida a chave antes de salvar
+- [ ] Tela de conclusão mostra o que foi conectado e o que foi pulado
+- [ ] Etapas puladas ficam disponíveis em Configurações → Integrações
+- [ ] Após onboarding, tenant acessa o dashboard normalmente

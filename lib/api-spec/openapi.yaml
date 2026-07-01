@@ -12322,6 +12322,10 @@ components:
           type: string
           nullable: true
           description: Internal notes visible only to super admins.
+        integracoesConcluido:
+          type: boolean
+          default: false
+          description: Whether the integrations onboarding has been completed.
         createdAt:
           type: string
           format: date-time

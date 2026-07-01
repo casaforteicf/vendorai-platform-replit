@@ -31,9 +31,9 @@ export function createOAuth2Client() {
   return new google.auth.OAuth2(clientId, clientSecret, getRedirectUri());
 }
 
-export function buildAuthUrl(agendaId: string): string {
+export function buildAuthUrl(agendaId: string, returnTo?: string): string {
   const oauth2 = createOAuth2Client();
-  const state = Buffer.from(JSON.stringify({ agendaId })).toString("base64url");
+  const state = Buffer.from(JSON.stringify({ agendaId, returnTo })).toString("base64url");
   return oauth2.generateAuthUrl({
     access_type: "offline",
     prompt: "consent",

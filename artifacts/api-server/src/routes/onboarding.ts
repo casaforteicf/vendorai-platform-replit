@@ -12,9 +12,13 @@ import {
   segmentTemplatesTable,
   onboardingProgressTable,
   plansTable,
+  agendasTable,
+  whatsappConnectionsTable,
+  instagramConnectionsTable,
   AGENT_TYPES,
   type AgentsMap,
 } from "@workspace/db";
+import { buildAuthUrl } from "../lib/google-calendar.js";
 import { authenticate, requireSameTenanOrSuperAdmin } from "../middlewares/auth.js";
 import { objectStorageClient } from "../lib/objectStorage.js";
 import { extractBusinessDataFromDocuments } from "../lib/document-extraction.js";
@@ -1005,6 +1009,139 @@ router.get("/onboarding/whatsapp/test", authenticate, async (req, res) => {
     req.log.warn({ err }, "Onboarding whatsapp test failed");
     res.json({ conectado: false, erro: "Timeout ou erro de rede" });
   }
+});
+
+// ── GET /onboarding/integracoes ────────────────────────────────────────────────
+router.get("/onboarding/integracoes", authenticate, async (req, res) => {
+  const tenantId = req.user!.tenantId;
+  if (!tenantId) { return res.status(403).json({ error: "Tenant não identificado" }); }
+
+  const [tenant] = await db
+    .select({ step: tenantsTable.integracoesStep, concluido: tenantsTable.integracoesConcluido })
+    .from(tenantsTable).where(eq(tenantsTable.id, tenantId));
+
+  const [waConn] = await db
+    .select({ displayPhoneNumber: whatsappConnectionsTable.displayPhoneNumber, status: whatsappConnectionsTable.status })
+    .from(whatsappConnectionsTable)
+    .where(and(eq(whatsappConnectionsTable.tenantId, tenantId)));
+
+  const [igConn] = await db
+    .select({ username: instagramConnectionsTable.username, status: instagramConnectionsTable.status })
+    .from(instagramConnectionsTable)
+    .where(eq(instagramConnectionsTable.tenantId, tenantId));
+
+  const [gcAgenda] = await db
+    .select({ id: agendasTable.id, googleCalendarId: agendasTable.googleCalendarId })
+    .from(agendasTable)
+    .where(and(eq(agendasTable.tenantId, tenantId)));
+
+  const [tenantData] = await db
+    .select({ asaasApiKey: tenantsTable.asaasApiKey, zapsignApiKey: tenantsTable.zapsignApiKey })
+    .from(tenantsTable).where(eq(tenantsTable.id, tenantId));
+
+  return res.json({
+    step: tenant?.step ?? 0,
+    concluido: tenant?.concluido ?? false,
+    whatsapp: {
+      connected: waConn?.status === "active",
+      phone: waConn?.displayPhoneNumber ?? null,
+    },
+    googleCalendar: {
+      connected: !!(gcAgenda?.googleCalendarId),
+      agendaId: gcAgenda?.id ?? null,
+    },
+    instagram: {
+      connected: igConn?.status === "active",
+      username: igConn?.username ?? null,
+    },
+    asaas: { connected: !!tenantData?.asaasApiKey },
+    zapsign: { connected: !!tenantData?.zapsignApiKey },
+  });
+});
+
+// ── PATCH /onboarding/integracoes/step ─────────────────────────────────────────
+router.patch("/onboarding/integracoes/step", authenticate, async (req, res) => {
+  const tenantId = req.user!.tenantId;
+  if (!tenantId) { return res.status(403).json({ error: "Tenant não identificado" }); }
+  const { step } = z.object({ step: z.number().int().min(0).max(5) }).parse(req.body);
+  await db.update(tenantsTable).set({ integracoesStep: step }).where(eq(tenantsTable.id, tenantId));
+  return res.json({ ok: true });
+});
+
+// ── POST /onboarding/integracoes/complete ──────────────────────────────────────
+router.post("/onboarding/integracoes/complete", authenticate, async (req, res) => {
+  const tenantId = req.user!.tenantId;
+  if (!tenantId) { return res.status(403).json({ error: "Tenant não identificado" }); }
+  await db.update(tenantsTable)
+    .set({ integracoesConcluido: true })
+    .where(eq(tenantsTable.id, tenantId));
+  return res.json({ ok: true, redirectTo: "/dashboard" });
+});
+
+// ── POST /onboarding/integracoes/validate-asaas ────────────────────────────────
+router.post("/onboarding/integracoes/validate-asaas", authenticate, async (req, res) => {
+  const tenantId = req.user!.tenantId;
+  if (!tenantId) { return res.status(403).json({ error: "Tenant não identificado" }); }
+  const { apiKey } = z.object({ apiKey: z.string().min(1) }).parse(req.body);
+
+  try {
+    const r = await fetch("https://api.asaas.com/api/v3/myAccount", {
+      headers: { access_token: apiKey },
+      signal: AbortSignal.timeout(8000),
+    });
+    if (!r.ok) { return res.json({ valid: false, error: `Asaas retornou HTTP ${r.status}` }); }
+    const data = await r.json() as { name?: string };
+    await db.update(tenantsTable).set({ asaasApiKey: apiKey }).where(eq(tenantsTable.id, tenantId));
+    return res.json({ valid: true, name: data.name });
+  } catch {
+    return res.json({ valid: false, error: "Timeout ou chave inválida" });
+  }
+});
+
+// ── POST /onboarding/integracoes/validate-zapsign ──────────────────────────────
+router.post("/onboarding/integracoes/validate-zapsign", authenticate, async (req, res) => {
+  const tenantId = req.user!.tenantId;
+  if (!tenantId) { return res.status(403).json({ error: "Tenant não identificado" }); }
+  const { apiKey } = z.object({ apiKey: z.string().min(1) }).parse(req.body);
+
+  try {
+    const r = await fetch("https://api.zapsign.com.br/api/v1/users/me/", {
+      headers: { Authorization: `Bearer ${apiKey}` },
+      signal: AbortSignal.timeout(8000),
+    });
+    if (!r.ok) { return res.json({ valid: false, error: `ZapSign retornou HTTP ${r.status}` }); }
+    const data = await r.json() as { name?: string; email?: string };
+    await db.update(tenantsTable).set({ zapsignApiKey: apiKey }).where(eq(tenantsTable.id, tenantId));
+    return res.json({ valid: true, name: data.name ?? data.email });
+  } catch {
+    return res.json({ valid: false, error: "Timeout ou chave inválida" });
+  }
+});
+
+// ── GET /onboarding/integracoes/google-url ─────────────────────────────────────
+router.get("/onboarding/integracoes/google-url", authenticate, async (req, res) => {
+  const tenantId = req.user!.tenantId;
+  if (!tenantId) { return res.status(403).json({ error: "Tenant não identificado" }); }
+  if (!process.env["GOOGLE_CLIENT_ID"]) {
+    return res.status(503).json({ error: "Google Calendar não configurado" });
+  }
+
+  let [agenda] = await db
+    .select({ id: agendasTable.id })
+    .from(agendasTable)
+    .where(eq(agendasTable.tenantId, tenantId))
+    .limit(1);
+
+  if (!agenda) {
+    const [created] = await db.insert(agendasTable).values({
+      tenantId,
+      nome: "Agenda Principal",
+    }).returning({ id: agendasTable.id });
+    agenda = created!;
+  }
+
+  const url = buildAuthUrl(agenda.id, "/onboarding/integracoes");
+  return res.json({ url });
 });
 
 // ── GET /onboarding/plans ──────────────────────────────────────────────────────

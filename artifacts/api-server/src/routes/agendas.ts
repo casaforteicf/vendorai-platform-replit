@@ -275,11 +275,13 @@ googleCallbackRouter.get("/auth/google/calendar/callback", async (req, res) => {
   }
 
   let agendaId: string;
+  let returnTo: string = "/configuracoes";
   try {
     const decoded = JSON.parse(
       Buffer.from(state, "base64url").toString("utf-8")
-    ) as { agendaId: string };
+    ) as { agendaId: string; returnTo?: string };
     agendaId = decoded.agendaId;
+    if (decoded.returnTo) returnTo = decoded.returnTo;
   } catch {
     res.redirect(`${appUrl}/configuracoes?googleError=invalid_state`);
     return;
@@ -287,10 +289,10 @@ googleCallbackRouter.get("/auth/google/calendar/callback", async (req, res) => {
 
   try {
     await exchangeCodeAndStore(code, agendaId);
-    res.redirect(`${appUrl}/configuracoes?googleConnected=1`);
+    res.redirect(`${appUrl}${returnTo}?googleConnected=1`);
   } catch (err) {
     req.log.error({ err }, "Google Calendar OAuth exchange failed");
-    res.redirect(`${appUrl}/configuracoes?googleError=exchange_failed`);
+    res.redirect(`${appUrl}${returnTo}?googleError=exchange_failed`);
   }
 });
 

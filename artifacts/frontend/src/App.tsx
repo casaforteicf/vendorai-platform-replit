@@ -52,7 +52,8 @@ const PartnerCommissions = lazy(() => import("@/pages/partner/PartnerCommissions
 const SiteLandingPage    = lazy(() => import("@/pages/SiteLandingPage"));
 const Marketplace        = lazy(() => import("@/pages/Marketplace"));
 const Estoque            = lazy(() => import("@/pages/Estoque"));
-const Onboarding         = lazy(() => import("@/pages/Onboarding"));
+const Onboarding                = lazy(() => import("@/pages/Onboarding"));
+const OnboardingIntegracoes     = lazy(() => import("@/pages/OnboardingIntegracoes"));
 const Content            = lazy(() => import("@/pages/Content"));
 const ContentStudio      = lazy(() => import("@/pages/ContentStudio"));
 const GuiaImplantacao    = lazy(() => import("@/pages/GuiaImplantacao"));
@@ -175,8 +176,12 @@ function ProtectedRoute({ component: Component, ...rest }: any) {
 
   useEffect(() => {
     if (!isTenantAdmin || tenantLoading || !tenant) return;
-    if (tenant.status !== "suspended" && !hasOverdueInvoice && !tenant.setupCompletedAt) {
-      setLocation("/onboarding");
+    if (tenant.status !== "suspended" && !hasOverdueInvoice) {
+      if (!tenant.setupCompletedAt) {
+        setLocation("/onboarding");
+      } else if (!tenant.integracoesConcluido) {
+        setLocation("/onboarding/integracoes");
+      }
     }
   }, [tenant, tenantLoading, isTenantAdmin, hasOverdueInvoice, setLocation]);
 
@@ -396,6 +401,13 @@ function AppRoutes() {
         </Route>
         <Route path="/onboarding">
           <OnboardingRoute />
+        </Route>
+        <Route path="/onboarding/integracoes">
+          {() => (
+            <Suspense fallback={<Spinner />}>
+              <OnboardingIntegracoes />
+            </Suspense>
+          )}
         </Route>
         <Route path="/">
           <PublicRoute component={Login} />

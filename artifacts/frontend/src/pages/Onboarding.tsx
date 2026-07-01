@@ -843,31 +843,21 @@ export default function Onboarding() {
                   </p>
                 </div>
 
-                <div className="grid grid-cols-3 gap-3 w-full">
-                  {[
-                    { label: "Adicionar leads", path: "/leads/new" },
-                    { label: "Ver agentes", path: "/agents/config" },
-                    { label: "Ir para o dashboard", path: "/dashboard" },
-                  ].map(({ label, path }) => (
-                    <button
-                      key={path}
-                      type="button"
-                      onClick={() => setLocation(path)}
-                      className="flex flex-col items-center gap-2 rounded-xl border p-4 hover:border-primary/60 hover:bg-muted/40 transition-all text-sm font-medium text-center"
-                    >
-                      {label}
-                    </button>
-                  ))}
-                </div>
-
                 <Button
                   size="lg"
                   className="w-full gap-2"
-                  onClick={() => setLocation("/dashboard")}
+                  onClick={() => setLocation("/onboarding/integracoes")}
                 >
-                  Ir para o dashboard
+                  Configurar integrações
                   <ChevronRight className="h-4 w-4" />
                 </Button>
+                <button
+                  type="button"
+                  className="text-xs text-muted-foreground hover:text-foreground transition-colors"
+                  onClick={() => setLocation("/dashboard")}
+                >
+                  Pular e ir direto para o dashboard
+                </button>
               </div>
             </>
           )}

@@ -47,8 +47,8 @@ router.get("/auth/whatsapp", authenticate, async (req, res) => {
 
     const state = encodeState(tenantId, userId);
     const url = buildWhatsappOAuthUrl(tenantId, state);
-    logger.info({ tenantId, userId }, "Redirecionando para OAuth WhatsApp");
-    return res.redirect(url);
+    logger.info({ tenantId, userId }, "Retornando URL OAuth WhatsApp");
+    return res.json({ url });
   } catch (err) {
     logger.error({ err }, "Erro ao iniciar OAuth WhatsApp");
     return res.status(500).json({ error: "Internal error" });
