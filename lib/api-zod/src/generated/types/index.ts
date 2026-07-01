@@ -448,6 +448,7 @@ export * from './updateInvoiceBody';
 export * from './updateKnowledgeBaseBody';
 export * from './updateLeadBody';
 export * from './updateLeadBodyFilhosItem';
+export * from './updateLeadBodyMetadata';
 export * from './updateLeadSpouseConsentBody';
 export * from './updateMessageBody';
 export * from './updatePartnerBody';

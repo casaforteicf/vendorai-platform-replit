@@ -497,6 +497,7 @@ export default function LeadDetail() {
     conjugeEmail: "",
     conjugeDataNascimento: "",
     filhos: [] as Array<{ nome: string; dataNascimento: string; genero: string }>,
+    socios: [] as Array<{ nome: string; dataNascimento: string; telefone: string; email: string }>,
   });
 
   const { mutate: updateLead, isPending: isUpdatingLead } = useUpdateLead({
@@ -514,6 +515,7 @@ export default function LeadDetail() {
 
   function openPessoalEdit() {
     if (!lead) return;
+    const metaSocios = ((lead as any).metadata?.socios ?? []) as Array<{ nome?: string; dataNascimento?: string; telefone?: string; email?: string }>;
     setPessoalDraft({
       dataNascimento: lead.dataNascimento ?? "",
       estadoCivil: lead.estadoCivil ?? "",
@@ -527,12 +529,20 @@ export default function LeadDetail() {
         dataNascimento: f.dataNascimento ?? "",
         genero: f.genero ?? "",
       })),
+      socios: metaSocios.map((s) => ({
+        nome: s.nome ?? "",
+        dataNascimento: s.dataNascimento ?? "",
+        telefone: s.telefone ?? "",
+        email: s.email ?? "",
+      })),
     });
     setEditingPessoal(true);
   }
 
   function savePessoal() {
     if (!id) return;
+    const sociosFiltrados = pessoalDraft.socios.filter((s) => s.nome.trim());
+    const metadataAtual = (lead as any)?.metadata ?? {};
     updateLead({
       id,
       data: {
@@ -550,6 +560,10 @@ export default function LeadDetail() {
               genero: f.genero || null,
             }))
           : null,
+        metadata: {
+          ...metadataAtual,
+          socios: sociosFiltrados.length > 0 ? sociosFiltrados : [],
+        } as any,
       },
     });
   }
@@ -1169,6 +1183,38 @@ export default function LeadDetail() {
                   {lead.conjugeNome && (
                     <SpouseConsentBlock leadId={id} />
                   )}
+                  {lead.empresa && (() => {
+                    const socios = ((lead as any).metadata?.socios ?? []) as Array<{ nome?: string; dataNascimento?: string; telefone?: string; email?: string }>;
+                    if (socios.length === 0) return null;
+                    return (
+                      <div className="space-y-1 border-l-2 border-muted pl-3">
+                        <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Sócios</p>
+                        {socios.map((s, i) => (
+                          <div key={i} className="space-y-0.5">
+                            <p className="font-medium">{s.nome}</p>
+                            {s.dataNascimento && (
+                              <div className="flex items-center gap-1.5 text-muted-foreground text-xs">
+                                <CalendarDays className="h-3 w-3" />
+                                <span>{formatDate(s.dataNascimento)} · {calcularIdade(s.dataNascimento)}</span>
+                              </div>
+                            )}
+                            {s.telefone && (
+                              <div className="flex items-center gap-1.5 text-muted-foreground text-xs">
+                                <Phone className="h-3 w-3" />
+                                <span className="font-mono">{s.telefone}</span>
+                              </div>
+                            )}
+                            {s.email && (
+                              <div className="flex items-center gap-1.5 text-muted-foreground text-xs">
+                                <Mail className="h-3 w-3" />
+                                <span>{s.email}</span>
+                              </div>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    );
+                  })()}
                 </>
               )}
             </CardContent>
@@ -2713,6 +2759,96 @@ export default function LeadDetail() {
                 </div>
               ))}
             </div>
+            {lead?.empresa && (
+              <div className="space-y-2">
+                <div className="flex items-center justify-between">
+                  <p className="text-sm font-medium">Sócios</p>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    className="h-7 px-2 text-xs gap-1"
+                    onClick={() =>
+                      setPessoalDraft((d) => ({
+                        ...d,
+                        socios: [...d.socios, { nome: "", dataNascimento: "", telefone: "", email: "" }],
+                      }))
+                    }
+                  >
+                    <Plus className="h-3 w-3" />
+                    Adicionar sócio
+                  </Button>
+                </div>
+                {pessoalDraft.socios.length === 0 && (
+                  <p className="text-xs text-muted-foreground">Nenhum sócio cadastrado.</p>
+                )}
+                {pessoalDraft.socios.map((socio, i) => (
+                  <div key={i} className="border rounded-md p-3 bg-muted/30 space-y-2 relative">
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      className="absolute top-2 right-2 h-7 w-7 p-0 text-muted-foreground hover:text-destructive"
+                      onClick={() =>
+                        setPessoalDraft((d) => ({ ...d, socios: d.socios.filter((_, j) => j !== i) }))
+                      }
+                    >
+                      <Trash2 className="h-3.5 w-3.5" />
+                    </Button>
+                    <div className="space-y-1.5 pr-8">
+                      <label className="text-xs font-medium">Nome</label>
+                      <Input
+                        placeholder="Nome do sócio"
+                        value={socio.nome}
+                        onChange={(e) => {
+                          const socios = [...pessoalDraft.socios];
+                          socios[i] = { ...socios[i]!, nome: e.target.value };
+                          setPessoalDraft((d) => ({ ...d, socios }));
+                        }}
+                      />
+                    </div>
+                    <div className="grid grid-cols-2 gap-2">
+                      <div className="space-y-1.5">
+                        <label className="text-xs font-medium">Data de Nascimento</label>
+                        <Input
+                          type="date"
+                          value={socio.dataNascimento}
+                          onChange={(e) => {
+                            const socios = [...pessoalDraft.socios];
+                            socios[i] = { ...socios[i]!, dataNascimento: e.target.value };
+                            setPessoalDraft((d) => ({ ...d, socios }));
+                          }}
+                        />
+                      </div>
+                      <div className="space-y-1.5">
+                        <label className="text-xs font-medium">Telefone</label>
+                        <Input
+                          placeholder="(11) 99999-9999"
+                          value={socio.telefone}
+                          onChange={(e) => {
+                            const socios = [...pessoalDraft.socios];
+                            socios[i] = { ...socios[i]!, telefone: e.target.value };
+                            setPessoalDraft((d) => ({ ...d, socios }));
+                          }}
+                        />
+                      </div>
+                    </div>
+                    <div className="space-y-1.5">
+                      <label className="text-xs font-medium">E-mail</label>
+                      <Input
+                        placeholder="email@..."
+                        value={socio.email}
+                        onChange={(e) => {
+                          const socios = [...pessoalDraft.socios];
+                          socios[i] = { ...socios[i]!, email: e.target.value };
+                          setPessoalDraft((d) => ({ ...d, socios }));
+                        }}
+                      />
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setEditingPessoal(false)}>

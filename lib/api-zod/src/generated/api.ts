@@ -5318,7 +5318,8 @@ export const UpdateLeadBody = zod.object({
   "websiteUrl": zod.string().nullish().describe('URL do site do cliente.'),
   "mercadoSegmento": zod.string().nullish(),
   "corDestaque": zod.string().nullish(),
-  "corSecundaria": zod.string().nullish()
+  "corSecundaria": zod.string().nullish(),
+  "metadata": zod.record(zod.string(), zod.unknown()).nullish().describe('Dados adicionais do lead (ex. sócios, rating Google, etc.)')
 })
 
 export const updateLeadResponseTipoDefault = `cliente`;

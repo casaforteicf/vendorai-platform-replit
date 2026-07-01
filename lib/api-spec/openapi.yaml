@@ -14198,6 +14198,11 @@ components:
         corSecundaria:
           type: string
           nullable: true
+        metadata:
+          type: object
+          nullable: true
+          additionalProperties: true
+          description: Dados adicionais do lead (ex. sócios, rating Google, etc.)
 
     Conversation:
       type: object

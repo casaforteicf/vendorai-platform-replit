@@ -6,6 +6,7 @@
  * OpenAPI spec version: 0.1.0
  */
 import type { UpdateLeadBodyFilhosItem } from './updateLeadBodyFilhosItem';
+import type { UpdateLeadBodyMetadata } from './updateLeadBodyMetadata';
 
 export interface UpdateLeadBody {
   nome?: string;
@@ -49,4 +50,6 @@ export interface UpdateLeadBody {
   mercadoSegmento?: string | null;
   corDestaque?: string | null;
   corSecundaria?: string | null;
+  /** Dados adicionais do lead (ex. sócios, rating Google, etc.) */
+  metadata?: UpdateLeadBodyMetadata;
 }

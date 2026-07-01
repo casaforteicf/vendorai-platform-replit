@@ -2947,6 +2947,11 @@ export type UpdateLeadBodyFilhosItem = {
   lastCampaignSentYear?: number | null;
 };
 
+/**
+ * Dados adicionais do lead (ex. sócios, rating Google, etc.)
+ */
+export type UpdateLeadBodyMetadata = { [key: string]: unknown } | null;
+
 export interface UpdateLeadBody {
   nome?: string;
   telefone?: string | null;
@@ -2989,6 +2994,8 @@ export interface UpdateLeadBody {
   mercadoSegmento?: string | null;
   corDestaque?: string | null;
   corSecundaria?: string | null;
+  /** Dados adicionais do lead (ex. sócios, rating Google, etc.) */
+  metadata?: UpdateLeadBodyMetadata;
 }
 
 export type ConversationMetadata = { [key: string]: unknown } | null;
