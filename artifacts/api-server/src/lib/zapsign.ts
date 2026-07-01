@@ -3,7 +3,7 @@ import { logger } from "./logger.js";
 const BASE_URL = "https://api.zapsign.com.br/api/v1";
 
 function getApiKey(): string | null {
-  return process.env.ZAPSIGN_API_KEY ?? null;
+  return process.env.ZAPSIGN_API_TOKEN ?? process.env.ZAPSIGN_API_KEY ?? null;
 }
 
 export function isZapSignConfigured(): boolean {
@@ -12,7 +12,7 @@ export function isZapSignConfigured(): boolean {
 
 async function zapRequest<T>(method: string, path: string, body?: unknown): Promise<T> {
   const apiKey = getApiKey();
-  if (!apiKey) throw new Error("ZAPSIGN_API_KEY not configured");
+  if (!apiKey) throw new Error("ZAPSIGN_API_TOKEN not configured");
 
   const res = await fetch(`${BASE_URL}${path}`, {
     method,
