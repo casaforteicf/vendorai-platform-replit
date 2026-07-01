@@ -3,7 +3,7 @@ import compression from "compression";
 import cors from "cors";
 import pinoHttp from "pino-http";
 import { and, desc, eq } from "drizzle-orm";
-import { db, tenantsTable, generatedSitesTable } from "@workspace/db";
+import { db, tenantsTable, generatedSitesTable, tenantDomainsTable } from "@workspace/db";
 import router from "./routes";
 import { logger } from "./lib/logger";
 
@@ -57,51 +57,93 @@ app.use(
 app.use(express.json({ limit: '20mb' }));
 app.use(express.urlencoded({ extended: true, limit: '20mb' }));
 
-// ─── Subdomain site middleware ────────────────────────────────────────────────
-// When a request arrives from a *.appvendorai.com subdomain, serve that
-// tenant's published site HTML directly. Assets (/api/storage/*) and intake
-// routes (/api/public/*) pass through normally to the /api router.
+// ─── Subdomain / custom-domain tenant resolver ────────────────────────────────
+// Runs before all routes. Detects *.appvendorai.com subdomains and verified
+// custom domains, resolves the tenant, and:
+//   • returns 404 JSON/HTML for unknown hosts
+//   • returns 402 JSON/HTML for suspended/cancelled tenants
+//   • injects req.tenantId and continues for all other requests
+//   • for non-/api/ paths: additionally serves the tenant's published HTML site
 const ROOT_DOMAIN = "appvendorai.com";
+const MAIN_HOSTNAMES = new Set([ROOT_DOMAIN, `www.${ROOT_DOMAIN}`, "localhost", "127.0.0.1"]);
+
+function notFoundHtml(label: string) {
+  return (
+    `<!DOCTYPE html><html lang="pt-BR"><head><meta charset="UTF-8"><title>Não encontrado</title></head>` +
+    `<body style="font-family:sans-serif;display:flex;align-items:center;justify-content:center;min-height:100vh;margin:0;background:#f9fafb">` +
+    `<div style="text-align:center"><p style="font-size:3rem">🌐</p><h1 style="color:#374151">Site não encontrado</h1>` +
+    `<p style="color:#6b7280">O endereço <strong>${label}</strong> não corresponde a nenhum site cadastrado.</p></div></body></html>`
+  );
+}
+
+function suspendedHtml(name: string) {
+  return (
+    `<!DOCTYPE html><html lang="pt-BR"><head><meta charset="UTF-8"><title>Acesso suspenso</title></head>` +
+    `<body style="font-family:sans-serif;display:flex;align-items:center;justify-content:center;min-height:100vh;margin:0;background:#f9fafb">` +
+    `<div style="text-align:center"><p style="font-size:3rem">🔒</p><h1 style="color:#374151">Acesso suspenso</h1>` +
+    `<p style="color:#6b7280">O acesso de <strong>${name}</strong> está suspenso. Entre em contato com o suporte.</p></div></body></html>`
+  );
+}
 
 app.use(async (req: Request, res: Response, next: NextFunction) => {
   const hostname = req.hostname; // stripped of port by Express
 
-  const isSubdomain =
-    hostname !== ROOT_DOMAIN &&
-    hostname !== `www.${ROOT_DOMAIN}` &&
-    hostname.endsWith(`.${ROOT_DOMAIN}`);
+  // Skip main/platform domains
+  if (MAIN_HOSTNAMES.has(hostname)) return next();
 
-  if (!isSubdomain) {
-    return next();
-  }
-
-  // Let API calls pass through (assets, public routes, webhooks, etc.)
-  if (req.path.startsWith("/api/")) {
-    return next();
-  }
-
-  const slug = hostname.slice(0, hostname.length - ROOT_DOMAIN.length - 1);
-
-  if (!slug || slug.length < 1) {
-    return next();
-  }
+  const isWildcard = hostname.endsWith(`.${ROOT_DOMAIN}`);
+  const isApi = req.path.startsWith("/api/");
 
   try {
-    const [tenant] = await db
-      .select({ id: tenantsTable.id, name: tenantsTable.name })
-      .from(tenantsTable)
-      .where(eq(tenantsTable.slug, slug));
+    let tenant: { id: string; name: string; status: string } | undefined;
 
-    if (!tenant) {
-      res.status(404).send(
-        `<!DOCTYPE html><html lang="pt-BR"><head><meta charset="UTF-8"><title>Não encontrado</title></head>` +
-        `<body style="font-family:sans-serif;display:flex;align-items:center;justify-content:center;min-height:100vh;margin:0;background:#f9fafb">` +
-        `<div style="text-align:center"><p style="font-size:3rem">🌐</p><h1 style="color:#374151">Site não encontrado</h1>` +
-        `<p style="color:#6b7280">O endereço <strong>${slug}.${ROOT_DOMAIN}</strong> não corresponde a nenhum site cadastrado.</p></div></body></html>`,
-      );
-      return;
+    if (isWildcard) {
+      // Extract subdomain slug: "wolmann-design.appvendorai.com" → "wolmann-design"
+      const subdomainSlug = hostname.slice(0, hostname.length - ROOT_DOMAIN.length - 1);
+      if (!subdomainSlug) return next();
+
+      const [found] = await db
+        .select({ id: tenantsTable.id, name: tenantsTable.name, status: tenantsTable.status })
+        .from(tenantsTable)
+        .where(eq(tenantsTable.subdomainSlug, subdomainSlug));
+      tenant = found;
+    } else {
+      // Custom domain: look up in tenant_domains (only active/verified domains)
+      const [domainRow] = await db
+        .select({ tenantId: tenantDomainsTable.tenantId, domainStatus: tenantDomainsTable.status })
+        .from(tenantDomainsTable)
+        .where(eq(tenantDomainsTable.domain, hostname));
+
+      if (domainRow?.domainStatus === "active") {
+        const [found] = await db
+          .select({ id: tenantsTable.id, name: tenantsTable.name, status: tenantsTable.status })
+          .from(tenantsTable)
+          .where(eq(tenantsTable.id, domainRow.tenantId));
+        tenant = found;
+      }
     }
 
+    if (!tenant) {
+      if (isApi) {
+        return res.status(404).json({ error: "Tenant não encontrado", hostname });
+      }
+      return res.status(404).send(notFoundHtml(hostname));
+    }
+
+    if (tenant.status === "suspended" || tenant.status === "cancelled") {
+      if (isApi) {
+        return res.status(402).json({ error: "Acesso suspenso por inadimplência", tenantId: tenant.id });
+      }
+      return res.status(402).send(suspendedHtml(tenant.name));
+    }
+
+    // Inject tenant context for downstream route handlers
+    req.tenantId = tenant.id;
+
+    // For API calls: just continue — route handlers will use req.tenantId
+    if (isApi) return next();
+
+    // For non-API paths: serve the tenant's published site HTML
     const [site] = await db
       .select({ html: generatedSitesTable.html })
       .from(generatedSitesTable)
@@ -115,22 +157,21 @@ app.use(async (req: Request, res: Response, next: NextFunction) => {
       .limit(1);
 
     if (!site) {
-      res.status(404).send(
+      return res.status(404).send(
         `<!DOCTYPE html><html lang="pt-BR"><head><meta charset="UTF-8"><title>Site não publicado</title></head>` +
         `<body style="font-family:sans-serif;display:flex;align-items:center;justify-content:center;min-height:100vh;margin:0;background:#f9fafb">` +
         `<div style="text-align:center"><p style="font-size:3rem">🌐</p><h1 style="color:#374151">Site não publicado</h1>` +
         `<p style="color:#6b7280">O site de <strong>${tenant.name}</strong> ainda não foi publicado.</p></div></body></html>`,
       );
-      return;
     }
 
     res.setHeader("Content-Type", "text/html; charset=utf-8");
     res.setHeader("Cache-Control", "public, max-age=300");
-    res.setHeader("X-Tenant-Slug", slug);
-    res.send(site.html);
+    res.setHeader("X-Tenant-Id", tenant.id);
+    return res.send(site.html);
   } catch (err) {
-    logger.error({ err, slug }, "subdomain-middleware: error serving tenant site");
-    next(err);
+    logger.error({ err, hostname }, "subdomain-middleware: error resolving tenant");
+    return next(err);
   }
 });
 

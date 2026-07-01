@@ -8,6 +8,7 @@ declare global {
     interface Request {
       user?: JwtPayload;
       partnerId?: string; // set by requirePartner
+      tenantId?: string;  // set by subdomain middleware when request arrives via *.appvendorai.com or custom domain
     }
   }
 }
