@@ -2032,17 +2032,21 @@ export default function Deals() {
       const isGanhoToAquecimento =
         sourceColId === "ganho" &&
         (targetCol.dropId === "aquecimento_nao_cliente" || targetCol.dropId === "aquecimento_cliente");
+      const isNovoToAquecimento =
+        sourceColId === "novo" &&
+        (targetCol.dropId === "aquecimento_nao_cliente" || targetCol.dropId === "aquecimento_cliente");
 
       if (
         !targetCol.isSpecial &&
         sourceOrder !== -1 &&
         targetOrder !== -1 &&
         targetOrder < sourceOrder &&
-        !isGanhoToAquecimento
+        !isGanhoToAquecimento &&
+        !isNovoToAquecimento
       ) {
         toast({
           title: "Movimento não permitido",
-          description: "Cards só podem avançar no funil. Retroceder é permitido apenas de Ganho → Aquecimento.",
+          description: "Cards só podem avançar no funil. Retroceder é permitido de Novo → Aquecimento e Ganho → Aquecimento.",
           variant: "destructive",
         });
         return;
