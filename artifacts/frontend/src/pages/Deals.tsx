@@ -1799,6 +1799,26 @@ function EditDealSheet({
             </Button>
           </div>
         )}
+
+        {/* ── Briefing de IA ──────────────────────────────────── */}
+        {(deal as any)?.aiBriefing && (
+          <div className="mt-4 rounded-lg border border-primary/20 bg-primary/5 p-3 space-y-2">
+            <div className="flex items-center justify-between">
+              <p className="text-xs font-semibold text-primary flex items-center gap-1.5">
+                <Sparkles className="h-3.5 w-3.5" />
+                Briefing Automático (IA)
+              </p>
+              {(deal as any).aiBriefingGeneratedAt && (
+                <span className="text-[10px] text-muted-foreground">
+                  {new Date((deal as any).aiBriefingGeneratedAt).toLocaleString("pt-BR", { dateStyle: "short", timeStyle: "short" })}
+                </span>
+              )}
+            </div>
+            <div className="text-[11px] text-foreground/80 whitespace-pre-wrap leading-relaxed bg-white/60 rounded px-2 py-2 border border-primary/10 max-h-80 overflow-y-auto">
+              {(deal as any).aiBriefing}
+            </div>
+          </div>
+        )}
       </SheetContent>
     </Sheet>
   );

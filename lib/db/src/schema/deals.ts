@@ -71,6 +71,9 @@ export const dealsTable = pgTable("deals", {
   quoteFileUrl: text("quote_file_url"),
   skipAsaasBilling: text("skip_asaas_billing"),
   aquecimentoTipo: text("aquecimento_tipo"),
+  // Briefing gerado automaticamente pela IA no momento da prospecção
+  aiBriefing: text("ai_briefing"),
+  aiBriefingGeneratedAt: timestamp("ai_briefing_generated_at"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
 });

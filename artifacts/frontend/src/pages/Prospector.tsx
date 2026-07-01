@@ -258,6 +258,8 @@ export default function Prospector() {
   const [prospectedIndexes, setProspectedIndexes] = useState<number[]>([]);
   const [enrichment, setEnrichment] = useState<ProspectEnrichment | null>(null);
   const [exporting, setExporting] = useState(false);
+  const [prospectStep, setProspectStep] = useState<"idle" | "importing" | "briefing" | "done">("idle");
+  const [prospectDealId, setProspectDealId] = useState<string | null>(null);
 
   // Message form
   const [messageType, setMessageType] = useState("whatsapp");
@@ -321,6 +323,8 @@ export default function Prospector() {
     const nome = r.nomeEmpresa ?? "";
     if (nome.trim().length < 2) return;
     setProspectingIndex(index);
+    setProspectStep("importing");
+    setProspectDealId(null);
     enrich.mutate(
       {
         data: {
@@ -334,6 +338,7 @@ export default function Prospector() {
           setEnrichment(res.enrichment);
           if (!msgNomeEmpresa) setMsgNomeEmpresa(res.enrichment.nomeEmpresa ?? nome);
           if (!res.saved) {
+            setProspectStep("idle");
             toast({
               title: "Não virou lead",
               description: res.reason ?? "Empresa sem canal de contato.",
@@ -341,15 +346,15 @@ export default function Prospector() {
             });
           } else {
             setProspectedIndexes((prev) => (prev.includes(index) ? prev : [...prev, index]));
-            toast({
-              title: res.isDuplicate
-                ? "Lead já existia — vinculado na pipeline"
-                : "Lead criado na pipeline",
-              description: "Disponível em Leads para dar sequência no atendimento.",
-            });
+            const dealId = (res as any).dealId as string | null | undefined;
+            setProspectDealId(dealId ?? null);
+            setProspectStep("briefing");
+            // Simula o tempo de geração do briefing no backend (~3s) e marca como done
+            setTimeout(() => setProspectStep("done"), 3500);
           }
         },
         onError: (err) => {
+          setProspectStep("idle");
           toast({
             title: "Falha ao prospectar",
             description: err instanceof Error ? err.message : undefined,
@@ -650,6 +655,52 @@ export default function Prospector() {
                   );
                 })}
               </ul>
+            )}
+          </CardContent>
+        </Card>
+      )}
+
+      {/* ── Progresso da prospecção ──────────────────────────── */}
+      {prospectStep !== "idle" && (
+        <Card className={prospectStep === "done" ? "border-emerald-300 bg-emerald-50" : "border-primary/30"}>
+          <CardContent className="py-4 space-y-2">
+            {(() => {
+              const stepIdx = { idle: -1, importing: 0, briefing: 2, done: 3 }[prospectStep];
+              return [
+                { idx: 0, label: "Importando lead..." },
+                { idx: 1, label: "Adicionando ao funil..." },
+                { idx: 2, label: "Gerando briefing com IA..." },
+              ].map(({ idx, label }) => {
+                const isDone = stepIdx > idx;
+                const isActive = stepIdx === idx;
+                const finalLabel = isDone && idx === 2 ? "✅ Lead adicionado ao CRM com briefing!" : label;
+                return (
+                  <div key={idx} className="flex items-center gap-2 text-sm">
+                    {isDone ? (
+                      <CheckCircle2 className="h-4 w-4 text-emerald-500 shrink-0" />
+                    ) : isActive ? (
+                      <Spinner className="h-4 w-4 text-primary shrink-0" />
+                    ) : (
+                      <div className="h-4 w-4 rounded-full border-2 border-muted shrink-0" />
+                    )}
+                    <span className={isDone ? "text-emerald-700" : isActive ? "text-foreground font-medium" : "text-muted-foreground"}>
+                      {finalLabel}
+                    </span>
+                  </div>
+                );
+              });
+            })()}
+            {prospectStep === "done" && (
+              <div className="flex gap-2 pt-1">
+                <a href="/negocios">
+                  <Button size="sm" variant="default" className="gap-1.5">
+                    <Briefcase className="h-3.5 w-3.5" /> Ver no CRM
+                  </Button>
+                </a>
+                <Button size="sm" variant="outline" onClick={() => setProspectStep("idle")} className="gap-1.5">
+                  <XCircle className="h-3.5 w-3.5" /> Fechar
+                </Button>
+              </div>
             )}
           </CardContent>
         </Card>

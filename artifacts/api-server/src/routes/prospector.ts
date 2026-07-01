@@ -1,6 +1,6 @@
 import { Router, type IRouter } from "express";
 import { z } from "zod/v4";
-import { and, eq, desc, or, sql, inArray } from "drizzle-orm";
+import { and, asc, eq, desc, or, sql, inArray } from "drizzle-orm";
 import {
   db,
   prospectEnrichmentsTable,
@@ -8,6 +8,9 @@ import {
   leadsTable,
   tenantsTable,
   notificationsTable,
+  funisTable,
+  dealsTable,
+  activitiesTable,
 } from "@workspace/db";
 import {
   callOpenAI as gatewayCallOpenAI,
@@ -17,6 +20,62 @@ import { checkApiQuota, getApiUsage } from "../lib/api-quota.js";
 
 // Quantidade de aprovações (approved + edited) para liberar a automação.
 const AUTOMATION_THRESHOLD = 50;
+
+// ── Briefing automático de IA — fire-and-forget após criar deal ───────────────
+async function gerarBriefingDeal(
+  tenantId: string,
+  dealId: string,
+  nome: string,
+  endereco: string | null,
+  telefone: string | null,
+  site: string | null,
+  rating: number | null,
+  reviewCount: number | null,
+  pontosFortes: string[],
+  doresPrincipais: string[],
+  log: { error: (obj: Record<string, unknown>, msg: string) => void },
+): Promise<void> {
+  try {
+    const ai = await gatewayCallOpenAI(
+      tenantId,
+      "intelligence_analysis",
+      [
+        {
+          role: "system",
+          content:
+            "Você é um analista de inteligência comercial da Vendor.ai. Gere um briefing comercial estruturado para orientar o time de vendas.",
+        },
+        {
+          role: "user",
+          content: `Empresa: ${nome}
+Endereço: ${endereco ?? "não disponível"}
+Telefone: ${telefone ?? "não disponível"}
+Site: ${site ?? "não disponível"}
+Avaliação Google: ${rating != null ? `${rating}★ (${reviewCount ?? 0} avaliações)` : "não disponível"}
+Pontos fortes identificados: ${pontosFortes.join(", ") || "nenhum"}
+Possíveis dores: ${doresPrincipais.join(", ") || "nenhum"}
+
+Gere um briefing com exatamente estas seções:
+
+1. PERFIL DO NEGÓCIO (2-3 linhas): O que a empresa faz, porte estimado, posicionamento
+2. PONTOS DE DOR PROVÁVEIS (3 bullets): Principais problemas em vendas, atendimento e gestão
+3. OPORTUNIDADE VENDOR.AI (2-3 linhas): Como a Vendor.ai resolve os problemas identificados
+4. ABORDAGEM RECOMENDADA (1-2 linhas): Tom e ângulo ideal para a primeira abordagem
+5. SCORE DE POTENCIAL: Alta / Média / Baixa — com justificativa em 1 linha
+
+Seja específico para o segmento e localidade. Não seja genérico.`,
+        },
+      ],
+      { maxTokens: 700, log },
+    );
+    await db
+      .update(dealsTable)
+      .set({ aiBriefing: ai.content, aiBriefingGeneratedAt: new Date() })
+      .where(eq(dealsTable.id, dealId));
+  } catch (err) {
+    log.error({ err }, "prospector: gerarBriefingDeal falhou");
+  }
+}
 
 // Formata um vetor JS para o literal aceito pelo pgvector (ex: "[0.1,0.2,...]").
 function toVectorLiteral(embedding: number[]): string {
@@ -426,10 +485,70 @@ router.post("/prospector/enrich", async (req, res) => {
           empresa: collected.razaoSocial ?? nome,
           endereco: ender,
           instagramHandle: igHandle,
+          websiteUrl: site,
           source: "prospector",
+          metadata: {
+            rating: place?.rating ?? null,
+            total_ratings: place?.reviewCount ?? null,
+            prospectado_em: new Date().toISOString(),
+          },
         })
         .returning({ id: leadsTable.id });
       resolvedLeadId = created?.id ?? null;
+    }
+  }
+
+  // 6b. Criar deal no primeiro funil do tenant (apenas para leads novos)
+  let dealId: string | null = null;
+  if (resolvedLeadId && !isDuplicate) {
+    try {
+      const [funil] = await db
+        .select({ id: funisTable.id })
+        .from(funisTable)
+        .where(eq(funisTable.tenantId, tenantId))
+        .orderBy(asc(funisTable.createdAt))
+        .limit(1);
+
+      const [newDeal] = await db
+        .insert(dealsTable)
+        .values({
+          tenantId,
+          leadId: resolvedLeadId,
+          titulo: `${nome} — Prospectado`,
+          funilId: funil?.id ?? null,
+          etapa: "novo",
+        })
+        .returning({ id: dealsTable.id });
+      dealId = newDeal?.id ?? null;
+
+      if (dealId) {
+        await db.insert(activitiesTable).values({
+          tenantId,
+          leadId: resolvedLeadId,
+          dealId,
+          tipo: "tarefa",
+          titulo: "Lead importado via Prospector",
+          descricao: `Lead importado via Prospector (Google Places).${place?.rating != null ? ` Avaliação: ${place.rating}★${place?.reviewCount != null ? ` (${place.reviewCount})` : ""}.` : ""}`,
+          status: "concluida",
+        });
+
+        // Briefing de IA — fire-and-forget para não bloquear a resposta
+        gerarBriefingDeal(
+          tenantId,
+          dealId,
+          nome,
+          ender,
+          telefone,
+          site,
+          place?.rating ?? null,
+          place?.reviewCount ?? null,
+          pontosFortes,
+          doresPrincipais,
+          req.log,
+        ).catch(() => undefined);
+      }
+    } catch (err) {
+      req.log.error({ err }, "prospector: criação de deal falhou (não-fatal)");
     }
   }
 
@@ -463,7 +582,7 @@ router.post("/prospector/enrich", async (req, res) => {
     })
     .returning();
 
-  return res.status(201).json({ saved: true, isDuplicate, leadId: resolvedLeadId, enrichment: record });
+  return res.status(201).json({ saved: true, isDuplicate, leadId: resolvedLeadId, dealId, enrichment: record });
 });
 
 // ── POST /prospector/search — busca empresas por atividade + localidade ───────
