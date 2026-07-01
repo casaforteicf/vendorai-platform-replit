@@ -29,3 +29,9 @@ id = "fz6XyjQXiz2zCVJ2dX1Nx"
 uri = "file://vendorai.tar.gz"
 type = "unspecified"
 title = "VendorAI - Projeto Completo (66 MB)"
+
+[[outputs]]
+id = "tv-wGYfoS3mX4rJGWG3iH"
+uri = "file://exports/vendorai-agent-architecture.md"
+type = "text"
+title = "VendorAI — Arquitetura dos Agentes de IA"
