@@ -1,5 +1,5 @@
 import { Router, type IRouter } from "express";
-import { and, desc, eq } from "drizzle-orm";
+import { and, desc, eq, or } from "drizzle-orm";
 import { db, generatedSitesTable, businessProfilesTable, tenantsTable, produtosCatalogoTable, inventoryItemsTable } from "@workspace/db";
 import type { SiteGeneratorConfig, SiteGeneratorProduct } from "@workspace/db";
 import Anthropic from "@anthropic-ai/sdk";
@@ -22,7 +22,7 @@ publicSiteGeneratorRouter.get("/public/:tenantSlug/site-html", async (req, res) 
   const [tenant] = await db
     .select({ id: tenantsTable.id })
     .from(tenantsTable)
-    .where(eq(tenantsTable.slug, tenantSlug));
+    .where(or(eq(tenantsTable.slug, tenantSlug), eq(tenantsTable.subdomainSlug, tenantSlug)));
 
   if (!tenant) {
     res.status(404).send("<!DOCTYPE html><html><body><h1>Site não encontrado</h1></body></html>");

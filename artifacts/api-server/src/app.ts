@@ -88,18 +88,19 @@ function suspendedHtml(name: string) {
 app.use(async (req: Request, res: Response, next: NextFunction) => {
   const hostname = req.hostname; // stripped of port by Express
 
-  // Skip main/platform domains
-  if (MAIN_HOSTNAMES.has(hostname)) return next();
-
-  const isWildcard = hostname.endsWith(`.${ROOT_DOMAIN}`);
-  const isApi = req.path.startsWith("/api/");
-
-  // Support Cloudflare Worker proxy: worker forwards X-Tenant-Subdomain instead
-  // of relying on the Host header (which arrives as vendorai.replit.app at Replit)
+  // Priority 1: Cloudflare Worker proxy sends X-Tenant-Subdomain header.
+  // Must be checked BEFORE the MAIN_HOSTNAMES guard because Replit proxy
+  // makes req.hostname appear as "localhost" even for subdomain requests.
   const cfSubdomain = req.headers["x-tenant-subdomain"];
   const subdomainFromHeader = typeof cfSubdomain === "string" && cfSubdomain.trim()
     ? cfSubdomain.trim()
     : null;
+
+  // Skip main/platform domains — but only when no CF subdomain header present
+  if (!subdomainFromHeader && MAIN_HOSTNAMES.has(hostname)) return next();
+
+  const isWildcard = hostname.endsWith(`.${ROOT_DOMAIN}`);
+  const isApi = req.path.startsWith("/api/");
 
   try {
     let tenant: { id: string; name: string; status: string } | undefined;

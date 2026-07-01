@@ -1,5 +1,5 @@
 import { Router, type IRouter } from "express";
-import { and, eq } from "drizzle-orm";
+import { and, eq, or } from "drizzle-orm";
 import {
   db,
   siteConfigTable,
@@ -61,7 +61,7 @@ publicSiteRouter.get("/public/:tenantSlug/site", async (req, res) => {
   const [tenant] = await db
     .select({ id: tenantsTable.id, slug: tenantsTable.slug, name: tenantsTable.name })
     .from(tenantsTable)
-    .where(eq(tenantsTable.slug, tenantSlug));
+    .where(or(eq(tenantsTable.slug, tenantSlug), eq(tenantsTable.subdomainSlug, tenantSlug)));
 
   if (!tenant) {
     res.status(404).json({ error: "Site not found" });
