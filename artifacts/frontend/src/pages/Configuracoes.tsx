@@ -2376,7 +2376,7 @@ export default function Configuracoes() {
                   </Button>
                   {siteQuery.data?.ativo && (
                     <a
-                      href={`/site/${tenantQuery.data?.slug ?? ""}`}
+                      href={`https://${tenantQuery.data?.subdomainSlug ?? tenantQuery.data?.slug ?? ""}.appvendorai.com`}
                       target="_blank"
                       rel="noopener noreferrer"
                       className="inline-flex items-center gap-1.5 text-sm text-primary hover:underline shrink-0"

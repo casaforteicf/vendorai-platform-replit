@@ -1,6 +1,9 @@
 import { useState, useEffect, useCallback } from "react";
 import { useAuth } from "@/contexts/AuthContext";
-import { useGetBusinessProfileByTenant, getGetBusinessProfileByTenantQueryKey } from "@workspace/api-client-react";
+import {
+  useGetBusinessProfileByTenant, getGetBusinessProfileByTenantQueryKey,
+  useGetTenant, getGetTenantQueryKey,
+} from "@workspace/api-client-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -544,6 +547,10 @@ export default function MeuSite() {
     query: { queryKey: getGetBusinessProfileByTenantQueryKey(tenantId), enabled: !!tenantId },
   });
 
+  const { data: tenantData } = useGetTenant(tenantId, {
+    query: { queryKey: getGetTenantQueryKey(tenantId), enabled: !!tenantId },
+  });
+
   const nomeNegocio = bp?.nomeFantasia ?? bp?.razaoSocial ?? "";
   const segmento = bp?.vertical ?? "";
 
@@ -649,7 +656,8 @@ export default function MeuSite() {
     }
   }
 
-  const publicUrl = `${window.location.origin}${base}/site/${tenantSlug}`;
+  const subdomainSlug = tenantData?.subdomainSlug ?? tenantSlug;
+  const publicUrl = `https://${subdomainSlug}.appvendorai.com`;
 
   function startWizard() {
     setStep("tipo");
