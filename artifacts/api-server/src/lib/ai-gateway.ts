@@ -14,6 +14,7 @@ import {
   aiUsageLogsTable,
 } from "@workspace/db";
 import type { AiFeature } from "@workspace/db";
+import { sendAiFailureAlert } from "./email.js";
 
 // ── Cost models (USD per 1M tokens) ───────────────────────────────────────────
 const COST_PER_1M: Record<string, { input: number; output: number }> = {
@@ -396,6 +397,16 @@ export async function callOpenAI(
     await logUsage({ tenantId, provider: "openai", model, feature, inputTokens: inputTokensEst, outputTokens: 0, costEstimateUsd: costUsdEst, usedByok: key.usedByok, success: false, errorMessage });
     if (quota.ok && !quota.usedByok) await incrementDailySpend(tenantId, costUsdEst);
 
+    // Fire-and-forget alert (non-blocking, throttled to 1/15min per error type)
+    void sendAiFailureAlert({
+      provider: "openai",
+      errorType: err?.status === 429 ? "429_quota" : "502_error",
+      feature: String(feature),
+      tenantId: String(tenantId),
+      model,
+      message: errorMessage,
+    });
+
     // 429 quota exceeded → attempt Anthropic fallback if key available
     if (err?.status === 429 && process.env["ANTHROPIC_API_KEY"]) {
       log?.info({ tenantId, feature }, "ai-gateway: OpenAI 429 → falling back to Anthropic");
@@ -530,12 +541,30 @@ export async function callAnthropic(
     if (isBillingError) {
       const costUsdPartial = estimateCost(model, Math.ceil(inputTokens), 0);
       await logUsage({ tenantId, provider: "anthropic", model, feature, inputTokens: Math.ceil(inputTokens), outputTokens: 0, costEstimateUsd: costUsdPartial, usedByok: key.usedByok, success: false, errorMessage });
+      void sendAiFailureAlert({
+        provider: "anthropic",
+        errorType: "400_billing",
+        feature: String(feature),
+        tenantId: String(tenantId),
+        model,
+        message: errorMessage,
+      });
       throw new AiGatewayError(
         "Saldo da IA esgotado. Configure uma chave própria da Anthropic ou da OpenAI nas Configurações → Integrações.",
         402,
         { provider: "anthropic", model },
       );
     }
+
+    // Alert for non-billing Anthropic failures
+    void sendAiFailureAlert({
+      provider: "anthropic",
+      errorType: "502_error",
+      feature: String(feature),
+      tenantId: String(tenantId),
+      model,
+      message: errorMessage,
+    });
   }
 
   // 5. Compute cost
