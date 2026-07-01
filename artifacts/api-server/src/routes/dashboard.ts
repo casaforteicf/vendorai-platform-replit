@@ -903,6 +903,7 @@ router.get("/dashboard", authenticate, async (req, res) => {
       nome:      leadsTable.nome,
       status:    leadsTable.status,
       telefone:  leadsTable.telefone,
+      iaAtiva:   leadsTable.iaAtiva,
       updatedAt: leadsTable.updatedAt,
     })
       .from(leadsTable)

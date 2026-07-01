@@ -40,6 +40,8 @@ export interface UpdateLeadBody {
   birthDay?: number | null;
   lastCampaignSentYear?: number | null;
   specialDateMessagesOptOut?: boolean | null;
+  /** Quando false, pausa o atendimento automático por IA para este lead. */
+  iaAtiva?: boolean | null;
   /** URL ou object path do logo do cliente. */
   logoUrl?: string | null;
   /** URL do site do cliente. */

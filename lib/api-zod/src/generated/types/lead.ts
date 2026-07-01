@@ -53,6 +53,8 @@ export interface Lead {
   lastCampaignSentYear?: number | null;
   /** Lead optou por não receber mensagens de datas especiais. */
   specialDateMessagesOptOut?: boolean | null;
+  /** Quando false, o atendimento automático por IA está pausado para este lead. */
+  iaAtiva?: boolean;
   /** URL ou object path do logo do cliente. */
   logoUrl?: string | null;
   /** URL do site do cliente. */

@@ -217,6 +217,7 @@ export async function loadContext(tenantId: string, leadId: string): Promise<Age
     .where(and(eq(leadsTable.id, leadId), eq(leadsTable.tenantId, tenantId)));
 
   if (!lead) return null;
+  if (lead.iaAtiva === false) return null;
 
   const [ci = null] = await db
     .select()

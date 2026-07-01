@@ -2876,6 +2876,8 @@ export interface Lead {
   lastCampaignSentYear?: number | null;
   /** Lead optou por não receber mensagens de datas especiais. */
   specialDateMessagesOptOut?: boolean | null;
+  /** Quando false, o atendimento automático por IA está pausado para este lead. */
+  iaAtiva?: boolean;
   /** URL ou object path do logo do cliente. */
   logoUrl?: string | null;
   /** URL do site do cliente. */
@@ -2978,6 +2980,8 @@ export interface UpdateLeadBody {
   birthDay?: number | null;
   lastCampaignSentYear?: number | null;
   specialDateMessagesOptOut?: boolean | null;
+  /** Quando false, pausa o atendimento automático por IA para este lead. */
+  iaAtiva?: boolean | null;
   /** URL ou object path do logo do cliente. */
   logoUrl?: string | null;
   /** URL do site do cliente. */

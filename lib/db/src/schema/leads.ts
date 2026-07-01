@@ -61,6 +61,9 @@ export const leadsTable = pgTable("leads", {
   // Spouse gift flow fields
   pipelineExempt: boolean("pipeline_exempt").notNull().default(false),
 
+  // IA on/off por lead — quando false o agent-engine pula a resposta automática
+  iaAtiva: boolean("ia_ativa").notNull().default(true),
+
   createdAt: timestamp("created_at").notNull().defaultNow(),
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
 }, (table) => ({

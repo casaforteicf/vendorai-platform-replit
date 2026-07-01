@@ -12,8 +12,10 @@ import {
   SheetTitle,
   SheetDescription,
 } from "@/components/ui/sheet";
+import { Switch } from "@/components/ui/switch";
 import { useAuth } from "@/contexts/AuthContext";
-import { useGetLead, getGetLeadQueryKey } from "@workspace/api-client-react";
+import { useGetLead, getGetLeadQueryKey, useUpdateLead } from "@workspace/api-client-react";
+import { useQueryClient } from "@tanstack/react-query";
 import { formatDistanceToNow, format } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import {
@@ -101,6 +103,7 @@ interface DashboardData {
     id: string;
     nome: string;
     telefone: string | null;
+    iaAtiva: boolean;
     updatedAt: string | null;
   }[]>;
   riscoPerda: {
@@ -392,6 +395,32 @@ export default function Dashboard() {
   const [selectedLeadId, setSelectedLeadId] = useState<string | null>(null);
   const isFirstFetch                = useRef(true);
 
+  const queryClient   = useQueryClient();
+  const updateLead    = useUpdateLead();
+
+  const toggleIaAtiva = useCallback((leadId: string, current: boolean, e: React.MouseEvent) => {
+    e.stopPropagation();
+    updateLead.mutate(
+      { id: leadId, data: { iaAtiva: !current } },
+      {
+        onSuccess: () => {
+          // optimistic update no pipeline local
+          setData(prev => {
+            if (!prev) return prev;
+            const newPipeline = { ...prev.pipeline };
+            for (const key of Object.keys(newPipeline) as Array<keyof typeof newPipeline>) {
+              newPipeline[key] = newPipeline[key].map(l =>
+                l.id === leadId ? { ...l, iaAtiva: !current } : l
+              );
+            }
+            return { ...prev, pipeline: newPipeline };
+          });
+          queryClient.invalidateQueries({ queryKey: getGetLeadQueryKey(leadId) });
+        },
+      }
+    );
+  }, [updateLead, queryClient]);
+
   const fetchData = useCallback(async () => {
     const initial = isFirstFetch.current;
     if (initial) setLoading(true);
@@ -647,16 +676,32 @@ export default function Dashboard() {
                         </div>
                       ) : (
                         pipeline[col.key].map(lead => (
-                          <button
+                          <div
                             key={lead.id}
                             onClick={() => setSelectedLeadId(lead.id)}
-                            className="w-full text-left block rounded-md border bg-card px-3 py-2 shadow-sm hover:shadow-md hover:border-primary/40 transition-all"
+                            className="w-full text-left rounded-md border bg-card px-3 py-2 shadow-sm hover:shadow-md hover:border-primary/40 transition-all cursor-pointer"
                           >
-                            <p className="text-xs font-medium truncate leading-snug">{lead.nome}</p>
-                            {lead.telefone && (
-                              <p className="text-[10px] text-muted-foreground truncate mt-0.5">{lead.telefone}</p>
-                            )}
-                          </button>
+                            <div className="flex items-start justify-between gap-2">
+                              <div className="min-w-0 flex-1">
+                                <p className="text-xs font-medium truncate leading-snug">{lead.nome}</p>
+                                {lead.telefone && (
+                                  <p className="text-[10px] text-muted-foreground truncate mt-0.5">{lead.telefone}</p>
+                                )}
+                              </div>
+                              <div
+                                className="flex items-center gap-1 shrink-0 mt-0.5"
+                                title={lead.iaAtiva ? "IA ativa — clique para pausar" : "IA pausada — clique para ativar"}
+                                onClick={e => toggleIaAtiva(lead.id, lead.iaAtiva, e)}
+                              >
+                                <Bot className={`h-3 w-3 ${lead.iaAtiva ? "text-primary" : "text-muted-foreground"}`} />
+                                <Switch
+                                  checked={lead.iaAtiva}
+                                  className="h-4 w-7 data-[state=checked]:bg-primary data-[state=unchecked]:bg-muted-foreground/30"
+                                  aria-label="Ativar/pausar IA"
+                                />
+                              </div>
+                            </div>
+                          </div>
                         ))
                       )}
                     </div>

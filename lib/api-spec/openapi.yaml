@@ -13905,6 +13905,9 @@ components:
           type: boolean
           nullable: true
           description: Lead optou por não receber mensagens de datas especiais.
+        iaAtiva:
+          type: boolean
+          description: Quando false, o atendimento automático por IA está pausado para este lead.
         logoUrl:
           type: string
           nullable: true
@@ -14174,6 +14177,10 @@ components:
         specialDateMessagesOptOut:
           type: boolean
           nullable: true
+        iaAtiva:
+          type: boolean
+          nullable: true
+          description: Quando false, pausa o atendimento automático por IA para este lead.
         logoUrl:
           type: string
           nullable: true
