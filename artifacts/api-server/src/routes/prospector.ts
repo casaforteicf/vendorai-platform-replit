@@ -589,6 +589,7 @@ router.post("/prospector/enrich", async (req, res) => {
 const searchBodySchema = z.object({
   atividade: z.string().min(2, "Informe a atividade comercial"),
   localidade: z.string().min(2, "Informe a localidade"),
+  maxResults: z.number().int().min(1).max(20).optional().default(10),
   tenantId: z.string().optional(),
 });
 
@@ -597,13 +598,13 @@ router.post("/prospector/search", async (req, res) => {
   if (!parsed.success) {
     return res.status(400).json({ error: "Dados inválidos", details: parsed.error.flatten() });
   }
-  const { atividade, localidade, tenantId: bodyTenantId } = parsed.data;
+  const { atividade, localidade, maxResults, tenantId: bodyTenantId } = parsed.data;
   // Valida o tenant (e a permissão de super_admin) antes de gastar chamada externa.
   const tenantIdSearch = resolveTenantId(req, bodyTenantId);
 
   await checkApiQuota(tenantIdSearch, "google_places", req.log);
   const query = `${atividade.trim()} em ${localidade.trim()}`;
-  const places = await searchPlaces(query, 20, req.log);
+  const places = await searchPlaces(query, maxResults, req.log);
 
   const results = places
     .filter((p) => p.nomeEmpresa)

@@ -13086,6 +13086,12 @@ components:
           type: string
           minLength: 2
           description: Cidade/bairro/região (ex. "Curitiba, PR")
+        maxResults:
+          type: integer
+          minimum: 1
+          maximum: 20
+          default: 10
+          description: Número máximo de empresas a retornar (1–20, padrão 10)
         tenantId:
           type: string
           description: Required when caller is a super_admin

@@ -10167,11 +10167,15 @@ export const prospectorSearchBodyAtividadeMin = 2;
 
 export const prospectorSearchBodyLocalidadeMin = 2;
 
+export const prospectorSearchBodyMaxResultsDefault = 10;
+export const prospectorSearchBodyMaxResultsMax = 20;
+
 
 
 export const ProspectorSearchBody = zod.object({
   "atividade": zod.string().min(prospectorSearchBodyAtividadeMin).describe('Atividade comercial (ex. \"restaurantes\", \"clínicas odontológicas\")'),
   "localidade": zod.string().min(prospectorSearchBodyLocalidadeMin).describe('Cidade\/bairro\/região (ex. \"Curitiba, PR\")'),
+  "maxResults": zod.number().min(1).max(prospectorSearchBodyMaxResultsMax).default(prospectorSearchBodyMaxResultsDefault).describe('Número máximo de empresas a retornar (1–20, padrão 10)'),
   "tenantId": zod.string().optional().describe('Required when caller is a super_admin')
 })
 

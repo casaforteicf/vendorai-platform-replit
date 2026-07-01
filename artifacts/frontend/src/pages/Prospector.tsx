@@ -252,10 +252,12 @@ export default function Prospector() {
   // Busca por atividade + localidade
   const [atividade, setAtividade] = useState("");
   const [localidade, setLocalidade] = useState("");
+  const [maxResults, setMaxResults] = useState(10);
   const [results, setResults] = useState<ProspectorSearchResult[]>([]);
   const [searched, setSearched] = useState(false);
   const [prospectingIndex, setProspectingIndex] = useState<number | null>(null);
   const [prospectedIndexes, setProspectedIndexes] = useState<number[]>([]);
+  const [duplicateIndexes, setDuplicateIndexes] = useState<number[]>([]);
   const [enrichment, setEnrichment] = useState<ProspectEnrichment | null>(null);
   const [exporting, setExporting] = useState(false);
   const [prospectStep, setProspectStep] = useState<"idle" | "importing" | "briefing" | "done">("idle");
@@ -289,6 +291,7 @@ export default function Prospector() {
         data: {
           atividade: atividade.trim(),
           localidade: localidade.trim(),
+          maxResults,
           ...tenantIdField(),
         },
       },
@@ -298,6 +301,7 @@ export default function Prospector() {
           setSearched(true);
           setEnrichment(null);
           setProspectedIndexes([]);
+          setDuplicateIndexes([]);
           toast({
             title: res.total > 0 ? `${res.total} empresa(s) encontrada(s)` : "Nenhuma empresa encontrada",
             description: res.total === 0 ? "Tente outra atividade ou localidade." : undefined,
@@ -337,12 +341,20 @@ export default function Prospector() {
         onSuccess: (res) => {
           setEnrichment(res.enrichment);
           if (!msgNomeEmpresa) setMsgNomeEmpresa(res.enrichment.nomeEmpresa ?? nome);
+          const isDup = (res as any).isDuplicate as boolean | undefined;
           if (!res.saved) {
             setProspectStep("idle");
             toast({
               title: "Não virou lead",
               description: res.reason ?? "Empresa sem canal de contato.",
               variant: "destructive",
+            });
+          } else if (isDup) {
+            setDuplicateIndexes((prev) => (prev.includes(index) ? prev : [...prev, index]));
+            setProspectStep("idle");
+            toast({
+              title: "Lead já cadastrado",
+              description: "Este contato já existe na sua base e não foi importado novamente.",
             });
           } else {
             setProspectedIndexes((prev) => (prev.includes(index) ? prev : [...prev, index]));
@@ -502,6 +514,26 @@ export default function Prospector() {
                 }}
               />
             </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="maxResults">
+                Quantidade de leads a buscar <span className="text-muted-foreground font-normal">({maxResults})</span>
+              </Label>
+              <input
+                id="maxResults"
+                type="range"
+                min={1}
+                max={20}
+                step={1}
+                value={maxResults}
+                onChange={(e) => setMaxResults(Number(e.target.value))}
+                className="w-full accent-primary h-2 rounded cursor-pointer"
+              />
+              <div className="flex justify-between text-xs text-muted-foreground">
+                <span>1</span>
+                <span>10</span>
+                <span>20</span>
+              </div>
+            </div>
             <Button onClick={onSearch} disabled={search.isPending} className="w-full">
               {search.isPending ? (
                 <>
@@ -596,6 +628,7 @@ export default function Prospector() {
                   const nome = r.nomeEmpresa ?? "";
                   const isProspecting = prospectingIndex === i && enrich.isPending;
                   const done = prospectedIndexes.includes(i);
+                  const isDup = duplicateIndexes.includes(i);
                   return (
                     <li
                       key={`${nome}-${i}`}
@@ -630,27 +663,33 @@ export default function Prospector() {
                           )}
                         </div>
                       </div>
-                      <Button
-                        size="sm"
-                        variant={done ? "outline" : "default"}
-                        disabled={enrich.isPending || done || nome.trim().length < 2}
-                        onClick={() => onProspect(r, i)}
-                        className="shrink-0"
-                      >
-                        {isProspecting ? (
-                          <>
-                            <Spinner className="h-4 w-4 mr-1" /> Prospectando...
-                          </>
-                        ) : done ? (
-                          <>
-                            <CheckCircle2 className="h-4 w-4 mr-1" /> Lead criado
-                          </>
-                        ) : (
-                          <>
-                            <UserPlus className="h-4 w-4 mr-1" /> Prospectar
-                          </>
-                        )}
-                      </Button>
+                      {isDup ? (
+                        <Badge variant="secondary" className="shrink-0 gap-1">
+                          <CheckCircle2 className="h-3 w-3 text-amber-500" /> Já importado
+                        </Badge>
+                      ) : (
+                        <Button
+                          size="sm"
+                          variant={done ? "outline" : "default"}
+                          disabled={enrich.isPending || done || nome.trim().length < 2}
+                          onClick={() => onProspect(r, i)}
+                          className="shrink-0"
+                        >
+                          {isProspecting ? (
+                            <>
+                              <Spinner className="h-4 w-4 mr-1" /> Prospectando...
+                            </>
+                          ) : done ? (
+                            <>
+                              <CheckCircle2 className="h-4 w-4 mr-1" /> Lead criado
+                            </>
+                          ) : (
+                            <>
+                              <UserPlus className="h-4 w-4 mr-1" /> Prospectar
+                            </>
+                          )}
+                        </Button>
+                      )}
                     </li>
                   );
                 })}

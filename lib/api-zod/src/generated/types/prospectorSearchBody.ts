@@ -17,6 +17,12 @@ export interface ProspectorSearchBody {
      * @minLength 2
      */
   localidade: string;
+  /**
+     * Número máximo de empresas a retornar (1–20, padrão 10)
+     * @minimum 1
+     * @maximum 20
+     */
+  maxResults?: number;
   /** Required when caller is a super_admin */
   tenantId?: string;
 }
