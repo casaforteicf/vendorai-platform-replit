@@ -94,11 +94,25 @@ app.use(async (req: Request, res: Response, next: NextFunction) => {
   const isWildcard = hostname.endsWith(`.${ROOT_DOMAIN}`);
   const isApi = req.path.startsWith("/api/");
 
+  // Support Cloudflare Worker proxy: worker forwards X-Tenant-Subdomain instead
+  // of relying on the Host header (which arrives as vendorai.replit.app at Replit)
+  const cfSubdomain = req.headers["x-tenant-subdomain"];
+  const subdomainFromHeader = typeof cfSubdomain === "string" && cfSubdomain.trim()
+    ? cfSubdomain.trim()
+    : null;
+
   try {
     let tenant: { id: string; name: string; status: string } | undefined;
 
-    if (isWildcard) {
-      // Extract subdomain slug: "wolmann-design.appvendorai.com" → "wolmann-design"
+    if (subdomainFromHeader) {
+      // Cloudflare Worker path: subdomain already extracted and sent via header
+      const [found] = await db
+        .select({ id: tenantsTable.id, name: tenantsTable.name, status: tenantsTable.status })
+        .from(tenantsTable)
+        .where(eq(tenantsTable.subdomainSlug, subdomainFromHeader));
+      tenant = found;
+    } else if (isWildcard) {
+      // Direct wildcard DNS path: "wolmann-design.appvendorai.com" → "wolmann-design"
       const subdomainSlug = hostname.slice(0, hostname.length - ROOT_DOMAIN.length - 1);
       if (!subdomainSlug) return next();
 
