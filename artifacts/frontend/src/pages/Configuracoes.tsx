@@ -1220,8 +1220,18 @@ export default function Configuracoes() {
     }
   }, [location]);
 
-  function onConnectInstagram() {
-    window.location.href = "/api/auth/instagram";
+  async function onConnectInstagram() {
+    try {
+      const token = localStorage.getItem("vendorai_token");
+      const res = await fetch("/api/auth/instagram", {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const data = await res.json() as { url: string };
+      window.location.href = data.url;
+    } catch (err) {
+      toast({ title: "Erro ao iniciar conexão com Instagram.", variant: "destructive" });
+    }
   }
   function onDisconnectInstagramOAuth() {
     disconnectIg.mutate(
