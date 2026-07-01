@@ -64,6 +64,17 @@ export const leadsTable = pgTable("leads", {
   // IA on/off por lead — quando false o agent-engine pula a resposta automática
   iaAtiva: boolean("ia_ativa").notNull().default(true),
 
+  // Tipo de pessoa e dados PJ
+  tipoPessoa: text("tipo_pessoa").notNull().default("fisica"),
+  dadosPj: jsonb("dados_pj").$type<{
+    cnpj?: string | null;
+    razaoSocial?: string | null;
+    segmento?: string | null;
+    numFuncionarios?: string | null;
+    faturamentoEstimado?: string | null;
+    socios?: Array<{ nome: string; dataNascimento?: string; telefone?: string; email?: string }>;
+  }>(),
+
   // Metadados extras (ex: dados do Google Places, fonte externa)
   metadata: jsonb("metadata").$type<Record<string, unknown>>(),
 

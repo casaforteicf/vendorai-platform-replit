@@ -13939,6 +13939,48 @@ components:
           type: string
           nullable: true
           description: UUID do usuário responsável pelo lead
+        tipoPessoa:
+          type: string
+          nullable: true
+          description: "'fisica' ou 'juridica'. Padrão: 'fisica'."
+        dadosPj:
+          type: object
+          nullable: true
+          description: Dados exclusivos de Pessoa Jurídica
+          properties:
+            cnpj:
+              type: string
+              nullable: true
+            razaoSocial:
+              type: string
+              nullable: true
+            segmento:
+              type: string
+              nullable: true
+            numFuncionarios:
+              type: string
+              nullable: true
+            faturamentoEstimado:
+              type: string
+              nullable: true
+            socios:
+              type: array
+              nullable: true
+              items:
+                type: object
+                properties:
+                  nome:
+                    type: string
+                  dataNascimento:
+                    type: string
+                    nullable: true
+                  telefone:
+                    type: string
+                    nullable: true
+                  email:
+                    type: string
+                    nullable: true
+                required: [nome]
         createdAt:
           type: string
           format: date-time

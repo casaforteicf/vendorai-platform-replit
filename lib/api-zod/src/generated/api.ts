@@ -5101,6 +5101,20 @@ export const ListLeadsResponseItem = zod.object({
   "corDestaque": zod.string().nullish(),
   "corSecundaria": zod.string().nullish(),
   "assignedTo": zod.string().nullish().describe('UUID do usuário responsável pelo lead'),
+  "tipoPessoa": zod.string().nullish().describe('\'fisica\' ou \'juridica\'. Padrão: \'fisica\'.'),
+  "dadosPj": zod.object({
+  "cnpj": zod.string().nullish(),
+  "razaoSocial": zod.string().nullish(),
+  "segmento": zod.string().nullish(),
+  "numFuncionarios": zod.string().nullish(),
+  "faturamentoEstimado": zod.string().nullish(),
+  "socios": zod.array(zod.object({
+  "nome": zod.string(),
+  "dataNascimento": zod.string().nullish(),
+  "telefone": zod.string().nullish(),
+  "email": zod.string().nullish()
+})).nullish()
+}).nullish().describe('Dados exclusivos de Pessoa Jurídica'),
   "createdAt": zod.coerce.date(),
   "updatedAt": zod.coerce.date()
 })
@@ -5209,6 +5223,20 @@ export const ListTenantLeadsResponseItem = zod.object({
   "corDestaque": zod.string().nullish(),
   "corSecundaria": zod.string().nullish(),
   "assignedTo": zod.string().nullish().describe('UUID do usuário responsável pelo lead'),
+  "tipoPessoa": zod.string().nullish().describe('\'fisica\' ou \'juridica\'. Padrão: \'fisica\'.'),
+  "dadosPj": zod.object({
+  "cnpj": zod.string().nullish(),
+  "razaoSocial": zod.string().nullish(),
+  "segmento": zod.string().nullish(),
+  "numFuncionarios": zod.string().nullish(),
+  "faturamentoEstimado": zod.string().nullish(),
+  "socios": zod.array(zod.object({
+  "nome": zod.string(),
+  "dataNascimento": zod.string().nullish(),
+  "telefone": zod.string().nullish(),
+  "email": zod.string().nullish()
+})).nullish()
+}).nullish().describe('Dados exclusivos de Pessoa Jurídica'),
   "createdAt": zod.coerce.date(),
   "updatedAt": zod.coerce.date()
 })
@@ -5272,6 +5300,20 @@ export const GetLeadResponse = zod.object({
   "corDestaque": zod.string().nullish(),
   "corSecundaria": zod.string().nullish(),
   "assignedTo": zod.string().nullish().describe('UUID do usuário responsável pelo lead'),
+  "tipoPessoa": zod.string().nullish().describe('\'fisica\' ou \'juridica\'. Padrão: \'fisica\'.'),
+  "dadosPj": zod.object({
+  "cnpj": zod.string().nullish(),
+  "razaoSocial": zod.string().nullish(),
+  "segmento": zod.string().nullish(),
+  "numFuncionarios": zod.string().nullish(),
+  "faturamentoEstimado": zod.string().nullish(),
+  "socios": zod.array(zod.object({
+  "nome": zod.string(),
+  "dataNascimento": zod.string().nullish(),
+  "telefone": zod.string().nullish(),
+  "email": zod.string().nullish()
+})).nullish()
+}).nullish().describe('Dados exclusivos de Pessoa Jurídica'),
   "createdAt": zod.coerce.date(),
   "updatedAt": zod.coerce.date()
 })
@@ -5381,6 +5423,20 @@ export const UpdateLeadResponse = zod.object({
   "corDestaque": zod.string().nullish(),
   "corSecundaria": zod.string().nullish(),
   "assignedTo": zod.string().nullish().describe('UUID do usuário responsável pelo lead'),
+  "tipoPessoa": zod.string().nullish().describe('\'fisica\' ou \'juridica\'. Padrão: \'fisica\'.'),
+  "dadosPj": zod.object({
+  "cnpj": zod.string().nullish(),
+  "razaoSocial": zod.string().nullish(),
+  "segmento": zod.string().nullish(),
+  "numFuncionarios": zod.string().nullish(),
+  "faturamentoEstimado": zod.string().nullish(),
+  "socios": zod.array(zod.object({
+  "nome": zod.string(),
+  "dataNascimento": zod.string().nullish(),
+  "telefone": zod.string().nullish(),
+  "email": zod.string().nullish()
+})).nullish()
+}).nullish().describe('Dados exclusivos de Pessoa Jurídica'),
   "createdAt": zod.coerce.date(),
   "updatedAt": zod.coerce.date()
 })
@@ -5453,6 +5509,20 @@ export const ListTenantDuplicateLeadsResponseItem = zod.object({
   "corDestaque": zod.string().nullish(),
   "corSecundaria": zod.string().nullish(),
   "assignedTo": zod.string().nullish().describe('UUID do usuário responsável pelo lead'),
+  "tipoPessoa": zod.string().nullish().describe('\'fisica\' ou \'juridica\'. Padrão: \'fisica\'.'),
+  "dadosPj": zod.object({
+  "cnpj": zod.string().nullish(),
+  "razaoSocial": zod.string().nullish(),
+  "segmento": zod.string().nullish(),
+  "numFuncionarios": zod.string().nullish(),
+  "faturamentoEstimado": zod.string().nullish(),
+  "socios": zod.array(zod.object({
+  "nome": zod.string(),
+  "dataNascimento": zod.string().nullish(),
+  "telefone": zod.string().nullish(),
+  "email": zod.string().nullish()
+})).nullish()
+}).nullish().describe('Dados exclusivos de Pessoa Jurídica'),
   "createdAt": zod.coerce.date(),
   "updatedAt": zod.coerce.date()
 }).optional(),
@@ -5504,6 +5574,20 @@ export const ListTenantDuplicateLeadsResponseItem = zod.object({
   "corDestaque": zod.string().nullish(),
   "corSecundaria": zod.string().nullish(),
   "assignedTo": zod.string().nullish().describe('UUID do usuário responsável pelo lead'),
+  "tipoPessoa": zod.string().nullish().describe('\'fisica\' ou \'juridica\'. Padrão: \'fisica\'.'),
+  "dadosPj": zod.object({
+  "cnpj": zod.string().nullish(),
+  "razaoSocial": zod.string().nullish(),
+  "segmento": zod.string().nullish(),
+  "numFuncionarios": zod.string().nullish(),
+  "faturamentoEstimado": zod.string().nullish(),
+  "socios": zod.array(zod.object({
+  "nome": zod.string(),
+  "dataNascimento": zod.string().nullish(),
+  "telefone": zod.string().nullish(),
+  "email": zod.string().nullish()
+})).nullish()
+}).nullish().describe('Dados exclusivos de Pessoa Jurídica'),
   "createdAt": zod.coerce.date(),
   "updatedAt": zod.coerce.date()
 }).optional()
@@ -5574,6 +5658,20 @@ export const MergeLeadResponse = zod.object({
   "corDestaque": zod.string().nullish(),
   "corSecundaria": zod.string().nullish(),
   "assignedTo": zod.string().nullish().describe('UUID do usuário responsável pelo lead'),
+  "tipoPessoa": zod.string().nullish().describe('\'fisica\' ou \'juridica\'. Padrão: \'fisica\'.'),
+  "dadosPj": zod.object({
+  "cnpj": zod.string().nullish(),
+  "razaoSocial": zod.string().nullish(),
+  "segmento": zod.string().nullish(),
+  "numFuncionarios": zod.string().nullish(),
+  "faturamentoEstimado": zod.string().nullish(),
+  "socios": zod.array(zod.object({
+  "nome": zod.string(),
+  "dataNascimento": zod.string().nullish(),
+  "telefone": zod.string().nullish(),
+  "email": zod.string().nullish()
+})).nullish()
+}).nullish().describe('Dados exclusivos de Pessoa Jurídica'),
   "createdAt": zod.coerce.date(),
   "updatedAt": zod.coerce.date()
 }).optional(),
@@ -5641,6 +5739,20 @@ export const DismissDuplicateLeadResponse = zod.object({
   "corDestaque": zod.string().nullish(),
   "corSecundaria": zod.string().nullish(),
   "assignedTo": zod.string().nullish().describe('UUID do usuário responsável pelo lead'),
+  "tipoPessoa": zod.string().nullish().describe('\'fisica\' ou \'juridica\'. Padrão: \'fisica\'.'),
+  "dadosPj": zod.object({
+  "cnpj": zod.string().nullish(),
+  "razaoSocial": zod.string().nullish(),
+  "segmento": zod.string().nullish(),
+  "numFuncionarios": zod.string().nullish(),
+  "faturamentoEstimado": zod.string().nullish(),
+  "socios": zod.array(zod.object({
+  "nome": zod.string(),
+  "dataNascimento": zod.string().nullish(),
+  "telefone": zod.string().nullish(),
+  "email": zod.string().nullish()
+})).nullish()
+}).nullish().describe('Dados exclusivos de Pessoa Jurídica'),
   "createdAt": zod.coerce.date(),
   "updatedAt": zod.coerce.date()
 }).optional()

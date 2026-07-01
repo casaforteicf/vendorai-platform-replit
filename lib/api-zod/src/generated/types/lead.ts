@@ -5,6 +5,7 @@
  * API specification
  * OpenAPI spec version: 0.1.0
  */
+import type { LeadDadosPj } from './leadDadosPj';
 import type { LeadFilhosItem } from './leadFilhosItem';
 
 export interface Lead {
@@ -64,6 +65,10 @@ export interface Lead {
   corSecundaria?: string | null;
   /** UUID do usuário responsável pelo lead */
   assignedTo?: string | null;
+  /** 'fisica' ou 'juridica'. Padrão: 'fisica'. */
+  tipoPessoa?: string | null;
+  /** Dados exclusivos de Pessoa Jurídica */
+  dadosPj?: LeadDadosPj;
   createdAt: Date;
   updatedAt: Date;
 }

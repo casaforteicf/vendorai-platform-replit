@@ -2838,6 +2838,25 @@ export type LeadFilhosItem = {
   lastCampaignSentYear?: number | null;
 };
 
+export type LeadDadosPjSociosItem = {
+  nome: string;
+  dataNascimento?: string | null;
+  telefone?: string | null;
+  email?: string | null;
+};
+
+/**
+ * Dados exclusivos de Pessoa Jurídica
+ */
+export type LeadDadosPj = {
+  cnpj?: string | null;
+  razaoSocial?: string | null;
+  segmento?: string | null;
+  numFuncionarios?: string | null;
+  faturamentoEstimado?: string | null;
+  socios?: LeadDadosPjSociosItem[] | null;
+} | null;
+
 export interface Lead {
   id: string;
   tenantId: string;
@@ -2895,6 +2914,10 @@ export interface Lead {
   corSecundaria?: string | null;
   /** UUID do usuário responsável pelo lead */
   assignedTo?: string | null;
+  /** 'fisica' ou 'juridica'. Padrão: 'fisica'. */
+  tipoPessoa?: string | null;
+  /** Dados exclusivos de Pessoa Jurídica */
+  dadosPj?: LeadDadosPj;
   createdAt: string;
   updatedAt: string;
 }

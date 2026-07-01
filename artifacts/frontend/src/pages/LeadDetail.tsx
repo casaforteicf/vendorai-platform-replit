@@ -103,6 +103,9 @@ import {
   Globe,
   Maximize2,
   Download,
+  Briefcase,
+  Users,
+  DollarSign,
 } from "lucide-react";
 
 const STATUS_STYLES: Record<string, string> = {
@@ -489,6 +492,8 @@ export default function LeadDetail() {
 
   const [editingPessoal, setEditingPessoal] = useState(false);
   const [pessoalDraft, setPessoalDraft] = useState({
+    tipoPessoa: "fisica" as "fisica" | "juridica",
+    // PF fields
     dataNascimento: "",
     estadoCivil: "",
     genero: "",
@@ -497,6 +502,12 @@ export default function LeadDetail() {
     conjugeEmail: "",
     conjugeDataNascimento: "",
     filhos: [] as Array<{ nome: string; dataNascimento: string; genero: string }>,
+    // PJ fields
+    pjCnpj: "",
+    pjRazaoSocial: "",
+    pjSegmento: "",
+    pjNumFuncionarios: "",
+    pjFaturamentoEstimado: "",
     socios: [] as Array<{ nome: string; dataNascimento: string; telefone: string; email: string }>,
   });
 
@@ -515,8 +526,12 @@ export default function LeadDetail() {
 
   function openPessoalEdit() {
     if (!lead) return;
-    const metaSocios = ((lead as any).metadata?.socios ?? []) as Array<{ nome?: string; dataNascimento?: string; telefone?: string; email?: string }>;
+    const tp = ((lead as any).tipoPessoa ?? ((lead as any).source === "prospector" ? "juridica" : "fisica")) as "fisica" | "juridica";
+    const dadosPj = (lead as any).dadosPj ?? {};
+    // Socios: prefer dadosPj.socios, fallback to metadata.socios for backward compat
+    const metaSocios = (dadosPj.socios ?? (lead as any).metadata?.socios ?? []) as Array<{ nome?: string; dataNascimento?: string; telefone?: string; email?: string }>;
     setPessoalDraft({
+      tipoPessoa: tp,
       dataNascimento: lead.dataNascimento ?? "",
       estadoCivil: lead.estadoCivil ?? "",
       genero: lead.genero ?? "",
@@ -529,6 +544,11 @@ export default function LeadDetail() {
         dataNascimento: f.dataNascimento ?? "",
         genero: f.genero ?? "",
       })),
+      pjCnpj: dadosPj.cnpj ?? lead.documento ?? "",
+      pjRazaoSocial: dadosPj.razaoSocial ?? lead.empresa ?? "",
+      pjSegmento: dadosPj.segmento ?? lead.mercadoSegmento ?? "",
+      pjNumFuncionarios: dadosPj.numFuncionarios ?? "",
+      pjFaturamentoEstimado: dadosPj.faturamentoEstimado ?? "",
       socios: metaSocios.map((s) => ({
         nome: s.nome ?? "",
         dataNascimento: s.dataNascimento ?? "",
@@ -543,28 +563,47 @@ export default function LeadDetail() {
     if (!id) return;
     const sociosFiltrados = pessoalDraft.socios.filter((s) => s.nome.trim());
     const metadataAtual = (lead as any)?.metadata ?? {};
+    const isPj = pessoalDraft.tipoPessoa === "juridica";
+
     updateLead({
       id,
       data: {
-        dataNascimento: pessoalDraft.dataNascimento || null,
-        estadoCivil: pessoalDraft.estadoCivil || null,
-        genero: pessoalDraft.genero || null,
-        conjugeNome: pessoalDraft.conjugeNome || null,
-        conjugeTelefone: pessoalDraft.conjugeTelefone || null,
-        conjugeEmail: pessoalDraft.conjugeEmail || null,
-        conjugeDataNascimento: pessoalDraft.conjugeDataNascimento || null,
-        filhos: pessoalDraft.filhos.filter((f) => f.nome.trim()).length > 0
+        tipoPessoa: pessoalDraft.tipoPessoa,
+        // PF fields (clear when PJ)
+        dataNascimento: isPj ? null : (pessoalDraft.dataNascimento || null),
+        estadoCivil: isPj ? null : (pessoalDraft.estadoCivil || null),
+        genero: isPj ? null : (pessoalDraft.genero || null),
+        conjugeNome: isPj ? null : (pessoalDraft.conjugeNome || null),
+        conjugeTelefone: isPj ? null : (pessoalDraft.conjugeTelefone || null),
+        conjugeEmail: isPj ? null : (pessoalDraft.conjugeEmail || null),
+        conjugeDataNascimento: isPj ? null : (pessoalDraft.conjugeDataNascimento || null),
+        filhos: isPj ? null : (pessoalDraft.filhos.filter((f) => f.nome.trim()).length > 0
           ? pessoalDraft.filhos.filter((f) => f.nome.trim()).map((f) => ({
               nome: f.nome,
               dataNascimento: f.dataNascimento,
               genero: f.genero || null,
             }))
-          : null,
-        metadata: {
-          ...metadataAtual,
-          socios: sociosFiltrados.length > 0 ? sociosFiltrados : [],
-        } as any,
-      },
+          : null),
+        // PJ: sync top-level fields + store in dadosPj
+        ...(isPj ? {
+          documento: pessoalDraft.pjCnpj.replace(/\D/g, "") || null,
+          empresa: pessoalDraft.pjRazaoSocial || null,
+          mercadoSegmento: pessoalDraft.pjSegmento || null,
+          dadosPj: {
+            cnpj: pessoalDraft.pjCnpj || null,
+            razaoSocial: pessoalDraft.pjRazaoSocial || null,
+            segmento: pessoalDraft.pjSegmento || null,
+            numFuncionarios: pessoalDraft.pjNumFuncionarios || null,
+            faturamentoEstimado: pessoalDraft.pjFaturamentoEstimado || null,
+            socios: sociosFiltrados.length > 0 ? sociosFiltrados : [],
+          },
+        } : {
+          metadata: {
+            ...metadataAtual,
+            socios: sociosFiltrados.length > 0 ? sociosFiltrados : [],
+          } as any,
+        }),
+      } as any,
     });
   }
 
@@ -1110,6 +1149,13 @@ export default function LeadDetail() {
                 <span className="flex items-center gap-2">
                   <UserRound className="h-4 w-4" />
                   Dados Pessoais
+                  {(lead as any).tipoPessoa === "juridica" ? (
+                    <Badge variant="secondary" className="text-[10px] px-1.5 py-0 gap-1">
+                      <Building2 className="h-2.5 w-2.5" /> PJ
+                    </Badge>
+                  ) : (
+                    <Badge variant="outline" className="text-[10px] px-1.5 py-0">PF</Badge>
+                  )}
                 </span>
                 <button
                   onClick={openPessoalEdit}
@@ -1121,102 +1167,186 @@ export default function LeadDetail() {
               </CardTitle>
             </CardHeader>
             <CardContent className="space-y-3 text-sm">
-              {!lead.dataNascimento && !lead.estadoCivil && !lead.conjugeNome && !lead.filhos?.length ? (
-                <p className="text-xs text-muted-foreground italic">
-                  Clique em editar para adicionar dados pessoais.
-                </p>
-              ) : (
-                <>
-                  {lead.dataNascimento && (
-                    <div className="flex items-center gap-2 text-muted-foreground">
-                      <CalendarDays className="h-3.5 w-3.5 shrink-0" />
-                      <span>{formatDate(lead.dataNascimento)} · {calcularIdade(lead.dataNascimento)}</span>
-                    </div>
-                  )}
-                  {lead.estadoCivil && (
-                    <div className="flex items-center gap-2 text-muted-foreground">
-                      <Heart className="h-3.5 w-3.5 shrink-0" />
-                      <span>{ESTADO_CIVIL_LABELS[lead.estadoCivil] ?? lead.estadoCivil}</span>
-                    </div>
-                  )}
-                  {lead.conjugeNome && (
-                    <div className="space-y-1 border-l-2 border-muted pl-3">
-                      <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Cônjuge</p>
-                      <p className="font-medium">{lead.conjugeNome}</p>
-                      {lead.conjugeTelefone && (
-                        <div className="flex items-center gap-1.5 text-muted-foreground text-xs">
-                          <Phone className="h-3 w-3" />
-                          <span className="font-mono">{lead.conjugeTelefone}</span>
-                        </div>
-                      )}
-                      {lead.conjugeEmail && (
-                        <div className="flex items-center gap-1.5 text-muted-foreground text-xs">
-                          <Mail className="h-3 w-3" />
-                          <span>{lead.conjugeEmail}</span>
-                        </div>
-                      )}
-                      {lead.conjugeDataNascimento && (
-                        <div className="flex items-center gap-1.5 text-muted-foreground text-xs">
-                          <CalendarDays className="h-3 w-3" />
-                          <span>{formatDate(lead.conjugeDataNascimento)} · {calcularIdade(lead.conjugeDataNascimento)}</span>
-                        </div>
-                      )}
-                    </div>
-                  )}
-                  {lead.filhos && lead.filhos.length > 0 && (
-                    <div className="space-y-1">
-                      <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Filhos</p>
-                      {lead.filhos.map((filho, i) => (
-                        <div key={i} className="flex items-center gap-2 text-muted-foreground">
-                          <Baby className="h-3.5 w-3.5 shrink-0" />
-                          <span>{filho.nome}{filho.genero ? ` (${filho.genero === "masculino" ? "M" : "F"})` : ""}</span>
-                          {filho.dataNascimento && (
-                            <span className="text-xs ml-auto">🎂 {formatBirthday(filho.dataNascimento)}</span>
-                          )}
-                          {filho.source === "extracted_from_conversation" && (
-                            <span className="text-[10px] text-emerald-600 bg-emerald-50 px-1 rounded ml-auto">IA</span>
-                          )}
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                  {lead.conjugeNome && (
-                    <SpouseConsentBlock leadId={id} />
-                  )}
-                  {lead.empresa && (() => {
-                    const socios = ((lead as any).metadata?.socios ?? []) as Array<{ nome?: string; dataNascimento?: string; telefone?: string; email?: string }>;
-                    if (socios.length === 0) return null;
+              {(() => {
+                const tipoPessoa = (lead as any).tipoPessoa ?? "fisica";
+                const dadosPj = (lead as any).dadosPj ?? {};
+                const sociosPj = (dadosPj.socios ?? (lead as any).metadata?.socios ?? []) as Array<{ nome?: string; dataNascimento?: string; telefone?: string; email?: string }>;
+
+                if (tipoPessoa === "juridica") {
+                  const hasPjData = dadosPj.cnpj || dadosPj.razaoSocial || dadosPj.segmento || dadosPj.numFuncionarios || dadosPj.faturamentoEstimado || sociosPj.length > 0;
+                  if (!hasPjData) {
                     return (
+                      <p className="text-xs text-muted-foreground italic">
+                        Clique em editar para adicionar dados da empresa.
+                      </p>
+                    );
+                  }
+                  const faturamentoLabels: Record<string, string> = {
+                    ate_10k: "Até R$ 10 mil/mês",
+                    "10k_50k": "R$ 10–50 mil/mês",
+                    "50k_200k": "R$ 50–200 mil/mês",
+                    "200k_1m": "R$ 200 mil–1 mi/mês",
+                    acima_1m: "Acima de R$ 1 mi/mês",
+                  };
+                  return (
+                    <>
+                      {dadosPj.cnpj && (
+                        <div className="flex items-center gap-2 text-muted-foreground">
+                          <FileText className="h-3.5 w-3.5 shrink-0" />
+                          <span className="font-mono text-xs">{dadosPj.cnpj}</span>
+                        </div>
+                      )}
+                      {dadosPj.razaoSocial && (
+                        <div className="flex items-center gap-2 text-muted-foreground">
+                          <Building2 className="h-3.5 w-3.5 shrink-0" />
+                          <span>{dadosPj.razaoSocial}</span>
+                        </div>
+                      )}
+                      {dadosPj.segmento && (
+                        <div className="flex items-center gap-2 text-muted-foreground">
+                          <Briefcase className="h-3.5 w-3.5 shrink-0" />
+                          <span>{dadosPj.segmento}</span>
+                        </div>
+                      )}
+                      {dadosPj.numFuncionarios && (
+                        <div className="flex items-center gap-2 text-muted-foreground">
+                          <Users className="h-3.5 w-3.5 shrink-0" />
+                          <span>{dadosPj.numFuncionarios} funcionários</span>
+                        </div>
+                      )}
+                      {dadosPj.faturamentoEstimado && (
+                        <div className="flex items-center gap-2 text-muted-foreground">
+                          <DollarSign className="h-3.5 w-3.5 shrink-0" />
+                          <span>{faturamentoLabels[dadosPj.faturamentoEstimado] ?? dadosPj.faturamentoEstimado}</span>
+                        </div>
+                      )}
+                      {sociosPj.length > 0 && (
+                        <div className="space-y-1 border-l-2 border-muted pl-3">
+                          <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Sócios</p>
+                          {sociosPj.map((s, i) => (
+                            <div key={i} className="space-y-0.5">
+                              <p className="font-medium">{s.nome}</p>
+                              {s.telefone && (
+                                <div className="flex items-center gap-1.5 text-muted-foreground text-xs">
+                                  <Phone className="h-3 w-3" />
+                                  <span className="font-mono">{s.telefone}</span>
+                                </div>
+                              )}
+                              {s.email && (
+                                <div className="flex items-center gap-1.5 text-muted-foreground text-xs">
+                                  <Mail className="h-3 w-3" />
+                                  <span>{s.email}</span>
+                                </div>
+                              )}
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </>
+                  );
+                }
+
+                // Pessoa Física
+                if (!lead.dataNascimento && !lead.estadoCivil && !lead.conjugeNome && !lead.filhos?.length) {
+                  return (
+                    <p className="text-xs text-muted-foreground italic">
+                      Clique em editar para adicionar dados pessoais.
+                    </p>
+                  );
+                }
+                return (
+                  <>
+                    {lead.dataNascimento && (
+                      <div className="flex items-center gap-2 text-muted-foreground">
+                        <CalendarDays className="h-3.5 w-3.5 shrink-0" />
+                        <span>{formatDate(lead.dataNascimento)} · {calcularIdade(lead.dataNascimento)}</span>
+                      </div>
+                    )}
+                    {lead.estadoCivil && (
+                      <div className="flex items-center gap-2 text-muted-foreground">
+                        <Heart className="h-3.5 w-3.5 shrink-0" />
+                        <span>{ESTADO_CIVIL_LABELS[lead.estadoCivil] ?? lead.estadoCivil}</span>
+                      </div>
+                    )}
+                    {lead.conjugeNome && (
                       <div className="space-y-1 border-l-2 border-muted pl-3">
-                        <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Sócios</p>
-                        {socios.map((s, i) => (
-                          <div key={i} className="space-y-0.5">
-                            <p className="font-medium">{s.nome}</p>
-                            {s.dataNascimento && (
-                              <div className="flex items-center gap-1.5 text-muted-foreground text-xs">
-                                <CalendarDays className="h-3 w-3" />
-                                <span>{formatDate(s.dataNascimento)} · {calcularIdade(s.dataNascimento)}</span>
-                              </div>
+                        <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Cônjuge</p>
+                        <p className="font-medium">{lead.conjugeNome}</p>
+                        {lead.conjugeTelefone && (
+                          <div className="flex items-center gap-1.5 text-muted-foreground text-xs">
+                            <Phone className="h-3 w-3" />
+                            <span className="font-mono">{lead.conjugeTelefone}</span>
+                          </div>
+                        )}
+                        {lead.conjugeEmail && (
+                          <div className="flex items-center gap-1.5 text-muted-foreground text-xs">
+                            <Mail className="h-3 w-3" />
+                            <span>{lead.conjugeEmail}</span>
+                          </div>
+                        )}
+                        {lead.conjugeDataNascimento && (
+                          <div className="flex items-center gap-1.5 text-muted-foreground text-xs">
+                            <CalendarDays className="h-3 w-3" />
+                            <span>{formatDate(lead.conjugeDataNascimento)} · {calcularIdade(lead.conjugeDataNascimento)}</span>
+                          </div>
+                        )}
+                      </div>
+                    )}
+                    {lead.filhos && lead.filhos.length > 0 && (
+                      <div className="space-y-1">
+                        <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Filhos</p>
+                        {lead.filhos.map((filho, i) => (
+                          <div key={i} className="flex items-center gap-2 text-muted-foreground">
+                            <Baby className="h-3.5 w-3.5 shrink-0" />
+                            <span>{filho.nome}{filho.genero ? ` (${filho.genero === "masculino" ? "M" : "F"})` : ""}</span>
+                            {filho.dataNascimento && (
+                              <span className="text-xs ml-auto">🎂 {formatBirthday(filho.dataNascimento)}</span>
                             )}
-                            {s.telefone && (
-                              <div className="flex items-center gap-1.5 text-muted-foreground text-xs">
-                                <Phone className="h-3 w-3" />
-                                <span className="font-mono">{s.telefone}</span>
-                              </div>
-                            )}
-                            {s.email && (
-                              <div className="flex items-center gap-1.5 text-muted-foreground text-xs">
-                                <Mail className="h-3 w-3" />
-                                <span>{s.email}</span>
-                              </div>
+                            {filho.source === "extracted_from_conversation" && (
+                              <span className="text-[10px] text-emerald-600 bg-emerald-50 px-1 rounded ml-auto">IA</span>
                             )}
                           </div>
                         ))}
                       </div>
-                    );
-                  })()}
-                </>
-              )}
+                    )}
+                    {lead.conjugeNome && (
+                      <SpouseConsentBlock leadId={id} />
+                    )}
+                    {lead.empresa && (() => {
+                      const socios = ((lead as any).metadata?.socios ?? []) as Array<{ nome?: string; dataNascimento?: string; telefone?: string; email?: string }>;
+                      if (socios.length === 0) return null;
+                      return (
+                        <div className="space-y-1 border-l-2 border-muted pl-3">
+                          <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Sócios</p>
+                          {socios.map((s, i) => (
+                            <div key={i} className="space-y-0.5">
+                              <p className="font-medium">{s.nome}</p>
+                              {s.dataNascimento && (
+                                <div className="flex items-center gap-1.5 text-muted-foreground text-xs">
+                                  <CalendarDays className="h-3 w-3" />
+                                  <span>{formatDate(s.dataNascimento)} · {calcularIdade(s.dataNascimento)}</span>
+                                </div>
+                              )}
+                              {s.telefone && (
+                                <div className="flex items-center gap-1.5 text-muted-foreground text-xs">
+                                  <Phone className="h-3 w-3" />
+                                  <span className="font-mono">{s.telefone}</span>
+                                </div>
+                              )}
+                              {s.email && (
+                                <div className="flex items-center gap-1.5 text-muted-foreground text-xs">
+                                  <Mail className="h-3 w-3" />
+                                  <span>{s.email}</span>
+                                </div>
+                              )}
+                            </div>
+                          ))}
+                        </div>
+                      );
+                    })()}
+                  </>
+                );
+              })()}
             </CardContent>
           </Card>
 
@@ -2581,185 +2711,288 @@ export default function LeadDetail() {
             <DialogTitle>Dados Pessoais</DialogTitle>
           </DialogHeader>
           <div className="space-y-4 py-2">
-            <div className="space-y-1.5">
-              <label className="text-sm font-medium">Data de Nascimento</label>
-              <Input
-                type="date"
-                value={pessoalDraft.dataNascimento}
-                onChange={(e) => setPessoalDraft((d) => ({ ...d, dataNascimento: e.target.value }))}
-              />
-            </div>
-            <div className="space-y-1.5">
-              <label className="text-sm font-medium">Genero</label>
-              <Select
-                value={pessoalDraft.genero || "__none__"}
-                onValueChange={(v) =>
-                  setPessoalDraft((d) => ({ ...d, genero: v === "__none__" ? "" : v }))
-                }
-              >
-                <SelectTrigger>
-                  <SelectValue placeholder="Selecione..." />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="__none__">Não informado</SelectItem>
-                  <SelectItem value="masculino">Masculino</SelectItem>
-                  <SelectItem value="feminino">Feminino</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="space-y-1.5">
-              <label className="text-sm font-medium">Estado Civil</label>
-              <Select
-                value={pessoalDraft.estadoCivil || "__none__"}
-                onValueChange={(v) =>
-                  setPessoalDraft((d) => ({ ...d, estadoCivil: v === "__none__" ? "" : v }))
-                }
-              >
-                <SelectTrigger>
-                  <SelectValue placeholder="Selecione..." />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="__none__">Não informado</SelectItem>
-                  <SelectItem value="solteiro">Solteiro(a)</SelectItem>
-                  <SelectItem value="casado">Casado(a)</SelectItem>
-                  <SelectItem value="uniao_estavel">União Estável</SelectItem>
-                  <SelectItem value="divorciado">Divorciado(a)</SelectItem>
-                  <SelectItem value="viuvo">Viúvo(a)</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-            {(pessoalDraft.estadoCivil === "casado" || pessoalDraft.estadoCivil === "uniao_estavel") && (
-              <div className="space-y-3 border rounded-md p-3 bg-muted/30">
-                <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                  Cônjuge
+            {/* Tipo de Pessoa toggle */}
+            <div className="flex items-center justify-between rounded-lg border p-3 bg-muted/30">
+              <div>
+                <p className="text-sm font-medium">Tipo</p>
+                <p className="text-xs text-muted-foreground">
+                  {pessoalDraft.tipoPessoa === "juridica" ? "Pessoa Jurídica (Empresa)" : "Pessoa Física"}
                 </p>
-                <div className="space-y-1.5">
-                  <label className="text-sm font-medium">Nome</label>
-                  <Input
-                    placeholder="Nome do cônjuge"
-                    value={pessoalDraft.conjugeNome}
-                    onChange={(e) => setPessoalDraft((d) => ({ ...d, conjugeNome: e.target.value }))}
-                  />
-                </div>
-                <div className="grid grid-cols-2 gap-3">
-                  <div className="space-y-1.5">
-                    <label className="text-sm font-medium">Telefone</label>
-                    <Input
-                      placeholder="(11) 99999-9999"
-                      value={pessoalDraft.conjugeTelefone}
-                      onChange={(e) =>
-                        setPessoalDraft((d) => ({ ...d, conjugeTelefone: e.target.value }))
-                      }
-                    />
-                  </div>
-                  <div className="space-y-1.5">
-                    <label className="text-sm font-medium">Email</label>
-                    <Input
-                      placeholder="email@..."
-                      value={pessoalDraft.conjugeEmail}
-                      onChange={(e) =>
-                        setPessoalDraft((d) => ({ ...d, conjugeEmail: e.target.value }))
-                      }
-                    />
-                  </div>
-                </div>
+              </div>
+              <div className="flex items-center gap-2 text-sm">
+                <span className={pessoalDraft.tipoPessoa === "fisica" ? "font-semibold" : "text-muted-foreground"}>PF</span>
+                <Switch
+                  checked={pessoalDraft.tipoPessoa === "juridica"}
+                  onCheckedChange={(checked) =>
+                    setPessoalDraft((d) => ({ ...d, tipoPessoa: checked ? "juridica" : "fisica" }))
+                  }
+                />
+                <span className={pessoalDraft.tipoPessoa === "juridica" ? "font-semibold" : "text-muted-foreground"}>PJ</span>
+              </div>
+            </div>
+
+            {/* ── Campos Pessoa Física ── */}
+            {pessoalDraft.tipoPessoa === "fisica" && (
+              <>
                 <div className="space-y-1.5">
                   <label className="text-sm font-medium">Data de Nascimento</label>
                   <Input
                     type="date"
-                    value={pessoalDraft.conjugeDataNascimento}
-                    onChange={(e) =>
-                      setPessoalDraft((d) => ({ ...d, conjugeDataNascimento: e.target.value }))
-                    }
+                    value={pessoalDraft.dataNascimento}
+                    onChange={(e) => setPessoalDraft((d) => ({ ...d, dataNascimento: e.target.value }))}
                   />
-                  {pessoalDraft.conjugeDataNascimento && (
-                    <p className="text-xs text-muted-foreground">
-                      {calcularIdade(pessoalDraft.conjugeDataNascimento)}
-                    </p>
-                  )}
                 </div>
-              </div>
+                <div className="space-y-1.5">
+                  <label className="text-sm font-medium">Gênero</label>
+                  <Select
+                    value={pessoalDraft.genero || "__none__"}
+                    onValueChange={(v) =>
+                      setPessoalDraft((d) => ({ ...d, genero: v === "__none__" ? "" : v }))
+                    }
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="Selecione..." />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="__none__">Não informado</SelectItem>
+                      <SelectItem value="masculino">Masculino</SelectItem>
+                      <SelectItem value="feminino">Feminino</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-1.5">
+                  <label className="text-sm font-medium">Estado Civil</label>
+                  <Select
+                    value={pessoalDraft.estadoCivil || "__none__"}
+                    onValueChange={(v) =>
+                      setPessoalDraft((d) => ({ ...d, estadoCivil: v === "__none__" ? "" : v }))
+                    }
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="Selecione..." />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="__none__">Não informado</SelectItem>
+                      <SelectItem value="solteiro">Solteiro(a)</SelectItem>
+                      <SelectItem value="casado">Casado(a)</SelectItem>
+                      <SelectItem value="uniao_estavel">União Estável</SelectItem>
+                      <SelectItem value="divorciado">Divorciado(a)</SelectItem>
+                      <SelectItem value="viuvo">Viúvo(a)</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                {(pessoalDraft.estadoCivil === "casado" || pessoalDraft.estadoCivil === "uniao_estavel") && (
+                  <div className="space-y-3 border rounded-md p-3 bg-muted/30">
+                    <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                      Cônjuge
+                    </p>
+                    <div className="space-y-1.5">
+                      <label className="text-sm font-medium">Nome</label>
+                      <Input
+                        placeholder="Nome do cônjuge"
+                        value={pessoalDraft.conjugeNome}
+                        onChange={(e) => setPessoalDraft((d) => ({ ...d, conjugeNome: e.target.value }))}
+                      />
+                    </div>
+                    <div className="grid grid-cols-2 gap-3">
+                      <div className="space-y-1.5">
+                        <label className="text-sm font-medium">Telefone</label>
+                        <Input
+                          placeholder="(11) 99999-9999"
+                          value={pessoalDraft.conjugeTelefone}
+                          onChange={(e) =>
+                            setPessoalDraft((d) => ({ ...d, conjugeTelefone: e.target.value }))
+                          }
+                        />
+                      </div>
+                      <div className="space-y-1.5">
+                        <label className="text-sm font-medium">Email</label>
+                        <Input
+                          placeholder="email@..."
+                          value={pessoalDraft.conjugeEmail}
+                          onChange={(e) =>
+                            setPessoalDraft((d) => ({ ...d, conjugeEmail: e.target.value }))
+                          }
+                        />
+                      </div>
+                    </div>
+                    <div className="space-y-1.5">
+                      <label className="text-sm font-medium">Data de Nascimento</label>
+                      <Input
+                        type="date"
+                        value={pessoalDraft.conjugeDataNascimento}
+                        onChange={(e) =>
+                          setPessoalDraft((d) => ({ ...d, conjugeDataNascimento: e.target.value }))
+                        }
+                      />
+                      {pessoalDraft.conjugeDataNascimento && (
+                        <p className="text-xs text-muted-foreground">
+                          {calcularIdade(pessoalDraft.conjugeDataNascimento)}
+                        </p>
+                      )}
+                    </div>
+                  </div>
+                )}
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between">
+                    <p className="text-sm font-medium">Filhos</p>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      className="h-7 px-2 text-xs gap-1"
+                      onClick={() =>
+                        setPessoalDraft((d) => ({
+                          ...d,
+                          filhos: [...d.filhos, { nome: "", dataNascimento: "", genero: "" }],
+                        }))
+                      }
+                    >
+                      <Plus className="h-3 w-3" />
+                      Adicionar
+                    </Button>
+                  </div>
+                  {pessoalDraft.filhos.length === 0 && (
+                    <p className="text-xs text-muted-foreground">Nenhum filho cadastrado.</p>
+                  )}
+                  {pessoalDraft.filhos.map((filho, i) => (
+                    <div key={i} className="flex items-start gap-2">
+                      <div className="flex-1 grid grid-cols-3 gap-2">
+                        <Input
+                          placeholder="Nome"
+                          value={filho.nome}
+                          onChange={(e) => {
+                            const filhos = [...pessoalDraft.filhos];
+                            filhos[i] = { ...filhos[i]!, nome: e.target.value };
+                            setPessoalDraft((d) => ({ ...d, filhos }));
+                          }}
+                        />
+                        <Input
+                          type="date"
+                          title="Data de nascimento"
+                          value={filho.dataNascimento}
+                          onChange={(e) => {
+                            const filhos = [...pessoalDraft.filhos];
+                            filhos[i] = { ...filhos[i]!, dataNascimento: e.target.value };
+                            setPessoalDraft((d) => ({ ...d, filhos }));
+                          }}
+                        />
+                        <Select
+                          value={filho.genero || "__none__"}
+                          onValueChange={(v) => {
+                            const filhos = [...pessoalDraft.filhos];
+                            filhos[i] = { ...filhos[i]!, genero: v === "__none__" ? "" : v };
+                            setPessoalDraft((d) => ({ ...d, filhos }));
+                          }}
+                        >
+                          <SelectTrigger>
+                            <SelectValue placeholder="Gênero" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="__none__">Não informado</SelectItem>
+                            <SelectItem value="masculino">Masculino</SelectItem>
+                            <SelectItem value="feminino">Feminino</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        className="h-9 px-2 text-muted-foreground hover:text-destructive"
+                        onClick={() =>
+                          setPessoalDraft((d) => ({
+                            ...d,
+                            filhos: d.filhos.filter((_, j) => j !== i),
+                          }))
+                        }
+                      >
+                        <Trash2 className="h-3.5 w-3.5" />
+                      </Button>
+                    </div>
+                  ))}
+                </div>
+              </>
             )}
-            <div className="space-y-2">
-              <div className="flex items-center justify-between">
-                <p className="text-sm font-medium">Filhos</p>
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  className="h-7 px-2 text-xs gap-1"
-                  onClick={() =>
-                    setPessoalDraft((d) => ({
-                      ...d,
-                      filhos: [...d.filhos, { nome: "", dataNascimento: "", genero: "" }],
-                    }))
-                  }
-                >
-                  <Plus className="h-3 w-3" />
-                  Adicionar
-                </Button>
-              </div>
-              {pessoalDraft.filhos.length === 0 && (
-                <p className="text-xs text-muted-foreground">Nenhum filho cadastrado.</p>
-              )}
-              {pessoalDraft.filhos.map((filho, i) => (
-                <div key={i} className="flex items-start gap-2">
-                  <div className="flex-1 grid grid-cols-3 gap-2">
+
+            {/* ── Campos Pessoa Jurídica ── */}
+            {pessoalDraft.tipoPessoa === "juridica" && (
+              <>
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="space-y-1.5">
+                    <label className="text-sm font-medium">CNPJ</label>
                     <Input
-                      placeholder="Nome"
-                      value={filho.nome}
-                      onChange={(e) => {
-                        const filhos = [...pessoalDraft.filhos];
-                        filhos[i] = { ...filhos[i]!, nome: e.target.value };
-                        setPessoalDraft((d) => ({ ...d, filhos }));
-                      }}
+                      placeholder="00.000.000/0001-00"
+                      value={pessoalDraft.pjCnpj}
+                      onChange={(e) => setPessoalDraft((d) => ({ ...d, pjCnpj: e.target.value }))}
                     />
+                  </div>
+                  <div className="space-y-1.5">
+                    <label className="text-sm font-medium">Razão Social</label>
                     <Input
-                      type="date"
-                      title="Data de nascimento"
-                      value={filho.dataNascimento}
-                      onChange={(e) => {
-                        const filhos = [...pessoalDraft.filhos];
-                        filhos[i] = { ...filhos[i]!, dataNascimento: e.target.value };
-                        setPessoalDraft((d) => ({ ...d, filhos }));
-                      }}
+                      placeholder="Razão social"
+                      value={pessoalDraft.pjRazaoSocial}
+                      onChange={(e) => setPessoalDraft((d) => ({ ...d, pjRazaoSocial: e.target.value }))}
                     />
+                  </div>
+                </div>
+                <div className="space-y-1.5">
+                  <label className="text-sm font-medium">Segmento</label>
+                  <Input
+                    placeholder="Ex: Varejo, Saúde, Construção..."
+                    value={pessoalDraft.pjSegmento}
+                    onChange={(e) => setPessoalDraft((d) => ({ ...d, pjSegmento: e.target.value }))}
+                  />
+                </div>
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="space-y-1.5">
+                    <label className="text-sm font-medium">Nº de Funcionários</label>
                     <Select
-                      value={filho.genero || "__none__"}
-                      onValueChange={(v) => {
-                        const filhos = [...pessoalDraft.filhos];
-                        filhos[i] = { ...filhos[i]!, genero: v === "__none__" ? "" : v };
-                        setPessoalDraft((d) => ({ ...d, filhos }));
-                      }}
+                      value={pessoalDraft.pjNumFuncionarios || "__none__"}
+                      onValueChange={(v) =>
+                        setPessoalDraft((d) => ({ ...d, pjNumFuncionarios: v === "__none__" ? "" : v }))
+                      }
                     >
                       <SelectTrigger>
-                        <SelectValue placeholder="Gênero" />
+                        <SelectValue placeholder="Selecione..." />
                       </SelectTrigger>
                       <SelectContent>
                         <SelectItem value="__none__">Não informado</SelectItem>
-                        <SelectItem value="masculino">Masculino</SelectItem>
-                        <SelectItem value="feminino">Feminino</SelectItem>
+                        <SelectItem value="1-5">1 a 5</SelectItem>
+                        <SelectItem value="6-20">6 a 20</SelectItem>
+                        <SelectItem value="21-50">21 a 50</SelectItem>
+                        <SelectItem value="51-200">51 a 200</SelectItem>
+                        <SelectItem value="201+">201+</SelectItem>
                       </SelectContent>
                     </Select>
                   </div>
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="sm"
-                    className="h-9 px-2 text-muted-foreground hover:text-destructive"
-                    onClick={() =>
-                      setPessoalDraft((d) => ({
-                        ...d,
-                        filhos: d.filhos.filter((_, j) => j !== i),
-                      }))
-                    }
-                  >
-                    <Trash2 className="h-3.5 w-3.5" />
-                  </Button>
+                  <div className="space-y-1.5">
+                    <label className="text-sm font-medium">Faturamento Mensal Est.</label>
+                    <Select
+                      value={pessoalDraft.pjFaturamentoEstimado || "__none__"}
+                      onValueChange={(v) =>
+                        setPessoalDraft((d) => ({ ...d, pjFaturamentoEstimado: v === "__none__" ? "" : v }))
+                      }
+                    >
+                      <SelectTrigger>
+                        <SelectValue placeholder="Selecione..." />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="__none__">Não informado</SelectItem>
+                        <SelectItem value="ate_10k">Até R$ 10 mil</SelectItem>
+                        <SelectItem value="10k_50k">R$ 10 mil – R$ 50 mil</SelectItem>
+                        <SelectItem value="50k_200k">R$ 50 mil – R$ 200 mil</SelectItem>
+                        <SelectItem value="200k_1m">R$ 200 mil – R$ 1 mi</SelectItem>
+                        <SelectItem value="acima_1m">Acima de R$ 1 mi</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
                 </div>
-              ))}
-            </div>
-            {lead?.empresa && (
+              </>
+            )}
+
+            {/* Sócios — visível para PJ ou quando tem empresa (legacy PF) */}
+            {(pessoalDraft.tipoPessoa === "juridica" || lead?.empresa) && (
               <div className="space-y-2">
                 <div className="flex items-center justify-between">
                   <p className="text-sm font-medium">Sócios</p>

@@ -218,6 +218,8 @@ export * from './leadBriefingNeedAnswersItem';
 export * from './leadBriefingObjectionsItem';
 export * from './leadBriefingProblemAnswersItem';
 export * from './leadBriefingSituationAnswersItem';
+export * from './leadDadosPj';
+export * from './leadDadosPjSociosItem';
 export * from './leadFilhosItem';
 export * from './leadProduct';
 export * from './leadProposal';
