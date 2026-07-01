@@ -118,3 +118,5 @@ export * from "./reactivation_queue";
 export * from "./partner_tenants";
 export * from "./site_verticais";
 export * from "./site_contatos";
+export * from "./prospector_config";
+export * from "./prospector_queue";
