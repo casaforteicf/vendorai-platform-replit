@@ -202,7 +202,7 @@ export async function processAgentInternal(params: {
     let resposta: string;
     let tokensUsed: number;
     try {
-      ({ resposta, tokensUsed } = await callOpenAI(openaiMessages, tenantId));
+      ({ resposta, tokensUsed } = await callOpenAI(openaiMessages, tenantId, resolvedAgentName, log));
       log.info({ leadId, tenantId, agentName: resolvedAgentName, tokensUsed }, "dispatch: openai call succeeded");
     } catch (err) {
       log.error({ err, leadId, tenantId, agentName: resolvedAgentName }, "dispatch: openai call failed");
