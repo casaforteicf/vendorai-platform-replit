@@ -3,6 +3,14 @@ import { Button } from "@/components/ui/button";
 import { Menu, X } from "lucide-react";
 import { useState } from "react";
 
+const COMPANY_INFO = {
+  cnpj:         "59.623.589/0001-27",
+  razaoSocial:  "WINDOOR SERVICOS DE GERENCIAMENTO DE OBRAS LTDA",
+  nomeFantasia: "CASAFORTEICF",
+  situacao:     "Ativa",
+  municipio:    "Florianópolis — SC",
+};
+
 export default function Navbar() {
   const [location] = useLocation();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
@@ -15,7 +23,26 @@ export default function Navbar() {
   ];
 
   return (
-    <header className="sticky top-0 z-50 w-full border-b border-border/40 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
+    <header className="sticky top-0 z-50 w-full bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
+      {/* ── Barra de identificação legal ── */}
+      <div className="w-full bg-muted/60 border-b border-border/40 text-[10px] text-muted-foreground">
+        <div className="container mx-auto px-4 py-1 flex flex-wrap items-center gap-x-4 gap-y-0.5">
+          <span className="font-semibold text-foreground/70">{COMPANY_INFO.razaoSocial}</span>
+          <span className="hidden sm:inline">·</span>
+          <span className="hidden sm:inline">CNPJ <span className="font-mono">{COMPANY_INFO.cnpj}</span></span>
+          <span className="hidden md:inline">·</span>
+          <span className="hidden md:inline">Nome fantasia: <span className="font-medium">{COMPANY_INFO.nomeFantasia}</span></span>
+          <span className="hidden md:inline">·</span>
+          <span className="hidden md:inline">{COMPANY_INFO.municipio}</span>
+          <span className="ml-auto hidden sm:inline">
+            Situação cadastral:{" "}
+            <span className="text-green-600 font-semibold">{COMPANY_INFO.situacao}</span>
+          </span>
+        </div>
+      </div>
+
+      {/* ── Navbar principal ── */}
+      <div className="border-b border-border/40">
       <div className="container mx-auto px-4 h-16 flex items-center justify-between">
         <div className="flex items-center gap-2">
           <Link href="/" className="font-bold text-xl tracking-tight text-primary flex items-center gap-2" data-testid="link-home">
@@ -86,6 +113,7 @@ export default function Navbar() {
           </nav>
         </div>
       )}
+      </div>{/* end navbar wrapper */}
     </header>
   );
 }

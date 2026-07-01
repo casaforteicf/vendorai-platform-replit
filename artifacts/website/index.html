@@ -158,10 +158,57 @@ section { padding: 96px 0; position: relative; overflow: hidden; }
 .btn-lg { padding: 16px 32px; font-size: 1rem; }
 .btn-sm { padding: 9px 18px; font-size: 0.82rem; }
 
+/* ── Legal top bar ── */
+.legal-bar {
+  width: 100%;
+  background: rgba(5,7,20,0.95);
+  border-bottom: 1px solid rgba(255,255,255,0.07);
+  font-size: 10px;
+  color: rgba(255,255,255,0.45);
+  font-family: 'Plus Jakarta Sans', sans-serif;
+  letter-spacing: 0.01em;
+  position: sticky;
+  top: 0;
+  z-index: 101;
+}
+.legal-bar-inner {
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 5px 6vw;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0 14px;
+}
+.legal-bar-razao {
+  font-weight: 600;
+  color: rgba(255,255,255,0.6);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+.legal-bar-sep { opacity: 0.3; }
+.legal-bar-cnpj { font-family: monospace; font-size: 10.5px; }
+.legal-bar-status {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+.legal-bar-dot {
+  width: 6px; height: 6px;
+  border-radius: 50%;
+  background: #22c55e;
+  display: inline-block;
+}
+.legal-bar-status-text { color: #22c55e; font-weight: 600; }
+@media(max-width:600px){
+  .legal-bar-hide-sm { display: none !important; }
+}
+
 /* ── Nav ── */
 .nav {
   position: sticky;
-  top: 0;
+  top: 26px;
   z-index: 100;
   padding: 0 6vw;
   height: 68px;
@@ -971,6 +1018,23 @@ footer {
 </script>
 </head>
 <body>
+
+<!-- ── BARRA LEGAL ── -->
+<div class="legal-bar">
+  <div class="legal-bar-inner">
+    <span class="legal-bar-razao">Windoor Serviços de Gerenciamento de Obras Ltda</span>
+    <span class="legal-bar-sep legal-bar-hide-sm">·</span>
+    <span class="legal-bar-hide-sm">CNPJ <span class="legal-bar-cnpj">59.623.589/0001-27</span></span>
+    <span class="legal-bar-sep legal-bar-hide-sm">·</span>
+    <span class="legal-bar-hide-sm">Nome fantasia: <strong style="color:rgba(255,255,255,0.6)">CasaForte ICF</strong></span>
+    <span class="legal-bar-sep legal-bar-hide-sm">·</span>
+    <span class="legal-bar-hide-sm">Florianópolis — SC</span>
+    <span class="legal-bar-status legal-bar-hide-sm">
+      <span class="legal-bar-dot"></span>
+      <span class="legal-bar-status-text">Situação Ativa</span>
+    </span>
+  </div>
+</div>
 
 <!-- ── NAV ── -->
 <header class="nav">
