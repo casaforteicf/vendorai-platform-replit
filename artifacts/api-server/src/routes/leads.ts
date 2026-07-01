@@ -783,7 +783,7 @@ Não inclua nenhum texto além do JSON.`;
     });
   } catch (err: any) {
     req.log.error({ err }, "briefing/generate-questions error");
-    const status = (err as any)?.httpStatus ?? 500;
+    const status = (err as any)?.status ?? 500;
     res.status(status).json({ error: err?.message ?? "Erro ao gerar perguntas com IA" });
   }
 });
@@ -931,7 +931,7 @@ Seja direto, prático e específico para este cliente. Não invente dados que n�
     res.json(summary);
   } catch (err: any) {
     req.log.error({ err }, "briefing/summarize error");
-    const status = (err as any)?.httpStatus ?? 500;
+    const status = (err as any)?.status ?? 500;
     res.status(status).json({ error: err?.message ?? "Erro ao gerar resumo com IA" });
   }
 });

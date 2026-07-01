@@ -391,11 +391,36 @@ export async function callOpenAI(
     errorMessage = err.message ?? "OpenAI call failed";
     log?.error({ tenantId, feature, model, error: errorMessage }, "ai-gateway: OpenAI call failed");
     // Log the failed attempt
-    const inputTokens = Math.ceil(estimatedInputTokens);
-    const costUsd = estimateCost(model, inputTokens, 0);
-    await logUsage({ tenantId, provider: "openai", model, feature, inputTokens, outputTokens: 0, costEstimateUsd: costUsd, usedByok: key.usedByok, success: false, errorMessage });
-    if (quota.ok && !quota.usedByok) await incrementDailySpend(tenantId, costUsd);
-    throw new AiGatewayError(errorMessage ?? "OpenAI call failed", 502, { provider: "openai", model });
+    const inputTokensEst = Math.ceil(estimatedInputTokens);
+    const costUsdEst = estimateCost(model, inputTokensEst, 0);
+    await logUsage({ tenantId, provider: "openai", model, feature, inputTokens: inputTokensEst, outputTokens: 0, costEstimateUsd: costUsdEst, usedByok: key.usedByok, success: false, errorMessage });
+    if (quota.ok && !quota.usedByok) await incrementDailySpend(tenantId, costUsdEst);
+
+    // 429 quota exceeded → attempt Anthropic fallback if key available
+    if (err?.status === 429 && process.env["ANTHROPIC_API_KEY"]) {
+      log?.info({ tenantId, feature }, "ai-gateway: OpenAI 429 → falling back to Anthropic");
+      const systemMsgRaw = messages.find((m) => m.role === "system");
+      const chatMsgs = messages
+        .filter((m) => m.role !== "system")
+        .map((m) => ({
+          role: m.role as "user" | "assistant",
+          content: typeof m.content === "string" ? m.content : JSON.stringify(m.content),
+        }));
+      try {
+        return await callAnthropic(tenantId, feature, chatMsgs, {
+          maxTokens: options.maxTokens ?? 600,
+          system: typeof systemMsgRaw?.content === "string" ? systemMsgRaw.content : undefined,
+          log,
+        });
+      } catch (anthropicErr: any) {
+        log?.error({ tenantId, feature, error: anthropicErr?.message }, "ai-gateway: Anthropic fallback also failed");
+      }
+    }
+
+    const friendlyMessage = err?.status === 429
+      ? "Limite de uso da IA atingido. Tente novamente em alguns minutos ou configure uma chave própria nas Configurações."
+      : (errorMessage ?? "OpenAI call failed");
+    throw new AiGatewayError(friendlyMessage, err?.status === 429 ? 429 : 502, { provider: "openai", model });
   }
 
   // 5. Extract tokens
