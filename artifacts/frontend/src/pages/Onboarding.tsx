@@ -100,7 +100,7 @@ async function apiGet(path: string) {
 
 // ── Component ─────────────────────────────────────────────────────────────────
 export default function Onboarding() {
-  const { user } = useAuth();
+  const { user, logout } = useAuth();
   const [, setLocation] = useLocation();
   const { toast } = useToast();
 
@@ -318,11 +318,20 @@ export default function Onboarding() {
       {/* ── Header ── */}
       <header className="border-b bg-card px-6 py-3 flex items-center justify-between shrink-0">
         <img src={logoLight} alt="VendorAI" className="h-7" />
-        {step !== "done" && (
-          <span className="text-sm text-muted-foreground">
-            Etapa {stepNum} de 4
-          </span>
-        )}
+        <div className="flex items-center gap-4">
+          {step !== "done" && (
+            <span className="text-sm text-muted-foreground">
+              Etapa {stepNum} de 4
+            </span>
+          )}
+          <button
+            type="button"
+            onClick={() => { logout(); setLocation("/"); }}
+            className="text-xs text-muted-foreground hover:text-foreground transition-colors"
+          >
+            Cancelar e sair
+          </button>
+        </div>
       </header>
 
       {/* ── Progress bar ── */}
