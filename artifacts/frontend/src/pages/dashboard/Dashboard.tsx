@@ -44,6 +44,7 @@ import {
   ExternalLink,
   Tag,
   Calendar,
+  MapPin,
 } from "lucide-react";
 import {
   AreaChart,
@@ -421,15 +422,20 @@ export default function Dashboard() {
     );
   }, [updateLead, queryClient]);
 
+  const [placesUsage, setPlacesUsage] = useState<{ used: number; limit: number; resetsAt: string } | null>(null);
+
   const fetchData = useCallback(async () => {
     const initial = isFirstFetch.current;
     if (initial) setLoading(true);
     try {
-      const res = await fetch(`${getBase()}/api/dashboard`, {
-        headers: getToken() ? { Authorization: `Bearer ${getToken()}` } : {},
-      });
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      setData(await res.json());
+      const headers = getToken() ? { Authorization: `Bearer ${getToken()}` } : {} as Record<string, string>;
+      const [dashRes, placesRes] = await Promise.all([
+        fetch(`${getBase()}/api/dashboard`, { headers }),
+        fetch(`${getBase()}/api/tenant/api-usage?api=google_places`, { headers }),
+      ]);
+      if (!dashRes.ok) throw new Error(`HTTP ${dashRes.status}`);
+      setData(await dashRes.json());
+      if (placesRes.ok) setPlacesUsage(await placesRes.json());
       if (initial) setError(null);
     } catch (err) {
       if (initial) setError(err instanceof Error ? err.message : "Erro ao carregar dados");
@@ -891,6 +897,43 @@ export default function Dashboard() {
 
         </div>
       </section>
+
+      {/* ════════════════════════════════════
+          CARD — Prospecção (Places API)
+      ════════════════════════════════════ */}
+      {placesUsage !== null && (() => {
+        const pct = Math.min(Math.round((placesUsage.used / placesUsage.limit) * 100), 100);
+        const barColor = pct >= 90 ? "bg-destructive" : pct >= 80 ? "bg-amber-500" : "bg-primary";
+        return (
+          <section className="space-y-3">
+            <h2 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Prospecção</h2>
+            <Card>
+              <CardHeader className="flex flex-row items-center justify-between pb-2 space-y-0">
+                <CardTitle className="text-sm font-medium text-muted-foreground">Buscas Places API</CardTitle>
+                <MapPin className="h-4 w-4 text-muted-foreground" />
+              </CardHeader>
+              <CardContent className="space-y-2">
+                <div className="flex items-end gap-1">
+                  <span className="text-2xl font-bold">{placesUsage.used.toLocaleString("pt-BR")}</span>
+                  <span className="text-sm text-muted-foreground mb-0.5">/ {placesUsage.limit.toLocaleString("pt-BR")} buscas</span>
+                </div>
+                <div className="relative h-2 w-full overflow-hidden rounded-full bg-primary/20">
+                  <div className={`h-full rounded-full transition-all ${barColor}`} style={{ width: `${pct}%` }} />
+                </div>
+                <div className="flex justify-between items-center">
+                  <p className="text-xs text-muted-foreground">{pct}% utilizado</p>
+                  <p className="text-xs text-muted-foreground">Renova em {placesUsage.resetsAt}</p>
+                </div>
+                {pct >= 80 && (
+                  <p className="text-xs text-amber-600 font-medium">
+                    {pct >= 100 ? "Limite atingido — faça upgrade para continuar prospectando." : "Limite quase atingido — considere fazer upgrade."}
+                  </p>
+                )}
+              </CardContent>
+            </Card>
+          </section>
+        );
+      })()}
 
       {/* ════════════════════════════════════
           CARD — Seu site (subdomínio)

@@ -1,0 +1,150 @@
+# COMANDO 9 — Google Places API com limite de uso por tenant
+
+**Stack:** Node + Drizzle + Supabase · React frontend  
+**Contexto:** A chave GOOGLE_PLACES_API_KEY já está salva nos Secrets do Replit.  
+**Objetivo:** Usar uma chave única da Vendor.ai para todos os tenants, com controle de cota mensal por tenant para evitar abuso e controlar custos.
+
+---
+
+## Parte A — Banco de dados
+
+```sql
+-- Tabela de controle de uso por tenant
+CREATE TABLE IF NOT EXISTS api_usage (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  tenant_id uuid REFERENCES tenants(id),
+  api_name text NOT NULL,        -- 'google_places'
+  month int NOT NULL,            -- 6
+  year int NOT NULL,             -- 2026
+  requests_used int DEFAULT 0,
+  requests_limit int DEFAULT 1000, -- limite padrão por tenant/mês
+  created_at timestamptz DEFAULT now(),
+  updated_at timestamptz DEFAULT now(),
+  UNIQUE(tenant_id, api_name, month, year)
+);
+
+-- Limite customizado por plano (opcional, configurável)
+ALTER TABLE plans ADD COLUMN IF NOT EXISTS places_api_limit int DEFAULT 1000;
+-- Growth: 500 | PME+: 1000 | Enterprise: 3000
+```
+
+---
+
+## Parte B — Middleware de controle de cota
+
+Criar função `checkApiQuota` que roda antes de qualquer chamada à Places API:
+
+```javascript
+async function checkApiQuota(tenantId, apiName = 'google_places') {
+  const now = new Date();
+  const month = now.getMonth() + 1;
+  const year = now.getFullYear();
+
+  // Buscar ou criar registro de uso do mês atual
+  let usage = await db.query.apiUsage.findFirst({
+    where: and(
+      eq(apiUsage.tenantId, tenantId),
+      eq(apiUsage.apiName, apiName),
+      eq(apiUsage.month, month),
+      eq(apiUsage.year, year)
+    )
+  });
+
+  if (!usage) {
+    // Buscar limite do plano do tenant
+    const tenant = await db.query.tenants.findFirst({
+      where: eq(tenants.id, tenantId),
+      with: { plan: true }
+    });
+    const limit = tenant?.plan?.places_api_limit ?? 1000;
+
+    usage = await db.insert(apiUsage).values({
+      tenantId, apiName, month, year,
+      requestsUsed: 0,
+      requestsLimit: limit
+    }).returning();
+    usage = usage[0];
+  }
+
+  // Verificar se atingiu o limite
+  if (usage.requestsUsed >= usage.requestsLimit) {
+    throw new Error(`Limite mensal da ${apiName} atingido (${usage.requestsLimit} requisições). Renova em ${new Date(year, month, 1).toLocaleDateString('pt-BR')}.`);
+  }
+
+  // Incrementar contador
+  await db.update(apiUsage)
+    .set({ requestsUsed: usage.requestsUsed + 1, updatedAt: new Date() })
+    .where(eq(apiUsage.id, usage.id));
+
+  return true;
+}
+```
+
+---
+
+## Parte C — Integrar no módulo de Prospecção (Business Discovery)
+
+Em todas as chamadas ao Google Places API no módulo de prospecção, adicionar:
+
+```javascript
+// Antes de chamar a Places API
+await checkApiQuota(req.tenantId, 'google_places');
+
+// Aí faz a chamada normalmente
+const results = await googlePlacesSearch({ query, location });
+```
+
+Se `checkApiQuota` lançar erro → retornar 429 ao frontend com a mensagem de limite atingido.
+
+---
+
+## Parte D — Limites por plano
+
+Atualizar os planos na tabela com os limites definidos:
+
+```sql
+UPDATE plans SET places_api_limit = 500  WHERE name = 'Growth';
+UPDATE plans SET places_api_limit = 1000 WHERE name = 'PME+';
+UPDATE plans SET places_api_limit = 3000 WHERE name = 'Enterprise';
+```
+
+---
+
+## Parte E — Tela de uso no Dashboard do tenant
+
+No Dashboard executivo do tenant, adicionar card de uso da API:
+
+```
+┌─────────────────────────────────┐
+│ 🔍 Prospecção (Places API)       │
+│ 342 / 1.000 buscas usadas        │
+│ ████░░░░░░ 34%                   │
+│ Renova em 01/08/2026             │
+└─────────────────────────────────┘
+```
+
+Dados via:
+```
+GET /api/tenant/api-usage?api=google_places
+→ { used: 342, limit: 1000, resetsAt: '2026-08-01' }
+```
+
+---
+
+## Parte F — Alerta ao atingir 80% do limite
+
+Quando `requestsUsed >= requestsLimit * 0.8`:
+- Criar notificação in-app para o tenant_admin:
+  `"Você usou 80% do limite mensal de prospecção. Considere fazer upgrade do plano para aumentar sua cota."`
+
+---
+
+## Validação
+
+- [ ] Tenant no plano Growth faz 500 buscas → na 501ª retorna erro de limite
+- [ ] Tenant no plano PME+ tem limite de 1.000
+- [ ] Tenant no plano Enterprise tem limite de 3.000
+- [ ] Card no dashboard mostra uso em tempo real
+- [ ] Notificação dispara ao atingir 80%
+- [ ] Limite reseta automaticamente no dia 1 de cada mês
+- [ ] Tenants diferentes têm contadores independentes

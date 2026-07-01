@@ -13,6 +13,7 @@ import {
   callOpenAI as gatewayCallOpenAI,
   generateEmbedding,
 } from "../lib/ai-gateway.js";
+import { checkApiQuota, getApiUsage } from "../lib/api-quota.js";
 
 // Quantidade de aprovações (approved + edited) para liberar a automação.
 const AUTOMATION_THRESHOLD = 50;
@@ -279,7 +280,8 @@ router.post("/prospector/enrich", async (req, res) => {
   const tenantId = resolveTenantId(req, bodyTenantId);
   if (leadId) await assertLeadInTenant(leadId, tenantId);
 
-  // 1. Google Places lookup
+  // 1. Google Places lookup (cota por tenant)
+  await checkApiQuota(tenantId, "google_places", req.log);
   const query = endereco ? `${nomeEmpresa} ${endereco}` : nomeEmpresa;
   const place = await searchPlace(query, req.log);
 
@@ -478,8 +480,9 @@ router.post("/prospector/search", async (req, res) => {
   }
   const { atividade, localidade, tenantId: bodyTenantId } = parsed.data;
   // Valida o tenant (e a permissão de super_admin) antes de gastar chamada externa.
-  resolveTenantId(req, bodyTenantId);
+  const tenantIdSearch = resolveTenantId(req, bodyTenantId);
 
+  await checkApiQuota(tenantIdSearch, "google_places", req.log);
   const query = `${atividade.trim()} em ${localidade.trim()}`;
   const places = await searchPlaces(query, 20, req.log);
 
@@ -874,6 +877,17 @@ router.patch("/prospector/approvals/:id", async (req, res) => {
   }
 
   return res.status(200).json({ ok: true, action, approvedCount, automationUnlocked });
+});
+
+// ── GET /tenant/api-usage — uso mensal da Places API ──────────────────────────
+router.get("/tenant/api-usage", async (req, res) => {
+  const api = (req.query["api"] as string | undefined) ?? "google_places";
+  if (api !== "google_places") {
+    return res.status(400).json({ error: "api inválida" });
+  }
+  const tenantId = resolveTenantId(req, undefined);
+  const usage = await getApiUsage(tenantId, "google_places");
+  return res.status(200).json(usage);
 });
 
 export default router;
