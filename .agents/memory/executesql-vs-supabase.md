@@ -1,28 +1,32 @@
 ---
 name: executeSql vs Supabase
-description: executeSql em code_execution usa banco interno Replit, não Supabase — para ops que afetam produção usar pg diretamente.
+description: executeSql usa banco interno Replit; psql $DATABASE_URL pode ser banco diferente do API server; sempre usar SUPABASE_DATABASE_URL via Node para migrações de produção.
 ---
 
-# executeSql ≠ Supabase
+# executeSql ≠ Supabase, e DATABASE_URL ≠ SUPABASE_DATABASE_URL
 
-**Regra:** O callback `executeSql` no sandbox `code_execution` conecta ao PostgreSQL **interno do Replit** (Replit-managed DB), não ao Supabase configurado em `SUPABASE_DATABASE_URL`.
+**Regra:** Há três bancos distintos a não confundir:
+1. `executeSql` (code_execution) → PostgreSQL **interno do Replit** — nunca afeta produção
+2. `psql $DATABASE_URL` → pode ser o Postgres interno do Replit (se DATABASE_URL aponta para ele)
+3. `SUPABASE_DATABASE_URL` → banco Supabase real, que o API server usa via `lib/db/src/index.ts`
 
-**Por quê importa:** A produção usa `SUPABASE_DATABASE_URL`. Qualquer operação que precisa afetar o banco de produção (ex: reset de senha, seed de dados) deve usar `pg` com `SUPABASE_DATABASE_URL` diretamente via bash/node.
+**O API server usa:** `SUPABASE_DATABASE_URL ?? DATABASE_URL` — logo, se `SUPABASE_DATABASE_URL` está definida, é ela que conta.
 
-**How to apply:**
-```js
-// ERRADO para produção:
-await executeSql(`UPDATE users SET password = '...' WHERE ...`)
-
-// CERTO para produção:
-// bash: node script.mjs
-// onde o script usa:
-import { createRequire } from 'module';
-const require1 = createRequire('/home/runner/workspace/artifacts/api-server/package.json');
-const require2 = createRequire('/home/runner/workspace/lib/db/package.json');
-const bcrypt = require1('bcryptjs');
-const { Pool } = require2('pg');
-const pool = new Pool({ connectionString: process.env.SUPABASE_DATABASE_URL });
+**Pattern correto para migrações de produção:**
+```bash
+cd /home/runner/workspace/lib/db && node --input-type=module << 'EOF'
+import pg from '../../node_modules/.pnpm/pg@8.20.0/node_modules/pg/lib/index.js';
+const { Pool } = pg;
+const pool = new Pool({ connectionString: process.env.SUPABASE_DATABASE_URL ?? process.env.DATABASE_URL });
+try {
+  await pool.query(`ALTER TABLE leads ADD COLUMN IF NOT EXISTS my_col boolean NOT NULL DEFAULT false`);
+  console.log('OK');
+} finally { await pool.end(); }
+EOF
 ```
 
-**Descoberto quando:** reset de senha de `marcos@vendor.ai` via `executeSql` retornou `UPDATE 1` mas login em produção continuava 401 — a produção lia do Supabase, o executeSql escreveu no Replit interno.
+**Atenção:** `psql $SUPABASE_DATABASE_URL` falha com `invalid URI query parameter: "pgbouncer"` — o pgbouncer=true na query string é incompatível com psql; usar Node/pg diretamente.
+
+**Por quê importa:** aplicar via `executeSql` ou `psql $DATABASE_URL` parece funcionar (retorna sucesso) mas o API server continua falhando com "column does not exist" porque lê do Supabase real.
+
+**Descoberto quando:** migration `ia_ativa` aplicada via executeSql + psql $DATABASE_URL → ambos reportaram sucesso mas API server continuou falhando; fix foi Node com SUPABASE_DATABASE_URL.
