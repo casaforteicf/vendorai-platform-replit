@@ -42,18 +42,24 @@ export async function callProposalAI(
   log: { info: (obj: object, msg: string) => void; error: (obj: object, msg: string) => void }
 ): Promise<{ content: string; provider: string; model: string }> {
   if (process.env.ANTHROPIC_API_KEY) {
-    log.info({ provider: "anthropic", model: AI_MODEL }, "Calling Anthropic for proposal generation");
-    const userMessages = messages.filter((m) => m.role === "user");
-    const result = await gatewayCallAnthropic(
-      tenantId,
-      "proposal_generator",
-      userMessages.map((m) => ({ role: m.role as "user" | "assistant", content: m.content })),
-      { model: "claude-opus-4-8", maxTokens: 32000, system: PROPOSAL_SYSTEM_PROMPT },
-    );
-    return { content: result.content, provider: "anthropic", model: "claude-opus-4-8" };
+    try {
+      log.info({ provider: "anthropic", model: "claude-opus-4-8" }, "Calling Anthropic for proposal generation");
+      const userMessages = messages.filter((m) => m.role === "user");
+      const result = await gatewayCallAnthropic(
+        tenantId,
+        "proposal_generator",
+        userMessages.map((m) => ({ role: m.role as "user" | "assistant", content: m.content })),
+        { model: "claude-opus-4-8", maxTokens: 32000, system: PROPOSAL_SYSTEM_PROMPT },
+      );
+      return { content: result.content, provider: "anthropic", model: "claude-opus-4-8" };
+    } catch (anthropicErr: any) {
+      // 402 = billing/credit exhausted — do NOT fall back to OpenAI (same root cause)
+      if (anthropicErr?.status === 402) throw anthropicErr;
+      log.error({ error: anthropicErr?.message }, "Anthropic failed for proposal, falling back to OpenAI");
+    }
   }
 
-  log.info({ provider: "openai", model: AI_MODEL }, "Calling OpenAI for proposal generation");
+  log.info({ provider: "openai", model: "gpt-4o" }, "Calling OpenAI for proposal generation");
   const result = await gatewayCallOpenAI(
     tenantId,
     "proposal_generator",

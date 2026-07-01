@@ -520,6 +520,22 @@ export async function callAnthropic(
   } catch (err: any) {
     errorMessage = err.message ?? "Anthropic call failed";
     log?.error({ tenantId, feature, model, error: errorMessage }, "ai-gateway: Anthropic call failed");
+
+    // Detect billing/credit errors early — log, then throw with friendly message
+    const isBillingError =
+      err?.status === 400 &&
+      (errorMessage?.toLowerCase().includes("credit balance") ||
+       errorMessage?.toLowerCase().includes("insufficient") ||
+       errorMessage?.toLowerCase().includes("billing"));
+    if (isBillingError) {
+      const costUsdPartial = estimateCost(model, Math.ceil(inputTokens), 0);
+      await logUsage({ tenantId, provider: "anthropic", model, feature, inputTokens: Math.ceil(inputTokens), outputTokens: 0, costEstimateUsd: costUsdPartial, usedByok: key.usedByok, success: false, errorMessage });
+      throw new AiGatewayError(
+        "Saldo da IA esgotado. Configure uma chave própria da Anthropic ou da OpenAI nas Configurações → Integrações.",
+        402,
+        { provider: "anthropic", model },
+      );
+    }
   }
 
   // 5. Compute cost
