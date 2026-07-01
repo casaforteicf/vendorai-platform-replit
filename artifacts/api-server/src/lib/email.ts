@@ -84,6 +84,12 @@ export async function sendAiFailureAlert(params: {
   const errorLabel = errorLabels[params.errorType] ?? `⚠️ ${params.errorType}`;
   const ts = new Date().toLocaleString("pt-BR", { timeZone: "America/Sao_Paulo" });
 
+  const billingUrl = params.provider === "openai"
+    ? "https://platform.openai.com/account/billing/overview"
+    : "https://console.anthropic.com/settings/billing";
+
+  const needsRecharge = params.errorType === "429_quota" || params.errorType === "400_billing";
+
   const { error } = await resend.emails.send({
     from: "VendorAI Alertas <alertas@vendorai.app>",
     to: alertTo,
@@ -121,6 +127,14 @@ export async function sendAiFailureAlert(params: {
             <td style="padding:10px 12px;font-family:monospace;font-size:12px;word-break:break-all;">${params.message.replace(/</g, "&lt;").replace(/>/g, "&gt;")}</td>
           </tr>
         </table>
+        ${needsRecharge ? `
+        <div style="margin-top:24px;text-align:center;">
+          <a href="${billingUrl}"
+             style="display:inline-block;padding:12px 28px;background:#2563eb;color:#fff;border-radius:6px;text-decoration:none;font-weight:600;font-size:14px;">
+            💳 Recarregar saldo — ${providerLabel}
+          </a>
+          <p style="color:#6b7280;font-size:12px;margin-top:8px;">${billingUrl}</p>
+        </div>` : ""}
         <p style="color:#9ca3af;font-size:12px;margin-top:24px;">
           Próximo alerta do mesmo tipo será enviado somente após 15 minutos.
         </p>
