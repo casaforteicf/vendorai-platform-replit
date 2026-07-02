@@ -494,6 +494,8 @@ export default function LeadDetail() {
   const [pessoalDraft, setPessoalDraft] = useState({
     tipoPessoa: "fisica" as "fisica" | "juridica",
     // PF fields
+    pfNome: "",
+    pfCpf: "",
     dataNascimento: "",
     estadoCivil: "",
     genero: "",
@@ -532,6 +534,8 @@ export default function LeadDetail() {
     const metaSocios = (dadosPj.socios ?? (lead as any).metadata?.socios ?? []) as Array<{ nome?: string; dataNascimento?: string; telefone?: string; email?: string }>;
     setPessoalDraft({
       tipoPessoa: tp,
+      pfNome: lead.nome ?? "",
+      pfCpf: lead.documento ?? "",
       dataNascimento: lead.dataNascimento ?? "",
       estadoCivil: lead.estadoCivil ?? "",
       genero: lead.genero ?? "",
@@ -570,6 +574,8 @@ export default function LeadDetail() {
       data: {
         tipoPessoa: pessoalDraft.tipoPessoa,
         // PF fields (clear when PJ)
+        nome: isPj ? (lead?.nome ?? "") : (pessoalDraft.pfNome || lead?.nome || ""),
+        documento: isPj ? (pessoalDraft.pjCnpj.replace(/\D/g, "") || null) : (pessoalDraft.pfCpf.replace(/\D/g, "") || null),
         dataNascimento: isPj ? null : (pessoalDraft.dataNascimento || null),
         estadoCivil: isPj ? null : (pessoalDraft.estadoCivil || null),
         genero: isPj ? null : (pessoalDraft.genero || null),
@@ -586,7 +592,6 @@ export default function LeadDetail() {
           : null),
         // PJ: sync top-level fields + store in dadosPj
         ...(isPj ? {
-          documento: pessoalDraft.pjCnpj.replace(/\D/g, "") || null,
           empresa: pessoalDraft.pjRazaoSocial || null,
           mercadoSegmento: pessoalDraft.pjSegmento || null,
           dadosPj: {
@@ -1247,7 +1252,7 @@ export default function LeadDetail() {
                 }
 
                 // Pessoa Física
-                if (!lead.dataNascimento && !lead.estadoCivil && !lead.conjugeNome && !lead.filhos?.length) {
+                if (!lead.documento && !lead.dataNascimento && !lead.estadoCivil && !lead.conjugeNome && !lead.filhos?.length) {
                   return (
                     <p className="text-xs text-muted-foreground italic">
                       Clique em editar para adicionar dados pessoais.
@@ -1256,6 +1261,16 @@ export default function LeadDetail() {
                 }
                 return (
                   <>
+                    {lead.documento && (
+                      <div className="flex items-center gap-2 text-muted-foreground">
+                        <FileText className="h-3.5 w-3.5 shrink-0" />
+                        <span className="font-mono text-xs">
+                          {lead.documento.length === 11
+                            ? lead.documento.replace(/(\d{3})(\d{3})(\d{3})(\d{2})/, "$1.$2.$3-$4")
+                            : lead.documento}
+                        </span>
+                      </div>
+                    )}
                     {lead.dataNascimento && (
                       <div className="flex items-center gap-2 text-muted-foreground">
                         <CalendarDays className="h-3.5 w-3.5 shrink-0" />
@@ -2734,6 +2749,29 @@ export default function LeadDetail() {
             {/* ── Campos Pessoa Física ── */}
             {pessoalDraft.tipoPessoa === "fisica" && (
               <>
+                <div className="space-y-1.5">
+                  <label className="text-sm font-medium">Nome completo</label>
+                  <Input
+                    placeholder="Ex: João da Silva"
+                    value={pessoalDraft.pfNome}
+                    onChange={(e) => setPessoalDraft((d) => ({ ...d, pfNome: e.target.value }))}
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <label className="text-sm font-medium">CPF</label>
+                  <Input
+                    placeholder="000.000.000-00"
+                    value={pessoalDraft.pfCpf}
+                    onChange={(e) => {
+                      const raw = e.target.value.replace(/\D/g, "").slice(0, 11);
+                      const fmt = raw
+                        .replace(/(\d{3})(\d)/, "$1.$2")
+                        .replace(/(\d{3})\.(\d{3})(\d)/, "$1.$2.$3")
+                        .replace(/(\d{3})\.(\d{3})\.(\d{3})(\d)/, "$1.$2.$3-$4");
+                      setPessoalDraft((d) => ({ ...d, pfCpf: fmt }));
+                    }}
+                  />
+                </div>
                 <div className="space-y-1.5">
                   <label className="text-sm font-medium">Data de Nascimento</label>
                   <Input
