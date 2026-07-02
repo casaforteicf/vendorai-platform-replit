@@ -28,6 +28,7 @@ export interface SiteGeneratorConfig {
   logoUrl?: string;
   products?: SiteGeneratorProduct[];
   whatsapp?: string;
+  instagram?: string;
   images?: string[];
   servicos?: string;
 }

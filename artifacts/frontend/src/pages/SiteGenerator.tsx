@@ -72,6 +72,7 @@ interface SiteConfig {
   color: string;
   products: Product[];
   whatsapp?: string;
+  instagram?: string;
   images?: string[];
   servicos?: string;
 }
@@ -321,6 +322,7 @@ function ConfigForm({ tenantId, onGenerate }: { tenantId: string; onGenerate: (c
       color,
       products: products.filter((p) => p.name.trim()),
       whatsapp: telefone || (fd.get("whatsapp") as string) || "",
+      instagram: (fd.get("instagram") as string) || "",
       images: images.filter(Boolean),
       servicos: (fd.get("servicos") as string) || "",
     });
@@ -448,6 +450,23 @@ function ConfigForm({ tenantId, onGenerate }: { tenantId: string; onGenerate: (c
             <PhoneInput id="sg-whatsapp" name="whatsapp" />
           </div>
         )}
+
+        <div className="flex flex-col gap-1.5">
+          <Label htmlFor="sg-instagram" className="text-sm font-medium">
+            Instagram{" "}
+            <span className="font-normal text-muted-foreground">(opcional)</span>
+          </Label>
+          <div className="relative">
+            <span className="pointer-events-none absolute inset-y-0 left-3 flex items-center text-muted-foreground text-sm">@</span>
+            <Input
+              id="sg-instagram"
+              name="instagram"
+              placeholder="seunegocio"
+              className="pl-7"
+            />
+          </div>
+          <p className="text-[10px] text-muted-foreground">Aparece no rodapé do site com link direto para o perfil</p>
+        </div>
 
         <div className="flex flex-col gap-1.5">
           <Label htmlFor="sg-servicos" className="text-sm font-medium">

@@ -79,8 +79,16 @@ function isDark(hex: string): boolean {
 }
 
 function buildGeneratePrompt(config: SiteGeneratorConfig): string {
-  const { type, name, sector, desc, pain, tone, color, cta, logoUrl, products = [], whatsapp, images = [], servicos } = config;
+  const { type, name, sector, desc, pain, tone, color, cta, logoUrl, products = [], whatsapp, instagram, images = [], servicos } = config;
   const waNumber = whatsapp?.replace(/\D/g, "") || "5511999999999";
+
+  // Instagram: normaliza handle (remove @ e espaços), monta URL e bloco HTML do ícone
+  const igHandle = instagram?.replace(/^@/, "").replace(/\s/g, "") || "";
+  const igUrl = igHandle ? `https://instagram.com/${igHandle}` : "";
+  const igIconSvg = `<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="2" width="20" height="20" rx="5" ry="5"/><path d="M16 11.37A4 4 0 1 1 12.63 8 4 4 0 0 1 16 11.37z"/><line x1="17.5" y1="6.5" x2="17.51" y2="6.5"/></svg>`;
+  const igHtml = igHandle
+    ? `<a href="${igUrl}" target="_blank" rel="noopener" aria-label="Instagram @${igHandle}" style="display:inline-flex;align-items:center;gap:6px;color:inherit;text-decoration:none;opacity:0.75;transition:opacity 0.2s" onmouseover="this.style.opacity='1'" onmouseout="this.style.opacity='0.75'">${igIconSvg}<span style="font-size:0.85rem">@${igHandle}</span></a>`
+    : "";
 
   // Logo HTML block: real image if available, fallback to initial-in-circle
   const logoHtml = logoUrl
@@ -154,7 +162,7 @@ function buildGeneratePrompt(config: SiteGeneratorConfig): string {
 5. BENEFÍCIOS / DIFERENCIAIS — grid 2x3 ou 3x2 de cards com número destacado ou ícone grande
 6. NÚMEROS & CONQUISTAS — seção com 3-4 estatísticas marcantes plausíveis para o setor de "${sector || name}" (ex: "500+ clientes atendidos", "10 anos de experiência") — sem inventar nomes de pessoas reais
 7. CTA FINAL — seção de fundo escuro/gradiente, headline forte, subtítulo, botão grande com wa.me/${waNumber}
-8. FOOTER — ${logoUrl ? `logo do cliente (HTML exato: ${logoHtml})` : "logo"}, links de âncora, copyright`,
+8. FOOTER — ${logoUrl ? `logo do cliente (HTML exato: ${logoHtml})` : "logo"}, links de âncora${igHandle ? `, ícone do Instagram com link para ${igUrl} (use EXATAMENTE este HTML: ${igHtml})` : ""}, copyright`,
 
     ecommerce: `ESTRUTURA DO E-COMMERCE (nesta ordem exata):
 1. HEADER fixo — ${logoUrl ? `logo do cliente (HTML exato: ${logoHtml})` : "logo"}, nav, ícone de carrinho com badge contador, hamburger mobile
@@ -170,7 +178,7 @@ function buildGeneratePrompt(config: SiteGeneratorConfig): string {
 5. GARANTIAS & DIFERENCIAIS — 3-4 cards de garantias (ex: satisfação garantida, entrega rápida) — sem inventar nomes de clientes
 6. CTA FINAL — urgência, botão WhatsApp wa.me/${waNumber}
 7. CARRINHO LATERAL (drawer) — ativado por JS ao clicar nos produtos, lista itens, total, botão finalizar via WhatsApp com resumo do pedido
-8. FOOTER`,
+8. FOOTER${igHandle ? ` — inclua link do Instagram (HTML exato: ${igHtml})` : ""}`,
 
     institutional: `ESTRUTURA DO SITE INSTITUCIONAL (nesta ordem exata):
 1. HEADER fixo — ${logoUrl ? `logo do cliente (HTML exato: ${logoHtml})` : "logo"}, nav âncoras, botão CTA, hamburger mobile
@@ -181,7 +189,7 @@ function buildGeneratePrompt(config: SiteGeneratorConfig): string {
 6. DIFERENCIAIS — grid 2×3 ou 3×2 de vantagens competitivas reais do negócio com ícone SVG e texto
 7. NÚMEROS & CONQUISTAS — estatísticas do negócio em formato visual (sem inventar nomes de pessoas)
 8. CONTATO — formulário (nome, email, telefone, mensagem) + informações de contato laterais, botão WhatsApp wa.me/${waNumber}
-9. FOOTER`,
+9. FOOTER${igHandle ? ` — inclua link do Instagram (HTML exato: ${igHtml})` : ""}`,
   };
 
   void logoInstruction; // referenced via structureByType strings above
@@ -201,7 +209,7 @@ Maior dor do cliente-alvo: ${pain || "ineficiência e falta de resultados"}
 Tom de voz: ${TONE_LABELS[tone] || tone}
 Cor primária da marca: ${color} (RGB: ${rgb})
 CTA principal: ${ctaText}
-WhatsApp de contato: wa.me/${waNumber}
+WhatsApp de contato: wa.me/${waNumber}${igHandle ? `\nInstagram: ${igUrl} (handle: @${igHandle})` : ""}
 ${productsBlock}${imagesBlock}
 
 ═══════════════════════════════════════
@@ -284,7 +292,7 @@ QUALIDADE OBRIGATÓRIA:
 ✓ 100% responsivo — mobile impecável
 ✓ Smooth scroll, hover states, animações sutis
 ✓ Formulário de contato com validação JS básica (campos obrigatórios)
-✓ WhatsApp CTA abre wa.me/${waNumber}
+✓ WhatsApp CTA abre wa.me/${waNumber}${igHandle ? `\n✓ Instagram no footer: link clicável para ${igUrl} com ícone SVG inline e @${igHandle}` : ""}
 ✓ Acessibilidade: alt em imagens, aria-labels, foco visível
 
 RETORNE APENAS o código HTML completo, sem explicações, sem markdown, sem blocos de código.
