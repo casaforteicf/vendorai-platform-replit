@@ -601,10 +601,18 @@ const INLINE_EDIT_SCRIPT = `
 (function(){
   var TAGS=['h1','h2','h3','h4','h5','h6','p','span','a','button','li','td','th','label','strong','em','small','div'];
   var style=document.createElement('style');
-  style.textContent='[data-ve-editable]:hover{outline:2px dashed #818cf8 !important;outline-offset:2px;cursor:text !important;}[data-ve-editable]:focus{outline:2px solid #6366f1 !important;outline-offset:2px;background:rgba(99,102,241,0.06) !important;border-radius:2px;}';
+  style.textContent=
+    '[data-ve-editable]:hover{outline:2px dashed #818cf8 !important;outline-offset:2px;cursor:text !important;}'+
+    '[data-ve-editable]:focus{outline:2px solid #6366f1 !important;outline-offset:2px;background:rgba(99,102,241,0.06) !important;border-radius:2px;}'+
+    '[data-ve-img]:hover .ve-img-overlay{opacity:1 !important;}'+
+    '.ve-img-wrap{position:relative;display:inline-block;width:100%;}.ve-img-overlay{position:absolute;inset:0;background:rgba(0,0,0,0.45);display:flex;align-items:center;justify-content:center;opacity:0;transition:opacity .18s;cursor:pointer;border-radius:inherit;z-index:9;}'+
+    '.ve-img-overlay-label{color:#fff;font-size:13px;font-weight:600;letter-spacing:.01em;pointer-events:none;text-shadow:0 1px 4px rgba(0,0,0,.5);}';
   document.head.appendChild(style);
+
   function send(){window.parent.postMessage({type:'ve-html-edit',html:'<!DOCTYPE html>'+document.documentElement.outerHTML},'*');}
-  function setup(el){
+
+  /* ── text editing ── */
+  function setupText(el){
     if(el.__ve)return;el.__ve=true;
     if(!el.textContent.trim()||el.children.length>2)return;
     el.setAttribute('data-ve-editable','1');
@@ -612,7 +620,44 @@ const INLINE_EDIT_SCRIPT = `
     el.addEventListener('blur',function(){el.contentEditable='false';send();});
     el.addEventListener('keydown',function(e){if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();el.blur();}if(e.key==='Escape'){el.contentEditable='false';}});
   }
-  function init(){TAGS.forEach(function(t){document.querySelectorAll(t).forEach(setup);});}
+
+  /* ── image editing ── */
+  var imgs=[];
+  function setupImg(img,index){
+    if(img.__veImg)return;img.__veImg=true;
+    imgs[index]=img;
+    var w=img.parentElement;
+    if(!w||w.__veWrap){w=img.parentElement;if(!w)return;}
+    if(!w.classList.contains('ve-img-wrap')){
+      var wrap=document.createElement('span');
+      wrap.className='ve-img-wrap';
+      wrap.setAttribute('data-ve-img','1');
+      img.parentNode.insertBefore(wrap,img);
+      wrap.appendChild(img);
+      w=wrap;
+    }
+    var ov=w.querySelector('.ve-img-overlay');
+    if(!ov){
+      ov=document.createElement('div');ov.className='ve-img-overlay';
+      var lbl=document.createElement('span');lbl.className='ve-img-overlay-label';lbl.textContent='🖼 Trocar foto';
+      ov.appendChild(lbl);w.appendChild(ov);
+    }
+    ov.addEventListener('click',function(e){e.stopPropagation();window.parent.postMessage({type:'ve-img-pick',imgIndex:index},'*');});
+  }
+
+  window.addEventListener('message',function(e){
+    if(!e.data||e.data.type!=='ve-img-set')return;
+    var img=imgs[e.data.imgIndex];
+    if(img){img.src=e.data.newSrc;send();}
+  });
+
+  function init(){
+    TAGS.forEach(function(t){document.querySelectorAll(t).forEach(setupText);});
+    document.querySelectorAll('img').forEach(function(img,i){
+      if(img.id==='__ve_logo_skip')return;
+      setupImg(img,i);
+    });
+  }
   if(document.readyState==='loading'){document.addEventListener('DOMContentLoaded',init);}else{init();}
 })();
 </script>`;
@@ -637,6 +682,7 @@ function SitePreview({
   onDownload,
   onRefine,
   onSave,
+  tenantId,
 }: {
   html: string;
   status: GeneratorStatus;
@@ -644,17 +690,32 @@ function SitePreview({
   onDownload: () => void;
   onRefine: () => void;
   onSave?: (html: string) => Promise<void>;
+  tenantId: string;
 }) {
   const [pendingHtml, setPendingHtml] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+  const [uploadingImg, setUploadingImg] = useState(false);
+  const iframeRef = useRef<HTMLIFrameElement>(null);
+  const imgPickRef = useRef<HTMLInputElement>(null);
+  const pendingImgIndex = useRef<number>(-1);
   const { toast } = useToast();
+  const requestUploadUrl = useRequestUploadUrl();
 
   // Listen for inline edits from the iframe
   useEffect(() => {
-    function handler(e: MessageEvent) {
-      if (e.data?.type !== 've-html-edit') return;
-      const clean = stripEditScript(e.data.html as string);
-      setPendingHtml(clean);
+    async function handler(e: MessageEvent) {
+      if (!e.data?.type) return;
+
+      if (e.data.type === 've-html-edit') {
+        const clean = stripEditScript(e.data.html as string);
+        setPendingHtml(clean);
+        return;
+      }
+
+      if (e.data.type === 've-img-pick') {
+        pendingImgIndex.current = e.data.imgIndex as number;
+        imgPickRef.current?.click();
+      }
     }
     window.addEventListener('message', handler);
     return () => window.removeEventListener('message', handler);
@@ -662,6 +723,32 @@ function SitePreview({
 
   // Reset pending when html prop changes (new generation)
   useEffect(() => { setPendingHtml(null); }, [html]);
+
+  async function handleImgFilePick(file: File) {
+    const idx = pendingImgIndex.current;
+    if (idx < 0) return;
+    setUploadingImg(true);
+    try {
+      const uploadResult = await new Promise<{ uploadURL: string; objectPath: string }>((resolve, reject) => {
+        requestUploadUrl.mutate(
+          { data: { name: file.name, size: file.size, contentType: file.type || 'image/png' } },
+          { onSuccess: resolve, onError: reject },
+        );
+      });
+      const uploadRes = await fetch(uploadResult.uploadURL, {
+        method: 'PUT', body: file,
+        headers: { 'Content-Type': file.type || 'image/png' },
+      });
+      if (!uploadRes.ok) throw new Error('Upload falhou');
+      const newSrc = `/api/storage/${uploadResult.objectPath}`;
+      iframeRef.current?.contentWindow?.postMessage({ type: 've-img-set', imgIndex: idx, newSrc }, '*');
+    } catch {
+      toast({ title: 'Erro ao enviar foto. Tente novamente.', variant: 'destructive' });
+    } finally {
+      setUploadingImg(false);
+      pendingImgIndex.current = -1;
+    }
+  }
 
   async function saveInlineEdits() {
     if (!pendingHtml || !onSave) return;
@@ -681,6 +768,19 @@ function SitePreview({
 
   return (
     <div className="flex flex-col gap-4">
+      {/* hidden file input for inline image replacement */}
+      <input
+        ref={imgPickRef}
+        type="file"
+        accept="image/*"
+        className="sr-only"
+        onChange={(e) => {
+          const f = e.target.files?.[0];
+          if (f) void handleImgFilePick(f);
+          e.target.value = '';
+        }}
+      />
+
       {status === "generating" && (
         <div className="flex items-center gap-3 rounded-lg border border-primary/20 bg-primary/5 px-4 py-3 text-sm text-primary">
           <Loader2 className="h-4 w-4 animate-spin shrink-0" />
@@ -690,6 +790,14 @@ function SitePreview({
       {status === "error" && error && (
         <div className="rounded-lg border border-destructive/25 bg-destructive/5 px-4 py-3 text-sm text-destructive">
           {error}
+        </div>
+      )}
+
+      {/* uploading image indicator */}
+      {uploadingImg && (
+        <div className="flex items-center gap-2 rounded-lg border border-primary/20 bg-primary/5 px-4 py-2.5 text-sm text-primary">
+          <Loader2 className="h-4 w-4 animate-spin shrink-0" />
+          Enviando foto…
         </div>
       )}
 
@@ -715,9 +823,10 @@ function SitePreview({
         {displayHtml ? (
           <>
             <div className="flex items-center gap-1.5 px-3 py-1.5 border-b border-border bg-muted/50">
-              <span className="text-[10px] text-muted-foreground">✏️ Clique em qualquer texto para editar diretamente</span>
+              <span className="text-[10px] text-muted-foreground">✏️ Clique em textos para editar · passe o mouse sobre fotos para trocar</span>
             </div>
             <iframe
+              ref={iframeRef}
               srcDoc={displayHtml}
               title="Preview do site gerado"
               sandbox="allow-scripts allow-same-origin"
@@ -1313,13 +1422,31 @@ function MediaDialog({ html, onSave, tenantId }: { html: string; onSave: (html: 
 
   useEffect(() => {
     if (!open) return;
-    const matches = [...html.matchAll(/<img[^>]*?\ssrc=["']([^"']+)["'][^>]*>/gi)];
-    const items = matches.slice(2).map(m => ({ src: m[1], originalSrc: m[1] }));
+    // Detect all <img> srcs, excluding those clearly inside nav/header (logo)
+    // and small inline SVG data-URIs
+    const allMatches = [...html.matchAll(/<img[^>]*?\ssrc=["']([^"']+)["'][^>]*>/gi)];
+    const allSrcs = allMatches.map(m => m[1]!).filter(s => !s.startsWith('data:image/svg'));
+
+    // Identify logo: first img inside nav or header, or with class containing logo/brand
+    const logoMatch = /<(?:nav|header)\b[^>]*>[\s\S]{0,800}?<img[^>]*?\ssrc=["']([^"']+)["']/i.exec(html)
+      ?? /<img[^>]*?class=["'][^"']*(?:logo|brand)[^"']*["'][^>]*?\ssrc=["']([^"']+)["']/i.exec(html);
+    const detectedLogo = logoMatch ? logoMatch[1] : null;
+
+    // Identify hero: img in section/div with id/class containing hero, or an unsplash URL
+    const heroMatch = /<(?:section|div)\b[^>]*(?:id=["'][^"']*hero[^"']*["']|class=["'][^"']*hero[^"']*["'])[^>]*>[\s\S]{0,800}?<img[^>]*?\ssrc=["']([^"']+)["']/i.exec(html)
+      ?? /(https?:\/\/images\.unsplash\.com[^"'\s)]*)/i.exec(html);
+    const detectedHero = heroMatch ? heroMatch[1] : null;
+
+    const excluded = new Set([detectedLogo, detectedHero].filter(Boolean) as string[]);
+    const items = allSrcs
+      .filter(s => !excluded.has(s) && !s.includes('data:'))
+      .map(s => ({ src: s, originalSrc: s }));
+
     setGalleryItems(items);
     setNewPhotos([]);
     setLogoUrl("");
     setHeroUrl("");
-  }, [open]);
+  }, [open, html]);
 
   async function uploadImage(file: File, key: string): Promise<string> {
     setUploading(key);
@@ -1413,15 +1540,23 @@ function MediaDialog({ html, onSave, tenantId }: { html: string; onSave: (html: 
       }
       if (newPhotos.length > 0) {
         const newImgs = newPhotos
-          .map(url => `<img src="${url}" alt="Foto" style="width:100%;height:200px;object-fit:cover;border-radius:8px;" />`)
+          .map(url => `<img src="${url}" alt="Foto" loading="lazy" style="width:100%;height:220px;object-fit:cover;border-radius:10px;display:block;" />`)
           .join("\n");
-        const injected = updated.replace(
-          /(<(?:section|div)\b[^>]*class=["'][^"']*(?:gallery|galeria|fotos|grid|photos|portfolio|services|servic)[^"']*["'][^>]*>[\s\S]*?)(<\/(?:section|div)>)/i,
-          (_, body, close) => `${body}\n${newImgs}\n${close}`
-        );
-        updated = injected !== updated
-          ? injected
-          : updated.replace(/<\/body>/i, `<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;padding:16px">\n${newImgs}\n</div>\n</body>`);
+        const gridBlock = `<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:12px;padding:24px 16px">\n${newImgs}\n</div>`;
+
+        // Try to inject into any known gallery/grid/services/sobre/team section
+        const sectionPattern = /(<(?:section|div)\b[^>]*class=["'][^"']*(?:gallery|galeria|fotos|grid|photos|portfolio|services|servic|sobre|about|team|equipe|trabalhos|projetos|cases)[^"']*["'][^>]*>)([\s\S]*?)(<\/(?:section|div)>)/i;
+        const inSection = updated.replace(sectionPattern, (_, open, body, close) => `${open}${body}\n${newImgs}\n${close}`);
+        if (inSection !== updated) { updated = inSection; }
+        else {
+          // Fallback: inject before footer, or before </main>, or before </body>
+          const beforeFooter = updated.replace(/(<footer\b)/i, `${gridBlock}\n$1`);
+          if (beforeFooter !== updated) { updated = beforeFooter; }
+          else {
+            const beforeMain = updated.replace(/<\/main>/i, `${gridBlock}\n</main>`);
+            updated = beforeMain !== updated ? beforeMain : updated.replace(/<\/body>/i, `${gridBlock}\n</body>`);
+          }
+        }
       }
       await onSave(updated);
       setDone(true);
@@ -1840,6 +1975,7 @@ function SiteGeneratorInner({ tenantId, token }: { tenantId: string; token: stri
                 onDownload={() => download("site-gerado")}
                 onRefine={() => setActiveTab("refine")}
                 onSave={saveHtml}
+                tenantId={tenantId}
               />
             </TabsContent>
 
