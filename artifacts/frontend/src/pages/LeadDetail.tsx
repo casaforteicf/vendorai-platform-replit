@@ -496,6 +496,7 @@ export default function LeadDetail() {
     // PF fields
     pfNome: "",
     pfCpf: "",
+    pfDonome: "",
     dataNascimento: "",
     estadoCivil: "",
     genero: "",
@@ -536,6 +537,7 @@ export default function LeadDetail() {
       tipoPessoa: tp,
       pfNome: lead.nome ?? "",
       pfCpf: lead.documento ?? "",
+      pfDonome: (lead as any).metadata?.donome ?? "",
       dataNascimento: lead.dataNascimento ?? "",
       estadoCivil: lead.estadoCivil ?? "",
       genero: lead.genero ?? "",
@@ -577,6 +579,11 @@ export default function LeadDetail() {
         nome: isPj ? (lead?.nome ?? "") : (pessoalDraft.pfNome || lead?.nome || ""),
         documento: isPj ? (pessoalDraft.pjCnpj.replace(/\D/g, "") || null) : (pessoalDraft.pfCpf.replace(/\D/g, "") || null),
         dataNascimento: isPj ? null : (pessoalDraft.dataNascimento || null),
+        ...((!isPj && pessoalDraft.pfDonome.trim()) ? {
+          metadata: { ...((lead as any)?.metadata ?? {}), donome: pessoalDraft.pfDonome.trim() },
+        } : (!isPj && !(pessoalDraft.pfDonome.trim()) && (lead as any)?.metadata?.donome) ? {
+          metadata: { ...((lead as any)?.metadata ?? {}), donome: null },
+        } : {}),
         estadoCivil: isPj ? null : (pessoalDraft.estadoCivil || null),
         genero: isPj ? null : (pessoalDraft.genero || null),
         conjugeNome: isPj ? null : (pessoalDraft.conjugeNome || null),
@@ -1261,6 +1268,15 @@ export default function LeadDetail() {
                 }
                 return (
                   <>
+                    {(lead as any).metadata?.donome && (
+                      <div className="flex items-center gap-2 text-muted-foreground">
+                        <UserRound className="h-3.5 w-3.5 shrink-0" />
+                        <span className="text-xs">
+                          <span className="text-muted-foreground/70 mr-1">Dono:</span>
+                          {(lead as any).metadata.donome}
+                        </span>
+                      </div>
+                    )}
                     {lead.documento && (
                       <div className="flex items-center gap-2 text-muted-foreground">
                         <FileText className="h-3.5 w-3.5 shrink-0" />
@@ -2755,6 +2771,17 @@ export default function LeadDetail() {
                     placeholder="Ex: João da Silva"
                     value={pessoalDraft.pfNome}
                     onChange={(e) => setPessoalDraft((d) => ({ ...d, pfNome: e.target.value }))}
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <label className="text-sm font-medium">
+                    Nome do dono / proprietário
+                    <span className="ml-1 text-xs font-normal text-muted-foreground">(opcional)</span>
+                  </label>
+                  <Input
+                    placeholder="Ex: Maria Souza"
+                    value={pessoalDraft.pfDonome}
+                    onChange={(e) => setPessoalDraft((d) => ({ ...d, pfDonome: e.target.value }))}
                   />
                 </div>
                 <div className="space-y-1.5">
