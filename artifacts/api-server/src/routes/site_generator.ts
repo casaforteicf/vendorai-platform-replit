@@ -13,6 +13,22 @@ const anthropic = useAnthropic ? new Anthropic({ apiKey: anthropicApiKey }) : nu
 const AI_PROVIDER = useAnthropic ? "anthropic" : "openai";
 const AI_MODEL = useAnthropic ? "claude-sonnet-4-6" : "gpt-4o-mini";
 
+// ─── In-memory job store for async generation ─────────────────────────────────
+type GenerationJob =
+  | { status: "pending"; createdAt: number }
+  | { status: "done"; result: Record<string, unknown>; createdAt: number }
+  | { status: "error"; error: string; createdAt: number };
+
+const generationJobs = new Map<string, GenerationJob>();
+
+// Clean up jobs older than 30 minutes every 5 minutes
+setInterval(() => {
+  const cutoff = Date.now() - 30 * 60 * 1000;
+  for (const [id, job] of generationJobs) {
+    if (job.createdAt < cutoff) generationJobs.delete(id);
+  }
+}, 5 * 60 * 1000);
+
 // ─── Public router (no auth) — serves generated HTML sites ───────────────────
 export const publicSiteGeneratorRouter: IRouter = Router();
 
@@ -522,7 +538,138 @@ router.get("/tenants/:tenantId/site-generator/:siteId", async (req, res) => {
   return res.json(row);
 });
 
-// POST /tenants/:tenantId/site-generator/generate — generate new site
+// ─── Async generation logic (extracted so it can run without blocking HTTP) ────
+async function runGenerateSite(
+  jobId: string,
+  tenantId: string,
+  config: SiteGeneratorConfig,
+  baseOrigin: string,
+  log: ReturnType<typeof import("pino").default>,
+) {
+  try {
+    // Fallback to business_profile for missing fields
+    const [bp] = await db
+      .select({
+        nomeFantasia: businessProfilesTable.nomeFantasia,
+        razaoSocial: businessProfilesTable.razaoSocial,
+        vertical: businessProfilesTable.vertical,
+        diferenciais: businessProfilesTable.diferenciais,
+        publicoAlvo: businessProfilesTable.publicoAlvo,
+        logoUrl: businessProfilesTable.logoUrl,
+      })
+      .from(businessProfilesTable)
+      .where(eq(businessProfilesTable.tenantId, tenantId));
+
+    const name = config.name || bp?.nomeFantasia || bp?.razaoSocial || "";
+    const sector = config.sector || bp?.vertical || "";
+    const desc = config.desc || bp?.diferenciais || bp?.publicoAlvo || "";
+    const logoUrl = config.logoUrl || bp?.logoUrl || undefined;
+
+    if (!name || !desc) {
+      generationJobs.set(jobId, { status: "error", error: "name e desc são obrigatórios. Preencha no cadastro da empresa (Configurações) ou no formulário.", createdAt: Date.now() });
+      return;
+    }
+
+    // For ecommerce: auto-populate products from tenant's catalog + inventory stock
+    let catalogProducts: SiteGeneratorProduct[] = [];
+    if (config.type === "ecommerce") {
+      const rows = await db
+        .select({
+          nome:             produtosCatalogoTable.nome,
+          precoBase:        produtosCatalogoTable.precoBase,
+          descricao:        produtosCatalogoTable.descricao,
+          imagemUrl:        produtosCatalogoTable.imagemUrl,
+          imagens:          produtosCatalogoTable.imagens,
+          sku:              produtosCatalogoTable.sku,
+          destaque:         produtosCatalogoTable.destaque,
+          marca:            produtosCatalogoTable.marca,
+          quantidadeAtual:  inventoryItemsTable.quantidadeAtual,
+        })
+        .from(produtosCatalogoTable)
+        .leftJoin(inventoryItemsTable, eq(inventoryItemsTable.produtoId, produtosCatalogoTable.id))
+        .where(and(eq(produtosCatalogoTable.tenantId, tenantId), eq(produtosCatalogoTable.ativo, true)))
+        .orderBy(desc(produtosCatalogoTable.destaque), produtosCatalogoTable.nome)
+        .limit(50);
+
+      catalogProducts = rows.map((r) => {
+        const firstImage = r.imagens?.[0] || r.imagemUrl || undefined;
+        const qty = r.quantidadeAtual != null ? parseFloat(r.quantidadeAtual) : null;
+        const preco = parseFloat(r.precoBase);
+        return {
+          name: r.nome,
+          price: `R$ ${preco.toFixed(2).replace(".", ",")}`,
+          description: r.descricao || undefined,
+          imageUrl: firstImage,
+          sku: r.sku || undefined,
+          inStock: qty !== null ? qty > 0 : undefined,
+          stockQty: qty !== null ? qty : undefined,
+          featured: r.destaque ?? false,
+          marca: r.marca || undefined,
+        };
+      });
+
+      log.info({ tenantId, catalogCount: catalogProducts.length }, "Site generator: catalog products fetched for ecommerce");
+    }
+
+    const allProducts = catalogProducts.length > 0
+      ? [...catalogProducts, ...(config.products ?? [])]
+      : (config.products ?? []);
+
+    const absoluteImages = (config.images ?? []).map((url) =>
+      url.startsWith("/") ? `${baseOrigin}${url}` : url,
+    );
+
+    const enrichedConfig = { ...config, name, sector, desc, logoUrl, products: allProducts, images: absoluteImages };
+    const prompt = buildGeneratePrompt(enrichedConfig);
+
+    let result;
+    try {
+      result = await callAI([{ role: "user", content: prompt }], tenantId, log);
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : "Falha ao chamar a IA";
+      log.error({ error: msg, provider: AI_PROVIDER }, "Site generation failed");
+      generationJobs.set(jobId, { status: "error", error: `Erro na geração: ${msg}`, createdAt: Date.now() });
+      return;
+    }
+
+    log.info({ provider: result.provider, model: result.model, tenantId }, "Site generated successfully");
+
+    const rawText = result.content;
+    const html = extractHtmlSafe(rawText, log);
+
+    if (!isValidHtml(html)) {
+      log.error({ rawLength: rawText.length, htmlLength: html.length, provider: result.provider }, "Site generation returned invalid HTML");
+      generationJobs.set(jobId, { status: "error", error: "Resposta da IA inválida ou muito curta", createdAt: Date.now() });
+      return;
+    }
+
+    const siteSlug = await generateUniqueSiteSlug(enrichedConfig.name, config.type);
+
+    const [site] = await db
+      .insert(generatedSitesTable)
+      .values({
+        id: crypto.randomUUID(),
+        tenantId,
+        name: enrichedConfig.name,
+        siteType: config.type,
+        siteSlug,
+        config: enrichedConfig,
+        html,
+      })
+      .returning();
+
+    generationJobs.set(jobId, {
+      status: "done",
+      result: { ...site, _provider: result.provider, _model: result.model } as Record<string, unknown>,
+      createdAt: Date.now(),
+    });
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : "Erro interno";
+    generationJobs.set(jobId, { status: "error", error: msg, createdAt: Date.now() });
+  }
+}
+
+// POST /tenants/:tenantId/site-generator/generate — start async generation, return jobId immediately
 router.post("/tenants/:tenantId/site-generator/generate", async (req, res) => {
   const { tenantId } = req.params;
   const config: SiteGeneratorConfig = req.body;
@@ -532,121 +679,24 @@ router.post("/tenants/:tenantId/site-generator/generate", async (req, res) => {
     return;
   }
 
-  // Fallback to business_profile for missing fields
-  const [bp] = await db
-    .select({
-      nomeFantasia: businessProfilesTable.nomeFantasia,
-      razaoSocial: businessProfilesTable.razaoSocial,
-      vertical: businessProfilesTable.vertical,
-      diferenciais: businessProfilesTable.diferenciais,
-      publicoAlvo: businessProfilesTable.publicoAlvo,
-      logoUrl: businessProfilesTable.logoUrl,
-    })
-    .from(businessProfilesTable)
-    .where(eq(businessProfilesTable.tenantId, tenantId));
+  const jobId = crypto.randomUUID();
+  generationJobs.set(jobId, { status: "pending", createdAt: Date.now() });
 
-  const name = config.name || bp?.nomeFantasia || bp?.razaoSocial || "";
-  const sector = config.sector || bp?.vertical || "";
-  const desc = config.desc || bp?.diferenciais || bp?.publicoAlvo || "";
-  const logoUrl = config.logoUrl || bp?.logoUrl || undefined;
-
-  if (!name || !desc) {
-    res.status(400).json({ error: "name e desc são obrigatórios. Preencha no cadastro da empresa (Configurações) ou no formulário." });
-    return;
-  }
-
-  // For ecommerce: auto-populate products from tenant's catalog + inventory stock
-  let catalogProducts: SiteGeneratorProduct[] = [];
-  if (config.type === "ecommerce") {
-    const rows = await db
-      .select({
-        nome:             produtosCatalogoTable.nome,
-        precoBase:        produtosCatalogoTable.precoBase,
-        descricao:        produtosCatalogoTable.descricao,
-        imagemUrl:        produtosCatalogoTable.imagemUrl,
-        imagens:          produtosCatalogoTable.imagens,
-        sku:              produtosCatalogoTable.sku,
-        destaque:         produtosCatalogoTable.destaque,
-        marca:            produtosCatalogoTable.marca,
-        quantidadeAtual:  inventoryItemsTable.quantidadeAtual,
-      })
-      .from(produtosCatalogoTable)
-      .leftJoin(inventoryItemsTable, eq(inventoryItemsTable.produtoId, produtosCatalogoTable.id))
-      .where(and(eq(produtosCatalogoTable.tenantId, tenantId), eq(produtosCatalogoTable.ativo, true)))
-      .orderBy(desc(produtosCatalogoTable.destaque), produtosCatalogoTable.nome)
-      .limit(50);
-
-    catalogProducts = rows.map((r) => {
-      const firstImage = r.imagens?.[0] || r.imagemUrl || undefined;
-      const qty = r.quantidadeAtual != null ? parseFloat(r.quantidadeAtual) : null;
-      const preco = parseFloat(r.precoBase);
-      return {
-        name: r.nome,
-        price: `R$ ${preco.toFixed(2).replace(".", ",")}`,
-        description: r.descricao || undefined,
-        imageUrl: firstImage,
-        sku: r.sku || undefined,
-        inStock: qty !== null ? qty > 0 : undefined,
-        stockQty: qty !== null ? qty : undefined,
-        featured: r.destaque ?? false,
-        marca: r.marca || undefined,
-      };
-    });
-
-    req.log.info({ tenantId, catalogCount: catalogProducts.length }, "Site generator: catalog products fetched for ecommerce");
-  }
-
-  // Merge: catalog products first, then any manual overrides from config
-  const allProducts = catalogProducts.length > 0
-    ? [...catalogProducts, ...(config.products ?? [])]
-    : (config.products ?? []);
-
-  // Normalize image URLs to absolute so they work in downloaded HTML files
   const baseOrigin = `${req.protocol}://${req.get("host")}`;
-  const absoluteImages = (config.images ?? []).map((url) =>
-    url.startsWith("/") ? `${baseOrigin}${url}` : url,
-  );
+  // Fire-and-forget — does not block the HTTP response
+  void runGenerateSite(jobId, tenantId, config, baseOrigin, req.log);
 
-  const enrichedConfig = { ...config, name, sector, desc, logoUrl, products: allProducts, images: absoluteImages };
-  const prompt = buildGeneratePrompt(enrichedConfig);
+  return res.status(202).json({ jobId });
+});
 
-  let result;
-  try {
-    result = await callAI([{ role: "user", content: prompt }], tenantId, req.log);
-  } catch (err: unknown) {
-    const msg = err instanceof Error ? err.message : "Falha ao chamar a IA";
-    req.log.error({ error: msg, provider: AI_PROVIDER }, "Site generation failed");
-    res.status(502).json({ error: `Erro na geração: ${msg}` });
+// GET /tenants/:tenantId/site-generator/jobs/:jobId — poll generation status
+router.get("/tenants/:tenantId/site-generator/jobs/:jobId", (req, res) => {
+  const job = generationJobs.get(req.params.jobId);
+  if (!job) {
+    res.status(404).json({ error: "Job não encontrado ou expirado" });
     return;
   }
-
-  req.log.info({ provider: result.provider, model: result.model, tenantId }, "Site generated successfully");
-
-  const rawText = result.content;
-  const html = extractHtmlSafe(rawText, req.log);
-
-  if (!isValidHtml(html)) {
-    req.log.error({ rawLength: rawText.length, htmlLength: html.length, provider: result.provider, htmlPreview: html.slice(0, 200) }, "Site generation returned invalid HTML");
-    res.status(502).json({ error: "Resposta da IA inválida ou muito curta" });
-    return;
-  }
-
-  const siteSlug = await generateUniqueSiteSlug(enrichedConfig.name, config.type);
-
-  const [site] = await db
-    .insert(generatedSitesTable)
-    .values({
-      id: crypto.randomUUID(),
-      tenantId,
-      name: enrichedConfig.name,
-      siteType: config.type,
-      siteSlug,
-      config: enrichedConfig,
-      html,
-    })
-    .returning();
-
-  return res.status(201).json({ ...site, _provider: result.provider, _model: result.model });
+  return res.json(job);
 });
 
 // POST /tenants/:tenantId/site-generator/:siteId/refine — refine via chat

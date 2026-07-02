@@ -172,36 +172,61 @@ function useSiteGenerator(tenantId: string, token: string | null) {
     setError(null);
     setHtml("");
     setSiteId(null);
+    setSiteSlug(null);
     setHistory([]);
     setCurrentSiteType(config.type);
     setCurrentConfig(config);
 
     try {
-      const res = await fetch(`/api/tenants/${tenantId}/site-generator/generate`, {
+      // Step 1: submit the job (returns immediately — no timeout risk)
+      const startRes = await fetch(`/api/tenants/${tenantId}/site-generator/generate`, {
         method: "POST",
         headers: authHeaders,
         body: JSON.stringify(config),
       });
-      if (!res.ok) {
-        const err = await res.json().catch(() => ({}));
-        throw new Error(err.error ?? `Erro ${res.status}`);
+      if (!startRes.ok) {
+        const err = await startRes.json().catch(() => ({}));
+        throw new Error(err.error ?? `Erro ${startRes.status}`);
       }
-      const site = await res.json();
-      setHtml(site.html);
-      setSiteId(site.id);
-      setSiteSlug(site.siteSlug ?? null);
-      setCurrentSiteType(site.siteType ?? config.type);
-      setCurrentConfig(site.config ?? config);
-      setHistory([
-        { role: "user", content: `Gerar site para: ${config.name}` },
-        { role: "assistant", content: site.html },
-      ]);
-      setStatus("ready");
-      // Refresh sites list
-      setSitesList((prev) => {
-        const filtered = prev.filter((s) => s.id !== site.id);
-        return [{ id: site.id, name: site.name, siteType: site.siteType, updatedAt: site.updatedAt }, ...filtered];
-      });
+      const { jobId } = await startRes.json();
+      if (!jobId) throw new Error("Resposta inválida do servidor");
+
+      // Step 2: poll every 3 s until done or error (up to 5 min)
+      const deadline = Date.now() + 5 * 60 * 1000;
+      while (Date.now() < deadline) {
+        await new Promise((r) => setTimeout(r, 3000));
+        const pollRes = await fetch(
+          `/api/tenants/${tenantId}/site-generator/jobs/${jobId}`,
+          { headers: authHeaders },
+        );
+        if (!pollRes.ok) continue;
+        const job = await pollRes.json();
+
+        if (job.status === "done") {
+          const site = job.result;
+          setHtml(site.html);
+          setSiteId(site.id);
+          setSiteSlug(site.siteSlug ?? null);
+          setCurrentSiteType(site.siteType ?? config.type);
+          setCurrentConfig(site.config ?? config);
+          setHistory([
+            { role: "user", content: `Gerar site para: ${config.name}` },
+            { role: "assistant", content: site.html },
+          ]);
+          setStatus("ready");
+          setSitesList((prev) => {
+            const filtered = prev.filter((s: SiteSummary) => s.id !== site.id);
+            return [{ id: site.id, name: site.name, siteType: site.siteType, updatedAt: site.updatedAt }, ...filtered];
+          });
+          return;
+        }
+
+        if (job.status === "error") {
+          throw new Error(job.error ?? "Erro na geração");
+        }
+        // status === "pending" → keep polling
+      }
+      throw new Error("Tempo limite excedido. Tente novamente.");
     } catch (err: any) {
       setStatus("error");
       setError(err.message ?? "Erro desconhecido");
