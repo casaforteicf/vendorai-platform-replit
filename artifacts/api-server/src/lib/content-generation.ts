@@ -94,12 +94,11 @@ export async function generateImagesWithReference(
     throw new Error("Não foi possível carregar a imagem de referência. Verifique se ela está acessível.");
   }
 
-  for (let i = 0; i < imageCount; i++) {
+  const imagePromises = Array.from({ length: imageCount }, async (_, i) => {
     const variantPrompt = imageCount > 1
       ? `${editPrompt} Variation ${i + 1}: slightly different angle or perspective than other variations.`
       : editPrompt;
 
-    let saved = false;
     // Try image editing with gpt-image-1 models first
     for (const model of ["gpt-image-1", "chatgpt-image-latest"]) {
       try {
@@ -113,53 +112,35 @@ export async function generateImagesWithReference(
         });
         const item = Array.isArray(response?.data) ? response.data[0] : undefined;
         if (!item) continue;
-        if (item.b64_json) {
-          results.push(await saveB64Image(item.b64_json));
-          saved = true;
-          break;
-        }
-        if (item.url) {
-          results.push(item.url);
-          saved = true;
-          break;
-        }
+        if (item.b64_json) return await saveB64Image(item.b64_json);
+        if (item.url) return item.url as string;
       } catch {
         // Try next model
       }
     }
 
     // Fallback: generate from scratch with a descriptive prompt
-    if (!saved) {
-      for (const model of IMAGE_MODELS_PRIORITY) {
-        try {
-          const response = await openai.images.generate({
-            model,
-            prompt: variantPrompt,
-            n: 1,
-            size: "1024x1024",
-          } as Parameters<typeof openai.images.generate>[0]);
-          const item = Array.isArray(response?.data) ? response.data[0] : undefined;
-          if (!item) continue;
-          if ((item as any).b64_json) {
-            results.push(await saveB64Image((item as any).b64_json));
-            saved = true;
-            break;
-          }
-          if ((item as any).url) {
-            results.push((item as any).url);
-            saved = true;
-            break;
-          }
-        } catch {
-          // Try next model
-        }
+    for (const model of IMAGE_MODELS_PRIORITY) {
+      try {
+        const response = await openai.images.generate({
+          model,
+          prompt: variantPrompt,
+          n: 1,
+          size: "1024x1024",
+        } as Parameters<typeof openai.images.generate>[0]);
+        const item = Array.isArray(response?.data) ? response.data[0] : undefined;
+        if (!item) continue;
+        if ((item as any).b64_json) return await saveB64Image((item as any).b64_json);
+        if ((item as any).url) return (item as any).url as string;
+      } catch {
+        // Try next model
       }
     }
 
-    if (!saved) throw new Error(`Nenhum modelo retornou resultado para imagem ${i + 1}`);
-  }
+    throw new Error(`Nenhum modelo retornou resultado para imagem ${i + 1}`);
+  });
 
-  return results;
+  return await Promise.all(imagePromises);
 }
 
 const PHOTO_ANGLES = [
@@ -222,15 +203,13 @@ export async function generateImagesForContent(
     return generateImagesWithReference(tenantId, referenceImageUrl, editPrompt, imageCount);
   }
 
-  const results: string[] = [];
   const basePrompt = `Professional marketing photography for Instagram ${formatLabel} for the brand "${brand}". Subject: ${subject}. Style: ${styleHint}. ${observationsNote}High quality, visually compelling, suitable for a premium Instagram business profile. No text overlays. No watermarks. Perfect exposure, sharp focus, commercial photography aesthetic.`;
 
-  for (let i = 0; i < imageCount; i++) {
+  const imagePromises = Array.from({ length: imageCount }, async (_, i) => {
     let lastError: unknown;
     const angle = PHOTO_ANGLES[i % PHOTO_ANGLES.length];
     const imagePrompt = `${basePrompt} Camera/shot type: ${angle}.`;
 
-    let saved = false;
     for (const model of IMAGE_MODELS_PRIORITY) {
       try {
         const size = getImageSize(model, aspectRatio);
@@ -245,28 +224,17 @@ export async function generateImagesForContent(
         const item = "data" in response && Array.isArray(response.data) ? response.data[0] : undefined;
         if (!item) continue;
 
-        if ("url" in item && item.url) {
-          results.push(item.url);
-          saved = true;
-          break;
-        }
-
-        if ("b64_json" in item && item.b64_json) {
-          results.push(await saveB64Image(item.b64_json));
-          saved = true;
-          break;
-        }
+        if ("url" in item && item.url) return item.url as string;
+        if ("b64_json" in item && item.b64_json) return await saveB64Image(item.b64_json);
       } catch (err) {
         lastError = err;
       }
     }
 
-    if (!saved) {
-      throw lastError ?? new Error(`Nenhum modelo de imagem disponível retornou resultado para imagem ${i + 1}`);
-    }
-  }
+    throw lastError ?? new Error(`Nenhum modelo de imagem disponível retornou resultado para imagem ${i + 1}`);
+  });
 
-  return results;
+  return await Promise.all(imagePromises);
 }
 
 export async function describeImage(imageUrl: string, tenantId: string): Promise<string> {

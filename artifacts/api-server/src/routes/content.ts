@@ -179,29 +179,35 @@ router.post("/tenants/:tenantId/content/generate", async (req, res) => {
 
   const finalResult = result.result;
 
-  const [saved] = await db
-    .insert(contentGenerationsTable)
-    .values({
-      tenantId,
-      type,
-      productId: productId ?? null,
-      productName: productName ?? null,
-      theme,
-      contentFormat: contentFormat ?? null,
-      aspectRatio: aspectRatio ?? null,
-      result: finalResult as { variations: [] },
-      tokensUsed: result.tokensUsed,
-    })
-    .returning();
+  let saved: typeof contentGenerationsTable.$inferSelect | undefined;
+  try {
+    const [row] = await db
+      .insert(contentGenerationsTable)
+      .values({
+        tenantId,
+        type,
+        productId: productId ?? null,
+        productName: productName ?? null,
+        theme,
+        contentFormat: contentFormat ?? null,
+        aspectRatio: aspectRatio ?? null,
+        result: finalResult as { variations: [] },
+        tokensUsed: result.tokensUsed,
+      })
+      .returning();
+    saved = row;
 
-  if (configId) {
-    await db
-      .update(agentConfigsTable)
-      .set({ contentGenerationsThisMonth: used + 1 })
-      .where(eq(agentConfigsTable.id, configId));
+    if (configId) {
+      await db
+        .update(agentConfigsTable)
+        .set({ contentGenerationsThisMonth: used + 1 })
+        .where(eq(agentConfigsTable.id, configId));
+    }
+  } catch (dbErr) {
+    req.log.error({ err: dbErr }, "content: failed to persist generation — returning result without saving");
   }
 
-  res.json(saved);
+  res.json(saved ?? { id: null, tenantId, type, theme, result: finalResult, tokensUsed: result.tokensUsed });
 });
 
 const strategyBodySchema = z.object({
