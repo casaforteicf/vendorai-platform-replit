@@ -208,6 +208,8 @@ import type {
   Proposta,
   PropostaTemplate,
   ProspectorApprovalsListResponse,
+  ProspectorConfigBody,
+  ProspectorConfigResponse,
   ProspectorEnrichBody,
   ProspectorEnrichResponse,
   ProspectorExportParams,
@@ -26050,6 +26052,154 @@ export const useProspectorGenerateMessage = <TError = ErrorType<ErrorResponse>,
         TContext
       > => {
       return useMutation(getProspectorGenerateMessageMutationOptions(options));
+    }
+
+export const getProspectorGetConfigUrl = () => {
+
+
+
+
+  return `/api/prospector/config`
+}
+
+/**
+ * @summary Get the tenant's automatic prospecting configuration
+ */
+export const prospectorGetConfig = async ( options?: RequestInit): Promise<ProspectorConfigResponse> => {
+
+  return customFetch<ProspectorConfigResponse>(getProspectorGetConfigUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getProspectorGetConfigQueryKey = () => {
+    return [
+    `/api/prospector/config`
+    ] as const;
+    }
+
+
+export const getProspectorGetConfigQueryOptions = <TData = Awaited<ReturnType<typeof prospectorGetConfig>>, TError = ErrorType<unknown>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof prospectorGetConfig>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getProspectorGetConfigQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof prospectorGetConfig>>> = ({ signal }) => prospectorGetConfig({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof prospectorGetConfig>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type ProspectorGetConfigQueryResult = NonNullable<Awaited<ReturnType<typeof prospectorGetConfig>>>
+export type ProspectorGetConfigQueryError = ErrorType<unknown>
+
+
+/**
+ * @summary Get the tenant's automatic prospecting configuration
+ */
+
+export function useProspectorGetConfig<TData = Awaited<ReturnType<typeof prospectorGetConfig>>, TError = ErrorType<unknown>>(
+  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof prospectorGetConfig>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getProspectorGetConfigQueryOptions(options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+
+
+
+
+
+
+export const getProspectorUpdateConfigUrl = () => {
+
+
+
+
+  return `/api/prospector/config`
+}
+
+/**
+ * @summary Upsert the tenant's automatic prospecting configuration
+ */
+export const prospectorUpdateConfig = async (prospectorConfigBody: ProspectorConfigBody, options?: RequestInit): Promise<ProspectorConfigResponse> => {
+
+  return customFetch<ProspectorConfigResponse>(getProspectorUpdateConfigUrl(),
+  {
+    ...options,
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(
+      prospectorConfigBody,)
+  }
+);}
+
+
+
+
+export const getProspectorUpdateConfigMutationOptions = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof prospectorUpdateConfig>>, TError,{data: BodyType<ProspectorConfigBody>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof prospectorUpdateConfig>>, TError,{data: BodyType<ProspectorConfigBody>}, TContext> => {
+
+const mutationKey = ['prospectorUpdateConfig'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof prospectorUpdateConfig>>, {data: BodyType<ProspectorConfigBody>}> = (props) => {
+          const {data} = props ?? {};
+
+          return  prospectorUpdateConfig(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type ProspectorUpdateConfigMutationResult = NonNullable<Awaited<ReturnType<typeof prospectorUpdateConfig>>>
+    export type ProspectorUpdateConfigMutationBody = BodyType<ProspectorConfigBody>
+    export type ProspectorUpdateConfigMutationError = ErrorType<ErrorResponse>
+
+    /**
+ * @summary Upsert the tenant's automatic prospecting configuration
+ */
+export const useProspectorUpdateConfig = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof prospectorUpdateConfig>>, TError,{data: BodyType<ProspectorConfigBody>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof prospectorUpdateConfig>>,
+        TError,
+        {data: BodyType<ProspectorConfigBody>},
+        TContext
+      > => {
+      return useMutation(getProspectorUpdateConfigMutationOptions(options));
     }
 
 export const getProspectorListApprovalsUrl = (params?: ProspectorListApprovalsParams,) => {

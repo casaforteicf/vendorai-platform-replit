@@ -10329,6 +10329,61 @@ export const ProspectorGenerateMessageBody = zod.object({
 
 
 /**
+ * @summary Get the tenant's automatic prospecting configuration
+ */
+export const ProspectorGetConfigResponse = zod.object({
+  "config": zod.object({
+  "id": zod.string().optional(),
+  "tenantId": zod.string().optional(),
+  "setor": zod.string().nullish(),
+  "cidade": zod.string().nullish(),
+  "raioKm": zod.number().nullish(),
+  "ritmoDiario": zod.number().optional(),
+  "ativo": zod.boolean().optional(),
+  "horarioCron": zod.string().optional(),
+  "createdAt": zod.string().optional(),
+  "updatedAt": zod.string().optional()
+}).nullish()
+})
+
+
+/**
+ * @summary Upsert the tenant's automatic prospecting configuration
+ */
+export const prospectorUpdateConfigBodyRaioKmMax = 100;
+
+export const prospectorUpdateConfigBodyRitmoDiarioDefault = 10;
+export const prospectorUpdateConfigBodyRitmoDiarioMax = 500;
+
+export const prospectorUpdateConfigBodyAtivoDefault = false;
+export const prospectorUpdateConfigBodyHorarioCronDefault = `09:00`;
+
+export const ProspectorUpdateConfigBody = zod.object({
+  "setor": zod.string().nullish().describe('Setor comercial a buscar (ex. \"materiais de construção\")'),
+  "cidade": zod.string().nullish().describe('Cidade alvo da busca'),
+  "raioKm": zod.number().min(1).max(prospectorUpdateConfigBodyRaioKmMax).nullish().describe('Raio em km ao redor da cidade'),
+  "ritmoDiario": zod.number().min(1).max(prospectorUpdateConfigBodyRitmoDiarioMax).default(prospectorUpdateConfigBodyRitmoDiarioDefault).describe('Quantidade de leads abordados por dia'),
+  "ativo": zod.boolean().default(prospectorUpdateConfigBodyAtivoDefault).describe('Ativar busca automática diária'),
+  "horarioCron": zod.string().default(prospectorUpdateConfigBodyHorarioCronDefault).describe('Horário de execução do job (HH:MM, BRT)')
+})
+
+export const ProspectorUpdateConfigResponse = zod.object({
+  "config": zod.object({
+  "id": zod.string().optional(),
+  "tenantId": zod.string().optional(),
+  "setor": zod.string().nullish(),
+  "cidade": zod.string().nullish(),
+  "raioKm": zod.number().nullish(),
+  "ritmoDiario": zod.number().optional(),
+  "ativo": zod.boolean().optional(),
+  "horarioCron": zod.string().optional(),
+  "createdAt": zod.string().optional(),
+  "updatedAt": zod.string().optional()
+}).nullish()
+})
+
+
+/**
  * @summary List pending AI message drafts awaiting approval
  */
 export const ProspectorListApprovalsQueryParams = zod.object({

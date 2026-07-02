@@ -8949,6 +8949,46 @@ paths:
             application/json:
               schema: { $ref: "#/components/schemas/ErrorResponse" }
 
+  /prospector/config:
+    get:
+      operationId: prospectorGetConfig
+      tags: [prospector]
+      summary: Get the tenant's automatic prospecting configuration
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: Current prospector config (null if not configured)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProspectorConfigResponse"
+
+    put:
+      operationId: prospectorUpdateConfig
+      tags: [prospector]
+      summary: Upsert the tenant's automatic prospecting configuration
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ProspectorConfigBody"
+      responses:
+        "200":
+          description: Updated config
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProspectorConfigResponse"
+        "400":
+          description: Validation error
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+
   /prospector/approvals:
     get:
       operationId: prospectorListApprovals
@@ -13073,6 +13113,69 @@ components:
           nullable: true
         enrichment:
           $ref: "#/components/schemas/ProspectEnrichment"
+
+    ProspectorConfigBody:
+      type: object
+      properties:
+        setor:
+          type: string
+          nullable: true
+          description: Setor comercial a buscar (ex. "materiais de construção")
+        cidade:
+          type: string
+          nullable: true
+          description: Cidade alvo da busca
+        raioKm:
+          type: integer
+          minimum: 1
+          maximum: 100
+          nullable: true
+          description: Raio em km ao redor da cidade
+        ritmoDiario:
+          type: integer
+          minimum: 1
+          maximum: 500
+          default: 10
+          description: Quantidade de leads abordados por dia
+        ativo:
+          type: boolean
+          default: false
+          description: Ativar busca automática diária
+        horarioCron:
+          type: string
+          default: "09:00"
+          description: Horário de execução do job (HH:MM, BRT)
+
+    ProspectorConfigResponse:
+      type: object
+      properties:
+        config:
+          nullable: true
+          type: object
+          properties:
+            id:
+              type: string
+            tenantId:
+              type: string
+            setor:
+              type: string
+              nullable: true
+            cidade:
+              type: string
+              nullable: true
+            raioKm:
+              type: integer
+              nullable: true
+            ritmoDiario:
+              type: integer
+            ativo:
+              type: boolean
+            horarioCron:
+              type: string
+            createdAt:
+              type: string
+            updatedAt:
+              type: string
 
     ProspectorSearchBody:
       type: object

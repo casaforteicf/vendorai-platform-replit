@@ -55,6 +55,11 @@ import { getCustomHostname } from "../lib/cloudflare.js";
 import type { SegmentoFiltro } from "@workspace/db";
 import { evaluateForLead } from "../routes/rules.js";
 import { dispatchAgentBackground, processAgentInternal, type DispatchResult } from "../services/agent-dispatch.js";
+import { searchAllPlaces } from "../routes/prospector.js";
+import {
+  prospectorConfigTable,
+  prospectorQueueTable,
+} from "@workspace/db";
 
 // ── Job 1: Churn check ────────────────────────────────────────────────────────
 
@@ -1383,7 +1388,113 @@ export function startScheduler(log: Logger): void {
     });
   });
 
-  log.info("scheduler: started (churn-check @:05, campaigns @:15, billing @day-5-08:00, reactivation @03:00, demo-expiration @06:00, demo-reset @02:00, special-dates @07:00, partner-commissions @day-1-06:00, partner-prospector @08:00, content-flow @*/5min, blender-poll @30s, revenue-scout @09:00, appointment-reminders @*/30min, no-response-closing @09:30, domain-verify @*/5min)");
+  // Job 16: Automatic prospector sync — daily at 09:00 BRT
+  cron.schedule("0 9 * * *", () => {
+    runProspectorSync(log).catch((err) => {
+      log.error({ err }, "scheduler/prospector-sync: unhandled error");
+    });
+  }, { timezone: "America/Sao_Paulo" });
+
+  log.info("scheduler: started (churn-check @:05, campaigns @:15, billing @day-5-08:00, reactivation @03:00, demo-expiration @06:00, demo-reset @02:00, special-dates @07:00, partner-commissions @day-1-06:00, partner-prospector @08:00, content-flow @*/5min, blender-poll @30s, revenue-scout @09:00, appointment-reminders @*/30min, no-response-closing @09:30, domain-verify @*/5min, prospector-sync @09:00-BRT)");
+}
+
+// ── Job 16: Automatic prospector sync ─────────────────────────────────────────
+
+async function runProspectorSync(log: Logger): Promise<void> {
+  log.info("scheduler/prospector-sync: starting");
+
+  const configs = await db
+    .select()
+    .from(prospectorConfigTable)
+    .where(eq(prospectorConfigTable.ativo, true));
+
+  if (configs.length === 0) {
+    log.info("scheduler/prospector-sync: no active configs");
+    return;
+  }
+
+  log.info({ count: configs.length }, "scheduler/prospector-sync: active configs found");
+
+  let totalInserted = 0;
+  let totalUpdated = 0;
+
+  for (const config of configs) {
+    try {
+      if (!config.setor || !config.cidade) {
+        log.warn({ tenantId: config.tenantId }, "scheduler/prospector-sync: setor or cidade missing — skipping");
+        continue;
+      }
+
+      const query = `${config.setor} em ${config.cidade}`;
+      log.info({ tenantId: config.tenantId, query }, "scheduler/prospector-sync: fetching places");
+
+      const places = await searchAllPlaces(query, log);
+      log.info({ tenantId: config.tenantId, found: places.length }, "scheduler/prospector-sync: places fetched");
+
+      for (const place of places) {
+        try {
+          const [existing] = await db
+            .select()
+            .from(prospectorQueueTable)
+            .where(
+              and(
+                eq(prospectorQueueTable.tenantId, config.tenantId),
+                eq(prospectorQueueTable.placeId, place.placeId),
+              ),
+            )
+            .limit(1);
+
+          const dadosCompletos = !!(place.nomeEmpresa && (place.telefone || place.siteOficial));
+
+          if (existing) {
+            // Only update if new data fills missing fields
+            const needsUpdate =
+              (!existing.telefone && place.telefone) ||
+              (!existing.website && place.siteOficial) ||
+              (!existing.endereco && place.endereco) ||
+              existing.dadosCompletos !== dadosCompletos;
+
+            if (needsUpdate) {
+              await db
+                .update(prospectorQueueTable)
+                .set({
+                  nome:          place.nomeEmpresa ?? existing.nome,
+                  telefone:      place.telefone ?? existing.telefone,
+                  endereco:      place.endereco ?? existing.endereco,
+                  website:       place.siteOficial ?? existing.website,
+                  dadosCompletos,
+                  updatedAt:     new Date(),
+                })
+                .where(eq(prospectorQueueTable.id, existing.id));
+              totalUpdated++;
+            }
+          } else {
+            await db.insert(prospectorQueueTable).values({
+              tenantId:      config.tenantId,
+              placeId:       place.placeId,
+              nome:          place.nomeEmpresa ?? "Sem nome",
+              telefone:      place.telefone,
+              endereco:      place.endereco,
+              setor:         config.setor,
+              cidade:        config.cidade,
+              website:       place.siteOficial,
+              status:        "pendente",
+              dadosCompletos,
+            });
+            totalInserted++;
+          }
+        } catch (err) {
+          log.error({ err, placeId: place.placeId, tenantId: config.tenantId }, "scheduler/prospector-sync: place upsert failed (non-fatal)");
+        }
+      }
+
+      log.info({ tenantId: config.tenantId, inserted: totalInserted, updated: totalUpdated }, "scheduler/prospector-sync: tenant done");
+    } catch (err) {
+      log.error({ err, tenantId: config.tenantId }, "scheduler/prospector-sync: tenant failed (non-fatal)");
+    }
+  }
+
+  log.info({ totalInserted, totalUpdated }, "scheduler/prospector-sync: complete");
 }
 
 // ── Job 15: Custom domain verification ────────────────────────────────────────

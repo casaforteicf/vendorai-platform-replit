@@ -5,6 +5,8 @@ import {
   useProspectorEnrich,
   useProspectorSearch,
   useProspectorGenerateMessage,
+  useProspectorGetConfig,
+  useProspectorUpdateConfig,
   prospectorExport,
   type ProspectEnrichment,
   type ProspectorSearchResult,
@@ -45,7 +47,10 @@ import {
   Briefcase,
   UserPlus,
   ClipboardCheck,
+  Bot,
+  Save,
 } from "lucide-react";
+import { Switch } from "@/components/ui/switch";
 import { ProspectorAprovacoesContent } from "./ProspectorAprovacoes";
 
 type ApprovalDecision = "approved" | "approved_edited" | "rejected";
@@ -237,6 +242,135 @@ function MessageApproval({ generatedText }: { generatedText: string }) {
             <ThumbsDown className="h-4 w-4 mr-2" /> Rejeitar
           </Button>
         </div>
+      </CardContent>
+    </Card>
+  );
+}
+
+// ── Seção de Configuração de Busca Automática ─────────────────────────────────
+function ProspectorAutoConfig() {
+  const { toast } = useToast();
+  const { data, isLoading } = useProspectorGetConfig();
+  const update = useProspectorUpdateConfig();
+
+  const cfg = data?.config;
+
+  const [setor, setSetor] = useState("");
+  const [cidade, setCidade] = useState("");
+  const [ritmoDiario, setRitmoDiario] = useState(10);
+  const [ativo, setAtivo] = useState(false);
+  const [initialized, setInitialized] = useState(false);
+
+  // Populate form once config is loaded
+  if (!isLoading && !initialized && data !== undefined) {
+    setSetor(cfg?.setor ?? "");
+    setCidade(cfg?.cidade ?? "");
+    setRitmoDiario(cfg?.ritmoDiario ?? 10);
+    setAtivo(cfg?.ativo ?? false);
+    setInitialized(true);
+  }
+
+  function onSave() {
+    update.mutate(
+      { data: { setor: setor || null, cidade: cidade || null, ritmoDiario, ativo } },
+      {
+        onSuccess: () => toast({ title: "Configuração salva" }),
+        onError: () => toast({ title: "Falha ao salvar", variant: "destructive" }),
+      },
+    );
+  }
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="text-base flex items-center gap-2">
+          <Bot className="h-4 w-4 text-primary" /> Configuração de Busca Automática
+        </CardTitle>
+        <CardDescription>
+          O agente Prospector buscará novas empresas no Google Places diariamente às 09:00 (BRT) e
+          preencherá a fila automática com os resultados.
+        </CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-5">
+        {isLoading ? (
+          <div className="flex items-center gap-2 text-sm text-muted-foreground">
+            <Spinner className="h-4 w-4" /> Carregando configuração...
+          </div>
+        ) : (
+          <>
+            <div className="grid gap-4 sm:grid-cols-2">
+              <div className="space-y-1.5">
+                <Label htmlFor="cfg-setor">Setor comercial</Label>
+                <Input
+                  id="cfg-setor"
+                  placeholder="Ex: materiais de construção"
+                  value={setor}
+                  onChange={(e) => setSetor(e.target.value)}
+                />
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="cfg-cidade">Cidade</Label>
+                <Input
+                  id="cfg-cidade"
+                  placeholder="Ex: Curitiba, PR"
+                  value={cidade}
+                  onChange={(e) => setCidade(e.target.value)}
+                />
+              </div>
+            </div>
+
+            <div className="space-y-1.5">
+              <Label htmlFor="cfg-ritmo">
+                Ritmo de abordagem{" "}
+                <span className="text-muted-foreground font-normal">
+                  ({ritmoDiario} leads/dia)
+                </span>
+              </Label>
+              <input
+                id="cfg-ritmo"
+                type="range"
+                min={1}
+                max={100}
+                step={1}
+                value={ritmoDiario}
+                onChange={(e) => setRitmoDiario(Number(e.target.value))}
+                className="w-full accent-primary h-2 rounded cursor-pointer"
+              />
+              <div className="flex justify-between text-xs text-muted-foreground">
+                <span>1</span>
+                <span>50</span>
+                <span>100</span>
+              </div>
+            </div>
+
+            <div className="flex items-center justify-between rounded-lg border p-4">
+              <div className="space-y-0.5">
+                <p className="text-sm font-medium">Busca automática diária</p>
+                <p className="text-xs text-muted-foreground">
+                  Quando ativo, o sistema buscará novas empresas todo dia às 09:00 BRT e as
+                  adicionará à fila do Prospector.
+                </p>
+              </div>
+              <Switch
+                checked={ativo}
+                onCheckedChange={setAtivo}
+                aria-label="Ativar busca automática diária"
+              />
+            </div>
+
+            <Button onClick={onSave} disabled={update.isPending} className="w-full sm:w-auto">
+              {update.isPending ? (
+                <>
+                  <Spinner className="h-4 w-4 mr-2" /> Salvando...
+                </>
+              ) : (
+                <>
+                  <Save className="h-4 w-4 mr-2" /> Salvar configuração
+                </>
+              )}
+            </Button>
+          </>
+        )}
       </CardContent>
     </Card>
   );
@@ -461,6 +595,8 @@ export default function Prospector() {
         </TabsList>
 
         <TabsContent value="busca" className="mt-4 space-y-6">
+
+      <ProspectorAutoConfig />
 
       {isSuperAdmin && (
         <Card>

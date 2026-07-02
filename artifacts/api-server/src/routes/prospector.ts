@@ -11,6 +11,8 @@ import {
   funisTable,
   dealsTable,
   activitiesTable,
+  prospectorConfigTable,
+  prospectorQueueTable,
 } from "@workspace/db";
 import {
   callOpenAI as gatewayCallOpenAI,
@@ -105,6 +107,96 @@ type PlacesResult = {
   telefone: string | null;
   siteOficial: string | null;
 };
+
+type PlacesResultWithId = PlacesResult & { placeId: string };
+
+const PLACES_FIELD_MASK =
+  "places.id,places.displayName,places.formattedAddress,places.rating,places.userRatingCount,places.nationalPhoneNumber,places.websiteUri";
+
+/** Fetches one page of Places results; returns items + nextPageToken */
+async function fetchPlacesPage(
+  query: string,
+  pageToken: string | null,
+  log?: { error: (o: unknown, m?: string) => void },
+): Promise<{ items: PlacesResultWithId[]; nextPageToken: string | null }> {
+  const apiKey = process.env["GOOGLE_PLACES_API_KEY"];
+  if (!apiKey) throw Object.assign(new Error("GOOGLE_PLACES_API_KEY não configurada"), { status: 500 });
+
+  const body: Record<string, unknown> = {
+    textQuery: query,
+    languageCode: "pt-BR",
+    maxResultCount: 20,
+  };
+  if (pageToken) body["pageToken"] = pageToken;
+
+  const res = await fetch("https://places.googleapis.com/v1/places:searchText", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "X-Goog-Api-Key": apiKey,
+      "X-Goog-FieldMask": PLACES_FIELD_MASK,
+    },
+    body: JSON.stringify(body),
+  });
+
+  if (!res.ok) {
+    const text = await res.text();
+    log?.error({ status: res.status, text }, "prospector: Google Places page call failed");
+    throw Object.assign(new Error(`Google Places API erro ${res.status}`), { status: 502 });
+  }
+
+  const data = (await res.json()) as {
+    places?: Array<{
+      id?: string;
+      displayName?: { text?: string };
+      formattedAddress?: string;
+      rating?: number;
+      userRatingCount?: number;
+      nationalPhoneNumber?: string;
+      websiteUri?: string;
+    }>;
+    nextPageToken?: string;
+  };
+
+  const items: PlacesResultWithId[] = (data.places ?? [])
+    .filter((p) => !!p.id)
+    .map((p) => ({
+      placeId: p.id!,
+      nomeEmpresa: p.displayName?.text ?? null,
+      endereco: p.formattedAddress ?? null,
+      rating: typeof p.rating === "number" ? p.rating : null,
+      reviewCount: typeof p.userRatingCount === "number" ? p.userRatingCount : null,
+      telefone: p.nationalPhoneNumber ?? null,
+      siteOficial: p.websiteUri ?? null,
+    }));
+
+  return { items, nextPageToken: data.nextPageToken ?? null };
+}
+
+/**
+ * Paginates through ALL Google Places results for a given query (max 60 — 3 pages of 20).
+ * Used by the automatic cron job that populates prospector_queue.
+ */
+export async function searchAllPlaces(
+  query: string,
+  log?: { error: (o: unknown, m?: string) => void },
+): Promise<PlacesResultWithId[]> {
+  const all: PlacesResultWithId[] = [];
+  let pageToken: string | null = null;
+  let pages = 0;
+  const MAX_PAGES = 3; // Google Places (New) returns max 60 results total
+
+  do {
+    const { items, nextPageToken } = await fetchPlacesPage(query, pageToken, log);
+    all.push(...items);
+    pageToken = nextPageToken;
+    pages++;
+    // Brief pause between pages to avoid rate-limit
+    if (pageToken && pages < MAX_PAGES) await new Promise((r) => setTimeout(r, 300));
+  } while (pageToken && pages < MAX_PAGES);
+
+  return all;
+}
 
 async function searchPlace(
   query: string,
@@ -1003,6 +1095,58 @@ router.patch("/prospector/approvals/:id", async (req, res) => {
   }
 
   return res.status(200).json({ ok: true, action, approvedCount, automationUnlocked });
+});
+
+// ── GET /prospector/config ────────────────────────────────────────────────────
+router.get("/config", async (req, res) => {
+  const tenantId = resolveTenantId(req, undefined);
+  const [config] = await db
+    .select()
+    .from(prospectorConfigTable)
+    .where(eq(prospectorConfigTable.tenantId, tenantId))
+    .limit(1);
+  return res.status(200).json({ config: config ?? null });
+});
+
+// ── PUT /prospector/config ────────────────────────────────────────────────────
+const prospectorConfigBodySchema = z.object({
+  setor:       z.string().nullable().optional(),
+  cidade:      z.string().nullable().optional(),
+  raioKm:      z.number().int().min(1).max(100).nullable().optional(),
+  ritmoDiario: z.number().int().min(1).max(500).optional(),
+  ativo:       z.boolean().optional(),
+  horarioCron: z.string().optional(),
+});
+
+router.put("/config", async (req, res) => {
+  const tenantId = resolveTenantId(req, undefined);
+  const parsed = prospectorConfigBodySchema.safeParse(req.body);
+  if (!parsed.success) {
+    return res.status(400).json({ error: "Dados inválidos", details: parsed.error.issues });
+  }
+  const now = new Date();
+  const data = { ...parsed.data, updatedAt: now };
+
+  const [existing] = await db
+    .select({ id: prospectorConfigTable.id })
+    .from(prospectorConfigTable)
+    .where(eq(prospectorConfigTable.tenantId, tenantId))
+    .limit(1);
+
+  let config;
+  if (existing) {
+    [config] = await db
+      .update(prospectorConfigTable)
+      .set(data)
+      .where(eq(prospectorConfigTable.tenantId, tenantId))
+      .returning();
+  } else {
+    [config] = await db
+      .insert(prospectorConfigTable)
+      .values({ tenantId, ...data })
+      .returning();
+  }
+  return res.status(200).json({ config });
 });
 
 // ── GET /tenant/api-usage — uso mensal da Places API ──────────────────────────

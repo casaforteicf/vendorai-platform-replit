@@ -2475,6 +2475,46 @@ export interface ProspectorEnrichResponse {
   enrichment: ProspectEnrichment;
 }
 
+export interface ProspectorConfigBody {
+  /** Setor comercial a buscar (ex. "materiais de construção") */
+  setor?: string | null;
+  /** Cidade alvo da busca */
+  cidade?: string | null;
+  /**
+     * Raio em km ao redor da cidade
+     * @minimum 1
+     * @maximum 100
+     */
+  raioKm?: number | null;
+  /**
+     * Quantidade de leads abordados por dia
+     * @minimum 1
+     * @maximum 500
+     */
+  ritmoDiario?: number;
+  /** Ativar busca automática diária */
+  ativo?: boolean;
+  /** Horário de execução do job (HH:MM, BRT) */
+  horarioCron?: string;
+}
+
+export type ProspectorConfigResponseConfig = {
+  id?: string;
+  tenantId?: string;
+  setor?: string | null;
+  cidade?: string | null;
+  raioKm?: number | null;
+  ritmoDiario?: number;
+  ativo?: boolean;
+  horarioCron?: string;
+  createdAt?: string;
+  updatedAt?: string;
+} | null;
+
+export interface ProspectorConfigResponse {
+  config?: ProspectorConfigResponseConfig;
+}
+
 export interface ProspectorSearchBody {
   /**
      * Atividade comercial (ex. "restaurantes", "clínicas odontológicas")
