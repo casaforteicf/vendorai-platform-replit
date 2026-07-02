@@ -813,3 +813,105 @@ export async function transcribeAudio(
 
   return { text, costUsd, usedByok: key.usedByok };
 }
+
+// ── Replicate — Flux+ControlNet ───────────────────────────────────────────────
+
+/**
+ * Render an architectural image using Flux+ControlNet via Replicate.
+ * Returns the rendered image as a base64 string (PNG).
+ * Throws if REPLICATE_API_TOKEN is not set or all models fail.
+ */
+export async function callReplicateFlux(params: {
+  controlImageDataUrl: string;
+  prompt: string;
+  guidance?: number;
+  steps?: number;
+  controlStrength?: number;
+  logger?: Logger;
+}): Promise<string> {
+  const token = process.env["REPLICATE_API_TOKEN"];
+  if (!token) throw new Error("REPLICATE_API_TOKEN not set");
+
+  const { controlImageDataUrl, prompt, guidance = 30, steps = 50, controlStrength = 0.75, logger } = params;
+
+  const MODELS = [
+    "black-forest-labs/flux-canny-pro",
+    "black-forest-labs/flux-depth-pro",
+  ] as const;
+
+  let lastError: Error | undefined;
+
+  for (const model of MODELS) {
+    try {
+      logger?.info({ model }, "Replicate: creating prediction");
+
+      const createRes = await fetch(
+        `https://api.replicate.com/v1/models/${model}/predictions`,
+        {
+          method: "POST",
+          headers: {
+            Authorization: `Token ${token}`,
+            "Content-Type": "application/json",
+            Prefer: "wait=90",
+          },
+          body: JSON.stringify({
+            input: {
+              control_image: controlImageDataUrl,
+              prompt,
+              guidance,
+              num_inference_steps: steps,
+              control_strength: controlStrength,
+              output_format: "png",
+              output_quality: 100,
+              safety_tolerance: 2,
+            },
+          }),
+          signal: AbortSignal.timeout(100_000),
+        },
+      );
+
+      if (!createRes.ok) {
+        const body = await createRes.json().catch(() => ({})) as Record<string, unknown>;
+        throw new Error(`Replicate HTTP ${createRes.status}: ${body["detail"] ?? JSON.stringify(body)}`);
+      }
+
+      let prediction = await createRes.json() as {
+        id: string; status: string; output?: string | string[];
+        error?: string; urls?: { get: string };
+      };
+
+      // Poll if Prefer:wait didn't finish in time
+      let polls = 0;
+      while (prediction.status === "starting" || prediction.status === "processing") {
+        if (polls >= 30) throw new Error("Replicate: polling timeout (60s)");
+        await new Promise<void>((r) => setTimeout(r, 2000));
+        const pollRes = await fetch(
+          `https://api.replicate.com/v1/predictions/${prediction.id}`,
+          { headers: { Authorization: `Token ${token}` } },
+        );
+        prediction = await pollRes.json();
+        polls++;
+      }
+
+      if (prediction.status !== "succeeded" || !prediction.output) {
+        throw new Error(`Replicate prediction ${prediction.status}: ${prediction.error ?? "no output"}`);
+      }
+
+      const outputUrl = Array.isArray(prediction.output)
+        ? prediction.output[0]
+        : prediction.output;
+      if (!outputUrl) throw new Error("Replicate: empty output URL");
+
+      const imgRes = await fetch(outputUrl as string);
+      if (!imgRes.ok) throw new Error(`Replicate: download failed (${imgRes.status})`);
+      const imgBuf = Buffer.from(await imgRes.arrayBuffer());
+      logger?.info({ model, polls }, "Replicate: prediction succeeded");
+      return imgBuf.toString("base64");
+    } catch (err: any) {
+      lastError = err;
+      logger?.warn({ err: err?.message, model }, "Replicate: model failed");
+    }
+  }
+
+  throw lastError ?? new Error("All Replicate models failed");
+}

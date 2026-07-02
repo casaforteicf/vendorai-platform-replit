@@ -40,6 +40,8 @@ import { objectStorageClient, ObjectStorageService } from "../lib/objectStorage.
 import { iniciarRender, processarSolicitacao } from "../services/blenderService.js";
 import { toFile } from "openai";
 import { getOpenAIForTenant } from "../lib/agent-engine.js";
+import { callReplicateFlux } from "../lib/ai-gateway.js";
+import { automationLogsTable } from "@workspace/db";
 
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 20 * 1024 * 1024 } });
 
@@ -1620,6 +1622,7 @@ const archRenderBodySchema = z.object({
   lighting: z.enum(["auto", "manha", "tarde", "golden", "noturno", "nublado"]).default("auto"),
   angle:    z.enum(["frontal", "45", "lateral_esq", "lateral_dir", "ampla", "aerea"]).default("frontal"),
   roomType: z.string().default("fachada externa"),
+  estilo:   z.string().optional(),
   materials: z.array(z.object({
     zone:             z.string(),
     materialName:     z.string(),
@@ -1659,7 +1662,7 @@ router.post("/arch/render", async (req, res) => {
     });
   }
 
-  const { referenceImageUrl, lighting, angle, roomType, materials, userNotes } = parsed.data;
+  const { referenceImageUrl, lighting, angle, roomType, estilo, materials, userNotes } = parsed.data;
   const isExterior = !roomType || roomType === "fachada externa";
 
   const preservationRules = isExterior
@@ -1695,11 +1698,24 @@ router.post("/arch/render", async (req, res) => {
     ? `CAMERA ANGLE: render from a ${angleMapArch[angle]}.`
     : null;
 
+  const estiloMap: Record<string, string> = {
+    minimalista:   "minimalist style with clean lines, neutral palette (white/grey/beige), uncluttered spaces",
+    contemporaneo: "contemporary modern style with bold geometric forms and refined materials",
+    classico:      "timeless classic style with quality materials, warm tones, and refined simplicity",
+    industrial:    "industrial style with raw concrete, exposed steel, and dark tones",
+    escandinavo:   "Scandinavian style with natural light, pale wood, and simple functional forms",
+    tropical:      "tropical Brazilian style with warm earthy tones, natural textures, and lush accents",
+  };
+  const estiloInstruction = estilo && estiloMap[estilo]
+    ? `VISUAL STYLE: ${estiloMap[estilo]}.`
+    : null;
+
   const prompt = [
     "You are a professional architectural visualization engine.",
     `Transform this ${isExterior ? "architectural photo" : "interior photo"} into a photorealistic render.`,
     preservationRules,
     materialInstructions,
+    estiloInstruction,
     lightingInstruction,
     angleInstruction,
     userNotes ? `Additional notes: ${userNotes}` : null,
@@ -1707,48 +1723,61 @@ router.post("/arch/render", async (req, res) => {
   ].filter(Boolean).join(" ");
 
   try {
-    const openai  = await getOpenAIForTenant(tid);
     const storage = new ObjectStorageService();
     let b64: string | undefined;
+    let motor = "gpt-image-1";
 
     if (referenceImageUrl) {
+      // Validate data URL before anything else
       const dataUrlMatch = referenceImageUrl.match(/^data:([^;]+);base64,([\s\S]+)$/);
       if (!dataUrlMatch) {
         return res.status(400).json({ success: false, error: "referenceImageUrl deve ser um data URL base64 válido (data:<mime>;base64,<dados>)" });
       }
-      const mimeType  = dataUrlMatch[1];
-      const imgBuffer = Buffer.from(dataUrlMatch[2], "base64");
-      const ext       = mimeType.split("/")[1] ?? "png";
-      const refFile   = await toFile(imgBuffer, `reference.${ext}`, { type: mimeType });
-      const result    = await (openai.images.edit as Function)({
-        model:   "gpt-image-1",
-        image:   refFile,
-        prompt,
-        n:       1,
-        size:    "1536x1024",
-        quality: "high",
-      });
-      b64 = (result.data?.[0] as Record<string, unknown>)?.["b64_json"] as string | undefined;
+
+      // ── Try Replicate Flux+ControlNet first ───────────────────────
+      if (process.env["REPLICATE_API_TOKEN"]) {
+        try {
+          b64    = await callReplicateFlux({ controlImageDataUrl: referenceImageUrl, prompt, logger: req.log });
+          motor  = "replicate-flux";
+        } catch (replicateErr: any) {
+          req.log.warn({ err: replicateErr?.message, tenantId: tid }, "arch/render: Replicate falhou → fallback gpt-image-1");
+          db.insert(automationLogsTable).values({
+            flow: "render_fallback", step: "replicate_to_openai",
+            status: "warning", errorMessage: replicateErr?.message ?? "Replicate failed",
+          }).catch(() => undefined);
+        }
+      }
+
+      // ── Fallback: gpt-image-1 (img2img) ──────────────────────────
+      if (!b64) {
+        const openai    = await getOpenAIForTenant(tid);
+        const mimeType  = dataUrlMatch[1];
+        const imgBuffer = Buffer.from(dataUrlMatch[2], "base64");
+        const ext       = mimeType.split("/")[1] ?? "png";
+        const refFile   = await toFile(imgBuffer, `reference.${ext}`, { type: mimeType });
+        const result    = await (openai.images.edit as Function)({
+          model: "gpt-image-1", image: refFile, prompt, n: 1, size: "1536x1024", quality: "high",
+        });
+        b64 = (result.data?.[0] as Record<string, unknown>)?.["b64_json"] as string | undefined;
+      }
     } else {
+      // No reference image — text-to-image via gpt-image-1
+      const openai = await getOpenAIForTenant(tid);
       const result = await (openai.images.generate as Function)({
-        model:   "gpt-image-1",
-        prompt,
-        n:       1,
-        size:    "1536x1024",
-        quality: "high",
+        model: "gpt-image-1", prompt, n: 1, size: "1536x1024", quality: "high",
       });
       b64 = (result.data?.[0] as Record<string, unknown>)?.["b64_json"] as string | undefined;
     }
 
-    if (!b64) throw new Error("gpt-image-1 não retornou imagem");
+    if (!b64) throw new Error("Motor de render não retornou imagem");
 
     const buf       = Buffer.from(b64, "base64");
     const objPath   = await storage.savePrivateBuffer(buf, "image/png", `arch-render-${tid}-${Date.now()}.png`);
     const servePath = objPath.replace(/^\/objects\//, "");
     const imageUrl  = `/api/storage/objects/${servePath}`;
 
-    req.log.info({ tenantId: tid, lighting, angle }, "arch/render: concluído");
-    return res.json({ success: true, imageUrl, prompt });
+    req.log.info({ tenantId: tid, lighting, angle, motor }, "arch/render: concluído");
+    return res.json({ success: true, imageUrl, prompt, motor });
   } catch (err: any) {
     req.log.error({ err, tenantId: tid }, "arch/render: erro");
     const httpStatus = (err?.status ?? err?.statusCode ?? 500) as number;
@@ -1845,7 +1874,7 @@ router.post("/arch/suggestions", async (req, res) => {
     }
 
     req.log.info({ tenantId: tid, style }, "arch/suggestions: concluído");
-    return res.json({ success: true, imageUrl, suggestionId });
+    return res.json({ success: true, imageUrl, suggestionId, saved: !!suggestionId });
   } catch (err: any) {
     req.log.error({ err, tenantId: tid }, "arch/suggestions: erro");
     return res.status(500).json({ success: false, error: err?.message ?? "Erro ao gerar sugestão" });

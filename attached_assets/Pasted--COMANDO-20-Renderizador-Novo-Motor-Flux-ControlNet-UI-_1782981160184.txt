@@ -1,0 +1,122 @@
+# COMANDO 20 — Renderizador: Novo Motor (Flux+ControlNet) + UI Clean + Botões Funcionais
+
+**Módulo:** Arch — Design / Renderização  
+**Base:** auditoria docs/auditoria-renderizador.md + cmd-18 + cmd-19  
+**Três frentes:** (A) migrar motor de render para Flux+ControlNet, (B) redesign clean da tela, (C) corrigir todos os botões quebrados/parciais da auditoria
+
+---
+
+## PARTE A — Migração do motor de render
+
+### Estratégia por função
+
+| Função | Motor | Motivo |
+|---|---|---|
+| Render principal (preservação) | **Flux + ControlNet via Replicate** | Preservação por estrutura, não por prompt |
+| Inpainting de material (máscara SAM) | Flux inpainting via Replicate (fallback: gpt-image-1 images.edit) | Mais controle na região |
+| Sugestões de decoração | gpt-image-1 (manter como está) | Criatividade desejada, já funciona |
+| Segmentação por clique | SAM via Replicate (cmd-19) | — |
+
+### Implementação no ai-gateway.ts
+
+```
+1. Adicionar provider 'replicate' ao gateway existente (não quebrar OpenAI)
+2. Secret: REPLICATE_API_TOKEN
+3. Modelo render principal:
+   "black-forest-labs/flux-canny-pro" (ControlNet canny embutido) OU
+   "black-forest-labs/flux-depth-pro" — testar os dois, canny tende a ser
+   melhor para linhas arquitetônicas retas
+4. Parâmetros travados:
+   { guidance: 30, steps: 50, control_strength: 0.75 (canny) }
+5. Fallback automático: se Replicate falhar → gpt-image-1 (fluxo atual)
+   + log em automation_logs { flow: 'render_fallback' }
+6. Prompt: manter as ABSOLUTE PRESERVATION RULES existentes (auditoria §3.1)
+   como reforço — agora com a trava estrutural do ControlNet por baixo
+```
+
+---
+
+## PARTE B — Redesign CLEAN da tela de render
+
+### Princípios
+- Tela dividida em 2 áreas apenas: **imagem grande à esquerda (75%)** + **painel único à direita (25%)**
+- Eliminar as 3 barras empilhadas atuais (ConfigBar + MaterialBar + BottomBar) — tudo vira seções colapsáveis do painel direito
+- Imagem é a protagonista: canvas ocupa a altura toda, fundo escuro neutro
+- Máximo 1 accent color (violeta da marca) — remover excesso de chips coloridos
+
+### Layout novo
+
+```
+┌──────────────────────────────────┬──────────────────┐
+│                                  │ 🖼 PROJETO         │
+│                                  │ [nome] [trocar]   │
+│                                  ├──────────────────┤
+│                                  │ 1 · AMBIENTE   ▾  │
+│        IMAGEM / CANVAS           │ (9 tipos, grid)   │
+│      (75% da largura,            │ 2 · ESTILO     ▾  │
+│       altura total,              │ (6 estilos)       │
+│       zoom + pan)                │ 3 · ILUMINAÇÃO ▾  │
+│                                  │ (6 chips: +nublado│
+│  [🎯 Selecionar] [↔ Antes/Depois]│ 4 · ÂNGULO     ▾  │
+│                                  │ 5 · COMPONENTES ▾ │
+│                                  │ (painel do cmd-19)│
+│                                  ├──────────────────┤
+│                                  │ Observações       │
+│                                  │ [textarea 1 linha]│
+│                                  │ ┌──────────────┐  │
+│                                  │ │ ✨ GERAR      │  │
+│                                  │ │   RENDER      │  │
+│                                  │ └──────────────┘  │
+│                                  │ 🔒 Preserva 100%  │
+├──────────────────────────────────┴──────────────────┤
+│ 🕐 HISTÓRICO: [thumb] [thumb] [thumb] [thumb] →      │
+└─────────────────────────────────────────────────────┘
+```
+
+### Detalhes de execução
+- Seções do painel são accordions — só uma aberta por vez, estado inicial: Ambiente
+- Seleção feita → accordion colapsa mostrando o valor escolhido no header
+  ("1 · AMBIENTE — Cozinha ✓")
+- Materiais saem da barra inferior → viveem dentro de "5 · COMPONENTES"
+  (aplicação via clique/drag do cmd-19)
+- Slider Antes/Depois sobre a imagem (padrão Redraw) após cada render
+- Mobile: painel vira bottom-sheet deslizável, imagem em cima
+- Histórico horizontal de thumbnails no rodapé — clique restaura o render
+- Loading do render: skeleton com progresso sobre a própria imagem
+  (não spinner genérico)
+
+---
+
+## PARTE C — Corrigir botões quebrados/parciais (da auditoria §4 e §7)
+
+| Item | Status auditoria | Correção |
+|---|---|---|
+| **Salvar no Lead** | ❌ disabled | Implementar: modal busca lead/deal do CRM → salva render como anexo + activity type='render_compartilhado'. Botão vai para o header do painel |
+| **Modos HD/Full/Chat** | ⚠️ estado sem efeito | REMOVER os 3 chips. "HD" vira automático (sempre 1536x1024). "Chat" sai da tela (redundante com Observações) |
+| **Chip Nublado** | 🚫 ausente na UI | Adicionar 6º chip de iluminação (backend já suporta, auditoria §4.2) |
+| **Textura importada** | 🚫 não influencia render | Já coberto no cmd-19 Parte C (vision gera promptFragment) — garantir integrado |
+| **Zonas hardcoded** | ⚠️ só cozinha | Deletar ZONES do ImageCanvas — substituídas pela segmentação SAM (cmd-19) |
+| **Baixar HD** | ✅ funciona | Manter, mover para header do painel junto de Salvar no Lead |
+| **try/catch silencioso das suggestions** | engole erro de insert | Logar + retornar warning no payload { saved: false } para a UI avisar |
+
+---
+
+## ORDEM DE IMPLEMENTAÇÃO
+
+```
+1º — Parte A (motor Flux+ControlNet com fallback) — funcional antes do visual
+2º — Parte C (botões: remover mortos, corrigir parciais)
+3º — Parte B (redesign da tela) — por último para não redesenhar duas vezes
+```
+
+## VALIDAÇÃO
+
+- [ ] Render principal roda via Flux+ControlNet; geometria idêntica no antes/depois
+- [ ] Replicate fora do ar → fallback gpt-image-1 automático + log
+- [ ] Tela tem só 2 áreas (canvas + painel accordion) — zero barras empilhadas
+- [ ] Fluxo guiado 1→5 com valores escolhidos visíveis nos headers colapsados
+- [ ] Salvar no Lead funcional (anexa render ao deal + activity)
+- [ ] Chips HD/Full/Chat removidos; Nublado presente
+- [ ] Slider antes/depois após cada render
+- [ ] Histórico de thumbnails restaura renders anteriores
+- [ ] Mobile: painel em bottom-sheet, canvas protagonista

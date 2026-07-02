@@ -1,4 +1,4 @@
-import { RenderConfig, RenderMode, LightOption, AngleOption } from './render-types'
+import { RenderConfig, LightOption, AngleOption } from './render-types'
 
 interface ConfigBarProps {
   config: RenderConfig
@@ -7,27 +7,22 @@ interface ConfigBarProps {
 
 type ChipDef<T extends string> = { value: T; label: string }
 
-const MODOS: ChipDef<RenderMode>[] = [
-  { value: 'hd',   label: '🛡 Original HD' },
-  { value: 'full', label: '✨ Render completo' },
-  { value: 'chat', label: '💬 Chat' },
-]
-
 const LUZES: ChipDef<LightOption>[] = [
-  { value: 'auto',    label: '🔄' },
-  { value: 'manha',   label: '🌅 Manhã' },
-  { value: 'tarde',   label: '☀️ Tarde' },
-  { value: 'golden',  label: '🌇 Golden' },
+  { value: 'auto',    label: '🔄 Auto'    },
+  { value: 'manha',   label: '🌅 Manhã'   },
+  { value: 'tarde',   label: '☀️ Tarde'   },
+  { value: 'golden',  label: '🌇 Golden'  },
   { value: 'noturno', label: '🌙 Noturno' },
+  { value: 'nublado', label: '☁️ Nublado' },
 ]
 
 const ANGULOS: ChipDef<AngleOption>[] = [
-  { value: 'frontal',     label: 'Frontal' },
-  { value: '45',          label: '45°' },
+  { value: 'frontal',     label: 'Frontal'   },
+  { value: '45',          label: '45°'       },
   { value: 'lateral_esq', label: 'Lat. Esq.' },
   { value: 'lateral_dir', label: 'Lat. Dir.' },
-  { value: 'ampla',       label: 'Ampla' },
-  { value: 'aerea',       label: 'Aérea' },
+  { value: 'ampla',       label: 'Ampla'     },
+  { value: 'aerea',       label: 'Aérea'     },
 ]
 
 const BASE_CHIP: React.CSSProperties = {
@@ -42,14 +37,6 @@ const BASE_CHIP: React.CSSProperties = {
   color: 'rgba(255,255,255,0.45)',
   transition: 'background 0.15s, color 0.15s',
   lineHeight: '20px',
-}
-
-function modoActive(active: boolean): React.CSSProperties {
-  return active ? {
-    background: 'rgba(0,220,220,0.15)',
-    border: '1px solid rgba(0,220,220,0.35)',
-    color: '#67e8f9',
-  } : {}
 }
 
 function luzActive(active: boolean): React.CSSProperties {
@@ -89,19 +76,6 @@ export default function ConfigBar({ config, onChange }: ConfigBarProps) {
       overflowY: 'hidden',
       flexShrink: 0,
     }}>
-      {/* Grupo Modo */}
-      {MODOS.map(m => (
-        <button
-          key={m.value}
-          onClick={() => onChange({ mode: m.value })}
-          style={{ ...BASE_CHIP, ...modoActive(config.mode === m.value) }}
-        >
-          {m.label}
-        </button>
-      ))}
-
-      <div style={DIVIDER} />
-
       {/* Grupo Luz */}
       {LUZES.map(l => (
         <button
