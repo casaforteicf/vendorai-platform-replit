@@ -958,6 +958,250 @@ function TestimonialsDialog({ onRefine }: { onRefine: (msg: string) => Promise<s
   );
 }
 
+// ── PortfolioDialog ────────────────────────────────────────────────────────────
+
+type PortfolioCard = { id: string; title: string; imageUrl: string; newImageUrl: string | null };
+
+function parsePortfolioCards(html: string): PortfolioCard[] {
+  const cards: PortfolioCard[] = [];
+
+  // Strategy 1: find portfolio/gallery section and extract image+caption pairs
+  const portfolioSectionMatch = html.match(
+    /<(?:section|div)\b[^>]*(?:id|class)=["'][^"']*(?:portfolio|galeria|gallery|projetos)[^"']*["'][^>]*>([\s\S]*?)<\/(?:section|div)>/i
+  );
+  const scope = portfolioSectionMatch ? portfolioSectionMatch[1] : html;
+
+  // Extract cards: look for wrapper divs/figures that contain both an img and a text element
+  const cardRegex = /<(?:figure|div|article)\b[^>]*>([\s\S]*?)<\/(?:figure|div|article)>/gi;
+  let cardMatch: RegExpExecArray | null;
+  while ((cardMatch = cardRegex.exec(scope)) !== null) {
+    const inner = cardMatch[1];
+    const imgMatch = inner.match(/<img[^>]+src=["']([^"']+)["']/i);
+    const textMatch = inner.match(/<(?:h[1-6]|figcaption|p|span|div)[^>]*>\s*([^<]{3,80})\s*<\/(?:h[1-6]|figcaption|p|span|div)>/i);
+    if (imgMatch && textMatch) {
+      const imageUrl = imgMatch[1];
+      const title = textMatch[1].trim();
+      if (!imageUrl.includes("data:") && title.length > 1) {
+        cards.push({ id: crypto.randomUUID(), title, imageUrl, newImageUrl: null });
+      }
+    }
+  }
+
+  // Strategy 2: fallback — plain img+adjacent text combos anywhere in scope
+  if (cards.length === 0) {
+    const imgRegex = /<img[^>]+src=["']([^"']+)["'][^>]*>\s*(?:<[^>]+>)*([^<]{3,80})/gi;
+    let m: RegExpExecArray | null;
+    while ((m = imgRegex.exec(scope)) !== null) {
+      const imageUrl = m[1];
+      const title = m[2].trim();
+      if (!imageUrl.includes("data:") && title.length > 1) {
+        cards.push({ id: crypto.randomUUID(), title, imageUrl, newImageUrl: null });
+      }
+    }
+  }
+
+  // Deduplicate by imageUrl
+  const seen = new Set<string>();
+  return cards.filter((c) => {
+    if (seen.has(c.imageUrl)) return false;
+    seen.add(c.imageUrl);
+    return true;
+  }).slice(0, 20);
+}
+
+function PortfolioDialog({ html, onRefine, tenantId }: { html: string; onRefine: (msg: string) => Promise<string>; tenantId: string }) {
+  const [open, setOpen] = useState(false);
+  const [cards, setCards] = useState<PortfolioCard[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [uploading, setUploading] = useState<string | null>(null);
+  const [done, setDone] = useState(false);
+  const { toast } = useToast();
+  const requestUploadUrl = useRequestUploadUrl();
+
+  useEffect(() => {
+    if (!open) return;
+    const parsed = parsePortfolioCards(html);
+    setCards(parsed.length > 0 ? parsed : [
+      { id: crypto.randomUUID(), title: "", imageUrl: "", newImageUrl: null }
+    ]);
+    setDone(false);
+  }, [open, html]);
+
+  function updateTitle(id: string, title: string) {
+    setCards((prev) => prev.map((c) => c.id === id ? { ...c, title } : c));
+  }
+
+  function addCard() {
+    setCards((prev) => [...prev, { id: crypto.randomUUID(), title: "", imageUrl: "", newImageUrl: null }]);
+  }
+
+  function removeCard(id: string) {
+    setCards((prev) => prev.filter((c) => c.id !== id));
+  }
+
+  async function uploadImage(file: File, cardId: string): Promise<string> {
+    setUploading(cardId);
+    try {
+      const result = await new Promise<{ uploadURL: string; objectPath: string }>((resolve, reject) => {
+        requestUploadUrl.mutate(
+          { data: { name: file.name, size: file.size, contentType: file.type || "image/png" } },
+          { onSuccess: resolve, onError: reject },
+        );
+      });
+      const uploadRes = await fetch(result.uploadURL, {
+        method: "PUT",
+        body: file,
+        headers: { "Content-Type": file.type || "image/png" },
+      });
+      if (!uploadRes.ok) throw new Error("Upload falhou");
+      return `/api/storage/${result.objectPath}`;
+    } finally {
+      setUploading(null);
+    }
+  }
+
+  async function handleReplaceImage(cardId: string, file: File) {
+    try {
+      const url = await uploadImage(file, cardId);
+      setCards((prev) => prev.map((c) => c.id === cardId ? { ...c, newImageUrl: url } : c));
+    } catch {
+      toast({ title: "Erro ao enviar imagem. Tente novamente.", variant: "destructive" });
+    }
+  }
+
+  async function apply() {
+    const valid = cards.filter((c) => c.title.trim() || c.imageUrl || c.newImageUrl);
+    if (!valid.length || loading) return;
+    setLoading(true);
+    try {
+      const list = valid.map((c, i) => {
+        const imgInstruction = c.newImageUrl
+          ? `Imagem: SUBSTITUIR por "${c.newImageUrl}"`
+          : c.imageUrl
+            ? `Imagem atual: "${c.imageUrl}" (manter)`
+            : "Sem imagem";
+        return `${i + 1}. Título/legenda: "${c.title}" | ${imgInstruction}`;
+      }).join("\n");
+
+      const prompt = `Atualize a seção de portfólio/galeria do site com os cards abaixo, na mesma ordem. Para cada card: substitua o título ou legenda pelo texto indicado; se houver instrução "SUBSTITUIR por", troque o src da imagem pela nova URL. Mantenha exatamente o mesmo design, layout e estrutura HTML da seção — apenas altere textos e src das imagens.\n\nCARDS DO PORTFÓLIO:\n${list}`;
+
+      await onRefine(prompt);
+      setDone(true);
+      setTimeout(() => { setDone(false); setOpen(false); }, 1400);
+    } catch {
+      // keep open on error
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  const hasChanges = cards.some((c) => c.newImageUrl || c.title.trim());
+
+  return (
+    <Dialog open={open} onOpenChange={setOpen}>
+      <DialogTrigger asChild>
+        <Button variant="outline" size="sm">
+          <LayoutTemplate className="h-3.5 w-3.5 mr-1.5" />
+          Portfólio
+        </Button>
+      </DialogTrigger>
+      <DialogContent className="sm:max-w-lg max-h-[90vh] overflow-y-auto">
+        <DialogHeader>
+          <DialogTitle>Editar cards do portfólio</DialogTitle>
+        </DialogHeader>
+        <p className="text-xs text-muted-foreground -mt-1">
+          Corrija títulos e substitua imagens de cada card. Clique em "Aplicar" para atualizar o site via IA.
+        </p>
+        <ScrollArea className="max-h-[60vh] pr-2">
+          <div className="flex flex-col gap-4 py-1">
+            {cards.map((card, i) => (
+              <div key={card.id} className="rounded-lg border p-3 flex flex-col gap-3">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-medium text-muted-foreground uppercase tracking-widest">Card {i + 1}</span>
+                  {cards.length > 1 && (
+                    <button type="button" onClick={() => removeCard(card.id)} className="text-destructive hover:opacity-70 cursor-pointer transition-opacity">
+                      <Trash2 className="h-4 w-4" />
+                    </button>
+                  )}
+                </div>
+
+                <div className="flex flex-col gap-1">
+                  <Label className="text-xs">Título / Ambiente</Label>
+                  <Input
+                    placeholder="Ex: Quarto Master Casal"
+                    value={card.title}
+                    onChange={(e) => updateTitle(card.id, e.target.value)}
+                  />
+                </div>
+
+                <div className="flex flex-col gap-1">
+                  <Label className="text-xs">Imagem</Label>
+                  <div className="flex gap-2 items-start">
+                    {(card.newImageUrl || card.imageUrl) && (
+                      <div className="relative shrink-0 w-20 h-16 rounded-md overflow-hidden border bg-muted/30">
+                        <img
+                          src={card.newImageUrl || card.imageUrl}
+                          alt={card.title}
+                          className="w-full h-full object-cover"
+                          onError={(e) => { (e.target as HTMLImageElement).style.opacity = "0.2"; }}
+                        />
+                        {card.newImageUrl && (
+                          <span className="absolute bottom-0 inset-x-0 bg-green-600/90 text-white text-[9px] text-center py-0.5 leading-none">
+                            Nova
+                          </span>
+                        )}
+                      </div>
+                    )}
+                    <div className="flex flex-col gap-1 flex-1">
+                      <label className="cursor-pointer">
+                        <input
+                          type="file"
+                          accept="image/*"
+                          className="sr-only"
+                          disabled={!!uploading}
+                          onChange={(e) => { const f = e.target.files?.[0]; if (f) handleReplaceImage(card.id, f); e.target.value = ""; }}
+                        />
+                        <Button variant="outline" size="sm" type="button" asChild disabled={uploading === card.id} className="w-full">
+                          <span>
+                            {uploading === card.id
+                              ? <><Loader2 className="h-3.5 w-3.5 mr-1.5 animate-spin" />Enviando…</>
+                              : <><Upload className="h-3.5 w-3.5 mr-1.5" />{card.newImageUrl ? "Trocar imagem" : "Substituir imagem"}</>
+                            }
+                          </span>
+                        </Button>
+                      </label>
+                      {card.newImageUrl && (
+                        <button
+                          type="button"
+                          onClick={() => setCards((prev) => prev.map((c) => c.id === card.id ? { ...c, newImageUrl: null } : c))}
+                          className="text-xs text-muted-foreground hover:text-destructive transition-colors text-left cursor-pointer"
+                        >
+                          ✕ Desfazer troca
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              </div>
+            ))}
+            <Button type="button" variant="ghost" className="self-start text-primary text-sm" onClick={addCard}>
+              <Plus className="h-3.5 w-3.5 mr-1.5" /> Adicionar card
+            </Button>
+          </div>
+        </ScrollArea>
+        <DialogFooter>
+          <Button onClick={apply} disabled={loading || !hasChanges} className="w-full">
+            {loading
+              ? <><Loader2 className="h-4 w-4 mr-2 animate-spin" />Aplicando portfólio…</>
+              : done ? "✓ Portfólio atualizado!" : "Aplicar ao site"
+            }
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
 // ── MediaDialog ────────────────────────────────────────────────────────────────
 
 type GalleryItem = { src: string; originalSrc: string };
@@ -1348,6 +1592,7 @@ function PersonalizePanel({
       <div className="flex flex-wrap gap-2">
         <RefineDialog onRefine={onRefine} />
         <TestimonialsDialog onRefine={onRefine} />
+        <PortfolioDialog html={html} onRefine={onRefine} tenantId={tenantId} />
         <MediaDialog html={html} onSave={onSave} tenantId={tenantId} />
         {currentSiteType !== "ecommerce" && (
           <Button variant="outline" size="sm" onClick={onGenerateEcommerce} className="border-indigo-300 text-indigo-700 hover:bg-indigo-50 dark:border-indigo-700 dark:text-indigo-300 dark:hover:bg-indigo-950/40">
