@@ -283,3 +283,46 @@ export async function deleteGoogleEvent(
     logger.warn({ err: e }, "Failed to delete Google Calendar event");
   }
 }
+
+/** A busy period returned by Google Calendar free/busy query. */
+export interface BusyPeriod {
+  start: Date;
+  end: Date;
+}
+
+/**
+ * Fetches busy periods from Google Calendar for the given agenda and time range.
+ * Returns an empty array if the agenda has no refresh token or on error.
+ */
+export async function listGoogleCalendarBusyTimes(
+  agendaId: string,
+  timeMin: Date,
+  timeMax: Date,
+): Promise<BusyPeriod[]> {
+  const auth = await getAuthForAgenda(agendaId);
+  if (!auth) return [];
+
+  try {
+    const cal = google.calendar({ version: "v3", auth: auth.oauth2 });
+    const resp = await cal.freebusy.query({
+      requestBody: {
+        timeMin: timeMin.toISOString(),
+        timeMax: timeMax.toISOString(),
+        items: [{ id: auth.calendarId }],
+      },
+    });
+
+    const calendars = resp.data.calendars ?? {};
+    const busy = calendars[auth.calendarId]?.busy ?? [];
+
+    return busy
+      .filter((b) => b.start && b.end)
+      .map((b) => ({
+        start: new Date(b.start!),
+        end:   new Date(b.end!),
+      }));
+  } catch (err) {
+    logger.warn({ err, agendaId }, "listGoogleCalendarBusyTimes: error fetching free/busy");
+    return [];
+  }
+}

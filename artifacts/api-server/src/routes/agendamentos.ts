@@ -1,11 +1,15 @@
 import { Router, type IRouter } from "express";
-import { and, eq, gte, lte, lt, gt } from "drizzle-orm";
+import { and, eq, gte, lte, lt, gt, or, inArray } from "drizzle-orm";
 import { z } from "zod/v4";
 import {
   db,
   agendamentosTable,
   agendasTable,
   leadsTable,
+  activitiesTable,
+  usersTable,
+  businessProfilesTable,
+  notificationLogsTable,
   insertAgendamentoSchema,
   updateAgendamentoSchema,
 } from "@workspace/db";
@@ -13,7 +17,9 @@ import {
   createGoogleEvent,
   updateGoogleEvent,
   deleteGoogleEvent,
+  listGoogleCalendarBusyTimes,
 } from "../lib/google-calendar";
+import { sendDirectWhatsAppMessage } from "../services/omnichannel.js";
 
 const router: IRouter = Router();
 
@@ -69,7 +75,7 @@ router.post("/agendamentos", async (req, res) => {
 
       if (agenda?.googleRefreshToken) {
         const [lead] = await db
-          .select({ nome: leadsTable.nome, email: leadsTable.email })
+          .select({ nome: leadsTable.nome, email: leadsTable.email, telefone: leadsTable.telefone })
           .from(leadsTable)
           .where(eq(leadsTable.id, agendamento.leadId));
 
@@ -101,11 +107,85 @@ router.post("/agendamentos", async (req, res) => {
             .where(eq(agendamentosTable.id, agendamento.id));
         }
         req.log.info({ agendaId: agendamento.agendaId, googleEventId, meetLink }, "agendamento: Google Calendar sync result");
+
+        // ── WhatsApp confirmation to lead (after Calendar sync so meetLink is resolved) ──
+        const resolvedMeetLink = meetLink ?? agendamento.meetLink;
+        const leadPhone = lead?.telefone ?? null;
+        if (leadPhone) {
+          try {
+            const dataStr = new Date(agendamento.dataHoraInicio).toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit", year: "numeric", timeZone: "America/Sao_Paulo" });
+            const horaStr = new Date(agendamento.dataHoraInicio).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit", timeZone: "America/Sao_Paulo" });
+            const modalidade = agendamento.modalidade ?? (agendamento.gerarMeet ? "meet" : "presencial");
+            const meetPart = (modalidade === "meet" || agendamento.gerarMeet) && resolvedMeetLink
+              ? `\nAcesse o Google Meet: ${resolvedMeetLink}`
+              : agendamento.local ? `\nLocal: ${agendamento.local}` : "";
+            const [bp] = await db
+              .select({ nomeFantasia: businessProfilesTable.nomeFantasia, razaoSocial: businessProfilesTable.razaoSocial })
+              .from(businessProfilesTable)
+              .where(eq(businessProfilesTable.tenantId, agendamento.tenantId))
+              .limit(1);
+            const nomeEmpresa = bp?.nomeFantasia ?? bp?.razaoSocial ?? "Vendor.ai";
+            const tipoLabel = modalidade === "meet" ? "via Google Meet" : modalidade === "ligacao" ? "por ligação" : "presencial";
+            const msg = `Olá, ${lead?.nome ?? ""}! Reunião confirmada ${tipoLabel}: ${dataStr} às ${horaStr}.${meetPart}\nQualquer dúvida, responda aqui. Até lá! — ${nomeEmpresa}`;
+            await sendDirectWhatsAppMessage(agendamento.tenantId, leadPhone, msg, req.log);
+            req.log.info({ agendamentoId: agendamento.id }, "agendamento: WhatsApp confirmation sent to lead");
+          } catch (waErr) {
+            req.log.warn({ err: waErr, agendamentoId: agendamento.id }, "agendamento: WhatsApp confirmation failed (non-fatal)");
+          }
+        }
       } else {
         req.log.warn({ agendaId: agendamento.agendaId }, "agendamento: agenda has no refresh_token, skipping Google Calendar sync");
       }
     } catch (err) {
       req.log.error({ err }, "agendamento: Google Calendar sync failed on create");
+    }
+  } else if (agendamento.leadId) {
+    // No agenda connected — still send WhatsApp confirmation if possible
+    try {
+      const [lead] = await db
+        .select({ nome: leadsTable.nome, telefone: leadsTable.telefone })
+        .from(leadsTable)
+        .where(eq(leadsTable.id, agendamento.leadId));
+      const leadPhone = lead?.telefone ?? null;
+      if (leadPhone) {
+        const dataStr = new Date(agendamento.dataHoraInicio).toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit", year: "numeric", timeZone: "America/Sao_Paulo" });
+        const horaStr = new Date(agendamento.dataHoraInicio).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit", timeZone: "America/Sao_Paulo" });
+        const modalidade = agendamento.modalidade ?? "presencial";
+        const tipoLabel = modalidade === "meet" ? "via Google Meet" : modalidade === "ligacao" ? "por ligação" : "presencial";
+        const [bp] = await db
+          .select({ nomeFantasia: businessProfilesTable.nomeFantasia, razaoSocial: businessProfilesTable.razaoSocial })
+          .from(businessProfilesTable)
+          .where(eq(businessProfilesTable.tenantId, agendamento.tenantId))
+          .limit(1);
+        const nomeEmpresa = bp?.nomeFantasia ?? bp?.razaoSocial ?? "Vendor.ai";
+        const msg = `Olá, ${lead?.nome ?? ""}! Reunião confirmada ${tipoLabel}: ${dataStr} às ${horaStr}.\nQualquer dúvida, responda aqui. Até lá! — ${nomeEmpresa}`;
+        await sendDirectWhatsAppMessage(agendamento.tenantId, leadPhone, msg, req.log);
+      }
+    } catch (waErr) {
+      req.log.warn({ err: waErr }, "agendamento: WhatsApp confirmation (no-agenda path) failed (non-fatal)");
+    }
+  }
+
+  // ── Deal activity ──────────────────────────────────────────────────────────
+  if (agendamento.dealId && agendamento.leadId) {
+    try {
+      const modalidade = agendamento.modalidade ?? (agendamento.gerarMeet ? "meet" : "presencial");
+      const tipoLabel = modalidade === "meet" ? "Google Meet" : modalidade === "ligacao" ? "Ligação" : "Presencial";
+      const dataStr = new Date(agendamento.dataHoraInicio).toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit", year: "numeric", timeZone: "America/Sao_Paulo" });
+      const horaStr = new Date(agendamento.dataHoraInicio).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit", timeZone: "America/Sao_Paulo" });
+      const criadoPor = agendamento.criadoPor ?? "humano";
+      await db.insert(activitiesTable).values({
+        tenantId: agendamento.tenantId,
+        leadId:   agendamento.leadId,
+        dealId:   agendamento.dealId,
+        tipo:     "tarefa",
+        titulo:   `Reunião agendada — ${tipoLabel}`,
+        descricao: `Reunião ${tipoLabel} agendada para ${dataStr} às ${horaStr}. Criado por: ${criadoPor === "agente_ia" ? "Agente IA" : "Usuário"}.${agendamento.meetLink ? ` Meet: ${agendamento.meetLink}` : ""}`,
+        status:   "pendente",
+      });
+      req.log.info({ dealId: agendamento.dealId, agendamentoId: agendamento.id }, "agendamento: deal activity created");
+    } catch (actErr) {
+      req.log.warn({ err: actErr }, "agendamento: deal activity creation failed (non-fatal)");
     }
   }
 });
@@ -144,6 +224,88 @@ router.get("/tenants/:tenantId/agendamentos", async (req, res) => {
     .orderBy(agendamentosTable.dataHoraInicio);
 
   res.json(agendamentos);
+});
+
+// ── Slots endpoint ────────────────────────────────────────────────────────────
+// GET /tenants/:tenantId/agendamentos/slots
+// Query: date (YYYY-MM-DD), duracao (minutes, default 30), agendaId (optional)
+//        responsavelId (optional — filters internal conflicts by user)
+// Returns: { slots: [{start, end, label}] }
+const slotsQuerySchema = z.object({
+  date:          z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "date must be YYYY-MM-DD"),
+  duracao:       z.coerce.number().int().min(15).max(240).default(30),
+  agendaId:      z.string().optional(),
+  responsavelId: z.string().optional(),
+});
+
+router.get("/tenants/:tenantId/agendamentos/slots", async (req, res) => {
+  const parsed = slotsQuerySchema.safeParse(req.query);
+  if (!parsed.success) {
+    res.status(422).json({ error: "Query params: date (YYYY-MM-DD), duracao, agendaId?, responsavelId?" });
+    return;
+  }
+
+  const { date, duracao, agendaId, responsavelId } = parsed.data;
+  const tenantId = String(req.params.tenantId);
+
+  // Build day boundaries in São Paulo timezone
+  // We convert YYYY-MM-DD (interpreted as São Paulo local) to UTC
+  const tzOffset = -3 * 60; // São Paulo (BRT = UTC-3, no DST in winter)
+  const [year, month, day] = date.split("-").map(Number) as [number, number, number];
+  const workStart = new Date(Date.UTC(year, month - 1, day, 8  - (-3), 0, 0)); // 08:00 BRT = 11:00 UTC
+  const workEnd   = new Date(Date.UTC(year, month - 1, day, 18 - (-3), 0, 0)); // 18:00 BRT = 21:00 UTC
+
+  // Collect busy periods from internal agendamentos
+  const conditions = [
+    eq(agendamentosTable.tenantId, tenantId),
+    lt(agendamentosTable.dataHoraInicio, workEnd),
+    gt(agendamentosTable.dataHoraFim, workStart),
+    inArray(agendamentosTable.status, ["agendado", "confirmado"]),
+  ];
+  if (responsavelId) conditions.push(eq(agendamentosTable.responsavelId, responsavelId));
+
+  const internal = await db
+    .select({ start: agendamentosTable.dataHoraInicio, end: agendamentosTable.dataHoraFim })
+    .from(agendamentosTable)
+    .where(and(...conditions));
+
+  // Collect busy periods from Google Calendar (if agendaId provided)
+  let googleBusy: { start: Date; end: Date }[] = [];
+  if (agendaId) {
+    try {
+      googleBusy = await listGoogleCalendarBusyTimes(agendaId, workStart, workEnd);
+    } catch (e) {
+      req.log.warn({ err: e, agendaId }, "slots: Google Calendar lookup failed (non-fatal)");
+    }
+  }
+
+  const busy = [
+    ...internal.map((r) => ({ start: new Date(r.start), end: new Date(r.end) })),
+    ...googleBusy,
+  ];
+
+  // Build candidate slots at 30-min intervals within working hours
+  const slotMinutes = duracao;
+  const slots: { start: string; end: string; label: string }[] = [];
+  let cursor = new Date(workStart);
+
+  while (cursor < workEnd) {
+    const slotEnd = new Date(cursor.getTime() + slotMinutes * 60_000);
+    if (slotEnd > workEnd) break;
+
+    // Check conflict
+    const hasConflict = busy.some((b) => b.start < slotEnd && b.end > cursor);
+    if (!hasConflict) {
+      const label = cursor.toLocaleTimeString("pt-BR", {
+        hour: "2-digit", minute: "2-digit", timeZone: "America/Sao_Paulo",
+      });
+      slots.push({ start: cursor.toISOString(), end: slotEnd.toISOString(), label });
+    }
+
+    cursor = new Date(cursor.getTime() + 30 * 60_000); // advance by 30-min increments
+  }
+
+  res.json({ slots });
 });
 
 const disponibilidadeQuerySchema = z.object({

@@ -1,4 +1,4 @@
-import { pgTable, text, timestamp, pgEnum, boolean } from "drizzle-orm/pg-core";
+import { pgTable, text, timestamp, pgEnum, boolean, jsonb } from "drizzle-orm/pg-core";
 import { createInsertSchema, createSelectSchema } from "drizzle-zod";
 import { z } from "zod/v4";
 import { tenantsTable } from "./tenants";
@@ -39,6 +39,8 @@ export const agendamentosTable = pgTable("agendamentos", {
     onDelete: "set null",
   }),
   tipo: agendamentoTipoEnum("tipo").notNull(),
+  /** presencial | meet | ligacao  — detalha o canal dentro do tipo */
+  modalidade: text("modalidade"),
   titulo: text("titulo").notNull(),
   dataHoraInicio: timestamp("data_hora_inicio").notNull(),
   dataHoraFim: timestamp("data_hora_fim").notNull(),
@@ -51,6 +53,10 @@ export const agendamentosTable = pgTable("agendamentos", {
   googleEventId: text("google_event_id"),
   meetLink: text("meet_link"),
   gerarMeet: boolean("gerar_meet").default(false),
+  /** humano | agente_ia */
+  criadoPor: text("criado_por").default("humano"),
+  /** [{nome, email, telefone}] — participantes extras além de responsavel e lead */
+  participantes: jsonb("participantes").$type<Array<{ nome: string; email?: string; telefone?: string }>>().default([]),
   createdAt: timestamp("created_at").notNull().defaultNow(),
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
 });

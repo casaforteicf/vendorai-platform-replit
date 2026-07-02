@@ -1,4 +1,5 @@
 import React, { useState, useCallback, useRef } from "react";
+import { AgendarReuniaoModal } from "@/components/AgendarReuniaoModal";
 import { useLocation } from "wouter";
 import { useAuth } from "@/contexts/AuthContext";
 import {
@@ -1232,6 +1233,7 @@ function EditDealSheet({
   const queryClient = useQueryClient();
   const { user } = useAuth();
   const tenantId = user?.tenantId ?? "";
+  const [agendarOpen, setAgendarOpen] = useState(false);
   const [copied, setCopied] = useState(false);
   const [extracting, setExtracting] = useState(false);
   const [extractedInfo, setExtractedInfo] = useState<{
@@ -1620,6 +1622,32 @@ function EditDealSheet({
             </Button>
           </form>
         </Form>
+
+        {/* ── Agendar reunião ───────────────────────────────────── */}
+        {deal && (
+          <div className="mt-3">
+            <Button
+              type="button"
+              variant="outline"
+              className="w-full flex items-center gap-2"
+              onClick={() => setAgendarOpen(true)}
+            >
+              📅 Agendar reunião
+            </Button>
+          </div>
+        )}
+
+        {deal && (
+          <AgendarReuniaoModal
+            open={agendarOpen}
+            onClose={() => setAgendarOpen(false)}
+            tenantId={tenantId}
+            dealId={deal.id}
+            leadId={deal.leadId ?? ""}
+            leadNome={leadMap.get(deal.leadId ?? "") ?? "Lead"}
+            responsavelId={(deal as any).responsavelId ?? null}
+          />
+        )}
 
         {/* ── Quote attachment ──────────────────────────────────── */}
         {quoteFileUrl && (
