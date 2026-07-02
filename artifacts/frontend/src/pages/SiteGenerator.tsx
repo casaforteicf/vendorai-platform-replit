@@ -638,38 +638,94 @@ const INLINE_EDIT_SCRIPT = `
 <script id="__ve_editor__">
 (function(){
   var TAGS=['h1','h2','h3','h4','h5','h6','p','span','a','button','li','td','th','label','strong','em','small','div'];
-  var style=document.createElement('style');
-  style.textContent=
-    '[data-ve-editable]:hover{outline:2px dashed #818cf8 !important;outline-offset:2px;cursor:text !important;}'+
-    '[data-ve-editable]:focus{outline:2px solid #6366f1 !important;outline-offset:2px;background:rgba(99,102,241,0.06) !important;border-radius:2px;}'+
-    '[data-ve-img]:hover .ve-img-overlay{opacity:1 !important;}'+
-    '.ve-img-wrap{position:relative;display:inline-block;width:100%;}.ve-img-overlay{position:absolute;inset:0;background:rgba(0,0,0,0.45);display:flex;align-items:center;justify-content:center;opacity:0;transition:opacity .18s;cursor:pointer;border-radius:inherit;z-index:9;}'+
-    '.ve-img-overlay-label{color:#fff;font-size:13px;font-weight:600;letter-spacing:.01em;pointer-events:none;text-shadow:0 1px 4px rgba(0,0,0,.5);}'+
+  var css=document.createElement('style');
+  css.textContent=
+    '[data-ve-editable]:hover{outline:2px dashed #818cf8!important;outline-offset:2px;cursor:text!important;}'+
+    '[data-ve-editable]:focus{outline:2px solid #6366f1!important;outline-offset:2px;background:rgba(99,102,241,0.06)!important;border-radius:2px;}'+
+    '[data-ve-img]:hover .ve-img-overlay{opacity:1!important;}'+
+    '.ve-img-wrap{position:relative;display:inline-block;width:100%;}'+
+    '.ve-img-overlay{position:absolute;inset:0;background:rgba(0,0,0,.45);display:flex;align-items:center;justify-content:center;opacity:0;transition:opacity .18s;cursor:pointer;border-radius:inherit;z-index:9;}'+
+    '.ve-img-overlay-label{color:#fff;font-size:13px;font-weight:600;pointer-events:none;text-shadow:0 1px 4px rgba(0,0,0,.5);}'+
     '.ve-sec-ctrl{position:absolute;top:6px;right:8px;display:none;gap:4px;z-index:100;}'+
     '[data-ve-sec]:hover>.ve-sec-ctrl{display:flex!important;}'+
     '[data-ve-sec]{position:relative;}'+
-    '.ve-sec-btn{background:rgba(30,30,40,0.82);color:#fff;border:none;border-radius:5px;padding:3px 7px;font-size:12px;cursor:pointer;line-height:1.4;backdrop-filter:blur(4px);}'+
-    '.ve-sec-btn:hover{background:#4f46e5;}'+
-    '.ve-sec-btn.del:hover{background:#dc2626;}';
-  document.head.appendChild(style);
+    '.ve-sec-btn{background:rgba(30,30,40,.82);color:#fff;border:none;border-radius:5px;padding:3px 7px;font-size:11px;cursor:pointer;line-height:1.4;backdrop-filter:blur(4px);}'+
+    '.ve-sec-btn:hover{background:#4f46e5;}.ve-sec-btn.del:hover{background:#dc2626;}'+
+    '#__ve_fmt__{position:fixed;top:8px;left:50%;transform:translateX(-50%);z-index:99999;background:rgba(15,15,25,.94);padding:5px 10px;border-radius:10px;display:none;align-items:center;gap:5px;box-shadow:0 4px 20px rgba(0,0,0,.5);backdrop-filter:blur(12px);}'+
+    '.__ve_fmtbtn{background:none;border:none;color:#e2e8f0;cursor:pointer;padding:3px 7px;border-radius:5px;font-size:13px;transition:background .12s;min-width:28px;}'+
+    '.__ve_fmtbtn:hover{background:rgba(255,255,255,.18);}'+
+    '.__ve_fmtsep{width:1px;height:18px;background:rgba(255,255,255,.2);margin:0 3px;}'+
+    '.__ve_fmtsel{background:rgba(255,255,255,.1);border:1px solid rgba(255,255,255,.2);color:#e2e8f0;padding:2px 5px;border-radius:5px;font-size:12px;cursor:pointer;}'+
+    '.__ve_fmtclr{width:26px;height:22px;padding:0;border:1px solid rgba(255,255,255,.2);border-radius:4px;cursor:pointer;background:transparent;}';
+  document.head.appendChild(css);
 
   function send(){window.parent.postMessage({type:'ve-html-edit',html:'<!DOCTYPE html>'+document.documentElement.outerHTML},'*');}
+
+  /* ── formatting toolbar ── */
+  var fmtEl=null,activeEl=null;
+  function getFmt(){
+    if(fmtEl)return fmtEl;
+    fmtEl=document.createElement('div');fmtEl.id='__ve_fmt__';
+
+    function btn(html,cmd,val){
+      var b=document.createElement('button');b.className='__ve_fmtbtn';b.innerHTML=html;
+      b.addEventListener('mousedown',function(e){e.preventDefault();document.execCommand(cmd,false,val||null);send();});
+      return b;
+    }
+    function sep(){var s=document.createElement('div');s.className='__ve_fmtsep';return s;}
+
+    fmtEl.appendChild(btn('<b>B</b>','bold'));
+    fmtEl.appendChild(btn('<i>I</i>','italic'));
+    fmtEl.appendChild(btn('<u>U</u>','underline'));
+    fmtEl.appendChild(sep());
+
+    var szLbl=document.createElement('span');szLbl.textContent='Tam:';szLbl.style.cssText='color:#94a3b8;font-size:11px;white-space:nowrap;';
+    fmtEl.appendChild(szLbl);
+    var sz=document.createElement('select');sz.className='__ve_fmtsel';
+    [['12px','12'],['14px','14'],['16px','16'],['20px','20'],['24px','24'],['32px','32'],['48px','48']].forEach(function(o){
+      var opt=document.createElement('option');opt.value=o[0];opt.textContent=o[1]+'px';
+      if(o[0]==='16px')opt.selected=true;
+      sz.appendChild(opt);
+    });
+    sz.addEventListener('change',function(){
+      document.execCommand('fontSize',false,'7');
+      document.querySelectorAll('font[size="7"]').forEach(function(f){f.removeAttribute('size');f.style.fontSize=sz.value;});
+      send();
+    });
+    fmtEl.appendChild(sz);
+    fmtEl.appendChild(sep());
+
+    var clrLbl=document.createElement('span');clrLbl.textContent='Cor:';clrLbl.style.cssText='color:#94a3b8;font-size:11px;';
+    fmtEl.appendChild(clrLbl);
+    var clr=document.createElement('input');clr.type='color';clr.value='#111827';clr.className='__ve_fmtclr';
+    clr.addEventListener('change',function(){document.execCommand('foreColor',false,clr.value);send();});
+    fmtEl.appendChild(clr);
+
+    document.body.appendChild(fmtEl);
+    return fmtEl;
+  }
+  function showFmt(){getFmt().style.display='flex';}
+  function hideFmt(){if(fmtEl)fmtEl.style.display='none';}
 
   /* ── text editing ── */
   function setupText(el){
     if(el.__ve)return;el.__ve=true;
     if(!el.textContent.trim()||el.children.length>2)return;
     el.setAttribute('data-ve-editable','1');
-    el.addEventListener('click',function(e){e.stopPropagation();el.contentEditable='true';el.focus();});
-    el.addEventListener('blur',function(){el.contentEditable='false';send();});
-    el.addEventListener('keydown',function(e){if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();el.blur();}if(e.key==='Escape'){el.contentEditable='false';}});
+    el.addEventListener('click',function(e){e.stopPropagation();activeEl=el;el.contentEditable='true';el.focus();showFmt();});
+    el.addEventListener('blur',function(){
+      setTimeout(function(){
+        if(document.activeElement&&document.activeElement.closest&&document.activeElement.closest('#__ve_fmt__'))return;
+        el.contentEditable='false';hideFmt();send();
+      },150);
+    });
+    el.addEventListener('keydown',function(e){if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();el.blur();}if(e.key==='Escape'){el.contentEditable='false';hideFmt();}});
   }
 
   /* ── image editing ── */
   var imgs=[];
   function setupImg(img,index){
-    if(img.__veImg)return;img.__veImg=true;
-    imgs[index]=img;
+    if(img.__veImg)return;img.__veImg=true;imgs[index]=img;
     var par=img.parentElement;if(!par)return;
     if(!par.classList.contains('ve-img-wrap')){
       var wrap=document.createElement('span');
@@ -684,52 +740,60 @@ const INLINE_EDIT_SCRIPT = `
     }
   }
 
-  /* ── section reorder / delete ── */
+  /* ── sections: detect, report, setup controls ── */
   function getSections(){
     var body=document.body;
+    var main=body.querySelector('main')||body;
     var secs=[];
-    // prefer <section> elements that are direct/near-top children
-    body.querySelectorAll('section').forEach(function(s){if(s.parentElement===body||s.parentElement===body.querySelector('main')){secs.push(s);}});
-    // fallback: top-level divs with id or meaningful class
+    main.querySelectorAll(':scope>section,:scope>article').forEach(function(el){secs.push(el);});
     if(secs.length<2){
       secs=[];
-      Array.from((body.querySelector('main')||body).children).forEach(function(el){
-        if(el.tagName==='DIV'||el.tagName==='SECTION'||el.tagName==='ARTICLE'){secs.push(el);}
+      Array.from(main.children).forEach(function(el){
+        var t=el.tagName;
+        if(t==='SECTION'||t==='ARTICLE'||(t==='DIV'&&(el.id||el.className.match(/[a-z]{3,}/i))))secs.push(el);
       });
     }
     return secs;
   }
 
+  function reportSections(){
+    var secs=getSections();
+    var list=secs.map(function(el,i){
+      var h=el.querySelector('h1,h2,h3');
+      var raw=h?h.textContent.trim():(el.id||'');
+      var title=(raw.slice(0,36)||(el.className.split(' ').filter(function(c){return c.length>2;})[0]||('Seção '+(i+1))));
+      return {index:i,title:title};
+    });
+    window.parent.postMessage({type:'ve-sections',sections:list},'*');
+  }
+
   function setupSections(){
+    // remove existing controls first (re-init after reorder)
+    document.querySelectorAll('.ve-sec-ctrl').forEach(function(el){el.remove();});
+    document.querySelectorAll('[data-ve-sec]').forEach(function(el){el.removeAttribute('data-ve-sec');delete el.__veSec;});
     var secs=getSections();
     secs.forEach(function(sec,i){
-      if(sec.__veSec)return;sec.__veSec=true;
-      sec.setAttribute('data-ve-sec','1');
+      sec.__veSec=true;sec.setAttribute('data-ve-sec','1');
       var ctrl=document.createElement('div');ctrl.className='ve-sec-ctrl';
-
-      if(i>0){
-        var up=document.createElement('button');up.className='ve-sec-btn';up.textContent='↑ Subir';
-        up.addEventListener('click',function(e){e.stopPropagation();var prev=sec.previousElementSibling;if(prev){sec.parentNode.insertBefore(sec,prev);send();setupSections();}});
-        ctrl.appendChild(up);
-      }
-      if(i<secs.length-1){
-        var dn=document.createElement('button');dn.className='ve-sec-btn';dn.textContent='↓ Descer';
-        dn.addEventListener('click',function(e){e.stopPropagation();var next=sec.nextElementSibling;if(next){sec.parentNode.insertBefore(next,sec);send();setupSections();}});
-        ctrl.appendChild(dn);
-      }
-      var del=document.createElement('button');del.className='ve-sec-btn del';del.textContent='✕ Remover';
-      del.addEventListener('click',function(e){
-        e.stopPropagation();
-        if(confirm('Remover esta seção do site?')){sec.remove();send();}
-      });
-      ctrl.appendChild(del);
+      function mkBtn(txt,cls,fn){var b=document.createElement('button');b.className='ve-sec-btn'+(cls?' '+cls:'');b.textContent=txt;b.addEventListener('click',function(e){e.stopPropagation();fn();});ctrl.appendChild(b);}
+      if(i>0)mkBtn('↑ Subir','',function(){var p=sec.previousElementSibling;if(p){sec.parentNode.insertBefore(sec,p);send();setupSections();reportSections();}});
+      if(i<secs.length-1)mkBtn('↓ Descer','',function(){var n=sec.nextElementSibling;if(n){sec.parentNode.insertBefore(n,sec);send();setupSections();reportSections();}});
+      mkBtn('✕ Remover','del',function(){if(confirm('Remover esta seção?')){sec.remove();send();setupSections();reportSections();}});
       sec.insertBefore(ctrl,sec.firstChild);
     });
+    reportSections();
   }
 
   window.addEventListener('message',function(e){
     if(!e.data)return;
     if(e.data.type==='ve-img-set'){var img=imgs[e.data.imgIndex];if(img){img.src=e.data.newSrc;send();}}
+    if(e.data.type==='ve-inject-section'){
+      var tpl=e.data.html;
+      var footer=document.querySelector('footer');
+      if(footer){footer.insertAdjacentHTML('beforebegin',tpl);}
+      else{document.body.insertAdjacentHTML('beforeend',tpl);}
+      send();setupSections();reportSections();
+    }
   });
 
   function init(){
@@ -752,6 +816,18 @@ function stripEditScript(html: string): string {
   return html.replace(/<script\s+id="__ve_editor__"[\s\S]*?<\/script>/i, '');
 }
 
+// ── Section templates for "Add Section" ────────────────────────────────────────
+
+const SECTION_TEMPLATES: Array<{ id: string; label: string; icon: string; prompt: string }> = [
+  { id: 'gallery', label: 'Galeria de Fotos', icon: '🖼️', prompt: 'Adicione uma seção de galeria de fotos ao site. Use um grid responsivo 3 colunas com placeholders de imagem (gradiente CSS) e texto "Clique para adicionar foto".' },
+  { id: 'team', label: 'Nossa Equipe', icon: '👥', prompt: 'Adicione uma seção "Nossa Equipe" com 3 cards de membros (foto placeholder circular, nome, cargo e breve bio). Use o mesmo estilo visual do site.' },
+  { id: 'services', label: 'Serviços', icon: '⚙️', prompt: 'Adicione uma seção de Serviços com 4 cards (ícone SVG, título, descrição breve). Use o mesmo estilo visual e cores do site.' },
+  { id: 'contact', label: 'Formulário de Contato', icon: '📬', prompt: 'Adicione uma seção de Contato com formulário (Nome, E-mail, Mensagem, botão Enviar) e informações de contato ao lado (telefone, email, endereço). Use o mesmo estilo visual do site.' },
+  { id: 'faq', label: 'FAQ / Perguntas', icon: '❓', prompt: 'Adicione uma seção FAQ com 5 perguntas e respostas frequentes do negócio. Use um acordeão visual (detalhes/summary) com estilo moderno. Use o mesmo estilo visual do site.' },
+  { id: 'stats', label: 'Números / Estatísticas', icon: '📊', prompt: 'Adicione uma seção com 4 estatísticas de destaque (ex: anos de experiência, clientes atendidos, projetos entregues, satisfação). Use números grandes e destaque visual. Use o mesmo estilo visual do site.' },
+  { id: 'cta', label: 'CTA / Chamada para Ação', icon: '🚀', prompt: 'Adicione uma seção de CTA (call-to-action) com fundo colorido, título impactante, subtítulo e botão grande. Use as cores primárias do site.' },
+];
+
 // ── SitePreview ────────────────────────────────────────────────────────────────
 
 function SitePreview({
@@ -767,13 +843,16 @@ function SitePreview({
   status: GeneratorStatus;
   error: string | null;
   onDownload: () => void;
-  onRefine: () => void;
+  onRefine: (prompt?: string) => void | Promise<void>;
   onSave?: (html: string) => Promise<void>;
   tenantId: string;
 }) {
   const [pendingHtml, setPendingHtml] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [uploadingImg, setUploadingImg] = useState(false);
+  const [sections, setSections] = useState<Array<{ index: number; title: string }>>([]);
+  const [showSections, setShowSections] = useState(true);
+  const [addingSection, setAddingSection] = useState(false);
   const iframeRef = useRef<HTMLIFrameElement>(null);
   const imgPickRef = useRef<HTMLInputElement>(null);
   const pendingImgIndex = useRef<number>(-1);
@@ -784,16 +863,13 @@ function SitePreview({
   useEffect(() => {
     async function handler(e: MessageEvent) {
       if (!e.data?.type) return;
-
       if (e.data.type === 've-html-edit') {
-        const clean = stripEditScript(e.data.html as string);
-        setPendingHtml(clean);
-        return;
-      }
-
-      if (e.data.type === 've-img-pick') {
+        setPendingHtml(stripEditScript(e.data.html as string));
+      } else if (e.data.type === 've-img-pick') {
         pendingImgIndex.current = e.data.imgIndex as number;
         imgPickRef.current?.click();
+      } else if (e.data.type === 've-sections') {
+        setSections(e.data.sections as Array<{ index: number; title: string }>);
       }
     }
     window.addEventListener('message', handler);
@@ -801,7 +877,7 @@ function SitePreview({
   }, []);
 
   // Reset pending when html prop changes (new generation)
-  useEffect(() => { setPendingHtml(null); }, [html]);
+  useEffect(() => { setPendingHtml(null); setSections([]); }, [html]);
 
   async function handleImgFilePick(file: File) {
     const idx = pendingImgIndex.current;
@@ -829,6 +905,18 @@ function SitePreview({
     }
   }
 
+  async function handleAddSection(tpl: typeof SECTION_TEMPLATES[number]) {
+    setAddingSection(true);
+    try {
+      await Promise.resolve(onRefine(tpl.prompt));
+      toast({ description: `✓ Seção "${tpl.label}" sendo gerada…` });
+    } catch {
+      toast({ title: 'Erro ao adicionar seção', variant: 'destructive' });
+    } finally {
+      setAddingSection(false);
+    }
+  }
+
   async function saveInlineEdits() {
     if (!pendingHtml || !onSave) return;
     setSaving(true);
@@ -846,19 +934,10 @@ function SitePreview({
   const displayHtml = html ? injectEditScript(html) : '';
 
   return (
-    <div className="flex flex-col gap-4">
+    <div className="flex flex-col gap-3">
       {/* hidden file input for inline image replacement */}
-      <input
-        ref={imgPickRef}
-        type="file"
-        accept="image/*"
-        className="sr-only"
-        onChange={(e) => {
-          const f = e.target.files?.[0];
-          if (f) void handleImgFilePick(f);
-          e.target.value = '';
-        }}
-      />
+      <input ref={imgPickRef} type="file" accept="image/*" className="sr-only"
+        onChange={(e) => { const f = e.target.files?.[0]; if (f) void handleImgFilePick(f); e.target.value = ''; }} />
 
       {status === "generating" && (
         <div className="flex items-center gap-3 rounded-lg border border-primary/20 bg-primary/5 px-4 py-3 text-sm text-primary">
@@ -867,42 +946,96 @@ function SitePreview({
         </div>
       )}
       {status === "error" && error && (
-        <div className="rounded-lg border border-destructive/25 bg-destructive/5 px-4 py-3 text-sm text-destructive">
-          {error}
-        </div>
+        <div className="rounded-lg border border-destructive/25 bg-destructive/5 px-4 py-3 text-sm text-destructive">{error}</div>
       )}
-
-      {/* uploading image indicator */}
       {uploadingImg && (
-        <div className="flex items-center gap-2 rounded-lg border border-primary/20 bg-primary/5 px-4 py-2.5 text-sm text-primary">
-          <Loader2 className="h-4 w-4 animate-spin shrink-0" />
-          Enviando foto…
+        <div className="flex items-center gap-2 rounded-lg border border-primary/20 bg-primary/5 px-3 py-2 text-sm text-primary">
+          <Loader2 className="h-4 w-4 animate-spin shrink-0" />Enviando foto…
         </div>
       )}
 
-      {/* Unsaved inline edits bar */}
+      {/* Unsaved edits bar */}
       {pendingHtml && (
         <div className="flex items-center justify-between gap-3 rounded-lg border border-indigo-300 bg-indigo-50 dark:border-indigo-800 dark:bg-indigo-950/40 px-4 py-2.5">
-          <span className="text-sm text-indigo-700 dark:text-indigo-300">
-            ✏️ Edições não salvas
-          </span>
+          <span className="text-sm text-indigo-700 dark:text-indigo-300">✏️ Edições não salvas</span>
           <div className="flex gap-2">
-            <Button size="sm" variant="ghost" onClick={() => setPendingHtml(null)} className="text-muted-foreground">
-              Descartar
-            </Button>
+            <Button size="sm" variant="ghost" onClick={() => setPendingHtml(null)} className="text-muted-foreground">Descartar</Button>
             <Button size="sm" onClick={saveInlineEdits} disabled={saving || !onSave}>
-              {saving ? <Loader2 className="h-3.5 w-3.5 animate-spin mr-1.5" /> : null}
-              Salvar edições
+              {saving ? <Loader2 className="h-3.5 w-3.5 animate-spin mr-1.5" /> : null}Salvar edições
             </Button>
           </div>
         </div>
       )}
 
+      {/* ── Sections panel ── */}
+      {sections.length > 0 && (
+        <div className="rounded-lg border border-border bg-muted/20">
+          <button
+            className="w-full flex items-center justify-between px-3 py-2 text-xs font-semibold text-muted-foreground hover:text-foreground transition-colors"
+            onClick={() => setShowSections(v => !v)}
+          >
+            <span>📋 Painel de Seções ({sections.length})</span>
+            <span>{showSections ? '▲' : '▼'}</span>
+          </button>
+          {showSections && (
+            <div className="border-t border-border px-3 pb-3 pt-2 flex flex-col gap-1.5">
+              {sections.map((sec) => (
+                <div key={sec.index} className="flex items-center gap-2 rounded-md bg-background border border-border px-3 py-1.5 text-sm">
+                  <span className="flex-1 truncate text-foreground">{sec.title || `Seção ${sec.index + 1}`}</span>
+                  <button
+                    className="text-muted-foreground hover:text-foreground px-1.5 py-0.5 rounded hover:bg-muted transition-colors text-xs"
+                    title="Subir"
+                    onClick={() => {
+                      if (sec.index === 0) return;
+                      iframeRef.current?.contentWindow?.postMessage({ type: 've-section-move', from: sec.index, to: sec.index - 1 }, '*');
+                    }}
+                  >↑</button>
+                  <button
+                    className="text-muted-foreground hover:text-foreground px-1.5 py-0.5 rounded hover:bg-muted transition-colors text-xs"
+                    title="Descer"
+                    onClick={() => {
+                      if (sec.index === sections.length - 1) return;
+                      iframeRef.current?.contentWindow?.postMessage({ type: 've-section-move', from: sec.index, to: sec.index + 1 }, '*');
+                    }}
+                  >↓</button>
+                  <button
+                    className="text-muted-foreground hover:text-destructive px-1.5 py-0.5 rounded hover:bg-destructive/10 transition-colors text-xs"
+                    title="Remover"
+                    onClick={() => iframeRef.current?.contentWindow?.postMessage({ type: 've-section-delete', index: sec.index }, '*')}
+                  >✕</button>
+                </div>
+              ))}
+
+              {/* Add section dropdown */}
+              <div className="mt-1.5">
+                <p className="text-[10px] text-muted-foreground mb-1.5">Adicionar nova seção:</p>
+                <div className="flex flex-wrap gap-1.5">
+                  {SECTION_TEMPLATES.map(tpl => (
+                    <button
+                      key={tpl.id}
+                      disabled={addingSection}
+                      onClick={() => void handleAddSection(tpl)}
+                      className="flex items-center gap-1 px-2 py-1 rounded-md border border-dashed border-border text-xs text-muted-foreground hover:border-primary hover:text-primary hover:bg-primary/5 transition-colors disabled:opacity-50"
+                    >
+                      {addingSection ? <Loader2 className="h-3 w-3 animate-spin" /> : <span>{tpl.icon}</span>}
+                      {tpl.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Preview iframe */}
       <div className="overflow-hidden rounded-lg border border-border bg-muted/30">
         {displayHtml ? (
           <>
             <div className="flex items-center gap-1.5 px-3 py-1.5 border-b border-border bg-muted/50">
-              <span className="text-[10px] text-muted-foreground">✏️ Clique em textos para editar · passe o mouse sobre fotos para trocar</span>
+              <span className="text-[10px] text-muted-foreground">
+                ✏️ Textos: clique para editar (B/I/U + tamanho + cor) · 🖼️ Fotos: passe o mouse · Seções: hover → ↑↓✕
+              </span>
             </div>
             <iframe
               ref={iframeRef}
@@ -923,12 +1056,10 @@ function SitePreview({
       {html && (
         <div className="flex gap-2 flex-wrap">
           <Button variant="outline" onClick={onDownload}>
-            <Download className="h-4 w-4 mr-2" />
-            Baixar HTML
+            <Download className="h-4 w-4 mr-2" />Baixar HTML
           </Button>
-          <Button onClick={onRefine}>
-            <MessageSquare className="h-4 w-4 mr-2" />
-            Refinar com chat
+          <Button onClick={() => onRefine()}>
+            <MessageSquare className="h-4 w-4 mr-2" />Refinar com chat
           </Button>
         </div>
       )}
@@ -1492,6 +1623,7 @@ function MediaDialog({ html, onSave, tenantId }: { html: string; onSave: (html: 
   const [logoUrl, setLogoUrl] = useState("");
   const [heroUrl, setHeroUrl] = useState("");
   const [galleryItems, setGalleryItems] = useState<GalleryItem[]>([]);
+  const [initialSrcs, setInitialSrcs] = useState<string[]>([]);
   const [newPhotos, setNewPhotos] = useState<string[]>([]);
   const [loading, setLoading] = useState(false);
   const [uploading, setUploading] = useState<string | null>(null);
@@ -1522,6 +1654,7 @@ function MediaDialog({ html, onSave, tenantId }: { html: string; onSave: (html: 
       .map(s => ({ src: s, originalSrc: s }));
 
     setGalleryItems(items);
+    setInitialSrcs(items.map(i => i.originalSrc));
     setNewPhotos([]);
     setLogoUrl("");
     setHeroUrl("");
@@ -1604,13 +1737,20 @@ function MediaDialog({ html, onSave, tenantId }: { html: string; onSave: (html: 
   }
 
   async function apply() {
-    const hasChanges = !!(logoUrl || heroUrl || galleryItems.some(g => g.src !== g.originalSrc) || newPhotos.length > 0);
+    const currentSrcs = new Set(galleryItems.map(g => g.originalSrc));
+    const removedSrcs = initialSrcs.filter(s => !currentSrcs.has(s));
+    const hasChanges = !!(logoUrl || heroUrl || galleryItems.some(g => g.src !== g.originalSrc) || newPhotos.length > 0 || removedSrcs.length > 0);
     if (!hasChanges || loading) return;
     setLoading(true);
     try {
       let updated = html;
       if (logoUrl) updated = injectLogo(updated, logoUrl);
       if (heroUrl) updated = injectHero(updated, heroUrl);
+      // Remove deleted gallery photos
+      for (const src of removedSrcs) {
+        const escaped = src.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+        updated = updated.replace(new RegExp(`<img[^>]*?src=["']${escaped}["'][^>]*?>`, "g"), '');
+      }
       for (const item of galleryItems) {
         if (item.src !== item.originalSrc) {
           const escaped = item.originalSrc.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
@@ -1647,7 +1787,7 @@ function MediaDialog({ html, onSave, tenantId }: { html: string; onSave: (html: 
     }
   }
 
-  const hasChanges = !!(logoUrl || heroUrl || galleryItems.some(g => g.src !== g.originalSrc) || newPhotos.length > 0);
+  const hasChanges = !!(logoUrl || heroUrl || galleryItems.some(g => g.src !== g.originalSrc) || newPhotos.length > 0 || initialSrcs.some(s => !galleryItems.find(g => g.originalSrc === s)));
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
@@ -1725,52 +1865,88 @@ function MediaDialog({ html, onSave, tenantId }: { html: string; onSave: (html: 
             <div>
               <Label className="font-medium">Galeria de fotos</Label>
               <p className="text-xs text-muted-foreground mt-0.5">
-                Clique em uma foto para substituir · adicione novas fotos ao site
+                Clique para substituir · ↑↓ reordenar · ✕ remover · adicione novas fotos ao site
               </p>
             </div>
             {galleryItems.length > 0 && (
-              <div className="grid grid-cols-3 gap-2">
+              <div className="flex flex-col gap-2">
                 {galleryItems.map((item, i) => (
-                  <label key={i} className="relative cursor-pointer group rounded-lg overflow-hidden border aspect-square block bg-muted/30">
-                    <input
-                      type="file"
-                      accept="image/*"
-                      className="sr-only"
-                      disabled={!!uploading}
-                      onChange={(e) => { const f = e.target.files?.[0]; if (f) handleReplaceGallery(i, f); e.target.value = ""; }}
-                    />
-                    <img
-                      src={item.src}
-                      alt={`Foto ${i + 1}`}
-                      className="w-full h-full object-cover"
-                      onError={(e) => { (e.target as HTMLImageElement).style.opacity = "0.2"; }}
-                    />
-                    {uploading === `gallery-${i}` ? (
-                      <div className="absolute inset-0 bg-black/50 flex items-center justify-center">
-                        <Loader2 className="h-5 w-5 text-white animate-spin" />
-                      </div>
-                    ) : (
-                      <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity flex flex-col items-center justify-center gap-1">
-                        <Upload className="h-4 w-4 text-white" />
-                        <span className="text-[11px] text-white font-medium">Trocar</span>
-                      </div>
-                    )}
-                    {item.src !== item.originalSrc && (
-                      <div className="absolute top-1 right-1 w-2.5 h-2.5 rounded-full bg-blue-400 border border-white" title="Alterada" />
-                    )}
-                  </label>
-                ))}
-                {newPhotos.map((url, i) => (
-                  <div key={`new-${i}`} className="relative rounded-lg overflow-hidden border aspect-square bg-muted/30">
-                    <img src={url} alt="Nova foto" className="w-full h-full object-cover" />
-                    <div className="absolute top-1 left-1 px-1.5 py-0.5 rounded text-[10px] font-semibold bg-green-500 text-white leading-none">novo</div>
+                  <div key={`${item.originalSrc}-${i}`} className="flex items-center gap-2 rounded-lg border bg-muted/20 p-2">
+                    {/* thumbnail */}
+                    <label className="relative cursor-pointer group shrink-0 w-16 h-16 rounded-md overflow-hidden border bg-muted/30 block">
+                      <input
+                        type="file"
+                        accept="image/*"
+                        className="sr-only"
+                        disabled={!!uploading}
+                        onChange={(e) => { const f = e.target.files?.[0]; if (f) handleReplaceGallery(i, f); e.target.value = ""; }}
+                      />
+                      <img
+                        src={item.src}
+                        alt={`Foto ${i + 1}`}
+                        className="w-full h-full object-cover"
+                        onError={(e) => { (e.target as HTMLImageElement).style.opacity = "0.2"; }}
+                      />
+                      {uploading === `gallery-${i}` ? (
+                        <div className="absolute inset-0 bg-black/50 flex items-center justify-center">
+                          <Loader2 className="h-4 w-4 text-white animate-spin" />
+                        </div>
+                      ) : (
+                        <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
+                          <Upload className="h-3.5 w-3.5 text-white" />
+                        </div>
+                      )}
+                    </label>
+                    {/* info */}
+                    <div className="flex-1 min-w-0">
+                      <p className="text-xs text-muted-foreground truncate">{`Foto ${i + 1}`}</p>
+                      {item.src !== item.originalSrc && (
+                        <span className="text-[10px] text-blue-500 font-medium">● alterada</span>
+                      )}
+                    </div>
+                    {/* controls */}
+                    <div className="flex flex-col gap-1 shrink-0">
+                      <button
+                        type="button"
+                        disabled={i === 0}
+                        className="w-6 h-6 rounded border border-border bg-background flex items-center justify-center text-[11px] text-muted-foreground hover:text-foreground hover:border-foreground disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+                        onClick={() => setGalleryItems(prev => {
+                          const next = [...prev]; [next[i - 1], next[i]] = [next[i], next[i - 1]]; return next;
+                        })}
+                        title="Subir"
+                      >↑</button>
+                      <button
+                        type="button"
+                        disabled={i === galleryItems.length - 1}
+                        className="w-6 h-6 rounded border border-border bg-background flex items-center justify-center text-[11px] text-muted-foreground hover:text-foreground hover:border-foreground disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+                        onClick={() => setGalleryItems(prev => {
+                          const next = [...prev]; [next[i], next[i + 1]] = [next[i + 1], next[i]]; return next;
+                        })}
+                        title="Descer"
+                      >↓</button>
+                    </div>
                     <button
                       type="button"
-                      className="absolute top-1 right-1 w-5 h-5 rounded-full bg-black/60 flex items-center justify-center text-white text-xs leading-none hover:bg-red-600 transition-colors"
+                      className="w-7 h-7 rounded border border-border bg-background flex items-center justify-center text-[13px] text-muted-foreground hover:text-destructive hover:border-destructive hover:bg-destructive/5 transition-colors shrink-0"
+                      onClick={() => setGalleryItems(prev => prev.filter((_, j) => j !== i))}
+                      title="Remover foto"
+                    >✕</button>
+                  </div>
+                ))}
+                {newPhotos.map((url, i) => (
+                  <div key={`new-${i}`} className="flex items-center gap-2 rounded-lg border bg-green-50 dark:bg-green-950/20 border-green-200 dark:border-green-800 p-2">
+                    <div className="shrink-0 w-16 h-16 rounded-md overflow-hidden border">
+                      <img src={url} alt="Nova foto" className="w-full h-full object-cover" />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <span className="text-[10px] font-semibold text-green-600">● nova foto</span>
+                    </div>
+                    <button
+                      type="button"
+                      className="w-7 h-7 rounded border border-border bg-background flex items-center justify-center text-[13px] text-muted-foreground hover:text-destructive hover:border-destructive hover:bg-destructive/5 transition-colors shrink-0"
                       onClick={() => setNewPhotos(prev => prev.filter((_, j) => j !== i))}
-                    >
-                      ×
-                    </button>
+                      title="Remover foto"
+                    >✕</button>
                   </div>
                 ))}
               </div>
@@ -2052,7 +2228,10 @@ function SiteGeneratorInner({ tenantId, token }: { tenantId: string; token: stri
                 status={status}
                 error={error}
                 onDownload={() => download("site-gerado")}
-                onRefine={() => setActiveTab("refine")}
+                onRefine={(prompt) => {
+                  if (prompt) { void refine(prompt); return; }
+                  setActiveTab("refine");
+                }}
                 onSave={saveHtml}
                 tenantId={tenantId}
               />
