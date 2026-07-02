@@ -38,7 +38,7 @@ interface Props {
   open: boolean;
   onClose: () => void;
   tenantId: string;
-  dealId: string;
+  dealId?: string;
   leadId: string;
   leadNome: string;
   leadEmail?: string | null;

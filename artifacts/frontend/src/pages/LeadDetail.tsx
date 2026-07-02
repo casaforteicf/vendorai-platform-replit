@@ -5,6 +5,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { useAuth } from "@/contexts/AuthContext";
 import { useToast } from "@/hooks/use-toast";
 import { PropostaModal } from "./Propostas";
+import { AgendarReuniaoModal } from "@/components/AgendarReuniaoModal";
 import LeadBriefingTab from "./LeadBriefingTab";
 import LeadPropostaTab from "./LeadPropostaTab";
 import LeadProductPresentationTab from "./LeadProductPresentationTab";
@@ -274,6 +275,7 @@ export default function LeadDetail() {
   const queryClient = useQueryClient();
 
   const [propostaModalOpen, setPropostaModalOpen] = useState(false);
+  const [agendarOpen, setAgendarOpen] = useState(false);
   const [lightboxUrl, setLightboxUrl] = useState<string | null>(null);
   const [lightboxTitle, setLightboxTitle] = useState<string>("");
 
@@ -1046,7 +1048,7 @@ export default function LeadDetail() {
             </p>
           )}
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 flex-wrap">
           {lead.telefone && (
             <Button
               size="sm"
@@ -1058,6 +1060,15 @@ export default function LeadDetail() {
               Iniciar no WhatsApp
             </Button>
           )}
+          <Button
+            size="sm"
+            variant="outline"
+            className="gap-1.5"
+            onClick={() => setAgendarOpen(true)}
+          >
+            <CalendarDays className="h-4 w-4" />
+            Agendar reunião
+          </Button>
           <Badge
             variant="outline"
             className={STATUS_STYLES[lead.status] ?? ""}
@@ -3463,6 +3474,17 @@ export default function LeadDetail() {
           void queryClient.invalidateQueries({ queryKey: getListPropostasQueryKey(tenantId, { leadId: id }) });
           void queryClient.invalidateQueries({ queryKey: getListDealsQueryKey(tenantId) });
         }}
+      />
+
+      {/* Agendar reunião — mesmo modal da pipeline */}
+      <AgendarReuniaoModal
+        open={agendarOpen}
+        onClose={() => setAgendarOpen(false)}
+        tenantId={tenantId}
+        leadId={id}
+        leadNome={lead?.nome ?? ""}
+        leadEmail={lead?.email ?? null}
+        responsavelId={(lead as any)?.responsavelId ?? null}
       />
     </div>
   );
