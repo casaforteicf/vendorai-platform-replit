@@ -226,15 +226,53 @@ function useSiteGenerator(tenantId: string, token: string | null) {
     return data.html;
   }, [siteId, tenantId, token, history]);
 
-  const download = useCallback((filename = "site") => {
+  const download = useCallback(async (filename = "site") => {
     if (!html) return;
-    const blob = new Blob([html], { type: "text/html" });
-    const a = document.createElement("a");
-    a.href = URL.createObjectURL(blob);
-    a.download = filename.toLowerCase().replace(/\s+/g, "-") + ".html";
+
+    // Collect all unique src/href URLs that reference images
+    const srcRe = /\b(src|href)=["']([^"']+\.(png|jpg|jpeg|gif|webp|svg|ico))["']/gi;
+    const urlSet = new Set<string>();
+    for (const m of html.matchAll(srcRe)) { urlSet.add(m[2]!); }
+
+    // Also pick up CSS url(...) background images
+    const cssRe = /url\(["']?([^"')]+\.(png|jpg|jpeg|gif|webp|svg|ico))["']?\)/gi;
+    for (const m of html.matchAll(cssRe)) { urlSet.add(m[1]!); }
+
+    // Convert each to base64 data URL (skip if already data: or fails to fetch)
+    const replacements = new Map<string, string>();
+    await Promise.all(Array.from(urlSet).map(async (url) => {
+      if (url.startsWith('data:')) return;
+      try {
+        const absolute = url.startsWith('http') ? url : url.startsWith('/') ? url : `/${url}`;
+        const res = await fetch(absolute, { credentials: 'include' });
+        if (!res.ok) return;
+        const blob = await res.blob();
+        const dataUrl = await new Promise<string>((resolve, reject) => {
+          const reader = new FileReader();
+          reader.onload = () => resolve(reader.result as string);
+          reader.onerror = reject;
+          reader.readAsDataURL(blob);
+        });
+        replacements.set(url, dataUrl);
+      } catch { /* skip */ }
+    }));
+
+    // Apply replacements (longest-first to avoid partial-URL collisions)
+    let inlined = html;
+    const sorted = Array.from(replacements.entries()).sort((a, b) => b[0].length - a[0].length);
+    for (const [orig, dataUrl] of sorted) {
+      const escaped = orig.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      inlined = inlined.replace(new RegExp(escaped, 'g'), dataUrl);
+    }
+
+    const blobOut = new Blob([inlined], { type: 'text/html' });
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blobOut);
+    a.download = filename.toLowerCase().replace(/\s+/g, '-') + '.html';
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);
+    URL.revokeObjectURL(a.href);
   }, [html]);
 
   const reset = useCallback(() => {
