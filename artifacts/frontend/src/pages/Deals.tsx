@@ -2639,10 +2639,19 @@ export default function Deals() {
                   <Button
                     variant="ghost"
                     size="sm"
+                    className="h-8 text-xs text-indigo-600 hover:text-indigo-800 hover:bg-indigo-50 px-2 shrink-0 gap-1"
+                    onClick={() => setAgendarDeal(deal)}
+                  >
+                    <CalendarDays className="h-3.5 w-3.5" />
+                    Agendar
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    size="sm"
                     className="h-8 text-xs text-primary px-2 shrink-0"
                     onClick={() => handleCardClick(deal)}
                   >
-                    Orçamento →
+                    Ver →
                   </Button>
                 </div>
               </div>
