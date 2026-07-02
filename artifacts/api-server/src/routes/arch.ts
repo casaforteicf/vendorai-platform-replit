@@ -43,6 +43,29 @@ import { getOpenAIForTenant } from "../lib/agent-engine.js";
 import { callReplicateFlux } from "../lib/ai-gateway.js";
 import { automationLogsTable } from "@workspace/db";
 
+function sanitizeAIError(err: any): { status: number; message: string } {
+  const raw: string = err?.message ?? String(err ?? "");
+  const rawLow = raw.toLowerCase();
+  const httpStatus: number = err?.status ?? err?.statusCode ?? 500;
+
+  if (
+    rawLow.includes("billing hard limit") ||
+    rawLow.includes("you exceeded your current quota") ||
+    rawLow.includes("insufficient_quota") ||
+    rawLow.includes("exceeded your current quota")
+  ) {
+    return { status: 402, message: "Limite de uso de IA atingido. Entre em contato com o suporte para recarregar os créditos." };
+  }
+  if (rawLow.includes("rate limit") || rawLow.includes("too many requests") || httpStatus === 429) {
+    return { status: 429, message: "Muitas requisições simultâneas. Aguarde alguns segundos e tente novamente." };
+  }
+  if (rawLow.includes("content policy") || rawLow.includes("safety system")) {
+    return { status: 400, message: "A imagem ou prompt foi bloqueado pela política de conteúdo. Tente com uma imagem diferente." };
+  }
+  const safeStatus = httpStatus >= 400 && httpStatus < 600 ? httpStatus : 500;
+  return { status: safeStatus, message: raw || "Erro ao processar com IA." };
+}
+
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 20 * 1024 * 1024 } });
 
 const router: IRouter = Router();
@@ -1237,7 +1260,8 @@ Use preços de mercado brasileiro atuais. Seja detalhado e abrangente. Não incl
       messages: [{ role: "user", content: prompt }],
     });
   } catch (err: any) {
-    return res.status(502).json({ error: "Erro ao chamar IA.", detail: err?.message });
+    const { status, message } = sanitizeAIError(err);
+    return res.status(status).json({ error: message });
   }
 
   const rawText = message.content
@@ -1780,9 +1804,8 @@ router.post("/arch/render", async (req, res) => {
     return res.json({ success: true, imageUrl, prompt, motor });
   } catch (err: any) {
     req.log.error({ err, tenantId: tid }, "arch/render: erro");
-    const httpStatus = (err?.status ?? err?.statusCode ?? 500) as number;
-    const safeStatus = httpStatus >= 400 && httpStatus < 600 ? httpStatus : 500;
-    return res.status(safeStatus).json({ success: false, error: err?.message ?? "Erro ao gerar render" });
+    const { status, message } = sanitizeAIError(err);
+    return res.status(status).json({ success: false, error: message });
   }
 });
 
@@ -1877,7 +1900,8 @@ router.post("/arch/suggestions", async (req, res) => {
     return res.json({ success: true, imageUrl, suggestionId, saved: !!suggestionId });
   } catch (err: any) {
     req.log.error({ err, tenantId: tid }, "arch/suggestions: erro");
-    return res.status(500).json({ success: false, error: err?.message ?? "Erro ao gerar sugestão" });
+    const { status, message } = sanitizeAIError(err);
+    return res.status(status).json({ success: false, error: message });
   }
 });
 
