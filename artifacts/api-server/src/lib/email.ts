@@ -246,3 +246,69 @@ export async function sendInviteEmail(
 
   return true;
 }
+
+// ── Meeting invite to lead ────────────────────────────────────────────────────
+
+export async function sendMeetingInviteEmail(params: {
+  to: string;
+  leadNome: string;
+  nomeEmpresa: string;
+  dataStr: string;
+  horaStr: string;
+  modalidade: string;
+  meetLink?: string | null;
+  local?: string | null;
+  observacoes?: string | null;
+}): Promise<boolean> {
+  const r = process.env.RESEND_API_KEY ? new Resend(process.env.RESEND_API_KEY) : null;
+  if (!r) {
+    logger.warn({ to: params.to }, "RESEND_API_KEY não configurado — convite de reunião por e-mail ignorado");
+    return false;
+  }
+
+  const tipoLabel =
+    params.modalidade === "meet"
+      ? "Google Meet"
+      : params.modalidade === "ligacao"
+      ? "Ligação"
+      : "Presencial";
+
+  const localSection = params.meetLink
+    ? `<p style="margin:8px 0 0;"><a href="${params.meetLink}" style="color:#2563eb;">Acessar Google Meet</a></p>`
+    : params.local
+    ? `<p style="margin:8px 0 0;color:#374151;">📍 ${params.local}</p>`
+    : "";
+
+  const obsSection = params.observacoes
+    ? `<div style="margin-top:16px;padding:12px 16px;background:#f3f4f6;border-radius:6px;font-size:13px;color:#6b7280;">${params.observacoes.replace(/\n/g, "<br>")}</div>`
+    : "";
+
+  const { error } = await r.emails.send({
+    from: `${params.nomeEmpresa} <noreply@vendorai.app>`,
+    to: params.to,
+    subject: `📅 Reunião confirmada — ${params.dataStr} às ${params.horaStr}`,
+    html: `
+      <div style="font-family:sans-serif;max-width:560px;margin:0 auto;padding:24px;background:#fff;">
+        <h2 style="font-size:20px;color:#111;margin:0 0 8px;">Reunião confirmada! 🎉</h2>
+        <p style="color:#6b7280;margin:0 0 24px;">Olá, ${params.leadNome}! Sua reunião foi agendada.</p>
+        <div style="border:1px solid #e5e7eb;border-radius:8px;padding:16px 20px;margin-bottom:20px;">
+          <p style="margin:0;font-size:15px;font-weight:600;color:#111;">📅 ${params.dataStr} às ${params.horaStr}</p>
+          <p style="margin:6px 0 0;color:#6b7280;font-size:14px;">Modalidade: ${tipoLabel}</p>
+          ${localSection}
+        </div>
+        ${obsSection}
+        <p style="margin-top:24px;font-size:13px;color:#9ca3af;">
+          Para reagendar ou cancelar, entre em contato conosco.<br>
+          — Equipe ${params.nomeEmpresa}
+        </p>
+      </div>
+    `,
+  });
+
+  if (error) {
+    logger.warn({ error, to: params.to }, "Falha ao enviar convite de reunião por e-mail");
+    return false;
+  }
+
+  return true;
+}

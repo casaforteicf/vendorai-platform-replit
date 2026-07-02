@@ -15,14 +15,16 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { Switch } from "@/components/ui/switch";
 import { useToast } from "@/hooks/use-toast";
 import {
   useCreateAgendamento,
   useListAgendas,
+  useListTenantUsers,
   getListAgendamentosQueryKey,
 } from "@workspace/api-client-react";
 import { useQueryClient } from "@tanstack/react-query";
-import { CalendarDays, Video, MapPin, Phone, Loader2 } from "lucide-react";
+import { CalendarDays, Video, MapPin, Phone, Loader2, Users, Mail } from "lucide-react";
 
 type Modalidade = "presencial" | "meet" | "ligacao";
 
@@ -39,6 +41,7 @@ interface Props {
   dealId: string;
   leadId: string;
   leadNome: string;
+  leadEmail?: string | null;
   responsavelId?: string | null;
 }
 
@@ -61,24 +64,28 @@ function tomorrowISO(): string {
 }
 
 export function AgendarReuniaoModal({
-  open, onClose, tenantId, dealId, leadId, leadNome, responsavelId,
+  open, onClose, tenantId, dealId, leadId, leadNome, leadEmail, responsavelId,
 }: Props) {
   const { toast } = useToast();
   const queryClient = useQueryClient();
 
-  const [modalidade, setModalidade] = useState<Modalidade>("meet");
-  const [date, setDate]             = useState<string>(tomorrowISO());
-  const [duracao, setDuracao]       = useState<string>("30");
-  const [selectedSlot, setSelectedSlot] = useState<Slot | null>(null);
-  const [observacoes, setObservacoes]   = useState<string>("");
-  const [slots, setSlots]           = useState<Slot[]>([]);
-  const [loadingSlots, setLoadingSlots] = useState(false);
+  const [modalidade, setModalidade]         = useState<Modalidade>("meet");
+  const [date, setDate]                     = useState<string>(tomorrowISO());
+  const [duracao, setDuracao]               = useState<string>("30");
+  const [selectedSlot, setSelectedSlot]     = useState<Slot | null>(null);
+  const [observacoes, setObservacoes]       = useState<string>("");
+  const [slots, setSlots]                   = useState<Slot[]>([]);
+  const [loadingSlots, setLoadingSlots]     = useState(false);
+  const [participanteId, setParticipanteId] = useState<string>(responsavelId ?? "__nenhum__");
+  const [enviarCliente, setEnviarCliente]   = useState<boolean>(true);
 
   const { data: agendas = [] } = useListAgendas(tenantId);
-  const defaultAgenda = agendas[0];
-  const createAgendamento = useCreateAgendamento();
+  const { data: users = [] }   = useListTenantUsers(tenantId);
+  const defaultAgenda          = agendas[0];
+  const createAgendamento      = useCreateAgendamento();
 
-  // Re-fetch slots when date, duracao or agenda changes
+  const resolvedResponsavelId = participanteId === "__nenhum__" ? undefined : participanteId;
+
   useEffect(() => {
     if (!open || !date) return;
     setSlots([]);
@@ -87,7 +94,7 @@ export function AgendarReuniaoModal({
 
     const params = new URLSearchParams({ date, duracao });
     if (defaultAgenda?.id) params.set("agendaId", defaultAgenda.id);
-    if (responsavelId) params.set("responsavelId", responsavelId);
+    if (resolvedResponsavelId) params.set("responsavelId", resolvedResponsavelId);
 
     const token = localStorage.getItem("vendorai_token");
     fetch(`/api/tenants/${tenantId}/agendamentos/slots?${params}`, {
@@ -101,13 +108,31 @@ export function AgendarReuniaoModal({
         setSlots([]);
       })
       .finally(() => setLoadingSlots(false));
-  }, [open, date, duracao, defaultAgenda?.id, responsavelId, tenantId]);
+  }, [open, date, duracao, defaultAgenda?.id, resolvedResponsavelId, tenantId]);
+
+  // Reset when modal opens
+  useEffect(() => {
+    if (open) {
+      setParticipanteId(responsavelId ?? "__nenhum__");
+      setEnviarCliente(true);
+      setModalidade("meet");
+      setDate(tomorrowISO());
+      setDuracao("30");
+      setObservacoes("");
+      setSelectedSlot(null);
+    }
+  }, [open, responsavelId]);
 
   function handleConfirm() {
     if (!selectedSlot) {
       toast({ title: "Selecione um horário", variant: "destructive" });
       return;
     }
+
+    const participanteUser = users.find((u) => u.id === resolvedResponsavelId);
+    const participantes = participanteUser
+      ? [{ nome: participanteUser.name, email: participanteUser.email }]
+      : [];
 
     createAgendamento.mutate(
       {
@@ -116,7 +141,7 @@ export function AgendarReuniaoModal({
           dealId,
           leadId,
           agendaId: defaultAgenda?.id ?? undefined,
-          responsavelId: responsavelId ?? undefined,
+          responsavelId: resolvedResponsavelId ?? undefined,
           tipo: "reuniao",
           gerarMeet: modalidade === "meet",
           titulo: `Reunião com ${leadNome}`,
@@ -124,9 +149,10 @@ export function AgendarReuniaoModal({
           dataHoraFim: new Date(selectedSlot.end) as any,
           status: "agendado",
           observacoes: observacoes || undefined,
-          // Extra fields accepted by backend but not yet in generated types:
           modalidade,
           criadoPor: "humano",
+          participantes,
+          leadEmail: enviarCliente ? (leadEmail ?? undefined) : undefined,
         } as any,
       },
       {
@@ -145,7 +171,7 @@ export function AgendarReuniaoModal({
 
   return (
     <Dialog open={open} onOpenChange={(v) => !v && onClose()}>
-      <DialogContent className="max-w-md">
+      <DialogContent className="max-w-md max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <CalendarDays className="h-5 w-5 text-primary" />
@@ -178,6 +204,28 @@ export function AgendarReuniaoModal({
                 );
               })}
             </div>
+          </div>
+
+          {/* ── Participante da equipe ── */}
+          <div className="space-y-2">
+            <Label className="flex items-center gap-1.5">
+              <Users className="h-3.5 w-3.5 text-muted-foreground" />
+              Participante da equipe
+            </Label>
+            <Select value={participanteId} onValueChange={setParticipanteId}>
+              <SelectTrigger>
+                <SelectValue placeholder="Selecione um participante…" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="__nenhum__">— Nenhum —</SelectItem>
+                {users.filter((u) => u.active).map((u) => (
+                  <SelectItem key={u.id} value={u.id}>
+                    {u.name}
+                    {u.email ? <span className="text-muted-foreground ml-1 text-xs">({u.email})</span> : null}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           </div>
 
           {/* ── Data ── */}
@@ -250,7 +298,26 @@ export function AgendarReuniaoModal({
             />
           </div>
 
-          {/* ── Participantes (informativo) ── */}
+          {/* ── Enviar convite para o cliente ── */}
+          <div className="flex items-center justify-between rounded-lg border p-3 bg-muted/30">
+            <div className="flex items-center gap-2">
+              <Mail className="h-4 w-4 text-muted-foreground" />
+              <div>
+                <p className="text-sm font-medium">Notificar cliente</p>
+                <p className="text-xs text-muted-foreground">
+                  {leadEmail
+                    ? `WhatsApp + e-mail para ${leadEmail}`
+                    : "WhatsApp (sem e-mail cadastrado)"}
+                </p>
+              </div>
+            </div>
+            <Switch
+              checked={enviarCliente}
+              onCheckedChange={setEnviarCliente}
+            />
+          </div>
+
+          {/* ── Agenda conectada ── */}
           {defaultAgenda?.googleEmail && (
             <div className="rounded-md bg-muted/50 px-3 py-2 text-xs text-muted-foreground">
               <span className="font-medium">Agenda conectada:</span> {defaultAgenda.googleEmail}

@@ -20,6 +20,7 @@ import {
   listGoogleCalendarBusyTimes,
 } from "../lib/google-calendar";
 import { sendDirectWhatsAppMessage } from "../services/omnichannel.js";
+import { sendMeetingInviteEmail } from "../lib/email.js";
 
 const router: IRouter = Router();
 
@@ -35,6 +36,11 @@ router.post("/agendamentos", async (req, res) => {
     res.status(403).json({ error: "Access denied to this tenant" });
     return;
   }
+
+  // Extra field not in DB schema — read directly from body
+  const bodyLeadEmail: string | undefined = typeof req.body.leadEmail === "string" && req.body.leadEmail.trim()
+    ? req.body.leadEmail.trim()
+    : undefined;
 
   const { dataHoraInicio, dataHoraFim } = parsed.data;
   if (dataHoraFim <= dataHoraInicio) {
@@ -163,6 +169,39 @@ router.post("/agendamentos", async (req, res) => {
       }
     } catch (waErr) {
       req.log.warn({ err: waErr }, "agendamento: WhatsApp confirmation (no-agenda path) failed (non-fatal)");
+    }
+  }
+
+  // ── Email invite to lead (when enviarCliente=true and leadEmail provided) ─
+  if (bodyLeadEmail) {
+    try {
+      const [lead2] = await db
+        .select({ nome: leadsTable.nome })
+        .from(leadsTable)
+        .where(eq(leadsTable.id, agendamento.leadId));
+      const [bp2] = await db
+        .select({ nomeFantasia: businessProfilesTable.nomeFantasia, razaoSocial: businessProfilesTable.razaoSocial })
+        .from(businessProfilesTable)
+        .where(eq(businessProfilesTable.tenantId, agendamento.tenantId))
+        .limit(1);
+      const nomeEmpresa2 = bp2?.nomeFantasia ?? bp2?.razaoSocial ?? "Vendor.ai";
+      const modalidade2 = agendamento.modalidade ?? (agendamento.gerarMeet ? "meet" : "presencial");
+      const dataStr2 = new Date(agendamento.dataHoraInicio).toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit", year: "numeric", timeZone: "America/Sao_Paulo" });
+      const horaStr2 = new Date(agendamento.dataHoraInicio).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit", timeZone: "America/Sao_Paulo" });
+      await sendMeetingInviteEmail({
+        to: bodyLeadEmail,
+        leadNome: lead2?.nome ?? "Cliente",
+        nomeEmpresa: nomeEmpresa2,
+        dataStr: dataStr2,
+        horaStr: horaStr2,
+        modalidade: modalidade2,
+        meetLink: agendamento.meetLink,
+        local: agendamento.local,
+        observacoes: agendamento.observacoes,
+      });
+      req.log.info({ agendamentoId: agendamento.id, to: bodyLeadEmail }, "agendamento: email invite sent to lead");
+    } catch (emailErr) {
+      req.log.warn({ err: emailErr, agendamentoId: agendamento.id }, "agendamento: email invite failed (non-fatal)");
     }
   }
 

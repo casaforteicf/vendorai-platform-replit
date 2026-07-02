@@ -2726,6 +2726,7 @@ export default function Deals() {
           dealId={agendarDeal.id}
           leadId={agendarDeal.leadId ?? ""}
           leadNome={leadMap.get(agendarDeal.leadId ?? "") ?? "Lead"}
+          leadEmail={leads.find((l) => l.id === agendarDeal.leadId)?.email ?? null}
           responsavelId={(agendarDeal as any).responsavelId ?? null}
         />
       )}
