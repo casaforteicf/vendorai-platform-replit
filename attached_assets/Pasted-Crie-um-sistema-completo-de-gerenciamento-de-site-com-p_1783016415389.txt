@@ -1,0 +1,86 @@
+Crie um sistema completo de gerenciamento de site com painel administrativo onde o usuário possa editar todas as seções do site diretamente pela interface.
+
+TECNOLOGIAS: Node.js, Express, EJS, Multer (upload de imagens), SQLite (banco de dados)
+
+ESTRUTURA DO PROJETO:
+- /public (CSS, JS, imagens)
+- /views/admin (painel administrativo)
+- /views/site (páginas públicas)
+- /uploads (pastas: quem-somos, produtos, projetos, obras)
+- /routes (rotas da API)
+- /models (modelos do banco)
+
+FUNCIONALIDADES OBRIGATÓRIAS:
+
+1. PAINEL ADMIN (ACESSO: /admin)
+   - Dashboard com estatísticas
+   - Menu lateral com: Dashboard | Quem Somos | Produtos | Projetos | Obras Executadas
+   - Sistema de login (usuário: admin, senha: admin123)
+
+2. SEÇÃO "QUEM SOMOS" (/admin/quem-somos)
+   - Upload de foto de perfil da empresa
+   - Editor de texto para histórico da empresa (com formatação)
+   - Campos: Missão, Visão, Valores (com botão para adicionar múltiplos valores)
+   - Fotos da equipe (upload múltiplo)
+   - Dados de contato: Email, Telefone, Endereço
+   - Preview ao vivo das alterações
+
+3. SEÇÃO "PRODUTOS" (/admin/produtos)
+   - CRUD completo (Criar, Listar, Editar, Excluir)
+   - Cada produto tem: Nome, Descrição, Preço, Categoria
+   - Upload de múltiplas fotos por produto
+   - Especificações técnicas (campos dinâmicos)
+   - Opção de destaque (checkbox)
+   - Listagem em grid com ações (editar/excluir)
+   - Modal para adicionar/editar produtos
+
+4. SEÇÃO "PROJETOS" (/admin/projetos)
+   - CRUD completo
+   - Cada projeto tem: Título, Descrição, Cliente
+   - Datas: Início e Fim
+   - Status: Concluído/Em Andamento
+   - Upload de múltiplas fotos
+   - Detalhes adicionais (Área, Local, Investimento)
+   - Depoimentos de clientes (com foto)
+
+5. SEÇÃO "OBRAS EXECUTADAS" (/admin/obras)
+   - CRUD completo
+   - Cada obra tem: Título, Descrição, Localização
+   - Datas: Início e Conclusão
+   - Tipo: Construção/Reforma
+   - Fotos "Antes" e "Depois" (upload separado)
+   - Depoimentos sobre a obra
+   - Resultados (campos dinâmicos: Economia, Prazo, Satisfação)
+
+6. SITE PÚBLICO (PÁGINAS)
+   - Página inicial com resumo de tudo
+   - Página "Quem Somos" com foto, histórico, missão/visão/valores
+   - Página "Produtos" com grid e detalhes
+   - Página "Projetos" com cards e detalhes
+   - Página "Obras Executadas" com timeline antes/depois
+   - Design responsivo e moderno
+   - Menu de navegação entre todas as páginas
+
+7. FUNCIONALIDADES EXTRAS
+   - Preview do site em tempo real
+   - Exportar site completo (HTML + assets)
+   - Backup automático das alterações
+   - Validação de formulários
+   - Mensagens de sucesso/erro (toast notifications)
+   - Upload de imagens com compressão automática
+
+8. BANCO DE DADOS (SQLite)
+   - Tabela: quem_somos (campos: id, titulo, historico, missao, visao, valores, foto_perfil, email, telefone, endereco)
+   - Tabela: produtos (campos: id, nome, descricao, preco, categoria, destaque, fotos_json, especificacoes_json)
+   - Tabela: projetos (campos: id, titulo, descricao, cliente, data_inicio, data_fim, status, fotos_json, detalhes_json, depoimentos_json)
+   - Tabela: obras (campos: id, titulo, descricao, localizacao, data_inicio, data_conclusao, tipo, fotos_antes_json, fotos_depois_json, depoimentos_json, resultados_json)
+   - Tabela: usuarios (id, username, password_hash)
+
+9. COMMANDOS PARA EXECUTAR
+   - npm init -y
+   - npm install express ejs sqlite3 multer sharp bcryptjs express-session
+   - npm install nodemon --save-dev
+   - "start": "node server.js"
+   - "dev": "nodemon server.js"
+
+10. ARQUITETURA DE PASTAS COMPLETA:
