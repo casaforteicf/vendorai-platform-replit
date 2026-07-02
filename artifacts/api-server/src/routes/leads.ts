@@ -1,5 +1,5 @@
 import { Router, type IRouter } from "express";
-import { and, eq, inArray } from "drizzle-orm";
+import { and, eq, inArray, desc } from "drizzle-orm";
 import { z } from "zod/v4";
 import {
   db,
@@ -933,6 +933,67 @@ Seja direto, prático e específico para este cliente. Não invente dados que n�
     req.log.error({ err }, "briefing/summarize error");
     const status = (err as any)?.status ?? 500;
     res.status(status).json({ error: err?.message ?? "Erro ao gerar resumo com IA" });
+  }
+});
+
+// ── POST /api/leads/:id/conversation-starter — Sugere primeira mensagem via IA ──
+router.post("/leads/:id/conversation-starter", async (req, res) => {
+  const leadId = req.params.id!;
+  const tenantId = req.user?.tenantId;
+  if (!tenantId) { res.status(403).json({ error: "Tenant não identificado" }); return; }
+
+  const [lead] = await db
+    .select()
+    .from(leadsTable)
+    .where(and(eq(leadsTable.id, leadId), eq(leadsTable.tenantId, tenantId)))
+    .limit(1);
+  if (!lead) { res.status(404).json({ error: "Lead não encontrado" }); return; }
+
+  const [intel] = await db
+    .select()
+    .from(customerIntelligenceTable)
+    .where(and(eq(customerIntelligenceTable.leadId, leadId), eq(customerIntelligenceTable.tenantId, tenantId)))
+    .limit(1);
+
+  const recentMsgs = await db
+    .select({ conteudo: messagesTable.conteudo, direcao: messagesTable.direcao })
+    .from(messagesTable)
+    .innerJoin(conversationsTable, eq(messagesTable.conversationId, conversationsTable.id))
+    .where(and(eq(conversationsTable.leadId, leadId), eq(conversationsTable.tenantId, tenantId)))
+    .orderBy(desc(messagesTable.createdAt))
+    .limit(5);
+
+  const ctx = [
+    `Nome: ${lead.nome}`,
+    lead.empresa ? `Empresa: ${lead.empresa}` : null,
+    lead.segmento ? `Segmento: ${lead.segmento}` : null,
+    intel?.nextBestAction ? `Próxima ação sugerida pela IA: ${intel.nextBestAction}` : null,
+    intel?.intentAnalysis ? `Intenção de compra: ${intel.intentAnalysis}` : null,
+    intel?.churnRisk != null ? `Risco de churn: ${intel.churnRisk}%` : null,
+    recentMsgs.length > 0
+      ? `Últimas mensagens: ${recentMsgs.map(m => `[${m.direcao}] ${(m.conteudo ?? "").slice(0, 80)}`).join(" | ")}`
+      : "Nenhuma conversa anterior registrada.",
+  ].filter(Boolean).join("\n");
+
+  try {
+    const result = await callOpenAI(
+      tenantId,
+      "content_generator",
+      [
+        {
+          role: "system",
+          content:
+            "Você é um assistente de vendas consultivo. Crie uma mensagem inicial de conversa personalizada para o lead, adequada para WhatsApp ou Instagram Direct. A mensagem deve ser: curta (no máximo 3 frases), cordial e natural, referir-se ao contexto do lead sem ser invasiva, e criar abertura para diálogo. Responda apenas com o texto da mensagem, sem aspas, prefixos ou explicações.",
+        },
+        { role: "user", content: `Contexto do lead:\n${ctx}` },
+      ],
+      { maxTokens: 250, temperature: 0.82, log: req.log },
+    );
+    res.json({ message: result.content.trim() });
+  } catch {
+    res.json({
+      message: `Olá, ${lead.nome}! Tudo bem? Estava pensando em você e gostaria de conversar sobre como posso ajudar.`,
+    });
   }
 });
 

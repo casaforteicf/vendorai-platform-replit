@@ -107,7 +107,22 @@ import {
   Briefcase,
   Users,
   DollarSign,
+  Wand2,
+  Send,
 } from "lucide-react";
+
+function getBase()  { return (import.meta.env.BASE_URL ?? "/").replace(/\/$/, ""); }
+function getToken() { return localStorage.getItem("vendorai_token") ?? ""; }
+
+function InstagramIcon({ className }: { className?: string }) {
+  return (
+    <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <rect x="2" y="2" width="20" height="20" rx="5" ry="5"/>
+      <circle cx="12" cy="12" r="5"/>
+      <circle cx="17.5" cy="6.5" r="1" fill="currentColor" stroke="none"/>
+    </svg>
+  );
+}
 
 const STATUS_STYLES: Record<string, string> = {
   novo: "bg-blue-100 text-blue-700 border-blue-200",
@@ -442,22 +457,50 @@ export default function LeadDetail() {
   const [whatsappEtapa, setWhatsappEtapa] = useState<string>("novo");
   const [isStartingConversation, setIsStartingConversation] = useState(false);
 
+  // ── Novo dialog unificado (WhatsApp + Instagram) ──────────────────────────
+  const [iniciarDialogOpen, setIniciarDialogOpen] = useState(false);
+  const [iniciarCanal, setIniciarCanal] = useState<"whatsapp" | "instagram">("whatsapp");
+  const [iniciarMensagem, setIniciarMensagem] = useState("");
+  const [iniciarEtapa, setIniciarEtapa] = useState<string>("novo");
+  const [gerandoSugestao, setGerandoSugestao] = useState(false);
+
   const { mutateAsync: createConversation } = useCreateConversation();
   const { mutateAsync: createDeal } = useCreateDeal();
   const { mutateAsync: createMessage } = useCreateMessage();
 
-  function openWhatsappDialog() {
-    setWhatsappMessage(`Olá, ${lead?.nome ?? ""}! Tudo bem?`);
-    setWhatsappEtapa("novo");
-    setWhatsappDialogOpen(true);
+  async function fetchAiStarter() {
+    if (!id) return;
+    setGerandoSugestao(true);
+    try {
+      const res = await fetch(`${getBase()}/api/leads/${id}/conversation-starter`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${getToken()}` },
+      });
+      if (res.ok) {
+        const { message } = await res.json() as { message: string };
+        setIniciarMensagem(message);
+      }
+    } catch {
+      // keep current message
+    } finally {
+      setGerandoSugestao(false);
+    }
   }
 
-  async function handleStartWhatsappConversation() {
+  async function openIniciarConversa(canal: "whatsapp" | "instagram" = "whatsapp") {
+    setIniciarCanal(canal);
+    setIniciarEtapa("novo");
+    setIniciarMensagem(`Olá, ${lead?.nome ?? ""}! Tudo bem?`);
+    setIniciarDialogOpen(true);
+    void fetchAiStarter();
+  }
+
+  async function handleIniciarConversa() {
     if (!lead || !id) return;
     setIsStartingConversation(true);
     try {
       const conv = await createConversation({
-        data: { tenantId: lead.tenantId, leadId: id, channel: "whatsapp" },
+        data: { tenantId: lead.tenantId, leadId: id, channel: iniciarCanal },
       });
       await Promise.all([
         createDeal({
@@ -465,7 +508,7 @@ export default function LeadDetail() {
             tenantId: lead.tenantId,
             titulo: lead.nome,
             leadId: id,
-            etapa: whatsappEtapa as "em_aquecimento" | "novo" | "qualificado" | "proposta" | "negociacao",
+            etapa: iniciarEtapa as "em_aquecimento" | "novo" | "qualificado" | "proposta" | "negociacao",
           },
         }),
         createMessage({
@@ -473,23 +516,32 @@ export default function LeadDetail() {
             tenantId: lead.tenantId,
             conversationId: conv.id,
             leadId: id,
-            canal: "whatsapp",
+            canal: iniciarCanal,
             direcao: "saida",
-            conteudo: whatsappMessage,
+            conteudo: iniciarMensagem,
             enviadoPor: "humano",
           },
         }),
       ]);
       void queryClient.invalidateQueries({ queryKey: getListTenantConversationsQueryKey(lead.tenantId) });
       void queryClient.invalidateQueries({ queryKey: getListDealsQueryKey(lead.tenantId) });
-      setWhatsappDialogOpen(false);
-      toast({ title: "Conversa iniciada e card criado no pipeline!" });
+      setIniciarDialogOpen(false);
+      toast({ title: "Conversa iniciada!" });
+      setLocation("/conversas");
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : "Erro ao iniciar conversa";
       toast({ title: msg, variant: "destructive" });
     } finally {
       setIsStartingConversation(false);
     }
+  }
+
+  function openWhatsappDialog() {
+    void openIniciarConversa("whatsapp");
+  }
+
+  async function handleStartWhatsappConversation() {
+    await handleIniciarConversa();
   }
 
   const [editingPessoal, setEditingPessoal] = useState(false);
@@ -1053,11 +1105,23 @@ export default function LeadDetail() {
             <Button
               size="sm"
               className="bg-[#25D366] hover:bg-[#1ebe5d] text-white gap-1.5"
-              onClick={openWhatsappDialog}
+              onClick={() => void openIniciarConversa("whatsapp")}
               data-testid="btn-start-whatsapp"
             >
               <MessageSquare className="h-4 w-4" />
-              Iniciar no WhatsApp
+              WhatsApp
+            </Button>
+          )}
+          {(lead.instagramScopedId || lead.instagramHandle) && (
+            <Button
+              size="sm"
+              className="gap-1.5 text-white"
+              style={{ background: "linear-gradient(135deg,#833ab4,#fd1d1d,#fcb045)" }}
+              onClick={() => void openIniciarConversa("instagram")}
+              data-testid="btn-start-instagram"
+            >
+              <InstagramIcon className="h-4 w-4" />
+              Instagram
             </Button>
           )}
           <Button
@@ -3400,7 +3464,144 @@ export default function LeadDetail() {
         </DialogContent>
       </Dialog>
 
-      {/* WhatsApp conversation starter dialog */}
+      {/* ── Dialog unificado: Iniciar Conversa (WhatsApp ou Instagram) ── */}
+      <Dialog open={iniciarDialogOpen} onOpenChange={setIniciarDialogOpen}>
+        <DialogContent className="sm:max-w-lg">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-base">
+              {iniciarCanal === "whatsapp" ? (
+                <MessageSquare className="h-5 w-5 text-[#25D366]" />
+              ) : (
+                <InstagramIcon className="h-5 w-5" />
+              )}
+              Iniciar conversa
+            </DialogTitle>
+          </DialogHeader>
+
+          <div className="space-y-4 py-1">
+            {/* Channel selector */}
+            <div className="flex gap-2">
+              <button
+                type="button"
+                onClick={() => setIniciarCanal("whatsapp")}
+                className={`flex-1 flex items-center justify-center gap-2 rounded-lg border py-2.5 text-sm font-medium transition-all ${
+                  iniciarCanal === "whatsapp"
+                    ? "border-[#25D366] bg-[#25D366]/10 text-[#25D366]"
+                    : "border-border text-muted-foreground hover:bg-muted/50"
+                }`}
+              >
+                <MessageSquare className="h-4 w-4" />
+                WhatsApp
+              </button>
+              <button
+                type="button"
+                onClick={() => setIniciarCanal("instagram")}
+                className={`flex-1 flex items-center justify-center gap-2 rounded-lg border py-2.5 text-sm font-medium transition-all ${
+                  iniciarCanal === "instagram"
+                    ? "border-purple-500 bg-purple-50 text-purple-600"
+                    : "border-border text-muted-foreground hover:bg-muted/50"
+                }`}
+              >
+                <InstagramIcon className="h-4 w-4" />
+                Instagram
+              </button>
+            </div>
+
+            {/* AI-suggested message */}
+            <div className="space-y-1.5">
+              <div className="flex items-center justify-between">
+                <label className="text-sm font-medium">Mensagem inicial</label>
+                <button
+                  type="button"
+                  onClick={() => void fetchAiStarter()}
+                  disabled={gerandoSugestao}
+                  className="flex items-center gap-1 text-xs text-primary hover:text-primary/80 disabled:opacity-50 transition-colors"
+                >
+                  {gerandoSugestao
+                    ? <Loader2 className="h-3 w-3 animate-spin" />
+                    : <Wand2 className="h-3 w-3" />
+                  }
+                  {gerandoSugestao ? "Gerando…" : "Sugestão da IA"}
+                </button>
+              </div>
+              {gerandoSugestao && !iniciarMensagem && (
+                <div className="h-20 rounded-md border bg-muted/30 animate-pulse" />
+              )}
+              {(!gerandoSugestao || iniciarMensagem) && (
+                <Textarea
+                  rows={4}
+                  value={iniciarMensagem}
+                  onChange={(e) => setIniciarMensagem(e.target.value)}
+                  placeholder="Digite a mensagem inicial…"
+                  className={gerandoSugestao ? "opacity-60" : ""}
+                />
+              )}
+              {gerandoSugestao && iniciarMensagem && (
+                <p className="text-xs text-muted-foreground flex items-center gap-1">
+                  <Loader2 className="h-3 w-3 animate-spin" />
+                  Gerando sugestão personalizada…
+                </p>
+              )}
+              {!gerandoSugestao && iniciarMensagem && (
+                <p className="text-xs text-muted-foreground flex items-center gap-1">
+                  <Sparkles className="h-3 w-3 text-primary" />
+                  Sugestão gerada pela IA com base no perfil do lead. Edite se quiser.
+                </p>
+              )}
+            </div>
+
+            {/* Pipeline stage */}
+            <div className="space-y-1.5">
+              <label className="text-sm font-medium">Etapa no pipeline</label>
+              <Select value={iniciarEtapa} onValueChange={setIniciarEtapa}>
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="em_aquecimento">Em aquecimento</SelectItem>
+                  <SelectItem value="novo">Novo</SelectItem>
+                  <SelectItem value="qualificado">Qualificado</SelectItem>
+                  <SelectItem value="proposta">Orçamento</SelectItem>
+                  <SelectItem value="negociacao">Negociação</SelectItem>
+                </SelectContent>
+              </Select>
+              <p className="text-xs text-muted-foreground">
+                Um card será criado automaticamente no pipeline com esta etapa.
+              </p>
+            </div>
+          </div>
+
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => setIniciarDialogOpen(false)}
+              disabled={isStartingConversation}
+            >
+              Cancelar
+            </Button>
+            <Button
+              className={iniciarCanal === "whatsapp"
+                ? "bg-[#25D366] hover:bg-[#1ebe5d] text-white"
+                : "text-white"
+              }
+              style={iniciarCanal === "instagram"
+                ? { background: "linear-gradient(135deg,#833ab4,#fd1d1d,#fcb045)" }
+                : undefined
+              }
+              onClick={() => void handleIniciarConversa()}
+              disabled={isStartingConversation || !iniciarMensagem.trim()}
+            >
+              {isStartingConversation ? (
+                <><Loader2 className="h-4 w-4 animate-spin mr-2" />Iniciando…</>
+              ) : (
+                <><Send className="h-4 w-4 mr-2" />Enviar e abrir conversa</>
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* WhatsApp conversation starter dialog (legado — mantido para compatibilidade) */}
       <Dialog open={whatsappDialogOpen} onOpenChange={setWhatsappDialogOpen}>
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
