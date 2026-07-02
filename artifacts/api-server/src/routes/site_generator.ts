@@ -362,7 +362,8 @@ COPY — OBRIGATÓRIO:
 
 QUALIDADE OBRIGATÓRIA:
 ✓ Visual profissional — equivalente a sites feitos por agências de marketing digital
-✓ Imagens externas SOMENTE as fornecidas no briefing; demais elementos: gradientes CSS, SVGs inline, iniciais em círculo
+✓ Imagens externas SOMENTE as fornecidas no briefing; demais elementos decorativos: gradientes CSS, SVGs inline, iniciais em círculo
+✓ GALERIA DE FOTOS (quando presente): use SEMPRE tags <img> com src reais de imagens Unsplash relacionadas ao setor (ex: https://images.unsplash.com/photo-1556909114-f6e7ad7d3136?w=600&h=400&fit=crop), alt descritivo e loading="lazy" — NUNCA use divs com gradiente CSS como placeholder de imagem em galerias
 ✓ 100% responsivo — mobile impecável
 ✓ Smooth scroll, hover states, animações sutis
 ✓ Formulário de contato com validação JS básica (campos obrigatórios)

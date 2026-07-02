@@ -772,8 +772,35 @@ const INLINE_EDIT_SCRIPT = `
       var ov=document.createElement('div');ov.className='ve-img-overlay';
       var lbl=document.createElement('span');lbl.className='ve-img-overlay-label';lbl.textContent='🖼 Trocar foto';
       ov.appendChild(lbl);par.appendChild(ov);
-      ov.addEventListener('click',function(e){e.stopPropagation();window.parent.postMessage({type:'ve-img-pick',imgIndex:index},'*');});
+      ov.addEventListener('click',function(e){e.stopPropagation();window.parent.postMessage({type:'ve-img-pick',mode:'img',imgIndex:index},'*');});
     }
+  }
+
+  /* ── placeholder div editing (CSS gradient / empty gallery slots) ── */
+  var placeholderEls=[];
+  function setupImgPlaceholder(el,index){
+    if(el.__vePh)return;
+    var style=(el.getAttribute('style')||'').toLowerCase();
+    var text=(el.textContent||'').trim();
+    var cls=(el.className||'').toLowerCase();
+    var isGrad=style.includes('gradient')||(style.includes('background')&&!el.querySelector('img'));
+    var isPlus=text==='+'||text==='✚'||text==='adicionar foto'||text==='clique para adicionar foto';
+    var isGalCls=!!(cls.match(/gallery|galeria|foto|photo|img-ph|thumb|pic|portfolio|project|placeholder/));
+    if(!isGrad&&!isPlus&&!isGalCls)return;
+    if(el.querySelector('img'))return; // already has real image
+    el.__vePh=true;
+    placeholderEls[index]=el;
+    el.style.cursor='pointer';
+    if(!el.style.position||el.style.position==='static')el.style.position='relative';
+    var ov=document.createElement('div');
+    ov.style.cssText='position:absolute;inset:0;background:rgba(0,0,0,.5);display:flex;align-items:center;justify-content:center;opacity:0;transition:opacity .18s;cursor:pointer;border-radius:inherit;z-index:9;';
+    var lbl=document.createElement('span');
+    lbl.style.cssText='color:#fff;font-size:13px;font-weight:600;pointer-events:none;text-shadow:0 1px 4px rgba(0,0,0,.5);';
+    lbl.textContent='🖼 Adicionar foto';
+    ov.appendChild(lbl);el.appendChild(ov);
+    el.addEventListener('mouseenter',function(){ov.style.opacity='1';});
+    el.addEventListener('mouseleave',function(){ov.style.opacity='0';});
+    el.addEventListener('click',function(e){e.stopPropagation();window.parent.postMessage({type:'ve-img-pick',mode:'placeholder',imgIndex:index},'*');});
   }
 
   /* ── sections: detect, report, setup controls ── */
@@ -822,7 +849,23 @@ const INLINE_EDIT_SCRIPT = `
 
   window.addEventListener('message',function(e){
     if(!e.data)return;
-    if(e.data.type==='ve-img-set'){var img=imgs[e.data.imgIndex];if(img){img.src=e.data.newSrc;send();}}
+    if(e.data.type==='ve-img-set'){
+      if(e.data.mode==='placeholder'){
+        var ph=placeholderEls[e.data.imgIndex];
+        if(ph){
+          var newImg=document.createElement('img');
+          newImg.src=e.data.newSrc;
+          newImg.alt='Foto';
+          newImg.loading='lazy';
+          newImg.style.cssText='width:100%;height:100%;object-fit:cover;display:block;border-radius:inherit;';
+          ph.innerHTML='';ph.appendChild(newImg);
+          setupImg(newImg,imgs.length);
+          send();
+        }
+      } else {
+        var img=imgs[e.data.imgIndex];if(img){img.src=e.data.newSrc;send();}
+      }
+    }
     if(e.data.type==='ve-inject-section'){
       var tpl=e.data.html;
       var footer=document.querySelector('footer');
@@ -849,6 +892,14 @@ const INLINE_EDIT_SCRIPT = `
   function init(){
     TAGS.forEach(function(t){document.querySelectorAll(t).forEach(setupText);});
     document.querySelectorAll('img').forEach(function(img,i){setupImg(img,i);});
+    // detect CSS gradient placeholder divs (gallery slots without real images)
+    var phCount=0;
+    document.querySelectorAll('div,section').forEach(function(el){
+      if(phCount>=30)return;
+      var before=Object.keys(placeholderEls).length;
+      setupImgPlaceholder(el,1000+phCount);
+      if(Object.keys(placeholderEls).length>before)phCount++;
+    });
     setupSections();
   }
   if(document.readyState==='loading'){document.addEventListener('DOMContentLoaded',init);}else{init();}
@@ -869,7 +920,7 @@ function stripEditScript(html: string): string {
 // ── Section templates for "Add Section" ────────────────────────────────────────
 
 const SECTION_TEMPLATES: Array<{ id: string; label: string; icon: string; prompt: string }> = [
-  { id: 'gallery', label: 'Galeria de Fotos', icon: '🖼️', prompt: 'Adicione uma seção de galeria de fotos ao site. Use um grid responsivo 3 colunas com placeholders de imagem (gradiente CSS) e texto "Clique para adicionar foto".' },
+  { id: 'gallery', label: 'Galeria de Fotos', icon: '🖼️', prompt: 'Adicione uma seção de galeria de fotos ao site. Use um grid responsivo de 3 colunas com tags <img> reais (use src de imagens Unsplash relacionadas ao setor, ex: https://images.unsplash.com/photo-1556909114-f6e7ad7d3136?w=600&h=400&fit=crop), alt descritivo e loading="lazy". Não use gradiente CSS como placeholder de imagem — use sempre <img> com URLs reais.' },
   { id: 'team', label: 'Nossa Equipe', icon: '👥', prompt: 'Adicione uma seção "Nossa Equipe" com 3 cards de membros (foto placeholder circular, nome, cargo e breve bio). Use o mesmo estilo visual do site.' },
   { id: 'services', label: 'Serviços', icon: '⚙️', prompt: 'Adicione uma seção de Serviços com 4 cards (ícone SVG, título, descrição breve). Use o mesmo estilo visual e cores do site.' },
   { id: 'contact', label: 'Formulário de Contato', icon: '📬', prompt: 'Adicione uma seção de Contato com formulário (Nome, E-mail, Mensagem, botão Enviar) e informações de contato ao lado (telefone, email, endereço). Use o mesmo estilo visual do site.' },
@@ -906,6 +957,7 @@ function SitePreview({
   const iframeRef = useRef<HTMLIFrameElement>(null);
   const imgPickRef = useRef<HTMLInputElement>(null);
   const pendingImgIndex = useRef<number>(-1);
+  const pendingImgMode = useRef<'img' | 'placeholder'>('img');
   const { toast } = useToast();
   const requestUploadUrl = useRequestUploadUrl();
 
@@ -917,6 +969,7 @@ function SitePreview({
         setPendingHtml(stripEditScript(e.data.html as string));
       } else if (e.data.type === 've-img-pick') {
         pendingImgIndex.current = e.data.imgIndex as number;
+        pendingImgMode.current = (e.data.mode as string) === 'placeholder' ? 'placeholder' : 'img';
         imgPickRef.current?.click();
       } else if (e.data.type === 've-sections') {
         setSections(e.data.sections as Array<{ index: number; title: string }>);
@@ -946,7 +999,7 @@ function SitePreview({
       });
       if (!uploadRes.ok) throw new Error('Upload falhou');
       const newSrc = `/api/storage/${uploadResult.objectPath}`;
-      iframeRef.current?.contentWindow?.postMessage({ type: 've-img-set', imgIndex: idx, newSrc }, '*');
+      iframeRef.current?.contentWindow?.postMessage({ type: 've-img-set', mode: pendingImgMode.current, imgIndex: idx, newSrc }, '*');
     } catch {
       toast({ title: 'Erro ao enviar foto. Tente novamente.', variant: 'destructive' });
     } finally {
