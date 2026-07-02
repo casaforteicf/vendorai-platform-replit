@@ -1098,7 +1098,7 @@ router.patch("/prospector/approvals/:id", async (req, res) => {
 });
 
 // ── GET /prospector/config ────────────────────────────────────────────────────
-router.get("/config", async (req, res) => {
+router.get("/prospector/config", async (req, res) => {
   const tenantId = resolveTenantId(req, undefined);
   const [config] = await db
     .select()
@@ -1118,7 +1118,7 @@ const prospectorConfigBodySchema = z.object({
   horarioCron: z.string().optional(),
 });
 
-router.put("/config", async (req, res) => {
+router.put("/prospector/config", async (req, res) => {
   const tenantId = resolveTenantId(req, undefined);
   const parsed = prospectorConfigBodySchema.safeParse(req.body);
   if (!parsed.success) {
@@ -1150,7 +1150,7 @@ router.put("/config", async (req, res) => {
 });
 
 // ── GET /tenant/api-usage — uso mensal da Places API ──────────────────────────
-router.get("/tenant/api-usage", async (req, res) => {
+router.get("/prospector/tenant/api-usage", async (req, res) => {
   const api = (req.query["api"] as string | undefined) ?? "google_places";
   if (api !== "google_places") {
     return res.status(400).json({ error: "api inválida" });

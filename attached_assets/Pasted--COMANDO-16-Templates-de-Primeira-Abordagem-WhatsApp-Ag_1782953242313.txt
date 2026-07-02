@@ -1,0 +1,156 @@
+# COMANDO 16 — Templates de Primeira Abordagem WhatsApp + Agente SDR por Cenário
+
+**Stack:** Node + Drizzle + Supabase · OpenAI já integrado · Z-API/Meta Cloud API  
+**Objetivo:** Templates prontos de primeira abordagem que o Agente SDR seleciona automaticamente conforme o cenário do lead, com variáveis preenchidas pelos dados do Prospector
+
+---
+
+## PARTE A — Os 3 cenários e como detectar automaticamente
+
+```
+CENÁRIO 1 — Prospecção fria
+  Detecção: lead.source = 'prospector' E nenhuma activity de visita presencial
+  Estratégia: duas mensagens em sequência (teste + revelação)
+
+CENÁRIO 2 — Pós-visita sem decisor
+  Detecção: activity type='visita_presencial' com campo falou_com_decisor = false
+  Estratégia: mensagem única com gancho das avaliações Google
+
+CENÁRIO 3 — Contato direto do dono
+  Detecção: lead tem telefone marcado como contato_tipo = 'decisor'
+  Estratégia: mensagem única direta com prova + alternativa dupla
+```
+
+---
+
+## PARTE B — Templates no banco
+
+```sql
+CREATE TABLE IF NOT EXISTS sdr_templates (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  tenant_id uuid REFERENCES tenants(id), -- null = template global Vendor.ai
+  cenario text NOT NULL,   -- frio_teste | frio_revelacao | pos_visita | direto_dono
+  ordem int DEFAULT 1,     -- para sequências (cenário 1 tem 2 mensagens)
+  delay_horas int DEFAULT 0, -- espera antes de enviar (revelação = após resposta OU 20h)
+  template text NOT NULL,
+  ativo boolean DEFAULT true,
+  created_at timestamptz DEFAULT now()
+);
+```
+
+### Seeds — templates globais
+
+```
+-- CENÁRIO 1, mensagem 1 (teste de atendimento)
+cenario: 'frio_teste', ordem: 1, delay_horas: 0
+"Oi, boa tarde! Vocês trabalham com {segmento_produto}? Queria um orçamento 🙂"
+
+-- CENÁRIO 1, mensagem 2 (revelação — dispara quando: responderem OU após 20h sem resposta)
+cenario: 'frio_revelacao', ordem: 2
+"Opa{, nome_atendente se houver}! Deixa eu ser transparente contigo: sou o {vendedor_nome},
+trabalho com donos de {segmento} aqui de {cidade}. Mandei essa mensagem {tempo_espera} atrás
+e {so_agora_tive_resposta | ainda nao tive resposta} — e é exatamente sobre isso que eu queria
+falar com o dono. Quantos clientes vocês acham que desistem nesse tempo de espera?
+Tenho uma solução que responde na hora, 24h. O {dono_nome | dono} consegue me atender
+15 minutos essa semana?"
+
+-- CENÁRIO 2 (pós-visita)
+cenario: 'pos_visita', ordem: 1
+"Oi! Passei aí na loja hoje e falei com {nome_gatekeeper}. Sou o {vendedor_nome}, trabalho
+com donos de {segmento} da região. Tenho uma informação sobre as avaliações de vocês no
+Google que o {dono_nome} vai querer ver — nada grave, mas é coisa que está custando venda.
+Ele consegue me atender {dia_sugestao_1} às {hora_sugestao_1} ou prefere {dia_sugestao_2}?"
+
+-- CENÁRIO 3 (direto ao dono)
+cenario: 'direto_dono', ordem: 1
+"{dono_nome}, aqui é o {vendedor_nome}, prazer! Vou direto ao ponto porque sei que teu dia
+é corrido: fiz um teste no WhatsApp da tua loja e olhando as avaliações no Google, tem
+cliente reclamando de {principal_reclamacao}. Isso é venda escapando todo dia. Trabalho com
+uma plataforma que responde teus clientes na hora, 24h, monta orçamento sozinha e agenda —
+tipo um funcionário que nunca falta, por fração de um salário. Te mostro funcionando em 15
+minutos, sem compromisso. {dia_sugestao_1} às {hora_sugestao_1} ou fim da tarde?"
+```
+
+---
+
+## PARTE C — Variáveis preenchidas automaticamente
+
+O Agente SDR preenche as variáveis com dados já existentes no sistema:
+
+```
+{segmento_produto}       → lead.metadata.categoria (do Prospector/Places)
+{segmento}               → vertical do lead
+{cidade}                 → lead.metadata.localidade
+{dono_nome}              → leads.dados_pj.socios[0] ou campo dono_nome (se coletado na visita)
+{nome_gatekeeper}        → activity da visita (campo falou_com)
+{principal_reclamacao}   → extraída pela IA das reviews salvas em lead.metadata.reviews
+                           (ex: "demora na resposta", "atendimento no WhatsApp")
+{vendedor_nome}          → users.name do responsável do deal
+{tempo_espera}           → diferença entre envio da msg teste e resposta (ou "desde ontem")
+{dia_sugestao_1/2}       → próximos 2 dias úteis com slots livres na agenda do responsável
+                           (usa a função de disponibilidade do cmd-15)
+{hora_sugestao_1}        → primeiro slot livre do dia sugerido
+```
+
+REGRA: se uma variável essencial estiver vazia ({dono_nome} sem valor), o agente usa
+fallback natural ("o dono") — nunca envia mensagem com placeholder visível.
+
+---
+
+## PARTE D — Fluxo do Agente SDR
+
+```
+1. Lead entra no funil (via Prospector ou manual)
+2. Agente SDR detecta o cenário (Parte A)
+3. Seleciona o template correspondente
+4. Preenche variáveis (Parte C)
+5. CENÁRIO 1: envia msg teste → aguarda resposta OU 20h → envia revelação
+   CENÁRIOS 2 e 3: envia mensagem única
+6. Registra activity: type='sdr_primeira_abordagem', template usado, cenário
+7. A partir da resposta do lead, o agente continua a conversa normalmente
+   (qualificação → oferta de horários → agendamento via cmd-15)
+8. Sem resposta em 48h → agente envia UM follow-up curto:
+   "Oi {nome}! Sei que a correria é grande — só não queria que você perdesse
+    isso. Consigo te mostrar em 15 min essa semana. Qual dia fica melhor?"
+9. Sem resposta em mais 72h → move para nutrição/reativação (cron 30 dias já existente)
+```
+
+---
+
+## PARTE E — Tela de gestão dos templates
+
+Em Configurações → Agentes → SDR, adicionar seção "Templates de abordagem":
+
+```
+┌─────────────────────────────────────────┐
+│ 📨 Templates de Primeira Abordagem       │
+│                                          │
+│ Cenário: Prospecção fria (2 mensagens)   │
+│ [editar] [testar envio] [ativar/pausar]  │
+│                                          │
+│ Cenário: Pós-visita                      │
+│ [editar] [testar envio] [ativar/pausar]  │
+│                                          │
+│ Cenário: Direto ao dono                  │
+│ [editar] [testar envio] [ativar/pausar]  │
+│                                          │
+│ Variáveis disponíveis: {dono_nome},      │
+│ {segmento}, {cidade}... [ver todas]      │
+└─────────────────────────────────────────┘
+```
+
+"Testar envio" → envia o template preenchido com dados fictícios para o WhatsApp
+do próprio usuário logado.
+
+---
+
+## VALIDAÇÃO
+
+- [ ] Lead do Prospector sem visita → dispara sequência frio_teste + frio_revelacao
+- [ ] Revelação dispara ao receber resposta OU após 20h (o que vier primeiro)
+- [ ] Lead com visita registrada → template pos_visita com nome do gatekeeper
+- [ ] Lead com contato do dono → template direto_dono com reclamação real das reviews
+- [ ] Nenhuma mensagem sai com {placeholder} visível
+- [ ] Follow-up único em 48h, depois move para reativação
+- [ ] Tenant pode editar os templates sem perder as variáveis
+- [ ] Compliance Meta 2026: mensagens executam tarefa comercial específica (agendar demo)
