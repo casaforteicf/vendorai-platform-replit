@@ -1,45 +1,58 @@
 ---
-name: Arch inpainting pipeline
-description: Arquitetura do módulo Arch/Render modo Preservar — inpainting com máscara + compositing
+name: Arch render pipeline — motores validados
+description: Arquitetura do módulo Arch/Render, motores por modo, template de prompt Kontext validado 02/07/2026
 ---
 
-## Problema resolvido
-Bug reportado: modo "Preservar estrutura 100%" trocava móveis/piso porque usava flux-canny-pro (img2img, não inpainting). Solução: pipeline de inpainting com máscara via `black-forest-labs/flux-fill-pro`.
+## Motores por modo (validados com testes reais 02/07/2026)
 
-## Arquitetura
+| Modo | Motor Replicate | Input |
+|---|---|---|
+| **Preservar** | `black-forest-labs/flux-kontext-pro` | `input_image` + prompt textual |
+| **Criar** | `black-forest-labs/flux-1.1-pro-ultra` | prompt apenas (`raw: true`) |
+| **Ajuste pontual** | `black-forest-labs/flux-fill-pro` | `image` + `mask` + prompt |
 
-**Dois modos:**
-- `preservar` → Flux Fill Pro (inpainting com máscara) + compositing pós-geração
-- `criar` → flux-canny-pro / gpt-image-1 (fluxo original preservado)
+**Por que o Kontext funciona onde Fill Pro e Canny falharam:**
+- Canny: descarta cor/material (só bordas), móveis ficavam brancos
+- Fill Pro com máscara: adequado apenas para zona pontual, não conversão inteira
+- Kontext: opera sobre pixels reais da imagem — layout/cor/material preservados por padrão
 
-**Pipeline preservar:**
-1. `createZoneMask(zones, w, h)` — máscara PNG heurística (branco=editável, preto=preservar)
-2. `callReplicateFluxFill({imageDataUrl, maskDataUrl, prompt})` — Replicate flux-fill-pro
-3. `compositeWithOriginal(generated, original, mask)` — sharp overlay determinístico
-4. `validateEdgeIntegrity(original, result, mask)` — auto-rejeição se >15% divergência
+## Regra de duas etapas (crítica)
 
-**Novos arquivos:**
-- `artifacts/api-server/src/lib/arch-render-pipeline.ts` — todo o pipeline (mask + FluxFill + compositing + validate)
-- `artifacts/api-server/src/routes/arch_ai_render.ts` — 5 endpoints async
+Mudanças de Componentes (metal, piso, parede, decoração) e LED **NUNCA** no mesmo prompt da conversão Kontext. Sempre:
+1. Etapa 1: Kontext com template base (conversão fotorrealista apenas)
+2. Etapa 2: chamada separada sobre o resultado da Etapa 1 (Fill Pro para ajuste pontual)
 
-**Novos endpoints (async 202 + polling):**
-- `POST /api/arch/ai-render` → `{render_id}` (202)
-- `GET /api/arch/ai-render/:id` → status + result_image_url
-- `POST /api/arch/ai-render/:id/adjust` → ajuste herdando mode do pai
-- `POST /api/arch/project-config` → salvar config reutilizável
-- `GET /api/arch/project-config?lead_id=uuid` → listar configs
+## Template de prompt Kontext (Seção 1.2 do briefing)
 
-**Novos schemas DB:**
-- `arch_ai_renders` — tabela standalone (não vinculada a cenas)
-- `arch_project_configs` — configs reutilizáveis por lead
+**Ordem obrigatória:**
+1. Ação de conversão PRIMEIRO ("Convert this 3D sketch render into a photorealistic photograph…")
+2. Lista de preservação individual por objeto/elemento (não termos genéricos)
+3. Material/cor exatos + contraste explícito para pares ambíguos
+4. Bloco de câmera/qualidade no final
 
-**Why:**
-- Separar das tabelas existentes (`arch_renders` vinculada a `cenas`) evita quebrar o fluxo legado
-- Compositing com sharp garante preservação determinística (pixel-level) independente do modelo
+**Por que a ordem importa:** se a preservação vier primeiro, o modelo preserva até o estilo de renderização (esboço), não só o conteúdo.
+
+## Arquitetura de código
+
+**`arch-render-pipeline.ts`** exporta:
+- `callReplicateFluxKontext` — Modo Preservar (sem máscara)
+- `callReplicateFluxUltraPro` — Modo Criar
+- `callReplicateFluxFill` — Ajuste pontual (segunda chamada separada)
+- `createZoneMask`, `compositeWithOriginal`, `validateEdgeIntegrity` — mantidos para Fill Pro
+
+**`arch_ai_render.ts` — roteamento em `processRenderJob`:**
+- `mode=preservar` → Kontext direto, sem máscara, `motor="replicate-flux-kontext-pro"`
+- `mode=criar && userNotes` → Fill Pro com máscara + compositing + validação de bordas
+- `mode=criar` (sem userNotes) → Ultra Pro, `motor="replicate-flux-1.1-pro-ultra"`
+
+**`buildPrompt`** despacha para:
+- `buildKontextPrompt` — template validado com lista de preservação por zona
+- `buildCriarPrompt` — prompt livre com estilo/ângulo/materiais
 
 ## Gotchas críticos
 - Middleware import: `../middlewares/auth.js` (plural, não `middleware/authenticate.js`)
 - `sharp` instalado em `artifacts/api-server` (dependencies)
-- Flux Fill Pro recebe `image` (não `control_image`) e `mask` como campos separados
-- Tabelas criadas via `executeSql` no Postgres interno do Replit; em produção rodar DDL via Supabase
+- Kontext API input: `input_image` (não `image`) — campo diferente do Fill Pro
+- Kontext guidance padrão: 3.5 (não 30 como no Fill Pro)
+- Tabelas criadas via DDL raw no Supabase (push do Drizzle trunca tenant_domains)
 - Frontend usa polling (2s interval, max 90 attempts = 3min)

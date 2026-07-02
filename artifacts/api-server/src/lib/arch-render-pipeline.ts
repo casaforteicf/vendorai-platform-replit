@@ -1,16 +1,20 @@
 /**
- * Arch/Render Pipeline — inpainting com máscara (modo Preservar)
+ * Arch/Render Pipeline — motores validados em 02/07/2026
  *
- * 1. createZoneMask   — gera máscara PNG a partir das zonas selecionadas (heurística + SAM)
- * 2. callReplicateFluxFill — chama flux-fill-pro no Replicate (inpainting)
- * 3. compositeWithOriginal — compositing pós-geração (garante pixel-perfect fora da máscara)
- * 4. validateEdgeIntegrity — verifica se geometria dentro da máscara não deformou
+ * Modo Preservar  → flux-kontext-pro (edição por instrução de linguagem natural)
+ *   Preserva layout, cor e identidade dos objetos por padrão; só aplica a
+ *   transformação de estilo pedida no prompt. Não usa máscara.
+ *
+ * Modo Criar      → flux-1.1-pro-ultra raw:true (geração livre, sem input_image)
+ *
+ * Ajuste pontual  → flux-fill-pro com máscara (refinamento de elemento específico
+ *   após geração inicial — segunda chamada separada, nunca combinada com Kontext)
  */
 import sharp from "sharp";
 import type { Logger } from "pino";
 
 // ── Mapeamento heurístico de zonas → regiões da imagem ───────────────────────
-// Cada zona define um retângulo relativo (x1%, y1%, x2%, y2%) como fração [0-1]
+// Mantido para ajuste pós-geração via Fill Pro (máscara de elemento pontual)
 const ZONE_REGIONS: Record<string, [number, number, number, number][]> = {
   piso:             [[0, 0.62, 1, 1]],
   teto:             [[0, 0, 1, 0.22]],
@@ -45,9 +49,9 @@ function fillRect(
 }
 
 /**
- * Gera uma máscara PNG (greyscale, branco=editável, preto=preservado)
- * baseada nas zonas selecionadas pelo usuário.
- * Fallback seguro: zona desconhecida → não edita (preto) preservando estrutura.
+ * Gera máscara PNG (greyscale, branco=editável, preto=preservado)
+ * baseada nas zonas selecionadas. Usada exclusivamente no ajuste pontual
+ * via Fill Pro — não na geração inicial do Kontext.
  */
 export async function createZoneMask(
   zones: string[],
@@ -64,7 +68,6 @@ export async function createZoneMask(
         fillRect(pixels, width, height, x1, y1, x2, y2, 255);
       }
     }
-    // Se zona não mapeada: falha segura → deixa preto (não edita)
   }
 
   return sharp(pixels, { raw: { width, height, channels: 1 } })
@@ -72,7 +75,169 @@ export async function createZoneMask(
     .toBuffer();
 }
 
-// ── Replicate — Flux Fill Pro (inpainting) ────────────────────────────────────
+// ── Motor principal: Flux Kontext Pro (Modo Preservar) ────────────────────────
+//
+// Opera sobre os pixels reais da imagem original — layout, cor, material
+// e identidade dos objetos ficam preservados por padrão; só aplica a
+// transformação onde o prompt instrui explicitamente.
+
+export async function callReplicateFluxKontext(params: {
+  imageDataUrl: string;
+  prompt:       string;
+  steps?:       number;
+  guidance?:    number;
+  logger?:      Logger;
+}): Promise<string> {
+  const token = process.env["REPLICATE_API_TOKEN"];
+  if (!token) throw new Error("REPLICATE_API_TOKEN not set");
+
+  const { imageDataUrl, prompt, steps = 50, guidance = 3.5, logger } = params;
+
+  const MODEL = "black-forest-labs/flux-kontext-pro";
+
+  logger?.info({ model: MODEL }, "FluxKontext: creating prediction");
+
+  const createRes = await fetch(
+    `https://api.replicate.com/v1/models/${MODEL}/predictions`,
+    {
+      method: "POST",
+      headers: {
+        Authorization:  `Token ${token}`,
+        "Content-Type": "application/json",
+        Prefer:         "wait=60",
+      },
+      body: JSON.stringify({
+        input: {
+          input_image:         imageDataUrl,
+          prompt,
+          steps,
+          guidance,
+          output_format:       "png",
+          output_quality:      100,
+          safety_tolerance:    2,
+        },
+      }),
+      signal: AbortSignal.timeout(120_000),
+    },
+  );
+
+  if (!createRes.ok) {
+    const body = await createRes.json().catch(() => ({})) as Record<string, unknown>;
+    throw new Error(`FluxKontext HTTP ${createRes.status}: ${body["detail"] ?? JSON.stringify(body)}`);
+  }
+
+  let prediction = await createRes.json() as {
+    id: string; status: string; output?: string | string[];
+    error?: string; urls?: { get: string };
+  };
+
+  let polls = 0;
+  while (prediction.status === "starting" || prediction.status === "processing") {
+    if (polls >= 60) throw new Error("FluxKontext: polling timeout (120s)");
+    await new Promise<void>((r) => setTimeout(r, 2000));
+    const pollRes = await fetch(
+      `https://api.replicate.com/v1/predictions/${prediction.id}`,
+      { headers: { Authorization: `Token ${token}` } },
+    );
+    prediction = await pollRes.json();
+    polls++;
+  }
+
+  if (prediction.status !== "succeeded" || !prediction.output) {
+    throw new Error(`FluxKontext ${prediction.status}: ${prediction.error ?? "no output"}`);
+  }
+
+  const outputUrl = Array.isArray(prediction.output)
+    ? prediction.output[0]
+    : prediction.output;
+  if (!outputUrl) throw new Error("FluxKontext: empty output URL");
+
+  logger?.info({ model: MODEL, polls }, "FluxKontext: prediction succeeded");
+
+  const imgRes = await fetch(outputUrl as string);
+  if (!imgRes.ok) throw new Error(`FluxKontext: download failed (${imgRes.status})`);
+  return Buffer.from(await imgRes.arrayBuffer()).toString("base64");
+}
+
+// ── Motor de geração livre: Flux 1.1 Pro Ultra raw:true (Modo Criar) ──────────
+
+export async function callReplicateFluxUltraPro(params: {
+  prompt:   string;
+  steps?:   number;
+  logger?:  Logger;
+}): Promise<string> {
+  const token = process.env["REPLICATE_API_TOKEN"];
+  if (!token) throw new Error("REPLICATE_API_TOKEN not set");
+
+  const { prompt, steps = 50, logger } = params;
+
+  const MODEL = "black-forest-labs/flux-1.1-pro-ultra";
+
+  logger?.info({ model: MODEL }, "FluxUltraPro: creating prediction");
+
+  const createRes = await fetch(
+    `https://api.replicate.com/v1/models/${MODEL}/predictions`,
+    {
+      method: "POST",
+      headers: {
+        Authorization:  `Token ${token}`,
+        "Content-Type": "application/json",
+        Prefer:         "wait=60",
+      },
+      body: JSON.stringify({
+        input: {
+          prompt,
+          raw:            true, // sem pós-processamento estético — fidelidade ao prompt
+          output_format:  "png",
+          output_quality: 100,
+          safety_tolerance: 2,
+        },
+      }),
+      signal: AbortSignal.timeout(120_000),
+    },
+  );
+
+  if (!createRes.ok) {
+    const body = await createRes.json().catch(() => ({})) as Record<string, unknown>;
+    throw new Error(`FluxUltraPro HTTP ${createRes.status}: ${body["detail"] ?? JSON.stringify(body)}`);
+  }
+
+  let prediction = await createRes.json() as {
+    id: string; status: string; output?: string | string[];
+    error?: string;
+  };
+
+  let polls = 0;
+  while (prediction.status === "starting" || prediction.status === "processing") {
+    if (polls >= 60) throw new Error("FluxUltraPro: polling timeout (120s)");
+    await new Promise<void>((r) => setTimeout(r, 2000));
+    const pollRes = await fetch(
+      `https://api.replicate.com/v1/predictions/${prediction.id}`,
+      { headers: { Authorization: `Token ${token}` } },
+    );
+    prediction = await pollRes.json();
+    polls++;
+  }
+
+  if (prediction.status !== "succeeded" || !prediction.output) {
+    throw new Error(`FluxUltraPro ${prediction.status}: ${prediction.error ?? "no output"}`);
+  }
+
+  const outputUrl = Array.isArray(prediction.output)
+    ? prediction.output[0]
+    : prediction.output;
+  if (!outputUrl) throw new Error("FluxUltraPro: empty output URL");
+
+  logger?.info({ model: MODEL, polls }, "FluxUltraPro: prediction succeeded");
+
+  const imgRes = await fetch(outputUrl as string);
+  if (!imgRes.ok) throw new Error(`FluxUltraPro: download failed (${imgRes.status})`);
+  return Buffer.from(await imgRes.arrayBuffer()).toString("base64");
+}
+
+// ── Motor de ajuste pontual: Flux Fill Pro (segunda chamada sobre resultado) ───
+// Usado exclusivamente em ajuste pós-geração de elemento específico,
+// nunca combinado com o Kontext no mesmo fluxo.
 
 export async function callReplicateFluxFill(params: {
   imageDataUrl: string;
@@ -96,9 +261,9 @@ export async function callReplicateFluxFill(params: {
     {
       method: "POST",
       headers: {
-        Authorization: `Token ${token}`,
+        Authorization:  `Token ${token}`,
         "Content-Type": "application/json",
-        Prefer: "wait=60",
+        Prefer:         "wait=60",
       },
       body: JSON.stringify({
         input: {
@@ -106,7 +271,7 @@ export async function callReplicateFluxFill(params: {
           mask:                maskDataUrl,
           prompt,
           num_inference_steps: steps,
-          guidance:            guidance,
+          guidance,
           output_format:       "png",
           output_quality:      100,
           safety_tolerance:    2,
@@ -126,7 +291,6 @@ export async function callReplicateFluxFill(params: {
     error?: string; urls?: { get: string };
   };
 
-  // Poll se o Prefer:wait não terminou a tempo
   let polls = 0;
   while (prediction.status === "starting" || prediction.status === "processing") {
     if (polls >= 40) throw new Error("FluxFill: polling timeout (80s)");
@@ -152,17 +316,12 @@ export async function callReplicateFluxFill(params: {
 
   const imgRes = await fetch(outputUrl as string);
   if (!imgRes.ok) throw new Error(`FluxFill: download failed (${imgRes.status})`);
-  const imgBuf = Buffer.from(await imgRes.arrayBuffer());
-  return imgBuf.toString("base64");
+  return Buffer.from(await imgRes.arrayBuffer()).toString("base64");
 }
 
 // ── Compositing pós-geração ───────────────────────────────────────────────────
+// Mantido como camada extra de garantia para ajuste via Fill Pro.
 
-/**
- * Sobrepõe pixels da imagem ORIGINAL sobre o resultado gerado,
- * nas áreas FORA da máscara (pretas = preserve zones).
- * Garante preservação determinística, independente do modelo generativo.
- */
 export async function compositeWithOriginal(
   generatedBuf: Buffer,
   originalBuf:  Buffer,
@@ -171,52 +330,41 @@ export async function compositeWithOriginal(
   const meta = await sharp(originalBuf).metadata();
   const { width = 1024, height = 768 } = meta;
 
-  // Máscara invertida: preto→branco (áreas de preservação ficam brancas)
-  const invertedMask = await sharp(maskBuf)
-    .negate()
-    .png()
-    .toBuffer();
+  const invertedMask = await sharp(maskBuf).negate().png().toBuffer();
 
-  // generated visível apenas onde máscara é branca (zonas editáveis)
   const maskedGenerated = await sharp(generatedBuf)
     .resize(width, height, { fit: "fill" })
     .composite([{ input: maskBuf, blend: "dest-in" }])
     .png()
     .toBuffer();
 
-  // original visível apenas onde máscara é preta (zonas de preservação)
   const maskedOriginal = await sharp(originalBuf)
     .resize(width, height, { fit: "fill" })
     .composite([{ input: invertedMask, blend: "dest-in" }])
     .png()
     .toBuffer();
 
-  // Resultado final: original preservado embaixo, gerado em cima nas zonas editáveis
   return sharp(maskedOriginal)
     .composite([{ input: maskedGenerated, blend: "over" }])
     .png()
     .toBuffer();
 }
 
-// ── Validação de integridade de bordas ────────────────────────────────────────
+// ── Validação de integridade ───────────────────────────────────────────────────
 
 export interface EdgeValidationResult {
   valid:            boolean;
-  divergenceScore:  number; // 0.0 – 1.0; <0.15 = ok
+  divergenceScore:  number;
   details:          string;
 }
 
-/**
- * Compara as áreas de preservação (fora da máscara) entre original e resultado.
- * Se a divergência passar de 15%, rejeita → auto-retry.
- */
 export async function validateEdgeIntegrity(
   originalBuf: Buffer,
   resultBuf:   Buffer,
   maskBuf:     Buffer,
 ): Promise<EdgeValidationResult> {
   try {
-    const SAMPLE = 120; // resolução de amostragem (menor = mais rápido)
+    const SAMPLE = 120;
 
     const [origRaw, resRaw, maskRaw] = await Promise.all([
       sharp(originalBuf).resize(SAMPLE, SAMPLE).removeAlpha().raw().toBuffer(),
@@ -224,12 +372,9 @@ export async function validateEdgeIntegrity(
       sharp(maskBuf    ).resize(SAMPLE, SAMPLE).greyscale().raw().toBuffer(),
     ]);
 
-    let totalPixels     = 0;
-    let divergentPixels = 0;
-
+    let totalPixels = 0, divergentPixels = 0;
     for (let i = 0; i < maskRaw.length; i++) {
       if ((maskRaw[i] ?? 255) < 128) {
-        // Área preta = deve ser preservada
         totalPixels++;
         const pi = i * 3;
         const diff =
@@ -241,7 +386,7 @@ export async function validateEdgeIntegrity(
     }
 
     const divergenceScore = totalPixels > 0 ? divergentPixels / totalPixels : 0;
-    const valid           = divergenceScore < 0.15;
+    const valid = divergenceScore < 0.15;
 
     return {
       valid,
@@ -251,12 +396,11 @@ export async function validateEdgeIntegrity(
         : `REJEIÇÃO — ${(divergenceScore * 100).toFixed(1)}% divergência (limite: 15%)`,
     };
   } catch (err: any) {
-    // Se a validação em si falhar, não bloquear — aprovar com aviso
     return { valid: true, divergenceScore: 0, details: `validação ignorada: ${err?.message}` };
   }
 }
 
-// ── Decode data URL para Buffer ───────────────────────────────────────────────
+// ── Utils ─────────────────────────────────────────────────────────────────────
 
 export function dataUrlToBuffer(dataUrl: string): { buf: Buffer; mime: string } {
   const match = dataUrl.match(/^data:([^;]+);base64,(.+)$/s);

@@ -1,0 +1,442 @@
+# Briefing Hiper-Detalhado — Vendor.ai Arch/Render
+
+Consolida e aprofunda tecnicamente tudo que foi definido nesta sessão sobre o módulo de Renderização: diagnóstico do bug, decisão de arquitetura, schema completo, contratos de API, algoritmo de máscara/compositing, os dois modos de geração, ajuste pós-geração, configuração reutilizável, e checklist de QA.
+
+Colar em blocos no Replit Agent — cada seção numerada é um bloco independente. Seguir a ordem.
+
+---
+
+## 0. Diagnóstico do problema (contexto para o Agent)
+
+Caso real reportado: imagem original (SketchUp) de uma varanda/cozinha com armário de madeira, mesa redonda + 2 cadeiras, porta de vidro de correr e janela com bancada. Ao gerar render com o prompt "manter original" e toggle "Preserva estrutura 100%" ativo, o resultado trocou a mesa+cadeiras por um banco diferente, mudou o acabamento do armário de madeira pra creme, e alterou o piso — mesmo o toggle estando ligado.
+
+**Causa raiz:** o pipeline atual usa o modelo de geração via Replicate em modo texto→imagem (geração do zero), passando a imagem original só como referência solta, não como restrição espacial. "Manter original" no prompt é uma instrução textual — o modelo é livre para reinterpretar geometria, móveis e acabamentos, guiando-se pelo prompt como sugestão, não como contrato. Verificar no código qual endpoint/modelo específico do Replicate está sendo chamado hoje (provavelmente um modelo de geração pura como `flux-pro`, não um modelo de inpainting) para confirmar o diagnóstico exato antes de trocar.
+
+**Decisão de arquitetura:** trocar geração pura por edição com máscara (inpainting), onde a preservação é garantida estruturalmente (o que está fora da máscara não passa pelo modelo generativo) e não depende da qualidade do prompt.
+
+---
+
+## 1. Decisão de modelo/API
+
+**Correção importante:** o provedor de geração de imagem do módulo Arch/Render é o **Replicate**, não DALL-E 3/OpenAI.
+
+**Validado por teste real (Replicate, 02/07/2026) — motor final: `black-forest-labs/flux-kontext-pro`.**
+
+Histórico do processo de validação (mantido aqui para contexto do Agent, caso precise depurar):
+1. Testado `flux-fill-pro` (inpainting com máscara) — adequado só para edição de zona pontual, não para conversão da imagem inteira.
+2. Testado `flux-1.1-pro-ultra` com `image_prompt` (Flux Redux) — descartado: é referência solta de composição, recriou o ambiente inteiro (móveis, materiais, layout todos diferentes).
+3. Testado `flux-canny-pro` (condicionamento por bordas) — preservou geometria/layout corretamente, mas descartou cor e material (cadeiras verdes viraram brancas, acabamento do armário mudou) porque o Canny só carrega informação de contorno, não aparência.
+4. Testado `flux-kontext-pro` (edição de imagem via instrução em linguagem natural) — **funcionou**: preserva cor, material e identidade dos objetos por padrão (opera sobre os pixels reais da imagem, não uma abstração de bordas), e só aplica a transformação de estilo pedida no prompt.
+
+**Por que o Kontext funciona onde os outros falharam:** ao contrário do Canny (que descarta a imagem e reconstrói do zero guiado só por contornos) ou do Redux (que usa a imagem como inspiração solta), o Kontext edita a imagem existente — layout, cor, material e identidade dos objetos ficam preservados por padrão; a transformação acontece só onde o prompt instrui explicitamente.
+
+**Modelos por modo, final:**
+- **Modo Preservar (conversão da imagem inteira em fotorrealista, mantendo estrutura E aparência):** `black-forest-labs/flux-kontext-pro` — imagem original como `input_image`, prompt seguindo o template validado abaixo.
+- **Ajuste pós-geração de elemento específico:** `black-forest-labs/flux-fill-pro` com máscara, como camada de refinamento pontual se necessário após o Kontext.
+- **Modo Criar novo conceito (geração livre, sem preservar nada):** `black-forest-labs/flux-1.1-pro-ultra` em modo `raw: true`, sem `input_image`.
+
+**Template de prompt validado para o Kontext (ordem importa):**
+
+```
+Convert this 3D sketch render into a photorealistic photograph with natural
+lighting, realistic textures, and depth. This is currently a flat 3D model
+render — fully re-render it as a real photograph. Keep the exact same room
+layout, [listar cada objeto nomeado individualmente, ex: "the same round
+table, the same two chairs with green cushions"], and the same [material
+específico com tom exato, ex: "light-toned natural oak wood cabinet (pale
+blonde wood, not dark walnut)"] — only change how it's rendered, not what's
+in it or its colors.
+```
+
+Regras aprendidas na validação, importantes para a função de montagem de prompt (Seção 3):
+1. **A ação de transformação de estilo vem primeiro**, como instrução principal ("Convert... into a photorealistic photograph"). Se a preservação vier primeiro ("Keep everything the same but..."), o modelo tende a preservar até o estilo de renderização (esboço), não só o conteúdo — testado e confirmado.
+2. **Nomear cada objeto preservado individualmente**, não com termo genérico ("the same wood cabinet" é ambíguo demais — o modelo escolhe o tom que quiser).
+3. **Para materiais/cores, nomear o tom exato desejado E o tom errado mais provável entre parênteses** (ex: "pale blonde wood, not dark walnut") — fecha a ambiguidade que o modelo tende a preencher com a opção "mais editorial"/mais escura por padrão.
+
+**Nota sobre disponibilidade:** o endpoint `flux-kontext-pro` está ativo e funcional no Replicate (confirmado por múltiplos testes reais nesta validação).
+
+**Bônus de consolidação:** o Replicate também hospeda o Segment Anything Model (SAM), útil caso seja necessário segmentar objetos específicos para máscara do Fill Pro (ajustes pontuais da Seção 5). O pipeline inteiro roda no mesmo provedor já integrado ao projeto.
+
+Toda a lógica das Seções 2 a 5 abaixo deve ser lida com essa correção: o motor principal do Modo Preservar é o Kontext (edição por instrução), não mais segmentação + máscara — a Seção 2 (segmentação automática) e a lógica de máscara nas seções seguintes passam a ser relevantes apenas para o fluxo de ajuste pós-geração de elemento pontual (Fill Pro), não para a geração inicial.
+
+---
+
+## 1.1 Fidelidade de material via imagem de referência (não por descrição textual)
+
+**Problema identificado na validação:** descrever cor/material só por texto ("light oak", "pale blonde wood") é inerentemente impreciso — testes reais mostraram resultado ora escuro demais, ora claro demais, mesmo ajustando a descrição repetidamente. Texto não é confiável pra fidelidade de cor exata.
+
+**Solução: usar imagem de referência do material, não descrição textual.** Existe um modelo dedicado pra isso no Replicate: `flux-kontext-apps/multi-image-kontext-pro` (ou `-max` para maior fidelidade) — recebe duas imagens (a imagem do ambiente + uma foto de referência do material) e aplica o material da segunda na zona indicada da primeira, via prompt curto (ex: "Apply the wood color and texture from image 2 to the cabinet in image 1, keep everything else in image 1 exactly the same").
+
+**Implicação de produto — conectar ao módulo de Catálogo:** o Vendor.ai Arch já tem (ou está planejado) um catálogo de materiais por tenant. Em vez de o usuário digitar/descrever o material desejado, o fluxo correto é:
+1. O profissional cadastra os materiais reais que usa no Catálogo, cada um com uma **foto de referência** (amostra de madeira, porcelanato, tecido, tinta).
+2. Ao gerar um render em Modo Preservar, o usuário seleciona o material do catálogo (não digita uma cor) para cada componente que quer alterar/confirmar.
+3. O sistema chama `multi-image-kontext-pro` com a imagem do ambiente + a foto do material selecionado do catálogo, garantindo que o render reflita o material real que o profissional trabalha — não uma aproximação textual.
+
+Isso é mais confiável tecnicamente (contorna a ambiguidade de descrição por texto) e é também um diferencial de produto: o render passa a representar o material *de verdade* do orçamento/projeto, não uma cor aproximada — relevante para os módulos de Orçamento e Catálogo já existentes no produto.
+
+**Schema adicional:**
+```typescript
+arch_materials_catalog {
+  id: uuid (PK)
+  tenant_id: uuid (FK)
+  nome: text -- ex: "Carvalho Claro Natural"
+  categoria: enum('madeira', 'porcelanato', 'tecido', 'tinta', 'metal', 'pedra')
+  reference_image_url: text -- foto real do material
+  created_at: timestamp
+}
+```
+
+Alterar `arch_renders` (Seção 3) para incluir `material_refs: jsonb` — mapeamento de zona/componente para `material_id` do catálogo usado naquela geração, permitindo rastrear e reaplicar o mesmo material em gerações futuras do mesmo projeto (conecta com a configuração reutilizável por projeto já especificada).
+
+**Fallback:** se o usuário não tiver o material cadastrado no catálogo ainda, permitir upload avulso de uma foto de referência (de uma foto tirada com celular ou de busca na internet) só pra aquela geração, sem precisar cadastrar formalmente no catálogo primeiro — reduz atrito pro primeiro uso.
+
+---
+
+## 1.2 Template de prompt final validado (base oficial)
+
+Depois de múltiplas iterações reais (testadas em dois ambientes diferentes — varanda/cozinha pequena e cozinha americana integrada com sala), este é o template-base que consistentemente converteu o esboço 3D em foto realista mantendo layout, cores e materiais fiéis ao original:
+
+```
+Convert this 3D sketch render into a photorealistic photograph with natural
+lighting, realistic textures, and sharp photographic detail. This is
+currently a flat 3D model render — fully re-render it as a real photograph.
+
+Keep the exact same room layout and camera angle, including every
+architectural element visible in the original image — walls, doors, panels,
+trim, and mouldings — even ones partially visible at the edge of the frame.
+Do not omit, simplify, or crop out any element that exists in the original.
+
+Lit by bright, evenly distributed natural daylight filling the entire room,
+soft and airy, well-exposed with no dark shadows or dim corners — a bright,
+clean, well-lit photograph.
+
+Keep these exact elements unchanged in position and color:
+- [objeto 1, com material/cor explícita]
+- [objeto 2, com material/cor explícita]
+- (...) um item por linha, um por objeto/móvel/acabamento visível
+- Para pares de materiais parecidos que podem se confundir entre si (ex:
+  dois tipos de armário), adicionar contraste explícito: "clearly a
+  different [cor]-toned surface from the [outro objeto] nearby, do not
+  blend the two finishes together"
+
+Shot on a professional full-frame camera, 35mm lens, f/5.6, sharp focus
+throughout, high dynamic range, balanced bright exposure, ultra-high
+resolution detail, professional real estate and architectural photography
+quality, no noise, no blur, no visible artifacts, no underexposed or dark
+areas.
+
+Only change how the scene is rendered — realistic materials, realistic
+lighting and shadows, photographic depth of field — not what's in it, its
+layout, its colors, or any architectural element.
+```
+
+**Nota sobre exposição (adicionada após validação em ambiente com pouca luz natural, ex: banheiro interno):** o bloco de luz e o bloco de qualidade acima já incluem reforço de "bright"/"well-exposed"/"no underexposed areas" por padrão — isso evita a tendência do modelo de escurecer ambientes menores ou com menos janelas. Se mesmo assim algum ambiente específico sair escuro, é preferível regenerar do zero com esse prompt (já reforçado) do que empilhar mais um ajuste de brilho via Tweak it em cima de um resultado já escuro.
+
+**Regra crítica aprendida sobre acréscimos (ex: adicionar iluminação nova, mobília nova):** NÃO adicionar instruções de "criar algo novo" no mesmo prompt que já tem várias exceções/negativas empilhadas ("ignore isso", "não faça aquilo") — isso deixa o modelo conservador demais e ele volta a preservar até o estilo de renderização (esboço), regredindo a conversão fotorrealista. **Acréscimos devem ser uma segunda geração separada**, usando "Tweak it" (ou equivalente via API: reenviar a imagem já convertida como novo `input_image`) em cima do resultado da conversão base, com um prompt curto e focado só na adição — nunca combinado com a lista inteira de preservação no mesmo prompt.
+
+**Implementação no produto:** a função de montagem de prompt (Seção 3, dicionário de expansão) deve gerar automaticamente a lista de objetos do bloco de preservação a partir da segmentação/descrição da imagem carregada, não exigir que o usuário digite manualmente cada item — o texto acima é o "compilado" que o sistema deve montar internamente. Acréscimos solicitados pelo usuário (nova iluminação, novo móvel) devem ser roteados como uma segunda chamada separada, conforme a regra acima.
+
+---
+
+## 1.3 Acréscimo pós-geração: fitas de LED (template padrão + feature de UI)
+
+Caso de uso recorrente identificado nos testes: adicionar iluminação em LED (fita/sanca) que não existe no ambiente original, sem regredir a conversão fotorrealista já feita. Segue a regra da Seção 1.2 — sempre executado como segunda chamada (equivalente ao "Tweak it" do playground) em cima do resultado já convertido, nunca combinado com o prompt de conversão+preservação.
+
+**Template padrão:**
+```
+Add [temperatura de cor] LED strip lighting installed at [localização],
+creating a [intensidade] glow. Integrate it naturally into the existing
+structure without changing its shape. Keep everything else in the image
+exactly as it is — do not change any other element, color, material, or
+lighting elsewhere in the scene.
+```
+
+**Feature de produto sugerida:** no fluxo de "Ajustar este render" (já especificado no briefing de estrutura/ajuste), adicionar uma opção "Adicionar iluminação LED" com:
+- Dropdown de localização pré-definida: Perímetro do teto (sanca), Embaixo de armários superiores, Atrás de cabeceira/painel, Rodapé/móveis flutuantes, Escada, Moldura de nicho/espelho, ou "Personalizado" (campo livre).
+- Seletor de temperatura de cor: Branco quente (2700-3000K), Branco neutro (4000K), Branco frio (6000K).
+- Seletor de intensidade: Discreto/acento, Ambiente moderado.
+
+Cada combinação monta o prompt final automaticamente a partir do template acima — o usuário não digita prompt nenhum, só escolhe as opções. Isso roda como chamada separada sobre o `result_image_url` do render já convertido (não sobre a imagem original), registrado no histórico de versões como um ajuste (conforme já especificado no fluxo de ajuste pós-geração).
+
+Schema: reutilizar `arch_renders.parent_render_id` já especificado — um acréscimo de LED gera uma nova linha com `parent_render_id` apontando para a versão convertida, e `adjustment_type: 'led_lighting'` para rastreamento.
+
+---
+
+## 1.4 Seção Componentes expandida: metais, piso, parede e decoração por ambiente
+
+Hoje a seção "5 - COMPONENTES" da UI existe mas está vazia/genérica. Especificação para preenchê-la com controles reais, que entram na geração inicial (não como ajuste pós-geração como o LED — essas alterações fazem parte da composição desde o início).
+
+**Controles de UI (dentro de Componentes):**
+
+1. **Cor dos metais** — swatches circulares: Cromado, Preto Fosco, Dourado, Níquel Escovado. Aplica-se a torneiras, maçanetas, ganchos, ferragens em geral.
+2. **Piso** — swatches de material/cor (Claro, Amadeirado, Cimento, etc.) + botão "Importar referência do catálogo" (conecta com o sistema de material de referência da Seção 1.1 — usa foto real em vez de descrição textual quando disponível).
+3. **Parede** — swatches de cor de tinta + seletor de acabamento (Fosco/Acetinado).
+4. **Decoração** — chips de itens decorativos, **dinâmicos conforme o AMBIENTE já selecionado na Seção 1 da UI**. Multi-seleção (toggle por chip). Dicionário inicial por ambiente:
+   - Banheiro: Toalhas dobradas, Sabonete líquido, Planta pequena, Tapete de banheiro, Vela decorativa
+   - Cozinha: Fruteira, Panos de prato, Temperos organizados, Planta na bancada
+   - Quarto: Almofadas decorativas, Tapete, Quadros na parede, Luminária de mesa
+   - Sala: Almofadas, Manta, Livros, Planta grande, Quadros
+   - (expandir para os demais ambientes já existentes: Escritório, Varanda, Área de Lazer, Área Externa, Fachada)
+
+**Correção por teste real (02/07/2026):** a suposição original desta seção — de que mudanças de Componentes entram na mesma geração inicial — foi testada e falhou. Combinar o prompt de conversão+preservação com o bloco de alterações no mesmo prompt fez o modelo priorizar os itens específicos de mudança (piso, metal, decoração) e não aplicar a conversão fotorrealista completa na cena — o resultado ficou com estilo de esboço ainda, só com os itens pontuais alterados corretamente.
+
+**Regra corrigida: qualquer mudança de Componentes (metal, piso, parede, decoração) segue a mesma regra de duas etapas já estabelecida para o LED (Seção 1.3), não uma exceção a ela:**
+1. **Etapa 1:** gerar a conversão fotorrealista completa usando só o template base (Seção 1.2), sem nenhuma menção às mudanças de Componentes.
+2. **Etapa 2:** aplicar as mudanças de Componentes como ajuste pós-geração (equivalente ao "Tweak it"), usando o resultado da Etapa 1 como entrada, com prompt curto listando só as mudanças específicas.
+
+**Diferença importante em relação ao LED (Seção 1.3):** esses quatro controles (metal, piso, parede, decoração) entram como ajuste pós-geração — a diferença original desta seção (achar que entravam na geração inicial) estava incorreta e foi corrigida acima.
+
+**Novo bloco no template de prompt (Etapa 2, aplicado sobre o resultado da Etapa 1):**
+```
+[Lista das mudanças específicas, ex:]
+Change all metal fixtures (faucets, handles, hooks, hardware) to
+[cor/acabamento escolhido] finish. Change the floor material to
+[material/cor escolhido]. Change the wall paint color to [cor escolhida],
+[acabamento] finish. Add these decorative elements appropriate to a
+[ambiente]: [lista de itens marcados].
+
+Keep everything else in the image exactly as it is — do not change any
+other element, color, material, or lighting elsewhere in the scene.
+```
+
+**Lógica de montagem (função central de prompt, Seção 3):** como agora é sempre um fluxo de duas etapas, não existe risco de contradição dentro de um único prompt. A Etapa 1 usa sempre o template base completo (Seção 1.2), sem nenhuma referência às seleções de Componentes. A Etapa 2 usa só a lista de mudanças marcadas pelo usuário, aplicada sobre o resultado da Etapa 1 — o sistema não precisa "excluir" nada de lugar nenhum, porque as duas listas nunca coexistem no mesmo prompt.
+
+Schema: adicionar `arch_renders.component_changes: jsonb` — `{ metal_color, floor_material, wall_color, wall_finish, decor_items: string[] }`, persistido por geração para reaplicar/editar depois.
+
+---
+
+## 1.5 Roadmap de evolução — melhorias de qualidade além do validado nesta sessão
+
+Tudo até a Seção 1.4 já foi testado e validado com casos reais. Esta seção é diferente: são melhorias identificadas por pesquisa de mercado (não testadas ainda), para priorizar depois que a versão base estiver em produção. Não implementar junto com a primeira entrega — é evolução, não bloqueio.
+
+1. **Testar Flux 2 Kontext/Max como upgrade de motor.** É o sucessor do `flux-kontext-pro` usado na validação desta sessão, com relatos de maior consistência de edição e melhor adesão ao prompt. Rodar o mesmo caso de teste da varanda/cozinha (já documentado nesta sessão com imagem original + prompt validado) nos dois modelos lado a lado antes de decidir migrar.
+
+2. **Testar Nano Banana 2 (Google) como alternativa/complemento ao Flux.** Ferramentas dedicadas de renderização arquitetônica (ex: Veras, integrada a Revit/SketchUp/Rhino) migraram para esse modelo especificamente por entendimento de geometria arquitetônica. Vale o mesmo teste comparativo do item 1.
+
+3. **Slider de fidelidade numérico, não só prompt.** Em vez de controlar "quanto preservar" só via engenharia de texto (abordagem usada nesta sessão), investigar se os modelos candidatos expõem um parâmetro de guidance/strength ajustável diretamente — mais previsível e menos sujeito a resultado inconsistente entre tentativas.
+
+4. **Passo de upscaling dedicado pós-aprovação.** Gerar em resolução menor/mais barata para prévia rápida, e rodar um upscaler dedicado só na versão que o usuário aprovar/salvar — economiza custo de geração em iterações descartadas.
+
+5. **Seed fixo por projeto.** Ao gerar múltiplos ambientes do mesmo projeto/lead, reutilizar o mesmo seed de geração para manter consistência visual (luz, grão, estilo) entre as imagens — hoje cada geração é independente e pode variar em "personalidade" visual.
+
+6. **QA automático pós-geração via modelo de visão.** Depois de gerar, rodar uma checagem automática (ex: Claude com visão) comparando o resultado contra a lista de elementos que deveriam ser preservados (a mesma lista usada para montar o prompt) — sinalizando automaticamente divergências (ex: material trocado, elemento sumido) antes de entregar ao usuário, em vez de depender de revisão manual.
+
+7. **Geração de variantes com seleção automática.** Gerar 2-3 candidatos por chamada (seeds diferentes) e usar o QA do item 6 para descartar automaticamente resultados com divergência alta, entregando só o melhor — reduz casos de resultado "azarado" sem intervenção manual.
+
+8. **Padronizar exportação do material de entrada.** Orientar o usuário (ou automatizar) sobre requisitos mínimos de qualidade do screenshot/export do SketchUp antes do upload — resolução mínima, boa iluminação/sombreamento no modelo 3D original — já que a qualidade da leitura de geometria pelo modelo de IA depende da clareza da imagem de entrada.
+
+---
+
+## 1.6 Refinamentos identificados em análise de concorrente direto
+
+Estrutura pública de uma ferramenta concorrente de IA para arquitetura confirma e detalha itens do roadmap acima, além de trazer ideias novas. Assim como a Seção 1.5, são melhorias para priorizar após a versão base — não implementar junto da primeira entrega.
+
+**A. Slider de fidelidade (detalha o item 3 da Seção 1.5).** Em vez de parâmetro técnico abstrato, expor como espectro visual de dois extremos: "Preservação" (melhorias sutis em luz/textura, estilo original quase intacto) até "Realismo" (fotorrealismo completo, incluindo reflexos e desgaste natural de superfícies). Aviso importante a incluir: em nível máximo de realismo aplicado a fachadas/áreas externas, alertar que o resultado pode incluir sujeira/desgaste simulado nas superfícies — o usuário precisa saber disso antes de aplicar, já que pode não ser desejado para material de venda.
+
+**B. Pontuação da imagem antes de gerar (novo).** Antes de consumir crédito de geração, avaliar automaticamente a imagem enviada em critérios como iluminação, nitidez das bordas, resolução e presença de sombras — com feedback específico e acionável por critério (ex: "iluminação clara demais, diminua um pouco" / "resolução baixa, use uma imagem maior"). Evita gerar em cima de entrada ruim e educa o usuário sobre como melhorar o export do 3D antes de subir. Complementa (não substitui) o QA pós-geração do item 6 da Seção 1.5 — este é pré-geração, aquele é pós-geração.
+
+**C. Múltiplas imagens de referência com instrução por imagem (refina a Seção 1.1).** Em vez de uma única imagem de material de referência por geração, permitir até N imagens simultâneas, com um campo de texto descrevendo o uso de cada uma — ex: "use a cor e textura da imagem 1 no piso, o estilo do acabamento da imagem 2 na parede". Mais flexível que o fluxo atual de uma referência por vez.
+
+**D. Biblioteca de elementos de cena expandida (expande a Seção 1.4 — Decoração).** Evoluir de "adicionar decoração via chips" para uma biblioteca com adicionar E remover elementos — pessoas, móveis, veículos, vegetação, objetos — com posicionamento por arraste diretamente sobre a imagem, não só uma lista de seleção múltipla.
+
+**Fora do escopo imediato — visão de longo prazo, não priorizar agora:**
+- Geração de múltiplos ângulos de câmera a partir de uma única imagem (reposicionamento de câmera em cena 3D interativa).
+- Vídeo de walkthrough gerado a partir de um render já aprovado, para apresentação a cliente.
+- Múltiplos motores de IA selecionáveis pelo usuário (não só o pipeline Replicate/Flux), com transparência de custo por modelo escolhido — relevante só se o produto crescer a ponto de precisar de um "motor econômico" vs "motor premium" para diferentes momentos do funil de venda.
+
+---
+
+## 2. Geração automática de máscara (segmentação estrutura vs mobiliário)
+
+Este é o núcleo técnico da correção. Sem isso, a máscara teria que ser desenhada manualmente pelo usuário a cada render, o que não é viável.
+
+**Pipeline sugerido:**
+
+1. Ao receber a imagem do ambiente, rodar um passo de segmentação semântica que separa a cena em duas categorias:
+   - **Estrutura fixa** (editável): parede, piso, teto, acabamento de esquadrias (moldura de porta/janela, mas não a esquadria em si).
+   - **Mobiliário/objetos soltos** (nunca editável, preservado sempre): mesa, cadeiras, plantas, eletrodomésticos, decoração, tapetes.
+2. Usar um modelo de segmentação (ex: Segment Anything Model — SAM, disponível via API tipo Replicate, ou um modelo de segmentação semântica de interiores já treinado para categorias de móveis vs estrutura) para gerar as máscaras automaticamente a partir da imagem enviada.
+3. Cruzar o resultado da segmentação com a seleção manual do usuário em "COMPONENTES" (a UI já existente onde ele escolhe o que quer trocar, ex: "Piso" + "Armário"): a máscara final = interseção entre (zonas de estrutura fixa segmentadas automaticamente) E (zonas selecionadas manualmente pelo usuário). Mobiliário solto é excluído da máscara mesmo que o usuário tente selecioná-lo — ele não deve nem aparecer como opção selecionável na UI quando for objeto solto identificado pela segmentação.
+4. Gerar o arquivo de máscara em PNG com canal alfa nas dimensões exatas da imagem original, pronto para envio ao endpoint de edição.
+
+**Fallback:** se a segmentação automática falhar ou tiver baixa confiança numa região, tratar essa região como não-editável por padrão (falha segura — preserva em vez de arriscar editar algo que não devia).
+
+---
+
+## 3. Schema de dados (Drizzle)
+
+```typescript
+// Tabela principal de renders
+arch_renders {
+  id: uuid (PK)
+  tenant_id: uuid (FK)
+  lead_id: uuid (FK, nullable)
+  project_id: uuid (FK, nullable) -- referência ao projeto/ambiente agrupador
+  parent_render_id: uuid (FK, nullable) -- se for ajuste de um render anterior
+  mode: enum('preservar', 'criar') -- obrigatório
+  ambiente: text -- ex: 'cozinha', 'sala_de_estar'
+  estilo: text (nullable)
+  iluminacao: text (nullable)
+  angulo: text (nullable) -- travado em modo 'preservar'
+  mask_zones: jsonb -- array de zonas selecionadas (ex: ['piso', 'armario'])
+  mask_file_url: text -- máscara gerada, armazenada no Supabase Storage
+  original_image_url: text
+  result_image_url: text
+  segmentation_confidence: jsonb (nullable) -- score de confiança por zona, para debug/auditoria
+  composited: boolean (default true) -- se passou pela camada de compositing pós-geração
+  version_tag: enum('fiel_ao_original', 'conceito')
+  status: enum('processando', 'concluido', 'erro', 'rejeitado_auto')
+  created_at: timestamp
+}
+
+// Configuração reutilizável por projeto
+arch_project_configs {
+  id: uuid (PK)
+  tenant_id: uuid (FK)
+  lead_id: uuid (FK)
+  nome_config: text
+  mode: enum('preservar', 'criar')
+  estilo: text (nullable)
+  iluminacao: text (nullable)
+  angulo_padrao: text (nullable)
+  paleta_materiais: jsonb -- { piso: '...', parede: '...', armario: '...' }
+  created_at: timestamp
+}
+```
+
+Alterar tabela existente de renders (se já tiver nome diferente de `arch_renders`) para incluir os campos novos via migration incremental, sem quebrar histórico existente — campos novos devem ter default seguro (`mode` default `'criar'` para renders antigos, já que foram gerados sem essa distinção).
+
+---
+
+## 4. Contratos de API
+
+### `POST /api/arch/render`
+Gera um render novo (primeira geração de um ambiente).
+
+**Request:**
+```json
+{
+  "project_id": "uuid | null",
+  "lead_id": "uuid",
+  "original_image_url": "string",
+  "mode": "preservar | criar",
+  "ambiente": "cozinha",
+  "estilo": "string | null (obrigatório se mode=criar)",
+  "iluminacao": "string | null",
+  "angulo": "string | null (ignorado se mode=preservar, sistema usa o ângulo detectado)",
+  "mask_zones": ["piso", "armario"]
+}
+```
+
+**Response (202, assíncrono):**
+```json
+{
+  "render_id": "uuid",
+  "status": "processando"
+}
+```
+
+Job assíncrono processa: segmentação → geração de máscara → chamada de edição/geração → compositing (se `mode=preservar`) → validação → atualização de status.
+
+### `GET /api/arch/render/:id`
+Retorna status e resultado.
+
+```json
+{
+  "render_id": "uuid",
+  "status": "concluido",
+  "result_image_url": "string",
+  "mode": "preservar",
+  "version_tag": "fiel_ao_original",
+  "mask_zones": ["piso", "armario"]
+}
+```
+
+### `POST /api/arch/render/:id/adjust`
+Ajuste pós-geração, herda o `mode` do render pai.
+
+```json
+{
+  "mask_zones": ["piso"],
+  "ajuste_prompt": "trocar para piso de porcelanato claro"
+}
+```
+
+Validação obrigatória no backend: se `parent.mode === 'preservar'`, rejeitar (ou ignorar silenciosamente, decisão de produto) qualquer tentativa de `mask_zones` que inclua mobiliário solto, mesmo que enviado pelo client — a validação de modo não pode depender só do front-end.
+
+### `POST /api/arch/project-config`
+Salva configuração reutilizável.
+
+```json
+{
+  "lead_id": "uuid",
+  "nome_config": "Apto Beto - conceito claro",
+  "mode": "preservar",
+  "estilo": "string | null",
+  "iluminacao": "manha",
+  "paleta_materiais": { "piso": "porcelanato claro", "armario": "branco fosco" }
+}
+```
+
+### `GET /api/arch/project-config?lead_id=uuid`
+Lista configurações salvas de um projeto/lead, para pré-preencher o formulário ao subir nova imagem do mesmo ambiente.
+
+---
+
+## 5. Pipeline de compositing e validação pós-geração
+
+Camada extra de garantia, obrigatória quando `mode = 'preservar'`, roda depois que o endpoint de edição retorna o resultado:
+
+1. **Compositing forçado:** sobrepor pixel a pixel, a partir da imagem original, todas as áreas fora da máscara sobre o resultado gerado — mesmo que o modelo generativo já devesse ter preservado essas áreas, essa etapa garante isso de forma determinística, sem depender da qualidade do modelo.
+2. **Verificação de integridade dentro da máscara:** comparar contorno/bordas (ex: edge detection) da área editada entre original e resultado, para garantir que a geometria dentro da zona editada (ex: contorno do armário) não deformou — só o acabamento/textura deveria ter mudado, não a forma.
+3. **Critério de rejeição automática:** se a divergência de bordas dentro da máscara ultrapassar um limiar definido (calibrar empiricamente, começar com um valor conservador), marcar `status = 'rejeitado_auto'`, não cobrar crédito do usuário, e permitir nova tentativa automática (até 2 retentativas) antes de expor erro ao usuário.
+4. Persistir `composited: true` e os scores de verificação no registro do render, para auditoria e ajuste futuro do limiar.
+
+---
+
+## 6. Especificação de UI
+
+### Tela de Renderização — novo fluxo
+
+**Topo (obrigatório, antes de tudo):** seletor de modo — dois cards grandes lado a lado:
+- "Preservar ambiente" (ícone de cadeado) — subtexto: "não altera medidas, volumes ou móveis, só acabamentos"
+- "Criar novo conceito" (ícone de estrela) — subtexto: "a IA sugere um ambiente novo, incluindo móveis e disposição"
+
+**Se modo = Preservar:**
+- Seção "1 - AMBIENTE": mantém como está.
+- Seção "2 - ESTILO": oculta ou desabilitada (não se aplica — preservação não muda estilo geral, só materiais pontuais).
+- Seção "3 - ILUMINAÇÃO": mantém (iluminação não altera geometria, é seguro).
+- Seção "4 - ÂNGULO": desabilitada, mostrando texto "Ângulo original preservado".
+- Seção "5 - COMPONENTES": só lista zonas de estrutura fixa detectadas pela segmentação (não lista móveis).
+- Botão final: "Gerar Render (Preservado)".
+
+**Se modo = Criar:**
+- Todas as seções liberadas como estão hoje.
+- Banner fixo acima do botão de gerar: "Este modo pode alterar móveis, medidas e disposição do ambiente."
+- Botão final: "Gerar Conceito".
+
+### Tela de resultado
+
+- Badge no canto da imagem indicando o modo usado: "Fiel ao original" (verde/cadeado) ou "Conceito" (roxo/estrela).
+- Botão "Ajustar este render" abre o mesmo formulário reduzido (só zonas disponíveis no modo herdado).
+- "Antes/Depois" comparando versão anterior (não só original) vs atual, ao ajustar.
+- Botão "Salvar configuração deste ambiente" — abre modal simples pedindo nome da config.
+
+### Tela de novo upload dentro de projeto existente
+
+- Se o `lead_id`/`project_id` já tem configuração salva: mostrar automaticamente "Usar configuração: [nome]" pré-selecionada, com link "Trocar configuração" (dropdown se houver mais de uma salva) ou "Configurar do zero".
+
+---
+
+## 7. Checklist de QA (detalhado)
+
+1. **Segmentação:** subir a imagem do caso real (varanda com mesa+cadeiras), confirmar que a segmentação identifica corretamente mesa e cadeiras como mobiliário solto (não aparecem como opção em "Componentes" no modo Preservar).
+2. **Máscara + edição:** selecionar só "Armário" no modo Preservar, gerar, confirmar visualmente que mesa/cadeiras/piso/janela permanecem pixel-idênticos ao original.
+3. **Compositing:** testar caso onde o modelo generativo "vaza" alteração fora da máscara (pode ser simulado revisando logs/comparação); confirmar que a etapa de compositing corrige antes de entregar ao usuário.
+4. **Rejeição automática:** testar caso de geração com deformação de geometria dentro da própria máscara (ex: prompt ambíguo que faz o armário mudar de forma); confirmar que o sistema rejeita e tenta novamente sem cobrar crédito extra.
+5. **Modo Criar:** confirmar que todos os controles ficam liberados e que o banner de aviso aparece.
+6. **Ajuste pós-geração herdando modo:** gerar em Preservar, tentar ajustar pedindo troca de mobiliário; confirmar que o backend recusa/ignora essa parte mesmo que o front permita digitar o pedido.
+7. **Configuração reutilizável:** salvar config num render de cozinha (modo Preservar), subir foto de outro cômodo do mesmo lead, confirmar pré-preenchimento automático da config salva.
+8. **Múltiplas configs:** testar projeto com 2+ configs salvas, confirmar que o dropdown de seleção aplica a config correta a cada geração.
+9. **Fallback de segmentação:** simular falha/baixa confiança da segmentação numa zona e confirmar que o sistema trata como não-editável por padrão (preserva em vez de arriscar).
+10. **Migração de dados antigos:** confirmar que renders gerados antes desta mudança (sem campo `mode`) continuam acessíveis no histórico, com `mode` default `'criar'` e badge correspondente.

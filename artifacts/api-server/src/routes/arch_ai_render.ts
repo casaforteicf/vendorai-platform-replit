@@ -1,5 +1,9 @@
 /**
- * Arch AI Render — pipeline async de inpainting com máscara
+ * Arch AI Render — pipeline async com roteamento por modo
+ *
+ * Modo Preservar → flux-kontext-pro (edição por instrução, sem máscara)
+ * Modo Criar     → flux-1.1-pro-ultra raw:true (geração livre)
+ * Ajuste pontual → flux-fill-pro com máscara (segunda chamada separada)
  *
  * POST /api/arch/ai-render               → 202, render_id
  * GET  /api/arch/ai-render/:id           → status + resultado
@@ -20,10 +24,11 @@ import { authenticate } from "../middlewares/auth.js";
 import { ObjectStorageService } from "../lib/objectStorage.js";
 import {
   createZoneMask,
+  callReplicateFluxKontext,
+  callReplicateFluxUltraPro,
   callReplicateFluxFill,
   compositeWithOriginal,
   validateEdgeIntegrity,
-  dataUrlToBuffer,
   bufferToDataUrl,
 } from "../lib/arch-render-pipeline.js";
 import sharp from "sharp";
@@ -376,17 +381,20 @@ async function processRenderJob(params: RenderJobParams): Promise<void> {
     let maskFileUrl: string | undefined;
 
     if (mode === "preservar") {
-      // ── 3a. Gerar máscara heurística ────────────────────────────────────
-      const maskBuf = await createZoneMask(maskZones, width, height);
+      // ── 3a. Kontext: edição por instrução de linguagem natural ──────────
+      // O modelo opera sobre os pixels reais da imagem — layout, cor e
+      // identidade dos objetos ficam preservados por padrão; não usa máscara.
+      const originalDataUrl = bufferToDataUrl(originalBuf, originalMime);
 
-      // Salva máscara no storage para auditoria
-      const maskPath = await storage.savePrivateBuffer(
-        maskBuf, "image/png",
-        `arch-mask-${tid}-${renderId}.png`,
-      );
-      maskFileUrl = `/api/storage/objects/${maskPath.replace(/^\/objects\//, "")}`;
+      resultB64 = await callReplicateFluxKontext({
+        imageDataUrl: originalDataUrl,
+        prompt,
+        logger,
+      });
+      motor = "replicate-flux-kontext-pro";
+      compositedFlag = false;
 
-      // Confiança heurística (fixa: baseada em zonas conhecidas)
+      // Confiança heurística registrada por zona (para auditoria)
       segConf = {};
       for (const z of maskZones) {
         const known = ["piso","teto","parede","armario","bancada","porta","janela",
@@ -395,10 +403,21 @@ async function processRenderJob(params: RenderJobParams): Promise<void> {
       }
 
       await db.update(archAiRendersTable)
-        .set({ maskFileUrl, segmentationConfidence: segConf })
+        .set({ segmentationConfidence: segConf })
         .where(eq(archAiRendersTable.id, renderId));
 
-      // ── 3b. Inpainting via Flux Fill Pro ────────────────────────────────
+    } else if (mode === "criar" && params.userNotes) {
+      // ── 3b. Ajuste pós-geração de elemento pontual (Fill Pro + máscara) ─
+      // Chamada separada sobre resultado já convertido — nunca combinada
+      // com a geração inicial do Kontext no mesmo fluxo.
+      const maskBuf = await createZoneMask(maskZones, width, height);
+
+      const maskPath = await storage.savePrivateBuffer(
+        maskBuf, "image/png",
+        `arch-mask-${tid}-${renderId}.png`,
+      );
+      maskFileUrl = `/api/storage/objects/${maskPath.replace(/^\/objects\//, "")}`;
+
       const originalDataUrl = bufferToDataUrl(originalBuf, originalMime);
       const maskDataUrl     = bufferToDataUrl(maskBuf, "image/png");
 
@@ -411,43 +430,37 @@ async function processRenderJob(params: RenderJobParams): Promise<void> {
         logger,
       });
 
-      // ── 3c. Compositing pós-geração (garantia determinística) ──────────
       const generatedBuf  = Buffer.from(resultB64, "base64");
       const compositedBuf = await compositeWithOriginal(generatedBuf, originalBuf, maskBuf);
       resultB64 = compositedBuf.toString("base64");
       compositedFlag = true;
+      motor = "replicate-flux-fill-pro";
 
-      // ── 3d. Validação de integridade de bordas ─────────────────────────
       const validation = await validateEdgeIntegrity(originalBuf, compositedBuf, maskBuf);
-      logger?.info({ renderId, ...validation }, "arch/ai-render: validação de bordas");
+      logger?.info({ renderId, ...validation }, "arch/ai-render: validação de bordas (fill)");
 
       if (!validation.valid && retentativas < MAX_RETENTATIVAS) {
-        // Rejeição automática — tenta novamente sem cobrar crédito extra
         logger?.warn({ renderId, retentativas }, "arch/ai-render: rejeitado_auto, tentando novamente");
         await db.update(archAiRendersTable)
           .set({ retentativas: String(retentativas + 1) })
           .where(eq(archAiRendersTable.id, renderId));
-
         return processRenderJob({ ...params, retentativas: retentativas + 1 });
       }
-
       if (!validation.valid) {
-        throw new Error(`Geração rejeitada após ${MAX_RETENTATIVAS} tentativas: ${validation.details}`);
+        throw new Error(`Ajuste rejeitado após ${MAX_RETENTATIVAS} tentativas: ${validation.details}`);
       }
+
+      await db.update(archAiRendersTable)
+        .set({ maskFileUrl })
+        .where(eq(archAiRendersTable.id, renderId));
+
     } else {
-      // ── mode=criar: manter fluxo original (flux-canny-pro / gpt-image-1) ─
-      const { callReplicateFlux } = await import("../lib/ai-gateway.js");
-      if (process.env["REPLICATE_API_TOKEN"]) {
-        const originalDataUrl = bufferToDataUrl(originalBuf, originalMime);
-        resultB64 = await callReplicateFlux({
-          controlImageDataUrl: originalDataUrl,
-          prompt,
-          logger,
-        });
-        motor = "replicate-flux-canny";
-      } else {
+      // ── 3c. Modo Criar: geração livre via Flux 1.1 Pro Ultra (raw:true) ─
+      if (!process.env["REPLICATE_API_TOKEN"]) {
         throw new Error("REPLICATE_API_TOKEN não configurado");
       }
+      resultB64 = await callReplicateFluxUltraPro({ prompt, logger });
+      motor = "replicate-flux-1.1-pro-ultra";
     }
 
     // ── 4. Salvar resultado no storage ─────────────────────────────────────
@@ -515,6 +528,8 @@ async function fetchImageAsBuffer(
   return { buf: Buffer.from(await res.arrayBuffer()), mime: contentType };
 }
 
+// ── Mapas auxiliares ──────────────────────────────────────────────────────────
+
 const LIGHTING_MAP: Record<string, string> = {
   manha:   "soft warm morning light",
   tarde:   "bright afternoon sunlight",
@@ -541,6 +556,21 @@ const ANGLE_MAP: Record<string, string> = {
   aerea:       "aerial top-down view",
 };
 
+// Descrições genéricas por zona para compor a lista de preservação no Kontext
+const ZONE_PRESERVE_DESCRIPTIONS: Record<string, string> = {
+  piso:             "the floor with its current material and color",
+  teto:             "the ceiling with its current finish",
+  parede:           "the walls with their current paint color and finish",
+  "parede_fundo":   "the back wall with its current finish",
+  "parede_lateral": "the side walls with their current finish",
+  armario:          "the cabinet with its exact current wood tone and finish",
+  "armários sup.":  "the upper cabinets with their exact current tone and finish",
+  "armários inf.":  "the lower cabinets with their exact current tone and finish",
+  bancada:          "the countertop with its current material and color",
+  porta:            "the door with its current material and frame",
+  janela:           "the window with its current frame and glass",
+};
+
 function buildPrompt(p: {
   mode:       "preservar" | "criar";
   ambiente:   string | null | undefined;
@@ -551,54 +581,126 @@ function buildPrompt(p: {
   materials:  { zone: string; promptFragment: string }[];
   userNotes:  string | undefined;
 }): string {
-  const parts: string[] = [];
-
   if (p.mode === "preservar") {
-    parts.push(
-      "You are a professional architectural visualization engine performing inpainting.",
-      "PRESERVE ABSOLUTELY: all furniture, objects, room geometry, camera angle, and everything outside the mask.",
-      "EDIT ONLY the masked areas — replace only materials, textures, and finishes in those zones.",
-    );
-    if (p.maskZones.length > 0) {
-      parts.push(`ZONES TO EDIT: ${p.maskZones.join(", ")}.`);
-    }
-    if (p.materials.length > 0) {
-      parts.push(
-        "MATERIAL APPLICATIONS:",
-        ...p.materials.map(m => `• ${m.zone}: ${m.promptFragment} — photorealistic texture`),
-      );
-    }
-  } else {
-    parts.push(
-      "You are a professional architectural visualization engine.",
-      `Transform this ${p.ambiente ?? "interior"} photo into a photorealistic render.`,
-    );
-    if (p.estilo) {
-      const s = STYLE_MAP[p.estilo] ?? p.estilo;
-      parts.push(`VISUAL STYLE: ${s}.`);
-    }
-    if (p.materials.length > 0) {
-      parts.push(
-        "MATERIAL APPLICATIONS (apply only to each specified zone):",
-        ...p.materials.map(m => `• ${m.zone}: ${m.promptFragment}`),
-      );
-    }
-    if (p.angulo) {
-      const a = ANGLE_MAP[p.angulo] ?? p.angulo;
-      parts.push(`CAMERA ANGLE: ${a}.`);
-    }
-    parts.push(
-      "This mode allows furniture and layout changes.",
-      `Banner: This render may alter furniture, measurements, and room layout.`,
-    );
+    return buildKontextPrompt(p);
+  }
+  return buildCriarPrompt(p);
+}
+
+/**
+ * Template validado para flux-kontext-pro (Seção 1.2 do briefing, 02/07/2026).
+ * Regras críticas:
+ * 1. Ação de conversão de estilo PRIMEIRO (não "preserve everything but…")
+ * 2. Lista de preservação individual por objeto/elemento — não termos genéricos
+ * 3. Material/cor exatos por elemento, com contraste explícito quando ambíguo
+ * 4. Bloco de câmera/qualidade no final
+ */
+function buildKontextPrompt(p: {
+  ambiente:   string | null | undefined;
+  iluminacao: string | null | undefined;
+  maskZones:  string[];
+  materials:  { zone: string; promptFragment: string }[];
+  userNotes:  string | undefined;
+}): string {
+  const ambienteLabel = p.ambiente ?? "interior room";
+
+  // Zonas selecionadas para editar (aparência/material a trocar)
+  const editZones = new Set(p.maskZones.map(z => z.toLowerCase().trim()));
+
+  // Zonas conhecidas que NÃO estão sendo editadas → lista de preservação
+  const allKnownZones = Object.keys(ZONE_PRESERVE_DESCRIPTIONS);
+  const preserveLines: string[] = allKnownZones
+    .filter(z => !editZones.has(z))
+    .map(z => `- ${ZONE_PRESERVE_DESCRIPTIONS[z]}`);
+
+  // Material explícito para zonas a editar (quando fornecido pelo usuário)
+  const materialLines: string[] = p.materials.map(
+    m => `- ${m.zone}: apply ${m.promptFragment} — realistic photographic texture`,
+  );
+
+  // Bloco de iluminação: padrão natural+brilhante, sobrescrito se informado
+  let lightingBlock = "bright, evenly distributed natural daylight filling the entire room, soft and airy, well-exposed with no dark shadows or dim corners — a bright, clean, well-lit photograph";
+  if (p.iluminacao && p.iluminacao !== "auto") {
+    lightingBlock = LIGHTING_MAP[p.iluminacao] ?? p.iluminacao;
+  }
+
+  const lines: string[] = [
+    `Convert this 3D sketch render into a photorealistic photograph with natural lighting, realistic textures, and sharp photographic detail. This is currently a flat 3D model render — fully re-render it as a real photograph.`,
+    ``,
+    `Keep the exact same room layout and camera angle, including every architectural element visible in the original image — walls, doors, panels, trim, and mouldings — even ones partially visible at the edge of the frame. Do not omit, simplify, or crop out any element that exists in the original.`,
+    ``,
+    `Lit by ${lightingBlock}.`,
+  ];
+
+  if (preserveLines.length > 0) {
+    lines.push(``, `Keep these exact elements unchanged in position and color:`);
+    lines.push(...preserveLines);
+  }
+
+  if (materialLines.length > 0) {
+    lines.push(``, `Apply the following material changes to the specified zones only:`);
+    lines.push(...materialLines);
+  }
+
+  if (p.userNotes) {
+    lines.push(``, `Additional instruction: ${p.userNotes}`);
+  }
+
+  lines.push(
+    ``,
+    `Shot on a professional full-frame camera, 35mm lens, f/5.6, sharp focus throughout, high dynamic range, balanced bright exposure, ultra-high resolution detail, professional real estate and architectural photography quality, no noise, no blur, no visible artifacts, no underexposed or dark areas.`,
+    ``,
+    `Only change how the scene is rendered — realistic materials, realistic lighting and shadows, photographic depth of field — not what's in it, its layout, its colors, or any architectural element.`,
+  );
+
+  return lines.join("\n");
+}
+
+/**
+ * Prompt para modo Criar — geração livre via flux-1.1-pro-ultra.
+ * Também usado para ajuste pós-geração pontual via Fill Pro (userNotes).
+ */
+function buildCriarPrompt(p: {
+  ambiente:   string | null | undefined;
+  estilo:     string | null | undefined;
+  iluminacao: string | null | undefined;
+  angulo:     string | null | undefined;
+  maskZones:  string[];
+  materials:  { zone: string; promptFragment: string }[];
+  userNotes:  string | undefined;
+}): string {
+  const parts: string[] = [
+    `Professional architectural visualization of a ${p.ambiente ?? "interior"}.`,
+    `Ultra-realistic photorealistic photograph, natural lighting, sharp detail.`,
+  ];
+
+  if (p.estilo) {
+    parts.push(`Style: ${STYLE_MAP[p.estilo] ?? p.estilo}.`);
   }
 
   if (p.iluminacao && p.iluminacao !== "auto") {
-    const l = LIGHTING_MAP[p.iluminacao] ?? p.iluminacao;
-    parts.push(`LIGHTING: ${l}.`);
+    parts.push(`Lighting: ${LIGHTING_MAP[p.iluminacao] ?? p.iluminacao}.`);
   }
-  if (p.userNotes) parts.push(`Additional notes: ${p.userNotes}`);
-  parts.push("Output: ultra-sharp 4K photorealistic detail, Brazilian architecture context.");
+
+  if (p.angulo) {
+    parts.push(`Camera: ${ANGLE_MAP[p.angulo] ?? p.angulo}.`);
+  }
+
+  if (p.materials.length > 0) {
+    parts.push(
+      "Material applications (apply only to each specified zone):",
+      ...p.materials.map(m => `• ${m.zone}: ${m.promptFragment}`),
+    );
+  }
+
+  if (p.userNotes) {
+    parts.push(`Additional notes: ${p.userNotes}`);
+  }
+
+  parts.push(
+    "Keep everything else in the image exactly as it is — do not change any other element, color, material, or lighting elsewhere in the scene.",
+    "Shot on a professional full-frame camera, 35mm lens, ultra-high resolution detail, professional real estate photography quality.",
+  );
 
   return parts.join(" ");
 }
