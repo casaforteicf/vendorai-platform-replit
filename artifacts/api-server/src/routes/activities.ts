@@ -10,6 +10,7 @@ import {
   updateActivitySchema,
 } from "@workspace/db";
 import { createGoogleEvent, updateGoogleEvent, deleteGoogleEvent } from "../lib/google-calendar.js";
+import { generateSpinForActivity } from "./spin.js";
 
 const router: IRouter = Router();
 
@@ -31,66 +32,76 @@ router.post("/activities", async (req, res) => {
     .returning();
   res.status(201).json(activity);
 
-  // Async Google Calendar sync for reuniao
-  if (activity.tipo === "reuniao" && activity.agendaId && activity.dataHoraInicio && activity.dataHoraFim) {
-    // Skip Google Calendar sync for demo tenants
+  // Async tasks for reuniao (SPIN briefing + Google Calendar)
+  if (activity.tipo === "reuniao") {
     const [tenant] = await db
       .select({ isDemo: tenantsTable.isDemo })
       .from(tenantsTable)
       .where(eq(tenantsTable.id, activity.tenantId))
       .limit(1);
-    if (tenant?.isDemo) {
-      req.log.info({ activityId: activity.id }, "activity: demo tenant — skipping Google Calendar sync");
-      return;
+
+    // Async SPIN briefing generation when a meeting is scheduled with a deal
+    if (!tenant?.isDemo && activity.dealId && activity.dataHoraInicio) {
+      generateSpinForActivity(activity.id, activity.tenantId, req.log).catch((err: unknown) => {
+        req.log.error({ err, activityId: activity.id }, "activity: SPIN generation failed (non-fatal)");
+      });
     }
 
-    req.log.info({ activityId: activity.id, agendaId: activity.agendaId }, "activity: starting Google Calendar sync for reuniao");
-    try {
-      const [agenda] = await db
-        .select({ googleRefreshToken: agendasTable.googleRefreshToken })
-        .from(agendasTable)
-        .where(eq(agendasTable.id, activity.agendaId));
-
-      if (agenda?.googleRefreshToken) {
-        const [lead] = await db
-          .select({ nome: leadsTable.nome, email: leadsTable.email })
-          .from(leadsTable)
-          .where(eq(leadsTable.id, activity.leadId));
-
-        const { googleEventId, meetLink } = await createGoogleEvent(
-          activity.agendaId,
-          {
-            id: activity.id,
-            tenantId: activity.tenantId,
-            titulo: activity.titulo,
-            dataHoraInicio: activity.dataHoraInicio,
-            dataHoraFim: activity.dataHoraFim,
-            observacoes: activity.descricao,
-            local: null,
-            gerarMeet: activity.gerarMeet ?? false,
-          },
-          lead?.nome ?? undefined,
-          lead?.email ?? undefined,
-          activity.gerarMeet ?? false
-        );
-
-        if (googleEventId || meetLink) {
-          await db
-            .update(activitiesTable)
-            .set({
-              ...(googleEventId ? { googleEventId } : {}),
-              ...(meetLink ? { meetLink } : {}),
-              updatedAt: new Date(),
-            })
-            .where(eq(activitiesTable.id, activity.id));
-        }
-
-        req.log.info({ activityId: activity.id, googleEventId, meetLink }, "activity: Google Calendar sync result for reuniao");
-      } else {
-        req.log.warn({ activityId: activity.id, agendaId: activity.agendaId }, "activity: no google refresh token for agenda");
+    // Async Google Calendar sync
+    if (activity.agendaId && activity.dataHoraInicio && activity.dataHoraFim) {
+      if (tenant?.isDemo) {
+        req.log.info({ activityId: activity.id }, "activity: demo tenant — skipping Google Calendar sync");
+        return;
       }
-    } catch (err: unknown) {
-      req.log.error({ err, activityId: activity.id }, "activity: Google Calendar sync failed for reuniao");
+
+      req.log.info({ activityId: activity.id, agendaId: activity.agendaId }, "activity: starting Google Calendar sync for reuniao");
+      try {
+        const [agenda] = await db
+          .select({ googleRefreshToken: agendasTable.googleRefreshToken })
+          .from(agendasTable)
+          .where(eq(agendasTable.id, activity.agendaId));
+
+        if (agenda?.googleRefreshToken) {
+          const [lead] = await db
+            .select({ nome: leadsTable.nome, email: leadsTable.email })
+            .from(leadsTable)
+            .where(eq(leadsTable.id, activity.leadId));
+
+          const { googleEventId, meetLink } = await createGoogleEvent(
+            activity.agendaId,
+            {
+              id: activity.id,
+              tenantId: activity.tenantId,
+              titulo: activity.titulo,
+              dataHoraInicio: activity.dataHoraInicio,
+              dataHoraFim: activity.dataHoraFim,
+              observacoes: activity.descricao,
+              local: null,
+              gerarMeet: activity.gerarMeet ?? false,
+            },
+            lead?.nome ?? undefined,
+            lead?.email ?? undefined,
+            activity.gerarMeet ?? false
+          );
+
+          if (googleEventId || meetLink) {
+            await db
+              .update(activitiesTable)
+              .set({
+                ...(googleEventId ? { googleEventId } : {}),
+                ...(meetLink ? { meetLink } : {}),
+                updatedAt: new Date(),
+              })
+              .where(eq(activitiesTable.id, activity.id));
+          }
+
+          req.log.info({ activityId: activity.id, googleEventId, meetLink }, "activity: Google Calendar sync result for reuniao");
+        } else {
+          req.log.warn({ activityId: activity.id, agendaId: activity.agendaId }, "activity: no google refresh token for agenda");
+        }
+      } catch (err: unknown) {
+        req.log.error({ err, activityId: activity.id }, "activity: Google Calendar sync failed for reuniao");
+      }
     }
   }
 });

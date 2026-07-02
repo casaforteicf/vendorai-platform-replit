@@ -43,6 +43,17 @@ import {
   ChevronDown,
   ChevronUp,
   RefreshCw,
+  Compass,
+  Maximize2,
+  Minimize2,
+  Copy,
+  Send,
+  MessageSquare,
+  ChevronLeft,
+  ChevronRight,
+  Square,
+  CheckSquare,
+  Video,
 } from "lucide-react";
 
 const SITUATION_QUESTIONS = [
@@ -104,6 +115,32 @@ const PROSPECT_SIZE_OPTIONS = [
   { value: "large_multichannel", label: "Grande multicanal" },
 ];
 
+interface SpinRoteiro {
+  abertura: string;
+  situacao: Array<{ pergunta: string; objetivo: string }>;
+  problema: Array<{ pergunta: string; objetivo: string }>;
+  implicacao: Array<{ pergunta: string; objetivo: string }>;
+  necessidade: Array<{ pergunta: string; objetivo: string }>;
+  objecoes: Array<{ objecao: string; resposta: string }>;
+  fechamento: string;
+  alertas: string[];
+}
+
+interface SpinMeetingData {
+  activity: {
+    id: string;
+    titulo: string;
+    descricao?: string;
+    dataHoraInicio?: string;
+    dataHoraFim?: string;
+    meetLink?: string;
+    dealId?: string;
+    spinGeneratedAt?: string;
+  } | null;
+  roteiro: SpinRoteiro | null;
+  hasNewMessages: boolean;
+}
+
 interface LeadBriefingTabProps {
   leadId: string;
   tenantId: string;
@@ -141,6 +178,56 @@ interface BriefingForm {
   nextStepType: string;
   nextStepDate: string;
   freeNotes: string;
+}
+
+function SpinSection({
+  letter,
+  label,
+  color,
+  items,
+  description,
+}: {
+  letter: string;
+  label: string;
+  color: "blue" | "amber" | "orange" | "emerald";
+  items: Array<{ pergunta: string; objetivo: string }>;
+  description: string;
+}) {
+  const colorMap = {
+    blue: "bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300 border-blue-300 dark:border-blue-700",
+    amber: "bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300 border-amber-300 dark:border-amber-700",
+    orange: "bg-orange-100 text-orange-700 dark:bg-orange-900/40 dark:text-orange-300 border-orange-300 dark:border-orange-700",
+    emerald: "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300 border-emerald-300 dark:border-emerald-700",
+  };
+  const dotMap = {
+    blue: "bg-blue-500",
+    amber: "bg-amber-500",
+    orange: "bg-orange-500",
+    emerald: "bg-emerald-500",
+  };
+  if (!items?.length) return null;
+  return (
+    <div>
+      <div className="flex items-center gap-2 mb-2">
+        <span className={`inline-flex h-5 w-5 items-center justify-center rounded text-[10px] font-bold border ${colorMap[color]}`}>
+          {letter}
+        </span>
+        <p className="text-[10px] uppercase tracking-wider font-semibold text-muted-foreground">{label}</p>
+        <span className="text-[10px] text-muted-foreground italic">— {description}</span>
+      </div>
+      <div className="space-y-1.5 pl-1">
+        {items.map((item, i) => (
+          <div key={i} className="flex items-start gap-2">
+            <span className={`mt-1.5 h-1.5 w-1.5 rounded-full shrink-0 ${dotMap[color]}`} />
+            <div>
+              <p>{item.pergunta}</p>
+              {item.objetivo && <p className="text-muted-foreground text-[10px] mt-0.5">{item.objetivo}</p>}
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
 }
 
 export default function LeadBriefingTab({ leadId, tenantId, lead }: LeadBriefingTabProps) {
@@ -247,6 +334,104 @@ export default function LeadBriefingTab({ leadId, tenantId, lead }: LeadBriefing
   const [isSaving, setIsSaving] = useState(false);
   const [hasChanges, setHasChanges] = useState(false);
   const [isGeneratingQuestions, setIsGeneratingQuestions] = useState(false);
+
+  // ── Tab SPIN Roteiro ────────────────────────────────────────────────────────
+  const [activeTab, setActiveTab] = useState<"briefing" | "roteiro">("briefing");
+  const [spinData, setSpinData] = useState<SpinMeetingData | null>(null);
+  const [spinLoading, setSpinLoading] = useState(false);
+  const [spinGenerating, setSpinGenerating] = useState(false);
+  const [spinSending, setSpinSending] = useState(false);
+  const [meetingMode, setMeetingMode] = useState(false);
+  const [meetingSection, setMeetingSection] = useState(0);
+  const [checkedItems, setCheckedItems] = useState<Set<string>>(new Set());
+
+  const fetchSpinData = async () => {
+    setSpinLoading(true);
+    try {
+      const res = await fetch(`/api/leads/${leadId}/spin-meeting`, {
+        headers: { Authorization: `Bearer ${localStorage.getItem("vendorai_token")}` },
+      });
+      if (res.ok) {
+        const data = await res.json() as SpinMeetingData;
+        setSpinData(data);
+      }
+    } catch { null; } finally { setSpinLoading(false); }
+  };
+
+  useEffect(() => {
+    if (activeTab === "roteiro" && !spinData) {
+      void fetchSpinData();
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeTab]);
+
+  const handleGenerateSpin = async () => {
+    setSpinGenerating(true);
+    try {
+      const res = await fetch(`/api/leads/${leadId}/spin-meeting/generate`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${localStorage.getItem("vendorai_token")}` },
+      });
+      const data = await res.json() as { roteiro?: SpinRoteiro; error?: string };
+      if (!res.ok || data.error) {
+        toast({ title: "Erro ao gerar roteiro", description: data.error ?? "Tente novamente.", variant: "destructive" });
+        return;
+      }
+      await fetchSpinData();
+      toast({ title: "Roteiro SPIN gerado!", description: "Roteiro atualizado com sucesso." });
+    } catch {
+      toast({ title: "Erro ao gerar roteiro", variant: "destructive" });
+    } finally { setSpinGenerating(false); }
+  };
+
+  const handleSendSpinWhatsapp = async () => {
+    setSpinSending(true);
+    try {
+      const res = await fetch(`/api/leads/${leadId}/spin-meeting/send-whatsapp`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${localStorage.getItem("vendorai_token")}` },
+      });
+      const data = await res.json() as { sent?: boolean; error?: string };
+      if (!res.ok || data.error) {
+        toast({ title: "Erro ao enviar", description: data.error ?? "Tente novamente.", variant: "destructive" });
+        return;
+      }
+      toast({ title: "Roteiro enviado para o WhatsApp!" });
+    } catch {
+      toast({ title: "Erro ao enviar", variant: "destructive" });
+    } finally { setSpinSending(false); }
+  };
+
+  const handleCopySpin = () => {
+    if (!spinData?.roteiro) return;
+    const r = spinData.roteiro;
+    const lines = [
+      `🧭 ROTEIRO SPIN — ${lead?.nome ?? "Lead"}`,
+      ``,
+      `ABERTURA:`,
+      r.abertura,
+      ``,
+      `SITUAÇÃO:`,
+      ...r.situacao.map((q) => `• ${q.pergunta}`),
+      ``,
+      `PROBLEMA:`,
+      ...r.problema.map((q) => `• ${q.pergunta}`),
+      ``,
+      `IMPLICAÇÃO:`,
+      ...r.implicacao.map((q) => `• ${q.pergunta}`),
+      ``,
+      `NECESSIDADE:`,
+      ...r.necessidade.map((q) => `• ${q.pergunta}`),
+      ``,
+      `FECHAMENTO:`,
+      r.fechamento,
+    ];
+    if (r.alertas?.length) {
+      lines.push(``, `⚠️ ALERTAS:`, ...r.alertas.map((a) => `• ${a}`));
+    }
+    void navigator.clipboard.writeText(lines.join("\n"));
+    toast({ title: "Copiado para a área de transferência!" });
+  };
 
   const handleGenerateQuestions = async () => {
     setIsGeneratingQuestions(true);
@@ -459,14 +644,181 @@ export default function LeadBriefingTab({ leadId, tenantId, lead }: LeadBriefing
 
   const hasSummary = !!(summary || (briefing as any)?.aiSummary);
 
+  const MEETING_SECTIONS = spinData?.roteiro
+    ? [
+        { label: "Situação", key: "situacao" as const, color: "bg-blue-500", items: spinData.roteiro.situacao },
+        { label: "Problema", key: "problema" as const, color: "bg-amber-500", items: spinData.roteiro.problema },
+        { label: "Implicação", key: "implicacao" as const, color: "bg-orange-500", items: spinData.roteiro.implicacao },
+        { label: "Necessidade", key: "necessidade" as const, color: "bg-emerald-500", items: spinData.roteiro.necessidade },
+      ]
+    : [];
+
   return (
+    <>
+    {/* ══ MODO REUNIÃO — Tela cheia ══════════════════════════════════════════ */}
+    {meetingMode && spinData?.roteiro && (
+      <div className="fixed inset-0 z-50 bg-gray-950 text-white flex flex-col">
+        {/* Header */}
+        <div className="flex items-center justify-between px-4 py-3 border-b border-gray-800">
+          <div className="flex items-center gap-3">
+            <Compass className="h-5 w-5 text-emerald-400" />
+            <div>
+              <p className="text-sm font-semibold">{lead?.nome ?? "Reunião"}</p>
+              {spinData.activity?.dataHoraInicio && (
+                <p className="text-xs text-gray-400">
+                  {new Date(spinData.activity.dataHoraInicio).toLocaleString("pt-BR", { dateStyle: "short", timeStyle: "short" })}
+                </p>
+              )}
+            </div>
+          </div>
+          <div className="flex items-center gap-2">
+            {spinData.activity?.meetLink && (
+              <a href={spinData.activity.meetLink} target="_blank" rel="noreferrer"
+                className="flex items-center gap-1 text-xs bg-emerald-700 hover:bg-emerald-600 px-2 py-1 rounded-md transition-colors">
+                <Video className="h-3.5 w-3.5" />
+                Meet
+              </a>
+            )}
+            <button onClick={() => setMeetingMode(false)}
+              className="p-1.5 rounded-md hover:bg-gray-800 transition-colors">
+              <Minimize2 className="h-4 w-4" />
+            </button>
+          </div>
+        </div>
+
+        {/* Abertura (pinned if section 0) / Navigation */}
+        <div className="flex gap-1 px-4 pt-3">
+          {MEETING_SECTIONS.map((s, i) => (
+            <button key={s.key} onClick={() => setMeetingSection(i)}
+              className={`flex-1 text-xs py-1.5 rounded-md font-semibold transition-colors ${
+                meetingSection === i ? `${s.color} text-white` : "bg-gray-800 text-gray-400 hover:bg-gray-700"
+              }`}>
+              {s.label[0]}
+            </button>
+          ))}
+        </div>
+
+        {/* Section content */}
+        <div className="flex-1 overflow-y-auto px-4 py-4 space-y-3">
+          {meetingSection === 0 && (
+            <div className="mb-4 p-3 bg-gray-800 rounded-lg">
+              <p className="text-xs text-gray-400 uppercase tracking-wider mb-1">Abertura</p>
+              <p className="text-sm leading-relaxed">{spinData.roteiro.abertura}</p>
+            </div>
+          )}
+          <p className="text-xs text-gray-400 uppercase tracking-wider">
+            {MEETING_SECTIONS[meetingSection]?.label}
+          </p>
+          {MEETING_SECTIONS[meetingSection]?.items.map((item, i) => {
+            const key = `${meetingSection}-${i}`;
+            const checked = checkedItems.has(key);
+            return (
+              <button key={i} onClick={() => setCheckedItems((prev) => {
+                const next = new Set(prev);
+                if (checked) next.delete(key); else next.add(key);
+                return next;
+              })}
+                className={`w-full text-left p-3 rounded-lg border transition-all ${
+                  checked
+                    ? "bg-gray-800 border-gray-700 opacity-60"
+                    : "bg-gray-900 border-gray-700 hover:border-gray-600"
+                }`}
+              >
+                <div className="flex items-start gap-3">
+                  {checked
+                    ? <CheckSquare className="h-4 w-4 text-emerald-400 mt-0.5 shrink-0" />
+                    : <Square className="h-4 w-4 text-gray-500 mt-0.5 shrink-0" />
+                  }
+                  <div className="flex-1 min-w-0">
+                    <p className={`text-sm font-medium leading-snug ${checked ? "line-through text-gray-500" : ""}`}>
+                      {item.pergunta}
+                    </p>
+                    <p className="text-[11px] text-gray-500 mt-1">{item.objetivo}</p>
+                  </div>
+                </div>
+              </button>
+            );
+          })}
+          {meetingSection === MEETING_SECTIONS.length - 1 && (
+            <div className="mt-4 p-3 bg-emerald-900/40 border border-emerald-700 rounded-lg">
+              <p className="text-xs text-emerald-400 uppercase tracking-wider mb-1">Fechamento</p>
+              <p className="text-sm leading-relaxed">{spinData.roteiro.fechamento}</p>
+            </div>
+          )}
+          {spinData.roteiro.alertas?.length > 0 && (
+            <div className="mt-2 p-3 bg-amber-900/30 border border-amber-700 rounded-lg">
+              <p className="text-xs text-amber-400 uppercase tracking-wider mb-1">⚠️ Alertas</p>
+              {spinData.roteiro.alertas.map((a, i) => (
+                <p key={i} className="text-sm text-amber-200">{a}</p>
+              ))}
+            </div>
+          )}
+        </div>
+
+        {/* Bottom nav */}
+        <div className="flex items-center justify-between px-4 py-3 border-t border-gray-800">
+          <button onClick={() => setMeetingSection((p) => Math.max(0, p - 1))}
+            disabled={meetingSection === 0}
+            className="flex items-center gap-1 text-sm px-3 py-1.5 rounded-md bg-gray-800 disabled:opacity-30 hover:bg-gray-700 transition-colors">
+            <ChevronLeft className="h-4 w-4" /> Anterior
+          </button>
+          <span className="text-xs text-gray-500">{meetingSection + 1} / {MEETING_SECTIONS.length}</span>
+          <button onClick={() => setMeetingSection((p) => Math.min(MEETING_SECTIONS.length - 1, p + 1))}
+            disabled={meetingSection === MEETING_SECTIONS.length - 1}
+            className="flex items-center gap-1 text-sm px-3 py-1.5 rounded-md bg-gray-800 disabled:opacity-30 hover:bg-gray-700 transition-colors">
+            Próximo <ChevronRight className="h-4 w-4" />
+          </button>
+        </div>
+      </div>
+    )}
+
     <Card data-testid="card-briefing">
+      {/* ══ TABS ══════════════════════════════════════════════════════════════ */}
+      <div className="flex border-b border-border px-4 pt-3">
+        <button
+          onClick={() => setActiveTab("briefing")}
+          className={`flex items-center gap-1.5 text-xs font-medium pb-2 mr-4 border-b-2 transition-colors ${
+            activeTab === "briefing"
+              ? "border-primary text-primary"
+              : "border-transparent text-muted-foreground hover:text-foreground"
+          }`}
+        >
+          <ClipboardList className="h-3.5 w-3.5" />
+          Briefing SPIN
+        </button>
+        <button
+          onClick={() => setActiveTab("roteiro")}
+          className={`flex items-center gap-1.5 text-xs font-medium pb-2 border-b-2 transition-colors ${
+            activeTab === "roteiro"
+              ? "border-primary text-primary"
+              : "border-transparent text-muted-foreground hover:text-foreground"
+          }`}
+        >
+          <Compass className="h-3.5 w-3.5" />
+          Roteiro Reunião
+          {spinData?.hasNewMessages && (
+            <span className="ml-1 bg-amber-500 text-white text-[9px] px-1.5 py-0.5 rounded-full font-bold">
+              novo
+            </span>
+          )}
+        </button>
+      </div>
+
       <CardHeader className="pb-3">
         <CardTitle className="text-sm font-semibold flex items-center justify-between">
           <div className="flex items-center gap-2">
-            <ClipboardList className="h-4 w-4 text-primary" />
-            <span>Briefing SPIN+PAS</span>
-            {form.needThermometer && (
+            {activeTab === "briefing" ? (
+              <>
+                <ClipboardList className="h-4 w-4 text-primary" />
+                <span>Briefing SPIN+PAS</span>
+              </>
+            ) : (
+              <>
+                <Compass className="h-4 w-4 text-primary" />
+                <span>Roteiro de Reunião</span>
+              </>
+            )}
+            {activeTab === "briefing" && form.needThermometer && (
               <Badge
                 variant="outline"
                 className={
@@ -485,7 +837,36 @@ export default function LeadBriefingTab({ leadId, tenantId, lead }: LeadBriefing
             )}
           </div>
           <div className="flex items-center gap-2">
-            {activeView === "summary" && hasSummary ? (
+            {activeTab === "roteiro" ? (
+              /* SPIN tab buttons */
+              <>
+                {spinData?.roteiro && (
+                  <Button size="sm" variant="outline" className="h-7 text-xs gap-1"
+                    onClick={() => { setMeetingMode(true); setMeetingSection(0); setCheckedItems(new Set()); }}>
+                    <Maximize2 className="h-3 w-3" />
+                    Modo Reunião
+                  </Button>
+                )}
+                {spinData?.roteiro && (
+                  <Button size="sm" variant="outline" className="h-7 text-xs gap-1" onClick={handleCopySpin}>
+                    <Copy className="h-3 w-3" />
+                    Copiar
+                  </Button>
+                )}
+                {spinData?.roteiro && (
+                  <Button size="sm" variant="outline" className="h-7 text-xs gap-1"
+                    onClick={handleSendSpinWhatsapp} disabled={spinSending}>
+                    {spinSending ? <Loader2 className="h-3 w-3 animate-spin" /> : <Send className="h-3 w-3" />}
+                    WhatsApp
+                  </Button>
+                )}
+                <Button size="sm" variant="outline" className="h-7 text-xs gap-1"
+                  onClick={handleGenerateSpin} disabled={spinGenerating}>
+                  {spinGenerating ? <Loader2 className="h-3 w-3 animate-spin" /> : <RefreshCw className="h-3 w-3" />}
+                  {spinGenerating ? "Gerando…" : spinData?.roteiro ? "Regenerar" : "Gerar Roteiro"}
+                </Button>
+              </>
+            ) : activeView === "summary" && hasSummary ? (
               <>
                 <Button
                   size="sm"
@@ -549,7 +930,147 @@ export default function LeadBriefingTab({ leadId, tenantId, lead }: LeadBriefing
       </CardHeader>
       <CardContent className="space-y-6">
 
+        {/* ══ TAB: ROTEIRO SPIN ══════════════════════════════════════════════ */}
+        {activeTab === "roteiro" && (
+          <div className="min-h-[200px]">
+            {spinLoading ? (
+              <div className="flex items-center justify-center py-12">
+                <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+              </div>
+            ) : !spinData?.activity ? (
+              <div className="flex flex-col items-center justify-center py-12 text-center space-y-3 text-muted-foreground">
+                <Compass className="h-10 w-10 opacity-30" />
+                <p className="text-sm font-medium">Nenhuma reunião agendada</p>
+                <p className="text-xs max-w-xs">Crie uma atividade do tipo "Reunião" neste lead para gerar o roteiro SPIN automaticamente.</p>
+              </div>
+            ) : !spinData.roteiro ? (
+              <div className="flex flex-col items-center justify-center py-12 text-center space-y-3">
+                <Compass className="h-10 w-10 text-muted-foreground opacity-30" />
+                <div>
+                  <p className="text-sm font-medium">Roteiro ainda não gerado</p>
+                  <p className="text-xs text-muted-foreground mt-1">
+                    Reunião: <strong>{spinData.activity.titulo}</strong>
+                  </p>
+                  {spinData.activity.dataHoraInicio && (
+                    <p className="text-xs text-muted-foreground">
+                      {new Date(spinData.activity.dataHoraInicio).toLocaleString("pt-BR", { dateStyle: "full", timeStyle: "short" })}
+                    </p>
+                  )}
+                </div>
+                <Button size="sm" className="gap-1.5 mt-2" onClick={handleGenerateSpin} disabled={spinGenerating}>
+                  {spinGenerating ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Sparkles className="h-3.5 w-3.5" />}
+                  {spinGenerating ? "Gerando roteiro com IA…" : "Gerar Roteiro SPIN"}
+                </Button>
+              </div>
+            ) : (
+              <div className="space-y-5 text-xs">
+                {/* Meta info */}
+                <div className="flex flex-wrap items-center gap-2">
+                  {spinData.hasNewMessages && (
+                    <Badge className="bg-amber-100 text-amber-700 border-amber-300 text-[10px]">
+                      <MessageSquare className="h-2.5 w-2.5 mr-1 inline" />
+                      💬 Houve conversa nova desde o roteiro
+                    </Badge>
+                  )}
+                  {spinData.activity.dataHoraInicio && (
+                    <span className="text-muted-foreground">
+                      📅 {new Date(spinData.activity.dataHoraInicio).toLocaleString("pt-BR", { dateStyle: "short", timeStyle: "short" })}
+                    </span>
+                  )}
+                  {spinData.activity.meetLink && (
+                    <a href={spinData.activity.meetLink} target="_blank" rel="noreferrer"
+                      className="flex items-center gap-1 text-primary hover:underline">
+                      <Video className="h-3 w-3" />
+                      Google Meet
+                    </a>
+                  )}
+                  {spinData.activity.spinGeneratedAt && (
+                    <span className="text-muted-foreground text-[10px]">
+                      Gerado {new Date(spinData.activity.spinGeneratedAt).toLocaleString("pt-BR", { dateStyle: "short", timeStyle: "short" })}
+                    </span>
+                  )}
+                </div>
+
+                {/* Abertura */}
+                <div className="p-3 bg-muted/50 rounded-lg border-l-2 border-primary">
+                  <p className="text-[10px] uppercase tracking-wider font-semibold text-primary mb-1.5">Abertura</p>
+                  <p className="leading-relaxed">{spinData.roteiro.abertura}</p>
+                </div>
+
+                {/* S — Situação */}
+                <SpinSection
+                  letter="S" label="Situação" color="blue"
+                  items={spinData.roteiro.situacao}
+                  description="Entenda o contexto atual do cliente"
+                />
+
+                {/* P — Problema */}
+                <SpinSection
+                  letter="P" label="Problema" color="amber"
+                  items={spinData.roteiro.problema}
+                  description="Explore as dificuldades e insatisfações"
+                />
+
+                {/* I — Implicação */}
+                <SpinSection
+                  letter="I" label="Implicação" color="orange"
+                  items={spinData.roteiro.implicacao}
+                  description="Aprofunde o impacto dos problemas"
+                />
+
+                {/* N — Necessidade */}
+                <SpinSection
+                  letter="N" label="Necessidade" color="emerald"
+                  items={spinData.roteiro.necessidade}
+                  description="Conduza à solução ideal"
+                />
+
+                {/* Objeções */}
+                {spinData.roteiro.objecoes?.length > 0 && (
+                  <div>
+                    <p className="text-[10px] uppercase tracking-wider font-semibold text-muted-foreground mb-2 flex items-center gap-1">
+                      <ShieldCheck className="h-3 w-3" /> Possíveis Objeções
+                    </p>
+                    <div className="space-y-2">
+                      {spinData.roteiro.objecoes.map((obj, i) => (
+                        <div key={i} className="p-2.5 rounded-md bg-muted/40 border">
+                          <p className="font-medium text-amber-700 dark:text-amber-400">"{obj.objecao}"</p>
+                          <p className="mt-1 text-muted-foreground">{obj.resposta}</p>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* Fechamento */}
+                <div className="p-3 bg-emerald-50 dark:bg-emerald-900/20 rounded-lg border border-emerald-200 dark:border-emerald-800">
+                  <p className="text-[10px] uppercase tracking-wider font-semibold text-emerald-700 dark:text-emerald-400 mb-1.5">Fechamento</p>
+                  <p className="leading-relaxed">{spinData.roteiro.fechamento}</p>
+                </div>
+
+                {/* Alertas */}
+                {spinData.roteiro.alertas?.length > 0 && (
+                  <div className="p-3 bg-amber-50 dark:bg-amber-900/20 rounded-lg border border-amber-200 dark:border-amber-800">
+                    <p className="text-[10px] uppercase tracking-wider font-semibold text-amber-700 dark:text-amber-400 mb-1.5 flex items-center gap-1">
+                      <AlertTriangle className="h-3 w-3" /> Alertas do Contexto
+                    </p>
+                    <ul className="space-y-1">
+                      {spinData.roteiro.alertas.map((a, i) => (
+                        <li key={i} className="flex items-start gap-1.5">
+                          <span className="mt-1 h-1.5 w-1.5 rounded-full bg-amber-500 shrink-0" />
+                          {a}
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+        )}
+
         {/* ══ VIEW: RESUMO DE FECHAMENTO ═══════════════════════════════════ */}
+        {activeTab === "briefing" && <>
         {activeView === "summary" && summary && (
           <div className="space-y-4 text-xs">
             <div className="flex items-center gap-2 font-semibold text-sm text-violet-700 dark:text-violet-300">
@@ -928,7 +1449,10 @@ export default function LeadBriefingTab({ leadId, tenantId, lead }: LeadBriefing
         </div>
           </>
         )}
+        {/* end briefing tab */}
+        </>}
       </CardContent>
     </Card>
+    </>
   );
 }

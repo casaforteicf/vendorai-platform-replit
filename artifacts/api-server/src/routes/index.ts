@@ -70,6 +70,7 @@ import scoutRouter from "./scout";
 import sdrTemplatesRouter from "./sdr_templates";
 import renderRouter from "./render";
 import siteRouter from "./site";
+import spinRouter from "./spin";
 import { authenticate, blockPartnerFromCRM, blockSuspendedTenants, blockExpiredDemo, requireRole, requireSameTenanOrSuperAdmin } from "../middlewares/auth";
 import { eq } from "drizzle-orm";
 import { db, tenantsTable } from "@workspace/db";
@@ -261,6 +262,9 @@ router.use(scoutRouter);
 
 // Render Hub
 router.use(renderRouter);
+
+// SPIN Selling Briefing Hub
+router.use(spinRouter);
 
 export { requireRole, requireSameTenanOrSuperAdmin };
 export default router;

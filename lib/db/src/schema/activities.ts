@@ -58,6 +58,9 @@ export const activitiesTable = pgTable("activities", {
   gerarMeet: boolean("gerar_meet").default(false),
   googleEventId: text("google_event_id"),
   meetLink: text("meet_link"),
+  // SPIN Selling briefing gerado automaticamente ao agendar reunião
+  spinBriefing: text("spin_briefing"),
+  spinGeneratedAt: timestamp("spin_generated_at"),
   // Anexo
   anexoNome: text("anexo_nome"),
   anexoUrl: text("anexo_url"),

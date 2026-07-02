@@ -25,7 +25,8 @@ export type AiFeature =
   | "embedding"
   | "web_search"
   | "media_interpretation"
-  | "auto_quote";
+  | "auto_quote"
+  | "spin_briefing";
 
 export const aiFeatureEnum = pgEnum("ai_feature", [
   "agent_sdr",

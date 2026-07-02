@@ -9,7 +9,7 @@
  *   Detecta respostas SIM/NÃO e atualiza status do agendamento.
  *   Retorna true se a mensagem foi consumida (não passar para agent-dispatch).
  */
-import { and, eq, gte, lte, or } from "drizzle-orm";
+import { and, eq, gte, lte, or, isNotNull } from "drizzle-orm";
 import type { Logger } from "pino";
 import {
   db,
@@ -22,8 +22,10 @@ import {
   clinicMedicosTable,
   clinicEspecialidadesTable,
   businessProfilesTable,
+  activitiesTable,
 } from "@workspace/db";
 import { sendDirectWhatsAppMessage } from "../services/omnichannel.js";
+import type { SpinRoteiro } from "../routes/spin.js";
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -183,6 +185,87 @@ async function sendClinicReminders(
   return sent;
 }
 
+// ─── CRM Meeting SPIN Reminders ───────────────────────────────────────────────
+
+async function sendCrmSpinReminders(
+  tenantId: string,
+  janelaDe: Date,
+  janelaAte: Date,
+  log: Logger,
+): Promise<number> {
+  const rows = await db
+    .select({
+      id:           activitiesTable.id,
+      titulo:       activitiesTable.titulo,
+      dataHoraInicio: activitiesTable.dataHoraInicio,
+      leadId:       activitiesTable.leadId,
+      tenantId:     activitiesTable.tenantId,
+      spinBriefing: activitiesTable.spinBriefing,
+      leadNome:     leadsTable.nome,
+    })
+    .from(activitiesTable)
+    .innerJoin(leadsTable, eq(leadsTable.id, activitiesTable.leadId))
+    .where(
+      and(
+        eq(activitiesTable.tenantId, tenantId),
+        eq(activitiesTable.tipo, "reuniao"),
+        isNotNull(activitiesTable.spinBriefing),
+        isNotNull(activitiesTable.dataHoraInicio),
+        gte(activitiesTable.dataHoraInicio, janelaDe),
+        lte(activitiesTable.dataHoraInicio, janelaAte),
+      ),
+    );
+
+  if (!rows.length) return 0;
+
+  const [profile] = await db
+    .select({ telefone: businessProfilesTable.telefone })
+    .from(businessProfilesTable)
+    .where(eq(businessProfilesTable.tenantId, tenantId))
+    .limit(1);
+
+  if (!profile?.telefone) return 0;
+
+  let sent = 0;
+  for (const row of rows) {
+    try {
+      let roteiro: SpinRoteiro | null = null;
+      try { roteiro = row.spinBriefing ? (JSON.parse(row.spinBriefing) as SpinRoteiro) : null; } catch { null; }
+      if (!roteiro) continue;
+
+      const hora = row.dataHoraInicio ? formatHora(row.dataHoraInicio) : "–";
+      const lines: string[] = [
+        `🧭 *Roteiro SPIN — ${row.leadNome ?? "Lead"}*`,
+        `📅 Reunião em 2h — às ${hora}`,
+        ``,
+        `*Abertura:* ${roteiro.abertura}`,
+        ``,
+        `*Situação:*`,
+        ...roteiro.situacao.slice(0, 2).map((q) => `• ${q.pergunta}`),
+        `*Problema:*`,
+        ...roteiro.problema.slice(0, 2).map((q) => `• ${q.pergunta}`),
+        `*Implicação:*`,
+        ...roteiro.implicacao.slice(0, 2).map((q) => `• ${q.pergunta}`),
+        `*Necessidade:*`,
+        ...roteiro.necessidade.slice(0, 2).map((q) => `• ${q.pergunta}`),
+        ``,
+        `*Fechamento:* ${roteiro.fechamento}`,
+      ];
+
+      if (roteiro.alertas?.length) {
+        lines.push(``, `⚠️ ${roteiro.alertas[0]}`);
+      }
+
+      await sendDirectWhatsAppMessage(tenantId, profile.telefone, lines.join("\n"), log);
+      sent++;
+      log.info({ tenantId, activityId: row.id, leadId: row.leadId }, "reminders/spin: roteiro enviado 2h antes");
+    } catch (err) {
+      log.error({ err, activityId: row.id }, "reminders/spin: falha ao enviar (non-fatal)");
+    }
+  }
+  return sent;
+}
+
 // ─── runAppointmentReminders ─────────────────────────────────────────────────
 
 export async function runAppointmentReminders(log: Logger): Promise<void> {
@@ -199,26 +282,28 @@ export async function runAppointmentReminders(log: Logger): Promise<void> {
     .from(tenantsTable)
     .where(eq(tenantsTable.status, "active"));
 
-  let totalBeauty1 = 0, totalBeauty2 = 0, totalClinic1 = 0, totalClinic2 = 0;
+  let totalBeauty1 = 0, totalBeauty2 = 0, totalClinic1 = 0, totalClinic2 = 0, totalSpin = 0;
 
   for (const tenant of tenants) {
     try {
-      const [b1, b2, c1, c2] = await Promise.all([
+      const [b1, b2, c1, c2, spin] = await Promise.all([
         sendBeautyReminders(tenant.id, h23, h25, 1, log),
         sendBeautyReminders(tenant.id, m105, m135, 2, log),
         sendClinicReminders(tenant.id, h23, h25, 1, log),
         sendClinicReminders(tenant.id, m105, m135, 2, log),
+        sendCrmSpinReminders(tenant.id, m105, m135, log),
       ]);
       totalBeauty1 += b1;
       totalBeauty2 += b2;
       totalClinic1 += c1;
       totalClinic2 += c2;
+      totalSpin += spin;
     } catch (err) {
       log.error({ err, tenantId: tenant.id }, "reminders: tenant falhou (non-fatal)");
     }
   }
 
-  log.info({ totalBeauty1, totalBeauty2, totalClinic1, totalClinic2 }, "reminders: ciclo concluído");
+  log.info({ totalBeauty1, totalBeauty2, totalClinic1, totalClinic2, totalSpin }, "reminders: ciclo concluído");
 }
 
 // ─── handleAppointmentConfirmation ───────────────────────────────────────────
