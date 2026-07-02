@@ -852,7 +852,7 @@ export async function callReplicateFlux(params: {
           headers: {
             Authorization: `Token ${token}`,
             "Content-Type": "application/json",
-            Prefer: "wait=90",
+            Prefer: "wait=60",
           },
           body: JSON.stringify({
             input: {
