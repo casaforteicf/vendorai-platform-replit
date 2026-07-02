@@ -56,6 +56,7 @@ import type { SegmentoFiltro } from "@workspace/db";
 import { evaluateForLead } from "../routes/rules.js";
 import { dispatchAgentBackground, processAgentInternal, type DispatchResult } from "../services/agent-dispatch.js";
 import { searchAllPlaces } from "../routes/prospector.js";
+import { runProspectorQueueWorker } from "./prospectorQueue.js";
 import {
   prospectorConfigTable,
   prospectorQueueTable,
@@ -1395,7 +1396,14 @@ export function startScheduler(log: Logger): void {
     });
   }, { timezone: "America/Sao_Paulo" });
 
-  log.info("scheduler: started (churn-check @:05, campaigns @:15, billing @day-5-08:00, reactivation @03:00, demo-expiration @06:00, demo-reset @02:00, special-dates @07:00, partner-commissions @day-1-06:00, partner-prospector @08:00, content-flow @*/5min, blender-poll @30s, revenue-scout @09:00, appointment-reminders @*/30min, no-response-closing @09:30, domain-verify @*/5min, prospector-sync @09:00-BRT)");
+  // Job 17: Prospector queue worker — every hour at :35 (processes pending items up to ritmo_diario)
+  cron.schedule("35 * * * *", () => {
+    runProspectorQueueWorker(log).catch((err) => {
+      log.error({ err }, "scheduler/prospector-queue: unhandled error");
+    });
+  });
+
+  log.info("scheduler: started (churn-check @:05, campaigns @:15, billing @day-5-08:00, reactivation @03:00, demo-expiration @06:00, demo-reset @02:00, special-dates @07:00, partner-commissions @day-1-06:00, partner-prospector @08:00, content-flow @*/5min, blender-poll @30s, revenue-scout @09:00, appointment-reminders @*/30min, no-response-closing @09:30, domain-verify @*/5min, prospector-sync @09:00-BRT, prospector-queue @:35)");
 }
 
 // ── Job 16: Automatic prospector sync ─────────────────────────────────────────
