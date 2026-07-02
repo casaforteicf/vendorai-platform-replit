@@ -50,6 +50,7 @@ import { intakeRouter } from "./intake";
 import publicProposalsRouter from "./public_proposals";
 import construcaoRouter from "./construcao";
 import archRouter, { archPublicRouter } from "./arch";
+import { archAiRenderRouter } from "./arch_ai_render";
 import financeiroObraRouter from "./financeiro_obra";
 import portalRouter from "./portal";
 import varejoRouter from "./varejo";
@@ -219,6 +220,7 @@ router.use(adminAgentDefaultsRouter);
 // Construção Civil Hub
 router.use(construcaoRouter);
 router.use(financeiroObraRouter);
+router.use(archAiRenderRouter);
 
 // Varejo de Roupas & Acessórios Hub
 router.use(varejoRouter);
