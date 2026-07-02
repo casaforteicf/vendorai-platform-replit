@@ -1,0 +1,247 @@
+Solicitação para Agente Replit — Diagnóstico Técnico da Plataforma VendorAI
+
+Objetivo:
+
+Preciso de um diagnóstico completo da estrutura atual da plataforma VendorAI para entendermos exatamente como o sistema está desenvolvido hoje e ajustarmos posteriormente o fluxo de prospecção ativa e os agentes inteligentes.
+
+O objetivo não é alterar nada neste momento.
+
+Quero primeiro mapear o estado atual da aplicação.
+
+1. ARQUITETURA GERAL
+
+Descreva:
+
+• Estrutura atual do sistema
+
+• Tecnologias utilizadas (frontend, backend, banco)
+
+• Organização dos módulos
+
+• Estrutura de pastas
+
+• Serviços externos utilizados
+
+• Fluxos principais existentes
+
+• Dependências importantes
+
+• Recursos já implementados
+
+2. MÓDULOS EXISTENTES
+
+Identifique todos os módulos atuais:
+
+Exemplo:
+
+✓ Dashboard
+
+✓ CRM
+
+✓ Leads
+
+✓ Pipeline
+
+✓ Agentes IA
+
+✓ Automações
+
+✓ WhatsApp
+
+✓ Financeiro
+
+✓ Relatórios
+
+✓ Configurações
+
+✓ Usuários
+
+✓ Permissões
+
+✓ Outros existentes
+
+Para cada módulo informar:
+
+• Objetivo
+
+• Status (completo / parcial / protótipo)
+
+• Funcionalidades atuais
+
+• Limitações identificadas
+
+3. AGENTES IA IMPLEMENTADOS
+
+Mapear:
+
+• Quais agentes existem
+
+• Função de cada agente
+
+• Fluxo operacional
+
+• Entradas
+
+• Saídas
+
+• Integrações
+
+• Regras
+
+• Dependências
+
+Exemplo:
+
+Agente SDR
+
+Agente Closer
+
+Agente Financeiro
+
+Agente Suporte
+
+Agente Pós-venda
+
+Agente Prospect
+
+Outros
+
+4. INTEGRAÇÕES EXISTENTES
+
+Listar todas:
+
+Exemplos:
+
+✓ WhatsApp
+
+✓ Instagram
+
+✓ Facebook
+
+✓ Google
+
+✓ APIs externas
+
+✓ OpenAI
+
+✓ Evolution API
+
+✓ Meta
+
+✓ Webhooks
+
+✓ E-mail
+
+✓ CRM externos
+
+✓ Calendário
+
+✓ ERP
+
+✓ Banco de dados
+
+Para cada integração informar:
+
+• Status atual
+
+• Funcionando ou não
+
+• Método de conexão
+
+• Dependências
+
+• Limitações
+
+5. BANCO DE DADOS
+
+Mapear:
+
+• Entidades existentes
+
+• Relacionamentos
+
+• Tabelas
+
+• Campos principais
+
+• Estrutura atual
+
+• Problemas encontrados
+
+6. FLUXOS OPERACIONAIS
+
+Descrever passo a passo:
+
+Lead entra
+
+↓
+
+Onde vai
+
+↓
+
+Quem processa
+
+↓
+
+Quais automações executam
+
+↓
+
+Quem recebe
+
+↓
+
+Próxima ação
+
+Mapear todos os fluxos existentes.
+
+7. INTERFACE E EXPERIÊNCIA
+
+Analisar:
+
+• Estrutura atual das telas
+
+• Componentes
+
+• Responsividade
+
+• Navegação
+
+• Hierarquia visual
+
+• Problemas encontrados
+
+• Melhorias sugeridas
+
+8. DÍVIDA TÉCNICA
+
+Identificar:
+
+• Código duplicado
+
+• Componentes incompletos
+
+• Bugs conhecidos
+
+• Problemas estruturais
+
+• Riscos futuros
+
+9. PRÓXIMA ETAPA
+
+Após o diagnóstico, gerar:
+
+O que já existe
+
+O que está faltando
+
+O que precisa ser corrigido
+
+Prioridade Alta / Média / Baixa
+
+Recomendações para implementação do fluxo de prospecção ativa VendorAI
+
+Saída desejada:
+
+Gerar documento técnico estruturado e detalhado com visão executiva + visão técnica.

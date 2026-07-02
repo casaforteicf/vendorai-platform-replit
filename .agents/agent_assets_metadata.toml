@@ -41,3 +41,9 @@ id = "T9GpR0psXnhr9f4yOMNIk"
 uri = "file://docs/auditoria-renderizador.md"
 type = "text"
 title = "Auditoria Módulo Arch/Render — VendorAI"
+
+[[outputs]]
+id = "EnlH1SyHrErxuz9j504Ad"
+uri = "file://diagnostico-tecnico-vendorai.md"
+type = "text"
+title = "Diagnóstico Técnico — Plataforma VendorAI"
