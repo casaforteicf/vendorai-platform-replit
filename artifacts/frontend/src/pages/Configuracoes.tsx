@@ -134,6 +134,7 @@ import {
   Receipt,
 } from "lucide-react";
 import { SiteGeneratorTab } from "./SiteGenerator";
+import { SdrTemplatesSection } from "@/components/SdrTemplatesSection";
 import { FaturamentoTab } from "./FaturamentoTab";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
@@ -2213,6 +2214,9 @@ export default function Configuracoes() {
                 })
             }
           </div>
+
+          {/* ── SDR Templates de Abordagem ─────────────────────────────── */}
+          <SdrTemplatesSection tenantId={tenantId} />
         </TabsContent>
 
         {/* ── Tab: Análise de IA ──────────────────────────────────────────── */}

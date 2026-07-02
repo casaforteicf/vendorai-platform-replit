@@ -121,3 +121,4 @@ export * from "./site_contatos";
 export * from "./prospector_config";
 export * from "./prospector_queue";
 export * from "./notification_logs";
+export * from "./sdr_templates";

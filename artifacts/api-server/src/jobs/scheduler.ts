@@ -58,6 +58,7 @@ import { dispatchAgentBackground, processAgentInternal, type DispatchResult } fr
 import { searchAllPlaces } from "../routes/prospector.js";
 import { runProspectorQueueWorker } from "./prospectorQueue.js";
 import { runDailyAgendaSummary } from "./dailyAgendaSummary.js";
+import { runSdrFollowup } from "./sdrFollowup.js";
 import {
   prospectorConfigTable,
   prospectorQueueTable,
@@ -1411,7 +1412,14 @@ export function startScheduler(log: Logger): void {
     });
   }, { timezone: "America/Sao_Paulo" });
 
-  log.info("scheduler: started (churn-check @:05, campaigns @:15, billing @day-5-08:00, reactivation @03:00, demo-expiration @06:00, demo-reset @02:00, special-dates @07:00, partner-commissions @day-1-06:00, partner-prospector @08:00, content-flow @*/5min, blender-poll @30s, revenue-scout @09:00, appointment-reminders @*/30min, no-response-closing @09:30, domain-verify @*/5min, prospector-sync @09:00-BRT, prospector-queue @:35, daily-agenda-summary @08:00-BRT)");
+  // Job 19: SDR follow-up — every hour
+  cron.schedule("0 * * * *", () => {
+    runSdrFollowup(log).catch((err) => {
+      log.error({ err }, "scheduler/sdr-followup: unhandled error");
+    });
+  });
+
+  log.info("scheduler: started (churn-check @:05, campaigns @:15, billing @day-5-08:00, reactivation @03:00, demo-expiration @06:00, demo-reset @02:00, special-dates @07:00, partner-commissions @day-1-06:00, partner-prospector @08:00, content-flow @*/5min, blender-poll @30s, revenue-scout @09:00, appointment-reminders @*/30min, no-response-closing @09:30, domain-verify @*/5min, prospector-sync @09:00-BRT, prospector-queue @:35, daily-agenda-summary @08:00-BRT, sdr-followup @*/1h)");
 }
 
 // ── Job 16: Automatic prospector sync ─────────────────────────────────────────

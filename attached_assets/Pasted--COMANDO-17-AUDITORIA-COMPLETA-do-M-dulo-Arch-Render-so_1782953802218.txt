@@ -1,0 +1,81 @@
+# COMANDO 17 — AUDITORIA COMPLETA do Módulo Arch/Render (somente leitura, não alterar nada)
+
+**IMPORTANTE:** Este comando é de DIAGNÓSTICO. Não modifique nenhum código.
+Apenas leia, analise e gere um relatório completo em Markdown salvo em:
+`docs/auditoria-renderizador.md`
+
+---
+
+## O QUE INVESTIGAR E DOCUMENTAR
+
+### 1. ARQUITETURA GERAL
+- Quais arquivos compõem o módulo Arch/Render? (frontend e backend, com caminhos completos)
+- Qual rota de API processa o render? (ex: /api/arch/render)
+- Existe modelo 3D real no sistema ou trabalha só com imagens 2D?
+- Quais tabelas do banco o módulo usa? (listar schema de cada uma)
+
+### 2. MOTOR DE GERAÇÃO DE IMAGEM
+- Qual provider/API é usado para gerar as imagens? (OpenAI DALL-E, Stable Diffusion, Replicate, outro?)
+- É text-to-image puro, img2img ou inpainting?
+- Qual modelo específico e versão?
+- Onde está a chave de API e qual variável de ambiente usa?
+- Qual o custo estimado por render (se identificável)?
+
+### 3. PROMPT ATUAL — TRANSCREVER NA ÍNTEGRA
+- Copiar o prompt EXATO enviado ao gerador de imagem (system + user, se houver)
+- Onde no código o prompt é montado? (arquivo e linha)
+- Quais variáveis são injetadas no prompt? (iluminação, ângulo, material, estilo...)
+- Existe instrução de preservação estrutural no prompt? Transcrever se sim.
+
+### 4. BOTÕES E CONTROLES DA UI — FUNÇÃO POR FUNÇÃO
+Para CADA botão/controle da tela de Renderização, documentar:
+| Botão/Controle | O que faz ao clicar | Endpoint chamado | Payload enviado | Status (funciona/quebrado/parcial) |
+
+Cobrir no mínimo:
+- Original HD
+- Render completo
+- Chat
+- Iluminação: Manhã / Tarde / Golden / Noturno
+- Ângulos: Frontal / 45° / Lateral / Ampla / Aérea
+- Materiais: Todos / Madeira / MDF / Pedra / Ferro / Cerâmica / Concreto (e Aço)
+- Importar
+- Campo de texto + "Gerar render"
+- Arraste textura sobre a imagem (drag & drop de material)
+
+### 5. SISTEMA DE MATERIAIS/TEXTURAS
+- Como um material é aplicado hoje? (máscara, prompt, overlay, outro método?)
+- Existe seleção de superfície individual ou o material aplica na imagem toda?
+- A tabela render_surfaces / render_surface_materials existe? (foi briefada no cmd-7)
+- O drag & drop de textura está funcional? O que acontece tecnicamente no drop?
+
+### 6. ERROS CONHECIDOS
+- Reproduzir o erro 500 em /api/arch/render e capturar o stack trace completo
+- Listar todos os try/catch do módulo e o que cada um engole
+- Verificar logs recentes de erro relacionados ao render
+
+### 7. ESTADO DOS BRIEFINGS ANTERIORES (cmd-7 e cmd-8)
+Verificar o que foi de fato implementado vs o que ficou pendente:
+- [ ] Correção do erro 500
+- [ ] img2img/inpainting com preservação estrutural
+- [ ] Máscaras por superfície individual (render_surfaces)
+- [ ] Múltiplos materiais em superfícies da mesma categoria
+- [ ] Rotação de câmera Lateral Esq./Dir.
+- [ ] Card de Sugestões de Decoração (5 estilos)
+- [ ] Tabela arch_suggestions
+
+### 8. FLUXO COMPLETO DE UM RENDER (passo a passo técnico)
+Documentar a jornada: usuário clica "Gerar render" → ... → imagem aparece na tela.
+Cada etapa com arquivo, função e o que pode falhar.
+
+---
+
+## FORMATO DO RELATÓRIO
+
+Gerar `docs/auditoria-renderizador.md` com as 8 seções acima, incluindo:
+- Trechos de código relevantes (com caminho do arquivo)
+- O prompt completo transcrito
+- A tabela de botões preenchida
+- Lista final: ✅ funcionando | ⚠️ parcial | ❌ quebrado | 🚫 não implementado
+- Recomendações priorizadas de correção (sem executar nenhuma)
+
+Ao final, disponibilize o arquivo para download.

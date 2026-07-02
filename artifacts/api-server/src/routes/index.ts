@@ -67,6 +67,7 @@ import contentStudioRouter from "./content_studio";
 import beautyRouter from "./beauty";
 import clinicRouter from "./clinic";
 import scoutRouter from "./scout";
+import sdrTemplatesRouter from "./sdr_templates";
 import renderRouter from "./render";
 import siteRouter from "./site";
 import { authenticate, blockPartnerFromCRM, blockSuspendedTenants, blockExpiredDemo, requireRole, requireSameTenanOrSuperAdmin } from "../middlewares/auth";
@@ -249,6 +250,7 @@ router.use(partnerProspectorRouter);
 router.use(archRouter);
 
 // Beauty (Salão de Beleza) Hub
+router.use(sdrTemplatesRouter);
 router.use(beautyRouter);
 
 // Clínica Hub
