@@ -35,3 +35,9 @@ id = "tv-wGYfoS3mX4rJGWG3iH"
 uri = "file://exports/vendorai-agent-architecture.md"
 type = "text"
 title = "VendorAI — Arquitetura dos Agentes de IA"
+
+[[outputs]]
+id = "T9GpR0psXnhr9f4yOMNIk"
+uri = "file://docs/auditoria-renderizador.md"
+type = "text"
+title = "Auditoria Módulo Arch/Render — VendorAI"
