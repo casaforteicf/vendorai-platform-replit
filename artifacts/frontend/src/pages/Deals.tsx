@@ -60,7 +60,7 @@ import {
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
-import { Plus, GripVertical, DollarSign, User, UserRound, TrendingUp, Link2, Copy, CheckCheck, FileUp, Loader2, Sparkles, BarChart3, RefreshCw, Users, Package, AlertTriangle, Paperclip, FileCheck, CreditCard, HandCoins, Flame, Cloud, Snowflake, FileText, Clock } from "lucide-react";
+import { Plus, GripVertical, DollarSign, User, UserRound, TrendingUp, Link2, Copy, CheckCheck, FileUp, Loader2, Sparkles, BarChart3, RefreshCw, Users, Package, AlertTriangle, Paperclip, FileCheck, CreditCard, HandCoins, Flame, Cloud, Snowflake, FileText, Clock, CalendarDays } from "lucide-react";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import {
   DealEtapaSaas,
@@ -404,6 +404,7 @@ function DealCard({
   proposta,
   assignedToName,
   onClick,
+  onAgendar,
   overlay = false,
 }: {
   deal: Deal;
@@ -412,6 +413,7 @@ function DealCard({
   proposta?: PropostaSnap;
   assignedToName?: string;
   onClick?: () => void;
+  onAgendar?: () => void;
   overlay?: boolean;
 }) {
   const { attributes, listeners, setNodeRef, isDragging } = useDraggable({
@@ -556,6 +558,22 @@ function DealCard({
           </div>
         );
       })()}
+
+      {/* Agendar reunião — ação rápida */}
+      {onAgendar && !overlay && (
+        <div
+          className="pt-1 border-t border-border/50"
+          onClick={(e) => { e.stopPropagation(); onAgendar(); }}
+        >
+          <button
+            type="button"
+            className="w-full flex items-center justify-center gap-1.5 text-[11px] font-medium text-indigo-600 hover:text-indigo-800 hover:bg-indigo-50 rounded-md py-1 transition-colors"
+          >
+            <CalendarDays className="h-3 w-3 shrink-0" />
+            Agendar reunião
+          </button>
+        </div>
+      )}
     </div>
   );
 }
@@ -637,6 +655,7 @@ function KanbanColumn({
   userMap,
   isOver,
   onCardClick,
+  onAgendar,
 }: {
   col: KanbanColumnDef;
   deals: Deal[];
@@ -647,6 +666,7 @@ function KanbanColumn({
   userMap: Map<string, string>;
   isOver: boolean;
   onCardClick: (deal: Deal) => void;
+  onAgendar: (deal: Deal) => void;
 }) {
   const { setNodeRef } = useDroppable({ id: col.dropId });
 
@@ -719,6 +739,7 @@ function KanbanColumn({
               proposta={proposta}
               assignedToName={deal.assignedTo ? userMap.get(deal.assignedTo) : undefined}
               onClick={() => onCardClick(deal)}
+              onAgendar={() => onAgendar(deal)}
             />
           );
         })}
@@ -739,12 +760,14 @@ function SaasDealCard({
   leadName,
   assignedToName,
   onClick,
+  onAgendar,
   overlay = false,
 }: {
   deal: Deal;
   leadName: string | undefined;
   assignedToName?: string;
   onClick?: () => void;
+  onAgendar?: () => void;
   overlay?: boolean;
 }) {
   const { attributes, listeners, setNodeRef, isDragging } = useDraggable({
@@ -843,6 +866,22 @@ function SaasDealCard({
           </span>
         </div>
       )}
+
+      {/* Agendar reunião — ação rápida */}
+      {onAgendar && !overlay && (
+        <div
+          className="pt-1 border-t border-border/50"
+          onClick={(e) => { e.stopPropagation(); onAgendar(); }}
+        >
+          <button
+            type="button"
+            className="w-full flex items-center justify-center gap-1.5 text-[11px] font-medium text-indigo-600 hover:text-indigo-800 hover:bg-indigo-50 rounded-md py-1 transition-colors"
+          >
+            <CalendarDays className="h-3 w-3 shrink-0" />
+            Agendar reunião
+          </button>
+        </div>
+      )}
     </div>
   );
 }
@@ -856,6 +895,7 @@ function SaasKanbanColumn({
   userMap,
   isOver,
   onCardClick,
+  onAgendar,
 }: {
   etapa: (typeof ETAPAS_SAAS)[number];
   deals: Deal[];
@@ -863,6 +903,7 @@ function SaasKanbanColumn({
   userMap: Map<string, string>;
   isOver: boolean;
   onCardClick: (deal: Deal) => void;
+  onAgendar: (deal: Deal) => void;
 }) {
   const { setNodeRef } = useDroppable({ id: `saas-col-${etapa.value}` });
 
@@ -907,6 +948,7 @@ function SaasKanbanColumn({
             leadName={deal.leadId ? leadMap.get(deal.leadId) : undefined}
             assignedToName={deal.assignedTo ? userMap.get(deal.assignedTo) : undefined}
             onClick={() => onCardClick(deal)}
+            onAgendar={() => onAgendar(deal)}
           />
         ))}
         {deals.length === 0 && (
@@ -1865,6 +1907,7 @@ export default function Deals() {
   const [mobileCol, setMobileCol] = useState<string>("novo");
   const [activeId, setActiveId] = useState<string | null>(null);
   const [overColumn, setOverColumn] = useState<string | null>(null);
+  const [agendarDeal, setAgendarDeal] = useState<Deal | null>(null);
   const [perdidoDialog, setPerdidoDialog] = useState<{ open: boolean; deal: Deal | null; novaProb: number }>({
     open: false,
     deal: null,
@@ -2639,6 +2682,7 @@ export default function Deals() {
                   userMap={userMap}
                   isOver={overColumn === col.dropId}
                   onCardClick={handleCardClick}
+                  onAgendar={(deal) => setAgendarDeal(deal)}
                 />
               ))}
             </div>
@@ -2663,6 +2707,19 @@ export default function Deals() {
         onConfirm={confirmarPerdido}
         onCancel={cancelarPerdido}
       />
+
+      {/* ── Agendar Reunião (ação rápida da pipeline) ─────────────────────── */}
+      {agendarDeal && (
+        <AgendarReuniaoModal
+          open={!!agendarDeal}
+          onClose={() => setAgendarDeal(null)}
+          tenantId={tenantId}
+          dealId={agendarDeal.id}
+          leadId={agendarDeal.leadId ?? ""}
+          leadNome={leadMap.get(agendarDeal.leadId ?? "") ?? "Lead"}
+          responsavelId={(agendarDeal as any).responsavelId ?? null}
+        />
+      )}
 
     </div>
   );
