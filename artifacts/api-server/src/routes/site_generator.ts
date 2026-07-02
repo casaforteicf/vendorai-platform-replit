@@ -615,11 +615,23 @@ async function runGenerateSite(
       ? [...catalogProducts, ...(config.products ?? [])]
       : (config.products ?? []);
 
-    const absoluteImages = (config.images ?? []).map((url) =>
-      url.startsWith("/") ? `${baseOrigin}${url}` : url,
-    );
+    // Normalize all relative URLs → absolute so downloaded HTML files work offline.
+    // Object-storage paths are stored as /objects/... and need the /api/storage prefix.
+    const toAbsolute = (url?: string) => {
+      if (!url) return url;
+      if (url.startsWith("/objects/")) return `${baseOrigin}/api/storage${url}`;
+      if (url.startsWith("/")) return `${baseOrigin}${url}`;
+      return url;
+    };
 
-    const enrichedConfig = { ...config, name, sector, desc, logoUrl, products: allProducts, images: absoluteImages };
+    const absoluteLogoUrl = toAbsolute(logoUrl);
+    const absoluteImages = (config.images ?? []).map((url) => toAbsolute(url) ?? url);
+    const absoluteProducts = allProducts.map((p) => ({
+      ...p,
+      imageUrl: toAbsolute(p.imageUrl) ?? p.imageUrl,
+    }));
+
+    const enrichedConfig = { ...config, name, sector, desc, logoUrl: absoluteLogoUrl, products: absoluteProducts, images: absoluteImages };
     const prompt = buildGeneratePrompt(enrichedConfig);
 
     let result;
