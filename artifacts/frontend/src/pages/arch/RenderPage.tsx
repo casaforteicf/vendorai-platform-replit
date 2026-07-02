@@ -205,7 +205,7 @@ export default function RenderPage() {
         ? Object.keys(rs.applied).concat(['piso', 'parede']).filter((v, i, a) => a.indexOf(v) === i)
         : []
 
-      // ── Novo pipeline assíncrono (mode=preservar usa Flux Fill Pro) ──
+      // ── Novo pipeline assíncrono (mode=preservar usa Flux Kontext Pro) ──
       const res = await fetch(`${getBase()}/api/arch/ai-render`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${getToken()}` },
@@ -828,7 +828,7 @@ export default function RenderPage() {
                 : '✨ GERAR CONCEITO'}
           </button>
           <p style={{ textAlign: 'center', fontSize: 9, color: 'rgba(255,255,255,0.25)', margin: '7px 0 0', letterSpacing: '0.04em' }}>
-            {renderMode === 'preservar' ? '🔒 Flux Fill Pro · compositing garantido' : '✨ Geração livre via Flux ControlNet'}
+            {renderMode === 'preservar' ? '🔒 Flux Kontext Pro · edição por instrução' : '✨ Geração livre via Flux ControlNet'}
           </p>
         </div>
       </div>
