@@ -134,7 +134,7 @@ export function SidebarLayout({ children }: { children: React.ReactNode }) {
     const [relatoriosOpen, setRelatoriosOpen] = useState(false);
     const [conteudoOpen, setConteudoOpen] = useState(false);
     const isRelatorio = location.startsWith("/relatorios/");
-    const isConteudo = location === "/content" || location === "/content-studio";
+    const isConteudo = location === "/content" || location.startsWith("/content-studio");
     return (
       <>
         {crmNav.map((item) => <NavItem key={item.name} item={item} onNavigate={onNavigate} />)}

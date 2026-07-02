@@ -1,4 +1,5 @@
 import { useState, useRef } from "react";
+import { useLocation } from "wouter";
 import { useAuth } from "@/contexts/AuthContext";
 import { useToast } from "@/hooks/use-toast";
 import {
@@ -98,6 +99,7 @@ export default function ContentStudio() {
   const tenantId = user?.tenantId ?? "";
   const { toast } = useToast();
 
+  const [, navigate] = useLocation();
   const [mainTab, setMainTab] = useState<MainTab>("script");
 
   // Script state
@@ -272,8 +274,8 @@ export default function ContentStudio() {
         {/* Main tab switcher */}
         <div className="flex gap-2 p-1 rounded-2xl bg-white/5 border border-white/10">
           {([
-            { id: "script",  label: "Script com IA",      Icon: FileText    },
-            { id: "produto", label: "Vídeo de Produto",   Icon: ShoppingBag },
+            { id: "script",  label: "Script com IA",    Icon: FileText    },
+            { id: "produto", label: "Vídeo de Produto", Icon: ShoppingBag },
           ] as { id: MainTab; label: string; Icon: typeof FileText }[]).map(({ id, label, Icon }) => (
             <button
               key={id}
@@ -289,6 +291,13 @@ export default function ContentStudio() {
               {label}
             </button>
           ))}
+          <button
+            onClick={() => navigate("/content-studio/video")}
+            className="flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl text-sm font-semibold transition-all text-gray-400 hover:text-gray-200 hover:bg-white/5"
+          >
+            <Video className="h-4 w-4" />
+            Vídeo com IA
+          </button>
         </div>
 
         {/* ══════════════ TAB: Script ══════════════ */}

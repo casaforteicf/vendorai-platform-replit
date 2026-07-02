@@ -56,6 +56,12 @@ const Onboarding                = lazy(() => import("@/pages/Onboarding"));
 const OnboardingIntegracoes     = lazy(() => import("@/pages/OnboardingIntegracoes"));
 const Content            = lazy(() => import("@/pages/Content"));
 const ContentStudio      = lazy(() => import("@/pages/ContentStudio"));
+const VideoHome          = lazy(() => import("@/pages/video/VideoHome"));
+const VideoAvatarPage    = lazy(() => import("@/pages/video/VideoAvatarPage"));
+const VideoProdutoPage   = lazy(() => import("@/pages/video/VideoProdutoPage"));
+const VideoEdicaoPage    = lazy(() => import("@/pages/video/VideoEdicaoPage"));
+const VideoClipesPage    = lazy(() => import("@/pages/video/VideoClipesPage"));
+const VideoLotePage      = lazy(() => import("@/pages/video/VideoLotePage"));
 const GuiaImplantacao    = lazy(() => import("@/pages/GuiaImplantacao"));
 const Questionario       = lazy(() => import("@/pages/Questionario"));
 const Analytics          = lazy(() => import("@/pages/Analytics"));
@@ -507,6 +513,24 @@ function AppRoutes() {
         </Route>
         <Route path="/content-studio">
           {() => <ProtectedRoute component={ContentStudio} />}
+        </Route>
+        <Route path="/content-studio/video">
+          {() => <ProtectedRoute component={VideoHome} />}
+        </Route>
+        <Route path="/content-studio/video/avatar">
+          {() => <ProtectedRoute component={VideoAvatarPage} />}
+        </Route>
+        <Route path="/content-studio/video/produto">
+          {() => <ProtectedRoute component={VideoProdutoPage} />}
+        </Route>
+        <Route path="/content-studio/video/edicao">
+          {() => <ProtectedRoute component={VideoEdicaoPage} />}
+        </Route>
+        <Route path="/content-studio/video/clipes">
+          {() => <ProtectedRoute component={VideoClipesPage} />}
+        </Route>
+        <Route path="/content-studio/video/lote">
+          {() => <ProtectedRoute component={VideoLotePage} />}
         </Route>
         <Route path="/guia-implantacao">
           {() => <ProtectedRoute component={GuiaImplantacao} />}
