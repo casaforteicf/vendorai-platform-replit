@@ -170,6 +170,14 @@ const PHOTO_ANGLES = [
   "lifestyle contextual scene showing the product in its natural environment, authentic real-world setting",
 ];
 
+function getImageSize(model: string, aspectRatio?: string): "1024x1024" | "1024x1536" | "1024x1792" {
+  if (aspectRatio === "9:16" || aspectRatio === "4:5") {
+    if (model === "gpt-image-1" || model === "chatgpt-image-latest") return "1024x1536";
+    if (model === "dall-e-3") return "1024x1792";
+  }
+  return "1024x1024";
+}
+
 export async function generateImagesForContent(
   profile: TenantProfile,
   tenantId: string,
@@ -180,6 +188,7 @@ export async function generateImagesForContent(
   style?: string,
   referenceImageUrl?: string,
   observations?: string,
+  aspectRatio?: string,
 ): Promise<string[]> {
   if (imageCount < 1) imageCount = 1;
   if (imageCount > 10) imageCount = 10;
@@ -200,15 +209,20 @@ export async function generateImagesForContent(
 
   const observationsNote = observations ? `Client-specific request: ${observations}. ` : "";
 
+  // Build format label based on aspectRatio
+  const formatLabel = (() => {
+    if (aspectRatio === "9:16") return format === "stories" ? "Stories (vertical, 9:16 portrait)" : "Reels (vertical, 9:16 portrait)";
+    if (aspectRatio === "4:5") return "Feed portrait (4:5 ratio, vertical)";
+    return "Feed square (1:1 ratio)";
+  })();
+
   // When a reference image is available, use AI editing to improve it
   if (referenceImageUrl) {
-    const formatLabel = format === "stories" ? "Stories (vertical, 9:16)" : "Feed (square, 1:1)";
     const editPrompt = `Improve this product/marketing image for use in an Instagram ${formatLabel} post for the brand "${brand}". Subject: ${subject}. Keep the same product and subject matter. ${observationsNote}Improve: lighting quality, sharpness, color vibrancy, composition. The result must be suitable for professional Instagram marketing. Style: ${styleHint}. No text. No watermarks.`;
     return generateImagesWithReference(tenantId, referenceImageUrl, editPrompt, imageCount);
   }
 
   const results: string[] = [];
-  const formatLabel = format === "stories" ? "Stories (vertical format, 9:16 ratio)" : "Feed (square format, 1:1 ratio)";
   const basePrompt = `Professional marketing photography for Instagram ${formatLabel} for the brand "${brand}". Subject: ${subject}. Style: ${styleHint}. ${observationsNote}High quality, visually compelling, suitable for a premium Instagram business profile. No text overlays. No watermarks. Perfect exposure, sharp focus, commercial photography aesthetic.`;
 
   for (let i = 0; i < imageCount; i++) {
@@ -219,11 +233,12 @@ export async function generateImagesForContent(
     let saved = false;
     for (const model of IMAGE_MODELS_PRIORITY) {
       try {
+        const size = getImageSize(model, aspectRatio);
         const response = await openai.images.generate({
           model,
           prompt: imagePrompt,
           n: 1,
-          size: "1024x1024",
+          size,
           ...(model === "dall-e-3" ? { quality: "standard" } : {}),
         } as Parameters<typeof openai.images.generate>[0]);
 
@@ -277,6 +292,7 @@ export async function generateFeedContent(
   imageCount: number = 1,
   productExtra?: string,
   referenceImageUrl?: string,
+  aspectRatio?: string,
 ): Promise<{ result: ContentGenerationResult; tokensUsed: number }> {
   const brand = profile.nomeFantasia || "a empresa";
   const context = buildBrandContext(profile);
@@ -313,7 +329,7 @@ Retorne SOMENTE JSON válido no formato:
       [{ role: "user", content: prompt }],
       { model: "gpt-4o-mini", responseFormat: { type: "json_object" }, temperature: 0.85 },
     ),
-    generateImagesForContent(profile, tenantId, theme, productName, "feed", imageCount, undefined, referenceImageUrl),
+    generateImagesForContent(profile, tenantId, theme, productName, "feed", imageCount, undefined, referenceImageUrl, undefined, aspectRatio),
   ]);
 
   const tokensUsed = textResult.inputTokens + textResult.outputTokens;
@@ -342,6 +358,7 @@ export async function generateStoriesContent(
   imageCount: number = 1,
   productExtra?: string,
   referenceImageUrl?: string,
+  aspectRatio?: string,
 ): Promise<{ result: ContentGenerationResult; tokensUsed: number }> {
   const brand = profile.nomeFantasia || "a empresa";
   const context = buildBrandContext(profile);
@@ -378,7 +395,7 @@ Retorne SOMENTE JSON válido no formato:
       [{ role: "user", content: prompt }],
       { model: "gpt-4o-mini", responseFormat: { type: "json_object" }, temperature: 0.85 },
     ),
-    generateImagesForContent(profile, tenantId, theme, productName, "stories", imageCount, undefined, referenceImageUrl),
+    generateImagesForContent(profile, tenantId, theme, productName, "stories", imageCount, undefined, referenceImageUrl, undefined, aspectRatio),
   ]);
 
   const tokensUsed = textResult.inputTokens + textResult.outputTokens;

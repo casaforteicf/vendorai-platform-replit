@@ -4,6 +4,7 @@ import { z } from "zod/v4";
 import {
   db,
   contentGenerationsTable,
+  contentStudioUploadsTable,
   agentConfigsTable,
   businessProfilesTable,
   produtosCatalogoTable,
@@ -40,6 +41,8 @@ const generateBodySchema = z.object({
   variations: z.coerce.number().int().min(1).max(3).default(2),
   imageCount: z.coerce.number().int().min(1).max(10).default(2),
   imageUrl: z.string().optional().nullable(),
+  contentFormat: z.enum(["feed_square", "feed_portrait", "stories", "reels"]).optional().nullable(),
+  aspectRatio: z.string().optional().nullable(),
 });
 
 async function getMonthlyUsage(
@@ -96,7 +99,7 @@ router.post("/tenants/:tenantId/content/generate", async (req, res) => {
     return;
   }
 
-  const { type, theme, productId, productSource, variations, imageCount, imageUrl: referenceImageUrl } = parsed.data;
+  const { type, theme, productId, productSource, variations, imageCount, imageUrl: referenceImageUrl, contentFormat, aspectRatio } = parsed.data;
 
   const { used, limit, configId } = await getMonthlyUsage(tenantId);
   if (used >= limit) {
@@ -162,9 +165,9 @@ router.post("/tenants/:tenantId/content/generate", async (req, res) => {
   let result: { result: { variations: unknown[] }; tokensUsed: number };
   try {
     if (type === "feed") {
-      result = await generateFeedContent(profile ?? {}, tenantId, theme, productName, variations, imageCount, productExtra, referenceImageUrl ?? undefined);
+      result = await generateFeedContent(profile ?? {}, tenantId, theme, productName, variations, imageCount, productExtra, referenceImageUrl ?? undefined, aspectRatio ?? undefined);
     } else if (type === "stories") {
-      result = await generateStoriesContent(profile ?? {}, tenantId, theme, productName, variations, imageCount, productExtra, referenceImageUrl ?? undefined);
+      result = await generateStoriesContent(profile ?? {}, tenantId, theme, productName, variations, imageCount, productExtra, referenceImageUrl ?? undefined, aspectRatio ?? undefined);
     } else {
       result = await generateReelsScript(profile ?? {}, tenantId, theme, productName, variations, productExtra);
     }
@@ -184,6 +187,8 @@ router.post("/tenants/:tenantId/content/generate", async (req, res) => {
       productId: productId ?? null,
       productName: productName ?? null,
       theme,
+      contentFormat: contentFormat ?? null,
+      aspectRatio: aspectRatio ?? null,
       result: finalResult as { variations: [] },
       tokensUsed: result.tokensUsed,
     })
@@ -578,6 +583,73 @@ router.post("/tenants/:tenantId/content/:contentId/variations/:idx/regenerate-im
     const msg = err instanceof Error ? err.message : "Falha ao regenerar imagem";
     res.status(502).json({ error: msg });
   }
+});
+
+// ── Content Studio Uploads (Passo 3) ─────────────────────────────────────────
+
+const uploadRegisterSchema = z.object({
+  sessionId: z.string().min(1),
+  fileUrl: z.string().min(1),
+  purpose: z.enum(["style_reference", "post_material"]).default("style_reference"),
+});
+
+router.post("/tenants/:tenantId/content/uploads", async (req, res) => {
+  const tenantId = String(req.params["tenantId"]);
+  if (req.user?.platformRole !== "super_admin" && req.user?.tenantId !== tenantId) {
+    res.status(403).json({ error: "Acesso negado" }); return;
+  }
+  const parsed = uploadRegisterSchema.safeParse(req.body);
+  if (!parsed.success) { res.status(422).json({ error: parsed.error.message }); return; }
+  const { sessionId, fileUrl, purpose } = parsed.data;
+  const [row] = await db
+    .insert(contentStudioUploadsTable)
+    .values({ id: crypto.randomUUID(), tenantId, sessionId, fileUrl, purpose })
+    .returning();
+  res.json(row);
+});
+
+router.get("/tenants/:tenantId/content/uploads", async (req, res) => {
+  const tenantId = String(req.params["tenantId"]);
+  if (req.user?.platformRole !== "super_admin" && req.user?.tenantId !== tenantId) {
+    res.status(403).json({ error: "Acesso negado" }); return;
+  }
+  const sessionId = String(req.query["sessionId"] ?? "");
+  if (!sessionId) { res.status(422).json({ error: "sessionId obrigatório" }); return; }
+  const rows = await db
+    .select()
+    .from(contentStudioUploadsTable)
+    .where(and(eq(contentStudioUploadsTable.tenantId, tenantId), eq(contentStudioUploadsTable.sessionId, sessionId)))
+    .orderBy(contentStudioUploadsTable.createdAt);
+  res.json(rows);
+});
+
+router.patch("/tenants/:tenantId/content/uploads/:id", async (req, res) => {
+  const tenantId = String(req.params["tenantId"]);
+  const id = String(req.params["id"]);
+  if (req.user?.platformRole !== "super_admin" && req.user?.tenantId !== tenantId) {
+    res.status(403).json({ error: "Acesso negado" }); return;
+  }
+  const parsed = z.object({ purpose: z.enum(["style_reference", "post_material"]) }).safeParse(req.body);
+  if (!parsed.success) { res.status(422).json({ error: parsed.error.message }); return; }
+  const [row] = await db
+    .update(contentStudioUploadsTable)
+    .set({ purpose: parsed.data.purpose })
+    .where(and(eq(contentStudioUploadsTable.id, id), eq(contentStudioUploadsTable.tenantId, tenantId)))
+    .returning();
+  if (!row) { res.status(404).json({ error: "Upload não encontrado" }); return; }
+  res.json(row);
+});
+
+router.delete("/tenants/:tenantId/content/uploads/:id", async (req, res) => {
+  const tenantId = String(req.params["tenantId"]);
+  const id = String(req.params["id"]);
+  if (req.user?.platformRole !== "super_admin" && req.user?.tenantId !== tenantId) {
+    res.status(403).json({ error: "Acesso negado" }); return;
+  }
+  await db
+    .delete(contentStudioUploadsTable)
+    .where(and(eq(contentStudioUploadsTable.id, id), eq(contentStudioUploadsTable.tenantId, tenantId)));
+  res.json({ success: true });
 });
 
 export default router;

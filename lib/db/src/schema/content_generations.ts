@@ -19,6 +19,9 @@ export type ReelsVariation = {
 export type ContentVariation = FeedVariation | StoriesVariation | ReelsVariation;
 export type ContentGenerationResult = { variations: ContentVariation[] };
 
+export const CONTENT_FORMATS = ["feed_square", "feed_portrait", "stories", "reels"] as const;
+export type ContentFormat = (typeof CONTENT_FORMATS)[number];
+
 export const contentGenerationsTable = pgTable("content_generations", {
   id: text("id")
     .primaryKey()
@@ -30,6 +33,8 @@ export const contentGenerationsTable = pgTable("content_generations", {
   productId: text("product_id"),
   productName: text("product_name"),
   theme: text("theme").notNull(),
+  contentFormat: text("content_format").$type<ContentFormat>(),
+  aspectRatio: text("aspect_ratio"),
   result: jsonb("result").$type<ContentGenerationResult>().notNull().default({ variations: [] }),
   tokensUsed: integer("tokens_used").notNull().default(0),
   createdAt: timestamp("created_at").notNull().defaultNow(),

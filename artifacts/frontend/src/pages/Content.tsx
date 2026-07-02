@@ -1094,15 +1094,21 @@ export default function Content() {
   const productSource = verticalToSource(vertical);
 
   const [activeTab, setActiveTab] = useState<ContentType>("feed");
+  const [feedSubFormat, setFeedSubFormat] = useState<"feed_square" | "feed_portrait">("feed_square");
   const [theme, setTheme] = useState("");
   const [productId, setProductId] = useState<string>("none");
   const [variations, setVariations] = useState(1);
   const [imageCount, setImageCount] = useState(2);
   const [lastResult, setLastResult] = useState<ContentGeneration | null>(null);
-  const [preImageUrl, setPreImageUrl] = useState<string | null>(null);
-  const [preImageUploading, setPreImageUploading] = useState(false);
   const [zipping, setZipping] = useState(false);
-  const preImageInputRef = useRef<HTMLInputElement>(null);
+
+  // Passo 3 — multi-image uploader
+  const [uploadedImages, setUploadedImages] = useState<Array<{ id: string; url: string; purpose: "style_reference" | "post_material"; uploading?: boolean }>>([]);
+  const [sessionId] = useState(() => crypto.randomUUID());
+  const multiUploadRef = useRef<HTMLInputElement>(null);
+
+  const contentFormat = activeTab === "stories" ? "stories" : activeTab === "reels" ? "reels" : feedSubFormat;
+  const aspectRatio = contentFormat === "feed_portrait" ? "4:5" : contentFormat === "feed_square" ? "1:1" : "9:16";
 
   // Simple command mode
   const [simpleCommand, setSimpleCommand] = useState("");
@@ -1147,7 +1153,7 @@ export default function Content() {
     enabled: !!tenantId,
   });
 
-  const generateMutation = useMutation<ContentGeneration, Error, { type: ContentType; theme: string; productId?: string; productSource?: ProductSource; variations: number; imageCount: number; imageUrl?: string }>({
+  const generateMutation = useMutation<ContentGeneration, Error, { type: ContentType; theme: string; productId?: string; productSource?: ProductSource; variations: number; imageCount: number; imageUrl?: string; contentFormat?: string; aspectRatio?: string }>({
     mutationFn: async (body) => {
       const res = await fetch(`/api/tenants/${tenantId}/content/generate`, {
         method: "POST",
@@ -1213,34 +1219,78 @@ export default function Content() {
     },
   });
 
-  async function handlePreImageUpload(file: File) {
+  async function handleMultiUpload(files: FileList) {
     const allowed = ["image/jpeg", "image/png", "image/webp"];
-    if (!allowed.includes(file.type)) {
-      toast({ title: "Formato inválido", description: "Use JPG, PNG ou WebP.", variant: "destructive" });
-      return;
-    }
-    if (file.size > 10 * 1024 * 1024) {
-      toast({ title: "Imagem muito grande", description: "Máximo 10 MB.", variant: "destructive" });
-      return;
-    }
-    setPreImageUploading(true);
-    try {
-      const metaRes = await fetch("/api/storage/uploads/request-url", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name: file.name, size: file.size, contentType: file.type }),
-      });
-      if (!metaRes.ok) throw new Error("Falha ao obter URL de upload");
-      const { uploadURL, objectPath } = (await metaRes.json()) as { uploadURL: string; objectPath: string };
-      const putRes = await fetch(uploadURL, { method: "PUT", body: file, headers: { "Content-Type": file.type } });
-      if (!putRes.ok) throw new Error("Falha ao enviar imagem");
-      setPreImageUrl(`/api/storage${objectPath}`);
-      toast({ title: "Imagem carregada!", description: "Será usada em todas as variações geradas." });
-    } catch (err) {
-      toast({ title: "Erro no upload", description: err instanceof Error ? err.message : "Tente novamente.", variant: "destructive" });
-    } finally {
-      setPreImageUploading(false);
-    }
+    const validFiles = Array.from(files).filter((f) => {
+      if (!allowed.includes(f.type)) {
+        toast({ title: `${f.name}: formato inválido`, description: "Use JPG, PNG ou WebP.", variant: "destructive" });
+        return false;
+      }
+      if (f.size > 10 * 1024 * 1024) {
+        toast({ title: `${f.name}: muito grande`, description: "Máximo 10 MB por imagem.", variant: "destructive" });
+        return false;
+      }
+      return true;
+    });
+    if (!validFiles.length) return;
+
+    const placeholders = validFiles.map((f) => ({
+      id: crypto.randomUUID(),
+      url: URL.createObjectURL(f),
+      purpose: "style_reference" as const,
+      uploading: true,
+    }));
+    setUploadedImages((prev) => [...prev, ...placeholders]);
+
+    await Promise.all(
+      validFiles.map(async (file, i) => {
+        const placeholderId = placeholders[i]!.id;
+        try {
+          const metaRes = await fetch("/api/storage/uploads/request-url", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ name: file.name, size: file.size, contentType: file.type }),
+          });
+          if (!metaRes.ok) throw new Error("Falha ao obter URL de upload");
+          const { uploadURL, objectPath } = (await metaRes.json()) as { uploadURL: string; objectPath: string };
+          const putRes = await fetch(uploadURL, { method: "PUT", body: file, headers: { "Content-Type": file.type } });
+          if (!putRes.ok) throw new Error("Falha ao enviar imagem");
+
+          const finalUrl = `/api/storage${objectPath}`;
+          const token = localStorage.getItem("vendorai_token");
+          await fetch(`/api/tenants/${tenantId}/content/uploads`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+            body: JSON.stringify({ sessionId, fileUrl: finalUrl, purpose: "style_reference" }),
+          });
+          setUploadedImages((prev) =>
+            prev.map((img) => img.id === placeholderId ? { ...img, url: finalUrl, uploading: false } : img)
+          );
+        } catch (err) {
+          toast({ title: `Erro no upload de ${file.name}`, description: err instanceof Error ? err.message : "Tente novamente.", variant: "destructive" });
+          setUploadedImages((prev) => prev.filter((img) => img.id !== placeholderId));
+        }
+      })
+    );
+  }
+
+  async function handleTogglePurpose(id: string, newPurpose: "style_reference" | "post_material") {
+    setUploadedImages((prev) => prev.map((img) => img.id === id ? { ...img, purpose: newPurpose } : img));
+    const token = localStorage.getItem("vendorai_token");
+    await fetch(`/api/tenants/${tenantId}/content/uploads/${id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+      body: JSON.stringify({ purpose: newPurpose }),
+    }).catch(() => {});
+  }
+
+  async function handleRemoveUpload(id: string) {
+    setUploadedImages((prev) => prev.filter((img) => img.id !== id));
+    const token = localStorage.getItem("vendorai_token");
+    await fetch(`/api/tenants/${tenantId}/content/uploads/${id}`, {
+      method: "DELETE",
+      headers: { Authorization: `Bearer ${token}` },
+    }).catch(() => {});
   }
 
   function handleGenerate() {
@@ -1249,14 +1299,17 @@ export default function Content() {
       return;
     }
     setLastResult(null);
+    const styleRef = uploadedImages.find((img) => img.purpose === "style_reference" && !img.uploading);
     generateMutation.mutate({
       type: activeTab,
       theme: theme.trim(),
       productId: productId !== "none" ? productId : undefined,
       productSource,
       variations,
-      imageCount,
-      imageUrl: preImageUrl ?? undefined,
+      imageCount: activeTab === "reels" ? 1 : imageCount,
+      imageUrl: styleRef?.url ?? undefined,
+      contentFormat,
+      aspectRatio,
     });
   }
 
@@ -1424,8 +1477,62 @@ export default function Content() {
                           />
                         </div>
 
+                        {/* Passo 2 — Format selector */}
+                        {key === "feed" && (
+                          <div className="space-y-1.5">
+                            <div className="flex items-center justify-between">
+                              <Label>Formato</Label>
+                              <span className="text-[10px] text-muted-foreground font-mono bg-muted px-1.5 py-0.5 rounded">
+                                {feedSubFormat === "feed_square" ? "1:1 · 1080×1080" : "4:5 · 1080×1350"}
+                              </span>
+                            </div>
+                            <div className="grid grid-cols-2 gap-2">
+                              <button
+                                type="button"
+                                onClick={() => setFeedSubFormat("feed_square")}
+                                className={cn(
+                                  "flex flex-col items-center gap-1 border rounded-lg py-2 px-3 transition-colors text-xs",
+                                  feedSubFormat === "feed_square"
+                                    ? "border-primary bg-primary/5 text-primary"
+                                    : "border-border hover:border-primary/40 text-muted-foreground"
+                                )}
+                              >
+                                <div className="w-8 h-8 border-2 rounded border-current" />
+                                Feed 1:1
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => setFeedSubFormat("feed_portrait")}
+                                className={cn(
+                                  "flex flex-col items-center gap-1 border rounded-lg py-2 px-3 transition-colors text-xs",
+                                  feedSubFormat === "feed_portrait"
+                                    ? "border-primary bg-primary/5 text-primary"
+                                    : "border-border hover:border-primary/40 text-muted-foreground"
+                                )}
+                              >
+                                <div className="w-6 h-8 border-2 rounded border-current" />
+                                Feed 4:5
+                              </button>
+                            </div>
+                          </div>
+                        )}
+                        {(key === "stories" || key === "reels") && (
+                          <div className="flex items-center gap-2 rounded-lg bg-muted/50 border px-3 py-2">
+                            <div className="w-5 h-8 border-2 border-primary rounded flex-shrink-0" />
+                            <div>
+                              <p className="text-xs font-medium">Formato 9:16 — Vertical</p>
+                              <p className="text-[10px] text-muted-foreground">1080×1920 px — exigido pelo Instagram</p>
+                            </div>
+                          </div>
+                        )}
+
+                        {/* Quantidade de imagens — desabilitado para Reels */}
                         <div className="space-y-1.5">
-                          <Label>Quantidade de imagens</Label>
+                          <Label className={cn(key === "reels" && "text-muted-foreground")}>
+                            Quantidade de imagens
+                            {key === "reels" && <span className="ml-1 text-[10px] font-normal">(Reels gera 1 thumbnail)</span>}
+                            {key === "stories" && <span className="ml-1 text-[10px] font-normal text-muted-foreground">(carrossel sequencial)</span>}
+                          </Label>
                           <div className="flex gap-2 flex-wrap">
                             {[1, 2, 4, 6, 8, 10].map((n) => (
                               <Button
@@ -1434,6 +1541,7 @@ export default function Content() {
                                 size="sm"
                                 onClick={() => setImageCount(n)}
                                 className="w-12"
+                                disabled={key === "reels"}
                               >
                                 {n}
                               </Button>
@@ -1441,49 +1549,85 @@ export default function Content() {
                           </div>
                         </div>
 
-                        {/* Image upload */}
-                        <div className="space-y-1.5">
-                          <Label>Imagem de referência do cliente (opcional)</Label>
+                        {/* Passo 3 — Multi-image uploader */}
+                        <div className="space-y-2">
+                          <div className="flex items-center justify-between">
+                            <Label>Imagens do cliente (opcional)</Label>
+                            {uploadedImages.length > 0 && (
+                              <span className="text-[10px] text-muted-foreground">{uploadedImages.length} imagem{uploadedImages.length !== 1 ? "s" : ""}</span>
+                            )}
+                          </div>
+
                           <input
-                            ref={preImageInputRef}
+                            ref={multiUploadRef}
                             type="file"
                             accept="image/jpeg,image/png,image/webp"
+                            multiple
                             className="hidden"
                             onChange={(e) => {
-                              const f = e.target.files?.[0];
-                              if (f) handlePreImageUpload(f);
+                              if (e.target.files?.length) handleMultiUpload(e.target.files);
                               e.target.value = "";
                             }}
                           />
-                          {preImageUrl ? (
-                            <div className="relative rounded-lg overflow-hidden border border-border">
-                              <img src={preImageUrl} alt="Imagem selecionada" className="w-full h-32 object-cover" />
-                              <button
-                                type="button"
-                                onClick={() => setPreImageUrl(null)}
-                                className="absolute top-1 right-1 bg-black/60 text-white rounded-full p-0.5 hover:bg-black/80"
-                              >
-                                <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
-                              </button>
-                              <div className="absolute bottom-0 left-0 right-0 bg-black/50 text-white text-[10px] text-center py-0.5">
-                                Imagem será incluída em todas as variações
-                              </div>
-                              <div className="absolute top-1 left-1 flex gap-1">
-                                <SmartImageButton imageUrl={preImageUrl} tenantId={tenantId} onDescribe={setTheme} />
-                              </div>
+
+                          {uploadedImages.length > 0 && (
+                            <div className="grid grid-cols-3 gap-1.5">
+                              {uploadedImages.map((img) => (
+                                <div key={img.id} className="relative group rounded-md overflow-hidden border bg-muted/30">
+                                  <div className="aspect-square">
+                                    {img.uploading ? (
+                                      <div className="w-full h-full flex items-center justify-center min-h-[70px]">
+                                        <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
+                                      </div>
+                                    ) : (
+                                      <img src={img.url} alt="Upload" className="w-full h-full object-cover min-h-[70px]" loading="lazy" />
+                                    )}
+                                  </div>
+                                  {!img.uploading && (
+                                    <>
+                                      <button
+                                        type="button"
+                                        onClick={() => handleRemoveUpload(img.id)}
+                                        className="absolute top-0.5 right-0.5 bg-black/60 text-white rounded-full p-0.5 opacity-0 group-hover:opacity-100 transition-opacity"
+                                      >
+                                        <X className="h-3 w-3" />
+                                      </button>
+                                      <button
+                                        type="button"
+                                        title={img.purpose === "style_reference" ? "Referência de estilo — clique para usar como material" : "Material para postar — clique para usar como referência"}
+                                        onClick={() => handleTogglePurpose(img.id, img.purpose === "style_reference" ? "post_material" : "style_reference")}
+                                        className={cn(
+                                          "absolute bottom-0 left-0 right-0 text-[9px] text-center py-0.5 font-medium transition-colors truncate px-1",
+                                          img.purpose === "style_reference"
+                                            ? "bg-blue-600/80 text-white"
+                                            : "bg-emerald-600/80 text-white"
+                                        )}
+                                      >
+                                        {img.purpose === "style_reference" ? "Referência" : "Material"}
+                                      </button>
+                                    </>
+                                  )}
+                                </div>
+                              ))}
                             </div>
-                          ) : (
-                            <button
-                              type="button"
-                              onClick={() => preImageInputRef.current?.click()}
-                              disabled={preImageUploading}
-                              className="w-full border-2 border-dashed border-border rounded-lg py-4 flex flex-col items-center gap-1.5 text-muted-foreground hover:border-primary/50 hover:text-primary transition-colors disabled:opacity-50"
-                            >
-                              {preImageUploading
-                                ? <><Loader2 className="h-5 w-5 animate-spin" /><span className="text-xs">Enviando...</span></>
-                                : <><Upload className="h-5 w-5" /><span className="text-xs">Clique para importar imagem</span><span className="text-[10px]">JPG, PNG ou WebP — máx. 10 MB</span></>
-                              }
-                            </button>
+                          )}
+
+                          <button
+                            type="button"
+                            onClick={() => multiUploadRef.current?.click()}
+                            disabled={uploadedImages.some((img) => img.uploading)}
+                            className="w-full border-2 border-dashed border-border rounded-lg py-3 flex flex-col items-center gap-1 text-muted-foreground hover:border-primary/50 hover:text-primary transition-colors disabled:opacity-50 text-xs"
+                          >
+                            <Upload className="h-4 w-4" />
+                            <span>Importar imagens</span>
+                            <span className="text-[10px]">JPG, PNG ou WebP · até 10 MB · múltiplas</span>
+                          </button>
+
+                          {uploadedImages.some((img) => !img.uploading) && (
+                            <p className="text-[10px] text-muted-foreground leading-snug">
+                              <span className="text-blue-600 font-medium">Referência</span>: a IA usa como inspiração de estilo.{" "}
+                              <span className="text-emerald-600 font-medium">Material</span>: imagem vai direto para postagem. Toque no badge para alternar.
+                            </p>
                           )}
                         </div>
 
@@ -1616,7 +1760,7 @@ export default function Content() {
                           </Button>
                         </div>
                         {lastResult.result.variations.map((v, i) => (
-                          <VariationCard key={i} index={i} type={lastResult.type} variation={v} contentId={lastResult.id} tenantId={tenantId} referenceImageUrl={preImageUrl} />
+                          <VariationCard key={i} index={i} type={lastResult.type} variation={v} contentId={lastResult.id} tenantId={tenantId} referenceImageUrl={uploadedImages.find((img) => img.purpose === "style_reference" && !img.uploading)?.url ?? null} />
                         ))}
                       </div>
                     )}

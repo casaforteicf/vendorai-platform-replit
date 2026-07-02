@@ -122,3 +122,4 @@ export * from "./prospector_config";
 export * from "./prospector_queue";
 export * from "./notification_logs";
 export * from "./sdr_templates";
+export * from "./content_studio_uploads";
