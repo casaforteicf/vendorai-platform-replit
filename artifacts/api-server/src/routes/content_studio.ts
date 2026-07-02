@@ -322,4 +322,171 @@ router.get("/tenants/:tenantId/content-studio/heygen/video-status/:videoId", asy
   }
 });
 
+// ── Vozes disponíveis (curated list PT-BR + EN) ───────────────────────────────
+router.get("/tenants/:tenantId/content-studio/heygen/voices", async (req, res) => {
+  const tenantId = String(req.params["tenantId"]);
+  if (req.user?.platformRole !== "super_admin" && req.user?.tenantId !== tenantId) {
+    res.status(403).json({ error: "Acesso negado" }); return;
+  }
+  res.json({
+    voices: [
+      { id: "pt-BR-FranciscaNeural", label: "Francisca", lang: "PT-BR · Feminino" },
+      { id: "pt-BR-AntonioNeural",   label: "Antonio",   lang: "PT-BR · Masculino" },
+      { id: "pt-BR-ThalitaNeural",   label: "Thalita",   lang: "PT-BR · Feminino" },
+      { id: "pt-BR-HumbertoNeural",  label: "Humberto",  lang: "PT-BR · Masculino" },
+      { id: "en-US-JennyNeural",     label: "Jenny",     lang: "EN-US · Feminino" },
+      { id: "en-US-GuyNeural",       label: "Guy",       lang: "EN-US · Masculino" },
+      { id: "en-US-AriaNeural",      label: "Aria",      lang: "EN-US · Feminino" },
+      { id: "es-ES-ElviraNeural",    label: "Elvira",    lang: "ES · Feminino" },
+    ],
+  });
+});
+
+// ── Upload de foto (asset) ────────────────────────────────────────────────────
+router.post(
+  "/tenants/:tenantId/content-studio/heygen/upload-photo",
+  upload.single("photo"),
+  async (req, res) => {
+    const tenantId = String(req.params["tenantId"]);
+    if (req.user?.platformRole !== "super_admin" && req.user?.tenantId !== tenantId) {
+      res.status(403).json({ error: "Acesso negado" }); return;
+    }
+    if (!requireHeygenKey(res)) return;
+    if (!req.file) { res.status(422).json({ error: "Foto obrigatória" }); return; }
+
+    try {
+      const response = await fetch(HEYGEN_UPLOAD, {
+        method: "POST",
+        headers: heygenHeaders({ "Content-Type": req.file.mimetype }),
+        body: req.file.buffer,
+      });
+      const data = await response.json() as { data?: { url?: string; id?: string }; error?: string };
+      if (!response.ok || !data.data?.url) {
+        req.log.error({ data }, "heygen: upload-photo failed");
+        res.status(502).json({ error: data.error ?? "Falha no upload da foto" }); return;
+      }
+      res.json({ assetUrl: data.data.url, assetId: data.data.id });
+    } catch (err) {
+      req.log.error({ err }, "heygen: upload-photo error");
+      res.status(500).json({ error: err instanceof Error ? err.message : "Erro no upload" });
+    }
+  }
+);
+
+// ── Criar talking photo ───────────────────────────────────────────────────────
+router.post("/tenants/:tenantId/content-studio/heygen/create-talking-photo", async (req, res) => {
+  const tenantId = String(req.params["tenantId"]);
+  if (req.user?.platformRole !== "super_admin" && req.user?.tenantId !== tenantId) {
+    res.status(403).json({ error: "Acesso negado" }); return;
+  }
+  if (!requireHeygenKey(res)) return;
+
+  const { photoUrl } = req.body as { photoUrl?: string };
+  if (!photoUrl) { res.status(422).json({ error: "photoUrl obrigatório" }); return; }
+
+  try {
+    const response = await fetch(`${HEYGEN_BASE}/v2/talking_photo`, {
+      method: "POST",
+      headers: heygenHeaders({ "Content-Type": "application/json" }),
+      body: JSON.stringify({ talking_photo_url: photoUrl }),
+    });
+    const data = await response.json() as { data?: { talking_photo_id?: string }; error?: string };
+    if (!response.ok || !data.data?.talking_photo_id) {
+      req.log.error({ data }, "heygen: create-talking-photo failed");
+      res.status(502).json({ error: data.error ?? "Falha ao criar talking photo" }); return;
+    }
+    res.json({ talkingPhotoId: data.data.talking_photo_id });
+  } catch (err) {
+    req.log.error({ err }, "heygen: create-talking-photo error");
+    res.status(500).json({ error: err instanceof Error ? err.message : "Erro ao criar talking photo" });
+  }
+});
+
+// ── Gerar vídeo a partir de talking photo ────────────────────────────────────
+router.post("/tenants/:tenantId/content-studio/heygen/generate-from-photo", async (req, res) => {
+  const tenantId = String(req.params["tenantId"]);
+  if (req.user?.platformRole !== "super_admin" && req.user?.tenantId !== tenantId) {
+    res.status(403).json({ error: "Acesso negado" }); return;
+  }
+  if (!requireHeygenKey(res)) return;
+
+  const { talkingPhotoId, script, voiceId = "pt-BR-FranciscaNeural", quality = "720p" } = req.body as {
+    talkingPhotoId?: string; script?: string; voiceId?: string; quality?: string;
+  };
+  if (!talkingPhotoId || !script) {
+    res.status(422).json({ error: "talkingPhotoId e script são obrigatórios" }); return;
+  }
+
+  const dimension = quality === "1080p"
+    ? { width: 1920, height: 1080 }
+    : { width: 1280, height: 720 };
+
+  try {
+    const response = await fetch(`${HEYGEN_BASE}/v2/video/generate`, {
+      method: "POST",
+      headers: heygenHeaders({ "Content-Type": "application/json" }),
+      body: JSON.stringify({
+        video_inputs: [{
+          character: { type: "talking_photo", talking_photo_id: talkingPhotoId },
+          voice: { type: "text", input_text: script.substring(0, 1500), voice_id: voiceId },
+        }],
+        dimension,
+      }),
+    });
+    const data = await response.json() as { data?: { video_id?: string }; error?: string };
+    if (!response.ok || !data.data?.video_id) {
+      req.log.error({ data }, "heygen: generate-from-photo failed");
+      res.status(502).json({ error: data.error ?? "Falha ao iniciar geração" }); return;
+    }
+    res.json({ videoId: data.data.video_id });
+  } catch (err) {
+    req.log.error({ err }, "heygen: generate-from-photo error");
+    res.status(500).json({ error: err instanceof Error ? err.message : "Erro ao gerar vídeo" });
+  }
+});
+
+// ── Gerar vídeo via avatar (com qualidade) ────────────────────────────────────
+// Sobrescreve o endpoint antigo add quality support
+router.post("/tenants/:tenantId/content-studio/heygen/generate-video-v2", async (req, res) => {
+  const tenantId = String(req.params["tenantId"]);
+  if (req.user?.platformRole !== "super_admin" && req.user?.tenantId !== tenantId) {
+    res.status(403).json({ error: "Acesso negado" }); return;
+  }
+  if (!requireHeygenKey(res)) return;
+
+  const { avatarId, script, voiceId = "pt-BR-FranciscaNeural", quality = "720p" } = req.body as {
+    avatarId?: string; script?: string; voiceId?: string; quality?: string;
+  };
+  if (!avatarId || !script) {
+    res.status(422).json({ error: "avatarId e script são obrigatórios" }); return;
+  }
+
+  const dimension = quality === "1080p"
+    ? { width: 1920, height: 1080 }
+    : { width: 1280, height: 720 };
+
+  try {
+    const response = await fetch(`${HEYGEN_BASE}/v2/video/generate`, {
+      method: "POST",
+      headers: heygenHeaders({ "Content-Type": "application/json" }),
+      body: JSON.stringify({
+        video_inputs: [{
+          character: { type: "avatar", avatar_id: avatarId, avatar_style: "normal" },
+          voice: { type: "text", input_text: script.substring(0, 1500), voice_id: voiceId },
+        }],
+        dimension,
+      }),
+    });
+    const data = await response.json() as { data?: { video_id?: string }; error?: string };
+    if (!response.ok || !data.data?.video_id) {
+      req.log.error({ data }, "heygen: generate-video-v2 failed");
+      res.status(502).json({ error: data.error ?? "Falha ao iniciar geração" }); return;
+    }
+    res.json({ videoId: data.data.video_id });
+  } catch (err) {
+    req.log.error({ err }, "heygen: generate-video-v2 error");
+    res.status(500).json({ error: err instanceof Error ? err.message : "Erro ao gerar vídeo" });
+  }
+});
+
 export default router;
