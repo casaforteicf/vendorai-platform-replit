@@ -44,7 +44,7 @@ function filterFurnitureZones(zones: string[]): string[] {
 // ── Helpers ────────────────────────────────────────────────────────────────────
 
 function tenantId(req: Request): string | null {
-  return (req as any).tenantId ?? null;
+  return (req as any).user?.tenantId ?? null;
 }
 
 // ── Esquemas de validação ──────────────────────────────────────────────────────

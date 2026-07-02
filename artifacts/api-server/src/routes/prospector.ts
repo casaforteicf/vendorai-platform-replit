@@ -697,12 +697,35 @@ router.post("/prospector/search", async (req, res) => {
     return res.status(400).json({ error: "Dados inválidos", details: parsed.error.flatten() });
   }
   const { atividade, localidade, maxResults, tenantId: bodyTenantId } = parsed.data;
-  // Valida o tenant (e a permissão de super_admin) antes de gastar chamada externa.
-  const tenantIdSearch = resolveTenantId(req, bodyTenantId);
 
-  await checkApiQuota(tenantIdSearch, "google_places", req.log);
+  let tenantIdSearch: string;
+  try {
+    tenantIdSearch = resolveTenantId(req, bodyTenantId);
+  } catch (err: unknown) {
+    const status = (err as { status?: number }).status ?? 401;
+    const message = err instanceof Error ? err.message : "Não autenticado";
+    return res.status(status).json({ error: message });
+  }
+
+  try {
+    await checkApiQuota(tenantIdSearch, "google_places", req.log);
+  } catch (err: unknown) {
+    const status = (err as { status?: number }).status ?? 500;
+    const message = err instanceof Error ? err.message : "Erro ao verificar cota";
+    return res.status(status).json({ error: message });
+  }
+
   const query = `${atividade.trim()} em ${localidade.trim()}`;
-  const places = await searchPlaces(query, maxResults, req.log);
+
+  let places: Awaited<ReturnType<typeof searchPlaces>>;
+  try {
+    places = await searchPlaces(query, maxResults, req.log);
+  } catch (err: unknown) {
+    const status = (err as { status?: number }).status ?? 502;
+    const message = err instanceof Error ? err.message : "Erro ao buscar no Google Places";
+    req.log.error({ err }, "prospector/search: searchPlaces failed");
+    return res.status(status).json({ error: message });
+  }
 
   const results = places
     .filter((p) => p.nomeEmpresa)
