@@ -525,7 +525,7 @@ export default function RenderPage() {
             </p>
             <p style={{ color: 'rgba(255,255,255,0.28)', fontSize: 11, margin: 0 }}>
               {renderMode === 'preservar'
-                ? 'Segmentação + Flux Fill Pro + compositing — pode levar 60–120s'
+                ? 'Edição por instrução via Flux Kontext Pro — pode levar 60–120s'
                 : 'Pode levar até 60–90 segundos'}
             </p>
           </div>
