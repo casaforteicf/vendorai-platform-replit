@@ -93,6 +93,7 @@ function useSiteGenerator(tenantId: string, token: string | null) {
   const [status, setStatus] = useState<GeneratorStatus>("idle");
   const [html, setHtml] = useState("");
   const [siteId, setSiteId] = useState<string | null>(null);
+  const [siteSlug, setSiteSlug] = useState<string | null>(null);
   const [isPublished, setIsPublished] = useState(false);
   const [history, setHistory] = useState<Array<{ role: "user" | "assistant"; content: string }>>([]);
   const [error, setError] = useState<string | null>(null);
@@ -121,6 +122,7 @@ function useSiteGenerator(tenantId: string, token: string | null) {
       const site = await res.json();
       setHtml(site.html ?? "");
       setSiteId(site.id);
+      setSiteSlug(site.siteSlug ?? null);
       setIsPublished(site.published ?? false);
       setCurrentSiteType(site.siteType ?? null);
       setCurrentConfig(site.config ?? null);
@@ -136,6 +138,7 @@ function useSiteGenerator(tenantId: string, token: string | null) {
       const site = await res.json();
       setHtml(site.html ?? "");
       setSiteId(site.id);
+      setSiteSlug(site.siteSlug ?? null);
       setIsPublished(site.published ?? false);
       setCurrentSiteType(site.siteType ?? null);
       setCurrentConfig(site.config ?? null);
@@ -186,6 +189,7 @@ function useSiteGenerator(tenantId: string, token: string | null) {
       const site = await res.json();
       setHtml(site.html);
       setSiteId(site.id);
+      setSiteSlug(site.siteSlug ?? null);
       setCurrentSiteType(site.siteType ?? config.type);
       setCurrentConfig(site.config ?? config);
       setHistory([
@@ -285,7 +289,7 @@ function useSiteGenerator(tenantId: string, token: string | null) {
     setCurrentConfig(null);
   }, []);
 
-  return { status, html, siteId, isPublished, error, currentSiteType, currentConfig, sitesList, generate, refine, download, reset, loadLatest, loadAll, loadSite, saveHtml, publish };
+  return { status, html, siteId, siteSlug, isPublished, error, currentSiteType, currentConfig, sitesList, generate, refine, download, reset, loadLatest, loadAll, loadSite, saveHtml, publish };
 }
 
 // ── ConfigForm ─────────────────────────────────────────────────────────────────
@@ -2003,6 +2007,7 @@ const SITE_TYPE_ICONS: Record<string, React.ReactNode> = {
 function PersonalizePanel({
   html,
   isPublished,
+  siteSlug,
   currentSiteType,
   tenantId,
   onRefine,
@@ -2012,6 +2017,7 @@ function PersonalizePanel({
 }: {
   html: string;
   isPublished: boolean;
+  siteSlug: string | null;
   currentSiteType: string | null;
   tenantId: string;
   onRefine: (msg: string) => Promise<string>;
@@ -2020,10 +2026,21 @@ function PersonalizePanel({
   onGenerateEcommerce: () => void;
 }) {
   const [publishing, setPublishing] = useState(false);
+  const [copied, setCopied] = useState(false);
+
+  const siteUrl = siteSlug ? `https://${siteSlug}.appvendorai.com` : null;
 
   async function handlePublish() {
     setPublishing(true);
     try { await onPublish(); } finally { setPublishing(false); }
+  }
+
+  function handleCopy() {
+    if (!siteUrl) return;
+    navigator.clipboard.writeText(siteUrl).then(() => {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    });
   }
 
   return (
@@ -2033,10 +2050,10 @@ function PersonalizePanel({
         : "border-amber-200 bg-amber-50/50 dark:border-amber-900/40 dark:bg-amber-950/20"
     }`}>
       <div className="flex items-center justify-between flex-wrap gap-2">
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 min-w-0">
           {isPublished ? (
             <>
-              <span className="relative flex h-2 w-2">
+              <span className="relative flex h-2 w-2 shrink-0">
                 <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75" />
                 <span className="relative inline-flex rounded-full h-2 w-2 bg-green-500" />
               </span>
@@ -2046,7 +2063,7 @@ function PersonalizePanel({
             </>
           ) : (
             <>
-              <span className="relative flex h-2 w-2">
+              <span className="relative flex h-2 w-2 shrink-0">
                 <span className="relative inline-flex rounded-full h-2 w-2 bg-amber-500" />
               </span>
               <span className="text-sm font-medium text-amber-900 dark:text-amber-300">
@@ -2072,6 +2089,48 @@ function PersonalizePanel({
         )}
       </div>
 
+      {/* Subdomain URL row */}
+      {siteUrl && (
+        <div className="flex items-center gap-2 rounded-lg border border-border bg-background px-3 py-2 text-sm">
+          <Globe className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+          <span className="truncate font-mono text-xs text-muted-foreground flex-1 select-all">{siteUrl}</span>
+          <button
+            onClick={handleCopy}
+            className="shrink-0 text-muted-foreground hover:text-foreground transition-colors"
+            title="Copiar URL"
+          >
+            {copied ? (
+              <svg xmlns="http://www.w3.org/2000/svg" className="h-3.5 w-3.5 text-green-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+              </svg>
+            ) : (
+              <svg xmlns="http://www.w3.org/2000/svg" className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-4 10h6a2 2 0 002-2v-8a2 2 0 00-2-2h-6a2 2 0 00-2 2v8a2 2 0 002 2z" />
+              </svg>
+            )}
+          </button>
+          {isPublished && (
+            <a
+              href={siteUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="shrink-0 text-muted-foreground hover:text-foreground transition-colors"
+              title="Abrir site"
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+              </svg>
+            </a>
+          )}
+        </div>
+      )}
+
+      {isPublished && (
+        <p className="text-xs text-muted-foreground">
+          ℹ️ Para ativar o subdomínio <span className="font-mono font-medium">{siteSlug}.appvendorai.com</span>, configure um CNAME apontando para <span className="font-mono font-medium">appvendorai.com</span>.
+        </p>
+      )}
+
       <div className="flex flex-wrap gap-2">
         <RefineDialog onRefine={onRefine} />
         <TestimonialsDialog onRefine={onRefine} />
@@ -2093,7 +2152,7 @@ function PersonalizePanel({
 function SiteGeneratorInner({ tenantId, token }: { tenantId: string; token: string | null }) {
   const [activeTab, setActiveTab] = useState("config");
   const {
-    status, html, siteId, isPublished, error,
+    status, html, siteId, siteSlug, isPublished, error,
     currentSiteType, currentConfig, sitesList,
     generate, refine, download, reset,
     loadLatest, loadAll, loadSite, saveHtml, publish,
@@ -2170,6 +2229,7 @@ function SiteGeneratorInner({ tenantId, token }: { tenantId: string; token: stri
         <PersonalizePanel
           html={html}
           isPublished={isPublished}
+          siteSlug={siteSlug}
           currentSiteType={currentSiteType}
           tenantId={tenantId}
           onRefine={refine}

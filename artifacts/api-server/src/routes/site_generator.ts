@@ -16,6 +16,31 @@ const AI_MODEL = useAnthropic ? "claude-sonnet-4-6" : "gpt-4o-mini";
 // ─── Public router (no auth) — serves generated HTML sites ───────────────────
 export const publicSiteGeneratorRouter: IRouter = Router();
 
+// GET /sites/:siteSlug — serve published site by unique subdomain slug
+publicSiteGeneratorRouter.get("/sites/:siteSlug", async (req, res) => {
+  const { siteSlug } = req.params;
+
+  const [site] = await db
+    .select({ html: generatedSitesTable.html, published: generatedSitesTable.published, name: generatedSitesTable.name })
+    .from(generatedSitesTable)
+    .where(eq(generatedSitesTable.siteSlug, siteSlug))
+    .limit(1);
+
+  if (!site) {
+    res.status(404).send(`<!DOCTYPE html><html lang="pt-BR"><head><meta charset="UTF-8"><title>Site não encontrado</title><style>body{font-family:system-ui,sans-serif;display:flex;align-items:center;justify-content:center;min-height:100vh;margin:0;background:#f8fafc;}div{text-align:center;}</style></head><body><div><p style="font-size:3rem">🌐</p><h1 style="color:#1e293b">Site não encontrado</h1><p style="color:#64748b">O endereço <strong>${siteSlug}.appvendorai.com</strong> não existe ou ainda não foi publicado.</p></div></body></html>`);
+    return;
+  }
+
+  if (!site.published) {
+    res.status(403).send(`<!DOCTYPE html><html lang="pt-BR"><head><meta charset="UTF-8"><title>Site não publicado</title><style>body{font-family:system-ui,sans-serif;display:flex;align-items:center;justify-content:center;min-height:100vh;margin:0;background:#f8fafc;}div{text-align:center;}</style></head><body><div><p style="font-size:3rem">🔒</p><h1 style="color:#1e293b">${site.name}</h1><p style="color:#64748b">Este site ainda não foi publicado pelo proprietário.</p></div></body></html>`);
+    return;
+  }
+
+  res.setHeader("Content-Type", "text/html; charset=utf-8");
+  res.setHeader("X-Frame-Options", "SAMEORIGIN");
+  res.send(site.html);
+});
+
 publicSiteGeneratorRouter.get("/public/:tenantSlug/site-html", async (req, res) => {
   const { tenantSlug } = req.params;
 
@@ -61,6 +86,39 @@ const TONE_LABELS: Record<string, string> = {
   premium: "premium e sofisticado",
   descontraido: "descontraído e criativo",
 };
+
+// ── Slug generation ────────────────────────────────────────────────────────────
+
+function toSlugBase(name: string): string {
+  return name
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")   // strip accents
+    .replace(/[^a-z0-9\s-]/g, "")      // keep alphanum, space, hyphen
+    .trim()
+    .replace(/\s+/g, "-")
+    .replace(/-+/g, "-")
+    .slice(0, 36);
+}
+
+const SITE_TYPE_SUFFIX: Record<string, string> = {
+  ecommerce: "-loja",
+  landing: "-lp",
+  institutional: "",
+};
+
+async function generateUniqueSiteSlug(name: string, type: string): Promise<string> {
+  const base = toSlugBase(name) + (SITE_TYPE_SUFFIX[type] ?? "");
+  // Check for conflict; if taken, append 4 random hex chars
+  const [existing] = await db
+    .select({ id: generatedSitesTable.id })
+    .from(generatedSitesTable)
+    .where(eq(generatedSitesTable.siteSlug, base))
+    .limit(1);
+  if (!existing) return base;
+  const suffix = Math.random().toString(16).slice(2, 6);
+  return `${base}-${suffix}`;
+}
 
 function hexToRgb(hex: string): string {
   const clean = hex.replace("#", "");
@@ -573,6 +631,8 @@ router.post("/tenants/:tenantId/site-generator/generate", async (req, res) => {
     return;
   }
 
+  const siteSlug = await generateUniqueSiteSlug(enrichedConfig.name, config.type);
+
   const [site] = await db
     .insert(generatedSitesTable)
     .values({
@@ -580,6 +640,7 @@ router.post("/tenants/:tenantId/site-generator/generate", async (req, res) => {
       tenantId,
       name: enrichedConfig.name,
       siteType: config.type,
+      siteSlug,
       config: enrichedConfig,
       html,
     })

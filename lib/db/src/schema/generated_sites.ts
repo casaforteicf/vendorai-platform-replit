@@ -42,6 +42,7 @@ export const generatedSitesTable = pgTable("generated_sites", {
     .references(() => tenantsTable.id, { onDelete: "cascade" }),
   name: text("name").notNull(),
   siteType: text("site_type").notNull(),
+  siteSlug: text("site_slug").unique(),
   config: jsonb("config").$type<SiteGeneratorConfig>().notNull(),
   html: text("html").notNull(),
   published: boolean("published").notNull().default(false),
