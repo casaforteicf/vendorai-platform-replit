@@ -594,6 +594,40 @@ function ConfigForm({ tenantId, onGenerate }: { tenantId: string; onGenerate: (c
   );
 }
 
+// ── Inline editing script injected into the preview iframe ─────────────────────
+
+const INLINE_EDIT_SCRIPT = `
+<script id="__ve_editor__">
+(function(){
+  var TAGS=['h1','h2','h3','h4','h5','h6','p','span','a','button','li','td','th','label','strong','em','small','div'];
+  var style=document.createElement('style');
+  style.textContent='[data-ve-editable]:hover{outline:2px dashed #818cf8 !important;outline-offset:2px;cursor:text !important;}[data-ve-editable]:focus{outline:2px solid #6366f1 !important;outline-offset:2px;background:rgba(99,102,241,0.06) !important;border-radius:2px;}';
+  document.head.appendChild(style);
+  function send(){window.parent.postMessage({type:'ve-html-edit',html:'<!DOCTYPE html>'+document.documentElement.outerHTML},'*');}
+  function setup(el){
+    if(el.__ve)return;el.__ve=true;
+    if(!el.textContent.trim()||el.children.length>2)return;
+    el.setAttribute('data-ve-editable','1');
+    el.addEventListener('click',function(e){e.stopPropagation();el.contentEditable='true';el.focus();});
+    el.addEventListener('blur',function(){el.contentEditable='false';send();});
+    el.addEventListener('keydown',function(e){if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();el.blur();}if(e.key==='Escape'){el.contentEditable='false';}});
+  }
+  function init(){TAGS.forEach(function(t){document.querySelectorAll(t).forEach(setup);});}
+  if(document.readyState==='loading'){document.addEventListener('DOMContentLoaded',init);}else{init();}
+})();
+</script>`;
+
+function injectEditScript(html: string): string {
+  if (html.includes('__ve_editor__')) return html;
+  const idx = html.lastIndexOf('</body>');
+  if (idx !== -1) return html.slice(0, idx) + INLINE_EDIT_SCRIPT + html.slice(idx);
+  return html + INLINE_EDIT_SCRIPT;
+}
+
+function stripEditScript(html: string): string {
+  return html.replace(/<script\s+id="__ve_editor__"[\s\S]*?<\/script>/i, '');
+}
+
 // ── SitePreview ────────────────────────────────────────────────────────────────
 
 function SitePreview({
@@ -602,13 +636,49 @@ function SitePreview({
   error,
   onDownload,
   onRefine,
+  onSave,
 }: {
   html: string;
   status: GeneratorStatus;
   error: string | null;
   onDownload: () => void;
   onRefine: () => void;
+  onSave?: (html: string) => Promise<void>;
 }) {
+  const [pendingHtml, setPendingHtml] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
+  const { toast } = useToast();
+
+  // Listen for inline edits from the iframe
+  useEffect(() => {
+    function handler(e: MessageEvent) {
+      if (e.data?.type !== 've-html-edit') return;
+      const clean = stripEditScript(e.data.html as string);
+      setPendingHtml(clean);
+    }
+    window.addEventListener('message', handler);
+    return () => window.removeEventListener('message', handler);
+  }, []);
+
+  // Reset pending when html prop changes (new generation)
+  useEffect(() => { setPendingHtml(null); }, [html]);
+
+  async function saveInlineEdits() {
+    if (!pendingHtml || !onSave) return;
+    setSaving(true);
+    try {
+      await onSave(pendingHtml);
+      setPendingHtml(null);
+      toast({ description: "✓ Edições salvas" });
+    } catch {
+      toast({ title: "Erro ao salvar edições", variant: "destructive" });
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  const displayHtml = html ? injectEditScript(html) : '';
+
   return (
     <div className="flex flex-col gap-4">
       {status === "generating" && (
@@ -623,15 +693,38 @@ function SitePreview({
         </div>
       )}
 
+      {/* Unsaved inline edits bar */}
+      {pendingHtml && (
+        <div className="flex items-center justify-between gap-3 rounded-lg border border-indigo-300 bg-indigo-50 dark:border-indigo-800 dark:bg-indigo-950/40 px-4 py-2.5">
+          <span className="text-sm text-indigo-700 dark:text-indigo-300">
+            ✏️ Edições não salvas
+          </span>
+          <div className="flex gap-2">
+            <Button size="sm" variant="ghost" onClick={() => setPendingHtml(null)} className="text-muted-foreground">
+              Descartar
+            </Button>
+            <Button size="sm" onClick={saveInlineEdits} disabled={saving || !onSave}>
+              {saving ? <Loader2 className="h-3.5 w-3.5 animate-spin mr-1.5" /> : null}
+              Salvar edições
+            </Button>
+          </div>
+        </div>
+      )}
+
       <div className="overflow-hidden rounded-lg border border-border bg-muted/30">
-        {html ? (
-          <iframe
-            srcDoc={html}
-            title="Preview do site gerado"
-            sandbox="allow-scripts allow-same-origin"
-            className="w-full border-none block"
-            style={{ height: 520 }}
-          />
+        {displayHtml ? (
+          <>
+            <div className="flex items-center gap-1.5 px-3 py-1.5 border-b border-border bg-muted/50">
+              <span className="text-[10px] text-muted-foreground">✏️ Clique em qualquer texto para editar diretamente</span>
+            </div>
+            <iframe
+              srcDoc={displayHtml}
+              title="Preview do site gerado"
+              sandbox="allow-scripts allow-same-origin"
+              className="w-full border-none block"
+              style={{ height: 520 }}
+            />
+          </>
         ) : (
           <div className="flex h-80 items-center justify-center text-sm text-muted-foreground">
             Configure o site e clique em "Gerar" para ver o preview aqui.
@@ -1746,6 +1839,7 @@ function SiteGeneratorInner({ tenantId, token }: { tenantId: string; token: stri
                 error={error}
                 onDownload={() => download("site-gerado")}
                 onRefine={() => setActiveTab("refine")}
+                onSave={saveHtml}
               />
             </TabsContent>
 

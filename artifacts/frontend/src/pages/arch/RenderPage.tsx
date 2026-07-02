@@ -54,6 +54,40 @@ const ANGULOS = [
 
 const MAT_CATS = ['Todos', 'Madeira', 'MDF', 'Pedra', 'Ferro', 'Cerâmica', 'Concreto']
 
+const METAIS = [
+  { id: 'cromado',     label: 'Cromado',         gradient: 'linear-gradient(135deg,#d4d4d4 0%,#888 50%,#d4d4d4 100%)', promptFragment: 'chrome/polished metal fixtures, taps, handles and hardware' },
+  { id: 'preto_fosco', label: 'Preto Fosco',      gradient: 'linear-gradient(135deg,#2a2a2a 0%,#111 100%)',             promptFragment: 'matte black metal fixtures, taps, handles and hardware' },
+  { id: 'dourado',     label: 'Dourado',           gradient: 'linear-gradient(135deg,#d4af37 0%,#a07d1a 50%,#d4af37 100%)', promptFragment: 'brushed gold/brass fixtures, taps, handles and hardware' },
+  { id: 'niquel',      label: 'Níquel Escovado',   gradient: 'linear-gradient(135deg,#a0a098 0%,#6e6e68 50%,#a0a098 100%)', promptFragment: 'brushed nickel fixtures, taps, handles and hardware' },
+]
+
+const PISOS = [
+  { id: 'claro',      label: 'Claro',       color: '#E8DCC8', promptFragment: 'light beige/cream ceramic or porcelain floor tiles' },
+  { id: 'amadeirado', label: 'Amadeirado',  color: '#8B6340', promptFragment: 'warm hardwood or engineered wood flooring' },
+  { id: 'cimento',    label: 'Cimento',     color: '#898989', promptFragment: 'polished concrete or dark gray porcelain floor' },
+]
+
+const PAREDE_CORES = [
+  { id: 'branco',    label: 'Branco',       color: '#F5F5F0' },
+  { id: 'off_white', label: 'Off-White',    color: '#EDE8E0' },
+  { id: 'bege',      label: 'Bege',         color: '#D4C5A9' },
+  { id: 'cinza',     label: 'Cinza Claro',  color: '#C8C8C8' },
+  { id: 'sage',      label: 'Sage',         color: '#B2C4B2' },
+  { id: 'azul',      label: 'Azul Suave',   color: '#B8C8D8' },
+]
+
+const DECOR_POR_AMBIENTE: Record<string, string[]> = {
+  banheiro:     ['Toalhas dobradas', 'Sabonete líquido', 'Planta pequena', 'Tapete de banheiro', 'Vela decorativa'],
+  cozinha:      ['Fruteira', 'Panos de prato', 'Temperos organizados', 'Planta na bancada'],
+  quarto:       ['Almofadas decorativas', 'Tapete', 'Quadros na parede', 'Luminária de mesa'],
+  sala:         ['Almofadas', 'Manta', 'Livros', 'Planta grande', 'Quadros'],
+  escritorio:   ['Organizer de mesa', 'Planta de mesa', 'Quadros motivacionais', 'Livros'],
+  varanda:      ['Vasos de plantas', 'Almofadas externas', 'Luminária de corda'],
+  area_lazer:   ['Vasos de plantas', 'Almofadas de área', 'Luminária pendente'],
+  area_externa: ['Vasos de plantas', 'Mobiliário de jardim', 'Luminárias externas'],
+  fachada:      ['Vasos na entrada', 'Iluminação de jardim', 'Números da casa'],
+}
+
 const ROOM_TYPE_MAP: Record<string, string> = {
   fachada:      'fachada externa',
   area_externa: 'fachada externa',
@@ -95,6 +129,14 @@ export default function RenderPage() {
   const [saveConfigName,   setSaveConfigName]   = useState('')
   const [savingConfig,     setSavingConfig]     = useState(false)
 
+  // Section 5 — Componentes
+  const [selMetal,     setSelMetal]     = useState<string | null>(null)
+  const [selPiso,      setSelPiso]      = useState<string | null>(null)
+  const [paredeColor,  setParedeColor]  = useState<string | null>(null)
+  const [paredeAcab,   setParedeAcab]   = useState<'Fosco' | 'Acetinado'>('Fosco')
+  const [selDecor,     setSelDecor]     = useState<string[]>([])
+  const [applyingComp, setApplyingComp] = useState(false)
+
   // Panel UI
   const [openSection, setOpenSection] = useState<number>(0)
   const [matCat,      setMatCat]      = useState('Todos')
@@ -129,6 +171,9 @@ export default function RenderPage() {
       setHistory(prev => [rs.renderResult!, ...prev].slice(0, 6))
     }
   }, [rs.renderResult])
+
+  // Reset decoration selection when ambiente changes
+  useEffect(() => { setSelDecor([]) }, [ambiente])
 
   // Drag ghost
   useEffect(() => {
@@ -259,6 +304,67 @@ export default function RenderPage() {
     }
   }
 
+  async function doApplyComponentes() {
+    if (!rs.renderResult) return
+    const parts: string[] = []
+    if (selMetal) {
+      const m = METAIS.find(x => x.id === selMetal)
+      if (m) parts.push(`Todos os metais (torneiras, maçanetas, ganchos, ferragens): ${m.promptFragment}`)
+    }
+    if (selPiso) {
+      const p = PISOS.find(x => x.id === selPiso)
+      if (p) parts.push(`Piso do ambiente: ${p.promptFragment}`)
+    }
+    if (paredeColor) {
+      const c = PAREDE_CORES.find(x => x.id === paredeColor)
+      if (c) parts.push(`Cor das paredes: ${c.label}, acabamento ${paredeAcab.toLowerCase()}`)
+    }
+    if (selDecor.length > 0) {
+      parts.push(`Adicionar como decoração: ${selDecor.join(', ')}`)
+    }
+    if (parts.length === 0) return
+
+    setApplyingComp(true)
+    try {
+      const componentesPrompt = `Mantendo EXATAMENTE a geometria, posição dos móveis, dimensões e estrutura da imagem, aplique APENAS as seguintes mudanças:\n${parts.map((p, i) => `${i + 1}. ${p}`).join('\n')}\nNão altere móveis, estrutura, iluminação geral, estilo ou composição.`
+
+      const res = await fetch(`${getBase()}/api/arch/ai-render`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${getToken()}` },
+        body: JSON.stringify({
+          original_image_url: rs.renderResult,
+          mode: 'preservar',
+          ambiente,
+          user_notes: componentesPrompt,
+        }),
+      })
+      if (!res.ok) throw new Error(`Erro ${res.status}`)
+      const { render_id } = await res.json()
+
+      let attempts = 0
+      while (attempts < 90) {
+        await new Promise(r => setTimeout(r, 2000))
+        const poll = await fetch(`${getBase()}/api/arch/ai-render/${render_id}`, {
+          headers: { Authorization: `Bearer ${getToken()}` },
+        })
+        if (!poll.ok) break
+        const data = await poll.json()
+        if (data.status === 'concluido' && data.result_image_url) {
+          rs.setRenderResult(data.result_image_url)
+          toast({ description: '✨ Componentes aplicados!' })
+          return
+        }
+        if (data.status === 'erro') throw new Error(data.erro_msg ?? 'Erro')
+        attempts++
+      }
+      throw new Error('Tempo esgotado aguardando aplicação de componentes.')
+    } catch (err: any) {
+      toast({ variant: 'destructive', description: err?.message ?? 'Erro ao aplicar componentes.' })
+    } finally {
+      setApplyingComp(false)
+    }
+  }
+
   async function handleSalvarConfig() {
     if (!saveConfigName.trim()) return
     setSavingConfig(true)
@@ -328,8 +434,10 @@ export default function RenderPage() {
       ? allMats.filter(m => m.cat === 'usuario')
       : allMats.filter(m => m.cat.toLowerCase() === matCat.toLowerCase())
 
-  const appliedCount = Object.keys(rs.applied).length
-  const hasHistory   = history.length > 0
+  const appliedCount  = Object.keys(rs.applied).length
+  const hasHistory    = history.length > 0
+  const compCount     = [selMetal, selPiso, paredeColor].filter(Boolean).length + selDecor.length
+  const hasComponentes = compCount > 0
 
   // No modo Preservar: oculta seções ESTILO (idx=1) e ÂNGULO (idx=3)
   const visibleSections = renderMode === 'preservar' ? [0, 2, 4] : [0, 1, 2, 3, 4]
@@ -341,7 +449,7 @@ export default function RenderPage() {
     renderMode === 'preservar'
       ? '4 · ÂNGULO — Preservado (original)'
       : `4 · ÂNGULO — ${ANGULOS.find(a => a.id === rs.config.angle)?.label ?? 'Frontal'}`,
-    `5 · COMPONENTES${appliedCount > 0 ? ` (${appliedCount})` : ''}`,
+    `5 · COMPONENTES${compCount > 0 ? ` (${compCount})` : ''}`,
   ]
   const sectionLabels = visibleSections.map(i => allSectionLabels[i]!)
 
@@ -570,6 +678,21 @@ export default function RenderPage() {
                 style={panelBtn}
                 onClick={() => setShowSaveConfig(true)}
               >💾 Config</button>
+              {hasComponentes && (
+                <button
+                  onClick={doApplyComponentes}
+                  disabled={applyingComp}
+                  style={{
+                    ...panelBtn,
+                    background: applyingComp ? 'rgba(139,92,246,0.12)' : 'rgba(139,92,246,0.22)',
+                    border: '1px solid rgba(139,92,246,0.5)',
+                    color: '#c4b5fd',
+                    opacity: applyingComp ? 0.7 : 1,
+                  }}
+                >
+                  {applyingComp ? '⏳ Aplicando…' : `🎨 Aplicar Componentes (${compCount})`}
+                </button>
+              )}
             </>
           )}
         </div>
@@ -699,78 +822,117 @@ export default function RenderPage() {
 
                     {/* 5 · COMPONENTES */}
                     {idx === 4 && (
-                      <div>
-                        {/* Category filter */}
-                        <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap', marginBottom: 8 }}>
-                          {[...MAT_CATS, ...(hasUserMats ? ['Meus'] : [])].map(cat => (
-                            <button key={cat} onClick={() => setMatCat(cat)} style={chip(matCat === cat)}>{cat}</button>
-                          ))}
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+
+                        {/* 5.1 — Cor dos Metais */}
+                        <div>
+                          <p style={{ fontSize: 9, color: 'rgba(255,255,255,0.35)', margin: '0 0 3px', textTransform: 'uppercase', letterSpacing: '0.06em' }}>Cor dos Metais</p>
+                          <p style={{ fontSize: 8, color: 'rgba(255,255,255,0.2)', margin: '0 0 8px' }}>Torneiras, maçanetas, ganchos, ferragens</p>
+                          <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                            {METAIS.map(m => (
+                              <button
+                                key={m.id}
+                                onClick={() => setSelMetal(selMetal === m.id ? null : m.id)}
+                                style={{
+                                  display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 5,
+                                  background: selMetal === m.id ? 'rgba(139,92,246,0.2)' : 'rgba(255,255,255,0.04)',
+                                  border: selMetal === m.id ? '1px solid rgba(139,92,246,0.65)' : '1px solid rgba(255,255,255,0.1)',
+                                  borderRadius: 9, padding: '7px 10px', cursor: 'pointer', transition: 'all 0.15s',
+                                }}
+                              >
+                                <div style={{
+                                  width: 28, height: 28, borderRadius: '50%', background: m.gradient,
+                                  border: '1px solid rgba(255,255,255,0.15)',
+                                  boxShadow: selMetal === m.id ? '0 0 0 2px rgba(139,92,246,0.5)' : 'none',
+                                }} />
+                                <span style={{ fontSize: 8, color: selMetal === m.id ? '#c4b5fd' : 'rgba(255,255,255,0.45)', whiteSpace: 'nowrap' }}>{m.label}</span>
+                              </button>
+                            ))}
+                          </div>
                         </div>
 
-                        {/* Import */}
-                        <label style={{
-                          display: 'inline-flex', alignItems: 'center', gap: 5, padding: '4px 8px',
-                          borderRadius: 6, border: '0.5px dashed rgba(255,255,255,0.18)',
-                          color: 'rgba(255,255,255,0.38)', fontSize: 9, cursor: 'pointer', marginBottom: 8,
-                        }}>
-                          + Importar textura
-                          <input type="file" accept="image/*" multiple style={{ display: 'none' }}
-                            onChange={e => Array.from(e.target.files ?? []).forEach(handleImportMat)}
-                          />
-                        </label>
-
-                        {/* Materials grid */}
-                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 5 }}>
-                          {filteredMats.map(mat => (
-                            <div
-                              key={mat.id}
-                              title={mat.name}
-                              onMouseDown={e => {
-                                e.preventDefault()
-                                setDraggingMat(mat as CustomMat)
-                                setGhostPos({ x: e.clientX, y: e.clientY })
-                              }}
-                              style={{
-                                width: 48, height: 42, borderRadius: 5, cursor: 'grab', flexShrink: 0,
-                                background: mat.imageUrl
-                                  ? `url(${mat.imageUrl}) center/cover`
-                                  : `linear-gradient(135deg, ${mat.c1}, ${mat.c2})`,
-                                border: '1px solid rgba(255,255,255,0.1)',
-                                display: 'flex', alignItems: 'flex-end', justifyContent: 'center',
-                                overflow: 'hidden',
-                              }}
-                            >
-                              <span style={{
-                                fontSize: 7, fontWeight: 600, color: '#fff',
-                                background: 'rgba(0,0,0,0.55)', width: '100%',
-                                textAlign: 'center', padding: '1px 0', pointerEvents: 'none',
-                              }}>{mat.name}</span>
-                            </div>
-                          ))}
+                        {/* 5.2 — Piso */}
+                        <div>
+                          <p style={{ fontSize: 9, color: 'rgba(255,255,255,0.35)', margin: '0 0 8px', textTransform: 'uppercase', letterSpacing: '0.06em' }}>Piso</p>
+                          <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                            {PISOS.map(p => (
+                              <button
+                                key={p.id}
+                                onClick={() => setSelPiso(selPiso === p.id ? null : p.id)}
+                                style={{
+                                  display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 5,
+                                  background: selPiso === p.id ? 'rgba(139,92,246,0.2)' : 'rgba(255,255,255,0.04)',
+                                  border: selPiso === p.id ? '1px solid rgba(139,92,246,0.65)' : '1px solid rgba(255,255,255,0.1)',
+                                  borderRadius: 9, padding: '7px 10px', cursor: 'pointer', transition: 'all 0.15s',
+                                }}
+                              >
+                                <div style={{
+                                  width: 28, height: 28, borderRadius: 5, background: p.color,
+                                  border: '1px solid rgba(255,255,255,0.15)',
+                                  boxShadow: selPiso === p.id ? '0 0 0 2px rgba(139,92,246,0.5)' : 'none',
+                                }} />
+                                <span style={{ fontSize: 8, color: selPiso === p.id ? '#c4b5fd' : 'rgba(255,255,255,0.45)' }}>{p.label}</span>
+                              </button>
+                            ))}
+                          </div>
                         </div>
 
-                        {/* Applied materials */}
-                        {appliedCount > 0 && (
-                          <div style={{ marginTop: 12 }}>
-                            <p style={{ fontSize: 9, color: 'rgba(255,255,255,0.28)', margin: '0 0 6px', textTransform: 'uppercase', letterSpacing: '0.06em' }}>Aplicados</p>
-                            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
-                              {Object.entries(rs.applied).map(([zone, mat]) => (
-                                <div key={zone} style={{
-                                  display: 'flex', alignItems: 'center', gap: 4, padding: '2px 6px 2px 8px',
-                                  borderRadius: 20, background: 'rgba(139,92,246,0.15)',
-                                  border: '1px solid rgba(139,92,246,0.3)', fontSize: 9, color: '#c4b5fd',
-                                }}>
-                                  <div style={{ width: 7, height: 7, borderRadius: '50%', background: mat.color, flexShrink: 0 }} />
-                                  <span>{zone} · {mat.name}</span>
-                                  <button
-                                    onClick={() => rs.removeMaterial(zone)}
-                                    style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'rgba(255,255,255,0.4)', fontSize: 10, padding: 0, lineHeight: 1, marginLeft: 2 }}
-                                  >✕</button>
-                                </div>
+                        {/* 5.3 — Parede */}
+                        <div>
+                          <p style={{ fontSize: 9, color: 'rgba(255,255,255,0.35)', margin: '0 0 8px', textTransform: 'uppercase', letterSpacing: '0.06em' }}>Parede</p>
+                          <div style={{ display: 'flex', gap: 5, flexWrap: 'wrap', marginBottom: 8 }}>
+                            {PAREDE_CORES.map(c => (
+                              <button
+                                key={c.id}
+                                title={c.label}
+                                onClick={() => setParedeColor(paredeColor === c.id ? null : c.id)}
+                                style={{
+                                  width: 30, height: 30, borderRadius: 7, cursor: 'pointer', border: 'none',
+                                  background: c.color, transition: 'all 0.15s',
+                                  outline: paredeColor === c.id ? '2px solid #a78bfa' : '1.5px solid rgba(255,255,255,0.15)',
+                                  outlineOffset: 2,
+                                  boxShadow: paredeColor === c.id ? '0 0 0 4px rgba(139,92,246,0.25)' : 'none',
+                                }}
+                              />
+                            ))}
+                          </div>
+                          {paredeColor && (
+                            <div style={{ display: 'flex', gap: 5 }}>
+                              {(['Fosco', 'Acetinado'] as const).map(a => (
+                                <button key={a} onClick={() => setParedeAcab(a)} style={chip(paredeAcab === a)}>{a}</button>
                               ))}
                             </div>
+                          )}
+                        </div>
+
+                        {/* 5.4 — Decoração */}
+                        <div>
+                          <p style={{ fontSize: 9, color: 'rgba(255,255,255,0.35)', margin: '0 0 3px', textTransform: 'uppercase', letterSpacing: '0.06em' }}>Decoração</p>
+                          <p style={{ fontSize: 8, color: 'rgba(255,255,255,0.2)', margin: '0 0 8px' }}>Conforme ambiente · múltipla seleção</p>
+                          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
+                            {(DECOR_POR_AMBIENTE[ambiente] ?? DECOR_POR_AMBIENTE['sala']!).map(item => {
+                              const active = selDecor.includes(item)
+                              return (
+                                <button
+                                  key={item}
+                                  onClick={() => setSelDecor(prev => active ? prev.filter(d => d !== item) : [...prev, item])}
+                                  style={chip(active)}
+                                >{item}</button>
+                              )
+                            })}
                           </div>
-                        )}
+                        </div>
+
+                        {/* Hint */}
+                        <div style={{
+                          padding: '8px 10px', borderRadius: 7, lineHeight: 1.5,
+                          background: 'rgba(139,92,246,0.07)', border: '0.5px solid rgba(139,92,246,0.2)',
+                          fontSize: 9, color: 'rgba(255,255,255,0.35)',
+                        }}>
+                          {hasComponentes
+                            ? `${compCount} componente${compCount > 1 ? 's' : ''} selecionado${compCount > 1 ? 's' : ''} — gere o render primeiro, depois clique em "Aplicar Componentes" no topo.`
+                            : 'Selecione componentes acima. Serão aplicados em etapa 2, após a geração fotorrealista.'}
+                        </div>
                       </div>
                     )}
 
