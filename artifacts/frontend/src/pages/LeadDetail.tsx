@@ -34,6 +34,7 @@ import {
   getListAgendasQueryKey,
   useCreateConversation,
   useCreateDeal,
+  useListDeals,
   useCreateMessage,
   getListDealsQueryKey,
   useListPropostas,
@@ -468,6 +469,11 @@ export default function LeadDetail() {
   const { mutateAsync: createDeal } = useCreateDeal();
   const { mutateAsync: createMessage } = useCreateMessage();
 
+  const { data: leadDeals } = useListDeals(tenantId, { leadId: id }, {
+    query: { enabled: !!tenantId && !!id },
+  });
+  const leadJaNoPipeline = (leadDeals?.length ?? 0) > 0;
+
   async function fetchAiStarter() {
     if (!id) return;
     setGerandoSugestao(true);
@@ -502,15 +508,7 @@ export default function LeadDetail() {
       const conv = await createConversation({
         data: { tenantId: lead.tenantId, leadId: id, channel: iniciarCanal },
       });
-      await Promise.all([
-        createDeal({
-          data: {
-            tenantId: lead.tenantId,
-            titulo: lead.nome,
-            leadId: id,
-            etapa: iniciarEtapa as "em_aquecimento" | "novo" | "qualificado" | "proposta" | "negociacao",
-          },
-        }),
+      const tasks: Promise<unknown>[] = [
         createMessage({
           data: {
             tenantId: lead.tenantId,
@@ -522,7 +520,20 @@ export default function LeadDetail() {
             enviadoPor: "humano",
           },
         }),
-      ]);
+      ];
+      if (!leadJaNoPipeline) {
+        tasks.push(
+          createDeal({
+            data: {
+              tenantId: lead.tenantId,
+              titulo: lead.nome,
+              leadId: id,
+              etapa: iniciarEtapa as "em_aquecimento" | "novo" | "qualificado" | "proposta" | "negociacao",
+            },
+          }),
+        );
+      }
+      await Promise.all(tasks);
       void queryClient.invalidateQueries({ queryKey: getListTenantConversationsQueryKey(lead.tenantId) });
       void queryClient.invalidateQueries({ queryKey: getListDealsQueryKey(lead.tenantId) });
       setIniciarDialogOpen(false);
@@ -3550,25 +3561,32 @@ export default function LeadDetail() {
               )}
             </div>
 
-            {/* Pipeline stage */}
-            <div className="space-y-1.5">
-              <label className="text-sm font-medium">Etapa no pipeline</label>
-              <Select value={iniciarEtapa} onValueChange={setIniciarEtapa}>
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="em_aquecimento">Em aquecimento</SelectItem>
-                  <SelectItem value="novo">Novo</SelectItem>
-                  <SelectItem value="qualificado">Qualificado</SelectItem>
-                  <SelectItem value="proposta">Orçamento</SelectItem>
-                  <SelectItem value="negociacao">Negociação</SelectItem>
-                </SelectContent>
-              </Select>
-              <p className="text-xs text-muted-foreground">
-                Um card será criado automaticamente no pipeline com esta etapa.
-              </p>
-            </div>
+            {/* Pipeline stage — só mostra se lead ainda não está no pipeline */}
+            {leadJaNoPipeline ? (
+              <div className="flex items-center gap-2 rounded-md border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-700">
+                <CheckCircle2 className="h-4 w-4 shrink-0" />
+                Lead já está no pipeline — nenhum card novo será criado.
+              </div>
+            ) : (
+              <div className="space-y-1.5">
+                <label className="text-sm font-medium">Etapa no pipeline</label>
+                <Select value={iniciarEtapa} onValueChange={setIniciarEtapa}>
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="em_aquecimento">Em aquecimento</SelectItem>
+                    <SelectItem value="novo">Novo</SelectItem>
+                    <SelectItem value="qualificado">Qualificado</SelectItem>
+                    <SelectItem value="proposta">Orçamento</SelectItem>
+                    <SelectItem value="negociacao">Negociação</SelectItem>
+                  </SelectContent>
+                </Select>
+                <p className="text-xs text-muted-foreground">
+                  Um card será criado automaticamente no pipeline com esta etapa.
+                </p>
+              </div>
+            )}
           </div>
 
           <DialogFooter>
