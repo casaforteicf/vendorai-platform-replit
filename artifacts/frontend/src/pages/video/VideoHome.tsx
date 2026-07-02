@@ -41,8 +41,8 @@ const CARDS: VideoCard[] = [
     gradient: "from-emerald-600/30 via-teal-500/20 to-emerald-900/10",
     iconBg: "bg-emerald-500/20 text-emerald-300",
     route: "/content-studio/video/edicao",
-    badge: "Em breve",
-    badgeColor: "bg-emerald-500/10 text-emerald-400 border-emerald-500/20",
+    badge: "Disponível",
+    badgeColor: "bg-emerald-500/20 text-emerald-300 border-emerald-500/30",
   },
   {
     title: "Clipes automáticos",
@@ -51,8 +51,8 @@ const CARDS: VideoCard[] = [
     gradient: "from-rose-600/30 via-pink-500/20 to-rose-900/10",
     iconBg: "bg-rose-500/20 text-rose-300",
     route: "/content-studio/video/clipes",
-    badge: "Em breve",
-    badgeColor: "bg-rose-500/10 text-rose-400 border-rose-500/20",
+    badge: "Disponível",
+    badgeColor: "bg-rose-500/20 text-rose-300 border-rose-500/30",
   },
   {
     title: "Vídeo em lote",
@@ -61,8 +61,8 @@ const CARDS: VideoCard[] = [
     gradient: "from-blue-600/30 via-indigo-500/20 to-blue-900/10",
     iconBg: "bg-blue-500/20 text-blue-300",
     route: "/content-studio/video/lote",
-    badge: "Em breve",
-    badgeColor: "bg-blue-500/10 text-blue-400 border-blue-500/20",
+    badge: "Disponível",
+    badgeColor: "bg-blue-500/20 text-blue-300 border-blue-500/30",
   },
 ];
 

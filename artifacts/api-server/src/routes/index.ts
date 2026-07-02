@@ -64,6 +64,7 @@ import prospectorRouter from "./prospector";
 import partnerProspectorRouter from "./partner-prospector";
 import prospectorFlowsRouter from "./prospector-flows";
 import contentStudioRouter from "./content_studio";
+import videoProcessingRouter from "./video_processing";
 import beautyRouter from "./beauty";
 import clinicRouter from "./clinic";
 import scoutRouter from "./scout";
@@ -202,6 +203,7 @@ router.use(onboardingRouter);
 // Content Generation Hub
 router.use(contentRouter);
 router.use(contentStudioRouter);
+router.use(videoProcessingRouter);
 
 // Partner Hub (revendedor dashboard — legacy)
 router.use(partnerRouter);
