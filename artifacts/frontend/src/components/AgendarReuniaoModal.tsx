@@ -102,7 +102,8 @@ export function AgendarReuniaoModal({
     })
       .then((r) => r.json())
       .then((data: { slots: Slot[] }) => {
-        setSlots(data.slots ?? []);
+        const now = new Date();
+        setSlots((data.slots ?? []).filter((s) => new Date(s.start) > now));
       })
       .catch(() => {
         setSlots([]);
@@ -126,6 +127,10 @@ export function AgendarReuniaoModal({
   function handleConfirm() {
     if (!selectedSlot) {
       toast({ title: "Selecione um horário", variant: "destructive" });
+      return;
+    }
+    if (new Date(selectedSlot.start) <= new Date()) {
+      toast({ title: "Não é possível agendar para uma data/horário no passado.", variant: "destructive" });
       return;
     }
 
