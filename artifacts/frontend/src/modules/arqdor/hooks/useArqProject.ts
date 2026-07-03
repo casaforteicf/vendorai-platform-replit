@@ -1,0 +1,241 @@
+// ─── useArqProject ────────────────────────────────────────────────────────────
+// Loads/saves the active workspace project to the API.
+// Exposes: project, objects, materials + mutators that auto-sync to the server.
+
+import { useState, useEffect, useCallback, useRef } from 'react'
+import type { ProjectContext, ProjectObject, ProjectMaterial } from '../engines/aie/aie-types'
+
+const BASE = '/api'
+
+function getToken(): string | null {
+  return localStorage.getItem('vendorai_token')
+}
+
+function authHeaders() {
+  const tok = getToken()
+  return {
+    'Content-Type': 'application/json',
+    ...(tok ? { Authorization: `Bearer ${tok}` } : {}),
+  }
+}
+
+export interface ArqProjectMeta {
+  id:          string
+  titulo:      string
+  clienteNome: string | null
+  status:      string | null
+  tipoObra:    string | null
+  areaM2:      string | null
+  createdAt:   string
+  updatedAt:   string
+}
+
+export interface ArqProjectState {
+  loading:        boolean
+  saving:         boolean
+  projectId:      string | null
+  projectMeta:    ArqProjectMeta | null
+  objects:        ProjectObject[]
+  materials:      ProjectMaterial[]
+
+  // Project list
+  projects:       ArqProjectMeta[]
+  projectsLoading: boolean
+
+  // Mutators
+  createProject:  (titulo: string, tipoObra?: string) => Promise<string>
+  selectProject:  (id: string) => Promise<void>
+  saveObjects:    (objects: ProjectObject[]) => Promise<void>
+  saveMaterials:  (materials: ProjectMaterial[]) => Promise<void>
+  saveAieSnapshot:(ctx: ProjectContext, result: any) => Promise<void>
+  getProjectContext: () => ProjectContext | null
+}
+
+export function useArqProject(): ArqProjectState {
+  const [loading,         setLoading]        = useState(false)
+  const [saving,          setSaving]         = useState(false)
+  const [projectId,       setProjectId]      = useState<string | null>(null)
+  const [projectMeta,     setProjectMeta]    = useState<ArqProjectMeta | null>(null)
+  const [objects,         setObjects]        = useState<ProjectObject[]>([])
+  const [materials,       setMaterials]      = useState<ProjectMaterial[]>([])
+  const [projects,        setProjects]       = useState<ArqProjectMeta[]>([])
+  const [projectsLoading, setProjectsLoading] = useState(false)
+
+  const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  async function fetchProjects() {
+    setProjectsLoading(true)
+    try {
+      const res = await fetch(`${BASE}/arq/projects`, { headers: authHeaders() })
+      if (res.ok) {
+        const data: ArqProjectMeta[] = await res.json()
+        setProjects(data)
+        return data
+      }
+    } catch { /* ignore */ }
+    finally { setProjectsLoading(false) }
+    return []
+  }
+
+  async function loadProject(id: string) {
+    setLoading(true)
+    try {
+      const res = await fetch(`${BASE}/arq/projects/${id}`, { headers: authHeaders() })
+      if (!res.ok) return
+      const data = await res.json()
+      setProjectMeta(data.projeto as ArqProjectMeta)
+      setProjectId(id)
+      setObjects(
+        (data.objects ?? []).map((o: any): ProjectObject => ({
+          id:             o.objectClientId,
+          name:           o.name,
+          category:       o.category,
+          material:       o.material ?? undefined,
+          finish:         o.finish ?? undefined,
+          color:          o.color ?? undefined,
+          dimensions:     o.dimensions ?? undefined,
+          position:       o.position ?? undefined,
+          visualWeight:   o.visualWeight ?? undefined,
+          designIntent:   o.designIntent ?? undefined,
+          componentId:    o.componentId ?? undefined,
+          manufacturerId: o.manufacturerId ?? undefined,
+          locked:         o.locked ?? undefined,
+        }))
+      )
+      setMaterials(
+        (data.materials ?? []).map((m: any): ProjectMaterial => ({
+          id:            m.materialClientId,
+          name:          m.name,
+          category:      m.category,
+          manufacturer:  m.manufacturer ?? '',
+          finish:        m.finish ?? '',
+          gloss:         m.gloss ?? 0,
+          palette:       m.palette ?? [],
+          usedByObjects: m.usedByObjects ?? [],
+        }))
+      )
+      localStorage.setItem('arq_last_project_id', id)
+    } catch { /* ignore */ }
+    finally { setLoading(false) }
+  }
+
+  useEffect(() => {
+    const stored = localStorage.getItem('arq_last_project_id')
+    fetchProjects().then(list => {
+      if (list.length === 0) return
+      const target = stored && list.find(p => p.id === stored) ? stored : list[0].id
+      loadProject(target)
+    })
+  }, [])
+
+  async function createProject(titulo: string, tipoObra?: string): Promise<string> {
+    const res = await fetch(`${BASE}/arq/projects`, {
+      method: 'POST',
+      headers: authHeaders(),
+      body: JSON.stringify({ titulo, tipoObra }),
+    })
+    if (!res.ok) throw new Error('Erro ao criar projeto')
+    const projeto = await res.json()
+    const newProj: ArqProjectMeta = projeto
+    setProjects(prev => [newProj, ...prev])
+    await loadProject(newProj.id)
+    return newProj.id
+  }
+
+  async function selectProject(id: string) {
+    await loadProject(id)
+  }
+
+  async function saveObjects(objs: ProjectObject[]) {
+    if (!projectId) return
+    setSaving(true)
+    try {
+      await fetch(`${BASE}/arq/projects/${projectId}/objects`, {
+        method: 'PUT',
+        headers: authHeaders(),
+        body: JSON.stringify(objs.map(o => ({
+          objectClientId:  o.id,
+          name:            o.name,
+          category:        o.category,
+          material:        o.material,
+          finish:          o.finish,
+          color:           o.color,
+          dimensions:      o.dimensions,
+          position:        o.position,
+          visualWeight:    o.visualWeight,
+          designIntent:    o.designIntent,
+          componentId:     o.componentId,
+          manufacturerId:  o.manufacturerId,
+          locked:          o.locked,
+        }))),
+      })
+      setObjects(objs)
+    } catch { /* ignore */ }
+    finally { setSaving(false) }
+  }
+
+  async function saveMaterials(mats: ProjectMaterial[]) {
+    if (!projectId) return
+    setSaving(true)
+    try {
+      await fetch(`${BASE}/arq/projects/${projectId}/materials`, {
+        method: 'PUT',
+        headers: authHeaders(),
+        body: JSON.stringify(mats.map(m => ({
+          materialClientId: m.id,
+          name:             m.name,
+          category:         m.category,
+          manufacturer:     m.manufacturer,
+          finish:           m.finish,
+          gloss:            m.gloss,
+          palette:          m.palette,
+          usedByObjects:    m.usedByObjects,
+        }))),
+      })
+      setMaterials(mats)
+    } catch { /* ignore */ }
+    finally { setSaving(false) }
+  }
+
+  async function saveAieSnapshot(ctx: ProjectContext, result: any) {
+    if (!projectId) return
+    try {
+      await fetch(`${BASE}/arq/projects/${projectId}/aie-snapshots`, {
+        method: 'POST',
+        headers: authHeaders(),
+        body: JSON.stringify({
+          scores: result.scores,
+          fullResult: result,
+          projectSnapshot: ctx,
+        }),
+      })
+    } catch { /* ignore */ }
+  }
+
+  function getProjectContext(): ProjectContext | null {
+    if (!projectMeta) return null
+    return {
+      id:       projectMeta.id,
+      name:     projectMeta.titulo,
+      objects,
+      materials,
+    }
+  }
+
+  return {
+    loading,
+    saving,
+    projectId,
+    projectMeta,
+    objects,
+    materials,
+    projects,
+    projectsLoading,
+    createProject,
+    selectProject,
+    saveObjects,
+    saveMaterials,
+    saveAieSnapshot,
+    getProjectContext,
+  }
+}

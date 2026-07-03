@@ -1,14 +1,16 @@
-import { useState, useMemo, useCallback } from 'react'
+import { useState, useMemo, useCallback, useEffect } from 'react'
 import { runAIE } from '../aie-engine'
 import { MOCK_PROJECT_CONTEXT } from '../aie-mock-context'
 import { generateDNA } from '../engines/dna-engine'
-import type { AIEResult, ProjectScores, Recommendation, ValidationResult, RecommendationSeverity } from '../aie-types'
+import type { AIEResult, ProjectScores, Recommendation, ValidationResult, RecommendationSeverity, ProjectContext, LearningProfile } from '../aie-types'
 import {
   buildPrompt,
   TRANSLATORS,
   DETAIL_LEVELS,
 } from '../../prompt-playwright/prompt-playwright'
 import type { TranslatorId, DetailLevel } from '../../prompt-playwright/prompt-playwright'
+import { buildLearningProfile, getMockLearningProfile } from '../engines/learning-engine'
+import { useArqProjectContext } from '../../../workspace/ArqWorkspace'
 
 const T = {
   bg:'#0d0b1e', surface:'rgba(255,255,255,0.04)', border:'rgba(255,255,255,0.08)',
@@ -243,12 +245,11 @@ function OverviewTab({ result, savedDNA, generatedDNA, onGenerate, onCopyDNA, on
           </div>
         </div>
       </div>
-
       {/* Quick stats */}
       <div style={{ marginTop:12, display:'grid', gridTemplateColumns:'repeat(4,1fr)', gap:8 }}>
         {[
-          ['Objetos', MOCK_PROJECT_CONTEXT.objects.length, '🏗️'],
-          ['Materiais', MOCK_PROJECT_CONTEXT.materials.length, '🪵'],
+          ['Objetos', result.visualWeight.weights.length, '🏗️'],
+          ['Materiais', result.material.uniqueMaterials, '🪵'],
           ['Recomendações', result.recommendations.length, '💬'],
           ['Alertas', result.validation.fail + result.validation.warn, '⚠️'],
         ].map(([label, value, icon]) => (
@@ -428,8 +429,43 @@ function MaterialsTab({ result }: { result: AIEResult }) {
   )
 }
 
-function LearningTab({ result }: { result: AIEResult }) {
-  const lp = result.learning
+// ─── Learning tab with real DB data ──────────────────────────────────────────
+
+function LearningTabReal() {
+  const [learningProfile, setLearningProfile] = useState<LearningProfile | null>(null)
+  const [loading, setLoading] = useState(true)
+  const arqCtx = useArqProjectContext()
+  const projectId = arqCtx?.projectId
+
+  useEffect(() => {
+    async function fetchLearning() {
+      setLoading(true)
+      try {
+        const token = localStorage.getItem('vendorai_token')
+        const res = await fetch('/api/arq/learning', {
+          headers: {
+            'Content-Type': 'application/json',
+            ...(token ? { Authorization: `Bearer ${token}` } : {}),
+          },
+        })
+        if (res.ok) {
+          const data = await res.json()
+          const contexts: ProjectContext[] = (data.snapshots ?? [])
+            .filter((s: any) => s.projectSnapshot)
+            .map((s: any) => s.projectSnapshot as ProjectContext)
+          setLearningProfile(buildLearningProfile(contexts))
+          return
+        }
+      } catch { /* ignore */ }
+      setLearningProfile(getMockLearningProfile())
+      setLoading(false)
+    }
+    fetchLearning().finally(() => setLoading(false))
+  }, [projectId])
+
+  const lp = learningProfile ?? getMockLearningProfile()
+  const isReal = !!learningProfile
+
   return (
     <div style={{ display:'flex', flexDirection:'column' as const, gap:10 }}>
       <div style={{ padding:'12px', borderRadius:8, background:T.surface, border:`1px solid ${T.border}` }}>
@@ -470,8 +506,9 @@ function LearningTab({ result }: { result: AIEResult }) {
       </div>
 
       <p style={{ fontSize:9, color:T.dim, fontStyle:'italic' as const, margin:'4px 0 0' }}>
-        🧠 Dados de aprendizado acumulados de {lp.projectCount} projeto{lp.projectCount!==1?'s':''}.
-        Sem integração com backend ainda — dados mocados.
+        {loading ? '🧠 Carregando histórico…' : isReal
+          ? `🧠 Dados de aprendizado acumulados de ${lp.projectCount} projeto${lp.projectCount!==1?'s':''} salvos no banco.`
+          : '🧠 Nenhum snapshot AIE salvo ainda — re-analise o projeto para gerar histórico real.'}
       </p>
     </div>
   )
@@ -644,11 +681,23 @@ export function AIEDashboard() {
   const [generatedDNA,    setGeneratedDNA]    = useState<string | null>(null)
   const [copied,          setCopied]          = useState(false)
   const [showPromptPanel, setShowPromptPanel] = useState(false)
+  const arqCtx = useArqProjectContext()
 
-  const result: AIEResult = useMemo(() => runAIE(MOCK_PROJECT_CONTEXT), [])
+  const activeContext: ProjectContext = useMemo(() => {
+    const ctx = arqCtx?.getProjectContext()
+    if (ctx && (ctx.objects.length > 0 || ctx.materials.length > 0)) return ctx
+    return MOCK_PROJECT_CONTEXT
+  }, [arqCtx, arqCtx?.objects, arqCtx?.materials, arqCtx?.projectMeta])
 
-  function handleRerun() {
+  const result: AIEResult = useMemo(() => runAIE(activeContext), [activeContext])
+
+  const isRealProject = !!(arqCtx?.projectId && (arqCtx.objects.length > 0 || arqCtx.materials.length > 0))
+
+  async function handleRerun() {
     setLastRun(new Date().toLocaleTimeString('pt-BR'))
+    if (arqCtx?.projectId && arqCtx?.saveAieSnapshot) {
+      await arqCtx.saveAieSnapshot(activeContext, result)
+    }
   }
 
   const handleGenerate = useCallback(() => {
@@ -679,7 +728,10 @@ export function AIEDashboard() {
         <span style={{ fontSize:22 }}>🧠</span>
         <div style={{ flex:1 }}>
           <p style={{ margin:'0 0 1px', fontSize:13, fontWeight:800, color:'#fff' }}>ARQ Intelligence Engine</p>
-          <p style={{ margin:0, fontSize:9, color:T.dim }}>Projeto: {MOCK_PROJECT_CONTEXT.name} · Analisado às {lastRun}</p>
+          <p style={{ margin:0, fontSize:9, color:T.dim }}>
+            Projeto: {activeContext.name} · Analisado às {lastRun}
+            {isRealProject && <span style={{ color:'#4ade80', marginLeft:6 }}>● dados reais</span>}
+          </p>
         </div>
         <div style={{ display:'flex', gap:6, alignItems:'center' }}>
           <span style={{ fontSize:9, padding:'3px 8px', borderRadius:8, background:'rgba(251,146,60,0.1)', color:'#fb923c', fontWeight:700 }}>SEM IA EXTERNA</span>
@@ -696,7 +748,7 @@ export function AIEDashboard() {
             ⚡ Gerar Prompt
           </button>
           <button onClick={handleRerun} style={{ padding:'5px 12px', borderRadius:6, border:'none', background:T.purple, color:'#fff', cursor:'pointer', fontSize:11, fontWeight:700 }}>
-            ⟳ Re-analisar
+            ⟳ Re-analisar{isRealProject ? ' + Salvar' : ''}
           </button>
         </div>
       </div>
@@ -730,7 +782,7 @@ export function AIEDashboard() {
         {activeTab === 'validation'      && <ValidationTab result={result}/>}
         {activeTab === 'composition'     && <CompositionTab result={result}/>}
         {activeTab === 'materials'       && <MaterialsTab result={result}/>}
-        {activeTab === 'learning'        && <LearningTab result={result}/>}
+        {activeTab === 'learning'        && <LearningTabReal/>}
       </div>
 
       {/* Inline prompt panel overlay */}

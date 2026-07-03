@@ -130,3 +130,6 @@ export * from "./sdr_vertical_profiles";
 export * from "./prospecting_objections";
 export * from "./lead_events";
 export * from "./cnae_vertical_map";
+export * from "./arq_objects";
+export * from "./arq_materials";
+export * from "./arq_aie_snapshots";

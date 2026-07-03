@@ -1,5 +1,5 @@
 import { Router, type IRouter } from "express";
-import { and, eq, ilike, sql, desc, sum, ne, gte, lte } from "drizzle-orm";
+import { and, eq, ilike, sql, desc, sum, ne, gte, lte, inArray } from "drizzle-orm";
 import multer from "multer";
 import {
   db,
@@ -32,6 +32,9 @@ import {
   insertRenderSurfaceSchema,
   updateRenderSurfaceSchema,
   insertRenderSurfaceMaterialSchema,
+  arqObjectsTable,
+  arqMaterialsTable,
+  arqAieSnapshotsTable,
 } from "@workspace/db";
 import { z } from "zod/v4";
 import { anthropic } from "@workspace/integrations-anthropic-ai";
@@ -2019,6 +2022,299 @@ router.post("/arch/surfaces/:surfaceId/material", async (req, res) => {
     .returning();
 
   return res.status(201).json(applied);
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// ARQ PROJECTS — workspace persistence (objects, materials, AIE snapshots)
+// ─────────────────────────────────────────────────────────────────────────────
+
+// GET /arq/projects — list workspace projects for tenant
+router.get("/arq/projects", authenticate, async (req, res) => {
+  const tid = tenantId(req);
+  const projetos = await db
+    .select({
+      id:          archProjetosTable.id,
+      titulo:      archProjetosTable.titulo,
+      clienteNome: archProjetosTable.clienteNome,
+      status:      archProjetosTable.status,
+      tipoObra:    archProjetosTable.tipoObra,
+      areaM2:      archProjetosTable.areaM2,
+      createdAt:   archProjetosTable.createdAt,
+      updatedAt:   archProjetosTable.updatedAt,
+    })
+    .from(archProjetosTable)
+    .where(eq(archProjetosTable.tenantId, tid))
+    .orderBy(desc(archProjetosTable.updatedAt));
+  return res.json(projetos);
+});
+
+// GET /arq/projects/:id — get project with objects + materials
+router.get("/arq/projects/:id", authenticate, async (req, res) => {
+  const tid = tenantId(req);
+  const id  = String(req.params.id);
+
+  const [projeto] = await db
+    .select()
+    .from(archProjetosTable)
+    .where(and(eq(archProjetosTable.id, id), eq(archProjetosTable.tenantId, tid)))
+    .limit(1);
+  if (!projeto) return res.status(404).json({ error: "Projeto não encontrado." });
+
+  const [objects, materials] = await Promise.all([
+    db.select().from(arqObjectsTable).where(eq(arqObjectsTable.projetoId, id)),
+    db.select().from(arqMaterialsTable).where(eq(arqMaterialsTable.projetoId, id)),
+  ]);
+
+  return res.json({ projeto, objects, materials });
+});
+
+// POST /arq/projects — create project
+router.post("/arq/projects", authenticate, async (req, res) => {
+  const tid = tenantId(req);
+  const parsed = insertArchProjetoSchema.safeParse({
+    ...req.body,
+    tenantId: tid,
+  });
+  if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
+
+  const [projeto] = await db
+    .insert(archProjetosTable)
+    .values({ ...parsed.data, portalToken: crypto.randomUUID(), portalAtivo: false })
+    .returning();
+  return res.status(201).json(projeto);
+});
+
+// PATCH /arq/projects/:id — update project metadata
+router.patch("/arq/projects/:id", authenticate, async (req, res) => {
+  const tid = tenantId(req);
+  const id  = String(req.params.id);
+
+  const [existing] = await db
+    .select({ id: archProjetosTable.id })
+    .from(archProjetosTable)
+    .where(and(eq(archProjetosTable.id, id), eq(archProjetosTable.tenantId, tid)))
+    .limit(1);
+  if (!existing) return res.status(404).json({ error: "Projeto não encontrado." });
+
+  const parsed = updateArchProjetoSchema.safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
+
+  const [updated] = await db
+    .update(archProjetosTable)
+    .set({ ...parsed.data, updatedAt: new Date() })
+    .where(eq(archProjetosTable.id, id))
+    .returning();
+  return res.json(updated);
+});
+
+// DELETE /arq/projects/:id — delete project (cascades to objects/materials/aie_snapshots)
+router.delete("/arq/projects/:id", authenticate, async (req, res) => {
+  const tid = tenantId(req);
+  const id  = String(req.params.id);
+
+  const [existing] = await db
+    .select({ id: archProjetosTable.id })
+    .from(archProjetosTable)
+    .where(and(eq(archProjetosTable.id, id), eq(archProjetosTable.tenantId, tid)))
+    .limit(1);
+  if (!existing) return res.status(404).json({ error: "Projeto não encontrado." });
+
+  await db.delete(archProjetosTable).where(eq(archProjetosTable.id, id));
+  return res.status(204).end();
+});
+
+const arqObjectRowSchema = z.object({
+  objectClientId:  z.string(),
+  name:            z.string(),
+  category:        z.string(),
+  material:        z.string().optional(),
+  finish:          z.string().optional(),
+  color:           z.string().optional(),
+  dimensions:      z.object({ width: z.number(), height: z.number(), depth: z.number(), unit: z.string() }).optional(),
+  position:        z.object({ x: z.number(), y: z.number(), z: z.number() }).optional(),
+  visualWeight:    z.number().optional(),
+  designIntent:    z.array(z.string()).optional(),
+  componentId:     z.string().optional(),
+  manufacturerId:  z.string().optional(),
+  locked:          z.boolean().optional(),
+});
+
+// PUT /arq/projects/:id/objects — replace all objects for project
+router.put("/arq/projects/:id/objects", authenticate, async (req, res) => {
+  const tid = tenantId(req);
+  const id  = String(req.params.id);
+
+  const [projeto] = await db
+    .select({ id: archProjetosTable.id })
+    .from(archProjetosTable)
+    .where(and(eq(archProjetosTable.id, id), eq(archProjetosTable.tenantId, tid)))
+    .limit(1);
+  if (!projeto) return res.status(404).json({ error: "Projeto não encontrado." });
+
+  const parsed = z.array(arqObjectRowSchema).safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
+
+  await db.delete(arqObjectsTable).where(eq(arqObjectsTable.projetoId, id));
+
+  if (parsed.data.length > 0) {
+    await db.insert(arqObjectsTable).values(
+      parsed.data.map(o => ({ ...o, projetoId: id }))
+    );
+  }
+
+  await db
+    .update(archProjetosTable)
+    .set({ updatedAt: new Date() })
+    .where(eq(archProjetosTable.id, id));
+
+  const objects = await db.select().from(arqObjectsTable).where(eq(arqObjectsTable.projetoId, id));
+  return res.json(objects);
+});
+
+const arqMaterialRowSchema = z.object({
+  materialClientId: z.string(),
+  name:             z.string(),
+  category:         z.string(),
+  manufacturer:     z.string().default(""),
+  finish:           z.string().default(""),
+  gloss:            z.number().optional(),
+  palette:          z.array(z.string()).optional(),
+  usedByObjects:    z.array(z.string()).optional(),
+});
+
+// PUT /arq/projects/:id/materials — replace all materials for project
+router.put("/arq/projects/:id/materials", authenticate, async (req, res) => {
+  const tid = tenantId(req);
+  const id  = String(req.params.id);
+
+  const [projeto] = await db
+    .select({ id: archProjetosTable.id })
+    .from(archProjetosTable)
+    .where(and(eq(archProjetosTable.id, id), eq(archProjetosTable.tenantId, tid)))
+    .limit(1);
+  if (!projeto) return res.status(404).json({ error: "Projeto não encontrado." });
+
+  const parsed = z.array(arqMaterialRowSchema).safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
+
+  await db.delete(arqMaterialsTable).where(eq(arqMaterialsTable.projetoId, id));
+
+  if (parsed.data.length > 0) {
+    await db.insert(arqMaterialsTable).values(
+      parsed.data.map(m => ({ ...m, projetoId: id }))
+    );
+  }
+
+  await db
+    .update(archProjetosTable)
+    .set({ updatedAt: new Date() })
+    .where(eq(archProjetosTable.id, id));
+
+  const materials = await db.select().from(arqMaterialsTable).where(eq(arqMaterialsTable.projetoId, id));
+  return res.json(materials);
+});
+
+const arqAieSnapshotBodySchema = z.object({
+  scores: z.object({
+    overall:         z.number(),
+    renderReadiness: z.number(),
+    material:        z.number(),
+    consistency:     z.number(),
+    composition:     z.number(),
+    lighting:        z.number(),
+    photography:     z.number(),
+    geometry:        z.number(),
+    promptQuality:   z.number(),
+  }),
+  fullResult:       z.any(),
+  projectSnapshot:  z.any().optional(),
+});
+
+// POST /arq/projects/:id/aie-snapshots — save AIE result snapshot
+router.post("/arq/projects/:id/aie-snapshots", authenticate, async (req, res) => {
+  const tid = tenantId(req);
+  const id  = String(req.params.id);
+
+  const [projeto] = await db
+    .select({ id: archProjetosTable.id })
+    .from(archProjetosTable)
+    .where(and(eq(archProjetosTable.id, id), eq(archProjetosTable.tenantId, tid)))
+    .limit(1);
+  if (!projeto) return res.status(404).json({ error: "Projeto não encontrado." });
+
+  const parsed = arqAieSnapshotBodySchema.safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
+
+  const { scores, fullResult, projectSnapshot } = parsed.data;
+
+  const [snapshot] = await db
+    .insert(arqAieSnapshotsTable)
+    .values({
+      projetoId:            id,
+      overallScore:         scores.overall,
+      renderReadinessScore: scores.renderReadiness,
+      materialScore:        scores.material,
+      consistencyScore:     scores.consistency,
+      compositionScore:     scores.composition,
+      lightingScore:        scores.lighting,
+      photographyScore:     scores.photography,
+      geometryScore:        scores.geometry,
+      promptQualityScore:   scores.promptQuality,
+      fullResult,
+      projectSnapshot: projectSnapshot ?? null,
+    })
+    .returning();
+
+  return res.status(201).json(snapshot);
+});
+
+// GET /arq/projects/:id/aie-snapshots — get AIE snapshot history for learning engine
+router.get("/arq/projects/:id/aie-snapshots", authenticate, async (req, res) => {
+  const tid = tenantId(req);
+  const id  = String(req.params.id);
+
+  const [projeto] = await db
+    .select({ id: archProjetosTable.id })
+    .from(archProjetosTable)
+    .where(and(eq(archProjetosTable.id, id), eq(archProjetosTable.tenantId, tid)))
+    .limit(1);
+  if (!projeto) return res.status(404).json({ error: "Projeto não encontrado." });
+
+  const snapshots = await db
+    .select()
+    .from(arqAieSnapshotsTable)
+    .where(eq(arqAieSnapshotsTable.projetoId, id))
+    .orderBy(desc(arqAieSnapshotsTable.createdAt));
+
+  return res.json(snapshots);
+});
+
+// GET /arq/learning — build learning profile from all tenant project snapshots
+router.get("/arq/learning", authenticate, async (req, res) => {
+  const tid = tenantId(req);
+
+  const projetos = await db
+    .select({ id: archProjetosTable.id })
+    .from(archProjetosTable)
+    .where(eq(archProjetosTable.tenantId, tid));
+
+  if (projetos.length === 0) return res.json({ snapshots: [], contexts: [] });
+
+  const projectIds = projetos.map(p => p.id);
+
+  const snapshots = await db
+    .select({
+      projetoId:      arqAieSnapshotsTable.projetoId,
+      projectSnapshot: arqAieSnapshotsTable.projectSnapshot,
+      overallScore:   arqAieSnapshotsTable.overallScore,
+      createdAt:      arqAieSnapshotsTable.createdAt,
+    })
+    .from(arqAieSnapshotsTable)
+    .where(inArray(arqAieSnapshotsTable.projetoId, projectIds))
+    .orderBy(desc(arqAieSnapshotsTable.createdAt))
+    .limit(50);
+
+  return res.json({ snapshots });
 });
 
 export { archPublicRouter };
