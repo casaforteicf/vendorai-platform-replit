@@ -2435,5 +2435,90 @@ router.get("/arq/learning", authenticate, async (req, res) => {
   return res.json({ snapshots });
 });
 
+// ─────────────────────────────────────────────────────────────────────────────
+// GET /arch/prompt-variations — list all for tenant
+// ─────────────────────────────────────────────────────────────────────────────
+router.get("/arch/prompt-variations", authenticate, async (req, res) => {
+  const tid = tenantId(req);
+  const rows = await db
+    .select()
+    .from(archPromptVariationsTable)
+    .where(eq(archPromptVariationsTable.tenantId, tid))
+    .orderBy(desc(archPromptVariationsTable.savedAt));
+  return res.json(rows);
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// POST /arch/prompt-variations — create
+// ─────────────────────────────────────────────────────────────────────────────
+router.post("/arch/prompt-variations", authenticate, async (req, res) => {
+  const tid = tenantId(req);
+  const parsed = insertArchPromptVariationSchema.safeParse({
+    ...req.body,
+    tenantId: tid,
+  });
+  if (!parsed.success) {
+    return res.status(422).json({ error: parsed.error.issues });
+  }
+  const [created] = await db
+    .insert(archPromptVariationsTable)
+    .values(parsed.data)
+    .returning();
+  return res.status(201).json(created);
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// PATCH /arch/prompt-variations/:id — update name / notes
+// ─────────────────────────────────────────────────────────────────────────────
+router.patch("/arch/prompt-variations/:id", authenticate, async (req, res) => {
+  const tid = tenantId(req);
+  const id = String(req.params.id);
+
+  const [existing] = await db
+    .select({ tenantId: archPromptVariationsTable.tenantId })
+    .from(archPromptVariationsTable)
+    .where(eq(archPromptVariationsTable.id, id))
+    .limit(1);
+
+  if (!existing) return res.status(404).json({ error: "Variação não encontrada." });
+  if (existing.tenantId !== tid) return res.status(403).json({ error: "Acesso negado." });
+
+  const parsed = updateArchPromptVariationSchema.safeParse(req.body);
+  if (!parsed.success) {
+    return res.status(422).json({ error: parsed.error.issues });
+  }
+
+  const [updated] = await db
+    .update(archPromptVariationsTable)
+    .set(parsed.data)
+    .where(eq(archPromptVariationsTable.id, id))
+    .returning();
+
+  return res.json(updated);
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// DELETE /arch/prompt-variations/:id — remove
+// ─────────────────────────────────────────────────────────────────────────────
+router.delete("/arch/prompt-variations/:id", authenticate, async (req, res) => {
+  const tid = tenantId(req);
+  const id = String(req.params.id);
+
+  const [existing] = await db
+    .select({ tenantId: archPromptVariationsTable.tenantId })
+    .from(archPromptVariationsTable)
+    .where(eq(archPromptVariationsTable.id, id))
+    .limit(1);
+
+  if (!existing) return res.status(404).json({ error: "Variação não encontrada." });
+  if (existing.tenantId !== tid) return res.status(403).json({ error: "Acesso negado." });
+
+  await db
+    .delete(archPromptVariationsTable)
+    .where(eq(archPromptVariationsTable.id, id));
+
+  return res.status(204).send();
+});
+
 export { archPublicRouter };
 export default router;

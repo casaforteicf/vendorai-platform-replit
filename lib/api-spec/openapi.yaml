@@ -9048,6 +9048,129 @@ paths:
             application/json:
               schema: { $ref: "#/components/schemas/ErrorResponse" }
 
+  /arch/prompt-variations:
+    get:
+      operationId: listArchPromptVariations
+      tags: [arch]
+      summary: List saved prompt variations for the current tenant
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: List of prompt variations
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/ArchPromptVariation"
+        "401":
+          description: Unauthenticated
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+    post:
+      operationId: createArchPromptVariation
+      tags: [arch]
+      summary: Save a new prompt variation
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateArchPromptVariationBody"
+      responses:
+        "201":
+          description: Created prompt variation
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ArchPromptVariation"
+        "401":
+          description: Unauthenticated
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+        "422":
+          description: Validation error
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+
+  /arch/prompt-variations/{id}:
+    patch:
+      operationId: updateArchPromptVariation
+      tags: [arch]
+      summary: Rename or update notes on a prompt variation
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateArchPromptVariationBody"
+      responses:
+        "200":
+          description: Updated prompt variation
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ArchPromptVariation"
+        "401":
+          description: Unauthenticated
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+        "403":
+          description: Access denied
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+        "404":
+          description: Variation not found
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+    delete:
+      operationId: deleteArchPromptVariation
+      tags: [arch]
+      summary: Delete a prompt variation
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+      responses:
+        "204":
+          description: Deleted
+        "401":
+          description: Unauthenticated
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+        "403":
+          description: Access denied
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+        "404":
+          description: Variation not found
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+
   # ─── Arqdor: Workspace de Arquitetura IA (P0-002) ────────────────────────────
 
   /arq/projects:
@@ -16844,6 +16967,66 @@ components:
         message:
           type: string
       required: [success, tenantId, anthropicKeyStatus]
+
+    ArchPromptVariation:
+      type: object
+      properties:
+        id:
+          type: string
+        tenantId:
+          type: string
+        name:
+          type: string
+        translator:
+          type: string
+        detail:
+          type: string
+        prompt:
+          type: string
+        negativePrompt:
+          type: string
+        estimatedTokens:
+          type: integer
+        notes:
+          type: string
+          nullable: true
+        savedAt:
+          type: string
+          format: date-time
+        createdAt:
+          type: string
+          format: date-time
+      required: [id, tenantId, name, translator, detail, prompt, negativePrompt, estimatedTokens, savedAt, createdAt]
+
+    CreateArchPromptVariationBody:
+      type: object
+      properties:
+        name:
+          type: string
+        translator:
+          type: string
+        detail:
+          type: string
+        prompt:
+          type: string
+        negativePrompt:
+          type: string
+        estimatedTokens:
+          type: integer
+        notes:
+          type: string
+        savedAt:
+          type: string
+          format: date-time
+      required: [name, translator, detail, prompt, negativePrompt, estimatedTokens]
+
+    UpdateArchPromptVariationBody:
+      type: object
+      properties:
+        name:
+          type: string
+        notes:
+          type: string
 
     AdminAIUsage:
       type: object

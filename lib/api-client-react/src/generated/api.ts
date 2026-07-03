@@ -34,6 +34,7 @@ import type {
   AnalyzeOnboardingDocumentsBody,
   AnthropicKeyConfig,
   ApplyTemplateResponse,
+  ArchPromptVariation,
   ArqProject,
   AuthResponse,
   BusinessProfile,
@@ -61,6 +62,7 @@ import type {
   CreateAgentConfigBody,
   CreateAgentTaskBody,
   CreateAieSnapshotBody,
+  CreateArchPromptVariationBody,
   CreateArqProjectBody,
   CreateBusinessProfileBody,
   CreateCampaignBody,
@@ -263,6 +265,7 @@ import type {
   UpdateAgentActionLogBody,
   UpdateAgentConfigBody,
   UpdateAgentTaskBody,
+  UpdateArchPromptVariationBody,
   UpdateArqProjectBody,
   UpdateBusinessProfileBody,
   UpdateCampaignBody,
@@ -26369,6 +26372,296 @@ export const useProspectorPatchApproval = <TError = ErrorType<ErrorResponse>,
         TContext
       > => {
       return useMutation(getProspectorPatchApprovalMutationOptions(options));
+    }
+
+export const getListArchPromptVariationsUrl = () => {
+
+
+
+
+  return `/api/arch/prompt-variations`
+}
+
+/**
+ * @summary List saved prompt variations for the current tenant
+ */
+export const listArchPromptVariations = async ( options?: RequestInit): Promise<ArchPromptVariation[]> => {
+
+  return customFetch<ArchPromptVariation[]>(getListArchPromptVariationsUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getListArchPromptVariationsQueryKey = () => {
+    return [
+    `/api/arch/prompt-variations`
+    ] as const;
+    }
+
+
+export const getListArchPromptVariationsQueryOptions = <TData = Awaited<ReturnType<typeof listArchPromptVariations>>, TError = ErrorType<ErrorResponse>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listArchPromptVariations>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getListArchPromptVariationsQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof listArchPromptVariations>>> = ({ signal }) => listArchPromptVariations({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof listArchPromptVariations>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type ListArchPromptVariationsQueryResult = NonNullable<Awaited<ReturnType<typeof listArchPromptVariations>>>
+export type ListArchPromptVariationsQueryError = ErrorType<ErrorResponse>
+
+
+/**
+ * @summary List saved prompt variations for the current tenant
+ */
+
+export function useListArchPromptVariations<TData = Awaited<ReturnType<typeof listArchPromptVariations>>, TError = ErrorType<ErrorResponse>>(
+  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listArchPromptVariations>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getListArchPromptVariationsQueryOptions(options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+
+
+
+
+
+
+export const getCreateArchPromptVariationUrl = () => {
+
+
+
+
+  return `/api/arch/prompt-variations`
+}
+
+/**
+ * @summary Save a new prompt variation
+ */
+export const createArchPromptVariation = async (createArchPromptVariationBody: CreateArchPromptVariationBody, options?: RequestInit): Promise<ArchPromptVariation> => {
+
+  return customFetch<ArchPromptVariation>(getCreateArchPromptVariationUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(
+      createArchPromptVariationBody,)
+  }
+);}
+
+
+
+
+export const getCreateArchPromptVariationMutationOptions = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createArchPromptVariation>>, TError,{data: BodyType<CreateArchPromptVariationBody>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof createArchPromptVariation>>, TError,{data: BodyType<CreateArchPromptVariationBody>}, TContext> => {
+
+const mutationKey = ['createArchPromptVariation'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof createArchPromptVariation>>, {data: BodyType<CreateArchPromptVariationBody>}> = (props) => {
+          const {data} = props ?? {};
+
+          return  createArchPromptVariation(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type CreateArchPromptVariationMutationResult = NonNullable<Awaited<ReturnType<typeof createArchPromptVariation>>>
+    export type CreateArchPromptVariationMutationBody = BodyType<CreateArchPromptVariationBody>
+    export type CreateArchPromptVariationMutationError = ErrorType<ErrorResponse>
+
+    /**
+ * @summary Save a new prompt variation
+ */
+export const useCreateArchPromptVariation = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createArchPromptVariation>>, TError,{data: BodyType<CreateArchPromptVariationBody>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof createArchPromptVariation>>,
+        TError,
+        {data: BodyType<CreateArchPromptVariationBody>},
+        TContext
+      > => {
+      return useMutation(getCreateArchPromptVariationMutationOptions(options));
+    }
+
+export const getUpdateArchPromptVariationUrl = (id: string,) => {
+
+
+
+
+  return `/api/arch/prompt-variations/${id}`
+}
+
+/**
+ * @summary Rename or update notes on a prompt variation
+ */
+export const updateArchPromptVariation = async (id: string,
+    updateArchPromptVariationBody: UpdateArchPromptVariationBody, options?: RequestInit): Promise<ArchPromptVariation> => {
+
+  return customFetch<ArchPromptVariation>(getUpdateArchPromptVariationUrl(id),
+  {
+    ...options,
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(
+      updateArchPromptVariationBody,)
+  }
+);}
+
+
+
+
+export const getUpdateArchPromptVariationMutationOptions = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updateArchPromptVariation>>, TError,{id: string;data: BodyType<UpdateArchPromptVariationBody>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof updateArchPromptVariation>>, TError,{id: string;data: BodyType<UpdateArchPromptVariationBody>}, TContext> => {
+
+const mutationKey = ['updateArchPromptVariation'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof updateArchPromptVariation>>, {id: string;data: BodyType<UpdateArchPromptVariationBody>}> = (props) => {
+          const {id,data} = props ?? {};
+
+          return  updateArchPromptVariation(id,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type UpdateArchPromptVariationMutationResult = NonNullable<Awaited<ReturnType<typeof updateArchPromptVariation>>>
+    export type UpdateArchPromptVariationMutationBody = BodyType<UpdateArchPromptVariationBody>
+    export type UpdateArchPromptVariationMutationError = ErrorType<ErrorResponse>
+
+    /**
+ * @summary Rename or update notes on a prompt variation
+ */
+export const useUpdateArchPromptVariation = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updateArchPromptVariation>>, TError,{id: string;data: BodyType<UpdateArchPromptVariationBody>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof updateArchPromptVariation>>,
+        TError,
+        {id: string;data: BodyType<UpdateArchPromptVariationBody>},
+        TContext
+      > => {
+      return useMutation(getUpdateArchPromptVariationMutationOptions(options));
+    }
+
+export const getDeleteArchPromptVariationUrl = (id: string,) => {
+
+
+
+
+  return `/api/arch/prompt-variations/${id}`
+}
+
+/**
+ * @summary Delete a prompt variation
+ */
+export const deleteArchPromptVariation = async (id: string, options?: RequestInit): Promise<void> => {
+
+  return customFetch<void>(getDeleteArchPromptVariationUrl(id),
+  {
+    ...options,
+    method: 'DELETE'
+
+
+  }
+);}
+
+
+
+
+export const getDeleteArchPromptVariationMutationOptions = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof deleteArchPromptVariation>>, TError,{id: string}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof deleteArchPromptVariation>>, TError,{id: string}, TContext> => {
+
+const mutationKey = ['deleteArchPromptVariation'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof deleteArchPromptVariation>>, {id: string}> = (props) => {
+          const {id} = props ?? {};
+
+          return  deleteArchPromptVariation(id,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type DeleteArchPromptVariationMutationResult = NonNullable<Awaited<ReturnType<typeof deleteArchPromptVariation>>>
+
+    export type DeleteArchPromptVariationMutationError = ErrorType<ErrorResponse>
+
+    /**
+ * @summary Delete a prompt variation
+ */
+export const useDeleteArchPromptVariation = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof deleteArchPromptVariation>>, TError,{id: string}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof deleteArchPromptVariation>>,
+        TError,
+        {id: string},
+        TContext
+      > => {
+      return useMutation(getDeleteArchPromptVariationMutationOptions(options));
     }
 
 export const getListArqProjectsUrl = () => {

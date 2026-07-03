@@ -7,12 +7,15 @@ import {
 } from "drizzle-orm/pg-core";
 import { createInsertSchema, createSelectSchema } from "drizzle-zod";
 import { z } from "zod/v4";
+import { tenantsTable } from "./tenants";
 
 export const archPromptVariationsTable = pgTable("arch_prompt_variations", {
   id: text("id")
     .primaryKey()
     .$defaultFn(() => crypto.randomUUID()),
-  tenantId:        text("tenant_id").notNull(),
+  tenantId: text("tenant_id")
+    .notNull()
+    .references(() => tenantsTable.id, { onDelete: "cascade" }),
   userId:          text("user_id").notNull(),
   name:            varchar("name", { length: 200 }).notNull(),
   translator:      varchar("translator", { length: 50 }).notNull(),

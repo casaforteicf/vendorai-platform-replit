@@ -10427,6 +10427,75 @@ export const ProspectorPatchApprovalResponse = zod.object({
 
 
 /**
+ * @summary List saved prompt variations for the current tenant
+ */
+export const ListArchPromptVariationsResponseItem = zod.object({
+  "id": zod.string(),
+  "tenantId": zod.string(),
+  "name": zod.string(),
+  "translator": zod.string(),
+  "detail": zod.string(),
+  "prompt": zod.string(),
+  "negativePrompt": zod.string(),
+  "estimatedTokens": zod.number(),
+  "notes": zod.string().nullish(),
+  "savedAt": zod.coerce.date(),
+  "createdAt": zod.coerce.date()
+})
+export const ListArchPromptVariationsResponse = zod.array(ListArchPromptVariationsResponseItem)
+
+
+/**
+ * @summary Save a new prompt variation
+ */
+export const CreateArchPromptVariationBody = zod.object({
+  "name": zod.string(),
+  "translator": zod.string(),
+  "detail": zod.string(),
+  "prompt": zod.string(),
+  "negativePrompt": zod.string(),
+  "estimatedTokens": zod.number(),
+  "notes": zod.string().optional(),
+  "savedAt": zod.coerce.date().optional()
+})
+
+
+/**
+ * @summary Rename or update notes on a prompt variation
+ */
+export const UpdateArchPromptVariationParams = zod.object({
+  "id": zod.coerce.string()
+})
+
+export const UpdateArchPromptVariationBody = zod.object({
+  "name": zod.string().optional(),
+  "notes": zod.string().optional()
+})
+
+export const UpdateArchPromptVariationResponse = zod.object({
+  "id": zod.string(),
+  "tenantId": zod.string(),
+  "name": zod.string(),
+  "translator": zod.string(),
+  "detail": zod.string(),
+  "prompt": zod.string(),
+  "negativePrompt": zod.string(),
+  "estimatedTokens": zod.number(),
+  "notes": zod.string().nullish(),
+  "savedAt": zod.coerce.date(),
+  "createdAt": zod.coerce.date()
+})
+
+
+/**
+ * @summary Delete a prompt variation
+ */
+export const DeleteArchPromptVariationParams = zod.object({
+  "id": zod.coerce.string()
+})
+
+
+/**
  * @summary Listar projetos de arquitetura do tenant
  */
 export const ListArqProjectsResponseItem = zod.object({

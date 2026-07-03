@@ -5094,6 +5094,36 @@ export interface AnthropicKeyConfig {
   message?: string;
 }
 
+export interface ArchPromptVariation {
+  id: string;
+  tenantId: string;
+  name: string;
+  translator: string;
+  detail: string;
+  prompt: string;
+  negativePrompt: string;
+  estimatedTokens: number;
+  notes?: string | null;
+  savedAt: string;
+  createdAt: string;
+}
+
+export interface CreateArchPromptVariationBody {
+  name: string;
+  translator: string;
+  detail: string;
+  prompt: string;
+  negativePrompt: string;
+  estimatedTokens: number;
+  notes?: string;
+  savedAt?: string;
+}
+
+export interface UpdateArchPromptVariationBody {
+  name?: string;
+  notes?: string;
+}
+
 export type AdminAIUsageTenantBreakdownItem = {
   tenantId?: string;
   totalCost?: number;
