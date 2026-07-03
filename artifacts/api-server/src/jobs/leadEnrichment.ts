@@ -21,6 +21,7 @@ import {
 import { callOpenAI } from "../lib/ai-gateway.js";
 import { dispatchAgentBackground } from "../services/agent-dispatch.js";
 import { logger as rootLogger } from "../lib/logger.js";
+import { checkHasMetaAds, checkGooglePresence } from "../services/cnpjService.js";
 
 const COLD_OUTREACH_TRIGGER =
   "[PROSPECÇÃO AUTOMÁTICA] Novo lead enriquecido e priorizado. Use o contexto de inteligência (enrichment_data) para gerar uma primeira mensagem altamente personalizada.";
@@ -137,7 +138,7 @@ function runGrowthRadar(lead: {
     horario_estendido: horarioEstendido,
     multiplas_unidades: multiplasUnidades,
     contratando: false,
-    anuncios_ativos: false,
+    anuncios_ativos: false, // enriched in Phase 2C (Meta Ads)
   };
 }
 
@@ -254,11 +255,35 @@ Regras:
 
 // ── Main enrichment orchestrator ───────────────────────────────────────────
 
+export interface EnrichLeadParams {
+  leadId: string;
+  tenantId: string;
+  log?: Logger;
+  scoreBoost?: number;
+  boostReason?: string;
+}
+
 export async function enrichLead(
-  leadId: string,
-  tenantId: string,
-  log: Logger = rootLogger,
+  paramsOrId: EnrichLeadParams | string,
+  tenantIdArg?: string,
+  logArg: Logger = rootLogger,
 ): Promise<void> {
+  // Support both new object API and legacy positional API
+  let leadId: string, tenantId: string, log: Logger, scoreBoost: number, boostReason: string;
+  if (typeof paramsOrId === "string") {
+    leadId = paramsOrId;
+    tenantId = tenantIdArg!;
+    log = logArg;
+    scoreBoost = 0;
+    boostReason = "";
+  } else {
+    leadId = paramsOrId.leadId;
+    tenantId = paramsOrId.tenantId;
+    log = paramsOrId.log ?? rootLogger;
+    scoreBoost = paramsOrId.scoreBoost ?? 0;
+    boostReason = paramsOrId.boostReason ?? "";
+  }
+
   log.info({ leadId, tenantId }, "enrichLead: starting");
 
   // Load lead
@@ -291,11 +316,31 @@ export async function enrichLead(
       discoveryData: lead.discoveryData as Record<string, unknown> | null,
     });
 
+    // Phase 2C: Meta Ads check + Google presence cross-reference
+    const [metaAds, googlePresence] = await Promise.allSettled([
+      checkHasMetaAds(lead.empresa ?? lead.nome),
+      lead.source === "cnpj" || lead.source === "recem_aberta"
+        ? checkGooglePresence(lead.empresa ?? lead.nome, (lead.metadata as Record<string, unknown>)?.["cidade"] as string ?? "")
+        : Promise.resolve(true), // for Google Places leads, presence is assumed
+    ]);
+
+    growth.anuncios_ativos = metaAds.status === "fulfilled" ? metaAds.value : false;
+    const temPresencaGoogle = googlePresence.status === "fulfilled" ? googlePresence.value : true;
+    digital.presenca_google = temPresencaGoogle;
+
+    // If company from CNPJ with no Google presence → flag as "digital invisible"
+    if ((lead.source === "cnpj" || lead.source === "recem_aberta") && !temPresencaGoogle) {
+      lead.priorityReason = lead.priorityReason
+        ? `${lead.priorityReason} • Sem presença no Google`
+        : "Empresa ativa sem presença digital";
+    }
+
     // Save enrichment_data + mark enriched
     await db.update(leadsTable)
       .set({
         enrichmentData: { digital, growth, enriquecido_em: new Date().toISOString() },
         enrichmentStatus: "enriched",
+        ...(lead.priorityReason ? { priorityReason: lead.priorityReason } : {}),
         updatedAt: new Date(),
       })
       .where(eq(leadsTable.id, leadId));
@@ -316,6 +361,29 @@ export async function enrichLead(
       benchmark: benchmark ?? null,
       tenantId,
     });
+
+    // Apply boost from Cmd 23 (recém-abertas, ad-library, etc.)
+    if (scoreBoost > 0) {
+      scoreResult.propensity_score = Math.min(100, scoreResult.propensity_score + scoreBoost);
+      if (boostReason === "empresa_recem_aberta") {
+        scoreResult.priority_reason = scoreResult.priority_reason
+          ? `${scoreResult.priority_reason} (+${scoreBoost} pts: empresa recém-aberta)`
+          : `Empresa recém-aberta — oportunidade de primeiro sistema`;
+      }
+    }
+
+    // Boost +10 if has active Meta Ads (has marketing budget)
+    if (growth.anuncios_ativos) {
+      scoreResult.propensity_score = Math.min(100, scoreResult.propensity_score + 10);
+      scoreResult.priority_reason = scoreResult.priority_reason
+        ? `${scoreResult.priority_reason} • Investindo em anúncios`
+        : "Investindo em anúncios — atendimento é o gargalo";
+    }
+
+    // Boost +15 if no Google presence (invisible = maximum pain)
+    if (!digital.presenca_google && (lead.source === "cnpj" || lead.source === "recem_aberta")) {
+      scoreResult.propensity_score = Math.min(100, scoreResult.propensity_score + 15);
+    }
 
     await db.update(leadsTable)
       .set({

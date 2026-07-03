@@ -16,6 +16,7 @@ import {
   sdrVerticalProfilesTable,
   segmentBenchmarksTable,
   leadEventsTable,
+  cnaeVerticalMapTable,
 } from "@workspace/db";
 import {
   callOpenAI as gatewayCallOpenAI,
@@ -24,6 +25,14 @@ import {
 import { checkApiQuota, getApiUsage } from "../lib/api-quota.js";
 import { dispatchAgentBackground } from "../services/agent-dispatch.js";
 import { enrichLead } from "../jobs/leadEnrichment.js";
+import {
+  searchByCnae,
+  getCompanyByCnpj,
+  searchMetaAds,
+  buildLinkedInSearchUrl,
+  normalizeCnpj,
+  normalizeName,
+} from "../services/cnpjService.js";
 
 // Quantidade de aprovações (approved + edited) para liberar a automação.
 const AUTOMATION_THRESHOLD = 50;
@@ -1398,6 +1407,310 @@ router.put("/prospector/config/threshold", async (req, res) => {
   }
 
   return res.status(200).json({ ok: true, threshold });
+});
+
+// ── Cmd 23: CNPJ/CNAE routes ───────────────────────────────────────────────
+
+/** GET /prospector/cnpj/cnaes — list all CNAE entries with labels */
+router.get("/prospector/cnpj/cnaes", async (req, res) => {
+  const cnaes = await db
+    .select()
+    .from(cnaeVerticalMapTable)
+    .orderBy(cnaeVerticalMapTable.prioridade, cnaeVerticalMapTable.label);
+  return res.json({ cnaes });
+});
+
+/** POST /prospector/cnpj/search — bulk search by CNAE + city + opening date */
+router.post("/prospector/cnpj/search", async (req, res) => {
+  const schema = z.object({
+    cnae: z.string().min(4),
+    uf: z.string().length(2).optional(),
+    municipio: z.string().optional(),
+    aberturaDias: z.number().int().min(7).max(365).optional(),
+    porte: z.enum(["MEI", "ME", "EPP", "DEMAIS"]).optional(),
+    limit: z.number().int().min(1).max(50).optional().default(20),
+    tenantId: z.string().optional(),
+  });
+
+  const parsed = schema.safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: parsed.error.issues[0]?.message });
+
+  const { cnae, uf, municipio, aberturaDias, porte, limit } = parsed.data;
+
+  const result = await searchByCnae({ cnae, uf, municipio, aberturaDias, porte, limit });
+
+  return res.json({
+    empresas: result.empresas,
+    total: result.total,
+    apiKeyRequired: result.apiKeyRequired,
+  });
+});
+
+/** GET /prospector/cnpj/lookup/:cnpj — single CNPJ lookup */
+router.get("/prospector/cnpj/lookup/:cnpj", async (req, res) => {
+  const cnpj = normalizeCnpj(req.params.cnpj ?? "");
+  if (cnpj.length !== 14) return res.status(400).json({ error: "CNPJ inválido" });
+
+  const company = await getCompanyByCnpj(cnpj);
+  if (!company) return res.status(404).json({ error: "CNPJ não encontrado" });
+
+  return res.json({ empresa: company });
+});
+
+/** POST /prospector/cnpj/prospectar — create lead/deal from a CNPJ result */
+router.post("/prospector/cnpj/prospectar", async (req, res) => {
+  const schema = z.object({
+    cnpj: z.string().min(14),
+    razaoSocial: z.string().min(2),
+    nomeFantasia: z.string().nullish(),
+    cnaeCode: z.string().optional(),
+    cnaeDescricao: z.string().optional(),
+    endereco: z.string().optional(),
+    municipio: z.string().optional(),
+    uf: z.string().optional(),
+    telefone: z.string().nullish(),
+    email: z.string().nullish(),
+    dataAbertura: z.string().optional(),
+    porte: z.string().nullish(),
+    socios: z.array(z.object({ nome: z.string(), qualificacao: z.string().optional() })).optional().default([]),
+    source: z.enum(["cnpj", "recem_aberta", "ad_library"]).optional().default("cnpj"),
+    tenantId: z.string().optional(),
+  });
+
+  const parsed = schema.safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: parsed.error.issues[0]?.message });
+
+  const tenantId = resolveTenantId(req, parsed.data.tenantId);
+  const d = parsed.data;
+
+  const cnpjClean = normalizeCnpj(d.cnpj);
+
+  // Deduplication check
+  const [existing] = await db
+    .select({ id: leadsTable.id, nome: leadsTable.nome })
+    .from(leadsTable)
+    .where(and(
+      eq(leadsTable.tenantId, tenantId),
+      or(
+        eq(leadsTable.documento, cnpjClean),
+        d.telefone ? eq(leadsTable.telefone, d.telefone) : sql`FALSE`,
+      ),
+    ))
+    .limit(1);
+
+  if (existing) {
+    // Merge: update missing fields
+    await db.update(leadsTable)
+      .set({
+        ...(d.telefone ? { telefone: d.telefone } : {}),
+        ...(d.email ? { email: d.email } : {}),
+        updatedAt: new Date(),
+      })
+      .where(eq(leadsTable.id, existing.id));
+
+    return res.json({
+      leadId: existing.id,
+      merged: true,
+      message: `Lead "${existing.nome}" já existe — dados mesclados`,
+    });
+  }
+
+  // Calculate how many days since opening
+  const abertura = d.dataAbertura ? new Date(d.dataAbertura) : null;
+  const diasAberto = abertura ? Math.floor((Date.now() - abertura.getTime()) / 86_400_000) : null;
+  const isRecemAberta = diasAberto != null && diasAberto <= 90;
+
+  const [firstFunil] = await db
+    .select({ id: funisTable.id })
+    .from(funisTable)
+    .where(eq(funisTable.tenantId, tenantId))
+    .limit(1);
+
+  const priorityReason = isRecemAberta
+    ? `Empresa aberta há ${diasAberto} dias — montando operação`
+    : undefined;
+
+  const [lead] = await db.insert(leadsTable).values({
+    tenantId,
+    nome: d.nomeFantasia || d.razaoSocial,
+    empresa: d.razaoSocial,
+    telefone: d.telefone ?? undefined,
+    email: d.email ?? undefined,
+    documento: cnpjClean,
+    endereco: d.endereco,
+    tipoPessoa: "juridica",
+    source: isRecemAberta ? "recem_aberta" : d.source,
+    enrichmentStatus: "pending",
+    mercadoSegmento: d.cnaeDescricao,
+    priorityReason,
+    dadosPj: {
+      cnpj: cnpjClean,
+      razaoSocial: d.razaoSocial,
+      segmento: d.cnaeDescricao,
+      socios: d.socios.map((s) => ({ nome: s.nome })),
+    },
+    metadata: {
+      origem: d.source,
+      prospectado_em: new Date().toISOString(),
+      cnae: d.cnaeCode,
+      data_abertura: d.dataAbertura,
+      dias_aberto: diasAberto,
+      cidade: d.municipio,
+    },
+  }).returning({ id: leadsTable.id });
+
+  if (!lead) return res.status(500).json({ error: "Falha ao criar lead" });
+
+  // Create deal
+  if (firstFunil) {
+    await db.insert(dealsTable).values({
+      tenantId,
+      leadId: lead.id,
+      funilId: firstFunil.id,
+      titulo: `${d.nomeFantasia || d.razaoSocial} — Prospector CNPJ`,
+      estagio: "novo",
+    });
+  }
+
+  // Activity
+  await db.insert(activitiesTable).values({
+    tenantId,
+    leadId: lead.id,
+    tipo: "tarefa",
+    descricao: `Lead importado via Busca CNPJ (CNAE ${d.cnaeCode ?? "?"}) — ${d.municipio ?? ""}`,
+    concluida: true,
+  });
+
+  // Enrich (fire-and-forget) with boost if recently opened
+  enrichLead({
+    leadId: lead.id,
+    tenantId,
+    scoreBoost: isRecemAberta ? 20 : 0,
+    boostReason: isRecemAberta ? "empresa_recem_aberta" : "",
+  }).catch(() => undefined);
+
+  return res.status(201).json({
+    leadId: lead.id,
+    merged: false,
+    isRecemAberta,
+    linkedInUrl: buildLinkedInSearchUrl(d.razaoSocial, d.municipio ?? ""),
+    decisorNome: d.socios[0]?.nome ?? null,
+  });
+});
+
+/** POST /prospector/ads/search — discover companies via Meta Ad Library */
+router.post("/prospector/ads/search", async (req, res) => {
+  const schema = z.object({
+    searchTerms: z.string().min(2),
+    limit: z.number().int().min(1).max(50).optional().default(20),
+    tenantId: z.string().optional(),
+  });
+
+  const parsed = schema.safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: parsed.error.issues[0]?.message });
+
+  const token = process.env.INSTAGRAM_ACCESS_TOKEN;
+  if (!token) {
+    return res.status(400).json({
+      error: "INSTAGRAM_ACCESS_TOKEN não configurado",
+      hint: "Configure o token do Instagram/Meta para usar esta funcionalidade",
+    });
+  }
+
+  const result = await searchMetaAds(parsed.data.searchTerms, token, parsed.data.limit);
+
+  return res.json({
+    ads: result.ads,
+    hasAds: result.hasAds,
+    searchTerms: parsed.data.searchTerms,
+  });
+});
+
+/** POST /prospector/cnpj/recem-abertas — manual trigger of new-company scan */
+router.post("/prospector/cnpj/recem-abertas", async (req, res) => {
+  const schema = z.object({
+    cnae: z.string().min(4),
+    municipio: z.string().optional(),
+    uf: z.string().length(2).optional(),
+    aberturaDias: z.number().int().min(7).max(365).optional().default(30),
+    limit: z.number().int().min(1).max(20).optional().default(10),
+    tenantId: z.string().optional(),
+  });
+
+  const parsed = schema.safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: parsed.error.issues[0]?.message });
+
+  const tenantId = resolveTenantId(req, parsed.data.tenantId);
+  const { cnae, municipio, uf, aberturaDias, limit } = parsed.data;
+
+  const result = await searchByCnae({ cnae, municipio, uf, aberturaDias, limit });
+
+  if (result.apiKeyRequired) {
+    return res.status(400).json({
+      error: "CNPJ_API_KEY não configurada",
+      hint: "Configure CNPJ_API_KEY (CNPJá ou similar) para buscar empresas recém-abertas",
+      apiKeyRequired: true,
+    });
+  }
+
+  // Filter: only companies opened within aberturaDias
+  const cutoff = new Date();
+  cutoff.setDate(cutoff.getDate() - (aberturaDias ?? 30));
+
+  const recemAbertas = result.empresas.filter((e) => {
+    if (!e.dataAbertura) return false;
+    return new Date(e.dataAbertura) >= cutoff;
+  });
+
+  return res.json({
+    empresas: recemAbertas,
+    total: recemAbertas.length,
+    apiKeyRequired: false,
+  });
+});
+
+/** POST /prospector/dedup-check — check if company already exists as lead */
+router.post("/prospector/dedup-check", async (req, res) => {
+  const schema = z.object({
+    cnpj: z.string().optional(),
+    nome: z.string().optional(),
+    cidade: z.string().optional(),
+    telefone: z.string().optional(),
+    tenantId: z.string().optional(),
+  });
+
+  const parsed = schema.safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: parsed.error.issues[0]?.message });
+
+  const tenantId = resolveTenantId(req, parsed.data.tenantId);
+  const { cnpj, nome, telefone } = parsed.data;
+
+  if (!cnpj && !nome && !telefone) {
+    return res.status(400).json({ error: "Informe pelo menos cnpj, nome ou telefone" });
+  }
+
+  const cnpjClean = cnpj ? normalizeCnpj(cnpj) : null;
+
+  const conditions = [];
+  if (cnpjClean) conditions.push(eq(leadsTable.documento, cnpjClean));
+  if (telefone) conditions.push(eq(leadsTable.telefone, telefone));
+  if (nome) {
+    const nameNorm = normalizeName(nome);
+    conditions.push(sql`unaccent(lower(${leadsTable.nome})) LIKE '%' || ${nameNorm} || '%'`);
+  }
+
+  const [existing] = await db
+    .select({ id: leadsTable.id, nome: leadsTable.nome, source: leadsTable.source })
+    .from(leadsTable)
+    .where(and(eq(leadsTable.tenantId, tenantId), or(...conditions)))
+    .limit(1);
+
+  return res.json({
+    exists: !!existing,
+    leadId: existing?.id ?? null,
+    leadNome: existing?.nome ?? null,
+    source: existing?.source ?? null,
+  });
 });
 
 export default router;

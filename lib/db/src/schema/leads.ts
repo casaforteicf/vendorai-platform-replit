@@ -97,6 +97,7 @@ export const leadsTable = pgTable("leads", {
       tem_ecommerce?: boolean;
       presenca_instagram?: boolean;
       indicio_crm?: boolean;
+      presenca_google?: boolean;
     };
     growth?: {
       reviews_velocity?: number;

@@ -57,11 +57,41 @@ import {
   BarChart3,
   RefreshCw,
   Settings,
+  Megaphone,
+  CalendarDays,
+  Users,
+  ExternalLink,
+  AlertCircle,
+  FileSearch,
 } from "lucide-react";
 import { Switch } from "@/components/ui/switch";
 import { ProspectorAprovacoesContent } from "./ProspectorAprovacoes";
 
 type ApprovalDecision = "approved" | "approved_edited" | "rejected";
+
+interface CnpjEmpresa {
+  cnpj: string;
+  razaoSocial: string;
+  nomeFantasia: string | null;
+  cnaeCode: string;
+  cnaeDescricao: string;
+  enderecoCompleto: string;
+  municipio: string;
+  uf: string;
+  telefone: string | null;
+  email: string | null;
+  dataAbertura: string;
+  porte: string | null;
+  capitalSocial: number | null;
+  socios: Array<{ nome: string; qualificacao: string }>;
+}
+
+interface AdResult {
+  pageId: string;
+  pageName: string;
+  snapshotUrl: string | null;
+  startDate: string | null;
+}
 
 function EnrichmentResult({ data }: { data: ProspectEnrichment }) {
   return (
@@ -416,10 +446,116 @@ export default function Prospector() {
   const generate = useProspectorGenerateMessage();
   const queryClient = useQueryClient();
 
+  // ── Cmd 23: Busca CNPJ state ─────────────────────────────────────────────
+  const [cnaeSearch, setCnaeSearch] = useState("");
+  const [cnaeSelected, setCnaeSelected] = useState("");
+  const [cnpjUf, setCnpjUf] = useState("");
+  const [cnpjMunicipio, setCnpjMunicipio] = useState("");
+  const [cnpjAberturaDias, setCnpjAberturaDias] = useState<string>("");
+  const [cnpjPorte, setCnpjPorte] = useState("");
+  const [cnpjResultados, setCnpjResultados] = useState<CnpjEmpresa[]>([]);
+  const [cnpjSearched, setCnpjSearched] = useState(false);
+  const [cnpjApiKeyRequired, setCnpjApiKeyRequired] = useState(false);
+  const [cnpjProspectandoIndex, setCnpjProspectandoIndex] = useState<number | null>(null);
+  const [cnpjProspectadoIds, setCnpjProspectadoIds] = useState<Set<string>>(new Set());
+
+  // ── Cmd 23: Anunciantes state ─────────────────────────────────────────────
+  const [adsSearchTerms, setAdsSearchTerms] = useState("");
+  const [adsResultados, setAdsResultados] = useState<AdResult[]>([]);
+  const [adsSearched, setAdsSearched] = useState(false);
+  const [adsSearching, setAdsSearching] = useState(false);
+
   // ── Fila Preditiva (Cmd 22) ──────────────────────────────────────────────
   function getAuthHeaders() {
     const token = localStorage.getItem("vendorai_token");
     return { Authorization: `Bearer ${token}`, "Content-Type": "application/json" };
+  }
+
+  // ── CNPJ/CNAE queries (Cmd 23) ───────────────────────────────────────────
+  const cnaeListQuery = useQuery({
+    queryKey: ["prospector-cnaes"],
+    queryFn: async () => {
+      const res = await fetch("/api/prospector/cnpj/cnaes", { headers: getAuthHeaders() });
+      if (!res.ok) throw new Error("Falha ao carregar CNAEs");
+      return res.json() as Promise<{ cnaes: Array<{ cnae: string; label: string; vertical: string; prioridade: number }> }>;
+    },
+    staleTime: 300_000,
+  });
+
+  const cnpjSearchMutation = useMutation({
+    mutationFn: async (params: { cnae: string; uf?: string; municipio?: string; aberturaDias?: number; porte?: string }) => {
+      const res = await fetch("/api/prospector/cnpj/search", {
+        method: "POST",
+        headers: getAuthHeaders(),
+        body: JSON.stringify({ ...params, limit: 20, tenantId }),
+      });
+      if (!res.ok) throw new Error("Falha na busca CNPJ");
+      return res.json() as Promise<{ empresas: CnpjEmpresa[]; total: number; apiKeyRequired: boolean }>;
+    },
+    onSuccess: (data) => {
+      setCnpjResultados(data.empresas);
+      setCnpjSearched(true);
+      setCnpjApiKeyRequired(data.apiKeyRequired);
+    },
+    onError: () => toast({ title: "Falha na busca CNPJ", variant: "destructive" }),
+  });
+
+  const cnpjProspectarMutation = useMutation({
+    mutationFn: async (empresa: CnpjEmpresa) => {
+      const res = await fetch("/api/prospector/cnpj/prospectar", {
+        method: "POST",
+        headers: getAuthHeaders(),
+        body: JSON.stringify({
+          cnpj: empresa.cnpj,
+          razaoSocial: empresa.razaoSocial,
+          nomeFantasia: empresa.nomeFantasia,
+          cnaeCode: empresa.cnaeCode,
+          cnaeDescricao: empresa.cnaeDescricao,
+          endereco: empresa.enderecoCompleto,
+          municipio: empresa.municipio,
+          uf: empresa.uf,
+          telefone: empresa.telefone,
+          email: empresa.email,
+          dataAbertura: empresa.dataAbertura,
+          porte: empresa.porte,
+          socios: empresa.socios,
+          tenantId,
+        }),
+      });
+      if (!res.ok) throw new Error("Falha ao prospectar");
+      return res.json() as Promise<{ leadId: string; merged: boolean; message?: string; isRecemAberta?: boolean; linkedInUrl?: string; decisorNome?: string | null }>;
+    },
+    onSuccess: (data, empresa) => {
+      setCnpjProspectadoIds((prev) => new Set(prev).add(empresa.cnpj));
+      if (data.merged) {
+        toast({ title: data.message ?? "Lead já existe — dados mesclados" });
+      } else {
+        toast({ title: data.isRecemAberta ? "🎉 Lead recém-aberta criado com boost!" : "Lead CNPJ criado com sucesso!" });
+      }
+      queryClient.invalidateQueries({ queryKey: ["prospector-fila"] });
+    },
+    onError: () => toast({ title: "Falha ao prospectar empresa", variant: "destructive" }),
+  });
+
+  async function handleAdsSearch() {
+    if (!adsSearchTerms.trim()) return;
+    setAdsSearching(true);
+    try {
+      const res = await fetch("/api/prospector/ads/search", {
+        method: "POST",
+        headers: getAuthHeaders(),
+        body: JSON.stringify({ searchTerms: adsSearchTerms, limit: 20, tenantId }),
+      });
+      const data = await res.json() as { ads?: AdResult[]; error?: string };
+      if (!res.ok) {
+        toast({ title: data.error ?? "Falha na busca de anúncios", variant: "destructive" });
+      } else {
+        setAdsResultados(data.ads ?? []);
+        setAdsSearched(true);
+      }
+    } finally {
+      setAdsSearching(false);
+    }
   }
 
   const filaQuery = useQuery({
@@ -677,9 +813,15 @@ export default function Prospector() {
       </div>
 
       <Tabs defaultValue="busca">
-        <TabsList>
+        <TabsList className="flex-wrap h-auto gap-1">
           <TabsTrigger value="busca" className="flex items-center gap-1.5">
-            <Search className="h-4 w-4" /> Busca
+            <MapPin className="h-4 w-4" /> Google Places
+          </TabsTrigger>
+          <TabsTrigger value="cnpj" className="flex items-center gap-1.5">
+            <Building2 className="h-4 w-4" /> Busca CNPJ
+          </TabsTrigger>
+          <TabsTrigger value="anunciantes" className="flex items-center gap-1.5">
+            <Megaphone className="h-4 w-4" /> Anunciantes
           </TabsTrigger>
           <TabsTrigger value="fila" className="flex items-center gap-1.5">
             <TrendingUp className="h-4 w-4" /> Fila
@@ -996,6 +1138,311 @@ export default function Prospector() {
           </CardContent>
         </Card>
       )}
+        </TabsContent>
+
+        {/* ── Aba CNPJ ─────────────────────────────────────────── */}
+        <TabsContent value="cnpj" className="mt-4 space-y-4">
+          <Card>
+            <CardHeader className="pb-3">
+              <CardTitle className="text-base flex items-center gap-2">
+                <Building2 className="h-4 w-4 text-primary" /> Busca por CNPJ/CNAE
+              </CardTitle>
+              <CardDescription>
+                Encontre empresas reais da Receita Federal por atividade, cidade e data de abertura.
+                Requer <code className="text-xs bg-muted px-1 rounded">CNPJ_API_KEY</code>.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              {/* CNAE selector */}
+              <div className="space-y-1.5">
+                <Label>Atividade (CNAE)</Label>
+                <div className="flex gap-2">
+                  <Input
+                    placeholder="Buscar atividade... ex: restaurante, clínica"
+                    value={cnaeSearch}
+                    onChange={(e) => setCnaeSearch(e.target.value)}
+                    className="flex-1"
+                  />
+                </div>
+                {cnaeListQuery.data && (
+                  <div className="flex flex-wrap gap-1.5 mt-1 max-h-32 overflow-y-auto">
+                    {cnaeListQuery.data.cnaes
+                      .filter((c) =>
+                        !cnaeSearch ||
+                        c.label.toLowerCase().includes(cnaeSearch.toLowerCase()) ||
+                        c.cnae.includes(cnaeSearch)
+                      )
+                      .map((c) => (
+                        <button
+                          key={c.cnae}
+                          onClick={() => { setCnaeSelected(c.cnae); setCnaeSearch(c.label); }}
+                          className={`text-xs px-2 py-1 rounded-full border transition-colors ${
+                            cnaeSelected === c.cnae
+                              ? "bg-primary text-primary-foreground border-primary"
+                              : "bg-background border-border hover:bg-muted"
+                          }`}
+                        >
+                          {c.label}
+                        </button>
+                      ))
+                    }
+                  </div>
+                )}
+                {cnaeSelected && (
+                  <p className="text-xs text-muted-foreground">CNAE selecionado: <code>{cnaeSelected}</code></p>
+                )}
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-1.5">
+                  <Label>Município</Label>
+                  <Input placeholder="Ex: Chapecó" value={cnpjMunicipio} onChange={(e) => setCnpjMunicipio(e.target.value)} />
+                </div>
+                <div className="space-y-1.5">
+                  <Label>UF</Label>
+                  <Input placeholder="Ex: SC" maxLength={2} value={cnpjUf} onChange={(e) => setCnpjUf(e.target.value.toUpperCase())} />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-1.5">
+                  <Label>Abertura</Label>
+                  <Select value={cnpjAberturaDias} onValueChange={setCnpjAberturaDias}>
+                    <SelectTrigger><SelectValue placeholder="Qualquer data" /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="">Qualquer data</SelectItem>
+                      <SelectItem value="30">Últimos 30 dias ⭐</SelectItem>
+                      <SelectItem value="90">Últimos 90 dias</SelectItem>
+                      <SelectItem value="180">Últimos 6 meses</SelectItem>
+                      <SelectItem value="365">Último ano</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-1.5">
+                  <Label>Porte</Label>
+                  <Select value={cnpjPorte} onValueChange={setCnpjPorte}>
+                    <SelectTrigger><SelectValue placeholder="Todos" /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="">Todos</SelectItem>
+                      <SelectItem value="MEI">MEI</SelectItem>
+                      <SelectItem value="ME">ME (Microempresa)</SelectItem>
+                      <SelectItem value="EPP">EPP (Pequena)</SelectItem>
+                      <SelectItem value="DEMAIS">Demais</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+
+              <Button
+                className="w-full"
+                disabled={!cnaeSelected || cnpjSearchMutation.isPending}
+                onClick={() =>
+                  cnpjSearchMutation.mutate({
+                    cnae: cnaeSelected,
+                    uf: cnpjUf || undefined,
+                    municipio: cnpjMunicipio || undefined,
+                    aberturaDias: cnpjAberturaDias ? Number(cnpjAberturaDias) : undefined,
+                    porte: cnpjPorte || undefined,
+                  })
+                }
+              >
+                {cnpjSearchMutation.isPending ? (
+                  <><Spinner className="h-4 w-4 mr-2" /> Buscando...</>
+                ) : (
+                  <><FileSearch className="h-4 w-4 mr-2" /> Buscar Empresas</>
+                )}
+              </Button>
+
+              {/* API Key required warning */}
+              {cnpjApiKeyRequired && (
+                <Card className="border-amber-200 bg-amber-50">
+                  <CardContent className="py-4 flex items-start gap-3">
+                    <AlertCircle className="h-5 w-5 text-amber-600 shrink-0 mt-0.5" />
+                    <div>
+                      <p className="font-medium text-amber-800">CNPJ_API_KEY necessária</p>
+                      <p className="text-sm text-amber-700 mt-1">
+                        Configure a variável de ambiente <code>CNPJ_API_KEY</code> com sua chave da
+                        <a href="https://cnpja.com" target="_blank" rel="noopener noreferrer" className="underline ml-1">CNPJá API</a>
+                        {" "}para buscar empresas por CNAE em massa (~R$ 30-100/mês).
+                      </p>
+                    </div>
+                  </CardContent>
+                </Card>
+              )}
+            </CardContent>
+          </Card>
+
+          {/* Results */}
+          {cnpjSearched && !cnpjApiKeyRequired && (
+            <div className="space-y-3">
+              {cnpjResultados.length === 0 ? (
+                <Card className="border-dashed">
+                  <CardContent className="py-10 text-center text-muted-foreground">
+                    <Building2 className="h-8 w-8 mx-auto mb-2 opacity-40" />
+                    <p>Nenhuma empresa encontrada. Tente ajustar os filtros.</p>
+                  </CardContent>
+                </Card>
+              ) : (
+                <>
+                  <p className="text-sm text-muted-foreground">{cnpjResultados.length} empresa(s) encontrada(s)</p>
+                  {cnpjResultados.map((empresa, idx) => {
+                    const abertura = empresa.dataAbertura ? new Date(empresa.dataAbertura) : null;
+                    const diasAberto = abertura ? Math.floor((Date.now() - abertura.getTime()) / 86_400_000) : null;
+                    const isRecemAberta = diasAberto != null && diasAberto <= 90;
+                    const jaProspectado = cnpjProspectadoIds.has(empresa.cnpj);
+                    const isProspectando = cnpjProspectandoIndex === idx;
+
+                    return (
+                      <Card key={empresa.cnpj} className={isRecemAberta ? "border-emerald-200 shadow-sm" : ""}>
+                        <CardContent className="py-4">
+                          <div className="flex items-start justify-between gap-4">
+                            <div className="flex-1 min-w-0 space-y-1.5">
+                              <div className="flex items-start gap-2 flex-wrap">
+                                <p className="font-semibold">{empresa.nomeFantasia || empresa.razaoSocial}</p>
+                                {isRecemAberta && (
+                                  <Badge className="bg-emerald-100 text-emerald-700 border-emerald-300 text-xs gap-1">
+                                    <CalendarDays className="h-3 w-3" /> Aberta há {diasAberto}d
+                                  </Badge>
+                                )}
+                                {empresa.porte && (
+                                  <Badge variant="outline" className="text-xs">{empresa.porte}</Badge>
+                                )}
+                              </div>
+                              <p className="text-xs text-muted-foreground">{empresa.cnaeDescricao}</p>
+                              <p className="text-xs text-muted-foreground flex items-center gap-1">
+                                <MapPin className="h-3 w-3" /> {empresa.municipio}/{empresa.uf}
+                                {empresa.enderecoCompleto && ` — ${empresa.enderecoCompleto}`}
+                              </p>
+                              <div className="flex flex-wrap gap-x-3 gap-y-0.5 text-xs text-muted-foreground">
+                                {empresa.telefone && (
+                                  <span className="flex items-center gap-1"><Phone className="h-3 w-3" /> {empresa.telefone}</span>
+                                )}
+                                {empresa.email && (
+                                  <span className="flex items-center gap-1"><Globe className="h-3 w-3" /> {empresa.email}</span>
+                                )}
+                                {empresa.socios[0] && (
+                                  <span className="flex items-center gap-1 text-primary font-medium">
+                                    <Users className="h-3 w-3" /> {empresa.socios[0].nome}
+                                  </span>
+                                )}
+                              </div>
+                              <p className="text-xs text-muted-foreground">
+                                CNPJ: {empresa.cnpj.replace(/(\d{2})(\d{3})(\d{3})(\d{4})(\d{2})/, "$1.$2.$3/$4-$5")}
+                              </p>
+                            </div>
+                            <div className="flex flex-col gap-1.5 shrink-0">
+                              <Button
+                                size="sm"
+                                disabled={jaProspectado || isProspectando || cnpjProspectarMutation.isPending}
+                                variant={jaProspectado ? "outline" : "default"}
+                                onClick={() => {
+                                  setCnpjProspectandoIndex(idx);
+                                  cnpjProspectarMutation.mutate(empresa, {
+                                    onSettled: () => setCnpjProspectandoIndex(null),
+                                  });
+                                }}
+                              >
+                                {jaProspectado ? (
+                                  <><CheckCircle2 className="h-3.5 w-3.5 mr-1 text-emerald-600" /> Prospectado</>
+                                ) : isProspectando ? (
+                                  <><Spinner className="h-3.5 w-3.5 mr-1" /> Salvando...</>
+                                ) : (
+                                  <><Zap className="h-3.5 w-3.5 mr-1" /> Prospectar</>
+                                )}
+                              </Button>
+                            </div>
+                          </div>
+                        </CardContent>
+                      </Card>
+                    );
+                  })}
+                </>
+              )}
+            </div>
+          )}
+        </TabsContent>
+
+        {/* ── Aba Anunciantes ────────────────────────────────────── */}
+        <TabsContent value="anunciantes" className="mt-4 space-y-4">
+          <Card>
+            <CardHeader className="pb-3">
+              <CardTitle className="text-base flex items-center gap-2">
+                <Megaphone className="h-4 w-4 text-primary" /> Anunciantes Meta Ad Library
+              </CardTitle>
+              <CardDescription>
+                Descubra empresas que estão investindo em anúncios no Instagram/Facebook.
+                Empresas que anunciam têm verba — mas muitas perdem leads no atendimento.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              <div className="flex gap-2">
+                <Input
+                  placeholder="Ex: clínica odontológica, restaurante, academia..."
+                  value={adsSearchTerms}
+                  onChange={(e) => setAdsSearchTerms(e.target.value)}
+                  onKeyDown={(e) => e.key === "Enter" && handleAdsSearch()}
+                  className="flex-1"
+                />
+                <Button onClick={handleAdsSearch} disabled={adsSearching || !adsSearchTerms.trim()}>
+                  {adsSearching ? <Spinner className="h-4 w-4" /> : <Search className="h-4 w-4" />}
+                </Button>
+              </div>
+              <p className="text-xs text-muted-foreground">
+                Usa Meta Ad Library (gratuita). Requer Instagram configurado como integração.
+              </p>
+            </CardContent>
+          </Card>
+
+          {adsSearched && (
+            <div className="space-y-3">
+              {adsResultados.length === 0 ? (
+                <Card className="border-dashed">
+                  <CardContent className="py-10 text-center text-muted-foreground">
+                    <Megaphone className="h-8 w-8 mx-auto mb-2 opacity-40" />
+                    <p>Nenhum anunciante encontrado. Tente termos diferentes.</p>
+                  </CardContent>
+                </Card>
+              ) : (
+                <>
+                  <p className="text-sm text-muted-foreground">{adsResultados.length} anunciante(s) encontrado(s)</p>
+                  {adsResultados.map((ad) => (
+                    <Card key={ad.pageId} className="border-amber-100">
+                      <CardContent className="py-4">
+                        <div className="flex items-start justify-between gap-4">
+                          <div className="flex-1 space-y-1.5">
+                            <div className="flex items-center gap-2">
+                              <p className="font-semibold">{ad.pageName}</p>
+                              <Badge className="bg-amber-100 text-amber-700 border-amber-300 text-xs">
+                                Anunciando
+                              </Badge>
+                            </div>
+                            {ad.startDate && (
+                              <p className="text-xs text-muted-foreground flex items-center gap-1">
+                                <CalendarDays className="h-3 w-3" /> Anunciando desde{" "}
+                                {new Date(ad.startDate).toLocaleDateString("pt-BR")}
+                              </p>
+                            )}
+                            <p className="text-xs text-muted-foreground italic">
+                              Gancho SDR: "Vi que vocês estão anunciando no Instagram. Quantos leads do anúncio ficam sem resposta no WhatsApp?"
+                            </p>
+                          </div>
+                          <div className="flex flex-col gap-1.5 shrink-0">
+                            {ad.snapshotUrl && (
+                              <Button size="sm" variant="outline" asChild>
+                                <a href={ad.snapshotUrl} target="_blank" rel="noopener noreferrer">
+                                  <ExternalLink className="h-3.5 w-3.5 mr-1" /> Ver anúncio
+                                </a>
+                              </Button>
+                            )}
+                          </div>
+                        </div>
+                      </CardContent>
+                    </Card>
+                  ))}
+                </>
+              )}
+            </div>
+          )}
         </TabsContent>
 
         <TabsContent value="fila" className="mt-4 space-y-4">

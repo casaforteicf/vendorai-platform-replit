@@ -14,6 +14,7 @@
     "migrate-agent-token-limits": "tsx ./src/migrate-agent-token-limits.ts",
     "seed-test-site": "tsx ./src/seed-test-site.ts",
     "cmd22-migrate": "tsx ./src/cmd22-migrate.ts",
+    "cmd23-migrate": "tsx ./src/cmd23-migrate.ts",
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
