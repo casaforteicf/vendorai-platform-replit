@@ -3,6 +3,12 @@ import { runAIE } from '../aie-engine'
 import { MOCK_PROJECT_CONTEXT } from '../aie-mock-context'
 import { generateDNA } from '../engines/dna-engine'
 import type { AIEResult, ProjectScores, Recommendation, ValidationResult, RecommendationSeverity } from '../aie-types'
+import {
+  buildPrompt,
+  TRANSLATORS,
+  DETAIL_LEVELS,
+} from '../../prompt-playwright/prompt-playwright'
+import type { TranslatorId, DetailLevel } from '../../prompt-playwright/prompt-playwright'
 
 const T = {
   bg:'#0d0b1e', surface:'rgba(255,255,255,0.04)', border:'rgba(255,255,255,0.08)',
@@ -471,14 +477,173 @@ function LearningTab({ result }: { result: AIEResult }) {
   )
 }
 
+// ─── Inline Prompt Panel ──────────────────────────────────────────────────────
+
+function PromptQuickPanel({ aieResult, onClose }: { aieResult: AIEResult; onClose: () => void }) {
+  const [translator, setTranslator] = useState<TranslatorId>('flux-1.1')
+  const [detail,     setDetail]     = useState<DetailLevel>('detalhado')
+  const [copiedKey,  setCopiedKey]  = useState<string | null>(null)
+
+  const pw = useMemo(
+    () => buildPrompt(MOCK_PROJECT_CONTEXT, aieResult, translator, detail),
+    [aieResult, translator, detail],
+  )
+
+  const info = TRANSLATORS.find(t => t.id === translator)!
+
+  const copy = (key: string, text: string) => {
+    void navigator.clipboard.writeText(text)
+    setCopiedKey(key)
+    setTimeout(() => setCopiedKey(null), 1800)
+  }
+
+  return (
+    <div style={{
+      position:'absolute', inset:0, zIndex:50,
+      background:'rgba(13,11,30,0.85)', backdropFilter:'blur(4px)',
+      display:'flex', alignItems:'flex-start', justifyContent:'flex-end',
+      padding:'0 0 0 0',
+    }}>
+      <div style={{
+        width:'min(480px,100%)', height:'100%',
+        background:'#0f0d22', borderLeft:`1px solid ${T.border}`,
+        display:'flex', flexDirection:'column' as const,
+        boxShadow:'-8px 0 32px rgba(0,0,0,0.6)',
+      }}>
+        {/* Panel header */}
+        <div style={{
+          padding:'12px 16px', borderBottom:`1px solid ${T.border}`, flexShrink:0,
+          display:'flex', alignItems:'center', gap:10,
+        }}>
+          <span style={{ fontSize:16 }}>⚡</span>
+          <div style={{ flex:1 }}>
+            <p style={{ margin:'0 0 1px', fontSize:12, fontWeight:800, color:'#fff' }}>Gerar Prompt</p>
+            <p style={{ margin:0, fontSize:9, color:T.dim }}>Gerado pelo AIE · {pw.estimatedTokens} tokens</p>
+          </div>
+          <button onClick={onClose} style={{
+            padding:'3px 9px', borderRadius:6, border:`1px solid ${T.border}`,
+            background:'transparent', color:T.dim, cursor:'pointer', fontSize:11,
+          }}>✕</button>
+        </div>
+
+        {/* Translator selector */}
+        <div style={{ padding:'12px 16px', borderBottom:`1px solid ${T.border}`, flexShrink:0 }}>
+          <p style={{ margin:'0 0 6px', fontSize:9, color:T.dim, fontWeight:700, letterSpacing:'0.06em' }}>TRADUTOR</p>
+          <div style={{ display:'flex', gap:5, marginBottom:10 }}>
+            {TRANSLATORS.map(t => (
+              <button
+                key={t.id}
+                onClick={() => setTranslator(t.id)}
+                title={t.desc}
+                style={{
+                  flex:1, padding:'6px 4px', borderRadius:7, cursor:'pointer', border:'none',
+                  background: translator===t.id ? `${t.color}22` : 'rgba(255,255,255,0.04)',
+                  outline: translator===t.id ? `1.5px solid ${t.color}` : `1px solid ${T.border}`,
+                  color: translator===t.id ? t.color : T.dim,
+                  display:'flex', flexDirection:'column' as const, alignItems:'center', gap:2,
+                }}>
+                <span style={{ fontSize:14 }}>{t.icon}</span>
+                <span style={{ fontSize:7, fontWeight:800 }}>{t.badge}</span>
+              </button>
+            ))}
+          </div>
+
+          <p style={{ margin:'0 0 6px', fontSize:9, color:T.dim, fontWeight:700, letterSpacing:'0.06em' }}>NÍVEL DE DETALHE</p>
+          <div style={{ display:'flex', gap:5 }}>
+            {DETAIL_LEVELS.map(d => (
+              <button
+                key={d.id}
+                onClick={() => setDetail(d.id)}
+                style={{
+                  flex:1, padding:'5px 8px', borderRadius:6, cursor:'pointer',
+                  border: detail===d.id ? `1px solid rgba(124,58,237,0.5)` : `1px solid ${T.border}`,
+                  background: detail===d.id ? 'rgba(124,58,237,0.12)' : 'rgba(255,255,255,0.03)',
+                  color: detail===d.id ? T.purpleL : T.dim,
+                  fontSize:9, fontWeight:700,
+                }}>
+                {d.label}
+              </button>
+            ))}
+          </div>
+
+          {/* Active translator info strip */}
+          <div style={{ marginTop:8, display:'flex', alignItems:'center', gap:8, padding:'5px 8px', borderRadius:7, background:`${info.color}11`, border:`1px solid ${info.color}33` }}>
+            <span style={{ fontSize:13 }}>{info.icon}</span>
+            <p style={{ margin:0, fontSize:10, fontWeight:700, color:info.color }}>{info.label}</p>
+            <span style={{ marginLeft:'auto', fontSize:8, padding:'1px 5px', borderRadius:4, background:`${info.color}22`, color:info.color, fontWeight:800 }}>{info.badge}</span>
+          </div>
+        </div>
+
+        {/* Prompt content */}
+        <div style={{ flex:1, overflowY:'auto' as const, padding:'12px 16px', display:'flex', flexDirection:'column' as const, gap:10 }}>
+          {/* Main prompt */}
+          <div style={{ borderRadius:9, border:'1px solid rgba(124,58,237,0.3)', overflow:'hidden' }}>
+            <div style={{ padding:'9px 12px', background:'rgba(124,58,237,0.1)', display:'flex', alignItems:'center', gap:8 }}>
+              <span style={{ fontSize:8, fontWeight:800, padding:'2px 6px', borderRadius:4, background:'rgba(124,58,237,0.25)', color:'#a78bfa' }}>PROMPT</span>
+              <span style={{ flex:1, fontSize:10, color:T.dim }}>Pronto para colar</span>
+              <button
+                onClick={() => copy('prompt', pw.prompt)}
+                style={{ padding:'4px 14px', borderRadius:6, border:'none', background:'#7c3aed', color:'#fff', cursor:'pointer', fontSize:10, fontWeight:700 }}>
+                {copiedKey==='prompt' ? '✓ Copiado' : '📋 Copiar'}
+              </button>
+            </div>
+            <div style={{ padding:'12px', background:'rgba(255,255,255,0.02)' }}>
+              <p style={{ margin:0, fontSize:11, color:T.text, lineHeight:1.75, fontFamily:'ui-monospace,monospace', whiteSpace:'pre-wrap' as const }}>
+                {pw.prompt}
+              </p>
+            </div>
+          </div>
+
+          {/* Negative prompt */}
+          {pw.negativePrompt && (
+            <div style={{ borderRadius:9, border:'1px solid rgba(248,113,113,0.2)', overflow:'hidden' }}>
+              <div style={{ padding:'8px 12px', background:'rgba(248,113,113,0.07)', display:'flex', alignItems:'center', gap:8 }}>
+                <span style={{ fontSize:8, fontWeight:800, padding:'2px 6px', borderRadius:4, background:'rgba(248,113,113,0.2)', color:'#f87171' }}>NEGATIVE</span>
+                <span style={{ flex:1, fontSize:10, color:T.dim }}>O que a IA não deve gerar</span>
+                <button
+                  onClick={() => copy('neg', pw.negativePrompt)}
+                  style={{ padding:'3px 9px', borderRadius:5, border:'1px solid rgba(248,113,113,0.3)', background:'transparent', color:'#f87171', cursor:'pointer', fontSize:10 }}>
+                  {copiedKey==='neg' ? '✓' : 'Copiar'}
+                </button>
+              </div>
+              <p style={{ margin:0, padding:'10px 12px', fontSize:10, color:T.dim, lineHeight:1.6, fontFamily:'ui-monospace,monospace', background:'rgba(255,255,255,0.01)', whiteSpace:'pre-wrap' as const }}>
+                {pw.negativePrompt}
+              </p>
+            </div>
+          )}
+
+          {/* Parameters */}
+          {pw.parameters && (
+            <div style={{ borderRadius:9, border:'1px solid rgba(52,211,153,0.2)', overflow:'hidden' }}>
+              <div style={{ padding:'8px 12px', background:'rgba(52,211,153,0.07)', display:'flex', alignItems:'center', gap:8 }}>
+                <span style={{ fontSize:8, fontWeight:800, padding:'2px 6px', borderRadius:4, background:'rgba(52,211,153,0.2)', color:'#34d399' }}>PARAMS</span>
+                <span style={{ flex:1, fontSize:10, color:T.dim }}>Parâmetros do tradutor</span>
+                <button
+                  onClick={() => copy('params', pw.parameters)}
+                  style={{ padding:'3px 9px', borderRadius:5, border:'1px solid rgba(52,211,153,0.3)', background:'transparent', color:'#34d399', cursor:'pointer', fontSize:10 }}>
+                  {copiedKey==='params' ? '✓' : 'Copiar'}
+                </button>
+              </div>
+              <p style={{ margin:0, padding:'10px 12px', fontSize:10, color:T.dim, lineHeight:1.6, fontFamily:'ui-monospace,monospace', background:'rgba(255,255,255,0.01)' }}>
+                {pw.parameters}
+              </p>
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  )
+}
+
 // ─── AIE Dashboard ────────────────────────────────────────────────────────────
 
 export function AIEDashboard() {
-  const [activeTab,    setActiveTab]    = useState<TabId>('overview')
-  const [lastRun,      setLastRun]      = useState<string>(new Date().toLocaleTimeString('pt-BR'))
-  const [savedDNA,     setSavedDNA]     = useState<string>(MOCK_PROJECT_CONTEXT.dna ?? '')
-  const [generatedDNA, setGeneratedDNA] = useState<string | null>(null)
-  const [copied,       setCopied]       = useState(false)
+  const [activeTab,       setActiveTab]       = useState<TabId>('overview')
+  const [lastRun,         setLastRun]         = useState<string>(new Date().toLocaleTimeString('pt-BR'))
+  const [savedDNA,        setSavedDNA]        = useState<string>(MOCK_PROJECT_CONTEXT.dna ?? '')
+  const [generatedDNA,    setGeneratedDNA]    = useState<string | null>(null)
+  const [copied,          setCopied]          = useState(false)
+  const [showPromptPanel, setShowPromptPanel] = useState(false)
 
   const result: AIEResult = useMemo(() => runAIE(MOCK_PROJECT_CONTEXT), [])
 
@@ -504,7 +669,7 @@ export function AIEDashboard() {
   }, [])
 
   return (
-    <div style={{ height:'100%', display:'flex', flexDirection:'column' as const, background:T.bg }}>
+    <div style={{ height:'100%', display:'flex', flexDirection:'column' as const, background:T.bg, position:'relative' as const }}>
 
       {/* Header */}
       <div style={{
@@ -519,6 +684,17 @@ export function AIEDashboard() {
         <div style={{ display:'flex', gap:6, alignItems:'center' }}>
           <span style={{ fontSize:9, padding:'3px 8px', borderRadius:8, background:'rgba(251,146,60,0.1)', color:'#fb923c', fontWeight:700 }}>SEM IA EXTERNA</span>
           <span style={{ fontSize:9, padding:'3px 8px', borderRadius:8, background:'rgba(74,222,128,0.08)', color:'#4ade80' }}>● Engines Ativos</span>
+          <button
+            onClick={() => setShowPromptPanel(p => !p)}
+            style={{
+              padding:'5px 12px', borderRadius:6, border:'none', cursor:'pointer', fontSize:11, fontWeight:700,
+              background: showPromptPanel ? T.purpleL : 'rgba(124,58,237,0.2)',
+              color: showPromptPanel ? '#0d0b1e' : T.purpleL,
+              outline: showPromptPanel ? `2px solid ${T.purpleL}` : 'none',
+              transition:'all 0.15s',
+            }}>
+            ⚡ Gerar Prompt
+          </button>
           <button onClick={handleRerun} style={{ padding:'5px 12px', borderRadius:6, border:'none', background:T.purple, color:'#fff', cursor:'pointer', fontSize:11, fontWeight:700 }}>
             ⟳ Re-analisar
           </button>
@@ -556,6 +732,11 @@ export function AIEDashboard() {
         {activeTab === 'materials'       && <MaterialsTab result={result}/>}
         {activeTab === 'learning'        && <LearningTab result={result}/>}
       </div>
+
+      {/* Inline prompt panel overlay */}
+      {showPromptPanel && (
+        <PromptQuickPanel aieResult={result} onClose={() => setShowPromptPanel(false)} />
+      )}
     </div>
   )
 }
