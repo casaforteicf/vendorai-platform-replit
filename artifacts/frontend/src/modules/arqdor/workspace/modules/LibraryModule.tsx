@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { ComponentsPanel } from './ComponentsPanel'
 
 const T = {
   bg:'#0d0b1e', surface:'#13102b', card:'rgba(255,255,255,0.04)',
@@ -43,7 +44,7 @@ const MAT_CATS = ['Todos','Madeira','Pedra','Piso','Metal','Tecido','Tinta','Vid
 const OBJ_CATS = ['Todos','Puxadores','Iluminação','Esquadrias','Bancadas','Painéis']
 
 export function LibraryModule() {
-  const [tab, setTab]   = useState<'materiais'|'objetos'|'estilos'>('materiais')
+  const [tab, setTab]   = useState<'materiais'|'objetos'|'estilos'|'componentes'>('materiais')
   const [q, setQ]       = useState('')
   const [matCat, setMatCat] = useState('Todos')
   const [objCat, setObjCat] = useState('Todos')
@@ -65,12 +66,12 @@ export function LibraryModule() {
       <div style={{ padding:'14px 20px 0', borderBottom:`1px solid ${T.border}`, flexShrink:0 }}>
         <h2 style={{ margin:'0 0 12px', fontSize:16, fontWeight:800, color:'#fff' }}>📚 Biblioteca</h2>
         <div style={{ display:'flex', gap:4, marginBottom:12 }}>
-          {(['materiais','objetos','estilos'] as const).map(t => (
+          {(['materiais','objetos','estilos','componentes'] as const).map(t => (
             <button key={t} onClick={()=>{ setTab(t); setQ('') }} style={{
               padding:'5px 14px', borderRadius:6, border:'none', cursor:'pointer', fontSize:12, fontWeight:700, textTransform:'capitalize' as const,
               background: tab===t ? 'rgba(124,58,237,0.25)' : 'rgba(255,255,255,0.05)',
               color: tab===t ? T.purpleL : T.dim,
-            }}>{t}</button>
+            }}>{t==='componentes' ? '🧩 Componentes' : t}</button>
           ))}
           <div style={{ flex:1 }}/>
           <input value={q} onChange={e=>setQ(e.target.value)} placeholder="Buscar…"
@@ -152,6 +153,11 @@ export function LibraryModule() {
                 <p style={{ margin:'4px 0 0', fontSize:10, color:T.dim }}>Clique para aplicar ao projeto</p>
               </div>
             ))}
+          </div>
+        )}
+        {tab==='componentes' && (
+          <div style={{ flex:1, minHeight:0, display:'flex', flexDirection:'column' as const }}>
+            <ComponentsPanel/>
           </div>
         )}
       </div>

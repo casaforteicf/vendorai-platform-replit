@@ -144,6 +144,22 @@ export function generateFullPromptStructure(project: Project): PromptStructure {
 /** Per-object prompt fragment */
 export function generateObjectFragment(obj: ArchitecturalObject): string {
   const p = obj.aiPermissions
+
+  // Component override — takes priority when a component is assigned
+  if (obj.componentId && obj.componentName) {
+    const behavior = obj.replacementBehavior ?? 'KEEP_GEOMETRY'
+    const behaviorInstr: Record<string, string> = {
+      MATERIAL_ONLY:       `apply materials and finishes of ${obj.componentName} to existing geometry of ${obj.name} — keep shape and position exactly`,
+      KEEP_GEOMETRY:       `maintain position and proportion of ${obj.name} — use visual appearance, finish and design details of ${obj.componentName}`,
+      MATCH_DIMENSIONS:    `find geometry proportions matching dimensions of ${obj.componentName} for ${obj.name}`,
+      REPLACE_OBJECT:      `replace ${obj.name} entirely with ${obj.componentName} — follow product images for exact visual representation`,
+      SCALE_TO_FIT:        `scale ${obj.componentName} to fit existing volume and spatial allocation of ${obj.name}`,
+      REFERENCE_STYLE_ONLY:`use ${obj.componentName} as aesthetic reference for ${obj.name} — capture style and finish without exact copy`,
+    }
+    return `[${obj.name}] Component: ${obj.componentName} — ${behaviorInstr[behavior] ?? behaviorInstr['KEEP_GEOMETRY']}`
+  }
+
+  // Default logic
   if (!p.canChangeGeometry && !p.canChangeMaterial) return `PRESERVE ${obj.name} exactly — do not modify.`
   if (p.canReplaceObject && obj.material?.name)     return `REPLACE ${obj.name} with ${obj.material.name}${obj.color ? ` (${obj.color})` : ''}.`
   if (obj.material?.name)                           return `APPLY ${matDesc(obj)} to ${obj.name}.`

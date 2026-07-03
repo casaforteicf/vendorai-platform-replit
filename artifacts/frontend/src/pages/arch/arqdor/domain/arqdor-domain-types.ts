@@ -128,6 +128,13 @@ export interface ArchitecturalObject {
   rules:           ObjectRule[]
   promptNotes:     string
   history:         HistoryEntry[]
+  // ─── Component Library ─────────────────────────────────────────────────
+  componentId?:                    string
+  componentName?:                  string
+  componentSource?:                string
+  replacementBehavior?:            string
+  allowedReplacementCategories?:   string[]
+  componentLocked?:                boolean
 }
 
 // ─── Environment ──────────────────────────────────────────────────────────────

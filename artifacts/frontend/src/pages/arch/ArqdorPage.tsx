@@ -12,6 +12,10 @@ import { generateObjectFragment, generateFullPromptStructure } from './arqdor/do
 import { validateProject, validationSummary } from './arqdor/domain/arqdor-validation-engine'
 import { calculateMockRenderScore, scoreColor, scoreLabel, SCORE_DIMENSIONS } from './arqdor/domain/arqdor-score-engine'
 import type { RiskLevel as DomainRiskLevel, AIPermissions as DomainAIPermissions } from './arqdor/domain/arqdor-domain-types'
+import { MOCK_COMPONENTS } from '@/modules/arqdor/core/component-library/component-mock-data'
+import { canReplaceWithComponent, compatibilityColor, getReplacementInstruction } from '@/modules/arqdor/core/component-library/component-engine'
+import type { ReplacementBehavior } from '@/modules/arqdor/core/component-library/component-types'
+import { COMPONENT_CATEGORY_LABELS, REPLACEMENT_BEHAVIOR_LABELS, REPLACEMENT_BEHAVIOR_ICONS } from '@/modules/arqdor/core/component-library/component-types'
 
 // ─── Theme ────────────────────────────────────────────────────────────────────
 
@@ -940,7 +944,7 @@ function DomainTreeNode({ obj, depth, selectedId, expanded, onSelect, onToggle, 
 
 // ─── Projeto Inteligente View ─────────────────────────────────────────────────
 
-type ProjIntelTab = 'relacoes' | 'regras' | 'permissoes' | 'risco' | 'prompt' | 'validacoes'
+type ProjIntelTab = 'relacoes' | 'regras' | 'permissoes' | 'risco' | 'prompt' | 'validacoes' | 'componente'
 const PROJ_INTEL_TABS: { key: ProjIntelTab; label: string }[] = [
   { key:'relacoes',   label:'🔗 Relações'    },
   { key:'regras',     label:'📋 Regras'      },
@@ -948,6 +952,7 @@ const PROJ_INTEL_TABS: { key: ProjIntelTab; label: string }[] = [
   { key:'risco',      label:'⚠️ Risco'      },
   { key:'prompt',     label:'⚡ Prompt'      },
   { key:'validacoes', label:'✅ Validações'  },
+  { key:'componente', label:'🧩 Componente'  },
 ]
 
 function ProjetoInteligenteView() {
@@ -955,6 +960,9 @@ function ProjetoInteligenteView() {
   const [selId, setSelId] = useState<string|null>('coz-banc')
   const [expIds, setExpIds] = useState(new Set(['env-coz','env-sala','coz-marc','coz-banc','coz-marc-inf','coz-marc-sup']))
   const [tab, setTab] = useState<ProjIntelTab>('regras')
+  const [assignments, setAssignments] = useState<Record<string,{ componentId:string; componentName:string; manufacturer:string; behavior:ReplacementBehavior; locked:boolean }>>({})
+  const [compPickerOpen, setCompPickerOpen] = useState(false)
+  const [compPickerQuery, setCompPickerQuery] = useState('')
 
   const toggleExp = (id: string) => setExpIds(prev => { const n = new Set(prev); n.has(id)?n.delete(id):n.add(id); return n })
 
@@ -1164,6 +1172,146 @@ function ProjetoInteligenteView() {
                   ))}
                 </>
               )}
+
+              {tab==='componente' && selObj && (() => {
+                const asg = assignments[selObj.id]
+                const asgComp = asg ? MOCK_COMPONENTS.find(c => c.id===asg.componentId) : null
+                const pickerFiltered = MOCK_COMPONENTS.filter(c => {
+                  if (!compPickerQuery) return true
+                  const q = compPickerQuery.toLowerCase()
+                  return c.name.toLowerCase().includes(q) || c.manufacturer.toLowerCase().includes(q) || c.tags.some(t=>t.includes(q))
+                })
+                const assign = (compId: string) => {
+                  const comp = MOCK_COMPONENTS.find(c=>c.id===compId)
+                  if (!comp) return
+                  setAssignments(prev => ({ ...prev, [selObj.id]: {
+                    componentId: comp.id, componentName: comp.name,
+                    manufacturer: comp.manufacturer,
+                    behavior: comp.replacementBehavior as ReplacementBehavior,
+                    locked: false,
+                  }}))
+                  setCompPickerOpen(false)
+                  setCompPickerQuery('')
+                }
+                const remove = () => setAssignments(prev => { const n={...prev}; delete n[selObj.id]; return n })
+                const toggleLock = () => asg && setAssignments(prev => ({
+                  ...prev, [selObj.id]: { ...prev[selObj.id], locked: !prev[selObj.id].locked }
+                }))
+                const setBehavior = (b: ReplacementBehavior) => asg && setAssignments(prev => ({
+                  ...prev, [selObj.id]: { ...prev[selObj.id], behavior: b }
+                }))
+
+                return (
+                  <div style={{ display:'flex', flexDirection:'column' as const, gap:10 }}>
+                    {/* Current assignment */}
+                    {asgComp ? (
+                      <div style={{ ...card, borderColor:'rgba(124,58,237,0.3)', background:'rgba(124,58,237,0.06)', padding:'12px' }}>
+                        <div style={{ display:'flex', alignItems:'flex-start', gap:10, marginBottom:10 }}>
+                          <span style={{ fontSize:24 }}>🧩</span>
+                          <div style={{ flex:1 }}>
+                            <p style={{ margin:'0 0 2px', fontSize:12, fontWeight:800, color:'#fff' }}>{asgComp.name}</p>
+                            <p style={{ margin:0, fontSize:10, color:'rgba(255,255,255,0.44)' }}>{asgComp.manufacturer} · {asgComp.brand}</p>
+                            {asgComp.code && <p style={{ margin:'2px 0 0', fontSize:9, fontFamily:'ui-monospace,monospace', color:'rgba(255,255,255,0.28)' }}>{asgComp.code}</p>}
+                          </div>
+                          <div style={{ display:'flex', flexDirection:'column' as const, gap:4, alignItems:'flex-end' }}>
+                            {(() => {
+                              const check = canReplaceWithComponent(selObj, asgComp)
+                              return (
+                                <div style={{ display:'flex', alignItems:'center', gap:5 }}>
+                                  <div style={{ width:8, height:8, borderRadius:'50%', background:compatibilityColor(check.compatibilityScore) }}/>
+                                  <span style={{ fontSize:10, color:compatibilityColor(check.compatibilityScore), fontWeight:700 }}>{check.compatibilityScore}%</span>
+                                </div>
+                              )
+                            })()}
+                            <button onClick={toggleLock} style={{ padding:'2px 7px', borderRadius:5, border:`1px solid rgba(255,255,255,0.1)`, background:'transparent', color:asg.locked?'#fbbf24':'rgba(255,255,255,0.44)', cursor:'pointer', fontSize:10 }}>
+                              {asg.locked?'🔒 Travado':'🔓 Livre'}
+                            </button>
+                          </div>
+                        </div>
+                        {/* Behavior selector */}
+                        <div style={{ marginBottom:10 }}>
+                          <p style={{ margin:'0 0 6px', fontSize:9, fontWeight:700, color:'rgba(255,255,255,0.44)', letterSpacing:'0.06em' }}>COMPORTAMENTO DE SUBSTITUIÇÃO</p>
+                          <div style={{ display:'flex', flexDirection:'column' as const, gap:3 }}>
+                            {(['MATERIAL_ONLY','KEEP_GEOMETRY','MATCH_DIMENSIONS','REPLACE_OBJECT','SCALE_TO_FIT','REFERENCE_STYLE_ONLY'] as ReplacementBehavior[]).map(b => (
+                              <button key={b} onClick={()=>setBehavior(b)} style={{
+                                padding:'5px 8px', borderRadius:5, border:`1px solid ${asg.behavior===b?'rgba(124,58,237,0.4)':'rgba(255,255,255,0.06)'}`,
+                                background: asg.behavior===b?'rgba(124,58,237,0.15)':'transparent',
+                                color: asg.behavior===b?'#a78bfa':'rgba(255,255,255,0.44)',
+                                cursor:'pointer', fontSize:10, textAlign:'left' as const, display:'flex', alignItems:'center', gap:6,
+                              }}>
+                                <span>{{MATERIAL_ONLY:'🎨',KEEP_GEOMETRY:'📐',MATCH_DIMENSIONS:'📏',REPLACE_OBJECT:'🔄',SCALE_TO_FIT:'↔️',REFERENCE_STYLE_ONLY:'✨'}[b]}</span>
+                                <span>{{ MATERIAL_ONLY:'Apenas material',KEEP_GEOMETRY:'Manter geometria',MATCH_DIMENSIONS:'Dimensões compatíveis',REPLACE_OBJECT:'Substituir inteiro',SCALE_TO_FIT:'Escalar para encaixar',REFERENCE_STYLE_ONLY:'Referência estética' }[b]}</span>
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+                        {/* Instruction */}
+                        <div style={{ padding:'8px 10px', borderRadius:6, background:'rgba(255,255,255,0.03)', border:'1px solid rgba(255,255,255,0.06)', marginBottom:10 }}>
+                          <p style={{ margin:'0 0 3px', fontSize:9, fontWeight:700, color:'rgba(255,255,255,0.44)', letterSpacing:'0.06em' }}>INSTRUÇÃO GERADA</p>
+                          <p style={{ margin:0, fontSize:10, color:'rgba(255,255,255,0.7)', lineHeight:1.65, fontFamily:'ui-monospace,monospace' }}>
+                            {getReplacementInstruction(asg.behavior, selObj.name, asgComp.name)}
+                          </p>
+                        </div>
+                        <div style={{ display:'flex', gap:6 }}>
+                          <button onClick={remove} style={{ flex:1, padding:'6px', borderRadius:6, border:'1px solid rgba(248,113,113,0.3)', background:'rgba(248,113,113,0.06)', color:'#f87171', cursor:'pointer', fontSize:10, fontWeight:700 }}>
+                            🗑 Remover Componente
+                          </button>
+                          <button onClick={()=>setCompPickerOpen(true)} style={{ flex:1, padding:'6px', borderRadius:6, border:'1px solid rgba(255,255,255,0.1)', background:'rgba(255,255,255,0.04)', color:'rgba(255,255,255,0.6)', cursor:'pointer', fontSize:10 }}>
+                            🔄 Trocar
+                          </button>
+                        </div>
+                      </div>
+                    ) : (
+                      <div style={{ ...card, padding:'16px', textAlign:'center' as const }}>
+                        <p style={{ margin:'0 0 4px', fontSize:28 }}>🧩</p>
+                        <p style={{ margin:'0 0 6px', fontSize:12, fontWeight:700, color:'#fff' }}>Nenhum componente vinculado</p>
+                        <p style={{ margin:'0 0 14px', fontSize:11, color:'rgba(255,255,255,0.44)', lineHeight:1.65 }}>
+                          Associe um componente real a <strong>{selObj.name}</strong> para gerar instruções de substituição precisas no render.
+                        </p>
+                        <button onClick={()=>setCompPickerOpen(true)} style={{
+                          padding:'8px 18px', borderRadius:7, border:'none', background:'#7c3aed', color:'#fff', cursor:'pointer', fontSize:12, fontWeight:700,
+                        }}>🔍 Selecionar Componente</button>
+                      </div>
+                    )}
+
+                    {/* Picker */}
+                    {compPickerOpen && (
+                      <div style={{ ...card, padding:'12px', border:'1px solid rgba(124,58,237,0.3)' }}>
+                        <div style={{ display:'flex', alignItems:'center', gap:8, marginBottom:10 }}>
+                          <p style={{ margin:0, fontSize:11, fontWeight:700, color:'#a78bfa', flex:1 }}>Selecionar componente</p>
+                          <button onClick={()=>{setCompPickerOpen(false);setCompPickerQuery('')}} style={{ padding:'2px 8px', borderRadius:5, border:'1px solid rgba(255,255,255,0.1)', background:'transparent', color:'rgba(255,255,255,0.44)', cursor:'pointer', fontSize:10 }}>✕</button>
+                        </div>
+                        <input value={compPickerQuery} onChange={e=>setCompPickerQuery(e.target.value)}
+                          placeholder="Buscar componente…" autoFocus
+                          style={{ width:'100%', marginBottom:10, background:'rgba(255,255,255,0.06)', border:'1px solid rgba(255,255,255,0.08)', borderRadius:6,
+                            color:'rgba(255,255,255,0.88)', fontSize:11, padding:'6px 10px', outline:'none', boxSizing:'border-box' as const }}/>
+                        <div style={{ display:'flex', flexDirection:'column' as const, gap:3, maxHeight:260, overflowY:'auto' as const }}>
+                          {pickerFiltered.map(c => {
+                            const check = canReplaceWithComponent(selObj, c)
+                            return (
+                              <button key={c.id} onClick={()=>assign(c.id)} style={{
+                                display:'flex', alignItems:'center', gap:10, padding:'8px 10px', borderRadius:6,
+                                border:`1px solid rgba(255,255,255,0.06)`, background:'rgba(255,255,255,0.03)',
+                                cursor:'pointer', textAlign:'left' as const, width:'100%',
+                              }}>
+                                <div>
+                                  <p style={{ margin:'0 0 2px', fontSize:11, fontWeight:700, color:'#fff' }}>{c.name}</p>
+                                  <p style={{ margin:0, fontSize:9, color:'rgba(255,255,255,0.44)' }}>{c.manufacturer} · {COMPONENT_CATEGORY_LABELS[c.category]}</p>
+                                </div>
+                                <div style={{ marginLeft:'auto', display:'flex', alignItems:'center', gap:5, flexShrink:0 }}>
+                                  <div style={{ width:6, height:6, borderRadius:'50%', background:compatibilityColor(check.compatibilityScore) }}/>
+                                  <span style={{ fontSize:9, color:compatibilityColor(check.compatibilityScore), fontWeight:700 }}>{check.compatibilityScore}%</span>
+                                </div>
+                              </button>
+                            )
+                          })}
+                          {pickerFiltered.length===0 && <p style={{ padding:'20px', textAlign:'center' as const, color:'rgba(255,255,255,0.44)', fontSize:11 }}>Nenhum componente encontrado.</p>}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )
+              })()}
             </div>
           </>
         ) : (
