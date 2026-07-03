@@ -731,14 +731,32 @@ function SavedVariationsPanel({
 
 // ─── AIE Playwright tab ───────────────────────────────────────────────────────
 
-function AIEPlaywrightTab({ projectCtx }: { projectCtx: ProjectContext }) {
+function AIEPlaywrightTab({
+  projectCtx,
+  isMock,
+  projectName,
+}: {
+  projectCtx:   ProjectContext
+  isMock:       boolean
+  projectName?: string
+}) {
   const [translator, setTranslator] = useState<TranslatorId>('flux-1.1')
   const [detail, setDetail]         = useState<DetailLevel>('detalhado')
   const [savedFlash, setSavedFlash] = useState(false)
+  const [refreshKey, setRefreshKey] = useState(0)
+  const [refreshFlash, setRefreshFlash] = useState(false)
 
   const { variations, isLoading, save, rename, remove, updateNotes, storageError, clearStorageError, importVariations } = useSavedVariations()
 
-  const aie = useMemo(() => runAIE(projectCtx), [projectCtx])
+  // refreshKey in deps lets the "Refresh scores" button force a re-run even when
+  // projectCtx reference hasn't changed (e.g. after an in-session edit)
+  const aie = useMemo(() => runAIE(projectCtx), [projectCtx, refreshKey]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  const handleRefresh = useCallback(() => {
+    setRefreshKey(k => k + 1)
+    setRefreshFlash(true)
+    setTimeout(() => setRefreshFlash(false), 1600)
+  }, [])
 
   const pw = useMemo(
     () => buildPrompt(projectCtx, aie, translator, detail),
@@ -769,19 +787,67 @@ function AIEPlaywrightTab({ projectCtx }: { projectCtx: ProjectContext }) {
       <div style={{ padding:'12px 20px', borderBottom:`1px solid ${T.border}`, flexShrink:0, display:'flex', flexDirection:'column' as const, gap:12 }}>
 
         {/* AIE score strip */}
-        <div style={{ display:'flex', gap:8 }}>
-          {([
-            ['Overall', aie.scores.overall],
-            ['Render Ready', aie.scores.renderReadiness],
-            ['Materiais', aie.scores.material],
-            ['Iluminação', aie.scores.lighting],
-            ['Fotografia', aie.scores.photography],
-          ] as [string, number][]).map(([label, score]) => (
-            <div key={label} style={{ flex:1, padding:'6px 8px', borderRadius:8, background:'rgba(255,255,255,0.04)', border:`1px solid ${T.border}`, textAlign:'center' as const }}>
-              <p style={{ margin:'0 0 3px', fontSize:8, color:T.dim, fontWeight:700 }}>{label.toUpperCase()}</p>
-              <p style={{ margin:0, fontSize:15, fontWeight:900, color:scoreColor(score) }}>{score}</p>
-            </div>
-          ))}
+        <div style={{ display:'flex', flexDirection:'column' as const, gap:6 }}>
+          {/* Context source indicator + refresh */}
+          <div style={{ display:'flex', alignItems:'center', gap:8 }}>
+            {isMock ? (
+              <span
+                title="Scores calculados a partir do projeto de demonstração — carregue um projeto real para ver os dados do seu projeto"
+                style={{
+                  fontSize:9, padding:'2px 8px', borderRadius:4,
+                  background:'rgba(251,191,36,0.12)', color:'#fbbf24',
+                  border:'1px solid rgba(251,191,36,0.35)', fontWeight:800,
+                  letterSpacing:'0.06em', cursor:'default',
+                }}>
+                ⚠ DEMO — projeto de exemplo
+              </span>
+            ) : (
+              <span
+                title={`Scores calculados a partir do projeto: ${projectName ?? projectCtx.name}`}
+                style={{
+                  fontSize:9, padding:'2px 8px', borderRadius:4,
+                  background:'rgba(74,222,128,0.1)', color:'#4ade80',
+                  border:'1px solid rgba(74,222,128,0.25)', fontWeight:700,
+                  maxWidth:220, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' as const,
+                  cursor:'default',
+                }}>
+                ✓ {projectName ?? projectCtx.name}
+              </span>
+            )}
+            <button
+              onClick={handleRefresh}
+              title="Recalcular scores a partir do contexto atual do projeto"
+              style={{
+                padding:'2px 10px', borderRadius:5, border:`1px solid ${T.border}`,
+                background: refreshFlash ? 'rgba(74,222,128,0.12)' : 'rgba(255,255,255,0.04)',
+                color: refreshFlash ? '#4ade80' : T.dim,
+                cursor:'pointer', fontSize:9, fontWeight:700,
+                transition:'all 0.2s',
+              }}>
+              {refreshFlash ? '✓ Atualizado' : '↻ Atualizar scores'}
+            </button>
+          </div>
+          {/* Score pills */}
+          <div style={{ display:'flex', gap:8 }}>
+            {([
+              ['Overall', aie.scores.overall],
+              ['Render Ready', aie.scores.renderReadiness],
+              ['Materiais', aie.scores.material],
+              ['Iluminação', aie.scores.lighting],
+              ['Fotografia', aie.scores.photography],
+            ] as [string, number][]).map(([label, score]) => (
+              <div
+                key={label}
+                style={{
+                  flex:1, padding:'6px 8px', borderRadius:8, textAlign:'center' as const,
+                  background: isMock ? 'rgba(251,191,36,0.04)' : 'rgba(255,255,255,0.04)',
+                  border:`1px solid ${isMock ? 'rgba(251,191,36,0.2)' : T.border}`,
+                }}>
+                <p style={{ margin:'0 0 3px', fontSize:8, color:T.dim, fontWeight:700 }}>{label.toUpperCase()}</p>
+                <p style={{ margin:0, fontSize:15, fontWeight:900, color: isMock ? `${scoreColor(score)}99` : scoreColor(score) }}>{score}</p>
+              </div>
+            ))}
+          </div>
         </div>
 
         <div style={{ display:'flex', gap:12 }}>
@@ -938,7 +1004,15 @@ export function PromptPlaygroundModule() {
 
       {/* Tab content */}
       <div style={{ flex:1, overflow:'hidden' }}>
-        {tab === 'playwright' ? <AIEPlaywrightTab projectCtx={resolvedProjectCtx} /> : <PlaygroundTab />}
+        {tab === 'playwright' ? (
+          <AIEPlaywrightTab
+            projectCtx={resolvedProjectCtx}
+            isMock={!projectContext}
+            projectName={activeProject?.name}
+          />
+        ) : (
+          <PlaygroundTab />
+        )}
       </div>
     </div>
   )
