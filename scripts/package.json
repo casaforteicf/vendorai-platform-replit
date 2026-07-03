@@ -15,6 +15,7 @@
     "seed-test-site": "tsx ./src/seed-test-site.ts",
     "cmd22-migrate": "tsx ./src/cmd22-migrate.ts",
     "cmd23-migrate": "tsx ./src/cmd23-migrate.ts",
+    "cmd24-migrate": "tsx ./src/cmd24-migrate.ts",
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {

@@ -212,11 +212,12 @@ router.post("/tenants/:tenantId/webhooks/whatsapp", async (req, res) => {
 
   req.log.info({ messageId: message.id }, "webhook: message inserted");
 
-  // ── 6. Update conversation: ultimaMensagemEm + naoLidas++ ──────────────
+  // ── 6. Update conversation: ultimaMensagemEm + lastInboundAt + naoLidas++ ──
   await db
     .update(conversationsTable)
     .set({
       ultimaMensagemEm: new Date(),
+      lastInboundAt: new Date(),
       naoLidas: sql`${conversationsTable.naoLidas} + 1`,
       updatedAt: new Date(),
     })
@@ -506,6 +507,7 @@ router.post("/tenants/:tenantId/webhooks/zapi", async (req, res) => {
     .update(conversationsTable)
     .set({
       ultimaMensagemEm: new Date(),
+      lastInboundAt: new Date(),
       naoLidas: sql`${conversationsTable.naoLidas} + 1`,
       updatedAt: new Date(),
     })
@@ -1082,10 +1084,11 @@ router.post("/webhooks/meta/whatsapp", async (req, res) => {
             status: "entregue",
           }).returning();
 
-          // Update conversation counters
+          // Update conversation counters + last inbound timestamp
           await db.update(conversationsTable).set({
             naoLidas: sql`${conversationsTable.naoLidas} + 1`,
             ultimaMensagemEm: new Date(),
+            lastInboundAt: new Date(),
             updatedAt: new Date(),
           }).where(eq(conversationsTable.id, conversation.id));
 

@@ -11,6 +11,7 @@ import type { Logger } from "pino";
 import {
   db,
   agentConfigsTable,
+  conversationsTable,
   customerIntelligenceTable,
   dealsTable,
   leadsTable,
@@ -146,6 +147,14 @@ export async function processAgentInternal(params: {
     } else {
       const diasSinceContact = daysSinceLastContact(ctx);
       agentName = determineAgent(ctx.lead, ctx.ci, deals, diasSinceContact);
+    }
+
+    // 4b. Persist current_agent on the conversation (non-blocking best-effort)
+    if (ctx.conversation?.id) {
+      db.update(conversationsTable)
+        .set({ currentAgent: agentName, updatedAt: new Date() })
+        .where(eq(conversationsTable.id, ctx.conversation.id))
+        .catch((err) => log.warn({ err, conversationId: ctx.conversation!.id }, "dispatch: failed to update currentAgent"));
     }
 
     // 5. Check if that agent is enabled

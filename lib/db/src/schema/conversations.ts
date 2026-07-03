@@ -22,6 +22,8 @@ export const conversationsTable = pgTable("conversations", {
   ultimaMensagemEm: timestamp("ultima_mensagem_em"),
   naoLidas: integer("nao_lidas").notNull().default(0),
   assignedTo: text("assigned_to").references(() => usersTable.id, { onDelete: "set null" }),
+  lastInboundAt: timestamp("last_inbound_at"),
+  currentAgent: text("current_agent"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
 });
