@@ -191,7 +191,9 @@ app.use(async (req: Request, res: Response, next: NextFunction) => {
 });
 
 // ─── Main API router ──────────────────────────────────────────────────────────
+// Mounted at both /api (legacy) and /api/v1 (current) — P1-002
 app.use("/api", router);
+app.use("/api/v1", router);
 
 // Global error handler — catches any unhandled async errors (Express 5 auto-forwards them)
 // eslint-disable-next-line @typescript-eslint/no-unused-vars

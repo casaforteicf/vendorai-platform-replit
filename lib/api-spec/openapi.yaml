@@ -9048,6 +9048,312 @@ paths:
             application/json:
               schema: { $ref: "#/components/schemas/ErrorResponse" }
 
+  # ─── Arqdor: Workspace de Arquitetura IA (P0-002) ────────────────────────────
+
+  /arq/projects:
+    get:
+      operationId: listArqProjects
+      tags: [arq-projects]
+      summary: Listar projetos de arquitetura do tenant
+      security: [{ bearerAuth: [] }]
+      responses:
+        "200":
+          description: Lista de projetos
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/ArqProject"
+        "401":
+          description: Não autenticado
+    post:
+      operationId: createArqProject
+      tags: [arq-projects]
+      summary: Criar novo projeto de arquitetura
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateArqProjectBody"
+      responses:
+        "201":
+          description: Projeto criado
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ArqProject"
+        "401":
+          description: Não autenticado
+
+  /arq/projects/{projectId}:
+    parameters:
+      - name: projectId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+    get:
+      operationId: getArqProject
+      tags: [arq-projects]
+      summary: Buscar projeto por ID
+      security: [{ bearerAuth: [] }]
+      responses:
+        "200":
+          description: Projeto encontrado
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ArqProject"
+        "404":
+          description: Recurso não encontrado
+    put:
+      operationId: updateArqProject
+      tags: [arq-projects]
+      summary: Atualizar projeto
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateArqProjectBody"
+      responses:
+        "200":
+          description: Projeto atualizado
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ArqProject"
+    delete:
+      operationId: deleteArqProject
+      tags: [arq-projects]
+      summary: Remover projeto
+      security: [{ bearerAuth: [] }]
+      responses:
+        "204":
+          description: Projeto removido
+
+  /arq/projects/{projectId}/objects:
+    parameters:
+      - name: projectId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+    post:
+      operationId: upsertArqObjects
+      tags: [arq-objects]
+      summary: Criar ou atualizar objetos do projeto
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [objects]
+              properties:
+                objects:
+                  type: array
+                  items:
+                    $ref: "#/components/schemas/ArqObject"
+      responses:
+        "200":
+          description: Objetos salvos
+
+  /arq/projects/{projectId}/materials:
+    parameters:
+      - name: projectId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+    post:
+      operationId: upsertArqMaterials
+      tags: [arq-materials]
+      summary: Criar ou atualizar materiais do projeto
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [materials]
+              properties:
+                materials:
+                  type: array
+                  items:
+                    $ref: "#/components/schemas/ArqMaterial"
+      responses:
+        "200":
+          description: Materiais salvos
+
+  /arq/projects/{projectId}/aie-snapshots:
+    parameters:
+      - name: projectId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+    post:
+      operationId: saveAieSnapshot
+      tags: [arq-snapshots]
+      summary: Salvar snapshot de análise AIE
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateAieSnapshotBody"
+      responses:
+        "201":
+          description: Snapshot salvo
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AieSnapshot"
+
+  /arq/projects/{projectId}/prompt-variations:
+    parameters:
+      - name: projectId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+    get:
+      operationId: listPromptVariations
+      tags: [arq-prompts]
+      summary: Listar variações de prompt salvas
+      security: [{ bearerAuth: [] }]
+      responses:
+        "200":
+          description: Lista de variações
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/PromptVariation"
+    post:
+      operationId: savePromptVariation
+      tags: [arq-prompts]
+      summary: Salvar variação de prompt
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreatePromptVariationBody"
+      responses:
+        "201":
+          description: Variação salva
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PromptVariation"
+
+  /arq/projects/{projectId}/prompt-variations/{variationId}:
+    parameters:
+      - name: projectId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+      - name: variationId
+        in: path
+        required: true
+        schema:
+          type: string
+    delete:
+      operationId: deletePromptVariation
+      tags: [arq-prompts]
+      summary: Remover variação de prompt
+      security: [{ bearerAuth: [] }]
+      responses:
+        "204":
+          description: Variação removida
+
+  /arq/render-jobs:
+    post:
+      operationId: createRenderJob
+      tags: [arq-renders]
+      summary: Criar job de renderização
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateRenderJobBody"
+      responses:
+        "201":
+          description: Job criado
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RenderJob"
+
+  /arq/render-jobs/{jobId}:
+    parameters:
+      - name: jobId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+    get:
+      operationId: getRenderJob
+      tags: [arq-renders]
+      summary: Buscar status do render job
+      security: [{ bearerAuth: [] }]
+      responses:
+        "200":
+          description: Status do job
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RenderJob"
+
+  /arq/render-jobs/{jobId}/reviews:
+    parameters:
+      - name: jobId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+    post:
+      operationId: createRenderReview
+      tags: [arq-renders]
+      summary: Registrar revisão de render
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateRenderReviewBody"
+      responses:
+        "201":
+          description: Revisão registrada
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RenderReview"
+
+
 components:
   schemas:
     CreateInviteBody:
@@ -16571,3 +16877,349 @@ components:
               totalCalls:
                 type: integer
       required: [totalCostUsd, totalCalls, tenantBreakdown, featureBreakdown]
+
+    # ─── Arqdor schemas (P0-002) ─────────────────────────────────────────────
+
+    ArqProject:
+      type: object
+      required: [id, tenantId, name, status, createdAt]
+      properties:
+        id:
+          type: string
+          format: uuid
+        tenantId:
+          type: string
+          format: uuid
+        name:
+          type: string
+        description:
+          type: string
+          nullable: true
+        status:
+          type: string
+          enum: [DRAFT, IN_PROGRESS, REVIEW, APPROVED, ARCHIVED]
+        clientName:
+          type: string
+          nullable: true
+        deliveryDate:
+          type: string
+          format: date
+          nullable: true
+        budget:
+          type: number
+          nullable: true
+        totalArea:
+          type: number
+          nullable: true
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+          nullable: true
+
+    CreateArqProjectBody:
+      type: object
+      required: [name]
+      properties:
+        name:
+          type: string
+        description:
+          type: string
+        clientName:
+          type: string
+        deliveryDate:
+          type: string
+          format: date
+        budget:
+          type: number
+        totalArea:
+          type: number
+
+    UpdateArqProjectBody:
+      type: object
+      properties:
+        name:
+          type: string
+        description:
+          type: string
+        status:
+          type: string
+          enum: [DRAFT, IN_PROGRESS, REVIEW, APPROVED, ARCHIVED]
+        clientName:
+          type: string
+        deliveryDate:
+          type: string
+          format: date
+        budget:
+          type: number
+        totalArea:
+          type: number
+
+    ArqObject:
+      type: object
+      required: [id, name, category]
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        category:
+          type: string
+        material:
+          type: string
+          nullable: true
+        finish:
+          type: string
+          nullable: true
+        color:
+          type: string
+          nullable: true
+        visualWeight:
+          type: number
+          minimum: 0
+          maximum: 1
+          nullable: true
+        description:
+          type: string
+          nullable: true
+        componentId:
+          type: string
+          nullable: true
+
+    ArqMaterial:
+      type: object
+      required: [id, name, category]
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        category:
+          type: string
+        manufacturer:
+          type: string
+          nullable: true
+        finish:
+          type: string
+          nullable: true
+        gloss:
+          type: number
+          nullable: true
+        palette:
+          type: array
+          items:
+            type: string
+        usedByObjects:
+          type: array
+          items:
+            type: string
+
+    ArqComponent:
+      type: object
+      required: [id, name, type]
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        type:
+          type: string
+          enum: [FURNITURE, FIXTURE, STRUCTURAL, DECORATIVE, LIGHTING, TEXTILE, OTHER]
+        brand:
+          type: string
+          nullable: true
+        model:
+          type: string
+          nullable: true
+        priceEstimate:
+          type: number
+          nullable: true
+        imageUrl:
+          type: string
+          nullable: true
+        specifications:
+          type: object
+          additionalProperties: true
+          nullable: true
+
+    AieSnapshot:
+      type: object
+      required: [id, projectId, createdAt]
+      properties:
+        id:
+          type: string
+          format: uuid
+        projectId:
+          type: string
+          format: uuid
+        dna:
+          type: object
+          additionalProperties: true
+          nullable: true
+        analysisResult:
+          type: object
+          additionalProperties: true
+          nullable: true
+        createdAt:
+          type: string
+          format: date-time
+
+    CreateAieSnapshotBody:
+      type: object
+      properties:
+        dna:
+          type: object
+          additionalProperties: true
+        analysisResult:
+          type: object
+          additionalProperties: true
+
+    PromptVariation:
+      type: object
+      required: [id, name, prompt, savedAt]
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        prompt:
+          type: string
+        negativePrompt:
+          type: string
+          nullable: true
+        notes:
+          type: string
+          nullable: true
+        parameters:
+          type: object
+          additionalProperties: true
+          nullable: true
+        savedAt:
+          type: string
+          format: date-time
+
+    CreatePromptVariationBody:
+      type: object
+      required: [name, prompt]
+      properties:
+        name:
+          type: string
+        prompt:
+          type: string
+        negativePrompt:
+          type: string
+        notes:
+          type: string
+        parameters:
+          type: object
+          additionalProperties: true
+
+    RenderJob:
+      type: object
+      required: [id, projectId, status, createdAt]
+      properties:
+        id:
+          type: string
+          format: uuid
+        projectId:
+          type: string
+          format: uuid
+        status:
+          type: string
+          enum: [QUEUED, PROCESSING, COMPLETED, FAILED, CANCELLED]
+        prompt:
+          type: string
+          nullable: true
+        negativePrompt:
+          type: string
+          nullable: true
+        imageUrl:
+          type: string
+          nullable: true
+        provider:
+          type: string
+          nullable: true
+        model:
+          type: string
+          nullable: true
+        parameters:
+          type: object
+          additionalProperties: true
+          nullable: true
+        errorMessage:
+          type: string
+          nullable: true
+        createdAt:
+          type: string
+          format: date-time
+        completedAt:
+          type: string
+          format: date-time
+          nullable: true
+
+    CreateRenderJobBody:
+      type: object
+      required: [projectId, prompt]
+      properties:
+        projectId:
+          type: string
+          format: uuid
+        prompt:
+          type: string
+        negativePrompt:
+          type: string
+        provider:
+          type: string
+        model:
+          type: string
+        parameters:
+          type: object
+          additionalProperties: true
+
+    RenderReview:
+      type: object
+      required: [id, jobId, rating, createdAt]
+      properties:
+        id:
+          type: string
+          format: uuid
+        jobId:
+          type: string
+          format: uuid
+        rating:
+          type: integer
+          minimum: 1
+          maximum: 5
+        comment:
+          type: string
+          nullable: true
+        approved:
+          type: boolean
+        corrections:
+          type: array
+          items:
+            type: string
+          nullable: true
+        createdAt:
+          type: string
+          format: date-time
+
+    CreateRenderReviewBody:
+      type: object
+      required: [rating, approved]
+      properties:
+        rating:
+          type: integer
+          minimum: 1
+          maximum: 5
+        comment:
+          type: string
+        approved:
+          type: boolean
+        corrections:
+          type: array
+          items:
+            type: string

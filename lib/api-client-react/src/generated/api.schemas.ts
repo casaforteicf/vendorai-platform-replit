@@ -5114,6 +5114,221 @@ export interface AdminAIUsage {
   featureBreakdown: AdminAIUsageFeatureBreakdownItem[];
 }
 
+export type ArqProjectStatus = typeof ArqProjectStatus[keyof typeof ArqProjectStatus];
+
+
+export const ArqProjectStatus = {
+  DRAFT: 'DRAFT',
+  IN_PROGRESS: 'IN_PROGRESS',
+  REVIEW: 'REVIEW',
+  APPROVED: 'APPROVED',
+  ARCHIVED: 'ARCHIVED',
+} as const;
+
+export interface ArqProject {
+  id: string;
+  tenantId: string;
+  name: string;
+  description?: string | null;
+  status: ArqProjectStatus;
+  clientName?: string | null;
+  deliveryDate?: string | null;
+  budget?: number | null;
+  totalArea?: number | null;
+  createdAt: string;
+  updatedAt?: string | null;
+}
+
+export interface CreateArqProjectBody {
+  name: string;
+  description?: string;
+  clientName?: string;
+  deliveryDate?: string;
+  budget?: number;
+  totalArea?: number;
+}
+
+export type UpdateArqProjectBodyStatus = typeof UpdateArqProjectBodyStatus[keyof typeof UpdateArqProjectBodyStatus];
+
+
+export const UpdateArqProjectBodyStatus = {
+  DRAFT: 'DRAFT',
+  IN_PROGRESS: 'IN_PROGRESS',
+  REVIEW: 'REVIEW',
+  APPROVED: 'APPROVED',
+  ARCHIVED: 'ARCHIVED',
+} as const;
+
+export interface UpdateArqProjectBody {
+  name?: string;
+  description?: string;
+  status?: UpdateArqProjectBodyStatus;
+  clientName?: string;
+  deliveryDate?: string;
+  budget?: number;
+  totalArea?: number;
+}
+
+export interface ArqObject {
+  id: string;
+  name: string;
+  category: string;
+  material?: string | null;
+  finish?: string | null;
+  color?: string | null;
+  /**
+     * @minimum 0
+     * @maximum 1
+     */
+  visualWeight?: number | null;
+  description?: string | null;
+  componentId?: string | null;
+}
+
+export interface ArqMaterial {
+  id: string;
+  name: string;
+  category: string;
+  manufacturer?: string | null;
+  finish?: string | null;
+  gloss?: number | null;
+  palette?: string[];
+  usedByObjects?: string[];
+}
+
+export type ArqComponentType = typeof ArqComponentType[keyof typeof ArqComponentType];
+
+
+export const ArqComponentType = {
+  FURNITURE: 'FURNITURE',
+  FIXTURE: 'FIXTURE',
+  STRUCTURAL: 'STRUCTURAL',
+  DECORATIVE: 'DECORATIVE',
+  LIGHTING: 'LIGHTING',
+  TEXTILE: 'TEXTILE',
+  OTHER: 'OTHER',
+} as const;
+
+export type ArqComponentSpecifications = { [key: string]: unknown } | null;
+
+export interface ArqComponent {
+  id: string;
+  name: string;
+  type: ArqComponentType;
+  brand?: string | null;
+  model?: string | null;
+  priceEstimate?: number | null;
+  imageUrl?: string | null;
+  specifications?: ArqComponentSpecifications;
+}
+
+export type AieSnapshotDna = { [key: string]: unknown } | null;
+
+export type AieSnapshotAnalysisResult = { [key: string]: unknown } | null;
+
+export interface AieSnapshot {
+  id: string;
+  projectId: string;
+  dna?: AieSnapshotDna;
+  analysisResult?: AieSnapshotAnalysisResult;
+  createdAt: string;
+}
+
+export type CreateAieSnapshotBodyDna = { [key: string]: unknown };
+
+export type CreateAieSnapshotBodyAnalysisResult = { [key: string]: unknown };
+
+export interface CreateAieSnapshotBody {
+  dna?: CreateAieSnapshotBodyDna;
+  analysisResult?: CreateAieSnapshotBodyAnalysisResult;
+}
+
+export type PromptVariationParameters = { [key: string]: unknown } | null;
+
+export interface PromptVariation {
+  id: string;
+  name: string;
+  prompt: string;
+  negativePrompt?: string | null;
+  notes?: string | null;
+  parameters?: PromptVariationParameters;
+  savedAt: string;
+}
+
+export type CreatePromptVariationBodyParameters = { [key: string]: unknown };
+
+export interface CreatePromptVariationBody {
+  name: string;
+  prompt: string;
+  negativePrompt?: string;
+  notes?: string;
+  parameters?: CreatePromptVariationBodyParameters;
+}
+
+export type RenderJobStatus = typeof RenderJobStatus[keyof typeof RenderJobStatus];
+
+
+export const RenderJobStatus = {
+  QUEUED: 'QUEUED',
+  PROCESSING: 'PROCESSING',
+  COMPLETED: 'COMPLETED',
+  FAILED: 'FAILED',
+  CANCELLED: 'CANCELLED',
+} as const;
+
+export type RenderJobParameters = { [key: string]: unknown } | null;
+
+export interface RenderJob {
+  id: string;
+  projectId: string;
+  status: RenderJobStatus;
+  prompt?: string | null;
+  negativePrompt?: string | null;
+  imageUrl?: string | null;
+  provider?: string | null;
+  model?: string | null;
+  parameters?: RenderJobParameters;
+  errorMessage?: string | null;
+  createdAt: string;
+  completedAt?: string | null;
+}
+
+export type CreateRenderJobBodyParameters = { [key: string]: unknown };
+
+export interface CreateRenderJobBody {
+  projectId: string;
+  prompt: string;
+  negativePrompt?: string;
+  provider?: string;
+  model?: string;
+  parameters?: CreateRenderJobBodyParameters;
+}
+
+export interface RenderReview {
+  id: string;
+  jobId: string;
+  /**
+     * @minimum 1
+     * @maximum 5
+     */
+  rating: number;
+  comment?: string | null;
+  approved?: boolean;
+  corrections?: string[] | null;
+  createdAt: string;
+}
+
+export interface CreateRenderReviewBody {
+  /**
+     * @minimum 1
+     * @maximum 5
+     */
+  rating: number;
+  comment?: string;
+  approved: boolean;
+  corrections?: string[];
+}
+
 export type InstagramOAuthCallbackParams = {
 code?: string;
 state?: string;
@@ -5406,5 +5621,13 @@ export type ProspectorListApprovalsParams = {
  * Required when caller is a super_admin
  */
 tenantId?: string;
+};
+
+export type UpsertArqObjectsBody = {
+  objects: ArqObject[];
+};
+
+export type UpsertArqMaterialsBody = {
+  materials: ArqMaterial[];
 };
 

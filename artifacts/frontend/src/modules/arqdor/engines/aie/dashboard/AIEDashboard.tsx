@@ -12,11 +12,8 @@ import type { TranslatorId, DetailLevel } from '../../prompt-playwright/prompt-p
 import { buildLearningProfile, getMockLearningProfile } from '../engines/learning-engine'
 import { useArqProjectContext } from '../../../workspace/ArqWorkspace'
 import { useWorkspaceContext } from '../../../workspace/WorkspaceContext'
+import { T } from '../../../shared/arqdor-theme'
 
-const T = {
-  bg:'#0d0b1e', surface:'rgba(255,255,255,0.04)', border:'rgba(255,255,255,0.08)',
-  purple:'#7c3aed', purpleL:'#a78bfa', text:'rgba(255,255,255,0.88)', dim:'rgba(255,255,255,0.44)',
-} as const
 
 // ─── Score gauge ──────────────────────────────────────────────────────────────
 

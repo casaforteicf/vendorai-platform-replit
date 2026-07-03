@@ -2,11 +2,8 @@ import { useState } from 'react'
 import { MOCK_SPACE_TEMPLATES } from '../arqhub-mock-data'
 import type { SpaceTemplate, SpaceType } from '../arqhub-types'
 import { SPACE_TYPE_LABELS, SPACE_TYPE_ICONS } from '../arqhub-types'
+import { T } from '../../shared/arqdor-theme'
 
-const T = {
-  surface:'rgba(255,255,255,0.04)', border:'rgba(255,255,255,0.08)',
-  purple:'#7c3aed', purpleL:'#a78bfa', text:'rgba(255,255,255,0.88)', dim:'rgba(255,255,255,0.44)',
-} as const
 
 const ALL_TYPES = [...new Set(MOCK_SPACE_TEMPLATES.map(s=>s.type))]
 

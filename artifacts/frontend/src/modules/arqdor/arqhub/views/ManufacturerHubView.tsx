@@ -1,11 +1,8 @@
 import { useState } from 'react'
 import { MOCK_MANUFACTURERS } from '../arqhub-mock-data'
 import type { HubManufacturer, ManufacturerStatus } from '../arqhub-types'
+import { T } from '../../shared/arqdor-theme'
 
-const T = {
-  surface:'rgba(255,255,255,0.04)', border:'rgba(255,255,255,0.08)',
-  purple:'#7c3aed', purpleL:'#a78bfa', text:'rgba(255,255,255,0.88)', dim:'rgba(255,255,255,0.44)',
-} as const
 
 const STATUS_COLOR: Record<ManufacturerStatus,string> = { OFFICIAL:'#4ade80', COMMUNITY:'#fbbf24', PRIVATE:'#a78bfa' }
 const STATUS_LABEL: Record<ManufacturerStatus,string> = { OFFICIAL:'Oficial', COMMUNITY:'Comunidade', PRIVATE:'Privado' }

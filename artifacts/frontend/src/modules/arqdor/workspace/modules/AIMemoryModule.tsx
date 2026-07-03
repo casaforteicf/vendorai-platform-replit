@@ -1,10 +1,7 @@
 import { useState } from 'react'
 import type { AIMemory, MemoryPreference } from '../../shared/platform-types'
+import { T } from '../../shared/arqdor-theme'
 
-const T = {
-  bg:'#0d0b1e', border:'rgba(255,255,255,0.08)', purple:'#7c3aed', purpleL:'#a78bfa',
-  text:'rgba(255,255,255,0.88)', dim:'rgba(255,255,255,0.44)', card:'rgba(255,255,255,0.04)',
-} as const
 
 const CAT_META: Record<string, { color: string; icon: string }> = {
   MATERIAL: { color:'168,85,247',  icon:'🎨' },

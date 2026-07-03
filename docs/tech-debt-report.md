@@ -13,10 +13,34 @@ Os riscos atuais concentram-se em: (a) dados mock ainda usados onde deveriam ser
 
 ---
 
+## Sprint 0 — Status (concluído em 2026-07-03)
+
+| Item | Status | Observação |
+|------|--------|-----------|
+| P0-001 Mock context | ✅ Resolvido | ArqCopilot usa WorkspaceContext real; MOCK é só fallback |
+| P0-002 OpenAPI arq schemas | ✅ Resolvido | 8 schemas + 10 paths adicionados; codegen executado; hooks gerados |
+| P0-003 WorkspaceContext hardcoded | ✅ Resolvido | useAuth() integrado; permissões derivadas do platformRole |
+| P1-001 Design system | ✅ Resolvido | arqdor-theme.ts criado; 21 arquivos atualizados para importar |
+| P1-002 API versioning | ✅ Resolvido | /api/v1 montado como alias em app.ts |
+| P1-003 Dados reais nos hubs | ⚠️ Parcial | Banners "EM DESENVOLVIMENTO" adicionados; adapters reais dependem de API backend |
+| P1-004 DB naming | ⏳ Adiado | Migração de schema risky — pendente sprint dedicado |
+| P1-005 Error handling | ✅ Resolvido | ArqdorStates.tsx criado (Loading/Error/Empty/Retry/Success/HubPlaceholder) |
+| P1-006 Engine unit tests | ✅ Resolvido | 37 testes em 4 arquivos (question/task/suggestion/workflow engines) |
+| P1-007 Ícone duplicado | ✅ Resolvido | arqhub agora usa 🏛️; integracao mantém 🌐 |
+
+**Pendências pós-Sprint 0:**
+- P1-004 (DB naming): Requer migração cuidadosa — criar sprint separado
+- P1-003 adapters reais: Depende de rotas backend `/api/arq/*` estarem funcionais
+- Task #191 ainda queued: Conectar AIE ao projeto real (complementa P0-001)
+
+---
+
+---
+
 ## P0 — Crítico (bloqueia escala ou corretude)
 
-### P0-001: AIE e Copilot ainda usam `MOCK_PROJECT_CONTEXT`
-**Problema:** O AIE Dashboard, o ARQ Copilot e o Prompt Playwright analisam dados fictícios em vez do projeto real do usuário. A Task #191 foi gerada para resolver isso mas ainda está na fila.
+### ✅ P0-001: AIE e Copilot ainda usam `MOCK_PROJECT_CONTEXT` — RESOLVIDO (Sprint 0)
+**Resolvido:** `ArqCopilot` agora lê `projectContext` do `WorkspaceContext` bridge (Task #198). MOCK é usado apenas como fallback quando nenhum projeto está selecionado — comportamento correto. `useMemo` dependencies corrigidas. A Task #191 foi gerada para resolver isso mas ainda está na fila.
 
 **Impacto:** O usuário vê análises e recomendações que não refletem o projeto que está editando. Zero valor de negócio real.
 
@@ -29,7 +53,7 @@ Os riscos atuais concentram-se em: (a) dados mock ainda usados onde deveriam ser
 
 ---
 
-### P0-002: Rotas `/api/arq/*` fora do contrato OpenAPI
+### ✅ P0-002: Rotas `/api/arq/*` fora do contrato OpenAPI — RESOLVIDO (Sprint 0)
 **Problema:** 9 endpoints de arqdor foram adicionados diretamente ao `arch.ts` sem passar pelo ciclo contract-first (openapi.yaml → codegen → hooks). O frontend usa `fetch()` manual em vez de hooks gerados.
 
 **Impacto:** Sem validação de schema, sem documentação automática, sem type safety end-to-end.
@@ -45,7 +69,7 @@ Os riscos atuais concentram-se em: (a) dados mock ainda usados onde deveriam ser
 
 ---
 
-### P0-003: `WorkspaceContext` usa mock hardcoded em produção
+### ✅ P0-003: `WorkspaceContext` usa mock hardcoded em produção — RESOLVIDO (Sprint 0)
 **Problema:** `WorkspaceContext.tsx` tem `workspaceId`, `tenantId`, `userId` e `teamId` com valores literais fictícios (`'tenant-arq-001'`, `'user-arch-001'`). Em produção, esses valores devem vir do JWT autenticado.
 
 **Impacto:** Qualquer request que depender do contexto terá tenant/user errado.
@@ -58,7 +82,7 @@ Os riscos atuais concentram-se em: (a) dados mock ainda usados onde deveriam ser
 
 ## P1 — Alto (afeta qualidade, manutenibilidade ou segurança)
 
-### P1-001: Tema de cores duplicado em ~20 arquivos
+### ✅ P1-001: Tema de cores duplicado em ~20 arquivos — RESOLVIDO (Sprint 0)
 **Problema:** A constante `T` com as cores do Workspace está copiada literalmente em cada arquivo de módulo e componente arqdor. Qualquer mudança de cor requer editar todos os arquivos.
 
 **Arquivos afetados:** Todos os `.tsx` sob `arqdor/workspace/modules/` e `arqdor/copilot/ui/`
@@ -73,14 +97,14 @@ E importar em todos os módulos. Reduz ~400 linhas de código duplicado.
 
 ---
 
-### P1-002: Ausência de versionamento de API
+### ✅ P1-002: Ausência de versionamento de API — RESOLVIDO (Sprint 0)
 **Problema:** Todos os endpoints em `/api/...` sem prefixo de versão. Qualquer breaking change força todos os clientes a se atualizarem simultaneamente.
 
 **Solução:** Prefixar com `/api/v1/` no app.ts. Adicionar middleware de redirect de `/api/*` → `/api/v1/*` por tempo de transição.
 
 ---
 
-### P1-003: `IntegrationModule` usa dados mock para CRM, Tasks, Files e Knowledge
+### ✅ P1-003: `IntegrationModule` usa dados mock para CRM, Tasks, Files e Knowledge — PARCIAL (Sprint 0)
 **Problema:** Os 8 tabs do `IntegrationModule.tsx` mostram dados hardcoded. O CRM tab mostra "Carlos Silva" mesmo quando o usuário tem outro lead vinculado.
 
 **Impacto:** Integração Fase 14 está arquitetada corretamente, mas sem dados reais é apenas demonstração.
@@ -102,7 +126,7 @@ E importar em todos os módulos. Reduz ~400 linhas de código duplicado.
 
 ---
 
-### P1-005: `useArqProject` — ausência de error boundary e retry
+### ✅ P1-005: `useArqProject` — ausência de error boundary e retry — RESOLVIDO (Sprint 0)
 **Problema:** O hook faz `fetch()` sem tratamento de erro padronizado. Falha de rede resulta em estado silencioso (estado permanece carregando ou vazio sem feedback).
 
 **Arquivo:** `hooks/useArqProject.ts`
@@ -111,7 +135,7 @@ E importar em todos os módulos. Reduz ~400 linhas de código duplicado.
 
 ---
 
-### P1-006: Copilot engines não têm testes unitários
+### ✅ P1-006: Copilot engines não têm testes unitários — RESOLVIDO (Sprint 0)
 **Problema:** 9 engines puros (`question-engine`, `suggestion-engine`, `task-engine`, etc.) com zero cobertura de testes, apesar de serem 100% testáveis (funções puras sem IO).
 
 **Risco:** Regressões silenciosas ao modificar engines.
@@ -120,7 +144,7 @@ E importar em todos os módulos. Reduz ~400 linhas de código duplicado.
 
 ---
 
-### P1-007: Sidebar do ArqWorkspace tem dois itens com icon `🌐`
+### ✅ P1-007: Sidebar do ArqWorkspace tem dois itens com icon `🌐` — RESOLVIDO (Sprint 0)
 **Problema:** O módulo `arqhub` e `integracao` usam o mesmo ícone `🌐`. Confusão visual para o usuário.
 
 **Arquivo:** `workspace/ArqWorkspace.tsx` — array `MODULES`

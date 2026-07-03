@@ -1,11 +1,7 @@
 import { useState } from 'react'
 import { ComponentsPanel } from './ComponentsPanel'
+import { T } from '../../shared/arqdor-theme'
 
-const T = {
-  bg:'#0d0b1e', surface:'#13102b', card:'rgba(255,255,255,0.04)',
-  border:'rgba(255,255,255,0.08)', purple:'#7c3aed', purpleL:'#a78bfa',
-  text:'rgba(255,255,255,0.88)', dim:'rgba(255,255,255,0.44)',
-} as const
 
 const MATERIALS = [
   { id:'m1', name:'MDF Carvalho Freijó 15mm', cat:'Madeira',    mfr:'Duratex',    code:'DRX-KF15', color:'#9B6C3C', finish:'Amadeirado' },

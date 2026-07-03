@@ -3,12 +3,8 @@ import { MOCK_COMPONENTS, MOCK_MANUFACTURERS, MOCK_CATEGORIES } from '../../core
 import { filterComponents, compatibilityColor } from '../../core/component-library/component-engine'
 import type { ComponentItem, ComponentCategory } from '../../core/component-library/component-types'
 import { COMPONENT_CATEGORY_LABELS, REPLACEMENT_BEHAVIOR_LABELS, REPLACEMENT_BEHAVIOR_ICONS } from '../../core/component-library/component-types'
+import { T } from '../../shared/arqdor-theme'
 
-const T = {
-  bg:'#0d0b1e', surface:'#13102b', card:'rgba(255,255,255,0.04)',
-  border:'rgba(255,255,255,0.08)', purple:'#7c3aed', purpleL:'#a78bfa',
-  text:'rgba(255,255,255,0.88)', dim:'rgba(255,255,255,0.44)',
-} as const
 
 const CAT_ICON: Partial<Record<ComponentCategory,string>> = {
   KITCHEN:'🍳', CABINETRY:'🗄️', BED:'🛏️', MATTRESS:'😴', SOFA:'🛋️',

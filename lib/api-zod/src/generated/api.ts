@@ -10426,3 +10426,257 @@ export const ProspectorPatchApprovalResponse = zod.object({
 })
 
 
+/**
+ * @summary Listar projetos de arquitetura do tenant
+ */
+export const ListArqProjectsResponseItem = zod.object({
+  "id": zod.string().uuid(),
+  "tenantId": zod.string().uuid(),
+  "name": zod.string(),
+  "description": zod.string().nullish(),
+  "status": zod.enum(['DRAFT', 'IN_PROGRESS', 'REVIEW', 'APPROVED', 'ARCHIVED']),
+  "clientName": zod.string().nullish(),
+  "deliveryDate": zod.coerce.date().nullish(),
+  "budget": zod.number().nullish(),
+  "totalArea": zod.number().nullish(),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date().nullish()
+})
+export const ListArqProjectsResponse = zod.array(ListArqProjectsResponseItem)
+
+
+/**
+ * @summary Criar novo projeto de arquitetura
+ */
+export const CreateArqProjectBody = zod.object({
+  "name": zod.string(),
+  "description": zod.string().optional(),
+  "clientName": zod.string().optional(),
+  "deliveryDate": zod.coerce.date().optional(),
+  "budget": zod.number().optional(),
+  "totalArea": zod.number().optional()
+})
+
+
+/**
+ * @summary Buscar projeto por ID
+ */
+export const GetArqProjectParams = zod.object({
+  "projectId": zod.coerce.string().uuid()
+})
+
+export const GetArqProjectResponse = zod.object({
+  "id": zod.string().uuid(),
+  "tenantId": zod.string().uuid(),
+  "name": zod.string(),
+  "description": zod.string().nullish(),
+  "status": zod.enum(['DRAFT', 'IN_PROGRESS', 'REVIEW', 'APPROVED', 'ARCHIVED']),
+  "clientName": zod.string().nullish(),
+  "deliveryDate": zod.coerce.date().nullish(),
+  "budget": zod.number().nullish(),
+  "totalArea": zod.number().nullish(),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date().nullish()
+})
+
+
+/**
+ * @summary Atualizar projeto
+ */
+export const UpdateArqProjectParams = zod.object({
+  "projectId": zod.coerce.string().uuid()
+})
+
+export const UpdateArqProjectBody = zod.object({
+  "name": zod.string().optional(),
+  "description": zod.string().optional(),
+  "status": zod.enum(['DRAFT', 'IN_PROGRESS', 'REVIEW', 'APPROVED', 'ARCHIVED']).optional(),
+  "clientName": zod.string().optional(),
+  "deliveryDate": zod.coerce.date().optional(),
+  "budget": zod.number().optional(),
+  "totalArea": zod.number().optional()
+})
+
+export const UpdateArqProjectResponse = zod.object({
+  "id": zod.string().uuid(),
+  "tenantId": zod.string().uuid(),
+  "name": zod.string(),
+  "description": zod.string().nullish(),
+  "status": zod.enum(['DRAFT', 'IN_PROGRESS', 'REVIEW', 'APPROVED', 'ARCHIVED']),
+  "clientName": zod.string().nullish(),
+  "deliveryDate": zod.coerce.date().nullish(),
+  "budget": zod.number().nullish(),
+  "totalArea": zod.number().nullish(),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date().nullish()
+})
+
+
+/**
+ * @summary Remover projeto
+ */
+export const DeleteArqProjectParams = zod.object({
+  "projectId": zod.coerce.string().uuid()
+})
+
+
+/**
+ * @summary Criar ou atualizar objetos do projeto
+ */
+export const UpsertArqObjectsParams = zod.object({
+  "projectId": zod.coerce.string().uuid()
+})
+
+export const upsertArqObjectsBodyObjectsItemVisualWeightMin = 0;
+export const upsertArqObjectsBodyObjectsItemVisualWeightMax = 1;
+
+
+
+export const UpsertArqObjectsBody = zod.object({
+  "objects": zod.array(zod.object({
+  "id": zod.string(),
+  "name": zod.string(),
+  "category": zod.string(),
+  "material": zod.string().nullish(),
+  "finish": zod.string().nullish(),
+  "color": zod.string().nullish(),
+  "visualWeight": zod.number().min(upsertArqObjectsBodyObjectsItemVisualWeightMin).max(upsertArqObjectsBodyObjectsItemVisualWeightMax).nullish(),
+  "description": zod.string().nullish(),
+  "componentId": zod.string().nullish()
+}))
+})
+
+
+/**
+ * @summary Criar ou atualizar materiais do projeto
+ */
+export const UpsertArqMaterialsParams = zod.object({
+  "projectId": zod.coerce.string().uuid()
+})
+
+export const UpsertArqMaterialsBody = zod.object({
+  "materials": zod.array(zod.object({
+  "id": zod.string(),
+  "name": zod.string(),
+  "category": zod.string(),
+  "manufacturer": zod.string().nullish(),
+  "finish": zod.string().nullish(),
+  "gloss": zod.number().nullish(),
+  "palette": zod.array(zod.string()).optional(),
+  "usedByObjects": zod.array(zod.string()).optional()
+}))
+})
+
+
+/**
+ * @summary Salvar snapshot de análise AIE
+ */
+export const SaveAieSnapshotParams = zod.object({
+  "projectId": zod.coerce.string().uuid()
+})
+
+export const SaveAieSnapshotBody = zod.object({
+  "dna": zod.record(zod.string(), zod.unknown()).optional(),
+  "analysisResult": zod.record(zod.string(), zod.unknown()).optional()
+})
+
+
+/**
+ * @summary Listar variações de prompt salvas
+ */
+export const ListPromptVariationsParams = zod.object({
+  "projectId": zod.coerce.string().uuid()
+})
+
+export const ListPromptVariationsResponseItem = zod.object({
+  "id": zod.string(),
+  "name": zod.string(),
+  "prompt": zod.string(),
+  "negativePrompt": zod.string().nullish(),
+  "notes": zod.string().nullish(),
+  "parameters": zod.record(zod.string(), zod.unknown()).nullish(),
+  "savedAt": zod.coerce.date()
+})
+export const ListPromptVariationsResponse = zod.array(ListPromptVariationsResponseItem)
+
+
+/**
+ * @summary Salvar variação de prompt
+ */
+export const SavePromptVariationParams = zod.object({
+  "projectId": zod.coerce.string().uuid()
+})
+
+export const SavePromptVariationBody = zod.object({
+  "name": zod.string(),
+  "prompt": zod.string(),
+  "negativePrompt": zod.string().optional(),
+  "notes": zod.string().optional(),
+  "parameters": zod.record(zod.string(), zod.unknown()).optional()
+})
+
+
+/**
+ * @summary Remover variação de prompt
+ */
+export const DeletePromptVariationParams = zod.object({
+  "projectId": zod.coerce.string().uuid(),
+  "variationId": zod.coerce.string()
+})
+
+
+/**
+ * @summary Criar job de renderização
+ */
+export const CreateRenderJobBody = zod.object({
+  "projectId": zod.string().uuid(),
+  "prompt": zod.string(),
+  "negativePrompt": zod.string().optional(),
+  "provider": zod.string().optional(),
+  "model": zod.string().optional(),
+  "parameters": zod.record(zod.string(), zod.unknown()).optional()
+})
+
+
+/**
+ * @summary Buscar status do render job
+ */
+export const GetRenderJobParams = zod.object({
+  "jobId": zod.coerce.string().uuid()
+})
+
+export const GetRenderJobResponse = zod.object({
+  "id": zod.string().uuid(),
+  "projectId": zod.string().uuid(),
+  "status": zod.enum(['QUEUED', 'PROCESSING', 'COMPLETED', 'FAILED', 'CANCELLED']),
+  "prompt": zod.string().nullish(),
+  "negativePrompt": zod.string().nullish(),
+  "imageUrl": zod.string().nullish(),
+  "provider": zod.string().nullish(),
+  "model": zod.string().nullish(),
+  "parameters": zod.record(zod.string(), zod.unknown()).nullish(),
+  "errorMessage": zod.string().nullish(),
+  "createdAt": zod.coerce.date(),
+  "completedAt": zod.coerce.date().nullish()
+})
+
+
+/**
+ * @summary Registrar revisão de render
+ */
+export const CreateRenderReviewParams = zod.object({
+  "jobId": zod.coerce.string().uuid()
+})
+
+export const createRenderReviewBodyRatingMax = 5;
+
+
+
+export const CreateRenderReviewBody = zod.object({
+  "rating": zod.number().min(1).max(createRenderReviewBodyRatingMax),
+  "comment": zod.string().optional(),
+  "approved": zod.boolean(),
+  "corrections": zod.array(zod.string()).optional()
+})
+
+

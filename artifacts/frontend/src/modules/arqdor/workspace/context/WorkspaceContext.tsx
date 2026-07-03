@@ -1,9 +1,11 @@
-// ─── WorkspaceContext ──────────────────────────────────────────────────────────
+// ─── WorkspaceContext — P0-003 ─────────────────────────────────────────────────
 // Bridge between the arqdor.ai workspace and the Vendor.ai platform.
 // All arqdor modules consume this context — never import platform services directly.
+// Uses real auth data from Vendor.ai (useAuth) — no hardcoded IDs.
 
 import { createContext, useContext, useMemo } from 'react'
 import type { ReactNode } from 'react'
+import { useAuth } from '../../../../contexts/AuthContext'
 
 // ─── Types ─────────────────────────────────────────────────────────────────────
 
@@ -15,12 +17,12 @@ export type WorkspacePermission  =
   | 'WORKFLOW_TRIGGER' | 'KNOWLEDGE_READ' | 'FILES_UPLOAD'
 
 export interface ActiveProjectSummary {
-  id:        string
-  name:      string
-  tenantId:  string
+  id:          string
+  name:        string
+  tenantId:    string
   crmLeadId?:  string
   crmDealId?:  string
-  status:    'DRAFT' | 'IN_PROGRESS' | 'REVIEW' | 'APPROVED' | 'ARCHIVED'
+  status:      'DRAFT' | 'IN_PROGRESS' | 'REVIEW' | 'APPROVED' | 'ARCHIVED'
 }
 
 export interface ActiveAgentSpec {
@@ -62,7 +64,7 @@ export interface WorkspaceContextValue {
   hubs:              HubConnectionStatus
 }
 
-// ─── Defaults ──────────────────────────────────────────────────────────────────
+// ─── Permission mapping ────────────────────────────────────────────────────────
 
 const ALL_PERMISSIONS: WorkspacePermission[] = [
   'PROJECT_VIEW','PROJECT_EDIT','PROJECT_RENDER',
@@ -71,24 +73,32 @@ const ALL_PERMISSIONS: WorkspacePermission[] = [
   'WORKFLOW_TRIGGER','KNOWLEDGE_READ','FILES_UPLOAD',
 ]
 
-const MOCK_ACTIVE_PROJECT: ActiveProjectSummary = {
-  id:         'proj-alpha-001',
-  name:       'Apartamento Alpha — Cozinha + Sala',
-  tenantId:   'tenant-arq-001',
-  crmLeadId:  'lead-001',
-  crmDealId:  'deal-001',
-  status:     'IN_PROGRESS',
+const READ_PERMISSIONS: WorkspacePermission[] = [
+  'PROJECT_VIEW','MATERIAL_SELECT','LIBRARY_ACCESS',
+  'MARKETPLACE_ACCESS','ANALYTICS_VIEW','KNOWLEDGE_READ',
+]
+
+function permissionsForRole(
+  platformRole: string | undefined,
+  role: string | undefined,
+): WorkspacePermission[] {
+  if (platformRole === 'super_admin' || platformRole === 'tenant_admin' || role === 'admin') {
+    return ALL_PERMISSIONS
+  }
+  return READ_PERMISSIONS
 }
 
-const MOCK_ACTIVE_AGENT: ActiveAgentSpec = {
-  id:       'agent-arq-001',
+// ─── Arch agent spec ───────────────────────────────────────────────────────────
+
+const ARCH_AGENT: ActiveAgentSpec = {
+  id:       'agent-arq-copilot',
   name:     'Arquiteto IA',
   role:     'Copilot de projeto e renderização',
   vertical: 'ARCH',
   avatar:   '🏛️',
 }
 
-const MOCK_HUBS: HubConnectionStatus = {
+const HUBS_CONNECTED: HubConnectionStatus = {
   crm:           true,
   knowledge:     true,
   agents:        true,
@@ -98,7 +108,7 @@ const MOCK_HUBS: HubConnectionStatus = {
   files:         true,
   notifications: true,
   tasks:         true,
-  billing:       false,   // not yet wired for arqdor
+  billing:       false,
 }
 
 // ─── Context ──────────────────────────────────────────────────────────────────
@@ -106,19 +116,28 @@ const MOCK_HUBS: HubConnectionStatus = {
 const WorkspaceContext = createContext<WorkspaceContextValue | null>(null)
 
 export function WorkspaceProvider({ children }: { children: ReactNode }) {
-  const value = useMemo<WorkspaceContextValue>(() => ({
-    workspaceId:       'ws-arqdor-001',
-    tenantId:          'tenant-arq-001',
-    userId:            'user-arch-001',
-    teamId:            'team-arch-001',
-    tenantName:        'Estúdio Alpha Arquitetura',
-    permissions:       ALL_PERMISSIONS,
-    hasPermission:     (p: WorkspacePermission) => ALL_PERMISSIONS.includes(p),
-    activeProject:     MOCK_ACTIVE_PROJECT,
-    activeEnvironment: 'DEMO',
-    activeAgent:       MOCK_ACTIVE_AGENT,
-    hubs:              MOCK_HUBS,
-  }), [])
+  const { user } = useAuth()
+
+  const value = useMemo<WorkspaceContextValue>(() => {
+    const userId   = user?.id        ?? ''
+    const tenantId = user?.tenantId  ?? ''
+    const perms    = permissionsForRole(user?.platformRole, user?.role)
+    const isDemoEmail = user?.email?.includes('demo@') ?? false
+
+    return {
+      workspaceId:       `ws-${tenantId || 'arqdor'}`,
+      tenantId,
+      userId,
+      teamId:            `team-${tenantId || 'arqdor'}`,
+      tenantName:        user?.name ?? 'Workspace',
+      permissions:       perms,
+      hasPermission:     (p: WorkspacePermission) => perms.includes(p),
+      activeProject:     null,
+      activeEnvironment: isDemoEmail ? 'DEMO' : 'PRODUCTION',
+      activeAgent:       ARCH_AGENT,
+      hubs:              HUBS_CONNECTED,
+    }
+  }, [user])
 
   return <WorkspaceContext.Provider value={value}>{children}</WorkspaceContext.Provider>
 }

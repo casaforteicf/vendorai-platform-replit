@@ -1,11 +1,8 @@
 import { useState } from 'react'
 import { MOCK_AI_TRANSLATORS } from '../arqhub-mock-data'
 import type { AITranslator, AITranslatorType, AITranslatorStatus } from '../arqhub-types'
+import { T } from '../../shared/arqdor-theme'
 
-const T = {
-  surface:'rgba(255,255,255,0.04)', border:'rgba(255,255,255,0.08)',
-  purple:'#7c3aed', purpleL:'#a78bfa', text:'rgba(255,255,255,0.88)', dim:'rgba(255,255,255,0.44)',
-} as const
 
 const STATUS_COLOR: Record<AITranslatorStatus,string> = { ACTIVE:'#4ade80', PLANNED:'#fbbf24', DISABLED:'#f87171' }
 const STATUS_LABEL: Record<AITranslatorStatus,string> = { ACTIVE:'Ativo', PLANNED:'Planejado', DISABLED:'Desativado' }

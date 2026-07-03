@@ -1,0 +1,286 @@
+SPRINT 0 — ESTABILIZAÇÃO DA VENDOR.AI
+
+IMPORTANTE
+
+Vamos interromper temporariamente a criação de novas funcionalidades.
+
+O objetivo agora é transformar o que já foi desenvolvido em uma base sólida para produção.
+
+Utilize como referência o relatório técnico de arquitetura gerado anteriormente.
+
+Priorizar exclusivamente os itens P0 e P1.
+
+Não criar novos módulos.
+
+Não alterar a experiência do usuário.
+
+Não adicionar novas telas.
+
+Não iniciar integrações com IA antes da conclusão deste Sprint.
+
+====================================================
+OBJETIVO
+====================================================
+
+Preparar a Vendor.ai para suportar IA real, usuários reais e múltiplos tenants.
+
+====================================================
+P0-001 — AQM REAL
+====================================================
+
+Remover toda dependência de MOCK_PROJECT_CONTEXT.
+
+Todos os Engines devem consumir exclusivamente:
+
+activeProject
+
+activeObjects
+
+activeMaterials
+
+activeRelationships
+
+activeDNA
+
+obtidos através do ProjectContext.
+
+Eliminar qualquer fluxo que gere recomendações usando dados fictícios.
+
+====================================================
+P0-002 — OPENAPI
+====================================================
+
+Todas as rotas do Workspace Arquitetura devem seguir o padrão Contract First.
+
+Adicionar ao OpenAPI:
+
+ArqProject
+
+ArqObject
+
+ArqMaterial
+
+ArqComponent
+
+AieSnapshot
+
+PromptVariation
+
+RenderJob
+
+RenderReview
+
+Executar novamente o codegen.
+
+Eliminar fetch() manual.
+
+Utilizar apenas hooks gerados.
+
+====================================================
+P0-003 — WORKSPACE CONTEXT
+====================================================
+
+Remover valores mockados.
+
+WorkspaceContext deve utilizar:
+
+tenantId
+
+workspaceId
+
+userId
+
+teamId
+
+permissions
+
+organizationId
+
+obtidos da autenticação da Vendor.ai.
+
+Nenhum valor hardcoded deve permanecer.
+
+====================================================
+P1-001 — DESIGN SYSTEM
+====================================================
+
+Criar:
+
+arqdor-theme.ts
+
+Centralizar:
+
+cores
+
+espaçamentos
+
+tipografia
+
+ícones
+
+border radius
+
+tokens
+
+Eliminar duplicação de tema.
+
+====================================================
+P1-002 — API VERSIONING
+====================================================
+
+Migrar arquitetura para:
+
+/api/v1/
+
+Preparar estrutura para:
+
+v2
+
+v3
+
+Criar middleware de compatibilidade.
+
+====================================================
+P1-003 — DADOS REAIS
+====================================================
+
+IntegrationModule deve consumir:
+
+CRM Hub
+
+Tasks Hub
+
+Analytics Hub
+
+Files Hub
+
+Knowledge Hub
+
+Não utilizar dados mockados.
+
+Quando um Hub ainda não estiver pronto, criar Adapter vazio e indicar claramente "Em desenvolvimento".
+
+====================================================
+P1-004 — PADRONIZAÇÃO
+====================================================
+
+Padronizar nomenclatura.
+
+Escolher um padrão único.
+
+Exemplo:
+
+arq_projects
+
+arq_objects
+
+arq_materials
+
+arq_components
+
+arq_render_jobs
+
+arq_reviews
+
+Eliminar mistura de idiomas.
+
+====================================================
+P1-005 — ERROR HANDLING
+====================================================
+
+Padronizar:
+
+Loading
+
+Error
+
+Retry
+
+Empty State
+
+Success
+
+para todos os módulos do Workspace Arquitetura.
+
+====================================================
+P1-006 — TESTES
+====================================================
+
+Criar testes unitários para:
+
+Prompt Engine
+
+Rule Engine
+
+Material Engine
+
+Validation Engine
+
+Relationship Engine
+
+Question Engine
+
+Suggestion Engine
+
+Workflow Engine
+
+AIE Engine
+
+====================================================
+P1-007 — UX
+====================================================
+
+Eliminar inconsistências visuais.
+
+Sidebar
+
+Ícones
+
+Cards
+
+Spacing
+
+Estados
+
+====================================================
+DOCUMENTAÇÃO
+====================================================
+
+Atualizar:
+
+Vendor.ai Architecture Blueprint
+
+incluindo:
+
+Arquitetura atual
+
+Fluxo de dados
+
+AQM
+
+AQL
+
+Providers
+
+Workspace Arquitetura
+
+Integrações
+
+OpenAPI
+
+====================================================
+CHECKLIST FINAL
+====================================================
+
+Ao concluir este Sprint apresentar:
+
+1. Todos os mocks removidos ou isolados.
+2. Todos os endpoints documentados.
+3. Todos os hooks utilizando OpenAPI.
+4. Workspace usando contexto real.
+5. Design System consolidado.
+6. Testes executados.
+7. Relatório de cobertura.
+8. Lista de pendências restantes.
+
+Nenhuma nova funcionalidade deve ser adicionada até que este Sprint esteja concluído.

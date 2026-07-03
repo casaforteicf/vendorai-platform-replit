@@ -8,12 +8,8 @@ import { AssetLibraryView }     from './views/AssetLibraryView'
 import { MarketplaceView }      from './views/MarketplaceView'
 import { AiHubView }            from './views/AiHubView'
 import type { HubSectionId }    from './arqhub-types'
+import { T } from '../shared/arqdor-theme'
 
-const T = {
-  bg:'#0d0b1e', surface:'#13102b', sidebar:'#0a0819',
-  border:'rgba(255,255,255,0.07)', purple:'#7c3aed', purpleL:'#a78bfa',
-  text:'rgba(255,255,255,0.88)', dim:'rgba(255,255,255,0.38)',
-} as const
 
 // ─── Nav sections ─────────────────────────────────────────────────────────────
 

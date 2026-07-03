@@ -1,11 +1,7 @@
 import { useState } from 'react'
 import type { RenderJob } from '../../shared/platform-types'
+import { T } from '../../shared/arqdor-theme'
 
-const T = {
-  bg:'#0d0b1e', surface:'#13102b', card:'rgba(255,255,255,0.04)',
-  border:'rgba(255,255,255,0.08)', purple:'#7c3aed', purpleL:'#a78bfa',
-  text:'rgba(255,255,255,0.88)', dim:'rgba(255,255,255,0.44)',
-} as const
 
 const MOCK_RENDERS: (RenderJob & { versionLabel: string; prompt: string })[] = [
   { id:'r-001', projectId:'proj-alpha', promptId:'p-001', status:'COMPLETED', score:91, createdAt:'2026-07-03T09:00:00Z', completedAt:'2026-07-03T09:04:22Z', corrections:[], version:2, versionLabel:'V2', prompt:'Photorealistic architectural render — cozinha contemporânea...' },

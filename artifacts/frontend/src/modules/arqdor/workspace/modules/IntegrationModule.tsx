@@ -2,11 +2,8 @@ import { useState } from 'react'
 import { useWorkspace } from '../context/WorkspaceContext'
 import { HUB_META, MOCK_AGENTS, MOCK_WORKFLOWS, MOCK_ANALYTICS, MOCK_VENDOR_TASKS, MOCK_KNOWLEDGE, MOCK_FILES, MOCK_PROJECT_CRM } from '../../integrations/mock/integration-mock-data'
 import type { HubId, AgentSpec } from '../../integrations/integration-types'
+import { T } from '../../shared/arqdor-theme'
 
-const T = {
-  bg:'#0d0b1e', surface:'rgba(255,255,255,0.04)', border:'rgba(255,255,255,0.08)',
-  purple:'#7c3aed', purpleL:'#a78bfa', text:'rgba(255,255,255,0.88)', dim:'rgba(255,255,255,0.44)',
-} as const
 
 type TabId = 'overview' | 'crm' | 'agents' | 'workflows' | 'analytics' | 'tasks' | 'knowledge' | 'files'
 
@@ -60,6 +57,12 @@ function CrmTab() {
 
   return (
     <div style={{ display:'flex', flexDirection:'column' as const, gap:12 }}>
+      {/* Em desenvolvimento — P1-003 */}
+      <div style={{ display:'flex', alignItems:'center', gap:6, padding:'5px 10px', borderRadius:6, background:'rgba(251,191,36,0.08)', border:'1px solid rgba(251,191,36,0.2)', marginBottom:8 }}>
+        <span style={{ fontSize:10 }}>⚠️</span>
+        <span style={{ fontSize:9, color:'#fbbf24', fontWeight:700 }}>EM DESENVOLVIMENTO</span>
+        <span style={{ fontSize:8, color:'rgba(251,191,36,0.6)' }}>— dados demonstrativos; adapter real em progresso</span>
+      </div>
       <div style={{ padding:'12px', borderRadius:9, background:T.surface, border:`1px solid ${T.border}` }}>
         <p style={{ margin:'0 0 8px', fontSize:9, fontWeight:700, color:T.dim, letterSpacing:'0.07em' }}>PROJETO VINCULADO AO CRM</p>
         <p style={{ margin:0, fontSize:12, fontWeight:700, color:'#fff' }}>Apartamento Alpha — Cozinha + Sala</p>
@@ -184,6 +187,13 @@ function AgentsTab() {
   const inactive = MOCK_AGENTS.filter(a=>a.status!=='ACTIVE')
   return (
     <div>
+      {/* Em desenvolvimento — P1-003 */}
+      <div style={{ display:'flex', alignItems:'center', gap:6, padding:'5px 10px', borderRadius:6, background:'rgba(251,191,36,0.08)', border:'1px solid rgba(251,191,36,0.2)', marginBottom:8 }}>
+        <span style={{ fontSize:10 }}>⚠️</span>
+        <span style={{ fontSize:9, color:'#fbbf24', fontWeight:700 }}>EM DESENVOLVIMENTO</span>
+        <span style={{ fontSize:8, color:'rgba(251,191,36,0.6)' }}>— dados demonstrativos; adapter real em progresso</span>
+      </div>
+
       <p style={{ margin:'0 0 8px', fontSize:9, fontWeight:700, color:T.dim, letterSpacing:'0.07em' }}>AGENTES ATIVOS ({active.length})</p>
       {active.map(a=><AgentCard key={a.id} agent={a}/>)}
       <p style={{ margin:'12px 0 8px', fontSize:9, fontWeight:700, color:T.dim, letterSpacing:'0.07em' }}>INATIVOS ({inactive.length})</p>
@@ -197,6 +207,13 @@ function AgentsTab() {
 function WorkflowsTab() {
   return (
     <div>
+      {/* Em desenvolvimento — P1-003 */}
+      <div style={{ display:'flex', alignItems:'center', gap:6, padding:'5px 10px', borderRadius:6, background:'rgba(251,191,36,0.08)', border:'1px solid rgba(251,191,36,0.2)', marginBottom:8 }}>
+        <span style={{ fontSize:10 }}>⚠️</span>
+        <span style={{ fontSize:9, color:'#fbbf24', fontWeight:700 }}>EM DESENVOLVIMENTO</span>
+        <span style={{ fontSize:8, color:'rgba(251,191,36,0.6)' }}>— dados demonstrativos; adapter real em progresso</span>
+      </div>
+
       {MOCK_WORKFLOWS.map(wf=>(
         <div key={wf.id} style={{ padding:'12px', borderRadius:9, background:T.surface, border:`1px solid ${wf.active?'rgba(124,58,237,0.25)':T.border}`, marginBottom:10 }}>
           <div style={{ display:'flex', alignItems:'center', gap:8, marginBottom:8 }}>
@@ -231,6 +248,12 @@ function AnalyticsTab() {
   const TREND_COLOR = { UP:'#4ade80', DOWN:'#f87171', STABLE:T.dim }
   return (
     <div style={{ display:'flex', flexDirection:'column' as const, gap:12 }}>
+      {/* Em desenvolvimento — P1-003 */}
+      <div style={{ display:'flex', alignItems:'center', gap:6, padding:'5px 10px', borderRadius:6, background:'rgba(251,191,36,0.08)', border:'1px solid rgba(251,191,36,0.2)', marginBottom:8 }}>
+        <span style={{ fontSize:10 }}>⚠️</span>
+        <span style={{ fontSize:9, color:'#fbbf24', fontWeight:700 }}>EM DESENVOLVIMENTO</span>
+        <span style={{ fontSize:8, color:'rgba(251,191,36,0.6)' }}>— dados demonstrativos; adapter real em progresso</span>
+      </div>
       <div style={{ display:'flex', gap:8, flexWrap:'wrap' as const }}>
         {[
           ['Projetos', a.projectsCreated, 'mês'],
@@ -288,6 +311,12 @@ const VTASK_PRIORITY_COLOR: Record<string, string> = { CRITICAL:'#f87171', HIGH:
 function TasksTab() {
   return (
     <div>
+      {/* Em desenvolvimento — P1-003 */}
+      <div style={{ display:'flex', alignItems:'center', gap:6, padding:'5px 10px', borderRadius:6, background:'rgba(251,191,36,0.08)', border:'1px solid rgba(251,191,36,0.2)', marginBottom:8 }}>
+        <span style={{ fontSize:10 }}>⚠️</span>
+        <span style={{ fontSize:9, color:'#fbbf24', fontWeight:700 }}>EM DESENVOLVIMENTO</span>
+        <span style={{ fontSize:8, color:'rgba(251,191,36,0.6)' }}>— dados demonstrativos; adapter real em progresso</span>
+      </div>
       <p style={{ margin:'0 0 8px', fontSize:9, color:T.dim }}>Tarefas Vendor.ai geradas pelo ARQ Copilot</p>
       {MOCK_VENDOR_TASKS.map(t=>(
         <div key={t.id} style={{ display:'flex', gap:8, padding:'8px 10px', borderRadius:7, background:T.surface, border:`1px solid ${T.border}`, marginBottom:6, alignItems:'flex-start' }}>
@@ -319,6 +348,12 @@ function KnowledgeTab() {
   const sorted = [...MOCK_KNOWLEDGE].sort((a,b)=>(b.relevance??0)-(a.relevance??0))
   return (
     <div>
+      {/* Em desenvolvimento — P1-003 */}
+      <div style={{ display:'flex', alignItems:'center', gap:6, padding:'5px 10px', borderRadius:6, background:'rgba(251,191,36,0.08)', border:'1px solid rgba(251,191,36,0.2)', marginBottom:8 }}>
+        <span style={{ fontSize:10 }}>⚠️</span>
+        <span style={{ fontSize:9, color:'#fbbf24', fontWeight:700 }}>EM DESENVOLVIMENTO</span>
+        <span style={{ fontSize:8, color:'rgba(251,191,36,0.6)' }}>— dados demonstrativos; adapter real em progresso</span>
+      </div>
       <p style={{ margin:'0 0 8px', fontSize:9, color:T.dim }}>Knowledge Hub consultado pelo AQM • ordenado por relevância para o projeto atual</p>
       {sorted.map(k=>(
         <div key={k.id} style={{ padding:'10px 12px', borderRadius:7, background:T.surface, border:`1px solid ${T.border}`, marginBottom:6 }}>
@@ -351,6 +386,12 @@ const FILE_CAT_ICON: Record<string, string> = { RENDER:'🎬', REFERENCE:'🖼�
 function FilesTab() {
   return (
     <div>
+      {/* Em desenvolvimento — P1-003 */}
+      <div style={{ display:'flex', alignItems:'center', gap:6, padding:'5px 10px', borderRadius:6, background:'rgba(251,191,36,0.08)', border:'1px solid rgba(251,191,36,0.2)', marginBottom:8 }}>
+        <span style={{ fontSize:10 }}>⚠️</span>
+        <span style={{ fontSize:9, color:'#fbbf24', fontWeight:700 }}>EM DESENVOLVIMENTO</span>
+        <span style={{ fontSize:8, color:'rgba(251,191,36,0.6)' }}>— dados demonstrativos; adapter real em progresso</span>
+      </div>
       <p style={{ margin:'0 0 8px', fontSize:9, color:T.dim }}>Arquivos do projeto gerenciados pelo Files Hub</p>
       {MOCK_FILES.map(f=>(
         <div key={f.id} style={{ display:'flex', alignItems:'center', gap:10, padding:'8px 10px', borderRadius:7, background:T.surface, border:`1px solid ${T.border}`, marginBottom:5 }}>

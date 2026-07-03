@@ -2,11 +2,8 @@ import { useState } from 'react'
 import { MOCK_ASSETS } from '../arqhub-mock-data'
 import type { Asset, AssetType, AssetVisibility, AssetLicense } from '../arqhub-types'
 import { ASSET_TYPE_LABELS, ASSET_TYPE_ICONS } from '../arqhub-types'
+import { T } from '../../shared/arqdor-theme'
 
-const T = {
-  surface:'rgba(255,255,255,0.04)', border:'rgba(255,255,255,0.08)',
-  purple:'#7c3aed', purpleL:'#a78bfa', text:'rgba(255,255,255,0.88)', dim:'rgba(255,255,255,0.44)',
-} as const
 
 const LICENSE_COLOR: Record<AssetLicense,string> = { FREE:'#4ade80', PREMIUM:'#fbbf24', COMMERCIAL:'#60a5fa', OPEN:'#a78bfa' }
 const VISIBILITY_COLOR: Record<AssetVisibility,string> = { PRIVATE:'#f87171', COMPANY:'#fbbf24', COMMUNITY:'#4ade80', MARKETPLACE:'#60a5fa' }

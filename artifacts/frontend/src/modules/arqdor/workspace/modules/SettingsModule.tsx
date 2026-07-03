@@ -1,11 +1,8 @@
 import { useState } from 'react'
 import { AVAILABLE_PLUGINS, PROVIDER_TYPE_LABELS, PROVIDER_TYPE_ICONS, buildRegistry } from '../../plugins/plugin-registry'
 import type { PluginRegistration } from '../../shared/platform-types'
+import { T } from '../../shared/arqdor-theme'
 
-const T = {
-  bg:'#0d0b1e', border:'rgba(255,255,255,0.08)', purple:'#7c3aed', purpleL:'#a78bfa',
-  text:'rgba(255,255,255,0.88)', dim:'rgba(255,255,255,0.44)', card:'rgba(255,255,255,0.04)',
-} as const
 
 const PROVIDER_DESCRIPTIONS: Record<string, string> = {
   'mock-image-analysis':       'Motor de análise de imagem local. Não requer conexão.',

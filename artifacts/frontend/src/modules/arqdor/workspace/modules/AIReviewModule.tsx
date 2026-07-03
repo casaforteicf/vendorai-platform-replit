@@ -1,11 +1,7 @@
 import { useState } from 'react'
 import type { RenderReview, DifferenceItem } from '../../shared/platform-types'
+import { T } from '../../shared/arqdor-theme'
 
-const T = {
-  bg:'#0d0b1e', surface:'#13102b', card:'rgba(255,255,255,0.04)',
-  border:'rgba(255,255,255,0.08)', purple:'#7c3aed', purpleL:'#a78bfa',
-  text:'rgba(255,255,255,0.88)', dim:'rgba(255,255,255,0.44)',
-} as const
 
 const MOCK_REVIEW: RenderReview = {
   id:'rev-001', renderJobId:'r-001', projectId:'proj-alpha',

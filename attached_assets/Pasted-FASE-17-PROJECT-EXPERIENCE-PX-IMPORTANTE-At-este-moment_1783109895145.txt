@@ -1,0 +1,381 @@
+FASE 17 — PROJECT EXPERIENCE (PX)
+
+IMPORTANTE
+
+Até este momento a arquitetura do Workspace Arquitetura foi construída por módulos.
+
+Agora precisamos transformar essa arquitetura em uma experiência centrada no projeto.
+
+Não criar novos motores.
+
+Não criar novos hubs.
+
+Não alterar AQM.
+
+Não alterar AQL.
+
+Não alterar Providers.
+
+Não alterar Engines.
+
+Apenas reorganizar a experiência do usuário.
+
+====================================================
+
+OBJETIVO
+
+Todo o Workspace Arquitetura deverá ser orientado ao Projeto.
+
+O projeto será a entidade central.
+
+Todo o restante gira ao redor dele.
+
+====================================================
+
+CRIAR
+
+PROJECT EXPERIENCE LAYER
+
+Novo módulo
+
+workspace/project-experience
+
+====================================================
+
+CRIAR
+
+PROJECT HOME
+
+Ao abrir um projeto mostrar um Dashboard.
+
+Não mostrar módulos primeiro.
+
+Mostrar o Projeto.
+
+====================================================
+
+HEADER
+
+Nome do Projeto
+
+Cliente
+
+Empresa
+
+Status
+
+Render Readiness
+
+AI Score
+
+Projeto Inteligente
+
+Última alteração
+
+Equipe
+
+====================================================
+
+RESUMO
+
+Mostrar cartões
+
+Projeto
+
+Ambientes
+
+Objetos
+
+Materiais
+
+Componentes
+
+Renderizações
+
+Pendências
+
+Tarefas
+
+====================================================
+
+TIMELINE
+
+Criar timeline completa.
+
+Exemplo
+
+Projeto criado
+
+↓
+
+Briefing
+
+↓
+
+Moodboard
+
+↓
+
+Projeto Inteligente
+
+↓
+
+Render 01
+
+↓
+
+Correção
+
+↓
+
+Render Final
+
+↓
+
+Apresentação
+
+↓
+
+Aprovação
+
+↓
+
+Entrega
+
+====================================================
+
+CHECKLIST
+
+Criar checklist visual.
+
+Cliente
+
+Briefing
+
+Moodboard
+
+Projeto
+
+AQM
+
+Materiais
+
+Componentes
+
+Render
+
+Review
+
+Memorial
+
+Lista de Compras
+
+Entrega
+
+====================================================
+
+PROJECT HEALTH
+
+Criar indicador.
+
+Excelente
+
+Bom
+
+Atenção
+
+Crítico
+
+Mostrar motivos.
+
+====================================================
+
+RENDER READINESS
+
+Mostrar:
+
+95%
+
+Faltam
+
+Definir material da bancada
+
+Confirmar puxadores
+
+Escolher fabricante
+
+====================================================
+
+SMART PANEL
+
+Criar painel lateral.
+
+Mostrar
+
+Copilot
+
+Pendências
+
+Sugestões
+
+Alertas
+
+Workflow Atual
+
+====================================================
+
+WORKFLOW
+
+Transformar os módulos atuais em etapas.
+
+Exemplo
+
+1 Briefing
+
+2 Moodboard
+
+3 Projeto Inteligente
+
+4 Biblioteca
+
+5 Componentes
+
+6 Prompt
+
+7 Render
+
+8 Review
+
+9 Memorial
+
+10 Cliente
+
+====================================================
+
+NAVEGAÇÃO
+
+Não mostrar dezenas de menus.
+
+Mostrar apenas:
+
+Projeto
+
+Render
+
+Biblioteca
+
+Cliente
+
+Mais...
+
+====================================================
+
+CLIENTE
+
+Mostrar integração com CRM.
+
+Lead
+
+Contato
+
+Deal
+
+Pipeline
+
+Empresa
+
+====================================================
+
+PROJETO
+
+Criar visão geral.
+
+Ambientes
+
+Objetos
+
+Materiais
+
+Componentes
+
+Renderizações
+
+Histórico
+
+====================================================
+
+VERSÕES
+
+Criar Timeline de versões.
+
+Versão 1
+
+Versão 2
+
+Versão 3
+
+Comparar
+
+Restaurar
+
+====================================================
+
+OBSERVAÇÕES
+
+Comentários
+
+Equipe
+
+Cliente
+
+Copilot
+
+====================================================
+
+SEARCH
+
+Busca global.
+
+Pesquisar
+
+Material
+
+Componente
+
+Ambiente
+
+Projeto
+
+Render
+
+Cliente
+
+====================================================
+
+AÇÕES RÁPIDAS
+
+Novo Render
+
+Nova Revisão
+
+Adicionar Material
+
+Adicionar Componente
+
+Gerar Memorial
+
+Lista de Compras
+
+Apresentação
+
+====================================================
+
+OBJETIVO FINAL
+
+Quando o usuário abrir o Workspace Arquitetura ele deverá sentir que está abrindo um projeto e não um software.
+
+Todo o restante deverá funcionar como ferramentas do projeto.
+
+Não alterar arquitetura existente.
+
+Apenas reorganizar a experiência do usuário.

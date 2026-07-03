@@ -15,20 +15,11 @@ import { AIEDashboard }       from '../engines/aie/dashboard/AIEDashboard'
 import { useArqProject, type ArqProjectState } from '../hooks/useArqProject'
 import { WorkspaceContext } from './WorkspaceContext'
 import type { ProjectContext } from '../engines/aie/aie-types'
+import { T } from '../shared/arqdor-theme'
 
 void lazy // imported for potential future lazy-loaded modules
 
 // ─── Theme ────────────────────────────────────────────────────────────────────
-const T = {
-  bg:      '#0d0b1e',
-  surface: '#100e26',
-  sidebar: '#0a0819',
-  border:  'rgba(255,255,255,0.07)',
-  purple:  '#7c3aed',
-  purpleL: '#a78bfa',
-  text:    'rgba(255,255,255,0.88)',
-  dim:     'rgba(255,255,255,0.38)',
-} as const
 
 // ─── Project context (shared with child modules) ───────────────────────────────
 export const ArqProjectContext = createContext<ArqProjectState | null>(null)
@@ -58,7 +49,7 @@ const MODULES: WorkspaceModule[] = [
   { id:'correcoes',  icon:'🔄',  label:'Correções',     desc:'Prompts de ajuste',    badge:'4', badgeColor:'#fb923c' },
   { id:'memoria',    icon:'🧠',  label:'Memória IA',    desc:'Preferências aprendidas'  },
   { id:'config',     icon:'⚙️',  label:'Config',        desc:'Providers e plugins'      },
-  { id:'arqhub',     icon:'🌐',  label:'ARQ HUB',       desc:'Ecosystem inteligente',   badge:'NEW', badgeColor:'#4ade80' },
+  { id:'arqhub',     icon:'🏛️',  label:'ARQ HUB',       desc:'Ecosystem inteligente',   badge:'NEW', badgeColor:'#4ade80' },
   { id:'ai-intel',   icon:'🧠',  label:'AI Intelligence', desc:'Motor de análise AIE',   badge:'AIE', badgeColor:'#a78bfa' },
   { id:'integracao', icon:'🌐',  label:'Integração',      desc:'Vendor.ai Hubs',          badge:'V.AI', badgeColor:'#60a5fa' },
 ]

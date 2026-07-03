@@ -1,10 +1,7 @@
 import { useState } from 'react'
 import type { CorrectionItem } from '../../shared/platform-types'
+import { T } from '../../shared/arqdor-theme'
 
-const T = {
-  bg:'#0d0b1e', border:'rgba(255,255,255,0.08)', purple:'#7c3aed', purpleL:'#a78bfa',
-  text:'rgba(255,255,255,0.88)', dim:'rgba(255,255,255,0.44)',
-} as const
 
 const SEVERITY_META = {
   CRITICAL: { color:'#f87171', bg:'rgba(248,113,113,0.1)', icon:'🔴' },

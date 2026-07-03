@@ -2,11 +2,8 @@ import { useState } from 'react'
 import { MOCK_HUB_MATERIALS } from '../arqhub-mock-data'
 import type { HubMaterial, MaterialCategory } from '../arqhub-types'
 import { MATERIAL_CATEGORY_LABELS, MATERIAL_CATEGORY_ICONS } from '../arqhub-types'
+import { T } from '../../shared/arqdor-theme'
 
-const T = {
-  bg:'#0d0b1e', surface:'rgba(255,255,255,0.04)', border:'rgba(255,255,255,0.08)',
-  purple:'#7c3aed', purpleL:'#a78bfa', text:'rgba(255,255,255,0.88)', dim:'rgba(255,255,255,0.44)',
-} as const
 
 const ALL_CATS = [...new Set(MOCK_HUB_MATERIALS.map(m=>m.category))]
 

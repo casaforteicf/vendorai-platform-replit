@@ -29,10 +29,12 @@ import type {
   AgentActionLog,
   AgentConfig,
   AgentTask,
+  AieSnapshot,
   AnalyzeLeadIntelligenceResponse,
   AnalyzeOnboardingDocumentsBody,
   AnthropicKeyConfig,
   ApplyTemplateResponse,
+  ArqProject,
   AuthResponse,
   BusinessProfile,
   Campaign,
@@ -58,6 +60,8 @@ import type {
   CreateAgentActionLogBody,
   CreateAgentConfigBody,
   CreateAgentTaskBody,
+  CreateAieSnapshotBody,
+  CreateArqProjectBody,
   CreateBusinessProfileBody,
   CreateCampaignBody,
   CreateConsentBody,
@@ -77,9 +81,12 @@ import type {
   CreatePartnerBody,
   CreatePartnerResponse,
   CreateProdutoCatalogoBody,
+  CreatePromptVariationBody,
   CreatePropostaBody,
   CreatePropostaFromCatalogoBody,
   CreatePropostaFromTemplateBody,
+  CreateRenderJobBody,
+  CreateRenderReviewBody,
   CreateRuleBody,
   CreateSellerInviteBody,
   CreateSiteConfigBody,
@@ -205,6 +212,7 @@ import type {
   PaymentMethodList,
   ProductPresentation,
   ProdutoCatalogo,
+  PromptVariation,
   Proposta,
   PropostaTemplate,
   ProspectorApprovalsListResponse,
@@ -223,6 +231,8 @@ import type {
   PublicSiteResponse,
   RegisterBody,
   RemoveAnthropicAIKey200,
+  RenderJob,
+  RenderReview,
   ResetPasswordBody,
   Rule,
   SegmentTemplate,
@@ -253,6 +263,7 @@ import type {
   UpdateAgentActionLogBody,
   UpdateAgentConfigBody,
   UpdateAgentTaskBody,
+  UpdateArqProjectBody,
   UpdateBusinessProfileBody,
   UpdateCampaignBody,
   UpdateConversationBody,
@@ -287,6 +298,8 @@ import type {
   UpdateVarejoProdutoBody,
   UploadUrlRequest,
   UploadUrlResponse,
+  UpsertArqMaterialsBody,
+  UpsertArqObjectsBody,
   UpsertLeadBriefingBody,
   UpsertSupermercadoConfigBody,
   UpsertVarejoFidelidadeBody,
@@ -26356,5 +26369,1029 @@ export const useProspectorPatchApproval = <TError = ErrorType<ErrorResponse>,
         TContext
       > => {
       return useMutation(getProspectorPatchApprovalMutationOptions(options));
+    }
+
+export const getListArqProjectsUrl = () => {
+
+
+
+
+  return `/api/arq/projects`
+}
+
+/**
+ * @summary Listar projetos de arquitetura do tenant
+ */
+export const listArqProjects = async ( options?: RequestInit): Promise<ArqProject[]> => {
+
+  return customFetch<ArqProject[]>(getListArqProjectsUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getListArqProjectsQueryKey = () => {
+    return [
+    `/api/arq/projects`
+    ] as const;
+    }
+
+
+export const getListArqProjectsQueryOptions = <TData = Awaited<ReturnType<typeof listArqProjects>>, TError = ErrorType<void>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listArqProjects>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getListArqProjectsQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof listArqProjects>>> = ({ signal }) => listArqProjects({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof listArqProjects>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type ListArqProjectsQueryResult = NonNullable<Awaited<ReturnType<typeof listArqProjects>>>
+export type ListArqProjectsQueryError = ErrorType<void>
+
+
+/**
+ * @summary Listar projetos de arquitetura do tenant
+ */
+
+export function useListArqProjects<TData = Awaited<ReturnType<typeof listArqProjects>>, TError = ErrorType<void>>(
+  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listArqProjects>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getListArqProjectsQueryOptions(options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+
+
+
+
+
+
+export const getCreateArqProjectUrl = () => {
+
+
+
+
+  return `/api/arq/projects`
+}
+
+/**
+ * @summary Criar novo projeto de arquitetura
+ */
+export const createArqProject = async (createArqProjectBody: CreateArqProjectBody, options?: RequestInit): Promise<ArqProject> => {
+
+  return customFetch<ArqProject>(getCreateArqProjectUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(
+      createArqProjectBody,)
+  }
+);}
+
+
+
+
+export const getCreateArqProjectMutationOptions = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createArqProject>>, TError,{data: BodyType<CreateArqProjectBody>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof createArqProject>>, TError,{data: BodyType<CreateArqProjectBody>}, TContext> => {
+
+const mutationKey = ['createArqProject'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof createArqProject>>, {data: BodyType<CreateArqProjectBody>}> = (props) => {
+          const {data} = props ?? {};
+
+          return  createArqProject(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type CreateArqProjectMutationResult = NonNullable<Awaited<ReturnType<typeof createArqProject>>>
+    export type CreateArqProjectMutationBody = BodyType<CreateArqProjectBody>
+    export type CreateArqProjectMutationError = ErrorType<void>
+
+    /**
+ * @summary Criar novo projeto de arquitetura
+ */
+export const useCreateArqProject = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createArqProject>>, TError,{data: BodyType<CreateArqProjectBody>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof createArqProject>>,
+        TError,
+        {data: BodyType<CreateArqProjectBody>},
+        TContext
+      > => {
+      return useMutation(getCreateArqProjectMutationOptions(options));
+    }
+
+export const getGetArqProjectUrl = (projectId: string,) => {
+
+
+
+
+  return `/api/arq/projects/${projectId}`
+}
+
+/**
+ * @summary Buscar projeto por ID
+ */
+export const getArqProject = async (projectId: string, options?: RequestInit): Promise<ArqProject> => {
+
+  return customFetch<ArqProject>(getGetArqProjectUrl(projectId),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetArqProjectQueryKey = (projectId: string,) => {
+    return [
+    `/api/arq/projects/${projectId}`
+    ] as const;
+    }
+
+
+export const getGetArqProjectQueryOptions = <TData = Awaited<ReturnType<typeof getArqProject>>, TError = ErrorType<void>>(projectId: string, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getArqProject>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetArqProjectQueryKey(projectId);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getArqProject>>> = ({ signal }) => getArqProject(projectId, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, enabled: !!(projectId), ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getArqProject>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetArqProjectQueryResult = NonNullable<Awaited<ReturnType<typeof getArqProject>>>
+export type GetArqProjectQueryError = ErrorType<void>
+
+
+/**
+ * @summary Buscar projeto por ID
+ */
+
+export function useGetArqProject<TData = Awaited<ReturnType<typeof getArqProject>>, TError = ErrorType<void>>(
+ projectId: string, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getArqProject>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetArqProjectQueryOptions(projectId,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+
+
+
+
+
+
+export const getUpdateArqProjectUrl = (projectId: string,) => {
+
+
+
+
+  return `/api/arq/projects/${projectId}`
+}
+
+/**
+ * @summary Atualizar projeto
+ */
+export const updateArqProject = async (projectId: string,
+    updateArqProjectBody: UpdateArqProjectBody, options?: RequestInit): Promise<ArqProject> => {
+
+  return customFetch<ArqProject>(getUpdateArqProjectUrl(projectId),
+  {
+    ...options,
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(
+      updateArqProjectBody,)
+  }
+);}
+
+
+
+
+export const getUpdateArqProjectMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updateArqProject>>, TError,{projectId: string;data: BodyType<UpdateArqProjectBody>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof updateArqProject>>, TError,{projectId: string;data: BodyType<UpdateArqProjectBody>}, TContext> => {
+
+const mutationKey = ['updateArqProject'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof updateArqProject>>, {projectId: string;data: BodyType<UpdateArqProjectBody>}> = (props) => {
+          const {projectId,data} = props ?? {};
+
+          return  updateArqProject(projectId,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type UpdateArqProjectMutationResult = NonNullable<Awaited<ReturnType<typeof updateArqProject>>>
+    export type UpdateArqProjectMutationBody = BodyType<UpdateArqProjectBody>
+    export type UpdateArqProjectMutationError = ErrorType<unknown>
+
+    /**
+ * @summary Atualizar projeto
+ */
+export const useUpdateArqProject = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updateArqProject>>, TError,{projectId: string;data: BodyType<UpdateArqProjectBody>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof updateArqProject>>,
+        TError,
+        {projectId: string;data: BodyType<UpdateArqProjectBody>},
+        TContext
+      > => {
+      return useMutation(getUpdateArqProjectMutationOptions(options));
+    }
+
+export const getDeleteArqProjectUrl = (projectId: string,) => {
+
+
+
+
+  return `/api/arq/projects/${projectId}`
+}
+
+/**
+ * @summary Remover projeto
+ */
+export const deleteArqProject = async (projectId: string, options?: RequestInit): Promise<void> => {
+
+  return customFetch<void>(getDeleteArqProjectUrl(projectId),
+  {
+    ...options,
+    method: 'DELETE'
+
+
+  }
+);}
+
+
+
+
+export const getDeleteArqProjectMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof deleteArqProject>>, TError,{projectId: string}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof deleteArqProject>>, TError,{projectId: string}, TContext> => {
+
+const mutationKey = ['deleteArqProject'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof deleteArqProject>>, {projectId: string}> = (props) => {
+          const {projectId} = props ?? {};
+
+          return  deleteArqProject(projectId,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type DeleteArqProjectMutationResult = NonNullable<Awaited<ReturnType<typeof deleteArqProject>>>
+
+    export type DeleteArqProjectMutationError = ErrorType<unknown>
+
+    /**
+ * @summary Remover projeto
+ */
+export const useDeleteArqProject = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof deleteArqProject>>, TError,{projectId: string}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof deleteArqProject>>,
+        TError,
+        {projectId: string},
+        TContext
+      > => {
+      return useMutation(getDeleteArqProjectMutationOptions(options));
+    }
+
+export const getUpsertArqObjectsUrl = (projectId: string,) => {
+
+
+
+
+  return `/api/arq/projects/${projectId}/objects`
+}
+
+/**
+ * @summary Criar ou atualizar objetos do projeto
+ */
+export const upsertArqObjects = async (projectId: string,
+    upsertArqObjectsBody: UpsertArqObjectsBody, options?: RequestInit): Promise<void> => {
+
+  return customFetch<void>(getUpsertArqObjectsUrl(projectId),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(
+      upsertArqObjectsBody,)
+  }
+);}
+
+
+
+
+export const getUpsertArqObjectsMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof upsertArqObjects>>, TError,{projectId: string;data: BodyType<UpsertArqObjectsBody>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof upsertArqObjects>>, TError,{projectId: string;data: BodyType<UpsertArqObjectsBody>}, TContext> => {
+
+const mutationKey = ['upsertArqObjects'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof upsertArqObjects>>, {projectId: string;data: BodyType<UpsertArqObjectsBody>}> = (props) => {
+          const {projectId,data} = props ?? {};
+
+          return  upsertArqObjects(projectId,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type UpsertArqObjectsMutationResult = NonNullable<Awaited<ReturnType<typeof upsertArqObjects>>>
+    export type UpsertArqObjectsMutationBody = BodyType<UpsertArqObjectsBody>
+    export type UpsertArqObjectsMutationError = ErrorType<unknown>
+
+    /**
+ * @summary Criar ou atualizar objetos do projeto
+ */
+export const useUpsertArqObjects = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof upsertArqObjects>>, TError,{projectId: string;data: BodyType<UpsertArqObjectsBody>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof upsertArqObjects>>,
+        TError,
+        {projectId: string;data: BodyType<UpsertArqObjectsBody>},
+        TContext
+      > => {
+      return useMutation(getUpsertArqObjectsMutationOptions(options));
+    }
+
+export const getUpsertArqMaterialsUrl = (projectId: string,) => {
+
+
+
+
+  return `/api/arq/projects/${projectId}/materials`
+}
+
+/**
+ * @summary Criar ou atualizar materiais do projeto
+ */
+export const upsertArqMaterials = async (projectId: string,
+    upsertArqMaterialsBody: UpsertArqMaterialsBody, options?: RequestInit): Promise<void> => {
+
+  return customFetch<void>(getUpsertArqMaterialsUrl(projectId),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(
+      upsertArqMaterialsBody,)
+  }
+);}
+
+
+
+
+export const getUpsertArqMaterialsMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof upsertArqMaterials>>, TError,{projectId: string;data: BodyType<UpsertArqMaterialsBody>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof upsertArqMaterials>>, TError,{projectId: string;data: BodyType<UpsertArqMaterialsBody>}, TContext> => {
+
+const mutationKey = ['upsertArqMaterials'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof upsertArqMaterials>>, {projectId: string;data: BodyType<UpsertArqMaterialsBody>}> = (props) => {
+          const {projectId,data} = props ?? {};
+
+          return  upsertArqMaterials(projectId,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type UpsertArqMaterialsMutationResult = NonNullable<Awaited<ReturnType<typeof upsertArqMaterials>>>
+    export type UpsertArqMaterialsMutationBody = BodyType<UpsertArqMaterialsBody>
+    export type UpsertArqMaterialsMutationError = ErrorType<unknown>
+
+    /**
+ * @summary Criar ou atualizar materiais do projeto
+ */
+export const useUpsertArqMaterials = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof upsertArqMaterials>>, TError,{projectId: string;data: BodyType<UpsertArqMaterialsBody>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof upsertArqMaterials>>,
+        TError,
+        {projectId: string;data: BodyType<UpsertArqMaterialsBody>},
+        TContext
+      > => {
+      return useMutation(getUpsertArqMaterialsMutationOptions(options));
+    }
+
+export const getSaveAieSnapshotUrl = (projectId: string,) => {
+
+
+
+
+  return `/api/arq/projects/${projectId}/aie-snapshots`
+}
+
+/**
+ * @summary Salvar snapshot de análise AIE
+ */
+export const saveAieSnapshot = async (projectId: string,
+    createAieSnapshotBody: CreateAieSnapshotBody, options?: RequestInit): Promise<AieSnapshot> => {
+
+  return customFetch<AieSnapshot>(getSaveAieSnapshotUrl(projectId),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(
+      createAieSnapshotBody,)
+  }
+);}
+
+
+
+
+export const getSaveAieSnapshotMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof saveAieSnapshot>>, TError,{projectId: string;data: BodyType<CreateAieSnapshotBody>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof saveAieSnapshot>>, TError,{projectId: string;data: BodyType<CreateAieSnapshotBody>}, TContext> => {
+
+const mutationKey = ['saveAieSnapshot'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof saveAieSnapshot>>, {projectId: string;data: BodyType<CreateAieSnapshotBody>}> = (props) => {
+          const {projectId,data} = props ?? {};
+
+          return  saveAieSnapshot(projectId,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type SaveAieSnapshotMutationResult = NonNullable<Awaited<ReturnType<typeof saveAieSnapshot>>>
+    export type SaveAieSnapshotMutationBody = BodyType<CreateAieSnapshotBody>
+    export type SaveAieSnapshotMutationError = ErrorType<unknown>
+
+    /**
+ * @summary Salvar snapshot de análise AIE
+ */
+export const useSaveAieSnapshot = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof saveAieSnapshot>>, TError,{projectId: string;data: BodyType<CreateAieSnapshotBody>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof saveAieSnapshot>>,
+        TError,
+        {projectId: string;data: BodyType<CreateAieSnapshotBody>},
+        TContext
+      > => {
+      return useMutation(getSaveAieSnapshotMutationOptions(options));
+    }
+
+export const getListPromptVariationsUrl = (projectId: string,) => {
+
+
+
+
+  return `/api/arq/projects/${projectId}/prompt-variations`
+}
+
+/**
+ * @summary Listar variações de prompt salvas
+ */
+export const listPromptVariations = async (projectId: string, options?: RequestInit): Promise<PromptVariation[]> => {
+
+  return customFetch<PromptVariation[]>(getListPromptVariationsUrl(projectId),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getListPromptVariationsQueryKey = (projectId: string,) => {
+    return [
+    `/api/arq/projects/${projectId}/prompt-variations`
+    ] as const;
+    }
+
+
+export const getListPromptVariationsQueryOptions = <TData = Awaited<ReturnType<typeof listPromptVariations>>, TError = ErrorType<unknown>>(projectId: string, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listPromptVariations>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getListPromptVariationsQueryKey(projectId);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof listPromptVariations>>> = ({ signal }) => listPromptVariations(projectId, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, enabled: !!(projectId), ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof listPromptVariations>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type ListPromptVariationsQueryResult = NonNullable<Awaited<ReturnType<typeof listPromptVariations>>>
+export type ListPromptVariationsQueryError = ErrorType<unknown>
+
+
+/**
+ * @summary Listar variações de prompt salvas
+ */
+
+export function useListPromptVariations<TData = Awaited<ReturnType<typeof listPromptVariations>>, TError = ErrorType<unknown>>(
+ projectId: string, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listPromptVariations>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getListPromptVariationsQueryOptions(projectId,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+
+
+
+
+
+
+export const getSavePromptVariationUrl = (projectId: string,) => {
+
+
+
+
+  return `/api/arq/projects/${projectId}/prompt-variations`
+}
+
+/**
+ * @summary Salvar variação de prompt
+ */
+export const savePromptVariation = async (projectId: string,
+    createPromptVariationBody: CreatePromptVariationBody, options?: RequestInit): Promise<PromptVariation> => {
+
+  return customFetch<PromptVariation>(getSavePromptVariationUrl(projectId),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(
+      createPromptVariationBody,)
+  }
+);}
+
+
+
+
+export const getSavePromptVariationMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof savePromptVariation>>, TError,{projectId: string;data: BodyType<CreatePromptVariationBody>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof savePromptVariation>>, TError,{projectId: string;data: BodyType<CreatePromptVariationBody>}, TContext> => {
+
+const mutationKey = ['savePromptVariation'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof savePromptVariation>>, {projectId: string;data: BodyType<CreatePromptVariationBody>}> = (props) => {
+          const {projectId,data} = props ?? {};
+
+          return  savePromptVariation(projectId,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type SavePromptVariationMutationResult = NonNullable<Awaited<ReturnType<typeof savePromptVariation>>>
+    export type SavePromptVariationMutationBody = BodyType<CreatePromptVariationBody>
+    export type SavePromptVariationMutationError = ErrorType<unknown>
+
+    /**
+ * @summary Salvar variação de prompt
+ */
+export const useSavePromptVariation = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof savePromptVariation>>, TError,{projectId: string;data: BodyType<CreatePromptVariationBody>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof savePromptVariation>>,
+        TError,
+        {projectId: string;data: BodyType<CreatePromptVariationBody>},
+        TContext
+      > => {
+      return useMutation(getSavePromptVariationMutationOptions(options));
+    }
+
+export const getDeletePromptVariationUrl = (projectId: string,
+    variationId: string,) => {
+
+
+
+
+  return `/api/arq/projects/${projectId}/prompt-variations/${variationId}`
+}
+
+/**
+ * @summary Remover variação de prompt
+ */
+export const deletePromptVariation = async (projectId: string,
+    variationId: string, options?: RequestInit): Promise<void> => {
+
+  return customFetch<void>(getDeletePromptVariationUrl(projectId,variationId),
+  {
+    ...options,
+    method: 'DELETE'
+
+
+  }
+);}
+
+
+
+
+export const getDeletePromptVariationMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof deletePromptVariation>>, TError,{projectId: string;variationId: string}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof deletePromptVariation>>, TError,{projectId: string;variationId: string}, TContext> => {
+
+const mutationKey = ['deletePromptVariation'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof deletePromptVariation>>, {projectId: string;variationId: string}> = (props) => {
+          const {projectId,variationId} = props ?? {};
+
+          return  deletePromptVariation(projectId,variationId,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type DeletePromptVariationMutationResult = NonNullable<Awaited<ReturnType<typeof deletePromptVariation>>>
+
+    export type DeletePromptVariationMutationError = ErrorType<unknown>
+
+    /**
+ * @summary Remover variação de prompt
+ */
+export const useDeletePromptVariation = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof deletePromptVariation>>, TError,{projectId: string;variationId: string}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof deletePromptVariation>>,
+        TError,
+        {projectId: string;variationId: string},
+        TContext
+      > => {
+      return useMutation(getDeletePromptVariationMutationOptions(options));
+    }
+
+export const getCreateRenderJobUrl = () => {
+
+
+
+
+  return `/api/arq/render-jobs`
+}
+
+/**
+ * @summary Criar job de renderização
+ */
+export const createRenderJob = async (createRenderJobBody: CreateRenderJobBody, options?: RequestInit): Promise<RenderJob> => {
+
+  return customFetch<RenderJob>(getCreateRenderJobUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(
+      createRenderJobBody,)
+  }
+);}
+
+
+
+
+export const getCreateRenderJobMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createRenderJob>>, TError,{data: BodyType<CreateRenderJobBody>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof createRenderJob>>, TError,{data: BodyType<CreateRenderJobBody>}, TContext> => {
+
+const mutationKey = ['createRenderJob'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof createRenderJob>>, {data: BodyType<CreateRenderJobBody>}> = (props) => {
+          const {data} = props ?? {};
+
+          return  createRenderJob(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type CreateRenderJobMutationResult = NonNullable<Awaited<ReturnType<typeof createRenderJob>>>
+    export type CreateRenderJobMutationBody = BodyType<CreateRenderJobBody>
+    export type CreateRenderJobMutationError = ErrorType<unknown>
+
+    /**
+ * @summary Criar job de renderização
+ */
+export const useCreateRenderJob = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createRenderJob>>, TError,{data: BodyType<CreateRenderJobBody>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof createRenderJob>>,
+        TError,
+        {data: BodyType<CreateRenderJobBody>},
+        TContext
+      > => {
+      return useMutation(getCreateRenderJobMutationOptions(options));
+    }
+
+export const getGetRenderJobUrl = (jobId: string,) => {
+
+
+
+
+  return `/api/arq/render-jobs/${jobId}`
+}
+
+/**
+ * @summary Buscar status do render job
+ */
+export const getRenderJob = async (jobId: string, options?: RequestInit): Promise<RenderJob> => {
+
+  return customFetch<RenderJob>(getGetRenderJobUrl(jobId),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetRenderJobQueryKey = (jobId: string,) => {
+    return [
+    `/api/arq/render-jobs/${jobId}`
+    ] as const;
+    }
+
+
+export const getGetRenderJobQueryOptions = <TData = Awaited<ReturnType<typeof getRenderJob>>, TError = ErrorType<unknown>>(jobId: string, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getRenderJob>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetRenderJobQueryKey(jobId);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getRenderJob>>> = ({ signal }) => getRenderJob(jobId, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, enabled: !!(jobId), ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getRenderJob>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetRenderJobQueryResult = NonNullable<Awaited<ReturnType<typeof getRenderJob>>>
+export type GetRenderJobQueryError = ErrorType<unknown>
+
+
+/**
+ * @summary Buscar status do render job
+ */
+
+export function useGetRenderJob<TData = Awaited<ReturnType<typeof getRenderJob>>, TError = ErrorType<unknown>>(
+ jobId: string, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getRenderJob>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetRenderJobQueryOptions(jobId,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+
+
+
+
+
+
+export const getCreateRenderReviewUrl = (jobId: string,) => {
+
+
+
+
+  return `/api/arq/render-jobs/${jobId}/reviews`
+}
+
+/**
+ * @summary Registrar revisão de render
+ */
+export const createRenderReview = async (jobId: string,
+    createRenderReviewBody: CreateRenderReviewBody, options?: RequestInit): Promise<RenderReview> => {
+
+  return customFetch<RenderReview>(getCreateRenderReviewUrl(jobId),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(
+      createRenderReviewBody,)
+  }
+);}
+
+
+
+
+export const getCreateRenderReviewMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createRenderReview>>, TError,{jobId: string;data: BodyType<CreateRenderReviewBody>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof createRenderReview>>, TError,{jobId: string;data: BodyType<CreateRenderReviewBody>}, TContext> => {
+
+const mutationKey = ['createRenderReview'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof createRenderReview>>, {jobId: string;data: BodyType<CreateRenderReviewBody>}> = (props) => {
+          const {jobId,data} = props ?? {};
+
+          return  createRenderReview(jobId,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type CreateRenderReviewMutationResult = NonNullable<Awaited<ReturnType<typeof createRenderReview>>>
+    export type CreateRenderReviewMutationBody = BodyType<CreateRenderReviewBody>
+    export type CreateRenderReviewMutationError = ErrorType<unknown>
+
+    /**
+ * @summary Registrar revisão de render
+ */
+export const useCreateRenderReview = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createRenderReview>>, TError,{jobId: string;data: BodyType<CreateRenderReviewBody>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof createRenderReview>>,
+        TError,
+        {jobId: string;data: BodyType<CreateRenderReviewBody>},
+        TContext
+      > => {
+      return useMutation(getCreateRenderReviewMutationOptions(options));
     }
 

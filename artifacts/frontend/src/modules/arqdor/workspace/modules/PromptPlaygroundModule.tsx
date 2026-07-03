@@ -11,12 +11,8 @@ import {
 } from '../../engines/prompt-playwright/prompt-playwright'
 import type { TranslatorId, DetailLevel, PlaywrightPrompt } from '../../engines/prompt-playwright/prompt-playwright'
 import { useWorkspaceContext } from '../WorkspaceContext'
+import { T } from '../../shared/arqdor-theme'
 
-const T = {
-  bg:'#0d0b1e', surface:'#13102b', card:'rgba(255,255,255,0.04)',
-  border:'rgba(255,255,255,0.08)', purple:'#7c3aed', purpleL:'#a78bfa',
-  text:'rgba(255,255,255,0.88)', dim:'rgba(255,255,255,0.44)',
-} as const
 
 // ─── Saved variations ────────────────────────────────────────────────────────
 

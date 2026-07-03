@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect, useMemo } from 'react'
+import { useState, useRef, useEffect, useMemo, useContext } from 'react'
 import type { CopilotMessage, CopilotQuestion, CopilotSuggestion, Decision, SmartTask, ChecklistItem, ProjectHealthResult, Workflow } from '../copilot-types'
 import { generateQuestions }    from '../engines/question-engine'
 import { generateSuggestions }  from '../engines/suggestion-engine'
@@ -7,16 +7,8 @@ import { buildWorkflow }        from '../engines/workflow-engine'
 import { generateTasks, generateChecklist, computeProjectHealth, computeProgress } from '../engines/task-engine'
 import { INITIAL_MESSAGES }     from '../mock/copilot-mock-data'
 import { MOCK_PROJECT_CONTEXT } from '../../engines/aie/aie-mock-context'
-
-const T = {
-  bg:      '#0d0b1e',
-  surface: 'rgba(255,255,255,0.04)',
-  border:  'rgba(255,255,255,0.08)',
-  purple:  '#7c3aed',
-  purpleL: '#a78bfa',
-  text:    'rgba(255,255,255,0.88)',
-  dim:     'rgba(255,255,255,0.44)',
-} as const
+import { WorkspaceContext } from '../../workspace/WorkspaceContext'
+import { T } from '../../shared/arqdor-theme'
 
 type PanelTab = 'chat' | 'tasks' | 'checklist' | 'workflow' | 'decisions'
 
@@ -396,19 +388,20 @@ function AlertsStrip({ health }: { health: ProjectHealthResult }) {
 // ─── Main Copilot panel ───────────────────────────────────────────────────────
 
 export function ArqCopilot({ collapsed, onToggle }: { collapsed: boolean; onToggle: () => void }) {
-  const ctx = MOCK_PROJECT_CONTEXT
+  const workspaceCtx = useContext(WorkspaceContext)
+  const ctx = workspaceCtx?.projectContext ?? MOCK_PROJECT_CONTEXT
 
   const [messages,   setMessages]   = useState<CopilotMessage[]>(INITIAL_MESSAGES)
   const [decisions,  setDecisions]  = useState<Decision[]>(MOCK_DECISIONS)
   const [activeTab,  setActiveTab]  = useState<PanelTab>('chat')
 
-  const questions   = useMemo(() => generateQuestions(ctx),   [])
-  const suggestions = useMemo(() => generateSuggestions(ctx), [])
-  const tasks       = useMemo(() => generateTasks(ctx),       [])
-  const checklist   = useMemo(() => generateChecklist(ctx),   [])
-  const health      = useMemo(() => computeProjectHealth(ctx),[])
-  const progress    = useMemo(() => computeProgress(ctx),     [])
-  const workflow    = useMemo(() => buildWorkflow('INITIAL', ctx), [])
+  const questions   = useMemo(() => generateQuestions(ctx),        [ctx])
+  const suggestions = useMemo(() => generateSuggestions(ctx),      [ctx])
+  const tasks       = useMemo(() => generateTasks(ctx),            [ctx])
+  const checklist   = useMemo(() => generateChecklist(ctx),        [ctx])
+  const health      = useMemo(() => computeProjectHealth(ctx),     [ctx])
+  const progress    = useMemo(() => computeProgress(ctx),          [ctx])
+  const workflow    = useMemo(() => buildWorkflow('INITIAL', ctx), [ctx])
   const renderReady = useMemo(() => Math.max(0, Math.min(100, progress - 15)), [progress])
 
   function pushCopilotMessage(text: string) {
