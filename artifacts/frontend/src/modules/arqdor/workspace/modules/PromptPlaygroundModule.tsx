@@ -56,6 +56,17 @@ function useSavedVariations() {
   const [storageError, setStorageError] = useState<string | null>(null)
   const clearStorageError = useCallback(() => setStorageError(null), [])
 
+  const importVariations = useCallback((incoming: SavedVariation[]) => {
+    setVariations(prev => {
+      const existingIds = new Set(prev.map(v => v.id))
+      const novel = incoming.filter(v => !existingIds.has(v.id))
+      if (novel.length === 0) return prev
+      const next = [...novel, ...prev]
+      persistVariations(next)
+      return next
+    })
+  }, [])
+
   const save = useCallback((v: Omit<SavedVariation, 'id' | 'savedAt' | 'name'>, suggestedName: string) => {
     const item: SavedVariation = {
       ...v,
@@ -121,7 +132,7 @@ function useSavedVariations() {
     })
   }, [])
 
-  return { variations, save, rename, remove, updateNotes, storageError, clearStorageError }
+  return { variations, save, rename, remove, updateNotes, storageError, clearStorageError, importVariations }
 }
 
 // ─── Playground tab (existing) ────────────────────────────────────────────────
@@ -488,30 +499,24 @@ function SavedVariationsPanel({
   onRename,
   onDelete,
   onUpdateNotes,
+  onImport,
 }: {
   variations: SavedVariation[]
   onRename: (id: string, name: string) => void
   onDelete: (id: string) => void
   onUpdateNotes: (id: string, notes: string) => void
+  onImport: (items: SavedVariation[]) => void
 }) {
   const [open, setOpen] = useState(true)
   const [editingId, setEditingId] = useState<string | null>(null)
   const [editingName, setEditingName] = useState('')
   const [copiedId, setCopiedId] = useState<string | null>(null)
   const [exported, setExported] = useState(false)
+  const [importStatus, setImportStatus] = useState<'idle' | 'ok' | 'error'>('idle')
 
   const handleExport = (e: React.MouseEvent) => {
     e.stopPropagation()
-    const data = variations.map(v => ({
-      name: v.name,
-      translator: v.translator,
-      detailLevel: v.detail,
-      prompt: v.prompt,
-      negativePrompt: v.negativePrompt,
-      estimatedTokens: v.estimatedTokens,
-      savedAt: new Date(v.savedAt).toISOString(),
-    }))
-    const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' })
+    const blob = new Blob([JSON.stringify(variations, null, 2)], { type: 'application/json' })
     const url = URL.createObjectURL(blob)
     const a = document.createElement('a')
     a.href = url
@@ -520,6 +525,32 @@ function SavedVariationsPanel({
     URL.revokeObjectURL(url)
     setExported(true)
     setTimeout(() => setExported(false), 2000)
+  }
+
+  const handleImportFile = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+    const reader = new FileReader()
+    reader.onload = (ev) => {
+      try {
+        const parsed = JSON.parse(ev.target?.result as string) as unknown
+        if (!Array.isArray(parsed)) throw new Error('not an array')
+        const items = parsed as SavedVariation[]
+        const valid = items.filter(
+          (v) => typeof v.id === 'string' && typeof v.name === 'string' &&
+                 typeof v.prompt === 'string' && typeof v.savedAt === 'number'
+        )
+        if (valid.length === 0) throw new Error('no valid items')
+        onImport(valid)
+        setImportStatus('ok')
+      } catch {
+        setImportStatus('error')
+      } finally {
+        setTimeout(() => setImportStatus('idle'), 2500)
+        e.target.value = ''
+      }
+    }
+    reader.readAsText(file)
   }
 
   const copy = (id: string, text: string) => {
@@ -546,6 +577,26 @@ function SavedVariationsPanel({
             </span>
           )}
         </span>
+        {/* Import button — always visible so users can import even with empty list */}
+        <label
+          onClick={e => e.stopPropagation()}
+          title="Importar variações de um arquivo JSON"
+          style={{
+            padding:'3px 10px', borderRadius:5, border:`1px solid ${T.border}`,
+            background: importStatus === 'ok' ? 'rgba(74,222,128,0.15)' : importStatus === 'error' ? 'rgba(248,113,113,0.15)' : 'rgba(255,255,255,0.05)',
+            color: importStatus === 'ok' ? '#4ade80' : importStatus === 'error' ? '#f87171' : T.dim,
+            cursor:'pointer', fontSize:9, fontWeight:700,
+            outline: importStatus === 'ok' ? '1px solid #4ade8044' : importStatus === 'error' ? '1px solid #f8717144' : 'none',
+            transition:'all 0.2s', display:'inline-block',
+          }}>
+          {importStatus === 'ok' ? '✓ Importado' : importStatus === 'error' ? '✗ Inválido' : '⬆ Importar'}
+          <input
+            type="file"
+            accept=".json,application/json"
+            onChange={handleImportFile}
+            style={{ display:'none' }}
+          />
+        </label>
         {variations.length > 0 && (
           <button
             onClick={handleExport}
@@ -600,7 +651,7 @@ function AIEPlaywrightTab() {
   const [detail, setDetail]         = useState<DetailLevel>('detalhado')
   const [savedFlash, setSavedFlash] = useState(false)
 
-  const { variations, save, rename, remove, updateNotes, storageError, clearStorageError } = useSavedVariations()
+  const { variations, save, rename, remove, updateNotes, storageError, clearStorageError, importVariations } = useSavedVariations()
 
   const { projectContext } = useWorkspaceContext()
   const activeCtx = projectContext ?? MOCK_PROJECT_CONTEXT
@@ -751,7 +802,7 @@ function AIEPlaywrightTab() {
       {/* Prompt preview + saved variations */}
       <div style={{ flex:1, overflowY:'auto' as const, padding:'14px 20px' }}>
         <PromptPreview pw={pw} />
-        <SavedVariationsPanel variations={variations} onRename={rename} onDelete={remove} onUpdateNotes={updateNotes} />
+        <SavedVariationsPanel variations={variations} onRename={rename} onDelete={remove} onUpdateNotes={updateNotes} onImport={importVariations} />
       </div>
     </div>
   )
