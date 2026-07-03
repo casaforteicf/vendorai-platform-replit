@@ -1,4 +1,5 @@
 import { useState, Suspense, lazy } from 'react'
+import { ArqCopilot } from '../copilot/ui/ArqCopilot'
 import { LibraryModule }      from './modules/LibraryModule'
 import { PromptPlaygroundModule } from './modules/PromptPlaygroundModule'
 import { RenderHistoryModule } from './modules/RenderHistoryModule'
@@ -111,8 +112,9 @@ function SidebarItem({
 
 // ─── ArqWorkspace ─────────────────────────────────────────────────────────────
 export default function ArqWorkspace() {
-  const [activeModule, setActiveModule] = useState<ModuleId>('projeto')
-  const [expanded, setExpanded]         = useState(true)
+  const [activeModule,    setActiveModule]    = useState<ModuleId>('projeto')
+  const [expanded,        setExpanded]        = useState(true)
+  const [copilotCollapsed,setCopilotCollapsed]= useState(false)
 
   const sidebarW = expanded ? 220 : 56
 
@@ -125,7 +127,7 @@ export default function ArqWorkspace() {
       {/* ══ TOP BAR ══ */}
       <div style={{
         height:44, flexShrink:0, display:'flex', alignItems:'center',
-        borderBottom:`1px solid ${T.border}`, background:T.sidebar, paddingRight:16, gap:0,
+        borderBottom:`1px solid ${T.border}`, background:T.sidebar, paddingRight:0, gap:0,
       }}>
         {/* Logo area */}
         <div style={{ width:sidebarW, flexShrink:0, display:'flex', alignItems:'center', gap:expanded?10:0, justifyContent:expanded?'flex-start':'center', padding:expanded?'0 14px':'0', transition:'width 0.2s', overflow:'hidden' }}>
@@ -150,10 +152,21 @@ export default function ArqWorkspace() {
           </span>
         </div>
 
-        {/* Badges */}
-        <div style={{ display:'flex', gap:6, alignItems:'center' }}>
+        {/* Badges + Copilot toggle */}
+        <div style={{ display:'flex', gap:6, alignItems:'center', paddingRight:12 }}>
           <span style={{ fontSize:9, padding:'3px 8px', borderRadius:10, background:'rgba(74,222,128,0.1)', color:'#4ade80', fontWeight:700 }}>DEMO</span>
           <span style={{ fontSize:9, padding:'3px 8px', borderRadius:10, background:'rgba(124,58,237,0.15)', color:T.purpleL }}>Mock Providers</span>
+          <button
+            onClick={()=>setCopilotCollapsed(p=>!p)}
+            title={copilotCollapsed ? 'Abrir Copilot' : 'Recolher Copilot'}
+            style={{
+              padding:'4px 10px', borderRadius:7, border:`1px solid ${copilotCollapsed ? T.border : T.purple}`,
+              background:copilotCollapsed?'transparent':'rgba(124,58,237,0.15)', color:copilotCollapsed?T.dim:T.purpleL,
+              cursor:'pointer', fontSize:10, fontWeight:700, display:'flex', alignItems:'center', gap:5,
+            }}
+          >
+            🤖 {copilotCollapsed ? 'Copilot' : 'Copilot ▸'}
+          </button>
         </div>
       </div>
 
@@ -211,6 +224,9 @@ export default function ArqWorkspace() {
             {renderModule(activeModule)}
           </Suspense>
         </div>
+
+        {/* ── ARQ COPILOT PANEL ── */}
+        <ArqCopilot collapsed={copilotCollapsed} onToggle={()=>setCopilotCollapsed(p=>!p)}/>
       </div>
     </div>
   )
