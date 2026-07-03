@@ -1,0 +1,64 @@
+# Briefing — Gerador de Instagram Avançado (Feed/Stories/Reels)
+
+**Como usar:** envie cada "Passo" como mensagem separada pro Replit Agent, um de cada vez, esperando terminar antes do próximo.
+
+**Contexto:** isso evolui a tela "Configurar geração" (Modo Avançado) que já existe, adicionando os campos estratégicos que faltam pra virar máquina de vendas de verdade, não só gerador de post bonito.
+
+---
+
+## Passo 1 — Diagnóstico
+```
+Me mostre o componente/formulário da tela "Configurar geração" do gerador de conteúdo Instagram (Modo Avançado), incluindo:
+1. Os campos atuais do formulário (hoje: Produto do catálogo, Tema/contexto, Formato, Quantidade)
+2. Como esses campos viram o prompt final enviado pro modelo de geração
+3. O que acontece depois que a imagem/conteúdo é gerado (que ações o usuário tem: copiar, salvar, etc.)
+
+Não altere nada ainda, só me mostre isso.
+```
+
+## Passo 2 — Adicionar os campos estratégicos que faltam
+```
+No formulário do Modo Avançado (aba Feed, e depois replicar pra Stories e Reels), adicione estes campos novos, todos opcionais exceto o primeiro:
+
+1. "Dor do cliente que este post ataca" (campo de texto, obrigatório) — ex: "Não sabe quantos leads esfriaram esse mês"
+2. "Objetivo do post" (seletor): Atrair atenção pra dor / Prova social / Educar / Vender direto / Bastidores
+3. "Tom de voz" (seletor): Direto e comercial / Storytelling / Educativo / Bastidores casual
+4. "CTA desejado" (seletor): Comentar palavra-chave / Chamar no direct / Clicar no link / Nenhum (sem CTA)
+
+Mantenha os campos que já existem (Produto do catálogo, Tema/contexto, Formato, Quantidade) — os novos se somam, não substituem.
+```
+
+## Passo 3 — Conectar os novos campos ao prompt de geração
+```
+Ajuste a montagem do prompt final pra incorporar os 4 campos novos do Passo 2 de forma estruturada — por exemplo:
+
+"Crie um post que ataca a dor: {dor_do_cliente}. Objetivo: {objetivo_do_post}. Tom de voz: {tom_de_voz}. Termine com CTA de tipo: {cta_desejado}."
+
+Isso deve vir concatenado com o BRAND_STYLE_BLOCK que já foi implementado na correção anterior de identidade visual.
+```
+
+## Passo 4 — Ações pós-geração
+```
+Na tela de resultado (depois que o conteúdo é gerado), adicione estes botões se ainda não existirem:
+- Regerar (gera de novo com os mesmos campos)
+- Melhorar texto (reenvia pedindo uma versão mais forte/direta da legenda)
+- Salvar na Biblioteca de Conteúdo (guarda o post gerado pra reutilizar depois, sem precisar gerar de novo)
+
+Não precisa integrar com CRM ou WhatsApp ainda — isso fica pra uma fase seguinte.
+```
+
+## Passo 5 — Teste real
+```
+Teste a tela completa gerando um post com:
+- Dor do cliente: "Não sabe quantos leads esfriaram esse mês"
+- Objetivo: Atrair atenção pra dor
+- Tom de voz: Direto e comercial
+- CTA: Comentar palavra-chave
+
+Me mostre o resultado antes de considerar isso pronto.
+```
+
+---
+
+## Próxima fase (não incluir agora, só pra você saber o que vem depois)
+Depois que essa tela estiver sólida, o próximo passo natural é o que já está no roadmap do plano de Instagram: conectar "Salvar na Biblioteca" com os agentes de CRM (enviar direto pro WhatsApp, criar campanha) — fechando o loop completo lead → conteúdo → venda.
