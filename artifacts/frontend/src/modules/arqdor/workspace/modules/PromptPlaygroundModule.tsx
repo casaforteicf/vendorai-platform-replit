@@ -876,6 +876,8 @@ function AIEPlaywrightTab({
     const v = decodeVariation(encoded)
     if (v) {
       importVariations([v])
+      setTranslator(v.translator)
+      setDetail(v.detail)
       setLinkedVariationName(v.name)
       onVariationLinked?.()
       // Remove only the share param; all other params are preserved
@@ -1071,7 +1073,7 @@ function AIEPlaywrightTab({
         }}>
           <span style={{ fontSize:15, flexShrink:0 }}>🔗</span>
           <p style={{ margin:0, fontSize:11, color:'#34d399', lineHeight:1.6, flex:1 }}>
-            Variação <strong>"{linkedVariationName}"</strong> importada via link e adicionada às variações salvas.
+            Variação <strong>"{linkedVariationName}"</strong> carregada via link — tradutor e nível de detalhe aplicados automaticamente.
           </p>
           <button
             onClick={() => setLinkedVariationName(null)}
