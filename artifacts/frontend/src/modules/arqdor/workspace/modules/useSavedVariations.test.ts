@@ -955,3 +955,98 @@ describe('pruneOldest', () => {
     expect(result.current.storageError).toBeNull()
   })
 })
+
+// ─── Scenario: rename ─────────────────────────────────────────────────────────
+
+describe('rename', () => {
+  it('happy path: updates state and localStorage instantly, then sends PATCH to server', async () => {
+    const v = makeVariation({ id: 'srv-rename-1', name: 'Original name' })
+    seedLocalStorage([v])
+    localStorage.setItem('vendorai_token', 'tok-abc')
+
+    const fetchSpy = vi
+      .fn()
+      // GET on mount → 5xx so existing localStorage is preserved
+      .mockResolvedValueOnce({ ok: false, status: 500 })
+      // PATCH for the rename
+      .mockResolvedValueOnce({ ok: true })
+    vi.stubGlobal('fetch', fetchSpy)
+
+    const { result } = renderHook(() => useSavedVariations())
+    await waitFor(() => expect(result.current.syncing).toBe(false))
+
+    // Rename is synchronous from the caller's perspective
+    act(() => {
+      result.current.rename('srv-rename-1', 'New name')
+    })
+
+    // State reflects the new name immediately (optimistic)
+    expect(result.current.variations[0].name).toBe('New name')
+
+    // localStorage is updated immediately too
+    expect(storedVariations()[0].name).toBe('New name')
+
+    // Wait for the async PATCH to be dispatched
+    await waitFor(() => expect(fetchSpy).toHaveBeenCalledTimes(2))
+
+    const [patchUrl, patchInit] = fetchSpy.mock.calls[1] as [string, RequestInit]
+    expect(patchUrl).toContain('/srv-rename-1')
+    expect(patchInit.method).toBe('PATCH')
+    expect(JSON.parse(patchInit.body as string)).toEqual({ name: 'New name' })
+  })
+
+  it('server failure: rename stays in local state when PATCH returns 5xx', async () => {
+    const v = makeVariation({ id: 'srv-rename-2', name: 'Before rename' })
+    seedLocalStorage([v])
+    localStorage.setItem('vendorai_token', 'tok-abc')
+
+    vi.stubGlobal(
+      'fetch',
+      vi
+        .fn()
+        .mockResolvedValueOnce({ ok: false, status: 500 }) // GET on mount
+        .mockResolvedValueOnce({ ok: false, status: 500 }), // PATCH → 5xx
+    )
+
+    const { result } = renderHook(() => useSavedVariations())
+    await waitFor(() => expect(result.current.syncing).toBe(false))
+
+    await act(async () => {
+      result.current.rename('srv-rename-2', 'After rename')
+      // Let the async PATCH attempt settle
+      await new Promise(r => setTimeout(r, 0))
+    })
+
+    // State must still show the new name despite server failure
+    expect(result.current.variations[0].name).toBe('After rename')
+
+    // localStorage must also reflect the new name
+    expect(storedVariations()[0].name).toBe('After rename')
+  })
+
+  it('local-* items skip the PATCH entirely (no server call for offline-saved items)', async () => {
+    const v = makeVariation({ id: 'local-offline-1', name: 'Offline variation' })
+    seedLocalStorage([v])
+    localStorage.setItem('vendorai_token', 'tok-abc')
+
+    const fetchSpy = vi
+      .fn()
+      .mockResolvedValueOnce({ ok: false, status: 500 }) // GET on mount
+    vi.stubGlobal('fetch', fetchSpy)
+
+    const { result } = renderHook(() => useSavedVariations())
+    await waitFor(() => expect(result.current.syncing).toBe(false))
+
+    await act(async () => {
+      result.current.rename('local-offline-1', 'Renamed offline')
+      await new Promise(r => setTimeout(r, 0))
+    })
+
+    // State and localStorage show the new name
+    expect(result.current.variations[0].name).toBe('Renamed offline')
+    expect(storedVariations()[0].name).toBe('Renamed offline')
+
+    // Only the initial GET was called — no PATCH for local-* items
+    expect(fetchSpy).toHaveBeenCalledTimes(1)
+  })
+})
