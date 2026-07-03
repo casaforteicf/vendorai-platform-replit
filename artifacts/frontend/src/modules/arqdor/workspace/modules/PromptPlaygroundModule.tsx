@@ -1,4 +1,4 @@
-import { useState, useMemo, useCallback, useEffect, useRef } from 'react'
+import { useState, useMemo, useCallback, useRef, useEffect } from 'react'
 import { useSearch, useLocation } from 'wouter'
 import { MOCK_PROJECT } from '../../../../pages/arch/arqdor/domain/arqdor-mock-project'
 import { generateFullPromptStructure } from '../../../../pages/arch/arqdor/domain/arqdor-prompt-engine'
@@ -22,7 +22,7 @@ import {
   DETAIL_LEVELS,
 } from '../../engines/prompt-playwright/prompt-playwright'
 import type { TranslatorId, DetailLevel, PlaywrightPrompt } from '../../engines/prompt-playwright/prompt-playwright'
-import { useWorkspaceContext } from '../WorkspaceContext'
+import { useWorkspace } from '../context/WorkspaceContext'
 import { T } from '../../shared/arqdor-theme'
 import { useSavedVariations } from './useSavedVariations'
 import type { SavedVariation } from './useSavedVariations'
@@ -171,7 +171,7 @@ const SECTIONS: { key: keyof PromptStructure; label: string; accent: string; des
 ]
 
 function PlaygroundTab() {
-  const { projectContext } = useWorkspaceContext()
+  const { projectContext } = useWorkspace()
 
   const activeProject = useMemo<Project>(() =>
     projectContext ? projectContextToProject(projectContext) : MOCK_PROJECT,
@@ -1109,7 +1109,7 @@ function detectShareParam(): boolean {
 
 export function PromptPlaygroundModule() {
   const [tab, setTab] = useState<TabId>('playwright')
-  const { projectCtx: projectContext } = useWorkspaceContext()
+  const { projectContext } = useWorkspace()
   const activeProject = projectContext ? projectContextToProject(projectContext) : MOCK_PROJECT
 
   const resolvedProjectCtx: ProjectContext = projectContext ?? MOCK_PROJECT_CONTEXT

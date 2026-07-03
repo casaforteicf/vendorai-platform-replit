@@ -282,6 +282,66 @@ describe('API returns 5xx on delete', () => {
   })
 })
 
+// ─── Scenario: localStorage quota exceeded ────────────────────────────────────
+
+describe('localStorage quota exceeded', () => {
+  it('sets storageError when localStorage.setItem throws on save', async () => {
+    // No token — stays offline so we only exercise the localStorage path
+    const { result } = renderHook(() => useSavedVariations())
+
+    // Simulate quota-exceeded error for every write attempt
+    vi.spyOn(Storage.prototype, 'setItem').mockImplementation((key: string) => {
+      if (key === STORAGE_KEY) throw new DOMException('QuotaExceededError', 'QuotaExceededError')
+    })
+
+    await act(async () => {
+      result.current.save(
+        {
+          translator: 'midjourney',
+          detail: 'medium',
+          prompt: 'Prompt that exceeds quota',
+          negativePrompt: '',
+          estimatedTokens: 99,
+        },
+        'Full storage',
+      )
+      await new Promise(r => setTimeout(r, 0))
+    })
+
+    // Variation is still in React state (optimistic update succeeded)
+    expect(result.current.variations).toHaveLength(1)
+    expect(result.current.variations[0].name).toBe('Full storage')
+
+    // storageError must be surfaced to the UI
+    expect(result.current.storageError).toBeTruthy()
+    expect(result.current.storageError).toContain('Armazenamento local cheio')
+  })
+
+  it('clears storageError via clearStorageError', async () => {
+    const { result } = renderHook(() => useSavedVariations())
+
+    vi.spyOn(Storage.prototype, 'setItem').mockImplementation((key: string) => {
+      if (key === STORAGE_KEY) throw new DOMException('QuotaExceededError', 'QuotaExceededError')
+    })
+
+    await act(async () => {
+      result.current.save(
+        { translator: 'midjourney', detail: 'low', prompt: 'p', negativePrompt: '', estimatedTokens: 1 },
+        'Trigger error',
+      )
+      await new Promise(r => setTimeout(r, 0))
+    })
+
+    expect(result.current.storageError).toBeTruthy()
+
+    act(() => {
+      result.current.clearStorageError()
+    })
+
+    expect(result.current.storageError).toBeNull()
+  })
+})
+
 // ─── Scenario 4: localStorage → server migration ──────────────────────────────
 
 describe('localStorage to server migration', () => {

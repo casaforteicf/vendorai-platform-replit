@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import type { TranslatorId, DetailLevel } from '../../engines/prompt-playwright/prompt-playwright'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -35,11 +35,12 @@ export const API_BASE = '/api/arch/prompt-variations'
 
 // ─── Local-storage helpers ────────────────────────────────────────────────────
 
-export function persistVariations(list: SavedVariation[]): void {
+export function persistVariations(list: SavedVariation[]): boolean {
   try {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(list))
+    return true
   } catch {
-    // quota exceeded — silently skip
+    return false
   }
 }
 
@@ -134,7 +135,24 @@ export function useSavedVariations() {
 
   const clearStorageError = useCallback(() => setStorageError(null), [])
 
-  const importVariations = useCallback((items: unknown[]) => {
+  // Persist to localStorage whenever variations change; surface quota errors.
+  // Skip the very first render (data was just read from localStorage — no need to re-write it).
+  const isFirstRender = useRef(true)
+  useEffect(() => {
+    if (isFirstRender.current) {
+      isFirstRender.current = false
+      return
+    }
+    const ok = persistVariations(variations)
+    if (!ok) {
+      setStorageError(
+        'Armazenamento local cheio — variação salva apenas no servidor. Remova variações antigas para liberar espaço.',
+      )
+    }
+  }, [variations])
+
+  const importVariations = useCallback((items: unknown[]): number => {
+    let importedCount = 0
     setVariations(prev => {
       const existingIds = new Set(prev.map(v => v.id))
       const toAdd: SavedVariation[] = []
@@ -161,11 +179,16 @@ export function useSavedVariations() {
           notes: typeof r.notes === 'string' ? r.notes : undefined,
         })
       }
-      if (toAdd.length === 0) return prev
+      if (toAdd.length === 0) {
+        importedCount = 0
+        return prev
+      }
+      importedCount = toAdd.length
       const next = [...toAdd, ...prev]
       persistVariations(next)
       return next
     })
+    return importedCount
   }, [])
 
   // Promote a single local-* item to its server-assigned ID
@@ -271,11 +294,7 @@ export function useSavedVariations() {
       }
 
       // Optimistic local update
-      setVariations(prev => {
-        const next = [item, ...prev]
-        persistVariations(next)
-        return next
-      })
+      setVariations(prev => [item, ...prev])
 
       // Sync to server
       void (async () => {
@@ -311,11 +330,7 @@ export function useSavedVariations() {
   )
 
   const rename = useCallback((id: string, name: string) => {
-    setVariations(prev => {
-      const next = prev.map((v): SavedVariation => (v.id === id ? { ...v, name } : v))
-      persistVariations(next)
-      return next
-    })
+    setVariations(prev => prev.map((v): SavedVariation => (v.id === id ? { ...v, name } : v)))
     void (async () => {
       const token = getAuthToken()
       if (!token || id.startsWith('local-')) return
@@ -328,11 +343,7 @@ export function useSavedVariations() {
   }, [])
 
   const remove = useCallback((id: string) => {
-    setVariations(prev => {
-      const next = prev.filter(v => v.id !== id)
-      persistVariations(next)
-      return next
-    })
+    setVariations(prev => prev.filter(v => v.id !== id))
     void (async () => {
       const token = getAuthToken()
       if (!token || id.startsWith('local-')) return
@@ -345,11 +356,7 @@ export function useSavedVariations() {
   }, [])
 
   const updateNotes = useCallback((id: string, notes: string) => {
-    setVariations(prev => {
-      const next = prev.map((v): SavedVariation => (v.id === id ? { ...v, notes } : v))
-      persistVariations(next)
-      return next
-    })
+    setVariations(prev => prev.map((v): SavedVariation => (v.id === id ? { ...v, notes } : v)))
     void (async () => {
       const token = getAuthToken()
       if (!token || id.startsWith('local-')) return
