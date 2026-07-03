@@ -30,6 +30,7 @@ interface SavedVariation {
   negativePrompt: string
   estimatedTokens: number
   savedAt: number
+  notes?: string
 }
 
 function useSavedVariations() {
@@ -72,7 +73,15 @@ function useSavedVariations() {
     })
   }, [])
 
-  return { variations, save, rename, remove }
+  const updateNotes = useCallback((id: string, notes: string) => {
+    setVariations(prev => {
+      const next = prev.map((v): SavedVariation => v.id === id ? { ...v, notes } : v)
+      try { localStorage.setItem(STORAGE_KEY, JSON.stringify(next)) } catch { /* quota exceeded */ }
+      return next
+    })
+  }, [])
+
+  return { variations, save, rename, remove, updateNotes }
 }
 
 // ─── Playground tab (existing) ────────────────────────────────────────────────
@@ -282,14 +291,168 @@ function PromptPreview({ pw }: { pw: PlaywrightPrompt }) {
 
 // ─── Saved variations panel ───────────────────────────────────────────────────
 
+function VariationCard({
+  v,
+  editingId,
+  editingName,
+  copiedId,
+  onStartEdit,
+  onCommitEdit,
+  onCancelEdit,
+  onEditingNameChange,
+  onCopy,
+  onDelete,
+  onUpdateNotes,
+}: {
+  v: SavedVariation
+  editingId: string | null
+  editingName: string
+  copiedId: string | null
+  onStartEdit: (v: SavedVariation) => void
+  onCommitEdit: (id: string) => void
+  onCancelEdit: () => void
+  onEditingNameChange: (name: string) => void
+  onCopy: (id: string, text: string) => void
+  onDelete: (id: string) => void
+  onUpdateNotes: (id: string, notes: string) => void
+}) {
+  const [notesOpen, setNotesOpen] = useState(false)
+  const [draftNotes, setDraftNotes] = useState(v.notes ?? '')
+
+  const tInfo = TRANSLATORS.find(t => t.id === v.translator)
+
+  const fmt = (ts: number) => {
+    const d = new Date(ts)
+    return `${d.toLocaleDateString('pt-BR')} ${d.toLocaleTimeString('pt-BR', { hour:'2-digit', minute:'2-digit' })}`
+  }
+
+  const handleNotesBlur = () => {
+    onUpdateNotes(v.id, draftNotes)
+  }
+
+  const hasNotes = (v.notes ?? '').trim().length > 0
+
+  return (
+    <div style={{ borderRadius:8, border:`1px solid ${T.border}`, overflow:'hidden' }}>
+      {/* Row header */}
+      <div style={{ padding:'8px 12px', background:'rgba(255,255,255,0.03)', display:'flex', alignItems:'center', gap:8 }}>
+        {/* Name (editable) */}
+        {editingId === v.id ? (
+          <input
+            value={editingName}
+            onChange={e => onEditingNameChange(e.target.value)}
+            onBlur={() => onCommitEdit(v.id)}
+            onKeyDown={e => { if (e.key === 'Enter') onCommitEdit(v.id); if (e.key === 'Escape') onCancelEdit() }}
+            autoFocus
+            style={{
+              flex:1, background:'rgba(255,255,255,0.06)', border:`1px solid rgba(124,58,237,0.4)`,
+              borderRadius:5, color:T.text, fontSize:11, fontWeight:700, padding:'3px 8px', outline:'none',
+            }}
+          />
+        ) : (
+          <span
+            onDoubleClick={() => onStartEdit(v)}
+            title="Duplo clique para renomear"
+            style={{ flex:1, fontSize:11, fontWeight:700, color:T.text, cursor:'text' }}>
+            {v.name}
+          </span>
+        )}
+        {/* Badges */}
+        {tInfo && (
+          <span style={{ fontSize:8, padding:'1px 6px', borderRadius:4, background:`${tInfo.color}22`, color:tInfo.color, fontWeight:800 }}>
+            {tInfo.badge}
+          </span>
+        )}
+        <span style={{ fontSize:8, padding:'1px 6px', borderRadius:4, background:'rgba(124,58,237,0.15)', color:T.purpleL, fontWeight:700 }}>
+          {v.detail}
+        </span>
+        <span style={{ fontSize:9, color:T.dim }}>{v.estimatedTokens} tk</span>
+        {/* Actions */}
+        <button
+          onClick={() => onCopy(v.id, v.prompt)}
+          title="Copiar prompt"
+          style={{ padding:'2px 8px', borderRadius:5, border:'none', background:'rgba(124,58,237,0.2)', color:T.purpleL, cursor:'pointer', fontSize:9, fontWeight:700 }}>
+          {copiedId === v.id ? '✓' : '📋'}
+        </button>
+        <button
+          onClick={() => onStartEdit(v)}
+          title="Renomear"
+          style={{ padding:'2px 6px', borderRadius:5, border:`1px solid ${T.border}`, background:'transparent', color:T.dim, cursor:'pointer', fontSize:10 }}>
+          ✏️
+        </button>
+        <button
+          onClick={() => onDelete(v.id)}
+          title="Remover"
+          style={{ padding:'2px 6px', borderRadius:5, border:`1px solid rgba(248,113,113,0.2)`, background:'transparent', color:'#f87171', cursor:'pointer', fontSize:10 }}>
+          🗑
+        </button>
+      </div>
+      {/* Prompt preview snippet */}
+      <div style={{ padding:'8px 12px', background:'rgba(255,255,255,0.01)' }}>
+        <p style={{
+          margin:0, fontSize:10, color:T.dim, lineHeight:1.55,
+          fontFamily:'ui-monospace,monospace', whiteSpace:'pre-wrap' as const,
+          display:'-webkit-box', WebkitLineClamp:2, WebkitBoxOrient:'vertical' as const, overflow:'hidden',
+        }}>
+          {v.prompt}
+        </p>
+        {/* Notes preview line (when notes exist and collapsed) */}
+        {hasNotes && !notesOpen && (
+          <p style={{
+            margin:'5px 0 0', fontSize:9, color:'rgba(167,139,250,0.6)',
+            lineHeight:1.4, fontStyle:'italic',
+            whiteSpace:'nowrap' as const, overflow:'hidden', textOverflow:'ellipsis',
+          }}>
+            📝 {v.notes}
+          </p>
+        )}
+        <div style={{ display:'flex', alignItems:'center', gap:8, marginTop:5 }}>
+          <p style={{ margin:0, fontSize:9, color:'rgba(255,255,255,0.24)', flex:1 }}>{fmt(v.savedAt)}</p>
+          <button
+            onClick={() => { setNotesOpen(p => !p); if (!notesOpen) setDraftNotes(v.notes ?? '') }}
+            style={{
+              padding:'1px 7px', borderRadius:4, border:`1px solid ${notesOpen ? 'rgba(167,139,250,0.35)' : T.border}`,
+              background: notesOpen ? 'rgba(167,139,250,0.08)' : 'transparent',
+              color: notesOpen ? T.purpleL : T.dim,
+              cursor:'pointer', fontSize:9, display:'flex', alignItems:'center', gap:4,
+            }}>
+            📝 {notesOpen ? 'Fechar notas' : hasNotes ? 'Ver notas' : 'Adicionar nota'}
+          </button>
+        </div>
+        {/* Notes expandable area */}
+        {notesOpen && (
+          <div style={{ marginTop:8 }}>
+            <textarea
+              value={draftNotes}
+              onChange={e => setDraftNotes(e.target.value)}
+              onBlur={handleNotesBlur}
+              placeholder="Ex: bom para iluminação interior, evitar uso em exteriores..."
+              style={{
+                width:'100%', minHeight:72, background:'rgba(167,139,250,0.06)',
+                border:`1px solid rgba(167,139,250,0.25)`, borderRadius:6,
+                color:T.text, fontSize:10, padding:'8px 10px',
+                lineHeight:1.6, resize:'vertical' as const, outline:'none',
+                boxSizing:'border-box' as const, fontFamily:'inherit',
+              }}
+            />
+            <p style={{ margin:'3px 0 0', fontSize:9, color:T.dim }}>As notas são salvas automaticamente ao sair do campo</p>
+          </div>
+        )}
+      </div>
+    </div>
+  )
+}
+
 function SavedVariationsPanel({
   variations,
   onRename,
   onDelete,
+  onUpdateNotes,
 }: {
   variations: SavedVariation[]
   onRename: (id: string, name: string) => void
   onDelete: (id: string) => void
+  onUpdateNotes: (id: string, notes: string) => void
 }) {
   const [open, setOpen] = useState(true)
   const [editingId, setEditingId] = useState<string | null>(null)
@@ -330,13 +493,6 @@ function SavedVariationsPanel({
     setEditingId(null)
   }
 
-  const fmt = (ts: number) => {
-    const d = new Date(ts)
-    return `${d.toLocaleDateString('pt-BR')} ${d.toLocaleTimeString('pt-BR', { hour:'2-digit', minute:'2-digit' })}`
-  }
-
-  const translatorInfo = (id: TranslatorId) => TRANSLATORS.find(t => t.id === id)
-
   return (
     <div style={{ borderRadius:10, border:`1px solid ${T.border}`, overflow:'hidden', marginTop:12 }}>
       <div
@@ -375,77 +531,22 @@ function SavedVariationsPanel({
               Nenhuma variação salva ainda. Clique em "💾 Salvar variação" acima para começar.
             </p>
           )}
-          {variations.map(v => {
-            const tInfo = translatorInfo(v.translator)
-            return (
-              <div key={v.id} style={{ borderRadius:8, border:`1px solid ${T.border}`, overflow:'hidden' }}>
-                {/* Row header */}
-                <div style={{ padding:'8px 12px', background:'rgba(255,255,255,0.03)', display:'flex', alignItems:'center', gap:8 }}>
-                  {/* Name (editable) */}
-                  {editingId === v.id ? (
-                    <input
-                      value={editingName}
-                      onChange={e => setEditingName(e.target.value)}
-                      onBlur={() => commitEdit(v.id)}
-                      onKeyDown={e => { if (e.key === 'Enter') commitEdit(v.id); if (e.key === 'Escape') setEditingId(null) }}
-                      autoFocus
-                      style={{
-                        flex:1, background:'rgba(255,255,255,0.06)', border:`1px solid rgba(124,58,237,0.4)`,
-                        borderRadius:5, color:T.text, fontSize:11, fontWeight:700, padding:'3px 8px', outline:'none',
-                      }}
-                    />
-                  ) : (
-                    <span
-                      onDoubleClick={() => startEdit(v)}
-                      title="Duplo clique para renomear"
-                      style={{ flex:1, fontSize:11, fontWeight:700, color:T.text, cursor:'text' }}>
-                      {v.name}
-                    </span>
-                  )}
-                  {/* Badges */}
-                  {tInfo && (
-                    <span style={{ fontSize:8, padding:'1px 6px', borderRadius:4, background:`${tInfo.color}22`, color:tInfo.color, fontWeight:800 }}>
-                      {tInfo.badge}
-                    </span>
-                  )}
-                  <span style={{ fontSize:8, padding:'1px 6px', borderRadius:4, background:'rgba(124,58,237,0.15)', color:T.purpleL, fontWeight:700 }}>
-                    {v.detail}
-                  </span>
-                  <span style={{ fontSize:9, color:T.dim }}>{v.estimatedTokens} tk</span>
-                  {/* Actions */}
-                  <button
-                    onClick={() => copy(v.id, v.prompt)}
-                    title="Copiar prompt"
-                    style={{ padding:'2px 8px', borderRadius:5, border:'none', background:'rgba(124,58,237,0.2)', color:T.purpleL, cursor:'pointer', fontSize:9, fontWeight:700 }}>
-                    {copiedId === v.id ? '✓' : '📋'}
-                  </button>
-                  <button
-                    onClick={() => startEdit(v)}
-                    title="Renomear"
-                    style={{ padding:'2px 6px', borderRadius:5, border:`1px solid ${T.border}`, background:'transparent', color:T.dim, cursor:'pointer', fontSize:10 }}>
-                    ✏️
-                  </button>
-                  <button
-                    onClick={() => onDelete(v.id)}
-                    title="Remover"
-                    style={{ padding:'2px 6px', borderRadius:5, border:`1px solid rgba(248,113,113,0.2)`, background:'transparent', color:'#f87171', cursor:'pointer', fontSize:10 }}>
-                    🗑
-                  </button>
-                </div>
-                {/* Prompt preview snippet */}
-                <div style={{ padding:'8px 12px', background:'rgba(255,255,255,0.01)' }}>
-                  <p style={{
-                    margin:0, fontSize:10, color:T.dim, lineHeight:1.55,
-                    fontFamily:'ui-monospace,monospace', whiteSpace:'pre-wrap' as const,
-                    display:'-webkit-box', WebkitLineClamp:2, WebkitBoxOrient:'vertical' as const, overflow:'hidden',
-                  }}>
-                    {v.prompt}
-                  </p>
-                  <p style={{ margin:'4px 0 0', fontSize:9, color:'rgba(255,255,255,0.24)' }}>{fmt(v.savedAt)}</p>
-                </div>
-              </div>
-            )
-          })}
+          {variations.map(v => (
+            <VariationCard
+              key={v.id}
+              v={v}
+              editingId={editingId}
+              editingName={editingName}
+              copiedId={copiedId}
+              onStartEdit={startEdit}
+              onCommitEdit={commitEdit}
+              onCancelEdit={() => setEditingId(null)}
+              onEditingNameChange={setEditingName}
+              onCopy={copy}
+              onDelete={onDelete}
+              onUpdateNotes={onUpdateNotes}
+            />
+          ))}
         </div>
       )}
     </div>
@@ -459,7 +560,7 @@ function AIEPlaywrightTab() {
   const [detail, setDetail]         = useState<DetailLevel>('detalhado')
   const [savedFlash, setSavedFlash] = useState(false)
 
-  const { variations, save, rename, remove } = useSavedVariations()
+  const { variations, save, rename, remove, updateNotes } = useSavedVariations()
 
   const aie = useMemo(() => runAIE(MOCK_PROJECT_CONTEXT), [])
 
@@ -584,7 +685,7 @@ function AIEPlaywrightTab() {
       {/* Prompt preview + saved variations */}
       <div style={{ flex:1, overflowY:'auto' as const, padding:'14px 20px' }}>
         <PromptPreview pw={pw} />
-        <SavedVariationsPanel variations={variations} onRename={rename} onDelete={remove} />
+        <SavedVariationsPanel variations={variations} onRename={rename} onDelete={remove} onUpdateNotes={updateNotes} />
       </div>
     </div>
   )
