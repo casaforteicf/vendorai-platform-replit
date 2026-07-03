@@ -28,6 +28,7 @@ import {
   TRANSLATORS,
   DETAIL_LEVELS,
 } from '../../engines/prompt-playwright/prompt-playwright'
+<<<<<<< HEAD
 import type { TranslatorId, DetailLevel, PlaywrightPrompt } from '../../engines/prompt-playwright/prompt-playwright'
 import { useWorkspace } from '../context/WorkspaceContext'
 import { T } from '../../shared/arqdor-theme'
@@ -155,6 +156,13 @@ function useSavedVariations() {
     importVariations,
   }
 }
+=======
+import type { PlaywrightPrompt } from '../../engines/prompt-playwright/prompt-playwright'
+import { useWorkspaceContext } from '../WorkspaceContext'
+import { T } from '../../shared/arqdor-theme'
+import { useSavedVariations } from './useSavedVariations'
+import type { SavedVariation } from './useSavedVariations'
+>>>>>>> 4e4112d (Add test coverage for useSavedVariations offline resilience)
 
 // ─── ProjectContext → Project converter ───────────────────────────────────────
 
