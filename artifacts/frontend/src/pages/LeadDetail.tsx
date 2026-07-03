@@ -470,7 +470,7 @@ export default function LeadDetail() {
   const { mutateAsync: createMessage } = useCreateMessage();
 
   const { data: leadDeals } = useListDeals(tenantId, { leadId: id }, {
-    query: { enabled: !!tenantId && !!id },
+    query: { enabled: !!tenantId && !!id, queryKey: getListDealsQueryKey(tenantId, { leadId: id }) },
   });
   const leadJaNoPipeline = (leadDeals?.length ?? 0) > 0;
 
@@ -1123,7 +1123,7 @@ export default function LeadDetail() {
               WhatsApp
             </Button>
           )}
-          {(lead.instagramScopedId || lead.instagramHandle) && (
+          {lead.instagramScopedId && (
             <Button
               size="sm"
               className="gap-1.5 text-white"
