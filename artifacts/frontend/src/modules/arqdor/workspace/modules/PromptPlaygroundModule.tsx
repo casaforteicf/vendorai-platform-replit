@@ -1,4 +1,4 @@
-import { useState, useMemo, useCallback, useRef } from 'react'
+import { useState, useEffect, useMemo, useCallback, useRef } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
 import {
   useListArchPromptVariations,
@@ -502,12 +502,14 @@ function VariationCard({
 
 function SavedVariationsPanel({
   variations,
+  syncing,
   onRename,
   onDelete,
   onUpdateNotes,
   onImport,
 }: {
   variations: SavedVariation[]
+  syncing: boolean
   onRename: (id: string, name: string) => void
   onDelete: (id: string) => void
   onUpdateNotes: (id: string, notes: string) => void
@@ -577,6 +579,14 @@ function SavedVariationsPanel({
     }
     reader.readAsText(file)
   }
+  // Only reveal the spinner after a short delay so fast connections never
+  // flash it — the spinner becomes visible only when sync truly takes time.
+  const [showSpinner, setShowSpinner] = useState(false)
+  useEffect(() => {
+    if (!syncing) { setShowSpinner(false); return }
+    const id = setTimeout(() => setShowSpinner(true), 200)
+    return () => clearTimeout(id)
+  }, [syncing])
 
   const handleExport = (e: React.MouseEvent) => {
     e.stopPropagation()
@@ -679,7 +689,20 @@ function SavedVariationsPanel({
 
       {open && (
         <div style={{ padding:'10px 14px', display:'flex', flexDirection:'column' as const, gap:8 }}>
-          {variations.length === 0 && (
+          {syncing && showSpinner && variations.length === 0 && (
+            <div style={{ display:'flex', alignItems:'center', justifyContent:'center', gap:8, padding:'14px 0' }}>
+              <span style={{
+                display:'inline-block', width:14, height:14, borderRadius:'50%',
+                border:'2px solid rgba(167,139,250,0.25)', borderTopColor:'rgba(167,139,250,0.75)',
+                animation:'spin 0.7s linear infinite',
+              }} />
+              <p style={{ margin:0, fontSize:11, color:T.dim, fontStyle:'italic' }}>
+                Carregando variações…
+              </p>
+              <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
+            </div>
+          )}
+          {!syncing && variations.length === 0 && (
             <p style={{ margin:0, fontSize:11, color:T.dim, fontStyle:'italic', textAlign:'center' as const, padding:'12px 0' }}>
               Nenhuma variação salva ainda. Clique em "💾 Salvar variação" acima para começar.
             </p>
@@ -713,7 +736,7 @@ function AIEPlaywrightTab({ projectCtx }: { projectCtx: ProjectContext }) {
   const [detail, setDetail]         = useState<DetailLevel>('detalhado')
   const [savedFlash, setSavedFlash] = useState(false)
 
-  const { variations, save, rename, remove, updateNotes, storageError, clearStorageError, importVariations } = useSavedVariations()
+  const { variations, isLoading, save, rename, remove, updateNotes, storageError, clearStorageError, importVariations } = useSavedVariations()
 
   const aie = useMemo(() => runAIE(projectCtx), [projectCtx])
 
@@ -861,7 +884,7 @@ function AIEPlaywrightTab({ projectCtx }: { projectCtx: ProjectContext }) {
       {/* Prompt preview + saved variations */}
       <div style={{ flex:1, overflowY:'auto' as const, padding:'14px 20px' }}>
         <PromptPreview pw={pw} />
-        <SavedVariationsPanel variations={variations} onRename={rename} onDelete={remove} onUpdateNotes={updateNotes} onImport={importVariations} />
+        <SavedVariationsPanel variations={variations} syncing={isLoading} onRename={rename} onDelete={remove} onUpdateNotes={updateNotes} onImport={importVariations} />
       </div>
     </div>
   )
