@@ -1,4 +1,4 @@
-import { useState, useMemo, useCallback } from 'react'
+import { useState, useEffect, useMemo, useCallback } from 'react'
 import { MOCK_PROJECT } from '../../../../pages/arch/arqdor/domain/arqdor-mock-project'
 import { generateFullPromptStructure } from '../../../../pages/arch/arqdor/domain/arqdor-prompt-engine'
 import type { PromptStructure } from '../../../../pages/arch/arqdor/domain/arqdor-domain-types'
@@ -17,6 +17,8 @@ import { T } from '../../shared/arqdor-theme'
 // ─── Saved variations ────────────────────────────────────────────────────────
 
 const STORAGE_KEY = 'arqdor_saved_prompt_variations'
+const MIGRATED_KEY = 'arqdor_prompt_variations_migrated'
+const API_BASE = '/api/arch/prompt-variations'
 
 interface SavedVariation {
   id: string
@@ -30,6 +32,8 @@ interface SavedVariation {
   notes?: string
 }
 
+// ─── Local-storage fallback helpers ──────────────────────────────────────────
+
 function persistVariations(list: SavedVariation[]): { pruned: number } | null {
   try {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(list))
@@ -39,17 +43,66 @@ function persistVariations(list: SavedVariation[]): { pruned: number } | null {
   }
 }
 
-function useSavedVariations() {
-  const [variations, setVariations] = useState<SavedVariation[]>(() => {
-    try {
-      const raw = localStorage.getItem(STORAGE_KEY)
-      return raw ? (JSON.parse(raw) as SavedVariation[]) : []
-    } catch {
-      return []
-    }
-  })
+function readLocalVariations(): SavedVariation[] {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY)
+    return raw ? (JSON.parse(raw) as SavedVariation[]) : []
+  } catch {
+    return []
+  }
+}
 
+// ─── API helpers ──────────────────────────────────────────────────────────────
+
+function getAuthToken(): string | null {
+  return localStorage.getItem('vendorai_token')
+}
+
+function authHeaders(): Record<string, string> {
+  const token = getAuthToken()
+  return token ? { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' } : { 'Content-Type': 'application/json' }
+}
+
+interface ServerVariation {
+  id: string
+  name: string
+  translator: string
+  detail: string
+  prompt: string
+  negativePrompt: string
+  estimatedTokens: number
+  savedAt: string
+  notes: string | null
+}
+
+function fromServer(sv: ServerVariation): SavedVariation {
+  return {
+    id: sv.id,
+    name: sv.name,
+    translator: sv.translator as TranslatorId,
+    detail: sv.detail as DetailLevel,
+    prompt: sv.prompt,
+    negativePrompt: sv.negativePrompt,
+    estimatedTokens: sv.estimatedTokens,
+    savedAt: new Date(sv.savedAt).getTime(),
+    notes: sv.notes ?? undefined,
+  }
+}
+
+async function apiFetch(path: string, init?: RequestInit): Promise<Response> {
+  return fetch(`${API_BASE}${path}`, {
+    ...init,
+    headers: { ...authHeaders(), ...(init?.headers ?? {}) },
+  })
+}
+
+// ─── Hook ─────────────────────────────────────────────────────────────────────
+
+function useSavedVariations() {
+  const [variations, setVariations] = useState<SavedVariation[]>(readLocalVariations)
   const [storageError, setStorageError] = useState<string | null>(null)
+  const [syncing, setSyncing] = useState(false)
+
   const clearStorageError = useCallback(() => setStorageError(null), [])
 
   const importVariations = useCallback((incoming: SavedVariation[]) => {
@@ -63,50 +116,122 @@ function useSavedVariations() {
     })
   }, [])
 
+  // Load from server on mount (if authenticated)
+  useEffect(() => {
+    void (async () => {
+      const token = getAuthToken()
+      if (!token) return // not logged in — stay on localStorage
+
+      setSyncing(true)
+      try {
+        const res = await apiFetch('')
+        if (!res.ok) return
+        const serverData: ServerVariation[] = await res.json()
+        const serverVariations = serverData.map(fromServer)
+
+        if (serverVariations.length === 0) {
+          // Migrate localStorage variations to server on first authenticated load
+          const local = readLocalVariations()
+          const alreadyMigrated = localStorage.getItem(MIGRATED_KEY) === '1'
+          if (local.length > 0 && !alreadyMigrated) {
+            const payload = local.map(v => ({
+              name: v.name,
+              translator: v.translator,
+              detail: v.detail,
+              prompt: v.prompt,
+              negativePrompt: v.negativePrompt,
+              estimatedTokens: v.estimatedTokens,
+              notes: v.notes,
+              savedAt: new Date(v.savedAt).toISOString(),
+            }))
+            const migrateRes = await apiFetch('/bulk', {
+              method: 'POST',
+              body: JSON.stringify(payload),
+            })
+            if (migrateRes.ok) {
+              localStorage.setItem(MIGRATED_KEY, '1')
+              const migrated: ServerVariation[] = await migrateRes.json()
+              const merged = migrated.map(fromServer)
+              setVariations(merged)
+              persistVariations(merged)
+            }
+          }
+        } else {
+          // Server has data — use it as source of truth
+          localStorage.setItem(MIGRATED_KEY, '1')
+          setVariations(serverVariations)
+          persistVariations(serverVariations)
+        }
+      } catch {
+        // Network failure — keep local state
+      } finally {
+        setSyncing(false)
+      }
+    })()
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
   const save = useCallback((v: Omit<SavedVariation, 'id' | 'savedAt' | 'name'>, suggestedName: string) => {
+    const optimisticId = `local-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`
     const item: SavedVariation = {
       ...v,
-      id: `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+      id: optimisticId,
       name: suggestedName,
       savedAt: Date.now(),
     }
+
+    // Optimistic local update
     setVariations(prev => {
       const next = [item, ...prev]
-      const err = persistVariations(next)
-      if (err !== null) {
-        // Prune oldest variations one at a time until it fits or list is empty
-        const pruned = [...next]
-        let prunedCount = 0
-        while (pruned.length > 1) {
-          pruned.pop()
-          prunedCount++
-          const retryErr = persistVariations(pruned)
-          if (retryErr === null) {
-            setStorageError(
-              `Armazenamento local cheio. ${prunedCount} variação${prunedCount > 1 ? 'ões antigas foram removidas' : ' antiga foi removida'} para liberar espaço. Exporte suas variações regularmente para não perder trabalho.`
-            )
-            return pruned
-          }
-        }
-        // Even a single item doesn't fit — warn and don't persist
-        setStorageError(
-          'Armazenamento local cheio e não foi possível liberar espaço. A variação não foi salva. Exporte as variações existentes e remova algumas antes de salvar novamente.'
-        )
-        return prev
-      }
+      persistVariations(next)
       return next
     })
+
+    // Sync to server
+    void (async () => {
+      const token = getAuthToken()
+      if (!token) return
+      try {
+        const res = await apiFetch('', {
+          method: 'POST',
+          body: JSON.stringify({
+            name: item.name,
+            translator: item.translator,
+            detail: item.detail,
+            prompt: item.prompt,
+            negativePrompt: item.negativePrompt,
+            estimatedTokens: item.estimatedTokens,
+            notes: item.notes,
+            savedAt: new Date(item.savedAt).toISOString(),
+          }),
+        })
+        if (!res.ok) return
+        const saved: ServerVariation = await res.json()
+        // Replace optimistic item with server-assigned id
+        setVariations(prev => {
+          const next = prev.map(existing => existing.id === optimisticId ? fromServer(saved) : existing)
+          persistVariations(next)
+          return next
+        })
+      } catch {
+        // Keep local copy
+      }
+    })()
   }, [])
 
   const rename = useCallback((id: string, name: string) => {
     setVariations(prev => {
       const next = prev.map((v): SavedVariation => v.id === id ? { ...v, name } : v)
-      const err = persistVariations(next)
-      if (err !== null) {
-        setStorageError('Não foi possível salvar o novo nome no armazenamento local (espaço esgotado).')
-      }
+      persistVariations(next)
       return next
     })
+    void (async () => {
+      const token = getAuthToken()
+      if (!token || id.startsWith('local-')) return
+      try {
+        await apiFetch(`/${id}`, { method: 'PATCH', body: JSON.stringify({ name }) })
+      } catch { /* keep local */ }
+    })()
   }, [])
 
   const remove = useCallback((id: string) => {
@@ -115,20 +240,31 @@ function useSavedVariations() {
       persistVariations(next)
       return next
     })
+    void (async () => {
+      const token = getAuthToken()
+      if (!token || id.startsWith('local-')) return
+      try {
+        await apiFetch(`/${id}`, { method: 'DELETE' })
+      } catch { /* keep local */ }
+    })()
   }, [])
 
   const updateNotes = useCallback((id: string, notes: string) => {
     setVariations(prev => {
       const next = prev.map((v): SavedVariation => v.id === id ? { ...v, notes } : v)
-      const err = persistVariations(next)
-      if (err !== null) {
-        setStorageError('Não foi possível salvar as notas no armazenamento local (espaço esgotado).')
-      }
+      persistVariations(next)
       return next
     })
+    void (async () => {
+      const token = getAuthToken()
+      if (!token || id.startsWith('local-')) return
+      try {
+        await apiFetch(`/${id}`, { method: 'PATCH', body: JSON.stringify({ notes }) })
+      } catch { /* keep local */ }
+    })()
   }, [])
 
-  return { variations, save, rename, remove, updateNotes, storageError, clearStorageError, importVariations }
+  return { variations, save, rename, remove, updateNotes, storageError, clearStorageError, syncing, importVariations }
 }
 
 // ─── Playground tab (existing) ────────────────────────────────────────────────

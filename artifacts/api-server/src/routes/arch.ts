@@ -35,6 +35,9 @@ import {
   arqObjectsTable,
   arqMaterialsTable,
   arqAieSnapshotsTable,
+  archPromptVariationsTable,
+  insertArchPromptVariationSchema,
+  updateArchPromptVariationSchema,
 } from "@workspace/db";
 import { z } from "zod/v4";
 import { anthropic } from "@workspace/integrations-anthropic-ai";
@@ -2287,6 +2290,121 @@ router.get("/arq/projects/:id/aie-snapshots", authenticate, async (req, res) => 
     .orderBy(desc(arqAieSnapshotsTable.createdAt));
 
   return res.json(snapshots);
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Prompt Variations — server-side persistence
+// ─────────────────────────────────────────────────────────────────────────────
+
+// GET /arch/prompt-variations — list all variations for the current user
+router.get("/arch/prompt-variations", authenticate, async (req, res) => {
+  const tid = tenantId(req);
+  const uid = (req as any).user?.sub as string;
+
+  const rows = await db
+    .select()
+    .from(archPromptVariationsTable)
+    .where(
+      and(
+        eq(archPromptVariationsTable.tenantId, tid),
+        eq(archPromptVariationsTable.userId, uid),
+      ),
+    )
+    .orderBy(desc(archPromptVariationsTable.savedAt));
+
+  return res.json(rows);
+});
+
+// POST /arch/prompt-variations — create a new variation
+router.post("/arch/prompt-variations", authenticate, async (req, res) => {
+  const tid = tenantId(req);
+  const uid = (req as any).user?.sub as string;
+
+  const body = insertArchPromptVariationSchema.safeParse({
+    ...req.body,
+    tenantId: tid,
+    userId: uid,
+  });
+
+  if (!body.success) {
+    return res.status(400).json({ error: "Dados inválidos", details: body.error.issues });
+  }
+
+  const [row] = await db
+    .insert(archPromptVariationsTable)
+    .values(body.data)
+    .returning();
+
+  return res.status(201).json(row);
+});
+
+// PATCH /arch/prompt-variations/:id — rename or update notes
+router.patch("/arch/prompt-variations/:id", authenticate, async (req, res) => {
+  const tid = tenantId(req);
+  const uid = (req as any).user?.sub as string;
+  const id = req.params.id;
+
+  const body = updateArchPromptVariationSchema.safeParse(req.body);
+  if (!body.success) {
+    return res.status(400).json({ error: "Dados inválidos", details: body.error.issues });
+  }
+
+  const [row] = await db
+    .update(archPromptVariationsTable)
+    .set({ ...body.data, updatedAt: new Date() })
+    .where(
+      and(
+        eq(archPromptVariationsTable.id, id),
+        eq(archPromptVariationsTable.tenantId, tid),
+        eq(archPromptVariationsTable.userId, uid),
+      ),
+    )
+    .returning();
+
+  if (!row) return res.status(404).json({ error: "Variação não encontrada" });
+  return res.json(row);
+});
+
+// DELETE /arch/prompt-variations/:id — remove a variation
+router.delete("/arch/prompt-variations/:id", authenticate, async (req, res) => {
+  const tid = tenantId(req);
+  const uid = (req as any).user?.sub as string;
+  const id = req.params.id;
+
+  const [row] = await db
+    .delete(archPromptVariationsTable)
+    .where(
+      and(
+        eq(archPromptVariationsTable.id, id),
+        eq(archPromptVariationsTable.tenantId, tid),
+        eq(archPromptVariationsTable.userId, uid),
+      ),
+    )
+    .returning({ id: archPromptVariationsTable.id });
+
+  if (!row) return res.status(404).json({ error: "Variação não encontrada" });
+  return res.json({ ok: true });
+});
+
+// POST /arch/prompt-variations/bulk — migrate localStorage batch on first login
+router.post("/arch/prompt-variations/bulk", authenticate, async (req, res) => {
+  const tid = tenantId(req);
+  const uid = (req as any).user?.sub as string;
+
+  const items = z.array(insertArchPromptVariationSchema.omit({ tenantId: true, userId: true })).safeParse(req.body);
+  if (!items.success) {
+    return res.status(400).json({ error: "Dados inválidos", details: items.error.issues });
+  }
+
+  if (items.data.length === 0) return res.json([]);
+
+  const rows = await db
+    .insert(archPromptVariationsTable)
+    .values(items.data.map(v => ({ ...v, tenantId: tid, userId: uid })))
+    .onConflictDoNothing()
+    .returning();
+
+  return res.status(201).json(rows);
 });
 
 // GET /arq/learning — build learning profile from all tenant project snapshots
