@@ -1120,20 +1120,13 @@ function detectShareParam(): boolean {
 
 export function PromptPlaygroundModule() {
   const [tab, setTab] = useState<TabId>('playwright')
-<<<<<<< HEAD
-  const { projectContext } = useWorkspace()
-=======
-<<<<<<< HEAD
-  const { projectCtx: projectContext } = useWorkspaceContext()
->>>>>>> 429b647 (feat(arqdor): persist workspace ProjectContext to database (task-224))
-  const activeProject = projectContext ? projectContextToProject(projectContext) : MOCK_PROJECT
-=======
-  const { activeProject } = useWorkspace()
   const { projectCtx } = useWorkspaceProject()
->>>>>>> 9625a98 (feat(arqdor): persist workspace ProjectContext to database (task-224))
+  const activeProject = projectCtx && projectCtx !== MOCK_PROJECT_CONTEXT
+    ? projectContextToProject(projectCtx)
+    : null
 
   // Prefer the persisted workspace context (from WorkspaceProvider) which survives refresh;
-  // fall back to the outer auth-context's projectContext or the mock as a last resort.
+  // fall back to mock as a last resort.
   const resolvedProjectCtx: ProjectContext = projectCtx ?? MOCK_PROJECT_CONTEXT
 
   return (
