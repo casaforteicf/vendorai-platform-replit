@@ -3,6 +3,7 @@ import { and, eq, sql } from "drizzle-orm";
 import {
   db,
   conversationsTable,
+  leadsTable,
   insertConversationSchema,
   updateConversationSchema,
 } from "@workspace/db";
@@ -137,6 +138,48 @@ router.patch("/conversations/:id", async (req, res) => {
     .set({ ...parsed.data, updatedAt: new Date() })
     .where(eq(conversationsTable.id, existing.id))
     .returning();
+
+  res.json(conversation);
+});
+
+router.patch("/conversations/:id/release-lock", async (req, res) => {
+  const [existing] = await db
+    .select({
+      id: conversationsTable.id,
+      tenantId: conversationsTable.tenantId,
+      leadId: conversationsTable.leadId,
+      assignedTo: conversationsTable.assignedTo,
+    })
+    .from(conversationsTable)
+    .where(eq(conversationsTable.id, req.params.id));
+
+  if (!existing) {
+    res.status(404).json({ error: "Conversation not found" });
+    return;
+  }
+
+  if (req.user?.platformRole !== "super_admin" && existing.tenantId !== req.user?.tenantId) {
+    res.status(403).json({ error: "Access denied to this tenant" });
+    return;
+  }
+
+  const [conversation] = await db
+    .update(conversationsTable)
+    .set({ currentAgent: null, updatedAt: new Date() })
+    .where(eq(conversationsTable.id, existing.id))
+    .returning();
+
+  if (existing.leadId) {
+    await db
+      .update(leadsTable)
+      .set({ activeAgentLock: null, updatedAt: new Date() })
+      .where(eq(leadsTable.id, existing.leadId));
+  }
+
+  req.log.info(
+    { conversationId: existing.id, leadId: existing.leadId },
+    "conversations: human lock released — AI dispatch re-enabled"
+  );
 
   res.json(conversation);
 });

@@ -11,15 +11,19 @@ import type { Logger } from "pino";
 import {
   db,
   agentConfigsTable,
+  activitiesTable,
   conversationsTable,
   customerIntelligenceTable,
   dealsTable,
   leadsTable,
   propostasTable,
+  usersTable,
   leadSpouseConsentTable,
   tenantCalendarSettingsTable,
 } from "@workspace/db";
 import { callOpenAI as gatewayFamilyCallOpenAI } from "../lib/ai-gateway.js";
+import { detectEscalationTrigger, generateHandoffSummary } from "./escalation.js";
+import { sendDirectWhatsAppMessage } from "./omnichannel.js";
 import {
   loadContext,
   computeLimits,
@@ -131,6 +135,72 @@ export async function processAgentInternal(params: {
     if (!ctx) {
       log.warn({ tenantId, leadId }, "dispatch: lead not found — skipping");
       return { status: "skipped", reason: "lead_not_found" };
+    }
+
+    // 2b. Human lock — if lead is locked to a human agent, skip AI dispatch entirely
+    if (ctx.lead.activeAgentLock === "human") {
+      log.info({ tenantId, leadId }, "dispatch: lead locked to human — skipping AI response");
+      return { status: "skipped", reason: "human_lock" };
+    }
+
+    // 2c. Escalation detection — check if incoming message needs human escalation
+    if (!params.forcedAgent) {
+      const escalation = await detectEscalationTrigger(mensagem, ctx, tenantId, log);
+      if (escalation.triggered) {
+        log.info({ tenantId, leadId, reason: escalation.reason }, "dispatch: escalation triggered — locking to human");
+
+        // Lock the lead to human handling
+        await db
+          .update(leadsTable)
+          .set({ activeAgentLock: "human", updatedAt: new Date() })
+          .where(eq(leadsTable.id, leadId));
+
+        // Update conversation current_agent to "humano"
+        if (ctx.conversation?.id) {
+          await db
+            .update(conversationsTable)
+            .set({ currentAgent: "humano", updatedAt: new Date() })
+            .where(eq(conversationsTable.id, ctx.conversation.id));
+        }
+
+        // Generate handoff summary for the human agent
+        const summary = await generateHandoffSummary(ctx, mensagem, tenantId, log);
+
+        // Log escalation activity
+        await db.insert(activitiesTable).values({
+          tenantId,
+          leadId,
+          tipo: "whatsapp",
+          titulo: "Escalação automática para humano",
+          descricao: `Motivo: ${escalation.reason?.replace(/_/g, " ") ?? "não especificado"}. ${summary.slice(0, 200)}`,
+          status: "concluida",
+          concluidaEm: new Date(),
+          resultadoExecucao: `escalacao_humano|motivo:${escalation.reason}`,
+        });
+
+        // Best-effort: notify responsible user via WhatsApp
+        if (ctx.lead.assignedTo) {
+          const [responsible] = await db
+            .select({ telefone: usersTable.telefone })
+            .from(usersTable)
+            .where(eq(usersTable.id, ctx.lead.assignedTo))
+            .limit(1);
+
+          if (responsible?.telefone) {
+            const notifMsg =
+              `🚨 *Escalação automática*\n` +
+              `Lead: *${ctx.lead.nome}*\n` +
+              `Motivo: ${escalation.reason?.replace(/_/g, " ") ?? "não especificado"}\n\n` +
+              `${summary}`;
+
+            sendDirectWhatsAppMessage(tenantId, responsible.telefone, notifMsg, log).catch((err) => {
+              log.warn({ err, tenantId, leadId }, "dispatch: failed to send escalation WhatsApp to responsible");
+            });
+          }
+        }
+
+        return { status: "skipped", reason: `escalated:${escalation.reason}` };
+      }
     }
 
     // 3. Load open deals for agent routing

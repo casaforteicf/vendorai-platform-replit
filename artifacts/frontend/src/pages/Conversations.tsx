@@ -10,6 +10,7 @@ import {
   useListTenantLeads,
   getListTenantLeadsQueryKey,
   Conversation,
+  Lead,
   Message,
   MessageDirecao,
   MessageEnviadoPor,
@@ -32,6 +33,7 @@ import {
   Wifi,
   MessageCircle,
   ChevronLeft,
+  UserCheck,
 } from "lucide-react";
 import { formatDistanceToNow, format, isToday, isYesterday } from "date-fns";
 import { ptBR } from "date-fns/locale";
@@ -87,11 +89,13 @@ function formatMsgDate(dateStr: string): string {
 function ConvItem({
   conv,
   leadName,
+  isHumanLocked,
   selected,
   onClick,
 }: {
   conv: Conversation;
   leadName: string | undefined;
+  isHumanLocked: boolean;
   selected: boolean;
   onClick: () => void;
 }) {
@@ -125,13 +129,18 @@ function ConvItem({
           <span className="text-xs text-muted-foreground truncate flex-1">
             {channelLabel(conv.channel)}
           </span>
+          {isHumanLocked && (
+            <Badge className="h-4 text-[9px] px-1.5 rounded-full bg-amber-500/90 text-white shrink-0">
+              Humano
+            </Badge>
+          )}
           {conv.naoLidas > 0 && (
             <Badge className="h-4 min-w-[1rem] text-[10px] px-1 rounded-full bg-primary text-primary-foreground">
               {conv.naoLidas}
             </Badge>
           )}
         </div>
-        {conv.agentName && (
+        {conv.agentName && !isHumanLocked && (
           <p className="text-xs text-muted-foreground/60 truncate flex items-center gap-1">
             <Bot className="h-3 w-3 inline" />
             {conv.agentName}
@@ -213,19 +222,26 @@ function DateSeparator({ date }: { date: string }) {
 
 function ChatPanel({
   conv,
+  lead,
   leadName,
   tenantId,
   onBack,
+  onLockReleased,
 }: {
   conv: Conversation;
+  lead: Lead | undefined;
   leadName: string | undefined;
   tenantId: string;
   onBack?: () => void;
+  onLockReleased?: () => void;
 }) {
   const [inputValue, setInputValue] = useState("");
+  const [releasingLock, setReleasingLock] = useState(false);
   const bottomRef = useRef<HTMLDivElement>(null);
   const queryClient = useQueryClient();
   const { toast } = useToast();
+
+  const isHumanLocked = lead?.activeAgentLock === "human";
 
   const { data: messages = [], isLoading } = useListConversationMessages(
     tenantId,
@@ -245,6 +261,31 @@ function ChatPanel({
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages.length]);
+
+  async function handleReleaseLock() {
+    setReleasingLock(true);
+    try {
+      const token = localStorage.getItem("vendorai_token");
+      const res = await fetch(`/api/conversations/${conv.id}/release-lock`, {
+        method: "PATCH",
+        headers: {
+          "Content-Type": "application/json",
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+      });
+      if (!res.ok) {
+        throw new Error(`HTTP ${res.status}`);
+      }
+      toast({ title: "IA reativada", description: "O agente voltará a responder automaticamente." });
+      queryClient.invalidateQueries({ queryKey: getListTenantLeadsQueryKey(tenantId) });
+      queryClient.invalidateQueries({ queryKey: getListTenantConversationsQueryKey(tenantId) });
+      onLockReleased?.();
+    } catch (err) {
+      toast({ title: "Erro ao liberar IA", description: String(err), variant: "destructive" });
+    } finally {
+      setReleasingLock(false);
+    }
+  }
 
   function handleSend() {
     const text = inputValue.trim();
@@ -330,27 +371,58 @@ function ChatPanel({
         <div className="h-9 w-9 rounded-full bg-muted flex items-center justify-center text-sm font-semibold text-muted-foreground uppercase shrink-0">
           {(leadName ?? "?")[0]}
         </div>
-        <div>
+        <div className="flex-1 min-w-0">
           <p className="font-semibold text-sm">
             {leadName ?? "Lead desconhecido"}
           </p>
-          <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+          <div className="flex items-center gap-1.5 text-xs text-muted-foreground flex-wrap">
             {channelIcon(conv.channel)}
             <span>{channelLabel(conv.channel)}</span>
-            {conv.agentName && (
+            {isHumanLocked ? (
+              <>
+                <span>·</span>
+                <UserCheck className="h-3 w-3 text-amber-500" />
+                <span className="text-amber-600 font-medium">Atendimento humano</span>
+              </>
+            ) : conv.agentName ? (
               <>
                 <span>·</span>
                 <Bot className="h-3 w-3 text-violet-500" />
                 <span className="text-violet-500">{conv.agentName}</span>
               </>
-            )}
+            ) : null}
           </div>
         </div>
-        <div className="ml-auto flex items-center gap-1.5">
-          <Wifi className="h-3.5 w-3.5 text-emerald-500" />
-          <span className="text-xs text-muted-foreground capitalize">{conv.status}</span>
+        <div className="flex items-center gap-2 shrink-0">
+          {isHumanLocked && (
+            <Button
+              variant="outline"
+              size="sm"
+              className="h-8 text-xs gap-1.5 border-amber-300 text-amber-700 hover:bg-amber-50"
+              onClick={handleReleaseLock}
+              disabled={releasingLock}
+            >
+              <Bot className="h-3.5 w-3.5" />
+              {releasingLock ? "Liberando..." : "Devolver para IA"}
+            </Button>
+          )}
+          <div className="flex items-center gap-1.5">
+            <Wifi className="h-3.5 w-3.5 text-emerald-500" />
+            <span className="text-xs text-muted-foreground capitalize">{conv.status}</span>
+          </div>
         </div>
       </div>
+
+      {/* Human lock banner */}
+      {isHumanLocked && (
+        <div className="px-4 py-2.5 bg-amber-50 border-b border-amber-200 flex items-center gap-2 shrink-0">
+          <UserCheck className="h-4 w-4 text-amber-600 shrink-0" />
+          <p className="text-xs text-amber-700">
+            A IA foi pausada para este lead. Um atendente humano deve responder. Clique em{" "}
+            <strong>Devolver para IA</strong> para reativar o agente.
+          </p>
+        </div>
+      )}
 
       {/* Messages area */}
       <ScrollArea className="flex-1 px-6 py-4">
@@ -396,7 +468,7 @@ function ChatPanel({
               value={inputValue}
               onChange={(e) => setInputValue(e.target.value)}
               onKeyDown={handleKeyDown}
-              placeholder="Digite uma mensagem..."
+              placeholder={isHumanLocked ? "IA pausada — escreva como atendente..." : "Digite uma mensagem..."}
               className="flex-1 rounded-full bg-muted border-0 focus-visible:ring-1"
               disabled={createMessage.isPending}
             />
@@ -441,10 +513,11 @@ export default function Conversations() {
     query: {
       enabled: !!tenantId,
       queryKey: getListTenantLeadsQueryKey(tenantId),
+      refetchInterval: 20000,
     },
   });
 
-  const leadMap = new Map(leads.map((l) => [l.id, l.nome]));
+  const leadMap = new Map(leads.map((l) => [l.id, l]));
 
   const markRead = useMarkConversationRead();
 
@@ -564,15 +637,19 @@ export default function Conversations() {
               <p className="text-sm">Nenhuma conversa encontrada</p>
             </div>
           ) : (
-            sorted.map((conv) => (
-              <ConvItem
-                key={conv.id}
-                conv={conv}
-                leadName={conv.leadId ? leadMap.get(conv.leadId) : undefined}
-                selected={selectedId === conv.id}
-                onClick={() => handleSelectConv(conv)}
-              />
-            ))
+            sorted.map((conv) => {
+              const convLead = conv.leadId ? leadMap.get(conv.leadId) : undefined;
+              return (
+                <ConvItem
+                  key={conv.id}
+                  conv={conv}
+                  leadName={convLead?.nome}
+                  isHumanLocked={convLead?.activeAgentLock === "human"}
+                  selected={selectedId === conv.id}
+                  onClick={() => handleSelectConv(conv)}
+                />
+              );
+            })
           )}
         </ScrollArea>
       </div>
@@ -583,9 +660,13 @@ export default function Conversations() {
           <ChatPanel
             key={selectedConv.id}
             conv={selectedConv}
-            leadName={selectedConv.leadId ? leadMap.get(selectedConv.leadId) : undefined}
+            lead={selectedConv.leadId ? leadMap.get(selectedConv.leadId) : undefined}
+            leadName={selectedConv.leadId ? leadMap.get(selectedConv.leadId)?.nome : undefined}
             tenantId={tenantId}
             onBack={() => setShowMobileChat(false)}
+            onLockReleased={() => {
+              queryClient.invalidateQueries({ queryKey: getListTenantLeadsQueryKey(tenantId) });
+            }}
           />
         ) : (
           <div className="flex flex-col items-center justify-center h-full gap-3 text-muted-foreground">

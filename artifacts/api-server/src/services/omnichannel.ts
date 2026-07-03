@@ -75,6 +75,14 @@ export class WhatsAppPhoneMissingError extends Error {
   }
 }
 
+export class WhatsApp24hWindowError extends Error {
+  readonly statusCode = 422;
+  constructor(leadId: string) {
+    super(`Janela de 24h expirada para lead "${leadId}". Configure um template de reabertura em Configurações > Integrações.`);
+    this.name = "WhatsApp24hWindowError";
+  }
+}
+
 async function sendInstagramMessage(
   pageAccessToken: string,
   recipientIgsid: string,
@@ -369,6 +377,7 @@ export async function sendOutgoingMessage(
       .select({
         metaPhoneNumberId: agentConfigsTable.metaPhoneNumberId,
         metaAccessToken: agentConfigsTable.metaAccessToken,
+        whatsappTemplateId: agentConfigsTable.whatsappTemplateId,
       })
       .from(agentConfigsTable)
       .where(eq(agentConfigsTable.tenantId, tenantId))
@@ -382,14 +391,71 @@ export async function sendOutgoingMessage(
       throw new WhatsAppNotConnectedError();
     }
 
-    await sendMetaWhatsAppMessage(
-      config.metaPhoneNumberId,
-      config.metaAccessToken,
-      lead.telefone,
-      conteudo,
-      log,
-      !!agentName
-    );
+    // ── 24h Meta Cloud API window check (AI outgoing messages only) ──────────
+    let skipTextSend = false;
+    if (agentName) {
+      const [existingConv] = await db
+        .select({ lastInboundAt: conversationsTable.lastInboundAt })
+        .from(conversationsTable)
+        .where(
+          and(
+            eq(conversationsTable.tenantId, tenantId),
+            eq(conversationsTable.leadId, leadId),
+            eq(conversationsTable.channel, "whatsapp")
+          )
+        )
+        .limit(1);
+
+      if (existingConv?.lastInboundAt) {
+        const msSinceInbound = Date.now() - new Date(existingConv.lastInboundAt).getTime();
+        const windowMs = 24 * 60 * 60 * 1000;
+
+        if (msSinceInbound > windowMs) {
+          const templateId = config.whatsappTemplateId;
+          if (templateId) {
+            const normalizedPhone = lead.telefone.replace(/\D/g, "").replace(/^0+/, "");
+            const tplUrl = `https://graph.facebook.com/v20.0/${config.metaPhoneNumberId}/messages`;
+            const tplRes = await fetch(tplUrl, {
+              method: "POST",
+              headers: {
+                "Content-Type": "application/json",
+                Authorization: `Bearer ${config.metaAccessToken}`,
+              },
+              body: JSON.stringify({
+                messaging_product: "whatsapp",
+                to: normalizedPhone,
+                type: "template",
+                template: { name: templateId, language: { code: "pt_BR" } },
+              }),
+            });
+            const tplBody = await tplRes.json().catch(() => ({})) as Record<string, unknown>;
+            if (!tplRes.ok) {
+              log.error({ tplBody, phone: lead.telefone }, "omnichannel: meta template send failed (24h window)");
+              throw new Error(`Meta WhatsApp Template error ${tplRes.status}: ${JSON.stringify(tplBody)}`);
+            }
+            log.info({ phone: lead.telefone, templateId }, "omnichannel: whatsapp template sent (24h window enforced)");
+            skipTextSend = true;
+          } else {
+            log.warn(
+              { tenantId, leadId, hoursElapsed: Math.floor(msSinceInbound / 3600000) },
+              "omnichannel: 24h Meta window expired — no template configured, skipping AI send"
+            );
+            throw new WhatsApp24hWindowError(leadId);
+          }
+        }
+      }
+    }
+
+    if (!skipTextSend) {
+      await sendMetaWhatsAppMessage(
+        config.metaPhoneNumberId,
+        config.metaAccessToken,
+        lead.telefone,
+        conteudo,
+        log,
+        !!agentName
+      );
+    }
   }
 
   // ── 3. Instagram: validate credentials + actually send

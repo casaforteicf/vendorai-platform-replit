@@ -69,6 +69,7 @@ export const agentConfigsTable = pgTable(
     metaAccessToken: text("meta_access_token"),
     metaVerifyToken: text("meta_verify_token"),
     specialDateMessagesOptOut: boolean("special_date_messages_opt_out").notNull().default(false),
+    whatsappTemplateId: text("whatsapp_template_id"),
     createdAt: timestamp("created_at").notNull().defaultNow(),
     updatedAt: timestamp("updated_at").notNull().defaultNow(),
   },
