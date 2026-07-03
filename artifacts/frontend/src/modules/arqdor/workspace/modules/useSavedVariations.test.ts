@@ -485,6 +485,133 @@ describe('localStorage to server migration', () => {
   })
 })
 
+// ─── Scenario: localStorage wipe — server is the source of truth ──────────────
+
+describe('localStorage wipe with server data intact', () => {
+  it('restores variations from the server after a full localStorage clear', async () => {
+    const serverVar = {
+      id: 'srv-restore-1',
+      name: 'Restored from server',
+      translator: 'midjourney',
+      detail: 'medium',
+      prompt: 'Persisted on server',
+      negativePrompt: '',
+      estimatedTokens: 55,
+      savedAt: new Date(1_700_000_002_000).toISOString(),
+      notes: null,
+    }
+
+    // First mount: server returns data, hook caches it into localStorage
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValueOnce({
+        ok: true,
+        json: async () => [serverVar],
+      }),
+    )
+
+    localStorage.setItem('vendorai_token', 'tok-abc')
+
+    const { result, unmount } = renderHook(() => useSavedVariations())
+    await waitFor(() => expect(result.current.syncing).toBe(false))
+
+    // Server data is in state and also written to localStorage
+    expect(result.current.variations).toHaveLength(1)
+    expect(result.current.variations[0].id).toBe('srv-restore-1')
+    expect(storedVariations()[0].id).toBe('srv-restore-1')
+
+    // ── Simulate the user clearing browser data ────────────────────────────────
+    unmount()
+    localStorage.clear()
+
+    // Verify localStorage is truly empty
+    expect(storedVariations()).toHaveLength(0)
+
+    // Re-mount: server still has the data; provide a fresh token
+    localStorage.setItem('vendorai_token', 'tok-abc')
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValueOnce({
+        ok: true,
+        json: async () => [serverVar],
+      }),
+    )
+
+    const { result: result2 } = renderHook(() => useSavedVariations())
+
+    // Initial state (from empty localStorage) is empty — no flash of wrong data
+    expect(result2.current.variations).toHaveLength(0)
+
+    // After the server fetch settles, variations are fully restored
+    await waitFor(() => expect(result2.current.syncing).toBe(false))
+
+    expect(result2.current.variations).toHaveLength(1)
+    expect(result2.current.variations[0].id).toBe('srv-restore-1')
+    expect(result2.current.variations[0].name).toBe('Restored from server')
+
+    // localStorage is repopulated with server data
+    expect(storedVariations()).toHaveLength(1)
+    expect(storedVariations()[0].id).toBe('srv-restore-1')
+  })
+
+  it('restores multiple variations from the server after localStorage is wiped', async () => {
+    const serverVars = [
+      {
+        id: 'srv-multi-1',
+        name: 'First',
+        translator: 'midjourney',
+        detail: 'low',
+        prompt: 'First prompt',
+        negativePrompt: '',
+        estimatedTokens: 10,
+        savedAt: new Date(1_700_000_003_000).toISOString(),
+        notes: null,
+      },
+      {
+        id: 'srv-multi-2',
+        name: 'Second',
+        translator: 'stable-diffusion',
+        detail: 'high',
+        prompt: 'Second prompt',
+        negativePrompt: 'blurry',
+        estimatedTokens: 30,
+        savedAt: new Date(1_700_000_004_000).toISOString(),
+        notes: null,
+      },
+    ]
+
+    localStorage.setItem('vendorai_token', 'tok-abc')
+    // Wipe localStorage without ever having cached anything
+    localStorage.clear()
+    localStorage.setItem('vendorai_token', 'tok-abc')
+
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValueOnce({
+        ok: true,
+        json: async () => serverVars,
+      }),
+    )
+
+    const { result } = renderHook(() => useSavedVariations())
+
+    // Starts empty (localStorage was wiped)
+    expect(result.current.variations).toHaveLength(0)
+
+    await waitFor(() => expect(result.current.syncing).toBe(false))
+
+    // Both server variations are restored
+    expect(result.current.variations).toHaveLength(2)
+    const ids = result.current.variations.map(v => v.id)
+    expect(ids).toContain('srv-multi-1')
+    expect(ids).toContain('srv-multi-2')
+
+    // localStorage is repopulated
+    const stored = storedVariations()
+    expect(stored).toHaveLength(2)
+  })
+})
+
 // ─── Scenario 5: pruneOldest ──────────────────────────────────────────────────
 
 describe('pruneOldest', () => {
