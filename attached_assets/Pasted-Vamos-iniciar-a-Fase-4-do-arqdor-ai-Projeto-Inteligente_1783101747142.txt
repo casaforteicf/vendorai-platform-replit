@@ -1,0 +1,476 @@
+Vamos iniciar a Fase 4 do arqdor.ai: Projeto Inteligente + Motor de Domínio.
+
+IMPORTANTE:
+Não conectar IA ainda.
+Não alterar backend.
+Não remover telas existentes.
+Não quebrar a rota /arch/render.
+Não substituir o frontend atual.
+Apenas criar a base de domínio e o motor lógico que será usado pelas telas.
+
+OBJETIVO:
+Transformar o arqdor.ai em um sistema que não apenas lista objetos arquitetônicos, mas entende relações, regras, permissões, riscos, materiais e gera prompts a partir dessa estrutura.
+
+O prompt deve continuar sendo uma saída, não o centro do produto.
+
+====================================================
+1. CRIAR CAMADA DE DOMÍNIO
+====================================================
+
+Criar uma pasta:
+
+artifacts/frontend/src/pages/arch/arqdor/domain/
+
+Arquivos sugeridos:
+
+- arqdor-domain-types.ts
+- arqdor-defaults.ts
+- arqdor-relationships.ts
+- arqdor-rules-engine.ts
+- arqdor-prompt-engine.ts
+- arqdor-validation-engine.ts
+- arqdor-score-engine.ts
+- arqdor-mock-project.ts
+
+====================================================
+2. MODELOS PRINCIPAIS
+====================================================
+
+Criar/ajustar os tipos TypeScript para suportar:
+
+Project
+- id
+- name
+- description
+- createdAt
+- updatedAt
+- version
+- environments
+- dna
+- renderConfig
+- versions
+
+Environment
+- id
+- name
+- category
+- description
+- architecturalObjects
+
+ArchitecturalObject
+- id
+- parentId
+- environmentId
+- name
+- category
+- type
+- description
+- status
+- confidence
+- sourceOfTruth
+- materialId
+- material
+- finish
+- color
+- texture
+- grainDirection
+- thickness
+- dimensions
+- position
+- referenceImages
+- aiPermissions
+- aiRisk
+- relationships
+- rules
+- promptNotes
+- history
+
+Material
+- id
+- name
+- category
+- manufacturer
+- line
+- code
+- color
+- finish
+- texture
+- grainDirection
+- glossLevel
+- pbrMaps
+- tags
+- referenceImages
+- notes
+
+ProjectDNA
+- architecturalStyle
+- designLanguage
+- colorPalette
+- predominantMaterials
+- predominantHardware
+- detailingLevel
+- atmosphere
+- targetUse
+- renderObjective
+- photographyStyle
+- realismLevel
+
+RenderConfig
+- renderEngineStyle
+- resolution
+- lens
+- cameraHeight
+- lightingMood
+- hdri
+- whiteBalance
+- toneMapping
+- depthOfField
+
+AIPermissions
+- canChangeGeometry
+- canChangeMaterial
+- canChangeFinish
+- canChangeColor
+- canChangeLighting
+- canChangeDecoration
+- canMoveObject
+- canReplaceObject
+- canRemoveObject
+- canAddRelatedObjects
+
+AIRisk
+- level: VERY_HIGH | HIGH | MEDIUM | LOW | VERY_LOW
+- reason
+- restrictions
+
+Relationship
+- id
+- fromObjectId
+- toObjectId
+- type
+- description
+
+Relationship types:
+- ABOVE
+- BELOW
+- NEXT_TO
+- ALIGNED_WITH
+- ATTACHED_TO
+- SAME_MATERIAL_AS
+- SAME_FINISH_AS
+- SAME_HARDWARE_AS
+- PART_OF
+- CONTAINS
+- SUPPORTS
+- RELATED_TO
+
+ObjectRule
+- id
+- objectId
+- type
+- condition
+- restriction
+- message
+- severity
+
+Rule severity:
+- CRITICAL
+- HIGH
+- MEDIUM
+- LOW
+
+PromptStructure
+- corePrompt
+- projectPrompt
+- objectPrompt
+- rulePrompt
+- dnaPrompt
+- renderPrompt
+- negativePrompt
+- finalPrompt
+
+====================================================
+3. OBJETOS COMPOSTOS
+====================================================
+
+Preparar suporte para objetos compostos.
+
+Exemplo:
+Janela
+- Perfil
+- Vidro
+- Guarnição
+- Persiana
+- Motor
+- Tela
+
+Marcenaria
+- Inferior
+- Superior
+- Torre
+- Ilha
+- Painel
+- Nicho
+- Porta
+- Gaveta
+- Puxador
+- Dobradiça
+- Rodapé
+
+Bancada
+- Tampo
+- Frontão
+- Saia
+- Borda
+- Cuba
+- Torneira
+
+Mesa
+- Tampo
+- Base
+- Cadeiras relacionadas
+
+====================================================
+4. RELAÇÕES ENTRE OBJETOS
+====================================================
+
+Criar função para adicionar relações entre objetos.
+
+Exemplos:
+- Bancada RELATED_TO Cuba
+- Bancada RELATED_TO Torneira
+- Bancada ABOVE Marcenaria Inferior
+- Armário Superior ABOVE Bancada
+- Puxador PART_OF Porta
+- Puxador SAME_HARDWARE_AS Gaveta
+- Painel SAME_MATERIAL_AS Armário Superior
+- Mesa RELATED_TO Cadeiras
+- Pendente ABOVE Mesa
+
+Criar helper:
+createRelationship(fromObjectId, toObjectId, type, description)
+
+Criar função:
+getObjectRelationships(objectId)
+
+Criar função:
+getRelatedObjects(objectId)
+
+====================================================
+5. ENGINE DE REGRAS
+====================================================
+
+Criar um motor simples de regras.
+
+Exemplos de regras:
+
+Se objeto.category = Puxador:
+- Não permitir trocar por outro tipo se canReplaceObject = false
+- Não permitir remover se canRemoveObject = false
+
+Se objeto.category = Marcenaria:
+- Não permitir alterar geometria se canChangeGeometry = false
+- Não permitir alterar espessura se canChangeGeometry = false
+
+Se objeto.category = Área Vazia / Circulação:
+- Não permitir adicionar móveis
+- Não permitir preencher com decoração
+- Não permitir bloquear fluxo
+
+Se objeto.category = Esquadria:
+- Não permitir engrossar perfil
+- Não permitir alterar abertura
+- Não permitir trocar vidro sem permissão
+
+Se objeto.category = Bancada:
+- Não permitir alterar espessura
+- Não permitir alterar altura
+- Permitir alterar material somente se canChangeMaterial = true
+
+Criar função:
+evaluateObjectRules(object)
+
+Retorno:
+- allowedActions
+- blockedActions
+- warnings
+- criticalRestrictions
+
+====================================================
+6. PROMPT ENGINE
+====================================================
+
+Criar um motor que gere prompt automaticamente a partir da estrutura do projeto.
+
+Funções:
+generateCorePrompt(project)
+generateProjectPrompt(project)
+generateObjectPrompt(project)
+generateRulePrompt(project)
+generateDNAPrompt(project)
+generateRenderPrompt(project)
+generateNegativePrompt(project)
+generateFinalPrompt(project)
+
+Regras:
+- O Core Prompt deve conter preservação absoluta.
+- O Object Prompt deve listar objetos importantes e suas permissões.
+- O Rule Prompt deve transformar regras em frases de restrição.
+- O DNA Prompt deve usar ProjectDNA.
+- O Negative Prompt deve ser gerado com base em riscos e permissões bloqueadas.
+- O Final Prompt deve unir todos.
+
+====================================================
+7. SCORE ENGINE
+====================================================
+
+Criar uma estrutura inicial para avaliação futura de fidelidade do render.
+
+Ainda sem IA real.
+
+Tipos:
+RenderReviewScore
+- geometryScore
+- materialScore
+- lightingScore
+- furnitureScore
+- cameraScore
+- overallScore
+- detectedIssues
+- suggestedFixes
+
+Criar mock:
+calculateMockRenderScore(project)
+
+Exemplo:
+- Geometria: 100
+- Materiais: 92
+- Iluminação: 88
+- Câmera: 100
+- Geral: 95
+
+====================================================
+8. VALIDATION ENGINE
+====================================================
+
+Criar validações locais:
+
+validateProject(project)
+
+Deve verificar:
+- objetos sem fonte da verdade
+- materiais pendentes
+- regiões/objetos com baixa confiança
+- riscos muito altos sem restrição
+- objetos LOCK com permissões contraditórias
+- objetos sem categoria
+- prompts incompletos
+
+Retorno:
+- errors
+- warnings
+- suggestions
+
+====================================================
+9. MOCK PROJECT INTELIGENTE
+====================================================
+
+Criar um mock mais rico para testar.
+
+Projeto:
+Apartamento Alpha
+
+Ambientes:
+- Sala
+- Cozinha
+- Lavanderia
+
+Objetos da Cozinha:
+- Piso
+- Parede
+- Forro
+- Marcenaria
+  - Inferior
+    - Portas
+    - Gavetas
+    - Puxador cava
+  - Superior
+    - Portas
+    - Puxador botão
+  - Torre quente
+- Bancada
+  - Tampo
+  - Frontão
+  - Cuba
+  - Torneira
+- Geladeira
+- Forno
+- Microondas
+- Lava e seca
+- Esquadria
+- Iluminação
+- Decoração
+- Circulação / área vazia
+
+Incluir relações entre esses objetos.
+
+Incluir permissões IA diferentes para cada um.
+
+Incluir riscos IA.
+
+====================================================
+10. UI — MOSTRAR MOTOR NA TELA
+====================================================
+
+Sem redesenhar tudo.
+
+Adicionar na tela atual do arqdor.ai uma aba ou seção chamada:
+
+“Projeto Inteligente”
+
+Ela deve mostrar:
+- Árvore do projeto
+- Objeto selecionado
+- Inspector do objeto
+- Relações do objeto
+- Regras aplicadas
+- Permissões IA
+- Risco IA
+- Prompt gerado por objeto
+- Validações do projeto
+- Score mockado
+
+O objetivo é visualizar que o sistema agora tem um domínio inteligente.
+
+====================================================
+11. NÃO FAZER NESTA ETAPA
+====================================================
+
+Não conectar IA.
+Não chamar backend.
+Não mexer no backend.
+Não deletar renderizador antigo.
+Não alterar rotas.
+Não remover wizard atual.
+Não fazer integração real com Nano Banana.
+Não implementar banco de dados.
+
+====================================================
+12. RESULTADO ESPERADO
+====================================================
+
+Ao final, quero que a rota /arch/render continue funcionando, mas agora com uma base mais inteligente.
+
+Deve existir:
+- Modelos de domínio
+- Projeto mockado estruturado
+- Árvore de objetos
+- Inspector
+- Relações
+- Permissões IA
+- Regras
+- Prompt Engine
+- Validation Engine
+- Score Engine mockado
+
+Isso será a base para a próxima fase, onde vamos conectar análise real de imagem e geração real de render.

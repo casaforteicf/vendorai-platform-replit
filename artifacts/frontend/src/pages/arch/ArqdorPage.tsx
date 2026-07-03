@@ -5,6 +5,13 @@ import type {
   StructuredPrompt,
 } from './arqdor-types'
 import { DEFAULT_PERMISSIONS, LOCKED_PERMISSIONS, EMPTY_MATERIAL } from './arqdor-types'
+import { MOCK_PROJECT as DOMAIN_PROJECT } from './arqdor/domain/arqdor-mock-project'
+import { getAllObjects, getRelatedObjects, RELATIONSHIP_LABELS, RELATIONSHIP_ICONS } from './arqdor/domain/arqdor-relationships'
+import { evaluateObjectRules } from './arqdor/domain/arqdor-rules-engine'
+import { generateObjectFragment, generateFullPromptStructure } from './arqdor/domain/arqdor-prompt-engine'
+import { validateProject, validationSummary } from './arqdor/domain/arqdor-validation-engine'
+import { calculateMockRenderScore, scoreColor, scoreLabel, SCORE_DIMENSIONS } from './arqdor/domain/arqdor-score-engine'
+import type { RiskLevel as DomainRiskLevel, AIPermissions as DomainAIPermissions } from './arqdor/domain/arqdor-domain-types'
 
 // ─── Theme ────────────────────────────────────────────────────────────────────
 
@@ -85,6 +92,37 @@ const PERM_LABELS: Record<keyof AIPermissions, string> = {
   alterarDecoracao:  'Alterar Decoração',
   moverObjeto:       'Mover Objeto',
   substituir:        'Substituir',
+}
+
+// ─── Domain engine constants ──────────────────────────────────────────────────
+
+const DOMAIN_RISK_META: Record<DomainRiskLevel, { color: string; bg: string; label: string }> = {
+  VERY_HIGH: { color: '#f87171', bg: 'rgba(248,113,113,0.12)', label: 'Muito Alto'  },
+  HIGH:      { color: '#fb923c', bg: 'rgba(251,146,60,0.12)',  label: 'Alto'        },
+  MEDIUM:    { color: '#fbbf24', bg: 'rgba(251,191,36,0.12)',  label: 'Médio'       },
+  LOW:       { color: '#86efac', bg: 'rgba(134,239,172,0.10)', label: 'Baixo'       },
+  VERY_LOW:  { color: '#4ade80', bg: 'rgba(74,222,128,0.12)',  label: 'Muito Baixo' },
+}
+
+const DOM_CAT_ICONS: Record<string, string> = {
+  AMBIENTE:'🏠', ESTRUTURA:'🏗️', PISO:'⬛', PAREDE:'🧱', FORRO:'⬜',
+  MARCENARIA:'🪵', PORTA:'🚪', GAVETA:'📦', PUXADOR:'🔩', FERRAGEM:'🔧',
+  BANCADA:'🔲', PEDRA:'🪨', METAL:'⚙️', ESQUADRIA:'🪟', VIDRO:'💎',
+  ILUMINACAO:'💡', MOBILIARIO:'🛋️', PAISAGISMO:'🌿', DECORACAO:'🎨',
+  EQUIPAMENTOS:'🔌', CIRCULACAO:'↔️', PERSONALIZADO:'✳️',
+}
+
+const DOMAIN_PERM_LABELS: Record<keyof DomainAIPermissions, string> = {
+  canChangeGeometry:    'Alterar Geometria',
+  canChangeMaterial:    'Alterar Material',
+  canChangeFinish:      'Alterar Acabamento',
+  canChangeColor:       'Alterar Cor',
+  canChangeLighting:    'Alterar Iluminação',
+  canChangeDecoration:  'Alterar Decoração',
+  canMoveObject:        'Mover Objeto',
+  canReplaceObject:     'Substituir Objeto',
+  canRemoveObject:      'Remover Objeto',
+  canAddRelatedObjects: 'Adicionar Objetos Relacionados',
 }
 
 // ─── Mock project ─────────────────────────────────────────────────────────────
@@ -856,6 +894,352 @@ function PromptModal({ prompt, onClose }: { prompt: StructuredPrompt; onClose: (
   )
 }
 
+// ─── Domain Tree Node ─────────────────────────────────────────────────────────
+
+type DomainObj = ReturnType<typeof getAllObjects>[number]
+
+function DomainTreeNode({ obj, depth, selectedId, expanded, onSelect, onToggle, siblings }: {
+  obj: DomainObj; depth: number; selectedId: string | null
+  expanded: Set<string>; onSelect: (id: string) => void; onToggle: (id: string) => void
+  siblings: DomainObj[]
+}) {
+  const children = siblings.filter(o => o.parentId === obj.id)
+  const isExpanded = expanded.has(obj.id)
+  const isSelected = selectedId === obj.id
+  const rMeta = DOMAIN_RISK_META[obj.aiRisk.level]
+  const isLocked = !obj.aiPermissions.canChangeGeometry && !obj.aiPermissions.canChangeMaterial
+  return (
+    <div>
+      <div onClick={() => onSelect(obj.id)} style={{
+        display:'flex', alignItems:'center', gap:5,
+        padding:`4px 6px 4px ${depth*14+6}px`, borderRadius:5, cursor:'pointer',
+        background: isSelected ? 'rgba(124,58,237,0.2)' : 'transparent',
+        borderLeft: isSelected ? `2px solid #7c3aed` : '2px solid transparent',
+      }}>
+        {children.length > 0 ? (
+          <span onClick={e=>{e.stopPropagation();onToggle(obj.id)}} style={{ fontSize:8, color:'rgba(255,255,255,0.44)', width:12, cursor:'pointer', flexShrink:0 }}>
+            {isExpanded ? '▾' : '▸'}
+          </span>
+        ) : <span style={{ width:12, flexShrink:0 }}/>}
+        <span style={{ fontSize:12 }}>{DOM_CAT_ICONS[obj.category] ?? '•'}</span>
+        <span style={{ flex:1, fontSize:11, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap',
+          color: isSelected ? '#fff' : 'rgba(255,255,255,0.88)', fontWeight: isSelected ? 600 : 400 }}>
+          {obj.name}
+        </span>
+        {(obj.aiRisk.level === 'VERY_HIGH' || obj.aiRisk.level === 'HIGH') &&
+          <span style={{ width:5, height:5, borderRadius:'50%', background:rMeta.color, flexShrink:0 }}/>}
+        {isLocked && <span style={{ fontSize:8, color:'rgba(255,255,255,0.44)' }}>🔒</span>}
+      </div>
+      {children.length > 0 && isExpanded && children.map(c => (
+        <DomainTreeNode key={c.id} obj={c} depth={depth+1} selectedId={selectedId}
+          expanded={expanded} onSelect={onSelect} onToggle={onToggle} siblings={siblings} />
+      ))}
+    </div>
+  )
+}
+
+// ─── Projeto Inteligente View ─────────────────────────────────────────────────
+
+type ProjIntelTab = 'relacoes' | 'regras' | 'permissoes' | 'risco' | 'prompt' | 'validacoes'
+const PROJ_INTEL_TABS: { key: ProjIntelTab; label: string }[] = [
+  { key:'relacoes',   label:'🔗 Relações'    },
+  { key:'regras',     label:'📋 Regras'      },
+  { key:'permissoes', label:'🛡️ Permissões' },
+  { key:'risco',      label:'⚠️ Risco'      },
+  { key:'prompt',     label:'⚡ Prompt'      },
+  { key:'validacoes', label:'✅ Validações'  },
+]
+
+function ProjetoInteligenteView() {
+  const project    = DOMAIN_PROJECT
+  const [selId, setSelId] = useState<string|null>('coz-banc')
+  const [expIds, setExpIds] = useState(new Set(['env-coz','env-sala','coz-marc','coz-banc','coz-marc-inf','coz-marc-sup']))
+  const [tab, setTab] = useState<ProjIntelTab>('regras')
+
+  const toggleExp = (id: string) => setExpIds(prev => { const n = new Set(prev); n.has(id)?n.delete(id):n.add(id); return n })
+
+  const allObjs   = getAllObjects(project)
+  const selObj    = selId ? allObjs.find(o => o.id === selId) ?? null : null
+  const evalRes   = selObj ? evaluateObjectRules(selObj) : null
+  const relObjs   = selId ? getRelatedObjects(selId, project) : []
+  const pFrag     = selObj ? generateObjectFragment(selObj) : ''
+  const fullProm  = generateFullPromptStructure(project)
+  const validation = validateProject(project)
+  const score     = calculateMockRenderScore(project)
+
+  const card = { background:'rgba(255,255,255,0.04)', border:'1px solid rgba(255,255,255,0.08)', borderRadius:8, padding:'11px 13px' } as const
+  const lbl  = { fontSize:10, fontWeight:700, letterSpacing:'0.07em', color:'rgba(255,255,255,0.44)' } as const
+
+  return (
+    <div style={{ flex:1, display:'flex', overflow:'hidden' }}>
+
+      {/* LEFT: Domain Tree */}
+      <div style={{ width:256, flexShrink:0, background:'#13102b', borderRight:'1px solid rgba(255,255,255,0.08)', display:'flex', flexDirection:'column' as const, overflow:'hidden' }}>
+        <div style={{ padding:'10px 12px 8px', borderBottom:'1px solid rgba(255,255,255,0.08)', flexShrink:0 }}>
+          <span style={{ fontSize:10, fontWeight:700, letterSpacing:'0.08em', color:'rgba(255,255,255,0.44)' }}>PROJETO INTELIGENTE</span>
+          <p style={{ margin:'3px 0 0', fontSize:10, color:'rgba(255,255,255,0.44)' }}>{allObjs.length} objetos · {project.environments.length} ambientes</p>
+        </div>
+        <div style={{ flex:1, overflowY:'auto' as const, padding:'8px 6px' }}>
+          {project.environments.map(env => (
+            <div key={env.id}>
+              <div onClick={()=>toggleExp(env.id)} style={{ display:'flex', alignItems:'center', gap:6, padding:'6px 8px', cursor:'pointer', borderRadius:5 }}>
+                <span style={{ fontSize:8, color:'rgba(255,255,255,0.44)' }}>{expIds.has(env.id)?'▾':'▸'}</span>
+                <span style={{ fontSize:12 }}>🏠</span>
+                <span style={{ fontSize:11, fontWeight:700, color:'#60a5fa' }}>{env.name}</span>
+                <span style={{ fontSize:9, color:'rgba(255,255,255,0.44)', marginLeft:'auto' }}>{env.architecturalObjects.filter(o=>!o.parentId).length}</span>
+              </div>
+              {expIds.has(env.id) && env.architecturalObjects.filter(o=>!o.parentId).map(obj => (
+                <DomainTreeNode key={obj.id} obj={obj} depth={1} selectedId={selId}
+                  expanded={expIds} onSelect={setSelId} onToggle={toggleExp}
+                  siblings={env.architecturalObjects} />
+              ))}
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* CENTER: Inspector */}
+      <div style={{ flex:1, display:'flex', flexDirection:'column' as const, overflow:'hidden' }}>
+        {selObj ? (
+          <>
+            <div style={{ padding:'12px 16px', borderBottom:'1px solid rgba(255,255,255,0.08)', flexShrink:0 }}>
+              <div style={{ display:'flex', alignItems:'center', gap:10 }}>
+                <span style={{ fontSize:20 }}>{DOM_CAT_ICONS[selObj.category]??'•'}</span>
+                <div style={{ flex:1 }}>
+                  <h3 style={{ margin:0, fontSize:15, fontWeight:800, color:'#fff' }}>{selObj.name}</h3>
+                  <p style={{ margin:0, fontSize:11, color:'rgba(255,255,255,0.44)' }}>{selObj.category} · Confiança {selObj.confidence}% · {selObj.sourceOfTruth}</p>
+                </div>
+                <div style={{ padding:'3px 10px', borderRadius:12, fontSize:10, fontWeight:700, background:DOMAIN_RISK_META[selObj.aiRisk.level].bg, color:DOMAIN_RISK_META[selObj.aiRisk.level].color }}>
+                  {DOMAIN_RISK_META[selObj.aiRisk.level].label}
+                </div>
+                <div style={{ padding:'3px 10px', borderRadius:12, fontSize:10, fontWeight:700, background:'rgba(255,255,255,0.06)', color:'rgba(255,255,255,0.44)' }}>
+                  {selObj.status}
+                </div>
+              </div>
+              {selObj.description && <p style={{ margin:'6px 0 0', fontSize:11, color:'rgba(255,255,255,0.44)' }}>{selObj.description}</p>}
+            </div>
+
+            {/* Tabs */}
+            <div style={{ display:'flex', gap:2, padding:'8px 12px 0', borderBottom:'1px solid rgba(255,255,255,0.08)', flexShrink:0 }}>
+              {PROJ_INTEL_TABS.map(t => (
+                <button key={t.key} onClick={()=>setTab(t.key)} style={{
+                  padding:'5px 10px', borderRadius:'5px 5px 0 0', border:'none', cursor:'pointer', fontSize:11, fontWeight:600, whiteSpace:'nowrap' as const,
+                  background: tab===t.key ? 'rgba(124,58,237,0.2)' : 'transparent',
+                  color: tab===t.key ? '#a78bfa' : 'rgba(255,255,255,0.44)',
+                  borderBottom: tab===t.key ? '2px solid #7c3aed' : '2px solid transparent',
+                }}>{t.label}</button>
+              ))}
+            </div>
+
+            {/* Tab content */}
+            <div style={{ flex:1, overflowY:'auto' as const, padding:'14px 16px', display:'flex', flexDirection:'column' as const, gap:10 }}>
+              {tab==='relacoes' && (
+                relObjs.length === 0
+                  ? <div style={{ ...card, color:'rgba(255,255,255,0.44)', textAlign:'center' as const, fontSize:12 }}>Nenhuma relação definida.</div>
+                  : relObjs.map(({object, relationship, direction}) => (
+                    <div key={relationship.id} style={{ ...card, display:'flex', alignItems:'center', gap:10 }}>
+                      <span style={{ fontSize:14 }}>{RELATIONSHIP_ICONS[relationship.type]}</span>
+                      <div style={{ flex:1 }}>
+                        <p style={{ margin:0, fontSize:11, fontWeight:700, color:'#fff' }}>
+                          {direction==='outgoing' ? selObj.name : object.name}
+                          <span style={{ color:'#a78bfa', fontWeight:400, margin:'0 6px' }}>{RELATIONSHIP_LABELS[relationship.type]}</span>
+                          {direction==='outgoing' ? object.name : selObj.name}
+                        </p>
+                        <p style={{ margin:'2px 0 0', fontSize:10, color:'rgba(255,255,255,0.44)' }}>{relationship.description}</p>
+                      </div>
+                      <span style={{ fontSize:9, color:'rgba(255,255,255,0.44)', textTransform:'uppercase' as const }}>{relationship.type}</span>
+                    </div>
+                  ))
+              )}
+
+              {tab==='regras' && evalRes && (
+                <>
+                  {evalRes.criticalRestrictions.length>0 && (
+                    <div>
+                      <p style={{ ...lbl, color:'#f87171', marginBottom:8 }}>🔴 RESTRIÇÕES CRÍTICAS</p>
+                      {evalRes.criticalRestrictions.map((r,i) => (
+                        <div key={i} style={{ ...card, borderColor:'rgba(248,113,113,0.3)', background:'rgba(248,113,113,0.06)', marginBottom:6 }}>
+                          <p style={{ margin:0, fontSize:11, color:'#f87171' }}>{r}</p>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                  <div>
+                    <p style={{ ...lbl, marginBottom:8 }}>🔴 BLOQUEADAS ({evalRes.blockedActions.length})</p>
+                    {evalRes.blockedActions.map((a,i) => (
+                      <div key={i} style={{ display:'flex', gap:8, padding:'5px 0', borderBottom:'1px solid rgba(255,255,255,0.08)' }}>
+                        <span style={{ color:'#f87171', fontSize:11 }}>✗</span>
+                        <span style={{ fontSize:11 }}>{a}</span>
+                      </div>
+                    ))}
+                  </div>
+                  <div>
+                    <p style={{ ...lbl, marginBottom:8 }}>✅ PERMITIDAS ({evalRes.allowedActions.length})</p>
+                    {evalRes.allowedActions.map((a,i) => (
+                      <div key={i} style={{ display:'flex', gap:8, padding:'5px 0', borderBottom:'1px solid rgba(255,255,255,0.08)' }}>
+                        <span style={{ color:'#4ade80', fontSize:11 }}>✓</span>
+                        <span style={{ fontSize:11 }}>{a}</span>
+                      </div>
+                    ))}
+                  </div>
+                  {evalRes.warnings.length>0 && (
+                    <div>
+                      <p style={{ ...lbl, color:'#fbbf24', marginBottom:8 }}>⚠️ AVISOS</p>
+                      {evalRes.warnings.map((w,i) => <p key={i} style={{ fontSize:11, color:'#fbbf24', margin:'0 0 6px' }}>{w}</p>)}
+                    </div>
+                  )}
+                </>
+              )}
+
+              {tab==='permissoes' && (
+                <>
+                  <p style={{ ...lbl, marginBottom:4 }}>PERMISSÕES IA</p>
+                  {(Object.entries(selObj.aiPermissions) as [keyof DomainAIPermissions, boolean][]).map(([key,val]) => (
+                    <div key={key} style={{ display:'flex', justifyContent:'space-between', alignItems:'center', padding:'7px 11px', borderRadius:6, marginBottom:4,
+                      background: val ? 'rgba(74,222,128,0.06)' : 'rgba(248,113,113,0.06)',
+                      border: `1px solid ${val?'rgba(74,222,128,0.2)':'rgba(248,113,113,0.15)'}` }}>
+                      <span style={{ fontSize:11 }}>{DOMAIN_PERM_LABELS[key]}</span>
+                      <span style={{ fontSize:11, fontWeight:700, color:val?'#4ade80':'#f87171' }}>{val?'✓ Permitido':'✗ Bloqueado'}</span>
+                    </div>
+                  ))}
+                </>
+              )}
+
+              {tab==='risco' && (
+                <>
+                  <div style={{ ...card, background:DOMAIN_RISK_META[selObj.aiRisk.level].bg, borderColor:`${DOMAIN_RISK_META[selObj.aiRisk.level].color}40` }}>
+                    <p style={{ margin:'0 0 4px', fontSize:13, fontWeight:800, color:DOMAIN_RISK_META[selObj.aiRisk.level].color }}>
+                      Risco {DOMAIN_RISK_META[selObj.aiRisk.level].label}
+                    </p>
+                    <p style={{ margin:0, fontSize:12, lineHeight:1.5 }}>{selObj.aiRisk.reason || 'Nenhuma descrição.'}</p>
+                  </div>
+                  {selObj.aiRisk.restrictions.length>0 && selObj.aiRisk.restrictions.map((r,i) => (
+                    <div key={i} style={{ ...card, borderColor:'rgba(251,191,36,0.2)', background:'rgba(251,191,36,0.05)' }}>
+                      <p style={{ margin:0, fontSize:11, color:'#fbbf24' }}>⚠️ {r}</p>
+                    </div>
+                  ))}
+                </>
+              )}
+
+              {tab==='prompt' && (
+                <>
+                  <div style={{ ...card, background:'rgba(124,58,237,0.07)', borderColor:'rgba(124,58,237,0.25)' }}>
+                    <p style={{ ...lbl, marginBottom:6 }}>FRAGMENTO DO OBJETO</p>
+                    <p style={{ margin:0, fontSize:12, lineHeight:1.65, fontFamily:'ui-monospace,monospace' }}>{pFrag}</p>
+                    <button onClick={()=>void navigator.clipboard.writeText(pFrag)}
+                      style={{ marginTop:10, padding:'4px 10px', borderRadius:5, border:'1px solid rgba(255,255,255,0.08)', background:'rgba(255,255,255,0.06)', color:'rgba(255,255,255,0.44)', cursor:'pointer', fontSize:11 }}>
+                      📋 Copiar fragmento
+                    </button>
+                  </div>
+                  <div style={{ ...card }}>
+                    <p style={{ ...lbl, marginBottom:6 }}>PROMPT FINAL (projeto completo)</p>
+                    <p style={{ margin:0, fontSize:11, color:'rgba(255,255,255,0.44)', lineHeight:1.65, fontFamily:'ui-monospace,monospace', maxHeight:180, overflowY:'auto' as const }}>{fullProm.finalPrompt}</p>
+                    <button onClick={()=>void navigator.clipboard.writeText(fullProm.finalPrompt)}
+                      style={{ marginTop:10, padding:'4px 10px', borderRadius:5, border:'1px solid rgba(255,255,255,0.08)', background:'rgba(255,255,255,0.06)', color:'rgba(255,255,255,0.44)', cursor:'pointer', fontSize:11 }}>
+                      📋 Copiar prompt final
+                    </button>
+                  </div>
+                </>
+              )}
+
+              {tab==='validacoes' && (
+                <>
+                  <div style={{ ...card, background:'rgba(255,255,255,0.02)' }}>
+                    <p style={{ margin:0, fontSize:12, fontWeight:700 }}>{validationSummary(validation)}</p>
+                  </div>
+                  {validation.errors.map(e => (
+                    <div key={e.id} style={{ ...card, borderColor:'rgba(248,113,113,0.3)', background:'rgba(248,113,113,0.05)' }}>
+                      <p style={{ margin:0, fontSize:11, color:'#f87171' }}>🔴 {e.message}</p>
+                    </div>
+                  ))}
+                  {validation.warnings.map(w => (
+                    <div key={w.id} style={{ ...card, borderColor:'rgba(251,191,36,0.2)', background:'rgba(251,191,36,0.04)' }}>
+                      <p style={{ margin:0, fontSize:11, color:'#fbbf24' }}>🟡 {w.message}</p>
+                    </div>
+                  ))}
+                  {validation.suggestions.map(s => (
+                    <div key={s.id} style={{ ...card, borderColor:'rgba(96,165,250,0.2)', background:'rgba(96,165,250,0.04)' }}>
+                      <p style={{ margin:0, fontSize:11, color:'#60a5fa' }}>💡 {s.message}</p>
+                    </div>
+                  ))}
+                </>
+              )}
+            </div>
+          </>
+        ) : (
+          <div style={{ flex:1, display:'flex', alignItems:'center', justifyContent:'center', color:'rgba(255,255,255,0.44)', fontSize:13 }}>
+            Selecione um objeto na árvore para inspecionar.
+          </div>
+        )}
+      </div>
+
+      {/* RIGHT: Score */}
+      <div style={{ width:272, flexShrink:0, background:'#13102b', borderLeft:'1px solid rgba(255,255,255,0.08)', display:'flex', flexDirection:'column' as const, overflow:'hidden' }}>
+        <div style={{ padding:'12px 14px', borderBottom:'1px solid rgba(255,255,255,0.08)', flexShrink:0 }}>
+          <p style={{ fontSize:10, fontWeight:700, letterSpacing:'0.08em', color:'rgba(255,255,255,0.44)', margin:'0 0 10px' }}>SCORE DO RENDER (MOCK)</p>
+          <div style={{ textAlign:'center' as const, marginBottom:12 }}>
+            <span style={{ fontSize:36, fontWeight:900, color:scoreColor(score.overallScore) }}>{score.overallScore}</span>
+            <span style={{ fontSize:12, color:'rgba(255,255,255,0.44)' }}>/100</span>
+            <p style={{ margin:'2px 0 0', fontSize:11, fontWeight:700, color:scoreColor(score.overallScore) }}>{scoreLabel(score.overallScore)}</p>
+          </div>
+          {SCORE_DIMENSIONS.map(d => {
+            const val = score[d.key] as number
+            return (
+              <div key={d.key} style={{ marginBottom:7 }}>
+                <div style={{ display:'flex', justifyContent:'space-between', marginBottom:3 }}>
+                  <span style={{ fontSize:10, color:'rgba(255,255,255,0.44)' }}>{d.label}</span>
+                  <span style={{ fontSize:10, fontWeight:700, color:scoreColor(val) }}>{val}</span>
+                </div>
+                <div style={{ height:4, borderRadius:2, background:'rgba(255,255,255,0.08)', overflow:'hidden' }}>
+                  <div style={{ height:'100%', width:`${val}%`, background:scoreColor(val), borderRadius:2 }}/>
+                </div>
+              </div>
+            )
+          })}
+        </div>
+        <div style={{ flex:1, overflowY:'auto' as const, padding:'12px 14px' }}>
+          {score.detectedIssues.length > 0 && (
+            <>
+              <p style={{ fontSize:10, fontWeight:700, letterSpacing:'0.08em', color:'rgba(255,255,255,0.44)', margin:'0 0 8px' }}>ISSUES DETECTADOS</p>
+              {score.detectedIssues.map((issue,i) => (
+                <div key={i} style={{ padding:'7px 9px', borderRadius:6, background:'rgba(251,191,36,0.06)', border:'1px solid rgba(251,191,36,0.15)', marginBottom:5 }}>
+                  <p style={{ margin:0, fontSize:11, color:'#fbbf24' }}>⚠️ {issue}</p>
+                </div>
+              ))}
+            </>
+          )}
+          {score.suggestedFixes.length > 0 && (
+            <>
+              <p style={{ fontSize:10, fontWeight:700, letterSpacing:'0.08em', color:'rgba(255,255,255,0.44)', margin:'12px 0 8px' }}>SUGESTÕES</p>
+              {score.suggestedFixes.map((fix,i) => (
+                <div key={i} style={{ padding:'7px 9px', borderRadius:6, background:'rgba(96,165,250,0.06)', border:'1px solid rgba(96,165,250,0.15)', marginBottom:5 }}>
+                  <p style={{ margin:0, fontSize:11, color:'#60a5fa' }}>💡 {fix}</p>
+                </div>
+              ))}
+            </>
+          )}
+          <p style={{ fontSize:10, fontWeight:700, letterSpacing:'0.08em', color:'rgba(255,255,255,0.44)', margin:'12px 0 8px' }}>VALIDAÇÃO</p>
+          <div style={{ padding:'8px 10px', borderRadius:6, background:'rgba(255,255,255,0.03)', border:'1px solid rgba(255,255,255,0.08)', marginBottom:8 }}>
+            <p style={{ margin:0, fontSize:11 }}>{validationSummary(validation)}</p>
+          </div>
+          {[
+            { l:'Total de objetos', v:allObjs.length, c:'rgba(255,255,255,0.88)' },
+            { l:'Ambientes',        v:project.environments.length, c:'rgba(255,255,255,0.88)' },
+            { l:'Erros críticos',   v:validation.errors.length,   c:'#f87171' },
+            { l:'Avisos',          v:validation.warnings.length,  c:'#fbbf24' },
+            { l:'Sugestões',       v:validation.suggestions.length,c:'#60a5fa' },
+          ].map(row=>(
+            <div key={row.l} style={{ display:'flex', justifyContent:'space-between', fontSize:11, padding:'3px 0', borderBottom:'1px solid rgba(255,255,255,0.08)' }}>
+              <span style={{ color:'rgba(255,255,255,0.44)' }}>{row.l}</span>
+              <span style={{ fontWeight:700, color:row.c }}>{row.v}</span>
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  )
+}
+
 // ─── Main Page ────────────────────────────────────────────────────────────────
 
 export default function ArqdorPage() {
@@ -867,6 +1251,7 @@ export default function ArqdorPage() {
   const [promptOpen, setPromptOpen]   = useState(false)
   const [searchQ, setSearchQ]         = useState('')
   const [versionOpen, setVersionOpen] = useState(false)
+  const [mode, setMode] = useState<'modelagem'|'projeto-inteligente'>('modelagem')
 
   const toggleExpanded = useCallback((id: string) => {
     setExpandedIds(prev => {
@@ -989,8 +1374,19 @@ export default function ArqdorPage() {
           )}
         </div>
 
-        {/* Spacer */}
-        <div style={{ flex:1 }}/>
+        {/* Mode switcher */}
+        <div style={{ flex:1, display:'flex', justifyContent:'center', alignItems:'center', gap:4 }}>
+          {(['modelagem','projeto-inteligente'] as const).map(m => (
+            <button key={m} onClick={()=>setMode(m)} style={{
+              padding:'4px 12px', borderRadius:20, border:'none', cursor:'pointer', fontSize:11, fontWeight:700,
+              background: mode===m ? 'rgba(124,58,237,0.25)' : 'transparent',
+              color: mode===m ? '#a78bfa' : 'rgba(255,255,255,0.44)',
+              outline: mode===m ? '1px solid rgba(124,58,237,0.4)' : '1px solid transparent',
+            }}>
+              {m==='modelagem' ? '🏗️ Modelagem' : '🧠 Projeto Inteligente'}
+            </button>
+          ))}
+        </div>
 
         {/* Stats */}
         <div style={{ display:'flex', gap:12, alignItems:'center' }}>
@@ -1017,7 +1413,8 @@ export default function ArqdorPage() {
         </div>
       </div>
 
-      {/* ══ BODY (3 columns) ══ */}
+      {/* ══ BODY ══ */}
+      {mode === 'projeto-inteligente' ? <ProjetoInteligenteView /> : (
       <div style={{ flex:1, display:'flex', overflow:'hidden' }}>
 
         {/* ── LEFT: Project Tree ── */}
@@ -1239,6 +1636,7 @@ export default function ArqdorPage() {
           </div>
         )}
       </div>
+      )}
 
       {/* ══ MODALS ══ */}
       {libOpen    && <LibraryModal items={MOCK_LIBRARY} onClose={()=>setLibOpen(false)} onApply={applyLibItem} />}
