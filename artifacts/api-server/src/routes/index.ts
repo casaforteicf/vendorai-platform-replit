@@ -39,6 +39,7 @@ import onboardingRouter from "./onboarding";
 import contentRouter from "./content";
 import partnerRouter from "./partner";
 import partnersRouter from "./partners";
+import partnerHubRouter from "./partner_hub";
 import adminPartnersRouter from "./admin_partners";
 import adminPlansRouter from "./admin_plans";
 import adminAgentDefaultsRouter from "./admin_agent_defaults";
@@ -263,6 +264,9 @@ router.use(clinicRouter);
 
 // Revenue Scout Hub
 router.use(scoutRouter);
+
+// Partner Hub (VPN — Vendor Partner Network — FASE 20)
+router.use(partnerHubRouter);
 
 // Render Hub
 router.use(renderRouter);

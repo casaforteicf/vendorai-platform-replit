@@ -134,3 +134,6 @@ export * from "./arq_objects";
 export * from "./arq_materials";
 export * from "./arq_aie_snapshots";
 export * from "./arch_prompt_variations";
+export * from "./vpn_partners";
+export * from "./vpn_partner_products";
+export * from "./vpn_partner_contacts";

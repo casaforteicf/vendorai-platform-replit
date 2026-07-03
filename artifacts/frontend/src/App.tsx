@@ -76,6 +76,10 @@ const VKGDemo            = lazy(() => import("@/modules/vkg/VKGDemoView").then(m
 // Vendor Brain
 const VendorBrainDash    = lazy(() => import("@/modules/vendor-brain/VendorBrainDashboard").then(m => ({ default: m.VendorBrainDashboard })));
 
+// Partner Hub — FASE 20
+const PartnerHub         = lazy(() => import("@/pages/partner-hub/PartnerHubPage").then(m => ({ default: m.PartnerHubPage })));
+const PartnerDetail      = lazy(() => import("@/pages/partner-hub/PartnerDetailPage").then(m => ({ default: m.PartnerDetailPage })));
+
 // Arch
 const ArchDashboard      = lazy(() => import("@/pages/arch/ArchDashboard"));
 const ArchProjetos       = lazy(() => import("@/pages/arch/Projetos"));
@@ -666,6 +670,12 @@ function AppRoutes() {
         </Route>
         <Route path="/brain">
           {() => <ProtectedRoute component={VendorBrainDash} />}
+        </Route>
+        <Route path="/partner-hub">
+          {() => <ProtectedRoute component={PartnerHub} />}
+        </Route>
+        <Route path="/partner-hub/:id">
+          {() => <ProtectedRoute component={PartnerDetail} />}
         </Route>
         <Route path="/invite/:token">
           <AcceptInvite />
