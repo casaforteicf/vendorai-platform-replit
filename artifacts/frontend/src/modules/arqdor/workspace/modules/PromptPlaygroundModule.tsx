@@ -1,12 +1,6 @@
 import { useState, useEffect, useMemo, useCallback, useRef } from 'react'
-import { useQueryClient } from '@tanstack/react-query'
-import {
-  useListArchPromptVariations,
-  useCreateArchPromptVariation,
-  useUpdateArchPromptVariation,
-  useDeleteArchPromptVariation,
-  getListArchPromptVariationsQueryKey,
-} from '@workspace/api-client-react'
+
+
 import { MOCK_PROJECT } from '../../../../pages/arch/arqdor/domain/arqdor-mock-project'
 import { generateFullPromptStructure } from '../../../../pages/arch/arqdor/domain/arqdor-prompt-engine'
 import type {
@@ -28,8 +22,7 @@ import {
   TRANSLATORS,
   DETAIL_LEVELS,
 } from '../../engines/prompt-playwright/prompt-playwright'
-import type { PlaywrightPrompt, TranslatorId, DetailLevel } from '../../engines/prompt-playwright/prompt-playwright'
-import { useWorkspaceContext } from '../WorkspaceContext'
+import type { TranslatorId, DetailLevel, PlaywrightPrompt } from '../../engines/prompt-playwright/prompt-playwright'
 import { useWorkspace } from '../context/WorkspaceContext'
 import { T } from '../../shared/arqdor-theme'
 import { useSavedVariations } from './useSavedVariations'
@@ -124,6 +117,45 @@ function projectContextToProject(ctx: ProjectContext): Project {
     renderConfig,
     versions: [],
   }
+}
+
+// ─── Share link helpers ───────────────────────────────────────────────────────
+
+const SHARE_PARAM = 'v'
+
+function encodeVariation(v: SavedVariation): string {
+  try {
+    return btoa(unescape(encodeURIComponent(JSON.stringify(v))))
+  } catch {
+    return ''
+  }
+}
+
+function decodeVariation(encoded: string): SavedVariation | null {
+  try {
+    const json = decodeURIComponent(escape(atob(encoded)))
+    const v = JSON.parse(json) as unknown
+    if (
+      v && typeof v === 'object' &&
+      typeof (v as Record<string, unknown>).id === 'string' &&
+      typeof (v as Record<string, unknown>).name === 'string' &&
+      typeof (v as Record<string, unknown>).prompt === 'string' &&
+      typeof (v as Record<string, unknown>).savedAt === 'number'
+    ) {
+      return v as SavedVariation
+    }
+    return null
+  } catch {
+    return null
+  }
+}
+
+function buildShareUrl(v: SavedVariation): string {
+  const encoded = encodeVariation(v)
+  if (!encoded) return window.location.href
+  const url = new URL(window.location.href)
+  url.searchParams.set(SHARE_PARAM, encoded)
+  return url.toString()
 }
 
 // ─── Playground tab (existing) ────────────────────────────────────────────────
@@ -353,11 +385,13 @@ function VariationCard({
   editingId,
   editingName,
   copiedId,
+  copiedLinkId,
   onStartEdit,
   onCommitEdit,
   onCancelEdit,
   onEditingNameChange,
   onCopy,
+  onCopyLink,
   onDelete,
   onUpdateNotes,
 }: {
@@ -365,11 +399,13 @@ function VariationCard({
   editingId: string | null
   editingName: string
   copiedId: string | null
+  copiedLinkId: string | null
   onStartEdit: (v: SavedVariation) => void
   onCommitEdit: (id: string) => void
   onCancelEdit: () => void
   onEditingNameChange: (name: string) => void
   onCopy: (id: string, text: string) => void
+  onCopyLink: (id: string, v: SavedVariation) => void
   onDelete: (id: string) => void
   onUpdateNotes: (id: string, notes: string) => void
 }) {
@@ -430,6 +466,18 @@ function VariationCard({
           title="Copiar prompt"
           style={{ padding:'2px 8px', borderRadius:5, border:'none', background:'rgba(124,58,237,0.2)', color:T.purpleL, cursor:'pointer', fontSize:9, fontWeight:700 }}>
           {copiedId === v.id ? '✓' : '📋'}
+        </button>
+        <button
+          onClick={() => onCopyLink(v.id, v)}
+          title="Copiar link compartilhável"
+          style={{
+            padding:'2px 8px', borderRadius:5, cursor:'pointer', fontSize:9, fontWeight:700,
+            border: copiedLinkId === v.id ? '1px solid rgba(52,211,153,0.5)' : `1px solid ${T.border}`,
+            background: copiedLinkId === v.id ? 'rgba(52,211,153,0.12)' : 'rgba(255,255,255,0.04)',
+            color: copiedLinkId === v.id ? '#34d399' : T.dim,
+            transition:'all 0.2s',
+          }}>
+          {copiedLinkId === v.id ? '✓ Link!' : '🔗'}
         </button>
         <button
           onClick={() => onStartEdit(v)}
@@ -519,6 +567,7 @@ function SavedVariationsPanel({
   const [editingId, setEditingId] = useState<string | null>(null)
   const [editingName, setEditingName] = useState('')
   const [copiedId, setCopiedId] = useState<string | null>(null)
+  const [copiedLinkId, setCopiedLinkId] = useState<string | null>(null)
   const [exported, setExported] = useState(false)
   const [importMsg, setImportMsg] = useState<{ ok: boolean; text: string } | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
@@ -614,6 +663,12 @@ function SavedVariationsPanel({
   const copy = (id: string, text: string) => {
     void navigator.clipboard.writeText(text)
     setCopiedId(id); setTimeout(() => setCopiedId(null), 1800)
+  }
+
+  const copyLink = (id: string, v: SavedVariation) => {
+    const url = buildShareUrl(v)
+    void navigator.clipboard.writeText(url)
+    setCopiedLinkId(id); setTimeout(() => setCopiedLinkId(null), 2000)
   }
 
   const startEdit = (v: SavedVariation) => { setEditingId(v.id); setEditingName(v.name) }
@@ -714,11 +769,13 @@ function SavedVariationsPanel({
               editingId={editingId}
               editingName={editingName}
               copiedId={copiedId}
+              copiedLinkId={copiedLinkId}
               onStartEdit={startEdit}
               onCommitEdit={commitEdit}
               onCancelEdit={() => setEditingId(null)}
               onEditingNameChange={setEditingName}
               onCopy={copy}
+              onCopyLink={copyLink}
               onDelete={onDelete}
               onUpdateNotes={onUpdateNotes}
             />
@@ -735,18 +792,41 @@ function AIEPlaywrightTab({
   projectCtx,
   isMock,
   projectName,
+  onVariationLinked,
 }: {
-  projectCtx:   ProjectContext
-  isMock:       boolean
-  projectName?: string
+  projectCtx:        ProjectContext
+  isMock:            boolean
+  projectName?:      string
+  onVariationLinked?: () => void
 }) {
   const [translator, setTranslator] = useState<TranslatorId>('flux-1.1')
   const [detail, setDetail]         = useState<DetailLevel>('detalhado')
   const [savedFlash, setSavedFlash] = useState(false)
   const [refreshKey, setRefreshKey] = useState(0)
   const [refreshFlash, setRefreshFlash] = useState(false)
+  const [linkedVariationName, setLinkedVariationName] = useState<string | null>(null)
 
   const { variations, syncing, save, rename, remove, updateNotes, storageError, clearStorageError, importVariations } = useSavedVariations()
+
+  const handledRef = useRef(false)
+  useEffect(() => {
+    if (handledRef.current) return
+    handledRef.current = true
+    const params = new URLSearchParams(window.location.search)
+    const encoded = params.get(SHARE_PARAM)
+    if (!encoded) return
+    const v = decodeVariation(encoded)
+    if (v) {
+      importVariations([v])
+      setLinkedVariationName(v.name)
+      onVariationLinked?.()
+      // Clean the URL without reloading
+      params.delete(SHARE_PARAM)
+      const newSearch = params.toString()
+      const newUrl = window.location.pathname + (newSearch ? `?${newSearch}` : '') + window.location.hash
+      window.history.replaceState(null, '', newUrl)
+    }
+  }, [importVariations, onVariationLinked])
 
   // refreshKey in deps lets the "Refresh scores" button force a re-run even when
   // projectCtx reference hasn't changed (e.g. after an in-session edit)
@@ -924,6 +1004,29 @@ function AIEPlaywrightTab({
         </div>
       </div>
 
+      {/* Linked variation banner */}
+      {linkedVariationName && (
+        <div style={{
+          margin:'8px 20px 0', padding:'10px 14px', borderRadius:8,
+          background:'rgba(52,211,153,0.08)', border:'1px solid rgba(52,211,153,0.35)',
+          display:'flex', alignItems:'center', gap:10, flexShrink:0,
+        }}>
+          <span style={{ fontSize:15, flexShrink:0 }}>🔗</span>
+          <p style={{ margin:0, fontSize:11, color:'#34d399', lineHeight:1.6, flex:1 }}>
+            Variação <strong>"{linkedVariationName}"</strong> importada via link e adicionada às variações salvas.
+          </p>
+          <button
+            onClick={() => setLinkedVariationName(null)}
+            title="Fechar"
+            style={{
+              flexShrink:0, padding:'2px 8px', borderRadius:5, border:'1px solid rgba(52,211,153,0.35)',
+              background:'transparent', color:'#34d399', cursor:'pointer', fontSize:11, fontWeight:700,
+            }}>
+            ✕
+          </button>
+        </div>
+      )}
+
       {/* Storage quota warning banner */}
       {storageError && (
         <div style={{
@@ -959,6 +1062,14 @@ function AIEPlaywrightTab({
 // ─── Main module ─────────────────────────────────────────────────────────────
 
 type TabId = 'playwright' | 'playground'
+
+function detectShareParam(): boolean {
+  try {
+    return new URLSearchParams(window.location.search).has(SHARE_PARAM)
+  } catch {
+    return false
+  }
+}
 
 export function PromptPlaygroundModule() {
   const [tab, setTab] = useState<TabId>('playwright')
@@ -1009,6 +1120,7 @@ export function PromptPlaygroundModule() {
             projectCtx={resolvedProjectCtx}
             isMock={!projectContext}
             projectName={activeProject?.name}
+            onVariationLinked={() => setTab('playwright')}
           />
         ) : (
           <PlaygroundTab />
