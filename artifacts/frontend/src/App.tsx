@@ -83,6 +83,7 @@ const EcosystemHub       = lazy(() => import("@/pages/ecosystem-hub/EcosystemHub
 const CompanyDetail      = lazy(() => import("@/pages/ecosystem-hub/CompanyDetailPage").then(m => ({ default: m.CompanyDetailPage })));
 const VCNHub             = lazy(() => import("@/pages/vcn/VCNPage").then(m => ({ default: m.VCNPage })));
 const VCNCompanyDetail   = lazy(() => import("@/pages/vcn/VCNCompanyDetailPage").then(m => ({ default: m.VCNCompanyDetailPage })));
+const POEHub             = lazy(() => import("@/pages/poe/POEPage").then(m => ({ default: m.POEPage })));
 
 // Arch
 const ArchDashboard      = lazy(() => import("@/pages/arch/ArchDashboard"));
@@ -692,6 +693,9 @@ function AppRoutes() {
         </Route>
         <Route path="/vendor-certified-network/:id">
           {() => <ProtectedRoute component={VCNCompanyDetail} />}
+        </Route>
+        <Route path="/poe">
+          {() => <ProtectedRoute component={POEHub} />}
         </Route>
         <Route path="/invite/:token">
           <AcceptInvite />
