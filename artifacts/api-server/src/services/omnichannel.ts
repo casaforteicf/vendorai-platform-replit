@@ -407,50 +407,61 @@ export async function sendOutgoingMessage(
         )
         .limit(1);
 
-      if (existingConv?.lastInboundAt) {
-        const msSinceInbound = Date.now() - new Date(existingConv.lastInboundAt).getTime();
-        const windowMs = 24 * 60 * 60 * 1000;
+      // "Inside 24h" only when lastInboundAt is set AND recent.
+      // Null / missing lastInboundAt (imported leads, legacy convs, no prior inbound)
+      // is treated as outside the window — template required, free-text blocked.
+      const windowMs = 24 * 60 * 60 * 1000;
+      const lastInboundAt = existingConv?.lastInboundAt;
+      const msSinceInbound = lastInboundAt
+        ? Date.now() - new Date(lastInboundAt).getTime()
+        : Infinity;
+      const withinWindow = msSinceInbound <= windowMs;
 
-        if (msSinceInbound > windowMs) {
-          const templateId = config.whatsappTemplateId;
-          if (templateId) {
-            const normalizedPhone = lead.telefone.replace(/\D/g, "").replace(/^0+/, "");
-            const tplUrl = `https://graph.facebook.com/v20.0/${config.metaPhoneNumberId}/messages`;
-            const tplRes = await fetch(tplUrl, {
-              method: "POST",
-              headers: {
-                "Content-Type": "application/json",
-                Authorization: `Bearer ${config.metaAccessToken}`,
-              },
-              body: JSON.stringify({
-                messaging_product: "whatsapp",
-                to: normalizedPhone,
-                type: "template",
-                template: { name: templateId, language: { code: "pt_BR" } },
-              }),
-            });
-            const tplBody = await tplRes.json().catch(() => ({})) as Record<string, unknown>;
-            if (!tplRes.ok) {
-              log.error({ tplBody, phone: lead.telefone }, "omnichannel: meta template send failed (24h window)");
-              throw new Error(`Meta WhatsApp Template error ${tplRes.status}: ${JSON.stringify(tplBody)}`);
-            }
-            log.info({ phone: lead.telefone, templateId }, "omnichannel: whatsapp template sent (24h window enforced)");
-            skipTextSend = true;
-          } else {
-            log.warn(
-              { tenantId, leadId, hoursElapsed: Math.floor(msSinceInbound / 3600000) },
-              "omnichannel: 24h Meta window expired — no template configured, aborting send"
-            );
-            // In-app notification so the team knows why the message was not delivered
-            await db.insert(notificationsTable).values({
-              tenantId,
-              title: "⚠️ Mensagem WhatsApp não enviada — janela 24h expirada",
-              message: `Lead "${lead.nome ?? leadId}" está fora da janela de 24h do Meta. Configure um template de reabertura em Configurações > Integrações para reabrir o contato.`,
-              type: "warning",
-              category: "whatsapp_24h_window",
-            }).catch(() => undefined);
-            throw new WhatsApp24hWindowError(leadId);
+      if (!withinWindow) {
+        const templateId = config.whatsappTemplateId;
+        if (templateId) {
+          const normalizedPhone = lead.telefone.replace(/\D/g, "").replace(/^0+/, "");
+          const tplUrl = `https://graph.facebook.com/v20.0/${config.metaPhoneNumberId}/messages`;
+          const tplRes = await fetch(tplUrl, {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              Authorization: `Bearer ${config.metaAccessToken}`,
+            },
+            body: JSON.stringify({
+              messaging_product: "whatsapp",
+              to: normalizedPhone,
+              type: "template",
+              template: { name: templateId, language: { code: "pt_BR" } },
+            }),
+          });
+          const tplBody = await tplRes.json().catch(() => ({})) as Record<string, unknown>;
+          if (!tplRes.ok) {
+            log.error({ tplBody, phone: lead.telefone }, "omnichannel: meta template send failed (24h window)");
+            throw new Error(`Meta WhatsApp Template error ${tplRes.status}: ${JSON.stringify(tplBody)}`);
           }
+          log.info(
+            { phone: lead.telefone, templateId, noLastInbound: !lastInboundAt },
+            "omnichannel: whatsapp template sent (24h window enforced)"
+          );
+          skipTextSend = true;
+        } else {
+          const hoursElapsed = isFinite(msSinceInbound)
+            ? Math.floor(msSinceInbound / 3600000)
+            : null;
+          log.warn(
+            { tenantId, leadId, hoursElapsed, noLastInbound: !lastInboundAt },
+            "omnichannel: 24h Meta window — no template configured, aborting send"
+          );
+          // In-app notification so the team knows why the message was not delivered
+          await db.insert(notificationsTable).values({
+            tenantId,
+            title: "⚠️ Mensagem WhatsApp não enviada — janela 24h expirada",
+            message: `Lead "${lead.nome ?? leadId}" está fora da janela de 24h do Meta. Configure um template de reabertura em Configurações > Integrações para reabrir o contato.`,
+            type: "warning",
+            category: "whatsapp_24h_window",
+          }).catch(() => undefined);
+          throw new WhatsApp24hWindowError(leadId);
         }
       }
     }
