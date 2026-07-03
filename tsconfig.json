@@ -17,6 +17,9 @@
     },
     {
       "path": "./lib/knowledge-graph"
+    },
+    {
+      "path": "./lib/vendor-brain"
     }
   ]
 }

@@ -73,6 +73,9 @@ const RelatorioDores     = lazy(() => import("@/pages/RelatorioDores"));
 // VKG
 const VKGDemo            = lazy(() => import("@/modules/vkg/VKGDemoView").then(m => ({ default: m.VKGDemoView })));
 
+// Vendor Brain
+const VendorBrainDash    = lazy(() => import("@/modules/vendor-brain/VendorBrainDashboard").then(m => ({ default: m.VendorBrainDashboard })));
+
 // Arch
 const ArchDashboard      = lazy(() => import("@/pages/arch/ArchDashboard"));
 const ArchProjetos       = lazy(() => import("@/pages/arch/Projetos"));
@@ -660,6 +663,9 @@ function AppRoutes() {
         </Route>
         <Route path="/vkg">
           {() => <ProtectedRoute component={VKGDemo} />}
+        </Route>
+        <Route path="/brain">
+          {() => <ProtectedRoute component={VendorBrainDash} />}
         </Route>
         <Route path="/invite/:token">
           <AcceptInvite />

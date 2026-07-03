@@ -389,7 +389,7 @@ function AlertsStrip({ health }: { health: ProjectHealthResult }) {
 
 export function ArqCopilot({ collapsed, onToggle }: { collapsed: boolean; onToggle: () => void }) {
   const workspaceCtx = useContext(WorkspaceContext)
-  const ctx = workspaceCtx?.projectContext ?? MOCK_PROJECT_CONTEXT
+  const ctx = workspaceCtx?.projectCtx ?? MOCK_PROJECT_CONTEXT
 
   const [messages,   setMessages]   = useState<CopilotMessage[]>(INITIAL_MESSAGES)
   const [decisions,  setDecisions]  = useState<Decision[]>(MOCK_DECISIONS)

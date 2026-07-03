@@ -450,6 +450,9 @@ importers:
       '@workspace/api-client-react':
         specifier: workspace:*
         version: link:../../lib/api-client-react
+      '@workspace/vendor-brain':
+        specifier: workspace:*
+        version: link:../../lib/vendor-brain
       class-variance-authority:
         specifier: 'catalog:'
         version: 0.7.1
@@ -1135,6 +1138,16 @@ importers:
       '@types/react':
         specifier: 'catalog:'
         version: 19.2.14
+
+  lib/vendor-brain:
+    dependencies:
+      zod:
+        specifier: 'catalog:'
+        version: 3.25.76
+    devDependencies:
+      '@types/node':
+        specifier: 'catalog:'
+        version: 25.6.2
 
   scripts:
     dependencies:

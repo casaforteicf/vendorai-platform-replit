@@ -1,0 +1,550 @@
+FASE 20 — VENDOR PARTNER NETWORK (VPN)
+
+IMPORTANTE
+
+Esta fase cria a Rede Inteligente de Parceiros da Vendor.ai.
+
+Ela será utilizada por TODAS as Verticais da plataforma.
+
+Não é exclusiva da Vertical Projetos Arquitetura.
+
+Todo parceiro será uma entidade do Core da Vendor.ai.
+
+Não remover funcionalidades existentes.
+
+Não alterar CRM.
+
+Não alterar Workspaces.
+
+Criar um novo Hub compartilhado.
+
+========================================================
+
+OBJETIVO
+
+Criar uma rede inteligente de parceiros comerciais totalmente integrada à Vendor.ai.
+
+Cada parceiro poderá possuir:
+
+Perfil
+
+Catálogo
+
+Produtos
+
+Serviços
+
+Agentes IA
+
+Representantes
+
+Regiões
+
+Preços
+
+Estoque
+
+Condições comerciais
+
+Campanhas
+
+Analytics
+
+Workflows
+
+========================================================
+
+CRIAR HUB
+
+Core
+
+↓
+
+Partner Hub
+
+Estrutura
+
+partner-hub
+
+├── partner-center
+├── manufacturer-center
+├── distributor-center
+├── reseller-center
+├── representative-center
+├── installer-center
+├── service-center
+├── ai-partner
+├── partner-marketplace
+├── pricing
+├── inventory
+├── quotations
+├── ordering
+├── analytics
+├── contracts
+├── certifications
+
+========================================================
+
+TIPOS DE PARCEIROS
+
+Criar enum
+
+MANUFACTURER
+
+DISTRIBUTOR
+
+RESELLER
+
+REPRESENTATIVE
+
+INSTALLER
+
+SERVICE_PROVIDER
+
+ARCHITECT
+
+DESIGNER
+
+CONSTRUCTOR
+
+SUPPLIER
+
+LANDSCAPING
+
+LIGHTING
+
+MARBLE
+
+CABINETRY
+
+AUTOMATION
+
+CUSTOM
+
+========================================================
+
+CADASTRO
+
+Cada parceiro possuirá
+
+id
+
+tipo
+
+empresa
+
+marca
+
+logo
+
+descrição
+
+site
+
+telefones
+
+emails
+
+endereços
+
+regiões
+
+contatos
+
+representantes
+
+segmentos
+
+especialidades
+
+horários
+
+certificações
+
+idiomas
+
+========================================================
+
+AI PARTNER
+
+Cada parceiro terá seu próprio Agente IA.
+
+O agente poderá responder utilizando apenas o contexto daquele parceiro.
+
+Exemplo
+
+Fornecedor Portobello
+
+↓
+
+Conhece
+
+Coleções
+
+Produtos
+
+Paginação
+
+Especificações
+
+Garantias
+
+Representantes
+
+Campanhas
+
+Estoque
+
+Lead Time
+
+Manual técnico
+
+Vídeos
+
+FAQ
+
+========================================================
+
+AI KNOWLEDGE
+
+Cada parceiro poderá enviar
+
+PDF
+
+Catálogo
+
+Manual
+
+Vídeo
+
+PowerPoint
+
+Planilhas
+
+Site
+
+FAQ
+
+Normas
+
+Especificações
+
+Tudo será indexado no Knowledge Graph.
+
+========================================================
+
+AI CHAT
+
+Cada parceiro terá um Chat próprio.
+
+Exemplo
+
+Pergunta
+
+"Qual porcelanato possui maior coeficiente de atrito?"
+
+↓
+
+Agente Portobello responde.
+
+========================================================
+
+ORÇAMENTOS
+
+Criar módulo
+
+Quotation Center
+
+Solicitação
+
+↓
+
+Parceiro
+
+↓
+
+Resposta
+
+↓
+
+Comparação
+
+↓
+
+Aprovação
+
+========================================================
+
+ESTOQUE
+
+Preparar estrutura
+
+Produto
+
+↓
+
+Quantidade
+
+↓
+
+Região
+
+↓
+
+Disponibilidade
+
+↓
+
+Lead Time
+
+↓
+
+Entrega
+
+========================================================
+
+PEDIDOS
+
+Preparar
+
+Pedido
+
+↓
+
+Fornecedor
+
+↓
+
+Status
+
+↓
+
+Nota
+
+↓
+
+Entrega
+
+↓
+
+Histórico
+
+========================================================
+
+REPRESENTANTES
+
+Cada parceiro pode cadastrar
+
+Representantes
+
+Regiões
+
+Carteiras
+
+Clientes
+
+Arquitetos
+
+Construtoras
+
+========================================================
+
+ANALYTICS
+
+Mostrar
+
+Projetos utilizando
+
+Produtos
+
+Conversões
+
+Leads
+
+Orçamentos
+
+Pedidos
+
+Representantes
+
+Regiões
+
+Produtos mais especificados
+
+========================================================
+
+MARKETPLACE
+
+Todos os parceiros poderão publicar
+
+Produtos
+
+Componentes
+
+Materiais
+
+Bibliotecas
+
+Templates
+
+Projetos
+
+Assets
+
+PBR
+
+Texturas
+
+Render Packs
+
+DNA Packs
+
+========================================================
+
+CERTIFICAÇÃO
+
+Criar selo
+
+Vendor Verified
+
+Vendor Official
+
+Vendor Premium
+
+Vendor Enterprise
+
+========================================================
+
+INTEGRAÇÃO COM CRM
+
+Cada parceiro possui
+
+Lead
+
+Empresa
+
+Deals
+
+Atividades
+
+Tarefas
+
+Campanhas
+
+Tickets
+
+========================================================
+
+INTEGRAÇÃO COM WORKSPACES
+
+Projetos Arquitetura
+
+↓
+
+Componentes
+
+↓
+
+Fornecedor
+
+↓
+
+Cotação
+
+↓
+
+Pedido
+
+↓
+
+Entrega
+
+↓
+
+Analytics
+
+========================================================
+
+AI WORKFLOWS
+
+Exemplo
+
+Projeto aprovado
+
+↓
+
+Identificar componentes
+
+↓
+
+Consultar parceiros
+
+↓
+
+Solicitar orçamento
+
+↓
+
+Comparar preços
+
+↓
+
+Escolher fornecedor
+
+↓
+
+Criar pedido
+
+↓
+
+Acompanhar entrega
+
+Tudo automatizado.
+
+========================================================
+
+PAINEL DO PARCEIRO
+
+Cada parceiro terá um Dashboard.
+
+Mostrar
+
+Leads
+
+Projetos
+
+Produtos
+
+Especificações
+
+Representantes
+
+Analytics
+
+Conversões
+
+Pedidos
+
+========================================================
+
+SEGURANÇA
+
+Cada parceiro acessa apenas seus próprios dados.
+
+Multi-tenant.
+
+Permissões.
+
+Papéis.
+
+========================================================
+
+OBJETIVO FINAL
+
+Ao final desta fase a Vendor.ai deverá possuir uma rede inteligente de parceiros integrada ao CRM, Workflows, Knowledge Graph, Analytics e todas as Verticais.
+
+Cada parceiro poderá operar dentro da plataforma com seu próprio Agente IA, catálogo, analytics e relacionamento comercial.
+
+Nenhuma integração externa obrigatória nesta fase.
+
+Toda arquitetura deve permanecer desacoplada e preparada para APIs futuras.
