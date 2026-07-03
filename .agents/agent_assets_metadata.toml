@@ -47,3 +47,15 @@ id = "EnlH1SyHrErxuz9j504Ad"
 uri = "file://diagnostico-tecnico-vendorai.md"
 type = "text"
 title = "Diagnóstico Técnico — Plataforma VendorAI"
+
+[[outputs]]
+id = "MaZHTFGcUF6HUBWWacCCf"
+uri = "file://docs/architecture-blueprint.md"
+type = "text"
+title = "Vendor.ai — Architecture Blueprint v1.0"
+
+[[outputs]]
+id = "4GeJTnMeL-01P8pNtoQVd"
+uri = "file://docs/tech-debt-report.md"
+type = "text"
+title = "Vendor.ai — Relatório Técnico (P0–P3)"
