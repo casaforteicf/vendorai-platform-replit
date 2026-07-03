@@ -1,539 +1,709 @@
 import { useState, useRef, useCallback } from 'react'
-import type { Region, TechReading, RiskItem, ArqdorPrompt, RegionState } from './arqdor-types'
+import type { Region, TechReading, RiskItem, ArqdorPrompt, RegionState, FonteVerdade } from './arqdor-types'
 
-// ─── Constants ────────────────────────────────────────────────────────────────
+// ─── Theme ────────────────────────────────────────────────────────────────────
+
+const T = {
+  bg:      '#0d0b1e',
+  card:    'rgba(255,255,255,0.04)',
+  cardHov: 'rgba(255,255,255,0.07)',
+  border:  'rgba(255,255,255,0.08)',
+  purple:  '#7c3aed',
+  purpleL: '#a78bfa',
+  text:    'rgba(255,255,255,0.88)',
+  dim:     'rgba(255,255,255,0.42)',
+  dimL:    'rgba(255,255,255,0.22)',
+} as const
+
+// ─── Step definitions ─────────────────────────────────────────────────────────
 
 const STEPS = [
-  { n: 1, label: 'Upload'       },
-  { n: 2, label: 'Leitura'      },
-  { n: 3, label: 'Regiões'      },
-  { n: 4, label: 'Materiais'    },
-  { n: 5, label: 'Aprovação'    },
-  { n: 6, label: 'Riscos'       },
-  { n: 7, label: 'Prompt'       },
+  { n:1, label:'Upload',    done:'Upload feito'           },
+  { n:2, label:'Leitura',   done:'Leitura concluída'      },
+  { n:3, label:'Regiões',   done:'Regiões configuradas'   },
+  { n:4, label:'Materiais', done:'Materiais definidos'    },
+  { n:5, label:'Aprovação', done:'Aprovação concluída'    },
+  { n:6, label:'Riscos',    done:'Riscos avaliados'       },
+  { n:7, label:'Prompt',    done:'Prompt gerado'          },
 ]
 
-const STATE_META: Record<RegionState, { color: string; bg: string; border: string; desc: string }> = {
-  LOCK:      { color: '#60a5fa', bg: 'rgba(96,165,250,0.12)',  border: 'rgba(96,165,250,0.4)',  desc: 'Preservar exatamente' },
-  MATERIAL:  { color: '#a78bfa', bg: 'rgba(167,139,250,0.12)', border: 'rgba(167,139,250,0.4)', desc: 'Alterar material / cor / textura' },
-  REFERENCE: { color: '#34d399', bg: 'rgba(52,211,153,0.12)',  border: 'rgba(52,211,153,0.4)',  desc: 'Usar imagem de referência' },
-  MODIFY:    { color: '#fbbf24', bg: 'rgba(251,191,36,0.12)',  border: 'rgba(251,191,36,0.4)',  desc: 'Pequenos ajustes' },
-  REPLACE:   { color: '#f87171', bg: 'rgba(248,113,113,0.12)', border: 'rgba(248,113,113,0.4)', desc: 'Substituir elemento' },
-  ADD:       { color: '#4ade80', bg: 'rgba(74,222,128,0.12)',  border: 'rgba(74,222,128,0.4)',  desc: 'Adicionar elemento' },
-  REMOVE:    { color: '#fb923c', bg: 'rgba(251,146,60,0.12)',  border: 'rgba(251,146,60,0.4)',  desc: 'Remover elemento' },
-  AUTO:      { color: '#94a3b8', bg: 'rgba(148,163,184,0.12)', border: 'rgba(148,163,184,0.4)', desc: 'Interpretação controlada pela IA' },
+// ─── State colours (corrected) ────────────────────────────────────────────────
+
+const STATE_META: Record<RegionState, { color:string; bg:string; border:string; desc:string; icon:string }> = {
+  LOCK:      { color:'#94a3b8', bg:'rgba(148,163,184,0.12)', border:'rgba(148,163,184,0.35)', desc:'Preservar exatamente',              icon:'🔒' },
+  MATERIAL:  { color:'#60a5fa', bg:'rgba(96,165,250,0.12)',  border:'rgba(96,165,250,0.35)',  desc:'Alterar material / cor / textura',  icon:'🎨' },
+  REFERENCE: { color:'#a78bfa', bg:'rgba(167,139,250,0.12)', border:'rgba(167,139,250,0.35)', desc:'Usar imagem de referência',         icon:'🖼️' },
+  MODIFY:    { color:'#fbbf24', bg:'rgba(251,191,36,0.12)',  border:'rgba(251,191,36,0.35)',  desc:'Pequenos ajustes',                  icon:'✏️' },
+  REPLACE:   { color:'#fb923c', bg:'rgba(251,146,60,0.12)',  border:'rgba(251,146,60,0.35)',  desc:'Substituir elemento completamente', icon:'🔄' },
+  ADD:       { color:'#4ade80', bg:'rgba(74,222,128,0.12)',  border:'rgba(74,222,128,0.35)',  desc:'Adicionar novo elemento',           icon:'➕' },
+  REMOVE:    { color:'#f87171', bg:'rgba(248,113,113,0.12)', border:'rgba(248,113,113,0.35)', desc:'Remover elemento',                  icon:'🗑️' },
+  AUTO:      { color:'#64748b', bg:'rgba(100,116,139,0.12)', border:'rgba(100,116,139,0.35)', desc:'Interpretação controlada pela IA', icon:'🤖' },
 }
 
 const ALL_STATES: RegionState[] = ['LOCK','MATERIAL','REFERENCE','MODIFY','REPLACE','ADD','REMOVE','AUTO']
 
-const RISK_META: Record<string, { color: string; bg: string }> = {
-  BAIXO:   { color: '#4ade80', bg: 'rgba(74,222,128,0.12)'  },
-  MÉDIO:   { color: '#fbbf24', bg: 'rgba(251,191,36,0.12)'  },
-  ALTO:    { color: '#f87171', bg: 'rgba(248,113,113,0.12)' },
-  CRÍTICO: { color: '#ef4444', bg: 'rgba(239,68,68,0.18)'   },
+// ─── Fonte da Verdade ─────────────────────────────────────────────────────────
+
+const FONTE_META: Record<FonteVerdade, { label:string; color:string; priority:number; desc:string }> = {
+  MEMORIAL:           { label:'Memorial',        color:'#a78bfa', priority:1, desc:'Especificação técnica do projeto' },
+  MATERIAL_REFERENCE: { label:'Ref. de Imagem',  color:'#60a5fa', priority:2, desc:'Imagem de referência do material' },
+  USER_INPUT:         { label:'Nome Técnico',    color:'#34d399', priority:3, desc:'Nome informado pelo usuário' },
+  MATERIAL_LIBRARY:   { label:'Biblioteca',      color:'#fbbf24', priority:4, desc:'Material da biblioteca interna' },
+  AI_DETECTION:       { label:'Leitura Visual',  color:'#fb923c', priority:5, desc:'Detectado pela IA na imagem' },
+  ORIGINAL_IMAGE:     { label:'Imagem Original', color:'#94a3b8', priority:6, desc:'Preservado da imagem original' },
 }
 
-const SOURCE_LABEL: Record<RegionState, string> = {
-  LOCK:      'Original',
-  MATERIAL:  'IA + Seleção',
-  REFERENCE: 'Referência',
-  MODIFY:    'IA + Original',
-  REPLACE:   'IA Gerada',
-  ADD:       'IA Gerada',
-  REMOVE:    'IA Inpainting',
-  AUTO:      'IA Autônoma',
+const ALL_FONTES: FonteVerdade[] = ['MEMORIAL','MATERIAL_REFERENCE','USER_INPUT','MATERIAL_LIBRARY','AI_DETECTION','ORIGINAL_IMAGE']
+
+// ─── Risk ────────────────────────────────────────────────────────────────────
+
+const RISK_META: Record<string, { color:string; bg:string; border:string }> = {
+  BAIXO:   { color:'#4ade80', bg:'rgba(74,222,128,0.10)',  border:'rgba(74,222,128,0.3)'  },
+  MÉDIO:   { color:'#fbbf24', bg:'rgba(251,191,36,0.10)',  border:'rgba(251,191,36,0.3)'  },
+  ALTO:    { color:'#fb923c', bg:'rgba(251,146,60,0.10)',  border:'rgba(251,146,60,0.3)'  },
+  CRÍTICO: { color:'#f87171', bg:'rgba(248,113,113,0.10)', border:'rgba(248,113,113,0.3)' },
 }
 
-// ─── Mock data generators ─────────────────────────────────────────────────────
+// ─── Mock data ────────────────────────────────────────────────────────────────
 
 const MOCK_TECH: TechReading = {
-  ambiente: 'Sala de Estar',
-  estilo: 'Contemporâneo',
-  iluminacao: 'Natural + Artificial (mista)',
-  complexidade: 'Média',
-  angulo: 'Perspectiva 45°',
-  dimensaoEstimada: '28 m²',
-  elementos: [
-    { nome: 'Parede Principal', tipo: 'Estrutural',   confianca: 97, observacao: 'Superfície lisa, sem textura aparente' },
-    { nome: 'Parede Lateral',   tipo: 'Estrutural',   confianca: 91, observacao: 'Parede de apoio com pintura branca' },
-    { nome: 'Piso',             tipo: 'Revestimento', confianca: 95, observacao: 'Porcelanato bege 90×90 cm' },
-    { nome: 'Teto',             tipo: 'Estrutural',   confianca: 88, observacao: 'Liso com sanca embutida' },
-    { nome: 'Sofá',             tipo: 'Mobiliário',   confianca: 82, observacao: 'Sofá 3 lugares, tecido cinza médio' },
-    { nome: 'Mesa de Centro',   tipo: 'Mobiliário',   confianca: 78, observacao: 'Mesa baixa retangular, madeira escura' },
-    { nome: 'Janela',           tipo: 'Abertura',     confianca: 94, observacao: 'Janela de correr com persiana horizontal' },
-    { nome: 'Luminária',        tipo: 'Iluminação',   confianca: 70, observacao: 'Ponto de luz suspenso, pendente simples' },
+  ambiente:'Sala de Estar', estilo:'Contemporâneo',
+  iluminacao:'Natural + Artificial (mista)', complexidade:'Média',
+  angulo:'Perspectiva 45°', dimensaoEstimada:'28 m²',
+  elementos:[
+    { nome:'Parede Principal', tipo:'Estrutural',   confianca:97, observacao:'Superfície lisa, sem textura aparente',       materialDetectado:'Reboco liso branco'          },
+    { nome:'Parede Lateral',   tipo:'Estrutural',   confianca:91, observacao:'Parede de apoio com pintura branca',          materialDetectado:'Pintura branca fosca'         },
+    { nome:'Piso',             tipo:'Revestimento', confianca:95, observacao:'Porcelanato bege 90×90 cm',                  materialDetectado:'Porcelanato bege'             },
+    { nome:'Teto',             tipo:'Estrutural',   confianca:88, observacao:'Liso com sanca embutida',                    materialDetectado:'Gesso liso branco'            },
+    { nome:'Sofá',             tipo:'Mobiliário',   confianca:82, observacao:'Sofá 3 lugares, tecido cinza médio',         materialDetectado:'Tecido cinza'                 },
+    { nome:'Mesa de Centro',   tipo:'Mobiliário',   confianca:78, observacao:'Mesa baixa retangular, madeira escura',      materialDetectado:'Madeira escura'               },
+    { nome:'Janela',           tipo:'Abertura',     confianca:94, observacao:'Janela de correr com persiana horizontal',   materialDetectado:'Alumínio + vidro'             },
+    { nome:'Luminária',        tipo:'Iluminação',   confianca:70, observacao:'Ponto de luz suspenso, pendente simples',    materialDetectado:'Metal fosco'                  },
   ],
 }
 
 const MOCK_REGIONS: Region[] = [
-  { id:'r1', name:'Parede Principal', element:'Estrutural',   state:'MATERIAL', confidence:97, notes:'', materialColor:'#E8E0D5', materialName:'Reboco texturizado' },
-  { id:'r2', name:'Parede Lateral',   element:'Estrutural',   state:'LOCK',     confidence:91, notes:'' },
-  { id:'r3', name:'Piso',             element:'Revestimento', state:'MATERIAL', confidence:95, notes:'', materialColor:'#C8A87A', materialName:'Carvalho claro' },
-  { id:'r4', name:'Teto',             element:'Estrutural',   state:'LOCK',     confidence:88, notes:'' },
-  { id:'r5', name:'Sofá',             element:'Mobiliário',   state:'REPLACE',  confidence:82, notes:'Substituir por sofá em veludo verde musgo' },
-  { id:'r6', name:'Mesa de Centro',   element:'Mobiliário',   state:'AUTO',     confidence:78, notes:'' },
-  { id:'r7', name:'Janela',           element:'Abertura',     state:'LOCK',     confidence:94, notes:'' },
-  { id:'r8', name:'Luminária',        element:'Iluminação',   state:'MODIFY',   confidence:70, notes:'Ajustar para pendente dourado' },
+  { id:'r1', name:'Parede Principal', element:'Estrutural',   state:'MATERIAL', confidence:97, notes:'',
+    fonteVerdade:'USER_INPUT',         materialDetectado:'Reboco liso branco',   materialConfirmado:'Reboco texturizado',
+    materialColor:'#E8E0D5', materialName:'Reboco texturizado', aprovado:false },
+  { id:'r2', name:'Parede Lateral',   element:'Estrutural',   state:'LOCK',     confidence:91, notes:'',
+    fonteVerdade:'ORIGINAL_IMAGE',     materialDetectado:'Pintura branca fosca', materialConfirmado:'',
+    aprovado:false },
+  { id:'r3', name:'Piso',             element:'Revestimento', state:'MATERIAL', confidence:95, notes:'',
+    fonteVerdade:'MATERIAL_LIBRARY',   materialDetectado:'Porcelanato bege',     materialConfirmado:'Carvalho claro',
+    materialColor:'#C8A87A', materialName:'Carvalho claro', aprovado:false },
+  { id:'r4', name:'Teto',             element:'Estrutural',   state:'LOCK',     confidence:88, notes:'',
+    fonteVerdade:'ORIGINAL_IMAGE',     materialDetectado:'Gesso liso branco',    materialConfirmado:'',
+    aprovado:false },
+  { id:'r5', name:'Sofá',             element:'Mobiliário',   state:'REPLACE',  confidence:82,
+    notes:'Substituir por sofá em veludo verde musgo',
+    fonteVerdade:'USER_INPUT',         materialDetectado:'Tecido cinza',         materialConfirmado:'Veludo verde musgo',
+    aprovado:false },
+  { id:'r6', name:'Mesa de Centro',   element:'Mobiliário',   state:'AUTO',     confidence:78, notes:'',
+    fonteVerdade:'AI_DETECTION',       materialDetectado:'Madeira escura',       materialConfirmado:'',
+    aprovado:false },
+  { id:'r7', name:'Janela',           element:'Abertura',     state:'LOCK',     confidence:94, notes:'',
+    fonteVerdade:'ORIGINAL_IMAGE',     materialDetectado:'Alumínio + vidro',     materialConfirmado:'',
+    aprovado:false },
+  { id:'r8', name:'Luminária',        element:'Iluminação',   state:'MODIFY',   confidence:70,
+    notes:'Ajustar para pendente dourado',
+    fonteVerdade:'USER_INPUT',         materialDetectado:'Metal fosco',          materialConfirmado:'Metal dourado escovado',
+    aprovado:false },
 ]
 
 const MOCK_RISKS: RiskItem[] = [
-  { regionId:'r5', regionName:'Sofá',           risco:'REPLACE em elemento com confiança 82% — risco de distorção da geometria da sala',       severidade:'ALTO',  recomendacao:'Forneça imagem de referência do novo sofá para resultado mais fiel' },
-  { regionId:'r6', regionName:'Mesa de Centro', risco:'Estado AUTO sem referência — IA pode ignorar ou reinterpretar o elemento livremente',    severidade:'MÉDIO', recomendacao:'Defina como LOCK ou MATERIAL para maior controle sobre o resultado' },
-  { regionId:'r8', regionName:'Luminária',      risco:'Modificação de iluminação artificial pode afetar temperatura de cor de toda a cena',     severidade:'MÉDIO', recomendacao:'Adicione nota com tipo de luminária e temperatura (ex: 3000K dourado)' },
-  { regionId:'r1', regionName:'Parede Principal',risco:'Mudança de material sem referência de textura pode gerar resultado genérico',           severidade:'BAIXO', recomendacao:'Faça upload de referência de material para resultado mais preciso' },
+  { regionId:'r5', regionName:'Sofá',            risco:'REPLACE em elemento com confiança 82% — risco de distorção da geometria da sala',     severidade:'ALTO',  recomendacao:'Forneça imagem de referência do novo sofá para resultado mais fiel' },
+  { regionId:'r6', regionName:'Mesa de Centro',  risco:'Estado AUTO sem referência — IA pode ignorar ou reinterpretar o elemento livremente', severidade:'MÉDIO', recomendacao:'Defina como LOCK ou MATERIAL para maior controle sobre o resultado' },
+  { regionId:'r8', regionName:'Luminária',       risco:'Modificação de iluminação artificial pode afetar temperatura de cor de toda a cena',  severidade:'MÉDIO', recomendacao:'Adicione nota com tipo e temperatura da luminária (ex: 3000K)' },
+  { regionId:'r1', regionName:'Parede Principal',risco:'Mudança de material sem referência de textura pode gerar resultado genérico',          severidade:'BAIXO', recomendacao:'Faça upload de referência de material para resultado mais preciso' },
 ]
+
+// ─── Prompt builder ───────────────────────────────────────────────────────────
 
 function buildPrompt(tech: TechReading, regions: Region[]): ArqdorPrompt {
   const byState = (s: RegionState) => regions.filter(r => r.state === s)
   const names   = (rs: Region[])   => rs.map(r => r.name).join(', ')
-
-  const locked  = byState('LOCK')
-  const mats    = byState('MATERIAL')
-  const refs    = byState('REFERENCE')
-  const mods    = byState('MODIFY')
-  const repls   = byState('REPLACE')
-  const adds    = byState('ADD')
-  const rems    = byState('REMOVE')
+  const locked  = byState('LOCK'), mats = byState('MATERIAL'), refs = byState('REFERENCE')
+  const mods    = byState('MODIFY'), repls = byState('REPLACE'), adds = byState('ADD'), rems = byState('REMOVE')
 
   const core = `Photorealistic architectural interior render of a ${tech.ambiente.toLowerCase()}, ${tech.angulo.toLowerCase()} view. Professional architectural photography, 8K resolution, physically-based rendering, ultra-high fidelity to the original project geometry and spatial relationships.`
 
-  const projectParts: string[] = []
-  if (locked.length)  projectParts.push(`PRESERVE exactly without any modification: ${names(locked)}.`)
-  if (mats.length)    projectParts.push(`APPLY new materials/textures to: ${mats.map(r => `${r.name}${r.materialName ? ` → ${r.materialName}` : ''}`).join(', ')}.`)
-  if (refs.length)    projectParts.push(`USE uploaded reference images for: ${names(refs)}.`)
-  if (mods.length)    projectParts.push(`APPLY subtle refinements to: ${names(mods)}.`)
-  if (repls.length)   projectParts.push(`REPLACE completely: ${repls.map(r => `${r.name}${r.notes ? ` (${r.notes})` : ''}`).join(', ')}.`)
-  if (adds.length)    projectParts.push(`ADD new elements: ${names(adds)}.`)
-  if (rems.length)    projectParts.push(`REMOVE cleanly with realistic inpainting: ${names(rems)}.`)
+  const parts: string[] = []
+  if (locked.length) parts.push(`PRESERVE exactly without any modification: ${names(locked)}.`)
+  if (mats.length)   parts.push(`APPLY new materials/textures to: ${mats.map(r => `${r.name}${r.materialConfirmado ? ` → ${r.materialConfirmado}` : r.materialName ? ` → ${r.materialName}` : ''}`).join(', ')}.`)
+  if (refs.length)   parts.push(`USE uploaded reference images for: ${names(refs)}.`)
+  if (mods.length)   parts.push(`APPLY subtle refinements to: ${mods.map(r => `${r.name}${r.notes ? ` (${r.notes})` : ''}`).join(', ')}.`)
+  if (repls.length)  parts.push(`REPLACE completely: ${repls.map(r => `${r.name}${r.materialConfirmado ? ` → ${r.materialConfirmado}` : r.notes ? ` (${r.notes})` : ''}`).join(', ')}.`)
+  if (adds.length)   parts.push(`ADD new elements: ${names(adds)}.`)
+  if (rems.length)   parts.push(`REMOVE cleanly with realistic inpainting: ${names(rems)}.`)
 
   const style = `Lighting: ${tech.iluminacao}. Architectural style: ${tech.estilo}. Estimated area: ${tech.dimensaoEstimada}. Maintain structural proportions, spatial coherence and perspective accuracy. Shallow depth of field, warm color grading, professional interior design photography.`
 
   const negative = `Do not modify any LOCK-state regions. No distorted proportions. No unrealistic reflections or light leaks. No visible rendering artifacts or seams. No watermarks. No people or animals. No cartoon or illustration style. No low-resolution textures. No floating or disconnected objects. No structural deformations. No overexposed areas. No inconsistent shadow direction.`
 
-  return { core, project: projectParts.join('\n'), style, negative }
+  return { core, project: parts.join('\n'), style, negative }
 }
+
+// ─── Shared styles ────────────────────────────────────────────────────────────
+
+const card: React.CSSProperties  = { background:T.card, border:`1px solid ${T.border}`, borderRadius:12, padding:'16px 20px' }
+const label: React.CSSProperties = { fontSize:10, fontWeight:700, letterSpacing:'0.08em', color:T.dim, textTransform:'uppercase' as const, margin:0 }
+const btnP: React.CSSProperties  = { padding:'9px 22px', borderRadius:8, border:'none', background:T.purple, color:'#fff', fontSize:13, fontWeight:600, cursor:'pointer' }
+const btnS: React.CSSProperties  = { padding:'9px 22px', borderRadius:8, border:`1px solid rgba(255,255,255,0.15)`, background:'transparent', color:T.dim, fontSize:13, fontWeight:500, cursor:'pointer' }
+const inp: React.CSSProperties   = { background:'rgba(255,255,255,0.05)', border:`1px solid ${T.border}`, borderRadius:6, color:T.text, fontSize:12, padding:'7px 10px', outline:'none', width:'100%' }
 
 // ─── Sub-components ───────────────────────────────────────────────────────────
 
-function StateBadge({ state }: { state: RegionState }) {
+function StateBadge({ state, size = 'sm' }: { state: RegionState; size?: 'xs'|'sm' }) {
   const m = STATE_META[state]
+  const fs = size === 'xs' ? 9 : 10
   return (
     <span style={{
-      display:'inline-flex', alignItems:'center', padding:'2px 8px',
-      borderRadius:4, fontSize:10, fontWeight:700, letterSpacing:'0.06em',
-      color: m.color, background: m.bg, border:`1px solid ${m.border}`,
-    }}>{state}</span>
+      display:'inline-flex', alignItems:'center', gap:4,
+      padding: size === 'xs' ? '1px 6px' : '3px 8px',
+      borderRadius:4, fontSize:fs, fontWeight:700, letterSpacing:'0.05em',
+      color:m.color, background:m.bg, border:`1px solid ${m.border}`, whiteSpace:'nowrap',
+    }}>
+      {m.icon} {state}
+    </span>
   )
 }
 
 function ConfidenceBar({ value }: { value: number }) {
   const color = value >= 90 ? '#4ade80' : value >= 75 ? '#fbbf24' : '#f87171'
   return (
-    <div style={{ display:'flex', alignItems:'center', gap:6 }}>
-      <div style={{ flex:1, height:4, background:'rgba(255,255,255,0.1)', borderRadius:2 }}>
-        <div style={{ width:`${value}%`, height:'100%', background:color, borderRadius:2, transition:'width 0.3s' }} />
+    <div style={{ display:'flex', alignItems:'center', gap:6, minWidth:90 }}>
+      <div style={{ flex:1, height:3, background:'rgba(255,255,255,0.08)', borderRadius:2 }}>
+        <div style={{ width:`${value}%`, height:'100%', background:color, borderRadius:2 }} />
       </div>
-      <span style={{ fontSize:11, color, minWidth:28, textAlign:'right' }}>{value}%</span>
+      <span style={{ fontSize:11, color, minWidth:28, textAlign:'right', fontWeight:700 }}>{value}%</span>
     </div>
   )
 }
 
 function StateSelect({ value, onChange }: { value: RegionState; onChange: (s: RegionState) => void }) {
+  const m = STATE_META[value]
   return (
-    <select
-      value={value}
-      onChange={e => onChange(e.target.value as RegionState)}
-      style={{
-        background:'rgba(255,255,255,0.06)', border:`1px solid ${STATE_META[value].border}`,
-        borderRadius:5, color: STATE_META[value].color, fontSize:11, fontWeight:700,
-        padding:'4px 8px', outline:'none', cursor:'pointer', letterSpacing:'0.05em',
-      }}
-    >
+    <select value={value} onChange={e => onChange(e.target.value as RegionState)} style={{
+      background:'rgba(255,255,255,0.05)', border:`1.5px solid ${m.border}`,
+      borderRadius:6, color:m.color, fontSize:11, fontWeight:700, padding:'5px 8px',
+      outline:'none', cursor:'pointer',
+    }}>
       {ALL_STATES.map(s => (
-        <option key={s} value={s} style={{ background:'#1a1830', color: STATE_META[s].color }}>{s}</option>
+        <option key={s} value={s} style={{ background:'#1a1830', color:STATE_META[s].color }}>{STATE_META[s].icon} {s}</option>
       ))}
     </select>
   )
 }
 
-function PromptBox({ label, value, onChange }: { label: string; value: string; onChange: (v: string) => void }) {
+function FonteSelect({ value, onChange }: { value: FonteVerdade; onChange: (f: FonteVerdade) => void }) {
+  const m = FONTE_META[value]
   return (
-    <div style={{ display:'flex', flexDirection:'column', gap:6 }}>
-      <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between' }}>
-        <span style={{ fontSize:11, fontWeight:700, color:'rgba(255,255,255,0.5)', letterSpacing:'0.08em' }}>{label}</span>
-        <button
-          onClick={() => { void navigator.clipboard.writeText(value) }}
-          style={{ fontSize:10, color:'rgba(167,139,250,0.7)', background:'none', border:'none', cursor:'pointer', padding:'2px 6px' }}
-        >Copiar</button>
+    <select value={value} onChange={e => onChange(e.target.value as FonteVerdade)} style={{
+      background:'rgba(255,255,255,0.05)', border:`1px solid ${T.border}`,
+      borderRadius:6, color:m.color, fontSize:10, fontWeight:600,
+      padding:'4px 6px', outline:'none', cursor:'pointer', maxWidth:130,
+    }}>
+      {ALL_FONTES.map(f => (
+        <option key={f} value={f} style={{ background:'#1a1830', color:FONTE_META[f].color }}>
+          {FONTE_META[f].priority}. {FONTE_META[f].label}
+        </option>
+      ))}
+    </select>
+  )
+}
+
+function PromptSection({
+  tag, title, subtitle, value, accent, onChange,
+}: { tag: string; title: string; subtitle: string; value: string; accent: string; onChange: (v: string) => void }) {
+  const [copied, setCopied] = useState(false)
+  const copy = () => {
+    void navigator.clipboard.writeText(value)
+    setCopied(true); setTimeout(() => setCopied(false), 1800)
+  }
+  return (
+    <div style={{ display:'flex', flexDirection:'column', gap:0, borderRadius:10, overflow:'hidden', border:`1px solid ${T.border}` }}>
+      {/* Header */}
+      <div style={{
+        display:'flex', alignItems:'center', justifyContent:'space-between',
+        padding:'10px 14px', background:`rgba(${accent},0.08)`,
+        borderBottom:`1px solid rgba(${accent},0.18)`,
+      }}>
+        <div style={{ display:'flex', alignItems:'center', gap:10 }}>
+          <span style={{
+            padding:'2px 8px', borderRadius:3, fontSize:9, fontWeight:800, letterSpacing:'0.1em',
+            background:`rgba(${accent},0.2)`, color:`rgb(${accent})`, border:`1px solid rgba(${accent},0.4)`,
+          }}>{tag}</span>
+          <div>
+            <span style={{ fontSize:13, fontWeight:700, color:'#fff' }}>{title}</span>
+            <span style={{ fontSize:11, color:T.dim, marginLeft:8 }}>{subtitle}</span>
+          </div>
+        </div>
+        <button onClick={copy} style={{
+          padding:'4px 12px', borderRadius:6, border:`1px solid rgba(${accent},0.35)`,
+          background: copied ? `rgba(${accent},0.2)` : 'transparent',
+          color: copied ? `rgb(${accent})` : T.dim, fontSize:11, fontWeight:600, cursor:'pointer', transition:'all 0.2s',
+        }}>{copied ? '✓ Copiado' : 'Copiar'}</button>
       </div>
-      <textarea
-        value={value}
-        onChange={e => onChange(e.target.value)}
-        rows={5}
-        style={{
-          background:'rgba(255,255,255,0.04)', border:'1px solid rgba(255,255,255,0.1)',
-          borderRadius:8, color:'rgba(255,255,255,0.85)', fontSize:12, lineHeight:1.6,
-          padding:'10px 12px', resize:'vertical', outline:'none', fontFamily:'inherit',
-        }}
-      />
+      {/* Body */}
+      <textarea value={value} onChange={e => onChange(e.target.value)} rows={5} style={{
+        background:'rgba(255,255,255,0.02)', border:'none', color:T.text,
+        fontSize:12, lineHeight:1.65, padding:'12px 14px', resize:'vertical',
+        outline:'none', fontFamily:'ui-monospace,monospace',
+      }} />
+      <div style={{ padding:'6px 14px', background:'rgba(255,255,255,0.02)', borderTop:`1px solid ${T.border}` }}>
+        <span style={{ fontSize:10, color:T.dimL }}>{value.trim().split(' ').filter(Boolean).length} palavras · {value.length} caracteres</span>
+      </div>
     </div>
+  )
+}
+
+function ApproveToggle({ checked, onChange }: { checked: boolean; onChange: (v: boolean) => void }) {
+  return (
+    <button onClick={() => onChange(!checked)} style={{
+      width:22, height:22, borderRadius:4, border:`2px solid ${checked ? '#4ade80' : T.border}`,
+      background: checked ? 'rgba(74,222,128,0.15)' : 'transparent',
+      cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center',
+      color: checked ? '#4ade80' : 'transparent', fontSize:12, fontWeight:900,
+      transition:'all 0.2s', flexShrink:0,
+    }}>✓</button>
   )
 }
 
 // ─── Main Page ────────────────────────────────────────────────────────────────
 
 export default function ArqdorPage() {
-  const [step,       setStep]       = useState(1)
-  const [imageFile,  setImageFile]  = useState<File | null>(null)
-  const [imagePrev,  setImagePrev]  = useState<string | null>(null)
-  const [analyzing,  setAnalyzing]  = useState(false)
-  const [techRead,   setTechRead]   = useState<TechReading | null>(null)
-  const [regions,    setRegions]    = useState<Region[]>(MOCK_REGIONS)
-  const [approved,   setApproved]   = useState(false)
-  const [prompt,     setPrompt]     = useState<ArqdorPrompt | null>(null)
-  const [promptTab,  setPromptTab]  = useState<keyof ArqdorPrompt>('core')
-  const [dragging,   setDragging]   = useState(false)
+  const [step,        setStep]        = useState(1)
+  const [maxStep,     setMaxStep]     = useState(1)
+  const [imageFile,   setImageFile]   = useState<File | null>(null)
+  const [imagePrev,   setImagePrev]   = useState<string | null>(null)
+  const [projectName, setProjectName] = useState('')
+  const [analyzing,   setAnalyzing]   = useState(false)
+  const [analyzePhase,setAnalyzePhase]= useState(0)
+  const [techRead,    setTechRead]    = useState<TechReading | null>(null)
+  const [regions,     setRegions]     = useState<Region[]>(MOCK_REGIONS)
+  const [prompt,      setPrompt]      = useState<ArqdorPrompt | null>(null)
+  const [dragging,    setDragging]    = useState(false)
   const fileRef = useRef<HTMLInputElement>(null)
 
-  // ── helpers ──────────────────────────────────────────────────────────────
+  const ANALYZE_PHASES = [
+    'Detectando ambiente e ângulo…',
+    'Identificando elementos estruturais…',
+    'Analisando materiais e texturas…',
+    'Estimando confiança por região…',
+    'Finalizando leitura técnica…',
+  ]
 
   const loadImage = useCallback((file: File) => {
     setImageFile(file)
-    const url = URL.createObjectURL(file)
-    setImagePrev(url)
-  }, [])
+    setImagePrev(URL.createObjectURL(file))
+    if (!projectName) setProjectName(file.name.replace(/\.[^.]+$/, ''))
+  }, [projectName])
 
   const handleDrop = useCallback((e: React.DragEvent) => {
     e.preventDefault(); setDragging(false)
-    const file = e.dataTransfer.files[0]
-    if (file && file.type.startsWith('image/')) loadImage(file)
+    const f = e.dataTransfer.files[0]
+    if (f?.type.startsWith('image/')) loadImage(f)
   }, [loadImage])
 
   const handleFileInput = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0]
-    if (file) loadImage(file)
+    const f = e.target.files?.[0]; if (f) loadImage(f)
   }
+
+  const goTo = (n: number) => { setStep(n); setMaxStep(m => Math.max(m, n)) }
 
   const goNext = () => {
     if (step === 2 && !techRead) {
-      setAnalyzing(true)
-      setTimeout(() => { setAnalyzing(false); setTechRead(MOCK_TECH); setStep(3) }, 2200)
+      setAnalyzing(true); setAnalyzePhase(0)
+      const cycle = (i: number) => {
+        if (i >= ANALYZE_PHASES.length) {
+          setAnalyzing(false); setTechRead(MOCK_TECH); goTo(3)
+        } else {
+          setAnalyzePhase(i); setTimeout(() => cycle(i + 1), 600)
+        }
+      }
+      setTimeout(() => cycle(0), 200)
       return
     }
-    if (step === 6) {
-      setPrompt(buildPrompt(techRead ?? MOCK_TECH, regions))
-    }
-    setStep(s => Math.min(s + 1, 7))
+    if (step === 6) setPrompt(buildPrompt(techRead ?? MOCK_TECH, regions))
+    goTo(Math.min(step + 1, 7))
   }
 
-  const goBack = () => setStep(s => Math.max(s - 1, 1))
+  const goBack = () => goTo(Math.max(step - 1, 1))
 
-  const updateRegion = (id: string, patch: Partial<Region>) => {
+  const updateRegion = (id: string, patch: Partial<Region>) =>
     setRegions(rs => rs.map(r => r.id === id ? { ...r, ...patch } : r))
-  }
+
+  const allApproved = regions.every(r => r.aprovado)
+
+  // ── exports ────────────────────────────────────────────────────────────────
 
   const exportTXT = () => {
     if (!prompt) return
     const txt = [
-      '=== CORE PROMPT ===', prompt.core, '',
-      '=== PROJECT PROMPT ===', prompt.project, '',
-      '=== STYLE PROMPT ===', prompt.style, '',
-      '=== NEGATIVE PROMPT ===', prompt.negative,
+      '=== arqdor.ai — PROMPT EXPORTADO ===',
+      `Projeto: ${projectName || 'sem nome'}`,
+      `Data: ${new Date().toLocaleString('pt-BR')}`, '',
+      '─── CORE PROMPT ───', prompt.core, '',
+      '─── PROJECT PROMPT ───', prompt.project, '',
+      '─── STYLE PROMPT ───', prompt.style, '',
+      '─── NEGATIVE PROMPT ───', prompt.negative,
     ].join('\n')
-    const a = document.createElement('a')
-    a.href = URL.createObjectURL(new Blob([txt], { type:'text/plain' }))
-    a.download = 'arqdor-prompt.txt'; a.click()
+    dl(new Blob([txt], { type:'text/plain' }), 'arqdor-prompt.txt')
   }
 
   const exportJSON = () => {
     if (!prompt) return
-    const data = { meta: { ambiente: techRead?.ambiente, estilo: techRead?.estilo, gerado: new Date().toISOString() }, regions, prompt }
+    const tr = techRead ?? MOCK_TECH
+    const payload = {
+      version: 'arqdor.ai-v1',
+      projectName: projectName || 'sem nome',
+      imageName: imageFile?.name ?? null,
+      createdAt: new Date().toISOString(),
+      environmentType: tr.ambiente,
+      style: tr.estilo,
+      complexity: tr.complexidade,
+      angle: tr.angulo,
+      lighting: tr.iluminacao,
+      regions: regions.map(r => ({
+        id: r.id, name: r.name, element: r.element, state: r.state,
+        confidence: r.confidence, fonteVerdade: r.fonteVerdade,
+        materialDetectado: r.materialDetectado, materialConfirmado: r.materialConfirmado,
+        materialName: r.materialName ?? null, notes: r.notes, aprovado: r.aprovado,
+      })),
+      risks: MOCK_RISKS,
+      prompt,
+    }
+    dl(new Blob([JSON.stringify(payload, null, 2)], { type:'application/json' }), 'arqdor-session.json')
+  }
+
+  const dl = (blob: Blob, name: string) => {
     const a = document.createElement('a')
-    a.href = URL.createObjectURL(new Blob([JSON.stringify(data, null, 2)], { type:'application/json' }))
-    a.download = 'arqdor-session.json'; a.click()
+    a.href = URL.createObjectURL(blob); a.download = name; a.click()
   }
 
-  // ── styles ───────────────────────────────────────────────────────────────
+  // ── step gate ──────────────────────────────────────────────────────────────
 
-  const BG     = '#0d0b1e'
-  const CARD   = 'rgba(255,255,255,0.04)'
-  const BORDER = '1px solid rgba(255,255,255,0.08)'
-  const PURPLE = '#7c3aed'
-  const TEXT   = 'rgba(255,255,255,0.85)'
-  const DIM    = 'rgba(255,255,255,0.4)'
+  const nextLabel =
+    step === 2 && !techRead ? '🔍 Iniciar Análise' :
+    step === 5 && !allApproved ? `Aprovação (${regions.filter(r=>r.aprovado).length}/${regions.length}) →` :
+    step === 6 ? '⚡ Gerar Prompt Final →' :
+    step === 7 ? null : 'Próximo →'
 
-  const cardStyle: React.CSSProperties = {
-    background: CARD, border: BORDER, borderRadius:12, padding:'16px 20px',
-  }
+  const nextDisabled = step === 1 && !imagePrev
 
-  const labelStyle: React.CSSProperties = {
-    fontSize:10, fontWeight:700, letterSpacing:'0.08em', color: DIM, textTransform:'uppercase' as const,
-  }
-
-  const btnPrimary: React.CSSProperties = {
-    padding:'10px 24px', borderRadius:8, border:'none', background: PURPLE,
-    color:'#fff', fontSize:13, fontWeight:600, cursor:'pointer',
-  }
-
-  const btnSecondary: React.CSSProperties = {
-    padding:'10px 24px', borderRadius:8,
-    border:'1px solid rgba(255,255,255,0.15)',
-    background:'transparent', color: DIM, fontSize:13, fontWeight:500, cursor:'pointer',
-  }
-
-  const canNext =
-    (step === 1 && !!imagePrev) ||
-    (step === 2) ||
-    (step === 3 && regions.length > 0) ||
-    (step === 4) ||
-    (step === 5 && approved) ||
-    (step === 6) ||
-    false
-
-  // ── render ───────────────────────────────────────────────────────────────
+  // ─── render ────────────────────────────────────────────────────────────────
 
   return (
-    <div style={{ minHeight:'100vh', background: BG, color: TEXT, fontFamily:'system-ui,sans-serif' }}>
+    <div style={{ minHeight:'100vh', background:T.bg, color:T.text, fontFamily:'system-ui,sans-serif' }}>
 
-      {/* ── Header ── */}
+      {/* ─── HEADER ─── */}
       <div style={{
-        position:'sticky', top:0, zIndex:50,
-        background:'rgba(13,11,30,0.92)', backdropFilter:'blur(12px)',
-        borderBottom:'1px solid rgba(255,255,255,0.07)',
-        padding:'0 24px', height:56, display:'flex', alignItems:'center', justifyContent:'space-between',
+        position:'sticky', top:0, zIndex:50, height:54,
+        background:'rgba(13,11,30,0.94)', backdropFilter:'blur(14px)',
+        borderBottom:`1px solid ${T.border}`,
+        padding:'0 24px', display:'flex', alignItems:'center', justifyContent:'space-between',
       }}>
         {/* Logo */}
-        <div style={{ display:'flex', alignItems:'center', gap:10 }}>
+        <div style={{ display:'flex', alignItems:'center', gap:9 }}>
           <div style={{
             width:28, height:28, borderRadius:7,
             background:'linear-gradient(135deg,#7c3aed,#a78bfa)',
             display:'flex', alignItems:'center', justifyContent:'center',
-            fontSize:13, fontWeight:900, color:'#fff',
+            fontSize:12, fontWeight:900, color:'#fff', flexShrink:0,
           }}>A</div>
-          <span style={{ fontWeight:800, fontSize:16, letterSpacing:'-0.02em', color:'#fff' }}>
-            arqdor<span style={{ color:'#a78bfa' }}>.ai</span>
-          </span>
-          <span style={{
-            marginLeft:8, fontSize:9, fontWeight:700, letterSpacing:'0.1em',
-            color:DIM, textTransform:'uppercase', paddingTop:2,
-          }}>Renderização com Fidelidade Arquitetônica</span>
+          <div>
+            <span style={{ fontWeight:800, fontSize:15, letterSpacing:'-0.02em', color:'#fff' }}>
+              arqdor<span style={{ color:T.purpleL }}>.ai</span>
+            </span>
+            <span style={{ marginLeft:10, fontSize:9, color:T.dim, letterSpacing:'0.09em', textTransform:'uppercase' }}>
+              Fidelidade Arquitetônica
+            </span>
+          </div>
         </div>
 
-        {/* Step indicator */}
-        <div style={{ display:'flex', alignItems:'center', gap:4 }}>
+        {/* Stepper */}
+        <div style={{ display:'flex', alignItems:'center', gap:3 }}>
           {STEPS.map(s => {
-            const done    = step > s.n
-            const current = step === s.n
+            const done = maxStep > s.n, curr = step === s.n
             return (
-              <div key={s.n} style={{ display:'flex', alignItems:'center', gap:4 }}>
+              <div key={s.n} style={{ display:'flex', alignItems:'center', gap:3 }}>
                 <div
-                  title={s.label}
+                  title={done ? s.done : s.label}
+                  onClick={() => { if (done) goTo(s.n) }}
                   style={{
-                    width:28, height:28, borderRadius:50,
-                    display:'flex', alignItems:'center', justifyContent:'center',
-                    fontSize:11, fontWeight:700, cursor:'pointer',
-                    background: done ? PURPLE : current ? 'rgba(124,58,237,0.25)' : 'rgba(255,255,255,0.06)',
-                    border: current ? `2px solid ${PURPLE}` : done ? 'none' : '1.5px solid rgba(255,255,255,0.12)',
-                    color: done || current ? '#fff' : DIM,
-                    transition:'all 0.2s',
+                    display:'flex', flexDirection:'column', alignItems:'center', gap:2,
+                    cursor: done ? 'pointer' : 'default', opacity: done || curr ? 1 : 0.45,
                   }}
-                  onClick={() => { if (done || current) setStep(s.n) }}
                 >
-                  {done ? '✓' : s.n}
+                  <div style={{
+                    width:26, height:26, borderRadius:50,
+                    display:'flex', alignItems:'center', justifyContent:'center',
+                    fontSize:10, fontWeight:800,
+                    background: done ? T.purple : curr ? 'rgba(124,58,237,0.2)' : 'rgba(255,255,255,0.06)',
+                    border: curr ? `2px solid ${T.purple}` : done ? 'none' : `1.5px solid ${T.border}`,
+                    color: done || curr ? '#fff' : T.dim, transition:'all 0.25s',
+                    boxShadow: curr ? `0 0 0 4px rgba(124,58,237,0.18)` : 'none',
+                  }}>{done ? '✓' : s.n}</div>
+                  <span style={{ fontSize:8, color: curr ? T.purpleL : T.dimL, fontWeight: curr ? 700 : 400, letterSpacing:'0.04em' }}>
+                    {s.label.toUpperCase()}
+                  </span>
                 </div>
-                {s.n < 7 && <div style={{ width:16, height:1, background: done ? PURPLE : 'rgba(255,255,255,0.1)' }} />}
+                {s.n < 7 && (
+                  <div style={{ width:20, height:1.5, borderRadius:1,
+                    background: maxStep > s.n ? T.purple : T.border, margin:'0 2px',
+                    transition:'background 0.3s',
+                  }} />
+                )}
               </div>
             )
           })}
         </div>
+
+        {/* Status pill */}
+        {maxStep > 1 && (
+          <div style={{ display:'flex', gap:6 }}>
+            {STEPS.slice(0, maxStep - 1).map(s => (
+              <span key={s.n} style={{
+                fontSize:9, padding:'2px 8px', borderRadius:10, fontWeight:700,
+                background:'rgba(124,58,237,0.12)', color:T.purpleL,
+                border:'1px solid rgba(124,58,237,0.25)',
+              }}>✓ {s.done}</span>
+            ))}
+          </div>
+        )}
       </div>
 
-      {/* ── Content ── */}
-      <div style={{ maxWidth:1100, margin:'0 auto', padding:'32px 24px' }}>
+      {/* ─── CONTENT ─── */}
+      <div style={{ maxWidth:1140, margin:'0 auto', padding:'28px 24px 80px' }}>
 
-        {/* ─── STEP 1: Upload ─── */}
+        {/* ─── S1: UPLOAD ─── */}
         {step === 1 && (
           <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:24, alignItems:'start' }}>
             <div>
-              <h1 style={{ fontSize:22, fontWeight:800, margin:'0 0 4px', color:'#fff' }}>
-                Upload do Projeto
-              </h1>
-              <p style={{ fontSize:13, color: DIM, margin:'0 0 24px' }}>
-                Envie a foto ou planta do ambiente para iniciar a leitura técnica arquitetônica.
-              </p>
+              <h1 style={{ fontSize:22, fontWeight:800, margin:'0 0 4px', color:'#fff' }}>Upload do Projeto</h1>
+              <p style={{ fontSize:13, color:T.dim, margin:'0 0 20px' }}>Envie a foto ou imagem do ambiente para iniciar a leitura técnica arquitetônica.</p>
+
+              {/* Project name */}
+              <div style={{ marginBottom:16 }}>
+                <p style={{ ...label, marginBottom:6 }}>Nome do projeto</p>
+                <input value={projectName} onChange={e => setProjectName(e.target.value)}
+                  placeholder="Ex: Apartamento Jardins — Sala" style={inp} />
+              </div>
+
+              {/* Drop zone */}
               <div
                 onDragOver={e => { e.preventDefault(); setDragging(true) }}
                 onDragLeave={() => setDragging(false)}
                 onDrop={handleDrop}
                 onClick={() => fileRef.current?.click()}
                 style={{
-                  border:`2px dashed ${dragging ? PURPLE : 'rgba(255,255,255,0.15)'}`,
-                  borderRadius:12, padding:'40px 24px', textAlign:'center', cursor:'pointer',
-                  background: dragging ? 'rgba(124,58,237,0.08)' : 'rgba(255,255,255,0.02)',
+                  border:`2px dashed ${dragging ? T.purple : 'rgba(255,255,255,0.15)'}`,
+                  borderRadius:12, padding:'36px 24px', textAlign:'center', cursor:'pointer',
+                  background: dragging ? 'rgba(124,58,237,0.07)' : imagePrev ? 'rgba(74,222,128,0.04)' : 'rgba(255,255,255,0.02)',
                   transition:'all 0.2s',
                 }}
               >
-                <div style={{ fontSize:36, marginBottom:12 }}>🏛️</div>
-                <p style={{ color:'#fff', fontWeight:600, fontSize:14, margin:'0 0 6px' }}>
-                  Arraste sua imagem aqui
+                <div style={{ fontSize:36, marginBottom:10 }}>{imagePrev ? '✅' : '🏛️'}</div>
+                <p style={{ color:'#fff', fontWeight:700, fontSize:14, margin:'0 0 4px' }}>
+                  {imagePrev ? (imageFile?.name ?? 'Imagem carregada') : 'Arraste sua imagem aqui'}
                 </p>
-                <p style={{ color: DIM, fontSize:12, margin:'0 0 16px' }}>
-                  Fotos de interiores, fachadas, renders existentes ou plantas
+                <p style={{ color:T.dim, fontSize:12, margin:'0 0 14px' }}>
+                  {imagePrev ? 'Clique para substituir' : 'Fotos, renders ou plantas — JPG, PNG, WEBP'}
                 </p>
-                <span style={{
-                  padding:'8px 18px', borderRadius:7, background: PURPLE,
-                  color:'#fff', fontSize:12, fontWeight:600,
-                }}>Selecionar arquivo</span>
+                {!imagePrev && (
+                  <span style={{ padding:'7px 18px', borderRadius:7, background:T.purple, color:'#fff', fontSize:12, fontWeight:600 }}>
+                    Selecionar arquivo
+                  </span>
+                )}
                 <input ref={fileRef} type="file" accept="image/*" onChange={handleFileInput} style={{ display:'none' }} />
               </div>
 
-              <div style={{ ...cardStyle, marginTop:20 }}>
-                <p style={labelStyle}>Formatos suportados</p>
-                <p style={{ fontSize:12, color: DIM, margin:'6px 0 0' }}>
-                  JPG, PNG, WEBP — Resolução recomendada: mínimo 1024×768 px
-                </p>
+              {/* Info */}
+              <div style={{ ...card, marginTop:14, padding:'12px 16px', display:'flex', gap:12, alignItems:'center' }}>
+                <div style={{ fontSize:18 }}>📐</div>
+                <div>
+                  <p style={{ ...label, marginBottom:2 }}>Qualidade recomendada</p>
+                  <p style={{ fontSize:11, color:T.dim, margin:0 }}>Mínimo 1024×768 px · maior resolução = maior precisão na leitura</p>
+                </div>
               </div>
             </div>
 
             {/* Preview */}
-            <div style={{ ...cardStyle, minHeight:320, display:'flex', alignItems:'center', justifyContent:'center', overflow:'hidden', padding:0 }}>
+            <div style={{
+              ...card, minHeight:340, padding:0, overflow:'hidden',
+              display:'flex', alignItems:'center', justifyContent:'center',
+              position:'relative',
+            }}>
               {imagePrev
-                ? <img src={imagePrev} alt="Preview" style={{ width:'100%', height:'100%', objectFit:'cover', borderRadius:12, minHeight:320 }} />
-                : (
-                  <div style={{ textAlign:'center', color: DIM }}>
-                    <div style={{ fontSize:48, marginBottom:12 }}>📐</div>
-                    <p style={{ fontSize:13 }}>Prévia da imagem</p>
+                ? <img src={imagePrev} alt="preview" style={{ width:'100%', height:'100%', minHeight:340, objectFit:'cover' }} />
+                : <div style={{ textAlign:'center', color:T.dim, padding:40 }}>
+                    <div style={{ fontSize:52, marginBottom:12, opacity:0.4 }}>📷</div>
+                    <p style={{ fontSize:13 }}>Prévia da imagem aparece aqui</p>
                   </div>
-                )}
+              }
+              {imagePrev && projectName && (
+                <div style={{
+                  position:'absolute', bottom:12, left:12,
+                  background:'rgba(13,11,30,0.82)', backdropFilter:'blur(6px)',
+                  borderRadius:6, padding:'5px 12px', fontSize:11, color:'#fff', fontWeight:600,
+                }}>{projectName}</div>
+              )}
             </div>
           </div>
         )}
 
-        {/* ─── STEP 2: Leitura Técnica ─── */}
+        {/* ─── S2: LEITURA TÉCNICA ─── */}
         {step === 2 && (
           <div>
             <h1 style={{ fontSize:22, fontWeight:800, margin:'0 0 4px', color:'#fff' }}>Leitura Técnica do Ambiente</h1>
-            <p style={{ fontSize:13, color: DIM, margin:'0 0 24px' }}>
-              A IA analisa o projeto e identifica todos os elementos arquitetônicos com nível de confiança.
+            <p style={{ fontSize:13, color:T.dim, margin:'0 0 24px' }}>
+              A IA analisa a imagem e identifica elementos arquitetônicos com confiança estatística.
             </p>
 
             {analyzing ? (
-              <div style={{ ...cardStyle, textAlign:'center', padding:'60px 24px' }}>
-                <div style={{ marginBottom:20 }}>
+              <div style={{ ...card, padding:'64px 24px', textAlign:'center' }}>
+                <div style={{
+                  width:52, height:52, borderRadius:50, border:`3px solid ${T.purple}`,
+                  borderTopColor:'transparent', animation:'aqSpin 0.75s linear infinite',
+                  margin:'0 auto 20px',
+                }} />
+                <p style={{ color:'#fff', fontWeight:700, fontSize:15, margin:'0 0 8px' }}>Analisando projeto…</p>
+                <p style={{ color:T.purpleL, fontSize:12, margin:'0 0 20px', minHeight:18 }}>{ANALYZE_PHASES[analyzePhase]}</p>
+                <div style={{ width:260, height:3, background:'rgba(255,255,255,0.08)', borderRadius:2, margin:'0 auto' }}>
                   <div style={{
-                    width:48, height:48, borderRadius:50, border:`3px solid ${PURPLE}`,
-                    borderTopColor:'transparent', animation:'spin 0.8s linear infinite',
-                    margin:'0 auto',
+                    width:`${((analyzePhase + 1) / ANALYZE_PHASES.length) * 100}%`, height:'100%',
+                    background:`linear-gradient(90deg,${T.purple},${T.purpleL})`, borderRadius:2, transition:'width 0.5s',
                   }} />
                 </div>
-                <p style={{ color:'#fff', fontWeight:700, fontSize:15, margin:'0 0 8px' }}>Analisando projeto…</p>
-                <p style={{ color: DIM, fontSize:12 }}>Detectando elementos, materiais e configuração espacial</p>
-                <style>{`@keyframes spin { to { transform: rotate(360deg) }}`}</style>
+                <style>{`@keyframes aqSpin { to { transform:rotate(360deg) }}`}</style>
               </div>
             ) : techRead ? (
-              <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:20 }}>
-                {/* Metadata cards */}
-                <div style={{ display:'flex', flexDirection:'column', gap:12 }}>
+              <div style={{ display:'grid', gridTemplateColumns:'280px 1fr', gap:20 }}>
+                {/* Meta */}
+                <div style={{ display:'flex', flexDirection:'column', gap:10 }}>
                   {[
-                    { k:'Ambiente',          v: techRead.ambiente        },
-                    { k:'Estilo Detectado',  v: techRead.estilo          },
-                    { k:'Iluminação',        v: techRead.iluminacao       },
-                    { k:'Complexidade',      v: techRead.complexidade     },
-                    { k:'Ângulo',            v: techRead.angulo           },
-                    { k:'Dimensão Estimada', v: techRead.dimensaoEstimada },
-                  ].map(({ k, v }) => (
-                    <div key={k} style={{ ...cardStyle, padding:'12px 16px', display:'flex', justifyContent:'space-between', alignItems:'center' }}>
-                      <span style={{ ...labelStyle, textTransform:'none', fontSize:12, color: DIM }}>{k}</span>
-                      <span style={{ fontSize:13, fontWeight:600, color:'#fff' }}>{v}</span>
+                    { k:'Ambiente',          v:techRead.ambiente,         icon:'🏠' },
+                    { k:'Estilo',            v:techRead.estilo,           icon:'🎨' },
+                    { k:'Iluminação',        v:techRead.iluminacao,       icon:'💡' },
+                    { k:'Complexidade',      v:techRead.complexidade,     icon:'⚡' },
+                    { k:'Ângulo',            v:techRead.angulo,           icon:'📐' },
+                    { k:'Área Estimada',     v:techRead.dimensaoEstimada, icon:'📏' },
+                  ].map(({ k, v, icon }) => (
+                    <div key={k} style={{ ...card, padding:'10px 14px', display:'flex', justifyContent:'space-between', alignItems:'center' }}>
+                      <span style={{ fontSize:12, color:T.dim }}>{icon} {k}</span>
+                      <span style={{ fontSize:13, fontWeight:700, color:'#fff' }}>{v}</span>
                     </div>
                   ))}
                 </div>
 
-                {/* Elements table */}
-                <div style={cardStyle}>
-                  <p style={{ ...labelStyle, marginBottom:12 }}>Elementos Identificados</p>
-                  <div style={{ display:'flex', flexDirection:'column', gap:10 }}>
+                {/* Elements */}
+                <div style={card}>
+                  <p style={{ ...label, marginBottom:14 }}>Elementos Identificados — {techRead.elementos.length} detectados</p>
+                  <div style={{ display:'flex', flexDirection:'column', gap:12 }}>
                     {techRead.elementos.map(el => (
-                      <div key={el.nome}>
-                        <div style={{ display:'flex', justifyContent:'space-between', marginBottom:4 }}>
-                          <div>
-                            <span style={{ fontSize:13, fontWeight:600, color:'#fff' }}>{el.nome}</span>
+                      <div key={el.nome} style={{ borderBottom:`1px solid ${T.border}`, paddingBottom:10 }}>
+                        <div style={{ display:'flex', justifyContent:'space-between', marginBottom:4, alignItems:'center' }}>
+                          <div style={{ display:'flex', alignItems:'center', gap:8 }}>
+                            <span style={{ fontSize:13, fontWeight:700, color:'#fff' }}>{el.nome}</span>
                             <span style={{
-                              marginLeft:8, fontSize:9, color: DIM,
-                              background:'rgba(255,255,255,0.07)', padding:'1px 6px', borderRadius:3,
+                              fontSize:9, color:T.dim, background:'rgba(255,255,255,0.06)',
+                              padding:'1px 6px', borderRadius:3, letterSpacing:'0.05em',
                             }}>{el.tipo}</span>
                           </div>
+                          <span style={{ fontSize:10, color:T.dim }}>Mat: <span style={{ color:T.text }}>{el.materialDetectado}</span></span>
                         </div>
                         <ConfidenceBar value={el.confianca} />
-                        <p style={{ fontSize:10, color: DIM, margin:'3px 0 0' }}>{el.observacao}</p>
+                        <p style={{ fontSize:10, color:T.dim, margin:'4px 0 0' }}>{el.observacao}</p>
                       </div>
                     ))}
                   </div>
                 </div>
               </div>
             ) : (
-              <div style={{ ...cardStyle, textAlign:'center', padding:'60px 24px' }}>
-                <p style={{ color: DIM }}>Clique em "Iniciar Análise" para começar.</p>
+              <div style={{ ...card, textAlign:'center', padding:'52px' }}>
+                <p style={{ fontSize:14, color:T.dim, marginBottom:16 }}>Clique em "Iniciar Análise" para processar a imagem.</p>
+                <button onClick={goNext} style={btnP}>🔍 Iniciar Análise</button>
               </div>
             )}
           </div>
         )}
 
-        {/* ─── STEP 3: Regiões ─── */}
+        {/* ─── S3: REGIÕES ─── */}
         {step === 3 && (
           <div>
-            <h1 style={{ fontSize:22, fontWeight:800, margin:'0 0 4px', color:'#fff' }}>Regiões Editáveis</h1>
-            <p style={{ fontSize:13, color: DIM, margin:'0 0 6px' }}>
-              Defina o estado de cada região detectada. O estado determina como a IA tratará cada elemento.
-            </p>
+            <div style={{ display:'flex', alignItems:'flex-start', justifyContent:'space-between', marginBottom:16, gap:20 }}>
+              <div>
+                <h1 style={{ fontSize:22, fontWeight:800, margin:'0 0 4px', color:'#fff' }}>Regiões Editáveis</h1>
+                <p style={{ fontSize:13, color:T.dim, margin:0 }}>Configure o estado e a fonte de cada região detectada.</p>
+              </div>
+              <button onClick={() => setRegions(rs => [...rs, {
+                id:`r${Date.now()}`, name:'Nova Região', element:'Mobiliário',
+                state:'AUTO', confidence:60, notes:'',
+                fonteVerdade:'AI_DETECTION', materialDetectado:'—', materialConfirmado:'', aprovado:false,
+              }])} style={{ ...btnS, fontSize:12, whiteSpace:'nowrap' as const, flexShrink:0 }}>+ Adicionar Região</button>
+            </div>
 
             {/* State legend */}
-            <div style={{ display:'flex', flexWrap:'wrap', gap:6, marginBottom:20 }}>
+            <div style={{ display:'flex', flexWrap:'wrap', gap:5, marginBottom:16 }}>
               {ALL_STATES.map(s => {
                 const m = STATE_META[s]
                 return (
-                  <div key={s} title={m.desc} style={{
-                    display:'flex', alignItems:'center', gap:5, padding:'3px 8px',
-                    borderRadius:4, background: m.bg, border:`1px solid ${m.border}`,
-                    fontSize:10, fontWeight:700, color: m.color,
-                  }}>{s} <span style={{ fontWeight:400, color:'rgba(255,255,255,0.4)', fontSize:9 }}>— {m.desc}</span></div>
+                  <div key={s} style={{
+                    display:'flex', alignItems:'center', gap:5, padding:'3px 9px',
+                    borderRadius:4, background:m.bg, border:`1px solid ${m.border}`,
+                    fontSize:10, fontWeight:700, color:m.color,
+                  }}>
+                    {m.icon} {s}
+                    <span style={{ fontWeight:400, color:T.dimL, fontSize:9 }}>— {m.desc}</span>
+                  </div>
                 )
               })}
             </div>
 
-            {/* Region table */}
-            <div style={{ ...cardStyle, padding:0, overflow:'hidden' }}>
-              <table style={{ width:'100%', borderCollapse:'collapse' }}>
+            {/* Table — horizontally scrollable */}
+            <div style={{ ...card, padding:0, overflow:'auto' }}>
+              <table style={{ width:'100%', borderCollapse:'collapse', minWidth:960 }}>
                 <thead>
-                  <tr style={{ borderBottom:'1px solid rgba(255,255,255,0.08)' }}>
-                    {['#','Região','Elemento','Estado','Confiança','Notas'].map(col => (
-                      <th key={col} style={{ padding:'12px 14px', textAlign:'left', ...labelStyle }}>{col}</th>
+                  <tr style={{ borderBottom:`1px solid ${T.border}`, background:'rgba(255,255,255,0.02)' }}>
+                    {['#','Região','Elemento','Estado','Confiança','Fonte da Verdade','Mat. Detectado','Mat. Confirmado','Observações','OK'].map(col => (
+                      <th key={col} style={{ padding:'10px 12px', textAlign:'left', ...label }}>{col}</th>
                     ))}
                   </tr>
                 </thead>
                 <tbody>
                   {regions.map((r, i) => (
-                    <tr key={r.id} style={{ borderBottom:'1px solid rgba(255,255,255,0.05)' }}>
-                      <td style={{ padding:'10px 14px', color: DIM, fontSize:11 }}>{i+1}</td>
-                      <td style={{ padding:'10px 14px', fontWeight:600, fontSize:13 }}>{r.name}</td>
-                      <td style={{ padding:'10px 14px', color: DIM, fontSize:12 }}>{r.element}</td>
-                      <td style={{ padding:'10px 14px' }}>
+                    <tr key={r.id} style={{
+                      borderBottom:`1px solid ${T.border}`,
+                      background: r.aprovado ? 'rgba(74,222,128,0.04)' : 'transparent',
+                      transition:'background 0.2s',
+                    }}>
+                      <td style={{ padding:'8px 12px', color:T.dim, fontSize:11 }}>{i+1}</td>
+                      <td style={{ padding:'8px 12px' }}>
+                        <input value={r.name} onChange={e => updateRegion(r.id, { name:e.target.value })}
+                          style={{ ...inp, fontSize:12, fontWeight:700, padding:'4px 8px' }} />
+                      </td>
+                      <td style={{ padding:'8px 12px', color:T.dim, fontSize:11, whiteSpace:'nowrap' as const }}>{r.element}</td>
+                      <td style={{ padding:'8px 12px' }}>
                         <StateSelect value={r.state} onChange={state => updateRegion(r.id, { state })} />
                       </td>
-                      <td style={{ padding:'10px 14px', minWidth:100 }}>
+                      <td style={{ padding:'8px 12px', minWidth:100 }}>
                         <ConfidenceBar value={r.confidence} />
                       </td>
-                      <td style={{ padding:'10px 14px' }}>
-                        <input
-                          value={r.notes}
-                          onChange={e => updateRegion(r.id, { notes: e.target.value })}
-                          placeholder="Instrução livre…"
-                          style={{
-                            background:'rgba(255,255,255,0.04)', border:'1px solid rgba(255,255,255,0.1)',
-                            borderRadius:5, color: TEXT, fontSize:11, padding:'5px 8px',
-                            outline:'none', width:'100%', minWidth:140,
-                          }}
-                        />
+                      <td style={{ padding:'8px 12px' }}>
+                        <FonteSelect value={r.fonteVerdade} onChange={fonteVerdade => updateRegion(r.id, { fonteVerdade })} />
+                      </td>
+                      <td style={{ padding:'8px 12px', fontSize:11, color:T.dim, whiteSpace:'nowrap' as const }}>{r.materialDetectado || '—'}</td>
+                      <td style={{ padding:'8px 12px' }}>
+                        <input value={r.materialConfirmado} onChange={e => updateRegion(r.id, { materialConfirmado:e.target.value })}
+                          placeholder="Confirmar…" style={{ ...inp, fontSize:11, padding:'4px 8px', minWidth:130 }} />
+                      </td>
+                      <td style={{ padding:'8px 12px' }}>
+                        <input value={r.notes} onChange={e => updateRegion(r.id, { notes:e.target.value })}
+                          placeholder="Observação livre…" style={{ ...inp, fontSize:11, padding:'4px 8px', minWidth:150 }} />
+                      </td>
+                      <td style={{ padding:'8px 12px' }}>
+                        <ApproveToggle checked={r.aprovado} onChange={v => updateRegion(r.id, { aprovado:v })} />
                       </td>
                     </tr>
                   ))}
@@ -541,271 +711,317 @@ export default function ArqdorPage() {
               </table>
             </div>
 
-            <button
-              onClick={() => setRegions(rs => [...rs, {
-                id: `r${Date.now()}`, name:'Nova Região', element:'Mobiliário',
-                state:'AUTO', confidence:60, notes:'',
-              }])}
-              style={{ ...btnSecondary, marginTop:12, fontSize:12 }}
-            >+ Adicionar Região</button>
-          </div>
-        )}
-
-        {/* ─── STEP 4: Materiais ─── */}
-        {step === 4 && (
-          <div>
-            <h1 style={{ fontSize:22, fontWeight:800, margin:'0 0 4px', color:'#fff' }}>Materiais por Região</h1>
-            <p style={{ fontSize:13, color: DIM, margin:'0 0 24px' }}>
-              Configure material, cor ou referência de imagem para regiões que serão modificadas.
-            </p>
-
-            <div style={{ display:'flex', flexDirection:'column', gap:12 }}>
-              {regions
-                .filter(r => ['MATERIAL','REFERENCE','REPLACE','MODIFY','ADD'].includes(r.state))
-                .map(r => {
-                  const m = STATE_META[r.state]
-                  return (
-                    <div key={r.id} style={{ ...cardStyle, display:'grid', gridTemplateColumns:'200px 1fr 1fr', gap:20, alignItems:'center' }}>
-                      {/* Region info */}
-                      <div>
-                        <StateBadge state={r.state} />
-                        <p style={{ fontSize:14, fontWeight:700, color:'#fff', margin:'6px 0 2px' }}>{r.name}</p>
-                        <p style={{ fontSize:11, color: DIM, margin:0 }}>{m.desc}</p>
-                      </div>
-
-                      {/* Material name + color */}
-                      <div style={{ display:'flex', flexDirection:'column', gap:8 }}>
-                        <div>
-                          <p style={labelStyle}>Nome do material</p>
-                          <input
-                            value={r.materialName ?? ''}
-                            onChange={e => updateRegion(r.id, { materialName: e.target.value })}
-                            placeholder="Ex: Mármore Calacatta, Carvalho…"
-                            style={{
-                              width:'100%', background:'rgba(255,255,255,0.06)',
-                              border:'1px solid rgba(255,255,255,0.12)',
-                              borderRadius:6, color: TEXT, fontSize:12, padding:'7px 10px',
-                              outline:'none', marginTop:4,
-                            }}
-                          />
-                        </div>
-                        <div style={{ display:'flex', alignItems:'center', gap:8 }}>
-                          <p style={{ ...labelStyle, margin:0 }}>Cor base:</p>
-                          <input
-                            type="color"
-                            value={r.materialColor ?? '#c8a87a'}
-                            onChange={e => updateRegion(r.id, { materialColor: e.target.value })}
-                            style={{ width:32, height:24, border:'none', borderRadius:4, cursor:'pointer', background:'none' }}
-                          />
-                          <span style={{ fontSize:11, color: DIM }}>{r.materialColor ?? '#c8a87a'}</span>
-                        </div>
-                      </div>
-
-                      {/* Reference image */}
-                      {(r.state === 'REFERENCE' || r.state === 'REPLACE') && (
-                        <div>
-                          <p style={labelStyle}>Imagem de referência</p>
-                          {r.referenceImageUrl
-                            ? (
-                              <div style={{ position:'relative', display:'inline-block' }}>
-                                <img src={r.referenceImageUrl} alt="ref" style={{ width:80, height:60, objectFit:'cover', borderRadius:6 }} />
-                                <button
-                                  onClick={() => updateRegion(r.id, { referenceImageUrl: undefined })}
-                                  style={{
-                                    position:'absolute', top:-6, right:-6, width:18, height:18, borderRadius:50,
-                                    background:'#ef4444', border:'none', color:'#fff', fontSize:10, cursor:'pointer',
-                                    display:'flex', alignItems:'center', justifyContent:'center',
-                                  }}
-                                >×</button>
-                              </div>
-                            )
-                            : (
-                              <label style={{
-                                display:'inline-flex', alignItems:'center', gap:6,
-                                padding:'7px 14px', borderRadius:6, cursor:'pointer',
-                                border:'1px dashed rgba(255,255,255,0.2)',
-                                background:'rgba(255,255,255,0.03)', color: DIM, fontSize:11,
-                                marginTop:4,
-                              }}>
-                                📎 Upload referência
-                                <input type="file" accept="image/*" style={{ display:'none' }} onChange={e => {
-                                  const f = e.target.files?.[0]
-                                  if (f) updateRegion(r.id, { referenceImageUrl: URL.createObjectURL(f) })
-                                }} />
-                              </label>
-                            )}
-                        </div>
-                      )}
-
-                      {/* Prompt fragment preview */}
-                      {!['REFERENCE','REPLACE'].includes(r.state) && (
-                        <div>
-                          <p style={labelStyle}>Instrução adicional</p>
-                          <input
-                            value={r.notes}
-                            onChange={e => updateRegion(r.id, { notes: e.target.value })}
-                            placeholder="Detalhe técnico opcional…"
-                            style={{
-                              width:'100%', background:'rgba(255,255,255,0.06)',
-                              border:'1px solid rgba(255,255,255,0.12)',
-                              borderRadius:6, color: TEXT, fontSize:12, padding:'7px 10px',
-                              outline:'none', marginTop:4,
-                            }}
-                          />
-                        </div>
-                      )}
-                    </div>
-                  )
-                })}
-
-              {regions.filter(r => ['MATERIAL','REFERENCE','REPLACE','MODIFY','ADD'].includes(r.state)).length === 0 && (
-                <div style={{ ...cardStyle, textAlign:'center', padding:'40px 24px' }}>
-                  <p style={{ color: DIM, fontSize:13 }}>
-                    Nenhuma região com estado que requer configuração de material.<br />
-                    Volte ao passo anterior e ajuste os estados das regiões.
-                  </p>
-                </div>
-              )}
+            {/* Progress */}
+            <div style={{ display:'flex', alignItems:'center', gap:10, marginTop:12 }}>
+              <div style={{ flex:1, height:3, background:'rgba(255,255,255,0.08)', borderRadius:2 }}>
+                <div style={{
+                  width:`${regions.length ? (regions.filter(r=>r.aprovado).length / regions.length) * 100 : 0}%`,
+                  height:'100%', background:'#4ade80', borderRadius:2, transition:'width 0.3s',
+                }} />
+              </div>
+              <span style={{ fontSize:11, color:T.dim }}>
+                {regions.filter(r=>r.aprovado).length}/{regions.length} aprovadas
+              </span>
             </div>
           </div>
         )}
 
-        {/* ─── STEP 5: Aprovação ─── */}
+        {/* ─── S4: MATERIAIS ─── */}
+        {step === 4 && (
+          <div>
+            <div style={{ display:'grid', gridTemplateColumns:'1fr 280px', gap:20, alignItems:'start' }}>
+              <div>
+                <h1 style={{ fontSize:22, fontWeight:800, margin:'0 0 4px', color:'#fff' }}>Materiais por Região</h1>
+                <p style={{ fontSize:13, color:T.dim, margin:'0 0 20px' }}>Configure material, cor e referência para regiões que serão modificadas.</p>
+
+                <div style={{ display:'flex', flexDirection:'column', gap:10 }}>
+                  {regions.filter(r => ['MATERIAL','REFERENCE','REPLACE','MODIFY','ADD'].includes(r.state)).map(r => {
+                    const m = STATE_META[r.state]
+                    return (
+                      <div key={r.id} style={{ ...card, borderLeft:`3px solid ${m.color}` }}>
+                        <div style={{ display:'flex', alignItems:'center', gap:10, marginBottom:14 }}>
+                          <StateBadge state={r.state} />
+                          <span style={{ fontSize:14, fontWeight:700, color:'#fff' }}>{r.name}</span>
+                          <span style={{ fontSize:11, color:T.dim }}>{m.desc}</span>
+                        </div>
+                        <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr auto', gap:14, alignItems:'start' }}>
+                          {/* Material confirmado */}
+                          <div>
+                            <p style={{ ...label, marginBottom:5 }}>Material confirmado</p>
+                            <input value={r.materialConfirmado} onChange={e => updateRegion(r.id, { materialConfirmado:e.target.value })}
+                              placeholder="Ex: Mármore Calacatta, Carvalho…" style={inp} />
+                            <p style={{ fontSize:10, color:T.dim, margin:'4px 0 0' }}>
+                              Detectado: <em>{r.materialDetectado || '—'}</em>
+                            </p>
+                          </div>
+                          {/* Color */}
+                          <div>
+                            <p style={{ ...label, marginBottom:5 }}>Cor base</p>
+                            <div style={{ display:'flex', alignItems:'center', gap:8 }}>
+                              <input type="color" value={r.materialColor ?? '#c8a87a'}
+                                onChange={e => updateRegion(r.id, { materialColor:e.target.value })}
+                                style={{ width:36, height:30, border:'none', borderRadius:5, cursor:'pointer', background:'none' }} />
+                              <input value={r.materialColor ?? '#c8a87a'}
+                                onChange={e => updateRegion(r.id, { materialColor:e.target.value })}
+                                style={{ ...inp, width:90, fontFamily:'monospace' }} />
+                            </div>
+                          </div>
+                          {/* Reference image */}
+                          {['REFERENCE','REPLACE'].includes(r.state) && (
+                            <div>
+                              <p style={{ ...label, marginBottom:5 }}>Imagem de referência</p>
+                              {r.referenceImageUrl ? (
+                                <div style={{ position:'relative', display:'inline-block' }}>
+                                  <img src={r.referenceImageUrl} alt="ref"
+                                    style={{ width:72, height:54, objectFit:'cover', borderRadius:6, display:'block' }} />
+                                  <button onClick={() => updateRegion(r.id, { referenceImageUrl:undefined })} style={{
+                                    position:'absolute', top:-6, right:-6, width:18, height:18, borderRadius:50,
+                                    background:'#ef4444', border:'none', color:'#fff', fontSize:11,
+                                    cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center',
+                                  }}>×</button>
+                                </div>
+                              ) : (
+                                <label style={{
+                                  display:'inline-flex', alignItems:'center', gap:5, padding:'7px 12px',
+                                  borderRadius:6, cursor:'pointer', border:`1px dashed ${T.border}`,
+                                  background:'rgba(255,255,255,0.02)', color:T.dim, fontSize:11,
+                                }}>
+                                  📎 Upload
+                                  <input type="file" accept="image/*" style={{ display:'none' }} onChange={e => {
+                                    const f = e.target.files?.[0]
+                                    if (f) updateRegion(r.id, { referenceImageUrl:URL.createObjectURL(f) })
+                                  }} />
+                                </label>
+                              )}
+                            </div>
+                          )}
+                        </div>
+                        {/* Notes */}
+                        <div style={{ marginTop:10 }}>
+                          <p style={{ ...label, marginBottom:5 }}>Instrução técnica</p>
+                          <input value={r.notes} onChange={e => updateRegion(r.id, { notes:e.target.value })}
+                            placeholder="Detalhe adicional para o render…" style={inp} />
+                        </div>
+                      </div>
+                    )
+                  })}
+                  {regions.filter(r => ['MATERIAL','REFERENCE','REPLACE','MODIFY','ADD'].includes(r.state)).length === 0 && (
+                    <div style={{ ...card, textAlign:'center', padding:'40px' }}>
+                      <p style={{ color:T.dim }}>Nenhuma região com estado que requer material.<br/>Volte e ajuste os estados no passo anterior.</p>
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* Priority hierarchy panel */}
+              <div>
+                <div style={{ ...card, position:'sticky', top:70 }}>
+                  <p style={{ ...label, marginBottom:12 }}>Hierarquia de Prioridade</p>
+                  <p style={{ fontSize:11, color:T.dim, marginBottom:16, lineHeight:1.5 }}>
+                    Quando há conflito entre fontes, a IA obedece esta ordem:
+                  </p>
+                  {[
+                    { n:1, icon:'📋', label:'Memorial Descritivo',       color:'#a78bfa', desc:'Especificação técnica do projeto' },
+                    { n:2, icon:'🖼️', label:'Imagem de Referência',      color:'#60a5fa', desc:'Foto ou recorte de material' },
+                    { n:3, icon:'✍️', label:'Nome Técnico Informado',    color:'#34d399', desc:'Texto digitado pelo usuário' },
+                    { n:4, icon:'📚', label:'Biblioteca de Materiais',   color:'#fbbf24', desc:'Biblioteca interna arqdor.ai' },
+                    { n:5, icon:'👁️', label:'Leitura Visual da Imagem',  color:'#fb923c', desc:'Detectado pela IA na foto' },
+                  ].map(item => (
+                    <div key={item.n} style={{
+                      display:'flex', alignItems:'flex-start', gap:10, marginBottom:12,
+                      paddingBottom:12, borderBottom: item.n < 5 ? `1px solid ${T.border}` : 'none',
+                    }}>
+                      <div style={{
+                        width:22, height:22, borderRadius:50, flexShrink:0, marginTop:1,
+                        background:`rgba(${item.color === '#a78bfa' ? '167,139,250' : item.color === '#60a5fa' ? '96,165,250' : item.color === '#34d399' ? '52,211,153' : item.color === '#fbbf24' ? '251,191,36' : '251,146,60'},0.15)`,
+                        display:'flex', alignItems:'center', justifyContent:'center', fontSize:10,
+                        border:`1px solid ${item.color}40`,
+                      }}>{item.n}</div>
+                      <div>
+                        <p style={{ fontSize:12, fontWeight:700, color:item.color, margin:'0 0 1px' }}>{item.icon} {item.label}</p>
+                        <p style={{ fontSize:10, color:T.dim, margin:0 }}>{item.desc}</p>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* ─── S5: APROVAÇÃO ─── */}
         {step === 5 && (
           <div>
-            <h1 style={{ fontSize:22, fontWeight:800, margin:'0 0 4px', color:'#fff' }}>Aprovação Técnica</h1>
-            <p style={{ fontSize:13, color: DIM, margin:'0 0 24px' }}>
-              Revise todas as regiões antes de gerar o prompt. Verifique a fonte da verdade e o nível de confiança.
-            </p>
+            <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:16 }}>
+              <div>
+                <h1 style={{ fontSize:22, fontWeight:800, margin:'0 0 4px', color:'#fff' }}>Aprovação Técnica</h1>
+                <p style={{ fontSize:13, color:T.dim, margin:0 }}>Revise e aprove cada região antes de avaliar os riscos.</p>
+              </div>
+              <div style={{ display:'flex', gap:8 }}>
+                <button onClick={() => setRegions(rs => rs.map(r => ({ ...r, aprovado:true })))}
+                  style={{ ...btnS, fontSize:12 }}>Aprovar todas</button>
+                <button onClick={() => setRegions(rs => rs.map(r => ({ ...r, aprovado:false })))}
+                  style={{ ...btnS, fontSize:12 }}>Limpar</button>
+              </div>
+            </div>
 
-            <div style={{ ...cardStyle, padding:0, overflow:'hidden', marginBottom:20 }}>
-              <table style={{ width:'100%', borderCollapse:'collapse' }}>
+            {/* Summary row */}
+            <div style={{ display:'grid', gridTemplateColumns:'repeat(4,1fr)', gap:12, marginBottom:20 }}>
+              {[
+                { label:'Total de Regiões', value:regions.length, color:'#fff'     },
+                { label:'Aprovadas',         value:regions.filter(r=>r.aprovado).length, color:'#4ade80' },
+                { label:'Pendentes',         value:regions.filter(r=>!r.aprovado).length, color:'#fbbf24' },
+                { label:'Com Referência',    value:regions.filter(r=>r.referenceImageUrl).length, color:T.purpleL },
+              ].map(({ label: lbl, value, color }) => (
+                <div key={lbl} style={{ ...card, padding:'14px 16px', textAlign:'center' }}>
+                  <div style={{ fontSize:24, fontWeight:800, color, marginBottom:2 }}>{value}</div>
+                  <p style={{ ...label, textTransform:'none', fontSize:11, color:T.dim, margin:0 }}>{lbl}</p>
+                </div>
+              ))}
+            </div>
+
+            {/* Table */}
+            <div style={{ ...card, padding:0, overflow:'auto', marginBottom:20 }}>
+              <table style={{ width:'100%', borderCollapse:'collapse', minWidth:780 }}>
                 <thead>
-                  <tr style={{ borderBottom:'1px solid rgba(255,255,255,0.08)' }}>
-                    {['Região','Estado','Fonte da Verdade','Confiança','Material / Instrução'].map(col => (
-                      <th key={col} style={{ padding:'12px 14px', textAlign:'left', ...labelStyle }}>{col}</th>
+                  <tr style={{ borderBottom:`1px solid ${T.border}`, background:'rgba(255,255,255,0.02)' }}>
+                    {['Região','Estado','Fonte da Verdade','Confiança','Mat. Detectado','Mat. Confirmado','Instrução','Aprovado'].map(col => (
+                      <th key={col} style={{ padding:'10px 12px', textAlign:'left', ...label }}>{col}</th>
                     ))}
                   </tr>
                 </thead>
                 <tbody>
-                  {regions.map(r => (
-                    <tr key={r.id} style={{ borderBottom:'1px solid rgba(255,255,255,0.05)' }}>
-                      <td style={{ padding:'10px 14px', fontWeight:600, fontSize:13 }}>{r.name}</td>
-                      <td style={{ padding:'10px 14px' }}><StateBadge state={r.state} /></td>
-                      <td style={{ padding:'10px 14px', fontSize:12, color: DIM }}>{SOURCE_LABEL[r.state]}</td>
-                      <td style={{ padding:'10px 14px', minWidth:110 }}><ConfidenceBar value={r.confidence} /></td>
-                      <td style={{ padding:'10px 14px', fontSize:12, color: DIM, maxWidth:220 }}>
-                        {r.materialName
-                          ? <><span style={{ background: r.materialColor, width:10, height:10, borderRadius:2, display:'inline-block', marginRight:6, verticalAlign:'middle' }} />{r.materialName}</>
-                          : r.notes || '—'}
-                      </td>
-                    </tr>
-                  ))}
+                  {regions.map(r => {
+                    const fm = FONTE_META[r.fonteVerdade]
+                    return (
+                      <tr key={r.id} style={{
+                        borderBottom:`1px solid ${T.border}`,
+                        background: r.aprovado ? 'rgba(74,222,128,0.04)' : 'transparent',
+                      }}>
+                        <td style={{ padding:'10px 12px', fontWeight:700, fontSize:13 }}>{r.name}</td>
+                        <td style={{ padding:'10px 12px' }}><StateBadge state={r.state} /></td>
+                        <td style={{ padding:'10px 12px' }}>
+                          <span style={{ fontSize:10, fontWeight:700, color:fm.color }}>
+                            {fm.priority}. {fm.label}
+                          </span>
+                        </td>
+                        <td style={{ padding:'10px 12px', minWidth:100 }}><ConfidenceBar value={r.confidence} /></td>
+                        <td style={{ padding:'10px 12px', fontSize:11, color:T.dim }}>{r.materialDetectado || '—'}</td>
+                        <td style={{ padding:'10px 12px', fontSize:11, color:r.materialConfirmado ? T.text : T.dim }}>
+                          {r.materialConfirmado || '—'}
+                        </td>
+                        <td style={{ padding:'10px 12px', fontSize:11, color:T.dim, maxWidth:180 }}>{r.notes || '—'}</td>
+                        <td style={{ padding:'10px 12px' }}>
+                          <ApproveToggle checked={r.aprovado} onChange={v => updateRegion(r.id, { aprovado:v })} />
+                        </td>
+                      </tr>
+                    )
+                  })}
                 </tbody>
               </table>
             </div>
 
-            {/* Image preview + approve */}
-            <div style={{ display:'grid', gridTemplateColumns:'1fr auto', gap:20, alignItems:'center' }}>
-              {imagePrev && (
-                <div style={{ ...cardStyle, padding:0, overflow:'hidden' }}>
-                  <img src={imagePrev} alt="project" style={{ width:'100%', maxHeight:200, objectFit:'cover', borderRadius:12 }} />
+            {/* Progress bar */}
+            <div style={{ ...card, padding:'16px 20px', display:'flex', alignItems:'center', gap:16 }}>
+              <div style={{ flex:1 }}>
+                <div style={{ display:'flex', justifyContent:'space-between', marginBottom:6 }}>
+                  <span style={{ fontSize:12, fontWeight:600, color:allApproved ? '#4ade80' : '#fff' }}>
+                    {allApproved ? '✅ Todas as regiões aprovadas — pronto para avançar' : `Aprovação: ${regions.filter(r=>r.aprovado).length} de ${regions.length}`}
+                  </span>
+                  <span style={{ fontSize:12, color:T.dim }}>
+                    {Math.round((regions.filter(r=>r.aprovado).length / Math.max(regions.length,1)) * 100)}%
+                  </span>
                 </div>
-              )}
-              <div style={{ display:'flex', flexDirection:'column', gap:12, minWidth:220 }}>
-                <div style={{
-                  ...cardStyle, padding:'16px 20px', textAlign:'center',
-                  border: approved ? '1px solid rgba(74,222,128,0.4)' : BORDER,
-                  background: approved ? 'rgba(74,222,128,0.06)' : CARD,
-                }}>
-                  <div style={{ fontSize:28, marginBottom:6 }}>{approved ? '✅' : '🔍'}</div>
-                  <p style={{ fontSize:13, color: approved ? '#4ade80' : '#fff', fontWeight:700, margin:'0 0 12px' }}>
-                    {approved ? 'Configuração Aprovada' : 'Aprovar Configuração'}
-                  </p>
-                  <button
-                    onClick={() => setApproved(v => !v)}
-                    style={{
-                      ...approved ? btnSecondary : btnPrimary,
-                      width:'100%', fontSize:12,
-                    }}
-                  >{approved ? 'Cancelar aprovação' : 'Aprovar e continuar'}</button>
+                <div style={{ height:6, background:'rgba(255,255,255,0.08)', borderRadius:3 }}>
+                  <div style={{
+                    width:`${(regions.filter(r=>r.aprovado).length / Math.max(regions.length,1)) * 100}%`,
+                    height:'100%', background: allApproved ? '#4ade80' : T.purple,
+                    borderRadius:3, transition:'width 0.3s, background 0.3s',
+                  }} />
                 </div>
-                <p style={{ fontSize:10, color: DIM, textAlign:'center' }}>
-                  Ao aprovar, você confirma que as regiões e estados estão corretos para gerar o prompt.
-                </p>
               </div>
+              {!allApproved && (
+                <button onClick={() => setRegions(rs => rs.map(r => ({ ...r, aprovado:true })))} style={btnP}>
+                  Aprovar todas
+                </button>
+              )}
             </div>
           </div>
         )}
 
-        {/* ─── STEP 6: Mapa de Riscos ─── */}
+        {/* ─── S6: RISCOS ─── */}
         {step === 6 && (
           <div>
             <h1 style={{ fontSize:22, fontWeight:800, margin:'0 0 4px', color:'#fff' }}>Mapa de Riscos da IA</h1>
-            <p style={{ fontSize:13, color: DIM, margin:'0 0 24px' }}>
-              Pontos de atenção identificados que podem afetar a fidelidade arquitetônica do render.
+            <p style={{ fontSize:13, color:T.dim, margin:'0 0 20px' }}>
+              Pontos de atenção que podem comprometer a fidelidade arquitetônica do render.
             </p>
 
-            {/* Global score */}
-            <div style={{ ...cardStyle, display:'flex', alignItems:'center', gap:20, marginBottom:20, padding:'16px 24px' }}>
-              <div>
-                <div style={{ fontSize:36, fontWeight:900, color:'#fbbf24' }}>
-                  {Math.round(100 - MOCK_RISKS.reduce((acc, r) =>
-                    acc + (r.severidade === 'CRÍTICO' ? 20 : r.severidade === 'ALTO' ? 12 : r.severidade === 'MÉDIO' ? 6 : 2), 0)
-                  )}
-                  <span style={{ fontSize:16, color: DIM }}>/ 100</span>
+            {/* Score card */}
+            <div style={{ ...card, display:'grid', gridTemplateColumns:'160px 1fr', gap:24, marginBottom:20, padding:'20px 24px' }}>
+              <div style={{ textAlign:'center' }}>
+                <div style={{
+                  fontSize:48, fontWeight:900, lineHeight:1,
+                  background:'linear-gradient(135deg,#fbbf24,#fb923c)',
+                  WebkitBackgroundClip:'text', WebkitTextFillColor:'transparent',
+                }}>74</div>
+                <div style={{ fontSize:12, color:T.dim, marginTop:4 }}>/ 100 — Fidelidade</div>
+                <div style={{ display:'flex', justifyContent:'center', gap:3, marginTop:10 }}>
+                  {[...Array(5)].map((_,i) => (
+                    <div key={i} style={{ width:8, height:8, borderRadius:50, background: i < 4 ? '#fbbf24' : T.border }} />
+                  ))}
                 </div>
-                <p style={{ fontSize:11, color: DIM, margin:'2px 0 0' }}>Pontuação de Fidelidade</p>
               </div>
-              <div style={{ flex:1 }}>
-                <div style={{ display:'flex', gap:8, marginBottom:8 }}>
-                  {(['CRÍTICO','ALTO','MÉDIO','BAIXO'] as const).map(sev => {
-                    const cnt = MOCK_RISKS.filter(r => r.severidade === sev).length
-                    const m = RISK_META[sev]
-                    return (
-                      <div key={sev} style={{
-                        padding:'4px 10px', borderRadius:4, fontSize:11, fontWeight:700,
-                        color: m.color, background: m.bg, border:`1px solid ${m.color}40`,
-                      }}>{cnt} {sev}</div>
-                    )
-                  })}
-                </div>
-                <p style={{ fontSize:12, color: DIM, margin:0 }}>
-                  Revise as recomendações antes de gerar o prompt para maximizar a fidelidade.
+              <div>
+                <p style={{ ...label, marginBottom:10 }}>Distribuição de riscos</p>
+                {(['CRÍTICO','ALTO','MÉDIO','BAIXO'] as const).map(sev => {
+                  const cnt = MOCK_RISKS.filter(r => r.severidade === sev).length
+                  const m   = RISK_META[sev]
+                  return (
+                    <div key={sev} style={{ display:'flex', alignItems:'center', gap:10, marginBottom:8 }}>
+                      <span style={{
+                        width:56, fontSize:10, fontWeight:800, letterSpacing:'0.04em',
+                        color:m.color, padding:'2px 6px', borderRadius:3,
+                        background:m.bg, border:`1px solid ${m.border}`, textAlign:'center',
+                      }}>{sev}</span>
+                      <div style={{ flex:1, height:5, background:'rgba(255,255,255,0.07)', borderRadius:3 }}>
+                        <div style={{ width:`${(cnt / Math.max(MOCK_RISKS.length, 1)) * 100}%`, height:'100%', background:m.color, borderRadius:3 }} />
+                      </div>
+                      <span style={{ fontSize:12, color:m.color, fontWeight:700, minWidth:16, textAlign:'right' }}>{cnt}</span>
+                    </div>
+                  )
+                })}
+                <p style={{ fontSize:11, color:T.dim, marginTop:10, lineHeight:1.5 }}>
+                  Revise as recomendações para maximizar a fidelidade antes de gerar o prompt.
                 </p>
               </div>
             </div>
 
+            {/* Risk list */}
             <div style={{ display:'flex', flexDirection:'column', gap:10 }}>
               {MOCK_RISKS.map((risk, i) => {
                 const m = RISK_META[risk.severidade]
                 return (
                   <div key={i} style={{
-                    ...cardStyle, display:'grid', gridTemplateColumns:'120px 1fr auto', gap:16, alignItems:'start',
-                    borderLeft:`3px solid ${m.color}`,
+                    ...card, display:'grid', gridTemplateColumns:'1fr auto', gap:16, alignItems:'start',
+                    borderLeft:`3px solid ${m.color}`, padding:'14px 18px',
                   }}>
                     <div>
-                      <span style={{
-                        display:'inline-block', padding:'3px 8px', borderRadius:4, fontSize:10, fontWeight:800,
-                        color: m.color, background: m.bg, letterSpacing:'0.05em',
-                      }}>{risk.severidade}</span>
-                      <p style={{ fontSize:12, fontWeight:700, color:'#fff', margin:'6px 0 0' }}>{risk.regionName}</p>
-                    </div>
-                    <div>
-                      <p style={{ fontSize:12, color: TEXT, margin:'0 0 6px' }}>{risk.risco}</p>
-                      <p style={{ fontSize:11, color:'#fbbf24', margin:0 }}>
+                      <div style={{ display:'flex', alignItems:'center', gap:8, marginBottom:6 }}>
+                        <span style={{
+                          fontSize:10, fontWeight:800, padding:'2px 8px', borderRadius:3, letterSpacing:'0.06em',
+                          color:m.color, background:m.bg, border:`1px solid ${m.border}`,
+                        }}>{risk.severidade}</span>
+                        <span style={{ fontSize:13, fontWeight:700, color:'#fff' }}>{risk.regionName}</span>
+                      </div>
+                      <p style={{ fontSize:12, color:T.text, margin:'0 0 6px', lineHeight:1.5 }}>{risk.risco}</p>
+                      <p style={{ fontSize:11, color:'#fbbf24', margin:0, lineHeight:1.5 }}>
                         💡 {risk.recomendacao}
                       </p>
                     </div>
-                    <div style={{ display:'flex', gap:6 }}>
-                      <button
-                        onClick={() => {
-                          const reg = regions.find(r => r.id === risk.regionId)
-                          if (reg) setStep(3)
-                        }}
-                        style={{ ...btnSecondary, padding:'5px 12px', fontSize:11 }}
-                      >Ajustar</button>
-                    </div>
+                    <button onClick={() => goTo(3)} style={{ ...btnS, fontSize:11, padding:'6px 14px', whiteSpace:'nowrap' as const }}>
+                      Ajustar região
+                    </button>
                   </div>
                 )
               })}
@@ -813,126 +1029,161 @@ export default function ArqdorPage() {
           </div>
         )}
 
-        {/* ─── STEP 7: Prompt Final ─── */}
-        {step === 7 && prompt && (
+        {/* ─── S7: PROMPT ─── */}
+        {step === 7 && (
           <div>
             <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:4 }}>
-              <h1 style={{ fontSize:22, fontWeight:800, margin:0, color:'#fff' }}>Prompt Final</h1>
-              <div style={{ display:'flex', gap:8 }}>
-                <button onClick={exportTXT} style={{ ...btnSecondary, padding:'7px 16px', fontSize:12 }}>Exportar TXT</button>
-                <button onClick={exportJSON} style={{ ...btnSecondary, padding:'7px 16px', fontSize:12 }}>Exportar JSON</button>
-                <button
-                  onClick={() => {
-                    const full = `${prompt.core}\n\n${prompt.project}\n\n${prompt.style}`
-                    void navigator.clipboard.writeText(full)
-                  }}
-                  style={{ ...btnPrimary, padding:'7px 18px', fontSize:12 }}
-                >Copiar Tudo</button>
-              </div>
-            </div>
-            <p style={{ fontSize:13, color: DIM, margin:'0 0 24px' }}>
-              Prompt profissional gerado com fidelidade arquitetônica. Edite os campos antes de usar no Nano Banana.
-            </p>
-
-            {/* Tabs */}
-            <div style={{ display:'flex', gap:0, marginBottom:20, borderBottom:'1px solid rgba(255,255,255,0.08)' }}>
-              {([
-                { k:'core',     label:'Core Prompt',     desc:'Cena geral e qualidade' },
-                { k:'project',  label:'Project Prompt',  desc:'Instruções por região' },
-                { k:'style',    label:'Style Prompt',    desc:'Iluminação e estética' },
-                { k:'negative', label:'Negative Prompt', desc:'O que evitar' },
-              ] as { k: keyof ArqdorPrompt; label: string; desc: string }[]).map(tab => (
-                <button
-                  key={tab.k}
-                  onClick={() => setPromptTab(tab.k)}
-                  style={{
-                    padding:'10px 18px', border:'none', cursor:'pointer', fontSize:12, fontWeight:600,
-                    background:'transparent', borderBottom: promptTab === tab.k ? `2px solid ${PURPLE}` : '2px solid transparent',
-                    color: promptTab === tab.k ? '#fff' : DIM, transition:'all 0.15s',
-                  }}
-                >{tab.label}</button>
-              ))}
-            </div>
-
-            {/* Active prompt */}
-            <div style={cardStyle}>
-              {promptTab === 'core'     && <PromptBox label="CORE PROMPT"     value={prompt.core}     onChange={v => setPrompt(p => p ? { ...p, core:     v } : p)} />}
-              {promptTab === 'project'  && <PromptBox label="PROJECT PROMPT"  value={prompt.project}  onChange={v => setPrompt(p => p ? { ...p, project:  v } : p)} />}
-              {promptTab === 'style'    && <PromptBox label="STYLE PROMPT"    value={prompt.style}    onChange={v => setPrompt(p => p ? { ...p, style:    v } : p)} />}
-              {promptTab === 'negative' && <PromptBox label="NEGATIVE PROMPT" value={prompt.negative} onChange={v => setPrompt(p => p ? { ...p, negative: v } : p)} />}
-            </div>
-
-            {/* Summary */}
-            <div style={{ display:'grid', gridTemplateColumns:'repeat(4,1fr)', gap:12, marginTop:16 }}>
-              {[
-                { label:'Ambiente',    value: techRead?.ambiente ?? MOCK_TECH.ambiente     },
-                { label:'Regiões',     value: `${regions.length} configuradas`             },
-                { label:'Bloqueadas',  value: `${regions.filter(r=>r.state==='LOCK').length} regiões LOCK` },
-                { label:'Fidelidade',  value: '74 / 100'                                  },
-              ].map(({ label, value }) => (
-                <div key={label} style={{ ...cardStyle, padding:'12px 16px', textAlign:'center' }}>
-                  <p style={labelStyle}>{label}</p>
-                  <p style={{ fontSize:13, fontWeight:700, color:'#fff', margin:'4px 0 0' }}>{value}</p>
-                </div>
-              ))}
-            </div>
-
-            {/* CTA */}
-            <div style={{ ...cardStyle, marginTop:16, display:'flex', alignItems:'center', justifyContent:'space-between', padding:'16px 20px' }}>
               <div>
-                <p style={{ fontSize:14, fontWeight:700, color:'#fff', margin:'0 0 2px' }}>Pronto para renderizar</p>
-                <p style={{ fontSize:12, color: DIM, margin:0 }}>
-                  Copie o prompt e use no Nano Banana para gerar o render com fidelidade arquitetônica.
+                <h1 style={{ fontSize:22, fontWeight:800, margin:'0 0 4px', color:'#fff' }}>Prompt Final</h1>
+                <p style={{ fontSize:13, color:T.dim, margin:0 }}>
+                  Gerado com fidelidade arquitetônica. Edite antes de usar no Nano Banana.
                 </p>
               </div>
-              <button
-                onClick={() => {
-                  const full = `${prompt.core}\n\n${prompt.project}\n\n${prompt.style}`
-                  void navigator.clipboard.writeText(full)
-                }}
-                style={{ ...btnPrimary, padding:'11px 28px', fontSize:14 }}
-              >🚀 Preparar Render</button>
+              <div style={{ display:'flex', gap:8 }}>
+                <button onClick={exportTXT} style={{ ...btnS, fontSize:12 }}>↓ TXT</button>
+                <button onClick={exportJSON} style={{ ...btnS, fontSize:12 }}>↓ JSON</button>
+                <button onClick={() => {
+                  if (!prompt) return
+                  void navigator.clipboard.writeText([prompt.core, prompt.project, prompt.style].filter(Boolean).join('\n\n'))
+                }} style={{ ...btnP, fontSize:12 }}>Copiar tudo</button>
+              </div>
             </div>
-          </div>
-        )}
 
-        {step === 7 && !prompt && (
-          <div style={{ ...cardStyle, textAlign:'center', padding:'40px' }}>
-            <p style={{ color: DIM }}>Prompt ainda não gerado. Volte ao passo anterior.</p>
-          </div>
-        )}
+            {prompt ? (
+              <div style={{ display:'flex', flexDirection:'column', gap:14, marginTop:20 }}>
+                <PromptSection
+                  tag="01" title="Core Prompt" subtitle="Cena geral e qualidade técnica"
+                  accent="124,58,237" value={prompt.core}
+                  onChange={v => setPrompt(p => p ? { ...p, core:v } : p)} />
+                <PromptSection
+                  tag="02" title="Project Prompt" subtitle="Instruções por região"
+                  accent="96,165,250" value={prompt.project}
+                  onChange={v => setPrompt(p => p ? { ...p, project:v } : p)} />
+                <PromptSection
+                  tag="03" title="Style Prompt" subtitle="Iluminação, estética e câmera"
+                  accent="167,139,250" value={prompt.style}
+                  onChange={v => setPrompt(p => p ? { ...p, style:v } : p)} />
+                <PromptSection
+                  tag="04" title="Negative Prompt" subtitle="O que a IA deve evitar"
+                  accent="248,113,113" value={prompt.negative}
+                  onChange={v => setPrompt(p => p ? { ...p, negative:v } : p)} />
 
-        {/* ── Navigation ── */}
-        <div style={{
-          display:'flex', justifyContent:'space-between', alignItems:'center',
-          marginTop:32, paddingTop:24, borderTop:'1px solid rgba(255,255,255,0.07)',
-        }}>
-          <div>
-            {step > 1 && (
-              <button onClick={goBack} style={btnSecondary}>← Voltar</button>
+                {/* Session summary */}
+                <div style={{ display:'grid', gridTemplateColumns:'repeat(4,1fr)', gap:12, marginTop:4 }}>
+                  {[
+                    { k:'Ambiente',   v: (techRead ?? MOCK_TECH).ambiente },
+                    { k:'Regiões',    v:`${regions.length} configuradas` },
+                    { k:'LOCK',       v:`${regions.filter(r=>r.state==='LOCK').length} preservadas` },
+                    { k:'Fidelidade', v:'74 / 100' },
+                  ].map(({ k, v }) => (
+                    <div key={k} style={{ ...card, padding:'12px 16px', textAlign:'center' }}>
+                      <p style={{ ...label, marginBottom:4 }}>{k}</p>
+                      <p style={{ fontSize:13, fontWeight:700, color:'#fff', margin:0 }}>{v}</p>
+                    </div>
+                  ))}
+                </div>
+
+                {/* CTA */}
+                <div style={{
+                  ...card, display:'flex', alignItems:'center', justifyContent:'space-between',
+                  padding:'16px 20px', borderColor:'rgba(124,58,237,0.3)',
+                  background:'rgba(124,58,237,0.06)',
+                }}>
+                  <div>
+                    <p style={{ fontSize:14, fontWeight:700, color:'#fff', margin:'0 0 2px' }}>Pronto para renderizar</p>
+                    <p style={{ fontSize:12, color:T.dim, margin:0 }}>
+                      Copie o prompt completo e use no Nano Banana para gerar o render com fidelidade arquitetônica.
+                    </p>
+                  </div>
+                  <button onClick={() => {
+                    if (!prompt) return
+                    void navigator.clipboard.writeText([prompt.core, prompt.project, prompt.style].join('\n\n'))
+                  }} style={{ ...btnP, fontSize:14, padding:'11px 28px', flexShrink:0 }}>
+                    🚀 Copiar e Preparar Render
+                  </button>
+                </div>
+
+                {/* ─── PRÓXIMA ETAPA: INTEGRAÇÃO IA ─── */}
+                <div style={{
+                  border:`1px dashed rgba(167,139,250,0.3)`,
+                  borderRadius:12, padding:'20px 24px',
+                  background:'rgba(167,139,250,0.04)',
+                }}>
+                  <div style={{ display:'flex', alignItems:'center', gap:10, marginBottom:14 }}>
+                    <div style={{
+                      padding:'4px 10px', borderRadius:4, fontSize:10, fontWeight:800,
+                      background:'rgba(167,139,250,0.15)', color:T.purpleL,
+                      border:'1px solid rgba(167,139,250,0.3)', letterSpacing:'0.07em',
+                    }}>ROADMAP</div>
+                    <span style={{ fontSize:14, fontWeight:700, color:'#fff' }}>Próxima etapa: Integração com IA</span>
+                  </div>
+                  <div style={{ display:'grid', gridTemplateColumns:'repeat(3,1fr)', gap:12 }}>
+                    {[
+                      { icon:'🔍', title:'Análise Real (Passo 2)', desc:'API de visão computacional analisará a imagem automaticamente, sem dados mockados.' },
+                      { icon:'🚀', title:'Envio para Nano Banana', desc:'Passo 7 enviará o prompt estruturado diretamente para o Nano Banana via API.' },
+                      { icon:'🏛️', title:'Renderizador preservado', desc:'O renderizador anterior segue preservado no backend — nenhum arquivo foi removido.' },
+                    ].map(({ icon, title, desc }) => (
+                      <div key={title} style={{
+                        padding:'14px 16px', borderRadius:8,
+                        background:'rgba(255,255,255,0.03)', border:`1px solid ${T.border}`,
+                      }}>
+                        <p style={{ fontSize:18, margin:'0 0 6px' }}>{icon}</p>
+                        <p style={{ fontSize:12, fontWeight:700, color:T.purpleL, margin:'0 0 4px' }}>{title}</p>
+                        <p style={{ fontSize:11, color:T.dim, margin:0, lineHeight:1.5 }}>{desc}</p>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            ) : (
+              <div style={{ ...card, textAlign:'center', padding:'40px' }}>
+                <p style={{ color:T.dim, marginBottom:16 }}>Prompt ainda não gerado.</p>
+                <button onClick={() => { setPrompt(buildPrompt(techRead ?? MOCK_TECH, regions)); }} style={btnP}>
+                  ⚡ Gerar agora
+                </button>
+              </div>
             )}
           </div>
-          <div style={{ textAlign:'center' }}>
-            <p style={{ fontSize:11, color: DIM, margin:0 }}>
-              {STEPS[step - 1].label} — Passo {step} de {STEPS.length}
-            </p>
-          </div>
+        )}
+
+        {/* ─── NAVIGATION ─── */}
+        <div style={{
+          display:'flex', justifyContent:'space-between', alignItems:'center',
+          marginTop:32, paddingTop:20, borderTop:`1px solid ${T.border}`,
+        }}>
+          {/* Back */}
           <div>
-            {step < 7 && (
+            {step > 1 && (
+              <button onClick={goBack} style={btnS}>← Voltar</button>
+            )}
+          </div>
+
+          {/* Step label */}
+          <div style={{ textAlign:'center' }}>
+            <div style={{ display:'flex', alignItems:'center', gap:6 }}>
+              {step > 1 && (
+                <span style={{ fontSize:10, color:'#4ade80' }}>✓ {STEPS[step-2].done}</span>
+              )}
+              {step > 1 && step < 7 && <span style={{ color:T.dimL, fontSize:10 }}>→</span>}
+              <span style={{ fontSize:12, fontWeight:700, color:'#fff' }}>
+                {STEPS[step-1].label}
+              </span>
+              {step < 7 && <span style={{ color:T.dimL, fontSize:10 }}>→</span>}
+              {step < 7 && (
+                <span style={{ fontSize:10, color:T.dim }}>{STEPS[step].label}</span>
+              )}
+            </div>
+            <p style={{ fontSize:10, color:T.dimL, margin:'4px 0 0' }}>Passo {step} de {STEPS.length}</p>
+          </div>
+
+          {/* Next */}
+          <div>
+            {nextLabel && (
               <button
                 onClick={goNext}
-                disabled={step === 1 && !imagePrev}
-                style={{
-                  ...btnPrimary,
-                  opacity: step === 1 && !imagePrev ? 0.4 : 1,
-                  cursor:  step === 1 && !imagePrev ? 'not-allowed' : 'pointer',
-                }}
-              >
-                {step === 2 && !techRead ? 'Iniciar Análise →' :
-                 step === 5 && !approved ? 'Aprovar para continuar →' :
-                 step === 6             ? 'Gerar Prompt Final →'    :
-                                         'Próximo →'}
-              </button>
+                disabled={nextDisabled}
+                style={{ ...btnP, opacity: nextDisabled ? 0.4 : 1, cursor: nextDisabled ? 'not-allowed' : 'pointer' }}
+              >{nextLabel}</button>
             )}
           </div>
         </div>
