@@ -828,7 +828,7 @@ function AIEPlaywrightTab({
   const [refreshFlash, setRefreshFlash] = useState(false)
   const [linkedVariationName, setLinkedVariationName] = useState<string | null>(null)
 
-  const { variations, syncing, pendingCount, retryPendingSync, save, rename, remove, updateNotes, storageError, clearStorageError, importVariations } = useSavedVariations()
+  const { variations, syncing, pendingCount, retryPendingSync, save, rename, remove, updateNotes, storageError, clearStorageError, pruneOldest, importVariations } = useSavedVariations()
 
   const searchString = useSearch()
   const [location] = useLocation()
@@ -1063,8 +1063,19 @@ function AIEPlaywrightTab({
         }}>
           <span style={{ fontSize:15, flexShrink:0, marginTop:1 }}>⚠️</span>
           <p style={{ margin:0, fontSize:11, color:'#fbbf24', lineHeight:1.6, flex:1 }}>
-            {storageError}
+            Armazenamento local cheio. Variação salva apenas no servidor.
           </p>
+          <button
+            onClick={pruneOldest}
+            title={`Remover as ${5} variações mais antigas para liberar espaço`}
+            style={{
+              flexShrink:0, padding:'4px 10px', borderRadius:5,
+              border:'1px solid rgba(251,191,36,0.5)',
+              background:'rgba(251,191,36,0.15)', color:'#fbbf24',
+              cursor:'pointer', fontSize:10, fontWeight:700, whiteSpace:'nowrap' as const,
+            }}>
+            🗑 Remover as 5 mais antigas
+          </button>
           <button
             onClick={clearStorageError}
             title="Fechar aviso"

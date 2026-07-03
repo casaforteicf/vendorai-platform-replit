@@ -32,6 +32,7 @@ export interface ServerVariation {
 export const STORAGE_KEY = 'arqdor_saved_prompt_variations'
 export const MIGRATED_KEY = 'arqdor_prompt_variations_migrated'
 export const API_BASE = '/api/arch/prompt-variations'
+export const PRUNE_BATCH_SIZE = 5
 
 // ─── Local-storage helpers ────────────────────────────────────────────────────
 
@@ -370,6 +371,30 @@ export function useSavedVariations() {
 
   const pendingCount = variations.filter(v => v.id.startsWith('local-')).length
 
+  // Remove the oldest PRUNE_BATCH_SIZE variations repeatedly until persist succeeds
+  // or the list is empty. Called by the UI when the user consents to free up space.
+  const pruneOldest = useCallback(() => {
+    setVariations(prev => {
+      let remaining = [...prev].sort((a, b) => a.savedAt - b.savedAt)
+      let pruned = [...prev]
+
+      while (pruned.length > 0) {
+        const toRemove = new Set(remaining.slice(0, PRUNE_BATCH_SIZE).map(v => v.id))
+        pruned = pruned.filter(v => !toRemove.has(v.id))
+        remaining = remaining.filter(v => !toRemove.has(v.id))
+        if (persistVariations(pruned)) {
+          setStorageError(null)
+          return pruned
+        }
+      }
+
+      // All removed — persist empty list
+      persistVariations([])
+      setStorageError(null)
+      return []
+    })
+  }, [])
+
   return {
     variations,
     save,
@@ -378,6 +403,7 @@ export function useSavedVariations() {
     updateNotes,
     storageError,
     clearStorageError,
+    pruneOldest,
     syncing,
     importVariations,
     pendingCount,
