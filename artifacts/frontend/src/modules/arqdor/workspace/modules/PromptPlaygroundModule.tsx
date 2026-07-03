@@ -34,6 +34,15 @@ interface SavedVariation {
   notes?: string
 }
 
+function persistVariations(list: SavedVariation[]): { pruned: number } | null {
+  try {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(list))
+    return null
+  } catch {
+    return { pruned: 0 }
+  }
+}
+
 function useSavedVariations() {
   const [variations, setVariations] = useState<SavedVariation[]>(() => {
     try {
@@ -44,6 +53,9 @@ function useSavedVariations() {
     }
   })
 
+  const [storageError, setStorageError] = useState<string | null>(null)
+  const clearStorageError = useCallback(() => setStorageError(null), [])
+
   const save = useCallback((v: Omit<SavedVariation, 'id' | 'savedAt' | 'name'>, suggestedName: string) => {
     const item: SavedVariation = {
       ...v,
@@ -53,7 +65,28 @@ function useSavedVariations() {
     }
     setVariations(prev => {
       const next = [item, ...prev]
-      try { localStorage.setItem(STORAGE_KEY, JSON.stringify(next)) } catch { /* quota exceeded */ }
+      const err = persistVariations(next)
+      if (err !== null) {
+        // Prune oldest variations one at a time until it fits or list is empty
+        const pruned = [...next]
+        let prunedCount = 0
+        while (pruned.length > 1) {
+          pruned.pop()
+          prunedCount++
+          const retryErr = persistVariations(pruned)
+          if (retryErr === null) {
+            setStorageError(
+              `Armazenamento local cheio. ${prunedCount} variação${prunedCount > 1 ? 'ões antigas foram removidas' : ' antiga foi removida'} para liberar espaço. Exporte suas variações regularmente para não perder trabalho.`
+            )
+            return pruned
+          }
+        }
+        // Even a single item doesn't fit — warn and don't persist
+        setStorageError(
+          'Armazenamento local cheio e não foi possível liberar espaço. A variação não foi salva. Exporte as variações existentes e remova algumas antes de salvar novamente.'
+        )
+        return prev
+      }
       return next
     })
   }, [])
@@ -61,7 +94,10 @@ function useSavedVariations() {
   const rename = useCallback((id: string, name: string) => {
     setVariations(prev => {
       const next = prev.map((v): SavedVariation => v.id === id ? { ...v, name } : v)
-      try { localStorage.setItem(STORAGE_KEY, JSON.stringify(next)) } catch { /* quota exceeded */ }
+      const err = persistVariations(next)
+      if (err !== null) {
+        setStorageError('Não foi possível salvar o novo nome no armazenamento local (espaço esgotado).')
+      }
       return next
     })
   }, [])
@@ -69,7 +105,7 @@ function useSavedVariations() {
   const remove = useCallback((id: string) => {
     setVariations(prev => {
       const next = prev.filter(v => v.id !== id)
-      try { localStorage.setItem(STORAGE_KEY, JSON.stringify(next)) } catch { /* quota exceeded */ }
+      persistVariations(next)
       return next
     })
   }, [])
@@ -77,12 +113,15 @@ function useSavedVariations() {
   const updateNotes = useCallback((id: string, notes: string) => {
     setVariations(prev => {
       const next = prev.map((v): SavedVariation => v.id === id ? { ...v, notes } : v)
-      try { localStorage.setItem(STORAGE_KEY, JSON.stringify(next)) } catch { /* quota exceeded */ }
+      const err = persistVariations(next)
+      if (err !== null) {
+        setStorageError('Não foi possível salvar as notas no armazenamento local (espaço esgotado).')
+      }
       return next
     })
   }, [])
 
-  return { variations, save, rename, remove, updateNotes }
+  return { variations, save, rename, remove, updateNotes, storageError, clearStorageError }
 }
 
 // ─── Playground tab (existing) ────────────────────────────────────────────────
@@ -561,7 +600,7 @@ function AIEPlaywrightTab() {
   const [detail, setDetail]         = useState<DetailLevel>('detalhado')
   const [savedFlash, setSavedFlash] = useState(false)
 
-  const { variations, save, rename, remove, updateNotes } = useSavedVariations()
+  const { variations, save, rename, remove, updateNotes, storageError, clearStorageError } = useSavedVariations()
 
   const { projectContext } = useWorkspaceContext()
   const activeCtx = projectContext ?? MOCK_PROJECT_CONTEXT
@@ -685,6 +724,29 @@ function AIEPlaywrightTab() {
           </div>
         </div>
       </div>
+
+      {/* Storage quota warning banner */}
+      {storageError && (
+        <div style={{
+          margin:'8px 20px 0', padding:'10px 14px', borderRadius:8,
+          background:'rgba(251,191,36,0.1)', border:'1px solid rgba(251,191,36,0.35)',
+          display:'flex', alignItems:'flex-start', gap:10, flexShrink:0,
+        }}>
+          <span style={{ fontSize:15, flexShrink:0, marginTop:1 }}>⚠️</span>
+          <p style={{ margin:0, fontSize:11, color:'#fbbf24', lineHeight:1.6, flex:1 }}>
+            {storageError}
+          </p>
+          <button
+            onClick={clearStorageError}
+            title="Fechar aviso"
+            style={{
+              flexShrink:0, padding:'2px 8px', borderRadius:5, border:'1px solid rgba(251,191,36,0.35)',
+              background:'transparent', color:'#fbbf24', cursor:'pointer', fontSize:11, fontWeight:700,
+            }}>
+            ✕
+          </button>
+        </div>
+      )}
 
       {/* Prompt preview + saved variations */}
       <div style={{ flex:1, overflowY:'auto' as const, padding:'14px 20px' }}>
