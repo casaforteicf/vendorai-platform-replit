@@ -78,6 +78,43 @@ export const leadsTable = pgTable("leads", {
   // Metadados extras (ex: dados do Google Places, fonte externa)
   metadata: jsonb("metadata").$type<Record<string, unknown>>(),
 
+  // ── Motor Preditivo (Cmd 22) ───────────────────────────────────────────────
+  // pending → enriched → scored → dispatched | discarded
+  enrichmentStatus: text("enrichment_status").$type<"pending" | "enriched" | "scored" | "dispatched" | "discarded">().default("pending"),
+  propensityScore: integer("propensity_score"),           // 0-100
+  roiEstimate: jsonb("roi_estimate").$type<{
+    volume_atendimentos_mes?: number;
+    perda_estimada_mes?: number;
+    ganho_potencial_mes?: number;
+    ticket_estimado?: string;
+  }>(),
+  enrichmentData: jsonb("enrichment_data").$type<{
+    digital?: {
+      tem_site?: boolean;
+      site_qualidade?: "nenhum" | "simples" | "profissional";
+      responde_whatsapp?: boolean;
+      tem_agendamento_online?: boolean;
+      tem_ecommerce?: boolean;
+      presenca_instagram?: boolean;
+      indicio_crm?: boolean;
+    };
+    growth?: {
+      reviews_velocity?: number;
+      rating_trend?: "subindo" | "estavel" | "caindo";
+      horario_estendido?: boolean;
+      multiplas_unidades?: boolean;
+      contratando?: boolean;
+      anuncios_ativos?: boolean;
+    };
+    score_breakdown?: {
+      dor_operacional?: number;
+      momento_expansao?: number;
+      capacidade_pagamento?: number;
+    };
+    enriquecido_em?: string;
+  }>(),
+  priorityReason: text("priority_reason"),
+
   createdAt: timestamp("created_at").notNull().defaultNow(),
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
 }, (table) => ({

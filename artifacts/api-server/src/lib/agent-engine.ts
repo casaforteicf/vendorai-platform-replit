@@ -398,7 +398,7 @@ export function daysSinceLastContact(ctx: AgentContext): number | null {
 //  PROMPT BUILDERS
 // ═════════════════════════════════════════════════════════════════════════════
 
-export function buildSdrPrompt(customPrompt: string | undefined, ctx: AgentContext, _scenario?: Record<string, unknown> | null, systemPromptOverride?: string | null): string {
+export function buildSdrPrompt(customPrompt: string | undefined, ctx: AgentContext, scenario?: Record<string, unknown> | null, systemPromptOverride?: string | null): string {
   const { lead, ci } = ctx;
   const parts: string[] = [];
   if (systemPromptOverride?.trim()) {
@@ -416,6 +416,30 @@ export function buildSdrPrompt(customPrompt: string | undefined, ctx: AgentConte
     if (customPrompt?.trim()) parts.push("## INSTRUÇÕES DA EMPRESA\n" + customPrompt.trim());
   }
   parts.push(buildLeadSection(lead));
+
+  // ── Motor Preditivo (Cmd 22): inject predictive intel as first-message hook ─
+  if (scenario?.cold_outreach && scenario?.origem === "prospector_predictive") {
+    const sinais: string[] = [];
+    if (scenario.propensity_score) sinais.push(`Score de propensão: ${scenario.propensity_score}/100`);
+    if (scenario.sinal_growth_principal) sinais.push(`Sinal de crescimento detectado: ${scenario.sinal_growth_principal}`);
+    if (scenario.perda_estimada) {
+      const perdaFmt = Number(scenario.perda_estimada).toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
+      sinais.push(`Perda estimada sem CRM: ${perdaFmt}/mês`);
+    }
+    if (scenario.dor_digital === "sem_crm") sinais.push("Operação totalmente manual — sem CRM detectado");
+    else if (scenario.dor_digital === "sem_site") sinais.push("Baixa presença digital — sem site profissional");
+    if (scenario.segmento) sinais.push(`Segmento: ${scenario.segmento}`);
+
+    if (sinais.length > 0) {
+      parts.push(
+        "## INTELIGÊNCIA PREDITIVA (Motor Preditivo)\n" +
+        "Use estes dados como gancho natural e específico na primeira mensagem — jamais genérico:\n" +
+        sinais.map((s) => `- ${s}`).join("\n") + "\n" +
+        "IMPORTANTE: A primeira mensagem DEVE mencionar o sinal detectado de forma natural, como se você acompanhasse a empresa.",
+      );
+    }
+  }
+
   if (ci) {
     const lines = ["## INTELIGÊNCIA DE CLIENTE"];
     if (ci.journeyStage)         lines.push(`Estágio: ${ci.journeyStage}`);

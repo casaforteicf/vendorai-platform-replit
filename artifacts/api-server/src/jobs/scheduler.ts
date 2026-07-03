@@ -59,6 +59,8 @@ import { searchAllPlaces } from "../routes/prospector.js";
 import { runProspectorQueueWorker } from "./prospectorQueue.js";
 import { runDailyAgendaSummary } from "./dailyAgendaSummary.js";
 import { runSdrFollowup } from "./sdrFollowup.js";
+import { runObjectionsExtraction } from "./objectionsExtraction.js";
+import { runMicroEventsRescan } from "./microEventsRescan.js";
 import {
   prospectorConfigTable,
   prospectorQueueTable,
@@ -1419,7 +1421,21 @@ export function startScheduler(log: Logger): void {
     });
   });
 
-  log.info("scheduler: started (churn-check @:05, campaigns @:15, billing @day-5-08:00, reactivation @03:00, demo-expiration @06:00, demo-reset @02:00, special-dates @07:00, partner-commissions @day-1-06:00, partner-prospector @08:00, content-flow @*/5min, blender-poll @30s, revenue-scout @09:00, appointment-reminders @*/30min, no-response-closing @09:30, domain-verify @*/5min, prospector-sync @09:00-BRT, prospector-queue @:35, daily-agenda-summary @08:00-BRT, sdr-followup @*/1h)");
+  // Job 20 (Cmd 22): Objections extraction — daily at 02:30 BRT
+  cron.schedule("30 2 * * *", () => {
+    runObjectionsExtraction(log).catch((err) => {
+      log.error({ err }, "scheduler/objections-extraction: unhandled error");
+    });
+  }, { timezone: "America/Sao_Paulo" });
+
+  // Job 21 (Cmd 22): Micro-events re-scan — every Monday at 03:30 BRT
+  cron.schedule("30 3 * * 1", () => {
+    runMicroEventsRescan(log).catch((err) => {
+      log.error({ err }, "scheduler/micro-events: unhandled error");
+    });
+  }, { timezone: "America/Sao_Paulo" });
+
+  log.info("scheduler: started (churn-check @:05, campaigns @:15, billing @day-5-08:00, reactivation @03:00, demo-expiration @06:00, demo-reset @02:00, special-dates @07:00, partner-commissions @day-1-06:00, partner-prospector @08:00, content-flow @*/5min, blender-poll @30s, revenue-scout @09:00, appointment-reminders @*/30min, no-response-closing @09:30, domain-verify @*/5min, prospector-sync @09:00-BRT, prospector-queue @:35, daily-agenda-summary @08:00-BRT, sdr-followup @*/1h, objections-extraction @02:30-BRT, micro-events @mon-03:30-BRT)");
 }
 
 // ── Job 16: Automatic prospector sync ─────────────────────────────────────────

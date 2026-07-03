@@ -27,11 +27,8 @@ import {
   dealsTable,
   activitiesTable,
 } from "@workspace/db";
-import { dispatchAgentBackground } from "../services/agent-dispatch.js";
+import { enrichLead } from "./leadEnrichment.js";
 
-// Message used as the SDR trigger for cold outreach leads.
-const COLD_OUTREACH_TRIGGER =
-  "[PROSPECÇÃO AUTOMÁTICA] Novo lead importado. Gere uma primeira mensagem de contato personalizada e profissional para este prospect.";
 
 /** Returns the start-of-day in UTC for "now" (for counting daily processed leads). */
 function todayStart(): Date {
@@ -262,29 +259,23 @@ async function processQueueItem(params: {
     status:    "concluida",
   });
 
-  // Mark queue as importado
+  // ── Mark queue as importado ───────────────────────────────────────────────
   await db
     .update(prospectorQueueTable)
     .set({ status: "importado", leadId, updatedAt: now })
     .where(eq(prospectorQueueTable.id, item.id));
 
-  log.info({ queueId: item.id, leadId, dealId, tenantId }, "prospector-queue: lead created");
+  log.info({ queueId: item.id, leadId, dealId, tenantId }, "prospector-queue: lead created — starting predictive enrichment");
 
-  // ── Dispatch SDR with cold_outreach scenario ───────────────────────────────
-  dispatchAgentBackground({
-    tenantId,
-    leadId,
-    mensagem: COLD_OUTREACH_TRIGGER,
-    log,
-    forcedAgent: "sdr",
-    scenario:    { cold_outreach: true, origem: "prospector_auto", setor: item.setor, cidade: item.cidade },
-  });
-
-  // Mark as abordado immediately after firing dispatch (it's fire-and-forget)
+  // ── Motor Preditivo (Cmd 22): enrich → score → auto-dispatch ─────────────
+  // Set enrichment_status = 'pending' on the new lead
   await db
-    .update(prospectorQueueTable)
-    .set({ status: "abordado", updatedAt: new Date() })
-    .where(eq(prospectorQueueTable.id, item.id));
+    .update(leadsTable)
+    .set({ enrichmentStatus: "pending", updatedAt: new Date() })
+    .where(eq(leadsTable.id, leadId));
 
-  log.info({ queueId: item.id, leadId, tenantId }, "prospector-queue: SDR dispatched → abordado");
+  // Fire-and-forget enrichment (Digital Scanner + Growth Radar + Score + conditional SDR dispatch)
+  enrichLead(leadId, tenantId, log).catch((err) =>
+    log.error({ err, leadId, tenantId }, "prospector-queue: enrichLead failed (non-fatal)"),
+  );
 }

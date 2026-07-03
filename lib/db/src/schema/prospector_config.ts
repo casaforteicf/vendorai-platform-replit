@@ -14,6 +14,7 @@ export const prospectorConfigTable = pgTable("prospector_config", {
   cidade: text("cidade"),
   raioKm: integer("raio_km"),
   ritmoDiario: integer("ritmo_diario").notNull().default(10),
+  autoDispatchThreshold: integer("auto_dispatch_threshold").notNull().default(80),
   ativo: boolean("ativo").notNull().default(false),
   horarioCron: text("horario_cron").notNull().default("09:00"),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),

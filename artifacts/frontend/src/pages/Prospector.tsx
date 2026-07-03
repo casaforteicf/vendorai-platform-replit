@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useAuth } from "@/contexts/AuthContext";
 import { useToast } from "@/hooks/use-toast";
 import {
@@ -49,6 +50,13 @@ import {
   ClipboardCheck,
   Bot,
   Save,
+  TrendingUp,
+  Zap,
+  Trash2,
+  PlayCircle,
+  BarChart3,
+  RefreshCw,
+  Settings,
 } from "lucide-react";
 import { Switch } from "@/components/ui/switch";
 import { ProspectorAprovacoesContent } from "./ProspectorAprovacoes";
@@ -406,6 +414,90 @@ export default function Prospector() {
   const search = useProspectorSearch();
   const enrich = useProspectorEnrich();
   const generate = useProspectorGenerateMessage();
+  const queryClient = useQueryClient();
+
+  // ── Fila Preditiva (Cmd 22) ──────────────────────────────────────────────
+  function getAuthHeaders() {
+    const token = localStorage.getItem("vendorai_token");
+    return { Authorization: `Bearer ${token}`, "Content-Type": "application/json" };
+  }
+
+  const filaQuery = useQuery({
+    queryKey: ["prospector-fila", tenantId],
+    queryFn: async () => {
+      const res = await fetch("/api/prospector/fila?limit=50", { headers: getAuthHeaders() });
+      if (!res.ok) throw new Error("Falha ao carregar a fila");
+      return res.json() as Promise<{
+        leads: Array<{
+          id: string;
+          nome: string;
+          empresa?: string;
+          telefone?: string;
+          endereco?: string;
+          mercadoSegmento?: string;
+          enrichmentStatus: string;
+          propensityScore?: number;
+          roiEstimate?: { volume_atendimentos_mes?: number; perda_estimada_mes?: number; ganho_potencial_mes?: number; ticket_estimado?: string };
+          enrichmentData?: { digital?: Record<string, unknown>; growth?: Record<string, unknown> };
+          priorityReason?: string;
+          createdAt: string;
+          events: Array<{ tipo: string; descricao: string }>;
+        }>;
+        autoDispatchThreshold: number;
+        total: number;
+      }>;
+    },
+    staleTime: 30_000,
+  });
+
+  const dispatchSdrMutation = useMutation({
+    mutationFn: async (leadId: string) => {
+      const res = await fetch(`/api/prospector/dispatch-sdr/${leadId}`, {
+        method: "POST",
+        headers: getAuthHeaders(),
+      });
+      if (!res.ok) throw new Error("Falha ao disparar SDR");
+      return res.json();
+    },
+    onSuccess: () => {
+      toast({ title: "SDR disparado com sucesso!" });
+      queryClient.invalidateQueries({ queryKey: ["prospector-fila"] });
+    },
+    onError: () => toast({ title: "Falha ao disparar SDR", variant: "destructive" }),
+  });
+
+  const dispatchTopMutation = useMutation({
+    mutationFn: async (n: number) => {
+      const res = await fetch("/api/prospector/dispatch-top", {
+        method: "POST",
+        headers: getAuthHeaders(),
+        body: JSON.stringify({ n }),
+      });
+      if (!res.ok) throw new Error("Falha ao disparar em lote");
+      return res.json() as Promise<{ dispatched: number }>;
+    },
+    onSuccess: (data) => {
+      toast({ title: `${data.dispatched} SDR(s) disparado(s)!` });
+      queryClient.invalidateQueries({ queryKey: ["prospector-fila"] });
+    },
+    onError: () => toast({ title: "Falha ao disparar em lote", variant: "destructive" }),
+  });
+
+  const discardMutation = useMutation({
+    mutationFn: async (leadId: string) => {
+      const res = await fetch(`/api/prospector/fila/discard/${leadId}`, {
+        method: "POST",
+        headers: getAuthHeaders(),
+      });
+      if (!res.ok) throw new Error("Falha ao descartar lead");
+      return res.json();
+    },
+    onSuccess: () => {
+      toast({ title: "Lead descartado da fila" });
+      queryClient.invalidateQueries({ queryKey: ["prospector-fila"] });
+    },
+    onError: () => toast({ title: "Falha ao descartar", variant: "destructive" }),
+  });
 
   function tenantIdField() {
     return isSuperAdmin ? { tenantId: tenantId || undefined } : {};
@@ -588,6 +680,14 @@ export default function Prospector() {
         <TabsList>
           <TabsTrigger value="busca" className="flex items-center gap-1.5">
             <Search className="h-4 w-4" /> Busca
+          </TabsTrigger>
+          <TabsTrigger value="fila" className="flex items-center gap-1.5">
+            <TrendingUp className="h-4 w-4" /> Fila
+            {(filaQuery.data?.total ?? 0) > 0 && (
+              <span className="ml-1 bg-primary text-primary-foreground text-xs rounded-full px-1.5 py-0.5 leading-none">
+                {filaQuery.data!.total}
+              </span>
+            )}
           </TabsTrigger>
           <TabsTrigger value="aprovacoes" className="flex items-center gap-1.5">
             <ClipboardCheck className="h-4 w-4" /> Aprovações
@@ -896,6 +996,213 @@ export default function Prospector() {
           </CardContent>
         </Card>
       )}
+        </TabsContent>
+
+        <TabsContent value="fila" className="mt-4 space-y-4">
+          {/* ── Ações em lote + config ─────────────────────────── */}
+          <Card>
+            <CardHeader className="pb-3">
+              <div className="flex items-start justify-between gap-4">
+                <div>
+                  <CardTitle className="text-base flex items-center gap-2">
+                    <TrendingUp className="h-4 w-4 text-primary" /> Fila Preditiva
+                  </CardTitle>
+                  <CardDescription>
+                    Leads ordenados por score de propensão. Score ≥ {filaQuery.data?.autoDispatchThreshold ?? 80} dispara SDR automaticamente.
+                  </CardDescription>
+                </div>
+                <div className="flex items-center gap-2">
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => filaQuery.refetch()}
+                    disabled={filaQuery.isFetching}
+                  >
+                    <RefreshCw className={`h-3.5 w-3.5 mr-1 ${filaQuery.isFetching ? "animate-spin" : ""}`} />
+                    Atualizar
+                  </Button>
+                  <Button
+                    size="sm"
+                    onClick={() => dispatchTopMutation.mutate(10)}
+                    disabled={dispatchTopMutation.isPending || (filaQuery.data?.total ?? 0) === 0}
+                  >
+                    {dispatchTopMutation.isPending ? (
+                      <><Spinner className="h-3.5 w-3.5 mr-1" /> Disparando...</>
+                    ) : (
+                      <><Zap className="h-3.5 w-3.5 mr-1" /> Disparar top 10</>
+                    )}
+                  </Button>
+                </div>
+              </div>
+            </CardHeader>
+          </Card>
+
+          {/* ── Lista de leads na fila ─────────────────────────── */}
+          {filaQuery.isLoading ? (
+            <div className="flex items-center justify-center py-10 text-muted-foreground">
+              <Spinner className="h-5 w-5 mr-2" /> Carregando fila...
+            </div>
+          ) : filaQuery.isError ? (
+            <Card className="border-destructive/30">
+              <CardContent className="py-6 text-center text-destructive text-sm">
+                Falha ao carregar a fila. Tente atualizar.
+              </CardContent>
+            </Card>
+          ) : (filaQuery.data?.leads ?? []).length === 0 ? (
+            <Card className="border-dashed">
+              <CardContent className="py-10 text-center text-muted-foreground">
+                <TrendingUp className="h-8 w-8 mx-auto mb-2 opacity-40" />
+                <p className="font-medium">Fila vazia</p>
+                <p className="text-xs mt-1">Prospecte empresas para preencher a fila preditiva.</p>
+              </CardContent>
+            </Card>
+          ) : (
+            <div className="space-y-3">
+              {(filaQuery.data?.leads ?? []).map((lead) => {
+                const score = lead.propensityScore ?? 0;
+                const threshold = filaQuery.data?.autoDispatchThreshold ?? 80;
+                const scoreColor = score >= 80 ? "text-emerald-600 bg-emerald-50 border-emerald-200" : score >= 50 ? "text-amber-600 bg-amber-50 border-amber-200" : "text-red-600 bg-red-50 border-red-200";
+                const scoreEmoji = score >= 80 ? "🟢" : score >= 50 ? "🟡" : "🔴";
+                const roi = lead.roiEstimate;
+                const isPending = lead.enrichmentStatus === "pending";
+                const isEnriched = lead.enrichmentStatus === "enriched";
+                const isScored = lead.enrichmentStatus === "scored";
+                const growth = lead.enrichmentData?.growth ?? {};
+                const digital = lead.enrichmentData?.digital ?? {};
+                const hasBoostEvent = lead.events.length > 0;
+
+                return (
+                  <Card
+                    key={lead.id}
+                    className={`transition-all ${hasBoostEvent ? "border-primary/50 shadow-sm" : ""}`}
+                  >
+                    <CardContent className="py-4">
+                      <div className="flex items-start gap-4">
+                        {/* Score badge */}
+                        <div className={`flex flex-col items-center justify-center rounded-lg border px-3 py-2 min-w-[64px] ${isPending ? "text-muted-foreground bg-muted border-muted-foreground/20" : scoreColor}`}>
+                          {isPending ? (
+                            <>
+                              <Spinner className="h-4 w-4" />
+                              <span className="text-xs mt-1">calc...</span>
+                            </>
+                          ) : (
+                            <>
+                              <span className="text-xl font-bold leading-none">{score}</span>
+                              <span className="text-xs">/100</span>
+                              <span className="text-sm mt-1">{scoreEmoji}</span>
+                            </>
+                          )}
+                        </div>
+
+                        {/* Lead info */}
+                        <div className="flex-1 min-w-0 space-y-1.5">
+                          <div className="flex items-start justify-between gap-2">
+                            <div>
+                              <p className="font-semibold truncate">{lead.nome}</p>
+                              {lead.mercadoSegmento && (
+                                <p className="text-xs text-muted-foreground">{lead.mercadoSegmento}</p>
+                              )}
+                            </div>
+                            <div className="flex flex-wrap gap-1 shrink-0">
+                              {isPending && <Badge variant="secondary">Analisando...</Badge>}
+                              {isEnriched && <Badge variant="outline">Enriquecido</Badge>}
+                              {isScored && (
+                                <Badge
+                                  variant={score >= threshold ? "default" : "secondary"}
+                                  className="text-xs"
+                                >
+                                  {score >= threshold ? "Auto-dispatch" : "Aguardando"}
+                                </Badge>
+                              )}
+                              {hasBoostEvent && (
+                                <Badge className="bg-primary/10 text-primary border-primary/30 text-xs gap-1">
+                                  <TrendingUp className="h-3 w-3" /> Boost ativo
+                                </Badge>
+                              )}
+                            </div>
+                          </div>
+
+                          {/* Priority reason */}
+                          {lead.priorityReason && (
+                            <p className="text-sm text-muted-foreground italic">
+                              {lead.priorityReason}
+                            </p>
+                          )}
+
+                          {/* Micro-events */}
+                          {lead.events.map((ev) => (
+                            <p key={ev.tipo} className="text-xs text-primary font-medium">
+                              {ev.descricao}
+                            </p>
+                          ))}
+
+                          {/* ROI */}
+                          {roi?.perda_estimada_mes != null && (
+                            <div className="flex items-center gap-1.5 text-sm">
+                              <BarChart3 className="h-3.5 w-3.5 text-destructive shrink-0" />
+                              <span className="text-destructive font-medium">
+                                Potencial recuperável: R$ {roi.perda_estimada_mes.toLocaleString("pt-BR")}/mês
+                              </span>
+                              {roi.ticket_estimado && (
+                                <Badge variant="outline" className="text-xs ml-1">{roi.ticket_estimado}</Badge>
+                              )}
+                            </div>
+                          )}
+
+                          {/* Signals */}
+                          <div className="flex flex-wrap gap-x-3 gap-y-0.5 text-xs text-muted-foreground">
+                            {lead.telefone && (
+                              <span className="flex items-center gap-1">
+                                <MessageCircle className="h-3 w-3" /> {lead.telefone}
+                              </span>
+                            )}
+                            {lead.endereco && (
+                              <span className="flex items-center gap-1">
+                                <MapPin className="h-3 w-3" /> {lead.endereco}
+                              </span>
+                            )}
+                            {digital["tem_site"] === false && (
+                              <span className="text-amber-600">Sem site</span>
+                            )}
+                            {digital["indicio_crm"] === false && (
+                              <span className="text-amber-600">Sem CRM</span>
+                            )}
+                            {(growth as Record<string, unknown>)["multiplas_unidades"] === true && (
+                              <span className="text-emerald-600">Múltiplas unidades</span>
+                            )}
+                          </div>
+
+                          {/* Actions */}
+                          <div className="flex gap-2 pt-1">
+                            <Button
+                              size="sm"
+                              disabled={dispatchSdrMutation.isPending || isPending}
+                              onClick={() => dispatchSdrMutation.mutate(lead.id)}
+                            >
+                              {dispatchSdrMutation.isPending ? (
+                                <><Spinner className="h-3.5 w-3.5 mr-1" /> Disparando...</>
+                              ) : (
+                                <><PlayCircle className="h-3.5 w-3.5 mr-1" /> Disparar SDR</>
+                              )}
+                            </Button>
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              className="text-destructive hover:text-destructive"
+                              disabled={discardMutation.isPending}
+                              onClick={() => discardMutation.mutate(lead.id)}
+                            >
+                              <Trash2 className="h-3.5 w-3.5 mr-1" /> Descartar
+                            </Button>
+                          </div>
+                        </div>
+                      </div>
+                    </CardContent>
+                  </Card>
+                );
+              })}
+            </div>
+          )}
         </TabsContent>
 
         <TabsContent value="aprovacoes" className="mt-4">

@@ -17,3 +17,4 @@
 - [api-server tsc/test limits](api-server-tsc-test-limits.md) — full tsc da api-server não termina no orçamento das ferramentas (use typecheck:libs + esbuild); 3 isolation tests dão timeout 5s flaky por import lento (~26s), não são falhas de asserção.
 - [AI Gateway Platform-Subsidized Mode](ai-gateway-platform-subsidized.md) — tenants sem plan_id e sem credits bloqueavam IA; fix: mode platform-subsidized usa chave da plataforma quando sem plano/créditos.
 - [Arch render pipeline](arch-inpainting.md) — Preservar=flux-kontext-pro (sem máscara, edição por instrução); Criar=flux-1.1-pro-ultra raw; ajuste pontual=flux-fill-pro; regra de 2 etapas obrigatória.
+- [callOpenAI assinatura](callOpenAI-signature.md) — assinatura é (tenantId, feature, messages, options); resposta retorna .content (string), não .choices[0].message.content.

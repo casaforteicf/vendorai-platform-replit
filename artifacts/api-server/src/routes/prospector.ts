@@ -1,6 +1,6 @@
 import { Router, type IRouter } from "express";
 import { z } from "zod/v4";
-import { and, asc, eq, desc, or, sql, inArray } from "drizzle-orm";
+import { and, asc, eq, desc, or, sql, inArray, isNotNull } from "drizzle-orm";
 import {
   db,
   prospectEnrichmentsTable,
@@ -13,12 +13,17 @@ import {
   activitiesTable,
   prospectorConfigTable,
   prospectorQueueTable,
+  sdrVerticalProfilesTable,
+  segmentBenchmarksTable,
+  leadEventsTable,
 } from "@workspace/db";
 import {
   callOpenAI as gatewayCallOpenAI,
   generateEmbedding,
 } from "../lib/ai-gateway.js";
 import { checkApiQuota, getApiUsage } from "../lib/api-quota.js";
+import { dispatchAgentBackground } from "../services/agent-dispatch.js";
+import { enrichLead } from "../jobs/leadEnrichment.js";
 
 // Quantidade de aprovações (approved + edited) para liberar a automação.
 const AUTOMATION_THRESHOLD = 50;
@@ -1183,4 +1188,217 @@ router.get("/prospector/tenant/api-usage", async (req, res) => {
   return res.status(200).json(usage);
 });
 
+
+// ── GET /prospector/fila — fila priorizada por score ─────────────────────────
+router.get("/prospector/fila", async (req, res) => {
+  const tenantId = resolveTenantId(req, undefined);
+  const limitParam = Math.min(Number(req.query["limit"] ?? 50), 100);
+
+  const leads = await db
+    .select({
+      id: leadsTable.id,
+      nome: leadsTable.nome,
+      empresa: leadsTable.empresa,
+      telefone: leadsTable.telefone,
+      endereco: leadsTable.endereco,
+      mercadoSegmento: leadsTable.mercadoSegmento,
+      websiteUrl: leadsTable.websiteUrl,
+      enrichmentStatus: leadsTable.enrichmentStatus,
+      propensityScore: leadsTable.propensityScore,
+      roiEstimate: leadsTable.roiEstimate,
+      enrichmentData: leadsTable.enrichmentData,
+      priorityReason: leadsTable.priorityReason,
+      createdAt: leadsTable.createdAt,
+    })
+    .from(leadsTable)
+    .where(
+      and(
+        eq(leadsTable.tenantId, tenantId),
+        inArray(leadsTable.source, ["prospector_auto", "prospector"]),
+        inArray(leadsTable.enrichmentStatus, ["pending", "enriched", "scored"]),
+      ),
+    )
+    .orderBy(desc(leadsTable.propensityScore), desc(leadsTable.createdAt))
+    .limit(limitParam);
+
+  // Load active events (score boosts)
+  const leadIds = leads.map((l) => l.id);
+  const events = leadIds.length > 0
+    ? await db
+      .select()
+      .from(leadEventsTable)
+      .where(
+        and(
+          inArray(leadEventsTable.leadId, leadIds),
+          sql`${leadEventsTable.expiresAt} IS NULL OR ${leadEventsTable.expiresAt} > now()`,
+        ),
+      )
+    : [];
+
+  const eventsByLead = events.reduce<Record<string, typeof events>>((acc, e) => {
+    if (!acc[e.leadId]) acc[e.leadId] = [];
+    acc[e.leadId]!.push(e);
+    return acc;
+  }, {});
+
+  // Load threshold from config
+  const [config] = await db
+    .select({ autoDispatchThreshold: prospectorConfigTable.autoDispatchThreshold })
+    .from(prospectorConfigTable)
+    .where(eq(prospectorConfigTable.tenantId, tenantId))
+    .limit(1);
+
+  return res.status(200).json({
+    leads: leads.map((l) => ({
+      ...l,
+      events: eventsByLead[l.id] ?? [],
+    })),
+    autoDispatchThreshold: config?.autoDispatchThreshold ?? 80,
+    total: leads.length,
+  });
+});
+
+// ── POST /prospector/dispatch-sdr/:leadId — dispara SDR manualmente ─────────
+router.post("/prospector/dispatch-sdr/:leadId", async (req, res) => {
+  const tenantId = resolveTenantId(req, undefined);
+  const { leadId } = req.params as { leadId: string };
+
+  const [lead] = await db
+    .select()
+    .from(leadsTable)
+    .where(and(eq(leadsTable.id, leadId), eq(leadsTable.tenantId, tenantId)))
+    .limit(1);
+
+  if (!lead) return res.status(404).json({ error: "Lead não encontrado" });
+
+  const segmento = lead.mercadoSegmento?.toLowerCase().replace(/\s+/g, "_") ?? "geral";
+  const enrichData = lead.enrichmentData as Record<string, unknown> | null;
+  const growth = (enrichData?.["growth"] ?? {}) as Record<string, unknown>;
+  const digital = (enrichData?.["digital"] ?? {}) as Record<string, unknown>;
+
+  const sinalPrincipal = growth["multiplas_unidades"]
+    ? "expansão com múltiplas unidades"
+    : Number(growth["reviews_velocity"] ?? 0) > 5
+      ? "alta velocidade de avaliações"
+      : digital["tem_ecommerce"]
+        ? "presença digital em crescimento"
+        : "oportunidade operacional identificada";
+
+  const roiEstimate = lead.roiEstimate as Record<string, unknown> | null;
+
+  const trigger =
+    `[PROSPECÇÃO MANUAL] Lead selecionado da fila preditiva com score ${lead.propensityScore ?? "?"}. ` +
+    `Use o contexto de inteligência para gerar uma primeira mensagem altamente personalizada. ` +
+    (lead.priorityReason ? `Razão de prioridade: ${lead.priorityReason}.` : "");
+
+  dispatchAgentBackground({
+    tenantId,
+    leadId,
+    mensagem: trigger,
+    log: req.log,
+    forcedAgent: "sdr",
+    scenario: {
+      cold_outreach: true,
+      origem: "prospector_predictive",
+      propensity_score: lead.propensityScore,
+      sinal_growth_principal: sinalPrincipal,
+      perda_estimada: roiEstimate?.["perda_estimada_mes"],
+      dor_digital: !digital["indicio_crm"] ? "sem_crm" : !digital["tem_site"] ? "sem_site" : null,
+      segmento,
+    },
+  });
+
+  await db
+    .update(leadsTable)
+    .set({ enrichmentStatus: "dispatched", updatedAt: new Date() })
+    .where(eq(leadsTable.id, leadId));
+
+  return res.status(200).json({ ok: true, leadId });
+});
+
+// ── POST /prospector/dispatch-top — dispara SDR nos top N leads ──────────────
+router.post("/prospector/dispatch-top", async (req, res) => {
+  const tenantId = resolveTenantId(req, undefined);
+  const n = Math.min(Number(req.body?.["n"] ?? 10), 50);
+
+  const leads = await db
+    .select({ id: leadsTable.id })
+    .from(leadsTable)
+    .where(
+      and(
+        eq(leadsTable.tenantId, tenantId),
+        inArray(leadsTable.enrichmentStatus, ["enriched", "scored"]),
+        isNotNull(leadsTable.propensityScore),
+      ),
+    )
+    .orderBy(desc(leadsTable.propensityScore))
+    .limit(n);
+
+  for (const lead of leads) {
+    dispatchAgentBackground({
+      tenantId,
+      leadId: lead.id,
+      mensagem: "[PROSPECÇÃO EM LOTE] Lead da fila preditiva. Gere uma primeira mensagem personalizada.",
+      log: req.log,
+      forcedAgent: "sdr",
+      scenario: { cold_outreach: true, origem: "prospector_predictive" },
+    });
+  }
+
+  await db
+    .update(leadsTable)
+    .set({ enrichmentStatus: "dispatched", updatedAt: new Date() })
+    .where(
+      and(
+        eq(leadsTable.tenantId, tenantId),
+        inArray(leadsTable.id, leads.map((l) => l.id)),
+      ),
+    );
+
+  return res.status(200).json({ ok: true, dispatched: leads.length });
+});
+
+// ── POST /prospector/fila/discard/:leadId — descarta lead da fila ─────────────
+router.post("/prospector/fila/discard/:leadId", async (req, res) => {
+  const tenantId = resolveTenantId(req, undefined);
+  const { leadId } = req.params as { leadId: string };
+
+  await db
+    .update(leadsTable)
+    .set({ enrichmentStatus: "discarded", updatedAt: new Date() })
+    .where(and(eq(leadsTable.id, leadId), eq(leadsTable.tenantId, tenantId)));
+
+  return res.status(200).json({ ok: true });
+});
+
+// ── PUT /prospector/config/threshold — salva auto_dispatch_threshold ──────────
+router.put("/prospector/config/threshold", async (req, res) => {
+  const tenantId = resolveTenantId(req, undefined);
+  const threshold = Number(req.body?.["threshold"] ?? 80);
+  if (threshold < 0 || threshold > 100) {
+    return res.status(400).json({ error: "threshold deve ser entre 0 e 100" });
+  }
+
+  const [existing] = await db
+    .select({ id: prospectorConfigTable.id })
+    .from(prospectorConfigTable)
+    .where(eq(prospectorConfigTable.tenantId, tenantId))
+    .limit(1);
+
+  if (existing) {
+    await db
+      .update(prospectorConfigTable)
+      .set({ autoDispatchThreshold: threshold, updatedAt: new Date() })
+      .where(eq(prospectorConfigTable.tenantId, tenantId));
+  } else {
+    await db.insert(prospectorConfigTable).values({
+      tenantId,
+      autoDispatchThreshold: threshold,
+    });
+  }
+
+  return res.status(200).json({ ok: true, threshold });
+});
+
 export default router;
+
