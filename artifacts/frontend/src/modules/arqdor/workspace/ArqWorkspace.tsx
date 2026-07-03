@@ -8,6 +8,7 @@ import { AIMemoryModule }      from './modules/AIMemoryModule'
 import { SettingsModule }      from './modules/SettingsModule'
 import { ProjectModule }       from './modules/ProjectModule'
 import { ArqHubView }         from '../arqhub/ArqHubView'
+import { AIEDashboard }       from '../engines/aie/dashboard/AIEDashboard'
 
 // ─── Theme ────────────────────────────────────────────────────────────────────
 const T = {
@@ -22,7 +23,7 @@ const T = {
 } as const
 
 // ─── Module definitions ───────────────────────────────────────────────────────
-type ModuleId = 'projeto' | 'biblioteca' | 'prompt' | 'renders' | 'ai-review' | 'correcoes' | 'memoria' | 'config' | 'arqhub'
+type ModuleId = 'projeto' | 'biblioteca' | 'prompt' | 'renders' | 'ai-review' | 'correcoes' | 'memoria' | 'config' | 'arqhub' | 'ai-intel'
 
 interface WorkspaceModule {
   id:      ModuleId
@@ -43,6 +44,7 @@ const MODULES: WorkspaceModule[] = [
   { id:'memoria',    icon:'🧠',  label:'Memória IA',    desc:'Preferências aprendidas'  },
   { id:'config',     icon:'⚙️',  label:'Config',        desc:'Providers e plugins'      },
   { id:'arqhub',     icon:'🌐',  label:'ARQ HUB',       desc:'Ecosystem inteligente',   badge:'NEW', badgeColor:'#4ade80' },
+  { id:'ai-intel',   icon:'🧠',  label:'AI Intelligence', desc:'Motor de análise AIE',   badge:'AIE', badgeColor:'#a78bfa' },
 ]
 
 function renderModule(id: ModuleId) {
@@ -56,6 +58,7 @@ function renderModule(id: ModuleId) {
     case 'memoria':    return <AIMemoryModule/>
     case 'config':     return <SettingsModule/>
     case 'arqhub':     return <ArqHubView/>
+    case 'ai-intel':   return <AIEDashboard/>
   }
 }
 

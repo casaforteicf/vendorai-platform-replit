@@ -1,0 +1,505 @@
+FASE 10 — ARQ INTELLIGENCE ENGINE (AIE)
+
+IMPORTANTE
+
+Esta é a maior evolução do arqdor.ai.
+
+O sistema deixa de ser apenas um modelador de projetos.
+
+Ele passa a possuir um motor de inteligência arquitetônica.
+
+NÃO conectar IA externa ainda.
+
+Criar apenas a arquitetura do motor.
+
+====================================================
+
+OBJETIVO
+
+Criar o AIE (Architectural Intelligence Engine).
+
+O AIE será responsável por interpretar um projeto como um arquiteto faria.
+
+Ele não renderiza.
+
+Ele analisa.
+
+Ele valida.
+
+Ele recomenda.
+
+Ele protege o projeto.
+
+Ele gera conhecimento.
+
+====================================================
+
+Criar novo módulo
+
+src/modules/arqdor/engines/aie
+
+====================================================
+
+Submódulos
+
+Analysis Engine
+
+Relationship Engine
+
+Constraint Engine
+
+Composition Engine
+
+Material Engine
+
+Lighting Engine
+
+Photography Engine
+
+Design Intent Engine
+
+Consistency Engine
+
+Validation Engine
+
+Recommendation Engine
+
+Review Engine
+
+Correction Engine
+
+Learning Engine
+
+====================================================
+
+1 — DESIGN INTENT ENGINE
+
+Todo objeto deve possuir intenção.
+
+Exemplo
+
+Painel
+
+↓
+
+Destacar TV
+
+↓
+
+Criar aconchego
+
+↓
+
+Esconder infraestrutura
+
+↓
+
+Continuar linguagem da marcenaria
+
+Outro exemplo
+
+Puxador
+
+↓
+
+Minimalismo
+
+↓
+
+Pouca interferência
+
+↓
+
+Linhas contínuas
+
+↓
+
+Sem destaque
+
+O sistema utilizará essas intenções para validar renders.
+
+====================================================
+
+2 — COMPOSITION ENGINE
+
+Criar motor de composição.
+
+Ele deve calcular
+
+Peso visual
+
+Hierarquia
+
+Contraste
+
+Ritmo
+
+Simetria
+
+Equilíbrio
+
+Proporção
+
+Alinhamentos
+
+Centro de atenção
+
+Linhas dominantes
+
+Esse motor gera apenas métricas.
+
+====================================================
+
+3 — VISUAL WEIGHT ENGINE
+
+Cada objeto recebe um peso.
+
+0–100
+
+Exemplo
+
+Painel
+
+95
+
+Mesa
+
+80
+
+Pendente
+
+75
+
+Planta
+
+10
+
+Esse peso será utilizado pelos tradutores.
+
+====================================================
+
+4 — ATTENTION ENGINE
+
+Criar zonas.
+
+Hero
+
+Primary
+
+Secondary
+
+Background
+
+Cada objeto pertence a uma zona.
+
+====================================================
+
+5 — CONSISTENCY ENGINE
+
+Verificar
+
+Materiais repetidos
+
+Ferragens
+
+Paleta
+
+Madeiras
+
+Metais
+
+Pedras
+
+Iluminação
+
+Linguagem
+
+Gerar score.
+
+====================================================
+
+6 — MATERIAL ENGINE
+
+Criar análise de materiais.
+
+Verificar
+
+Compatibilidade
+
+Repetição
+
+Contraste
+
+Paleta
+
+Acabamentos
+
+Relacionamentos
+
+====================================================
+
+7 — LIGHTING ENGINE
+
+Preparar estrutura.
+
+Natural Light
+
+Artificial
+
+Indirect
+
+Task Lighting
+
+Accent Lighting
+
+Color Temperature
+
+Direction
+
+Intensity
+
+HDRI
+
+====================================================
+
+8 — PHOTOGRAPHY ENGINE
+
+Criar perfil fotográfico.
+
+Lens
+
+Camera Height
+
+Composition
+
+Mood
+
+Contrast
+
+Exposure
+
+White Balance
+
+DOF
+
+Perspective
+
+Narrative
+
+====================================================
+
+9 — RECOMMENDATION ENGINE
+
+Criar sugestões automáticas.
+
+Exemplos
+
+"O projeto possui três madeiras diferentes."
+
+"A iluminação está muito fria."
+
+"O peso visual está concentrado na direita."
+
+"O sofá compete visualmente com o painel."
+
+"A decoração está excessiva."
+
+Essas recomendações nunca alteram automaticamente.
+
+====================================================
+
+10 — VALIDATION ENGINE
+
+Criar validações.
+
+Exemplo
+
+Perfil muito grosso
+
+Material sem referência
+
+Ferragem inconsistente
+
+Objeto órfão
+
+Material incompatível
+
+DNA incompleto
+
+Objetivo de render ausente
+
+====================================================
+
+11 — REVIEW ENGINE
+
+Preparar estrutura.
+
+Projeto
+
+×
+
+Render
+
+↓
+
+Comparação
+
+↓
+
+Diferenças
+
+↓
+
+Sugestões
+
+↓
+
+Score
+
+Ainda mockado.
+
+====================================================
+
+12 — CORRECTION ENGINE
+
+Recebe
+
+Projeto
+
+Render
+
+Diferenças
+
+↓
+
+Gera
+
+Correction Prompt
+
+Somente das diferenças.
+
+====================================================
+
+13 — LEARNING ENGINE
+
+Criar estrutura.
+
+Cada projeto pode ensinar.
+
+Exemplo
+
+Sempre utiliza
+
+Freijó
+
+Sempre usa
+
+Portobello
+
+Sempre renderiza
+
+35 mm
+
+Salvar isso.
+
+====================================================
+
+14 — SCORES
+
+Criar estrutura.
+
+Geometry Score
+
+Material Score
+
+Composition Score
+
+Lighting Score
+
+Photography Score
+
+Consistency Score
+
+Render Readiness Score
+
+Prompt Quality Score
+
+Overall Project Score
+
+Todos de 0–100.
+
+====================================================
+
+15 — DASHBOARD
+
+Adicionar nova aba
+
+AI Intelligence
+
+Mostrar
+
+Scores
+
+Alertas
+
+Sugestões
+
+Inconsistências
+
+Projeto
+
+DNA
+
+Pronto para Render?
+
+Sim / Não
+
+====================================================
+
+16 — RENDER READINESS
+
+Criar indicador.
+
+Exemplo
+
+Projeto
+
+92%
+
+Pronto para renderizar.
+
+Ou
+
+Projeto
+
+67%
+
+Faltam:
+
+Material da bancada
+
+Perfil da esquadria
+
+Referência do MDF
+
+====================================================
+
+17 — NÃO IMPLEMENTAR IA
+
+Não conectar GPT.
+
+Não conectar Gemini.
+
+Não conectar Nano Banana.
+
+Não conectar APIs.
+
+Criar apenas arquitetura.
+
+====================================================
+
+18 — RESULTADO ESPERADO
+
+Ao final desta fase o arqdor.ai será capaz de analisar um projeto arquitetônico, gerar métricas, validar consistência, sugerir melhorias e informar se o projeto está pronto para renderização, tudo sem depender de um modelo de IA externo.
+
+Toda a arquitetura deve ser desacoplada, orientada a domínio (DDD), preparada para plugins e reutilizável por futuras integrações.
