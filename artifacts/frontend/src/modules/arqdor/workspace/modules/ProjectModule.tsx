@@ -1,12 +1,19 @@
+import { useCallback } from 'react'
 import ArqdorPage from '../../../../pages/arch/ArqdorPage'
+import type { ArchProject } from '../../../../pages/arch/arqdor-types'
+import { useWorkspaceContext } from '../WorkspaceContext'
+import { adaptArchProjectToContext } from '../WorkspaceContext'
 
-// ProjectModule embeds the full ArqdorPage (Modelagem + Projeto Inteligente)
-// inside the workspace content area. ArqdorPage receives standalone={false}
-// so it uses height:100% instead of height:100vh, filling this container.
 export function ProjectModule() {
+  const { setProjectContext } = useWorkspaceContext()
+
+  const handleProjectChange = useCallback((project: ArchProject) => {
+    setProjectContext(adaptArchProjectToContext(project))
+  }, [setProjectContext])
+
   return (
     <div style={{ position:'absolute', inset:0, overflow:'hidden' }}>
-      <ArqdorPage standalone={false} />
+      <ArqdorPage standalone={false} onProjectChange={handleProjectChange} />
     </div>
   )
 }

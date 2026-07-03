@@ -10,6 +10,7 @@ import {
   DETAIL_LEVELS,
 } from '../../engines/prompt-playwright/prompt-playwright'
 import type { TranslatorId, DetailLevel, PlaywrightPrompt } from '../../engines/prompt-playwright/prompt-playwright'
+import { useWorkspaceContext } from '../WorkspaceContext'
 
 const T = {
   bg:'#0d0b1e', surface:'#13102b', card:'rgba(255,255,255,0.04)',
@@ -562,11 +563,14 @@ function AIEPlaywrightTab() {
 
   const { variations, save, rename, remove, updateNotes } = useSavedVariations()
 
-  const aie = useMemo(() => runAIE(MOCK_PROJECT_CONTEXT), [])
+  const { projectContext } = useWorkspaceContext()
+  const activeCtx = projectContext ?? MOCK_PROJECT_CONTEXT
+
+  const aie = useMemo(() => runAIE(activeCtx), [activeCtx])
 
   const pw = useMemo(
-    () => buildPrompt(MOCK_PROJECT_CONTEXT, aie, translator, detail),
-    [aie, translator, detail],
+    () => buildPrompt(activeCtx, aie, translator, detail),
+    [activeCtx, aie, translator, detail],
   )
 
   const info = TRANSLATORS.find(t => t.id === translator)!

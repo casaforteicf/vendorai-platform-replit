@@ -1,4 +1,4 @@
-import { useState, useCallback } from 'react'
+import { useState, useCallback, useEffect } from 'react'
 import type {
   ArchProject, ArchObject, ObjectCategory, FonteVerdade, RiskLevel,
   ObjectStatus, AIPermissions, ProjectDNA, LibraryItem, LibraryCategory,
@@ -1390,7 +1390,13 @@ function ProjetoInteligenteView() {
 
 // ─── Main Page ────────────────────────────────────────────────────────────────
 
-export default function ArqdorPage({ standalone = true }: { standalone?: boolean }) {
+export default function ArqdorPage({
+  standalone = true,
+  onProjectChange,
+}: {
+  standalone?: boolean
+  onProjectChange?: (project: ArchProject) => void
+}) {
   const [project, setProject]         = useState<ArchProject>(MOCK_PROJECT)
   const [selectedId, setSelectedId]   = useState<string | null>('sala')
   const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set(['sala','coz','coz-marc','coz-porta01']))
@@ -1400,6 +1406,10 @@ export default function ArqdorPage({ standalone = true }: { standalone?: boolean
   const [searchQ, setSearchQ]         = useState('')
   const [versionOpen, setVersionOpen] = useState(false)
   const [mode, setMode] = useState<'modelagem'|'projeto-inteligente'>('modelagem')
+
+  useEffect(() => {
+    onProjectChange?.(project)
+  }, [project, onProjectChange])
 
   const toggleExpanded = useCallback((id: string) => {
     setExpandedIds(prev => {
