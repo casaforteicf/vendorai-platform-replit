@@ -79,6 +79,8 @@ const VendorBrainDash    = lazy(() => import("@/modules/vendor-brain/VendorBrain
 // Partner Hub — FASE 20
 const PartnerHub         = lazy(() => import("@/pages/partner-hub/PartnerHubPage").then(m => ({ default: m.PartnerHubPage })));
 const PartnerDetail      = lazy(() => import("@/pages/partner-hub/PartnerDetailPage").then(m => ({ default: m.PartnerDetailPage })));
+const EcosystemHub       = lazy(() => import("@/pages/ecosystem-hub/EcosystemHubPage").then(m => ({ default: m.EcosystemHubPage })));
+const CompanyDetail      = lazy(() => import("@/pages/ecosystem-hub/CompanyDetailPage").then(m => ({ default: m.CompanyDetailPage })));
 
 // Arch
 const ArchDashboard      = lazy(() => import("@/pages/arch/ArchDashboard"));
@@ -676,6 +678,12 @@ function AppRoutes() {
         </Route>
         <Route path="/partner-hub/:id">
           {() => <ProtectedRoute component={PartnerDetail} />}
+        </Route>
+        <Route path="/ecosystem-hub">
+          {() => <ProtectedRoute component={EcosystemHub} />}
+        </Route>
+        <Route path="/ecosystem-hub/:id">
+          {() => <ProtectedRoute component={CompanyDetail} />}
         </Route>
         <Route path="/invite/:token">
           <AcceptInvite />

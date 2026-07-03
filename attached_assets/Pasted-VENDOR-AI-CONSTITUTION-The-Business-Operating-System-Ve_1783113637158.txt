@@ -1,0 +1,441 @@
+VENDOR.AI CONSTITUTION
+The Business Operating System
+
+Versão 1.0
+
+1. PROPÓSITO
+Nossa Missão
+
+Conectar empresas, profissionais, fornecedores, clientes e inteligência artificial em uma única plataforma capaz de transformar conhecimento em decisões, decisões em oportunidades e oportunidades em resultados.
+
+A Vendor.ai existe para reduzir atritos, automatizar processos e elevar a qualidade das decisões de negócio através da Inteligência Artificial.
+
+2. VISÃO
+
+Ser a principal plataforma de inteligência empresarial da América Latina, permitindo que empresas de qualquer segmento operem através de Agentes Inteligentes, Workspaces especializados e Redes de Conhecimento conectadas.
+
+3. POSICIONAMENTO
+
+A Vendor.ai NÃO é:
+
+apenas um CRM
+apenas uma IA
+apenas uma automação
+apenas um software SaaS
+
+A Vendor.ai é um:
+
+Business Operating System
+
+Uma plataforma que conecta pessoas, empresas, dados, conhecimento, processos e inteligência artificial.
+
+4. PILARES
+Inteligência
+
+Toda informação pode ser utilizada para gerar melhores decisões.
+
+Automação
+
+Tudo que for repetitivo deve ser automatizado.
+
+Conhecimento
+
+Todo conhecimento deve ser reutilizado.
+
+Colaboração
+
+Empresas trabalham juntas.
+
+Nunca isoladas.
+
+Transparência
+
+Toda recomendação da IA deve ser explicável.
+
+Neutralidade
+
+A Vendor.ai não vende produtos.
+
+Ela melhora decisões.
+
+5. ARQUITETURA DA PLATAFORMA
+Vendor.ai
+
+Core
+
+↓
+
+Business Network
+
+↓
+
+Knowledge Graph
+
+↓
+
+Vendor Brain
+
+↓
+
+Workspaces
+
+↓
+
+Apps
+
+↓
+
+Agentes
+Core
+
+Responsável por:
+
+autenticação
+multi-tenant
+permissões
+billing
+arquivos
+analytics
+IA
+workflows
+notificações
+integrações
+Workspaces
+
+Cada Workspace resolve um contexto específico.
+
+Exemplos:
+
+Projetos Arquitetura
+
+Obras
+
+CRM
+
+Marketing
+
+Financeiro
+
+Comercial
+
+Trading
+
+RH
+
+Jurídico
+
+Apps
+
+Ferramentas dentro de cada Workspace.
+
+Exemplo:
+
+Workspace Arquitetura
+
+↓
+
+Render
+
+↓
+
+AQM
+
+↓
+
+Prompt
+
+↓
+
+Review
+
+↓
+
+Bibliotecas
+
+↓
+
+Copilot
+
+Engines
+
+Motores reutilizáveis.
+
+Exemplo:
+
+Knowledge Engine
+
+Prompt Engine
+
+Workflow Engine
+
+Relationship Engine
+
+Decision Engine
+
+Recommendation Engine
+
+Vision Engine
+
+Opportunity Engine
+
+6. BUSINESS NETWORK
+
+Toda empresa possui um Digital Business Profile.
+
+A plataforma conecta:
+
+Arquitetos
+
+Construtoras
+
+Fabricantes
+
+Distribuidores
+
+Representantes
+
+Prestadores
+
+Clientes
+
+Nenhuma empresa é apenas um cadastro.
+
+Cada empresa possui:
+
+conhecimento
+catálogo
+documentos
+IA
+analytics
+workflows
+CRM
+especialistas digitais
+7. VENDOR CERTIFIED NETWORK
+
+Fabricantes e parceiros poderão participar oficialmente da plataforma.
+
+Benefícios:
+
+Especialistas Digitais
+
+Catálogo Oficial
+
+Analytics
+
+Leads
+
+Oportunidades
+
+Bibliotecas
+
+Componentes
+
+Documentação
+
+8. DIGITAL SPECIALISTS
+
+Toda empresa poderá criar Especialistas Digitais.
+
+Exemplos:
+
+Especialista Técnico
+
+Especialista Comercial
+
+Especialista Garantia
+
+Especialista Instalação
+
+Especialista Projetos
+
+Esses especialistas representam oficialmente a empresa.
+
+Não são produtos.
+
+São canais digitais de relacionamento.
+
+9. PRINCÍPIOS DAS RECOMENDAÇÕES
+
+Toda recomendação deve respeitar:
+
+Compatibilidade técnica
+
+Projeto
+
+Contexto
+
+Preferências do usuário
+
+Normas
+
+AQM
+
+Knowledge Graph
+
+Nunca recomendar apenas por interesse comercial.
+
+10. OPORTUNIDADES
+
+A plataforma gera oportunidades.
+
+Nunca publicidade.
+
+Fluxo:
+
+Projeto
+
+↓
+
+Necessidade identificada
+
+↓
+
+Fornecedor compatível
+
+↓
+
+Especialista Digital
+
+↓
+
+Cotação
+
+↓
+
+Representante
+
+↓
+
+Pedido
+
+↓
+
+Entrega
+
+11. PRIVACIDADE
+
+O projeto pertence ao cliente.
+
+O fabricante nunca terá acesso ao projeto completo sem autorização.
+
+Cada parceiro visualiza apenas as informações necessárias.
+
+Analytics devem ser anonimizados sempre que apropriado.
+
+12. INTELIGÊNCIA
+
+Todo dado pode alimentar:
+
+Knowledge Graph
+
+Vendor Brain
+
+Analytics
+
+Business Intelligence
+
+Sempre respeitando regras de privacidade e consentimento.
+
+13. EXPERIÊNCIA DO USUÁRIO
+
+A plataforma deve ser simples.
+
+O usuário trabalha em projetos.
+
+Nunca em módulos.
+
+Os módulos existem para apoiar o projeto.
+
+14. AGENTES
+
+Os Agentes nunca trabalham isolados.
+
+Todos utilizam:
+
+Vendor Brain
+
+Knowledge Graph
+
+Business Context
+
+Workflows
+
+Memória
+
+15. ROADMAP
+Plataforma
+
+Core
+
+CRM
+
+Workspaces
+
+Agentes
+
+Arquitetura
+
+Inteligência
+
+Knowledge Graph
+
+Vendor Brain
+
+Opportunity Engine
+
+Digital Specialists
+
+Ecossistema
+
+Vendor Certified Network
+
+Partner Hub
+
+Procurement
+
+Marketplace de Componentes
+
+Analytics
+
+Integrações
+
+16. PRINCÍPIOS DE DESENVOLVIMENTO
+
+Todo novo recurso deve responder:
+
+Resolve um problema real do usuário?
+Pode ser reutilizado por outras Verticais?
+Utiliza o Core existente?
+Está desacoplado?
+Respeita multi-tenant?
+É explicável?
+Gera valor para todo o ecossistema?
+
+Se alguma resposta for "não", o recurso deve ser reavaliado.
+
+17. VISÃO DE LONGO PRAZO
+
+A Vendor.ai não pretende ser apenas uma plataforma de software.
+
+Ela pretende ser a infraestrutura digital que conecta conhecimento, empresas, profissionais e inteligência artificial para transformar a forma como negócios são realizados.
+
+Agora vou te dar uma recomendação que considero a mais importante de todas
+Não desenvolva mais nada antes de criar um Comitê de Produto dentro da própria Vendor.ai.
+
+Mesmo que hoje seja apenas você.
+
+Crie um processo onde toda nova funcionalidade responda a um conjunto de perguntas antes de ser aprovada:
+
+Canvas de Produto
+Qual problema resolve?
+Quem é o usuário?
+Qual vertical será impactada?
+Reutiliza componentes existentes?
+Qual é o impacto comercial?
+Como será monetizada?
+Quais métricas de sucesso?
+Quais dependências?
+Existe risco de duplicação?
+Como ela fortalece o ecossistema?
+
+Essa disciplina vai impedir que a plataforma cresça de forma desorganizada. Com a visão que vocês construíram, o maior risco não é faltar funcionalidades, mas sim perder a coerência arquitetural. Uma boa governança de produto será tão importante quanto a qualidade do código para transformar a Vendor.ai em uma plataforma escalável e sustentável.

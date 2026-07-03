@@ -75,6 +75,7 @@ export function SidebarLayout({ children }: { children: React.ReactNode }) {
     { name: "Knowledge Graph", href: "/vkg",                   icon: Network,     sellerHidden: true,  section: "inteligencia", fn: ["administrador", "outro"] as UserFunction[] },
     { name: "Vendor Brain",    href: "/brain",                  icon: BrainCircuit,sellerHidden: true,  section: "inteligencia", fn: ["administrador", "outro"] as UserFunction[] },
     { name: "Partner Hub",     href: "/partner-hub",            icon: Handshake,   sellerHidden: true,  section: "hub",          fn: ["administrador", "outro"] as UserFunction[] },
+    { name: "Ecosystem Hub",   href: "/ecosystem-hub",          icon: Globe,       sellerHidden: true,  section: "hub",          fn: ["administrador", "outro"] as UserFunction[] },
     { name: "Revenue Scout", href: "/scout",                    icon: TrendingUp,  sellerHidden: true,  section: "inteligencia", fn: ["administrador", "outro"] as UserFunction[] },
     { name: "Regras",        href: "/scout/regras",             icon: Zap,         sellerHidden: true,  section: "inteligencia", fn: ["administrador", "outro"] as UserFunction[] },
     { name: "Oportunidades", href: "/scout/oportunidades",      icon: ListChecks,  sellerHidden: true,  section: "inteligencia", fn: ["administrador", "outro"] as UserFunction[] },

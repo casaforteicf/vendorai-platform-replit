@@ -137,3 +137,7 @@ export * from "./arch_prompt_variations";
 export * from "./vpn_partners";
 export * from "./vpn_partner_products";
 export * from "./vpn_partner_contacts";
+export * from "./vep_companies";
+export * from "./vep_professionals";
+export * from "./vep_portfolio";
+export * from "./vep_connections";

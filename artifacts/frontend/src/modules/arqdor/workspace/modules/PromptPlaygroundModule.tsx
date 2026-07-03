@@ -28,141 +28,12 @@ import {
   TRANSLATORS,
   DETAIL_LEVELS,
 } from '../../engines/prompt-playwright/prompt-playwright'
-<<<<<<< HEAD
-import type { TranslatorId, DetailLevel, PlaywrightPrompt } from '../../engines/prompt-playwright/prompt-playwright'
-import { useWorkspace } from '../context/WorkspaceContext'
-import { T } from '../../shared/arqdor-theme'
-
-
-// ─── Saved variations ────────────────────────────────────────────────────────
-
-interface SavedVariation {
-  id: string
-  name: string
-  translator: TranslatorId
-  detail: DetailLevel
-  prompt: string
-  negativePrompt: string
-  estimatedTokens: number
-  savedAt: string | number
-  notes?: string | null
-}
-
-function useSavedVariations() {
-  const qc = useQueryClient()
-
-  const { data: rawVariations = [], isLoading } = useListArchPromptVariations()
-
-  const variations: SavedVariation[] = useMemo(() =>
-    rawVariations.map(v => ({
-      id: v.id,
-      name: v.name,
-      translator: v.translator as TranslatorId,
-      detail: v.detail as DetailLevel,
-      prompt: v.prompt,
-      negativePrompt: v.negativePrompt,
-      estimatedTokens: v.estimatedTokens,
-      savedAt: v.savedAt,
-      notes: v.notes ?? undefined,
-    })),
-  [rawVariations])
-
-  const [apiError, setApiError] = useState<string | null>(null)
-  const clearStorageError = useCallback(() => setApiError(null), [])
-
-  const invalidate = useCallback(() => {
-    void qc.invalidateQueries({ queryKey: getListArchPromptVariationsQueryKey() })
-  }, [qc])
-
-  const createMutation = useCreateArchPromptVariation({
-    mutation: { onError: () => setApiError('Erro ao salvar variação. Tente novamente.') },
-  })
-
-  const updateMutation = useUpdateArchPromptVariation({
-    mutation: { onError: () => setApiError('Erro ao atualizar variação. Tente novamente.') },
-  })
-
-  const deleteMutation = useDeleteArchPromptVariation({
-    mutation: { onError: () => setApiError('Erro ao remover variação. Tente novamente.') },
-  })
-
-
-  const save = useCallback((v: Omit<SavedVariation, 'id' | 'savedAt' | 'name'>, suggestedName: string) => {
-    createMutation.mutate(
-      { data: {
-        name: suggestedName,
-        translator: v.translator,
-        detail: v.detail,
-        prompt: v.prompt,
-        negativePrompt: v.negativePrompt,
-        estimatedTokens: v.estimatedTokens,
-        notes: v.notes ?? undefined,
-      } },
-      { onSuccess: invalidate },
-    )
-  }, [createMutation, invalidate])
-
-  const rename = useCallback((id: string, name: string) => {
-    updateMutation.mutate(
-      { id, data: { name } },
-      { onSuccess: invalidate },
-    )
-  }, [updateMutation, invalidate])
-
-  const remove = useCallback((id: string) => {
-    deleteMutation.mutate(
-      { id },
-      { onSuccess: invalidate },
-    )
-  }, [deleteMutation, invalidate])
-
-  const updateNotes = useCallback((id: string, notes: string) => {
-    updateMutation.mutate(
-      { id, data: { notes } },
-      { onSuccess: invalidate },
-    )
-  }, [updateMutation, invalidate])
-
-  const importVariations = useCallback((incoming: SavedVariation[]): number => {
-    const existingIds = new Set(rawVariations.map(v => v.id))
-    const novel = incoming.filter(v => !existingIds.has(v.id))
-    if (novel.length > 0) {
-      Promise.all(
-        novel.map(v =>
-          createMutation.mutateAsync({ data: {
-            name: v.name,
-            translator: v.translator,
-            detail: v.detail,
-            prompt: v.prompt,
-            negativePrompt: v.negativePrompt,
-            estimatedTokens: v.estimatedTokens,
-            notes: v.notes ?? undefined,
-          } })
-        )
-      ).then(invalidate).catch(() => setApiError('Erro ao importar algumas variações.'))
-    }
-    return novel.length
-  }, [rawVariations, createMutation, invalidate])
-
-  return {
-    variations,
-    isLoading,
-    save,
-    rename,
-    remove,
-    updateNotes,
-    storageError: apiError,
-    clearStorageError,
-    importVariations,
-  }
-}
-=======
-import type { PlaywrightPrompt } from '../../engines/prompt-playwright/prompt-playwright'
+import type { PlaywrightPrompt, TranslatorId, DetailLevel } from '../../engines/prompt-playwright/prompt-playwright'
 import { useWorkspaceContext } from '../WorkspaceContext'
+import { useWorkspace } from '../context/WorkspaceContext'
 import { T } from '../../shared/arqdor-theme'
 import { useSavedVariations } from './useSavedVariations'
 import type { SavedVariation } from './useSavedVariations'
->>>>>>> 4e4112d (Add test coverage for useSavedVariations offline resilience)
 
 // ─── ProjectContext → Project converter ───────────────────────────────────────
 
@@ -640,7 +511,7 @@ function SavedVariationsPanel({
   onRename: (id: string, name: string) => void
   onDelete: (id: string) => void
   onUpdateNotes: (id: string, notes: string) => void
-  onImport: (items: SavedVariation[]) => number
+  onImport: (items: SavedVariation[]) => number | void
 }) {
   const [open, setOpen] = useState(true)
   const [editingId, setEditingId] = useState<string | null>(null)
@@ -693,8 +564,8 @@ function SavedVariationsPanel({
             savedAt,
           }
         })
-        const added = onImport(parsed)
-        const skipped = parsed.length - added
+        const added = onImport(parsed) ?? parsed.length
+        const skipped = parsed.length - (added as number)
         const parts: string[] = []
         if (added > 0) parts.push(`${added} importada${added !== 1 ? 's' : ''}`)
         if (skipped > 0) parts.push(`${skipped} ignorada${skipped !== 1 ? 's' : ''} (duplicata${skipped !== 1 ? 's' : ''})`)

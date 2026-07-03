@@ -40,6 +40,7 @@ import contentRouter from "./content";
 import partnerRouter from "./partner";
 import partnersRouter from "./partners";
 import partnerHubRouter from "./partner_hub";
+import ecosystemHubRouter from "./ecosystem_hub";
 import adminPartnersRouter from "./admin_partners";
 import adminPlansRouter from "./admin_plans";
 import adminAgentDefaultsRouter from "./admin_agent_defaults";
@@ -267,6 +268,9 @@ router.use(scoutRouter);
 
 // Partner Hub (VPN — Vendor Partner Network — FASE 20)
 router.use(partnerHubRouter);
+
+// Ecosystem Hub (VEP — Vendor Ecosystem Platform — FASE 21)
+router.use(ecosystemHubRouter);
 
 // Render Hub
 router.use(renderRouter);
