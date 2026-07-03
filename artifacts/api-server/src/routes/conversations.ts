@@ -163,6 +163,13 @@ router.patch("/conversations/:id/release-lock", async (req, res) => {
     return;
   }
 
+  const isAdminRl = req.user?.platformRole === "super_admin" || req.user?.platformRole === "tenant_admin";
+  const userFnRl = req.user?.userFunction as UserFunction | undefined;
+  if (!isAdminRl && (userFnRl === "vendedor" || userFnRl === "suporte") && existing.assignedTo !== req.user?.sub) {
+    res.status(403).json({ error: "Access denied — conversation not assigned to you" });
+    return;
+  }
+
   const [conversation] = await db
     .update(conversationsTable)
     .set({ currentAgent: null, updatedAt: new Date() })

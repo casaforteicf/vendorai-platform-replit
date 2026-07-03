@@ -6,6 +6,7 @@ import {
   messagesTable,
   agentConfigsTable,
   activitiesTable,
+  notificationsTable,
   tenantsTable,
 } from "@workspace/db";
 import type { Message, Conversation } from "@workspace/db";
@@ -391,9 +392,9 @@ export async function sendOutgoingMessage(
       throw new WhatsAppNotConnectedError();
     }
 
-    // ── 24h Meta Cloud API window check (AI outgoing messages only) ──────────
+    // ── 24h Meta Cloud API window check (all outgoing Meta Cloud messages) ───
     let skipTextSend = false;
-    if (agentName) {
+    {
       const [existingConv] = await db
         .select({ lastInboundAt: conversationsTable.lastInboundAt })
         .from(conversationsTable)
@@ -438,8 +439,16 @@ export async function sendOutgoingMessage(
           } else {
             log.warn(
               { tenantId, leadId, hoursElapsed: Math.floor(msSinceInbound / 3600000) },
-              "omnichannel: 24h Meta window expired — no template configured, skipping AI send"
+              "omnichannel: 24h Meta window expired — no template configured, aborting send"
             );
+            // In-app notification so the team knows why the message was not delivered
+            await db.insert(notificationsTable).values({
+              tenantId,
+              title: "⚠️ Mensagem WhatsApp não enviada — janela 24h expirada",
+              message: `Lead "${lead.nome ?? leadId}" está fora da janela de 24h do Meta. Configure um template de reabertura em Configurações > Integrações para reabrir o contato.`,
+              type: "warning",
+              category: "whatsapp_24h_window",
+            }).catch(() => undefined);
             throw new WhatsApp24hWindowError(leadId);
           }
         }

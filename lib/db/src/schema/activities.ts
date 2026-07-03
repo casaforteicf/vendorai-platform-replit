@@ -14,6 +14,7 @@ export const activityTipoEnum = pgEnum("activity_tipo", [
   "visita",
   "tarefa",
   "reuniao",
+  "escalacao_humano",
 ]);
 
 export const activityStatusEnum = pgEnum("activity_status", [

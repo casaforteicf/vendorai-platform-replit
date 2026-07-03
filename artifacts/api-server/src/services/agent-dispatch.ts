@@ -16,6 +16,7 @@ import {
   customerIntelligenceTable,
   dealsTable,
   leadsTable,
+  notificationsTable,
   propostasTable,
   usersTable,
   leadSpouseConsentTable,
@@ -170,12 +171,23 @@ export async function processAgentInternal(params: {
         await db.insert(activitiesTable).values({
           tenantId,
           leadId,
-          tipo: "whatsapp",
+          tipo: "escalacao_humano",
           titulo: "Escalação automática para humano",
-          descricao: `Motivo: ${escalation.reason?.replace(/_/g, " ") ?? "não especificado"}. ${summary.slice(0, 200)}`,
+          descricao: `${summary.slice(0, 300)}`,
           status: "concluida",
           concluidaEm: new Date(),
-          resultadoExecucao: `escalacao_humano|motivo:${escalation.reason}`,
+          resultadoExecucao: `motivo:${escalation.reason}`,
+        });
+
+        // In-app notification (tenant-wide, visible in notifications panel)
+        await db.insert(notificationsTable).values({
+          tenantId,
+          title: "🚨 Lead escalado para atendimento humano",
+          message: `Lead *${ctx.lead.nome}* solicitou atendimento humano. Motivo: ${escalation.reason?.replace(/_/g, " ") ?? "não especificado"}. ${summary.slice(0, 150)}`,
+          type: "warning",
+          category: "escalacao_humano",
+        }).catch((err: unknown) => {
+          log.warn({ err, tenantId, leadId }, "dispatch: failed to insert escalation in-app notification");
         });
 
         // Best-effort: notify responsible user via WhatsApp

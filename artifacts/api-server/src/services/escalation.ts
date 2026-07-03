@@ -10,7 +10,8 @@ import type { AgentContext } from "../lib/agent-engine.js";
 
 export interface EscalationResult {
   triggered: boolean;
-  reason: string | null;
+  reason: "falar_com_pessoa" | "sentimento_negativo" | "objection_unresolved" | null;
+  confidence: number;
 }
 
 /**
@@ -35,13 +36,16 @@ export async function detectEscalationTrigger(
     .join("\n");
 
   const prompt =
-    `Você é um classificador de escalação de atendimento. Analise se a mensagem abaixo justifica transferência para humano.\n` +
+    `Você é um classificador de escalação de atendimento. Analise se a mensagem abaixo justifica transferência para um atendente humano.\n` +
     `\n` +
-    `Critérios para escalação (qualquer um basta):\n` +
-    `1. Lead pede explicitamente para falar com pessoa/humano/atendente\n` +
-    `2. Sentimento fortemente negativo: raiva, frustração intensa, ameaça de cancelar/processar\n` +
-    `3. Assunto que IA claramente não pode resolver: assuntos legais, reclamações graves, dados sensíveis\n` +
-    `4. Lead repete a mesma dúvida 3+ vezes sem ser atendido\n` +
+    `Critérios de escalação:\n` +
+    `- falar_com_pessoa: lead pede explicitamente para falar com humano/atendente/pessoa\n` +
+    `- sentimento_negativo: raiva, frustração intensa, ameaça de cancelar/processar/reclamar\n` +
+    `- objection_unresolved: lead repete a mesma objeção ou dúvida sem resolução após 2+ tentativas\n` +
+    `\n` +
+    `Regras:\n` +
+    `- Só escalade se tiver ALTA confiança (confidence >= 0.7)\n` +
+    `- Se nenhum critério for claro, retorne escalate: false\n` +
     `\n` +
     `Histórico recente:\n` +
     `${recent || "(sem histórico)"}\n` +
@@ -50,8 +54,7 @@ export async function detectEscalationTrigger(
     `"${mensagem}"\n` +
     `\n` +
     `Responda APENAS em JSON válido (sem markdown):\n` +
-    `{"escalate": true|false, "reason": "motivo_snake_case_ou_null"}\n` +
-    `Razões válidas: pedido_humano, sentimento_negativo, assunto_complexo, insistencia_repetida`;
+    `{"escalate": true|false, "reason": "falar_com_pessoa"|"sentimento_negativo"|"objection_unresolved"|null, "confidence": 0.0}`;
 
   try {
     const result = await callOpenAI(
@@ -65,17 +68,29 @@ export async function detectEscalationTrigger(
       .trim()
       .replace(/^```json\s*/, "")
       .replace(/\s*```$/, "");
-    const parsed = JSON.parse(raw) as { escalate?: boolean; reason?: string | null };
+    const parsed = JSON.parse(raw) as {
+      escalate?: boolean;
+      reason?: string | null;
+      confidence?: number;
+    };
 
-    if (parsed.escalate === true) {
-      log.info({ tenantId, reason: parsed.reason }, "escalation: trigger detected");
-      return { triggered: true, reason: parsed.reason ?? "motivo_desconhecido" };
+    const confidence = typeof parsed.confidence === "number" ? parsed.confidence : 0;
+    const validReasons = ["falar_com_pessoa", "sentimento_negativo", "objection_unresolved"] as const;
+    type Reason = (typeof validReasons)[number];
+    const reason: Reason | null =
+      parsed.reason && (validReasons as readonly string[]).includes(parsed.reason)
+        ? (parsed.reason as Reason)
+        : null;
+
+    if (parsed.escalate === true && confidence >= 0.7 && reason !== null) {
+      log.info({ tenantId, reason, confidence }, "escalation: trigger detected");
+      return { triggered: true, reason, confidence };
     }
 
-    return { triggered: false, reason: null };
+    return { triggered: false, reason: null, confidence };
   } catch (err) {
     log.warn({ err, tenantId }, "escalation: AI detection failed — not escalating");
-    return { triggered: false, reason: null };
+    return { triggered: false, reason: null, confidence: 0 };
   }
 }
 
