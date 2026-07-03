@@ -1,7 +1,5 @@
-import { useState, useEffect, useMemo, useCallback, useRef } from 'react'
+import { useState, useMemo, useCallback, useEffect, useRef } from 'react'
 import { useSearch, useLocation } from 'wouter'
-
-
 import { MOCK_PROJECT } from '../../../../pages/arch/arqdor/domain/arqdor-mock-project'
 import { generateFullPromptStructure } from '../../../../pages/arch/arqdor/domain/arqdor-prompt-engine'
 import type {
@@ -23,8 +21,8 @@ import {
   TRANSLATORS,
   DETAIL_LEVELS,
 } from '../../engines/prompt-playwright/prompt-playwright'
-import type { TranslatorId, DetailLevel, PlaywrightPrompt } from '../../engines/prompt-playwright/prompt-playwright'
-import { useWorkspace } from '../context/WorkspaceContext'
+import type { PlaywrightPrompt } from '../../engines/prompt-playwright/prompt-playwright'
+import { useWorkspaceContext } from '../WorkspaceContext'
 import { T } from '../../shared/arqdor-theme'
 import { useSavedVariations } from './useSavedVariations'
 import type { SavedVariation } from './useSavedVariations'
@@ -173,7 +171,7 @@ const SECTIONS: { key: keyof PromptStructure; label: string; accent: string; des
 ]
 
 function PlaygroundTab() {
-  const { projectContext } = useWorkspace()
+  const { projectContext } = useWorkspaceContext()
 
   const activeProject = useMemo<Project>(() =>
     projectContext ? projectContextToProject(projectContext) : MOCK_PROJECT,
@@ -185,6 +183,22 @@ function PlaygroundTab() {
   const [open, setOpen] = useState<Set<string>>(new Set(['corePrompt','finalPrompt']))
   const [copied, setCopied] = useState<string|null>(null)
   const [editKey, setEditKey] = useState<string|null>(null)
+  const [stale, setStale] = useState(false)
+
+  const lastGeneratedContextRef = useRef<ProjectContext | null>(projectContext)
+
+  useEffect(() => {
+    if (projectContext !== lastGeneratedContextRef.current) {
+      setStale(true)
+    }
+  }, [projectContext])
+
+  const regenerate = useCallback(() => {
+    const project = projectContext ? projectContextToProject(projectContext) : MOCK_PROJECT
+    setStructure(generateFullPromptStructure(project))
+    lastGeneratedContextRef.current = projectContext
+    setStale(false)
+  }, [projectContext])
 
   const tokenCount = Math.floor(structure.finalPrompt.length / 4)
   const isMock = !projectContext
@@ -200,6 +214,28 @@ function PlaygroundTab() {
 
   return (
     <div style={{ height:'100%', display:'flex', flexDirection:'column' as const }}>
+      {/* Stale banner */}
+      {stale && (
+        <div style={{
+          padding:'8px 20px', background:'rgba(251,191,36,0.12)',
+          borderBottom:`1px solid rgba(251,191,36,0.3)`,
+          display:'flex', alignItems:'center', gap:10, flexShrink:0,
+        }}>
+          <span style={{ fontSize:12 }}>⚠️</span>
+          <span style={{ flex:1, fontSize:11, color:'rgba(251,191,36,0.9)' }}>
+            Projeto atualizado — clique em <strong>Regenerar</strong> para atualizar os prompts.
+          </span>
+          <button
+            onClick={regenerate}
+            style={{
+              padding:'4px 12px', borderRadius:6, border:'1px solid rgba(251,191,36,0.5)',
+              background:'rgba(251,191,36,0.15)', color:'rgba(251,191,36,0.95)',
+              cursor:'pointer', fontSize:11, fontWeight:700,
+            }}>
+            🔄 Regenerar agora
+          </button>
+        </div>
+      )}
       {/* Sub-header */}
       <div style={{ padding:'12px 20px 10px', borderBottom:`1px solid ${T.border}`, flexShrink:0, display:'flex', alignItems:'center', gap:12 }}>
         <div style={{ flex:1 }}>
@@ -211,7 +247,7 @@ function PlaygroundTab() {
             }
           </p>
         </div>
-        <button onClick={()=>setStructure(generateFullPromptStructure(activeProject))}
+        <button onClick={regenerate}
           style={{ padding:'5px 12px', borderRadius:6, border:`1px solid ${T.border}`, background:'rgba(255,255,255,0.05)', color:T.dim, cursor:'pointer', fontSize:11 }}>
           🔄 Regenerar
         </button>
