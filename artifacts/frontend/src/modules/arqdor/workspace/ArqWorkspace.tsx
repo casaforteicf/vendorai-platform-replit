@@ -1,5 +1,7 @@
 import { useState, Suspense, lazy } from 'react'
-import { ArqCopilot } from '../copilot/ui/ArqCopilot'
+import { ArqCopilot }       from '../copilot/ui/ArqCopilot'
+import { WorkspaceProvider } from './context/WorkspaceContext'
+import { IntegrationModule } from './modules/IntegrationModule'
 import { LibraryModule }      from './modules/LibraryModule'
 import { PromptPlaygroundModule } from './modules/PromptPlaygroundModule'
 import { RenderHistoryModule } from './modules/RenderHistoryModule'
@@ -24,7 +26,7 @@ const T = {
 } as const
 
 // ─── Module definitions ───────────────────────────────────────────────────────
-type ModuleId = 'projeto' | 'biblioteca' | 'prompt' | 'renders' | 'ai-review' | 'correcoes' | 'memoria' | 'config' | 'arqhub' | 'ai-intel'
+type ModuleId = 'projeto' | 'biblioteca' | 'prompt' | 'renders' | 'ai-review' | 'correcoes' | 'memoria' | 'config' | 'arqhub' | 'ai-intel' | 'integracao'
 
 interface WorkspaceModule {
   id:      ModuleId
@@ -46,6 +48,7 @@ const MODULES: WorkspaceModule[] = [
   { id:'config',     icon:'⚙️',  label:'Config',        desc:'Providers e plugins'      },
   { id:'arqhub',     icon:'🌐',  label:'ARQ HUB',       desc:'Ecosystem inteligente',   badge:'NEW', badgeColor:'#4ade80' },
   { id:'ai-intel',   icon:'🧠',  label:'AI Intelligence', desc:'Motor de análise AIE',   badge:'AIE', badgeColor:'#a78bfa' },
+  { id:'integracao', icon:'🌐',  label:'Integração',      desc:'Vendor.ai Hubs',          badge:'V.AI', badgeColor:'#60a5fa' },
 ]
 
 function renderModule(id: ModuleId) {
@@ -60,6 +63,7 @@ function renderModule(id: ModuleId) {
     case 'config':     return <SettingsModule/>
     case 'arqhub':     return <ArqHubView/>
     case 'ai-intel':   return <AIEDashboard/>
+    case 'integracao': return <IntegrationModule/>
   }
 }
 
@@ -119,6 +123,7 @@ export default function ArqWorkspace() {
   const sidebarW = expanded ? 220 : 56
 
   return (
+    <WorkspaceProvider>
     <div style={{
       height:'100vh', display:'flex', flexDirection:'column',
       background:T.bg, color:T.text, fontFamily:'system-ui,sans-serif', overflow:'hidden',
@@ -208,7 +213,8 @@ export default function ArqWorkspace() {
             <div style={{ padding:'10px 14px 12px', borderTop:`1px solid ${T.border}`, flexShrink:0 }}>
               <p style={{ margin:0, fontSize:9, color:T.dim, lineHeight:1.5 }}>
                 Plugin System Ativo<br/>
-                <span style={{ color:'#4ade80' }}>● Mock Providers</span>
+                <span style={{ color:'#4ade80' }}>● Mock Providers</span><br/>
+                <span style={{ color:'#60a5fa' }}>🌐 Vendor.ai — 9/10 hubs</span>
               </p>
             </div>
           )}
@@ -229,5 +235,6 @@ export default function ArqWorkspace() {
         <ArqCopilot collapsed={copilotCollapsed} onToggle={()=>setCopilotCollapsed(p=>!p)}/>
       </div>
     </div>
+    </WorkspaceProvider>
   )
 }
