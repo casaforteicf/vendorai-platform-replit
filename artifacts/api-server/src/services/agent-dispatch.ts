@@ -24,6 +24,7 @@ import {
 } from "@workspace/db";
 import { callOpenAI as gatewayFamilyCallOpenAI } from "../lib/ai-gateway.js";
 import { detectEscalationTrigger, generateHandoffSummary } from "./escalation.js";
+import { generateAgentHandoffSummary } from "./handoff.js";
 import { sendDirectWhatsAppMessage } from "./omnichannel.js";
 import {
   loadContext,
@@ -231,13 +232,7 @@ export async function processAgentInternal(params: {
       agentName = determineAgent(ctx.lead, ctx.ci, deals, diasSinceContact);
     }
 
-    // 4b. Persist current_agent on the conversation (non-blocking best-effort)
-    if (ctx.conversation?.id) {
-      db.update(conversationsTable)
-        .set({ currentAgent: agentName, updatedAt: new Date() })
-        .where(eq(conversationsTable.id, ctx.conversation.id))
-        .catch((err) => log.warn({ err, conversationId: ctx.conversation!.id }, "dispatch: failed to update currentAgent"));
-    }
+    // 4b. (currentAgent update deferred to step 4c below, after resolvedAgentName is known)
 
     // 5. Check if that agent is enabled
     const agentCfg = config.agents?.[agentName];
@@ -260,6 +255,61 @@ export async function processAgentInternal(params: {
     }
 
     const resolvedAgentCfg = config.agents?.[resolvedAgentName];
+
+    // 4c. Handoff detection — compare previous agent with resolved agent
+    // Read context for prompt injection (from metadata if continuing, generated fresh if handoff)
+    const previousAgent = ctx.conversation?.currentAgent;
+    let handoffContextForPrompt: string | undefined =
+      (ctx.conversation?.metadata?.handoff_context as string | undefined) ?? undefined;
+
+    const isAgentHandoff =
+      !!ctx.conversation?.id &&
+      !!previousAgent &&
+      previousAgent !== resolvedAgentName &&
+      previousAgent !== "humano"; // human→AI transitions are NOT agent handoffs
+
+    if (ctx.conversation?.id) {
+      if (isAgentHandoff) {
+        // Generate handoff summary (awaited — needed for prompt this turn)
+        const summary = await generateAgentHandoffSummary(
+          ctx, previousAgent!, resolvedAgentName, tenantId, log
+        );
+        handoffContextForPrompt = summary;
+
+        const existingMeta = ctx.conversation.metadata ?? {};
+        await db
+          .update(conversationsTable)
+          .set({
+            currentAgent: resolvedAgentName,
+            metadata: { ...existingMeta, handoff_context: summary },
+            updatedAt: new Date(),
+          })
+          .where(eq(conversationsTable.id, ctx.conversation.id))
+          .catch((err) => log.warn({ err, conversationId: ctx.conversation!.id }, "dispatch: failed to persist handoff context"));
+
+        // Log handoff activity (non-blocking)
+        db.insert(activitiesTable)
+          .values({
+            tenantId,
+            leadId,
+            tipo: "handoff_agente",
+            titulo: `Handoff: ${previousAgent} → ${resolvedAgentName}`,
+            descricao: summary.slice(0, 300),
+            status: "concluida",
+            concluidaEm: new Date(),
+            resultadoExecucao: `de:${previousAgent}|para:${resolvedAgentName}`,
+          })
+          .catch((err) => log.warn({ err, tenantId, leadId }, "dispatch: failed to insert handoff activity"));
+
+        log.info({ tenantId, leadId, from: previousAgent, to: resolvedAgentName }, "dispatch: agent handoff logged");
+      } else {
+        // No handoff — update currentAgent only (non-blocking)
+        db.update(conversationsTable)
+          .set({ currentAgent: resolvedAgentName, updatedAt: new Date() })
+          .where(eq(conversationsTable.id, ctx.conversation.id))
+          .catch((err) => log.warn({ err, conversationId: ctx.conversation!.id }, "dispatch: failed to update currentAgent"));
+      }
+    }
 
     // 6. Check daily/monthly limits
     const limits = computeLimits(config);
@@ -284,8 +334,14 @@ export async function processAgentInternal(params: {
       }
     }
 
+    // Inject handoff context at the start of the system prompt if available
+    const baseSystemContent = buildPrompt(resolvedAgentCfg?.prompt, ctx, scenario, dispatchSystemPrompt);
+    const systemContent = handoffContextForPrompt
+      ? `## Contexto recebido do agente anterior:\n${handoffContextForPrompt}\n\n---\n\n${baseSystemContent}`
+      : baseSystemContent;
+
     const openaiMessages = [
-      { role: "system" as const, content: buildPrompt(resolvedAgentCfg?.prompt, ctx, scenario, dispatchSystemPrompt) },
+      { role: "system" as const, content: systemContent },
       ...ctx.recentMessages.map(msgToOpenAI),
       { role: "user" as const, content: mensagem },
     ];

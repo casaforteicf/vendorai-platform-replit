@@ -34,6 +34,7 @@ import {
   MessageCircle,
   ChevronLeft,
   UserCheck,
+  ArrowRight,
 } from "lucide-react";
 import { formatDistanceToNow, format, isToday, isYesterday } from "date-fns";
 import { ptBR } from "date-fns/locale";
@@ -204,6 +205,47 @@ function MsgBubble({ msg }: { msg: Message }) {
   );
 }
 
+// ─── Handoff Separator ────────────────────────────────────────────────────────
+
+const AGENT_LABELS: Record<string, string> = {
+  sdr: "SDR",
+  closer: "Closer",
+  service: "Service",
+  scheduler: "Agendamento",
+  reactivation: "Reativação",
+  followup: "Follow-up",
+  onboarding: "Onboarding",
+  relacionamento: "Relacionamento",
+  humano: "Humano",
+};
+
+function agentLabel(name: string): string {
+  return AGENT_LABELS[name] ?? name;
+}
+
+interface HandoffEvent {
+  id: string;
+  timestamp: string;
+  fromAgent: string;
+  toAgent: string;
+}
+
+function HandoffSeparator({ fromAgent, toAgent, timestamp }: { fromAgent: string; toAgent: string; timestamp: string }) {
+  return (
+    <div className="flex items-center gap-2 py-2 my-1">
+      <div className="flex-1 border-t border-dashed border-violet-200 dark:border-violet-800" />
+      <span className="flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-violet-50 dark:bg-violet-950 border border-violet-200 dark:border-violet-800 text-[10px] text-violet-600 dark:text-violet-400 font-medium whitespace-nowrap">
+        <ArrowRight className="h-2.5 w-2.5 shrink-0" />
+        {agentLabel(fromAgent)} → {agentLabel(toAgent)}
+        <span className="text-violet-400 dark:text-violet-600 font-normal ml-0.5">
+          · {formatDistanceToNow(new Date(timestamp), { locale: ptBR, addSuffix: true })}
+        </span>
+      </span>
+      <div className="flex-1 border-t border-dashed border-violet-200 dark:border-violet-800" />
+    </div>
+  );
+}
+
 // ─── Date Separator ───────────────────────────────────────────────────────────
 
 function DateSeparator({ date }: { date: string }) {
@@ -237,6 +279,7 @@ function ChatPanel({
 }) {
   const [inputValue, setInputValue] = useState("");
   const [releasingLock, setReleasingLock] = useState(false);
+  const [handoffEvents, setHandoffEvents] = useState<HandoffEvent[]>([]);
   const bottomRef = useRef<HTMLDivElement>(null);
   const queryClient = useQueryClient();
   const { toast } = useToast();
@@ -256,6 +299,39 @@ function ChatPanel({
   );
 
   const createMessage = useCreateMessage();
+
+  // Fetch handoff events for this lead's conversation
+  useEffect(() => {
+    if (!conv.leadId) return;
+    const token = localStorage.getItem("vendorai_token");
+    fetch(`/api/tenants/${tenantId}/activities?leadId=${conv.leadId}`, {
+      headers: token ? { Authorization: `Bearer ${token}` } : {},
+    })
+      .then((r) => r.json())
+      .then((data: unknown) => {
+        if (!Array.isArray(data)) return;
+        const events: HandoffEvent[] = [];
+        for (const a of data) {
+          if (typeof a !== "object" || a === null) continue;
+          const act = a as Record<string, unknown>;
+          if (act.tipo !== "handoff_agente" || typeof act.resultadoExecucao !== "string") continue;
+          const match = act.resultadoExecucao.match(/^de:(.+)\|para:(.+)$/);
+          if (!match) continue;
+          const ts =
+            typeof act.concluidaEm === "string" ? act.concluidaEm :
+            typeof act.createdAt === "string" ? act.createdAt : null;
+          if (!ts) continue;
+          events.push({
+            id: typeof act.id === "string" ? act.id : String(act.id ?? Math.random()),
+            timestamp: ts,
+            fromAgent: match[1],
+            toAgent: match[2],
+          });
+        }
+        setHandoffEvents(events);
+      })
+      .catch(() => undefined);
+  }, [conv.leadId, tenantId]);
 
   // Scroll to bottom when messages change
   useEffect(() => {
@@ -341,17 +417,23 @@ function ChatPanel({
     }
   }
 
-  // Group messages by date for separators
-  const grouped: { date: string; msgs: Message[] }[] = [];
+  // Build unified timeline: merge messages and handoff events sorted by time
+  type TimelineItem =
+    | { kind: "msg"; msg: Message; date: string }
+    | { kind: "handoff"; event: HandoffEvent };
+
+  const timelineItems: TimelineItem[] = [];
   for (const msg of messages) {
-    const d = msg.createdAt.slice(0, 10);
-    const last = grouped[grouped.length - 1];
-    if (!last || last.date !== d) {
-      grouped.push({ date: d, msgs: [msg] });
-    } else {
-      last.msgs.push(msg);
-    }
+    timelineItems.push({ kind: "msg", msg, date: msg.createdAt.slice(0, 10) });
   }
+  for (const event of handoffEvents) {
+    timelineItems.push({ kind: "handoff", event });
+  }
+  timelineItems.sort((a, b) => {
+    const ta = a.kind === "msg" ? new Date(a.msg.createdAt).getTime() : new Date(a.event.timestamp).getTime();
+    const tb = b.kind === "msg" ? new Date(b.msg.createdAt).getTime() : new Date(b.event.timestamp).getTime();
+    return ta - tb;
+  });
 
   return (
     <div className="flex flex-col h-full">
@@ -442,14 +524,30 @@ function ChatPanel({
           </div>
         ) : (
           <div className="flex flex-col gap-1">
-            {grouped.map(({ date, msgs }) => (
-              <div key={date} className="flex flex-col gap-1">
-                <DateSeparator date={msgs[0].createdAt} />
-                {msgs.map((msg) => (
-                  <MsgBubble key={msg.id} msg={msg} />
-                ))}
-              </div>
-            ))}
+            {(() => {
+              let lastDate: string | null = null;
+              return timelineItems.map((item) => {
+                if (item.kind === "handoff") {
+                  return (
+                    <HandoffSeparator
+                      key={`hoff-${item.event.id}`}
+                      fromAgent={item.event.fromAgent}
+                      toAgent={item.event.toAgent}
+                      timestamp={item.event.timestamp}
+                    />
+                  );
+                }
+                const d = item.date;
+                const showDate = d !== lastDate;
+                lastDate = d;
+                return (
+                  <div key={item.msg.id} className="flex flex-col gap-1">
+                    {showDate && <DateSeparator date={item.msg.createdAt} />}
+                    <MsgBubble msg={item.msg} />
+                  </div>
+                );
+              });
+            })()}
             <div ref={bottomRef} />
           </div>
         )}
