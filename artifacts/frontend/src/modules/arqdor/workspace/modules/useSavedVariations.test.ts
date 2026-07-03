@@ -780,6 +780,89 @@ describe('offline save promoted after connectivity is restored', () => {
     expect(stored.some(v => v.id.startsWith('local-'))).toBe(false)
   })
 
+  it('pendingCount drops to 0 once all local-* items are promoted after the online event', async () => {
+    localStorage.setItem('vendorai_token', 'tok-abc')
+
+    const makeServerResp = (id: string, name: string, ts: number) => ({
+      id,
+      name,
+      translator: 'midjourney',
+      detail: 'medium',
+      prompt: `Prompt for ${name}`,
+      negativePrompt: '',
+      estimatedTokens: 5,
+      savedAt: new Date(ts).toISOString(),
+      notes: null,
+    })
+
+    const fetchMock = vi
+      .fn()
+      // GET on mount → network error (server is down)
+      .mockRejectedValueOnce(new TypeError('Network failure'))
+      // POST for first save → network error (still offline)
+      .mockRejectedValueOnce(new TypeError('Network failure'))
+      // POST for second save → network error (still offline)
+      .mockRejectedValueOnce(new TypeError('Network failure'))
+      // POST from syncPendingVariations (first pending item) → success
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => makeServerResp('srv-pc-1', 'First pending', 1_700_000_020_000),
+      })
+      // POST from syncPendingVariations (second pending item) → success
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => makeServerResp('srv-pc-2', 'Second pending', 1_700_000_021_000),
+      })
+    vi.stubGlobal('fetch', fetchMock)
+
+    const { result } = renderHook(() => useSavedVariations())
+    await waitFor(() => expect(result.current.syncing).toBe(false))
+
+    // Save two variations while offline
+    await act(async () => {
+      result.current.save(
+        { translator: 'midjourney', detail: 'medium', prompt: 'Prompt for First pending', negativePrompt: '', estimatedTokens: 5 },
+        'First pending',
+      )
+      await new Promise(r => setTimeout(r, 0))
+    })
+
+    await act(async () => {
+      result.current.save(
+        { translator: 'midjourney', detail: 'medium', prompt: 'Prompt for Second pending', negativePrompt: '', estimatedTokens: 5 },
+        'Second pending',
+      )
+      await new Promise(r => setTimeout(r, 0))
+    })
+
+    // Both are local-* — badge should show 2 pending
+    expect(result.current.pendingCount).toBe(2)
+    expect(result.current.variations.every(v => v.id.startsWith('local-'))).toBe(true)
+
+    // Connectivity restored — trigger the online event
+    await act(async () => {
+      window.dispatchEvent(new Event('online'))
+      await new Promise(r => setTimeout(r, 0))
+    })
+
+    // Wait for all promotions to complete
+    await waitFor(() => result.current.pendingCount === 0)
+
+    // pendingCount must be 0 — badge should disappear
+    expect(result.current.pendingCount).toBe(0)
+
+    // Both variations carry server-assigned ids
+    expect(result.current.variations).toHaveLength(2)
+    expect(result.current.variations.every(v => !v.id.startsWith('local-'))).toBe(true)
+    const ids = result.current.variations.map(v => v.id)
+    expect(ids).toContain('srv-pc-1')
+    expect(ids).toContain('srv-pc-2')
+
+    // localStorage also has no local-* items left
+    const stored = storedVariations()
+    expect(stored.some(v => v.id.startsWith('local-'))).toBe(false)
+  })
+
   it('leaves the variation as local-* when the server is still down after the online event', async () => {
     localStorage.setItem('vendorai_token', 'tok-abc')
 
