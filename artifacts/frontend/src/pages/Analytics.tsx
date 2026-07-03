@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { useAuth } from "@/contexts/AuthContext";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -31,6 +32,8 @@ import {
   ArrowDownRight,
   Loader2,
   BarChart3,
+  GitBranch,
+  UserX,
 } from "lucide-react";
 import {
   useGetTenantAnalyticsAgents,
@@ -42,6 +45,41 @@ import {
 } from "@workspace/api-client-react";
 
 const COLORS = ["#60A5FA", "#818CF8", "#A78BFA", "#F59E0B", "#10B981", "#EF4444", "#94A3B8"];
+
+// ─── Flow Metrics types & hook ────────────────────────────────────────────────
+
+interface FlowMetricsData {
+  firstResponseTime: { ia: number | null; human: number | null };
+  conversationToAppointment: { total: number; converted: number; rate: number };
+  appointmentToSale: { total: number; converted: number; rate: number };
+  noShowRate: { total: number; noShow: number; rate: number };
+  escalationsByReason: Array<{ reason: string; count: number }>;
+}
+
+function useFlowMetrics(tenantId: string, enabled: boolean) {
+  return useQuery<FlowMetricsData>({
+    queryKey: ["flow-metrics", tenantId],
+    enabled: enabled && !!tenantId,
+    queryFn: async () => {
+      const token = localStorage.getItem("vendorai_token");
+      const res = await fetch(`/api/tenants/${tenantId}/analytics/flow-metrics`, {
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+      });
+      if (!res.ok) throw new Error("flow-metrics fetch failed");
+      return res.json() as Promise<FlowMetricsData>;
+    },
+    staleTime: 5 * 60 * 1000,
+  });
+}
+
+function formatSeconds(s: number | null | undefined): string {
+  if (s === null || s === undefined) return "—";
+  if (s < 60) return `${Math.round(s)}s`;
+  if (s < 3600) return `${Math.round(s / 60)}min`;
+  return `${(s / 3600).toFixed(1)}h`;
+}
+
+// ─── Helpers ──────────────────────────────────────────────────────────────────
 
 function formatPercent(value: number | undefined): string {
   if (value === undefined || value === null) return "0%";
@@ -82,6 +120,7 @@ export default function Analytics() {
   const intelQuery = useGetTenantAnalyticsIntelligence(tenantId, {
     query: { enabled: !!tenantId && activeTab === "intelligence", queryKey: getGetTenantAnalyticsIntelligenceQueryKey(tenantId) },
   });
+  const flowQuery = useFlowMetrics(tenantId, activeTab === "flow");
 
   const agents = agentsQuery.data;
   const channels = channelsQuery.data;
@@ -103,7 +142,7 @@ export default function Analytics() {
       </div>
 
       <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-4">
-        <TabsList className="grid w-full grid-cols-3 md:w-auto">
+        <TabsList className="grid w-full grid-cols-4 md:w-auto">
           <TabsTrigger value="agents" className="flex items-center gap-2">
             <Bot className="h-4 w-4" />
             <span className="hidden sm:inline">Agentes</span>
@@ -115,6 +154,10 @@ export default function Analytics() {
           <TabsTrigger value="intelligence" className="flex items-center gap-2">
             <BrainCircuit className="h-4 w-4" />
             <span className="hidden sm:inline">Inteligência</span>
+          </TabsTrigger>
+          <TabsTrigger value="flow" className="flex items-center gap-2">
+            <GitBranch className="h-4 w-4" />
+            <span className="hidden sm:inline">Fluxo</span>
           </TabsTrigger>
         </TabsList>
 
@@ -574,6 +617,134 @@ export default function Analytics() {
                   </div>
                 </CardContent>
               </Card>
+            </>
+          )}
+        </TabsContent>
+        {/* ─── FLOW TAB ─── */}
+        <TabsContent value="flow" className="space-y-4">
+          {flowQuery.isLoading ? (
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+              <LoadingCard />
+              <LoadingCard />
+              <LoadingCard />
+            </div>
+          ) : flowQuery.isError ? (
+            <Card><CardContent className="p-6 text-center text-muted-foreground">Erro ao carregar métricas de fluxo</CardContent></Card>
+          ) : !flowQuery.data ? (
+            <Card><CardContent className="p-6 text-center text-muted-foreground">Sem dados disponíveis</CardContent></Card>
+          ) : (
+            <>
+              {/* KPI row — 4 cards */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                <Card>
+                  <CardHeader className="pb-2">
+                    <CardTitle className="text-sm font-medium text-muted-foreground flex items-center gap-1.5">
+                      <Bot className="h-3.5 w-3.5 text-violet-500" />
+                      Resposta IA
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="text-2xl font-bold">{formatSeconds(flowQuery.data.firstResponseTime.ia)}</div>
+                    <p className="text-xs text-muted-foreground mt-1">Tempo médio 1ª resposta</p>
+                  </CardContent>
+                </Card>
+
+                <Card>
+                  <CardHeader className="pb-2">
+                    <CardTitle className="text-sm font-medium text-muted-foreground flex items-center gap-1.5">
+                      <Users className="h-3.5 w-3.5 text-blue-500" />
+                      Resposta Humana
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="text-2xl font-bold">{formatSeconds(flowQuery.data.firstResponseTime.human)}</div>
+                    <p className="text-xs text-muted-foreground mt-1">Tempo médio 1ª resposta</p>
+                  </CardContent>
+                </Card>
+
+                <Card>
+                  <CardHeader className="pb-2">
+                    <CardTitle className="text-sm font-medium text-muted-foreground flex items-center gap-1.5">
+                      <TrendingUp className="h-3.5 w-3.5 text-emerald-500" />
+                      Conv → Agendamento
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="text-2xl font-bold">{formatPercent(flowQuery.data.conversationToAppointment.rate)}</div>
+                    <p className="text-xs text-muted-foreground mt-1">
+                      {flowQuery.data.conversationToAppointment.converted}/{flowQuery.data.conversationToAppointment.total} leads
+                    </p>
+                  </CardContent>
+                </Card>
+
+                <Card>
+                  <CardHeader className="pb-2">
+                    <CardTitle className="text-sm font-medium text-muted-foreground flex items-center gap-1.5">
+                      <Zap className="h-3.5 w-3.5 text-amber-500" />
+                      Agendamento → Venda
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="text-2xl font-bold">{formatPercent(flowQuery.data.appointmentToSale.rate)}</div>
+                    <p className="text-xs text-muted-foreground mt-1">
+                      {flowQuery.data.appointmentToSale.converted}/{flowQuery.data.appointmentToSale.total} agendamentos
+                    </p>
+                  </CardContent>
+                </Card>
+              </div>
+
+              {/* Second row — no-show + escalations */}
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                <Card>
+                  <CardHeader>
+                    <CardTitle className="text-base flex items-center gap-2">
+                      <UserX className="h-4 w-4 text-red-500" />
+                      No-show de Agendamentos
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent className="space-y-4">
+                    <div className="flex items-end gap-3">
+                      <div className="text-4xl font-bold">{formatPercent(flowQuery.data.noShowRate.rate)}</div>
+                      <div className="text-sm text-muted-foreground pb-1">
+                        {flowQuery.data.noShowRate.noShow} de {flowQuery.data.noShowRate.total} agendamentos
+                      </div>
+                    </div>
+                    <Progress value={flowQuery.data.noShowRate.rate * 100} className="h-3" />
+                    <p className="text-xs text-muted-foreground">
+                      {flowQuery.data.noShowRate.total === 0
+                        ? "Nenhum agendamento registrado"
+                        : `${flowQuery.data.noShowRate.total - flowQuery.data.noShowRate.noShow} compareceram`}
+                    </p>
+                  </CardContent>
+                </Card>
+
+                <Card>
+                  <CardHeader>
+                    <CardTitle className="text-base flex items-center gap-2">
+                      <AlertTriangle className="h-4 w-4 text-amber-500" />
+                      Escalações por Razão
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent className="space-y-3">
+                    {flowQuery.data.escalationsByReason.length === 0 ? (
+                      <p className="text-sm text-muted-foreground text-center py-4">Nenhuma escalação registrada</p>
+                    ) : (
+                      flowQuery.data.escalationsByReason.map((esc) => {
+                        const maxCount = Math.max(...flowQuery.data!.escalationsByReason.map((e) => e.count), 1);
+                        return (
+                          <div key={esc.reason} className="space-y-1">
+                            <div className="flex items-center justify-between text-sm">
+                              <span className="font-medium capitalize">{esc.reason.replace(/_/g, " ")}</span>
+                              <span className="text-muted-foreground">{esc.count}</span>
+                            </div>
+                            <Progress value={(esc.count / maxCount) * 100} className="h-2" />
+                          </div>
+                        );
+                      })
+                    )}
+                  </CardContent>
+                </Card>
+              </div>
             </>
           )}
         </TabsContent>

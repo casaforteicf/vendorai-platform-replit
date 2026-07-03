@@ -11,6 +11,9 @@ import {
   customerIntelligenceTable,
   agentTasksTable,
   propostasTable,
+  conversationsTable,
+  agendamentosTable,
+  activitiesTable,
 } from "@workspace/db";
 
 const router: IRouter = Router();
@@ -412,4 +415,144 @@ router.get("/tenants/:tenantId/analytics/vendas", async (req, res) => {
   });
 });
 
+// ─── Flow Metrics ─────────────────────────────────────────────────────────────
+
+router.get("/tenants/:tenantId/analytics/flow-metrics", async (req, res) => {
+  const { tenantId: tid } = req.params;
+  if (!canAccess(req, tid)) { res.status(403).json({ error: "Forbidden" }); return; }
+
+  const [
+    firstResponseResult,
+    convToApptResult,
+    apptToSaleResult,
+    noShowResult,
+    escalationsResult,
+  ] = await Promise.all([
+    // 1. Tempo médio de 1ª resposta — IA vs humano
+    // DISTINCT ON selects the first outbound message per conversation after first inbound
+    db.execute(sql`
+      WITH first_inbound AS (
+        SELECT conversation_id, MIN(created_at) AS first_at
+        FROM messages
+        WHERE tenant_id = ${tid} AND direcao = 'entrada'
+        GROUP BY conversation_id
+      ),
+      first_response AS (
+        SELECT DISTINCT ON (m.conversation_id)
+          m.conversation_id,
+          m.enviado_por,
+          m.created_at AS responded_at,
+          fi.first_at    AS inbound_at
+        FROM messages m
+        JOIN first_inbound fi ON fi.conversation_id = m.conversation_id
+        WHERE m.tenant_id = ${tid}
+          AND m.direcao   = 'saida'
+          AND m.created_at > fi.first_at
+        ORDER BY m.conversation_id, m.created_at ASC
+      )
+      SELECT
+        enviado_por,
+        AVG(EXTRACT(EPOCH FROM (responded_at - inbound_at)))::float AS avg_seconds,
+        COUNT(*) AS sample_count
+      FROM first_response
+      WHERE enviado_por IN ('agente_ia', 'humano')
+      GROUP BY enviado_por
+    `),
+
+    // 2. Conversa → Agendamento
+    db.execute(sql`
+      SELECT
+        COUNT(DISTINCT c.lead_id) FILTER (WHERE c.lead_id IS NOT NULL) AS total_leads,
+        COUNT(DISTINCT CASE WHEN ag.id IS NOT NULL THEN c.lead_id END)  AS converted
+      FROM conversations c
+      LEFT JOIN agendamentos ag
+        ON ag.lead_id   = c.lead_id
+       AND ag.tenant_id = c.tenant_id
+      WHERE c.tenant_id = ${tid}
+    `),
+
+    // 3. Agendamento → Venda (deal ganho)
+    db.execute(sql`
+      SELECT
+        COUNT(*) AS total_appointments,
+        COUNT(*) FILTER (
+          WHERE EXISTS (
+            SELECT 1 FROM deals d
+            WHERE d.lead_id    = ag.lead_id
+              AND d.tenant_id  = ag.tenant_id
+              AND d.etapa      = 'ganho'
+          )
+        ) AS converted_to_sale
+      FROM agendamentos ag
+      WHERE ag.tenant_id = ${tid}
+    `),
+
+    // 4. No-show rate
+    db.execute(sql`
+      SELECT
+        COUNT(*) AS total,
+        COUNT(*) FILTER (WHERE status = 'no_show') AS no_show_count
+      FROM agendamentos
+      WHERE tenant_id = ${tid}
+    `),
+
+    // 5. Escalações por razão (resultado_execucao)
+    db.execute(sql`
+      SELECT
+        COALESCE(resultado_execucao, 'sem_razao') AS reason,
+        COUNT(*)::int AS count
+      FROM activities
+      WHERE tenant_id = ${tid} AND tipo = 'escalacao_humano'
+      GROUP BY resultado_execucao
+      ORDER BY count DESC
+      LIMIT 10
+    `),
+  ]);
+
+  const toRows = (r: unknown) => (r as { rows: Record<string, unknown>[] }).rows;
+
+  const frRows  = toRows(firstResponseResult);
+  const iaRow   = frRows.find((r) => r.enviado_por === "agente_ia");
+  const humRow  = frRows.find((r) => r.enviado_por === "humano");
+
+  const [convRow]  = toRows(convToApptResult);
+  const totalLeads = Number(convRow?.total_leads ?? 0);
+  const convLeads  = Number(convRow?.converted  ?? 0);
+
+  const [apptRow]   = toRows(apptToSaleResult);
+  const totalAppts  = Number(apptRow?.total_appointments ?? 0);
+  const convSales   = Number(apptRow?.converted_to_sale  ?? 0);
+
+  const [nsRow]     = toRows(noShowResult);
+  const totalNs     = Number(nsRow?.total          ?? 0);
+  const noShowCnt   = Number(nsRow?.no_show_count  ?? 0);
+
+  return res.json({
+    firstResponseTime: {
+      ia:    iaRow?.avg_seconds  != null ? Number(Number(iaRow.avg_seconds ).toFixed(1)) : null,
+      human: humRow?.avg_seconds != null ? Number(Number(humRow.avg_seconds).toFixed(1)) : null,
+    },
+    conversationToAppointment: {
+      total:     totalLeads,
+      converted: convLeads,
+      rate:      totalLeads > 0 ? Number((convLeads  / totalLeads).toFixed(3)) : 0,
+    },
+    appointmentToSale: {
+      total:     totalAppts,
+      converted: convSales,
+      rate:      totalAppts > 0 ? Number((convSales  / totalAppts).toFixed(3)) : 0,
+    },
+    noShowRate: {
+      total:  totalNs,
+      noShow: noShowCnt,
+      rate:   totalNs > 0 ? Number((noShowCnt / totalNs).toFixed(3)) : 0,
+    },
+    escalationsByReason: toRows(escalationsResult).map((r) => ({
+      reason: String(r.reason ?? "sem_razao"),
+      count:  Number(r.count  ?? 0),
+    })),
+  });
+});
+
 export default router;
+
