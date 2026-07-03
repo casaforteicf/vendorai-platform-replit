@@ -1,6 +1,7 @@
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useCallback } from 'react'
 import { runAIE } from '../aie-engine'
 import { MOCK_PROJECT_CONTEXT } from '../aie-mock-context'
+import { generateDNA } from '../engines/dna-engine'
 import type { AIEResult, ProjectScores, Recommendation, ValidationResult, RecommendationSeverity } from '../aie-types'
 
 const T = {
@@ -148,7 +149,21 @@ const TABS: Array<{ id: TabId; label: string; icon: string }> = [
 
 // ─── Tab contents ─────────────────────────────────────────────────────────────
 
-function OverviewTab({ result }: { result: AIEResult }) {
+interface OverviewTabProps {
+  result:       AIEResult
+  savedDNA:     string
+  generatedDNA: string | null
+  onGenerate:   () => void
+  onCopyDNA:    (text: string) => void
+  onSaveDNA:    (text: string) => void
+  copied:       boolean
+}
+
+function OverviewTab({ result, savedDNA, generatedDNA, onGenerate, onCopyDNA, onSaveDNA, copied }: OverviewTabProps) {
+  const displayDNA     = generatedDNA ?? savedDNA
+  const hasGenerated   = generatedDNA !== null
+  const isUnsaved      = hasGenerated && generatedDNA !== savedDNA
+
   return (
     <div>
       <ReadinessBanner result={result}/>
@@ -159,12 +174,69 @@ function OverviewTab({ result }: { result: AIEResult }) {
       </div>
 
       {/* DNA */}
-      {result.projectId && (
-        <div style={{ marginTop:14, padding:'10px 12px', borderRadius:8, background:T.surface, border:`1px solid ${T.border}` }}>
-          <p style={{ margin:'0 0 4px', fontSize:9, fontWeight:700, color:T.dim, letterSpacing:'0.07em' }}>DNA DO PROJETO</p>
-          <p style={{ margin:0, fontSize:11, color:T.text, lineHeight:1.65, fontStyle:'italic' as const }}>{MOCK_PROJECT_CONTEXT.dna ?? '(não definido)'}</p>
+      <div style={{ marginTop:14, borderRadius:10, background:T.surface, border:`1px solid ${isUnsaved ? 'rgba(167,139,250,0.4)' : T.border}`, overflow:'hidden' }}>
+        {/* DNA header */}
+        <div style={{ padding:'10px 12px 8px', display:'flex', alignItems:'center', gap:8, borderBottom:`1px solid ${T.border}` }}>
+          <span style={{ fontSize:13 }}>🧬</span>
+          <p style={{ margin:0, fontSize:9, fontWeight:700, color:T.dim, letterSpacing:'0.07em', flex:1 }}>DNA DO PROJETO</p>
+          {isUnsaved && (
+            <span style={{ fontSize:8, padding:'2px 6px', borderRadius:5, background:'rgba(167,139,250,0.15)', color:T.purpleL, fontWeight:700 }}>
+              NÃO SALVO
+            </span>
+          )}
         </div>
-      )}
+
+        {/* DNA text */}
+        <div style={{ padding:'10px 12px' }}>
+          <p style={{
+            margin:'0 0 10px', fontSize:11, color: hasGenerated ? T.text : T.dim,
+            lineHeight:1.7, fontStyle: hasGenerated ? 'normal' as const : 'italic' as const,
+            minHeight:36,
+          }}>
+            {displayDNA || '(não definido — clique em Gerar DNA)'}
+          </p>
+
+          {/* Action buttons */}
+          <div style={{ display:'flex', gap:6, flexWrap:'wrap' as const }}>
+            <button
+              onClick={onGenerate}
+              style={{
+                padding:'5px 12px', borderRadius:6, border:'none',
+                background:T.purple, color:'#fff', cursor:'pointer',
+                fontSize:10, fontWeight:700, display:'flex', alignItems:'center', gap:5,
+              }}
+            >
+              🧬 Gerar DNA
+            </button>
+
+            {displayDNA && (
+              <button
+                onClick={() => onCopyDNA(displayDNA)}
+                style={{
+                  padding:'5px 10px', borderRadius:6, border:`1px solid ${T.border}`,
+                  background:'transparent', color: copied ? '#4ade80' : T.dim,
+                  cursor:'pointer', fontSize:10, fontWeight:600,
+                }}
+              >
+                {copied ? '✓ Copiado' : '⎘ Copiar'}
+              </button>
+            )}
+
+            {isUnsaved && (
+              <button
+                onClick={() => onSaveDNA(generatedDNA!)}
+                style={{
+                  padding:'5px 10px', borderRadius:6, border:`1px solid rgba(167,139,250,0.4)`,
+                  background:'rgba(124,58,237,0.12)', color:T.purpleL,
+                  cursor:'pointer', fontSize:10, fontWeight:700,
+                }}
+              >
+                ↓ Salvar no projeto
+              </button>
+            )}
+          </div>
+        </div>
+      </div>
 
       {/* Quick stats */}
       <div style={{ marginTop:12, display:'grid', gridTemplateColumns:'repeat(4,1fr)', gap:8 }}>
@@ -402,14 +474,34 @@ function LearningTab({ result }: { result: AIEResult }) {
 // ─── AIE Dashboard ────────────────────────────────────────────────────────────
 
 export function AIEDashboard() {
-  const [activeTab, setActiveTab] = useState<TabId>('overview')
-  const [lastRun,   setLastRun]   = useState<string>(new Date().toLocaleTimeString('pt-BR'))
+  const [activeTab,    setActiveTab]    = useState<TabId>('overview')
+  const [lastRun,      setLastRun]      = useState<string>(new Date().toLocaleTimeString('pt-BR'))
+  const [savedDNA,     setSavedDNA]     = useState<string>(MOCK_PROJECT_CONTEXT.dna ?? '')
+  const [generatedDNA, setGeneratedDNA] = useState<string | null>(null)
+  const [copied,       setCopied]       = useState(false)
 
   const result: AIEResult = useMemo(() => runAIE(MOCK_PROJECT_CONTEXT), [])
 
   function handleRerun() {
     setLastRun(new Date().toLocaleTimeString('pt-BR'))
   }
+
+  const handleGenerate = useCallback(() => {
+    const dna = generateDNA(MOCK_PROJECT_CONTEXT)
+    setGeneratedDNA(dna)
+    setCopied(false)
+  }, [])
+
+  const handleCopyDNA = useCallback((text: string) => {
+    navigator.clipboard.writeText(text).catch(() => {})
+    setCopied(true)
+    setTimeout(() => setCopied(false), 2000)
+  }, [])
+
+  const handleSaveDNA = useCallback((text: string) => {
+    setSavedDNA(text)
+    setGeneratedDNA(null)
+  }, [])
 
   return (
     <div style={{ height:'100%', display:'flex', flexDirection:'column' as const, background:T.bg }}>
@@ -457,7 +549,7 @@ export function AIEDashboard() {
 
       {/* Content */}
       <div style={{ flex:1, overflowY:'auto' as const, padding:18 }}>
-        {activeTab === 'overview'        && <OverviewTab result={result}/>}
+        {activeTab === 'overview'        && <OverviewTab result={result} savedDNA={savedDNA} generatedDNA={generatedDNA} onGenerate={handleGenerate} onCopyDNA={handleCopyDNA} onSaveDNA={handleSaveDNA} copied={copied}/>}
         {activeTab === 'recommendations' && <RecommendationsTab result={result}/>}
         {activeTab === 'validation'      && <ValidationTab result={result}/>}
         {activeTab === 'composition'     && <CompositionTab result={result}/>}
