@@ -551,17 +551,21 @@ function VariationCard({
 function SavedVariationsPanel({
   variations,
   syncing,
+  pendingCount,
   onRename,
   onDelete,
   onUpdateNotes,
   onImport,
+  onRetrySync,
 }: {
   variations: SavedVariation[]
   syncing: boolean
+  pendingCount: number
   onRename: (id: string, name: string) => void
   onDelete: (id: string) => void
   onUpdateNotes: (id: string, notes: string) => void
   onImport: (items: SavedVariation[]) => number | void
+  onRetrySync: () => void
 }) {
   const [open, setOpen] = useState(true)
   const [editingId, setEditingId] = useState<string | null>(null)
@@ -699,6 +703,21 @@ function SavedVariationsPanel({
             </span>
           )}
         </span>
+        {/* Sync-pending indicator */}
+        {pendingCount > 0 && (
+          <button
+            onClick={e => { e.stopPropagation(); onRetrySync() }}
+            title={`${pendingCount} variação(ões) salva(s) offline. Clique para tentar sincronizar agora.`}
+            style={{
+              display:'flex', alignItems:'center', gap:5,
+              padding:'3px 10px', borderRadius:5,
+              border:'1px solid rgba(251,191,36,0.4)',
+              background:'rgba(251,191,36,0.08)',
+              color:'rgba(251,191,36,0.9)', cursor:'pointer', fontSize:9, fontWeight:700,
+            }}>
+            ⏳ {pendingCount} aguardando sync
+          </button>
+        )}
         {/* Import button — always visible */}
         <button
           onClick={handleImportClick}
@@ -806,7 +825,7 @@ function AIEPlaywrightTab({
   const [refreshFlash, setRefreshFlash] = useState(false)
   const [linkedVariationName, setLinkedVariationName] = useState<string | null>(null)
 
-  const { variations, syncing, save, rename, remove, updateNotes, storageError, clearStorageError, importVariations } = useSavedVariations()
+  const { variations, syncing, pendingCount, retryPendingSync, save, rename, remove, updateNotes, storageError, clearStorageError, importVariations } = useSavedVariations()
 
   const handledRef = useRef(false)
   useEffect(() => {
@@ -1053,7 +1072,16 @@ function AIEPlaywrightTab({
       {/* Prompt preview + saved variations */}
       <div style={{ flex:1, overflowY:'auto' as const, padding:'14px 20px' }}>
         <PromptPreview pw={pw} />
-        <SavedVariationsPanel variations={variations} syncing={syncing} onRename={rename} onDelete={remove} onUpdateNotes={updateNotes} onImport={importVariations} />
+        <SavedVariationsPanel
+          variations={variations}
+          syncing={syncing}
+          pendingCount={pendingCount}
+          onRename={rename}
+          onDelete={remove}
+          onUpdateNotes={updateNotes}
+          onImport={importVariations}
+          onRetrySync={() => { void retryPendingSync() }}
+        />
       </div>
     </div>
   )

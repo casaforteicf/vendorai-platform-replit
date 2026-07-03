@@ -86,6 +86,45 @@ export async function apiFetch(path: string, init?: RequestInit): Promise<Respon
   })
 }
 
+// ─── Reconciliation: push all local-* items to the server ────────────────────
+// Reads directly from localStorage so it is safe to call from a stable callback
+// with no dependency on React state.
+
+export async function syncPendingVariations(
+  onPromoted: (localId: string, serverVariation: SavedVariation) => void,
+): Promise<void> {
+  const token = getAuthToken()
+  if (!token) return
+
+  const current = readLocalVariations()
+  const pending = current.filter(v => v.id.startsWith('local-'))
+  if (pending.length === 0) return
+
+  for (const item of pending) {
+    try {
+      const res = await apiFetch('', {
+        method: 'POST',
+        body: JSON.stringify({
+          name: item.name,
+          translator: item.translator,
+          detail: item.detail,
+          prompt: item.prompt,
+          negativePrompt: item.negativePrompt,
+          estimatedTokens: item.estimatedTokens,
+          notes: item.notes,
+          savedAt: new Date(item.savedAt).toISOString(),
+        }),
+      })
+      if (!res.ok) continue
+      const saved: ServerVariation = await res.json()
+      onPromoted(item.id, fromServer(saved))
+    } catch {
+      // Still offline — abort remaining retries for this cycle
+      break
+    }
+  }
+}
+
 // ─── Hook ─────────────────────────────────────────────────────────────────────
 
 export function useSavedVariations() {
@@ -106,6 +145,24 @@ export function useSavedVariations() {
     })
   }, [])
 
+  // Promote a single local-* item to its server-assigned ID
+  const promoteLocal = useCallback((localId: string, serverVariation: SavedVariation) => {
+    setVariations(prev => {
+      const next = prev.map(existing =>
+        existing.id === localId ? serverVariation : existing,
+      )
+      persistVariations(next)
+      return next
+    })
+  }, [])
+
+  // Retry syncing any local-* items that were saved while the server was down.
+  // Safe to call from an effect with an empty dependency array because it reads
+  // localStorage directly instead of closing over the `variations` state value.
+  const retryPendingSync = useCallback(() => {
+    void syncPendingVariations(promoteLocal)
+  }, [promoteLocal])
+
   // Load from server on mount (if authenticated)
   useEffect(() => {
     void (async () => {
@@ -115,7 +172,11 @@ export function useSavedVariations() {
       setSyncing(true)
       try {
         const res = await apiFetch('')
-        if (!res.ok) return
+        if (!res.ok) {
+          // Server unavailable — attempt to promote any pending local-* items
+          // once connectivity returns
+          return
+        }
         const serverData: ServerVariation[] = await res.json()
         const serverVariations = serverData.map(fromServer)
 
@@ -124,7 +185,9 @@ export function useSavedVariations() {
           const local = readLocalVariations()
           const alreadyMigrated = localStorage.getItem(MIGRATED_KEY) === '1'
           if (local.length > 0 && !alreadyMigrated) {
-            const payload = local.map(v => ({
+            // Separate already-synced items from local-only items
+            const localOnly = local.filter(v => v.id.startsWith('local-'))
+            const payload = localOnly.map(v => ({
               name: v.name,
               translator: v.translator,
               detail: v.detail,
@@ -134,32 +197,45 @@ export function useSavedVariations() {
               notes: v.notes,
               savedAt: new Date(v.savedAt).toISOString(),
             }))
-            const migrateRes = await apiFetch('/bulk', {
-              method: 'POST',
-              body: JSON.stringify(payload),
-            })
-            if (migrateRes.ok) {
+            if (payload.length > 0) {
+              const migrateRes = await apiFetch('/bulk', {
+                method: 'POST',
+                body: JSON.stringify(payload),
+              })
+              if (migrateRes.ok) {
+                localStorage.setItem(MIGRATED_KEY, '1')
+                const migrated: ServerVariation[] = await migrateRes.json()
+                const merged = migrated.map(fromServer)
+                setVariations(merged)
+                persistVariations(merged)
+              }
+            } else {
               localStorage.setItem(MIGRATED_KEY, '1')
-              const migrated: ServerVariation[] = await migrateRes.json()
-              const merged = migrated.map(fromServer)
-              setVariations(merged)
-              persistVariations(merged)
             }
           }
         } else {
-          // Server has data — use it as source of truth
+          // Server has data — use it as source of truth, then push any local-*
+          // items that were saved while offline
           localStorage.setItem(MIGRATED_KEY, '1')
           setVariations(serverVariations)
           persistVariations(serverVariations)
+          // Reconcile offline-saved items after restoring from server
+          await syncPendingVariations(promoteLocal)
         }
       } catch {
-        // Network failure — keep local state
+        // Network failure — keep local state; online listener will retry
       } finally {
         setSyncing(false)
       }
     })()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
+
+  // Retry whenever connectivity is restored after an offline period
+  useEffect(() => {
+    window.addEventListener('online', retryPendingSync)
+    return () => window.removeEventListener('online', retryPendingSync)
+  }, [retryPendingSync])
 
   const save = useCallback(
     (v: Omit<SavedVariation, 'id' | 'savedAt' | 'name'>, suggestedName: string) => {
@@ -199,19 +275,16 @@ export function useSavedVariations() {
           if (!res.ok) return
           const saved: ServerVariation = await res.json()
           // Replace optimistic item with server-assigned id
-          setVariations(prev => {
-            const next = prev.map(existing =>
-              existing.id === optimisticId ? fromServer(saved) : existing,
-            )
-            persistVariations(next)
-            return next
-          })
+          promoteLocal(optimisticId, fromServer(saved))
+          // Take the opportunity to push any other pending items now that the
+          // server is reachable
+          void syncPendingVariations(promoteLocal)
         } catch {
-          // Keep local copy
+          // Keep local copy; the online listener will retry
         }
       })()
     },
-    [],
+    [promoteLocal],
   )
 
   const rename = useCallback((id: string, name: string) => {
@@ -265,6 +338,8 @@ export function useSavedVariations() {
     })()
   }, [])
 
+  const pendingCount = variations.filter(v => v.id.startsWith('local-')).length
+
   return {
     variations,
     save,
@@ -275,5 +350,7 @@ export function useSavedVariations() {
     clearStorageError,
     syncing,
     importVariations,
+    pendingCount,
+    retryPendingSync,
   }
 }
