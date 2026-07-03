@@ -1,4 +1,5 @@
 import { useState, useEffect, useMemo, useCallback, useRef } from 'react'
+import { useSearch, useLocation } from 'wouter'
 
 
 import { MOCK_PROJECT } from '../../../../pages/arch/arqdor/domain/arqdor-mock-project'
@@ -827,11 +828,13 @@ function AIEPlaywrightTab({
 
   const { variations, syncing, pendingCount, retryPendingSync, save, rename, remove, updateNotes, storageError, clearStorageError, importVariations } = useSavedVariations()
 
+  const searchString = useSearch()
+  const [location] = useLocation()
   const handledRef = useRef(false)
   useEffect(() => {
     if (handledRef.current) return
     handledRef.current = true
-    const params = new URLSearchParams(window.location.search)
+    const params = new URLSearchParams(searchString)
     const encoded = params.get(SHARE_PARAM)
     if (!encoded) return
     const v = decodeVariation(encoded)
@@ -839,13 +842,13 @@ function AIEPlaywrightTab({
       importVariations([v])
       setLinkedVariationName(v.name)
       onVariationLinked?.()
-      // Clean the URL without reloading
+      // Remove only the share param; all other params are preserved
       params.delete(SHARE_PARAM)
-      const newSearch = params.toString()
-      const newUrl = window.location.pathname + (newSearch ? `?${newSearch}` : '') + window.location.hash
-      window.history.replaceState(null, '', newUrl)
+      const remaining = params.toString()
+      const cleanUrl = location + (remaining ? `?${remaining}` : '') + window.location.hash
+      window.history.replaceState(null, '', cleanUrl)
     }
-  }, [importVariations, onVariationLinked])
+  }, [searchString, location, importVariations, onVariationLinked])
 
   // refreshKey in deps lets the "Refresh scores" button force a re-run even when
   // projectCtx reference hasn't changed (e.g. after an in-session edit)
