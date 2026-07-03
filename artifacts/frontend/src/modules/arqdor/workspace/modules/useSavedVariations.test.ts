@@ -612,6 +612,212 @@ describe('localStorage wipe with server data intact', () => {
   })
 })
 
+// ─── Scenario: offline save promoted after 'online' event ─────────────────────
+
+describe('offline save promoted after connectivity is restored', () => {
+  it('posts the queued local-* item to the server and promotes its id on the online event', async () => {
+    localStorage.setItem('vendorai_token', 'tok-abc')
+
+    const serverAssignedId = 'srv-promoted-1'
+    const serverResponse = {
+      id: serverAssignedId,
+      name: 'Offline variation',
+      translator: 'midjourney',
+      detail: 'medium',
+      prompt: 'Offline prompt',
+      negativePrompt: '',
+      estimatedTokens: 7,
+      savedAt: new Date(1_700_000_005_000).toISOString(),
+      notes: null,
+    }
+
+    const fetchMock = vi
+      .fn()
+      // 1st call: GET on mount → network error (server is down)
+      .mockRejectedValueOnce(new TypeError('Network failure'))
+      // 2nd call: POST on save → network error (still offline)
+      .mockRejectedValueOnce(new TypeError('Network failure'))
+      // 3rd call: POST from syncPendingVariations triggered by 'online' event → success
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => serverResponse,
+      })
+    vi.stubGlobal('fetch', fetchMock)
+
+    const { result } = renderHook(() => useSavedVariations())
+
+    // Wait for the mount-time GET to settle
+    await waitFor(() => expect(result.current.syncing).toBe(false))
+
+    // Save while offline — POST will fail and variation keeps a local-* id
+    await act(async () => {
+      result.current.save(
+        {
+          translator: 'midjourney',
+          detail: 'medium',
+          prompt: 'Offline prompt',
+          negativePrompt: '',
+          estimatedTokens: 7,
+        },
+        'Offline variation',
+      )
+      // Let the async POST attempt settle
+      await new Promise(r => setTimeout(r, 0))
+    })
+
+    // Variation is in state with a local-* id
+    expect(result.current.variations).toHaveLength(1)
+    const localId = result.current.variations[0].id
+    expect(localId).toMatch(/^local-/)
+    expect(result.current.variations[0].name).toBe('Offline variation')
+
+    // localStorage also holds the local-* id
+    expect(storedVariations()[0].id).toMatch(/^local-/)
+
+    // Simulate connectivity being restored
+    await act(async () => {
+      window.dispatchEvent(new Event('online'))
+      // Let syncPendingVariations complete
+      await new Promise(r => setTimeout(r, 0))
+    })
+
+    // The variation must be promoted: local-* id replaced with server-assigned id
+    await waitFor(() =>
+      expect(result.current.variations[0].id).toBe(serverAssignedId),
+    )
+
+    // Both state and localStorage reflect the server-assigned id
+    expect(result.current.variations).toHaveLength(1)
+    expect(result.current.variations[0].id).toBe(serverAssignedId)
+    expect(result.current.variations[0].name).toBe('Offline variation')
+
+    const stored = storedVariations()
+    expect(stored).toHaveLength(1)
+    expect(stored[0].id).toBe(serverAssignedId)
+
+    // The old local-* id must be gone from localStorage
+    expect(stored[0].id).not.toMatch(/^local-/)
+  })
+
+  it('promotes multiple queued local-* items when the server comes back', async () => {
+    localStorage.setItem('vendorai_token', 'tok-abc')
+
+    const makeServerResp = (id: string, name: string, ts: number) => ({
+      id,
+      name,
+      translator: 'midjourney',
+      detail: 'medium',
+      prompt: `Prompt for ${name}`,
+      negativePrompt: '',
+      estimatedTokens: 5,
+      savedAt: new Date(ts).toISOString(),
+      notes: null,
+    })
+
+    const fetchMock = vi
+      .fn()
+      // GET on mount → down
+      .mockRejectedValueOnce(new TypeError('Network failure'))
+      // POST for first save → down
+      .mockRejectedValueOnce(new TypeError('Network failure'))
+      // POST for second save → down
+      .mockRejectedValueOnce(new TypeError('Network failure'))
+      // POST from syncPendingVariations (first pending item) → success
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => makeServerResp('srv-a', 'First offline', 1_700_000_010_000),
+      })
+      // POST from syncPendingVariations (second pending item) → success
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => makeServerResp('srv-b', 'Second offline', 1_700_000_011_000),
+      })
+    vi.stubGlobal('fetch', fetchMock)
+
+    const { result } = renderHook(() => useSavedVariations())
+    await waitFor(() => expect(result.current.syncing).toBe(false))
+
+    // Save two variations while offline
+    await act(async () => {
+      result.current.save(
+        { translator: 'midjourney', detail: 'medium', prompt: 'Prompt for First offline', negativePrompt: '', estimatedTokens: 5 },
+        'First offline',
+      )
+      await new Promise(r => setTimeout(r, 0))
+    })
+
+    await act(async () => {
+      result.current.save(
+        { translator: 'midjourney', detail: 'medium', prompt: 'Prompt for Second offline', negativePrompt: '', estimatedTokens: 5 },
+        'Second offline',
+      )
+      await new Promise(r => setTimeout(r, 0))
+    })
+
+    // Both should be local-* at this point
+    expect(result.current.variations).toHaveLength(2)
+    expect(result.current.variations.every(v => v.id.startsWith('local-'))).toBe(true)
+
+    // Connectivity restored
+    await act(async () => {
+      window.dispatchEvent(new Event('online'))
+      await new Promise(r => setTimeout(r, 0))
+    })
+
+    // Wait for both promotions to complete
+    await waitFor(() =>
+      result.current.variations.every(v => !v.id.startsWith('local-')),
+    )
+
+    expect(result.current.variations).toHaveLength(2)
+    const ids = result.current.variations.map(v => v.id)
+    expect(ids).toContain('srv-a')
+    expect(ids).toContain('srv-b')
+
+    // localStorage must also be fully promoted
+    const stored = storedVariations()
+    expect(stored).toHaveLength(2)
+    expect(stored.some(v => v.id.startsWith('local-'))).toBe(false)
+  })
+
+  it('leaves the variation as local-* when the server is still down after the online event', async () => {
+    localStorage.setItem('vendorai_token', 'tok-abc')
+
+    const fetchMock = vi
+      .fn()
+      // GET on mount → down
+      .mockRejectedValueOnce(new TypeError('Network failure'))
+      // POST on save → down
+      .mockRejectedValueOnce(new TypeError('Network failure'))
+      // POST from syncPendingVariations → still down
+      .mockRejectedValueOnce(new TypeError('Network failure'))
+    vi.stubGlobal('fetch', fetchMock)
+
+    const { result } = renderHook(() => useSavedVariations())
+    await waitFor(() => expect(result.current.syncing).toBe(false))
+
+    await act(async () => {
+      result.current.save(
+        { translator: 'midjourney', detail: 'low', prompt: 'Still offline', negativePrompt: '', estimatedTokens: 3 },
+        'Still offline save',
+      )
+      await new Promise(r => setTimeout(r, 0))
+    })
+
+    expect(result.current.variations[0].id).toMatch(/^local-/)
+
+    await act(async () => {
+      window.dispatchEvent(new Event('online'))
+      await new Promise(r => setTimeout(r, 0))
+    })
+
+    // id must still be local-* — nothing changed
+    expect(result.current.variations).toHaveLength(1)
+    expect(result.current.variations[0].id).toMatch(/^local-/)
+    expect(storedVariations()[0].id).toMatch(/^local-/)
+  })
+})
+
 // ─── Scenario 5: pruneOldest ──────────────────────────────────────────────────
 
 describe('pruneOldest', () => {
