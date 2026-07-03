@@ -854,6 +854,7 @@ function AIEPlaywrightTab({
     }
   }, [searchString, location, importVariations, onVariationLinked])
 
+
   // refreshKey in deps lets the "Refresh scores" button force a re-run even when
   // projectCtx reference hasn't changed (e.g. after an in-session edit)
   const aie = useMemo(() => runAIE(projectCtx), [projectCtx, refreshKey]) // eslint-disable-line react-hooks/exhaustive-deps
