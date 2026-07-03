@@ -389,6 +389,7 @@ function AlertsStrip({ health }: { health: ProjectHealthResult }) {
 
 export function ArqCopilot({ collapsed, onToggle }: { collapsed: boolean; onToggle: () => void }) {
   const workspaceCtx = useContext(WorkspaceContext)
+  const isDemo = !(workspaceCtx?.isRealProject ?? false)
   const ctx = workspaceCtx?.projectCtx ?? MOCK_PROJECT_CONTEXT
 
   const [messages,   setMessages]   = useState<CopilotMessage[]>(INITIAL_MESSAGES)
@@ -490,6 +491,15 @@ export function ArqCopilot({ collapsed, onToggle }: { collapsed: boolean; onTogg
             <p style={{ margin:'0 0 1px', fontSize:11, fontWeight:800, color:'#fff' }}>ARQ Copilot</p>
             <HealthBadge health={health}/>
           </div>
+          {isDemo ? (
+            <span title="Copilot está usando dados de demonstração — nenhum projeto real carregado" style={{ fontSize:9, padding:'2px 6px', borderRadius:5, background:'rgba(251,191,36,0.15)', color:'#fbbf24', fontWeight:700, letterSpacing:'0.03em', flexShrink:0 }}>
+              ⚠ DEMO
+            </span>
+          ) : (
+            <span title={`Copilot está analisando: ${ctx.name}`} style={{ fontSize:9, padding:'2px 6px', borderRadius:5, background:'rgba(74,222,128,0.1)', color:'#4ade80', fontWeight:700, maxWidth:80, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap', flexShrink:0 }}>
+              ✓ {ctx.name}
+            </span>
+          )}
           <button onClick={onToggle} style={{ padding:'4px', borderRadius:5, border:'none', background:'transparent', cursor:'pointer', color:T.dim, fontSize:14 }} title='Recolher'>▸</button>
         </div>
       </div>

@@ -11,17 +11,25 @@ import { MOCK_PROJECT_CONTEXT } from '../engines/aie/aie-mock-context'
 
 export interface WorkspaceContextValue {
   projectCtx:    ProjectContext
+  isRealProject: boolean
   setProjectCtx: (ctx: ProjectContext) => void
 }
 
 export const WorkspaceContext = createContext<WorkspaceContextValue | null>(null)
 
 export function WorkspaceProvider({ children }: { children: ReactNode }) {
-  const [projectCtx, setProjectCtx] = useState<ProjectContext>(MOCK_PROJECT_CONTEXT)
+  const [projectCtx,    setProjectCtxState] = useState<ProjectContext>(MOCK_PROJECT_CONTEXT)
+  const [isRealProject, setIsRealProject]   = useState<boolean>(false)
+
+  function setProjectCtx(ctx: ProjectContext) {
+    setProjectCtxState(ctx)
+    setIsRealProject(true)
+  }
 
   const value = useMemo<WorkspaceContextValue>(
-    () => ({ projectCtx, setProjectCtx }),
-    [projectCtx],
+    () => ({ projectCtx, isRealProject, setProjectCtx }),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [projectCtx, isRealProject],
   )
 
   return (
