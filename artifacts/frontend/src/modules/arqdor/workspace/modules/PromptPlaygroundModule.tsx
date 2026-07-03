@@ -12,13 +12,14 @@ import { generateFullPromptStructure } from '../../../../pages/arch/arqdor/domai
 import type { PromptStructure } from '../../../../pages/arch/arqdor/domain/arqdor-domain-types'
 import { runAIE } from '../../engines/aie/aie-engine'
 import { MOCK_PROJECT_CONTEXT } from '../../engines/aie/aie-mock-context'
+import type { ProjectContext } from '../../engines/aie/aie-types'
 import {
   buildPrompt,
   TRANSLATORS,
   DETAIL_LEVELS,
 } from '../../engines/prompt-playwright/prompt-playwright'
 import type { TranslatorId, DetailLevel, PlaywrightPrompt } from '../../engines/prompt-playwright/prompt-playwright'
-import { useWorkspaceContext } from '../WorkspaceContext'
+import { useWorkspace } from '../context/WorkspaceContext'
 import { T } from '../../shared/arqdor-theme'
 
 
@@ -654,21 +655,18 @@ function SavedVariationsPanel({
 
 // ─── AIE Playwright tab ───────────────────────────────────────────────────────
 
-function AIEPlaywrightTab() {
+function AIEPlaywrightTab({ projectCtx }: { projectCtx: ProjectContext }) {
   const [translator, setTranslator] = useState<TranslatorId>('flux-1.1')
   const [detail, setDetail]         = useState<DetailLevel>('detalhado')
   const [savedFlash, setSavedFlash] = useState(false)
 
   const { variations, save, rename, remove, updateNotes, storageError, clearStorageError, importVariations } = useSavedVariations()
 
-  const { projectContext } = useWorkspaceContext()
-  const activeCtx = projectContext ?? MOCK_PROJECT_CONTEXT
-
-  const aie = useMemo(() => runAIE(activeCtx), [activeCtx])
+  const aie = useMemo(() => runAIE(projectCtx), [projectCtx])
 
   const pw = useMemo(
-    () => buildPrompt(activeCtx, aie, translator, detail),
-    [activeCtx, aie, translator, detail],
+    () => buildPrompt(projectCtx, aie, translator, detail),
+    [projectCtx, aie, translator, detail],
   )
 
   const info = TRANSLATORS.find(t => t.id === translator)!
@@ -822,6 +820,9 @@ type TabId = 'playwright' | 'playground'
 
 export function PromptPlaygroundModule() {
   const [tab, setTab] = useState<TabId>('playwright')
+  const { projectContext, activeProject } = useWorkspace()
+
+  const resolvedProjectCtx: ProjectContext = projectContext ?? MOCK_PROJECT_CONTEXT
 
   return (
     <div style={{ height:'100%', display:'flex', flexDirection:'column' as const, background:T.bg }}>
@@ -830,6 +831,11 @@ export function PromptPlaygroundModule() {
         <div style={{ display:'flex', alignItems:'center', gap:12, marginBottom:10 }}>
           <h2 style={{ margin:0, fontSize:16, fontWeight:800, color:'#fff' }}>⚡ Prompt</h2>
           <span style={{ fontSize:9, padding:'2px 7px', borderRadius:4, background:'rgba(167,139,250,0.15)', color:'#a78bfa', fontWeight:700 }}>AIE v1</span>
+          {activeProject && (
+            <span style={{ fontSize:9, padding:'2px 7px', borderRadius:4, background:'rgba(74,222,128,0.1)', color:'#4ade80', fontWeight:600 }}>
+              {activeProject.name}
+            </span>
+          )}
         </div>
         <div style={{ display:'flex', gap:0 }}>
           {([
@@ -856,7 +862,7 @@ export function PromptPlaygroundModule() {
 
       {/* Tab content */}
       <div style={{ flex:1, overflow:'hidden' }}>
-        {tab === 'playwright' ? <AIEPlaywrightTab /> : <PlaygroundTab />}
+        {tab === 'playwright' ? <AIEPlaywrightTab projectCtx={resolvedProjectCtx} /> : <PlaygroundTab />}
       </div>
     </div>
   )

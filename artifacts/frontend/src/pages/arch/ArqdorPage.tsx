@@ -16,6 +16,8 @@ import { MOCK_COMPONENTS } from '@/modules/arqdor/core/component-library/compone
 import { canReplaceWithComponent, compatibilityColor, getReplacementInstruction } from '@/modules/arqdor/core/component-library/component-engine'
 import type { ReplacementBehavior } from '@/modules/arqdor/core/component-library/component-types'
 import { COMPONENT_CATEGORY_LABELS, REPLACEMENT_BEHAVIOR_LABELS, REPLACEMENT_BEHAVIOR_ICONS } from '@/modules/arqdor/core/component-library/component-types'
+import { useSetProjectContext } from '@/modules/arqdor/workspace/context/WorkspaceContext'
+import { archProjectToProjectContext } from '@/modules/arqdor/workspace/context/arch-project-adapter'
 
 // ─── Theme ────────────────────────────────────────────────────────────────────
 
@@ -1411,6 +1413,15 @@ export default function ArqdorPage({
   useEffect(() => {
     onProjectChange?.(project)
   }, [project, onProjectChange])
+
+  // Sync live project into the workspace context so sibling modules (e.g.
+  // PromptPlaygroundModule) always operate on the real loaded project.
+  // useSetProjectContext is stable (created once with useCallback) — safe in deps.
+  // Returns null when ArqdorPage renders standalone (outside WorkspaceProvider).
+  const setProjectContext = useSetProjectContext()
+  useEffect(() => {
+    setProjectContext?.(archProjectToProjectContext(project))
+  }, [project, setProjectContext])
 
   const toggleExpanded = useCallback((id: string) => {
     setExpandedIds(prev => {

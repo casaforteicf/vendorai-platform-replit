@@ -2,10 +2,15 @@
 // Bridge between the arqdor.ai workspace and the Vendor.ai platform.
 // All arqdor modules consume this context — never import platform services directly.
 // Uses real auth data from Vendor.ai (useAuth) — no hardcoded IDs.
+//
+// Two contexts are used intentionally:
+//   WorkspaceContext      — full read-only value; updates when projectContext changes
+//   SetProjectContextCtx  — stable setter only; never updates, no cascade rerenders
 
-import { createContext, useContext, useMemo } from 'react'
+import { createContext, useContext, useMemo, useState, useCallback } from 'react'
 import type { ReactNode } from 'react'
 import { useAuth } from '../../../../contexts/AuthContext'
+import type { ProjectContext } from '../../engines/aie/aie-types'
 
 // ─── Types ─────────────────────────────────────────────────────────────────────
 
@@ -60,6 +65,8 @@ export interface WorkspaceContextValue {
   activeProject:     ActiveProjectSummary | null
   activeEnvironment: WorkspaceEnvironment
   activeAgent:       ActiveAgentSpec | null
+  // Full AIE project context — null when no project is loaded yet
+  projectContext:    ProjectContext | null
   // Hub connections
   hubs:              HubConnectionStatus
 }
@@ -111,12 +118,27 @@ const HUBS_CONNECTED: HubConnectionStatus = {
   billing:       false,
 }
 
-// ─── Context ──────────────────────────────────────────────────────────────────
+// ─── Contexts ─────────────────────────────────────────────────────────────────
 
+// Read context — changes when projectContext changes
 const WorkspaceContext = createContext<WorkspaceContextValue | null>(null)
+
+// Setter context — stable forever; isolated so it never triggers cascade rerenders
+type SetProjectContextFn = (ctx: ProjectContext | null) => void
+const SetProjectContextCtx = createContext<SetProjectContextFn | null>(null)
+
+// ─── Provider ─────────────────────────────────────────────────────────────────
 
 export function WorkspaceProvider({ children }: { children: ReactNode }) {
   const { user } = useAuth()
+
+  // Starts null — ArqdorPage pushes the live project in via setProjectContext
+  const [projectContext, setProjectContextState] = useState<ProjectContext | null>(null)
+
+  // Stable setter — created once, never changes reference; safe to use in effect deps
+  const setProjectContext = useCallback((ctx: ProjectContext | null) => {
+    setProjectContextState(ctx)
+  }, [])
 
   const value = useMemo<WorkspaceContextValue>(() => {
     const userId   = user?.id        ?? ''
@@ -135,17 +157,33 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
       activeProject:     null,
       activeEnvironment: isDemoEmail ? 'DEMO' : 'PRODUCTION',
       activeAgent:       ARCH_AGENT,
+      projectContext,
+      setProjectContext,
       hubs:              HUBS_CONNECTED,
     }
-  }, [user])
+  }, [user, projectContext, setProjectContext])
 
-  return <WorkspaceContext.Provider value={value}>{children}</WorkspaceContext.Provider>
+  return (
+    <SetProjectContextCtx.Provider value={setProjectContext}>
+      <WorkspaceContext.Provider value={value}>
+        {children}
+      </WorkspaceContext.Provider>
+    </SetProjectContextCtx.Provider>
+  )
 }
+
+// ─── Hooks ────────────────────────────────────────────────────────────────────
 
 export function useWorkspace(): WorkspaceContextValue {
   const ctx = useContext(WorkspaceContext)
   if (!ctx) throw new Error('useWorkspace must be used inside <WorkspaceProvider>')
   return ctx
+}
+
+// Stable setter hook — safe to use in useEffect deps without causing cascade loops.
+// Returns null when used outside WorkspaceProvider (e.g. standalone ArqdorPage).
+export function useSetProjectContext(): SetProjectContextFn | null {
+  return useContext(SetProjectContextCtx)
 }
 
 // ─── Convenience hooks ────────────────────────────────────────────────────────
