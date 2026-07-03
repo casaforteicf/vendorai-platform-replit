@@ -1,0 +1,676 @@
+FASE 9 — ARQ HUB (Architectural Intelligence Ecosystem)
+
+IMPORTANTE
+
+A partir desta fase o arqdor.ai deixa de ser apenas um editor de projetos.
+
+Ele passa a possuir um ecossistema chamado ARQ HUB.
+
+O ARQ HUB será o núcleo de todos os ativos reutilizáveis da plataforma.
+
+NÃO remover nada que já foi desenvolvido.
+
+NÃO alterar backend.
+
+NÃO conectar APIs externas.
+
+Criar apenas arquitetura, modelos, interface e fluxo.
+
+=========================================================
+OBJETIVO
+=========================================================
+
+Criar um ecossistema onde todos os elementos utilizados em um projeto possam ser armazenados, reutilizados, compartilhados e futuramente publicados.
+
+O usuário não trabalhará apenas com materiais.
+
+Ele trabalhará com ativos inteligentes.
+
+Todo ativo poderá ser reutilizado em qualquer projeto.
+
+=========================================================
+ARQUITETURA
+=========================================================
+
+Criar novo módulo
+
+src/modules/arqdor/arqhub
+
+Estrutura
+
+arqhub
+
+├── material-hub
+├── component-hub
+├── space-hub
+├── style-hub
+├── manufacturer-hub
+├── ai-hub
+├── asset-library
+├── marketplace
+├── shared
+
+=========================================================
+1 — MATERIAL HUB
+=========================================================
+
+Transformar a biblioteca de materiais em um módulo completo.
+
+Cada material deve possuir
+
+id
+nome
+categoria
+fabricante
+marca
+linha
+coleção
+código
+descrição
+acabamento
+textura
+veio
+brilho
+PBR Maps
+imagens
+tags
+paleta
+cores relacionadas
+projetos utilizando
+componentes relacionados
+
+Criar categorias
+
+Madeiras
+
+Pedras
+
+Porcelanatos
+
+Cerâmicas
+
+Tintas
+
+Metais
+
+Tecidos
+
+Vidros
+
+Papéis de parede
+
+Concretos
+
+Materiais personalizados
+
+=========================================================
+2 — COMPONENT HUB
+=========================================================
+
+Criar uma biblioteca completa de componentes.
+
+Cada componente representa um produto real.
+
+Exemplos
+
+Geladeira
+
+Cooktop
+
+Forno
+
+Microondas
+
+Mesa
+
+Cadeira
+
+Sofá
+
+Colchão
+
+Cama
+
+Puxador
+
+Porta
+
+Janela
+
+Ilha
+
+Marcenaria
+
+Bancada
+
+Cuba
+
+Torneira
+
+Luminária
+
+Paisagismo
+
+Plantas
+
+Cada componente deve possuir
+
+id
+nome
+categoria
+subcategoria
+fabricante
+marca
+linha
+modelo
+código
+dimensões
+materiais
+acabamentos
+cores
+imagens
+arquivos técnicos
+compatibilidade
+replacementBehavior
+componentDNA
+
+=========================================================
+3 — SPACE HUB
+=========================================================
+
+Criar uma biblioteca de ambientes completos.
+
+Exemplo
+
+Sala
+
+Cozinha
+
+Banheiro
+
+Lavanderia
+
+Closet
+
+Home Office
+
+Quarto
+
+Área Gourmet
+
+Fachada
+
+Piscina
+
+Cada ambiente pode ser salvo como Template.
+
+O template deve armazenar
+
+objetos
+
+materiais
+
+DNA
+
+configuração de câmera
+
+configuração de render
+
+estilo
+
+prompt
+
+=========================================================
+4 — STYLE HUB
+=========================================================
+
+Criar biblioteca de estilos.
+
+Minimalista
+
+Contemporâneo
+
+Escandinavo
+
+Industrial
+
+Japandi
+
+Boho
+
+Luxo
+
+Mediterrâneo
+
+Orgânico
+
+Clássico
+
+Cada estilo possui
+
+paleta
+
+materiais
+
+iluminação
+
+fotografia
+
+decoração
+
+atmosfera
+
+restrições
+
+=========================================================
+5 — MANUFACTURER HUB
+=========================================================
+
+Criar módulo de fabricantes.
+
+Cada fabricante possui
+
+nome
+
+logo
+
+site
+
+categorias
+
+produtos
+
+coleções
+
+acabamentos
+
+materiais
+
+DNA
+
+status
+
+ENUM
+
+OFFICIAL
+
+COMMUNITY
+
+PRIVATE
+
+Criar mock
+
+Portobello
+
+Todeschini
+
+Florense
+
+Dell Anno
+
+SCA
+
+Brastemp
+
+Electrolux
+
+Tramontina
+
+Docol
+
+Deca
+
+Portinari
+
+Guararapes
+
+Arauco
+
+Duratex
+
+Cosentino
+
+=========================================================
+6 — AI HUB
+=========================================================
+
+Criar módulo preparado para IA.
+
+Sem integração ainda.
+
+Apenas arquitetura.
+
+Tradutores
+
+Nano Banana
+
+OpenAI
+
+Flux
+
+Midjourney
+
+SDXL
+
+Gemini
+
+Review
+
+Prompt
+
+Correção
+
+Memória
+
+=========================================================
+7 — ASSET LIBRARY
+=========================================================
+
+Criar conceito de Asset.
+
+Todo elemento pode virar Asset.
+
+Exemplo
+
+Material
+
+Componente
+
+Template
+
+Projeto
+
+Prompt
+
+DNA
+
+Render Config
+
+Photography Profile
+
+Lighting Profile
+
+Prompt Pack
+
+Style Pack
+
+Cada Asset possui
+
+versões
+
+autor
+
+descrição
+
+tags
+
+miniatura
+
+categoria
+
+licença
+
+visibilidade
+
+=========================================================
+8 — MARKETPLACE
+=========================================================
+
+Preparar estrutura.
+
+Ainda sem backend.
+
+Categorias
+
+Materiais
+
+Componentes
+
+Templates
+
+Projetos
+
+Prompts
+
+DNA
+
+Style Packs
+
+Photography Packs
+
+Prompt Packs
+
+Cada item pode ser
+
+Público
+
+Privado
+
+Empresa
+
+Marketplace
+
+=========================================================
+9 — COMPONENT DNA
+=========================================================
+
+Cada componente terá um DNA.
+
+Exemplo
+
+Geladeira
+
+↓
+
+Categoria
+
+↓
+
+Fabricante
+
+↓
+
+Linha
+
+↓
+
+Modelo
+
+↓
+
+Materiais
+
+↓
+
+Acabamentos
+
+↓
+
+Fotografia recomendada
+
+↓
+
+Visual Weight
+
+↓
+
+Design Intent
+
+↓
+
+Relacionamentos
+
+↓
+
+Prompt próprio
+
+=========================================================
+10 — DESIGN INTENT
+=========================================================
+
+Todos os Assets deverão armazenar intenção de projeto.
+
+Exemplo
+
+Mesa
+
+↓
+
+Convivência
+
+↓
+
+Minimalismo
+
+↓
+
+Madeira Natural
+
+↓
+
+Leveza
+
+↓
+
+Linhas Finas
+
+Essa informação será utilizada pelos tradutores.
+
+=========================================================
+11 — VISUAL WEIGHT
+=========================================================
+
+Todo Asset possui
+
+Visual Weight
+
+0–100
+
+Isso define importância visual.
+
+=========================================================
+12 — PROJECT CONNECTIONS
+=========================================================
+
+Todo projeto passa a utilizar Assets.
+
+Exemplo
+
+Projeto
+
+↓
+
+Material
+
+↓
+
+Asset
+
+↓
+
+Componente
+
+↓
+
+Asset
+
+↓
+
+Estilo
+
+↓
+
+Asset
+
+↓
+
+DNA
+
+↓
+
+Asset
+
+=========================================================
+13 — UI
+=========================================================
+
+Criar uma nova navegação lateral.
+
+ARQ HUB
+
+├── Materiais
+├── Componentes
+├── Ambientes
+├── Estilos
+├── Fabricantes
+├── Assets
+├── Marketplace
+├── IA
+
+Cada módulo deve possuir
+
+lista
+
+cards
+
+pesquisa
+
+filtros
+
+cadastro
+
+edição
+
+remoção
+
+detalhes
+
+=========================================================
+14 — MOCK DATA
+=========================================================
+
+Popular o sistema com dados.
+
+Materiais
+
+Componentes
+
+Fabricantes
+
+Estilos
+
+Ambientes
+
+Projetos
+
+Assets
+
+=========================================================
+15 — PREPARAÇÃO PARA FUTURO
+=========================================================
+
+Não conectar APIs.
+
+Não conectar banco.
+
+Não conectar marketplace.
+
+Não implementar login.
+
+Preparar toda arquitetura para futura integração.
+
+=========================================================
+16 — RESULTADO ESPERADO
+=========================================================
+
+Ao final desta etapa o arqdor.ai não será apenas um editor.
+
+Ele será uma plataforma de ativos inteligentes reutilizáveis.
+
+Todo elemento do projeto poderá ser reutilizado em qualquer novo projeto.
+
+Todo projeto será construído utilizando Assets inteligentes.
+
+O Prompt continuará sendo apenas uma consequência do modelo do projeto.
+
+Toda a arquitetura deve seguir princípios SOLID, Domain-Driven Design (DDD), Clean Architecture e ser preparada para crescimento enterprise.

@@ -7,6 +7,7 @@ import { AICorrectionsModule } from './modules/AICorrectionsModule'
 import { AIMemoryModule }      from './modules/AIMemoryModule'
 import { SettingsModule }      from './modules/SettingsModule'
 import { ProjectModule }       from './modules/ProjectModule'
+import { ArqHubView }         from '../arqhub/ArqHubView'
 
 // ─── Theme ────────────────────────────────────────────────────────────────────
 const T = {
@@ -21,7 +22,7 @@ const T = {
 } as const
 
 // ─── Module definitions ───────────────────────────────────────────────────────
-type ModuleId = 'projeto' | 'biblioteca' | 'prompt' | 'renders' | 'ai-review' | 'correcoes' | 'memoria' | 'config'
+type ModuleId = 'projeto' | 'biblioteca' | 'prompt' | 'renders' | 'ai-review' | 'correcoes' | 'memoria' | 'config' | 'arqhub'
 
 interface WorkspaceModule {
   id:      ModuleId
@@ -41,6 +42,7 @@ const MODULES: WorkspaceModule[] = [
   { id:'correcoes',  icon:'🔄',  label:'Correções',     desc:'Prompts de ajuste',    badge:'4', badgeColor:'#fb923c' },
   { id:'memoria',    icon:'🧠',  label:'Memória IA',    desc:'Preferências aprendidas'  },
   { id:'config',     icon:'⚙️',  label:'Config',        desc:'Providers e plugins'      },
+  { id:'arqhub',     icon:'🌐',  label:'ARQ HUB',       desc:'Ecosystem inteligente',   badge:'NEW', badgeColor:'#4ade80' },
 ]
 
 function renderModule(id: ModuleId) {
@@ -53,6 +55,7 @@ function renderModule(id: ModuleId) {
     case 'correcoes':  return <AICorrectionsModule/>
     case 'memoria':    return <AIMemoryModule/>
     case 'config':     return <SettingsModule/>
+    case 'arqhub':     return <ArqHubView/>
   }
 }
 
