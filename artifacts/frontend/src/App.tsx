@@ -70,6 +70,9 @@ const RelatorioGanhosMes = lazy(() => import("@/pages/RelatorioGanhosMes"));
 const RelatorioTipoCliente = lazy(() => import("@/pages/RelatorioTipoCliente"));
 const RelatorioDores     = lazy(() => import("@/pages/RelatorioDores"));
 
+// VKG
+const VKGDemo            = lazy(() => import("@/modules/vkg/VKGDemoView").then(m => ({ default: m.VKGDemoView })));
+
 // Arch
 const ArchDashboard      = lazy(() => import("@/pages/arch/ArchDashboard"));
 const ArchProjetos       = lazy(() => import("@/pages/arch/Projetos"));
@@ -654,6 +657,9 @@ function AppRoutes() {
         </Route>
         <Route path="/supermercado/config">
           {() => <SupermercadoRoute component={SupermercadoConfig} />}
+        </Route>
+        <Route path="/vkg">
+          {() => <ProtectedRoute component={VKGDemo} />}
         </Route>
         <Route path="/invite/:token">
           <AcceptInvite />

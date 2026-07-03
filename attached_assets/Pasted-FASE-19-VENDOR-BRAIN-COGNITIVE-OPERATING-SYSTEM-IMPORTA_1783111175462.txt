@@ -1,0 +1,378 @@
+FASE 19 — VENDOR BRAIN (COGNITIVE OPERATING SYSTEM)
+
+IMPORTANTE
+
+Esta fase cria a camada cognitiva da Vendor.ai.
+
+Não substituir os Agentes existentes.
+
+Não alterar o AI Core.
+
+Não alterar Workspaces.
+
+O Vendor Brain será uma camada acima de todos eles.
+
+Ele será responsável por interpretar solicitações, montar planos de execução e orquestrar os módulos da plataforma.
+
+Não conectar LLMs ainda.
+
+Criar apenas arquitetura, contratos, motores e UI mockada.
+
+========================================================
+OBJETIVO
+========================================================
+
+Criar um sistema de orquestração inteligente capaz de coordenar todos os módulos da Vendor.ai.
+
+O Vendor Brain nunca executa tarefas diretamente.
+
+Ele pensa.
+
+Ele decide.
+
+Ele delega.
+
+========================================================
+
+CRIAR NOVO MÓDULO
+
+core/vendor-brain
+
+========================================================
+
+ESTRUTURA
+
+vendor-brain
+
+├── intent-engine
+├── context-engine
+├── planning-engine
+├── routing-engine
+├── decision-engine
+├── orchestration-engine
+├── memory-engine
+├── execution-engine
+├── reasoning-engine
+├── explanation-engine
+├── policies
+└── schemas
+
+========================================================
+
+1 — INTENT ENGINE
+
+Detectar intenção.
+
+Exemplos:
+
+Criar Projeto
+
+Gerar Render
+
+Revisar Render
+
+Gerar Memorial
+
+Criar Campanha
+
+Criar Workflow
+
+Consultar CRM
+
+Comparar Projetos
+
+Comprar Componentes
+
+========================================================
+
+2 — CONTEXT ENGINE
+
+Montar contexto automaticamente.
+
+Consultar:
+
+Tenant
+
+Workspace
+
+Projeto
+
+Cliente
+
+Lead
+
+Deal
+
+Knowledge Graph
+
+Arquivos
+
+Agentes
+
+Permissões
+
+========================================================
+
+3 — PLANNING ENGINE
+
+Criar plano de execução.
+
+Exemplo:
+
+Objetivo
+
+↓
+
+Passo 1
+
+↓
+
+Passo 2
+
+↓
+
+Passo 3
+
+↓
+
+Agentes responsáveis
+
+↓
+
+Resultado esperado
+
+========================================================
+
+4 — ROUTING ENGINE
+
+Escolher automaticamente qual agente deve executar cada etapa.
+
+Exemplo:
+
+Projeto
+
+↓
+
+Arquiteto IA
+
+↓
+
+Render IA
+
+↓
+
+Comprador IA
+
+↓
+
+Marketing IA
+
+↓
+
+CRM IA
+
+========================================================
+
+5 — DECISION ENGINE
+
+Toda decisão deve registrar:
+
+Motivo
+
+Contexto
+
+Dados utilizados
+
+Alternativas
+
+Confiança
+
+========================================================
+
+6 — ORCHESTRATION ENGINE
+
+Executar plano.
+
+Coordenar:
+
+Agentes
+
+Workflows
+
+Knowledge Graph
+
+CRM
+
+Workspaces
+
+========================================================
+
+7 — MEMORY ENGINE
+
+Registrar:
+
+Objetivo
+
+Plano
+
+Resultado
+
+Aprendizados
+
+========================================================
+
+8 — EXECUTION ENGINE
+
+Preparar interface para executar tarefas delegadas.
+
+Nesta fase apenas mockado.
+
+========================================================
+
+9 — REASONING ENGINE
+
+Registrar cadeia de raciocínio estruturada (não expor o raciocínio interno do modelo).
+
+Armazenar:
+
+Premissas
+
+Regras aplicadas
+
+Fontes consultadas
+
+Justificativa resumida
+
+========================================================
+
+10 — EXPLANATION ENGINE
+
+Permitir explicar decisões.
+
+Exemplo:
+
+"Por que sugerimos Portobello?"
+
+↓
+
+Resposta baseada em:
+
+Projeto
+
+DNA
+
+Histórico
+
+Knowledge Graph
+
+========================================================
+
+11 — TASK GRAPH
+
+Criar um grafo de tarefas.
+
+Cada solicitação pode gerar várias tarefas.
+
+Exemplo:
+
+Criar Projeto
+
+↓
+
+Briefing
+
+↓
+
+Moodboard
+
+↓
+
+Projeto
+
+↓
+
+Render
+
+↓
+
+Memorial
+
+↓
+
+CRM
+
+↓
+
+Proposta
+
+========================================================
+
+12 — DASHBOARD
+
+Criar painel Vendor Brain.
+
+Mostrar:
+
+Objetivos ativos
+
+Planos
+
+Agentes envolvidos
+
+Status
+
+Tempo
+
+Resultados
+
+========================================================
+
+13 — OBSERVABILIDADE
+
+Registrar:
+
+Quem solicitou
+
+Quando
+
+Plano criado
+
+Agentes utilizados
+
+Tempo de execução
+
+Resultado
+
+========================================================
+
+14 — SEGURANÇA
+
+O Brain deve respeitar:
+
+Permissões
+
+Tenant
+
+Workspace
+
+Papéis
+
+Políticas
+
+Nunca acessar dados de outro tenant.
+
+========================================================
+
+15 — RESULTADO ESPERADO
+
+Ao final desta fase, a Vendor.ai deverá possuir uma camada de orquestração inteligente que:
+
+- entende objetivos;
+- monta planos;
+- escolhe agentes;
+- coordena workflows;
+- consulta o Knowledge Graph;
+- explica decisões;
+- prepara a futura integração com múltiplos modelos de IA.
+
+Tudo deve permanecer desacoplado, orientado a domínio e preparado para crescimento enterprise.
