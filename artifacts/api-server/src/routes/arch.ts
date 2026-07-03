@@ -38,6 +38,7 @@ import {
   archPromptVariationsTable,
   insertArchPromptVariationSchema,
   updateArchPromptVariationSchema,
+  arqdorWorkspaceProjectsTable,
 } from "@workspace/db";
 import { z } from "zod/v4";
 import { anthropic } from "@workspace/integrations-anthropic-ai";
@@ -2518,6 +2519,52 @@ router.delete("/arch/prompt-variations/:id", authenticate, async (req, res) => {
     .where(eq(archPromptVariationsTable.id, id));
 
   return res.status(204).send();
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// GET /arqdor/projects/:id — load a full ProjectContext blob for this tenant
+// ─────────────────────────────────────────────────────────────────────────────
+router.get("/arqdor/projects/:id", authenticate, async (req, res) => {
+  const tid = tenantId(req);
+  const id = String(req.params.id);
+
+  const [row] = await db
+    .select()
+    .from(arqdorWorkspaceProjectsTable)
+    .where(
+      and(
+        eq(arqdorWorkspaceProjectsTable.id, id),
+        eq(arqdorWorkspaceProjectsTable.tenantId, tid)
+      )
+    )
+    .limit(1);
+
+  if (!row) return res.status(404).json({ error: "Projeto não encontrado." });
+  return res.json(row.contextBlob);
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// PUT /arqdor/projects/:id — upsert (create or update) a ProjectContext blob
+// ─────────────────────────────────────────────────────────────────────────────
+router.put("/arqdor/projects/:id", authenticate, async (req, res) => {
+  const tid = tenantId(req);
+  const id = String(req.params.id);
+  const contextBlob = req.body;
+
+  if (!contextBlob || typeof contextBlob !== "object" || Array.isArray(contextBlob)) {
+    return res.status(400).json({ error: "Corpo inválido: deve ser um objeto JSON." });
+  }
+
+  const [upserted] = await db
+    .insert(arqdorWorkspaceProjectsTable)
+    .values({ id, tenantId: tid, contextBlob, updatedAt: new Date() })
+    .onConflictDoUpdate({
+      target: [arqdorWorkspaceProjectsTable.id, arqdorWorkspaceProjectsTable.tenantId],
+      set: { contextBlob, updatedAt: new Date() },
+    })
+    .returning();
+
+  return res.json(upserted?.contextBlob ?? contextBlob);
 });
 
 export { archPublicRouter };

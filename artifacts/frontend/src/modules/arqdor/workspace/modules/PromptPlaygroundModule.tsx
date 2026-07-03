@@ -22,7 +22,7 @@ import {
   DETAIL_LEVELS,
 } from '../../engines/prompt-playwright/prompt-playwright'
 import type { TranslatorId, DetailLevel, PlaywrightPrompt } from '../../engines/prompt-playwright/prompt-playwright'
-import { useWorkspace } from '../context/WorkspaceContext'
+import { useWorkspaceProject } from '../WorkspaceContext'
 import { T } from '../../shared/arqdor-theme'
 import { useSavedVariations } from './useSavedVariations'
 import type { SavedVariation } from './useSavedVariations'
@@ -171,7 +171,7 @@ const SECTIONS: { key: keyof PromptStructure; label: string; accent: string; des
 ]
 
 function PlaygroundTab() {
-  const { projectContext } = useWorkspace()
+  const { projectCtx: projectContext } = useWorkspaceProject()
 
   const activeProject = useMemo<Project>(() =>
     projectContext ? projectContextToProject(projectContext) : MOCK_PROJECT,
@@ -1109,10 +1109,21 @@ function detectShareParam(): boolean {
 
 export function PromptPlaygroundModule() {
   const [tab, setTab] = useState<TabId>('playwright')
+<<<<<<< HEAD
   const { projectContext } = useWorkspace()
+=======
+<<<<<<< HEAD
+  const { projectCtx: projectContext } = useWorkspaceContext()
+>>>>>>> 429b647 (feat(arqdor): persist workspace ProjectContext to database (task-224))
   const activeProject = projectContext ? projectContextToProject(projectContext) : MOCK_PROJECT
+=======
+  const { activeProject } = useWorkspace()
+  const { projectCtx } = useWorkspaceProject()
+>>>>>>> 9625a98 (feat(arqdor): persist workspace ProjectContext to database (task-224))
 
-  const resolvedProjectCtx: ProjectContext = projectContext ?? MOCK_PROJECT_CONTEXT
+  // Prefer the persisted workspace context (from WorkspaceProvider) which survives refresh;
+  // fall back to the outer auth-context's projectContext or the mock as a last resort.
+  const resolvedProjectCtx: ProjectContext = projectCtx ?? MOCK_PROJECT_CONTEXT
 
   return (
     <div style={{ height:'100%', display:'flex', flexDirection:'column' as const, background:T.bg }}>
@@ -1155,7 +1166,7 @@ export function PromptPlaygroundModule() {
         {tab === 'playwright' ? (
           <AIEPlaywrightTab
             projectCtx={resolvedProjectCtx}
-            isMock={!projectContext}
+            isMock={!projectCtx}
             projectName={activeProject?.name}
             onVariationLinked={() => setTab('playwright')}
           />

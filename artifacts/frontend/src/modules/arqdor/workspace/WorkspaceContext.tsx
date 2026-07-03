@@ -1,4 +1,4 @@
-import { createContext, useContext, useState, useMemo } from 'react'
+import { createContext, useContext, useState, useMemo, useEffect, useCallback, useRef } from 'react'
 import type { ReactNode } from 'react'
 import type { Project } from '../../../pages/arch/arqdor/domain/arqdor-domain-types'
 import type { ArchProject } from '../../../pages/arch/arqdor-types'
@@ -8,28 +8,109 @@ import { MOCK_PROJECT_CONTEXT } from '../engines/aie/aie-mock-context'
 // ─── WorkspaceContext ─────────────────────────────────────────────────────────
 // Holds the live ProjectContext for the currently open project.
 // All modules (AIEDashboard, sidebar badge, etc.) read from here.
+// Persists the context to the API so architects don't lose work on refresh.
+
+const BASE = '/api'
+const STORAGE_KEY = 'arqdor_workspace_project_id'
+const SAVE_DEBOUNCE_MS = 2000
+
+function getToken(): string | null {
+  return localStorage.getItem('vendorai_token')
+}
+
+function authHeaders() {
+  const tok = getToken()
+  return {
+    'Content-Type': 'application/json',
+    ...(tok ? { Authorization: `Bearer ${tok}` } : {}),
+  }
+}
 
 export interface WorkspaceContextValue {
   projectCtx:    ProjectContext
   isRealProject: boolean
   setProjectCtx: (ctx: ProjectContext) => void
+  saving:        boolean
+  loadError:     string | null
 }
 
 export const WorkspaceContext = createContext<WorkspaceContextValue | null>(null)
 
 export function WorkspaceProvider({ children }: { children: ReactNode }) {
-  const [projectCtx,    setProjectCtxState] = useState<ProjectContext>(MOCK_PROJECT_CONTEXT)
-  const [isRealProject, setIsRealProject]   = useState<boolean>(false)
+  const [projectCtx, setProjectCtxState] = useState<ProjectContext>(MOCK_PROJECT_CONTEXT)
+  const [isRealProject, setIsRealProject] = useState<boolean>(false)
+  const [saving, setSaving]   = useState(false)
+  const [loadError, setLoadError] = useState<string | null>(null)
+  const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const initialLoadDone = useRef(false)
 
-  function setProjectCtx(ctx: ProjectContext) {
-    setProjectCtxState(ctx)
+  // ── Load on mount ───────────────────────────────────────────────────────────
+  useEffect(() => {
+    if (initialLoadDone.current) return
+    initialLoadDone.current = true
+
+    const tok = getToken()
+    if (!tok) return
+
+    const storedId = localStorage.getItem(STORAGE_KEY)
+    const projectId = storedId ?? MOCK_PROJECT_CONTEXT.id
+
+    fetch(`${BASE}/arqdor/projects/${projectId}`, { headers: authHeaders() })
+      .then(async res => {
+        if (!res.ok) return
+        const ctx = await res.json() as ProjectContext
+        if (ctx && typeof ctx === 'object' && ctx.id) {
+          setProjectCtxState(ctx)
+          setIsRealProject(true)
+          localStorage.setItem(STORAGE_KEY, ctx.id)
+        }
+      })
+      .catch(() => {
+        setLoadError('Não foi possível carregar o projeto salvo.')
+      })
+  }, [])
+
+  // ── Debounced save ──────────────────────────────────────────────────────────
+  const persistCtx = useCallback((ctx: ProjectContext) => {
+    const tok = getToken()
+    if (!tok) return
+
+    if (saveTimerRef.current) clearTimeout(saveTimerRef.current)
+    saveTimerRef.current = setTimeout(async () => {
+      setSaving(true)
+      try {
+        await fetch(`${BASE}/arqdor/projects/${ctx.id}`, {
+          method: 'PUT',
+          headers: authHeaders(),
+          body: JSON.stringify(ctx),
+        })
+        localStorage.setItem(STORAGE_KEY, ctx.id)
+      } catch {
+        // silently ignore network errors — we'll retry on next change
+      } finally {
+        setSaving(false)
+      }
+    }, SAVE_DEBOUNCE_MS)
+  }, [])
+
+  // ── Setter exposed to modules ───────────────────────────────────────────────
+  // When the incoming context has the same ID as the current one (e.g. a partial
+  // sync from arqState that only carries objects/materials), we MERGE rather than
+  // replace, so fields like dna/style/renderGoal that live only in the persisted
+  // blob are not clobbered. For a different project ID we always replace in full.
+  const setProjectCtx = useCallback((incoming: ProjectContext) => {
+    setProjectCtxState(prev => {
+      const merged: ProjectContext =
+        prev.id === incoming.id ? { ...prev, ...incoming } : incoming
+      persistCtx(merged)
+      return merged
+    })
     setIsRealProject(true)
-  }
+  }, [persistCtx])
 
   const value = useMemo<WorkspaceContextValue>(
-    () => ({ projectCtx, isRealProject, setProjectCtx }),
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [projectCtx, isRealProject],
+    () => ({ projectCtx, isRealProject, setProjectCtx, saving, loadError }),
+    [projectCtx, isRealProject, setProjectCtx, saving, loadError],
   )
 
   return (
@@ -167,4 +248,3 @@ export function adaptArchProjectToContext(project: ArchProject): ProjectContext 
     },
   }
 }
-
