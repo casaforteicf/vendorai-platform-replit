@@ -1,0 +1,364 @@
+FASE 23 — PROJECT OPPORTUNITY ENGINE (POE)
+
+IMPORTANTE
+
+Esta fase cria o motor de oportunidades comerciais da Vendor.ai.
+
+O objetivo NÃO é vender publicidade.
+
+O objetivo NÃO é recomendar produtos aleatoriamente.
+
+Toda recomendação deve ser baseada em contexto técnico do projeto.
+
+O sistema deve preservar a neutralidade técnica.
+
+As recomendações devem sempre ser justificadas.
+
+========================================================
+
+OBJETIVO
+
+Criar um motor inteligente que identifica oportunidades comerciais a partir do projeto desenvolvido pelo usuário.
+
+O motor utilizará:
+
+AQM
+
+Knowledge Graph
+
+Component Library
+
+Material Library
+
+CRM
+
+Workflow
+
+Vendor Certified Network
+
+========================================================
+
+CRIAR MÓDULO
+
+core/project-opportunity-engine
+
+Estrutura
+
+project-opportunity-engine
+
+├── opportunity-engine
+├── recommendation-engine
+├── compatibility-engine
+├── supplier-matching
+├── quotation-engine
+├── representative-routing
+├── procurement-engine
+├── analytics
+├── scoring
+└── rules
+
+========================================================
+
+IDENTIFICAÇÃO AUTOMÁTICA
+
+O sistema deverá analisar o AQM e identificar:
+
+Materiais
+
+Componentes
+
+Ambientes
+
+Categorias
+
+Acabamentos
+
+Fabricantes
+
+Itens ainda não especificados
+
+Itens substituíveis
+
+Itens sem fornecedor
+
+========================================================
+
+MATRIZ DE OPORTUNIDADES
+
+Gerar automaticamente uma matriz.
+
+Exemplo
+
+Projeto
+
+↓
+
+Cozinha
+
+↓
+
+Categorias
+
+Marcenaria
+
+Eletros
+
+Pedras
+
+Metais
+
+Iluminação
+
+Revestimentos
+
+Automação
+
+Paisagismo
+
+========================================================
+
+COMPATIBILIDADE
+
+Cada sugestão deve possuir score.
+
+Compatibilidade Técnica
+
+Compatibilidade Estética
+
+Compatibilidade Dimensional
+
+Compatibilidade Financeira
+
+Disponibilidade Regional
+
+Lead Time
+
+========================================================
+
+RECOMENDAÇÕES
+
+Nunca sugerir produtos por publicidade.
+
+Sempre justificar.
+
+Exemplo
+
+"Sugerimos este revestimento porque possui acabamento compatível, dimensões equivalentes e atende aos requisitos definidos para áreas molhadas."
+
+========================================================
+
+ESPECIALISTA DIGITAL
+
+Ao selecionar um fabricante:
+
+Acionar automaticamente o Especialista Digital Oficial.
+
+O Especialista poderá:
+
+explicar diferenças
+
+validar especificação
+
+sugerir acessórios
+
+informar garantias
+
+informar instalação
+
+informar manutenção
+
+========================================================
+
+SOLICITAÇÃO DE ORÇAMENTO
+
+Criar fluxo.
+
+Selecionar componentes
+
+↓
+
+Selecionar fabricantes
+
+↓
+
+Enviar solicitação
+
+↓
+
+Representante
+
+↓
+
+Fornecedor
+
+↓
+
+Resposta
+
+↓
+
+Comparação
+
+↓
+
+Escolha
+
+========================================================
+
+ROTEAMENTO
+
+Encaminhar automaticamente a oportunidade para:
+
+Representante
+
+Revenda
+
+Distribuidor
+
+Loja
+
+Parceiro
+
+de acordo com:
+
+Região
+
+Categoria
+
+Disponibilidade
+
+Especialidade
+
+========================================================
+
+CRM
+
+Cada solicitação deverá gerar:
+
+Lead
+
+Oportunidade
+
+Atividade
+
+Histórico
+
+Pipeline
+
+Tarefas
+
+Tudo integrado ao CRM da Vendor.ai.
+
+========================================================
+
+ANALYTICS PARA FABRICANTES
+
+Mostrar:
+
+Produtos especificados
+
+Projetos
+
+Arquitetos
+
+Designers
+
+Construtoras
+
+Conversões
+
+Solicitações
+
+Regiões
+
+Categorias
+
+Produtos concorrentes
+
+Produtos complementares
+
+========================================================
+
+ANALYTICS PARA PROFISSIONAIS
+
+Mostrar:
+
+Melhores fornecedores
+
+Tempo médio de resposta
+
+Preço médio
+
+Lead Time
+
+Índice de aprovação
+
+Histórico de compras
+
+========================================================
+
+MOTOR DE REGRAS
+
+Toda recomendação deve respeitar:
+
+Compatibilidade técnica
+
+AQM
+
+Projeto
+
+DNA
+
+Normas
+
+Preferências do usuário
+
+Restrições
+
+========================================================
+
+MOTOR DE OPORTUNIDADES
+
+Detectar automaticamente:
+
+Itens faltantes
+
+Itens incompatíveis
+
+Itens sem fabricante
+
+Categorias não especificadas
+
+Possibilidades de Cross Sell
+
+Possibilidades de Up Sell
+
+========================================================
+
+SEGURANÇA
+
+Nenhum fabricante poderá visualizar projetos completos sem autorização do usuário.
+
+Os fabricantes receberão apenas:
+
+Solicitações
+
+Especificações
+
+Itens selecionados
+
+Informações necessárias para atendimento.
+
+========================================================
+
+OBJETIVO FINAL
+
+Transformar cada projeto em uma oportunidade comercial estruturada.
+
+O arquiteto permanece no controle.
+
+O sistema conecta automaticamente fabricantes, representantes e fornecedores apenas quando houver interesse do usuário.
+
+Toda recomendação deve ser técnica, transparente e explicável.
+
+Nunca privilegiar um parceiro apenas por ser parceiro comercial da Vendor.ai.

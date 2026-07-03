@@ -81,6 +81,8 @@ const PartnerHub         = lazy(() => import("@/pages/partner-hub/PartnerHubPage
 const PartnerDetail      = lazy(() => import("@/pages/partner-hub/PartnerDetailPage").then(m => ({ default: m.PartnerDetailPage })));
 const EcosystemHub       = lazy(() => import("@/pages/ecosystem-hub/EcosystemHubPage").then(m => ({ default: m.EcosystemHubPage })));
 const CompanyDetail      = lazy(() => import("@/pages/ecosystem-hub/CompanyDetailPage").then(m => ({ default: m.CompanyDetailPage })));
+const VCNHub             = lazy(() => import("@/pages/vcn/VCNPage").then(m => ({ default: m.VCNPage })));
+const VCNCompanyDetail   = lazy(() => import("@/pages/vcn/VCNCompanyDetailPage").then(m => ({ default: m.VCNCompanyDetailPage })));
 
 // Arch
 const ArchDashboard      = lazy(() => import("@/pages/arch/ArchDashboard"));
@@ -684,6 +686,12 @@ function AppRoutes() {
         </Route>
         <Route path="/ecosystem-hub/:id">
           {() => <ProtectedRoute component={CompanyDetail} />}
+        </Route>
+        <Route path="/vendor-certified-network">
+          {() => <ProtectedRoute component={VCNHub} />}
+        </Route>
+        <Route path="/vendor-certified-network/:id">
+          {() => <ProtectedRoute component={VCNCompanyDetail} />}
         </Route>
         <Route path="/invite/:token">
           <AcceptInvite />

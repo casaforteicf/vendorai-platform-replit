@@ -10,7 +10,7 @@ import {
   Shirt, Tag, ShoppingCart, Heart, Gift, Truck, UtensilsCrossed, Megaphone as MegaphoneIcon,
   BarChart3, ChevronRight, ChevronDown, Target, Trophy, Search, Clapperboard, Building2, AlertCircle, Bot,
   DraftingCompass, FolderOpen, Scissors, User2, Stethoscope, TrendingUp, Zap, ListChecks, Network,
-  Handshake,
+  Handshake, Shield,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
@@ -74,8 +74,9 @@ export function SidebarLayout({ children }: { children: React.ReactNode }) {
     { name: "Médicos",       href: "/clinic/medicos",           icon: User2,       sellerHidden: false, section: "clinica",      fn: ["administrador", "outro"] as UserFunction[] },
     { name: "Knowledge Graph", href: "/vkg",                   icon: Network,     sellerHidden: true,  section: "inteligencia", fn: ["administrador", "outro"] as UserFunction[] },
     { name: "Vendor Brain",    href: "/brain",                  icon: BrainCircuit,sellerHidden: true,  section: "inteligencia", fn: ["administrador", "outro"] as UserFunction[] },
-    { name: "Partner Hub",     href: "/partner-hub",            icon: Handshake,   sellerHidden: true,  section: "hub",          fn: ["administrador", "outro"] as UserFunction[] },
-    { name: "Ecosystem Hub",   href: "/ecosystem-hub",          icon: Globe,       sellerHidden: true,  section: "hub",          fn: ["administrador", "outro"] as UserFunction[] },
+    { name: "Partner Hub",       href: "/partner-hub",               icon: Handshake,   sellerHidden: true,  section: "hub", fn: ["administrador", "outro"] as UserFunction[] },
+    { name: "Ecosystem Hub",     href: "/ecosystem-hub",             icon: Globe,       sellerHidden: true,  section: "hub", fn: ["administrador", "outro"] as UserFunction[] },
+    { name: "Certified Network", href: "/vendor-certified-network",  icon: Shield,      sellerHidden: true,  section: "hub", fn: ["administrador", "outro"] as UserFunction[] },
     { name: "Revenue Scout", href: "/scout",                    icon: TrendingUp,  sellerHidden: true,  section: "inteligencia", fn: ["administrador", "outro"] as UserFunction[] },
     { name: "Regras",        href: "/scout/regras",             icon: Zap,         sellerHidden: true,  section: "inteligencia", fn: ["administrador", "outro"] as UserFunction[] },
     { name: "Oportunidades", href: "/scout/oportunidades",      icon: ListChecks,  sellerHidden: true,  section: "inteligencia", fn: ["administrador", "outro"] as UserFunction[] },

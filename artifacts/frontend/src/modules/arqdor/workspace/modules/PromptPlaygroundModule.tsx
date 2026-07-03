@@ -746,7 +746,7 @@ function AIEPlaywrightTab({
   const [refreshKey, setRefreshKey] = useState(0)
   const [refreshFlash, setRefreshFlash] = useState(false)
 
-  const { variations, isLoading, save, rename, remove, updateNotes, storageError, clearStorageError, importVariations } = useSavedVariations()
+  const { variations, syncing, save, rename, remove, updateNotes, storageError, clearStorageError, importVariations } = useSavedVariations()
 
   // refreshKey in deps lets the "Refresh scores" button force a re-run even when
   // projectCtx reference hasn't changed (e.g. after an in-session edit)
@@ -950,7 +950,7 @@ function AIEPlaywrightTab({
       {/* Prompt preview + saved variations */}
       <div style={{ flex:1, overflowY:'auto' as const, padding:'14px 20px' }}>
         <PromptPreview pw={pw} />
-        <SavedVariationsPanel variations={variations} syncing={isLoading} onRename={rename} onDelete={remove} onUpdateNotes={updateNotes} onImport={importVariations} />
+        <SavedVariationsPanel variations={variations} syncing={syncing} onRename={rename} onDelete={remove} onUpdateNotes={updateNotes} onImport={importVariations} />
       </div>
     </div>
   )

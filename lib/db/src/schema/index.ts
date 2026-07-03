@@ -141,3 +141,7 @@ export * from "./vep_companies";
 export * from "./vep_professionals";
 export * from "./vep_portfolio";
 export * from "./vep_connections";
+export * from "./vcn_companies";
+export * from "./vcn_specialists";
+export * from "./vcn_products";
+export * from "./vcn_knowledge";
