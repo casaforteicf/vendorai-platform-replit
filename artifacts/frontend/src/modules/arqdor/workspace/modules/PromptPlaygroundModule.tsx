@@ -21,7 +21,7 @@ import {
   TRANSLATORS,
   DETAIL_LEVELS,
 } from '../../engines/prompt-playwright/prompt-playwright'
-import type { PlaywrightPrompt } from '../../engines/prompt-playwright/prompt-playwright'
+import type { TranslatorId, DetailLevel, PlaywrightPrompt } from '../../engines/prompt-playwright/prompt-playwright'
 import { useWorkspaceContext } from '../WorkspaceContext'
 import { T } from '../../shared/arqdor-theme'
 import { useSavedVariations } from './useSavedVariations'
@@ -601,7 +601,7 @@ function SavedVariationsPanel({
   onRename: (id: string, name: string) => void
   onDelete: (id: string) => void
   onUpdateNotes: (id: string, notes: string) => void
-  onImport: (items: SavedVariation[]) => number | void
+  onImport: (items: unknown[]) => void
   onRetrySync: () => void
 }) {
   const [open, setOpen] = useState(true)
@@ -610,7 +610,7 @@ function SavedVariationsPanel({
   const [copiedId, setCopiedId] = useState<string | null>(null)
   const [copiedLinkId, setCopiedLinkId] = useState<string | null>(null)
   const [exported, setExported] = useState(false)
-  const [importMsg, setImportMsg] = useState<{ ok: boolean; text: string } | null>(null)
+  const [importState, setImportState] = useState<'idle' | 'ok' | 'err'>('idle')
   const fileInputRef = useRef<HTMLInputElement>(null)
 
   const handleImportClick = (e: React.MouseEvent) => {
@@ -620,52 +620,21 @@ function SavedVariationsPanel({
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
-    if (!e.target) return
-    e.target.value = ''
     if (!file) return
     const reader = new FileReader()
-    reader.onload = (ev) => {
+    reader.onload = () => {
       try {
-        const raw = JSON.parse(ev.target?.result as string)
-        if (!Array.isArray(raw)) throw new Error('O arquivo deve conter um array de variações.')
-        const parsed: SavedVariation[] = raw.map((item: Record<string, unknown>, idx: number) => {
-          if (typeof item.prompt !== 'string' || !item.prompt)
-            throw new Error(`Item ${idx + 1}: campo "prompt" ausente ou inválido.`)
-          if (typeof item.name !== 'string' || !item.name)
-            throw new Error(`Item ${idx + 1}: campo "name" ausente ou inválido.`)
-          const translator = item.translator as TranslatorId
-          if (!TRANSLATORS.find(t => t.id === translator))
-            throw new Error(`Item ${idx + 1}: tradutor desconhecido "${String(item.translator)}".`)
-          const detail = (item.detailLevel ?? item.detail) as DetailLevel
-          if (!DETAIL_LEVELS.find(d => d.id === detail))
-            throw new Error(`Item ${idx + 1}: nível de detalhe desconhecido "${String(item.detailLevel ?? item.detail)}".`)
-          const id: string = typeof item.id === 'string' && item.id
-            ? item.id
-            : `imp-${Date.now()}-${Math.random().toString(36).slice(2, 7)}-${idx}`
-          const savedAt: number = typeof item.savedAt === 'string'
-            ? new Date(item.savedAt).getTime() || Date.now()
-            : typeof item.savedAt === 'number' ? item.savedAt : Date.now()
-          return {
-            id,
-            name: item.name as string,
-            translator,
-            detail,
-            prompt: item.prompt as string,
-            negativePrompt: typeof item.negativePrompt === 'string' ? item.negativePrompt : '',
-            estimatedTokens: typeof item.estimatedTokens === 'number' ? item.estimatedTokens : Math.floor((item.prompt as string).length / 4),
-            savedAt,
-          }
-        })
-        const added = onImport(parsed) ?? parsed.length
-        const skipped = parsed.length - (added as number)
-        const parts: string[] = []
-        if (added > 0) parts.push(`${added} importada${added !== 1 ? 's' : ''}`)
-        if (skipped > 0) parts.push(`${skipped} ignorada${skipped !== 1 ? 's' : ''} (duplicata${skipped !== 1 ? 's' : ''})`)
-        setImportMsg({ ok: true, text: parts.join(', ') + '.' })
-      } catch (err) {
-        setImportMsg({ ok: false, text: err instanceof Error ? err.message : 'Arquivo inválido.' })
+        const parsed = JSON.parse(reader.result as string)
+        const items: unknown[] = Array.isArray(parsed) ? parsed : [parsed]
+        onImport(items)
+        setImportState('ok')
+        setTimeout(() => setImportState('idle'), 2500)
+      } catch {
+        setImportState('err')
+        setTimeout(() => setImportState('idle'), 3000)
+      } finally {
+        e.target.value = ''
       }
-      setTimeout(() => setImportMsg(null), 4000)
     }
     reader.readAsText(file)
   }
@@ -689,6 +658,7 @@ function SavedVariationsPanel({
       negativePrompt: v.negativePrompt,
       estimatedTokens: v.estimatedTokens,
       savedAt: new Date(v.savedAt).toISOString(),
+      notes: v.notes ?? '',
     }))
     const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' })
     const url = URL.createObjectURL(blob)
@@ -724,11 +694,10 @@ function SavedVariationsPanel({
       <input
         ref={fileInputRef}
         type="file"
-        accept=".json,application/json"
+        accept="application/json,.json"
         style={{ display:'none' }}
         onChange={handleFileChange}
       />
-
       <div
         onClick={() => setOpen(p => !p)}
         style={{ padding:'10px 14px', background:'rgba(255,255,255,0.03)', display:'flex', alignItems:'center', gap:8, cursor:'pointer' }}>
@@ -758,15 +727,24 @@ function SavedVariationsPanel({
         {/* Import button — always visible */}
         <button
           onClick={handleImportClick}
-          title="Importar variações de um arquivo JSON"
+          title="Importar variações de um arquivo JSON exportado anteriormente"
           style={{
             padding:'3px 10px', borderRadius:5, border:`1px solid ${T.border}`,
-            background: 'rgba(255,255,255,0.05)',
-            color: T.dim,
+            background: importState === 'ok'
+              ? 'rgba(74,222,128,0.15)'
+              : importState === 'err'
+                ? 'rgba(248,113,113,0.15)'
+                : 'rgba(255,255,255,0.05)',
+            color: importState === 'ok' ? '#4ade80' : importState === 'err' ? '#f87171' : T.dim,
             cursor:'pointer', fontSize:9, fontWeight:700,
+            outline: importState === 'ok'
+              ? '1px solid #4ade8044'
+              : importState === 'err'
+                ? '1px solid #f8717144'
+                : 'none',
             transition:'all 0.2s',
           }}>
-          ⬆ Importar
+          {importState === 'ok' ? '✓ Importado' : importState === 'err' ? '✕ JSON inválido' : '⬆ Importar'}
         </button>
         {variations.length > 0 && (
           <button
@@ -785,18 +763,6 @@ function SavedVariationsPanel({
         )}
         <span style={{ fontSize:10, color:T.dim }}>{open ? '▾' : '▸'}</span>
       </div>
-
-      {/* Import feedback message */}
-      {importMsg && (
-        <div style={{
-          padding:'7px 14px', fontSize:10, fontWeight:700,
-          background: importMsg.ok ? 'rgba(74,222,128,0.1)' : 'rgba(248,113,113,0.1)',
-          color: importMsg.ok ? '#4ade80' : '#f87171',
-          borderBottom: `1px solid ${importMsg.ok ? 'rgba(74,222,128,0.2)' : 'rgba(248,113,113,0.2)'}`,
-        }}>
-          {importMsg.ok ? '✓ ' : '✗ '}{importMsg.text}
-        </div>
-      )}
 
       {open && (
         <div style={{ padding:'10px 14px', display:'flex', flexDirection:'column' as const, gap:8 }}>
@@ -1142,7 +1108,8 @@ function detectShareParam(): boolean {
 
 export function PromptPlaygroundModule() {
   const [tab, setTab] = useState<TabId>('playwright')
-  const { projectContext, activeProject } = useWorkspace()
+  const { projectCtx: projectContext } = useWorkspaceContext()
+  const activeProject = projectContext ? projectContextToProject(projectContext) : MOCK_PROJECT
 
   const resolvedProjectCtx: ProjectContext = projectContext ?? MOCK_PROJECT_CONTEXT
 

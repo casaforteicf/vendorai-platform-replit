@@ -134,12 +134,35 @@ export function useSavedVariations() {
 
   const clearStorageError = useCallback(() => setStorageError(null), [])
 
-  const importVariations = useCallback((incoming: SavedVariation[]) => {
+  const importVariations = useCallback((items: unknown[]) => {
     setVariations(prev => {
       const existingIds = new Set(prev.map(v => v.id))
-      const novel = incoming.filter(v => !existingIds.has(v.id))
-      if (novel.length === 0) return prev
-      const next = [...novel, ...prev]
+      const toAdd: SavedVariation[] = []
+      for (const raw of items) {
+        if (!raw || typeof raw !== 'object') continue
+        const r = raw as Record<string, unknown>
+        const id = typeof r.id === 'string' && r.id ? r.id : ''
+        if (id && existingIds.has(id)) continue
+        const newId = id || `imp-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`
+        existingIds.add(newId)
+        toAdd.push({
+          id: newId,
+          name: typeof r.name === 'string' ? r.name : 'Importado',
+          translator: (typeof r.translator === 'string' ? r.translator : 'flux-1.1') as TranslatorId,
+          detail: (typeof r.detailLevel === 'string'
+            ? r.detailLevel
+            : typeof r.detail === 'string' ? r.detail : 'detalhado') as DetailLevel,
+          prompt: typeof r.prompt === 'string' ? r.prompt : '',
+          negativePrompt: typeof r.negativePrompt === 'string' ? r.negativePrompt : '',
+          estimatedTokens: typeof r.estimatedTokens === 'number' ? r.estimatedTokens : 0,
+          savedAt: typeof r.savedAt === 'string'
+            ? new Date(r.savedAt).getTime() || Date.now()
+            : typeof r.savedAt === 'number' ? r.savedAt : Date.now(),
+          notes: typeof r.notes === 'string' ? r.notes : undefined,
+        })
+      }
+      if (toAdd.length === 0) return prev
+      const next = [...toAdd, ...prev]
       persistVariations(next)
       return next
     })
