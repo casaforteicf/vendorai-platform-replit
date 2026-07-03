@@ -295,6 +295,29 @@ function SavedVariationsPanel({
   const [editingId, setEditingId] = useState<string | null>(null)
   const [editingName, setEditingName] = useState('')
   const [copiedId, setCopiedId] = useState<string | null>(null)
+  const [exported, setExported] = useState(false)
+
+  const handleExport = (e: React.MouseEvent) => {
+    e.stopPropagation()
+    const data = variations.map(v => ({
+      name: v.name,
+      translator: v.translator,
+      detailLevel: v.detail,
+      prompt: v.prompt,
+      negativePrompt: v.negativePrompt,
+      estimatedTokens: v.estimatedTokens,
+      savedAt: new Date(v.savedAt).toISOString(),
+    }))
+    const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `prompt-variations-${new Date().toISOString().slice(0, 10)}.json`
+    a.click()
+    URL.revokeObjectURL(url)
+    setExported(true)
+    setTimeout(() => setExported(false), 2000)
+  }
 
   const copy = (id: string, text: string) => {
     void navigator.clipboard.writeText(text)
@@ -327,6 +350,21 @@ function SavedVariationsPanel({
             </span>
           )}
         </span>
+        {variations.length > 0 && (
+          <button
+            onClick={handleExport}
+            title="Exportar variações como JSON"
+            style={{
+              padding:'3px 10px', borderRadius:5, border:`1px solid ${T.border}`,
+              background: exported ? 'rgba(74,222,128,0.15)' : 'rgba(255,255,255,0.05)',
+              color: exported ? '#4ade80' : T.dim,
+              cursor:'pointer', fontSize:9, fontWeight:700,
+              outline: exported ? '1px solid #4ade8044' : 'none',
+              transition:'all 0.2s',
+            }}>
+            {exported ? '✓ Exportado' : '⬇ Exportar'}
+          </button>
+        )}
         <span style={{ fontSize:10, color:T.dim }}>{open ? '▾' : '▸'}</span>
       </div>
 
