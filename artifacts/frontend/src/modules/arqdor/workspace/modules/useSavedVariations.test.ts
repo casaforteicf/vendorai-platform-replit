@@ -4,6 +4,7 @@ import {
   useSavedVariations,
   STORAGE_KEY,
   MIGRATED_KEY,
+  PRUNE_BATCH_SIZE,
   readLocalVariations,
 } from './useSavedVariations'
 import type { SavedVariation } from './useSavedVariations'
@@ -481,5 +482,143 @@ describe('localStorage to server migration', () => {
 
     // Migration flag is set (server is the authority)
     expect(localStorage.getItem(MIGRATED_KEY)).toBe('1')
+  })
+})
+
+// ─── Scenario 5: pruneOldest ──────────────────────────────────────────────────
+
+describe('pruneOldest', () => {
+  // Helper: build N variations with strictly ordered timestamps so oldest/newest
+  // are unambiguous. Timestamps start at BASE and increment by 1 000 each step.
+  const BASE_TS = 1_700_000_000_000
+  function makeVariations(count: number): SavedVariation[] {
+    return Array.from({ length: count }, (_, i) =>
+      makeVariation({
+        id: `prune-var-${i + 1}`,
+        name: `Variation ${i + 1}`,
+        savedAt: BASE_TS + i * 1_000,
+      }),
+    )
+  }
+
+  it('removes only the oldest PRUNE_BATCH_SIZE variations and clears storageError on first successful batch', async () => {
+    // 7 variations: IDs prune-var-1 (oldest) … prune-var-7 (newest)
+    const variations = makeVariations(7)
+    seedLocalStorage(variations)
+
+    // Not authenticated so no server calls interfere
+    const { result } = renderHook(() => useSavedVariations())
+
+    // Trigger storageError by making setItem throw while a save is written
+    vi.spyOn(Storage.prototype, 'setItem').mockImplementation((key: string) => {
+      if (key === STORAGE_KEY) throw new DOMException('QuotaExceededError', 'QuotaExceededError')
+    })
+
+    await act(async () => {
+      result.current.save(
+        { translator: 'midjourney', detail: 'medium', prompt: 'p', negativePrompt: '', estimatedTokens: 1 },
+        'Overflow trigger',
+      )
+      await new Promise(r => setTimeout(r, 0))
+    })
+
+    expect(result.current.storageError).toBeTruthy()
+
+    // Restore localStorage to working state so pruneOldest can persist
+    vi.restoreAllMocks()
+
+    // State now has 8 items: the 7 seeded + 1 from the save above.
+    // The 5 items with the smallest savedAt values are prune-var-1 … prune-var-5.
+    expect(result.current.variations).toHaveLength(8)
+
+    act(() => {
+      result.current.pruneOldest()
+    })
+
+    // (a) Only the PRUNE_BATCH_SIZE oldest are removed; 3 remain
+    expect(result.current.variations).toHaveLength(8 - PRUNE_BATCH_SIZE)
+
+    const remainingIds = result.current.variations.map(v => v.id)
+    // Oldest 5 must be gone
+    for (let i = 1; i <= PRUNE_BATCH_SIZE; i++) {
+      expect(remainingIds).not.toContain(`prune-var-${i}`)
+    }
+    // The 2 newest seeded variations must still be present
+    expect(remainingIds).toContain('prune-var-6')
+    expect(remainingIds).toContain('prune-var-7')
+
+    // (b) storageError must be cleared after the successful prune
+    expect(result.current.storageError).toBeNull()
+
+    // localStorage must reflect the pruned list
+    const stored = storedVariations()
+    expect(stored).toHaveLength(8 - PRUNE_BATCH_SIZE)
+    expect(stored.map(v => v.id)).not.toContain('prune-var-1')
+  })
+
+  it('removes a second batch when the first batch persist still fails (two rounds needed)', async () => {
+    // 11 variations: IDs prune-var-1 (oldest) … prune-var-11 (newest).
+    // After removing the first batch of 5 → 6 remain → persist throws.
+    // After removing the second batch of 5 → 1 remains → persist succeeds.
+    const variations = makeVariations(11)
+    seedLocalStorage(variations)
+
+    const { result } = renderHook(() => useSavedVariations())
+
+    // Capture the original setItem BEFORE spying so the delegate calls inside
+    // the mock never recurse back into the spy.
+    const originalSetItem = Storage.prototype.setItem
+
+    // For STORAGE_KEY we throw on the first two calls (simulating storage still
+    // full after removing the first batch) and succeed from the third onward.
+    // Non-STORAGE_KEY writes (e.g. MIGRATED_KEY) are forwarded unchanged.
+    let storageKeyCallCount = 0
+    vi.spyOn(Storage.prototype, 'setItem').mockImplementation(function (key: string, value: string) {
+      if (key !== STORAGE_KEY) {
+        originalSetItem.call(localStorage, key, value)
+        return
+      }
+      storageKeyCallCount++
+      // Call 1: useEffect write triggered by the save below → throw → storageError set
+      // Call 2: first pruneOldest batch persist (7 items remain) → throw (still full)
+      // Call 3+: second pruneOldest batch persist (2 items remain) → succeed
+      if (storageKeyCallCount <= 2) {
+        throw new DOMException('QuotaExceededError', 'QuotaExceededError')
+      }
+      originalSetItem.call(localStorage, key, value)
+    })
+
+    // Trigger storageError (call 1: setItem throws)
+    await act(async () => {
+      result.current.save(
+        { translator: 'midjourney', detail: 'medium', prompt: 'p', negativePrompt: '', estimatedTokens: 1 },
+        'Overflow trigger',
+      )
+      await new Promise(r => setTimeout(r, 0))
+    })
+
+    expect(result.current.storageError).toBeTruthy()
+
+    // State: 12 items (11 seeded + 1 from save above, which is the newest)
+    expect(result.current.variations).toHaveLength(12)
+
+    // pruneOldest:
+    //   round 1: removes prune-var-1…prune-var-5, tries to persist 7 items → throws (call 2)
+    //   round 2: removes prune-var-6…prune-var-10, tries to persist 2 items → succeeds (call 3)
+    act(() => {
+      result.current.pruneOldest()
+    })
+
+    // (c) Two full batches (10 items) removed; 2 remain: prune-var-11 + the save trigger
+    expect(result.current.variations).toHaveLength(12 - PRUNE_BATCH_SIZE * 2)
+
+    const remainingIds = result.current.variations.map(v => v.id)
+    for (let i = 1; i <= PRUNE_BATCH_SIZE * 2; i++) {
+      expect(remainingIds).not.toContain(`prune-var-${i}`)
+    }
+    expect(remainingIds).toContain('prune-var-11')
+
+    // storageError is cleared after the successful second-batch persist
+    expect(result.current.storageError).toBeNull()
   })
 })
