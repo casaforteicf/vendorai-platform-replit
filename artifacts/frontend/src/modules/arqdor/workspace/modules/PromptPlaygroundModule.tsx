@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useCallback } from 'react'
 import { MOCK_PROJECT } from '../../../../pages/arch/arqdor/domain/arqdor-mock-project'
 import { generateFullPromptStructure } from '../../../../pages/arch/arqdor/domain/arqdor-prompt-engine'
 import type { PromptStructure } from '../../../../pages/arch/arqdor/domain/arqdor-domain-types'
@@ -16,6 +16,64 @@ const T = {
   border:'rgba(255,255,255,0.08)', purple:'#7c3aed', purpleL:'#a78bfa',
   text:'rgba(255,255,255,0.88)', dim:'rgba(255,255,255,0.44)',
 } as const
+
+// ─── Saved variations ────────────────────────────────────────────────────────
+
+const STORAGE_KEY = 'arqdor_saved_prompt_variations'
+
+interface SavedVariation {
+  id: string
+  name: string
+  translator: TranslatorId
+  detail: DetailLevel
+  prompt: string
+  negativePrompt: string
+  estimatedTokens: number
+  savedAt: number
+}
+
+function useSavedVariations() {
+  const [variations, setVariations] = useState<SavedVariation[]>(() => {
+    try {
+      const raw = localStorage.getItem(STORAGE_KEY)
+      return raw ? (JSON.parse(raw) as SavedVariation[]) : []
+    } catch {
+      return []
+    }
+  })
+
+  const save = useCallback((v: Omit<SavedVariation, 'id' | 'savedAt' | 'name'>, suggestedName: string) => {
+    const item: SavedVariation = {
+      ...v,
+      id: `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+      name: suggestedName,
+      savedAt: Date.now(),
+    }
+    setVariations(prev => {
+      const next = [item, ...prev]
+      try { localStorage.setItem(STORAGE_KEY, JSON.stringify(next)) } catch { /* quota exceeded */ }
+      return next
+    })
+  }, [])
+
+  const rename = useCallback((id: string, name: string) => {
+    setVariations(prev => {
+      const next = prev.map((v): SavedVariation => v.id === id ? { ...v, name } : v)
+      try { localStorage.setItem(STORAGE_KEY, JSON.stringify(next)) } catch { /* quota exceeded */ }
+      return next
+    })
+  }, [])
+
+  const remove = useCallback((id: string) => {
+    setVariations(prev => {
+      const next = prev.filter(v => v.id !== id)
+      try { localStorage.setItem(STORAGE_KEY, JSON.stringify(next)) } catch { /* quota exceeded */ }
+      return next
+    })
+  }, [])
+
+  return { variations, save, rename, remove }
+}
 
 // ─── Playground tab (existing) ────────────────────────────────────────────────
 
@@ -222,9 +280,148 @@ function PromptPreview({ pw }: { pw: PlaywrightPrompt }) {
   )
 }
 
+// ─── Saved variations panel ───────────────────────────────────────────────────
+
+function SavedVariationsPanel({
+  variations,
+  onRename,
+  onDelete,
+}: {
+  variations: SavedVariation[]
+  onRename: (id: string, name: string) => void
+  onDelete: (id: string) => void
+}) {
+  const [open, setOpen] = useState(true)
+  const [editingId, setEditingId] = useState<string | null>(null)
+  const [editingName, setEditingName] = useState('')
+  const [copiedId, setCopiedId] = useState<string | null>(null)
+
+  const copy = (id: string, text: string) => {
+    void navigator.clipboard.writeText(text)
+    setCopiedId(id); setTimeout(() => setCopiedId(null), 1800)
+  }
+
+  const startEdit = (v: SavedVariation) => { setEditingId(v.id); setEditingName(v.name) }
+  const commitEdit = (id: string) => {
+    if (editingName.trim()) onRename(id, editingName.trim())
+    setEditingId(null)
+  }
+
+  const fmt = (ts: number) => {
+    const d = new Date(ts)
+    return `${d.toLocaleDateString('pt-BR')} ${d.toLocaleTimeString('pt-BR', { hour:'2-digit', minute:'2-digit' })}`
+  }
+
+  const translatorInfo = (id: TranslatorId) => TRANSLATORS.find(t => t.id === id)
+
+  return (
+    <div style={{ borderRadius:10, border:`1px solid ${T.border}`, overflow:'hidden', marginTop:12 }}>
+      <div
+        onClick={() => setOpen(p => !p)}
+        style={{ padding:'10px 14px', background:'rgba(255,255,255,0.03)', display:'flex', alignItems:'center', gap:8, cursor:'pointer' }}>
+        <span style={{ fontSize:11, fontWeight:700, color:T.purpleL, flex:1 }}>
+          💾 Variações salvas
+          {variations.length > 0 && (
+            <span style={{ marginLeft:6, fontSize:9, padding:'1px 6px', borderRadius:10, background:'rgba(167,139,250,0.15)', color:T.purpleL, fontWeight:800 }}>
+              {variations.length}
+            </span>
+          )}
+        </span>
+        <span style={{ fontSize:10, color:T.dim }}>{open ? '▾' : '▸'}</span>
+      </div>
+
+      {open && (
+        <div style={{ padding:'10px 14px', display:'flex', flexDirection:'column' as const, gap:8 }}>
+          {variations.length === 0 && (
+            <p style={{ margin:0, fontSize:11, color:T.dim, fontStyle:'italic', textAlign:'center' as const, padding:'12px 0' }}>
+              Nenhuma variação salva ainda. Clique em "💾 Salvar variação" acima para começar.
+            </p>
+          )}
+          {variations.map(v => {
+            const tInfo = translatorInfo(v.translator)
+            return (
+              <div key={v.id} style={{ borderRadius:8, border:`1px solid ${T.border}`, overflow:'hidden' }}>
+                {/* Row header */}
+                <div style={{ padding:'8px 12px', background:'rgba(255,255,255,0.03)', display:'flex', alignItems:'center', gap:8 }}>
+                  {/* Name (editable) */}
+                  {editingId === v.id ? (
+                    <input
+                      value={editingName}
+                      onChange={e => setEditingName(e.target.value)}
+                      onBlur={() => commitEdit(v.id)}
+                      onKeyDown={e => { if (e.key === 'Enter') commitEdit(v.id); if (e.key === 'Escape') setEditingId(null) }}
+                      autoFocus
+                      style={{
+                        flex:1, background:'rgba(255,255,255,0.06)', border:`1px solid rgba(124,58,237,0.4)`,
+                        borderRadius:5, color:T.text, fontSize:11, fontWeight:700, padding:'3px 8px', outline:'none',
+                      }}
+                    />
+                  ) : (
+                    <span
+                      onDoubleClick={() => startEdit(v)}
+                      title="Duplo clique para renomear"
+                      style={{ flex:1, fontSize:11, fontWeight:700, color:T.text, cursor:'text' }}>
+                      {v.name}
+                    </span>
+                  )}
+                  {/* Badges */}
+                  {tInfo && (
+                    <span style={{ fontSize:8, padding:'1px 6px', borderRadius:4, background:`${tInfo.color}22`, color:tInfo.color, fontWeight:800 }}>
+                      {tInfo.badge}
+                    </span>
+                  )}
+                  <span style={{ fontSize:8, padding:'1px 6px', borderRadius:4, background:'rgba(124,58,237,0.15)', color:T.purpleL, fontWeight:700 }}>
+                    {v.detail}
+                  </span>
+                  <span style={{ fontSize:9, color:T.dim }}>{v.estimatedTokens} tk</span>
+                  {/* Actions */}
+                  <button
+                    onClick={() => copy(v.id, v.prompt)}
+                    title="Copiar prompt"
+                    style={{ padding:'2px 8px', borderRadius:5, border:'none', background:'rgba(124,58,237,0.2)', color:T.purpleL, cursor:'pointer', fontSize:9, fontWeight:700 }}>
+                    {copiedId === v.id ? '✓' : '📋'}
+                  </button>
+                  <button
+                    onClick={() => startEdit(v)}
+                    title="Renomear"
+                    style={{ padding:'2px 6px', borderRadius:5, border:`1px solid ${T.border}`, background:'transparent', color:T.dim, cursor:'pointer', fontSize:10 }}>
+                    ✏️
+                  </button>
+                  <button
+                    onClick={() => onDelete(v.id)}
+                    title="Remover"
+                    style={{ padding:'2px 6px', borderRadius:5, border:`1px solid rgba(248,113,113,0.2)`, background:'transparent', color:'#f87171', cursor:'pointer', fontSize:10 }}>
+                    🗑
+                  </button>
+                </div>
+                {/* Prompt preview snippet */}
+                <div style={{ padding:'8px 12px', background:'rgba(255,255,255,0.01)' }}>
+                  <p style={{
+                    margin:0, fontSize:10, color:T.dim, lineHeight:1.55,
+                    fontFamily:'ui-monospace,monospace', whiteSpace:'pre-wrap' as const,
+                    display:'-webkit-box', WebkitLineClamp:2, WebkitBoxOrient:'vertical' as const, overflow:'hidden',
+                  }}>
+                    {v.prompt}
+                  </p>
+                  <p style={{ margin:'4px 0 0', fontSize:9, color:'rgba(255,255,255,0.24)' }}>{fmt(v.savedAt)}</p>
+                </div>
+              </div>
+            )
+          })}
+        </div>
+      )}
+    </div>
+  )
+}
+
+// ─── AIE Playwright tab ───────────────────────────────────────────────────────
+
 function AIEPlaywrightTab() {
   const [translator, setTranslator] = useState<TranslatorId>('flux-1.1')
   const [detail, setDetail]         = useState<DetailLevel>('detalhado')
+  const [savedFlash, setSavedFlash] = useState(false)
+
+  const { variations, save, rename, remove } = useSavedVariations()
 
   const aie = useMemo(() => runAIE(MOCK_PROJECT_CONTEXT), [])
 
@@ -234,6 +431,22 @@ function AIEPlaywrightTab() {
   )
 
   const info = TRANSLATORS.find(t => t.id === translator)!
+
+  const handleSave = () => {
+    const tLabel = info.badge
+    const dLabel = DETAIL_LEVELS.find(d => d.id === detail)?.label ?? detail
+    const count = variations.filter(v => v.translator === translator && v.detail === detail).length
+    const suggested = `${tLabel} · ${dLabel}${count > 0 ? ` #${count + 1}` : ''}`
+    save({
+      translator,
+      detail,
+      prompt: pw.prompt,
+      negativePrompt: pw.negativePrompt ?? '',
+      estimatedTokens: pw.estimatedTokens,
+    }, suggested)
+    setSavedFlash(true)
+    setTimeout(() => setSavedFlash(false), 1800)
+  }
 
   return (
     <div style={{ height:'100%', display:'flex', flexDirection:'column' as const }}>
@@ -305,7 +518,7 @@ function AIEPlaywrightTab() {
           </div>
         </div>
 
-        {/* Active translator info */}
+        {/* Active translator info + save button */}
         <div style={{ display:'flex', alignItems:'center', gap:8, padding:'6px 10px', borderRadius:8, background:`${info.color}11`, border:`1px solid ${info.color}33` }}>
           <span style={{ fontSize:15 }}>{info.icon}</span>
           <div>
@@ -315,13 +528,25 @@ function AIEPlaywrightTab() {
           <div style={{ marginLeft:'auto', display:'flex', gap:8, alignItems:'center' }}>
             <span style={{ fontSize:9, padding:'2px 6px', borderRadius:4, background:`${info.color}22`, color:info.color, fontWeight:800 }}>{info.badge}</span>
             <span style={{ fontSize:9, color:T.dim }}>{pw.estimatedTokens} tokens</span>
+            <button
+              onClick={handleSave}
+              style={{
+                padding:'5px 12px', borderRadius:6, border:'none', cursor:'pointer', fontSize:10, fontWeight:700,
+                background: savedFlash ? 'rgba(74,222,128,0.2)' : 'rgba(124,58,237,0.25)',
+                color: savedFlash ? '#4ade80' : T.purpleL,
+                outline: savedFlash ? '1px solid #4ade80' : `1px solid rgba(124,58,237,0.4)`,
+                transition:'all 0.2s',
+              }}>
+              {savedFlash ? '✓ Salvo!' : '💾 Salvar variação'}
+            </button>
           </div>
         </div>
       </div>
 
-      {/* Prompt preview */}
+      {/* Prompt preview + saved variations */}
       <div style={{ flex:1, overflowY:'auto' as const, padding:'14px 20px' }}>
         <PromptPreview pw={pw} />
+        <SavedVariationsPanel variations={variations} onRename={rename} onDelete={remove} />
       </div>
     </div>
   )
