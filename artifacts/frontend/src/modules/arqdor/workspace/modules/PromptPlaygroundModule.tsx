@@ -9,7 +9,17 @@ import {
 } from '@workspace/api-client-react'
 import { MOCK_PROJECT } from '../../../../pages/arch/arqdor/domain/arqdor-mock-project'
 import { generateFullPromptStructure } from '../../../../pages/arch/arqdor/domain/arqdor-prompt-engine'
-import type { PromptStructure } from '../../../../pages/arch/arqdor/domain/arqdor-domain-types'
+import type {
+  PromptStructure,
+  Project,
+  ProjectDNA,
+  RenderConfig,
+  ArchitecturalObject,
+} from '../../../../pages/arch/arqdor/domain/arqdor-domain-types'
+import {
+  DEFAULT_PERMISSIONS,
+  LOCKED_PERMISSIONS,
+} from '../../../../pages/arch/arqdor/domain/arqdor-defaults'
 import { runAIE } from '../../engines/aie/aie-engine'
 import { MOCK_PROJECT_CONTEXT } from '../../engines/aie/aie-mock-context'
 import type { ProjectContext } from '../../engines/aie/aie-types'
@@ -143,6 +153,97 @@ function useSavedVariations() {
   }
 }
 
+// ─── ProjectContext → Project converter ───────────────────────────────────────
+
+function projectContextToProject(ctx: ProjectContext): Project {
+  const now = new Date().toISOString()
+
+  const archObjects: ArchitecturalObject[] = ctx.objects.map(obj => ({
+    id:              obj.id,
+    parentId:        null,
+    environmentId:   'env-main',
+    name:            obj.name,
+    category:        (obj.category as ArchitecturalObject['category']) ?? 'PERSONALIZADO',
+    type:            obj.category ?? '',
+    description:     obj.designIntent?.join(', ') ?? '',
+    status:          'ACTIVE' as const,
+    confidence:      80,
+    sourceOfTruth:   'USER_INPUT' as const,
+    material: {
+      name:  obj.material ?? '',
+      finish: obj.finish ?? '',
+      color:  obj.color  ?? '',
+    },
+    finish:          obj.finish  ?? '',
+    color:           obj.color   ?? '',
+    texture:         '',
+    grainDirection:  false,
+    thickness:       '',
+    dimensions: {
+      width:  obj.dimensions ? String(obj.dimensions.width)  : '',
+      height: obj.dimensions ? String(obj.dimensions.height) : '',
+      depth:  obj.dimensions ? String(obj.dimensions.depth)  : '',
+    },
+    position: {
+      x: obj.position ? String(obj.position.x) : '',
+      y: obj.position ? String(obj.position.y) : '',
+      z: obj.position ? String(obj.position.z) : '',
+    },
+    referenceImages: [],
+    aiPermissions:   obj.locked ? LOCKED_PERMISSIONS : DEFAULT_PERMISSIONS,
+    aiRisk:          { level: 'LOW', reason: '', restrictions: [] },
+    relationships:   [],
+    rules:           [],
+    promptNotes:     obj.designIntent?.join('; ') ?? '',
+    history:         [],
+  }))
+
+  const dna: ProjectDNA = {
+    architecturalStyle:   ctx.style?.name             ?? 'Contemporâneo',
+    designLanguage:       ctx.style?.designIntent?.[0] ?? 'Minimalismo funcional',
+    colorPalette:         ctx.style?.palette            ?? [],
+    predominantMaterials: ctx.materials.map(m => m.name).slice(0, 4),
+    predominantHardware:  ctx.style?.restrictions       ?? [],
+    detailingLevel:       'HIGH',
+    atmosphere:           ctx.style?.designIntent?.join(', ') ?? 'Sofisticado',
+    targetUse:            ctx.renderGoal ?? 'Apresentação ao cliente',
+    renderObjective:      ctx.renderGoal ?? 'Alta fidelidade ao projeto',
+    photographyStyle:     ctx.photographyProfile ?? ctx.cameraAngle ?? 'Perspectiva 45°',
+    realismLevel:         9,
+  }
+
+  const renderConfig: RenderConfig = {
+    renderEngineStyle: 'Photorealistic PBR',
+    resolution:        '8K (7680×4320)',
+    lens:              ctx.cameraAngle ?? '35mm',
+    cameraHeight:      '0.9m',
+    lightingMood:      ctx.lightingType ?? 'Warm natural',
+    hdri:              'Interior studio warm',
+    whiteBalance:      '3200K',
+    toneMapping:       'ACES Filmic',
+    depthOfField:      true,
+  }
+
+  return {
+    id:           ctx.id,
+    name:         ctx.name,
+    description:  '',
+    createdAt:    now,
+    updatedAt:    now,
+    version:      '1.0',
+    environments: [{
+      id:                   'env-main',
+      name:                 ctx.name,
+      category:             'PROJETO',
+      description:          '',
+      architecturalObjects: archObjects,
+    }],
+    dna,
+    renderConfig,
+    versions: [],
+  }
+}
+
 // ─── Playground tab (existing) ────────────────────────────────────────────────
 
 const SECTIONS: { key: keyof PromptStructure; label: string; accent: string; desc: string }[] = [
@@ -157,12 +258,21 @@ const SECTIONS: { key: keyof PromptStructure; label: string; accent: string; des
 ]
 
 function PlaygroundTab() {
-  const [structure, setStructure] = useState<PromptStructure>(() => generateFullPromptStructure(MOCK_PROJECT))
+  const { projectContext } = useWorkspace()
+
+  const activeProject = useMemo<Project>(() =>
+    projectContext ? projectContextToProject(projectContext) : MOCK_PROJECT,
+  [projectContext])
+
+  const [structure, setStructure] = useState<PromptStructure>(() =>
+    generateFullPromptStructure(projectContext ? projectContextToProject(projectContext) : MOCK_PROJECT)
+  )
   const [open, setOpen] = useState<Set<string>>(new Set(['corePrompt','finalPrompt']))
   const [copied, setCopied] = useState<string|null>(null)
   const [editKey, setEditKey] = useState<string|null>(null)
 
   const tokenCount = Math.floor(structure.finalPrompt.length / 4)
+  const isMock = !projectContext
 
   const copy = (key: string, text: string) => {
     void navigator.clipboard.writeText(text)
@@ -178,9 +288,15 @@ function PlaygroundTab() {
       {/* Sub-header */}
       <div style={{ padding:'12px 20px 10px', borderBottom:`1px solid ${T.border}`, flexShrink:0, display:'flex', alignItems:'center', gap:12 }}>
         <div style={{ flex:1 }}>
-          <p style={{ margin:0, fontSize:11, color:T.dim }}>{tokenCount} tokens estimados — gerado a partir do modelo do projeto</p>
+          <p style={{ margin:0, fontSize:11, color:T.dim }}>
+            {tokenCount} tokens estimados —{' '}
+            {isMock
+              ? <span style={{ color:'rgba(251,191,36,0.8)' }}>exemplo (nenhum projeto carregado)</span>
+              : <span>projeto: <strong style={{ color:T.text }}>{activeProject.name}</strong></span>
+            }
+          </p>
         </div>
-        <button onClick={()=>setStructure(generateFullPromptStructure(MOCK_PROJECT))}
+        <button onClick={()=>setStructure(generateFullPromptStructure(activeProject))}
           style={{ padding:'5px 12px', borderRadius:6, border:`1px solid ${T.border}`, background:'rgba(255,255,255,0.05)', color:T.dim, cursor:'pointer', fontSize:11 }}>
           🔄 Regenerar
         </button>
