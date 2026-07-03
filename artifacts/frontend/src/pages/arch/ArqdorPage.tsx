@@ -1407,6 +1407,7 @@ export default function ArqdorPage({
   const [versionOpen, setVersionOpen] = useState(false)
   const [mode, setMode] = useState<'modelagem'|'projeto-inteligente'>('modelagem')
 
+  // Notify parent (WorkspaceContext) whenever project state changes so AIE stays live
   useEffect(() => {
     onProjectChange?.(project)
   }, [project, onProjectChange])

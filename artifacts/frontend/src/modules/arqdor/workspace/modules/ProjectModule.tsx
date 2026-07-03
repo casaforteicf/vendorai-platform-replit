@@ -1,15 +1,17 @@
-import { useCallback } from 'react'
 import ArqdorPage from '../../../../pages/arch/ArqdorPage'
+import { useWorkspaceProject } from '../WorkspaceContext'
+import { archProjectToContext } from '../../engines/aie/arch-project-to-context'
 import type { ArchProject } from '../../../../pages/arch/arqdor-types'
-import { useWorkspaceContext } from '../WorkspaceContext'
-import { adaptArchProjectToContext } from '../WorkspaceContext'
 
+// ProjectModule embeds the full ArqdorPage (Modelagem + Projeto Inteligente)
+// inside the workspace content area. It bridges real project state into the
+// shared WorkspaceContext so AIE scores stay live.
 export function ProjectModule() {
-  const { setProjectContext } = useWorkspaceContext()
+  const { setProjectCtx } = useWorkspaceProject()
 
-  const handleProjectChange = useCallback((project: ArchProject) => {
-    setProjectContext(adaptArchProjectToContext(project))
-  }, [setProjectContext])
+  function handleProjectChange(project: ArchProject) {
+    setProjectCtx(archProjectToContext(project))
+  }
 
   return (
     <div style={{ position:'absolute', inset:0, overflow:'hidden' }}>

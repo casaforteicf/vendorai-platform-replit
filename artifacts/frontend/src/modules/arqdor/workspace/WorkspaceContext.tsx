@@ -1,7 +1,48 @@
-import { createContext, useContext } from 'react'
+import { createContext, useContext, useState, useMemo } from 'react'
+import type { ReactNode } from 'react'
 import type { Project } from '../../../pages/arch/arqdor/domain/arqdor-domain-types'
 import type { ArchProject } from '../../../pages/arch/arqdor-types'
 import type { ProjectContext, ProjectObject, ProjectMaterial } from '../engines/aie/aie-types'
+import { MOCK_PROJECT_CONTEXT } from '../engines/aie/aie-mock-context'
+
+// ─── WorkspaceContext ─────────────────────────────────────────────────────────
+// Holds the live ProjectContext for the currently open project.
+// All modules (AIEDashboard, sidebar badge, etc.) read from here.
+
+export interface WorkspaceContextValue {
+  projectCtx:    ProjectContext
+  setProjectCtx: (ctx: ProjectContext) => void
+}
+
+export const WorkspaceContext = createContext<WorkspaceContextValue | null>(null)
+
+export function WorkspaceProvider({ children }: { children: ReactNode }) {
+  const [projectCtx, setProjectCtx] = useState<ProjectContext>(MOCK_PROJECT_CONTEXT)
+
+  const value = useMemo<WorkspaceContextValue>(
+    () => ({ projectCtx, setProjectCtx }),
+    [projectCtx],
+  )
+
+  return (
+    <WorkspaceContext.Provider value={value}>
+      {children}
+    </WorkspaceContext.Provider>
+  )
+}
+
+export function useWorkspaceProject(): WorkspaceContextValue {
+  const ctx = useContext(WorkspaceContext)
+  if (!ctx) throw new Error('useWorkspaceProject must be used inside WorkspaceProvider')
+  return ctx
+}
+
+// Legacy alias to avoid breaking existing imports if any
+export function useWorkspaceContext() {
+  const ctx = useContext(WorkspaceContext)
+  if (!ctx) throw new Error('useWorkspaceContext must be used inside WorkspaceProvider')
+  return ctx
+}
 
 // ─── Adapter: domain Project → ProjectContext (AIE) ───────────────────────────
 // Used when the workspace is initialized from the persisted domain project.
@@ -119,18 +160,3 @@ export function adaptArchProjectToContext(project: ArchProject): ProjectContext 
   }
 }
 
-// ─── Context definition ───────────────────────────────────────────────────────
-
-export interface WorkspaceState {
-  projectContext: ProjectContext | null
-  setProjectContext: (ctx: ProjectContext | null) => void
-}
-
-export const WorkspaceContext = createContext<WorkspaceState>({
-  projectContext:    null,
-  setProjectContext: () => undefined,
-})
-
-export function useWorkspaceContext() {
-  return useContext(WorkspaceContext)
-}

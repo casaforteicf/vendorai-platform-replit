@@ -1,6 +1,5 @@
 import { useState, useMemo, useCallback, useEffect } from 'react'
 import { runAIE } from '../aie-engine'
-import { MOCK_PROJECT_CONTEXT } from '../aie-mock-context'
 import { generateDNA } from '../engines/dna-engine'
 import type { AIEResult, ProjectScores, Recommendation, ValidationResult, RecommendationSeverity, ProjectContext, LearningProfile } from '../aie-types'
 import {
@@ -10,8 +9,7 @@ import {
 } from '../../prompt-playwright/prompt-playwright'
 import type { TranslatorId, DetailLevel } from '../../prompt-playwright/prompt-playwright'
 import { buildLearningProfile, getMockLearningProfile } from '../engines/learning-engine'
-import { useArqProjectContext } from '../../../workspace/ArqWorkspace'
-import { useWorkspaceContext } from '../../../workspace/WorkspaceContext'
+import { useWorkspaceProject } from '../../../workspace/WorkspaceContext'
 import { T } from '../../../shared/arqdor-theme'
 
 
@@ -156,21 +154,20 @@ const TABS: Array<{ id: TabId; label: string; icon: string }> = [
 // ─── Tab contents ─────────────────────────────────────────────────────────────
 
 interface OverviewTabProps {
-  result:        AIEResult
-  savedDNA:      string
-  generatedDNA:  string | null
-  onGenerate:    () => void
-  onCopyDNA:     (text: string) => void
-  onSaveDNA:     (text: string) => void
-  copied:        boolean
-  objectCount:   number
-  materialCount: number
+  result:       AIEResult
+  projectCtx:   import('../aie-types').ProjectContext
+  savedDNA:     string
+  generatedDNA: string | null
+  onGenerate:   () => void
+  onCopyDNA:    (text: string) => void
+  onSaveDNA:    (text: string) => void
+  copied:       boolean
 }
 
-function OverviewTab({ result, savedDNA, generatedDNA, onGenerate, onCopyDNA, onSaveDNA, copied, objectCount, materialCount }: OverviewTabProps) {
-  const displayDNA     = generatedDNA ?? savedDNA
-  const hasGenerated   = generatedDNA !== null
-  const isUnsaved      = hasGenerated && generatedDNA !== savedDNA
+function OverviewTab({ result, projectCtx, savedDNA, generatedDNA, onGenerate, onCopyDNA, onSaveDNA, copied }: OverviewTabProps) {
+  const displayDNA   = generatedDNA ?? savedDNA
+  const hasGenerated = generatedDNA !== null
+  const isUnsaved    = hasGenerated && generatedDNA !== savedDNA
 
   return (
     <div>
@@ -248,8 +245,8 @@ function OverviewTab({ result, savedDNA, generatedDNA, onGenerate, onCopyDNA, on
       {/* Quick stats */}
       <div style={{ marginTop:12, display:'grid', gridTemplateColumns:'repeat(4,1fr)', gap:8 }}>
         {[
-          ['Objetos', objectCount, '🏗️'],
-          ['Materiais', materialCount, '🪵'],
+          ['Objetos', projectCtx.objects.length, '🏗️'],
+          ['Materiais', projectCtx.materials.length, '🪵'],
           ['Recomendações', result.recommendations.length, '💬'],
           ['Alertas', result.validation.fail + result.validation.warn, '⚠️'],
         ].map(([label, value, icon]) => (
@@ -434,8 +431,8 @@ function MaterialsTab({ result }: { result: AIEResult }) {
 function LearningTabReal() {
   const [learningProfile, setLearningProfile] = useState<LearningProfile | null>(null)
   const [loading, setLoading] = useState(true)
-  const arqCtx = useArqProjectContext()
-  const projectId = arqCtx?.projectId
+  const { projectCtx } = useWorkspaceProject()
+  const projectId = projectCtx?.id
 
   useEffect(() => {
     async function fetchLearning() {
@@ -521,12 +518,11 @@ function PromptQuickPanel({ aieResult, onClose }: { aieResult: AIEResult; onClos
   const [detail,     setDetail]     = useState<DetailLevel>('detalhado')
   const [copiedKey,  setCopiedKey]  = useState<string | null>(null)
 
-  const { projectContext } = useWorkspaceContext()
-  const activeCtxForPrompt = projectContext ?? MOCK_PROJECT_CONTEXT
+  const { projectCtx } = useWorkspaceProject()
 
   const pw = useMemo(
-    () => buildPrompt(activeCtxForPrompt, aieResult, translator, detail),
-    [activeCtxForPrompt, aieResult, translator, detail],
+    () => buildPrompt(projectCtx, aieResult, translator, detail),
+    [projectCtx, aieResult, translator, detail],
   )
 
   const info = TRANSLATORS.find(t => t.id === translator)!
@@ -625,44 +621,37 @@ function PromptQuickPanel({ aieResult, onClose }: { aieResult: AIEResult; onClos
 export function AIEDashboard() {
   const [activeTab,       setActiveTab]       = useState<TabId>('overview')
   const [lastRun,         setLastRun]         = useState<string>(new Date().toLocaleTimeString('pt-BR'))
+  const [runKey,          setRunKey]          = useState(0)
+  const [savedDNA,        setSavedDNA]        = useState<string>('')
   const [generatedDNA,    setGeneratedDNA]    = useState<string | null>(null)
   const [copied,          setCopied]          = useState(false)
   const [showPromptPanel, setShowPromptPanel] = useState(false)
+  const { projectCtx, setProjectCtx } = useWorkspaceProject()
+  const isRealProject = projectCtx.objects.length > 0 || projectCtx.materials.length > 0
 
-  // Real project context via WorkspaceContext (synced from ArqProjectContext in ArqWorkspace)
-  const { projectContext } = useWorkspaceContext()
-  const activeCtx = projectContext ?? MOCK_PROJECT_CONTEXT
-
-  // savedDNA syncs when the active project changes
-  const [savedDNA, setSavedDNA] = useState<string>(activeCtx.dna ?? '')
+  // Keep savedDNA in sync with the real project DNA whenever context changes
   useEffect(() => {
-    setSavedDNA(activeCtx.dna ?? '')
+    setSavedDNA(projectCtx.dna ?? '')
     setGeneratedDNA(null)
-  }, [activeCtx.id])
+  }, [projectCtx.id])
 
-  useEffect(() => {
-    setSavedDNA(activeCtx.dna ?? '')
-    setGeneratedDNA(null)
-  }, [activeCtx.id])
+  const result: AIEResult = useMemo(
+    () => runAIE(projectCtx),
+    // runKey forces a re-run on demand even if projectCtx reference didn't change
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [projectCtx, runKey],
+  )
 
-  const result: AIEResult = useMemo(() => runAIE(activeCtx), [activeCtx])
-
-  // ArqProjectContext for persistence operations (saveAieSnapshot)
-  const arqCtx = useArqProjectContext()
-  const isRealProject = !!(arqCtx?.projectId && (arqCtx.objects.length > 0 || arqCtx.materials.length > 0))
-
-  async function handleRerun() {
+  function handleRerun() {
+    setRunKey(k => k + 1)
     setLastRun(new Date().toLocaleTimeString('pt-BR'))
-    if (arqCtx?.projectId && arqCtx?.saveAieSnapshot) {
-      await arqCtx.saveAieSnapshot(activeCtx, result)
-    }
   }
 
   const handleGenerate = useCallback(() => {
-    const dna = generateDNA(activeCtx)
+    const dna = generateDNA(projectCtx)
     setGeneratedDNA(dna)
     setCopied(false)
-  }, [activeCtx])
+  }, [projectCtx])
 
   const handleCopyDNA = useCallback((text: string) => {
     navigator.clipboard.writeText(text).catch(() => {})
@@ -673,7 +662,9 @@ export function AIEDashboard() {
   const handleSaveDNA = useCallback((text: string) => {
     setSavedDNA(text)
     setGeneratedDNA(null)
-  }, [])
+    // Push updated DNA back into the live project context
+    setProjectCtx({ ...projectCtx, dna: text })
+  }, [projectCtx, setProjectCtx])
 
   return (
     <div style={{ height:'100%', display:'flex', flexDirection:'column' as const, background:T.bg, position:'relative' as const }}>
@@ -687,7 +678,7 @@ export function AIEDashboard() {
         <div style={{ flex:1 }}>
           <p style={{ margin:'0 0 1px', fontSize:13, fontWeight:800, color:'#fff' }}>ARQ Intelligence Engine</p>
           <p style={{ margin:0, fontSize:9, color:T.dim }}>
-            Projeto: {activeCtx.name} · Analisado às {lastRun}
+            Projeto: {projectCtx.name} · Analisado às {lastRun}
             {isRealProject && <span style={{ color:'#4ade80', marginLeft:6 }}>● dados reais</span>}
           </p>
         </div>
@@ -735,7 +726,7 @@ export function AIEDashboard() {
 
       {/* Content */}
       <div style={{ flex:1, overflowY:'auto' as const, padding:18 }}>
-        {activeTab === 'overview'        && <OverviewTab result={result} savedDNA={savedDNA} generatedDNA={generatedDNA} onGenerate={handleGenerate} onCopyDNA={handleCopyDNA} onSaveDNA={handleSaveDNA} copied={copied} objectCount={activeCtx.objects.length} materialCount={activeCtx.materials.length}/>}
+        {activeTab === 'overview'        && <OverviewTab result={result} projectCtx={projectCtx} savedDNA={savedDNA} generatedDNA={generatedDNA} onGenerate={handleGenerate} onCopyDNA={handleCopyDNA} onSaveDNA={handleSaveDNA} copied={copied}/>}
         {activeTab === 'recommendations' && <RecommendationsTab result={result}/>}
         {activeTab === 'validation'      && <ValidationTab result={result}/>}
         {activeTab === 'composition'     && <CompositionTab result={result}/>}

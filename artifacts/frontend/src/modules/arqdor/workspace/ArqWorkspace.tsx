@@ -1,6 +1,6 @@
-import { useState, Suspense, lazy, createContext, useContext, useEffect } from 'react'
+import { useState, useMemo, Suspense, lazy, createContext, useContext, useEffect } from 'react'
 import { ArqCopilot }       from '../copilot/ui/ArqCopilot'
-import { WorkspaceProvider } from './context/WorkspaceContext'
+import { WorkspaceProvider, useWorkspaceProject, WorkspaceContext } from './WorkspaceContext'
 import { IntegrationModule } from './modules/IntegrationModule'
 import { LibraryModule }      from './modules/LibraryModule'
 import { PromptPlaygroundModule } from './modules/PromptPlaygroundModule'
@@ -13,12 +13,19 @@ import { ProjectModule }       from './modules/ProjectModule'
 import { ArqHubView }         from '../arqhub/ArqHubView'
 import { AIEDashboard }       from '../engines/aie/dashboard/AIEDashboard'
 import { useArqProject, type ArqProjectState } from '../hooks/useArqProject'
-import { WorkspaceContext } from './WorkspaceContext'
 import { ProjectHome }      from './project-experience/ProjectHome'
 import type { ProjectContext } from '../engines/aie/aie-types'
+import { runAIE }             from '../engines/aie/aie-engine'
 import { T } from '../shared/arqdor-theme'
 
 void lazy
+
+function scoreColor(s: number) {
+  if (s >= 85) return '#4ade80'
+  if (s >= 70) return '#fbbf24'
+  if (s >= 50) return '#fb923c'
+  return '#f87171'
+}
 
 // ─── Project context ──────────────────────────────────────────────────────────
 export const ArqProjectContext = createContext<ArqProjectState | null>(null)
@@ -50,7 +57,6 @@ const PRIMARY_MODULES: WorkspaceModule[] = [
   { id:'biblioteca', icon:'📚',  label:'Biblioteca',   desc:'Materiais e objetos'           },
   { id:'cliente',    icon:'👤',  label:'Cliente',      desc:'CRM e integração'              },
 ]
-
 // Ferramentas avançadas (acessíveis via "Mais…")
 const SECONDARY_MODULES: WorkspaceModule[] = [
   { id:'projeto',    icon:'🏗️',  label:'Projeto',      desc:'Modelagem inteligente'         },
@@ -316,130 +322,150 @@ function Sidebar({
   )
 }
 
-// ─── ArqWorkspace ─────────────────────────────────────────────────────────────
 export default function ArqWorkspace() {
-  const [activeModule, setActiveModule] = useState<ModuleId>('home')
-  const [expanded, setExpanded]         = useState(true)
+  return (
+    <WorkspaceProvider>
+      <WorkspaceInner />
+    </WorkspaceProvider>
+  )
+}
+
+// ─── Inner workspace (reads from context) ─────────────────────────────────────
+function WorkspaceInner() {
+  const [activeModule,     setActiveModule]     = useState<ModuleId>('home')
+  const [expanded,         setExpanded]         = useState(true)
   const [copilotCollapsed, setCopilotCollapsed] = useState(false)
+
+  const { projectCtx, setProjectCtx } = useWorkspaceProject()
   const arqState = useArqProject()
 
   const sidebarW   = expanded ? 220 : 56
-  const projectName = arqState.projectMeta?.titulo ?? 'Sem projeto'
+  const projectName = arqState.projectMeta?.titulo ?? projectCtx.name ?? 'Sem projeto'
   const activeLabel = activeModule === 'home'
     ? '🏠 Home'
     : (ALL_MODULES.find(m => m.id === activeModule)?.icon ?? '') + ' ' + (ALL_MODULES.find(m => m.id === activeModule)?.label ?? '')
 
-  // Sync WorkspaceContext
-  const [projectContext, setProjectContext] = useState<ProjectContext | null>(null)
+  // Run AIE against the live project to get the overall score for the badge
+  const aieResult    = useMemo(() => runAIE(projectCtx), [projectCtx])
+  const overallScore = aieResult.scores.overall
+  const badgeColor   = scoreColor(overallScore)
+
+  // Sync WorkspaceContext (used by PromptPlaygroundModule + AIEDashboard) from arqState
   useEffect(() => {
     const ctx = arqState.getProjectContext?.()
-    if (ctx) setProjectContext(ctx)
+    if (ctx) setProjectCtx(ctx)
   }, [arqState.projectId, arqState.objects, arqState.materials, arqState.projectMeta])
 
   return (
-    <WorkspaceProvider>
-      <WorkspaceContext.Provider value={{ projectContext, setProjectContext }}>
-        <ArqProjectContext.Provider value={arqState}>
+    <ArqProjectContext.Provider value={arqState}>
+      <div style={{
+        height:'100vh', display:'flex', flexDirection:'column',
+        background:T.bg, color:T.text, fontFamily:'system-ui,sans-serif', overflow:'hidden',
+      }}>
+
+          {/* ══ TOP BAR ══ */}
           <div style={{
-            height:'100vh', display:'flex', flexDirection:'column',
-            background:T.bg, color:T.text, fontFamily:'system-ui,sans-serif', overflow:'hidden',
+            height:44, flexShrink:0, display:'flex', alignItems:'center',
+            borderBottom:`1px solid ${T.border}`, background:T.sidebar, paddingRight:12, gap:0,
           }}>
+            {/* Logo area */}
+            <div style={{ width:sidebarW, flexShrink:0, display:'flex', alignItems:'center', gap:expanded?10:0, justifyContent:expanded?'flex-start':'center', padding:expanded?'0 14px':'0', transition:'width 0.2s', overflow:'hidden' }}>
+              <span style={{ fontSize:18, flexShrink:0 }}>🏛️</span>
+              {expanded && (
+                <div>
+                  <p style={{ margin:0, fontSize:12, fontWeight:900, color:'#fff', letterSpacing:'-0.01em' }}>arqdor<span style={{ color:T.purpleL }}>.ai</span></p>
+                  <p style={{ margin:0, fontSize:8, color:T.dim, letterSpacing:'0.06em' }}>AI WORKSPACE</p>
+                </div>
+              )}
+            </div>
 
-            {/* ══ TOP BAR ══ */}
+            {/* Divider */}
+            <div style={{ width:1, height:24, background:T.border, flexShrink:0 }}/>
+
+            {/* Breadcrumb */}
+            <div style={{ flex:1, display:'flex', alignItems:'center', gap:8, paddingLeft:16 }}>
+              <span style={{ fontSize:11, color:T.dim }}>{projectName}</span>
+              <span style={{ fontSize:11, color:T.dim }}>›</span>
+              <span style={{ fontSize:11, color:'#fff', fontWeight:600 }}>{activeLabel}</span>
+            </div>
+
+            {/* Status badges + Copilot toggle */}
+            <div style={{ display:'flex', gap:6, alignItems:'center' }}>
+              {/* Live AIE score chip */}
+              <span style={{
+                fontSize:9, padding:'3px 8px', borderRadius:10, fontWeight:700,
+                background: `${badgeColor}18`, color: badgeColor,
+              }}>
+                AIE {overallScore}
+              </span>
+
+              {arqState.saving && (
+                <span style={{ fontSize:9, padding:'3px 8px', borderRadius:10, background:'rgba(167,139,250,0.12)', color:T.purpleL }}>Salvando…</span>
+              )}
+              {arqState.projectId && !arqState.saving && (
+                <span style={{ fontSize:9, padding:'3px 8px', borderRadius:10, background:'rgba(74,222,128,0.08)', color:'#4ade80', fontWeight:700 }}>● Sincronizado</span>
+              )}
+              {!arqState.projectId && !arqState.loading && (
+                <span style={{ fontSize:9, padding:'3px 8px', borderRadius:10, background:'rgba(251,146,60,0.1)', color:'#fb923c', fontWeight:700 }}>Sem projeto</span>
+              )}
+
+              <button
+                onClick={()=>setCopilotCollapsed(p=>!p)}
+                title={copilotCollapsed ? 'Abrir Copilot' : 'Recolher Copilot'}
+                style={{
+                  padding:'4px 10px', borderRadius:7, border:`1px solid ${copilotCollapsed ? T.border : T.purple}`,
+                  background:copilotCollapsed?'transparent':'rgba(124,58,237,0.15)', color:copilotCollapsed?T.dim:T.purpleL,
+                  cursor:'pointer', fontSize:10, fontWeight:700, display:'flex', alignItems:'center', gap:5, marginLeft:8
+                }}
+              >
+                🤖 {copilotCollapsed ? 'Copilot' : 'Copilot ▸'}
+              </button>
+            </div>
+          </div>
+
+          {/* ══ BODY ══ */}
+          <div style={{ flex:1, display:'flex', overflow:'hidden' }}>
+
+            {/* ── SIDEBAR ── */}
             <div style={{
-              height:44, flexShrink:0, display:'flex', alignItems:'center',
-              borderBottom:`1px solid ${T.border}`, background:T.sidebar, paddingRight:12, gap:0,
+              width:sidebarW, flexShrink:0, background:T.sidebar,
+              borderRight:`1px solid ${T.border}`, display:'flex', flexDirection:'column',
+              transition:'width 0.2s', overflow:'hidden',
             }}>
-              {/* Logo */}
-              <div style={{ width:sidebarW, flexShrink:0, display:'flex', alignItems:'center', gap:expanded?10:0, justifyContent:expanded?'flex-start':'center', padding:expanded?'0 14px':'0', transition:'width 0.2s', overflow:'hidden' }}>
-                <span style={{ fontSize:18, flexShrink:0 }}>🏛️</span>
-                {expanded && (
-                  <div>
-                    <p style={{ margin:0, fontSize:12, fontWeight:900, color:'#fff', letterSpacing:'-0.01em' }}>arqdor<span style={{ color:T.purpleL }}>.ai</span></p>
-                    <p style={{ margin:0, fontSize:8, color:T.dim, letterSpacing:'0.06em' }}>AI WORKSPACE</p>
-                  </div>
-                )}
-              </div>
-
-              <div style={{ width:1, height:24, background:T.border, flexShrink:0 }}/>
-
-              {/* Breadcrumb */}
-              <div style={{ flex:1, display:'flex', alignItems:'center', gap:8, paddingLeft:16 }}>
-                <span style={{ fontSize:11, color:T.dim }}>{projectName}</span>
-                <span style={{ fontSize:11, color:T.dim }}>›</span>
-                <span style={{ fontSize:11, color:'#fff', fontWeight:600 }}>{activeLabel}</span>
-              </div>
-
-              {/* Status + Copilot toggle */}
-              <div style={{ display:'flex', gap:6, alignItems:'center' }}>
-                {arqState.saving && (
-                  <span style={{ fontSize:9, padding:'3px 8px', borderRadius:10, background:'rgba(167,139,250,0.12)', color:T.purpleL }}>Salvando…</span>
-                )}
-                {arqState.projectId && !arqState.saving && (
-                  <span style={{ fontSize:9, padding:'3px 8px', borderRadius:10, background:'rgba(74,222,128,0.08)', color:'#4ade80', fontWeight:700 }}>● Sincronizado</span>
-                )}
-                {!arqState.projectId && !arqState.loading && (
-                  <span style={{ fontSize:9, padding:'3px 8px', borderRadius:10, background:'rgba(251,146,60,0.1)', color:'#fb923c', fontWeight:700 }}>Sem projeto</span>
-                )}
-                <button
-                  onClick={() => setCopilotCollapsed(p => !p)}
-                  title={copilotCollapsed ? 'Abrir Copilot' : 'Recolher Copilot'}
-                  style={{
-                    padding:'4px 10px', borderRadius:7, border:`1px solid ${copilotCollapsed ? T.border : T.purple}`,
-                    background:copilotCollapsed?'transparent':'rgba(124,58,237,0.15)', color:copilotCollapsed?T.dim:T.purpleL,
-                    cursor:'pointer', fontSize:10, fontWeight:700, display:'flex', alignItems:'center', gap:5, marginLeft:8,
-                  }}
-                >
-                  🤖 {copilotCollapsed ? 'Copilot' : 'Copilot ▸'}
+              {/* Toggle */}
+              <div style={{ padding:expanded?'10px 10px 6px':'10px 6px 6px', flexShrink:0 }}>
+                <button onClick={() => setExpanded(p => !p)} style={{
+                  width:'100%', padding:'6px', borderRadius:6, border:`1px solid ${T.border}`,
+                  background:'rgba(255,255,255,0.04)', color:T.dim, cursor:'pointer', fontSize:11,
+                  display:'flex', alignItems:'center', justifyContent:'center', gap:6,
+                }}>
+                  {expanded ? '◂ Recolher' : '▸'}
                 </button>
               </div>
+
+              <Sidebar
+                activeModule={activeModule}
+                expanded={expanded}
+                arqState={arqState}
+                onSelect={setActiveModule}
+              />
             </div>
 
-            {/* ══ BODY ══ */}
-            <div style={{ flex:1, display:'flex', overflow:'hidden' }}>
-
-              {/* ── SIDEBAR ── */}
-              <div style={{
-                width:sidebarW, flexShrink:0, background:T.sidebar,
-                borderRight:`1px solid ${T.border}`, display:'flex', flexDirection:'column',
-                transition:'width 0.2s', overflow:'hidden',
-              }}>
-                {/* Toggle */}
-                <div style={{ padding:expanded?'10px 10px 6px':'10px 6px 6px', flexShrink:0 }}>
-                  <button onClick={() => setExpanded(p => !p)} style={{
-                    width:'100%', padding:'6px', borderRadius:6, border:`1px solid ${T.border}`,
-                    background:'rgba(255,255,255,0.04)', color:T.dim, cursor:'pointer', fontSize:11,
-                    display:'flex', alignItems:'center', justifyContent:'center', gap:6,
-                  }}>
-                    {expanded ? '◂ Recolher' : '▸'}
-                  </button>
+            {/* ── MODULE CONTENT ── */}
+            <div style={{ flex:1, overflow:'hidden', position:'relative' }}>
+              <Suspense fallback={
+                <div style={{ height:'100%', display:'flex', alignItems:'center', justifyContent:'center', color:T.dim, fontSize:12 }}>
+                  Carregando módulo…
                 </div>
-
-                <Sidebar
-                  activeModule={activeModule}
-                  expanded={expanded}
-                  arqState={arqState}
-                  onSelect={setActiveModule}
-                />
-              </div>
-
-              {/* ── MODULE CONTENT ── */}
-              <div style={{ flex:1, overflow:'hidden', position:'relative' }}>
-                <Suspense fallback={
-                  <div style={{ height:'100%', display:'flex', alignItems:'center', justifyContent:'center', color:T.dim, fontSize:12 }}>
-                    Carregando módulo…
-                  </div>
-                }>
-                  {renderModule(activeModule, arqState, setActiveModule)}
-                </Suspense>
-              </div>
+              }>
+                {renderModule(activeModule, arqState, setActiveModule)}
+              </Suspense>
             </div>
-
-            {/* ── ARQ COPILOT PANEL ── */}
-            <ArqCopilot collapsed={copilotCollapsed} onToggle={() => setCopilotCollapsed(p => !p)}/>
           </div>
-        </ArqProjectContext.Provider>
-      </WorkspaceContext.Provider>
-    </WorkspaceProvider>
+
+          {/* ── ARQ COPILOT PANEL ── */}
+          <ArqCopilot collapsed={copilotCollapsed} onToggle={() => setCopilotCollapsed(p => !p)}/>
+      </div>
+    </ArqProjectContext.Provider>
   )
 }
