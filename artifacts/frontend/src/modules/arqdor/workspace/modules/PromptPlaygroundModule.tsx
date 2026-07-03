@@ -1,4 +1,4 @@
-import { useState, useMemo, useCallback } from 'react'
+import { useState, useMemo, useCallback, useRef } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
 import {
   useListArchPromptVariations,
@@ -85,6 +85,7 @@ function useSavedVariations() {
     mutation: { onError: () => setApiError('Erro ao remover variação. Tente novamente.') },
   })
 
+
   const save = useCallback((v: Omit<SavedVariation, 'id' | 'savedAt' | 'name'>, suggestedName: string) => {
     createMutation.mutate(
       { data: {
@@ -121,23 +122,25 @@ function useSavedVariations() {
     )
   }, [updateMutation, invalidate])
 
-  const importVariations = useCallback((incoming: SavedVariation[]) => {
+  const importVariations = useCallback((incoming: SavedVariation[]): number => {
     const existingIds = new Set(rawVariations.map(v => v.id))
     const novel = incoming.filter(v => !existingIds.has(v.id))
-    if (novel.length === 0) return
-    Promise.all(
-      novel.map(v =>
-        createMutation.mutateAsync({ data: {
-          name: v.name,
-          translator: v.translator,
-          detail: v.detail,
-          prompt: v.prompt,
-          negativePrompt: v.negativePrompt,
-          estimatedTokens: v.estimatedTokens,
-          notes: v.notes ?? undefined,
-        } })
-      )
-    ).then(invalidate).catch(() => setApiError('Erro ao importar algumas variações.'))
+    if (novel.length > 0) {
+      Promise.all(
+        novel.map(v =>
+          createMutation.mutateAsync({ data: {
+            name: v.name,
+            translator: v.translator,
+            detail: v.detail,
+            prompt: v.prompt,
+            negativePrompt: v.negativePrompt,
+            estimatedTokens: v.estimatedTokens,
+            notes: v.notes ?? undefined,
+          } })
+        )
+      ).then(invalidate).catch(() => setApiError('Erro ao importar algumas variações.'))
+    }
+    return novel.length
   }, [rawVariations, createMutation, invalidate])
 
   return {
@@ -629,18 +632,86 @@ function SavedVariationsPanel({
   onRename: (id: string, name: string) => void
   onDelete: (id: string) => void
   onUpdateNotes: (id: string, notes: string) => void
-  onImport: (items: SavedVariation[]) => void
+  onImport: (items: SavedVariation[]) => number
 }) {
   const [open, setOpen] = useState(true)
   const [editingId, setEditingId] = useState<string | null>(null)
   const [editingName, setEditingName] = useState('')
   const [copiedId, setCopiedId] = useState<string | null>(null)
   const [exported, setExported] = useState(false)
-  const [importStatus, setImportStatus] = useState<'idle' | 'ok' | 'error'>('idle')
+  const [importMsg, setImportMsg] = useState<{ ok: boolean; text: string } | null>(null)
+  const fileInputRef = useRef<HTMLInputElement>(null)
+
+  const handleImportClick = (e: React.MouseEvent) => {
+    e.stopPropagation()
+    fileInputRef.current?.click()
+  }
+
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (!e.target) return
+    e.target.value = ''
+    if (!file) return
+    const reader = new FileReader()
+    reader.onload = (ev) => {
+      try {
+        const raw = JSON.parse(ev.target?.result as string)
+        if (!Array.isArray(raw)) throw new Error('O arquivo deve conter um array de variações.')
+        const parsed: SavedVariation[] = raw.map((item: Record<string, unknown>, idx: number) => {
+          if (typeof item.prompt !== 'string' || !item.prompt)
+            throw new Error(`Item ${idx + 1}: campo "prompt" ausente ou inválido.`)
+          if (typeof item.name !== 'string' || !item.name)
+            throw new Error(`Item ${idx + 1}: campo "name" ausente ou inválido.`)
+          const translator = item.translator as TranslatorId
+          if (!TRANSLATORS.find(t => t.id === translator))
+            throw new Error(`Item ${idx + 1}: tradutor desconhecido "${String(item.translator)}".`)
+          const detail = (item.detailLevel ?? item.detail) as DetailLevel
+          if (!DETAIL_LEVELS.find(d => d.id === detail))
+            throw new Error(`Item ${idx + 1}: nível de detalhe desconhecido "${String(item.detailLevel ?? item.detail)}".`)
+          const id: string = typeof item.id === 'string' && item.id
+            ? item.id
+            : `imp-${Date.now()}-${Math.random().toString(36).slice(2, 7)}-${idx}`
+          const savedAt: number = typeof item.savedAt === 'string'
+            ? new Date(item.savedAt).getTime() || Date.now()
+            : typeof item.savedAt === 'number' ? item.savedAt : Date.now()
+          return {
+            id,
+            name: item.name as string,
+            translator,
+            detail,
+            prompt: item.prompt as string,
+            negativePrompt: typeof item.negativePrompt === 'string' ? item.negativePrompt : '',
+            estimatedTokens: typeof item.estimatedTokens === 'number' ? item.estimatedTokens : Math.floor((item.prompt as string).length / 4),
+            savedAt,
+          }
+        })
+        const added = onImport(parsed)
+        const skipped = parsed.length - added
+        const parts: string[] = []
+        if (added > 0) parts.push(`${added} importada${added !== 1 ? 's' : ''}`)
+        if (skipped > 0) parts.push(`${skipped} ignorada${skipped !== 1 ? 's' : ''} (duplicata${skipped !== 1 ? 's' : ''})`)
+        setImportMsg({ ok: true, text: parts.join(', ') + '.' })
+      } catch (err) {
+        setImportMsg({ ok: false, text: err instanceof Error ? err.message : 'Arquivo inválido.' })
+      }
+      setTimeout(() => setImportMsg(null), 4000)
+    }
+    reader.readAsText(file)
+  }
 
   const handleExport = (e: React.MouseEvent) => {
     e.stopPropagation()
-    const blob = new Blob([JSON.stringify(variations, null, 2)], { type: 'application/json' })
+    const data = variations.map(v => ({
+      id: v.id,
+      name: v.name,
+      translator: v.translator,
+      detailLevel: v.detail,
+      prompt: v.prompt,
+      negativePrompt: v.negativePrompt,
+      estimatedTokens: v.estimatedTokens,
+      savedAt: new Date(v.savedAt).toISOString(),
+    }))
+    const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' })
     const url = URL.createObjectURL(blob)
     const a = document.createElement('a')
     a.href = url
@@ -649,33 +720,6 @@ function SavedVariationsPanel({
     URL.revokeObjectURL(url)
     setExported(true)
     setTimeout(() => setExported(false), 2000)
-  }
-
-  const handleImportFile = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0]
-    if (!file) return
-    const reader = new FileReader()
-    reader.onload = (ev) => {
-      try {
-        const parsed = JSON.parse(ev.target?.result as string) as unknown
-        if (!Array.isArray(parsed)) throw new Error('not an array')
-        const items = parsed as SavedVariation[]
-        const valid = items.filter(
-          (v) => typeof v.id === 'string' && typeof v.name === 'string' &&
-                 typeof v.prompt === 'string' &&
-                 (typeof v.savedAt === 'number' || typeof v.savedAt === 'string')
-        )
-        if (valid.length === 0) throw new Error('no valid items')
-        onImport(valid)
-        setImportStatus('ok')
-      } catch {
-        setImportStatus('error')
-      } finally {
-        setTimeout(() => setImportStatus('idle'), 2500)
-        e.target.value = ''
-      }
-    }
-    reader.readAsText(file)
   }
 
   const copy = (id: string, text: string) => {
@@ -691,6 +735,15 @@ function SavedVariationsPanel({
 
   return (
     <div style={{ borderRadius:10, border:`1px solid ${T.border}`, overflow:'hidden', marginTop:12 }}>
+      {/* Hidden file input for import */}
+      <input
+        ref={fileInputRef}
+        type="file"
+        accept=".json,application/json"
+        style={{ display:'none' }}
+        onChange={handleFileChange}
+      />
+
       <div
         onClick={() => setOpen(p => !p)}
         style={{ padding:'10px 14px', background:'rgba(255,255,255,0.03)', display:'flex', alignItems:'center', gap:8, cursor:'pointer' }}>
@@ -702,26 +755,19 @@ function SavedVariationsPanel({
             </span>
           )}
         </span>
-        {/* Import button — always visible so users can import even with empty list */}
-        <label
-          onClick={e => e.stopPropagation()}
+        {/* Import button — always visible */}
+        <button
+          onClick={handleImportClick}
           title="Importar variações de um arquivo JSON"
           style={{
             padding:'3px 10px', borderRadius:5, border:`1px solid ${T.border}`,
-            background: importStatus === 'ok' ? 'rgba(74,222,128,0.15)' : importStatus === 'error' ? 'rgba(248,113,113,0.15)' : 'rgba(255,255,255,0.05)',
-            color: importStatus === 'ok' ? '#4ade80' : importStatus === 'error' ? '#f87171' : T.dim,
+            background: 'rgba(255,255,255,0.05)',
+            color: T.dim,
             cursor:'pointer', fontSize:9, fontWeight:700,
-            outline: importStatus === 'ok' ? '1px solid #4ade8044' : importStatus === 'error' ? '1px solid #f8717144' : 'none',
-            transition:'all 0.2s', display:'inline-block',
+            transition:'all 0.2s',
           }}>
-          {importStatus === 'ok' ? '✓ Importado' : importStatus === 'error' ? '✗ Inválido' : '⬆ Importar'}
-          <input
-            type="file"
-            accept=".json,application/json"
-            onChange={handleImportFile}
-            style={{ display:'none' }}
-          />
-        </label>
+          ⬆ Importar
+        </button>
         {variations.length > 0 && (
           <button
             onClick={handleExport}
@@ -739,6 +785,18 @@ function SavedVariationsPanel({
         )}
         <span style={{ fontSize:10, color:T.dim }}>{open ? '▾' : '▸'}</span>
       </div>
+
+      {/* Import feedback message */}
+      {importMsg && (
+        <div style={{
+          padding:'7px 14px', fontSize:10, fontWeight:700,
+          background: importMsg.ok ? 'rgba(74,222,128,0.1)' : 'rgba(248,113,113,0.1)',
+          color: importMsg.ok ? '#4ade80' : '#f87171',
+          borderBottom: `1px solid ${importMsg.ok ? 'rgba(74,222,128,0.2)' : 'rgba(248,113,113,0.2)'}`,
+        }}>
+          {importMsg.ok ? '✓ ' : '✗ '}{importMsg.text}
+        </div>
+      )}
 
       {open && (
         <div style={{ padding:'10px 14px', display:'flex', flexDirection:'column' as const, gap:8 }}>
