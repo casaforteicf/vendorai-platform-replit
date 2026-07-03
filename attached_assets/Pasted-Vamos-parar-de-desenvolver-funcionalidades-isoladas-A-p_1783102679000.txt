@@ -1,0 +1,551 @@
+Vamos parar de desenvolver funcionalidades isoladas.
+
+A partir desta etapa quero reorganizar o arqdor.ai como uma plataforma.
+
+O objetivo não é criar um Prompt Builder.
+
+O objetivo é criar um COPILOT DE ARQUITETURA COM IA.
+
+====================================================
+
+VISÃO DO PRODUTO
+
+O arqdor.ai será o sistema operacional de projetos arquitetônicos assistidos por IA.
+
+O Prompt passa a ser apenas uma saída.
+
+O verdadeiro patrimônio do sistema será o Modelo Inteligente do Projeto.
+
+Toda IA futura consumirá esse modelo.
+
+====================================================
+
+ARQUITETURA
+
+Criar uma estrutura modular.
+
+src/modules/arqdor
+
+├── domain
+├── application
+├── infrastructure
+├── providers
+├── ui
+├── workspace
+├── engines
+├── plugins
+├── shared
+
+====================================================
+
+DOMAIN
+
+O domínio é o núcleo do sistema.
+
+Nenhum componente React poderá conter regra de negócio.
+
+Toda regra deverá existir aqui.
+
+Criar entidades:
+
+Project
+
+Environment
+
+ArchitecturalObject
+
+Material
+
+MaterialLibrary
+
+Prompt
+
+PromptSection
+
+ProjectDNA
+
+Relationship
+
+Rule
+
+Permission
+
+Risk
+
+RenderJob
+
+RenderReview
+
+RenderVersion
+
+Workspace
+
+====================================================
+
+APPLICATION
+
+Casos de uso.
+
+Exemplos
+
+AnalyzeProjectUseCase
+
+BuildPromptUseCase
+
+ReviewRenderUseCase
+
+CreateVersionUseCase
+
+CompareVersionsUseCase
+
+GenerateCorrectionPromptUseCase
+
+ApplyMaterialUseCase
+
+ImportProjectUseCase
+
+ExportProjectUseCase
+
+====================================================
+
+ENGINES
+
+Criar motores independentes.
+
+Analysis Engine
+
+Prompt Engine
+
+Rule Engine
+
+Relationship Engine
+
+Validation Engine
+
+Score Engine
+
+Correction Engine
+
+Material Engine
+
+Version Engine
+
+====================================================
+
+WORKSPACE
+
+Criar um AI Workspace.
+
+Não será uma tela.
+
+Será o centro da aplicação.
+
+Ele deverá possuir módulos.
+
+Projeto
+
+Biblioteca
+
+Prompt Playground
+
+Render History
+
+AI Review
+
+AI Corrections
+
+AI Memory
+
+Configurações
+
+====================================================
+
+PLUGIN SYSTEM
+
+Essa é a parte mais importante.
+
+O sistema NÃO deve conhecer Nano Banana.
+
+Ele deve conhecer interfaces.
+
+Criar:
+
+ImageAnalysisProvider
+
+PromptProvider
+
+RenderProvider
+
+RenderReviewProvider
+
+MaterialRecognitionProvider
+
+StyleRecognitionProvider
+
+Cada IA será um plugin.
+
+Exemplos futuros:
+
+Nano Banana
+
+OpenAI Images
+
+Gemini
+
+Flux
+
+Midjourney
+
+Stable Diffusion
+
+Krea
+
+D5 AI
+
+Lumion AI
+
+====================================================
+
+PROVIDER CONTRACT
+
+Criar interfaces.
+
+interface RenderProvider {
+
+generate()
+
+review()
+
+correct()
+
+}
+
+interface PromptProvider {
+
+buildPrompt()
+
+buildNegativePrompt()
+
+}
+
+interface ImageAnalysisProvider {
+
+analyze()
+
+detectObjects()
+
+detectMaterials()
+
+}
+
+====================================================
+
+PROMPT ENGINE
+
+Não armazenar prompts gigantes.
+
+Armazenar estrutura.
+
+Core
+
+Project
+
+Objects
+
+Rules
+
+DNA
+
+Style
+
+Negative
+
+Render
+
+O Prompt Final será montado em tempo real.
+
+====================================================
+
+PROJECT DNA
+
+Criar um DNA do projeto.
+
+Estilo
+
+Paleta
+
+Ferragens
+
+Materiais
+
+Linguagem
+
+Detalhamento
+
+Atmosfera
+
+Fotografia
+
+Objetivo
+
+Toda renderização utilizará esse DNA.
+
+====================================================
+
+OBJECT DNA
+
+Cada objeto também terá um DNA.
+
+Exemplo.
+
+Puxador
+
+↓
+
+Categoria
+
+↓
+
+Material
+
+↓
+
+Acabamento
+
+↓
+
+Restrições
+
+↓
+
+Relacionamentos
+
+↓
+
+Histórico
+
+↓
+
+Referências
+
+====================================================
+
+AI MEMORY
+
+Criar estrutura.
+
+A IA deve aprender.
+
+Exemplo.
+
+Escritório X.
+
+Sempre usa:
+
+Freijó
+
+Perfil Slim
+
+3000K
+
+Fotografia Editorial
+
+Guardar isso.
+
+====================================================
+
+RENDER HISTORY
+
+Cada render vira um objeto.
+
+RenderJob
+
+↓
+
+Prompt
+
+↓
+
+Imagem
+
+↓
+
+Score
+
+↓
+
+Correções
+
+↓
+
+Versão
+
+====================================================
+
+AI REVIEW
+
+Criar estrutura.
+
+Projeto
+
+×
+
+Render
+
+↓
+
+Diferenças
+
+↓
+
+Score
+
+↓
+
+Correções
+
+====================================================
+
+CORRECTION ENGINE
+
+Após Review.
+
+Gerar.
+
+Correction Prompt.
+
+Sem reconstruir todo o Prompt.
+
+====================================================
+
+MATERIAL LIBRARY
+
+Transformar em módulo independente.
+
+Permitir futuramente.
+
+Importação.
+
+Fabricantes.
+
+Portobello
+
+Duratex
+
+Arauco
+
+Guararapes
+
+Cosentino
+
+Deca
+
+Docol
+
+====================================================
+
+OBJECT LIBRARY
+
+Criar biblioteca.
+
+Puxadores
+
+Ilhas
+
+Bancadas
+
+Esquadrias
+
+Portas
+
+Nichos
+
+Luminárias
+
+Painéis
+
+Ferragens
+
+Vegetação
+
+====================================================
+
+STYLE LIBRARY
+
+Criar.
+
+Minimalista
+
+Escandinavo
+
+Japandi
+
+Industrial
+
+Contemporâneo
+
+Boho
+
+Luxo
+
+Clássico
+
+====================================================
+
+EXPORTADORES
+
+Criar exportadores independentes.
+
+Project JSON
+
+Prompt TXT
+
+Prompt JSON
+
+Workspace
+
+Material Library
+
+====================================================
+
+IMPORTADORES
+
+Preparar.
+
+SketchUp
+
+Revit
+
+IFC
+
+OBJ
+
+FBX
+
+Imagem
+
+PDF
+
+====================================================
+
+IMPORTANTE
+
+Não implementar integrações ainda.
+
+Criar apenas arquitetura.
+
+Tudo deverá utilizar interfaces.
+
+Nenhum módulo poderá depender diretamente de Nano Banana.
+
+O sistema deve ser preparado para trabalhar com qualquer IA.
+
+====================================================
+
+OBJETIVO FINAL
+
+O arqdor.ai deixa de ser um gerador de prompts.
+
+Ele passa a ser uma plataforma de modelagem arquitetônica assistida por IA.
+
+O Prompt será apenas uma das saídas possíveis do modelo do projeto.

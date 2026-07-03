@@ -1242,7 +1242,7 @@ function ProjetoInteligenteView() {
 
 // ─── Main Page ────────────────────────────────────────────────────────────────
 
-export default function ArqdorPage() {
+export default function ArqdorPage({ standalone = true }: { standalone?: boolean }) {
   const [project, setProject]         = useState<ArchProject>(MOCK_PROJECT)
   const [selectedId, setSelectedId]   = useState<string | null>('sala')
   const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set(['sala','coz','coz-marc','coz-porta01']))
@@ -1311,7 +1311,7 @@ export default function ArqdorPage() {
     : envRoots
 
   return (
-    <div style={{ height:'100vh', display:'flex', flexDirection:'column' as const, background:T.bg, color:T.text, fontFamily:'system-ui,sans-serif', overflow:'hidden' }}>
+    <div style={{ height: standalone ? '100vh' : '100%', display:'flex', flexDirection:'column' as const, background:T.bg, color:T.text, fontFamily:'system-ui,sans-serif', overflow:'hidden' }}>
 
       {/* ══ HEADER ══ */}
       <div style={{
