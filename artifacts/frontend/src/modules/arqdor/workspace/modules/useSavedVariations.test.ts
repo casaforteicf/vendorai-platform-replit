@@ -1039,6 +1039,77 @@ describe('pruneOldest', () => {
   })
 })
 
+// ─── Scenario: badge stays hidden with clean server-synced list ───────────────
+
+describe('pendingCount stays 0 when all items are server-assigned', () => {
+  it('reports pendingCount === 0 on mount and keeps it 0 after the online event fires', async () => {
+    // Seed localStorage with only server-assigned ids (no local-* prefix)
+    const v1 = makeVariation({ id: 'srv-clean-1', name: 'Clean one' })
+    const v2 = makeVariation({ id: 'srv-clean-2', name: 'Clean two' })
+    seedLocalStorage([v1, v2])
+    localStorage.setItem('vendorai_token', 'tok-abc')
+
+    // GET on mount returns the same server variations — no pending items
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValueOnce({
+        ok: true,
+        json: async () => [
+          {
+            id: 'srv-clean-1',
+            name: 'Clean one',
+            translator: 'midjourney',
+            detail: 'medium',
+            prompt: 'A beautiful building',
+            negativePrompt: 'blurry, low quality',
+            estimatedTokens: 42,
+            savedAt: new Date(1_700_000_000_000).toISOString(),
+            notes: null,
+          },
+          {
+            id: 'srv-clean-2',
+            name: 'Clean two',
+            translator: 'midjourney',
+            detail: 'medium',
+            prompt: 'A beautiful building',
+            negativePrompt: 'blurry, low quality',
+            estimatedTokens: 42,
+            savedAt: new Date(1_700_000_001_000).toISOString(),
+            notes: null,
+          },
+        ],
+      }),
+    )
+
+    const { result } = renderHook(() => useSavedVariations())
+
+    // Badge must be hidden from the very first render (no local-* items in storage)
+    expect(result.current.pendingCount).toBe(0)
+
+    // Wait for the mount-time GET to settle
+    await waitFor(() => expect(result.current.syncing).toBe(false))
+
+    // Still 0 after the server response is applied
+    expect(result.current.pendingCount).toBe(0)
+
+    // Simulate connectivity-restored event — syncPendingVariations should find no
+    // local-* items and return early without making any additional fetch calls
+    await act(async () => {
+      window.dispatchEvent(new Event('online'))
+      await new Promise(r => setTimeout(r, 0))
+    })
+
+    // Badge must remain hidden — no spurious flash
+    expect(result.current.pendingCount).toBe(0)
+
+    // All items keep their server-assigned ids
+    const ids = result.current.variations.map(v => v.id)
+    expect(ids).toContain('srv-clean-1')
+    expect(ids).toContain('srv-clean-2')
+    ids.forEach(id => expect(id).not.toMatch(/^local-/))
+  })
+})
+
 // ─── Scenario: rename ─────────────────────────────────────────────────────────
 
 describe('rename', () => {
