@@ -1,5 +1,5 @@
-import { describe, it, expect } from 'vitest'
-import { render } from '@testing-library/react'
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
+import { render, act } from '@testing-library/react'
 import { VariationCard } from './PromptPlaygroundModule'
 import { STALE_AMBER_DAYS, STALE_RED_DAYS } from './useSavedVariations'
 import type { SavedVariation } from './useSavedVariations'
@@ -136,5 +136,82 @@ describe('VariationCard — stalenessBorderColor on outer wrapper', () => {
     expect(wrapper.style.border).toContain('255')
     expect(wrapper.style.border).not.toContain('251')
     expect(wrapper.style.border).not.toContain('239')
+  })
+})
+
+// ─── Shared props helper for interval tests ────────────────────────────────────
+
+function baseProps(v: SavedVariation) {
+  return {
+    v,
+    editingId: null as string | null,
+    editingName: '',
+    copiedId: null as string | null,
+    copiedLinkId: null as string | null,
+    onStartEdit: noop,
+    onCommitEdit: noop,
+    onCancelEdit: noop,
+    onEditingNameChange: noop,
+    onCopy: noop,
+    onCopyLink: noop,
+    onDelete: noop,
+    onUpdateNotes: noop,
+  } as const
+}
+
+describe('VariationCard — interval lifecycle', () => {
+  let setIntervalSpy: ReturnType<typeof vi.spyOn>
+  let clearIntervalSpy: ReturnType<typeof vi.spyOn>
+
+  beforeEach(() => {
+    vi.useFakeTimers()
+    setIntervalSpy = vi.spyOn(globalThis, 'setInterval')
+    clearIntervalSpy = vi.spyOn(globalThis, 'clearInterval')
+  })
+
+  afterEach(() => {
+    vi.restoreAllMocks()
+    vi.useRealTimers()
+  })
+
+  it('starts interval when now is absent and clears it when now is injected', () => {
+    const v = makeVariation('local-interval-test', 0)
+
+    const { rerender } = render(<VariationCard {...baseProps(v)} />)
+
+    // No now prop → interval must have been set up once
+    expect(setIntervalSpy).toHaveBeenCalledTimes(1)
+    expect(setIntervalSpy).toHaveBeenCalledWith(expect.any(Function), 60_000)
+    expect(clearIntervalSpy).toHaveBeenCalledTimes(0)
+
+    // Inject the now prop → React re-runs the effect; cleanup must fire clearInterval
+    act(() => {
+      rerender(<VariationCard {...baseProps(v)} now={NOW} />)
+    })
+
+    // The previous interval must have been cleared
+    expect(clearIntervalSpy).toHaveBeenCalledTimes(1)
+    // No new interval should have been started (nowProp is now defined)
+    expect(setIntervalSpy).toHaveBeenCalledTimes(1)
+  })
+
+  it('never starts an interval for a server-id card even without a now prop', () => {
+    const v = makeVariation('server-uuid-no-now', 0)
+
+    render(<VariationCard {...baseProps(v)} />)
+
+    // id does not start with 'local-' so the guard short-circuits before setInterval
+    expect(setIntervalSpy).not.toHaveBeenCalled()
+    expect(clearIntervalSpy).not.toHaveBeenCalled()
+  })
+
+  it('does not start an interval when now is provided from the first render', () => {
+    const v = makeVariation('local-with-now', 0)
+
+    render(<VariationCard {...baseProps(v)} now={NOW} />)
+
+    // nowProp is defined from the start → guard returns early
+    expect(setIntervalSpy).not.toHaveBeenCalled()
+    expect(clearIntervalSpy).not.toHaveBeenCalled()
   })
 })
