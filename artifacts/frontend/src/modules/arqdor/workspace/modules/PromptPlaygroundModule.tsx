@@ -418,7 +418,7 @@ function PromptPreview({ pw }: { pw: PlaywrightPrompt }) {
 
 // ─── Saved variations panel ───────────────────────────────────────────────────
 
-function VariationCard({
+export function VariationCard({
   v,
   editingId,
   editingName,
