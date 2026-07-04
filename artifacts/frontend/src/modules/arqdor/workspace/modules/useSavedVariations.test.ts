@@ -2052,3 +2052,203 @@ describe('syncError and retryPendingSync', () => {
     expect(result.current.variations[0].name).toBe('Keep me')
   })
 })
+
+// ─── Scenario: badge accuracy after page refresh (unmount + remount) ──────────
+//
+// Unmounting and remounting the hook is equivalent to a page refresh. These
+// tests verify:
+//  (a) local-* ids survive the remount because they are persisted in localStorage
+//  (b) syncPendingVariations runs correctly on the first 'online' event after remount
+//  (c) inFlightIds (a useRef) is re-initialized to an empty Set on every mount,
+//      so an item that was in-flight at unmount time is never permanently locked out
+
+describe('badge stays accurate after the hook is unmounted and remounted mid-sync', () => {
+  it('local-* id survives remount and is promoted correctly on the next online event', async () => {
+    // Seed a local-* item as if the user saved while offline before refreshing
+    const offlineItem = makeVariation({
+      id: 'local-refresh-1',
+      name: 'Offline before refresh',
+      savedAt: 1_700_000_600_000,
+    })
+    seedLocalStorage([offlineItem])
+    localStorage.setItem('vendorai_token', 'tok-abc')
+
+    const serverResponse = {
+      id: 'srv-refresh-1',
+      name: 'Offline before refresh',
+      translator: 'midjourney',
+      detail: 'medium',
+      prompt: 'A beautiful building',
+      negativePrompt: 'blurry, low quality',
+      estimatedTokens: 42,
+      savedAt: new Date(1_700_000_600_000).toISOString(),
+      notes: null,
+    }
+
+    // First mount: server is unreachable — item stays as local-*
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockRejectedValueOnce(new TypeError('Network failure')),
+    )
+
+    const { result, unmount } = renderHook(() => useSavedVariations())
+    await waitFor(() => expect(result.current.syncing).toBe(false))
+
+    expect(result.current.variations).toHaveLength(1)
+    expect(result.current.variations[0].id).toBe('local-refresh-1')
+    expect(result.current.pendingCount).toBe(1)
+
+    // ── Simulate a page refresh ───────────────────────────────────────────────
+    unmount()
+
+    // (a) local-* item survives unmount in localStorage
+    expect(storedVariations()).toHaveLength(1)
+    expect(storedVariations()[0].id).toBe('local-refresh-1')
+
+    // ── Remount (new page load): GET still fails, but 'online' POST will succeed
+    vi.stubGlobal(
+      'fetch',
+      vi
+        .fn()
+        // GET on remount → still offline
+        .mockRejectedValueOnce(new TypeError('Network failure'))
+        // POST from syncPendingVariations triggered by 'online' → success
+        .mockResolvedValueOnce({ ok: true, json: async () => serverResponse }),
+    )
+
+    const { result: result2 } = renderHook(() => useSavedVariations())
+
+    // (a) local-* id is immediately visible from localStorage on the new mount
+    expect(result2.current.variations).toHaveLength(1)
+    expect(result2.current.variations[0].id).toBe('local-refresh-1')
+    expect(result2.current.pendingCount).toBe(1)
+
+    await waitFor(() => expect(result2.current.syncing).toBe(false))
+
+    // Still pending after mount-time GET fails
+    expect(result2.current.pendingCount).toBe(1)
+
+    // ── (b) syncPendingVariations runs correctly on the 'online' event ────────
+    await act(async () => {
+      window.dispatchEvent(new Event('online'))
+      await new Promise(r => setTimeout(r, 0))
+    })
+
+    await waitFor(() => result2.current.pendingCount === 0)
+
+    // Badge clears and item is promoted to the server-assigned id
+    expect(result2.current.pendingCount).toBe(0)
+    expect(result2.current.variations).toHaveLength(1)
+    expect(result2.current.variations[0].id).toBe('srv-refresh-1')
+
+    // localStorage is updated with the server id
+    expect(storedVariations()[0].id).toBe('srv-refresh-1')
+  })
+
+  it('in-flight save at unmount does not permanently lock the item in inFlightIds after remount', async () => {
+    localStorage.setItem('vendorai_token', 'tok-abc')
+
+    // Deferred save POST that will still be in-flight when we unmount
+    let resolveFirstPost!: (v: { ok: boolean; json: () => Promise<unknown> }) => void
+    const firstPostPromise = new Promise<{ ok: boolean; json: () => Promise<unknown> }>(
+      r => { resolveFirstPost = r },
+    )
+
+    const serverResponseFromRemount = {
+      id: 'srv-remount-promoted-1',
+      name: 'In-flight at unmount',
+      translator: 'midjourney',
+      detail: 'medium',
+      prompt: 'A beautiful building',
+      negativePrompt: 'blurry, low quality',
+      estimatedTokens: 42,
+      savedAt: new Date(1_700_000_700_000).toISOString(),
+      notes: null,
+    }
+
+    // First mount: GET fails (offline), save POST is deferred (stays in-flight)
+    vi.stubGlobal(
+      'fetch',
+      vi
+        .fn()
+        .mockRejectedValueOnce(new TypeError('Network failure')) // GET on mount
+        .mockReturnValueOnce(firstPostPromise),                  // save POST — kept pending
+    )
+
+    const { result, unmount } = renderHook(() => useSavedVariations())
+    await waitFor(() => expect(result.current.syncing).toBe(false))
+
+    // Save an item — POST fires but remains in-flight
+    act(() => {
+      result.current.save(
+        {
+          translator: 'midjourney',
+          detail: 'medium',
+          prompt: 'A beautiful building',
+          negativePrompt: 'blurry, low quality',
+          estimatedTokens: 42,
+        },
+        'In-flight at unmount',
+      )
+    })
+
+    // Optimistic item is visible with a local-* id; its POST is still in-flight
+    expect(result.current.variations).toHaveLength(1)
+    const localId = result.current.variations[0].id
+    expect(localId).toMatch(/^local-/)
+    expect(result.current.pendingCount).toBe(1)
+
+    // ── Unmount while POST is still in-flight ─────────────────────────────────
+    // Simulates a page refresh before the save completes. The in-flight POST
+    // is now orphaned; its promoteLocal will call setVariations on the unmounted
+    // component (React no-op). Critically, the OLD inFlightIds ref is also gone.
+    unmount()
+
+    // The local-* item is still in localStorage (optimistic write persisted it)
+    expect(storedVariations()).toHaveLength(1)
+    expect(storedVariations()[0].id).toBe(localId)
+
+    // ── Remount (new page load) ───────────────────────────────────────────────
+    // (c) inFlightIds is a useRef — re-initialized to an empty Set on every mount.
+    // The item must NOT be locked out; it should be visible and promotable.
+    vi.stubGlobal(
+      'fetch',
+      vi
+        .fn()
+        .mockRejectedValueOnce(new TypeError('Network failure'))           // GET on remount
+        .mockResolvedValueOnce({ ok: true, json: async () => serverResponseFromRemount }), // POST on 'online'
+    )
+
+    const { result: result2 } = renderHook(() => useSavedVariations())
+
+    // (c) Item is immediately present from localStorage; inFlightIds is empty
+    expect(result2.current.variations).toHaveLength(1)
+    expect(result2.current.variations[0].id).toBe(localId)
+    expect(result2.current.pendingCount).toBe(1)
+
+    await waitFor(() => expect(result2.current.syncing).toBe(false))
+
+    // ── Fire 'online': item must be promoted, not permanently stuck ───────────
+    await act(async () => {
+      window.dispatchEvent(new Event('online'))
+      await new Promise(r => setTimeout(r, 0))
+    })
+
+    await waitFor(() => result2.current.pendingCount === 0)
+
+    expect(result2.current.pendingCount).toBe(0)
+    expect(result2.current.variations[0].id).toBe('srv-remount-promoted-1')
+    expect(storedVariations()[0].id).toBe('srv-remount-promoted-1')
+
+    // Settle the dangling POST from the first mount — must be a no-op for the UI
+    await act(async () => {
+      resolveFirstPost({ ok: false, status: 503 })
+      await new Promise(r => setTimeout(r, 0))
+    })
+
+    // State must be unchanged — no duplicate entry and no revert
+    expect(result2.current.variations).toHaveLength(1)
+    expect(result2.current.variations[0].id).toBe('srv-remount-promoted-1')
+    expect(result2.current.pendingCount).toBe(0)
+  })
+})
