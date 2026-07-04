@@ -130,6 +130,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     localStorage.removeItem(TOKEN_KEY);
     localStorage.removeItem(DEMO_EXPIRES_KEY);
     localStorage.removeItem(OVERRIDE_KEY);
+    localStorage.removeItem("arqdor_saved_prompt_variations");
+    localStorage.removeItem("arqdor_prompt_variations_migrated");
+    localStorage.removeItem("arqdor_pending_owner");
     sessionStorage.removeItem(DEMO_SESSION_KEY);
     setToken(null);
     setRawUser(null);

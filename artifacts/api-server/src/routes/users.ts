@@ -1,7 +1,7 @@
 import { Router, type IRouter } from "express";
 import { eq } from "drizzle-orm";
 import bcrypt from "bcryptjs";
-import { db, usersTable, insertUserSchema, updateUserSchema } from "@workspace/db";
+import { db, usersTable, insertUserSchema, updateUserSchema, archPromptVariationsTable } from "@workspace/db";
 import { requireRole } from "../middlewares/auth.js";
 
 const router: IRouter = Router();
@@ -206,6 +206,10 @@ router.delete("/users/:id", requireRole("super_admin", "tenant_admin"), async (r
     res.status(403).json({ error: "Access denied to this tenant" });
     return;
   }
+
+  await db
+    .delete(archPromptVariationsTable)
+    .where(eq(archPromptVariationsTable.userId, existing.id));
 
   await db.delete(usersTable).where(eq(usersTable.id, existing.id));
 
