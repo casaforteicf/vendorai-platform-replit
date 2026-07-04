@@ -449,6 +449,7 @@ function VariationCard({
   const [notesOpen, setNotesOpen] = useState(false)
   const [draftNotes, setDraftNotes] = useState(v.notes ?? '')
   const [now, setNow] = useState(() => Date.now())
+  const [confirmingDelete, setConfirmingDelete] = useState(false)
 
   useEffect(() => {
     if (!v.id.startsWith('local-')) return
@@ -556,13 +557,44 @@ function VariationCard({
           style={{ padding:'2px 6px', borderRadius:5, border:`1px solid ${T.border}`, background:'transparent', color:T.dim, cursor:'pointer', fontSize:10 }}>
           ✏️
         </button>
-        <button
-          onClick={() => onDelete(v.id)}
-          title="Remover"
-          style={{ padding:'2px 6px', borderRadius:5, border:`1px solid rgba(248,113,113,0.2)`, background:'transparent', color:'#f87171', cursor:'pointer', fontSize:10 }}>
-          🗑
-        </button>
+        {isPending && confirmingDelete ? (
+          <span style={{ display:'flex', alignItems:'center', gap:4 }}>
+            <button
+              onClick={() => { onDelete(v.id); setConfirmingDelete(false) }}
+              title="Confirmar exclusão permanente"
+              style={{ padding:'2px 8px', borderRadius:5, border:'1px solid rgba(248,113,113,0.6)', background:'rgba(248,113,113,0.18)', color:'#f87171', cursor:'pointer', fontSize:9, fontWeight:800 }}>
+              Excluir
+            </button>
+            <button
+              onClick={() => setConfirmingDelete(false)}
+              title="Cancelar"
+              style={{ padding:'2px 6px', borderRadius:5, border:`1px solid ${T.border}`, background:'transparent', color:T.dim, cursor:'pointer', fontSize:9 }}>
+              ✕
+            </button>
+          </span>
+        ) : (
+          <button
+            onClick={() => {
+              if (isPending) { setConfirmingDelete(true) } else { onDelete(v.id) }
+            }}
+            title="Remover"
+            style={{ padding:'2px 6px', borderRadius:5, border:`1px solid rgba(248,113,113,0.2)`, background:'transparent', color:'#f87171', cursor:'pointer', fontSize:10 }}>
+            🗑
+          </button>
+        )}
       </div>
+      {/* Pending-delete warning */}
+      {confirmingDelete && (
+        <div style={{
+          padding:'7px 12px', display:'flex', alignItems:'center', gap:8,
+          background:'rgba(239,68,68,0.08)', borderTop:'1px solid rgba(239,68,68,0.25)',
+        }}>
+          <span style={{ fontSize:11 }}>⚠️</span>
+          <p style={{ margin:0, fontSize:10, color:'rgba(248,113,113,0.9)', lineHeight:1.45, flex:1 }}>
+            Esta variação <strong>não foi sincronizada</strong> — excluí-la será permanente e não poderá ser recuperada.
+          </p>
+        </div>
+      )}
       {/* Prompt preview snippet */}
       <div style={{ padding:'8px 12px', background:'rgba(255,255,255,0.01)' }}>
         <p style={{
