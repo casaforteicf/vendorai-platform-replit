@@ -115,9 +115,21 @@ export function getUserIdFromToken(): string | null {
 }
 
 /**
- * Removes all `local-*` variations from localStorage when the current user
- * differs from the user who created them.  This prevents a previous session's
- * offline items from being synced under a different account.
+ * Removes all unsynced variations belonging to a previous user.
+ *
+ * Evicts every item whose id starts with `local-` (pending sync) or `failed-`
+ * (permanently rejected by the server) when the current user differs from the
+ * owner who created them.  Both prefixes must be covered here because:
+ *
+ *   • `local-*` — saved offline; their name/notes live **inline** in the
+ *     variation object (not in a separate queue), so evicting the item also
+ *     discards any pending rename or notes edit.  If future code ever introduces
+ *     a separate pending-rename or pending-notes queue in localStorage, that
+ *     queue MUST also be cleared in this function to prevent cross-user bleed.
+ *
+ *   • `failed-*` — promoted from `local-*` after a 4xx rejection.  They are no
+ *     longer in the retry queue but are still owned by the original user; without
+ *     this guard they would flash to the next user who logs in on the same device.
  *
  * Call this before any sync operation so stale items are always evicted first.
  */
@@ -128,12 +140,14 @@ export function clearStaleLocalItems(): void {
   const storedOwner = localStorage.getItem(PENDING_OWNER_KEY)
   if (storedOwner === userId) return
 
-  // Different user (or first login on this device) — remove any local-* items
-  // left by the previous session before we attempt to sync.
+  // Different user (or first login on this device) — remove any local-* and
+  // failed-* items left by the previous session before we attempt to sync.
   const current = readLocalVariations()
-  const hasPending = current.some(v => v.id.startsWith('local-'))
-  if (hasPending) {
-    const cleaned = current.filter(v => !v.id.startsWith('local-'))
+  const hasStale = current.some(v => v.id.startsWith('local-') || v.id.startsWith('failed-'))
+  if (hasStale) {
+    const cleaned = current.filter(
+      v => !v.id.startsWith('local-') && !v.id.startsWith('failed-'),
+    )
     persistVariations(cleaned)
   }
 
@@ -510,6 +524,13 @@ export function useSavedVariations() {
   )
 
   const rename = useCallback((id: string, name: string) => {
+    // Update in React state; the variations useEffect persists this inline in
+    // the variation object (not in a separate queue).  For local-* items the
+    // server call is skipped intentionally — the new name is included in the
+    // POST body when syncPendingVariations eventually promotes the item.
+    // IMPORTANT: if a separate pending-rename queue is ever introduced (e.g. to
+    // retry renames after reconnection), clearStaleLocalItems MUST also clear
+    // that queue to prevent cross-user bleed on shared devices.
     setVariations(prev => prev.map((v): SavedVariation => (v.id === id ? { ...v, name } : v)))
     void (async () => {
       const token = getAuthToken()
@@ -536,6 +557,10 @@ export function useSavedVariations() {
   }, [])
 
   const updateNotes = useCallback((id: string, notes: string) => {
+    // Same invariant as rename: notes are stored inline in the variation object
+    // so clearStaleLocalItems evicts them automatically with the parent item.
+    // IMPORTANT: if a separate pending-notes queue is ever introduced, it MUST
+    // also be cleared in clearStaleLocalItems to prevent cross-user bleed.
     setVariations(prev => prev.map((v): SavedVariation => (v.id === id ? { ...v, notes } : v)))
     void (async () => {
       const token = getAuthToken()
