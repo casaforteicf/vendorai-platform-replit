@@ -26,6 +26,7 @@ import { useWorkspaceProject } from '../WorkspaceContext'
 import { T } from '../../shared/arqdor-theme'
 import { useSavedVariations, getStalenessInfo } from './useSavedVariations'
 import type { SavedVariation } from './useSavedVariations'
+import { PendingSyncBadge } from './PendingSyncBadge'
 
 // ─── ProjectContext → Project converter ───────────────────────────────────────
 
@@ -520,18 +521,7 @@ function VariationCard({
         </span>
         <span style={{ fontSize:9, color:T.dim }}>{v.estimatedTokens} tk</span>
         {/* Pending sync badge */}
-        {isPending && (
-          <span style={{
-            fontSize:8, padding:'1px 7px', borderRadius:4, fontWeight:800, flexShrink:0,
-            background: staleness?.level === 'red'   ? 'rgba(239,68,68,0.15)'   :
-                        staleness?.level === 'amber' ? 'rgba(251,191,36,0.15)'  :
-                        'rgba(148,163,184,0.12)',
-            color: stalenessColor,
-            border: `1px solid ${stalenessBorderColor}`,
-          }}>
-            🔄 offline
-          </span>
-        )}
+        {isPending && <PendingSyncBadge savedAt={v.savedAt} now={now} />}
         {/* Actions */}
         <button
           onClick={() => onCopy(v.id, v.prompt)}
