@@ -78,6 +78,7 @@ import renderRouter from "./render";
 import siteRouter from "./site";
 import spinRouter from "./spin";
 import supportRouter from "./support";
+import adminBugReportsRouter from "./admin_bug_reports";
 import { authenticate, blockPartnerFromCRM, blockSuspendedTenants, blockExpiredDemo, requireRole, requireSameTenanOrSuperAdmin } from "../middlewares/auth";
 import { eq } from "drizzle-orm";
 import { db, tenantsTable } from "@workspace/db";
@@ -218,6 +219,7 @@ router.use(partnerRouter);
 router.use(partnersRouter);
 
 // Admin Partners Hub (super_admin management)
+router.use(adminBugReportsRouter);
 router.use(adminPartnersRouter);
 router.use(adminPlansRouter);
 router.use(adminAgentDefaultsRouter);

@@ -3,6 +3,7 @@ type UserFunction = "vendedor" | "financeiro" | "suporte" | "entrega" | "adminis
 import { Link, useLocation } from "wouter";
 import { useAuth } from "@/contexts/AuthContext";
 import React, { useState } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { SupportChatWidget } from "@/components/support/SupportChatWidget";
 import {
   LayoutDashboard, Users, Briefcase, MessageSquare, Calendar,
@@ -11,17 +12,32 @@ import {
   Shirt, Tag, ShoppingCart, Heart, Gift, Truck, UtensilsCrossed, Megaphone as MegaphoneIcon,
   BarChart3, ChevronRight, ChevronDown, Target, Trophy, Search, Clapperboard, Building2, AlertCircle, Bot,
   DraftingCompass, FolderOpen, Scissors, User2, Stethoscope, TrendingUp, Zap, ListChecks, Network,
-  Handshake, Shield, Cpu,
+  Handshake, Shield, Cpu, Bug,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import logoFull from "/logo-full-light.svg";
 
 export function SidebarLayout({ children }: { children: React.ReactNode }) {
-  const { user, logout, tenantOverride, clearTenantOverride } = useAuth();
+  const { user, logout, tenantOverride, clearTenantOverride, token } = useAuth();
   const [location] = useLocation();
   const [mobileOpen, setMobileOpen] = useState(false);
   const isSuperAdmin = user?.platformRole === "super_admin";
+
+  const { data: openBugsData } = useQuery<{ count: number }>({
+    queryKey: ["admin", "bug-reports-open-count"],
+    enabled: isSuperAdmin && !!token,
+    staleTime: 60_000,
+    refetchInterval: 120_000,
+    queryFn: async () => {
+      const r = await fetch("/api/admin/bug-reports/open-count", {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (!r.ok) return { count: 0 };
+      return r.json() as Promise<{ count: number }>;
+    },
+  });
+  const openBugCount = openBugsData?.count ?? 0;
   const isTenantAdmin = user?.platformRole === "tenant_admin";
   const isSeller = user?.platformRole === "tenant_seller";
   const userFunction = user?.userFunction as UserFunction | undefined;
@@ -102,11 +118,12 @@ export function SidebarLayout({ children }: { children: React.ReactNode }) {
 
   const adminNavigation = isSuperAdmin
     ? [
-        { name: "Tenants",     href: "/admin/tenants",   icon: Briefcase,    sellerHidden: false, section: "admin" },
-        { name: "Verticais",   href: "/admin/verticais", icon: Building2,    sellerHidden: false, section: "admin" },
-        { name: "Marketplace", href: "/marketplace",     icon: Store,        sellerHidden: false, section: "admin" },
-        { name: "AI Usage",    href: "/admin/ai-usage",  icon: BrainCircuit, sellerHidden: false, section: "admin" },
-        { name: "Parceiros",   href: "/admin/partners",  icon: Users,        sellerHidden: false, section: "admin" },
+        { name: "Tenants",     href: "/admin/tenants",   icon: Briefcase,    sellerHidden: false, section: "admin", badge: undefined },
+        { name: "Verticais",   href: "/admin/verticais", icon: Building2,    sellerHidden: false, section: "admin", badge: undefined },
+        { name: "Marketplace", href: "/marketplace",     icon: Store,        sellerHidden: false, section: "admin", badge: undefined },
+        { name: "AI Usage",    href: "/admin/ai-usage",  icon: BrainCircuit, sellerHidden: false, section: "admin", badge: undefined },
+        { name: "Parceiros",   href: "/admin/partners",  icon: Users,        sellerHidden: false, section: "admin", badge: undefined },
+        { name: "Suporte",     href: "/admin/suporte",   icon: Bug,          sellerHidden: false, section: "admin", badge: openBugCount > 0 ? openBugCount : undefined },
       ]
     : [];
 
@@ -134,7 +151,17 @@ export function SidebarLayout({ children }: { children: React.ReactNode }) {
         )}
       >
         <item.icon className="h-4 w-4 shrink-0" />
-        {item.name}
+        <span className="flex-1">{item.name}</span>
+        {item.badge !== undefined && (
+          <span className={cn(
+            "text-[10px] font-bold px-1.5 py-0.5 rounded-full min-w-[18px] text-center",
+            isActive
+              ? "bg-primary-foreground/20 text-primary-foreground"
+              : "bg-red-500 text-white"
+          )}>
+            {item.badge > 99 ? "99+" : item.badge}
+          </span>
+        )}
       </Link>
     );
   }

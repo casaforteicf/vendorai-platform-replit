@@ -44,6 +44,7 @@ const AdminPartners      = lazy(() => import("@/pages/AdminPartners"));
 const AdminTenants       = lazy(() => import("@/pages/AdminTenants"));
 const AdminVerticals     = lazy(() => import("@/pages/AdminVerticals"));
 const AgentDefaults      = lazy(() => import("@/pages/admin/AgentDefaults"));
+const SupportAdmin       = lazy(() => import("@/pages/admin/SupportAdmin"));
 const PartnerDashboard   = lazy(() => import("@/pages/PartnerDashboard"));
 const PartnerDash        = lazy(() => import("@/pages/partner/PartnerDashboard"));
 const PartnerLeads       = lazy(() => import("@/pages/partner/PartnerLeads"));
@@ -501,6 +502,9 @@ function AppRoutes() {
         </Route>
         <Route path="/admin/agent-defaults">
           {() => <SuperAdminRoute component={AgentDefaults} />}
+        </Route>
+        <Route path="/admin/suporte">
+          {() => <SuperAdminRoute component={SupportAdmin} />}
         </Route>
         <Route path="/trocar-senha">
           <ForcePasswordChange />
