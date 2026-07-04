@@ -1923,3 +1923,132 @@ describe('two offline saves: syncPendingVariations skips the item whose POST is 
     expect(fetchMock).toHaveBeenCalledTimes(3)
   })
 })
+
+// ─── Scenario: syncError / retryPendingSync ───────────────────────────────────
+
+describe('syncError and retryPendingSync', () => {
+  it('sets syncError when retryPendingSync receives a 5xx for a pending item', async () => {
+    // Seed localStorage with a local-* item (saved while offline)
+    const pending = makeVariation({ id: 'local-sync-err-1', name: 'Pending item' })
+    seedLocalStorage([pending])
+    localStorage.setItem('vendorai_token', 'tok-abc')
+
+    vi.stubGlobal(
+      'fetch',
+      vi
+        .fn()
+        // GET on mount → 5xx (server unavailable, keeps local state)
+        .mockResolvedValueOnce({ ok: false, status: 500 })
+        // POST from retryPendingSync → 5xx
+        .mockResolvedValueOnce({ ok: false, status: 500 }),
+    )
+
+    const { result } = renderHook(() => useSavedVariations())
+    await waitFor(() => expect(result.current.syncing).toBe(false))
+
+    // No error yet
+    expect(result.current.syncError).toBeNull()
+
+    // Trigger retry — server is still down
+    await act(async () => {
+      await result.current.retryPendingSync()
+    })
+
+    // syncError must be set with a human-readable message
+    expect(result.current.syncError).toBeTruthy()
+    expect(result.current.syncError).toContain('variação offline não pôde ser sincronizada')
+
+    // Variations must be untouched
+    expect(result.current.variations).toHaveLength(1)
+    expect(result.current.variations[0].id).toBe('local-sync-err-1')
+  })
+
+  it('clears syncError when a subsequent retryPendingSync succeeds', async () => {
+    const pending = makeVariation({ id: 'local-sync-recover-1', name: 'Will recover' })
+    seedLocalStorage([pending])
+    localStorage.setItem('vendorai_token', 'tok-abc')
+
+    const serverResponse = {
+      id: 'srv-recovered-1',
+      name: 'Will recover',
+      translator: 'midjourney',
+      detail: 'medium',
+      prompt: 'A beautiful building',
+      negativePrompt: 'blurry, low quality',
+      estimatedTokens: 42,
+      savedAt: new Date(1_700_000_000_000).toISOString(),
+      notes: null,
+    }
+
+    vi.stubGlobal(
+      'fetch',
+      vi
+        .fn()
+        // GET on mount → 5xx
+        .mockResolvedValueOnce({ ok: false, status: 500 })
+        // POST from first retryPendingSync → 5xx (sets syncError)
+        .mockResolvedValueOnce({ ok: false, status: 500 })
+        // POST from second retryPendingSync → success (clears syncError)
+        .mockResolvedValueOnce({ ok: true, json: async () => serverResponse }),
+    )
+
+    const { result } = renderHook(() => useSavedVariations())
+    await waitFor(() => expect(result.current.syncing).toBe(false))
+
+    // First retry fails → syncError should be set
+    await act(async () => {
+      await result.current.retryPendingSync()
+    })
+    expect(result.current.syncError).toBeTruthy()
+
+    // Second retry succeeds → syncError should be cleared
+    await act(async () => {
+      await result.current.retryPendingSync()
+    })
+    expect(result.current.syncError).toBeNull()
+
+    // The pending item should have been promoted to a server-assigned id
+    await waitFor(() =>
+      result.current.variations.some(v => v.id === 'srv-recovered-1'),
+    )
+    expect(result.current.variations[0].id).toBe('srv-recovered-1')
+  })
+
+  it('clearSyncError resets the error without touching variations', async () => {
+    const pending = makeVariation({ id: 'local-clear-err-1', name: 'Keep me' })
+    seedLocalStorage([pending])
+    localStorage.setItem('vendorai_token', 'tok-abc')
+
+    vi.stubGlobal(
+      'fetch',
+      vi
+        .fn()
+        // GET on mount → 5xx
+        .mockResolvedValueOnce({ ok: false, status: 500 })
+        // POST from retryPendingSync → 5xx (sets syncError)
+        .mockResolvedValueOnce({ ok: false, status: 500 }),
+    )
+
+    const { result } = renderHook(() => useSavedVariations())
+    await waitFor(() => expect(result.current.syncing).toBe(false))
+
+    // Trigger syncError
+    await act(async () => {
+      await result.current.retryPendingSync()
+    })
+    expect(result.current.syncError).toBeTruthy()
+
+    // Clear the error
+    act(() => {
+      result.current.clearSyncError()
+    })
+
+    // Error is gone
+    expect(result.current.syncError).toBeNull()
+
+    // Variations are completely untouched
+    expect(result.current.variations).toHaveLength(1)
+    expect(result.current.variations[0].id).toBe('local-clear-err-1')
+    expect(result.current.variations[0].name).toBe('Keep me')
+  })
+})
