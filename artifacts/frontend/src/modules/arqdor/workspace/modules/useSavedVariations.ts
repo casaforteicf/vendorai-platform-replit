@@ -31,6 +31,7 @@ export interface ServerVariation {
 
 export const STORAGE_KEY = 'arqdor_saved_prompt_variations'
 export const MIGRATED_KEY = 'arqdor_prompt_variations_migrated'
+export const PENDING_OWNER_KEY = 'arqdor_pending_owner'
 export const API_BASE = '/api/arch/prompt-variations'
 export const PRUNE_BATCH_SIZE = 5
 
@@ -93,6 +94,53 @@ export function getAuthToken(): string | null {
   return localStorage.getItem('vendorai_token')
 }
 
+/**
+ * Decodes the JWT payload (no signature verification — used only for identity
+ * comparison to detect cross-session localStorage bleed).
+ */
+export function getUserIdFromToken(): string | null {
+  const token = getAuthToken()
+  if (!token) return null
+  try {
+    const parts = token.split('.')
+    if (parts.length < 2) return null
+    const payload = JSON.parse(atob(parts[1])) as Record<string, unknown>
+    if (typeof payload.sub === 'string' && payload.sub) return payload.sub
+    if (typeof payload.id === 'string' && payload.id) return payload.id
+    if (typeof payload.email === 'string' && payload.email) return payload.email
+    return null
+  } catch {
+    return null
+  }
+}
+
+/**
+ * Removes all `local-*` variations from localStorage when the current user
+ * differs from the user who created them.  This prevents a previous session's
+ * offline items from being synced under a different account.
+ *
+ * Call this before any sync operation so stale items are always evicted first.
+ */
+export function clearStaleLocalItems(): void {
+  const userId = getUserIdFromToken()
+  if (!userId) return
+
+  const storedOwner = localStorage.getItem(PENDING_OWNER_KEY)
+  if (storedOwner === userId) return
+
+  // Different user (or first login on this device) — remove any local-* items
+  // left by the previous session before we attempt to sync.
+  const current = readLocalVariations()
+  const hasPending = current.some(v => v.id.startsWith('local-'))
+  if (hasPending) {
+    const cleaned = current.filter(v => !v.id.startsWith('local-'))
+    persistVariations(cleaned)
+  }
+
+  // Stamp the new owner so subsequent syncs in this session are allowed.
+  localStorage.setItem(PENDING_OWNER_KEY, userId)
+}
+
 export function authHeaders(): Record<string, string> {
   const token = getAuthToken()
   return token
@@ -150,6 +198,9 @@ export async function syncPendingVariations(
   const token = getAuthToken()
   if (!token) return { failedCount: 0, permanentlyFailedCount: 0 }
 
+  // Drop any local-* items that belong to a previous user before syncing.
+  clearStaleLocalItems()
+
   const current = readLocalVariations()
   const pending = current.filter(
     v => v.id.startsWith('local-') && !(inFlightIds?.has(v.id) ?? false),
@@ -203,7 +254,12 @@ export async function syncPendingVariations(
 // ─── Hook ─────────────────────────────────────────────────────────────────────
 
 export function useSavedVariations() {
-  const [variations, setVariations] = useState<SavedVariation[]>(readLocalVariations)
+  const [variations, setVariations] = useState<SavedVariation[]>(() => {
+    // Evict any local-* items belonging to a previous user before populating
+    // initial state so stale offline saves never flash to the UI or get synced.
+    clearStaleLocalItems()
+    return readLocalVariations()
+  })
   const [storageError, setStorageError] = useState<string | null>(null)
   const [syncError, setSyncError] = useState<string | null>(null)
   const [syncing, setSyncing] = useState(false)
@@ -333,7 +389,9 @@ export function useSavedVariations() {
         const serverVariations = serverData.map(fromServer)
 
         if (serverVariations.length === 0) {
-          // Migrate localStorage variations to server on first authenticated load
+          // Migrate localStorage variations to server on first authenticated load.
+          // Clear any local-* items from a previous session before migrating.
+          clearStaleLocalItems()
           const local = readLocalVariations()
           const alreadyMigrated = localStorage.getItem(MIGRATED_KEY) === '1'
           if (local.length > 0 && !alreadyMigrated) {
@@ -401,6 +459,11 @@ export function useSavedVariations() {
 
       // Optimistic local update
       setVariations(prev => [item, ...prev])
+
+      // Stamp the current user as the owner of pending items so a future login
+      // by a different user triggers clearStaleLocalItems before any sync.
+      const userId = getUserIdFromToken()
+      if (userId) localStorage.setItem(PENDING_OWNER_KEY, userId)
 
       // Sync to server
       void (async () => {

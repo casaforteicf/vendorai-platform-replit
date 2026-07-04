@@ -4,6 +4,7 @@ import {
   useSavedVariations,
   STORAGE_KEY,
   MIGRATED_KEY,
+  PENDING_OWNER_KEY,
   PRUNE_BATCH_SIZE,
   readLocalVariations,
   resetSyncInFlight,
@@ -12,10 +13,22 @@ import {
   getStalenessInfo,
   STALE_AMBER_DAYS,
   STALE_RED_DAYS,
+  getUserIdFromToken,
+  clearStaleLocalItems,
 } from './useSavedVariations'
 import type { SavedVariation } from './useSavedVariations'
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
+
+/**
+ * Build a minimal, unsigned JWT whose payload can be decoded by getUserIdFromToken.
+ * This mirrors how the real vendorai_token is structured (sub claim).
+ */
+function buildJwt(payload: Record<string, unknown>): string {
+  const header = btoa(JSON.stringify({ alg: 'HS256', typ: 'JWT' }))
+  const body = btoa(JSON.stringify(payload))
+  return `${header}.${body}.fake-signature`
+}
 
 function makeVariation(overrides: Partial<SavedVariation> = {}): SavedVariation {
   return {
@@ -2357,5 +2370,234 @@ describe('getStalenessInfo', () => {
   it('STALE_AMBER_DAYS and STALE_RED_DAYS constants maintain their relative order', () => {
     expect(STALE_AMBER_DAYS).toBeGreaterThan(0)
     expect(STALE_RED_DAYS).toBeGreaterThan(STALE_AMBER_DAYS)
+  })
+})
+
+// ─── Scenario: cross-session bleed prevention ─────────────────────────────────
+
+describe('getUserIdFromToken', () => {
+  it('returns the sub claim from a valid JWT', () => {
+    localStorage.setItem('vendorai_token', buildJwt({ sub: 'user-abc' }))
+    expect(getUserIdFromToken()).toBe('user-abc')
+  })
+
+  it('falls back to the id claim when sub is absent', () => {
+    localStorage.setItem('vendorai_token', buildJwt({ id: 'user-id-123' }))
+    expect(getUserIdFromToken()).toBe('user-id-123')
+  })
+
+  it('falls back to the email claim when sub and id are absent', () => {
+    localStorage.setItem('vendorai_token', buildJwt({ email: 'alice@example.com' }))
+    expect(getUserIdFromToken()).toBe('alice@example.com')
+  })
+
+  it('returns null when no token is present', () => {
+    expect(getUserIdFromToken()).toBeNull()
+  })
+
+  it('returns null for a malformed token', () => {
+    localStorage.setItem('vendorai_token', 'not.a.jwt.at.all.really')
+    expect(getUserIdFromToken()).toBeNull()
+  })
+})
+
+describe('clearStaleLocalItems', () => {
+  it('removes local-* items when the current user differs from the stored owner', () => {
+    const localItem = makeVariation({ id: 'local-old-1', name: 'User A save' })
+    seedLocalStorage([localItem])
+    localStorage.setItem(PENDING_OWNER_KEY, 'user-a')
+
+    // User B is now logged in
+    localStorage.setItem('vendorai_token', buildJwt({ sub: 'user-b' }))
+
+    clearStaleLocalItems()
+
+    // The local-* item from user A must be gone
+    expect(readLocalVariations()).toHaveLength(0)
+    // Owner is updated to user B
+    expect(localStorage.getItem(PENDING_OWNER_KEY)).toBe('user-b')
+  })
+
+  it('preserves non-local items (server-assigned ids) when clearing stale items', () => {
+    const serverItem = makeVariation({ id: 'srv-123', name: 'Server item' })
+    const localItem = makeVariation({ id: 'local-old-2', name: 'Stale offline save' })
+    seedLocalStorage([serverItem, localItem])
+    localStorage.setItem(PENDING_OWNER_KEY, 'user-a')
+
+    localStorage.setItem('vendorai_token', buildJwt({ sub: 'user-b' }))
+
+    clearStaleLocalItems()
+
+    const remaining = readLocalVariations()
+    expect(remaining).toHaveLength(1)
+    expect(remaining[0].id).toBe('srv-123')
+  })
+
+  it('does NOT remove local-* items when the owner matches the current user', () => {
+    const localItem = makeVariation({ id: 'local-mine-1', name: 'My save' })
+    seedLocalStorage([localItem])
+    localStorage.setItem(PENDING_OWNER_KEY, 'user-a')
+    localStorage.setItem('vendorai_token', buildJwt({ sub: 'user-a' }))
+
+    clearStaleLocalItems()
+
+    // Item must still be present
+    const remaining = readLocalVariations()
+    expect(remaining).toHaveLength(1)
+    expect(remaining[0].id).toBe('local-mine-1')
+  })
+
+  it('stamps owner and keeps items when no previous owner is recorded (first login on device)', () => {
+    const localItem = makeVariation({ id: 'local-fresh-1', name: 'Fresh save' })
+    seedLocalStorage([localItem])
+    // PENDING_OWNER_KEY is not set — simulates first ever login
+    localStorage.setItem('vendorai_token', buildJwt({ sub: 'user-new' }))
+
+    clearStaleLocalItems()
+
+    // local-* items may or may not be present — owner is stamped
+    expect(localStorage.getItem(PENDING_OWNER_KEY)).toBe('user-new')
+  })
+
+  it('is a no-op when there is no auth token', () => {
+    const localItem = makeVariation({ id: 'local-no-token', name: 'No token' })
+    seedLocalStorage([localItem])
+    // No vendorai_token in localStorage
+
+    clearStaleLocalItems()
+
+    // Items must be untouched
+    expect(readLocalVariations()).toHaveLength(1)
+    expect(localStorage.getItem(PENDING_OWNER_KEY)).toBeNull()
+  })
+})
+
+describe('cross-session bleed — syncPendingVariations does not post stale items', () => {
+  it('does not sync local-* items left by a previous user when a new user logs in', async () => {
+    // User A saved a variation while offline
+    const localItem = makeVariation({ id: 'local-user-a-1', name: 'User A offline save' })
+    seedLocalStorage([localItem])
+    localStorage.setItem(PENDING_OWNER_KEY, 'user-a')
+
+    // User A logs out; user B logs in with a different token
+    localStorage.setItem('vendorai_token', buildJwt({ sub: 'user-b' }))
+
+    const fetchSpy = vi.fn()
+    vi.stubGlobal('fetch', fetchSpy)
+
+    const onPromoted = vi.fn()
+    await syncPendingVariations(onPromoted)
+
+    // No request should be made — user A's item must NOT be uploaded
+    expect(fetchSpy).not.toHaveBeenCalled()
+    expect(onPromoted).not.toHaveBeenCalled()
+
+    // The stale local-* item must be removed from localStorage
+    expect(readLocalVariations()).toHaveLength(0)
+
+    // PENDING_OWNER_KEY is updated to user B
+    expect(localStorage.getItem(PENDING_OWNER_KEY)).toBe('user-b')
+  })
+
+  it('syncs local-* items normally when the same user remains logged in', async () => {
+    const localItem = makeVariation({
+      id: 'local-same-user-1',
+      name: 'Same user save',
+      savedAt: 1_700_000_050_000,
+    })
+    seedLocalStorage([localItem])
+    localStorage.setItem(PENDING_OWNER_KEY, 'user-a')
+    localStorage.setItem('vendorai_token', buildJwt({ sub: 'user-a' }))
+
+    const serverResp = {
+      id: 'srv-same-user-1',
+      name: 'Same user save',
+      translator: 'midjourney',
+      detail: 'medium',
+      prompt: 'A beautiful building',
+      negativePrompt: 'blurry, low quality',
+      estimatedTokens: 42,
+      savedAt: new Date(1_700_000_050_000).toISOString(),
+      notes: null,
+    }
+
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValueOnce({ ok: true, json: async () => serverResp }),
+    )
+
+    const onPromoted = vi.fn()
+    await syncPendingVariations(onPromoted)
+
+    // The POST must have been made and the item promoted
+    expect(onPromoted).toHaveBeenCalledOnce()
+    expect(onPromoted).toHaveBeenCalledWith('local-same-user-1', expect.objectContaining({ id: 'srv-same-user-1' }))
+  })
+})
+
+describe('cross-session bleed — useSavedVariations hook integration', () => {
+  it('does not upload user A local-* items when user B mounts the hook with server returning empty', async () => {
+    // User A left a local-* item in localStorage
+    const userAItem = makeVariation({ id: 'local-a-bleed', name: 'User A bleed item' })
+    seedLocalStorage([userAItem])
+    localStorage.setItem(PENDING_OWNER_KEY, 'user-a')
+
+    // User B logs in
+    localStorage.setItem('vendorai_token', buildJwt({ sub: 'user-b' }))
+
+    // Server returns empty for user B (new account, no server variations yet)
+    // and migration /bulk POST should never be called
+    const fetchSpy = vi
+      .fn()
+      .mockResolvedValueOnce({ ok: true, json: async () => [] }) // GET on mount → empty
+    vi.stubGlobal('fetch', fetchSpy)
+
+    const { result } = renderHook(() => useSavedVariations())
+    await waitFor(() => expect(result.current.syncing).toBe(false))
+
+    // User B should see no variations (user A's item was cleared)
+    expect(result.current.variations).toHaveLength(0)
+    expect(result.current.pendingCount).toBe(0)
+
+    // /bulk must NOT have been called with user A's data
+    const bulkCalled = fetchSpy.mock.calls.some(([url]: [string]) => url.includes('/bulk'))
+    expect(bulkCalled).toBe(false)
+
+    // localStorage must be clean — no local-* items remain
+    expect(readLocalVariations().filter(v => v.id.startsWith('local-'))).toHaveLength(0)
+
+    // Owner is updated to user B
+    expect(localStorage.getItem(PENDING_OWNER_KEY)).toBe('user-b')
+  })
+
+  it('does not upload user A local-* items via the online event when user B is active', async () => {
+    // User A left a local-* item
+    const userAItem = makeVariation({ id: 'local-a-online', name: 'User A online bleed' })
+    seedLocalStorage([userAItem])
+    localStorage.setItem(PENDING_OWNER_KEY, 'user-a')
+
+    // User B logs in; server is down on mount so items stay in localStorage
+    localStorage.setItem('vendorai_token', buildJwt({ sub: 'user-b' }))
+
+    const fetchSpy = vi
+      .fn()
+      .mockRejectedValueOnce(new TypeError('Network failure')) // GET on mount → offline
+    vi.stubGlobal('fetch', fetchSpy)
+
+    const { result } = renderHook(() => useSavedVariations())
+    await waitFor(() => expect(result.current.syncing).toBe(false))
+
+    // Simulate connectivity restored
+    await act(async () => {
+      window.dispatchEvent(new Event('online'))
+      await new Promise(r => setTimeout(r, 0))
+    })
+
+    // No POST should have been made — user A's item must not be uploaded
+    const postCalls = fetchSpy.mock.calls.filter(([, init]: [string, RequestInit]) => init?.method === 'POST')
+    expect(postCalls).toHaveLength(0)
+
+    // User A's local-* item is gone from localStorage
+    expect(readLocalVariations().filter(v => v.id.startsWith('local-'))).toHaveLength(0)
   })
 })
