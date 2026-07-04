@@ -50,6 +50,13 @@
       "when": 1781982394150,
       "tag": "0006_little_virginia_dare",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1783175193539,
+      "tag": "0007_certain_silver_sable",
+      "breakpoints": true
     }
   ]
 }

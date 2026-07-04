@@ -3,6 +3,7 @@ import { ArqCopilot }       from '../copilot/ui/ArqCopilot'
 import { WorkspaceProvider, useWorkspaceProject, WorkspaceContext } from './WorkspaceContext'
 import { IntegrationModule } from './modules/IntegrationModule'
 import { LibraryModule }      from './modules/LibraryModule'
+import { SmartSpecModule }    from './modules/SmartSpecModule'
 import { PromptPlaygroundModule } from './modules/PromptPlaygroundModule'
 import { RenderHistoryModule } from './modules/RenderHistoryModule'
 import { AIReviewModule }      from './modules/AIReviewModule'
@@ -38,6 +39,7 @@ export function useArqProjectContext(): ArqProjectState | null {
 export type ModuleId =
   | 'home'                                                          // Project Experience (new)
   | 'projeto' | 'biblioteca' | 'prompt' | 'renders' | 'cliente'   // PRIMARY nav
+  | 'especificacao'                                                 // Sprint 4 — Smart Specification
   | 'ai-review' | 'correcoes' | 'memoria' | 'config'              // SECONDARY
   | 'arqhub' | 'ai-intel' | 'integracao'                          // SECONDARY
 
@@ -52,10 +54,11 @@ interface WorkspaceModule {
 
 // Navegação principal simplificada (FASE 17)
 const PRIMARY_MODULES: WorkspaceModule[] = [
-  { id:'home',       icon:'🏠',  label:'Home',        desc:'Dashboard do projeto'          },
-  { id:'renders',    icon:'🎬',  label:'Render',       desc:'Histórico completo'            },
-  { id:'biblioteca', icon:'📚',  label:'Biblioteca',   desc:'Materiais e objetos'           },
-  { id:'cliente',    icon:'👤',  label:'Portal',       desc:'Portal do Cliente'             },
+  { id:'home',          icon:'🏠',  label:'Home',          desc:'Dashboard do projeto'          },
+  { id:'renders',       icon:'🎬',  label:'Render',         desc:'Histórico completo'            },
+  { id:'biblioteca',    icon:'📚',  label:'Biblioteca',     desc:'Materiais e objetos'           },
+  { id:'especificacao', icon:'✨',  label:'Especificação',  desc:'Smart Specification', badge:'NEW', badgeColor:'#a78bfa' },
+  { id:'cliente',       icon:'👤',  label:'Portal',         desc:'Portal do Cliente'             },
 ]
 // Ferramentas avançadas (acessíveis via "Mais…")
 const SECONDARY_MODULES: WorkspaceModule[] = [
@@ -75,8 +78,9 @@ function renderModule(id: ModuleId, arqState: ArqProjectState, setActive: (m: Mo
   switch (id) {
     case 'home':       return <ProjectHome arqState={arqState} onNavigate={m => setActive(m as ModuleId)} />
     case 'projeto':    return <ProjectModule/>
-    case 'biblioteca': return <LibraryModule/>
-    case 'prompt':     return <PromptPlaygroundModule/>
+    case 'biblioteca':    return <LibraryModule/>
+    case 'especificacao': return <SmartSpecModule/>
+    case 'prompt':        return <PromptPlaygroundModule/>
     case 'renders':    return <RenderHistoryModule/>
     case 'ai-review':  return <AIReviewModule/>
     case 'correcoes':  return <AICorrectionsModule/>

@@ -39,6 +39,9 @@ import {
   insertArchPromptVariationSchema,
   updateArchPromptVariationSchema,
   arqdorWorkspaceProjectsTable,
+  archSpecificationsTable,
+  archSpecItemsTable,
+  updateArchSpecItemSchema,
 } from "@workspace/db";
 import { z } from "zod/v4";
 import { anthropic } from "@workspace/integrations-anthropic-ai";
@@ -2714,6 +2717,176 @@ ${catalogItems.slice(0, 10).map((i) => `- ${i.nome} [${i.categoria}] — ${i.for
     cost:        orchResult.costUsd,
     durationMs:  orchResult.durationMs,
   });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// POST /api/arch/specification/analyze — IA analisa render e identifica itens
+// ─────────────────────────────────────────────────────────────────────────────
+router.post("/arch/specification/analyze", authenticate, async (req, res) => {
+  const tid = tenantId(req);
+  const { imageUrl, projetoId, renderId } = req.body as { imageUrl?: string; projetoId?: string; renderId?: string };
+
+  if (!imageUrl || !projetoId) {
+    return res.status(400).json({ error: "imageUrl e projetoId são obrigatórios" });
+  }
+
+  try {
+    const message = await anthropic.messages.create({
+      model: "claude-opus-4-5",
+      max_tokens: 2048,
+      messages: [{
+        role: "user",
+        content: [
+          {
+            type: "image",
+            source: { type: "url", url: imageUrl },
+          },
+          {
+            type: "text",
+            text: `Você é um arquiteto especialista em especificação técnica de projetos de interiores brasileiros.
+
+Analise esta imagem de render arquitetônico e identifique TODOS os itens presentes na cena.
+
+Para cada item, retorne:
+- categoria: uma de (Mobiliário | Iluminação | Revestimento | Metal | Louça | Decoração | Eletrodoméstico | Esquadria | Componente)
+- descricao: descrição técnica específica e detalhada do item
+- quantidade: número estimado de unidades visíveis na cena
+- confianca: nível de confiança da identificação entre 0.50 e 1.00
+
+Seja específico e técnico. Exemplo: "Sofá em L com chaise, estofamento em couro natural bege" em vez de apenas "sofá".
+
+Responda SOMENTE com JSON válido, sem texto adicional:
+{"items":[{"categoria":"Mobiliário","descricao":"Sofá modular 3 lugares, estofamento em veludo cinza","quantidade":1,"confianca":0.92}]}`
+          }
+        ]
+      }]
+    });
+
+    const textContent = message.content[0];
+    if (textContent.type !== "text") throw new Error("Resposta inesperada da IA");
+
+    const jsonMatch = textContent.text.match(/\{[\s\S]*\}/);
+    if (!jsonMatch) throw new Error("IA não retornou JSON válido");
+
+    const parsed = JSON.parse(jsonMatch[0]) as { items?: Array<{ categoria: string; descricao: string; quantidade: number; confianca: number }> };
+    const aiItems = parsed.items ?? [];
+
+    if (aiItems.length === 0) {
+      return res.status(422).json({ error: "A IA não identificou itens na imagem. Tente com uma imagem de maior qualidade." });
+    }
+
+    const [spec] = await db
+      .insert(archSpecificationsTable)
+      .values({
+        tenantId:       tid,
+        projetoId:      String(projetoId),
+        renderId:       renderId ? String(renderId) : null,
+        renderImageUrl: String(imageUrl),
+        status:         "draft",
+        itemsCount:     aiItems.length,
+        specifiedCount: 0,
+      })
+      .returning();
+
+    const items = await db
+      .insert(archSpecItemsTable)
+      .values(
+        aiItems.map(item => ({
+          specificationId: spec.id,
+          categoria:       item.categoria,
+          descricao:       item.descricao,
+          quantidade:      Math.max(1, Math.round(item.quantidade)),
+          confianca:       String(Math.min(1, Math.max(0.5, item.confianca)).toFixed(2)),
+          status:          "pendente",
+        }))
+      )
+      .returning();
+
+    return res.json({ spec, items });
+  } catch (err: unknown) {
+    const { status, message } = sanitizeAIError(err);
+    return res.status(status).json({ error: message });
+  }
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// GET /api/arch/specification/:projetoId — especificação mais recente do projeto
+// ─────────────────────────────────────────────────────────────────────────────
+router.get("/arch/specification/:projetoId", authenticate, async (req, res) => {
+  const tid = tenantId(req);
+  const { projetoId } = req.params;
+
+  const [spec] = await db
+    .select()
+    .from(archSpecificationsTable)
+    .where(and(
+      eq(archSpecificationsTable.tenantId, tid),
+      eq(archSpecificationsTable.projetoId, projetoId),
+    ))
+    .orderBy(desc(archSpecificationsTable.createdAt))
+    .limit(1);
+
+  if (!spec) {
+    return res.status(404).json({ error: "Nenhuma especificação encontrada." });
+  }
+
+  const items = await db
+    .select()
+    .from(archSpecItemsTable)
+    .where(eq(archSpecItemsTable.specificationId, spec.id))
+    .orderBy(archSpecItemsTable.categoria, archSpecItemsTable.descricao);
+
+  return res.json({ spec, items });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// PATCH /api/arch/specification/item/:itemId — atualiza status/match de um item
+// ─────────────────────────────────────────────────────────────────────────────
+router.patch("/arch/specification/item/:itemId", authenticate, async (req, res) => {
+  const tid = tenantId(req);
+  const { itemId } = req.params;
+
+  const [ownership] = await db
+    .select({ id: archSpecItemsTable.id, specificationId: archSpecItemsTable.specificationId })
+    .from(archSpecItemsTable)
+    .innerJoin(archSpecificationsTable, eq(archSpecificationsTable.id, archSpecItemsTable.specificationId))
+    .where(and(
+      eq(archSpecItemsTable.id, itemId),
+      eq(archSpecificationsTable.tenantId, tid),
+    ))
+    .limit(1);
+
+  if (!ownership) return res.status(404).json({ error: "Item não encontrado." });
+
+  const parsed = updateArchSpecItemSchema.safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: String(parsed.error) });
+
+  const [updated] = await db
+    .update(archSpecItemsTable)
+    .set(parsed.data)
+    .where(eq(archSpecItemsTable.id, itemId))
+    .returning();
+
+  if (parsed.data.status) {
+    const [counts] = await db
+      .select({
+        total:     sql<number>`count(*)`.mapWith(Number),
+        specified: sql<number>`count(*) filter (where status = 'especificado')`.mapWith(Number),
+      })
+      .from(archSpecItemsTable)
+      .where(eq(archSpecItemsTable.specificationId, ownership.specificationId));
+
+    await db
+      .update(archSpecificationsTable)
+      .set({
+        itemsCount:     counts?.total ?? 0,
+        specifiedCount: counts?.specified ?? 0,
+        updatedAt:      new Date(),
+      })
+      .where(eq(archSpecificationsTable.id, ownership.specificationId));
+  }
+
+  return res.json(updated);
 });
 
 export { archPublicRouter };
