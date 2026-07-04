@@ -1,0 +1,183 @@
+SPRINT 4 — SMART SPECIFICATION
+
+Vendor.ai | ARQDOR.ai
+
+================================================
+
+OBJETIVO
+
+Transformar o ARQDOR em uma plataforma de especificação inteligente.
+
+Não criar um renderizador.
+
+Criar um sistema que transforma um render em um projeto especificado.
+
+================================================
+
+NÃO ALTERAR
+
+Render Pipeline
+
+Copilot
+
+Marketplace
+
+Portal
+
+Prompt Builder
+
+================================================
+
+IMPLEMENTAR
+
+Criar um módulo chamado:
+
+Smart Specification
+
+================================================
+
+Após cada render o sistema deverá identificar automaticamente:
+
+• Materiais
+
+• Componentes
+
+• Móveis
+
+• Iluminação
+
+• Revestimentos
+
+• Metais
+
+• Louças
+
+• Decoração
+
+• Eletrodomésticos
+
+• Esquadrias
+
+================================================
+
+Cada item identificado deverá possuir:
+
+Categoria
+
+Descrição
+
+Quantidade
+
+Confiança
+
+Status
+
+================================================
+
+Criar botão
+
+✨ Especificar Projeto
+
+================================================
+
+Ao clicar.
+
+O sistema deverá procurar automaticamente na biblioteca:
+
+Materiais
+
+Componentes
+
+Assets
+
+Produtos
+
+Fabricantes
+
+================================================
+
+Quando encontrar equivalência.
+
+Exibir.
+
+Produto encontrado.
+
+Marca.
+
+Linha.
+
+Código.
+
+Imagem.
+
+Preço (quando existir).
+
+================================================
+
+Permitir substituir.
+
+Trocar apenas aquele item.
+
+Ou todos os itens equivalentes.
+
+================================================
+
+Criar painel:
+
+Itens Não Especificados
+
+Itens Especificados
+
+Itens Pendentes
+
+================================================
+
+Integrar com Marketplace existente.
+
+Se o item não existir.
+
+Mostrar.
+
+Buscar no Marketplace.
+
+================================================
+
+Integrar com Copilot.
+
+O Copilot poderá responder:
+
+"Substitua todas as cadeiras por modelos Herval."
+
+"Troque os metais por Deca."
+
+"Utilize apenas Portobello neste projeto."
+
+================================================
+
+No final gerar:
+
+Memorial preliminar.
+
+Lista de materiais.
+
+Resumo de fabricantes.
+
+================================================
+
+CRITÉRIO
+
+O arquiteto deve conseguir transformar um render em uma especificação inicial em poucos minutos.
+
+================================================
+
+ENTREGAR
+
+Fluxo
+
+Screenshots
+
+Arquivos alterados
+
+Integrações utilizadas
+
+Tempo médio da especificação.
