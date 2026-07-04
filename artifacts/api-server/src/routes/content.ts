@@ -43,6 +43,11 @@ const generateBodySchema = z.object({
   imageUrl: z.string().optional().nullable(),
   contentFormat: z.enum(["feed_square", "feed_portrait", "stories", "reels"]).optional().nullable(),
   aspectRatio: z.string().optional().nullable(),
+  // Campos estratégicos — Passo 2
+  customerPain: z.string().optional().nullable(),
+  postObjective: z.string().optional().nullable(),
+  voiceTone: z.string().optional().nullable(),
+  desiredCta: z.string().optional().nullable(),
 });
 
 async function getMonthlyUsage(
@@ -99,7 +104,7 @@ router.post("/tenants/:tenantId/content/generate", async (req, res) => {
     return;
   }
 
-  const { type, theme, productId, productSource, variations, imageCount, imageUrl: referenceImageUrl, contentFormat, aspectRatio } = parsed.data;
+  const { type, theme, productId, productSource, variations, imageCount, imageUrl: referenceImageUrl, contentFormat, aspectRatio, customerPain, postObjective, voiceTone, desiredCta } = parsed.data;
 
   const { used, limit, configId } = await getMonthlyUsage(tenantId);
   if (used >= limit) {
@@ -162,14 +167,21 @@ router.post("/tenants/:tenantId/content/generate", async (req, res) => {
     }
   }
 
+  const strategy = {
+    customerPain: customerPain ?? undefined,
+    postObjective: postObjective ?? undefined,
+    voiceTone: voiceTone ?? undefined,
+    desiredCta: desiredCta ?? undefined,
+  };
+
   let result: { result: { variations: unknown[] }; tokensUsed: number };
   try {
     if (type === "feed") {
-      result = await generateFeedContent(profile ?? {}, tenantId, theme, productName, variations, imageCount, productExtra, referenceImageUrl ?? undefined, aspectRatio ?? undefined);
+      result = await generateFeedContent(profile ?? {}, tenantId, theme, productName, variations, imageCount, productExtra, referenceImageUrl ?? undefined, aspectRatio ?? undefined, strategy);
     } else if (type === "stories") {
-      result = await generateStoriesContent(profile ?? {}, tenantId, theme, productName, variations, imageCount, productExtra, referenceImageUrl ?? undefined, aspectRatio ?? undefined);
+      result = await generateStoriesContent(profile ?? {}, tenantId, theme, productName, variations, imageCount, productExtra, referenceImageUrl ?? undefined, aspectRatio ?? undefined, strategy);
     } else {
-      result = await generateReelsScript(profile ?? {}, tenantId, theme, productName, variations, productExtra);
+      result = await generateReelsScript(profile ?? {}, tenantId, theme, productName, variations, productExtra, strategy);
     }
   } catch (err) {
     req.log.error({ err }, "content generation failed");

@@ -1115,6 +1115,12 @@ export default function Content() {
   const [strategyResult, setStrategyResult] = useState<ContentStrategy | null>(null);
   const [strategyMode, setStrategyMode] = useState(false);
 
+  // Campos estratégicos — Passo 2
+  const [customerPain, setCustomerPain] = useState("");
+  const [postObjective, setPostObjective] = useState("");
+  const [voiceTone, setVoiceTone] = useState("");
+  const [desiredCta, setDesiredCta] = useState("");
+
   const isVarejo = productSource === "varejo";
   const isSupermercado = productSource === "supermercado";
   const isInsumo = productSource === "insumo";
@@ -1153,7 +1159,7 @@ export default function Content() {
     enabled: !!tenantId,
   });
 
-  const generateMutation = useMutation<ContentGeneration, Error, { type: ContentType; theme: string; productId?: string; productSource?: ProductSource; variations: number; imageCount: number; imageUrl?: string; contentFormat?: string; aspectRatio?: string }>({
+  const generateMutation = useMutation<ContentGeneration, Error, { type: ContentType; theme: string; productId?: string; productSource?: ProductSource; variations: number; imageCount: number; imageUrl?: string; contentFormat?: string; aspectRatio?: string; customerPain?: string; postObjective?: string; voiceTone?: string; desiredCta?: string }>({
     mutationFn: async (body) => {
       const res = await fetch(`/api/tenants/${tenantId}/content/generate`, {
         method: "POST",
@@ -1298,6 +1304,10 @@ export default function Content() {
       toast({ title: "Descreva o tema da publicação", variant: "destructive" });
       return;
     }
+    if (!customerPain.trim()) {
+      toast({ title: "Informe a dor do cliente que este post ataca", variant: "destructive" });
+      return;
+    }
     setLastResult(null);
     const styleRef = uploadedImages.find((img) => img.purpose === "style_reference" && !img.uploading);
     generateMutation.mutate({
@@ -1310,6 +1320,10 @@ export default function Content() {
       imageUrl: styleRef?.url ?? undefined,
       contentFormat,
       aspectRatio,
+      customerPain: customerPain.trim(),
+      postObjective: postObjective || undefined,
+      voiceTone: voiceTone || undefined,
+      desiredCta: desiredCta || undefined,
     });
   }
 
@@ -1475,6 +1489,74 @@ export default function Content() {
                             rows={4}
                             className="resize-none text-sm"
                           />
+                        </div>
+
+                        {/* ── Campos estratégicos ─────────────────────────── */}
+                        <div className="rounded-lg border border-border/60 bg-muted/30 p-3 space-y-3">
+                          <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Estratégia do post</p>
+
+                          {/* Dor do cliente — obrigatório */}
+                          <div className="space-y-1.5">
+                            <Label className="text-xs">
+                              Dor do cliente que este post ataca <span className="text-destructive">*</span>
+                            </Label>
+                            <Textarea
+                              placeholder="Ex: Não sabe quantos leads esfriaram esse mês"
+                              value={customerPain}
+                              onChange={(e) => setCustomerPain(e.target.value)}
+                              rows={2}
+                              className="resize-none text-sm"
+                            />
+                          </div>
+
+                          {/* Objetivo do post */}
+                          <div className="space-y-1.5">
+                            <Label className="text-xs">Objetivo do post <span className="text-muted-foreground font-normal">(opcional)</span></Label>
+                            <Select value={postObjective} onValueChange={setPostObjective}>
+                              <SelectTrigger className="text-sm h-8">
+                                <SelectValue placeholder="Selecione um objetivo" />
+                              </SelectTrigger>
+                              <SelectContent>
+                                <SelectItem value="atrair_dor">Atrair atenção pra dor</SelectItem>
+                                <SelectItem value="prova_social">Prova social</SelectItem>
+                                <SelectItem value="educar">Educar</SelectItem>
+                                <SelectItem value="vender_direto">Vender direto</SelectItem>
+                                <SelectItem value="bastidores">Bastidores</SelectItem>
+                              </SelectContent>
+                            </Select>
+                          </div>
+
+                          {/* Tom de voz */}
+                          <div className="space-y-1.5">
+                            <Label className="text-xs">Tom de voz <span className="text-muted-foreground font-normal">(opcional)</span></Label>
+                            <Select value={voiceTone} onValueChange={setVoiceTone}>
+                              <SelectTrigger className="text-sm h-8">
+                                <SelectValue placeholder="Selecione o tom" />
+                              </SelectTrigger>
+                              <SelectContent>
+                                <SelectItem value="direto_comercial">Direto e comercial</SelectItem>
+                                <SelectItem value="storytelling">Storytelling</SelectItem>
+                                <SelectItem value="educativo">Educativo</SelectItem>
+                                <SelectItem value="bastidores_casual">Bastidores casual</SelectItem>
+                              </SelectContent>
+                            </Select>
+                          </div>
+
+                          {/* CTA desejado */}
+                          <div className="space-y-1.5">
+                            <Label className="text-xs">CTA desejado <span className="text-muted-foreground font-normal">(opcional)</span></Label>
+                            <Select value={desiredCta} onValueChange={setDesiredCta}>
+                              <SelectTrigger className="text-sm h-8">
+                                <SelectValue placeholder="Selecione o CTA" />
+                              </SelectTrigger>
+                              <SelectContent>
+                                <SelectItem value="comentar_palavra">Comentar palavra-chave</SelectItem>
+                                <SelectItem value="chamar_direct">Chamar no direct</SelectItem>
+                                <SelectItem value="clicar_link">Clicar no link</SelectItem>
+                                <SelectItem value="sem_cta">Nenhum (sem CTA)</SelectItem>
+                              </SelectContent>
+                            </Select>
+                          </div>
                         </div>
 
                         {/* Passo 2 — Format selector */}

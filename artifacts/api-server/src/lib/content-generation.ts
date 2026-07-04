@@ -251,6 +251,44 @@ export async function describeImage(imageUrl: string, tenantId: string): Promise
   return result.content || "Imagem sem descrição disponível";
 }
 
+export interface ContentStrategy {
+  customerPain?: string;
+  postObjective?: string;
+  voiceTone?: string;
+  desiredCta?: string;
+}
+
+const POST_OBJECTIVE_LABELS: Record<string, string> = {
+  atrair_dor: "Atrair atenção pra dor",
+  prova_social: "Prova social",
+  educar: "Educar",
+  vender_direto: "Vender direto",
+  bastidores: "Bastidores",
+};
+const VOICE_TONE_LABELS: Record<string, string> = {
+  direto_comercial: "Direto e comercial",
+  storytelling: "Storytelling",
+  educativo: "Educativo",
+  bastidores_casual: "Bastidores casual",
+};
+const CTA_LABELS: Record<string, string> = {
+  comentar_palavra: "Comentar uma palavra-chave nos comentários",
+  chamar_direct: "Chamar no direct",
+  clicar_link: "Clicar no link da bio",
+  sem_cta: "Nenhum CTA — não inclua chamada para ação",
+};
+
+function buildStrategyBlock(s?: ContentStrategy): string {
+  if (!s?.customerPain) return "";
+  const lines: string[] = [
+    `Dor do cliente que este post ataca: ${s.customerPain}`,
+  ];
+  if (s.postObjective) lines.push(`Objetivo do post: ${POST_OBJECTIVE_LABELS[s.postObjective] ?? s.postObjective}`);
+  if (s.voiceTone) lines.push(`Tom de voz: ${VOICE_TONE_LABELS[s.voiceTone] ?? s.voiceTone}`);
+  if (s.desiredCta) lines.push(`CTA desejado: ${CTA_LABELS[s.desiredCta] ?? s.desiredCta}`);
+  return `\nEstratégia do post:\n${lines.join("\n")}\n`;
+}
+
 export async function generateFeedContent(
   profile: TenantProfile,
   tenantId: string,
@@ -261,10 +299,12 @@ export async function generateFeedContent(
   productExtra?: string,
   referenceImageUrl?: string,
   aspectRatio?: string,
+  strategy?: ContentStrategy,
 ): Promise<{ result: ContentGenerationResult; tokensUsed: number }> {
   const brand = profile.nomeFantasia || "a empresa";
   const context = buildBrandContext(profile);
   const hints = verticalHints(profile.vertical);
+  const strategyBlock = buildStrategyBlock(strategy);
 
   let subjectLines: string[] = [];
   if (productName) {
@@ -282,7 +322,7 @@ Contexto da marca:
 ${context}
 ${hints ? `\n${hints}\n` : ""}
 ${subject}
-
+${strategyBlock}
 Crie ${variationsCount} variações distintas de legenda para o Feed do Instagram. Cada variação deve ter:
 - Uma legenda completa e envolvente (2-4 parágrafos, emojis contextuais, linguagem alinhada ao tom da marca)
 - 15 a 20 hashtags relevantes e estratégicas
@@ -327,10 +367,12 @@ export async function generateStoriesContent(
   productExtra?: string,
   referenceImageUrl?: string,
   aspectRatio?: string,
+  strategy?: ContentStrategy,
 ): Promise<{ result: ContentGenerationResult; tokensUsed: number }> {
   const brand = profile.nomeFantasia || "a empresa";
   const context = buildBrandContext(profile);
   const hints = verticalHints(profile.vertical);
+  const strategyBlock = buildStrategyBlock(strategy);
 
   let subjectLines: string[] = [];
   if (productName) {
@@ -348,7 +390,7 @@ Contexto da marca:
 ${context}
 ${hints ? `\n${hints}\n` : ""}
 ${subject}
-
+${strategyBlock}
 Crie ${variationsCount} variações distintas de conteúdo para Stories do Instagram. Cada variação deve ter:
 - Um texto curto e impactante (máximo 3 linhas — precisa caber na tela do Stories)
 - Um CTA (call-to-action) claro e direto (ex: "Arrasta pra cima", "Clica no link da bio", "Manda mensagem")
@@ -389,11 +431,13 @@ export async function generateReelsScript(
   theme: string,
   productName: string | undefined,
   variationsCount: number,
-  productExtra?: string
+  productExtra?: string,
+  strategy?: ContentStrategy,
 ): Promise<{ result: ContentGenerationResult; tokensUsed: number }> {
   const brand = profile.nomeFantasia || "a empresa";
   const context = buildBrandContext(profile);
   const hints = verticalHints(profile.vertical);
+  const strategyBlock = buildStrategyBlock(strategy);
 
   let subjectLines: string[] = [];
   if (productName) {
@@ -411,7 +455,7 @@ Contexto da marca:
 ${context}
 ${hints ? `\n${hints}\n` : ""}
 ${subject}
-
+${strategyBlock}
 Crie ${variationsCount} roteiros distintos para Reels do Instagram (vídeos de 15-60 segundos). Cada roteiro deve ter:
 - Título chamativo para o Reel
 - 5 a 7 cenas detalhadas com: visual sugerido, fala/texto na tela, duração estimada
