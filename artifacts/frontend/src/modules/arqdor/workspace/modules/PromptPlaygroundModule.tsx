@@ -448,6 +448,13 @@ function VariationCard({
 }) {
   const [notesOpen, setNotesOpen] = useState(false)
   const [draftNotes, setDraftNotes] = useState(v.notes ?? '')
+  const [now, setNow] = useState(() => Date.now())
+
+  useEffect(() => {
+    if (!v.id.startsWith('local-')) return
+    const id = setInterval(() => setNow(Date.now()), 60_000)
+    return () => clearInterval(id)
+  }, [v.id])
 
   const tInfo = TRANSLATORS.find(t => t.id === v.translator)
 
@@ -463,7 +470,7 @@ function VariationCard({
   const hasNotes = (v.notes ?? '').trim().length > 0
 
   const isPending = v.id.startsWith('local-')
-  const staleness = isPending ? getStalenessInfo(v.savedAt) : null
+  const staleness = isPending ? getStalenessInfo(v.savedAt, now) : null
 
   const stalenessColor =
     staleness?.level === 'red'   ? 'rgba(239,68,68,0.9)'   :
