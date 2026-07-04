@@ -1776,3 +1776,150 @@ describe('badge accuracy when online fires concurrently with an in-flight save P
     expect(stored[0].id).not.toMatch(/^local-/)
   })
 })
+
+// ─── Scenario: two rapid offline saves — first success triggers syncPending ───
+//
+// Race: save(item1) and save(item2) both fire deferred POSTs while offline.
+// When POST #1 resolves it calls syncPendingVariations — which must skip item2
+// because item2's own POST is still in-flight. Only ONE server record for each
+// item must be created; final state has exactly 2 server-assigned items.
+
+describe('two offline saves: syncPendingVariations skips the item whose POST is still in-flight', () => {
+  it('produces exactly 2 server-assigned items and pendingCount === 0 after both POSTs settle', async () => {
+    localStorage.setItem('vendorai_token', 'tok-abc')
+
+    // Deferred POST controllers
+    let resolvePost1!: (v: { ok: boolean; json: () => Promise<unknown> }) => void
+    let resolvePost2!: (v: { ok: boolean; json: () => Promise<unknown> }) => void
+
+    const post1Promise = new Promise<{ ok: boolean; json: () => Promise<unknown> }>(
+      r => { resolvePost1 = r },
+    )
+    const post2Promise = new Promise<{ ok: boolean; json: () => Promise<unknown> }>(
+      r => { resolvePost2 = r },
+    )
+
+    const serverResp1 = {
+      id: 'srv-double-1',
+      name: 'First offline',
+      translator: 'midjourney',
+      detail: 'medium',
+      prompt: 'Prompt one',
+      negativePrompt: '',
+      estimatedTokens: 5,
+      savedAt: new Date(1_700_000_500_000).toISOString(),
+      notes: null,
+    }
+
+    const serverResp2 = {
+      id: 'srv-double-2',
+      name: 'Second offline',
+      translator: 'midjourney',
+      detail: 'medium',
+      prompt: 'Prompt two',
+      negativePrompt: '',
+      estimatedTokens: 6,
+      savedAt: new Date(1_700_000_501_000).toISOString(),
+      notes: null,
+    }
+
+    const fetchMock = vi
+      .fn()
+      // 1st call: GET on mount → offline
+      .mockRejectedValueOnce(new TypeError('Network failure'))
+      // 2nd call: POST for item 1 — kept in-flight via deferred promise
+      .mockReturnValueOnce(post1Promise)
+      // 3rd call: POST for item 2 — kept in-flight via deferred promise
+      .mockReturnValueOnce(post2Promise)
+      // No further calls expected — syncPendingVariations must skip item 2
+      // because its own POST was already in-flight when item 1's POST resolved.
+
+    vi.stubGlobal('fetch', fetchMock)
+
+    const { result } = renderHook(() => useSavedVariations())
+
+    // Wait for the mount-time GET to settle
+    await waitFor(() => expect(result.current.syncing).toBe(false))
+
+    // Save two items while offline — both dispatch deferred POSTs
+    act(() => {
+      result.current.save(
+        { translator: 'midjourney', detail: 'medium', prompt: 'Prompt one', negativePrompt: '', estimatedTokens: 5 },
+        'First offline',
+      )
+    })
+
+    act(() => {
+      result.current.save(
+        { translator: 'midjourney', detail: 'medium', prompt: 'Prompt two', negativePrompt: '', estimatedTokens: 6 },
+        'Second offline',
+      )
+    })
+
+    // Both optimistic items are local-* at this point
+    expect(result.current.variations).toHaveLength(2)
+    expect(result.current.variations.every(v => v.id.startsWith('local-'))).toBe(true)
+    expect(result.current.pendingCount).toBe(2)
+
+    // Resolve POST #1 (item 1 succeeds).
+    // This triggers syncPendingVariations — which must skip item 2 (its POST is still in-flight).
+    await act(async () => {
+      resolvePost1({ ok: true, json: async () => serverResp1 })
+      // Give the success handler (promoteLocal + syncPendingVariations) time to run
+      await new Promise(r => setTimeout(r, 0))
+    })
+
+    // Item 1 is promoted; item 2 still has its local-* id
+    await waitFor(() =>
+      result.current.variations.some(v => v.id === 'srv-double-1'),
+    )
+
+    expect(result.current.variations).toHaveLength(2)
+    const idsAfterFirstSettle = result.current.variations.map(v => v.id)
+    expect(idsAfterFirstSettle).toContain('srv-double-1')
+    // Item 2 must still be local-* (not yet promoted)
+    expect(idsAfterFirstSettle.some(id => id.startsWith('local-'))).toBe(true)
+    expect(result.current.pendingCount).toBe(1)
+
+    // Critically: fetch must have been called exactly 3 times so far
+    // (1 GET + 1 POST item1 + 1 POST item2). If syncPendingVariations had
+    // also posted item2, there would be a 4th call.
+    expect(fetchMock).toHaveBeenCalledTimes(3)
+
+    // Now resolve POST #2 (item 2's own save POST succeeds)
+    await act(async () => {
+      resolvePost2({ ok: true, json: async () => serverResp2 })
+      await new Promise(r => setTimeout(r, 0))
+    })
+
+    // Both items must be promoted — pendingCount drops to 0
+    await waitFor(() => result.current.pendingCount === 0)
+
+    // ── Core assertions ──────────────────────────────────────────────────────
+
+    // Exactly 2 items — no duplicate for item 2
+    expect(result.current.variations).toHaveLength(2)
+
+    // Both carry server-assigned ids
+    const finalIds = result.current.variations.map(v => v.id)
+    expect(finalIds).toContain('srv-double-1')
+    expect(finalIds).toContain('srv-double-2')
+    finalIds.forEach(id => expect(id).not.toMatch(/^local-/))
+
+    // Badge is clear
+    expect(result.current.pendingCount).toBe(0)
+
+    // localStorage mirrors state exactly
+    const stored = storedVariations()
+    expect(stored).toHaveLength(2)
+    const storedIds = stored.map(v => v.id)
+    expect(storedIds).toContain('srv-double-1')
+    expect(storedIds).toContain('srv-double-2')
+    stored.forEach(v => expect(v.id).not.toMatch(/^local-/))
+
+    // Total fetch calls: 1 GET + 1 POST each for item1 and item2 = 3.
+    // Any extra call would mean syncPendingVariations incorrectly posted item2
+    // a second time while its own POST was already in-flight.
+    expect(fetchMock).toHaveBeenCalledTimes(3)
+  })
+})

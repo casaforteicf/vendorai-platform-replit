@@ -105,6 +105,7 @@ export function resetSyncInFlight(): void {
 
 export async function syncPendingVariations(
   onPromoted: (localId: string, serverVariation: SavedVariation) => void,
+  inFlightIds?: ReadonlySet<string>,
 ): Promise<{ failedCount: number }> {
   if (syncInFlight) return { failedCount: 0 }
 
@@ -112,7 +113,9 @@ export async function syncPendingVariations(
   if (!token) return { failedCount: 0 }
 
   const current = readLocalVariations()
-  const pending = current.filter(v => v.id.startsWith('local-'))
+  const pending = current.filter(
+    v => v.id.startsWith('local-') && !(inFlightIds?.has(v.id) ?? false),
+  )
   if (pending.length === 0) return { failedCount: 0 }
 
   syncInFlight = true
@@ -158,6 +161,10 @@ export function useSavedVariations() {
   const [storageError, setStorageError] = useState<string | null>(null)
   const [syncError, setSyncError] = useState<string | null>(null)
   const [syncing, setSyncing] = useState(false)
+
+  // Track local-* IDs whose save POST is currently in-flight so that
+  // syncPendingVariations can skip them and avoid posting the same item twice.
+  const inFlightIds = useRef(new Set<string>())
 
   const clearStorageError = useCallback(() => setStorageError(null), [])
   const clearSyncError = useCallback(() => setSyncError(null), [])
@@ -337,6 +344,8 @@ export function useSavedVariations() {
       void (async () => {
         const token = getAuthToken()
         if (!token) return
+        // Mark this item's POST as in-flight so syncPendingVariations skips it.
+        inFlightIds.current.add(optimisticId)
         try {
           const res = await apiFetch('', {
             method: 'POST',
@@ -356,10 +365,12 @@ export function useSavedVariations() {
           // Replace optimistic item with server-assigned id
           promoteLocal(optimisticId, fromServer(saved))
           // Take the opportunity to push any other pending items now that the
-          // server is reachable
-          void syncPendingVariations(promoteLocal)
+          // server is reachable — exclude IDs still being synced by save() calls.
+          void syncPendingVariations(promoteLocal, inFlightIds.current)
         } catch {
           // Keep local copy; the online listener will retry
+        } finally {
+          inFlightIds.current.delete(optimisticId)
         }
       })()
     },
