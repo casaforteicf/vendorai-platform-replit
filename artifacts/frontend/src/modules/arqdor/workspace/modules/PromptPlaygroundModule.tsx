@@ -419,6 +419,7 @@ function PromptPreview({ pw }: { pw: PlaywrightPrompt }) {
 // ─── Saved variations panel ───────────────────────────────────────────────────
 
 export function VariationCard({
+  now: nowProp,
   v,
   editingId,
   editingName,
@@ -433,6 +434,7 @@ export function VariationCard({
   onDelete,
   onUpdateNotes,
 }: {
+  now?: number
   v: SavedVariation
   editingId: string | null
   editingName: string
@@ -449,14 +451,16 @@ export function VariationCard({
 }) {
   const [notesOpen, setNotesOpen] = useState(false)
   const [draftNotes, setDraftNotes] = useState(v.notes ?? '')
-  const [now, setNow] = useState(() => Date.now())
+  const [clockNow, setClockNow] = useState(() => Date.now())
+  const now = nowProp ?? clockNow
   const [confirmingDelete, setConfirmingDelete] = useState(false)
 
   useEffect(() => {
+    if (nowProp !== undefined) return
     if (!v.id.startsWith('local-')) return
-    const id = setInterval(() => setNow(Date.now()), 60_000)
+    const id = setInterval(() => setClockNow(Date.now()), 60_000)
     return () => clearInterval(id)
-  }, [v.id])
+  }, [v.id, nowProp])
 
   const tInfo = TRANSLATORS.find(t => t.id === v.translator)
 

@@ -7,6 +7,9 @@ import { T } from '../../shared/arqdor-theme'
 
 const DAY_MS = 24 * 60 * 60 * 1000
 
+// Fixed reference point — tests never read the real wall clock
+const NOW = 1_700_000_000_000
+
 const noop = () => {}
 
 function makeVariation(id: string, ageMs: number): SavedVariation {
@@ -18,13 +21,14 @@ function makeVariation(id: string, ageMs: number): SavedVariation {
     prompt: 'test prompt',
     negativePrompt: '',
     estimatedTokens: 100,
-    savedAt: Date.now() - ageMs,
+    savedAt: NOW - ageMs,
   }
 }
 
 function renderCard(v: SavedVariation) {
   const { container } = render(
     <VariationCard
+      now={NOW}
       v={v}
       editingId={null}
       editingName=""
