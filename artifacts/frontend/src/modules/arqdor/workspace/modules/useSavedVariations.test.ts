@@ -1430,3 +1430,122 @@ describe('rename', () => {
     expect(fetchSpy).toHaveBeenCalledTimes(1)
   })
 })
+
+// ─── Scenario: badge resets after second offline→online cycle (partial sync) ──
+
+describe('badge count resets correctly after second online event following a partial sync', () => {
+  it('pendingCount reaches 0 and both items get server ids after the second reconnection', async () => {
+    // Seed two local-* items saved while the user was offline
+    const item1 = makeVariation({
+      id: 'local-cycle-1',
+      name: 'First offline',
+      savedAt: 1_700_000_300_000,
+    })
+    const item2 = makeVariation({
+      id: 'local-cycle-2',
+      name: 'Second offline',
+      savedAt: 1_700_000_301_000,
+    })
+    seedLocalStorage([item1, item2])
+    localStorage.setItem('vendorai_token', 'tok-abc')
+
+    const serverResp1 = {
+      id: 'srv-cycle-1',
+      name: 'First offline',
+      translator: 'midjourney',
+      detail: 'medium',
+      prompt: 'A beautiful building',
+      negativePrompt: 'blurry, low quality',
+      estimatedTokens: 42,
+      savedAt: new Date(1_700_000_300_000).toISOString(),
+      notes: null,
+    }
+    const serverResp2 = {
+      id: 'srv-cycle-2',
+      name: 'Second offline',
+      translator: 'midjourney',
+      detail: 'medium',
+      prompt: 'A beautiful building',
+      negativePrompt: 'blurry, low quality',
+      estimatedTokens: 42,
+      savedAt: new Date(1_700_000_301_000).toISOString(),
+      notes: null,
+    }
+
+    const fetchMock = vi
+      .fn()
+      // 1st call: GET on mount → network error (user is offline)
+      .mockRejectedValueOnce(new TypeError('Network failure'))
+      // 2nd call: first 'online' event — POST for item1 → success
+      .mockResolvedValueOnce({ ok: true, json: async () => serverResp1 })
+      // 3rd call: first 'online' event — POST for item2 → 5xx (partial failure)
+      .mockResolvedValueOnce({ ok: false, status: 500 })
+      // 4th call: second 'online' event — POST for item2 (retry) → success
+      .mockResolvedValueOnce({ ok: true, json: async () => serverResp2 })
+    vi.stubGlobal('fetch', fetchMock)
+
+    const { result } = renderHook(() => useSavedVariations())
+
+    // Wait for the mount-time GET to settle
+    await waitFor(() => expect(result.current.syncing).toBe(false))
+
+    // Both local-* items are present and both count as pending
+    expect(result.current.variations).toHaveLength(2)
+    expect(result.current.pendingCount).toBe(2)
+
+    // ── First 'online' event: item1 succeeds, item2 gets a 5xx ───────────────
+    await act(async () => {
+      window.dispatchEvent(new Event('online'))
+      await new Promise(r => setTimeout(r, 0))
+    })
+
+    // item1 must be promoted; item2 still has its local-* id
+    await waitFor(() => {
+      const ids = result.current.variations.map(v => v.id)
+      return ids.includes('srv-cycle-1') && ids.includes('local-cycle-2')
+    })
+
+    expect(result.current.pendingCount).toBe(1)
+    expect(result.current.variations).toHaveLength(2)
+
+    const afterFirstOnlineIds = result.current.variations.map(v => v.id)
+    expect(afterFirstOnlineIds).toContain('srv-cycle-1')
+    expect(afterFirstOnlineIds).toContain('local-cycle-2')
+
+    // localStorage reflects the same partial state
+    const storedAfterFirst = storedVariations()
+    expect(storedAfterFirst).toHaveLength(2)
+    const storedIdsAfterFirst = storedAfterFirst.map(v => v.id)
+    expect(storedIdsAfterFirst).toContain('srv-cycle-1')
+    expect(storedIdsAfterFirst).toContain('local-cycle-2')
+
+    // ── User goes offline again (badge still shows 1 pending item) ────────────
+    // No action needed — the local-cycle-2 item remains in state and storage.
+
+    // ── Second 'online' event: the previously-failed item2 now succeeds ───────
+    await act(async () => {
+      window.dispatchEvent(new Event('online'))
+      await new Promise(r => setTimeout(r, 0))
+    })
+
+    // item2 must now be promoted — pendingCount drops to 0
+    await waitFor(() => result.current.pendingCount === 0)
+
+    expect(result.current.pendingCount).toBe(0)
+    expect(result.current.variations).toHaveLength(2)
+
+    const finalIds = result.current.variations.map(v => v.id)
+    expect(finalIds).toContain('srv-cycle-1')
+    expect(finalIds).toContain('srv-cycle-2')
+
+    // No local-* ids remain anywhere
+    finalIds.forEach(id => expect(id).not.toMatch(/^local-/))
+
+    const storedFinal = storedVariations()
+    expect(storedFinal).toHaveLength(2)
+    storedFinal.forEach(v => expect(v.id).not.toMatch(/^local-/))
+    const storedFinalIds = storedFinal.map(v => v.id)
+    expect(storedFinalIds).toContain('srv-cycle-1')
+    expect(storedFinalIds).toContain('srv-cycle-2')
+  })
+})
