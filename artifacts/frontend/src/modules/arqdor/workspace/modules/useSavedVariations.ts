@@ -91,10 +91,23 @@ export async function apiFetch(path: string, init?: RequestInit): Promise<Respon
 // ─── Reconciliation: push all local-* items to the server ────────────────────
 // Reads directly from localStorage so it is safe to call from a stable callback
 // with no dependency on React state.
+//
+// The in-flight guard prevents duplicate POSTs when the 'online' event fires
+// multiple times in rapid succession (e.g. flaky connection) or when a save()
+// success races with an incoming online event.
+
+let syncInFlight = false
+
+/** Reset the in-flight guard — intended for test teardown only. */
+export function resetSyncInFlight(): void {
+  syncInFlight = false
+}
 
 export async function syncPendingVariations(
   onPromoted: (localId: string, serverVariation: SavedVariation) => void,
 ): Promise<void> {
+  if (syncInFlight) return
+
   const token = getAuthToken()
   if (!token) return
 
@@ -102,28 +115,33 @@ export async function syncPendingVariations(
   const pending = current.filter(v => v.id.startsWith('local-'))
   if (pending.length === 0) return
 
-  for (const item of pending) {
-    try {
-      const res = await apiFetch('', {
-        method: 'POST',
-        body: JSON.stringify({
-          name: item.name,
-          translator: item.translator,
-          detail: item.detail,
-          prompt: item.prompt,
-          negativePrompt: item.negativePrompt,
-          estimatedTokens: item.estimatedTokens,
-          notes: item.notes,
-          savedAt: new Date(item.savedAt).toISOString(),
-        }),
-      })
-      if (!res.ok) continue
-      const saved: ServerVariation = await res.json()
-      onPromoted(item.id, fromServer(saved))
-    } catch {
-      // Still offline — abort remaining retries for this cycle
-      break
+  syncInFlight = true
+  try {
+    for (const item of pending) {
+      try {
+        const res = await apiFetch('', {
+          method: 'POST',
+          body: JSON.stringify({
+            name: item.name,
+            translator: item.translator,
+            detail: item.detail,
+            prompt: item.prompt,
+            negativePrompt: item.negativePrompt,
+            estimatedTokens: item.estimatedTokens,
+            notes: item.notes,
+            savedAt: new Date(item.savedAt).toISOString(),
+          }),
+        })
+        if (!res.ok) continue
+        const saved: ServerVariation = await res.json()
+        onPromoted(item.id, fromServer(saved))
+      } catch {
+        // Still offline — abort remaining retries for this cycle
+        break
+      }
     }
+  } finally {
+    syncInFlight = false
   }
 }
 

@@ -6,6 +6,8 @@ import {
   MIGRATED_KEY,
   PRUNE_BATCH_SIZE,
   readLocalVariations,
+  resetSyncInFlight,
+  syncPendingVariations,
 } from './useSavedVariations'
 import type { SavedVariation } from './useSavedVariations'
 
@@ -38,6 +40,7 @@ function storedVariations(): SavedVariation[] {
 beforeEach(() => {
   localStorage.clear()
   vi.restoreAllMocks()
+  resetSyncInFlight()
 })
 
 // ─── Scenario 1: API down on mount ────────────────────────────────────────────
@@ -1428,6 +1431,109 @@ describe('rename', () => {
 
     // Only the initial GET was called — no PATCH for local-* items
     expect(fetchSpy).toHaveBeenCalledTimes(1)
+  })
+})
+
+// ─── Scenario: concurrent-invocation guard ────────────────────────────────────
+
+describe('syncPendingVariations in-flight guard', () => {
+  it('deduplicates concurrent calls — only one POST is issued when online fires twice rapidly', async () => {
+    localStorage.setItem('vendorai_token', 'tok-abc')
+
+    const localItem = makeVariation({ id: 'local-dup-1', name: 'Dup check', savedAt: 1_700_000_400_000 })
+    seedLocalStorage([localItem])
+
+    const serverResponse = {
+      id: 'srv-dup-1',
+      name: 'Dup check',
+      translator: 'midjourney',
+      detail: 'medium',
+      prompt: 'A beautiful building',
+      negativePrompt: 'blurry, low quality',
+      estimatedTokens: 42,
+      savedAt: new Date(1_700_000_400_000).toISOString(),
+      notes: null,
+    }
+
+    // The POST resolves slowly so both concurrent calls overlap while the first is in-flight
+    let resolvePost!: () => void
+    const slowPost = new Promise<{ ok: boolean; json: () => Promise<typeof serverResponse> }>(resolve => {
+      resolvePost = () => resolve({ ok: true, json: async () => serverResponse })
+    })
+
+    const fetchMock = vi
+      .fn()
+      // Any POST call returns the slow promise
+      .mockReturnValue(slowPost)
+    vi.stubGlobal('fetch', fetchMock)
+
+    const onPromoted = vi.fn()
+
+    // Fire two concurrent invocations — the second must be a no-op
+    const first = syncPendingVariations(onPromoted)
+    const second = syncPendingVariations(onPromoted)
+
+    // Resolve the in-flight POST
+    resolvePost()
+    await Promise.all([first, second])
+
+    // Exactly one POST must have been made despite two invocations
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+    // onPromoted called exactly once — no duplicate promotion
+    expect(onPromoted).toHaveBeenCalledTimes(1)
+    expect(onPromoted).toHaveBeenCalledWith('local-dup-1', expect.objectContaining({ id: 'srv-dup-1' }))
+  })
+
+  it('rapid online events via the hook do not duplicate POSTs', async () => {
+    localStorage.setItem('vendorai_token', 'tok-abc')
+
+    const localItem = makeVariation({ id: 'local-rapid-1', name: 'Rapid', savedAt: 1_700_000_500_000 })
+    seedLocalStorage([localItem])
+
+    const serverResponse = {
+      id: 'srv-rapid-1',
+      name: 'Rapid',
+      translator: 'midjourney',
+      detail: 'medium',
+      prompt: 'A beautiful building',
+      negativePrompt: 'blurry, low quality',
+      estimatedTokens: 42,
+      savedAt: new Date(1_700_000_500_000).toISOString(),
+      notes: null,
+    }
+
+    // POST resolves on next microtask (enough for both online events to queue before it completes)
+    const fetchMock = vi
+      .fn()
+      // GET on mount → network error (offline)
+      .mockRejectedValueOnce(new TypeError('Network failure'))
+      // First POST → success
+      .mockResolvedValueOnce({ ok: true, json: async () => serverResponse })
+      // Second POST → should never be reached; if it is, the guard failed
+      .mockResolvedValueOnce({ ok: true, json: async () => serverResponse })
+    vi.stubGlobal('fetch', fetchMock)
+
+    const { result } = renderHook(() => useSavedVariations())
+    await waitFor(() => expect(result.current.syncing).toBe(false))
+
+    // Fire two rapid online events synchronously before the first sync can complete
+    await act(async () => {
+      window.dispatchEvent(new Event('online'))
+      window.dispatchEvent(new Event('online'))
+      await new Promise(r => setTimeout(r, 0))
+    })
+
+    // Wait for the promoted id to land
+    await waitFor(() => result.current.variations[0]?.id === 'srv-rapid-1')
+
+    // Only one POST should have been issued (1 GET + 1 POST = 2 total)
+    const postCalls = fetchMock.mock.calls.filter(([, init]) => (init as RequestInit)?.method === 'POST')
+    expect(postCalls).toHaveLength(1)
+
+    // Variation is correctly promoted — no duplicate
+    expect(result.current.variations).toHaveLength(1)
+    expect(result.current.variations[0].id).toBe('srv-rapid-1')
+    expect(storedVariations()[0].id).toBe('srv-rapid-1')
   })
 })
 
