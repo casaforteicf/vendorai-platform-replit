@@ -154,3 +154,4 @@ export * from "./bug_reports";
 export * from "./arch_specifications";
 export * from "./arch_partners";
 export * from "./arch_knowledge";
+export * from "./arch_office_templates";

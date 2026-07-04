@@ -24,6 +24,7 @@ export const archProjetosTable = pgTable("arch_projetos", {
   titulo:                varchar("titulo",                 { length: 255 }).notNull(),
   descricao:             text("descricao"),
   status:                varchar("status",                 { length: 30  }).default("briefing"),
+  pipelineStage:         text("pipeline_stage").default("lead"),
   tipoObra:              varchar("tipo_obra",              { length: 50  }),
   areaM2:                numeric("area_m2",                { precision: 8,  scale: 2 }),
   orcamentoTotal:        numeric("orcamento_total",        { precision: 12, scale: 2 }),

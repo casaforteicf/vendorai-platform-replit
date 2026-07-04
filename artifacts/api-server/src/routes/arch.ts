@@ -48,6 +48,7 @@ import {
   updateArchPartnerSchema,
   archKnowledgeEntriesTable,
   archKnowledgeTagsTable,
+  archOfficeTemplatesTable,
 } from "@workspace/db";
 import { z } from "zod/v4";
 import { anthropic } from "@workspace/integrations-anthropic-ai";
@@ -3604,6 +3605,386 @@ router.get("/arch/knowledge/tags", authenticate, async (req, res) => {
     .orderBy(desc(archKnowledgeTagsTable.count))
     .limit(50);
   return res.json(tags);
+});
+
+// ═════════════════════════════════════════════════════════════════════════════
+// SPRINT 9 — OFFICE OPERATING SYSTEM
+// ═════════════════════════════════════════════════════════════════════════════
+
+const PIPELINE_STAGES = ["lead","briefing","anteprojeto","projeto","render","cliente","executivo","obra","concluido"] as const;
+type PipelineStage = typeof PIPELINE_STAGES[number];
+
+// ── GET /arch/office/pipeline — projetos agrupados por etapa ─────────────────
+router.get("/arch/office/pipeline", authenticate, async (req, res) => {
+  const tid = tenantId(req);
+  const projects = await db
+    .select({
+      id:            archProjetosTable.id,
+      titulo:        archProjetosTable.titulo,
+      clienteNome:   archProjetosTable.clienteNome,
+      status:        archProjetosTable.status,
+      tipoObra:      archProjetosTable.tipoObra,
+      areaM2:        archProjetosTable.areaM2,
+      pipelineStage: archProjetosTable.pipelineStage,
+      prazoEstimado: archProjetosTable.prazoEstimado,
+      createdAt:     archProjetosTable.createdAt,
+      updatedAt:     archProjetosTable.updatedAt,
+    })
+    .from(archProjetosTable)
+    .where(eq(archProjetosTable.tenantId, tid))
+    .orderBy(desc(archProjetosTable.updatedAt));
+
+  const grouped: Record<string, typeof projects> = {};
+  PIPELINE_STAGES.forEach(s => { grouped[s] = []; });
+  projects.forEach(p => {
+    const s = (p.pipelineStage ?? p.status ?? "briefing") as string;
+    const key = PIPELINE_STAGES.includes(s as PipelineStage) ? s : "briefing";
+    grouped[key].push(p);
+  });
+
+  return res.json({ stages: PIPELINE_STAGES, projects: grouped });
+});
+
+// ── PATCH /arch/office/pipeline/:projectId/stage — mover etapa ───────────────
+router.patch("/arch/office/pipeline/:projectId/stage", authenticate, async (req, res) => {
+  const { projectId } = req.params;
+  const { stage }     = req.body as { stage: string };
+  const tid           = tenantId(req);
+
+  if (!PIPELINE_STAGES.includes(stage as PipelineStage)) {
+    return res.status(400).json({ error: "Stage inválido" });
+  }
+
+  await db
+    .update(archProjetosTable)
+    .set({ pipelineStage: stage, updatedAt: new Date() })
+    .where(and(eq(archProjetosTable.id, projectId), eq(archProjetosTable.tenantId, tid)));
+
+  return res.json({ ok: true, stage });
+});
+
+// ── GET /arch/office/dashboard — visão geral do escritório ───────────────────
+router.get("/arch/office/dashboard", authenticate, async (req, res) => {
+  const tid = tenantId(req);
+
+  const [projects, knowledgeOverview, templateCount, partnerCount] = await Promise.all([
+    db.select({
+      id:            archProjetosTable.id,
+      titulo:        archProjetosTable.titulo,
+      clienteNome:   archProjetosTable.clienteNome,
+      pipelineStage: archProjetosTable.pipelineStage,
+      status:        archProjetosTable.status,
+      tipoObra:      archProjetosTable.tipoObra,
+      updatedAt:     archProjetosTable.updatedAt,
+    }).from(archProjetosTable)
+      .where(eq(archProjetosTable.tenantId, tid))
+      .orderBy(desc(archProjetosTable.updatedAt)),
+
+    db.select({
+      total:      sql<number>`count(*)`.mapWith(Number),
+      renders:    sql<number>`coalesce(sum(render_count), 0)`.mapWith(Number),
+      aprovados:  sql<number>`coalesce(sum(renders_aprovados), 0)`.mapWith(Number),
+      avgRevisoes:sql<number>`coalesce(avg(revisoes), 0)`.mapWith(Number),
+    }).from(archKnowledgeEntriesTable)
+      .where(eq(archKnowledgeEntriesTable.tenantId, tid)),
+
+    db.select({ count: sql<number>`count(*)`.mapWith(Number) })
+      .from(archOfficeTemplatesTable)
+      .where(eq(archOfficeTemplatesTable.tenantId, tid)),
+
+    db.select({ count: sql<number>`count(*)`.mapWith(Number) })
+      .from(archPartnersTable)
+      .where(and(eq(archPartnersTable.tenantId, tid), eq(archPartnersTable.ativo, true))),
+  ]);
+
+  const ACTIVE = ["lead","briefing","anteprojeto","projeto","render","cliente","executivo","obra"];
+  const byStage: Record<string, number> = {};
+  PIPELINE_STAGES.forEach(s => { byStage[s] = 0; });
+  projects.forEach(p => {
+    const s = p.pipelineStage ?? p.status ?? "briefing";
+    if (s in byStage) byStage[s]++;
+  });
+
+  const ks = knowledgeOverview[0];
+  const approvalRate = (ks?.renders ?? 0) > 0 ? Math.round((ks.aprovados / ks.renders) * 100) : 0;
+
+  return res.json({
+    totalProjetos:  projects.length,
+    projetosAtivos: projects.filter(p => ACTIVE.includes(p.pipelineStage ?? p.status ?? "")).length,
+    emRender:       byStage["render"],
+    concluidos:     byStage["concluido"],
+    byStage,
+    approvalRate,
+    totalRenders:   ks?.renders ?? 0,
+    avgRevisoes:    Math.round((ks?.avgRevisoes ?? 0) * 10) / 10,
+    totalTemplates: templateCount[0]?.count ?? 0,
+    totalParceiros: partnerCount[0]?.count ?? 0,
+    recentActivity: projects.slice(0, 8),
+  });
+});
+
+// ── GET /arch/office/dna — DNA do escritório ─────────────────────────────────
+router.get("/arch/office/dna", authenticate, async (req, res) => {
+  const tid = tenantId(req);
+
+  const [entries, tags, partners, catalog] = await Promise.all([
+    db.select({
+      materiaisUsados: archKnowledgeEntriesTable.materiaisUsados,
+      fabricantes:     archKnowledgeEntriesTable.fabricantes,
+      promptsUsados:   archKnowledgeEntriesTable.promptsUsados,
+    }).from(archKnowledgeEntriesTable)
+      .where(eq(archKnowledgeEntriesTable.tenantId, tid)),
+
+    db.select()
+      .from(archKnowledgeTagsTable)
+      .where(eq(archKnowledgeTagsTable.tenantId, tid))
+      .orderBy(desc(archKnowledgeTagsTable.count))
+      .limit(30),
+
+    db.select({
+      nome:          archPartnersTable.nome,
+      tipo:          archPartnersTable.tipo,
+      especialidades:archPartnersTable.especialidades,
+      cidade:        archPartnersTable.cidade,
+    }).from(archPartnersTable)
+      .where(and(eq(archPartnersTable.tenantId, tid), eq(archPartnersTable.ativo, true)))
+      .limit(20),
+
+    db.select({
+      nome:      archCatalogoTable.nome,
+      categoria: archCatalogoTable.categoria,
+      fornecedor:archCatalogoTable.fornecedor,
+    }).from(archCatalogoTable)
+      .where(eq(archCatalogoTable.tenantId, tid))
+      .limit(60),
+  ]);
+
+  const matFreq  = new Map<string, { count: number; cat: string }>();
+  const fabFreq  = new Map<string, number>();
+  const promptFreq = new Map<string, number>();
+
+  entries.forEach(e => {
+    ((e.materiaisUsados as { nome: string; categoria: string | null }[] | null) ?? [])
+      .forEach(m => { const p = matFreq.get(m.nome); matFreq.set(m.nome, { count: (p?.count ?? 0) + 1, cat: m.categoria ?? "outros" }); });
+    ((e.fabricantes as string[] | null) ?? [])
+      .forEach(f => fabFreq.set(f, (fabFreq.get(f) ?? 0) + 1));
+    ((e.promptsUsados as string[] | null) ?? [])
+      .forEach(p => promptFreq.set(p, (promptFreq.get(p) ?? 0) + 1));
+  });
+
+  const catFreq = new Map<string, number>();
+  catalog.forEach(c => { if (c.categoria) catFreq.set(c.categoria, (catFreq.get(c.categoria) ?? 0) + 1); });
+
+  return res.json({
+    totalProjetos:        entries.length,
+    materiaisPreferidos:  [...matFreq.entries()].sort((a,b) => b[1].count-a[1].count).slice(0,12).map(([nome,v]) => ({ nome, count: v.count, categoria: v.cat })),
+    fabricantesFavoritos: [...fabFreq.entries()].sort((a,b) => b[1]-a[1]).slice(0,10).map(([nome,count]) => ({ nome, count })),
+    promptsFrequentes:    [...promptFreq.entries()].sort((a,b) => b[1]-a[1]).slice(0,6).map(([texto,count]) => ({ texto: texto.slice(0,200), count })),
+    estilos:              tags.filter(t => ["tipo_obra","estilo"].includes(t.tipo)),
+    padroes:              tags.filter(t => ["padrao","porte"].includes(t.tipo)),
+    parceiros:            partners,
+    biblioteca:           catalog.slice(0,30),
+    categoriasLibrary:    [...catFreq.entries()].sort((a,b) => b[1]-a[1]).map(([cat,count]) => ({ cat, count })),
+  });
+});
+
+// ── GET /arch/office/agenda — agenda inteligente ─────────────────────────────
+router.get("/arch/office/agenda", authenticate, async (req, res) => {
+  const tid = tenantId(req);
+  const projects = await db
+    .select({
+      id:            archProjetosTable.id,
+      titulo:        archProjetosTable.titulo,
+      clienteNome:   archProjetosTable.clienteNome,
+      pipelineStage: archProjetosTable.pipelineStage,
+      status:        archProjetosTable.status,
+      tipoObra:      archProjetosTable.tipoObra,
+      prazoEstimado: archProjetosTable.prazoEstimado,
+      createdAt:     archProjetosTable.createdAt,
+    }).from(archProjetosTable)
+      .where(and(eq(archProjetosTable.tenantId, tid), sql`status != 'concluido'`))
+      .orderBy(archProjetosTable.prazoEstimado);
+
+  const events = projects
+    .filter(p => p.prazoEstimado && p.prazoEstimado > 0)
+    .map(p => {
+      const due = new Date(p.createdAt);
+      due.setDate(due.getDate() + (p.prazoEstimado ?? 30));
+      const daysRemaining = Math.ceil((due.getTime() - Date.now()) / 86_400_000);
+      return {
+        id:            p.id,
+        titulo:        p.titulo,
+        clienteNome:   p.clienteNome,
+        pipelineStage: p.pipelineStage ?? p.status ?? "briefing",
+        tipoObra:      p.tipoObra,
+        dueDate:       due.toISOString().slice(0, 10),
+        daysRemaining,
+        urgente:       daysRemaining <= 7,
+        atrasado:      daysRemaining < 0,
+      };
+    })
+    .sort((a, b) => a.daysRemaining - b.daysRemaining);
+
+  // Without Google Calendar connection, also return projects without prazo as "backlog"
+  const semPrazo = projects
+    .filter(p => !p.prazoEstimado || p.prazoEstimado <= 0)
+    .map(p => ({
+      id:            p.id,
+      titulo:        p.titulo,
+      clienteNome:   p.clienteNome,
+      pipelineStage: p.pipelineStage ?? p.status ?? "briefing",
+      tipoObra:      p.tipoObra,
+      dueDate:       null,
+      daysRemaining: null,
+      urgente:       false,
+      atrasado:      false,
+    }));
+
+  return res.json({ events, semPrazo, total: events.length });
+});
+
+// ── POST /arch/office/agenda — criar evento de agenda ────────────────────────
+router.post("/arch/office/agenda", authenticate, async (req, res) => {
+  const { projectId, titulo, dueDate, nota } = req.body as Record<string, string>;
+  const tid = tenantId(req);
+
+  if (!projectId || !dueDate) {
+    return res.status(400).json({ error: "projectId e dueDate são obrigatórios" });
+  }
+
+  // Compute prazoEstimado (days from project createdAt)
+  const [proj] = await db.select({ createdAt: archProjetosTable.createdAt })
+    .from(archProjetosTable)
+    .where(and(eq(archProjetosTable.id, projectId), eq(archProjetosTable.tenantId, tid)))
+    .limit(1);
+
+  if (!proj) return res.status(404).json({ error: "Projeto não encontrado" });
+
+  const due    = new Date(dueDate);
+  const created = new Date(proj.createdAt);
+  const daysDiff = Math.ceil((due.getTime() - created.getTime()) / 86_400_000);
+
+  await db.update(archProjetosTable)
+    .set({ prazoEstimado: Math.max(1, daysDiff), updatedAt: new Date() })
+    .where(and(eq(archProjetosTable.id, projectId), eq(archProjetosTable.tenantId, tid)));
+
+  return res.json({ ok: true, prazoEstimado: Math.max(1, daysDiff), titulo, nota });
+});
+
+// ── GET /arch/office/templates — listar templates ─────────────────────────────
+router.get("/arch/office/templates", authenticate, async (req, res) => {
+  const tid = tenantId(req);
+  const templates = await db
+    .select()
+    .from(archOfficeTemplatesTable)
+    .where(eq(archOfficeTemplatesTable.tenantId, tid))
+    .orderBy(desc(archOfficeTemplatesTable.vezesCriado), desc(archOfficeTemplatesTable.createdAt));
+  return res.json(templates);
+});
+
+// ── POST /arch/office/templates — criar template ──────────────────────────────
+router.post("/arch/office/templates", authenticate, async (req, res) => {
+  const tid  = tenantId(req);
+  const body = req.body as {
+    nome: string; descricao?: string; tipoObra?: string; estiloBase?: string;
+    prazoEstimado?: number; orcamentoBase?: number;
+    ambientes?: { nome: string; descricao?: string }[];
+    materiais?: { nome: string; categoria: string; fornecedor?: string }[];
+    prompts?: string[];
+  };
+
+  if (!body.nome) return res.status(400).json({ error: "nome é obrigatório" });
+
+  const [tmpl] = await db
+    .insert(archOfficeTemplatesTable)
+    .values({
+      tenantId:       tid,
+      nome:           body.nome,
+      descricao:      body.descricao,
+      tipoObra:       body.tipoObra,
+      estiloBase:     body.estiloBase,
+      prazoEstimado:  body.prazoEstimado,
+      orcamentoBase:  body.orcamentoBase ? String(body.orcamentoBase) : undefined,
+      ambientes:      body.ambientes ?? [],
+      materiais:      body.materiais ?? [],
+      prompts:        body.prompts ?? [],
+    })
+    .returning();
+
+  return res.status(201).json(tmpl);
+});
+
+// ── DELETE /arch/office/templates/:id — remover template ─────────────────────
+router.delete("/arch/office/templates/:id", authenticate, async (req, res) => {
+  const { id } = req.params;
+  const tid    = tenantId(req);
+  await db.delete(archOfficeTemplatesTable)
+    .where(and(eq(archOfficeTemplatesTable.id, id), eq(archOfficeTemplatesTable.tenantId, tid)));
+  return res.json({ ok: true });
+});
+
+// ── GET /arch/office/indicators — KPIs do escritório ─────────────────────────
+router.get("/arch/office/indicators", authenticate, async (req, res) => {
+  const tid = tenantId(req);
+
+  const [projectStats, projectsByStage, knowledge, recentCount] = await Promise.all([
+    db.select({
+      total:    sql<number>`count(*)`.mapWith(Number),
+      avgDias:  sql<number>`
+        coalesce(avg(
+          extract(epoch from (updated_at - created_at)) / 86400
+        ), 0)
+      `.mapWith(Number),
+    }).from(archProjetosTable)
+      .where(eq(archProjetosTable.tenantId, tid)),
+
+    db.select({
+      stage: archProjetosTable.pipelineStage,
+      count: sql<number>`count(*)`.mapWith(Number),
+    }).from(archProjetosTable)
+      .where(eq(archProjetosTable.tenantId, tid))
+      .groupBy(archProjetosTable.pipelineStage),
+
+    db.select({
+      total:       sql<number>`count(*)`.mapWith(Number),
+      renders:     sql<number>`coalesce(sum(render_count), 0)`.mapWith(Number),
+      aprovados:   sql<number>`coalesce(sum(renders_aprovados), 0)`.mapWith(Number),
+      revisoes:    sql<number>`coalesce(avg(revisoes), 0)`.mapWith(Number),
+      iaRenderers: sql<number>`coalesce(sum(render_count), 0)`.mapWith(Number),
+    }).from(archKnowledgeEntriesTable)
+      .where(eq(archKnowledgeEntriesTable.tenantId, tid)),
+
+    db.select({ count: sql<number>`count(*)`.mapWith(Number) })
+      .from(archProjetosTable)
+      .where(and(
+        eq(archProjetosTable.tenantId, tid),
+        sql`created_at >= now() - interval '30 days'`,
+      )),
+  ]);
+
+  const ps = projectStats[0];
+  const ks = knowledge[0];
+  const approvalRate = (ks?.renders ?? 0) > 0 ? Math.round((ks.aprovados / ks.renders) * 100) : 0;
+  const avgRendersPerProjeto = (ks?.total ?? 0) > 0 ? Math.round((ks.renders / ks.total) * 10) / 10 : 0;
+
+  // Stage funnel
+  const stageCounts: Record<string, number> = {};
+  PIPELINE_STAGES.forEach(s => { stageCounts[s] = 0; });
+  projectsByStage.forEach(r => {
+    if (r.stage && r.stage in stageCounts) stageCounts[r.stage] = r.count;
+  });
+
+  return res.json({
+    totalProjetos:        ps?.total ?? 0,
+    projetosUltimos30Dias:recentCount[0]?.count ?? 0,
+    tempMedioProjeto:     Math.round(ps?.avgDias ?? 0),
+    totalRenders:         ks?.renders ?? 0,
+    taxaAprovacao:        approvalRate,
+    avgRendersPerProjeto,
+    avgRevisoes:          Math.round((ks?.revisoes ?? 0) * 10) / 10,
+    usoIA:                ks?.renders ?? 0,
+    funnel:               stageCounts,
+  });
 });
 
 export { archPublicRouter };
