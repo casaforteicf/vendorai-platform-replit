@@ -77,6 +77,7 @@ import sdrTemplatesRouter from "./sdr_templates";
 import renderRouter from "./render";
 import siteRouter from "./site";
 import spinRouter from "./spin";
+import supportRouter from "./support";
 import { authenticate, blockPartnerFromCRM, blockSuspendedTenants, blockExpiredDemo, requireRole, requireSameTenanOrSuperAdmin } from "../middlewares/auth";
 import { eq } from "drizzle-orm";
 import { db, tenantsTable } from "@workspace/db";
@@ -285,6 +286,9 @@ router.use(renderRouter);
 
 // SPIN Selling Briefing Hub
 router.use(spinRouter);
+
+// Support chat
+router.use(supportRouter);
 
 export { requireRole, requireSameTenanOrSuperAdmin };
 export default router;

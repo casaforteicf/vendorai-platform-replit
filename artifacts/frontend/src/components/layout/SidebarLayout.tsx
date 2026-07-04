@@ -3,6 +3,7 @@ type UserFunction = "vendedor" | "financeiro" | "suporte" | "entrega" | "adminis
 import { Link, useLocation } from "wouter";
 import { useAuth } from "@/contexts/AuthContext";
 import React, { useState } from "react";
+import { SupportChatWidget } from "@/components/support/SupportChatWidget";
 import {
   LayoutDashboard, Users, Briefcase, MessageSquare, Calendar,
   Settings, LogOut, Megaphone, FileText, Receipt, BrainCircuit,
@@ -370,6 +371,7 @@ export function SidebarLayout({ children }: { children: React.ReactNode }) {
   }
 
   return (
+    <>
     <div className="flex h-screen bg-muted/20">
       {/* ── Desktop sidebar ────────────────────────────────── */}
       <div className="hidden md:flex w-64 bg-card border-r flex-col shrink-0">
@@ -450,5 +452,7 @@ export function SidebarLayout({ children }: { children: React.ReactNode }) {
         </main>
       </div>
     </div>
+    <SupportChatWidget />
+    </>
   );
 }

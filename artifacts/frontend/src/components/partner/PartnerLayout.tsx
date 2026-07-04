@@ -1,5 +1,6 @@
 import { useLocation } from "wouter";
 import { useAuth } from "@/contexts/AuthContext";
+import { SupportChatWidget } from "@/components/support/SupportChatWidget";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import {
@@ -21,6 +22,7 @@ export function PartnerLayout({ children }: { children: React.ReactNode }) {
   const { logout } = useAuth();
 
   return (
+    <>
     <div className="min-h-screen bg-background">
       {/* Top nav */}
       <header className="sticky top-0 z-50 border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
@@ -62,5 +64,7 @@ export function PartnerLayout({ children }: { children: React.ReactNode }) {
 
       <main className="mx-auto max-w-6xl px-4 py-6">{children}</main>
     </div>
+    <SupportChatWidget />
+    </>
   );
 }
