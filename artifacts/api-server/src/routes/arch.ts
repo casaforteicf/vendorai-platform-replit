@@ -46,6 +46,8 @@ import {
   archSolicitacoesTable,
   insertArchPartnerSchema,
   updateArchPartnerSchema,
+  archKnowledgeEntriesTable,
+  archKnowledgeTagsTable,
 } from "@workspace/db";
 import { z } from "zod/v4";
 import { anthropic } from "@workspace/integrations-anthropic-ai";
@@ -2686,6 +2688,20 @@ ${catalogItems.slice(0, 10).map((i) => `- ${i.nome} [${i.categoria}] — ${i.for
     }
   }
 
+  // ── Knowledge Engine: inject top patterns into copilot context ───────────
+  try {
+    const kTags = await db
+      .select({ tag: archKnowledgeTagsTable.tag, count: archKnowledgeTagsTable.count })
+      .from(archKnowledgeTagsTable)
+      .where(eq(archKnowledgeTagsTable.tenantId, tid))
+      .orderBy(desc(archKnowledgeTagsTable.count))
+      .limit(8);
+
+    if (kTags.length > 0) {
+      contextStr += `\n\nBASE DE CONHECIMENTO DO ESCRITÓRIO (padrões extraídos de projetos anteriores):\nPadrões mais recorrentes: ${kTags.map(t => t.tag).join(", ")}`;
+    }
+  } catch { /* non-blocking */ }
+
   // ── 2-6. Delegate to AI Orchestrator (intent → specialists → AI → parse) ──
   let orchResult: import("../lib/arqdor/orchestrator").OrchestrationResult;
   let logEntry:   import("../lib/arqdor/orchestrator").OrchestratorLogEntry;
@@ -3149,6 +3165,445 @@ router.get("/arch/solicitacoes", authenticate, async (req, res) => {
     .limit(100);
 
   return res.json(rows);
+});
+
+// ═════════════════════════════════════════════════════════════════════════════
+// SPRINT 7 — KNOWLEDGE ENGINE
+// ═════════════════════════════════════════════════════════════════════════════
+
+// ── Knowledge Extraction Helper ───────────────────────────────────────────────
+function classifyKnowledgeTag(tag: string): string {
+  if (["residencial","comercial","corporativo","hospitalar","educacional","industrial","misto"].some(t => tag.includes(t))) return "tipo_obra";
+  if (["alto-padrao","medio-padrao","economico"].includes(tag)) return "padrao";
+  if (["grande-porte","medio-porte","pequeno-porte"].includes(tag)) return "porte";
+  if (tag.startsWith("fornecedor-")) return "fabricante";
+  if (["concluido","em-andamento","alta-aprovacao"].includes(tag)) return "status";
+  if (["piso","parede","teto","madeira","metal","pedra","vidro","ceramica","tecido","iluminacao"].some(m => tag.includes(m))) return "material";
+  return "geral";
+}
+
+async function extractTenantKnowledge(tid: string): Promise<number> {
+  // 1. Get all projects
+  const projects = await db
+    .select()
+    .from(archProjetosTable)
+    .where(eq(archProjetosTable.tenantId, tid))
+    .limit(100);
+
+  // 2. Get tenant catalog
+  const catalog = await db
+    .select({
+      nome:       archCatalogoTable.nome,
+      categoria:  archCatalogoTable.categoria,
+      fornecedor: archCatalogoTable.fornecedor,
+    })
+    .from(archCatalogoTable)
+    .where(eq(archCatalogoTable.tenantId, tid))
+    .limit(60);
+
+  // 3. Process each project
+  for (const projeto of projects) {
+    const [cenas, orcItems, prompts] = await Promise.all([
+      db.select().from(archCenasTable).where(eq(archCenasTable.projetoId, projeto.id)),
+      db.select().from(archOrcamentoItensTable).where(eq(archOrcamentoItensTable.projetoId, projeto.id)).limit(50),
+      db.select({ prompt: archPromptVariationsTable.prompt })
+        .from(archPromptVariationsTable)
+        .innerJoin(archAmbientesTable, eq(archAmbientesTable.id, archPromptVariationsTable.ambienteId))
+        .where(eq(archAmbientesTable.projetoId, projeto.id))
+        .limit(10),
+    ]);
+
+    const renders = await db
+      .select({ id: archRenderVersoesTable.id })
+      .from(archRenderVersoesTable)
+      .innerJoin(archCenasTable, eq(archCenasTable.id, archRenderVersoesTable.cenaId))
+      .where(eq(archCenasTable.projetoId, projeto.id));
+
+    // Build auto-tags
+    const tags: string[] = [];
+    if (projeto.tipoObra) tags.push(projeto.tipoObra.toLowerCase().replace(/\s+/g, "-").slice(0, 40));
+
+    const orc = Number(projeto.orcamentoTotal);
+    if (orc > 500_000) tags.push("alto-padrao");
+    else if (orc > 100_000) tags.push("medio-padrao");
+    else if (orc > 0) tags.push("economico");
+
+    const area = Number(projeto.areaM2);
+    if (area > 200) tags.push("grande-porte");
+    else if (area > 80) tags.push("medio-porte");
+    else if (area > 0) tags.push("pequeno-porte");
+
+    if (projeto.status === "concluido") tags.push("concluido");
+    const aprovadas = cenas.filter(c => c.status === "aprovado").length;
+    if (cenas.length > 0 && aprovadas / cenas.length >= 0.7) tags.push("alta-aprovacao");
+
+    catalog.forEach(item => {
+      if (item.categoria) {
+        const t = item.categoria.toLowerCase().slice(0, 30);
+        if (!tags.includes(t)) tags.push(t);
+      }
+    });
+
+    const fabricantes = [...new Set(orcItems.filter(i => i.fornecedor).map(i => i.fornecedor!))];
+    const componentes  = orcItems.slice(0, 30).map(i => ({ descricao: i.descricao, categoria: i.categoria ?? null, fornecedor: i.fornecedor ?? null }));
+    const materiaisUsados = catalog.map(i => ({ nome: i.nome, categoria: i.categoria ?? null, fornecedor: i.fornecedor ?? null }));
+    const promptsUsados   = prompts.map(p => p.prompt.slice(0, 300));
+    const uniqueTags      = [...new Set(tags)];
+
+    await db
+      .insert(archKnowledgeEntriesTable)
+      .values({
+        tenantId:        tid,
+        projectId:       projeto.id,
+        titulo:          projeto.titulo,
+        tipo:            projeto.tipoObra ?? null,
+        areaM2:          projeto.areaM2,
+        orcamentoTotal:  projeto.orcamentoTotal,
+        status:          projeto.status ?? null,
+        tags:            uniqueTags,
+        materiaisUsados,
+        fabricantes,
+        componentes,
+        promptsUsados,
+        renderCount:      renders.length,
+        rendersAprovados: aprovadas,
+        cenasCount:       cenas.length,
+        revisoes:         Math.max(0, renders.length - cenas.length),
+        snapshotAt:       new Date(),
+      })
+      .onConflictDoUpdate({
+        target: archKnowledgeEntriesTable.projectId,
+        set: {
+          titulo:           projeto.titulo,
+          tipo:             projeto.tipoObra ?? null,
+          status:           projeto.status ?? null,
+          tags:             uniqueTags,
+          materiaisUsados,
+          fabricantes,
+          componentes,
+          promptsUsados,
+          renderCount:      renders.length,
+          rendersAprovados: aprovadas,
+          cenasCount:       cenas.length,
+          revisoes:         Math.max(0, renders.length - cenas.length),
+          snapshotAt:       new Date(),
+          updatedAt:        new Date(),
+        },
+      });
+  }
+
+  // 4. Rebuild tag frequency index
+  await db.delete(archKnowledgeTagsTable).where(eq(archKnowledgeTagsTable.tenantId, tid));
+
+  const allEntries = await db
+    .select({ tags: archKnowledgeEntriesTable.tags })
+    .from(archKnowledgeEntriesTable)
+    .where(eq(archKnowledgeEntriesTable.tenantId, tid));
+
+  const tagFreq = new Map<string, number>();
+  allEntries.forEach(e => {
+    ((e.tags as string[] | null) ?? []).forEach(tag => tagFreq.set(tag, (tagFreq.get(tag) ?? 0) + 1));
+  });
+
+  const total = allEntries.length || 1;
+  const tagRows = [...tagFreq.entries()].map(([tag, count]) => ({
+    tenantId: tid, tag, tipo: classifyKnowledgeTag(tag), count, score: count / total,
+  }));
+
+  if (tagRows.length > 0) {
+    await db.insert(archKnowledgeTagsTable).values(tagRows);
+  }
+
+  return projects.length;
+}
+
+// ── POST /arch/knowledge/extract — extrai conhecimento de todos os projetos ───
+router.post("/arch/knowledge/extract", authenticate, async (req, res) => {
+  const tid = tenantId(req);
+  const count = await extractTenantKnowledge(tid);
+  return res.json({ ok: true, projectsProcessed: count });
+});
+
+// ── GET /arch/knowledge/dashboard — painel de inteligência ────────────────────
+router.get("/arch/knowledge/dashboard", authenticate, async (req, res) => {
+  const tid = tenantId(req);
+
+  // Auto-seed if empty
+  const [check] = await db
+    .select({ id: archKnowledgeEntriesTable.id })
+    .from(archKnowledgeEntriesTable)
+    .where(eq(archKnowledgeEntriesTable.tenantId, tid))
+    .limit(1);
+  if (!check) await extractTenantKnowledge(tid);
+
+  // Aggregate stats
+  const [stats] = await db
+    .select({
+      totalProjects:  sql<number>`count(*)`.mapWith(Number),
+      totalRenders:   sql<number>`coalesce(sum(render_count), 0)`.mapWith(Number),
+      totalAprovados: sql<number>`coalesce(sum(renders_aprovados), 0)`.mapWith(Number),
+      avgRevisoes:    sql<number>`coalesce(avg(revisoes), 0)`.mapWith(Number),
+      avgAreaM2:      sql<number>`coalesce(avg(area_m2::numeric), 0)`.mapWith(Number),
+    })
+    .from(archKnowledgeEntriesTable)
+    .where(eq(archKnowledgeEntriesTable.tenantId, tid));
+
+  // Top tipos de obra
+  const topTipos = await db
+    .select({
+      tipo:  archKnowledgeEntriesTable.tipo,
+      count: sql<number>`count(*)`.mapWith(Number),
+    })
+    .from(archKnowledgeEntriesTable)
+    .where(and(eq(archKnowledgeEntriesTable.tenantId, tid), sql`tipo IS NOT NULL`))
+    .groupBy(archKnowledgeEntriesTable.tipo)
+    .orderBy(desc(sql`count(*)`))
+    .limit(5);
+
+  // Top tags
+  const topTags = await db
+    .select()
+    .from(archKnowledgeTagsTable)
+    .where(eq(archKnowledgeTagsTable.tenantId, tid))
+    .orderBy(desc(archKnowledgeTagsTable.count))
+    .limit(24);
+
+  // Flatten fabricantes & materiais across entries
+  const allEntries = await db
+    .select({ fabricantes: archKnowledgeEntriesTable.fabricantes, materiaisUsados: archKnowledgeEntriesTable.materiaisUsados })
+    .from(archKnowledgeEntriesTable)
+    .where(eq(archKnowledgeEntriesTable.tenantId, tid));
+
+  const fabFreq  = new Map<string, number>();
+  const matFreq  = new Map<string, { count: number; cat: string }>();
+
+  allEntries.forEach(e => {
+    ((e.fabricantes as string[] | null) ?? []).forEach(f => fabFreq.set(f, (fabFreq.get(f) ?? 0) + 1));
+    ((e.materiaisUsados as { nome: string; categoria: string | null }[] | null) ?? []).forEach(m => {
+      const prev = matFreq.get(m.nome);
+      matFreq.set(m.nome, { count: (prev?.count ?? 0) + 1, cat: m.categoria ?? "outros" });
+    });
+  });
+
+  const topFabricantes = [...fabFreq.entries()].sort((a, b) => b[1] - a[1]).slice(0, 10).map(([name, count]) => ({ name, count }));
+  const topMateriais   = [...matFreq.entries()].sort((a, b) => b[1].count - a[1].count).slice(0, 10).map(([nome, v]) => ({ nome, count: v.count, categoria: v.cat }));
+
+  const approvalRate = (stats?.totalRenders ?? 0) > 0
+    ? Math.round(((stats?.totalAprovados ?? 0) / stats.totalRenders) * 100)
+    : 0;
+
+  return res.json({
+    totalProjects:  stats?.totalProjects ?? 0,
+    totalRenders:   stats?.totalRenders ?? 0,
+    approvalRate,
+    avgRevisoes:    Math.round((stats?.avgRevisoes ?? 0) * 10) / 10,
+    avgAreaM2:      Math.round(stats?.avgAreaM2 ?? 0),
+    topTipos:       topTipos.filter(t => t.tipo),
+    topTags,
+    topFabricantes,
+    topMateriais,
+  });
+});
+
+// ── GET /arch/knowledge/patterns — biblioteca de padrões ──────────────────────
+router.get("/arch/knowledge/patterns", authenticate, async (req, res) => {
+  const tid = tenantId(req);
+  const entries = await db
+    .select({
+      tipo:             archKnowledgeEntriesTable.tipo,
+      materiaisUsados:  archKnowledgeEntriesTable.materiaisUsados,
+      fabricantes:      archKnowledgeEntriesTable.fabricantes,
+      renderCount:      archKnowledgeEntriesTable.renderCount,
+      rendersAprovados: archKnowledgeEntriesTable.rendersAprovados,
+      tags:             archKnowledgeEntriesTable.tags,
+    })
+    .from(archKnowledgeEntriesTable)
+    .where(eq(archKnowledgeEntriesTable.tenantId, tid));
+
+  // Aggregate tipo × categoria combos
+  const patterns = new Map<string, { count: number; aprovados: number; renders: number; tags: Set<string> }>();
+
+  entries.forEach(e => {
+    const mats = (e.materiaisUsados as { nome: string; categoria: string | null }[] | null) ?? [];
+    const cats = [...new Set(mats.map(m => m.categoria).filter(Boolean) as string[])];
+    const tipo  = e.tipo ?? "outros";
+    const tags  = (e.tags as string[] | null) ?? [];
+
+    cats.forEach(cat => {
+      const key = `${tipo}|${cat}`;
+      const prev = patterns.get(key) ?? { count: 0, aprovados: 0, renders: 0, tags: new Set<string>() };
+      tags.forEach(t => prev.tags.add(t));
+      patterns.set(key, {
+        count:    prev.count + 1,
+        aprovados:prev.aprovados + (e.rendersAprovados ?? 0),
+        renders:  prev.renders + (e.renderCount ?? 0),
+        tags:     prev.tags,
+      });
+    });
+
+    // Also a fabricante-level pattern
+    const fabs = (e.fabricantes as string[] | null) ?? [];
+    fabs.forEach(fab => {
+      const key = `${tipo}|fab:${fab}`;
+      const prev = patterns.get(key) ?? { count: 0, aprovados: 0, renders: 0, tags: new Set<string>() };
+      tags.forEach(t => prev.tags.add(t));
+      patterns.set(key, {
+        count:    prev.count + 1,
+        aprovados:prev.aprovados + (e.rendersAprovados ?? 0),
+        renders:  prev.renders + (e.renderCount ?? 0),
+        tags:     prev.tags,
+      });
+    });
+  });
+
+  const result = [...patterns.entries()]
+    .map(([key, v]) => {
+      const [tipo, cat] = key.split("|");
+      const isFab = cat?.startsWith("fab:");
+      const approvalRate = v.renders > 0 ? Math.round((v.aprovados / v.renders) * 100) : 0;
+      return {
+        id: key,
+        tipo,
+        categoria:    isFab ? null : cat,
+        fabricante:   isFab ? cat?.slice(4) : null,
+        tipoPattern:  isFab ? "fabricante" : "material",
+        count:        v.count,
+        approvalRate,
+        tags:         [...v.tags].slice(0, 6),
+      };
+    })
+    .sort((a, b) => b.count - a.count || b.approvalRate - a.approvalRate)
+    .slice(0, 24);
+
+  return res.json(result);
+});
+
+// ── GET /arch/knowledge/ranking — ranking de combinações ─────────────────────
+router.get("/arch/knowledge/ranking", authenticate, async (req, res) => {
+  const tid = tenantId(req);
+  const entries = await db
+    .select({
+      tipo:             archKnowledgeEntriesTable.tipo,
+      fabricantes:      archKnowledgeEntriesTable.fabricantes,
+      materiaisUsados:  archKnowledgeEntriesTable.materiaisUsados,
+      renderCount:      archKnowledgeEntriesTable.renderCount,
+      rendersAprovados: archKnowledgeEntriesTable.rendersAprovados,
+    })
+    .from(archKnowledgeEntriesTable)
+    .where(eq(archKnowledgeEntriesTable.tenantId, tid));
+
+  // Score: 70% approval rate × 30% frequency weight
+  const comboMap = new Map<string, { count: number; aprovados: number; renders: number }>();
+
+  entries.forEach(e => {
+    const tipo = e.tipo ?? "outros";
+    const fabs = (e.fabricantes as string[] | null) ?? [];
+    const mats = (e.materiaisUsados as { nome: string; categoria: string | null }[] | null) ?? [];
+    const cats = [...new Set(mats.map(m => m.categoria).filter(Boolean) as string[])];
+
+    // Fabricante combos
+    fabs.forEach(fab => {
+      const key = `fab|${tipo}|${fab}`;
+      const prev = comboMap.get(key) ?? { count: 0, aprovados: 0, renders: 0 };
+      comboMap.set(key, { count: prev.count + 1, aprovados: prev.aprovados + (e.rendersAprovados ?? 0), renders: prev.renders + (e.renderCount ?? 0) });
+    });
+
+    // Material category combos
+    cats.forEach(cat => {
+      const key = `mat|${tipo}|${cat}`;
+      const prev = comboMap.get(key) ?? { count: 0, aprovados: 0, renders: 0 };
+      comboMap.set(key, { count: prev.count + 1, aprovados: prev.aprovados + (e.rendersAprovados ?? 0), renders: prev.renders + (e.renderCount ?? 0) });
+    });
+  });
+
+  const maxCount = Math.max(...[...comboMap.values()].map(v => v.count), 1);
+
+  const ranked = [...comboMap.entries()]
+    .map(([key, v]) => {
+      const [kind, tipo, combo] = key.split("|");
+      const approvalRate = v.renders > 0 ? (v.aprovados / v.renders) * 100 : 50;
+      const freqScore    = (v.count / maxCount) * 100;
+      const score        = approvalRate * 0.7 + freqScore * 0.3;
+      return { key, kind, tipo, combo, count: v.count, approvalRate: Math.round(approvalRate), score: Math.round(score) };
+    })
+    .sort((a, b) => b.score - a.score)
+    .slice(0, 20);
+
+  return res.json(ranked);
+});
+
+// ── GET /arch/knowledge/suggestions — sugestões automáticas ──────────────────
+router.get("/arch/knowledge/suggestions", authenticate, async (req, res) => {
+  const tid = tenantId(req);
+  const { projectId } = req.query as Record<string, string>;
+
+  let tipo: string | null = null;
+  if (projectId) {
+    const [proj] = await db
+      .select({ tipoObra: archProjetosTable.tipoObra })
+      .from(archProjetosTable)
+      .where(and(eq(archProjetosTable.id, projectId), eq(archProjetosTable.tenantId, tid)))
+      .limit(1);
+    tipo = proj?.tipoObra ?? null;
+  }
+
+  const conditions = [eq(archKnowledgeEntriesTable.tenantId, tid)];
+  if (tipo) conditions.push(eq(archKnowledgeEntriesTable.tipo, tipo));
+  if (projectId) conditions.push(sql`project_id != ${projectId}`);
+
+  let candidates = await db
+    .select()
+    .from(archKnowledgeEntriesTable)
+    .where(and(...conditions))
+    .orderBy(desc(archKnowledgeEntriesTable.rendersAprovados))
+    .limit(10);
+
+  // Fallback to all entries
+  if (candidates.length === 0 && tipo) {
+    candidates = await db
+      .select()
+      .from(archKnowledgeEntriesTable)
+      .where(eq(archKnowledgeEntriesTable.tenantId, tid))
+      .orderBy(desc(archKnowledgeEntriesTable.rendersAprovados))
+      .limit(10);
+  }
+
+  const matFreq  = new Map<string, { count: number; cat: string }>();
+  const fabFreq  = new Map<string, number>();
+  const tagFreq  = new Map<string, number>();
+  const promptSet: string[] = [];
+
+  candidates.forEach(c => {
+    ((c.materiaisUsados as { nome: string; categoria: string | null }[] | null) ?? [])
+      .forEach(m => { const prev = matFreq.get(m.nome); matFreq.set(m.nome, { count: (prev?.count ?? 0) + 1, cat: m.categoria ?? "outros" }); });
+    ((c.fabricantes as string[] | null) ?? [])
+      .forEach(f => fabFreq.set(f, (fabFreq.get(f) ?? 0) + 1));
+    ((c.promptsUsados as string[] | null) ?? [])
+      .forEach(p => { if (!promptSet.includes(p)) promptSet.push(p); });
+    ((c.tags as string[] | null) ?? [])
+      .forEach(t => tagFreq.set(t, (tagFreq.get(t) ?? 0) + 1));
+  });
+
+  return res.json({
+    basedOnProjects: candidates.length,
+    tipo:            tipo ?? "geral",
+    materiais:       [...matFreq.entries()].sort((a, b) => b[1].count - a[1].count).slice(0, 8).map(([nome, v]) => ({ nome, count: v.count, categoria: v.cat })),
+    fabricantes:     [...fabFreq.entries()].sort((a, b) => b[1] - a[1]).slice(0, 6).map(([nome, count]) => ({ nome, count })),
+    prompts:         promptSet.slice(0, 5),
+    tags:            [...tagFreq.entries()].sort((a, b) => b[1] - a[1]).slice(0, 12).map(([tag, count]) => ({ tag, count })),
+  });
+});
+
+// ── GET /arch/knowledge/tags — tag cloud do tenant ───────────────────────────
+router.get("/arch/knowledge/tags", authenticate, async (req, res) => {
+  const tid = tenantId(req);
+  const tags = await db
+    .select()
+    .from(archKnowledgeTagsTable)
+    .where(eq(archKnowledgeTagsTable.tenantId, tid))
+    .orderBy(desc(archKnowledgeTagsTable.count))
+    .limit(50);
+  return res.json(tags);
 });
 
 export { archPublicRouter };
