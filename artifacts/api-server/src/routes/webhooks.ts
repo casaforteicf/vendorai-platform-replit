@@ -1222,8 +1222,129 @@ router.post("/webhooks/meta/instagram", async (req, res) => {
                 "meta/instagram/comment: keyword match captured"
               );
 
-              // ── Passo 3 will insert lead creation here ───────────────────
-              // capturedComment = { tenantId, igsid, username, commentText, postId, commentTimestamp }
+              // ── Passo 3: criar lead automaticamente ──────────────────────
+              // Dedup: reusa lead existente pelo IGSID (pode ser alguém que
+              // já enviou DM antes). Não cria duplicata paralela.
+              let lead: typeof leadsTable.$inferSelect | null = null;
+
+              const [existingByIgsid] = await db
+                .select()
+                .from(leadsTable)
+                .where(and(eq(leadsTable.tenantId, tenantId), eq(leadsTable.instagramScopedId, igsid)))
+                .limit(1);
+
+              if (existingByIgsid) {
+                lead = existingByIgsid;
+                req.log.info(
+                  { leadId: lead.id, igsid },
+                  "meta/instagram/comment: reusing existing lead (IGSID match)"
+                );
+              } else {
+                // Contexto do comentário gravado em notasNutricao (texto visível
+                // no CRM) e em discoveryData (estruturado, para automações futuras)
+                const notasNutricao = `Comentou no post Instagram [${postId}]: "${commentText}"`;
+                const discoveryData: Record<string, unknown> = {
+                  origin: "instagram_comment",
+                  commentText,
+                  postId,
+                  commentId,
+                  commentedAt: commentTimestamp.toISOString(),
+                };
+
+                const similarCheck = await findLeadByDedup(tenantId, null, null, username);
+                const hasSimilar = similarCheck.found === false && similarCheck.similar !== null;
+                const similarId = hasSimilar ? (similarCheck.similar?.id ?? null) : null;
+
+                [lead] = await db
+                  .insert(leadsTable)
+                  .values({
+                    tenantId,
+                    nome: username,
+                    instagramScopedId: igsid,
+                    instagramHandle: username,
+                    status: "novo",
+                    source: "instagram_comment",
+                    notasNutricao,
+                    discoveryData,
+                    possivelDuplicata: hasSimilar,
+                    leadSimilarId: similarId,
+                  })
+                  .returning();
+
+                req.log.info(
+                  { leadId: lead.id, igsid, username, source: "instagram_comment" },
+                  "meta/instagram/comment: new lead created"
+                );
+
+                await db.insert(dealsTable).values({
+                  tenantId,
+                  leadId: lead.id,
+                  titulo: lead.nome,
+                  etapa: "em_aquecimento",
+                });
+              }
+
+              // ── Conversa Instagram (reutiliza se já existir de DMs) ───────
+              let [conversation] = await db
+                .select()
+                .from(conversationsTable)
+                .where(
+                  and(
+                    eq(conversationsTable.tenantId, tenantId),
+                    eq(conversationsTable.leadId, lead.id),
+                    eq(conversationsTable.channel, "instagram")
+                  )
+                )
+                .limit(1);
+
+              if (!conversation) {
+                [conversation] = await db
+                  .insert(conversationsTable)
+                  .values({
+                    tenantId,
+                    leadId: lead.id,
+                    channel: "instagram",
+                    status: "open",
+                    naoLidas: 0,
+                  })
+                  .returning();
+                req.log.info(
+                  { conversationId: conversation.id },
+                  "meta/instagram/comment: new conversation created"
+                );
+              }
+
+              // ── Registra o comentário como mensagem de entrada ────────────
+              const conteudoMsg = `[Comentário no post ${postId}] ${commentText}`;
+              const [dbMessage] = await db
+                .insert(messagesTable)
+                .values({
+                  tenantId,
+                  conversationId: conversation.id,
+                  leadId: lead.id,
+                  direcao: "entrada",
+                  canal: "instagram",
+                  conteudo: conteudoMsg,
+                  enviadoPor: "lead",
+                  tipoConteudo: "texto",
+                  status: "entregue",
+                })
+                .returning();
+
+              await db
+                .update(conversationsTable)
+                .set({
+                  ultimaMensagemEm: new Date(),
+                  naoLidas: sql`${conversationsTable.naoLidas} + 1`,
+                  updatedAt: new Date(),
+                })
+                .where(eq(conversationsTable.id, conversation.id));
+
+              req.log.info(
+                { messageId: dbMessage.id, leadId: lead.id, conversationId: conversation.id },
+                "meta/instagram/comment: lead ready, awaiting SDR dispatch (Passo 4)"
+              );
+              // ── Passo 4 adicionará dispatchAgentBackground aqui ──────────
             }
           }
 
