@@ -6,6 +6,73 @@ import { useState, useMemo, useEffect } from 'react'
 import type { ArqProjectState } from '../../hooks/useArqProject'
 import { T } from '../../shared/arqdor-theme'
 
+// ─── Global CSS animations ────────────────────────────────────────────────────
+
+const CSS = `
+  @keyframes px-fadeIn {
+    from { opacity:0; transform:translateY(8px); }
+    to   { opacity:1; transform:translateY(0); }
+  }
+  @keyframes px-scaleIn {
+    from { opacity:0; transform:scale(0.97); }
+    to   { opacity:1; transform:scale(1); }
+  }
+  @keyframes px-pulse-ring {
+    0%   { box-shadow: 0 0 0 0 rgba(124,58,237,0.55); }
+    70%  { box-shadow: 0 0 0 6px rgba(124,58,237,0); }
+    100% { box-shadow: 0 0 0 0 rgba(124,58,237,0); }
+  }
+  @keyframes px-shimmer {
+    0%   { background-position: -600px 0; }
+    100% { background-position: 600px 0; }
+  }
+  @keyframes px-countUp {
+    from { opacity:0; transform:translateY(4px); }
+    to   { opacity:1; transform:translateY(0); }
+  }
+  .px-fade   { animation: px-fadeIn  0.4s ease both; }
+  .px-scale  { animation: px-scaleIn 0.35s ease both; }
+  .px-current-step {
+    animation: px-pulse-ring 2.2s ease infinite !important;
+  }
+  .px-journey-step {
+    transition: background 0.18s ease, border-color 0.18s ease, transform 0.18s ease !important;
+  }
+  .px-journey-step:hover {
+    transform: translateX(2px) !important;
+  }
+  .px-stat-card {
+    transition: border-color 0.18s ease, transform 0.18s ease, box-shadow 0.18s ease !important;
+    animation: px-scaleIn 0.3s ease both;
+  }
+  .px-stat-card:hover {
+    transform: translateY(-2px) !important;
+    border-color: rgba(167,139,250,0.4) !important;
+    box-shadow: 0 6px 24px rgba(124,58,237,0.15) !important;
+  }
+  .px-shimmer {
+    background: linear-gradient(90deg,
+      rgba(255,255,255,0.04) 0px,
+      rgba(255,255,255,0.09) 80px,
+      rgba(255,255,255,0.04) 160px);
+    background-size: 600px 100%;
+    animation: px-shimmer 1.5s ease infinite;
+  }
+  .px-btn-primary {
+    transition: transform 0.15s ease, box-shadow 0.15s ease !important;
+  }
+  .px-btn-primary:hover {
+    transform: translateY(-1px) !important;
+    box-shadow: 0 6px 24px rgba(124,58,237,0.45) !important;
+  }
+  .px-activity-card {
+    transition: border-color 0.15s ease, background 0.15s ease !important;
+  }
+  .px-activity-card:hover {
+    background: rgba(255,255,255,0.05) !important;
+  }
+`
+
 // ─── Auth helper ──────────────────────────────────────────────────────────────
 
 function authHeaders() {
@@ -432,15 +499,14 @@ function IntelligentJourney({
           return (
             <div
               key={step.id}
+              className={isCurrent ? 'px-journey-step px-current-step' : 'px-journey-step'}
               onClick={() => onNavigate(step.module)}
               style={{
                 display:'flex', gap:8, alignItems:'center', padding:'7px 9px',
-                borderRadius:T.r.sm, cursor:'pointer', transition:'all 0.15s',
+                borderRadius:T.r.sm, cursor:'pointer',
                 background: isCurrent ? 'rgba(124,58,237,0.14)' : isDone ? 'rgba(74,222,128,0.04)' : 'transparent',
                 border:`1px solid ${isCurrent ? T.purple : isDone ? 'rgba(74,222,128,0.2)' : 'transparent'}`,
               }}
-              onMouseEnter={e => { if (!isCurrent) (e.currentTarget as HTMLElement).style.background = 'rgba(255,255,255,0.04)' }}
-              onMouseLeave={e => { if (!isCurrent) (e.currentTarget as HTMLElement).style.background = isDone ? 'rgba(74,222,128,0.04)' : 'transparent' }}
             >
               {/* Status circle */}
               <div style={{
@@ -820,7 +886,8 @@ export function ProjectHome({
 
   // ── Dashboard ──────────────────────────────────────────────────────────────
   return (
-    <div style={{ height:'100%', display:'flex', flexDirection:'column' as const, overflow:'hidden', background:T.bg }}>
+    <div className="px-fade" style={{ height:'100%', display:'flex', flexDirection:'column' as const, overflow:'hidden', background:T.bg }}>
+      <style>{CSS}</style>
 
       {/* Centro do Projeto */}
       <ProjectCenter
@@ -852,14 +919,13 @@ export function ProjectHome({
             ].map(card => (
               <div
                 key={card.label}
+                className="px-stat-card"
                 onClick={card.onClick}
                 style={{
                   padding:'12px 14px', borderRadius:T.r.lg,
                   background:T.surface, border:`1px solid ${T.border}`,
-                  cursor:'pointer', transition:'border-color 0.15s',
+                  cursor:'pointer',
                 }}
-                onMouseEnter={e => (e.currentTarget as HTMLElement).style.borderColor = T.purpleL}
-                onMouseLeave={e => (e.currentTarget as HTMLElement).style.borderColor = T.border}
               >
                 <div style={{ display:'flex', gap:6, alignItems:'center', marginBottom:4 }}>
                   <span style={{ fontSize:14 }}>{card.icon}</span>
