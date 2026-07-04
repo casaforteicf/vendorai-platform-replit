@@ -1,91 +1,154 @@
-import { useState } from 'react'
-import type { RenderJob } from '../../shared/platform-types'
+import { useState, useEffect, useCallback } from 'react'
 import { T } from '../../shared/arqdor-theme'
 
+const BASE = '/api'
+function authHeaders(): Record<string, string> {
+  const tok = localStorage.getItem('vendorai_token')
+  return tok ? { Authorization: `Bearer ${tok}` } : {}
+}
 
-const MOCK_RENDERS: (RenderJob & { versionLabel: string; prompt: string })[] = [
-  { id:'r-001', projectId:'proj-alpha', promptId:'p-001', status:'COMPLETED', score:91, createdAt:'2026-07-03T09:00:00Z', completedAt:'2026-07-03T09:04:22Z', corrections:[], version:2, versionLabel:'V2', prompt:'Photorealistic architectural render — cozinha contemporânea...' },
-  { id:'r-002', projectId:'proj-alpha', promptId:'p-002', status:'COMPLETED', score:78, createdAt:'2026-07-02T14:30:00Z', completedAt:'2026-07-02T14:35:01Z', corrections:[{ id:'c1', area:'Puxador', issue:'Puxador substituído por cava', severity:'CRITICAL', originalPromptFragment:'puxador cava', correctedPromptFragment:'NO hardware — groove only', applied:false }], version:1, versionLabel:'V1', prompt:'Kitchen interior with oak cabinetry...' },
-  { id:'r-003', projectId:'proj-alpha', promptId:'p-003', status:'GENERATING', createdAt:'2026-07-03T11:10:00Z', corrections:[], version:2, versionLabel:'V2', prompt:'[Aguardando envio para provedor...]' },
-  { id:'r-004', projectId:'proj-alpha', promptId:'p-004', status:'FAILED',    createdAt:'2026-07-01T16:00:00Z', corrections:[], version:1, versionLabel:'V1', prompt:'Cozinha minimalista...' },
-  { id:'r-005', projectId:'proj-alpha', promptId:'p-005', status:'COMPLETED', score:85, createdAt:'2026-06-30T10:00:00Z', completedAt:'2026-06-30T10:05:44Z', corrections:[], version:1, versionLabel:'V1', prompt:'Photorealistic contemporary kitchen...' },
-]
+interface GalleryRender {
+  id:        string
+  imageUrl:  string | null
+  versao:    number | null
+  origem:    string | null
+  createdAt: string
+  cenaId:    string
+  cenaNome:  string | null
+  projetoId: string
+}
 
-const STATUS_META = {
-  COMPLETED:  { color:'#4ade80', bg:'rgba(74,222,128,0.1)',  label:'Concluído'  },
-  GENERATING: { color:'#fbbf24', bg:'rgba(251,191,36,0.1)', label:'Gerando…'   },
-  PENDING:    { color:'#60a5fa', bg:'rgba(96,165,250,0.1)', label:'Pendente'   },
-  REVIEWING:  { color:'#a78bfa', bg:'rgba(167,139,250,0.1)',label:'Revisando'  },
-  FAILED:     { color:'#f87171', bg:'rgba(248,113,113,0.1)',label:'Falhou'     },
+const ORIGEM_META: Record<string, { color: string; label: string }> = {
+  'flux-kontext':  { color: '#a78bfa', label: 'Flux Kontext' },
+  'flux-ultra':    { color: '#60a5fa', label: 'Flux Ultra' },
+  'flux-fill':     { color: '#34d399', label: 'Flux Fill' },
+  'openai':        { color: '#4ade80', label: 'OpenAI' },
+  'blender':       { color: '#fb923c', label: 'Blender' },
+  'replicate':     { color: '#a78bfa', label: 'Replicate' },
+}
+
+function origemMeta(origem: string | null) {
+  if (!origem) return { color: T.dim, label: 'Render' }
+  const key = Object.keys(ORIGEM_META).find(k => origem.toLowerCase().includes(k))
+  return key ? ORIGEM_META[key] : { color: T.dim, label: origem }
 }
 
 export function RenderHistoryModule() {
-  const [filter, setFilter] = useState<'TODOS'|'COMPLETED'|'GENERATING'|'FAILED'>('TODOS')
-  const [sel, setSel] = useState<string|null>('r-001')
+  const [renders,  setRenders]  = useState<GalleryRender[]>([])
+  const [loading,  setLoading]  = useState(true)
+  const [error,    setError]    = useState<string | null>(null)
+  const [sel,      setSel]      = useState<string | null>(null)
+  const [busca,    setBusca]    = useState('')
+  const [limit]                 = useState(40)
 
-  const filtered = MOCK_RENDERS.filter(r => filter==='TODOS' || r.status===filter)
-  const selRender = MOCK_RENDERS.find(r => r.id===sel) ?? null
+  const load = useCallback(async () => {
+    setLoading(true); setError(null)
+    try {
+      const res = await fetch(`${BASE}/arch/renders/gallery?limit=${limit}`, {
+        headers: authHeaders(),
+      })
+      if (!res.ok) throw new Error(`HTTP ${res.status}`)
+      const data: GalleryRender[] = await res.json()
+      setRenders(data)
+      if (data.length > 0 && !sel) setSel(data[0].id)
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : 'Erro ao carregar renders')
+    } finally {
+      setLoading(false)
+    }
+  }, [limit, sel])
 
-  const scoreColor = (s?: number) => !s ? T.dim : s>=85 ? '#4ade80' : s>=70 ? '#fbbf24' : '#f87171'
+  useEffect(() => { load() }, [load])
+
+  const filtered = renders.filter(r => {
+    if (!busca) return true
+    const q = busca.toLowerCase()
+    return (r.cenaNome ?? '').toLowerCase().includes(q) || r.id.toLowerCase().includes(q)
+  })
+
+  const selRender = renders.find(r => r.id === sel) ?? null
 
   return (
-    <div style={{ height:'100%', display:'flex', flexDirection:'column' as const, background:T.bg }}>
-      <div style={{ padding:'14px 20px 12px', borderBottom:`1px solid ${T.border}`, flexShrink:0, display:'flex', alignItems:'center', gap:12 }}>
-        <div style={{ flex:1 }}>
-          <h2 style={{ margin:'0 0 2px', fontSize:16, fontWeight:800, color:'#fff' }}>🎬 Histórico de Renders</h2>
-          <p style={{ margin:0, fontSize:11, color:T.dim }}>{MOCK_RENDERS.length} renders · projeto Apartamento Alpha</p>
+    <div style={{ height: '100%', display: 'flex', flexDirection: 'column' as const, background: T.bg }}>
+      {/* Header */}
+      <div style={{ padding: '14px 20px 12px', borderBottom: `1px solid ${T.border}`, flexShrink: 0, display: 'flex', alignItems: 'center', gap: 12 }}>
+        <div style={{ flex: 1 }}>
+          <h2 style={{ margin: '0 0 2px', fontSize: 16, fontWeight: 800, color: '#fff' }}>🎬 Histórico de Renders</h2>
+          <p style={{ margin: 0, fontSize: 11, color: T.dim }}>
+            {loading ? 'Carregando…' : `${renders.length} render(s) gerado(s)`}
+          </p>
         </div>
-        <div style={{ display:'flex', gap:4 }}>
-          {(['TODOS','COMPLETED','GENERATING','FAILED'] as const).map(f => (
-            <button key={f} onClick={()=>setFilter(f)} style={{
-              padding:'4px 10px', borderRadius:6, border:'none', cursor:'pointer', fontSize:10, fontWeight:700,
-              background: filter===f ? 'rgba(124,58,237,0.25)' : 'rgba(255,255,255,0.05)',
-              color: filter===f ? T.purpleL : T.dim,
-            }}>{f==='TODOS'?'Todos':STATUS_META[f].label}</button>
-          ))}
-        </div>
-        <button style={{ padding:'5px 12px', borderRadius:6, border:'none', background:T.purple, color:'#fff', cursor:'pointer', fontSize:11, fontWeight:700 }}>
-          🎬 Novo Render
-        </button>
+        <input
+          value={busca}
+          onChange={e => setBusca(e.target.value)}
+          placeholder="Buscar cena…"
+          style={{ background: 'rgba(255,255,255,0.06)', border: `1px solid ${T.border}`, borderRadius: 6, color: T.text, fontSize: 11, padding: '5px 10px', outline: 'none', width: 160 }}
+        />
+        <button
+          onClick={load}
+          style={{ padding: '5px 12px', borderRadius: 6, border: 'none', background: 'rgba(255,255,255,0.07)', color: T.dim, cursor: 'pointer', fontSize: 11 }}
+        >↻ Atualizar</button>
       </div>
 
-      <div style={{ flex:1, display:'flex', overflow:'hidden' }}>
+      {/* Error */}
+      {error && (
+        <div style={{ padding: '10px 20px', background: 'rgba(248,113,113,0.08)', borderBottom: `1px solid rgba(248,113,113,0.2)`, fontSize: 11, color: '#f87171' }}>
+          ⚠ {error}
+        </div>
+      )}
+
+      {/* Body */}
+      <div style={{ flex: 1, display: 'flex', overflow: 'hidden' }}>
         {/* List */}
-        <div style={{ width:340, flexShrink:0, borderRight:`1px solid ${T.border}`, overflowY:'auto' as const, padding:'10px 12px' }}>
-          {filtered.map(r => {
-            const sm = STATUS_META[r.status]
-            const isSel = sel===r.id
+        <div style={{ width: 320, flexShrink: 0, borderRight: `1px solid ${T.border}`, overflowY: 'auto' as const, padding: '10px 12px' }}>
+          {loading && (
+            <div style={{ display: 'flex', flexDirection: 'column' as const, gap: 8 }}>
+              {[1,2,3].map(i => (
+                <div key={i} style={{ height: 110, borderRadius: 8, background: 'rgba(255,255,255,0.04)', border: `1px solid ${T.border}`, animation: 'pulse 1.5s infinite' }}/>
+              ))}
+            </div>
+          )}
+          {!loading && filtered.length === 0 && (
+            <div style={{ textAlign: 'center' as const, padding: 40, color: T.dim, fontSize: 12 }}>
+              {renders.length === 0 ? '🎨 Nenhum render gerado ainda. Use o Prompt Playground para gerar seu primeiro render.' : 'Nenhum resultado para a busca.'}
+            </div>
+          )}
+          {!loading && filtered.map(r => {
+            const meta = origemMeta(r.origem)
+            const isSel = sel === r.id
             return (
-              <div key={r.id} onClick={()=>setSel(r.id)} style={{
-                borderRadius:8, padding:'12px', marginBottom:8, cursor:'pointer',
-                background: isSel ? 'rgba(124,58,237,0.12)' : 'rgba(255,255,255,0.03)',
-                border: `1px solid ${isSel ? 'rgba(124,58,237,0.35)' : T.border}`,
+              <div key={r.id} onClick={() => setSel(r.id)} style={{
+                borderRadius: 8, marginBottom: 8, cursor: 'pointer', overflow: 'hidden',
+                border: `1px solid ${isSel ? 'rgba(124,58,237,0.4)' : T.border}`,
+                background: isSel ? 'rgba(124,58,237,0.10)' : 'rgba(255,255,255,0.03)',
               }}>
-                {/* Thumbnail placeholder */}
-                <div style={{ height:80, borderRadius:6, background:'rgba(255,255,255,0.04)', marginBottom:10, display:'flex', alignItems:'center', justifyContent:'center', border:`1px solid ${T.border}` }}>
-                  {r.status==='GENERATING' ? (
-                    <p style={{ margin:0, fontSize:10, color:T.dim }}>⏳ Gerando…</p>
-                  ) : r.status==='FAILED' ? (
-                    <p style={{ margin:0, fontSize:10, color:'#f87171' }}>✗ Falhou</p>
-                  ) : (
-                    <p style={{ margin:0, fontSize:10, color:T.dim }}>🎨 Imagem do render</p>
-                  )}
-                </div>
-                <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:4 }}>
-                  <span style={{ fontSize:10, fontFamily:'ui-monospace,monospace', color:T.dim }}>{r.id}</span>
-                  <span style={{ padding:'2px 7px', borderRadius:10, fontSize:9, fontWeight:700, background:sm.bg, color:sm.color }}>{sm.label}</span>
-                </div>
-                <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center' }}>
-                  <span style={{ fontSize:10, color:T.dim }}>{new Date(r.createdAt).toLocaleDateString('pt-BR')} · {r.versionLabel}</span>
-                  {r.score && <span style={{ fontSize:13, fontWeight:800, color:scoreColor(r.score) }}>{r.score}/100</span>}
-                </div>
-                {r.corrections.length>0 && (
-                  <div style={{ marginTop:6 }}>
-                    <span style={{ fontSize:9, padding:'2px 6px', borderRadius:8, background:'rgba(248,113,113,0.1)', color:'#f87171' }}>
-                      {r.corrections.length} correção(ões) pendente(s)
-                    </span>
+                {/* Thumbnail */}
+                {r.imageUrl ? (
+                  <img
+                    src={r.imageUrl}
+                    alt={r.cenaNome ?? 'Render'}
+                    style={{ width: '100%', height: 90, objectFit: 'cover' as const, display: 'block' }}
+                    onError={e => { (e.target as HTMLImageElement).style.display = 'none' }}
+                  />
+                ) : (
+                  <div style={{ height: 72, background: 'rgba(255,255,255,0.04)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                    <span style={{ fontSize: 10, color: T.dim }}>🎨 Sem prévia</span>
                   </div>
                 )}
+                <div style={{ padding: '8px 10px' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 3 }}>
+                    <span style={{ fontSize: 11, fontWeight: 700, color: '#fff', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' as const, maxWidth: 160 }}>
+                      {r.cenaNome ?? 'Sem nome'}
+                    </span>
+                    <span style={{ padding: '2px 6px', borderRadius: 8, fontSize: 9, fontWeight: 700, background: `${meta.color}22`, color: meta.color, whiteSpace: 'nowrap' as const }}>
+                      {meta.label}
+                    </span>
+                  </div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 10, color: T.dim }}>
+                    <span>{new Date(r.createdAt).toLocaleDateString('pt-BR')}</span>
+                    {r.versao != null && <span>V{r.versao}</span>}
+                  </div>
+                </div>
               </div>
             )
           })}
@@ -93,40 +156,81 @@ export function RenderHistoryModule() {
 
         {/* Detail */}
         {selRender ? (
-          <div style={{ flex:1, overflowY:'auto' as const, padding:'16px 20px' }}>
-            <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:16 }}>
+          <div style={{ flex: 1, overflowY: 'auto' as const, padding: '16px 20px' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 14 }}>
               <div>
-                <h3 style={{ margin:'0 0 4px', fontSize:15, fontWeight:800, color:'#fff' }}>Render {selRender.id}</h3>
-                <p style={{ margin:0, fontSize:11, color:T.dim }}>{selRender.versionLabel} · {new Date(selRender.createdAt).toLocaleString('pt-BR')}</p>
+                <h3 style={{ margin: '0 0 4px', fontSize: 15, fontWeight: 800, color: '#fff' }}>
+                  {selRender.cenaNome ?? 'Render'}
+                </h3>
+                <p style={{ margin: 0, fontSize: 11, color: T.dim }}>
+                  {selRender.versao != null ? `Versão ${selRender.versao}` : 'Versão única'} · {new Date(selRender.createdAt).toLocaleString('pt-BR')}
+                </p>
               </div>
-              {selRender.score && (
-                <div style={{ textAlign:'center' as const }}>
-                  <span style={{ fontSize:32, fontWeight:900, color:scoreColor(selRender.score) }}>{selRender.score}</span>
-                  <p style={{ margin:0, fontSize:10, color:T.dim }}>/100</p>
-                </div>
-              )}
+              <span style={{ padding: '3px 10px', borderRadius: 8, fontSize: 10, fontWeight: 700, background: `${origemMeta(selRender.origem).color}22`, color: origemMeta(selRender.origem).color }}>
+                {origemMeta(selRender.origem).label}
+              </span>
             </div>
-            <div style={{ borderRadius:10, background:'rgba(255,255,255,0.04)', border:`1px solid ${T.border}`, height:240, display:'flex', alignItems:'center', justifyContent:'center', marginBottom:16 }}>
-              <p style={{ color:T.dim, fontSize:12 }}>🎨 Thumbnail do render — disponível após geração real</p>
-            </div>
-            <div style={{ background:'rgba(255,255,255,0.03)', border:`1px solid ${T.border}`, borderRadius:8, padding:'12px' }}>
-              <p style={{ margin:'0 0 6px', fontSize:10, fontWeight:700, color:T.dim, letterSpacing:'0.06em' }}>PROMPT UTILIZADO</p>
-              <p style={{ margin:0, fontSize:11, color:T.text, lineHeight:1.6, fontFamily:'ui-monospace,monospace' }}>{selRender.prompt}</p>
-            </div>
-            {selRender.corrections.length>0 && (
-              <div style={{ marginTop:16 }}>
-                <p style={{ fontSize:10, fontWeight:700, color:'#f87171', letterSpacing:'0.06em', margin:'0 0 10px' }}>CORREÇÕES PENDENTES</p>
-                {selRender.corrections.map(c => (
-                  <div key={c.id} style={{ background:'rgba(248,113,113,0.06)', border:'1px solid rgba(248,113,113,0.2)', borderRadius:8, padding:'10px 12px', marginBottom:8 }}>
-                    <p style={{ margin:'0 0 4px', fontSize:11, fontWeight:700, color:'#f87171' }}>🔴 {c.area} — {c.issue}</p>
-                    <p style={{ margin:0, fontSize:10, color:T.dim }}>Prompt corrigido: {c.correctedPromptFragment}</p>
-                  </div>
-                ))}
+
+            {/* Image */}
+            {selRender.imageUrl ? (
+              <div style={{ borderRadius: 10, overflow: 'hidden', marginBottom: 16, border: `1px solid ${T.border}` }}>
+                <img
+                  src={selRender.imageUrl}
+                  alt="Render"
+                  style={{ width: '100%', display: 'block', maxHeight: 400, objectFit: 'contain' as const, background: '#0a0a0a' }}
+                />
+              </div>
+            ) : (
+              <div style={{ height: 200, borderRadius: 10, background: 'rgba(255,255,255,0.04)', border: `1px solid ${T.border}`, display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: 16 }}>
+                <p style={{ color: T.dim, fontSize: 12 }}>🎨 Imagem não disponível</p>
               </div>
             )}
+
+            {/* Metadata */}
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginBottom: 14 }}>
+              {[
+                ['ID do Render', selRender.id.slice(0, 16) + '…'],
+                ['Cena ID',      selRender.cenaId.slice(0, 16) + '…'],
+                ['Motor',        origemMeta(selRender.origem).label],
+                ['Gerado em',    new Date(selRender.createdAt).toLocaleString('pt-BR')],
+              ].map(([k, v]) => (
+                <div key={k} style={{ padding: '8px 10px', borderRadius: 7, background: 'rgba(255,255,255,0.03)', border: `1px solid ${T.border}` }}>
+                  <p style={{ margin: '0 0 2px', fontSize: 8, color: T.dim, fontWeight: 700, letterSpacing: '0.06em' }}>{k}</p>
+                  <p style={{ margin: 0, fontSize: 10, color: T.text, fontFamily: 'ui-monospace,monospace', wordBreak: 'break-all' as const }}>{v}</p>
+                </div>
+              ))}
+            </div>
+
+            {/* Actions */}
+            <div style={{ display: 'flex', gap: 8 }}>
+              {selRender.imageUrl && (
+                <a
+                  href={selRender.imageUrl}
+                  target="_blank"
+                  rel="noreferrer"
+                  style={{ flex: 1, padding: '10px', borderRadius: 8, border: 'none', background: T.purple, color: '#fff', cursor: 'pointer', fontSize: 12, fontWeight: 700, textAlign: 'center' as const, textDecoration: 'none', display: 'block' }}
+                >
+                  🔗 Abrir em nova aba
+                </a>
+              )}
+              <button
+                onClick={() => {
+                  if (selRender.imageUrl) {
+                    const a = document.createElement('a')
+                    a.href = selRender.imageUrl!
+                    a.download = `render-${selRender.id}.jpg`
+                    a.click()
+                  }
+                }}
+                disabled={!selRender.imageUrl}
+                style={{ padding: '10px 16px', borderRadius: 8, border: `1px solid ${T.border}`, background: 'transparent', color: selRender.imageUrl ? T.text : T.dim, cursor: selRender.imageUrl ? 'pointer' : 'not-allowed', fontSize: 12 }}
+              >
+                ⬇ Baixar
+              </button>
+            </div>
           </div>
         ) : (
-          <div style={{ flex:1, display:'flex', alignItems:'center', justifyContent:'center', color:T.dim, fontSize:13 }}>
+          <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', color: T.dim, fontSize: 13 }}>
             Selecione um render para ver os detalhes.
           </div>
         )}

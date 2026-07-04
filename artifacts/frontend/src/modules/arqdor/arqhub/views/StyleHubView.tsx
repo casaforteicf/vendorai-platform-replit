@@ -1,88 +1,110 @@
-import { useState } from 'react'
-import { MOCK_HUB_STYLES } from '../arqhub-mock-data'
-import type { HubStyle } from '../arqhub-types'
+import { useState, useEffect, useCallback } from 'react'
 import { T } from '../../shared/arqdor-theme'
 
+const BASE = '/api'
+function authHeaders(): Record<string, string> {
+  const tok = localStorage.getItem('vendorai_token')
+  return tok ? { Authorization: `Bearer ${tok}` } : {}
+}
 
-function StyleCard({ s, selected, onSelect }: { s: HubStyle; selected: boolean; onSelect: ()=>void }) {
+interface CatItem {
+  id:             string
+  nome:           string
+  descricao:      string | null
+  categoria:      string | null
+  subcategoria:   string | null
+  fornecedor:     string | null
+  imagens:        string[] | null
+  especificacoes: Record<string, unknown> | null
+}
+
+// Generate a deterministic color palette from item name
+function derivePalette(nome: string): string[] {
+  const PALETTES = [
+    ['#E8E0D5','#C8A87A','#2D2D2D','#6B5B4E'],
+    ['#FFFFFF','#F0F0F0','#1A1A1A','#888'],
+    ['#E8DDD0','#8B7355','#4A4A4A','#BEB0A0'],
+    ['#6B6B6B','#3D2B1F','#C0C0C0','#8B7B6B'],
+    ['#FAFAFA','#D4C5B5','#5B7B7A','#8B9E9D'],
+    ['#D4A76A','#8B5A2B','#6B8E6B','#C8A87A'],
+    ['#1A1A2E','#C9A227','#E8E0D5','#7A6B5A'],
+    ['#F5E6D3','#8B6914','#2C1810','#D4A76A'],
+  ]
+  const idx = nome.split('').reduce((a, c) => a + c.charCodeAt(0), 0) % PALETTES.length
+  return PALETTES[idx]
+}
+
+function StyleCard({ item, selected, onSelect }: { item: CatItem; selected: boolean; onSelect: ()=>void }) {
+  const palette = derivePalette(item.nome)
   return (
     <div onClick={onSelect} style={{ cursor:'pointer', borderRadius:10, border:`1px solid ${selected?'rgba(124,58,237,0.5)':T.border}`, background:selected?'rgba(124,58,237,0.07)':T.surface, overflow:'hidden', transition:'border 0.15s' }}>
       <div style={{ height:60, display:'flex' }}>
-        {s.palette.map((c,i)=><div key={i} style={{ flex:1, background:c }}/>)}
+        {palette.map((c, i) => <div key={i} style={{ flex:1, background:c }}/>)}
       </div>
       <div style={{ padding:'10px 12px 12px' }}>
-        <p style={{ margin:'0 0 2px', fontSize:13, fontWeight:800, color:'#fff' }}>{s.label}</p>
-        <p style={{ margin:'0 0 8px', fontSize:9, color:T.dim, lineHeight:1.5 }}>{s.atmosphere.substring(0,50)}…</p>
-        <div style={{ display:'flex', alignItems:'center', gap:8 }}>
-          <div style={{ flex:1, height:3, borderRadius:2, background:'rgba(255,255,255,0.08)' }}>
-            <div style={{ height:'100%', width:`${s.visualWeight}%`, borderRadius:2, background:T.purpleL }}/>
-          </div>
-          <span style={{ fontSize:9, color:T.dim }}>VW {s.visualWeight}</span>
+        <p style={{ margin:'0 0 2px', fontSize:13, fontWeight:800, color:'#fff' }}>{item.nome}</p>
+        <p style={{ margin:'0 0 8px', fontSize:9, color:T.dim, lineHeight:1.5, overflow:'hidden', display:'-webkit-box', WebkitLineClamp:2, WebkitBoxOrient:'vertical' as const }}>
+          {item.descricao?.substring(0, 60) ?? item.categoria ?? '—'}
+        </p>
+        <div style={{ display:'flex', gap:4 }}>
+          {item.categoria && <span style={{ fontSize:8, padding:'2px 6px', borderRadius:5, background:'rgba(124,58,237,0.1)', color:T.purpleL }}>{item.categoria}</span>}
+          {item.subcategoria && <span style={{ fontSize:8, padding:'2px 6px', borderRadius:5, background:'rgba(255,255,255,0.05)', color:T.dim }}>{item.subcategoria}</span>}
         </div>
       </div>
     </div>
   )
 }
 
-function StyleDetail({ s }: { s: HubStyle }) {
+function StyleDetail({ item }: { item: CatItem }) {
+  const palette = derivePalette(item.nome)
+  const specs = item.especificacoes ?? {}
   return (
     <div style={{ height:'100%', overflowY:'auto' as const, padding:16 }}>
-      {/* Palette */}
       <div style={{ height:80, display:'flex', borderRadius:8, overflow:'hidden', marginBottom:14, border:`1px solid ${T.border}` }}>
-        {s.palette.map((c,i)=><div key={i} style={{ flex:1, background:c, position:'relative' as const }}>
-          <span style={{ position:'absolute' as const, bottom:4, left:'50%', transform:'translateX(-50%)', fontSize:7, color:'rgba(255,255,255,0.6)', fontFamily:'monospace' }}>{c}</span>
-        </div>)}
+        {palette.map((c, i) => (
+          <div key={i} style={{ flex:1, background:c, position:'relative' as const }}>
+            <span style={{ position:'absolute' as const, bottom:4, left:'50%', transform:'translateX(-50%)', fontSize:7, color:'rgba(255,255,255,0.6)', fontFamily:'monospace' }}>{c}</span>
+          </div>
+        ))}
       </div>
 
-      <p style={{ margin:'0 0 3px', fontSize:15, fontWeight:900, color:'#fff' }}>{s.label}</p>
-      <p style={{ margin:'0 0 12px', fontSize:11, color:T.text, lineHeight:1.65 }}>{s.description}</p>
+      <p style={{ margin:'0 0 3px', fontSize:15, fontWeight:900, color:'#fff' }}>{item.nome}</p>
+      <p style={{ margin:'0 0 4px', fontSize:10, color:T.dim }}>
+        {item.categoria ?? '—'}{item.subcategoria ? ` · ${item.subcategoria}` : ''}
+        {item.fornecedor ? ` · ${item.fornecedor}` : ''}
+      </p>
 
-      {[
-        ['💡 Iluminação', s.lighting],
-        ['📷 Fotografia', s.photography],
-        ['🌀 Atmosfera', s.atmosphere],
-      ].map(([k,v])=>(
-        <div key={k} style={{ padding:'8px 10px', borderRadius:7, background:'rgba(255,255,255,0.03)', border:`1px solid ${T.border}`, marginBottom:8 }}>
-          <p style={{ margin:'0 0 3px', fontSize:9, fontWeight:700, color:T.dim }}>{k}</p>
-          <p style={{ margin:0, fontSize:10, color:T.text, lineHeight:1.6 }}>{v}</p>
-        </div>
-      ))}
+      {item.descricao && (
+        <p style={{ margin:'0 0 14px', fontSize:11, color:T.text, lineHeight:1.65 }}>{item.descricao}</p>
+      )}
 
-      <div style={{ marginBottom:12 }}>
-        <p style={{ margin:'0 0 6px', fontSize:9, fontWeight:700, color:T.dim, letterSpacing:'0.06em' }}>MATERIAIS</p>
-        <div style={{ display:'flex', gap:4, flexWrap:'wrap' as const }}>
-          {s.materials.map(m=><span key={m} style={{ fontSize:10, padding:'3px 8px', borderRadius:6, background:'rgba(124,58,237,0.08)', color:T.purpleL }}>{m}</span>)}
-        </div>
-      </div>
+      {Object.entries(specs).length > 0 && (
+        <>
+          {[
+            ['ILUMINAÇÃO',    'iluminacao'],
+            ['FOTOGRAFIA',    'fotografia'],
+            ['ATMOSFERA',     'atmosfera'],
+            ['MATERIAIS',     'materiais'],
+            ['DECORAÇÃO',     'decoracao'],
+            ['DESIGN INTENT', 'designIntent'],
+            ['RESTRIÇÕES',    'restricoes'],
+          ].map(([label, key]) => {
+            const val = specs[key]
+            if (!val) return null
+            const arr = Array.isArray(val) ? val : [String(val)]
+            return (
+              <div key={key} style={{ padding:'8px 10px', borderRadius:7, background:'rgba(255,255,255,0.03)', border:`1px solid ${T.border}`, marginBottom:8 }}>
+                <p style={{ margin:'0 0 3px', fontSize:9, fontWeight:700, color:T.dim }}>{label}</p>
+                <div style={{ display:'flex', gap:4, flexWrap:'wrap' as const }}>
+                  {arr.map((v, i) => <span key={i} style={{ fontSize:10, color:T.text }}>{v}{i<arr.length-1?',':''}</span>)}
+                </div>
+              </div>
+            )
+          })}
+        </>
+      )}
 
-      <div style={{ marginBottom:12 }}>
-        <p style={{ margin:'0 0 6px', fontSize:9, fontWeight:700, color:T.dim, letterSpacing:'0.06em' }}>DECORAÇÃO</p>
-        <div style={{ display:'flex', gap:4, flexWrap:'wrap' as const }}>
-          {s.decoration.map(d=><span key={d} style={{ fontSize:10, padding:'3px 8px', borderRadius:6, background:'rgba(255,255,255,0.04)', color:T.text }}>{d}</span>)}
-        </div>
-      </div>
-
-      <div style={{ marginBottom:12 }}>
-        <p style={{ margin:'0 0 6px', fontSize:9, fontWeight:700, color:T.dim, letterSpacing:'0.06em' }}>DESIGN INTENT</p>
-        <div style={{ display:'flex', gap:4, flexWrap:'wrap' as const }}>
-          {s.designIntent.map(d=><span key={d} style={{ fontSize:10, padding:'3px 8px', borderRadius:6, background:'rgba(167,139,250,0.1)', color:T.purpleL }}>{d}</span>)}
-        </div>
-      </div>
-
-      <div style={{ marginBottom:14 }}>
-        <p style={{ margin:'0 0 6px', fontSize:9, fontWeight:700, color:'#f87171', letterSpacing:'0.06em' }}>RESTRIÇÕES</p>
-        {s.restrictions.map(r=><p key={r} style={{ margin:'0 0 4px', fontSize:10, color:'#f87171' }}>✗ {r}</p>)}
-      </div>
-
-      <div style={{ display:'flex', alignItems:'center', gap:10, marginBottom:14 }}>
-        <p style={{ margin:0, fontSize:9, color:T.dim }}>PESO VISUAL</p>
-        <div style={{ flex:1, height:6, borderRadius:3, background:'rgba(255,255,255,0.08)' }}>
-          <div style={{ height:'100%', width:`${s.visualWeight}%`, borderRadius:3, background:T.purpleL }}/>
-        </div>
-        <span style={{ fontSize:11, fontWeight:800, color:T.purpleL }}>{s.visualWeight}</span>
-      </div>
-
-      <button style={{ width:'100%', padding:'10px', borderRadius:8, border:'none', background:T.purple, color:'#fff', cursor:'pointer', fontSize:12, fontWeight:700 }}>
+      <button style={{ width:'100%', padding:'10px', borderRadius:8, border:'none', background:T.purple, color:'#fff', cursor:'pointer', fontSize:12, fontWeight:700, marginTop:8 }}>
         🎨 Aplicar ao Projeto
       </button>
     </div>
@@ -90,12 +112,34 @@ function StyleDetail({ s }: { s: HubStyle }) {
 }
 
 export function StyleHubView() {
-  const [query, setQuery] = useState('')
-  const [sel, setSel] = useState<HubStyle|null>(MOCK_HUB_STYLES[0])
+  const [items,   setItems]   = useState<CatItem[]>([])
+  const [loading, setLoading] = useState(true)
+  const [error,   setError]   = useState<string|null>(null)
+  const [query,   setQuery]   = useState('')
+  const [sel,     setSel]     = useState<CatItem|null>(null)
 
-  const filtered = MOCK_HUB_STYLES.filter(s =>
-    !query || s.label.toLowerCase().includes(query.toLowerCase()) ||
-    s.designIntent.some(d=>d.toLowerCase().includes(query.toLowerCase()))
+  const load = useCallback(async () => {
+    setLoading(true); setError(null)
+    try {
+      const res = await fetch(`${BASE}/arch/catalogo?limit=60`, { headers: authHeaders() })
+      if (!res.ok) throw new Error(`HTTP ${res.status}`)
+      const data: CatItem[] = await res.json()
+      setItems(data)
+      if (data.length > 0 && !sel) setSel(data[0])
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : 'Erro ao carregar estilos')
+    } finally {
+      setLoading(false)
+    }
+  }, [sel])
+
+  useEffect(() => { load() }, [load])
+
+  const filtered = items.filter(item =>
+    !query ||
+    item.nome.toLowerCase().includes(query.toLowerCase()) ||
+    (item.descricao ?? '').toLowerCase().includes(query.toLowerCase()) ||
+    (item.categoria ?? '').toLowerCase().includes(query.toLowerCase())
   )
 
   return (
@@ -103,16 +147,32 @@ export function StyleHubView() {
       <div style={{ padding:'10px 16px', borderBottom:`1px solid ${T.border}`, flexShrink:0, display:'flex', gap:8 }}>
         <input value={query} onChange={e=>setQuery(e.target.value)} placeholder="Buscar estilo…"
           style={{ flex:1, background:'rgba(255,255,255,0.06)', border:`1px solid ${T.border}`, borderRadius:6, color:T.text, fontSize:11, padding:'5px 10px', outline:'none' }}/>
-        <button style={{ padding:'5px 12px', borderRadius:6, border:'none', background:T.purple, color:'#fff', cursor:'pointer', fontSize:11, fontWeight:700 }}>+ Novo</button>
-        <span style={{ fontSize:10, color:T.dim, alignSelf:'center' }}>{filtered.length} estilos</span>
+        <button onClick={load} style={{ padding:'5px 10px', borderRadius:6, border:`1px solid ${T.border}`, background:'transparent', color:T.dim, cursor:'pointer', fontSize:10 }}>↻</button>
+        <span style={{ fontSize:10, color:T.dim, alignSelf:'center' }}>{filtered.length} item(s)</span>
       </div>
+
+      {error && <div style={{ padding:'8px 16px', background:'rgba(248,113,113,0.08)', borderBottom:`1px solid rgba(248,113,113,0.2)`, fontSize:11, color:'#f87171', flexShrink:0 }}>⚠ {error}</div>}
+
       <div style={{ flex:1, display:'flex', overflow:'hidden' }}>
         <div style={{ flex:1, overflowY:'auto' as const, padding:16 }}>
-          <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fill,minmax(200px,1fr))', gap:12 }}>
-            {filtered.map(s=><StyleCard key={s.id} s={s} selected={sel?.id===s.id} onSelect={()=>setSel(s)}/>)}
-          </div>
+          {loading && (
+            <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fill,minmax(200px,1fr))', gap:12 }}>
+              {[1,2,3,4].map(i=><div key={i} style={{ height:120, borderRadius:10, background:'rgba(255,255,255,0.04)', border:`1px solid ${T.border}`, animation:'pulse 1.5s infinite' }}/>)}
+            </div>
+          )}
+          {!loading && filtered.length === 0 && (
+            <div style={{ textAlign:'center' as const, padding:60, color:T.dim, fontSize:12 }}>
+              <p style={{ margin:'0 0 8px', fontSize:28 }}>🎨</p>
+              <p>Nenhum estilo disponível. Adicione itens ao catálogo via Biblioteca.</p>
+            </div>
+          )}
+          {!loading && (
+            <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fill,minmax(200px,1fr))', gap:12 }}>
+              {filtered.map(item=><StyleCard key={item.id} item={item} selected={sel?.id===item.id} onSelect={()=>setSel(item)}/>)}
+            </div>
+          )}
         </div>
-        {sel && <div style={{ width:300, flexShrink:0, borderLeft:`1px solid ${T.border}` }}><StyleDetail s={sel}/></div>}
+        {sel && <div style={{ width:300, flexShrink:0, borderLeft:`1px solid ${T.border}` }}><StyleDetail item={sel}/></div>}
       </div>
     </div>
   )

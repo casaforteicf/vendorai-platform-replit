@@ -1,159 +1,129 @@
-import { useState } from 'react'
-import { MOCK_COMPONENTS, MOCK_MANUFACTURERS, MOCK_CATEGORIES } from '../../core/component-library/component-mock-data'
-import { filterComponents, compatibilityColor } from '../../core/component-library/component-engine'
-import type { ComponentItem, ComponentCategory } from '../../core/component-library/component-types'
-import { COMPONENT_CATEGORY_LABELS, REPLACEMENT_BEHAVIOR_LABELS, REPLACEMENT_BEHAVIOR_ICONS } from '../../core/component-library/component-types'
+import { useState, useEffect, useCallback } from 'react'
 import { T } from '../../shared/arqdor-theme'
 
-
-const CAT_ICON: Partial<Record<ComponentCategory,string>> = {
-  KITCHEN:'🍳', CABINETRY:'🗄️', BED:'🛏️', MATTRESS:'😴', SOFA:'🛋️',
-  ARMCHAIR:'🪑', CHAIR:'🪑', TABLE:'🪵', APPLIANCE:'🔌', COOKTOP:'🔥',
-  OVEN:'♨️', MICROWAVE:'📡', REFRIGERATOR:'❄️', WASHER:'🫧', SINK:'🚰',
-  FAUCET:'🚿', HANDLE:'🔩', HARDWARE:'🔧', LIGHTING:'💡', FLOORING:'🟫',
-  WALL_COVERING:'🧱', STONE:'🪨', DOOR:'🚪', WINDOW:'🪟', FRAME:'🪟',
-  DECOR:'🎨', PLANT:'🌿', CUSTOM:'⚙️',
+const BASE = '/api'
+function authHeaders(): Record<string, string> {
+  const tok = localStorage.getItem('vendorai_token')
+  return tok ? { Authorization: `Bearer ${tok}` } : {}
 }
 
-function ComponentCard({
-  component, selected, onSelect,
-}: { component: ComponentItem; selected: boolean; onSelect: () => void }) {
+interface CatItem {
+  id:             string
+  nome:           string
+  descricao:      string | null
+  categoria:      string | null
+  subcategoria:   string | null
+  fornecedor:     string | null
+  precoBase:      string | null
+  imagens:        string[] | null
+  especificacoes: Record<string, unknown> | null
+}
+
+function ComponentCard({ item, selected, onSelect }: { item: CatItem; selected: boolean; onSelect: ()=>void }) {
+  const img = item.imagens?.[0]
   return (
-    <div
-      onClick={onSelect}
-      style={{
-        borderRadius:10, padding:'12px', cursor:'pointer',
-        background: selected ? 'rgba(124,58,237,0.1)' : T.card,
-        border:`1px solid ${selected ? 'rgba(124,58,237,0.4)' : T.border}`,
-        transition:'border-color 0.15s',
-      }}
-    >
-      {/* Thumbnail placeholder */}
+    <div onClick={onSelect} style={{
+      borderRadius:10, padding:'12px', cursor:'pointer',
+      background: selected ? 'rgba(124,58,237,0.1)' : T.card,
+      border:`1px solid ${selected ? 'rgba(124,58,237,0.4)' : T.border}`,
+      transition:'border-color 0.15s',
+    }}>
       <div style={{ height:72, borderRadius:7, background:'rgba(255,255,255,0.04)', marginBottom:10,
-        display:'flex', alignItems:'center', justifyContent:'center', border:`1px solid ${T.border}`,
-        fontSize:24 }}>
-        {CAT_ICON[component.category] ?? '📦'}
+        display:'flex', alignItems:'center', justifyContent:'center', border:`1px solid ${T.border}`, overflow:'hidden' }}>
+        {img
+          ? <img src={img} alt={item.nome} style={{ width:'100%', height:'100%', objectFit:'cover' as const }}/>
+          : <span style={{ fontSize:24 }}>📦</span>
+        }
       </div>
-      <p style={{ margin:'0 0 2px', fontSize:11, fontWeight:700, color:'#fff', lineHeight:1.3 }}>
-        {component.name}
-      </p>
-      <p style={{ margin:'0 0 6px', fontSize:10, color:T.dim }}>{component.manufacturer} · {component.brand}</p>
-      {component.line && <p style={{ margin:'0 0 6px', fontSize:10, color:T.dim }}>Linha {component.line}</p>}
+      <p style={{ margin:'0 0 2px', fontSize:11, fontWeight:700, color:'#fff', lineHeight:1.3 }}>{item.nome}</p>
+      <p style={{ margin:'0 0 6px', fontSize:10, color:T.dim }}>{item.fornecedor ?? '—'}</p>
       <div style={{ display:'flex', gap:4, flexWrap:'wrap' as const }}>
-        <span style={{ fontSize:9, padding:'2px 6px', borderRadius:8, background:'rgba(124,58,237,0.15)', color:T.purpleL }}>
-          {COMPONENT_CATEGORY_LABELS[component.category]}
-        </span>
-        <span style={{ fontSize:9, padding:'2px 6px', borderRadius:8, background:'rgba(255,255,255,0.05)', color:T.dim }}>
-          {REPLACEMENT_BEHAVIOR_ICONS[component.replacementBehavior]}
-        </span>
+        {item.categoria && (
+          <span style={{ fontSize:9, padding:'2px 6px', borderRadius:8, background:'rgba(124,58,237,0.15)', color:T.purpleL }}>
+            {item.categoria}
+          </span>
+        )}
+        {item.subcategoria && (
+          <span style={{ fontSize:9, padding:'2px 6px', borderRadius:8, background:'rgba(255,255,255,0.05)', color:T.dim }}>
+            {item.subcategoria}
+          </span>
+        )}
       </div>
     </div>
   )
 }
 
-function ComponentDetail({ component, onAssign }: { component: ComponentItem; onAssign?: (c: ComponentItem) => void }) {
+function ComponentDetail({ item }: { item: CatItem }) {
   const [showForm, setShowForm] = useState(false)
+  const specs = item.especificacoes ?? {}
+  const img   = item.imagens?.[0]
 
   return (
     <div style={{ height:'100%', overflowY:'auto' as const, padding:'14px' }}>
-      {/* Header */}
       <div style={{ marginBottom:14 }}>
         <div style={{ display:'flex', alignItems:'flex-start', gap:10 }}>
-          <span style={{ fontSize:32 }}>{CAT_ICON[component.category]??'📦'}</span>
+          {img
+            ? <img src={img} alt={item.nome} style={{ width:48, height:48, borderRadius:8, objectFit:'cover' as const, flexShrink:0 }}/>
+            : <span style={{ fontSize:32 }}>📦</span>
+          }
           <div style={{ flex:1 }}>
-            <p style={{ margin:'0 0 3px', fontSize:14, fontWeight:800, color:'#fff', lineHeight:1.3 }}>{component.name}</p>
-            <p style={{ margin:0, fontSize:11, color:T.dim }}>{component.manufacturer} — {component.brand}</p>
+            <p style={{ margin:'0 0 3px', fontSize:14, fontWeight:800, color:'#fff', lineHeight:1.3 }}>{item.nome}</p>
+            <p style={{ margin:0, fontSize:11, color:T.dim }}>{item.fornecedor ?? '—'}</p>
           </div>
         </div>
-        {component.code && (
-          <p style={{ margin:'8px 0 0', fontSize:10, fontFamily:'ui-monospace,monospace', color:T.dim, letterSpacing:'0.04em' }}>
-            {component.code}
-          </p>
+      </div>
+
+      <div style={{ display:'flex', gap:6, marginBottom:12, flexWrap:'wrap' as const }}>
+        {item.categoria && (
+          <span style={{ padding:'3px 9px', borderRadius:10, fontSize:10, background:'rgba(124,58,237,0.15)', color:T.purpleL }}>
+            {item.categoria}
+          </span>
+        )}
+        {item.subcategoria && (
+          <span style={{ padding:'3px 9px', borderRadius:10, fontSize:10, background:'rgba(255,255,255,0.06)', color:T.dim }}>
+            {item.subcategoria}
+          </span>
         )}
       </div>
 
-      {/* Category + behavior */}
-      <div style={{ display:'flex', gap:6, marginBottom:12, flexWrap:'wrap' as const }}>
-        <span style={{ padding:'3px 9px', borderRadius:10, fontSize:10, background:'rgba(124,58,237,0.15)', color:T.purpleL }}>
-          {COMPONENT_CATEGORY_LABELS[component.category]}
-        </span>
-        <span style={{ padding:'3px 9px', borderRadius:10, fontSize:10, background:'rgba(255,255,255,0.06)', color:T.dim }}>
-          {REPLACEMENT_BEHAVIOR_ICONS[component.replacementBehavior]} {REPLACEMENT_BEHAVIOR_LABELS[component.replacementBehavior]}
-        </span>
-      </div>
+      {item.descricao && (
+        <p style={{ margin:'0 0 12px', fontSize:11, color:T.text, lineHeight:1.65 }}>{item.descricao}</p>
+      )}
 
-      {/* Description */}
-      <p style={{ margin:'0 0 12px', fontSize:11, color:T.text, lineHeight:1.65 }}>{component.description}</p>
-
-      {/* Dimensions */}
-      {component.dimensions && (
+      {item.precoBase && (
         <div style={{ marginBottom:12, padding:'8px 10px', borderRadius:8, background:'rgba(255,255,255,0.03)', border:`1px solid ${T.border}` }}>
-          <p style={{ margin:'0 0 4px', fontSize:9, fontWeight:700, color:T.dim, letterSpacing:'0.06em' }}>DIMENSÕES</p>
-          <p style={{ margin:0, fontSize:11, color:T.text, fontFamily:'ui-monospace,monospace' }}>
-            {component.dimensions.width} × {component.dimensions.height} × {component.dimensions.depth} {component.dimensions.unit}
-          </p>
+          <p style={{ margin:'0 0 4px', fontSize:9, fontWeight:700, color:T.dim, letterSpacing:'0.06em' }}>PREÇO BASE</p>
+          <p style={{ margin:0, fontSize:14, fontWeight:800, color:T.purpleL }}>R$ {Number(item.precoBase).toFixed(2)}</p>
         </div>
       )}
 
-      {/* Materials */}
-      {component.materials.length > 0 && (
+      {Object.keys(specs).length > 0 && (
         <div style={{ marginBottom:12 }}>
-          <p style={{ margin:'0 0 6px', fontSize:9, fontWeight:700, color:T.dim, letterSpacing:'0.06em' }}>MATERIAIS</p>
-          {component.materials.map((m,i) => (
-            <div key={i} style={{ display:'flex', alignItems:'center', gap:8, marginBottom:4 }}>
-              <div style={{ width:20, height:20, borderRadius:4, background:'rgba(255,255,255,0.1)', border:`1px solid ${T.border}`, flexShrink:0 }}/>
-              <p style={{ margin:0, fontSize:10, color:T.text }}>{m.name} — {m.finish}{m.color?` (${m.color})`:''}</p>
+          <p style={{ margin:'0 0 6px', fontSize:9, fontWeight:700, color:T.dim, letterSpacing:'0.06em' }}>ESPECIFICAÇÕES</p>
+          {Object.entries(specs).slice(0, 8).map(([k, v]) => (
+            <div key={k} style={{ display:'flex', justifyContent:'space-between', padding:'4px 0', borderBottom:`1px solid rgba(255,255,255,0.04)`, fontSize:10 }}>
+              <span style={{ color:T.dim }}>{k}</span>
+              <span style={{ color:T.text }}>{String(v)}</span>
             </div>
           ))}
         </div>
       )}
 
-      {/* Colors */}
-      {component.colors.length > 0 && (
+      {item.imagens && item.imagens.length > 1 && (
         <div style={{ marginBottom:12 }}>
-          <p style={{ margin:'0 0 6px', fontSize:9, fontWeight:700, color:T.dim, letterSpacing:'0.06em' }}>ACABAMENTOS DISPONÍVEIS</p>
-          <div style={{ display:'flex', gap:4, flexWrap:'wrap' as const }}>
-            {component.colors.map(c => (
-              <span key={c} style={{ padding:'2px 8px', borderRadius:8, fontSize:10, background:'rgba(255,255,255,0.06)', color:T.text }}>{c}</span>
+          <p style={{ margin:'0 0 6px', fontSize:9, fontWeight:700, color:T.dim, letterSpacing:'0.06em' }}>IMAGENS</p>
+          <div style={{ display:'flex', gap:4 }}>
+            {item.imagens.slice(0, 4).map((url, i) => (
+              <img key={i} src={url} alt="" style={{ width:48, height:48, borderRadius:6, objectFit:'cover' as const, border:`1px solid ${T.border}` }}/>
             ))}
           </div>
         </div>
       )}
 
-      {/* Compatible objects */}
-      <div style={{ marginBottom:12 }}>
-        <p style={{ margin:'0 0 6px', fontSize:9, fontWeight:700, color:T.dim, letterSpacing:'0.06em' }}>COMPATÍVEL COM</p>
-        <div style={{ display:'flex', gap:4, flexWrap:'wrap' as const }}>
-          {component.compatibleObjectCategories.map(c => (
-            <span key={c} style={{ padding:'2px 8px', borderRadius:8, fontSize:9, background:'rgba(74,222,128,0.08)', color:'#4ade80', border:'1px solid rgba(74,222,128,0.2)' }}>
-              {CAT_ICON[c]??'📦'} {COMPONENT_CATEGORY_LABELS[c]}
-            </span>
-          ))}
-        </div>
-      </div>
-
-      {/* Tags */}
-      {component.tags.length > 0 && (
-        <div style={{ marginBottom:14 }}>
-          <div style={{ display:'flex', gap:4, flexWrap:'wrap' as const }}>
-            {component.tags.map(t => (
-              <span key={t} style={{ padding:'2px 6px', borderRadius:6, fontSize:9, background:'rgba(255,255,255,0.04)', color:T.dim }}>#{t}</span>
-            ))}
-          </div>
-        </div>
-      )}
-
-      {/* Thumbnail placeholder */}
-      <div style={{ height:100, borderRadius:8, background:'rgba(255,255,255,0.03)', border:`1px solid ${T.border}`,
-        display:'flex', alignItems:'center', justifyContent:'center', marginBottom:14 }}>
-        <p style={{ margin:0, fontSize:11, color:T.dim }}>📷 Imagens do produto — disponíveis após importação de catálogo</p>
-      </div>
-
-      {/* Action */}
-      <button
-        onClick={()=>setShowForm(true)}
-        style={{ width:'100%', padding:'10px', borderRadius:8, border:'none', background:T.purple, color:'#fff', cursor:'pointer', fontSize:12, fontWeight:700 }}
-      >
+      <button onClick={() => setShowForm(true)} style={{
+        width:'100%', padding:'10px', borderRadius:8, border:'none', background:T.purple,
+        color:'#fff', cursor:'pointer', fontSize:12, fontWeight:700,
+      }}>
         🔗 Vincular a Objeto do Projeto
       </button>
 
@@ -161,10 +131,9 @@ function ComponentDetail({ component, onAssign }: { component: ComponentItem; on
         <div style={{ marginTop:12, padding:'12px', borderRadius:8, background:'rgba(124,58,237,0.07)', border:`1px solid rgba(124,58,237,0.2)` }}>
           <p style={{ margin:'0 0 8px', fontSize:11, fontWeight:700, color:T.purpleL }}>Vincular a objeto</p>
           <p style={{ margin:'0 0 10px', fontSize:10, color:T.dim, lineHeight:1.6 }}>
-            Selecione o objeto no painel <strong style={{ color:T.text }}>Projeto Inteligente</strong> e use a aba Componente no inspector para vincular <em>{component.name}</em>.
+            Selecione o objeto no painel <strong style={{ color:T.text }}>Projeto Inteligente</strong> e use a aba Componente no inspector para vincular <em>{item.nome}</em>.
           </p>
-          <button onClick={()=>setShowForm(false)}
-            style={{ padding:'5px 12px', borderRadius:6, border:`1px solid ${T.border}`, background:'transparent', color:T.dim, cursor:'pointer', fontSize:10 }}>
+          <button onClick={()=>setShowForm(false)} style={{ padding:'5px 12px', borderRadius:6, border:`1px solid ${T.border}`, background:'transparent', color:T.dim, cursor:'pointer', fontSize:10 }}>
             Entendido
           </button>
         </div>
@@ -173,80 +142,109 @@ function ComponentDetail({ component, onAssign }: { component: ComponentItem; on
   )
 }
 
-// ─── Main ComponentsPanel ─────────────────────────────────────────────────────
-
 export function ComponentsPanel() {
+  const [items,   setItems]   = useState<CatItem[]>([])
+  const [loading, setLoading] = useState(true)
+  const [error,   setError]   = useState<string|null>(null)
   const [query, setQuery]     = useState('')
-  const [cat, setCat]         = useState<ComponentCategory|''>('')
+  const [cat, setCat]         = useState('')
   const [mfr, setMfr]         = useState('')
-  const [sel, setSel]         = useState<ComponentItem|null>(MOCK_COMPONENTS[0])
-  const [showForm, setShowForm] = useState(false)
+  const [sel, setSel]         = useState<CatItem|null>(null)
 
-  const filtered = filterComponents(MOCK_COMPONENTS, {
-    category: cat || undefined,
-    manufacturer: mfr || undefined,
-    query: query || undefined,
+  const load = useCallback(async () => {
+    setLoading(true); setError(null)
+    try {
+      const params = new URLSearchParams({ limit: '120' })
+      if (cat) params.set('categoria', cat)
+      if (mfr) params.set('fornecedor', mfr)
+      if (query) params.set('busca', query)
+      const res = await fetch(`${BASE}/arch/catalogo?${params}`, { headers: authHeaders() })
+      if (!res.ok) throw new Error(`HTTP ${res.status}`)
+      const data: CatItem[] = await res.json()
+      setItems(data)
+      if (data.length > 0 && !sel) setSel(data[0])
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : 'Erro ao carregar componentes')
+    } finally {
+      setLoading(false)
+    }
+  }, [cat, mfr, query, sel])
+
+  useEffect(() => { load() }, [load])
+
+  const categories  = [...new Set(items.map(i => i.categoria).filter(Boolean))] as string[]
+  const fornecedores = [...new Set(items.map(i => i.fornecedor).filter(Boolean))].sort() as string[]
+
+  const filtered = items.filter(item => {
+    if (cat && item.categoria !== cat) return false
+    if (mfr && item.fornecedor !== mfr) return false
+    if (query) {
+      const q = query.toLowerCase()
+      return item.nome.toLowerCase().includes(q) || (item.descricao ?? '').toLowerCase().includes(q)
+    }
+    return true
   })
 
   return (
     <div style={{ height:'100%', display:'flex', flexDirection:'column' as const }}>
-      {/* Sub-header */}
       <div style={{ padding:'0 0 10px', flexShrink:0 }}>
         <div style={{ display:'flex', gap:8, marginBottom:8 }}>
           <input value={query} onChange={e=>setQuery(e.target.value)} placeholder="Buscar componente…"
-            style={{ flex:1, background:'rgba(255,255,255,0.06)', border:`1px solid ${T.border}`, borderRadius:6,
-              color:T.text, fontSize:11, padding:'5px 10px', outline:'none' }}/>
-          <button onClick={()=>setShowForm(true)} style={{
-            padding:'5px 12px', borderRadius:6, border:'none', background:T.purple,
-            color:'#fff', cursor:'pointer', fontSize:11, fontWeight:700, whiteSpace:'nowrap' as const,
-          }}>+ Novo</button>
+            style={{ flex:1, background:'rgba(255,255,255,0.06)', border:`1px solid ${T.border}`, borderRadius:6, color:T.text, fontSize:11, padding:'5px 10px', outline:'none' }}/>
+          <button onClick={load} style={{ padding:'5px 10px', borderRadius:6, border:`1px solid ${T.border}`, background:'transparent', color:T.dim, cursor:'pointer', fontSize:10 }}>↻</button>
         </div>
-        {/* Filters */}
         <div style={{ display:'flex', gap:6, overflowX:'auto' as const }}>
-          <select value={cat} onChange={e=>setCat(e.target.value as ComponentCategory|'')}
-            style={{ background:'rgba(255,255,255,0.06)', border:`1px solid ${T.border}`, borderRadius:6,
-              color: cat ? T.text : T.dim, fontSize:10, padding:'4px 8px', cursor:'pointer' }}>
+          <select value={cat} onChange={e=>setCat(e.target.value)}
+            style={{ background:'rgba(255,255,255,0.06)', border:`1px solid ${T.border}`, borderRadius:6, color:cat?T.text:T.dim, fontSize:10, padding:'4px 8px', cursor:'pointer' }}>
             <option value=''>Categoria</option>
-            {MOCK_CATEGORIES.map(c => <option key={c} value={c}>{COMPONENT_CATEGORY_LABELS[c]}</option>)}
+            {categories.map(c => <option key={c} value={c}>{c}</option>)}
           </select>
           <select value={mfr} onChange={e=>setMfr(e.target.value)}
-            style={{ background:'rgba(255,255,255,0.06)', border:`1px solid ${T.border}`, borderRadius:6,
-              color: mfr ? T.text : T.dim, fontSize:10, padding:'4px 8px', cursor:'pointer' }}>
+            style={{ background:'rgba(255,255,255,0.06)', border:`1px solid ${T.border}`, borderRadius:6, color:mfr?T.text:T.dim, fontSize:10, padding:'4px 8px', cursor:'pointer' }}>
             <option value=''>Fabricante</option>
-            {MOCK_MANUFACTURERS.map(m => <option key={m} value={m}>{m}</option>)}
+            {fornecedores.map(f => <option key={f} value={f}>{f}</option>)}
           </select>
           {(cat||mfr||query) && (
-            <button onClick={()=>{setCat('');setMfr('');setQuery('')}}
-              style={{ padding:'4px 10px', borderRadius:6, border:`1px solid ${T.border}`, background:'transparent', color:'#f87171', cursor:'pointer', fontSize:10 }}>
+            <button onClick={()=>{setCat('');setMfr('');setQuery('')}} style={{ padding:'4px 10px', borderRadius:6, border:`1px solid ${T.border}`, background:'transparent', color:'#f87171', cursor:'pointer', fontSize:10 }}>
               ✕ Limpar
             </button>
           )}
           <span style={{ fontSize:10, color:T.dim, alignSelf:'center', marginLeft:'auto', flexShrink:0 }}>
-            {filtered.length}/{MOCK_COMPONENTS.length}
+            {loading ? '…' : `${filtered.length}/${items.length}`}
           </span>
         </div>
+        {error && (
+          <div style={{ marginTop:6, fontSize:10, color:'#f87171' }}>⚠ {error}</div>
+        )}
       </div>
 
-      {/* Body: grid + detail */}
       <div style={{ flex:1, display:'flex', gap:0, overflow:'hidden', borderTop:`1px solid ${T.border}` }}>
-        {/* Grid */}
-        <div style={{ flex:1, overflowY:'auto' as const, padding:'12px 0 12px 0' }}>
-          <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fill,minmax(160px,1fr))', gap:10, padding:'0 12px 0 0' }}>
-            {filtered.map(c => (
-              <ComponentCard key={c.id} component={c} selected={sel?.id===c.id} onSelect={()=>setSel(c)}/>
-            ))}
-            {filtered.length===0 && (
-              <div style={{ gridColumn:'1/-1', padding:'40px', textAlign:'center' as const, color:T.dim, fontSize:12 }}>
-                Nenhum componente encontrado.
-              </div>
-            )}
-          </div>
+        <div style={{ flex:1, overflowY:'auto' as const, padding:'12px 0' }}>
+          {loading && (
+            <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fill,minmax(160px,1fr))', gap:10, paddingRight:12 }}>
+              {[1,2,3,4,5,6].map(i=><div key={i} style={{ height:110, borderRadius:10, background:'rgba(255,255,255,0.04)', border:`1px solid ${T.border}`, animation:'pulse 1.5s infinite' }}/>)}
+            </div>
+          )}
+          {!loading && filtered.length === 0 && (
+            <div style={{ padding:'40px', textAlign:'center' as const, color:T.dim, fontSize:12 }}>
+              {items.length === 0
+                ? <span>Catálogo vazio. Adicione itens via Biblioteca.</span>
+                : <span>Nenhum componente encontrado.</span>
+              }
+            </div>
+          )}
+          {!loading && (
+            <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fill,minmax(160px,1fr))', gap:10, paddingRight:12 }}>
+              {filtered.map(item => (
+                <ComponentCard key={item.id} item={item} selected={sel?.id===item.id} onSelect={()=>setSel(item)}/>
+              ))}
+            </div>
+          )}
         </div>
 
-        {/* Detail panel */}
         {sel && (
           <div style={{ width:280, flexShrink:0, borderLeft:`1px solid ${T.border}` }}>
-            <ComponentDetail component={sel}/>
+            <ComponentDetail item={sel}/>
           </div>
         )}
       </div>
