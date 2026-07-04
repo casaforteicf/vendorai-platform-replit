@@ -24,7 +24,7 @@ import {
 import type { TranslatorId, DetailLevel, PlaywrightPrompt } from '../../engines/prompt-playwright/prompt-playwright'
 import { useWorkspaceProject } from '../WorkspaceContext'
 import { T } from '../../shared/arqdor-theme'
-import { useSavedVariations } from './useSavedVariations'
+import { useSavedVariations, getStalenessInfo } from './useSavedVariations'
 import type { SavedVariation } from './useSavedVariations'
 
 // ─── ProjectContext → Project converter ───────────────────────────────────────
@@ -462,8 +462,22 @@ function VariationCard({
 
   const hasNotes = (v.notes ?? '').trim().length > 0
 
+  const isPending = v.id.startsWith('local-')
+  const staleness = isPending ? getStalenessInfo(v.savedAt) : null
+
+  const stalenessColor =
+    staleness?.level === 'red'   ? 'rgba(239,68,68,0.9)'   :
+    staleness?.level === 'amber' ? 'rgba(251,191,36,0.9)'  :
+    staleness           ? 'rgba(148,163,184,0.7)'  :
+    undefined
+
+  const stalenessBorderColor =
+    staleness?.level === 'red'   ? 'rgba(239,68,68,0.35)'   :
+    staleness?.level === 'amber' ? 'rgba(251,191,36,0.35)'  :
+    T.border
+
   return (
-    <div style={{ borderRadius:8, border:`1px solid ${T.border}`, overflow:'hidden' }}>
+    <div style={{ borderRadius:8, border:`1px solid ${stalenessBorderColor}`, overflow:'hidden' }}>
       {/* Row header */}
       <div style={{ padding:'8px 12px', background:'rgba(255,255,255,0.03)', display:'flex', alignItems:'center', gap:8 }}>
         {/* Name (editable) */}
@@ -497,6 +511,19 @@ function VariationCard({
           {v.detail}
         </span>
         <span style={{ fontSize:9, color:T.dim }}>{v.estimatedTokens} tk</span>
+        {/* Pending sync badge */}
+        {isPending && (
+          <span style={{
+            fontSize:8, padding:'1px 7px', borderRadius:4, fontWeight:800, flexShrink:0,
+            background: staleness?.level === 'red'   ? 'rgba(239,68,68,0.15)'   :
+                        staleness?.level === 'amber' ? 'rgba(251,191,36,0.15)'  :
+                        'rgba(148,163,184,0.12)',
+            color: stalenessColor,
+            border: `1px solid ${stalenessBorderColor}`,
+          }}>
+            🔄 offline
+          </span>
+        )}
         {/* Actions */}
         <button
           onClick={() => onCopy(v.id, v.prompt)}
@@ -549,7 +576,9 @@ function VariationCard({
           </p>
         )}
         <div style={{ display:'flex', alignItems:'center', gap:8, marginTop:5 }}>
-          <p style={{ margin:0, fontSize:9, color:'rgba(255,255,255,0.24)', flex:1 }}>{fmt(v.savedAt)}</p>
+          <p style={{ margin:0, fontSize:9, flex:1, color: stalenessColor ?? 'rgba(255,255,255,0.24)' }}>
+            {isPending && staleness ? staleness.label : fmt(v.savedAt)}
+          </p>
           <button
             onClick={() => { setNotesOpen(p => !p); if (!notesOpen) setDraftNotes(v.notes ?? '') }}
             style={{

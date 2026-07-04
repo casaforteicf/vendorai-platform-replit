@@ -34,6 +34,39 @@ export const MIGRATED_KEY = 'arqdor_prompt_variations_migrated'
 export const API_BASE = '/api/arch/prompt-variations'
 export const PRUNE_BATCH_SIZE = 5
 
+/** Items pending sync for at least this many days turn amber. */
+export const STALE_AMBER_DAYS = 1
+/** Items pending sync for at least this many days turn red. */
+export const STALE_RED_DAYS = 3
+
+export type StalenessLevel = 'fresh' | 'amber' | 'red'
+
+export interface StalenessInfo {
+  label: string
+  level: StalenessLevel
+}
+
+/** Returns a human-readable staleness label and urgency level for a pending local item. */
+export function getStalenessInfo(savedAt: number, now = Date.now()): StalenessInfo {
+  const ms = now - savedAt
+  const hours = ms / (1000 * 60 * 60)
+  const days = Math.floor(hours / 24)
+
+  let level: StalenessLevel = 'fresh'
+  if (hours >= STALE_RED_DAYS * 24) level = 'red'
+  else if (hours >= STALE_AMBER_DAYS * 24) level = 'amber'
+
+  let label: string
+  if (days >= 1) {
+    label = days === 1 ? 'Aguardando sync há 1 dia' : `Aguardando sync há ${days} dias`
+  } else {
+    const h = Math.floor(hours)
+    label = h <= 0 ? 'Aguardando sync há pouco' : `Aguardando sync há ${h}h`
+  }
+
+  return { label, level }
+}
+
 // ─── Local-storage helpers ────────────────────────────────────────────────────
 
 export function persistVariations(list: SavedVariation[]): boolean {
