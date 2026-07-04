@@ -1342,9 +1342,20 @@ router.post("/webhooks/meta/instagram", async (req, res) => {
 
               req.log.info(
                 { messageId: dbMessage.id, leadId: lead.id, conversationId: conversation.id },
-                "meta/instagram/comment: lead ready, awaiting SDR dispatch (Passo 4)"
+                "meta/instagram/comment: lead created — dispatching SDR"
               );
-              // ── Passo 4 adicionará dispatchAgentBackground aqui ──────────
+
+              // ── Passo 4: aciona SDR automaticamente ──────────────────────
+              // Usa forcedAgent: "sdr" — igual ao fluxo do Prospector —
+              // garantindo que o SDR assume independentemente do agente padrão
+              // do tenant. O conteúdo da mensagem é o próprio comentário.
+              dispatchAgentBackground({
+                tenantId,
+                leadId: lead.id,
+                mensagem: commentText,
+                log: req.log,
+                forcedAgent: "sdr",
+              });
             }
           }
 
