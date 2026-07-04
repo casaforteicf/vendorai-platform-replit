@@ -863,6 +863,88 @@ describe('offline save promoted after connectivity is restored', () => {
     expect(stored.some(v => v.id.startsWith('local-'))).toBe(false)
   })
 
+  it('badge count equals number of still-unpromoted items when sync partially succeeds (mixed 200/5xx/200)', async () => {
+    localStorage.setItem('vendorai_token', 'tok-abc')
+
+    // Seed 3 local-* items directly in localStorage so we don't have to
+    // go through save() which would fire extra fetch calls.
+    const local1 = makeVariation({ id: 'local-mix-1', name: 'Mix one', savedAt: 1_700_000_030_000 })
+    const local2 = makeVariation({ id: 'local-mix-2', name: 'Mix two', savedAt: 1_700_000_031_000 })
+    const local3 = makeVariation({ id: 'local-mix-3', name: 'Mix three', savedAt: 1_700_000_032_000 })
+    seedLocalStorage([local1, local2, local3])
+
+    const makeServerResp = (id: string, name: string, ts: number) => ({
+      id,
+      name,
+      translator: 'midjourney',
+      detail: 'medium',
+      prompt: `Prompt for ${name}`,
+      negativePrompt: '',
+      estimatedTokens: 5,
+      savedAt: new Date(ts).toISOString(),
+      notes: null,
+    })
+
+    const fetchMock = vi
+      .fn()
+      // GET on mount → 5xx so we stay in local-only mode and skip migration
+      .mockResolvedValueOnce({ ok: false, status: 503 })
+      // syncPendingVariations: POST for local-mix-1 → success (promoted)
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => makeServerResp('srv-mix-1', 'Mix one', 1_700_000_030_000),
+      })
+      // syncPendingVariations: POST for local-mix-2 → 5xx (stays local-*)
+      .mockResolvedValueOnce({ ok: false, status: 500 })
+      // syncPendingVariations: POST for local-mix-3 → success (promoted)
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => makeServerResp('srv-mix-3', 'Mix three', 1_700_000_032_000),
+      })
+    vi.stubGlobal('fetch', fetchMock)
+
+    const { result } = renderHook(() => useSavedVariations())
+    await waitFor(() => expect(result.current.syncing).toBe(false))
+
+    // All three should be local-* at this point
+    expect(result.current.pendingCount).toBe(3)
+    expect(result.current.variations.every(v => v.id.startsWith('local-'))).toBe(true)
+
+    // Simulate connectivity restored
+    await act(async () => {
+      window.dispatchEvent(new Event('online'))
+      // Give the for-loop in syncPendingVariations time to iterate all 3 items
+      await new Promise(r => setTimeout(r, 0))
+    })
+
+    // Wait for the two successful promotions to land in state
+    await waitFor(() => result.current.pendingCount === 1)
+
+    // Exactly 1 pending item remains (local-mix-2, which got the 5xx)
+    expect(result.current.pendingCount).toBe(1)
+    expect(result.current.variations).toHaveLength(3)
+
+    const ids = result.current.variations.map(v => v.id)
+
+    // The two successful items carry server-assigned ids
+    expect(ids).toContain('srv-mix-1')
+    expect(ids).toContain('srv-mix-3')
+
+    // The failed item still has a local-* id
+    const stillPending = result.current.variations.filter(v => v.id.startsWith('local-'))
+    expect(stillPending).toHaveLength(1)
+    expect(stillPending[0].name).toBe('Mix two')
+
+    // localStorage must mirror state exactly
+    const stored = storedVariations()
+    expect(stored).toHaveLength(3)
+    const storedIds = stored.map(v => v.id)
+    expect(storedIds).toContain('srv-mix-1')
+    expect(storedIds).toContain('srv-mix-3')
+    expect(stored.filter(v => v.id.startsWith('local-'))).toHaveLength(1)
+    expect(stored.find(v => v.id.startsWith('local-'))?.name).toBe('Mix two')
+  })
+
   it('leaves the variation as local-* when the server is still down after the online event', async () => {
     localStorage.setItem('vendorai_token', 'tok-abc')
 
