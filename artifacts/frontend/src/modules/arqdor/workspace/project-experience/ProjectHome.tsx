@@ -1,423 +1,514 @@
-// ─── Project Home — FASE 17 Project Experience (PX) ─────────────────────────
-// Dashboard centrado no projeto. Exibido por padrão ao abrir o workspace.
-// Não altera engines, AQM, AQL, Providers. Apenas reorganiza a experiência.
-//
-// Layout:
-//   [Header]
-//   [SummaryCards] [WorkflowTimeline]   [SmartPanel]
-//   [Checklist]    [Health+Readiness]   [SmartPanel cont.]
+// ─── Project Home — Sprint 3: Project Experience ──────────────────────────────
+// Centro do Projeto + Jornada Inteligente + Project Score + Copilot next action.
+// Nenhum backend novo. Todos os dados derivados de arqState + renders API.
 
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useEffect } from 'react'
 import type { ArqProjectState } from '../../hooks/useArqProject'
 import { T } from '../../shared/arqdor-theme'
 
-// ─── Workflow stages ──────────────────────────────────────────────────────────
+// ─── Auth helper ──────────────────────────────────────────────────────────────
 
-interface Stage {
+function authHeaders() {
+  const tok = localStorage.getItem('vendorai_token')
+  return {
+    'Content-Type': 'application/json',
+    ...(tok ? { Authorization: `Bearer ${tok}` } : {}),
+  }
+}
+
+// ─── Types ────────────────────────────────────────────────────────────────────
+
+interface JourneyStep {
   id:     string
   icon:   string
   label:  string
   module: string
+  desc:   string
+  done:   boolean
 }
 
-const STAGES: Stage[] = [
-  { id:'briefing',    icon:'📋', label:'Briefing',         module:'projeto'    },
-  { id:'moodboard',   icon:'🖼️', label:'Moodboard',        module:'biblioteca' },
-  { id:'inteligente', icon:'🏗️', label:'Proj. Inteligente',module:'projeto'    },
-  { id:'biblioteca',  icon:'📚', label:'Biblioteca',        module:'biblioteca' },
-  { id:'componentes', icon:'🔩', label:'Componentes',       module:'biblioteca' },
-  { id:'prompt',      icon:'⚡', label:'Prompt',            module:'prompt'    },
-  { id:'render',      icon:'🎬', label:'Render',            module:'renders'   },
-  { id:'review',      icon:'🔍', label:'Review',            module:'ai-review' },
-  { id:'memorial',    icon:'📄', label:'Memorial',          module:'prompt'    },
-  { id:'entrega',     icon:'🚀', label:'Entrega',           module:'cliente'   },
-]
-
-// ─── Checklist items ──────────────────────────────────────────────────────────
-
-interface CheckItem {
-  id:    string
-  label: string
-  done:  boolean
+interface DimScore {
+  id:       string
+  label:    string
+  score:    number
+  maxScore: number
+  color:    string
 }
 
-// ─── SmartPanel tabs ──────────────────────────────────────────────────────────
+interface ProjectScoreResult {
+  total:      number
+  label:      string
+  color:      string
+  dimensions: DimScore[]
+}
+
+interface LastRenderInfo {
+  imageUrl:  string | null
+  cenaNome:  string | null
+  createdAt: string | null
+  count:     number
+}
+
+interface SavedVariation {
+  name:    string
+  savedAt: number
+}
+
+// ─── Project Score algorithm ──────────────────────────────────────────────────
+//
+//  Dimensão    Peso   Critério de pontuação
+//  ──────────────────────────────────────────────────────────────────────
+//  Projeto     20 pts  +10 se projeto criado, +5 tipoObra, +5 areaM2
+//  Ambientes   10 pts  +10 se ≥1 categoria de ambiente definida
+//  Biblioteca  20 pts  +10 materials>0, +5 matWithMfg>0, +5 components>0
+//  Prompt      15 pts  +15 se variação salva existe, +5 apenas objects>0
+//  Render      20 pts  +10 primeiro render, +5 ≥3 renders, +5 ≥5 renders
+//  Portal      10 pts  +10 se clienteNome preenchido
+//  Cliente      5 pts  +5 se clienteNome + tipoObra ambos preenchidos
+
+export function computeProjectScore(params: {
+  hasMeta:          boolean
+  hasTipoObra:      boolean
+  hasAreaM2:        boolean
+  hasClienteNome:   boolean
+  totalObj:         number
+  totalMat:         number
+  matWithMfg:       number
+  componentsLinked: number
+  envCategories:    number
+  hasSavedVariation:boolean
+  renderCount:      number
+}): ProjectScoreResult {
+  const {
+    hasMeta, hasTipoObra, hasAreaM2, hasClienteNome,
+    totalMat, matWithMfg, componentsLinked,
+    envCategories, hasSavedVariation, renderCount, totalObj,
+  } = params
+
+  const projetoScore    = (hasMeta ? 10 : 0) + (hasTipoObra ? 5 : 0) + (hasAreaM2 ? 5 : 0)
+  const ambientesScore  = Math.min(10, envCategories >= 1 ? 10 : 0)
+  const bibliotecaScore = (totalMat > 0 ? 10 : 0) + (matWithMfg > 0 ? 5 : 0) + (componentsLinked > 0 ? 5 : 0)
+  const promptScore     = hasSavedVariation ? 15 : (totalObj > 0 ? 5 : 0)
+  const renderScore     = (renderCount > 0 ? 10 : 0) + (renderCount >= 3 ? 5 : 0) + (renderCount >= 5 ? 5 : 0)
+  const portalScore     = hasClienteNome ? 10 : 0
+  const clienteScore    = (hasClienteNome && hasTipoObra) ? 5 : 0
+
+  const total = projetoScore + ambientesScore + bibliotecaScore + promptScore + renderScore + portalScore + clienteScore
+
+  const label = total >= 80 ? 'Excelente' : total >= 60 ? 'Bom' : total >= 40 ? 'Atenção' : 'Inicial'
+  const color = total >= 80 ? T.green    : total >= 60 ? T.blue  : total >= 40 ? T.amber   : T.red
+
+  return {
+    total, label, color,
+    dimensions: [
+      { id:'projeto',   label:'Projeto',   score: projetoScore,    maxScore: 20, color: '#60a5fa' },
+      { id:'ambientes', label:'Ambientes', score: ambientesScore,  maxScore: 10, color: '#34d399' },
+      { id:'biblioteca',label:'Biblioteca',score: bibliotecaScore, maxScore: 20, color: '#a78bfa' },
+      { id:'prompt',    label:'Prompt',    score: promptScore,     maxScore: 15, color: '#f59e0b' },
+      { id:'render',    label:'Render',    score: renderScore,     maxScore: 20, color: '#f87171' },
+      { id:'portal',    label:'Portal',    score: portalScore,     maxScore: 10, color: '#4ade80' },
+    ],
+  }
+}
+
+// ─── Hook: last render from API ───────────────────────────────────────────────
+
+function useLastRender(): LastRenderInfo {
+  const [info, setInfo] = useState<LastRenderInfo>({ imageUrl:null, cenaNome:null, createdAt:null, count:0 })
+
+  useEffect(() => {
+    const tok = localStorage.getItem('vendorai_token')
+    if (!tok) return
+    fetch('/api/arch/renders/gallery?limit=5', { headers: authHeaders() })
+      .then(r => r.ok ? r.json() : [])
+      .then((data: Array<{ imageUrl?: string; cenaNome?: string; createdAt?: string }>) => {
+        if (!Array.isArray(data)) return
+        setInfo({
+          imageUrl:  data[0]?.imageUrl  ?? null,
+          cenaNome:  data[0]?.cenaNome  ?? null,
+          createdAt: data[0]?.createdAt ?? null,
+          count:     data.length,
+        })
+      })
+      .catch(() => {})
+  }, [])
+
+  return info
+}
+
+// ─── Helper: last saved variation from localStorage ───────────────────────────
+
+function getLastSavedVariation(): SavedVariation | null {
+  try {
+    const raw = localStorage.getItem('arqdor_saved_variations')
+    if (!raw) return null
+    const arr = JSON.parse(raw) as SavedVariation[]
+    if (!Array.isArray(arr) || arr.length === 0) return null
+    return arr.sort((a, b) => b.savedAt - a.savedAt)[0]
+  } catch { return null }
+}
+
+// ─── Helper: format relative time ─────────────────────────────────────────────
+
+function fmtRelative(iso: string | null): string {
+  if (!iso) return '—'
+  const diff = (Date.now() - new Date(iso).getTime()) / 1000
+  if (diff < 3600)  return `há ${Math.round(diff / 60)} min`
+  if (diff < 86400) return `há ${Math.round(diff / 3600)} h`
+  return `há ${Math.round(diff / 86400)} d`
+}
+
+// ─── SmartTab ─────────────────────────────────────────────────────────────────
 
 type SmartTab = 'workflow' | 'pendencias' | 'sugestoes' | 'alertas'
 
-// ─── Helper — badge row ───────────────────────────────────────────────────────
+// ─── Project Center ───────────────────────────────────────────────────────────
+// Rich header: Nome, Cliente, Status, Project Score, Last Render, Last Prompt,
+//              Last AI, Próxima Ação.
 
-function Badge({ label, color }: { label: string; color: string }) {
-  return (
-    <span style={{
-      padding:'2px 7px', borderRadius:T.r.full, fontSize:T.fs.xs, fontWeight:700,
-      background:`${color}18`, color, border:`1px solid ${color}30`,
-    }}>{label}</span>
-  )
-}
-
-// ─── Summary card ─────────────────────────────────────────────────────────────
-
-function SummaryCard({
-  icon, label, value, sub, accent, onClick,
+function ProjectCenter({
+  arqState, score, lastRender, lastPrompt, nextStepLabel, nextStepModule, onNavigate,
 }: {
-  icon: string; label: string; value: string | number; sub?: string
-  accent?: string; onClick?: () => void
+  arqState:       ArqProjectState
+  score:          ProjectScoreResult
+  lastRender:     LastRenderInfo
+  lastPrompt:     SavedVariation | null
+  nextStepLabel:  string
+  nextStepModule: string
+  onNavigate:     (m: string) => void
 }) {
-  return (
-    <div
-      onClick={onClick}
-      style={{
-        flex:1, minWidth:90, padding:'12px 14px', borderRadius:T.r.lg,
-        background:T.surface, border:`1px solid ${T.border}`,
-        cursor: onClick ? 'pointer' : 'default',
-        transition:'border-color 0.15s',
-      }}
-      onMouseEnter={e => onClick && ((e.currentTarget as HTMLElement).style.borderColor = accent ?? T.purpleL)}
-      onMouseLeave={e => onClick && ((e.currentTarget as HTMLElement).style.borderColor = T.border)}
-    >
-      <div style={{ display:'flex', alignItems:'center', gap:6, marginBottom:4 }}>
-        <span style={{ fontSize:16 }}>{icon}</span>
-        <span style={{ fontSize:T.fs.xs, color:T.dim, fontWeight:700, letterSpacing:'0.05em' }}>{label.toUpperCase()}</span>
-      </div>
-      <p style={{ margin:0, fontSize:22, fontWeight:900, color: accent ?? '#fff', lineHeight:1 }}>{value}</p>
-      {sub && <p style={{ margin:'3px 0 0', fontSize:T.fs.xs, color:T.dim }}>{sub}</p>}
-    </div>
-  )
-}
+  const meta = arqState.projectMeta!
 
-// ─── Project Header ───────────────────────────────────────────────────────────
-
-function ProjectHeader({
-  arqState, readiness, healthLabel, healthColor,
-}: {
-  arqState: ArqProjectState; readiness: number; healthLabel: string; healthColor: string
-}) {
-  const meta = arqState.projectMeta
-  if (!meta) return null
-
-  const updatedAt = meta.updatedAt
-    ? new Date(meta.updatedAt).toLocaleDateString('pt-BR', { day:'2-digit', month:'short', hour:'2-digit', minute:'2-digit' })
-    : '—'
+  const updatedAt = meta.updatedAt ? fmtRelative(meta.updatedAt) : '—'
 
   return (
     <div style={{
-      padding:'16px 20px', borderBottom:`1px solid ${T.border}`,
-      background:'linear-gradient(135deg, rgba(124,58,237,0.06) 0%, transparent 60%)',
-      flexShrink:0,
+      padding:'14px 20px', borderBottom:`1px solid ${T.border}`, flexShrink:0,
+      background:'linear-gradient(135deg, rgba(124,58,237,0.08) 0%, transparent 60%)',
     }}>
-      <div style={{ display:'flex', alignItems:'flex-start', gap:16, flexWrap:'wrap' as const }}>
-        {/* Left — title + meta */}
-        <div style={{ flex:1, minWidth:200 }}>
-          <div style={{ display:'flex', alignItems:'center', gap:8, flexWrap:'wrap' as const, marginBottom:4 }}>
+      <div style={{ display:'flex', gap:16, alignItems:'flex-start', flexWrap:'wrap' as const }}>
+
+        {/* ── Identity + Activity ── */}
+        <div style={{ flex:1, minWidth:220 }}>
+          {/* Title */}
+          <div style={{ display:'flex', alignItems:'center', gap:8, marginBottom:4, flexWrap:'wrap' as const }}>
             <h2 style={{ margin:0, fontSize:T.fs.xxl, fontWeight:900, color:'#fff', letterSpacing:'-0.02em' }}>
               {meta.titulo}
             </h2>
-            <Badge label={meta.status ?? 'Ativo'} color={T.green} />
+            <span style={{
+              padding:'2px 8px', borderRadius:T.r.full, fontSize:T.fs.xs, fontWeight:700,
+              background:'rgba(74,222,128,0.12)', color:T.green, border:`1px solid rgba(74,222,128,0.25)`,
+            }}>{meta.status ?? 'Ativo'}</span>
           </div>
-          <div style={{ display:'flex', gap:10, flexWrap:'wrap' as const }}>
+
+          {/* Meta row */}
+          <div style={{ display:'flex', gap:10, flexWrap:'wrap' as const, marginBottom:10 }}>
             {meta.clienteNome && (
               <span style={{ fontSize:T.fs.xs, color:T.textSub }}>
                 👤 <span style={{ color:'#fff' }}>{meta.clienteNome}</span>
               </span>
             )}
-            {meta.tipoObra && (
-              <span style={{ fontSize:T.fs.xs, color:T.textSub }}>
-                🏠 <span style={{ color:T.text }}>{meta.tipoObra}</span>
-              </span>
-            )}
-            {meta.areaM2 && (
-              <span style={{ fontSize:T.fs.xs, color:T.textSub }}>
-                📐 <span style={{ color:T.text }}>{meta.areaM2} m²</span>
-              </span>
-            )}
-            <span style={{ fontSize:T.fs.xs, color:T.dim }}>
-              🕐 {updatedAt}
-            </span>
-          </div>
-        </div>
-
-        {/* Right — scores */}
-        <div style={{ display:'flex', gap:10, alignItems:'center', flexWrap:'wrap' as const }}>
-          {/* Render Readiness */}
-          <div style={{
-            textAlign:'center' as const, padding:'8px 16px', borderRadius:T.r.md,
-            background:'rgba(96,165,250,0.08)', border:`1px solid rgba(96,165,250,0.2)`,
-          }}>
-            <p style={{ margin:0, fontSize:20, fontWeight:900, color:T.blue }}>
-              {readiness}%
-            </p>
-            <p style={{ margin:0, fontSize:T.fs.xs, color:T.dim }}>Render Readiness</p>
-          </div>
-
-          {/* AI Score / Project Health */}
-          <div style={{
-            textAlign:'center' as const, padding:'8px 16px', borderRadius:T.r.md,
-            background:`${healthColor}12`, border:`1px solid ${healthColor}30`,
-          }}>
-            <p style={{ margin:0, fontSize:20, fontWeight:900, color:healthColor }}>
-              {healthLabel}
-            </p>
-            <p style={{ margin:0, fontSize:T.fs.xs, color:T.dim }}>Project Health</p>
-          </div>
-
-          {/* Projeto Inteligente badge */}
-          {arqState.objects.length > 0 && (
-            <div style={{
-              textAlign:'center' as const, padding:'8px 16px', borderRadius:T.r.md,
-              background:'rgba(167,139,250,0.08)', border:`1px solid rgba(167,139,250,0.2)`,
-            }}>
-              <p style={{ margin:0, fontSize:T.fs.xxl, color:T.purpleL }}>✦</p>
-              <p style={{ margin:0, fontSize:T.fs.xs, color:T.dim }}>Proj. Inteligente</p>
-            </div>
-          )}
-        </div>
-      </div>
-    </div>
-  )
-}
-
-// ─── Workflow Timeline ────────────────────────────────────────────────────────
-
-function WorkflowTimeline({
-  currentStage, onNavigate,
-}: {
-  currentStage: number; onNavigate: (module: string) => void
-}) {
-  return (
-    <div style={{
-      padding:'14px 16px', background:T.surface, borderRadius:T.r.lg,
-      border:`1px solid ${T.border}`, flex:1, minWidth:0,
-    }}>
-      <p style={{ margin:'0 0 12px', fontSize:T.fs.xs, fontWeight:700, color:T.dim, letterSpacing:'0.07em' }}>
-        WORKFLOW DO PROJETO
-      </p>
-      <div style={{ position:'relative' }}>
-        {/* Connecting line */}
-        <div style={{
-          position:'absolute', top:12, left:12, right:12, height:2,
-          background:`linear-gradient(to right, ${T.purple} ${currentStage * 10}%, ${T.border} ${currentStage * 10}%)`,
-          zIndex:0,
-        }}/>
-        <div style={{ display:'flex', gap:0, justifyContent:'space-between', position:'relative', zIndex:1 }}>
-          {STAGES.map((stage, i) => {
-            const done    = i < currentStage
-            const current = i === currentStage
-            const future  = i > currentStage
-            return (
-              <div
-                key={stage.id}
-                onClick={() => onNavigate(stage.module)}
-                title={stage.label}
-                style={{ display:'flex', flexDirection:'column' as const, alignItems:'center', gap:4, cursor:'pointer', flex:1 }}
+            {!meta.clienteNome && (
+              <span
+                onClick={() => onNavigate('cliente')}
+                style={{ fontSize:T.fs.xs, color:T.amber, cursor:'pointer', textDecoration:'underline dotted' }}
               >
+                + Vincular cliente
+              </span>
+            )}
+            {meta.tipoObra && <span style={{ fontSize:T.fs.xs, color:T.textSub }}>🏠 {meta.tipoObra}</span>}
+            {meta.areaM2   && <span style={{ fontSize:T.fs.xs, color:T.textSub }}>📐 {meta.areaM2} m²</span>}
+            <span style={{ fontSize:T.fs.xs, color:T.dim }}>🕐 {updatedAt}</span>
+          </div>
+
+          {/* Activity cards: Last Render | Last Prompt | Last AI */}
+          <div style={{ display:'flex', gap:8, flexWrap:'wrap' as const }}>
+
+            {/* Last Render */}
+            <div
+              onClick={() => onNavigate('renders')}
+              style={{
+                display:'flex', gap:7, alignItems:'center', cursor:'pointer',
+                padding:'6px 10px', borderRadius:T.r.sm,
+                background:T.surface, border:`1px solid ${T.border}`,
+                transition:'border-color 0.15s',
+              }}
+              onMouseEnter={e => (e.currentTarget as HTMLElement).style.borderColor = T.purpleL}
+              onMouseLeave={e => (e.currentTarget as HTMLElement).style.borderColor = T.border}
+            >
+              {lastRender.imageUrl ? (
+                <img
+                  src={lastRender.imageUrl}
+                  alt="último render"
+                  style={{ width:32, height:24, objectFit:'cover', borderRadius:3, flexShrink:0 }}
+                  onError={e => { (e.target as HTMLImageElement).style.display = 'none' }}
+                />
+              ) : (
                 <div style={{
-                  width:24, height:24, borderRadius:'50%', display:'flex', alignItems:'center',
-                  justifyContent:'center', fontSize:11, fontWeight:700, transition:'all 0.2s',
-                  background: done    ? T.purple
-                             : current ? 'rgba(124,58,237,0.4)'
-                             : T.bg,
-                  border: done    ? `2px solid ${T.purple}`
-                        : current ? `2px solid ${T.purpleL}`
-                        : `2px solid ${T.border}`,
-                  color: done ? '#fff' : current ? T.purpleL : T.dim,
-                  boxShadow: current ? `0 0 12px rgba(124,58,237,0.5)` : 'none',
+                  width:32, height:24, background:'rgba(255,255,255,0.06)', borderRadius:3,
+                  flexShrink:0, display:'flex', alignItems:'center', justifyContent:'center',
                 }}>
-                  {done ? '✓' : <span style={{ fontSize:9 }}>{i + 1}</span>}
+                  <span style={{ fontSize:12 }}>🎬</span>
                 </div>
-                <p style={{
-                  margin:0, fontSize:8, color: done ? T.purpleL : current ? '#fff' : T.dim,
-                  fontWeight: current ? 700 : 400, textAlign:'center' as const, lineHeight:1.2,
-                  maxWidth:44, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' as const,
-                }}>{stage.label}</p>
+              )}
+              <div>
+                <p style={{ margin:0, fontSize:8, color:T.dim, fontWeight:700, letterSpacing:'0.06em' }}>ÚLTIMO RENDER</p>
+                <p style={{ margin:0, fontSize:10, color: lastRender.count > 0 ? T.text : T.dim }}>
+                  {lastRender.count > 0
+                    ? (lastRender.createdAt ? fmtRelative(lastRender.createdAt) : lastRender.cenaNome ?? 'Ver')
+                    : 'Nenhum ainda'}
+                </p>
               </div>
-            )
-          })}
+            </div>
+
+            {/* Last Prompt */}
+            <div
+              onClick={() => onNavigate('prompt')}
+              style={{
+                display:'flex', gap:7, alignItems:'center', cursor:'pointer',
+                padding:'6px 10px', borderRadius:T.r.sm,
+                background:T.surface, border:`1px solid ${T.border}`,
+                transition:'border-color 0.15s',
+              }}
+              onMouseEnter={e => (e.currentTarget as HTMLElement).style.borderColor = '#f59e0b'}
+              onMouseLeave={e => (e.currentTarget as HTMLElement).style.borderColor = T.border}
+            >
+              <span style={{ fontSize:18, flexShrink:0 }}>⚡</span>
+              <div>
+                <p style={{ margin:0, fontSize:8, color:T.dim, fontWeight:700, letterSpacing:'0.06em' }}>ÚLTIMO PROMPT</p>
+                <p style={{
+                  margin:0, fontSize:10,
+                  color: lastPrompt ? T.text : T.dim,
+                  maxWidth:90, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' as const,
+                }}>
+                  {lastPrompt
+                    ? lastPrompt.name.slice(0, 14) + (lastPrompt.name.length > 14 ? '…' : '')
+                    : 'Nenhum salvo'}
+                </p>
+              </div>
+            </div>
+
+            {/* Last AI */}
+            <div style={{
+              display:'flex', gap:7, alignItems:'center',
+              padding:'6px 10px', borderRadius:T.r.sm,
+              background:T.surface, border:`1px solid ${T.border}`,
+            }}>
+              <span style={{ fontSize:18, flexShrink:0 }}>🤖</span>
+              <div>
+                <p style={{ margin:0, fontSize:8, color:T.dim, fontWeight:700, letterSpacing:'0.06em' }}>ÚLTIMA IA</p>
+                <p style={{ margin:0, fontSize:10, color:'rgba(167,139,250,0.8)' }}>Copilot ativo</p>
+              </div>
+            </div>
+          </div>
         </div>
-      </div>
-      {/* Current stage label */}
-      <div style={{ marginTop:10, padding:'6px 10px', borderRadius:T.r.sm, background:'rgba(124,58,237,0.08)', display:'inline-block' }}>
-        <span style={{ fontSize:T.fs.xs, color:T.purpleL }}>
-          Etapa atual: <strong>{STAGES[currentStage]?.label ?? 'Concluído'}</strong>
-          {currentStage < STAGES.length - 1 && (
-            <> · Próxima: <span style={{ color:T.dim }}>{STAGES[currentStage + 1]?.label}</span></>
-          )}
-        </span>
+
+        {/* ── Project Score ── */}
+        <div style={{ display:'flex', gap:12, alignItems:'center', flexShrink:0, flexWrap:'wrap' as const }}>
+
+          {/* Score gauge */}
+          <div style={{
+            display:'flex', flexDirection:'column' as const, alignItems:'center', gap:5,
+            padding:'10px 16px', borderRadius:T.r.md,
+            background:`${score.color}10`, border:`1px solid ${score.color}30`,
+          }}>
+            <div style={{
+              width:60, height:60, borderRadius:'50%',
+              background:`conic-gradient(${score.color} ${score.total * 3.6}deg, rgba(255,255,255,0.06) 0deg)`,
+              display:'flex', alignItems:'center', justifyContent:'center',
+            }}>
+              <div style={{
+                width:44, height:44, borderRadius:'50%', background:T.sidebar,
+                display:'flex', alignItems:'center', justifyContent:'center',
+              }}>
+                <span style={{ fontSize:14, fontWeight:900, color:score.color }}>{score.total}</span>
+              </div>
+            </div>
+            <p style={{ margin:0, fontSize:T.fs.xs, color:score.color, fontWeight:700 }}>{score.label}</p>
+            <p style={{ margin:0, fontSize:8, color:T.dim }}>Project Score</p>
+          </div>
+
+          {/* Dimension bars */}
+          <div style={{ display:'flex', flexDirection:'column' as const, gap:4, minWidth:130 }}>
+            {score.dimensions.map(d => (
+              <div key={d.id} style={{ display:'flex', alignItems:'center', gap:6 }}>
+                <span style={{ fontSize:8, color:T.dim, width:46, flexShrink:0, textAlign:'right' as const }}>{d.label}</span>
+                <div style={{ flex:1, height:5, borderRadius:3, background:'rgba(255,255,255,0.06)', overflow:'hidden' }}>
+                  <div style={{
+                    height:'100%', borderRadius:3, transition:'width 0.6s ease',
+                    width:`${(d.score / d.maxScore) * 100}%`,
+                    background:d.color,
+                  }}/>
+                </div>
+                <span style={{ fontSize:8, color:d.color, fontWeight:700, width:22, flexShrink:0 }}>
+                  {d.score}/{d.maxScore}
+                </span>
+              </div>
+            ))}
+          </div>
+
+          {/* Next action quick CTA */}
+          <div style={{
+            display:'flex', flexDirection:'column' as const, gap:6,
+            padding:'10px 14px', borderRadius:T.r.md,
+            background:'rgba(124,58,237,0.08)', border:`1px solid rgba(124,58,237,0.2)`,
+            maxWidth:140,
+          }}>
+            <p style={{ margin:0, fontSize:8, color:T.dim, fontWeight:700, letterSpacing:'0.07em' }}>PRÓXIMA AÇÃO</p>
+            <p style={{ margin:0, fontSize:10, color:'#fff', fontWeight:700, lineHeight:1.3 }}>{nextStepLabel}</p>
+            <button
+              onClick={() => onNavigate(nextStepModule)}
+              style={{
+                padding:'5px 10px', borderRadius:6, border:'none', cursor:'pointer',
+                background:T.purple, color:'#fff', fontSize:10, fontWeight:800,
+                alignSelf:'flex-start' as const,
+              }}
+            >
+              Ir agora →
+            </button>
+          </div>
+        </div>
       </div>
     </div>
   )
 }
 
-// ─── Project Checklist ────────────────────────────────────────────────────────
+// ─── Intelligent Journey ──────────────────────────────────────────────────────
+// 10-step checklist: auto-detected + click to navigate.
 
-function ProjectChecklist({ items }: { items: CheckItem[] }) {
-  const done = items.filter(i => i.done).length
-  const pct  = Math.round((done / items.length) * 100)
+function IntelligentJourney({
+  steps, onNavigate,
+}: {
+  steps:      JourneyStep[]
+  onNavigate: (m: string) => void
+}) {
+  const doneCount  = steps.filter(s => s.done).length
+  const currentIdx = steps.findIndex(s => !s.done)
+  const pct        = Math.round((doneCount / steps.length) * 100)
 
   return (
     <div style={{
       padding:'14px 16px', background:T.surface, borderRadius:T.r.lg,
-      border:`1px solid ${T.border}`,
+      border:`1px solid ${T.border}`, marginBottom:12,
     }}>
+      {/* Header */}
       <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:10 }}>
-        <p style={{ margin:0, fontSize:T.fs.xs, fontWeight:700, color:T.dim, letterSpacing:'0.07em' }}>CHECKLIST DO PROJETO</p>
-        <span style={{ fontSize:T.fs.xs, color: pct >= 80 ? T.green : pct >= 50 ? T.amber : T.red, fontWeight:700 }}>
-          {done}/{items.length} · {pct}%
-        </span>
+        <div>
+          <p style={{ margin:'0 0 2px', fontSize:T.fs.xs, fontWeight:700, color:T.dim, letterSpacing:'0.07em' }}>
+            JORNADA INTELIGENTE
+          </p>
+          <p style={{ margin:0, fontSize:T.fs.xs, color:T.purpleL, fontWeight:700 }}>
+            {doneCount}/{steps.length} etapas · {pct}% concluído
+          </p>
+        </div>
+        {/* Mini gauge */}
+        <div style={{
+          width:42, height:42, borderRadius:'50%', flexShrink:0,
+          background:`conic-gradient(${T.purple} ${pct * 3.6}deg, rgba(255,255,255,0.06) 0deg)`,
+          display:'flex', alignItems:'center', justifyContent:'center',
+        }}>
+          <div style={{
+            width:30, height:30, borderRadius:'50%', background:T.surface,
+            display:'flex', alignItems:'center', justifyContent:'center',
+          }}>
+            <span style={{ fontSize:9, fontWeight:900, color:T.purpleL }}>{pct}%</span>
+          </div>
+        </div>
       </div>
 
       {/* Progress bar */}
-      <div style={{ height:3, background:T.border, borderRadius:T.r.full, marginBottom:10, overflow:'hidden' }}>
-        <div style={{ height:'100%', width:`${pct}%`, background: pct>=80?T.green:pct>=50?T.amber:T.red, borderRadius:T.r.full, transition:'width 0.4s' }}/>
-      </div>
-
-      <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:'3px 12px' }}>
-        {items.map(item => (
-          <div key={item.id} style={{ display:'flex', alignItems:'center', gap:6, padding:'3px 0' }}>
-            <div style={{
-              width:14, height:14, borderRadius:T.r.sm, flexShrink:0, display:'flex', alignItems:'center',
-              justifyContent:'center', fontSize:9, fontWeight:700,
-              background: item.done ? 'rgba(74,222,128,0.15)' : 'rgba(255,255,255,0.04)',
-              border: `1px solid ${item.done ? T.green : T.border}`,
-              color: item.done ? T.green : T.dim,
-            }}>
-              {item.done ? '✓' : ''}
-            </div>
-            <span style={{ fontSize:T.fs.xs, color: item.done ? T.text : T.dim }}>{item.label}</span>
-          </div>
-        ))}
-      </div>
-    </div>
-  )
-}
-
-// ─── Project Health ───────────────────────────────────────────────────────────
-
-function ProjectHealthPanel({
-  label, color, reasons,
-}: {
-  label: string; color: string; reasons: string[]
-}) {
-  const LEVELS = ['Crítico','Atenção','Bom','Excelente']
-  const idx    = LEVELS.indexOf(label)
-
-  return (
-    <div style={{
-      padding:'14px 16px', background:T.surface, borderRadius:T.r.lg,
-      border:`1px solid ${T.border}`,
-    }}>
-      <p style={{ margin:'0 0 10px', fontSize:T.fs.xs, fontWeight:700, color:T.dim, letterSpacing:'0.07em' }}>PROJECT HEALTH</p>
-
-      {/* Level bar */}
-      <div style={{ display:'flex', gap:3, marginBottom:10 }}>
-        {LEVELS.map((lv, i) => (
-          <div key={lv} style={{ flex:1, height:4, borderRadius:T.r.full, background: i <= idx ? color : T.border, transition:'background 0.3s' }}/>
-        ))}
-      </div>
-
-      <div style={{ display:'flex', alignItems:'center', gap:8, marginBottom:reasons.length ? 8 : 0 }}>
-        <span style={{ fontSize:T.fs.xxl, fontWeight:900, color }}>{label}</span>
-      </div>
-
-      {reasons.length > 0 && (
-        <div>
-          <p style={{ margin:'0 0 4px', fontSize:T.fs.xs, color:T.dim }}>Motivos:</p>
-          {reasons.map((r, i) => (
-            <div key={i} style={{ display:'flex', gap:6, alignItems:'flex-start', padding:'2px 0' }}>
-              <span style={{ color:T.amber, fontSize:9, marginTop:1, flexShrink:0 }}>⚠</span>
-              <span style={{ fontSize:T.fs.xs, color:T.textSub }}>{r}</span>
-            </div>
-          ))}
-        </div>
-      )}
-    </div>
-  )
-}
-
-// ─── Render Readiness Panel ───────────────────────────────────────────────────
-
-function RenderReadinessPanel({
-  readiness, missing,
-}: {
-  readiness: number; missing: string[]
-}) {
-  const color = readiness >= 85 ? T.green : readiness >= 65 ? T.blue : readiness >= 40 ? T.amber : T.red
-
-  return (
-    <div style={{
-      padding:'14px 16px', background:T.surface, borderRadius:T.r.lg,
-      border:`1px solid ${color}30`,
-    }}>
-      <p style={{ margin:'0 0 8px', fontSize:T.fs.xs, fontWeight:700, color:T.dim, letterSpacing:'0.07em' }}>RENDER READINESS</p>
-
-      {/* Circular indicator (CSS-only) */}
-      <div style={{ display:'flex', alignItems:'center', gap:12, marginBottom:8 }}>
+      <div style={{ height:3, background:T.border, borderRadius:T.r.full, marginBottom:12, overflow:'hidden' }}>
         <div style={{
-          width:52, height:52, borderRadius:'50%', flexShrink:0, display:'flex',
-          alignItems:'center', justifyContent:'center',
-          background:`conic-gradient(${color} ${readiness * 3.6}deg, ${T.border} 0deg)`,
-          boxShadow:`0 0 0 4px ${T.surface}`,
-        }}>
-          <div style={{ width:36, height:36, borderRadius:'50%', background:T.surface, display:'flex', alignItems:'center', justifyContent:'center' }}>
-            <span style={{ fontSize:T.fs.md, fontWeight:900, color }}>{readiness}%</span>
-          </div>
-        </div>
-        <div>
-          <p style={{ margin:0, fontSize:T.fs.sm, fontWeight:700, color }}>
-            {readiness >= 85 ? 'Pronto para renderizar' : readiness >= 65 ? 'Quase pronto' : readiness >= 40 ? 'Em preparação' : 'Dados insuficientes'}
-          </p>
-          {missing.length > 0 && (
-            <p style={{ margin:'2px 0 0', fontSize:T.fs.xs, color:T.dim }}>Faltam {missing.length} item(ns)</p>
-          )}
-        </div>
+          height:'100%', width:`${pct}%`, background:T.purple,
+          borderRadius:T.r.full, transition:'width 0.5s ease',
+        }}/>
       </div>
 
-      {missing.length > 0 && (
-        <div>
-          <p style={{ margin:'0 0 4px', fontSize:T.fs.xs, color:T.dim }}>Pendente:</p>
-          {missing.slice(0, 4).map((m, i) => (
-            <div key={i} style={{ display:'flex', gap:6, padding:'2px 0', alignItems:'flex-start' }}>
-              <span style={{ color:T.amber, fontSize:9, marginTop:2, flexShrink:0 }}>›</span>
-              <span style={{ fontSize:T.fs.xs, color:T.textSub }}>{m}</span>
+      {/* Steps — 2-column grid */}
+      <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:'4px 8px' }}>
+        {steps.map((step, i) => {
+          const isCurrent = i === currentIdx
+          const isDone    = step.done
+          return (
+            <div
+              key={step.id}
+              onClick={() => onNavigate(step.module)}
+              style={{
+                display:'flex', gap:8, alignItems:'center', padding:'7px 9px',
+                borderRadius:T.r.sm, cursor:'pointer', transition:'all 0.15s',
+                background: isCurrent ? 'rgba(124,58,237,0.14)' : isDone ? 'rgba(74,222,128,0.04)' : 'transparent',
+                border:`1px solid ${isCurrent ? T.purple : isDone ? 'rgba(74,222,128,0.2)' : 'transparent'}`,
+              }}
+              onMouseEnter={e => { if (!isCurrent) (e.currentTarget as HTMLElement).style.background = 'rgba(255,255,255,0.04)' }}
+              onMouseLeave={e => { if (!isCurrent) (e.currentTarget as HTMLElement).style.background = isDone ? 'rgba(74,222,128,0.04)' : 'transparent' }}
+            >
+              {/* Status circle */}
+              <div style={{
+                width:20, height:20, borderRadius:'50%', flexShrink:0,
+                display:'flex', alignItems:'center', justifyContent:'center',
+                fontSize:10, fontWeight:700,
+                background: isDone    ? 'rgba(74,222,128,0.18)'  : isCurrent ? 'rgba(124,58,237,0.25)' : 'rgba(255,255,255,0.04)',
+                border:     `1px solid ${isDone ? T.green : isCurrent ? T.purple : T.border}`,
+                color:      isDone    ? T.green  : isCurrent ? T.purpleL : T.dim,
+              }}>
+                {isDone ? '✓' : <span style={{ fontSize:8 }}>{i + 1}</span>}
+              </div>
+
+              {/* Label */}
+              <div style={{ flex:1, minWidth:0 }}>
+                <div style={{ display:'flex', alignItems:'center', gap:3 }}>
+                  <span style={{ fontSize:11 }}>{step.icon}</span>
+                  <p style={{
+                    margin:0, fontSize:10,
+                    fontWeight: isCurrent ? 700 : isDone ? 500 : 400,
+                    color: isDone ? T.textSub : isCurrent ? '#fff' : T.dim,
+                    overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' as const,
+                  }}>{step.label}</p>
+                </div>
+                {isCurrent && (
+                  <p style={{ margin:'1px 0 0', fontSize:8, color:T.purpleL }}>▶ etapa atual</p>
+                )}
+              </div>
             </div>
-          ))}
-        </div>
-      )}
+          )
+        })}
+      </div>
     </div>
   )
 }
 
-// ─── Smart Panel ─────────────────────────────────────────────────────────────
+// ─── Smart Panel ──────────────────────────────────────────────────────────────
 
 function SmartPanel({
-  arqState, currentStage, missing, healthReasons, onNavigate,
+  arqState, journey, missing, healthReasons, onNavigate,
 }: {
-  arqState: ArqProjectState; currentStage: number; missing: string[]
-  healthReasons: string[]; onNavigate: (module: string) => void
+  arqState:     ArqProjectState
+  journey:      JourneyStep[]
+  missing:      string[]
+  healthReasons:string[]
+  onNavigate:   (m: string) => void
 }) {
   const [tab, setTab] = useState<SmartTab>('workflow')
 
   const TABS: { id: SmartTab; icon: string; label: string; badge?: number }[] = [
     { id:'workflow',   icon:'🔄', label:'Fluxo'      },
-    { id:'pendencias', icon:'📌', label:'Pendências', badge: missing.length   },
+    { id:'pendencias', icon:'📌', label:'Pendências', badge: missing.length     },
     { id:'sugestoes',  icon:'💡', label:'Sugestões'  },
     { id:'alertas',    icon:'⚠️', label:'Alertas',    badge: healthReasons.length },
   ]
 
   const suggestions = useMemo(() => {
     const s: string[] = []
-    if (arqState.objects.length === 0)     s.push('Adicione objetos para ativar o AI Intelligence')
-    if (arqState.materials.length === 0)   s.push('Cadastre materiais para calcular o Render Readiness')
-    if (!arqState.projectMeta?.clienteNome) s.push('Vincule um cliente para habilitar o CRM')
+    if (arqState.objects.length === 0)       s.push('Adicione objetos para ativar o AI Intelligence')
+    if (arqState.materials.length === 0)     s.push('Cadastre materiais para calcular o Render Readiness')
+    if (!arqState.projectMeta?.clienteNome)  s.push('Vincule um cliente para habilitar o CRM')
     if (arqState.objects.length > 0 && arqState.materials.length === 0)
       s.push('Projetos com objetos e materiais têm 3× mais precisão de render')
-    if (arqState.materials.length >= 3 && currentStage < 6)
+    if (arqState.materials.length >= 3)
       s.push('Você tem materiais suficientes para iniciar o Prompt Playground')
-    if (currentStage >= 6)
-      s.push('Projeto pronto para render — abra o módulo Renders para gerar')
-    if (s.length === 0) s.push('Continue adicionando dados para receber sugestões personalizadas')
+    if (s.length === 0) s.push('Continue adicionando dados para sugestões personalizadas')
     return s
-  }, [arqState.objects.length, arqState.materials.length, arqState.projectMeta?.clienteNome, currentStage])
+  }, [arqState.objects.length, arqState.materials.length, arqState.projectMeta?.clienteNome])
 
   return (
     <div style={{
@@ -456,14 +547,16 @@ function SmartPanel({
 
         {tab === 'workflow' && (
           <div>
-            <p style={{ margin:'0 0 10px', fontSize:T.fs.xs, color:T.dim, fontWeight:700 }}>ETAPAS DO PROJETO</p>
-            {STAGES.map((stage, i) => {
-              const done    = i < currentStage
-              const current = i === currentStage
+            <p style={{ margin:'0 0 10px', fontSize:T.fs.xs, color:T.dim, fontWeight:700 }}>JORNADA DO PROJETO</p>
+            {journey.map((step, i) => {
+              const doneCount  = journey.filter(s => s.done).length
+              const currentIdx = journey.findIndex(s => !s.done)
+              const current    = i === currentIdx
+              const done       = step.done
               return (
                 <div
-                  key={stage.id}
-                  onClick={() => onNavigate(stage.module)}
+                  key={step.id}
+                  onClick={() => onNavigate(step.module)}
                   style={{
                     display:'flex', gap:8, alignItems:'center', padding:'6px 8px',
                     borderRadius:T.r.sm, marginBottom:2, cursor:'pointer',
@@ -472,21 +565,28 @@ function SmartPanel({
                   }}
                 >
                   <div style={{
-                    width:18, height:18, borderRadius:'50%', display:'flex', alignItems:'center',
-                    justifyContent:'center', fontSize:9, fontWeight:700, flexShrink:0,
+                    width:18, height:18, borderRadius:'50%', flexShrink:0,
+                    display:'flex', alignItems:'center', justifyContent:'center',
+                    fontSize:9, fontWeight:700,
                     background: done ? T.purple : current ? 'rgba(124,58,237,0.3)' : T.border,
                     color: done ? '#fff' : current ? T.purpleL : T.dim,
                   }}>
                     {done ? '✓' : i + 1}
                   </div>
                   <div style={{ flex:1 }}>
-                    <p style={{ margin:0, fontSize:T.fs.xs, color: done ? T.textSub : current ? '#fff' : T.dim, fontWeight: current ? 700 : 400 }}>
-                      {stage.label}
+                    <p style={{
+                      margin:0, fontSize:T.fs.xs,
+                      color: done ? T.textSub : current ? '#fff' : T.dim,
+                      fontWeight: current ? 700 : 400,
+                    }}>
+                      {step.icon} {step.label}
                     </p>
+                    {current && <p style={{ margin:0, fontSize:8, color:T.purpleL }}>{step.desc}</p>}
                   </div>
                   {current && <span style={{ fontSize:8, color:T.purpleL }}>atual</span>}
                 </div>
               )
+              void doneCount
             })}
           </div>
         )}
@@ -550,58 +650,62 @@ function SmartPanel({
   )
 }
 
-// ─── Empty state / Welcome screen ────────────────────────────────────────────
+// ─── Empty Home ───────────────────────────────────────────────────────────────
 
-function EmptyHome({ onNavigate }: { onNavigate: (module: string) => void }) {
+function EmptyHome({ onNavigate }: { onNavigate: (m: string) => void }) {
   const features = [
-    { icon:'🎬', label:'Renders com IA',    desc:'Gere renders fotorrealistas em minutos' },
-    { icon:'🤖', label:'Copilot de Obra',   desc:'Assistente especializado em arquitetura' },
-    { icon:'📚', label:'Biblioteca',         desc:'Materiais, componentes e fabricantes' },
-    { icon:'⚡', label:'Prompt Engine',      desc:'Prompts otimizados para qualquer IA' },
-    { icon:'🔍', label:'AI Review',          desc:'Análise inteligente do projeto' },
-    { icon:'👤', label:'Portal do Cliente',  desc:'Entregas profissionais e aprovações' },
+    { icon:'🎬', label:'Renders com IA',    desc:'Gere renders fotorrealistas em minutos'        },
+    { icon:'🤖', label:'Copilot de Obra',   desc:'Assistente especializado em arquitetura'       },
+    { icon:'📚', label:'Biblioteca',         desc:'Materiais, componentes e fabricantes'          },
+    { icon:'📊', label:'Project Score',      desc:'6 dimensões de saúde do projeto'               },
+    { icon:'👤', label:'Portal do Cliente',  desc:'Compartilhe renders e aprove etapas'           },
+    { icon:'📄', label:'Memorial e Orçamento', desc:'Geração automática com IA'                  },
+  ]
+
+  const journey = [
+    { icon:'📋', label:'Briefing' }, { icon:'🏗️', label:'Projeto' }, { icon:'📚', label:'Biblioteca' },
+    { icon:'⚡', label:'Prompt'   }, { icon:'🎬', label:'Render'  }, { icon:'🚀', label:'Entrega'    },
   ]
 
   return (
     <div style={{
-      flex:1, display:'flex', flexDirection:'column' as const, alignItems:'center',
-      justifyContent:'center', gap:28, padding:'40px 24px', background:T.bg, overflowY:'auto' as const,
+      flex:1, display:'flex', flexDirection:'column' as const, alignItems:'center', justifyContent:'center',
+      padding:'40px 24px', gap:32,
+      background:'radial-gradient(ellipse at 50% 0%, rgba(124,58,237,0.12) 0%, transparent 70%)',
     }}>
       {/* Branding */}
       <div style={{ textAlign:'center' as const }}>
-        <div style={{ fontSize:52, marginBottom:10 }}>🏛️</div>
-        <h1 style={{ margin:'0 0 6px', fontSize:28, fontWeight:900, color:'#fff', letterSpacing:'-0.02em' }}>
+        <div style={{ fontSize:40, marginBottom:8 }}>🏛️</div>
+        <h2 style={{ margin:'0 0 6px', fontSize:28, fontWeight:900, color:'#fff', letterSpacing:'-0.03em' }}>
           arqdor<span style={{ color:T.purpleL }}>.ai</span>
-        </h1>
-        <p style={{ margin:0, fontSize:13, color:T.textSub }}>
-          AI Workspace para Arquitetos de Interiores
+        </h2>
+        <p style={{ margin:0, fontSize:14, color:T.textSub }}>
+          Workspace de Arquitetura com Inteligência Artificial
         </p>
       </div>
 
       {/* Feature grid */}
-      <div style={{ display:'grid', gridTemplateColumns:'repeat(3,1fr)', gap:8, maxWidth:540, width:'100%' }}>
+      <div style={{ display:'grid', gridTemplateColumns:'repeat(3,1fr)', gap:10, maxWidth:540, width:'100%' }}>
         {features.map(f => (
           <div key={f.label} style={{
-            padding:'12px 14px', borderRadius:10, background:T.surface,
-            border:`1px solid ${T.border}`, textAlign:'center' as const,
+            padding:'14px', borderRadius:T.r.md, textAlign:'center' as const,
+            background:T.surface, border:`1px solid ${T.border}`,
           }}>
-            <div style={{ fontSize:22, marginBottom:4 }}>{f.icon}</div>
-            <p style={{ margin:'0 0 2px', fontSize:10, fontWeight:700, color:'#fff' }}>{f.label}</p>
-            <p style={{ margin:0, fontSize:9, color:T.dim, lineHeight:1.3 }}>{f.desc}</p>
+            <div style={{ fontSize:24, marginBottom:6 }}>{f.icon}</div>
+            <p style={{ margin:'0 0 4px', fontSize:12, fontWeight:700, color:'#fff' }}>{f.label}</p>
+            <p style={{ margin:0, fontSize:10, color:T.dim, lineHeight:1.4 }}>{f.desc}</p>
           </div>
         ))}
       </div>
 
-      {/* Journey steps */}
-      <div style={{
-        display:'flex', gap:6, alignItems:'center', maxWidth:480, width:'100%',
-        padding:'10px 16px', borderRadius:10, background:'rgba(124,58,237,0.06)',
-        border:`1px solid rgba(124,58,237,0.2)`,
-      }}>
-        {['📋 Briefing', '🏗️ Projeto', '⚡ Prompt', '🎬 Render', '👤 Entrega'].map((s, i, arr) => (
-          <span key={s} style={{ display:'flex', alignItems:'center', gap:6, flex:1, minWidth:0 }}>
-            <span style={{ fontSize:9, color: i === 0 ? T.purpleL : T.dim, fontWeight: i === 0 ? 700 : 400, whiteSpace:'nowrap' as const }}>{s}</span>
-            {i < arr.length - 1 && <span style={{ color:T.border, fontSize:10, flexShrink:0 }}>›</span>}
+      {/* Journey strip */}
+      <div style={{ display:'flex', alignItems:'center', gap:6, flexWrap:'wrap' as const, justifyContent:'center' }}>
+        {journey.map((s, i, arr) => (
+          <span key={s.label} style={{ display:'flex', alignItems:'center', gap:6 }}>
+            <span style={{ fontSize:9, color: i === 0 ? T.purpleL : T.dim, fontWeight: i === 0 ? 700 : 400 }}>
+              {s.icon} {s.label}
+            </span>
+            {i < arr.length - 1 && <span style={{ color:T.border, fontSize:10 }}>›</span>}
           </span>
         ))}
       </div>
@@ -611,9 +715,9 @@ function EmptyHome({ onNavigate }: { onNavigate: (module: string) => void }) {
         <button
           onClick={() => onNavigate('projeto')}
           style={{
-            padding:'12px 32px', borderRadius:T.r.md, border:'none',
+            padding:'12px 32px', borderRadius:T.r.md, border:'none', cursor:'pointer',
             background:`linear-gradient(135deg, ${T.purple} 0%, #5b21b6 100%)`,
-            color:'#fff', cursor:'pointer', fontSize:14, fontWeight:800,
+            color:'#fff', fontSize:14, fontWeight:800,
             boxShadow:'0 4px 20px rgba(124,58,237,0.35)',
           }}
         >
@@ -639,76 +743,73 @@ function EmptyHome({ onNavigate }: { onNavigate: (module: string) => void }) {
 export function ProjectHome({
   arqState, onNavigate,
 }: {
-  arqState: ArqProjectState
+  arqState:   ArqProjectState
   onNavigate: (module: string) => void
 }) {
   const meta      = arqState.projectMeta
   const objects   = arqState.objects
   const materials = arqState.materials
 
-  // ── Derived metrics ──────────────────────────────────────────────────────────
-  const totalObj   = objects.length
-  const objWithMat = objects.filter(o => o.material).length
-  const totalMat   = materials.length
-  const matWithMfg = materials.filter(m => m.manufacturer && m.manufacturer.trim().length > 0).length
+  // ── Hooks ──────────────────────────────────────────────────────────────────
+  const lastRender = useLastRender()
+  const lastPrompt = useMemo(() => getLastSavedVariation(), [])
 
-  const objScore  = totalObj   > 0 ? (objWithMat / totalObj)   * 50 : 0
-  const matScore  = totalMat   > 0 ? (matWithMfg / totalMat)   * 50 : 0
-  const readiness = totalObj + totalMat === 0 ? 0 : Math.round(objScore + matScore)
+  // ── Derived metrics ────────────────────────────────────────────────────────
+  const totalObj         = objects.length
+  const totalMat         = materials.length
+  const objWithMat       = objects.filter(o => o.material).length
+  const matWithMfg       = materials.filter(m => m.manufacturer && m.manufacturer.trim().length > 0).length
+  const componentsLinked = objects.filter(o => o.componentId).length
+  const envCategories    = [...new Set(objects.map(o => o.category))].filter(Boolean).length
 
-  // Health
-  const { healthLabel, healthColor } = (() => {
-    if (readiness >= 85) return { healthLabel:'Excelente', healthColor: T.green }
-    if (readiness >= 65) return { healthLabel:'Bom',       healthColor: T.blue  }
-    if (readiness >= 40) return { healthLabel:'Atenção',   healthColor: T.amber }
-    return                      { healthLabel:'Crítico',   healthColor: T.red   }
-  })()
+  // ── Project Score ──────────────────────────────────────────────────────────
+  const score = useMemo(() => computeProjectScore({
+    hasMeta:           !!meta,
+    hasTipoObra:       !!meta?.tipoObra,
+    hasAreaM2:         !!meta?.areaM2,
+    hasClienteNome:    !!meta?.clienteNome,
+    totalObj,
+    totalMat,
+    matWithMfg,
+    componentsLinked,
+    envCategories,
+    hasSavedVariation: !!lastPrompt,
+    renderCount:       lastRender.count,
+  }), [meta, totalObj, totalMat, matWithMfg, componentsLinked, envCategories, lastPrompt, lastRender.count])
 
-  // Health reasons
+  // ── Health analysis ────────────────────────────────────────────────────────
   const healthReasons: string[] = []
-  if (totalObj === 0)                          healthReasons.push('Nenhum objeto cadastrado no projeto')
-  if (totalMat === 0)                          healthReasons.push('Nenhum material definido')
-  if (totalObj > 0 && objWithMat < totalObj)   healthReasons.push(`${totalObj - objWithMat} objeto(s) sem material`)
-  if (totalMat > 0 && matWithMfg < totalMat)   healthReasons.push(`${totalMat - matWithMfg} material(is) sem fabricante`)
-  if (!meta?.clienteNome)                      healthReasons.push('Cliente não vinculado ao projeto')
+  if (totalObj === 0)                        healthReasons.push('Nenhum objeto no projeto')
+  if (totalMat === 0)                        healthReasons.push('Nenhum material definido')
+  if (totalObj > 0 && objWithMat < totalObj) healthReasons.push(`${totalObj - objWithMat} objeto(s) sem material`)
+  if (totalMat > 0 && matWithMfg < totalMat) healthReasons.push(`${totalMat - matWithMfg} material(is) sem fabricante`)
+  if (!meta?.clienteNome)                    healthReasons.push('Cliente não vinculado')
 
-  // Missing items for render
+  // ── Missing items for render ───────────────────────────────────────────────
   const missing: string[] = []
-  if (totalObj === 0)                          missing.push('Adicionar objetos ao projeto')
-  if (totalObj > 0 && objWithMat < totalObj)   missing.push(`Definir material de ${totalObj - objWithMat} objeto(s)`)
-  if (totalMat > 0 && matWithMfg < totalMat)   missing.push(`Confirmar fabricante de ${totalMat - matWithMfg} material(is)`)
-  if (totalMat === 0)                          missing.push('Cadastrar materiais e fabricantes')
+  if (totalObj === 0)                        missing.push('Adicionar objetos ao projeto')
+  if (totalObj > 0 && objWithMat < totalObj) missing.push(`Definir material de ${totalObj - objWithMat} objeto(s)`)
+  if (totalMat > 0 && matWithMfg < totalMat) missing.push(`Confirmar fabricante de ${totalMat - matWithMfg} material(is)`)
+  if (totalMat === 0)                        missing.push('Cadastrar materiais e fabricantes')
 
-  // Current workflow stage
-  const currentStage = (() => {
-    if (totalObj > 0 && totalMat > 0 && matWithMfg === totalMat && objWithMat === totalObj) return 6 // Render
-    if (totalObj > 0 && totalMat > 0) return 5  // Prompt
-    if (totalMat > 0)                 return 4  // Componentes
-    if (totalObj > 0)                 return 3  // Biblioteca
-    if (meta?.tipoObra)               return 1  // Moodboard
-    return 0                                     // Briefing
-  })()
-
-  // Checklist
-  const checkItems: CheckItem[] = [
-    { id:'cliente',      label:'Cliente',          done: !!meta?.clienteNome },
-    { id:'briefing',     label:'Briefing',         done: !!meta?.tipoObra    },
-    { id:'moodboard',    label:'Moodboard',        done: false               },
-    { id:'projeto',      label:'Projeto',          done: totalObj > 0        },
-    { id:'aqm',          label:'AQM',              done: totalObj >= 3       },
-    { id:'materiais',    label:'Materiais',        done: totalMat > 0        },
-    { id:'componentes',  label:'Componentes',      done: objects.some(o => !!o.componentId) },
-    { id:'render',       label:'Render',           done: false               },
-    { id:'review',       label:'Review',           done: false               },
-    { id:'memorial',     label:'Memorial',         done: false               },
-    { id:'compras',      label:'Lista de Compras', done: false               },
-    { id:'entrega',      label:'Entrega',          done: false               },
+  // ── Journey steps — 10-step auto-checklist ─────────────────────────────────
+  const journeySteps: JourneyStep[] = [
+    { id:'criar-projeto', icon:'🏗️', label:'Criar Projeto', module:'projeto',    desc:'Briefing + tipo de obra',   done: !!meta             },
+    { id:'ambientes',     icon:'🏠', label:'Ambientes',      module:'projeto',    desc:'Tipos de espaço',           done: !!meta?.tipoObra   },
+    { id:'biblioteca',    icon:'📚', label:'Biblioteca',     module:'biblioteca', desc:'Materiais e acabamentos',   done: totalMat > 0        },
+    { id:'componentes',   icon:'🔩', label:'Componentes',    module:'biblioteca', desc:'Componentes vinculados',    done: componentsLinked > 0},
+    { id:'prompt',        icon:'⚡', label:'Prompt',          module:'prompt',     desc:'Variação de prompt salva', done: !!lastPrompt        },
+    { id:'render',        icon:'🎬', label:'Render',          module:'renders',    desc:'Primeiro render gerado',   done: lastRender.count > 0},
+    { id:'revisao',       icon:'🔍', label:'Revisão',         module:'ai-review',  desc:'AI Review do render',      done: false               },
+    { id:'portal',        icon:'👤', label:'Portal',          module:'cliente',    desc:'Portal do Cliente ativo',  done: !!meta?.clienteNome },
+    { id:'memorial',      icon:'📄', label:'Memorial',        module:'prompt',     desc:'Memorial descritivo',      done: false               },
+    { id:'entrega',       icon:'🚀', label:'Entrega',         module:'cliente',    desc:'Projeto entregue',         done: false               },
   ]
 
-  // Environments derived from objects categories
-  const envCategories = [...new Set(objects.map(o => o.category))].filter(Boolean)
+  // ── Next step ─────────────────────────────────────────────────────────────
+  const nextStep = journeySteps.find(s => !s.done) ?? journeySteps[journeySteps.length - 1]
 
-  // ── No project ────────────────────────────────────────────────────────────────
+  // ── No project ─────────────────────────────────────────────────────────────
   if (!meta) {
     return (
       <div style={{ height:'100%', display:'flex', flexDirection:'column' as const, overflow:'hidden' }}>
@@ -717,90 +818,147 @@ export function ProjectHome({
     )
   }
 
-  // ── Dashboard ─────────────────────────────────────────────────────────────────
+  // ── Dashboard ──────────────────────────────────────────────────────────────
   return (
     <div style={{ height:'100%', display:'flex', flexDirection:'column' as const, overflow:'hidden', background:T.bg }}>
 
-      {/* Header */}
-      <ProjectHeader
+      {/* Centro do Projeto */}
+      <ProjectCenter
         arqState={arqState}
-        readiness={readiness}
-        healthLabel={healthLabel}
-        healthColor={healthColor}
+        score={score}
+        lastRender={lastRender}
+        lastPrompt={lastPrompt}
+        nextStepLabel={nextStep.label}
+        nextStepModule={nextStep.module}
+        onNavigate={onNavigate}
       />
-
-      {/* ── Próxima Ação / Journey bar ── */}
-      <div style={{
-        padding:'8px 16px', borderBottom:`1px solid ${T.border}`,
-        background:'rgba(124,58,237,0.04)', flexShrink:0,
-        display:'flex', alignItems:'center', gap:12, flexWrap:'wrap' as const,
-      }}>
-        <span style={{ fontSize:9, fontWeight:700, color:T.dim, letterSpacing:'0.08em', whiteSpace:'nowrap' as const }}>PRÓXIMA AÇÃO</span>
-        <div style={{ display:'flex', alignItems:'center', gap:6, flex:1, minWidth:140 }}>
-          <span style={{ fontSize:13 }}>{STAGES[Math.min(currentStage, STAGES.length-1)]?.icon}</span>
-          <span style={{ fontSize:11, color:'#fff', fontWeight:600 }}>
-            {STAGES[Math.min(currentStage, STAGES.length-1)]?.label ?? 'Projeto concluído'}
-          </span>
-          <button
-            onClick={() => onNavigate(STAGES[Math.min(currentStage, STAGES.length-1)]?.module ?? 'projeto')}
-            style={{
-              padding:'3px 12px', borderRadius:6, border:'none',
-              background:T.purple, color:'#fff', cursor:'pointer', fontSize:10, fontWeight:700, marginLeft:4,
-            }}
-          >
-            Ir →
-          </button>
-        </div>
-        <div style={{ display:'flex', gap:6, flexShrink:0 }}>
-          <button
-            onClick={() => onNavigate('renders')}
-            style={{ padding:'5px 12px', borderRadius:6, border:`1px solid ${T.border}`, background:'transparent', color:T.text, cursor:'pointer', fontSize:10, fontWeight:600 }}
-          >
-            🎬 Render
-          </button>
-          <button
-            onClick={() => onNavigate('cliente')}
-            style={{ padding:'5px 12px', borderRadius:6, border:`1px solid ${T.border}`, background:'transparent', color:T.text, cursor:'pointer', fontSize:10, fontWeight:600 }}
-          >
-            👤 Portal
-          </button>
-        </div>
-      </div>
 
       {/* Body */}
       <div style={{ flex:1, display:'flex', overflow:'hidden' }}>
 
         {/* ── Main area ── */}
-        <div style={{ flex:1, overflowY:'auto' as const, padding:'16px 16px 16px 16px' }}>
+        <div style={{ flex:1, overflowY:'auto' as const, padding:'14px 16px' }}>
 
-          {/* Summary cards row */}
-          <div style={{ display:'flex', gap:8, flexWrap:'wrap' as const, marginBottom:12 }}>
-            <SummaryCard icon="🏗️" label="Projeto"    value={1}              sub={meta.tipoObra ?? 'indefinido'}                 onClick={() => onNavigate('projeto')} />
-            <SummaryCard icon="🏠" label="Ambientes"  value={envCategories.length || '—'}  sub="categorias de objetos"           onClick={() => onNavigate('projeto')} />
-            <SummaryCard icon="📦" label="Objetos"    value={totalObj}        sub={`${objWithMat} com material`}   accent={T.blue}  onClick={() => onNavigate('projeto')} />
-            <SummaryCard icon="🪵" label="Materiais"  value={totalMat}        sub={`${matWithMfg} com fabricante`} accent={T.purpleL} onClick={() => onNavigate('biblioteca')} />
-            <SummaryCard icon="🔩" label="Componentes" value={objects.filter(o=>o.componentId).length} sub="vinculados" onClick={() => onNavigate('biblioteca')} />
-            <SummaryCard icon="🎬" label="Renders"    value="→"               sub="Ver histórico"                   onClick={() => onNavigate('renders')} />
-            <SummaryCard icon="📌" label="Pendências" value={missing.length}  sub="itens em aberto" accent={missing.length>0?T.amber:T.green} />
+          {/* Jornada Inteligente */}
+          <IntelligentJourney steps={journeySteps} onNavigate={onNavigate} />
+
+          {/* Quick stats */}
+          <div style={{ display:'grid', gridTemplateColumns:'repeat(4,1fr)', gap:8, marginBottom:12 }}>
+            {[
+              { icon:'📦', label:'Objetos',    value: totalObj,   sub:`${objWithMat} c/ material`,   onClick: () => onNavigate('projeto')    },
+              { icon:'🪵', label:'Materiais',  value: totalMat,   sub:`${matWithMfg} c/ fabricante`, onClick: () => onNavigate('biblioteca') },
+              { icon:'🔩', label:'Componentes',value: componentsLinked, sub:'vinculados',            onClick: () => onNavigate('biblioteca') },
+              { icon:'🎬', label:'Renders',    value: lastRender.count, sub:'gerados',              onClick: () => onNavigate('renders')    },
+            ].map(card => (
+              <div
+                key={card.label}
+                onClick={card.onClick}
+                style={{
+                  padding:'12px 14px', borderRadius:T.r.lg,
+                  background:T.surface, border:`1px solid ${T.border}`,
+                  cursor:'pointer', transition:'border-color 0.15s',
+                }}
+                onMouseEnter={e => (e.currentTarget as HTMLElement).style.borderColor = T.purpleL}
+                onMouseLeave={e => (e.currentTarget as HTMLElement).style.borderColor = T.border}
+              >
+                <div style={{ display:'flex', gap:6, alignItems:'center', marginBottom:4 }}>
+                  <span style={{ fontSize:14 }}>{card.icon}</span>
+                  <span style={{ fontSize:T.fs.xs, color:T.dim, fontWeight:700, letterSpacing:'0.05em' }}>{card.label.toUpperCase()}</span>
+                </div>
+                <p style={{ margin:0, fontSize:22, fontWeight:900, color:'#fff', lineHeight:1 }}>{card.value}</p>
+                <p style={{ margin:'3px 0 0', fontSize:T.fs.xs, color:T.dim }}>{card.sub}</p>
+              </div>
+            ))}
           </div>
 
-          {/* Workflow Timeline */}
-          <div style={{ marginBottom:12 }}>
-            <WorkflowTimeline currentStage={currentStage} onNavigate={onNavigate} />
-          </div>
+          {/* Score breakdown + Render Readiness */}
+          <div style={{ display:'grid', gridTemplateColumns:'1fr 200px', gap:10 }}>
+            {/* Score breakdown */}
+            <div style={{
+              padding:'14px 16px', background:T.surface, borderRadius:T.r.lg,
+              border:`1px solid ${T.border}`,
+            }}>
+              <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:12 }}>
+                <p style={{ margin:0, fontSize:T.fs.xs, fontWeight:700, color:T.dim, letterSpacing:'0.07em' }}>
+                  PROJECT SCORE — CRITÉRIOS
+                </p>
+                <span style={{ fontSize:T.fs.xs, color:score.color, fontWeight:700 }}>
+                  {score.total}/100 · {score.label}
+                </span>
+              </div>
+              <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:'8px 20px' }}>
+                {score.dimensions.map(d => (
+                  <div key={d.id}>
+                    <div style={{ display:'flex', justifyContent:'space-between', marginBottom:3 }}>
+                      <span style={{ fontSize:T.fs.xs, color:T.textSub }}>{d.label}</span>
+                      <span style={{ fontSize:T.fs.xs, color:d.color, fontWeight:700 }}>{d.score}/{d.maxScore}</span>
+                    </div>
+                    <div style={{ height:5, borderRadius:3, background:'rgba(255,255,255,0.06)', overflow:'hidden' }}>
+                      <div style={{
+                        height:'100%', borderRadius:3, background:d.color, transition:'width 0.6s',
+                        width:`${(d.score / d.maxScore) * 100}%`,
+                      }}/>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
 
-          {/* Bottom row: Checklist + Health + Readiness */}
-          <div style={{ display:'grid', gridTemplateColumns:'1fr 200px 200px', gap:10 }}>
-            <ProjectChecklist items={checkItems} />
-            <ProjectHealthPanel label={healthLabel} color={healthColor} reasons={healthReasons} />
-            <RenderReadinessPanel readiness={readiness} missing={missing} />
+            {/* Render readiness gauge */}
+            <div style={{
+              padding:'14px 16px', background:T.surface, borderRadius:T.r.lg,
+              border:`1px solid ${score.color}30`,
+            }}>
+              <p style={{ margin:'0 0 10px', fontSize:T.fs.xs, fontWeight:700, color:T.dim, letterSpacing:'0.07em' }}>
+                RENDER READINESS
+              </p>
+              {(() => {
+                const readiness = totalObj + totalMat === 0 ? 0
+                  : Math.round(
+                      (totalObj > 0 ? (objWithMat / totalObj) * 50 : 0) +
+                      (totalMat > 0 ? (matWithMfg / totalMat) * 50 : 0)
+                    )
+                const rColor = readiness >= 85 ? T.green : readiness >= 65 ? T.blue : readiness >= 40 ? T.amber : T.red
+                return (
+                  <>
+                    <div style={{ display:'flex', alignItems:'center', gap:12 }}>
+                      <div style={{
+                        width:52, height:52, borderRadius:'50%', flexShrink:0,
+                        background:`conic-gradient(${rColor} ${readiness * 3.6}deg, ${T.border} 0deg)`,
+                        display:'flex', alignItems:'center', justifyContent:'center',
+                      }}>
+                        <div style={{
+                          width:36, height:36, borderRadius:'50%', background:T.surface,
+                          display:'flex', alignItems:'center', justifyContent:'center',
+                        }}>
+                          <span style={{ fontSize:11, fontWeight:900, color:rColor }}>{readiness}%</span>
+                        </div>
+                      </div>
+                      <p style={{ margin:0, fontSize:T.fs.sm, fontWeight:700, color:rColor }}>
+                        {readiness >= 85 ? 'Pronto' : readiness >= 65 ? 'Quase pronto' : readiness >= 40 ? 'Em prep.' : 'Insuficiente'}
+                      </p>
+                    </div>
+                    {missing.length > 0 && (
+                      <div style={{ marginTop:10 }}>
+                        {missing.slice(0, 3).map((m, i) => (
+                          <div key={i} style={{ display:'flex', gap:5, padding:'2px 0' }}>
+                            <span style={{ color:T.amber, fontSize:9 }}>›</span>
+                            <span style={{ fontSize:T.fs.xs, color:T.textSub }}>{m}</span>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </>
+                )
+              })()}
+            </div>
           </div>
         </div>
 
         {/* ── Smart Panel ── */}
         <SmartPanel
           arqState={arqState}
-          currentStage={currentStage}
+          journey={journeySteps}
           missing={missing}
           healthReasons={healthReasons}
           onNavigate={onNavigate}
@@ -808,4 +966,17 @@ export function ProjectHome({
       </div>
     </div>
   )
+}
+
+// ─── Export nextAction helper (used by ArqWorkspace → ArqCopilot) ─────────────
+
+export function computeNextAction(arqState: ArqProjectState, renderCount: number): string {
+  if (!arqState.projectId || !arqState.projectMeta) return 'Criar um projeto para começar'
+  if (!arqState.projectMeta.tipoObra)               return 'Definir o tipo de obra no Briefing'
+  if (arqState.objects.length === 0)                return 'Adicionar objetos ao Projeto Inteligente'
+  if (arqState.materials.length === 0)              return 'Cadastrar materiais na Biblioteca'
+  if (!getLastSavedVariation())                     return 'Criar o primeiro prompt no Prompt Playground'
+  if (renderCount === 0)                            return 'Gerar o primeiro render com IA'
+  if (!arqState.projectMeta.clienteNome)            return 'Vincular o cliente e ativar o Portal'
+  return 'Revisar com IA e compartilhar no Portal'
 }

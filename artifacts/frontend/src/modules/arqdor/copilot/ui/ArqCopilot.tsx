@@ -484,7 +484,7 @@ function AlertsStrip({ health }: { health: ProjectHealthResult }) {
 
 // ─── Main Copilot panel ───────────────────────────────────────────────────
 
-export function ArqCopilot({ collapsed, onToggle }: { collapsed: boolean; onToggle: () => void }) {
+export function ArqCopilot({ collapsed, onToggle, nextAction }: { collapsed: boolean; onToggle: () => void; nextAction?: string }) {
   const workspaceCtx   = useContext(WorkspaceContext)
   const isRealProject  = workspaceCtx?.isRealProject ?? false
   const ctx            = workspaceCtx?.projectCtx ?? EMPTY_PROJECT_CTX
@@ -720,6 +720,31 @@ export function ArqCopilot({ collapsed, onToggle }: { collapsed: boolean; onTogg
       </div>
 
       <div style={{ flex:1, overflow:'hidden', display:'flex', flexDirection:'column' }}>
+        {activeTab==='chat' && nextAction && messages.length <= 1 && (
+          <div style={{
+            padding:'8px 12px', background:'rgba(124,58,237,0.1)', borderBottom:`1px solid rgba(124,58,237,0.2)`,
+            flexShrink:0, display:'flex', alignItems:'center', gap:8,
+          }}>
+            <span style={{ fontSize:14, flexShrink:0 }}>💡</span>
+            <div style={{ flex:1, minWidth:0 }}>
+              <p style={{ margin:'0 0 1px', fontSize:8, color:T.purpleL, fontWeight:700, letterSpacing:'0.06em' }}>PRÓXIMA AÇÃO SUGERIDA</p>
+              <p style={{ margin:0, fontSize:10, color:'#fff', lineHeight:1.3 }}>{nextAction}</p>
+            </div>
+            <button
+              onClick={() => {
+                const msg = `Como devo executar esta etapa: "${nextAction}"?`
+                const userMsg = { id:`msg-na-${Date.now()}`, role:'USER' as const, timestamp:new Date().toISOString(), text:msg }
+                setMessages(prev => { const next=[...prev,userMsg]; sendToAI(msg,next); return next })
+              }}
+              style={{
+                padding:'4px 10px', borderRadius:6, border:'none', cursor:'pointer',
+                background:T.purple, color:'#fff', fontSize:9, fontWeight:700, flexShrink:0,
+              }}
+            >
+              Perguntar →
+            </button>
+          </div>
+        )}
         {activeTab==='chat' && (
           <ChatTab
             messages={messages}

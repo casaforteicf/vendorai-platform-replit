@@ -13,7 +13,7 @@ import { ProjectModule }       from './modules/ProjectModule'
 import { ArqHubView }         from '../arqhub/ArqHubView'
 import { AIEDashboard }       from '../engines/aie/dashboard/AIEDashboard'
 import { useArqProject, type ArqProjectState } from '../hooks/useArqProject'
-import { ProjectHome }      from './project-experience/ProjectHome'
+import { ProjectHome, computeNextAction } from './project-experience/ProjectHome'
 import type { ProjectContext } from '../engines/aie/aie-types'
 import { runAIE }             from '../engines/aie/aie-engine'
 import { T } from '../shared/arqdor-theme'
@@ -463,7 +463,11 @@ function WorkspaceInner() {
           </div>
 
           {/* ── ARQ COPILOT PANEL ── */}
-          <ArqCopilot collapsed={copilotCollapsed} onToggle={() => setCopilotCollapsed(p => !p)}/>
+          <ArqCopilot
+            collapsed={copilotCollapsed}
+            onToggle={() => setCopilotCollapsed(p => !p)}
+            nextAction={computeNextAction(arqState, 0)}
+          />
       </div>
     </ArqProjectContext.Provider>
   )
