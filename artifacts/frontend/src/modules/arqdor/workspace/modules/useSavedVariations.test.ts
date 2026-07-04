@@ -1039,6 +1039,94 @@ describe('pruneOldest', () => {
   })
 })
 
+// ─── Scenario: badge hidden with mixed server + offline items after online ─────
+
+describe('badge stays hidden after online event with mixed srv-* and local-* items', () => {
+  it('pendingCount drops to 0 immediately once local-* items are promoted — srv-* items never count', async () => {
+    // Seed a realistic mid-session localStorage state: two already-synced
+    // server items and one item that was saved while offline
+    const srvA = makeVariation({ id: 'srv-mix-1', name: 'Server item A', savedAt: 1_700_000_100_000 })
+    const srvB = makeVariation({ id: 'srv-mix-2', name: 'Server item B', savedAt: 1_700_000_101_000 })
+    const offlineItem = makeVariation({ id: 'local-mix-offline-1', name: 'Offline item', savedAt: 1_700_000_102_000 })
+    seedLocalStorage([srvA, srvB, offlineItem])
+    localStorage.setItem('vendorai_token', 'tok-abc')
+
+    const promotedServerResponse = {
+      id: 'srv-mix-promoted-1',
+      name: 'Offline item',
+      translator: 'midjourney',
+      detail: 'medium',
+      prompt: 'A beautiful building',
+      negativePrompt: 'blurry, low quality',
+      estimatedTokens: 42,
+      savedAt: new Date(1_700_000_102_000).toISOString(),
+      notes: null,
+    }
+
+    const fetchMock = vi
+      .fn()
+      // GET on mount → network error (server is down mid-session)
+      .mockRejectedValueOnce(new TypeError('Network failure'))
+      // POST from syncPendingVariations triggered by 'online' → success
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => promotedServerResponse,
+      })
+    vi.stubGlobal('fetch', fetchMock)
+
+    const { result } = renderHook(() => useSavedVariations())
+
+    // Wait for the mount-time GET to settle
+    await waitFor(() => expect(result.current.syncing).toBe(false))
+
+    // Initial state: all 3 items loaded from localStorage
+    expect(result.current.variations).toHaveLength(3)
+
+    // Only the local-* item contributes to pendingCount — srv-* items never count
+    expect(result.current.pendingCount).toBe(1)
+
+    // Confirm the srv-* items are not treated as pending
+    const srvIds = result.current.variations.filter(v => !v.id.startsWith('local-')).map(v => v.id)
+    expect(srvIds).toContain('srv-mix-1')
+    expect(srvIds).toContain('srv-mix-2')
+
+    // Track every pendingCount value emitted during the promotion to verify no
+    // unexpected intermediate state (e.g. badge should not jump from 1 to 2+)
+    const pendingCounts: number[] = [result.current.pendingCount]
+
+    // Simulate connectivity being restored
+    await act(async () => {
+      window.dispatchEvent(new Event('online'))
+      await new Promise(r => setTimeout(r, 0))
+    })
+
+    // Wait for the local-* item to be promoted
+    await waitFor(() => {
+      pendingCounts.push(result.current.pendingCount)
+      return result.current.pendingCount === 0
+    })
+
+    // pendingCount must reach 0 — badge disappears
+    expect(result.current.pendingCount).toBe(0)
+
+    // pendingCount must have gone 1 → 0 without any value > 1 (no flash upward)
+    expect(Math.max(...pendingCounts)).toBe(1)
+
+    // All 3 items still present; promoted item now carries server-assigned id
+    expect(result.current.variations).toHaveLength(3)
+    const finalIds = result.current.variations.map(v => v.id)
+    expect(finalIds).toContain('srv-mix-1')
+    expect(finalIds).toContain('srv-mix-2')
+    expect(finalIds).toContain('srv-mix-promoted-1')
+
+    // No local-* ids remain in state or localStorage
+    finalIds.forEach(id => expect(id).not.toMatch(/^local-/))
+    const stored = storedVariations()
+    expect(stored).toHaveLength(3)
+    stored.forEach(v => expect(v.id).not.toMatch(/^local-/))
+  })
+})
+
 // ─── Scenario: badge stays hidden with clean server-synced list ───────────────
 
 describe('pendingCount stays 0 when all items are server-assigned', () => {
