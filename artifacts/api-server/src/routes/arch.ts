@@ -42,6 +42,10 @@ import {
   archSpecificationsTable,
   archSpecItemsTable,
   updateArchSpecItemSchema,
+  archPartnersTable,
+  archSolicitacoesTable,
+  insertArchPartnerSchema,
+  updateArchPartnerSchema,
 } from "@workspace/db";
 import { z } from "zod/v4";
 import { anthropic } from "@workspace/integrations-anthropic-ai";
@@ -2658,6 +2662,27 @@ RENDERS GERADOS: ${renders.length === 0 ? "Nenhum render gerado ainda" : `${rend
 CATÁLOGO DISPONÍVEL (${catalogItems.length} itens registrados):
 ${catalogItems.slice(0, 10).map((i) => `- ${i.nome} [${i.categoria}] — ${i.fornecedor}`).join("\n") || "Catálogo vazio"}
 `.trim();
+
+      // Inject partner directory into copilot context
+      const partners = await db
+        .select({
+          nome:          archPartnersTable.nome,
+          tipo:          archPartnersTable.tipo,
+          especialidades: archPartnersTable.especialidades,
+          cidade:        archPartnersTable.cidade,
+          prazoDescricao: archPartnersTable.prazoDescricao,
+          email:         archPartnersTable.email,
+        })
+        .from(archPartnersTable)
+        .where(and(eq(archPartnersTable.tenantId, tid), eq(archPartnersTable.ativo, true)))
+        .limit(20);
+
+      if (partners.length > 0) {
+        contextStr += `\n\nPARCEIROS CADASTRADOS (${partners.length} no diretório do escritório):\n` +
+          partners.map(p =>
+            `- ${p.nome} [${p.tipo}]${p.cidade ? ` · ${p.cidade}` : ""}${p.prazoDescricao ? ` · prazo: ${p.prazoDescricao}` : ""}${(p.especialidades as string[] | null)?.length ? ` · especialidades: ${(p.especialidades as string[]).join(", ")}` : ""}`
+          ).join("\n");
+      }
     }
   }
 
@@ -2887,6 +2912,243 @@ router.patch("/arch/specification/item/:itemId", authenticate, async (req, res) 
   }
 
   return res.json(updated);
+});
+
+// ═════════════════════════════════════════════════════════════════════════════
+// SPRINT 6 — ECOSYSTEM ENGINE: Partner Directory + Solicitações
+// ═════════════════════════════════════════════════════════════════════════════
+
+// ── Helper: send partner notification via Resend ──────────────────────────────
+async function sendPartnerEmail(opts: {
+  to: string; subject: string; html: string
+}): Promise<boolean> {
+  const apiKey = process.env["RESEND_API_KEY"];
+  if (!apiKey || !opts.to) return false;
+  try {
+    const resp = await fetch("https://api.resend.com/emails", {
+      method: "POST",
+      headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json" },
+      body: JSON.stringify({
+        from: "arqdor.ai <noreply@vendorai.app>",
+        to: opts.to,
+        subject: opts.subject,
+        html: opts.html,
+      }),
+    });
+    return resp.ok;
+  } catch { return false; }
+}
+
+// ── GET /arch/partners — listar parceiros do tenant (com search + tipo filter) ─
+router.get("/arch/partners", authenticate, async (req, res) => {
+  const tid = tenantId(req);
+  const { q, tipo } = req.query as Record<string, string>;
+
+  const conditions = [
+    eq(archPartnersTable.tenantId, tid),
+    eq(archPartnersTable.ativo, true),
+  ];
+  if (tipo && tipo !== "todos") {
+    conditions.push(eq(archPartnersTable.tipo, tipo));
+  }
+  if (q?.trim()) {
+    conditions.push(
+      sql`(${archPartnersTable.nome} ilike ${"%" + q + "%"} OR ${archPartnersTable.cidade} ilike ${"%" + q + "%"} OR ${archPartnersTable.especialidades}::text ilike ${"%" + q + "%"})`
+    );
+  }
+
+  const rows = await db
+    .select()
+    .from(archPartnersTable)
+    .where(and(...conditions))
+    .orderBy(desc(archPartnersTable.createdAt));
+
+  return res.json(rows);
+});
+
+// ── POST /arch/partners — criar parceiro ──────────────────────────────────────
+router.post("/arch/partners", authenticate, async (req, res) => {
+  const tid = tenantId(req);
+  const parsed = insertArchPartnerSchema.safeParse({ ...req.body, tenantId: tid });
+  if (!parsed.success) return res.status(400).json({ error: String(parsed.error) });
+
+  const [created] = await db
+    .insert(archPartnersTable)
+    .values(parsed.data)
+    .returning();
+
+  return res.status(201).json(created);
+});
+
+// ── PATCH /arch/partners/:id — atualizar parceiro ─────────────────────────────
+router.patch("/arch/partners/:id", authenticate, async (req, res) => {
+  const tid = tenantId(req);
+  const [existing] = await db
+    .select({ id: archPartnersTable.id })
+    .from(archPartnersTable)
+    .where(and(eq(archPartnersTable.id, req.params.id), eq(archPartnersTable.tenantId, tid)))
+    .limit(1);
+
+  if (!existing) return res.status(404).json({ error: "Parceiro não encontrado." });
+
+  const parsed = updateArchPartnerSchema.safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: String(parsed.error) });
+
+  const [updated] = await db
+    .update(archPartnersTable)
+    .set({ ...parsed.data, updatedAt: new Date() })
+    .where(eq(archPartnersTable.id, req.params.id))
+    .returning();
+
+  return res.json(updated);
+});
+
+// ── DELETE /arch/partners/:id — desativar parceiro (soft delete) ──────────────
+router.delete("/arch/partners/:id", authenticate, async (req, res) => {
+  const tid = tenantId(req);
+  const [existing] = await db
+    .select({ id: archPartnersTable.id })
+    .from(archPartnersTable)
+    .where(and(eq(archPartnersTable.id, req.params.id), eq(archPartnersTable.tenantId, tid)))
+    .limit(1);
+
+  if (!existing) return res.status(404).json({ error: "Parceiro não encontrado." });
+
+  await db
+    .update(archPartnersTable)
+    .set({ ativo: false, updatedAt: new Date() })
+    .where(eq(archPartnersTable.id, req.params.id));
+
+  return res.json({ ok: true });
+});
+
+// ── POST /arch/partners/:id/solicitar — criar solicitação ─────────────────────
+router.post("/arch/partners/:id/solicitar", authenticate, async (req, res) => {
+  const tid = tenantId(req);
+  const { id: partnerId } = req.params;
+  const { tipo, mensagem, canal, projetoId, projetoTitulo, catalogoItemId, itemNome } = req.body as {
+    tipo: string; mensagem?: string; canal?: string
+    projetoId?: string; projetoTitulo?: string; catalogoItemId?: string; itemNome?: string
+  };
+
+  const [partner] = await db
+    .select()
+    .from(archPartnersTable)
+    .where(and(eq(archPartnersTable.id, partnerId), eq(archPartnersTable.tenantId, tid)))
+    .limit(1);
+
+  if (!partner) return res.status(404).json({ error: "Parceiro não encontrado." });
+
+  const TIPO_LABELS: Record<string, string> = {
+    orcamento: "Orçamento", amostra: "Amostra", visita: "Visita Técnica", compartilhar: "Compartilhamento de Projeto",
+  };
+
+  const canalEnvio = canal ?? "manual";
+  let enviadoEm: Date | undefined;
+
+  // Tentar envio por email se parceiro tiver email e canal = email
+  if (canalEnvio === "email" && partner.email) {
+    const tipoLabel = TIPO_LABELS[tipo] ?? tipo;
+    const sent = await sendPartnerEmail({
+      to: partner.email,
+      subject: `Solicitação de ${tipoLabel} — arqdor.ai`,
+      html: `
+        <div style="font-family:sans-serif;max-width:600px;margin:0 auto;padding:24px;background:#fff;">
+          <h2 style="font-size:20px;color:#111;margin:0 0 16px;">Solicitação de ${tipoLabel}</h2>
+          ${projetoTitulo ? `<p style="color:#444;font-size:14px;margin:0 0 12px;">📁 Projeto: <strong>${projetoTitulo}</strong></p>` : ""}
+          ${itemNome ? `<p style="color:#444;font-size:14px;margin:0 0 12px;">📋 Item: <strong>${itemNome}</strong></p>` : ""}
+          ${mensagem ? `<div style="background:#f4f4f5;border-radius:8px;padding:16px;margin:16px 0;font-size:14px;color:#374151;line-height:1.6;">${mensagem.replace(/\n/g, "<br>")}</div>` : ""}
+          <p style="color:#6b7280;font-size:13px;margin-top:24px;">Esta solicitação foi enviada via <strong>arqdor.ai</strong> — Ecosystem Engine.</p>
+        </div>
+      `,
+    });
+    if (sent) enviadoEm = new Date();
+  }
+
+  const [sol] = await db
+    .insert(archSolicitacoesTable)
+    .values({
+      tenantId:       tid,
+      tipo,
+      status:         enviadoEm ? "enviado" : "pendente",
+      partnerId,
+      parceiroNome:   partner.nome,
+      projetoId:      projetoId ?? null,
+      projetoTitulo:  projetoTitulo ?? null,
+      catalogoItemId: catalogoItemId ?? null,
+      itemNome:       itemNome ?? null,
+      mensagem:       mensagem ?? null,
+      canalEnvio:     canalEnvio,
+      enviadoEm:      enviadoEm ?? null,
+    })
+    .returning();
+
+  return res.status(201).json({ ...sol, emailSent: !!enviadoEm });
+});
+
+// ── POST /arch/partners/compartilhar — compartilhar projeto com parceiro ───────
+router.post("/arch/partners/compartilhar", authenticate, async (req, res) => {
+  const tid = tenantId(req);
+  const { partnerId, mensagem, canal, projetoId, projetoTitulo } = req.body as {
+    partnerId: string; mensagem?: string; canal?: string; projetoId?: string; projetoTitulo?: string
+  };
+
+  const [partner] = await db
+    .select()
+    .from(archPartnersTable)
+    .where(and(eq(archPartnersTable.id, partnerId), eq(archPartnersTable.tenantId, tid)))
+    .limit(1);
+
+  if (!partner) return res.status(404).json({ error: "Parceiro não encontrado." });
+
+  let enviadoEm: Date | undefined;
+  if ((canal === "email") && partner.email) {
+    const sent = await sendPartnerEmail({
+      to: partner.email,
+      subject: `Projeto Compartilhado: ${projetoTitulo ?? "arqdor.ai"} — arqdor.ai`,
+      html: `
+        <div style="font-family:sans-serif;max-width:600px;margin:0 auto;padding:24px;background:#fff;">
+          <h2 style="font-size:20px;color:#111;margin:0 0 16px;">📁 Projeto Compartilhado</h2>
+          <p style="color:#444;font-size:14px;margin:0 0 12px;">Você recebeu um projeto via <strong>arqdor.ai</strong>.</p>
+          ${projetoTitulo ? `<div style="background:#f4f4f5;border-radius:8px;padding:12px 16px;margin-bottom:16px;"><strong style="font-size:16px;color:#111;">${projetoTitulo}</strong></div>` : ""}
+          ${mensagem ? `<div style="background:#f9f9f9;border-radius:8px;padding:16px;font-size:14px;color:#374151;line-height:1.6;">${mensagem.replace(/\n/g, "<br>")}</div>` : ""}
+          <p style="color:#6b7280;font-size:13px;margin-top:24px;">— Enviado via arqdor.ai · Ecosystem Engine</p>
+        </div>
+      `,
+    });
+    if (sent) enviadoEm = new Date();
+  }
+
+  const [sol] = await db
+    .insert(archSolicitacoesTable)
+    .values({
+      tenantId:      tid,
+      tipo:          "compartilhar",
+      status:        enviadoEm ? "enviado" : "pendente",
+      partnerId,
+      parceiroNome:  partner.nome,
+      projetoId:     projetoId ?? null,
+      projetoTitulo: projetoTitulo ?? null,
+      mensagem:      mensagem ?? null,
+      canalEnvio:    canal ?? "manual",
+      enviadoEm:     enviadoEm ?? null,
+    })
+    .returning();
+
+  return res.status(201).json({ ...sol, emailSent: !!enviadoEm });
+});
+
+// ── GET /arch/solicitacoes — histórico de solicitações do tenant ──────────────
+router.get("/arch/solicitacoes", authenticate, async (req, res) => {
+  const tid = tenantId(req);
+  const rows = await db
+    .select()
+    .from(archSolicitacoesTable)
+    .where(eq(archSolicitacoesTable.tenantId, tid))
+    .orderBy(desc(archSolicitacoesTable.createdAt))
+    .limit(100);
+
+  return res.json(rows);
 });
 
 export { archPublicRouter };

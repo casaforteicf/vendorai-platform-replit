@@ -6,6 +6,7 @@ import { useState, useEffect, useRef, useCallback } from 'react'
 import { ArqCopilot }            from '../copilot/ui/ArqCopilot'
 import { WorkspaceProvider, useWorkspaceProject } from './WorkspaceContext'
 import { IntegrationModule }     from './modules/IntegrationModule'
+import { EcosystemModule }       from './modules/EcosystemModule'
 import { LibraryModule }         from './modules/LibraryModule'
 import { SmartSpecModule }       from './modules/SmartSpecModule'
 import { PromptPlaygroundModule } from './modules/PromptPlaygroundModule'
@@ -31,7 +32,7 @@ export type ModuleId =
   | 'projeto' | 'biblioteca' | 'prompt' | 'renders' | 'cliente'
   | 'especificacao'
   | 'ai-review' | 'correcoes' | 'memoria' | 'config'
-  | 'arqhub' | 'ai-intel' | 'integracao'
+  | 'arqhub' | 'ai-intel' | 'integracao' | 'ecosystem'
 
 export type JourneyId = 'create' | 'design' | 'visualize' | 'deliver' | 'business'
 
@@ -65,6 +66,7 @@ const MODULE_MAP: Record<ModuleId, WorkspaceModule> = {
   'arqhub':     { id:'arqhub',     icon:'🏛️', label:'ARQ HUB',       desc:'Ecosystem', badge:'NEW', badgeColor:'#4ade80' },
   'ai-intel':   { id:'ai-intel',   icon:'🧠', label:'AI Intel',       desc:'AIE Engine', badge:'AIE', badgeColor:'#a78bfa' },
   'integracao': { id:'integracao', icon:'🔗', label:'Integração',     desc:'Connectors' },
+  'ecosystem':  { id:'ecosystem',  icon:'🌐', label:'Parceiros',      desc:'Ecosystem Engine', badge:'NEW', badgeColor:'#34d399' },
 }
 
 const JOURNEYS: Journey[] = [
@@ -72,7 +74,7 @@ const JOURNEYS: Journey[] = [
   { id:'design',    label:'DESIGN AI', icon:'🤖', color:'#60a5fa', modules:['renders','ai-review','correcoes','memoria'],         key:'2' },
   { id:'visualize', label:'VISUALIZE', icon:'👁',  color:'#34d399', modules:['renders','biblioteca'],                             key:'3' },
   { id:'deliver',   label:'DELIVER',   icon:'📦', color:'#fb923c', modules:['especificacao','cliente'],                          key:'4' },
-  { id:'business',  label:'BUSINESS',  icon:'🏛️', color:'#f472b6', modules:['arqhub','ai-intel','config','integracao'],          key:'5' },
+  { id:'business',  label:'BUSINESS',  icon:'🏛️', color:'#f472b6', modules:['ecosystem','arqhub','ai-intel','config','integracao'], key:'5' },
 ]
 
 // Journey default first module
@@ -147,6 +149,7 @@ function renderModule(id: ModuleId, arqState: ArqProjectState, setActive: (m: Mo
     case 'ai-intel':      return <AIEDashboard/>
     case 'integracao':    return <IntegrationModule/>
     case 'cliente':       return <IntegrationModule/>
+    case 'ecosystem':     return <EcosystemModule/>
   }
 }
 
