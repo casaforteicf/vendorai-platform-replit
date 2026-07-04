@@ -128,6 +128,10 @@ export async function apiFetch(path: string, init?: RequestInit): Promise<Respon
 // The in-flight guard prevents duplicate POSTs when the 'online' event fires
 // multiple times in rapid succession (e.g. flaky connection) or when a save()
 // success races with an incoming online event.
+//
+// 4xx responses are treated as permanent failures: the item will never succeed
+// regardless of retries, so onPermanentlyFailed is invoked instead of counting
+// the item as a transient failedCount. 5xx / network errors remain transient.
 
 let syncInFlight = false
 
@@ -139,20 +143,22 @@ export function resetSyncInFlight(): void {
 export async function syncPendingVariations(
   onPromoted: (localId: string, serverVariation: SavedVariation) => void,
   inFlightIds?: ReadonlySet<string>,
-): Promise<{ failedCount: number }> {
-  if (syncInFlight) return { failedCount: 0 }
+  onPermanentlyFailed?: (localId: string) => void,
+): Promise<{ failedCount: number; permanentlyFailedCount: number }> {
+  if (syncInFlight) return { failedCount: 0, permanentlyFailedCount: 0 }
 
   const token = getAuthToken()
-  if (!token) return { failedCount: 0 }
+  if (!token) return { failedCount: 0, permanentlyFailedCount: 0 }
 
   const current = readLocalVariations()
   const pending = current.filter(
     v => v.id.startsWith('local-') && !(inFlightIds?.has(v.id) ?? false),
   )
-  if (pending.length === 0) return { failedCount: 0 }
+  if (pending.length === 0) return { failedCount: 0, permanentlyFailedCount: 0 }
 
   syncInFlight = true
   let failedCount = 0
+  let permanentlyFailedCount = 0
   try {
     for (const item of pending) {
       try {
@@ -170,7 +176,14 @@ export async function syncPendingVariations(
           }),
         })
         if (!res.ok) {
-          failedCount++
+          if (res.status >= 400 && res.status < 500) {
+            // 4xx — client-side error, will never succeed; mark as permanently failed
+            permanentlyFailedCount++
+            onPermanentlyFailed?.(item.id)
+          } else {
+            // 5xx — transient server error; keep as retryable
+            failedCount++
+          }
           continue
         }
         const saved: ServerVariation = await res.json()
@@ -184,7 +197,7 @@ export async function syncPendingVariations(
   } finally {
     syncInFlight = false
   }
-  return { failedCount }
+  return { failedCount, permanentlyFailedCount }
 }
 
 // ─── Hook ─────────────────────────────────────────────────────────────────────
@@ -269,12 +282,28 @@ export function useSavedVariations() {
     })
   }, [])
 
+  // Mark a local-* item as permanently failed by changing its id prefix to
+  // failed-*. This removes it from the retry queue while keeping it visible so
+  // the user is aware something went wrong.
+  const markPermanentlyFailed = useCallback((localId: string) => {
+    setVariations(prev => {
+      const failedId = localId.replace(/^local-/, 'failed-')
+      const next = prev.map(v => (v.id === localId ? { ...v, id: failedId } : v))
+      persistVariations(next)
+      return next
+    })
+  }, [])
+
   // Retry syncing any local-* items that were saved while the server was down.
   // Safe to call from an effect with an empty dependency array because it reads
   // localStorage directly instead of closing over the `variations` state value.
   // Returns a promise so callers can await the result if needed.
   const retryPendingSync = useCallback(async () => {
-    const { failedCount } = await syncPendingVariations(promoteLocal)
+    const { failedCount } = await syncPendingVariations(
+      promoteLocal,
+      undefined,
+      markPermanentlyFailed,
+    )
     if (failedCount > 0) {
       setSyncError(
         failedCount === 1
@@ -284,7 +313,7 @@ export function useSavedVariations() {
     } else {
       setSyncError(null)
     }
-  }, [promoteLocal])
+  }, [promoteLocal, markPermanentlyFailed])
 
   // Load from server on mount (if authenticated)
   useEffect(() => {
@@ -343,7 +372,7 @@ export function useSavedVariations() {
           setVariations(serverVariations)
           persistVariations(serverVariations)
           // Reconcile offline-saved items after restoring from server
-          await syncPendingVariations(promoteLocal)
+          await syncPendingVariations(promoteLocal, undefined, markPermanentlyFailed)
         }
       } catch {
         // Network failure — keep local state; online listener will retry
@@ -393,13 +422,20 @@ export function useSavedVariations() {
               savedAt: new Date(item.savedAt).toISOString(),
             }),
           })
-          if (!res.ok) return
+          if (!res.ok) {
+            if (res.status >= 400 && res.status < 500) {
+              // 4xx — permanent client-side error; remove from retry queue
+              markPermanentlyFailed(optimisticId)
+            }
+            // 5xx — keep local-* id so the online listener can retry later
+            return
+          }
           const saved: ServerVariation = await res.json()
           // Replace optimistic item with server-assigned id
           promoteLocal(optimisticId, fromServer(saved))
           // Take the opportunity to push any other pending items now that the
           // server is reachable — exclude IDs still being synced by save() calls.
-          void syncPendingVariations(promoteLocal, inFlightIds.current)
+          void syncPendingVariations(promoteLocal, inFlightIds.current, markPermanentlyFailed)
         } catch {
           // Keep local copy; the online listener will retry
         } finally {
@@ -407,7 +443,7 @@ export function useSavedVariations() {
         }
       })()
     },
-    [promoteLocal],
+    [promoteLocal, markPermanentlyFailed],
   )
 
   const rename = useCallback((id: string, name: string) => {
@@ -449,7 +485,11 @@ export function useSavedVariations() {
     })()
   }, [])
 
+  // Only retryable offline items count toward the pending badge
   const pendingCount = variations.filter(v => v.id.startsWith('local-')).length
+
+  // Permanently failed items (4xx rejection) — shown with a distinct indicator
+  const permanentlyFailedCount = variations.filter(v => v.id.startsWith('failed-')).length
 
   // Remove the oldest PRUNE_BATCH_SIZE variations repeatedly until persist succeeds
   // or the list is empty. Called by the UI when the user consents to free up space.
@@ -489,6 +529,7 @@ export function useSavedVariations() {
     syncing,
     importVariations,
     pendingCount,
+    permanentlyFailedCount,
     retryPendingSync,
   }
 }

@@ -8,6 +8,7 @@ import {
   readLocalVariations,
   resetSyncInFlight,
   syncPendingVariations,
+  persistVariations,
 } from './useSavedVariations'
 import type { SavedVariation } from './useSavedVariations'
 
