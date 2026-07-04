@@ -1549,3 +1549,124 @@ describe('badge count resets correctly after second online event following a par
     expect(storedFinalIds).toContain('srv-cycle-2')
   })
 })
+
+// ─── Scenario: online event fires while save POST is still in-flight ──────────
+
+describe('badge accuracy when online fires concurrently with an in-flight save POST', () => {
+  it('pendingCount === 0 and only one copy of the item exists after both paths settle', async () => {
+    localStorage.setItem('vendorai_token', 'tok-abc')
+
+    // Deferred save POST — we resolve it after the online-triggered sync completes
+    // so that both promoteLocal calls happen for the same local-* id.
+    let resolveSavePost!: (value: { ok: boolean; json: () => Promise<unknown> }) => void
+    const savePendingPromise = new Promise<{ ok: boolean; json: () => Promise<unknown> }>(
+      resolve => {
+        resolveSavePost = resolve
+      },
+    )
+
+    const serverRespFromOnlineSync = {
+      id: 'srv-race-online-1',
+      name: 'Race item',
+      translator: 'midjourney',
+      detail: 'medium',
+      prompt: 'Race prompt',
+      negativePrompt: '',
+      estimatedTokens: 5,
+      savedAt: new Date(1_700_000_400_000).toISOString(),
+      notes: null,
+    }
+
+    const serverRespFromSave = {
+      id: 'srv-race-save-1',
+      name: 'Race item',
+      translator: 'midjourney',
+      detail: 'medium',
+      prompt: 'Race prompt',
+      negativePrompt: '',
+      estimatedTokens: 5,
+      savedAt: new Date(1_700_000_400_000).toISOString(),
+      notes: null,
+    }
+
+    const fetchMock = vi
+      .fn()
+      // 1st call: GET on mount → offline
+      .mockRejectedValueOnce(new TypeError('Network failure'))
+      // 2nd call: POST from save → kept in-flight via the deferred promise
+      .mockReturnValueOnce(savePendingPromise)
+      // 3rd call: POST from syncPendingVariations triggered by 'online' → resolves first
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => serverRespFromOnlineSync,
+      })
+    vi.stubGlobal('fetch', fetchMock)
+
+    const { result } = renderHook(() => useSavedVariations())
+
+    // Wait for the mount-time GET to settle
+    await waitFor(() => expect(result.current.syncing).toBe(false))
+
+    // Save one item — the POST fires immediately but stays in-flight (deferred)
+    act(() => {
+      result.current.save(
+        {
+          translator: 'midjourney',
+          detail: 'medium',
+          prompt: 'Race prompt',
+          negativePrompt: '',
+          estimatedTokens: 5,
+        },
+        'Race item',
+      )
+    })
+
+    // Optimistic update lands with a local-* id; badge shows 1 pending
+    expect(result.current.variations).toHaveLength(1)
+    const localId = result.current.variations[0].id
+    expect(localId).toMatch(/^local-/)
+    expect(result.current.pendingCount).toBe(1)
+
+    // Fire 'online' while save POST is still pending.
+    // syncPendingVariations reads localStorage, finds local-* item, POSTs it,
+    // and receives srv-race-online-1 → calls promoteLocal.
+    await act(async () => {
+      window.dispatchEvent(new Event('online'))
+      // Allow syncPendingVariations to complete its POST and call promoteLocal
+      await new Promise(r => setTimeout(r, 0))
+    })
+
+    // The online-triggered sync must have promoted the item already
+    await waitFor(() =>
+      result.current.variations.some(v => v.id === 'srv-race-online-1'),
+    )
+
+    // Now resolve the deferred save POST with a different server-assigned id.
+    // promoteLocal will be called again for the same localId — it must be a no-op
+    // because the item is already gone from state (no double-entry).
+    await act(async () => {
+      resolveSavePost({
+        ok: true,
+        json: async () => serverRespFromSave,
+      })
+      // Let the save callback's promoteLocal (and its follow-up syncPendingVariations) settle
+      await new Promise(r => setTimeout(r, 0))
+    })
+
+    // ── Core assertions ────────────────────────────────────────────────────────
+
+    // Badge must be clear — no local-* items remain
+    expect(result.current.pendingCount).toBe(0)
+
+    // Only ONE copy of the item must exist — no double-entry from the race
+    expect(result.current.variations).toHaveLength(1)
+
+    // The surviving item must carry a server-assigned id
+    expect(result.current.variations[0].id).not.toMatch(/^local-/)
+
+    // localStorage must mirror state exactly — one item, server-assigned id
+    const stored = storedVariations()
+    expect(stored).toHaveLength(1)
+    expect(stored[0].id).not.toMatch(/^local-/)
+  })
+})
