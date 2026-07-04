@@ -105,17 +105,18 @@ export function resetSyncInFlight(): void {
 
 export async function syncPendingVariations(
   onPromoted: (localId: string, serverVariation: SavedVariation) => void,
-): Promise<void> {
-  if (syncInFlight) return
+): Promise<{ failedCount: number }> {
+  if (syncInFlight) return { failedCount: 0 }
 
   const token = getAuthToken()
-  if (!token) return
+  if (!token) return { failedCount: 0 }
 
   const current = readLocalVariations()
   const pending = current.filter(v => v.id.startsWith('local-'))
-  if (pending.length === 0) return
+  if (pending.length === 0) return { failedCount: 0 }
 
   syncInFlight = true
+  let failedCount = 0
   try {
     for (const item of pending) {
       try {
@@ -132,17 +133,22 @@ export async function syncPendingVariations(
             savedAt: new Date(item.savedAt).toISOString(),
           }),
         })
-        if (!res.ok) continue
+        if (!res.ok) {
+          failedCount++
+          continue
+        }
         const saved: ServerVariation = await res.json()
         onPromoted(item.id, fromServer(saved))
       } catch {
-        // Still offline — abort remaining retries for this cycle
+        // Still offline — count the rest as failed and abort
+        failedCount += pending.filter(p => p.id.startsWith('local-')).length
         break
       }
     }
   } finally {
     syncInFlight = false
   }
+  return { failedCount }
 }
 
 // ─── Hook ─────────────────────────────────────────────────────────────────────
@@ -150,9 +156,11 @@ export async function syncPendingVariations(
 export function useSavedVariations() {
   const [variations, setVariations] = useState<SavedVariation[]>(readLocalVariations)
   const [storageError, setStorageError] = useState<string | null>(null)
+  const [syncError, setSyncError] = useState<string | null>(null)
   const [syncing, setSyncing] = useState(false)
 
   const clearStorageError = useCallback(() => setStorageError(null), [])
+  const clearSyncError = useCallback(() => setSyncError(null), [])
 
   // Persist to localStorage whenever variations change; surface quota errors.
   // Skip the very first render (data was just read from localStorage — no need to re-write it).
@@ -224,8 +232,18 @@ export function useSavedVariations() {
   // Retry syncing any local-* items that were saved while the server was down.
   // Safe to call from an effect with an empty dependency array because it reads
   // localStorage directly instead of closing over the `variations` state value.
-  const retryPendingSync = useCallback(() => {
-    void syncPendingVariations(promoteLocal)
+  // Returns a promise so callers can await the result if needed.
+  const retryPendingSync = useCallback(async () => {
+    const { failedCount } = await syncPendingVariations(promoteLocal)
+    if (failedCount > 0) {
+      setSyncError(
+        failedCount === 1
+          ? '1 variação offline não pôde ser sincronizada. Verifique sua conexão e tente novamente.'
+          : `${failedCount} variações offline não puderam ser sincronizadas. Verifique sua conexão e tente novamente.`,
+      )
+    } else {
+      setSyncError(null)
+    }
   }, [promoteLocal])
 
   // Load from server on mount (if authenticated)
@@ -421,6 +439,8 @@ export function useSavedVariations() {
     updateNotes,
     storageError,
     clearStorageError,
+    syncError,
+    clearSyncError,
     pruneOldest,
     syncing,
     importVariations,

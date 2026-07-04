@@ -589,6 +589,8 @@ function SavedVariationsPanel({
   variations,
   syncing,
   pendingCount,
+  syncError,
+  onClearSyncError,
   onRename,
   onDelete,
   onUpdateNotes,
@@ -598,6 +600,8 @@ function SavedVariationsPanel({
   variations: SavedVariation[]
   syncing: boolean
   pendingCount: number
+  syncError: string | null
+  onClearSyncError: () => void
   onRename: (id: string, name: string) => void
   onDelete: (id: string) => void
   onUpdateNotes: (id: string, notes: string) => void
@@ -698,6 +702,40 @@ function SavedVariationsPanel({
         style={{ display:'none' }}
         onChange={handleFileChange}
       />
+      {/* Sync error banner */}
+      {syncError && (
+        <div style={{
+          display:'flex', alignItems:'flex-start', gap:10,
+          padding:'10px 14px',
+          background:'rgba(239,68,68,0.1)',
+          borderBottom:'1px solid rgba(239,68,68,0.25)',
+        }}>
+          <span style={{ fontSize:14, lineHeight:1, flexShrink:0, marginTop:1 }}>⚠️</span>
+          <span style={{ flex:1, fontSize:10, color:'rgba(252,165,165,0.95)', lineHeight:1.5 }}>
+            {syncError}
+          </span>
+          <div style={{ display:'flex', gap:6, flexShrink:0 }}>
+            <button
+              onClick={e => { e.stopPropagation(); onRetrySync() }}
+              style={{
+                padding:'3px 10px', borderRadius:5, cursor:'pointer', fontSize:9, fontWeight:700,
+                border:'1px solid rgba(239,68,68,0.5)',
+                background:'rgba(239,68,68,0.15)', color:'rgba(252,165,165,0.95)',
+              }}>
+              Tentar novamente
+            </button>
+            <button
+              onClick={e => { e.stopPropagation(); onClearSyncError() }}
+              style={{
+                padding:'3px 8px', borderRadius:5, cursor:'pointer', fontSize:9, fontWeight:700,
+                border:'1px solid rgba(255,255,255,0.1)',
+                background:'transparent', color:'rgba(255,255,255,0.4)',
+              }}>
+              ✕
+            </button>
+          </div>
+        </div>
+      )}
       <div
         onClick={() => setOpen(p => !p)}
         style={{ padding:'10px 14px', background:'rgba(255,255,255,0.03)', display:'flex', alignItems:'center', gap:8, cursor:'pointer' }}>
@@ -828,7 +866,7 @@ function AIEPlaywrightTab({
   const [refreshFlash, setRefreshFlash] = useState(false)
   const [linkedVariationName, setLinkedVariationName] = useState<string | null>(null)
 
-  const { variations, syncing, pendingCount, retryPendingSync, save, rename, remove, updateNotes, storageError, clearStorageError, pruneOldest, importVariations } = useSavedVariations()
+  const { variations, syncing, pendingCount, retryPendingSync, save, rename, remove, updateNotes, storageError, clearStorageError, syncError, clearSyncError, pruneOldest, importVariations } = useSavedVariations()
 
   const searchString = useSearch()
   const [location] = useLocation()
@@ -1095,6 +1133,8 @@ function AIEPlaywrightTab({
           variations={variations}
           syncing={syncing}
           pendingCount={pendingCount}
+          syncError={syncError}
+          onClearSyncError={clearSyncError}
           onRename={rename}
           onDelete={remove}
           onUpdateNotes={updateNotes}
