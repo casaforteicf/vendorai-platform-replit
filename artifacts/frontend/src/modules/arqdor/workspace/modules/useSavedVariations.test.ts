@@ -9,6 +9,9 @@ import {
   resetSyncInFlight,
   syncPendingVariations,
   persistVariations,
+  getStalenessInfo,
+  STALE_AMBER_DAYS,
+  STALE_RED_DAYS,
 } from './useSavedVariations'
 import type { SavedVariation } from './useSavedVariations'
 
@@ -2251,5 +2254,108 @@ describe('badge stays accurate after the hook is unmounted and remounted mid-syn
     expect(result2.current.variations).toHaveLength(1)
     expect(result2.current.variations[0].id).toBe('srv-remount-promoted-1')
     expect(result2.current.pendingCount).toBe(0)
+  })
+})
+
+// ─── getStalenessInfo: threshold crossing ─────────────────────────────────────
+
+describe('getStalenessInfo', () => {
+  const MS_PER_HOUR = 1000 * 60 * 60
+  const MS_PER_DAY = MS_PER_HOUR * 24
+  const NOW = 1_720_000_000_000 // fixed "current" time for all tests
+
+  // ── fresh zone (<STALE_AMBER_DAYS days) ───────────────────────────────────
+
+  it('returns fresh level when savedAt is just moments ago (<1 h)', () => {
+    const savedAt = NOW - 5 * 60 * 1000 // 5 minutes ago
+    const { level, label } = getStalenessInfo(savedAt, NOW)
+    expect(level).toBe('fresh')
+    expect(label).toBe('Aguardando sync há pouco')
+  })
+
+  it('returns fresh level at exactly 1 hour and shows the hour count', () => {
+    const savedAt = NOW - 1 * MS_PER_HOUR // exactly 1 h ago
+    const { level, label } = getStalenessInfo(savedAt, NOW)
+    expect(level).toBe('fresh')
+    expect(label).toBe('Aguardando sync há 1h')
+  })
+
+  it('returns fresh level at 23 h 59 m (just under the amber threshold)', () => {
+    const savedAt = NOW - (STALE_AMBER_DAYS * MS_PER_DAY - 60_000) // 1 min short of amber
+    const { level, label } = getStalenessInfo(savedAt, NOW)
+    expect(level).toBe('fresh')
+    expect(label).toBe('Aguardando sync há 23h')
+  })
+
+  // ── amber zone (STALE_AMBER_DAYS ≤ days < STALE_RED_DAYS) ────────────────
+
+  it('crosses into amber at exactly STALE_AMBER_DAYS (24 h)', () => {
+    const savedAt = NOW - STALE_AMBER_DAYS * MS_PER_DAY // exactly 1 day
+    const { level, label } = getStalenessInfo(savedAt, NOW)
+    expect(level).toBe('amber')
+    expect(label).toBe('Aguardando sync há 1 dia')
+  })
+
+  it('stays amber at 1 day + 1 hour and shows singular day label', () => {
+    const savedAt = NOW - (STALE_AMBER_DAYS * MS_PER_DAY + MS_PER_HOUR)
+    const { level, label } = getStalenessInfo(savedAt, NOW)
+    expect(level).toBe('amber')
+    expect(label).toBe('Aguardando sync há 1 dia')
+  })
+
+  it('stays amber at 2 days and shows plural day label', () => {
+    const savedAt = NOW - 2 * MS_PER_DAY
+    const { level, label } = getStalenessInfo(savedAt, NOW)
+    expect(level).toBe('amber')
+    expect(label).toContain('2 dias')
+  })
+
+  it('stays amber 1 minute before the red threshold', () => {
+    const savedAt = NOW - (STALE_RED_DAYS * MS_PER_DAY - 60_000)
+    const { level } = getStalenessInfo(savedAt, NOW)
+    expect(level).toBe('amber')
+  })
+
+  // ── red zone (≥ STALE_RED_DAYS days) ─────────────────────────────────────
+
+  it('crosses into red at exactly STALE_RED_DAYS (72 h)', () => {
+    const savedAt = NOW - STALE_RED_DAYS * MS_PER_DAY // exactly 3 days
+    const { level, label } = getStalenessInfo(savedAt, NOW)
+    expect(level).toBe('red')
+    expect(label).toBe('Aguardando sync há 3 dias')
+  })
+
+  it('stays red at STALE_RED_DAYS + 1 hour', () => {
+    const savedAt = NOW - (STALE_RED_DAYS * MS_PER_DAY + MS_PER_HOUR)
+    const { level, label } = getStalenessInfo(savedAt, NOW)
+    expect(level).toBe('red')
+    expect(label).toBe('Aguardando sync há 3 dias')
+  })
+
+  it('stays red at many days (e.g. 7 days)', () => {
+    const savedAt = NOW - 7 * MS_PER_DAY
+    const { level, label } = getStalenessInfo(savedAt, NOW)
+    expect(level).toBe('red')
+    expect(label).toContain('7 dias')
+  })
+
+  // ── edge cases ────────────────────────────────────────────────────────────
+
+  it('uses Date.now() when no explicit now argument is passed', () => {
+    // savedAt far in the past should always be red regardless of actual wall time
+    const savedAt = Date.now() - 10 * MS_PER_DAY
+    const { level } = getStalenessInfo(savedAt)
+    expect(level).toBe('red')
+  })
+
+  it('handles savedAt equal to now (0 ms elapsed) as fresh', () => {
+    const { level, label } = getStalenessInfo(NOW, NOW)
+    expect(level).toBe('fresh')
+    expect(label).toBe('Aguardando sync há pouco')
+  })
+
+  it('STALE_AMBER_DAYS and STALE_RED_DAYS constants maintain their relative order', () => {
+    expect(STALE_AMBER_DAYS).toBeGreaterThan(0)
+    expect(STALE_RED_DAYS).toBeGreaterThan(STALE_AMBER_DAYS)
   })
 })
