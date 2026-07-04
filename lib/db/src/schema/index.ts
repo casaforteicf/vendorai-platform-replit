@@ -150,3 +150,4 @@ export * from "./poe_recommendations";
 export * from "./poe_quotations";
 export * from "./arqdor_workspace_projects";
 export * from "./content_library";
+export * from "./bug_reports";

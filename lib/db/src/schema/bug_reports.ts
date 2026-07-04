@@ -1,0 +1,54 @@
+import { pgTable, text, timestamp, pgEnum } from "drizzle-orm/pg-core";
+import { createInsertSchema, createSelectSchema } from "drizzle-zod";
+import { z } from "zod/v4";
+import { tenantsTable } from "./tenants";
+
+export const bugReportCategoriaEnum = pgEnum("bug_report_categoria", [
+  "bug",
+  "duvida",
+  "sugestao",
+]);
+
+export const bugReportStatusEnum = pgEnum("bug_report_status", [
+  "aberto",
+  "em_analise",
+  "resolvido",
+]);
+
+export const bugReportPrioridadeEnum = pgEnum("bug_report_prioridade", [
+  "baixa",
+  "media",
+  "alta",
+  "critica",
+]);
+
+export const bugReportsTable = pgTable("bug_reports", {
+  id: text("id")
+    .primaryKey()
+    .$defaultFn(() => crypto.randomUUID()),
+  tenantId: text("tenant_id")
+    .notNull()
+    .references(() => tenantsTable.id, { onDelete: "cascade" }),
+  titulo: text("titulo").notNull(),
+  descricao: text("descricao").notNull(),
+  categoria: bugReportCategoriaEnum("categoria").notNull().default("bug"),
+  status: bugReportStatusEnum("status").notNull().default("aberto"),
+  prioridade: bugReportPrioridadeEnum("prioridade").notNull().default("media"),
+  rotaAfetada: text("rota_afetada"),
+  erroTecnico: text("erro_tecnico"),
+  stackTrace: text("stack_trace"),
+  respostaSuporte: text("resposta_suporte"),
+  resolvidoAt: timestamp("resolvido_at"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at")
+    .notNull()
+    .defaultNow()
+    .$onUpdateFn(() => new Date()),
+});
+
+export const insertBugReportSchema = createInsertSchema(bugReportsTable, {
+  titulo: z.string().min(1).max(255),
+  descricao: z.string().min(1),
+});
+
+export const selectBugReportSchema = createSelectSchema(bugReportsTable);
