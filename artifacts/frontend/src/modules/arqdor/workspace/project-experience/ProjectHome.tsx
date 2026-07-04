@@ -900,6 +900,50 @@ export function ProjectHome({
         onNavigate={onNavigate}
       />
 
+      {/* ══ PROJECT COCKPIT ══ */}
+      <div style={{ padding:'10px 16px 0', flexShrink:0 }}>
+        <p style={{ margin:'0 0 8px 2px', fontSize:8, fontWeight:800, color:T.dim, letterSpacing:'0.1em' }}>
+          COCKPIT — ACESSO RÁPIDO
+        </p>
+        <div style={{ display:'grid', gridTemplateColumns:'repeat(4,1fr)', gap:6, marginBottom:10 }}>
+          {([
+            { icon:'🎬', label:'Novo Render',      desc:'Gerar render IA',          module:'renders',      color:'#60a5fa' },
+            { icon:'✨', label:'Especificação',    desc:'Especificar com IA',        module:'especificacao', color:'#a78bfa', badge:'NEW' },
+            { icon:'📚', label:'Biblioteca',       desc:'Catálogo de materiais',     module:'biblioteca',   color:'#34d399' },
+            { icon:'⚡', label:'Prompt Studio',    desc:'Testar variações',          module:'prompt',       color:'#fbbf24' },
+            { icon:'🏗️', label:'Modelagem',        desc:'Ambientes e objetos',       module:'projeto',      color:'#fb923c' },
+            { icon:'🔍', label:'AI Review',        desc:'Revisão comparativa',       module:'ai-review',    color:'#f87171' },
+            { icon:'👤', label:'Portal Cliente',   desc:'Compartilhar projeto',      module:'cliente',      color:'#4ade80' },
+            { icon:'🏛️', label:'ARQ HUB',          desc:'Ecosystem & analytics',     module:'arqhub',       color:'#f472b6' },
+          ] as { icon:string; label:string; desc:string; module:string; color:string; badge?:string }[]).map(a => (
+            <button
+              key={a.module}
+              onClick={() => onNavigate(a.module)}
+              className="px-stat-card"
+              style={{
+                padding:'10px 12px', borderRadius:T.r.lg, cursor:'pointer', textAlign:'left',
+                background:`${a.color}08`, border:`1px solid ${a.color}22`,
+                display:'flex', flexDirection:'column' as const, gap:4, position:'relative', overflow:'hidden',
+              }}
+            >
+              <div style={{ display:'flex', alignItems:'center', gap:6 }}>
+                <span style={{ fontSize:16 }}>{a.icon}</span>
+                <span style={{ fontSize:9, fontWeight:800, color:a.color, letterSpacing:'0.03em' }}>
+                  {a.label}
+                </span>
+                {a.badge && (
+                  <span style={{ fontSize:7, padding:'1px 4px', borderRadius:8, background:`${a.color}22`, color:a.color, fontWeight:800, marginLeft:'auto' }}>
+                    {a.badge}
+                  </span>
+                )}
+              </div>
+              <p style={{ margin:0, fontSize:9, color:T.dim, lineHeight:1.3 }}>{a.desc}</p>
+              <div style={{ position:'absolute', bottom:0, left:0, right:0, height:2, background:`linear-gradient(90deg, ${a.color}44, transparent)` }}/>
+            </button>
+          ))}
+        </div>
+      </div>
+
       {/* Body */}
       <div style={{ flex:1, display:'flex', overflow:'hidden' }}>
 
