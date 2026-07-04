@@ -5,6 +5,7 @@ import {
   db,
   contentGenerationsTable,
   contentStudioUploadsTable,
+  contentLibraryTable,
   agentConfigsTable,
   businessProfilesTable,
   produtosCatalogoTable,
@@ -21,6 +22,7 @@ import {
   generateImagesWithReference,
   generateContentStrategy,
   describeImage,
+  improveVariationText,
 } from "../lib/content-generation.js";
 import { publishFeedPost, publishStoriesPost } from "../lib/instagram-publish.js";
 import type { FeedVariation, StoriesVariation } from "@workspace/db";
@@ -601,6 +603,82 @@ router.post("/tenants/:tenantId/content/:contentId/variations/:idx/regenerate-im
     const msg = err instanceof Error ? err.message : "Falha ao regenerar imagem";
     res.status(502).json({ error: msg });
   }
+});
+
+// ── Melhorar texto ────────────────────────────────────────────────────────────
+
+const improveBodySchema = z.object({
+  type: z.enum(["feed", "stories", "reels"]),
+  variation: z.record(z.unknown()),
+  theme: z.string().optional().nullable(),
+});
+
+router.post("/tenants/:tenantId/content/improve", async (req, res) => {
+  const tenantId = String(req.params["tenantId"]);
+  if (req.user?.platformRole !== "super_admin" && req.user?.tenantId !== tenantId) {
+    res.status(403).json({ error: "Acesso negado" }); return;
+  }
+  const parsed = improveBodySchema.safeParse(req.body);
+  if (!parsed.success) { res.status(422).json({ error: parsed.error.message }); return; }
+  try {
+    const { type, variation, theme } = parsed.data;
+    const { variation: improved, tokensUsed } = await improveVariationText(
+      tenantId, type, variation as Parameters<typeof improveVariationText>[2], theme ?? undefined,
+    );
+    res.json({ variation: improved, tokensUsed });
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : "Falha ao melhorar texto";
+    res.status(502).json({ error: msg });
+  }
+});
+
+// ── Biblioteca de Conteúdo ─────────────────────────────────────────────────────
+
+const libraryBodySchema = z.object({
+  type: z.enum(["feed", "stories", "reels"]),
+  variation: z.record(z.unknown()),
+  theme: z.string().optional().nullable(),
+  title: z.string().optional().nullable(),
+});
+
+router.post("/tenants/:tenantId/content/library", async (req, res) => {
+  const tenantId = String(req.params["tenantId"]);
+  if (req.user?.platformRole !== "super_admin" && req.user?.tenantId !== tenantId) {
+    res.status(403).json({ error: "Acesso negado" }); return;
+  }
+  const parsed = libraryBodySchema.safeParse(req.body);
+  if (!parsed.success) { res.status(422).json({ error: parsed.error.message }); return; }
+  const { type, variation, theme, title } = parsed.data;
+  const [row] = await db
+    .insert(contentLibraryTable)
+    .values({ id: crypto.randomUUID(), tenantId, type, variation, theme: theme ?? null, title: title ?? null })
+    .returning();
+  res.json(row);
+});
+
+router.get("/tenants/:tenantId/content/library", async (req, res) => {
+  const tenantId = String(req.params["tenantId"]);
+  if (req.user?.platformRole !== "super_admin" && req.user?.tenantId !== tenantId) {
+    res.status(403).json({ error: "Acesso negado" }); return;
+  }
+  const items = await db
+    .select()
+    .from(contentLibraryTable)
+    .where(eq(contentLibraryTable.tenantId, tenantId))
+    .orderBy(desc(contentLibraryTable.savedAt));
+  res.json({ items });
+});
+
+router.delete("/tenants/:tenantId/content/library/:id", async (req, res) => {
+  const tenantId = String(req.params["tenantId"]);
+  const id = String(req.params["id"]);
+  if (req.user?.platformRole !== "super_admin" && req.user?.tenantId !== tenantId) {
+    res.status(403).json({ error: "Acesso negado" }); return;
+  }
+  await db
+    .delete(contentLibraryTable)
+    .where(and(eq(contentLibraryTable.id, id), eq(contentLibraryTable.tenantId, tenantId)));
+  res.json({ success: true });
 });
 
 // ── Content Studio Uploads (Passo 3) ─────────────────────────────────────────

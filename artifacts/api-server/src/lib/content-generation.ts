@@ -567,3 +567,88 @@ Regras:
 
   return { strategy, tokensUsed };
 }
+
+// ── Melhorar texto ────────────────────────────────────────────────────────────
+
+export async function improveVariationText(
+  tenantId: string,
+  type: ContentType,
+  variation: ContentVariation,
+  theme?: string,
+): Promise<{ variation: ContentVariation; tokensUsed: number }> {
+  let prompt: string;
+
+  if (type === "feed") {
+    const v = variation as FeedVariation;
+    prompt = `Você é um copywriter especialista em Instagram. Abaixo está uma legenda de Feed existente${theme ? ` sobre "${theme}"` : ""}.
+
+Reescreva-a tornando-a mais forte e persuasiva:
+- Melhore o hook das primeiras 2 linhas para parar o scroll
+- Aumente o impacto emocional
+- Mantenha a mesma mensagem central mas com mais energia
+- Mantenha ou melhore as hashtags (15-20, ainda relevantes)
+
+Legenda atual:
+${v.caption}
+
+Hashtags atuais:
+${v.hashtags.join(" ")}
+
+Retorne SOMENTE JSON válido no formato:
+{"caption": "...", "hashtags": ["#hashtag1", "#hashtag2"]}`;
+
+  } else if (type === "stories") {
+    const v = variation as StoriesVariation;
+    prompt = `Você é um copywriter especialista em Instagram Stories. Abaixo está um texto de Stories existente${theme ? ` sobre "${theme}"` : ""}.
+
+Reescreva tornando-o mais direto, impactante e urgente:
+- Cada tela deve ter no máximo 2-3 linhas curtas
+- Use gatilhos emocionais mais fortes
+- Melhore o CTA para ser mais específico e irresistível
+- Mantenha o mesmo tema e objetivo
+
+Texto atual:
+${v.text}
+
+CTA atual:
+${v.cta}
+
+Retorne SOMENTE JSON válido no formato:
+{"text": "...", "cta": "..."}`;
+
+  } else {
+    const v = variation as ReelsVariation;
+    const scenesStr = v.scenes.map((s, i) =>
+      `Cena ${i + 1}: [Visual: ${s.visual}] [Fala: ${s.fala}] [Duração: ${s.duracao}]`
+    ).join("\n");
+
+    prompt = `Você é um roteirista especialista em Reels do Instagram${theme ? ` sobre "${theme}"` : ""}.
+
+Reescreva este roteiro tornando-o mais dinâmico e viral:
+- Torne os primeiros 3 segundos ainda mais impactantes (hook visual e verbal)
+- Adicione mais ritmo e energia às cenas
+- Deixe as falas mais naturais e coloquiais
+- Mantenha a mesma quantidade de cenas e duração total
+
+Roteiro atual:
+${scenesStr}
+
+CTA atual:
+${v.cta}
+
+Retorne SOMENTE JSON válido no formato:
+{"title": "...", "scenes": [{"visual": "...", "fala": "...", "duracao": "..."}], "audioSuggestion": "...", "cta": "..."}`;
+  }
+
+  const result = await gatewayCallOpenAI(
+    tenantId,
+    "content_generator",
+    [{ role: "user", content: prompt }],
+    { model: "gpt-4o-mini", responseFormat: { type: "json_object" }, temperature: 0.85 },
+  );
+
+  const tokensUsed = result.inputTokens + result.outputTokens;
+  const raw = JSON.parse(result.content || "{}") as Partial<ContentVariation>;
+
+  return { variation: raw as ContentVariation, tokensUsed };
+}

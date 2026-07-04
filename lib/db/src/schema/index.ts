@@ -149,3 +149,4 @@ export * from "./poe_opportunities";
 export * from "./poe_recommendations";
 export * from "./poe_quotations";
 export * from "./arqdor_workspace_projects";
+export * from "./content_library";

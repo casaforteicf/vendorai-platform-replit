@@ -800,6 +800,7 @@ function VariationCard({
   variation,
   contentId,
   tenantId,
+  theme,
   referenceImageUrl,
 }: {
   index: number;
@@ -807,6 +808,7 @@ function VariationCard({
   variation: ContentVariation;
   contentId?: string;
   tenantId?: string;
+  theme?: string;
   referenceImageUrl?: string | null;
 }) {
   const [localImageUrl, setLocalImageUrl] = useState<string | undefined>(undefined);
@@ -818,6 +820,60 @@ function VariationCard({
       : localImageUrl ? { ...variation, imageUrl: localImageUrl } : variation;
 
   const hasImage = !!(effectiveVariation as { imageUrl?: string }).imageUrl;
+
+  const { toast } = useToast();
+
+  // ── Melhorar texto ────────────────────────────────────────────────────────
+  const [improvedVariation, setImprovedVariation] = useState<ContentVariation | null>(null);
+
+  const improveMutation = useMutation<{ variation: ContentVariation }, Error, void>({
+    mutationFn: async () => {
+      const token = localStorage.getItem("vendorai_token");
+      const res = await fetch(`/api/tenants/${tenantId}/content/improve`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ type, variation: displayVariation, theme }),
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({ error: "Erro desconhecido" }));
+        throw new Error(err.error ?? "Falha ao melhorar");
+      }
+      return res.json();
+    },
+    onSuccess: (data) => {
+      setImprovedVariation(data.variation);
+      toast({ title: "Texto melhorado!", description: "O conteúdo foi reescrito com mais impacto." });
+    },
+    onError: (err) => {
+      toast({ title: "Erro ao melhorar", description: err.message, variant: "destructive" });
+    },
+  });
+
+  // ── Salvar na Biblioteca ──────────────────────────────────────────────────
+  const [savedToLibrary, setSavedToLibrary] = useState(false);
+
+  const saveMutation = useMutation<unknown, Error, void>({
+    mutationFn: async () => {
+      const token = localStorage.getItem("vendorai_token");
+      const res = await fetch(`/api/tenants/${tenantId}/content/library`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ type, variation: displayVariation, theme }),
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({ error: "Erro desconhecido" }));
+        throw new Error(err.error ?? "Falha ao salvar");
+      }
+      return res.json();
+    },
+    onSuccess: () => {
+      setSavedToLibrary(true);
+      toast({ title: "Salvo na Biblioteca!", description: "Disponível na seção Biblioteca de Conteúdo abaixo." });
+    },
+    onError: (err) => {
+      toast({ title: "Erro ao salvar", description: err.message, variant: "destructive" });
+    },
+  });
 
   const [editing, setEditing] = useState(false);
   const [editCaption, setEditCaption] = useState("");
@@ -833,9 +889,11 @@ function VariationCard({
     savedCaption !== undefined || savedHashtags !== undefined ||
     savedText !== undefined || savedCta !== undefined;
 
+  const baseVariation = improvedVariation ?? effectiveVariation;
+
   const displayVariation: ContentVariation = (() => {
     if (type === "feed") {
-      const v = effectiveVariation as FeedVariation;
+      const v = baseVariation as FeedVariation;
       return {
         ...v,
         caption: savedCaption ?? v.caption,
@@ -845,10 +903,10 @@ function VariationCard({
       };
     }
     if (type === "stories") {
-      const v = effectiveVariation as StoriesVariation;
+      const v = baseVariation as StoriesVariation;
       return { ...v, text: savedText ?? v.text, cta: savedCta ?? v.cta };
     }
-    return effectiveVariation;
+    return baseVariation;
   })();
 
   const captionOverride: string | undefined = (() => {
@@ -992,6 +1050,51 @@ function VariationCard({
             hasImage={hasImage}
           />
         )}
+
+        {/* ── Ações pós-geração ── */}
+        {tenantId && (
+          <div className="flex items-center gap-2 pt-2 border-t mt-3 flex-wrap">
+            <Button
+              variant="outline"
+              size="sm"
+              className="text-xs gap-1 h-7"
+              onClick={() => improveMutation.mutate()}
+              disabled={improveMutation.isPending || saveMutation.isPending}
+              title="Reescreve o texto com mais impacto usando IA"
+            >
+              {improveMutation.isPending
+                ? <Loader2 className="h-3 w-3 animate-spin" />
+                : <Wand2 className="h-3 w-3" />}
+              {improveMutation.isPending ? "Melhorando..." : "Melhorar texto"}
+            </Button>
+            <Button
+              variant={savedToLibrary ? "secondary" : "outline"}
+              size="sm"
+              className="text-xs gap-1 h-7"
+              onClick={() => { if (!savedToLibrary) saveMutation.mutate(); }}
+              disabled={saveMutation.isPending || savedToLibrary}
+              title="Salva na Biblioteca para reutilizar depois"
+            >
+              {saveMutation.isPending
+                ? <Loader2 className="h-3 w-3 animate-spin" />
+                : savedToLibrary
+                  ? <CheckCircle2 className="h-3 w-3 text-green-600" />
+                  : <Archive className="h-3 w-3" />}
+              {saveMutation.isPending ? "Salvando..." : savedToLibrary ? "Salvo!" : "Salvar na Biblioteca"}
+            </Button>
+            {improvedVariation && (
+              <Button
+                variant="ghost"
+                size="sm"
+                className="text-xs gap-1 h-7 text-muted-foreground"
+                onClick={() => { setImprovedVariation(null); setSavedToLibrary(false); }}
+              >
+                <RefreshCw className="h-3 w-3" />
+                Restaurar original
+              </Button>
+            )}
+          </div>
+        )}
       </CardContent>
     </Card>
   );
@@ -1062,7 +1165,7 @@ function HistoryItem({
             <p className="text-xs text-muted-foreground text-center py-2">Sem variações salvas.</p>
           ) : (
             item.result.variations.map((v, i) => (
-              <VariationCard key={i} index={i} type={item.type} variation={v} contentId={item.id} tenantId={item.tenantId} />
+              <VariationCard key={i} index={i} type={item.type} variation={v} contentId={item.id} tenantId={item.tenantId} theme={item.theme} />
             ))
           )}
         </div>
@@ -1146,6 +1249,33 @@ export default function Content() {
     : isInsumo
     ? insumosProducts?.map((p) => ({ id: p.id, nome: p.nome }))
     : catalogProducts?.map((p) => ({ id: p.id, nome: p.nome }));
+
+  type ContentLibraryItem = { id: string; tenantId: string; type: ContentType; variation: ContentVariation; theme: string | null; title: string | null; savedAt: string };
+
+  const { data: library, isLoading: libraryLoading } = useQuery<{ items: ContentLibraryItem[] }>({
+    queryKey: ["content-library", tenantId],
+    queryFn: async () => {
+      const res = await fetch(`/api/tenants/${tenantId}/content/library`, {
+        headers: { Authorization: `Bearer ${localStorage.getItem("vendorai_token")}` },
+      });
+      if (!res.ok) throw new Error(await res.text());
+      return res.json();
+    },
+    enabled: !!tenantId,
+  });
+
+  const deleteLibraryMutation = useMutation<void, Error, string>({
+    mutationFn: async (id) => {
+      const res = await fetch(`/api/tenants/${tenantId}/content/library/${id}`, {
+        method: "DELETE",
+        headers: { Authorization: `Bearer ${localStorage.getItem("vendorai_token")}` },
+      });
+      if (!res.ok) throw new Error(await res.text());
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["content-library", tenantId] });
+    },
+  });
 
   const { data: history, isLoading: historyLoading } = useQuery<ListContentResponse>({
     queryKey: ["content", tenantId],
@@ -1826,23 +1956,35 @@ export default function Content() {
 
                     {!generateMutation.isPending && lastResult && (
                       <div className="space-y-3">
-                        <div className="flex items-center justify-between">
+                        <div className="flex items-center justify-between flex-wrap gap-2">
                           <p className="text-sm font-medium text-muted-foreground">
                             {lastResult.result.variations.length} variações geradas
                           </p>
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            className="text-xs gap-1"
-                            onClick={() => downloadAllImagesZip(lastResult.result.variations, lastResult.type, setZipping, toast)}
-                            disabled={zipping}
-                          >
-                            {zipping ? <Loader2 className="h-3 w-3 animate-spin" /> : <Archive className="h-3 w-3" />}
-                            {zipping ? "Criando ZIP..." : "Baixar todas (ZIP)"}
-                          </Button>
+                          <div className="flex items-center gap-2">
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              className="text-xs gap-1"
+                              onClick={handleGenerate}
+                              disabled={generateMutation.isPending}
+                            >
+                              <RefreshCw className="h-3 w-3" />
+                              Regerar
+                            </Button>
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              className="text-xs gap-1"
+                              onClick={() => downloadAllImagesZip(lastResult.result.variations, lastResult.type, setZipping, toast)}
+                              disabled={zipping}
+                            >
+                              {zipping ? <Loader2 className="h-3 w-3 animate-spin" /> : <Archive className="h-3 w-3" />}
+                              {zipping ? "Criando ZIP..." : "Baixar todas (ZIP)"}
+                            </Button>
+                          </div>
                         </div>
                         {lastResult.result.variations.map((v, i) => (
-                          <VariationCard key={i} index={i} type={lastResult.type} variation={v} contentId={lastResult.id} tenantId={tenantId} referenceImageUrl={uploadedImages.find((img) => img.purpose === "style_reference" && !img.uploading)?.url ?? null} />
+                          <VariationCard key={i} index={i} type={lastResult.type} variation={v} contentId={lastResult.id} tenantId={tenantId} theme={lastResult.theme} referenceImageUrl={uploadedImages.find((img) => img.purpose === "style_reference" && !img.uploading)?.url ?? null} />
                         ))}
                       </div>
                     )}
@@ -1862,6 +2004,64 @@ export default function Content() {
           </TabsContent>
         ))}
       </Tabs>
+
+      {/* Biblioteca de Conteúdo */}
+      {((library?.items?.length ?? 0) > 0 || libraryLoading) && (
+        <div>
+          <h2 className="text-base font-semibold mb-3 flex items-center gap-2">
+            <Archive className="h-4 w-4 text-muted-foreground" />
+            Biblioteca de Conteúdo
+            {(library?.items?.length ?? 0) > 0 && (
+              <Badge variant="secondary" className="text-xs">{library!.items.length}</Badge>
+            )}
+          </h2>
+          <Card>
+            <CardContent className="p-0">
+              {libraryLoading ? (
+                <div className="py-8 flex justify-center">
+                  <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
+                </div>
+              ) : (
+                <div className="divide-y">
+                  {library!.items.map((item) => (
+                    <div key={item.id} className="px-4 py-3">
+                      <div className="flex items-center justify-between mb-2 gap-2">
+                        <div className="flex items-center gap-2">
+                          <Badge variant="outline" className="text-xs">
+                            {TYPE_CONFIG[item.type]?.label ?? item.type}
+                          </Badge>
+                          {item.theme && (
+                            <span className="text-xs text-muted-foreground truncate max-w-[200px]">{item.theme}</span>
+                          )}
+                          <span className="text-xs text-muted-foreground">
+                            {new Date(item.savedAt).toLocaleDateString("pt-BR", { day: "2-digit", month: "short" })}
+                          </span>
+                        </div>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="h-6 px-2 text-xs text-muted-foreground hover:text-destructive"
+                          onClick={() => deleteLibraryMutation.mutate(item.id)}
+                          disabled={deleteLibraryMutation.isPending}
+                        >
+                          <Trash2 className="h-3 w-3" />
+                        </Button>
+                      </div>
+                      <VariationCard
+                        index={0}
+                        type={item.type}
+                        variation={item.variation}
+                        tenantId={tenantId}
+                        theme={item.theme ?? undefined}
+                      />
+                    </div>
+                  ))}
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        </div>
+      )}
 
       {/* History */}
       <div>
