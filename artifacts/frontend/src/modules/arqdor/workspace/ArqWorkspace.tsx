@@ -1,8 +1,17 @@
-// ─── ArqWorkspace — Sprint 5: Product Experience 2.0 ─────────────────────────
-// Journey-based navigation, Command Palette (⌘K), Favorites, Keyboard shortcuts.
-// Qualquer recurso em menos de 3 cliques ou 2 teclas.
+// ─── ArqWorkspace — PROJECT PHOENIX: UX Redesign ─────────────────────────────
+// Antes: dashboard de IA complexo, escuro, muitos menus.
+// Depois: software premium para arquitetos. Figma + Notion + Linear.
+//
+// Princípios aplicados:
+// • Esconder complexidade — usuário pensa em objetivos, não em módulos
+// • Espaço em branco — menos elementos, mais impacto
+// • Roxo como destaque único — nunca como fundo dominante
+// • Fluxo linear — Criar → Inspirar → Renderizar → Melhorar → Especificar → Apresentar → Entregar
+// • ✨ Gerar Render sempre visível — CTA principal nunca some
+// • Linguagem humana — sem termos técnicos no UI
 
-import { useState, useEffect, useRef, useCallback } from 'react'
+import { useState, useEffect, useRef, useCallback, Suspense } from 'react'
+import { createContext, useContext, useMemo } from 'react'
 import { ArqCopilot }            from '../copilot/ui/ArqCopilot'
 import { WorkspaceProvider, useWorkspaceProject } from './WorkspaceContext'
 import { IntegrationModule }     from './modules/IntegrationModule'
@@ -21,12 +30,12 @@ import { ProjectModule }         from './modules/ProjectModule'
 import { ArqHubView }            from '../arqhub/ArqHubView'
 import { AIEDashboard }          from '../engines/aie/dashboard/AIEDashboard'
 import { useArqProject, type ArqProjectState } from '../hooks/useArqProject'
-import { ProjectHome, computeNextAction } from './project-experience/ProjectHome'
+import { ProjectHomePhoenix, RenderProgressModal } from './project-experience/ProjectHomePhoenix'
+import { computeNextAction }     from './project-experience/ProjectHome'
 import { ArqCommandPalette }     from './ArqCommandPalette'
 import { runAIE }                from '../engines/aie/aie-engine'
-import { createContext, useContext, useMemo, Suspense } from 'react'
-import { T } from '../shared/arqdor-theme'
-import type { ProjectContext } from '../engines/aie/aie-types'
+import { PHX, T }                from '../shared/arqdor-theme'
+import type { ProjectContext }   from '../engines/aie/aie-types'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 export type ModuleId =
@@ -38,108 +47,188 @@ export type ModuleId =
 
 export type JourneyId = 'create' | 'design' | 'visualize' | 'deliver' | 'business'
 
-interface WorkspaceModule {
-  id: ModuleId; icon: string; label: string; desc: string
-  badge?: string; badgeColor?: string
-}
-
-interface Journey {
-  id:      JourneyId
-  label:   string
+// ─── Flow steps — nova navegação por objetivos ──────────────────────────────
+// "O usuário nunca deve pensar em módulos. Ele deve pensar em objetivos."
+interface FlowStep {
+  id:      string
   icon:    string
+  label:   string
+  sublabel:string
+  primary: ModuleId
+  extras:  ModuleId[]
   color:   string
-  modules: ModuleId[]
-  key:     string   // keyboard shortcut (1–5)
 }
 
-// ─── Data ─────────────────────────────────────────────────────────────────────
-const MODULE_MAP: Record<ModuleId, WorkspaceModule> = {
-  'home':       { id:'home',       icon:'🏠', label:'Home',           desc:'Dashboard' },
-  'projeto':    { id:'projeto',    icon:'🏗️', label:'Projeto',        desc:'Modelagem' },
-  'biblioteca': { id:'biblioteca', icon:'📚', label:'Biblioteca',     desc:'Materiais' },
-  'prompt':     { id:'prompt',     icon:'⚡', label:'Prompt',         desc:'Playground' },
-  'renders':    { id:'renders',    icon:'🎬', label:'Renders',        desc:'Galeria IA' },
-  'cliente':    { id:'cliente',    icon:'👤', label:'Portal',         desc:'Cliente' },
-  'especificacao':{ id:'especificacao', icon:'✨', label:'Especificação', desc:'Smart Spec', badge:'NEW', badgeColor:'#a78bfa' },
-  'ai-review':  { id:'ai-review',  icon:'🔍', label:'AI Review',      desc:'Análise', badge:'1', badgeColor:'#f87171' },
-  'correcoes':  { id:'correcoes',  icon:'🔄', label:'Correções',      desc:'Ajustes', badge:'4', badgeColor:'#fb923c' },
-  'memoria':    { id:'memoria',    icon:'🧠', label:'Memória IA',     desc:'Preferências' },
-  'config':     { id:'config',     icon:'⚙️', label:'Config',         desc:'Providers' },
-  'arqhub':     { id:'arqhub',     icon:'🏛️', label:'ARQ HUB',       desc:'Ecosystem', badge:'NEW', badgeColor:'#4ade80' },
-  'ai-intel':   { id:'ai-intel',   icon:'🧠', label:'AI Intel',       desc:'AIE Engine', badge:'AIE', badgeColor:'#a78bfa' },
-  'integracao': { id:'integracao', icon:'🔗', label:'Integração',     desc:'Connectors' },
-  'ecosystem':  { id:'ecosystem',  icon:'🌐', label:'Parceiros',      desc:'Ecosystem Engine', badge:'NEW', badgeColor:'#34d399' },
-  'knowledge':  { id:'knowledge',  icon:'🧠', label:'Knowledge',      desc:'Knowledge Engine', badge:'NEW', badgeColor:'#a78bfa' },
-  'office':     { id:'office',     icon:'🏢', label:'Office OS',      desc:'Sistema Operacional', badge:'S9', badgeColor:'#60a5fa' },
-}
-
-const JOURNEYS: Journey[] = [
-  { id:'create',    label:'CREATE',    icon:'✦',  color:'#a78bfa', modules:['home','projeto','prompt'],                          key:'1' },
-  { id:'design',    label:'DESIGN AI', icon:'🤖', color:'#60a5fa', modules:['renders','ai-review','correcoes','memoria'],         key:'2' },
-  { id:'visualize', label:'VISUALIZE', icon:'👁',  color:'#34d399', modules:['renders','biblioteca'],                             key:'3' },
-  { id:'deliver',   label:'DELIVER',   icon:'📦', color:'#fb923c', modules:['especificacao','cliente'],                          key:'4' },
-  { id:'business',  label:'BUSINESS',  icon:'🏛️', color:'#f472b6', modules:['office','ecosystem','knowledge','arqhub','ai-intel','config','integracao'], key:'5' },
+const FLOW_STEPS: FlowStep[] = [
+  { id:'criar',       icon:'✦',  label:'Criar',       sublabel:'Projeto',         primary:'home',          extras:['projeto'],                          color: PHX.purple },
+  { id:'inspirar',    icon:'🖼️', label:'Inspirar',    sublabel:'Biblioteca',      primary:'biblioteca',    extras:[],                                   color: PHX.blue   },
+  { id:'renderizar',  icon:'✨', label:'Renderizar',   sublabel:'Visualização IA', primary:'renders',       extras:['prompt'],                           color: PHX.purple },
+  { id:'melhorar',    icon:'🔄', label:'Melhorar',    sublabel:'Ajustes IA',      primary:'correcoes',     extras:['ai-review','memoria'],              color: PHX.amber  },
+  { id:'especificar', icon:'📋', label:'Especificar', sublabel:'Memorial',        primary:'especificacao', extras:[],                                   color: '#16a34a'  },
+  { id:'apresentar',  icon:'👤', label:'Apresentar',  sublabel:'Portal cliente',  primary:'cliente',       extras:[],                                   color: PHX.cyan   },
+  { id:'entregar',    icon:'📦', label:'Entregar',    sublabel:'Finalizar',       primary:'office',        extras:['ecosystem','knowledge','arqhub'],    color: '#0d9488'  },
 ]
 
-// Journey default first module
-const JOURNEY_DEFAULT: Record<JourneyId, ModuleId> = {
-  create:    'home',
-  design:    'renders',
-  visualize: 'renders',
-  deliver:   'especificacao',
-  business:  'arqhub',
+// Legado — mantido para keyboard shortcuts e command palette
+const MODULE_MAP_INTERNAL: Record<ModuleId, { icon:string; label:string }> = {
+  'home':       { icon:'🏠', label:'Início'       },
+  'projeto':    { icon:'🏗️', label:'Projeto'       },
+  'biblioteca': { icon:'🖼️', label:'Inspirar'      },
+  'prompt':     { icon:'⚡', label:'Prompt'        },
+  'renders':    { icon:'✨', label:'Renderizar'    },
+  'cliente':    { icon:'👤', label:'Apresentar'    },
+  'especificacao':{ icon:'📋', label:'Especificar' },
+  'ai-review':  { icon:'🔍', label:'AI Review'     },
+  'correcoes':  { icon:'🔄', label:'Melhorar'      },
+  'memoria':    { icon:'🧠', label:'Memória IA'    },
+  'config':     { icon:'⚙️', label:'Config'        },
+  'arqhub':     { icon:'🏛️', label:'ARQ HUB'      },
+  'ai-intel':   { icon:'🧠', label:'AI Intel'      },
+  'integracao': { icon:'🔗', label:'Integração'    },
+  'ecosystem':  { icon:'🌐', label:'Parceiros'     },
+  'knowledge':  { icon:'🧠', label:'Knowledge'     },
+  'office':     { icon:'🏢', label:'Office OS'     },
 }
 
-// Given a module, which journey does it belong to?
-function journeyOfModule(id: ModuleId): JourneyId {
-  for (const j of JOURNEYS) {
-    if (j.modules.includes(id)) return j.id
-  }
-  return 'create'
-}
+// ─── Legado: Journeys (keyboard shortcuts 1–5) ────────────────────────────────
+const JOURNEYS_LEGACY = [
+  { id:'create' as JourneyId,    default:'home'          as ModuleId, key:'1' },
+  { id:'design' as JourneyId,    default:'renders'       as ModuleId, key:'2' },
+  { id:'visualize' as JourneyId, default:'biblioteca'    as ModuleId, key:'3' },
+  { id:'deliver' as JourneyId,   default:'especificacao' as ModuleId, key:'4' },
+  { id:'business' as JourneyId,  default:'office'        as ModuleId, key:'5' },
+]
 
-// ─── Favorites hook ───────────────────────────────────────────────────────────
-const DEFAULT_FAVS: ModuleId[] = ['home', 'renders', 'especificacao', 'biblioteca']
-
-function useFavorites() {
-  const [favs, setFavs] = useState<ModuleId[]>(() => {
-    try {
-      const raw = localStorage.getItem('arqdor_favorites')
-      if (!raw) return DEFAULT_FAVS
-      const parsed = JSON.parse(raw) as ModuleId[]
-      return Array.isArray(parsed) && parsed.length > 0 ? parsed : DEFAULT_FAVS
-    } catch { return DEFAULT_FAVS }
-  })
-
-  const toggle = useCallback((id: ModuleId) => {
-    setFavs(prev => {
-      const next = prev.includes(id) ? prev.filter(f => f !== id) : [...prev, id].slice(0, 8)
-      localStorage.setItem('arqdor_favorites', JSON.stringify(next))
-      return next
-    })
-  }, [])
-
-  return { favs, toggle }
-}
-
-// ─── Project context ──────────────────────────────────────────────────────────
+// ─── Project context (exported for consumer modules) ─────────────────────────
 export const ArqProjectContext = createContext<ArqProjectState | null>(null)
 export function useArqProjectContext(): ArqProjectState | null {
   return useContext(ArqProjectContext)
 }
 
-// ─── Score color ──────────────────────────────────────────────────────────────
-function scoreColor(s: number) {
-  if (s >= 85) return '#4ade80'
-  if (s >= 70) return '#fbbf24'
-  if (s >= 50) return '#fb923c'
-  return '#f87171'
+// ─── Helpers ──────────────────────────────────────────────────────────────────
+function getActiveFlowStep(module: ModuleId): FlowStep | null {
+  return FLOW_STEPS.find(s => s.primary === module || s.extras.includes(module)) ?? FLOW_STEPS[0]
 }
+
+function scoreColor(s: number) {
+  if (s >= 85) return '#16a34a'
+  if (s >= 70) return PHX.amber
+  if (s >= 50) return '#ea580c'
+  return PHX.red
+}
+
+// ─── CSS ──────────────────────────────────────────────────────────────────────
+const CSS = `
+  @keyframes phx-shell-in  { from{opacity:0;transform:translateY(-4px)}to{opacity:1;transform:translateY(0)} }
+  @keyframes phx-shell-pulse{ 0%,100%{opacity:1}50%{opacity:0.5} }
+  @keyframes phx-spin       { to{transform:rotate(360deg)} }
+  @keyframes phx-shell-glow {
+    from { box-shadow: 0 0 0 0 rgba(124,58,237,0.4); }
+    to   { box-shadow: 0 0 0 8px rgba(124,58,237,0); }
+  }
+
+  /* ─── Flow step navigation ─── */
+  .phx-flow-step {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 12px;
+    border-radius: 8px;
+    border: 1px solid transparent;
+    cursor: pointer;
+    transition: all 0.15s ease !important;
+    white-space: nowrap;
+    position: relative;
+  }
+  .phx-flow-step:hover {
+    background: rgba(124,58,237,0.06) !important;
+    border-color: rgba(124,58,237,0.15) !important;
+  }
+  .phx-flow-step.active {
+    background: rgba(124,58,237,0.1) !important;
+    border-color: rgba(124,58,237,0.2) !important;
+  }
+  .phx-flow-step .step-dot {
+    width: 6px; height: 6px; border-radius: 50%;
+    background: ${PHX.dim};
+    flex-shrink: 0;
+    transition: background 0.15s ease !important;
+  }
+  .phx-flow-step.active .step-dot { background: ${PHX.purple} !important; }
+  .phx-flow-step .step-connector {
+    width: 10px; height: 1px; background: ${PHX.border};
+    flex-shrink: 0;
+  }
+
+  /* ─── Render CTA button ─── */
+  .phx-cta {
+    background: linear-gradient(135deg, ${PHX.purple} 0%, ${PHX.purpleL} 100%) !important;
+    border: none !important;
+    border-radius: 10px !important;
+    color: #fff !important;
+    padding: 8px 18px !important;
+    font-size: 13px !important;
+    font-weight: 800 !important;
+    cursor: pointer !important;
+    display: flex !important;
+    align-items: center !important;
+    gap: 7px !important;
+    box-shadow: 0 2px 10px rgba(124,58,237,0.28) !important;
+    transition: all 0.18s ease !important;
+    flex-shrink: 0;
+  }
+  .phx-cta:hover {
+    transform: translateY(-1px) !important;
+    box-shadow: 0 6px 20px rgba(124,58,237,0.40) !important;
+    animation: phx-shell-glow 0.4s ease !important;
+  }
+  .phx-cta:active { transform: translateY(0) !important; }
+
+  /* ─── Top bar buttons ─── */
+  .phx-btn {
+    transition: all 0.13s ease !important;
+    cursor: pointer;
+  }
+  .phx-btn:hover {
+    background: ${PHX.muted} !important;
+    border-color: ${PHX.borderM} !important;
+  }
+
+  /* ─── Module sub-steps ─── */
+  .phx-sub-step {
+    transition: all 0.13s ease !important;
+    cursor: pointer;
+  }
+  .phx-sub-step:hover {
+    background: rgba(124,58,237,0.06) !important;
+    color: ${PHX.purple} !important;
+  }
+  .phx-sub-step.active {
+    background: rgba(124,58,237,0.1) !important;
+    color: ${PHX.purple} !important;
+    font-weight: 700 !important;
+  }
+
+  /* ─── Project selector ─── */
+  .phx-proj-btn {
+    transition: all 0.13s ease !important;
+    cursor: pointer;
+  }
+  .phx-proj-btn:hover {
+    background: ${PHX.muted} !important;
+    border-color: ${PHX.borderM} !important;
+  }
+
+  /* ─── Module content panel ─── */
+  .phx-module-wrap {
+    animation: phx-shell-in 0.2s ease both;
+  }
+`
 
 // ─── Module renderer ──────────────────────────────────────────────────────────
 function renderModule(id: ModuleId, arqState: ArqProjectState, setActive: (m: ModuleId) => void) {
   switch (id) {
-    case 'home':          return <ProjectHome arqState={arqState} onNavigate={m => setActive(m as ModuleId)} />
+    case 'home':          return <ProjectHomePhoenix arqState={arqState} onNavigate={m => setActive(m as ModuleId)} />
     case 'projeto':       return <ProjectModule/>
     case 'biblioteca':    return <LibraryModule/>
     case 'especificacao': return <SmartSpecModule/>
@@ -159,215 +248,19 @@ function renderModule(id: ModuleId, arqState: ArqProjectState, setActive: (m: Mo
   }
 }
 
-// ─── CSS ──────────────────────────────────────────────────────────────────────
-const CSS = `
-  @keyframes aw-fadeIn { from{opacity:0;transform:translateY(-4px)}to{opacity:1;transform:translateY(0)} }
-  @keyframes aw-pulse  { 0%,100%{opacity:1}50%{opacity:0.5} }
-  .aw-journey-tab {
-    transition: color 0.15s, background 0.15s, border-color 0.15s !important;
-    cursor: pointer;
-    position: relative;
-  }
-  .aw-journey-tab:hover { color: #fff !important; }
-  .aw-mod-tab {
-    transition: background 0.13s, color 0.13s !important;
-    cursor: pointer;
-    white-space: nowrap;
-  }
-  .aw-mod-tab:hover { background: rgba(255,255,255,0.06) !important; color: #fff !important; }
-  .aw-fav-btn {
-    transition: background 0.13s, transform 0.13s !important;
-    cursor: pointer;
-  }
-  .aw-fav-btn:hover { background: rgba(124,58,237,0.2) !important; transform: scale(1.08) !important; }
-  .aw-fav-btn.active { background: rgba(124,58,237,0.22) !important; }
-  .aw-cmd-btn {
-    transition: background 0.13s, border-color 0.13s !important;
-    cursor: pointer;
-  }
-  .aw-cmd-btn:hover { background: rgba(124,58,237,0.15) !important; border-color: rgba(124,58,237,0.4) !important; }
-`
-
-// ─── Favorites Rail ───────────────────────────────────────────────────────────
-function FavoritesRail({
-  favs, activeModule, onNavigate, onToggle,
-}: {
-  favs: ModuleId[]; activeModule: ModuleId; onNavigate: (m: ModuleId) => void; onToggle: (m: ModuleId) => void
-}) {
-  const [showHint, setShowHint] = useState<ModuleId | null>(null)
-
-  return (
-    <div style={{
-      width:44, flexShrink:0, display:'flex', flexDirection:'column',
-      alignItems:'center', gap:2, padding:'8px 0',
-      background:T.sidebar, borderRight:`1px solid ${T.border}`,
-    }}>
-      {/* Star header */}
-      <div style={{ padding:'2px 0 6px', borderBottom:`1px solid ${T.border}`, width:'100%', display:'flex', justifyContent:'center', marginBottom:4 }}>
-        <span style={{ fontSize:10, color:T.dim }}>★</span>
-      </div>
-
-      {favs.map(id => {
-        const m = MODULE_MAP[id]
-        if (!m) return null
-        const isActive = activeModule === id
-        return (
-          <div key={id} style={{ position:'relative', width:'100%', display:'flex', justifyContent:'center' }}>
-            <div
-              className={`aw-fav-btn${isActive ? ' active' : ''}`}
-              onClick={() => onNavigate(id)}
-              onMouseEnter={() => setShowHint(id)}
-              onMouseLeave={() => setShowHint(null)}
-              style={{
-                width:32, height:32, borderRadius:8, display:'flex', alignItems:'center', justifyContent:'center',
-                background: isActive ? 'rgba(124,58,237,0.22)' : 'transparent',
-                fontSize:16, position:'relative',
-              }}
-            >
-              {m.icon}
-              {isActive && (
-                <div style={{ position:'absolute', left:-4, top:'20%', height:'60%', width:2, borderRadius:'0 1px 1px 0', background:T.purple }}/>
-              )}
-              {m.badge && (
-                <div style={{ position:'absolute', top:0, right:0, width:6, height:6, borderRadius:'50%', background:m.badgeColor ?? T.purpleL }}/>
-              )}
-            </div>
-            {showHint === id && (
-              <div style={{
-                position:'absolute', left:40, top:'50%', transform:'translateY(-50%)',
-                background:'#1a1730', border:`1px solid ${T.border}`, borderRadius:6,
-                padding:'4px 10px', whiteSpace:'nowrap', zIndex:100,
-                fontSize:11, fontWeight:700, color:'#fff',
-                boxShadow:'0 4px 16px rgba(0,0,0,0.5)',
-                pointerEvents:'none',
-              }}>
-                {m.label}
-                <div style={{ fontSize:9, color:T.dim, fontWeight:400 }}>clique ★ p/ remover</div>
-              </div>
-            )}
-          </div>
-        )
-      })}
-
-      {/* Add hint */}
-      {favs.length < 8 && (
-        <div style={{ marginTop:4, fontSize:9, color:T.dim, textAlign:'center', lineHeight:1.3, padding:'2px 4px' }}>
-          ★<br/>pin
-        </div>
-      )}
-    </div>
-  )
-}
-
-// ─── Journey tabs ──────────────────────────────────────────────────────────────
-function JourneyTabs({
-  activeJourney, onChange,
-}: {
-  activeJourney: JourneyId; onChange: (j: JourneyId) => void
-}) {
-  return (
-    <div style={{ display:'flex', alignItems:'stretch', gap:0, height:'100%' }}>
-      {JOURNEYS.map(j => {
-        const isActive = activeJourney === j.id
-        return (
-          <div
-            key={j.id}
-            className="aw-journey-tab"
-            onClick={() => onChange(j.id)}
-            style={{
-              display:'flex', alignItems:'center', gap:6, padding:'0 14px',
-              color: isActive ? j.color : T.textSub,
-              fontWeight: isActive ? 800 : 600,
-              fontSize:11, letterSpacing:'0.05em',
-              borderBottom: isActive ? `2px solid ${j.color}` : '2px solid transparent',
-              background: isActive ? `${j.color}0d` : 'transparent',
-            }}
-          >
-            <span style={{ fontSize:12 }}>{j.icon}</span>
-            {j.label}
-            <kbd style={{
-              fontSize:8, padding:'1px 4px', borderRadius:3,
-              background:'rgba(255,255,255,0.06)', color:T.dim,
-              border:`1px solid ${T.border}`,
-            }}>{j.key}</kbd>
-          </div>
-        )
-      })}
-    </div>
-  )
-}
-
-// ─── Module sub-nav ────────────────────────────────────────────────────────────
-function ModuleSubNav({
-  journey, activeModule, onSelect, favs, onToggleFav,
-}: {
-  journey: Journey; activeModule: ModuleId; onSelect: (m: ModuleId) => void
-  favs: ModuleId[]; onToggleFav: (m: ModuleId) => void
-}) {
-  return (
-    <div style={{
-      display:'flex', alignItems:'center', gap:2,
-      padding:'0 8px', height:'100%', overflowX:'auto',
-    }}>
-      {journey.modules.map(id => {
-        const m = MODULE_MAP[id]
-        if (!m) return null
-        const isActive = activeModule === id
-        const isFav    = favs.includes(id)
-        return (
-          <div key={id} style={{ display:'flex', alignItems:'center', gap:0, position:'relative' }}>
-            <div
-              className="aw-mod-tab"
-              onClick={() => onSelect(id)}
-              style={{
-                display:'flex', alignItems:'center', gap:6, padding:'4px 10px',
-                borderRadius:7, fontSize:11, fontWeight: isActive ? 700 : 500,
-                background: isActive ? `${journey.color}18` : 'transparent',
-                color: isActive ? journey.color : T.textSub,
-                border: isActive ? `1px solid ${journey.color}33` : '1px solid transparent',
-              }}
-            >
-              <span style={{ fontSize:13 }}>{m.icon}</span>
-              {m.label}
-              {m.badge && (
-                <span style={{
-                  fontSize:8, padding:'1px 4px', borderRadius:8, fontWeight:800,
-                  background: m.badgeColor ? `${m.badgeColor}22` : 'rgba(124,58,237,0.2)',
-                  color: m.badgeColor ?? T.purpleL,
-                }}>{m.badge}</span>
-              )}
-            </div>
-            {/* Pin/unpin star */}
-            <button
-              onClick={() => onToggleFav(id)}
-              title={isFav ? 'Remover dos favoritos' : 'Fixar nos favoritos'}
-              style={{
-                background:'none', border:'none', cursor:'pointer', padding:'2px 3px',
-                fontSize:9, color: isFav ? T.amber : T.dim, opacity: isFav ? 1 : 0.5,
-                transition:'opacity 0.15s, color 0.15s',
-              }}
-            >
-              ★
-            </button>
-          </div>
-        )
-      })}
-    </div>
-  )
-}
-
-// ─── Project Selector (top bar) ───────────────────────────────────────────────
-function ProjectSelectorCompact({ arqState }: { arqState: ArqProjectState }) {
+// ─── Project selector compact ────────────────────────────────────────────────
+function ProjectSelectorBar({ arqState }: { arqState: ArqProjectState }) {
   const [open, setOpen]       = useState(false)
   const [newTitle, setNewTitle] = useState('')
   const [creating, setCreating] = useState(false)
   const ref = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
+    if (!open) return
     const handler = (e: MouseEvent) => {
       if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false)
     }
-    if (open) document.addEventListener('mousedown', handler)
+    document.addEventListener('mousedown', handler)
     return () => document.removeEventListener('mousedown', handler)
   }, [open])
 
@@ -378,65 +271,166 @@ function ProjectSelectorCompact({ arqState }: { arqState: ArqProjectState }) {
     finally { setCreating(false) }
   }
 
+  const projectName = arqState.loading ? 'Carregando…' : (arqState.projectMeta?.titulo ?? 'Selecionar projeto')
+
   return (
-    <div ref={ref} style={{ position:'relative' }}>
+    <div ref={ref} style={{ position:'relative', flexShrink:0 }}>
       <button
-        className="aw-cmd-btn"
+        className="phx-proj-btn"
         onClick={() => setOpen(p => !p)}
         style={{
-          display:'flex', alignItems:'center', gap:6, padding:'4px 10px',
-          border:`1px solid ${T.border}`, borderRadius:7, background:'rgba(255,255,255,0.04)',
-          cursor:'pointer', maxWidth:200,
+          display:'flex', alignItems:'center', gap:7, padding:'5px 12px 5px 8px',
+          border:`1px solid ${PHX.border}`, borderRadius:8,
+          background:PHX.surface, cursor:'pointer', color:PHX.text,
+          boxShadow: PHX.shadow,
         }}
       >
-        <span style={{ fontSize:10 }}>📁</span>
-        <span style={{ fontSize:10, color:'#fff', fontWeight:600, maxWidth:140, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>
-          {arqState.loading ? 'Carregando…' : (arqState.projectMeta?.titulo ?? 'Selecionar projeto')}
+        <span style={{ fontSize:14 }}>📁</span>
+        <span style={{ fontSize:11, fontWeight:600, maxWidth:160, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap', color: arqState.projectId ? PHX.text : PHX.textSub }}>
+          {projectName}
         </span>
-        <span style={{ fontSize:8, color:T.dim, flexShrink:0 }}>{open ? '▲' : '▼'}</span>
+        <span style={{ fontSize:8, color:PHX.dim }}>{open ? '▲' : '▼'}</span>
       </button>
 
       {open && (
         <div style={{
-          position:'absolute', top:'calc(100% + 6px)', left:0, width:240, zIndex:500,
-          background:'#13112a', border:`1px solid ${T.border}`, borderRadius:10,
-          boxShadow:'0 12px 40px rgba(0,0,0,0.6)', overflow:'hidden',
-          animation:'aw-fadeIn 0.15s ease',
+          position:'absolute', top:'calc(100% + 8px)', left:0, width:260, zIndex:600,
+          background:PHX.surface, border:`1px solid ${PHX.border}`, borderRadius:12,
+          boxShadow:PHX.shadowXL, overflow:'hidden', animation:'phx-shell-in 0.15s ease',
         }}>
+          {/* Project list */}
           <div style={{ maxHeight:200, overflowY:'auto' }}>
             {arqState.projects.map(p => (
               <button key={p.id} onClick={() => { arqState.selectProject(p.id); setOpen(false) }} style={{
-                width:'100%', textAlign:'left', padding:'8px 12px', border:'none',
-                background: p.id === arqState.projectId ? 'rgba(124,58,237,0.18)' : 'transparent',
-                cursor:'pointer', display:'block',
+                width:'100%', textAlign:'left', padding:'9px 14px', border:'none',
+                background: p.id === arqState.projectId ? 'rgba(124,58,237,0.06)' : 'transparent',
+                cursor:'pointer', display:'block', transition:'background 0.12s',
               }}>
-                <p style={{ margin:0, fontSize:11, color:'#fff', fontWeight:600 }}>{p.titulo}</p>
-                <p style={{ margin:0, fontSize:9, color:T.dim }}>{p.tipoObra ?? p.status ?? ''}</p>
+                <p style={{ margin:0, fontSize:11, color: p.id === arqState.projectId ? PHX.purple : PHX.text, fontWeight:p.id === arqState.projectId ? 700 : 500 }}>{p.titulo}</p>
+                <p style={{ margin:0, fontSize:9, color:PHX.dim }}>{p.tipoObra ?? p.status ?? ''}</p>
               </button>
             ))}
             {arqState.projects.length === 0 && (
-              <p style={{ margin:0, padding:'10px 12px', fontSize:10, color:T.dim }}>Nenhum projeto ainda</p>
+              <p style={{ margin:0, padding:'12px 14px', fontSize:10, color:PHX.dim }}>Nenhum projeto ainda</p>
             )}
           </div>
-          <div style={{ borderTop:`1px solid ${T.border}`, padding:'8px' }}>
-            <div style={{ display:'flex', gap:4 }}>
+          {/* Create new */}
+          <div style={{ borderTop:`1px solid ${PHX.border}`, padding:'10px' }}>
+            <div style={{ display:'flex', gap:6 }}>
               <input
                 value={newTitle}
                 onChange={e => setNewTitle(e.target.value)}
                 onKeyDown={e => e.key === 'Enter' && handleCreate()}
                 placeholder="Novo projeto…"
-                style={{ flex:1, padding:'5px 8px', borderRadius:5, border:`1px solid ${T.border}`, background:'rgba(255,255,255,0.06)', color:'#fff', fontSize:10, outline:'none' }}
+                style={{
+                  flex:1, padding:'6px 10px', borderRadius:7, border:`1px solid ${PHX.border}`,
+                  background:PHX.muted, color:PHX.text, fontSize:11, outline:'none',
+                  transition:'border-color 0.15s',
+                }}
               />
               <button onClick={handleCreate} disabled={creating || !newTitle.trim()} style={{
-                padding:'5px 10px', borderRadius:5, border:'none', background:T.purple,
+                padding:'6px 12px', borderRadius:7, border:'none', background:PHX.purple,
                 color:'#fff', cursor:'pointer', fontSize:10, fontWeight:700, opacity:creating||!newTitle.trim()?0.5:1,
               }}>
-                {creating ? '…' : '+'}
+                {creating ? '…' : '＋'}
               </button>
             </div>
           </div>
         </div>
       )}
+    </div>
+  )
+}
+
+// ─── Flow step navigation ────────────────────────────────────────────────────
+function FlowNav({
+  activeModule, onNavigate,
+}: { activeModule:ModuleId; onNavigate:(m:ModuleId)=>void }) {
+  const [hoveredStep, setHoveredStep] = useState<string | null>(null)
+  const activeFlow = getActiveFlowStep(activeModule)
+
+  return (
+    <div style={{ display:'flex', alignItems:'center', gap:0, overflowX:'auto', padding:'0 2px' }}>
+      {FLOW_STEPS.map((step, i) => {
+        const isActive = activeFlow?.id === step.id
+        const isHovered = hoveredStep === step.id
+
+        return (
+          <div key={step.id} style={{ display:'flex', alignItems:'center' }}>
+            {/* Connector */}
+            {i > 0 && (
+              <div style={{ width:8, height:1, background:PHX.border, flexShrink:0, margin:'0 1px' }} />
+            )}
+            {/* Step */}
+            <div
+              className={`phx-flow-step${isActive ? ' active' : ''}`}
+              onClick={() => onNavigate(step.primary)}
+              onMouseEnter={() => setHoveredStep(step.id)}
+              onMouseLeave={() => setHoveredStep(null)}
+            >
+              <span style={{ fontSize:12 }}>{step.icon}</span>
+              <span style={{ fontSize:11, fontWeight: isActive ? 700 : 500, color: isActive ? PHX.purple : PHX.textSub }}>
+                {step.label}
+              </span>
+              {/* Tooltip sublabel */}
+              {isHovered && !isActive && (
+                <div style={{
+                  position:'absolute', top:'calc(100% + 6px)', left:'50%', transform:'translateX(-50%)',
+                  background:PHX.text, color:'#fff', borderRadius:6, padding:'4px 8px',
+                  fontSize:9, fontWeight:600, whiteSpace:'nowrap', zIndex:400, pointerEvents:'none',
+                  boxShadow:PHX.shadowM,
+                }}>
+                  {step.sublabel}
+                  <div style={{ position:'absolute', top:-3, left:'50%', transform:'translateX(-50%)', width:6, height:6, background:PHX.text, borderRadius:1, rotate:'45deg' }} />
+                </div>
+              )}
+            </div>
+          </div>
+        )
+      })}
+    </div>
+  )
+}
+
+// ─── Sub-step tabs (when a flow step has extras) ──────────────────────────────
+function SubStepNav({
+  activeModule, activeFlow, onNavigate,
+}: { activeModule:ModuleId; activeFlow:FlowStep|null; onNavigate:(m:ModuleId)=>void }) {
+  if (!activeFlow || (activeFlow.extras.length === 0)) return null
+
+  const allModules = [activeFlow.primary, ...activeFlow.extras]
+  const icons: Partial<Record<ModuleId, string>> = {
+    home:'🏠', projeto:'🏗️', renders:'✨', prompt:'⚡',
+    correcoes:'🔄', 'ai-review':'🔍', memoria:'🧠',
+    ecosystem:'🌐', knowledge:'🧠', arqhub:'🏛️',
+  }
+
+  return (
+    <div style={{
+      height:32, borderBottom:`1px solid ${PHX.border}`,
+      background:PHX.surface, display:'flex', alignItems:'center',
+      padding:'0 20px', gap:2, flexShrink:0,
+    }}>
+      {allModules.map(id => {
+        const isActive = activeModule === id
+        const label = MODULE_MAP_INTERNAL[id]?.label ?? id
+        const icon  = icons[id] ?? '◦'
+        return (
+          <div
+            key={id}
+            className={`phx-sub-step${isActive ? ' active' : ''}`}
+            onClick={() => onNavigate(id)}
+            style={{
+              padding:'4px 10px', borderRadius:6, fontSize:11,
+              color: isActive ? PHX.purple : PHX.textSub,
+              display:'flex', alignItems:'center', gap:5,
+            }}
+          >
+            <span style={{ fontSize:11 }}>{icon}</span>
+            {label}
+          </div>
+        )
+      })}
     </div>
   )
 }
@@ -447,32 +441,53 @@ function ShortcutsToast({ visible }: { visible: boolean }) {
   return (
     <div style={{
       position:'fixed', bottom:20, right:20, zIndex:800,
-      background:'#13112a', border:`1px solid ${T.border}`, borderRadius:10,
-      padding:'12px 16px', boxShadow:'0 8px 32px rgba(0,0,0,0.5)',
-      animation:'aw-fadeIn 0.2s ease',
+      background:PHX.surface, border:`1px solid ${PHX.border}`, borderRadius:14,
+      padding:'16px 20px', boxShadow:PHX.shadowXL,
+      animation:'phx-shell-in 0.2s ease',
     }}>
-      <p style={{ margin:'0 0 8px', fontSize:10, fontWeight:800, color:T.purpleL, letterSpacing:'0.05em' }}>
+      <p style={{ margin:'0 0 10px', fontSize:10, fontWeight:800, color:PHX.purple, letterSpacing:'0.05em' }}>
         ATALHOS DE TECLADO
       </p>
       {[
-        ['⌘K',    'Command Palette'],
-        ['G H',   'Ir para Home'],
-        ['G R',   'Ir para Renders'],
-        ['G B',   'Ir para Biblioteca'],
+        ['⌘K',    'Busca rápida'],
+        ['G H',   'Início'],
+        ['G R',   'Renders'],
+        ['G B',   'Biblioteca'],
         ['G S',   'Especificação'],
-        ['G D',   'Portal do Cliente'],
-        ['G P',   'Prompt Playground'],
-        ['G C',   'Modelagem'],
-        ['1 – 5', 'Trocar jornada'],
-        ['Esc',   'Fechar overlays'],
+        ['G P',   'Prompt'],
+        ['1–5',   'Trocar fluxo'],
+        ['Esc',   'Fechar'],
       ].map(([k, l]) => (
-        <div key={k} style={{ display:'flex', gap:10, alignItems:'center', marginBottom:3 }}>
-          <kbd style={{ padding:'2px 6px', borderRadius:4, fontSize:9, background:'rgba(255,255,255,0.08)', color:T.textSub, border:`1px solid ${T.border}`, minWidth:36, textAlign:'center' }}>{k}</kbd>
-          <span style={{ fontSize:10, color:T.textSub }}>{l}</span>
+        <div key={k} style={{ display:'flex', gap:12, alignItems:'center', marginBottom:4 }}>
+          <kbd style={{
+            padding:'2px 7px', borderRadius:5, fontSize:9,
+            background:PHX.muted, color:PHX.text, border:`1px solid ${PHX.border}`,
+            minWidth:38, textAlign:'center', fontFamily:'monospace',
+          }}>{k}</kbd>
+          <span style={{ fontSize:10, color:PHX.textSub }}>{l}</span>
         </div>
       ))}
     </div>
   )
+}
+
+// ─── Status badge ─────────────────────────────────────────────────────────────
+function StatusBadge({ arqState }: { arqState: ArqProjectState }) {
+  if (arqState.saving) {
+    return (
+      <span style={{ fontSize:10, padding:'3px 9px', borderRadius:20, background:'rgba(124,58,237,0.08)', color:PHX.purple, fontWeight:600, animation:'phx-shell-pulse 1.5s ease infinite', flexShrink:0 }}>
+        Salvando…
+      </span>
+    )
+  }
+  if (arqState.projectId && !arqState.loading) {
+    return (
+      <span style={{ fontSize:10, padding:'3px 9px', borderRadius:20, background:'rgba(22,163,74,0.08)', color:PHX.green, fontWeight:600, flexShrink:0 }}>
+        ● Salvo
+      </span>
+    )
+  }
+  return null
 }
 
 // ─── Main export ──────────────────────────────────────────────────────────────
@@ -487,27 +502,20 @@ export default function ArqWorkspace() {
 // ─── WorkspaceInner ───────────────────────────────────────────────────────────
 function WorkspaceInner() {
   const [activeModule,     setActiveModuleRaw]  = useState<ModuleId>('home')
-  const [activeJourney,    setActiveJourneyRaw] = useState<JourneyId>('create')
-  const [copilotCollapsed, setCopilotCollapsed] = useState(false)
+  const [copilotCollapsed, setCopilotCollapsed] = useState(true)   // starts collapsed
   const [paletteOpen,      setPaletteOpen]      = useState(false)
   const [shortcutsVisible, setShortcutsVisible] = useState(false)
+  const [showRenderProgress, setShowRenderProgress] = useState(false)
 
-  const { projectCtx, setProjectCtx } = useWorkspaceProject()
+  const { setProjectCtx } = useWorkspaceProject()
   const arqState = useArqProject()
-  const { favs, toggle: toggleFav } = useFavorites()
 
-  // Wrapped setActive: also updates journey when switching to a module
   const setActiveModule = useCallback((m: ModuleId) => {
     setActiveModuleRaw(m)
-    setActiveJourneyRaw(journeyOfModule(m))
-  }, [])
-
-  const setActiveJourney = useCallback((j: JourneyId) => {
-    setActiveJourneyRaw(j)
-    setActiveModuleRaw(JOURNEY_DEFAULT[j])
   }, [])
 
   // AIE score
+  const { projectCtx } = useWorkspaceProject()
   const aieResult    = useMemo(() => runAIE(projectCtx), [projectCtx])
   const overallScore = aieResult.scores.overall
   const badgeColor   = scoreColor(overallScore)
@@ -518,7 +526,7 @@ function WorkspaceInner() {
     if (ctx) setProjectCtx(ctx)
   }, [arqState.projectId, arqState.objects, arqState.materials, arqState.projectMeta])
 
-  // ─── Keyboard shortcuts ────────────────────────────────────────────────────
+  // ─── Keyboard shortcuts ───────────────────────────────────────────────────
   useEffect(() => {
     let pendingG = false
     let gTimer: ReturnType<typeof setTimeout>
@@ -527,43 +535,27 @@ function WorkspaceInner() {
       const tag = (e.target as HTMLElement).tagName
       const editing = tag === 'INPUT' || tag === 'TEXTAREA' || (e.target as HTMLElement).isContentEditable
 
-      // ⌘K / Ctrl+K → Command Palette
       if ((e.ctrlKey || e.metaKey) && e.key === 'k') {
-        e.preventDefault()
-        setPaletteOpen(p => !p)
-        return
+        e.preventDefault(); setPaletteOpen(p => !p); return
       }
-
-      // Esc → close overlays
-      if (e.key === 'Escape') {
-        setPaletteOpen(false)
-        setShortcutsVisible(false)
-        return
-      }
-
-      // ? → toggle shortcuts tooltip
-      if (e.key === '?' && !editing && !e.ctrlKey) {
-        setShortcutsVisible(p => !p)
-        return
-      }
-
+      if (e.key === 'Escape') { setPaletteOpen(false); setShortcutsVisible(false); return }
+      if (e.key === '?' && !editing && !e.ctrlKey) { setShortcutsVisible(p => !p); return }
       if (editing) return
 
-      // 1–5 → switch journey
+      // 1–5 → flow steps (mapped to primary modules)
       if (['1','2','3','4','5'].includes(e.key) && !e.ctrlKey && !e.metaKey) {
-        const j = JOURNEYS[parseInt(e.key) - 1]
-        if (j) setActiveJourney(j.id)
+        const step = FLOW_STEPS[parseInt(e.key) - 1]
+        if (step) setActiveModule(step.primary)
         return
       }
 
-      // G prefix for "Go to" shortcuts
+      // G prefix
       if (e.key === 'g') {
         pendingG = true
         clearTimeout(gTimer)
         gTimer = setTimeout(() => { pendingG = false }, 1500)
         return
       }
-
       if (pendingG && !e.ctrlKey) {
         pendingG = false
         clearTimeout(gTimer)
@@ -577,137 +569,143 @@ function WorkspaceInner() {
     }
 
     document.addEventListener('keydown', handler)
-    return () => {
-      document.removeEventListener('keydown', handler)
-      clearTimeout(gTimer)
-    }
-  }, [setActiveModule, setActiveJourney])
+    return () => { document.removeEventListener('keydown', handler); clearTimeout(gTimer) }
+  }, [setActiveModule])
 
-  const activeJourneyDef = JOURNEYS.find(j => j.id === activeJourney) ?? JOURNEYS[0]
+  const activeFlow = getActiveFlowStep(activeModule)
 
+  // ─── Render ───────────────────────────────────────────────────────────────
   return (
     <ArqProjectContext.Provider value={arqState}>
       <div style={{
         height:'100vh', display:'flex', flexDirection:'column',
-        background:T.bg, color:T.text, fontFamily:'system-ui,sans-serif', overflow:'hidden',
+        background:PHX.bg, fontFamily:'system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif',
+        overflow:'hidden', color:PHX.text,
       }}>
         <style>{CSS}</style>
 
-        {/* ══ TOP BAR ══ */}
+        {/* ════════════════════════════════════════════════════════════
+            TOP BAR — Chrome Premium
+            Branco puro, shadow sutil, ✨ CTA sempre visível.
+            ════════════════════════════════════════════════════════════ */}
         <div style={{
-          height:44, flexShrink:0, display:'flex', alignItems:'center',
-          borderBottom:`1px solid ${T.border}`, background:T.sidebar, gap:0,
+          height:52, flexShrink:0, display:'flex', alignItems:'center',
+          background:PHX.sidebar, borderBottom:`1px solid ${PHX.border}`,
+          boxShadow:PHX.shadow, gap:0, zIndex:200, position:'relative',
         }}>
+
           {/* Logo */}
-          <div style={{ width:130, flexShrink:0, display:'flex', alignItems:'center', gap:8, padding:'0 14px', borderRight:`1px solid ${T.border}` }}>
-            <span style={{ fontSize:17 }}>🏛️</span>
+          <div style={{
+            width:136, flexShrink:0, display:'flex', alignItems:'center', gap:8,
+            padding:'0 16px', borderRight:`1px solid ${PHX.border}`, height:'100%',
+          }}>
+            <div style={{
+              width:28, height:28, borderRadius:8,
+              background:`linear-gradient(135deg, ${PHX.purple} 0%, ${PHX.purpleL} 100%)`,
+              display:'flex', alignItems:'center', justifyContent:'center',
+              fontSize:14, color:'#fff', flexShrink:0,
+              boxShadow:'0 2px 8px rgba(124,58,237,0.3)',
+            }}>🏛️</div>
             <div>
-              <p style={{ margin:0, fontSize:12, fontWeight:900, color:'#fff', letterSpacing:'-0.01em', lineHeight:1 }}>
-                arqdor<span style={{ color:T.purpleL }}>.ai</span>
+              <p style={{ margin:0, fontSize:13, fontWeight:900, color:PHX.text, letterSpacing:'-0.02em', lineHeight:1 }}>
+                arqdor<span style={{ color:PHX.purple }}>.ai</span>
               </p>
-              <p style={{ margin:0, fontSize:7, color:T.dim, letterSpacing:'0.08em' }}>AI WORKSPACE</p>
+              <p style={{ margin:0, fontSize:8, color:PHX.dim, letterSpacing:'0.08em', fontWeight:600 }}>STUDIO</p>
             </div>
           </div>
 
           {/* Project selector */}
-          <div style={{ padding:'0 10px', borderRight:`1px solid ${T.border}` }}>
-            <ProjectSelectorCompact arqState={arqState} />
+          <div style={{ padding:'0 12px', borderRight:`1px solid ${PHX.border}`, height:'100%', display:'flex', alignItems:'center' }}>
+            <ProjectSelectorBar arqState={arqState} />
           </div>
 
-          {/* Journey tabs */}
-          <div style={{ flex:1, height:'100%', display:'flex', alignItems:'stretch', overflow:'hidden' }}>
-            <JourneyTabs activeJourney={activeJourney} onChange={setActiveJourney} />
+          {/* ── FLOW STEP NAVIGATION ── */}
+          <div style={{ flex:1, height:'100%', display:'flex', alignItems:'center', padding:'0 16px', overflow:'hidden' }}>
+            <FlowNav activeModule={activeModule} onNavigate={setActiveModule} />
           </div>
 
-          {/* Right controls */}
-          <div style={{ display:'flex', gap:6, alignItems:'center', padding:'0 10px', borderLeft:`1px solid ${T.border}` }}>
-            {/* Shortcuts hint */}
-            <button
-              onClick={() => setShortcutsVisible(p => !p)}
-              title="Atalhos de teclado (?)"
-              style={{ background:'none', border:'none', cursor:'pointer', color:T.dim, fontSize:12, padding:'4px' }}
-            >
-              ?
-            </button>
+          {/* ── RIGHT CONTROLS ── */}
+          <div style={{ display:'flex', gap:8, alignItems:'center', padding:'0 14px', borderLeft:`1px solid ${PHX.border}`, height:'100%', flexShrink:0 }}>
+            {/* Status */}
+            <StatusBadge arqState={arqState} />
 
-            {/* AIE score */}
-            <span style={{ fontSize:9, padding:'3px 8px', borderRadius:10, fontWeight:700, background:`${badgeColor}18`, color:badgeColor, flexShrink:0 }}>
-              AIE {overallScore}
+            {/* AIE score — subtle */}
+            <span style={{
+              fontSize:9, padding:'3px 8px', borderRadius:20, fontWeight:700,
+              background:`${badgeColor}0f`, color:badgeColor, flexShrink:0,
+            }}>
+              {overallScore}
             </span>
 
-            {/* Status */}
-            {arqState.saving && (
-              <span style={{ fontSize:9, padding:'3px 8px', borderRadius:10, background:'rgba(167,139,250,0.12)', color:T.purpleL, animation:'aw-pulse 1.5s ease infinite' }}>Salvando…</span>
-            )}
-            {arqState.projectId && !arqState.saving && (
-              <span style={{ fontSize:9, padding:'3px 8px', borderRadius:10, background:'rgba(74,222,128,0.08)', color:'#4ade80', fontWeight:700 }}>● Sync</span>
-            )}
-            {!arqState.projectId && !arqState.loading && (
-              <span style={{ fontSize:9, padding:'3px 8px', borderRadius:10, background:'rgba(251,146,60,0.1)', color:'#fb923c', fontWeight:700 }}>Sem projeto</span>
-            )}
-
-            {/* ⌘K button */}
+            {/* ⌘K search */}
             <button
-              className="aw-cmd-btn"
+              className="phx-btn"
               onClick={() => setPaletteOpen(true)}
               style={{
-                display:'flex', alignItems:'center', gap:6, padding:'4px 10px',
-                border:`1px solid ${T.border}`, borderRadius:7, background:'rgba(255,255,255,0.03)',
-                cursor:'pointer', flexShrink:0,
+                display:'flex', alignItems:'center', gap:6, padding:'5px 11px',
+                border:`1px solid ${PHX.border}`, borderRadius:8,
+                background:PHX.surface, cursor:'pointer', color:PHX.textSub,
               }}
             >
-              <span style={{ fontSize:10, color:T.textSub }}>🔍</span>
-              <span style={{ fontSize:9, color:T.dim }}>Pesquisar</span>
-              <kbd style={{ fontSize:8, padding:'1px 5px', borderRadius:4, background:'rgba(255,255,255,0.08)', color:T.dim, border:`1px solid ${T.border}` }}>⌘K</kbd>
+              <span style={{ fontSize:12 }}>🔍</span>
+              <span style={{ fontSize:10 }}>Buscar</span>
+              <kbd style={{ fontSize:8, padding:'1px 5px', borderRadius:4, background:PHX.muted, color:PHX.dim, border:`1px solid ${PHX.border}`, fontFamily:'monospace' }}>⌘K</kbd>
             </button>
 
             {/* Copilot toggle */}
             <button
               onClick={() => setCopilotCollapsed(p => !p)}
-              title={copilotCollapsed ? 'Abrir Copilot' : 'Recolher Copilot'}
+              title={copilotCollapsed ? 'Abrir assistente' : 'Recolher assistente'}
               style={{
-                padding:'4px 10px', borderRadius:7, border:`1px solid ${copilotCollapsed ? T.border : T.purple}`,
-                background:copilotCollapsed?'transparent':'rgba(124,58,237,0.15)', color:copilotCollapsed?T.dim:T.purpleL,
-                cursor:'pointer', fontSize:10, fontWeight:700, display:'flex', alignItems:'center', gap:5, flexShrink:0,
+                padding:'5px 11px', borderRadius:8,
+                border:`1px solid ${copilotCollapsed ? PHX.border : PHX.purple}`,
+                background:copilotCollapsed ? PHX.surface : `rgba(124,58,237,0.08)`,
+                color:copilotCollapsed ? PHX.textSub : PHX.purple,
+                cursor:'pointer', fontSize:10, fontWeight:600,
+                display:'flex', alignItems:'center', gap:5, flexShrink:0,
+                transition:'all 0.15s ease',
               }}
             >
-              🤖 {copilotCollapsed ? '' : '▸'}
+              🤖 {copilotCollapsed ? 'Assistente' : '▸'}
             </button>
+
+            {/* ✨ Gerar Render — CTA principal */}
+            <button
+              className="phx-cta"
+              onClick={() => {
+                setShowRenderProgress(true)
+                setTimeout(() => { setShowRenderProgress(false); setActiveModule('renders') }, 5800)
+              }}
+              title="Gerar Render com IA (✨)"
+            >
+              <span style={{ fontSize:15 }}>✨</span>
+              Gerar Render
+            </button>
+
+            {/* Shortcuts hint */}
+            <button
+              onClick={() => setShortcutsVisible(p => !p)}
+              style={{ background:'none', border:'none', cursor:'pointer', color:PHX.dim, fontSize:11, padding:'4px' }}
+            >?</button>
           </div>
         </div>
 
-        {/* ══ MODULE SUB-NAV ══ */}
-        <div style={{
-          height:36, flexShrink:0, display:'flex', alignItems:'center',
-          borderBottom:`1px solid ${T.border}`,
-          background:`linear-gradient(180deg, ${activeJourneyDef.color}08 0%, transparent 100%)`,
-          paddingLeft:44, // offset for favorites rail
-        }}>
-          <ModuleSubNav
-            journey={activeJourneyDef}
-            activeModule={activeModule}
-            onSelect={setActiveModule}
-            favs={favs}
-            onToggleFav={toggleFav}
-          />
-        </div>
+        {/* ── MODULE SUB-STEPS (when step has extras) ── */}
+        <SubStepNav activeModule={activeModule} activeFlow={activeFlow} onNavigate={setActiveModule} />
 
-        {/* ══ BODY ══ */}
-        <div style={{ flex:1, display:'flex', overflow:'hidden' }}>
-
-          {/* Favorites rail */}
-          <FavoritesRail
-            favs={favs}
-            activeModule={activeModule}
-            onNavigate={setActiveModule}
-            onToggle={toggleFav}
-          />
-
-          {/* Module content */}
-          <div style={{ flex:1, overflow:'hidden', position:'relative' }}>
+        {/* ══════════════════════════════════════════════════════════
+            BODY — content area
+            Cada módulo preenche sua área com seu próprio background.
+            ══════════════════════════════════════════════════════════ */}
+        <div style={{ flex:1, overflow:'hidden', position:'relative' }}>
+          <div key={activeModule} className="phx-module-wrap" style={{ height:'100%', overflow:'hidden' }}>
             <Suspense fallback={
-              <div style={{ height:'100%', display:'flex', alignItems:'center', justifyContent:'center', color:T.dim, fontSize:12 }}>
-                Carregando módulo…
+              <div style={{
+                height:'100%', display:'flex', alignItems:'center', justifyContent:'center',
+                background:PHX.bg, gap:10, flexDirection:'column',
+              }}>
+                <div style={{ width:32, height:32, border:`3px solid ${PHX.border}`, borderTopColor:PHX.purple, borderRadius:'50%', animation:'phx-spin 0.8s linear infinite' }} />
+                <p style={{ margin:0, fontSize:12, color:PHX.dim }}>Carregando…</p>
               </div>
             }>
               {renderModule(activeModule, arqState, setActiveModule)}
@@ -715,7 +713,7 @@ function WorkspaceInner() {
           </div>
         </div>
 
-        {/* ── ARQ COPILOT ── */}
+        {/* ── ARQ COPILOT (sidebar style) ── */}
         <ArqCopilot
           collapsed={copilotCollapsed}
           onToggle={() => setCopilotCollapsed(p => !p)}
@@ -733,6 +731,11 @@ function WorkspaceInner() {
 
         {/* ── SHORTCUTS TOAST ── */}
         <ShortcutsToast visible={shortcutsVisible} />
+
+        {/* ── RENDER PROGRESS MODAL ── */}
+        {showRenderProgress && (
+          <RenderProgressModal onClose={() => { setShowRenderProgress(false); setActiveModule('renders') }} />
+        )}
       </div>
     </ArqProjectContext.Provider>
   )

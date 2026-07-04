@@ -61,3 +61,46 @@ export const T = {
 } as const
 
 export type ArqdorTheme = typeof T
+
+// ─── PHX — Phoenix light theme (Project Phoenix) ─────────────────────────────
+// Premium light palette: white surface, purple accent only.
+// Referências: Apple, Notion, Figma, Linear.
+export const PHX = {
+  // Backgrounds
+  bg:      '#f7f5fc',   // lavender-tinted near-white
+  surface: '#ffffff',
+  card:    '#ffffff',
+  sidebar: '#ffffff',
+  muted:   '#f3f2f8',   // subtle section bg
+
+  // Borders
+  border:  'rgba(0,0,0,0.07)',
+  borderM: 'rgba(0,0,0,0.12)',
+
+  // Brand purple — accent only
+  purple:  '#7c3aed',
+  purpleD: '#6d28d9',
+  purpleL: '#8b5cf6',
+  purpleXL:'#a78bfa',
+
+  // Text
+  text:    '#111827',
+  textSub: '#6b7280',
+  dim:     '#9ca3af',
+
+  // Accents
+  green:   '#16a34a',
+  blue:    '#2563eb',
+  amber:   '#d97706',
+  red:     '#dc2626',
+  cyan:    '#0891b2',
+  teal:    '#0d9488',
+
+  // Shadows
+  shadow:  '0 1px 3px rgba(0,0,0,0.08), 0 1px 2px rgba(0,0,0,0.04)',
+  shadowM: '0 4px 6px rgba(0,0,0,0.07), 0 2px 4px rgba(0,0,0,0.05)',
+  shadowL: '0 10px 15px rgba(0,0,0,0.08), 0 4px 6px rgba(0,0,0,0.04)',
+  shadowXL:'0 20px 40px rgba(0,0,0,0.12)',
+} as const
+
+export type PhxTheme = typeof PHX

@@ -22,3 +22,4 @@
 - [ArqCopilot Sprint 2](arqcopilot-sprint2.md) — copilot usa POST /arch/copilot/chat; extrai ACTIONS: [...] do LLM; AbortController para cancel; history slice(-8); logs em arqAieSnapshotsTable non-blocking.
 - [ARQDOR Orchestrator](arqdor-orchestrator.md) — ArqOrchestrator em src/lib/arqdor/orchestrator/; detectAll+threshold para multi-specialist; max 3 por resposta; adicionar especialista = 1 arquivo + 1 linha no array.
 - [Startup migration pattern](startup-migration.md) — drizzle-kit push é lento/interativo; usar runStartupMigrations() com CREATE TABLE IF NOT EXISTS no index.ts do api-server como fallback confiável.
+- [Project Phoenix UX](project-phoenix-ux.md) — PHX=light shell, T=dark modules; FLOW_STEPS nav; ✨ Gerar Render imutável; Copilot inicia colapsado.

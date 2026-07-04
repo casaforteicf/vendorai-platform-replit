@@ -1,0 +1,395 @@
+PROJECT PHOENIX
+ARQDOR.ai - UX REDESIGN
+
+BOARD DECISION
+
+Esta Sprint substitui qualquer melhoria visual prevista anteriormente.
+
+O objetivo NÃO é adicionar funcionalidades.
+
+O objetivo é transformar completamente a experiência do usuário.
+
+O ARQDOR deve deixar de parecer um painel de IA e passar a parecer um software premium para arquitetura.
+
+==========================================================
+OBJETIVO
+==========================================================
+
+Hoje o sistema possui muitas ferramentas, menus e informações técnicas.
+
+Queremos esconder toda a complexidade.
+
+O usuário deve sentir que está utilizando um software moderno, elegante e extremamente simples.
+
+Referências de experiência:
+
+• Apple
+• Notion
+• Figma
+• Canva
+• Linear
+• Autodesk Forma
+• Arc Browser
+
+==========================================================
+IDENTIDADE VISUAL
+==========================================================
+
+Abandonar aparência de "dashboard de IA".
+
+Substituir por uma linguagem visual premium.
+
+Utilizar:
+
+• fundo branco ou cinza muito claro
+• bastante espaço em branco
+• sombras suaves
+• cards elegantes
+• bordas discretas
+• tipografia limpa
+• poucos elementos por tela
+
+A paleta da marca (roxo) deve permanecer apenas como cor de destaque.
+
+Nunca como cor predominante.
+
+==========================================================
+NOVA HOME
+==========================================================
+
+A Home deixa de ser um dashboard.
+
+Ela passa a ser o ponto inicial do projeto.
+
+Mostrar apenas:
+
+Título
+
+"Vamos criar um novo projeto"
+
+Etapas:
+
+1.
+Criar Projeto
+
+2.
+Enviar planta, imagem ou referência
+
+3.
+Definir objetivo
+
+4.
+Escolher estilo
+
+5.
+Gerar Render
+
+Tudo em uma única página.
+
+Sem navegação complexa.
+
+==========================================================
+UPLOAD
+==========================================================
+
+O upload passa a ser o elemento principal da tela.
+
+Criar uma área grande.
+
+Drag and Drop.
+
+Botões:
+
+📷 Tirar foto
+
+📁 Escolher arquivo
+
+🔗 Importar Pinterest
+
+🔗 Importar Instagram
+
+📄 PDF
+
+🏠 Planta
+
+Formatos:
+
+PNG
+
+JPG
+
+WEBP
+
+PDF
+
+DWG (placeholder)
+
+==========================================================
+FLUXO
+==========================================================
+
+O usuário nunca deve pensar em módulos.
+
+Ele deve pensar apenas em objetivos.
+
+Hoje:
+
+Projeto
+
+Prompt
+
+Biblioteca
+
+Marketplace
+
+...
+
+Novo fluxo:
+
+Criar
+
+↓
+
+Inspirar
+
+↓
+
+Renderizar
+
+↓
+
+Melhorar
+
+↓
+
+Especificar
+
+↓
+
+Apresentar
+
+↓
+
+Entregar
+
+==========================================================
+COPILOT
+==========================================================
+
+O Copilot deixa de ser o protagonista.
+
+Ele passa a ser um arquiteto assistente.
+
+Sempre ao lado.
+
+Nunca ocupando a tela inteira.
+
+Mensagens mais humanas.
+
+Exemplo:
+
+"Vamos criar algo incrível hoje?"
+
+"Envie uma planta ou imagem e eu cuido do restante."
+
+"Posso sugerir materiais e melhorar seu render."
+
+Nunca utilizar linguagem técnica.
+
+==========================================================
+RENDER
+==========================================================
+
+O botão principal da plataforma passa a ser:
+
+✨ Gerar Render
+
+Grande.
+
+Central.
+
+Sempre visível.
+
+==========================================================
+BIBLIOTECA
+==========================================================
+
+Transformar em showroom.
+
+Grandes imagens.
+
+Filtros visuais.
+
+Coleções.
+
+Favoritos.
+
+Fabricantes.
+
+Ambientes.
+
+Nada de aparência de CRUD.
+
+==========================================================
+RENDERIZAÇÃO
+==========================================================
+
+Durante o processamento.
+
+Mostrar etapas.
+
+✔ Interpretando projeto
+
+✔ Entendendo ambiente
+
+✔ Preparando IA
+
+✔ Gerando render
+
+✔ Refinando detalhes
+
+✔ Finalizando
+
+Mostrar progresso.
+
+Nunca spinner infinito.
+
+==========================================================
+RESULTADO
+==========================================================
+
+Quando terminar.
+
+Exibir:
+
+Imagem grande.
+
+Botões:
+
+Comparar
+
+Baixar
+
+Melhorar
+
+Trocar materiais
+
+Gerar memorial
+
+Especificar produtos
+
+Nunca esconder a imagem.
+
+Ela é o protagonista.
+
+==========================================================
+EMPTY STATES
+==========================================================
+
+Todos os estados vazios devem ensinar.
+
+Nunca mostrar:
+
+"Nenhum dado."
+
+Mostrar:
+
+"Vamos criar seu primeiro projeto."
+
+"Envie uma imagem."
+
+"Comece por aqui."
+
+==========================================================
+MICROINTERAÇÕES
+==========================================================
+
+Adicionar:
+
+Hover elegante
+
+Transições suaves
+
+Animações discretas
+
+Feedback visual
+
+Nada exagerado.
+
+==========================================================
+RESPONSIVIDADE
+==========================================================
+
+Prioridade total para desktop.
+
+Mobile deve permanecer funcional.
+
+Tablet intermediário.
+
+==========================================================
+IMPORTANTE
+==========================================================
+
+NÃO alterar:
+
+Backend
+
+Banco
+
+APIs
+
+Pipeline de Render
+
+Flux
+
+OpenAI
+
+Anthropic
+
+Marketplace
+
+Portal
+
+Biblioteca
+
+Copilot
+
+Toda esta Sprint é exclusivamente UX.
+
+==========================================================
+CRITÉRIO DE ACEITE
+==========================================================
+
+Ao abrir o ARQDOR o usuário deve pensar:
+
+"Que software bonito."
+
+Após 2 minutos:
+
+"É muito simples."
+
+Após gerar o primeiro render:
+
+"Quero usar novamente."
+
+==========================================================
+ENTREGAS
+==========================================================
+
+• Novo layout completo
+
+• Screenshots
+
+• Protótipo navegável
+
+• Vídeo da jornada
+
+• Comparativo Antes x Depois
+
+• Justificativa de UX para cada alteração
+
+==========================================================
+META FINAL
+==========================================================
+
+O ARQDOR deve parecer um software premium desenvolvido especificamente para arquitetos, onde a IA trabalha de forma invisível, guiando o usuário sem expor a complexidade da tecnologia.
