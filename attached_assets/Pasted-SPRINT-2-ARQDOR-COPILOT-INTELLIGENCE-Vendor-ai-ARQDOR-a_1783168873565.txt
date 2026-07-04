@@ -1,0 +1,333 @@
+SPRINT 2 — ARQDOR COPILOT INTELLIGENCE
+
+Vendor.ai | ARQDOR.ai
+
+========================================================
+
+OBJETIVO
+
+Transformar o ArqCopilot no principal diferencial competitivo do ARQDOR.
+
+O Copilot deixa de ser um chat.
+
+Ele passa a ser um Assistente Inteligente de Projeto.
+
+========================================================
+
+IMPORTANTE
+
+NÃO alterar:
+
+• Render Pipeline
+• Flux Kontext
+• Flux Ultra
+• Flux Fill
+• Prompt Builder
+• Banco de Dados
+• APIs existentes
+• Marketplace
+• Portal Cliente
+
+Esta Sprint trabalha APENAS no Copilot.
+
+========================================================
+
+FASE 1
+
+ELIMINAR TODO MOCK
+
+Remover completamente:
+
+INITIAL_MESSAGES
+
+MOCK_DECISIONS
+
+Respostas hardcoded
+
+if/else estáticos
+
+Arrays mockados
+
+Nenhuma resposta poderá ser fixa.
+
+========================================================
+
+FASE 2
+
+CONTEXTO DO PROJETO
+
+Antes de responder, o Copilot deverá montar automaticamente o contexto utilizando:
+
+Projeto ativo
+
+Cliente
+
+Ambientes
+
+Materiais
+
+Componentes
+
+Render mais recente
+
+Prompt atual
+
+Histórico
+
+Bibliotecas
+
+AIE
+
+Learning Profile
+
+Configuração do Provider
+
+========================================================
+
+FASE 3
+
+ORQUESTRADOR DE IA
+
+Criar um serviço intermediário.
+
+Exemplo:
+
+ArqCopilotService
+
+Responsabilidades:
+
+• montar contexto
+
+• escolher provider
+
+• montar prompt
+
+• enviar
+
+• tratar resposta
+
+• registrar histórico
+
+Toda chamada passa por este serviço.
+
+========================================================
+
+FASE 4
+
+PROVIDERS
+
+Utilizar automaticamente:
+
+OpenAI
+
+Anthropic
+
+Conforme configuração existente.
+
+Nunca responder localmente.
+
+Sempre utilizar IA real.
+
+========================================================
+
+FASE 5
+
+COMANDOS NATURAIS
+
+Implementar entendimento para comandos como:
+
+Troque o MDF para Carvalho Americano.
+
+Substitua a pedra por Quartzo Branco.
+
+Adicione iluminação indireta.
+
+Deixe este ambiente mais minimalista.
+
+Crie uma versão contemporânea.
+
+Gere memorial descritivo.
+
+Crie um orçamento preliminar.
+
+Sugira melhorias.
+
+Analise ergonomia.
+
+Analise iluminação.
+
+Analise circulação.
+
+Explique diferenças entre os renders.
+
+Crie novo prompt.
+
+Melhore este prompt.
+
+Preparar apresentação para cliente.
+
+Responder sempre considerando o projeto atual.
+
+========================================================
+
+FASE 6
+
+AÇÕES
+
+Quando possível o Copilot deverá oferecer ações.
+
+Exemplo.
+
+Botões:
+
+[ Gerar Novo Render ]
+
+[ Atualizar Prompt ]
+
+[ Aplicar Material ]
+
+[ Criar Memorial ]
+
+[ Criar Orçamento ]
+
+[ Abrir Biblioteca ]
+
+[ Comparar Versões ]
+
+========================================================
+
+FASE 7
+
+MEMÓRIA
+
+Toda conversa deve ser registrada.
+
+Utilizar Learning Profile já existente.
+
+Registrar:
+
+Pergunta
+
+Resposta
+
+Projeto
+
+Data
+
+Usuário
+
+Provider
+
+========================================================
+
+FASE 8
+
+INTERFACE
+
+Melhorar UX do Copilot.
+
+Adicionar:
+
+Loading elegante
+
+Streaming da resposta
+
+Cancelar geração
+
+Copiar resposta
+
+Curtir
+
+Não curtir
+
+Regenerar
+
+========================================================
+
+FASE 9
+
+SEGURANÇA
+
+Nunca enviar para o LLM:
+
+Tokens
+
+Secrets
+
+IDs internos
+
+Credenciais
+
+========================================================
+
+FASE 10
+
+CRITÉRIOS DE ACEITE
+
+O Copilot deve conseguir:
+
+✔ compreender contexto do projeto
+
+✔ responder utilizando IA real
+
+✔ acessar bibliotecas
+
+✔ sugerir melhorias
+
+✔ criar prompts
+
+✔ orientar o arquiteto
+
+✔ registrar histórico
+
+✔ utilizar provider configurado
+
+✔ não utilizar nenhum mock
+
+========================================================
+
+NÃO IMPLEMENTAR NESTA SPRINT
+
+Upload Inteligente
+
+OCR
+
+AQM
+
+Leitura de Planta
+
+Business Network
+
+VCN
+
+POE
+
+Marketplace avançado
+
+Esses recursos pertencem às próximas Sprints.
+
+========================================================
+
+ENTREGA
+
+Ao final gerar relatório contendo:
+
+Arquivos alterados
+
+Fluxo do Copilot
+
+Provider utilizado
+
+Contexto enviado
+
+Tempo médio de resposta
+
+Tokens médios
+
+Pendências
+
+Limitações
+
+Prints da interface
+
+E informar se o Copilot está pronto para uso pelos Alpha Partners.

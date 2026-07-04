@@ -2567,5 +2567,207 @@ router.put("/arqdor/projects/:id", authenticate, async (req, res) => {
   return res.json(upserted?.contextBlob ?? contextBlob);
 });
 
+// ─────────────────────────────────────────────────────────────────────────────
+// POST /arch/copilot/chat — ARQ Copilot Intelligence (real AI, full context)
+// ─────────────────────────────────────────────────────────────────────────────
+router.post("/arch/copilot/chat", authenticate, async (req, res) => {
+  const tid = tenantId(req);
+  const { message, projectId, history = [] } = req.body as {
+    message: string;
+    projectId?: string;
+    history?: Array<{ role: "user" | "assistant"; content: string }>;
+  };
+
+  if (!message?.trim()) {
+    return res.status(400).json({ error: "Mensagem não pode ser vazia." });
+  }
+
+  // ── 1. Assemble project context ──────────────────────────────────────────
+  let contextStr = "";
+
+  if (projectId) {
+    const [projeto] = await db
+      .select()
+      .from(archProjetosTable)
+      .where(
+        and(
+          eq(archProjetosTable.id, projectId),
+          eq(archProjetosTable.tenantId, tid),
+        ),
+      )
+      .limit(1);
+
+    if (projeto) {
+      const [ambientes, cenas, catalogItems] = await Promise.all([
+        db
+          .select()
+          .from(archAmbientesTable)
+          .where(eq(archAmbientesTable.projetoId, projectId)),
+        db
+          .select()
+          .from(archCenasTable)
+          .where(eq(archCenasTable.projetoId, projectId))
+          .orderBy(desc(archCenasTable.createdAt))
+          .limit(5),
+        db
+          .select({
+            nome: archCatalogoTable.nome,
+            categoria: archCatalogoTable.categoria,
+            fornecedor: archCatalogoTable.fornecedor,
+            descricao: archCatalogoTable.descricao,
+          })
+          .from(archCatalogoTable)
+          .where(eq(archCatalogoTable.tenantId, tid))
+          .limit(20),
+      ]);
+
+      const renders = await db
+        .select({
+          imageUrl: archRenderVersoesTable.imageUrl,
+          versao: archRenderVersoesTable.versao,
+          origem: archRenderVersoesTable.origem,
+          createdAt: archRenderVersoesTable.createdAt,
+        })
+        .from(archRenderVersoesTable)
+        .innerJoin(archCenasTable, eq(archCenasTable.id, archRenderVersoesTable.cenaId))
+        .where(eq(archCenasTable.projetoId, projectId))
+        .orderBy(desc(archRenderVersoesTable.createdAt))
+        .limit(3);
+
+      contextStr = `
+PROJETO ATIVO: ${projeto.titulo}
+Cliente: ${projeto.clienteNome || "N/A"}
+Status: ${projeto.status}
+Tipo de obra: ${projeto.tipoObra || "N/A"}
+Área: ${projeto.areaM2 ? `${projeto.areaM2}m²` : "N/A"}
+Orçamento estimado: ${projeto.orcamentoTotal ? `R$ ${projeto.orcamentoTotal}` : "N/A"}
+Prazo: ${projeto.prazoEstimado || "N/A"}
+
+AMBIENTES (${ambientes.length}):
+${ambientes.map((a) => `- ${a.nome}${a.tipoAmbiente ? ` [${a.tipoAmbiente}]` : ""}`).join("\n") || "Nenhum ambiente cadastrado"}
+
+CENAS DE RENDER (${cenas.length}):
+${cenas.map((c) => `- ${c.nome}: status ${c.status}`).join("\n") || "Nenhuma cena cadastrada"}
+
+RENDERS GERADOS: ${renders.length === 0 ? "Nenhum render gerado ainda" : `${renders.length} render(s). Mais recente: versão ${renders[0]?.versao || "N/A"}, motor ${renders[0]?.origem || "N/A"}`}
+
+CATÁLOGO DISPONÍVEL (${catalogItems.length} itens registrados):
+${catalogItems.slice(0, 10).map((i) => `- ${i.nome} [${i.categoria}] — ${i.fornecedor}`).join("\n") || "Catálogo vazio"}
+`.trim();
+    }
+  }
+
+  // ── 2. System prompt ──────────────────────────────────────────────────────
+  const systemPrompt = `Você é o ARQ Copilot, assistente de inteligência artificial do ARQDOR — plataforma de projetos de arquitetura e design de interiores da VendorAI.
+
+SEU PAPEL:
+- Ajudar arquitetos a otimizar projetos, ambientes e renders
+- Sugerir materiais, acabamentos, fabricantes e componentes do catálogo
+- Analisar ergonomia, iluminação, circulação e composição
+- Criar e melhorar prompts de render
+- Gerar memoriais descritivos e orçamentos preliminares
+- Identificar pendências e orientar os próximos passos do projeto
+- Comparar versões de renders e explicar diferenças
+
+REGRAS ABSOLUTAS:
+- Responda SEMPRE em português brasileiro
+- Seja direto, técnico e útil — máximo 300 palavras salvo pedido explícito de documento longo
+- Nunca invente dados do projeto — use apenas o contexto fornecido
+- Nunca revele tokens, IDs internos, secrets, credenciais ou URLs de API
+- Nunca mencione que você é da OpenAI, Anthropic ou qualquer LLM — você é o ARQ Copilot
+
+AÇÕES SUGERIDAS:
+Quando sua resposta implicar uma ação concreta que o arquiteto pode executar, inclua ao final exatamente:
+ACTIONS: [{"label":"Texto do Botão","value":"identificador_acao","variant":"PRIMARY"}]
+Use variant PRIMARY para ação principal, SECONDARY para alternativas. Máximo 3 ações por resposta.
+Valores de ação válidos: gerar_render, atualizar_prompt, abrir_biblioteca, criar_memorial, criar_orcamento, comparar_versoes, adicionar_ambiente, ver_catalogo, abrir_projeto
+
+${contextStr ? `CONTEXTO DO PROJETO ATUAL:\n${contextStr}` : "Nenhum projeto ativo no momento. O arquiteto pode abrir um projeto para respostas mais precisas sobre materiais, ambientes e renders."}`;
+
+  // ── 3. Build message array ────────────────────────────────────────────────
+  const aiMessages: import("openai").default.Chat.ChatCompletionMessageParam[] = [
+    { role: "system", content: systemPrompt },
+    ...history.slice(-8).map(
+      (h) =>
+        ({ role: h.role, content: h.content }) as import("openai").default.Chat.ChatCompletionMessageParam,
+    ),
+    { role: "user", content: message },
+  ];
+
+  // ── 4. Call AI via gateway ────────────────────────────────────────────────
+  const startMs = Date.now();
+  let aiResult: {
+    content: string;
+    inputTokens: number;
+    outputTokens: number;
+    costUsd: number;
+    usedByok: boolean;
+  };
+
+  try {
+    aiResult = await callOpenAI(tid, "intelligence_analysis", aiMessages, {
+      model: "gpt-4o-mini",
+      temperature: 0.72,
+      maxTokens: 900,
+      log: req.log,
+    });
+  } catch (err: any) {
+    const { status, message: msg } = sanitizeAIError(err);
+    return res.status(status).json({ error: msg });
+  }
+
+  const durationMs = Date.now() - startMs;
+
+  // ── 5. Parse reply — extract ACTIONS block ────────────────────────────────
+  let replyText = aiResult.content;
+  let actions: Array<{ label: string; value: string; variant: string }> = [];
+
+  const actionsMatch = replyText.match(/ACTIONS:\s*(\[[\s\S]*?\])/);
+  if (actionsMatch) {
+    try {
+      const parsed = JSON.parse(actionsMatch[1]);
+      if (Array.isArray(parsed)) {
+        actions = parsed.filter(
+          (a) => typeof a.label === "string" && typeof a.value === "string",
+        );
+      }
+      replyText = replyText.replace(/ACTIONS:\s*\[[\s\S]*?\]/, "").trim();
+    } catch {
+      // keep actions empty if JSON parse fails
+    }
+  }
+
+  // ── 6. Log exchange as snapshot (non-blocking, only if projectId) ─────────
+  if (projectId) {
+    db.insert(arqAieSnapshotsTable)
+      .values({
+        projetoId: projectId,
+        projectSnapshot: {
+          type: "copilot_exchange",
+          question: message.slice(0, 500),
+          answer: replyText.slice(0, 1000),
+          provider: aiResult.usedByok ? "openai_byok" : "openai",
+          model: "gpt-4o-mini",
+          inputTokens: aiResult.inputTokens,
+          outputTokens: aiResult.outputTokens,
+          costUsd: aiResult.costUsd,
+          durationMs,
+          tenantId: tid,
+        } as any,
+      } as any)
+      .catch(() => {/* non-blocking */});
+  }
+
+  return res.json({
+    reply: replyText,
+    actions,
+    provider: aiResult.usedByok ? "openai_byok" : "openai",
+    model: "gpt-4o-mini",
+    tokens: { input: aiResult.inputTokens, output: aiResult.outputTokens },
+    cost: aiResult.costUsd,
+    durationMs,
+  });
+});
+
 export { archPublicRouter };
 export default router;

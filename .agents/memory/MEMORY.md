@@ -19,3 +19,4 @@
 - [Arch render pipeline](arch-inpainting.md) — Preservar=flux-kontext-pro (sem máscara, edição por instrução); Criar=flux-1.1-pro-ultra raw; ajuste pontual=flux-fill-pro; regra de 2 etapas obrigatória.
 - [callOpenAI assinatura](callOpenAI-signature.md) — assinatura é (tenantId, feature, messages, options); resposta retorna .content (string), não .choices[0].message.content.
 - [Cmd 23 CNPJ multicanal](cmd23-cnpj.md) — cnpjService.ts: BrasilAPI (grátis, single lookup), CNPJá (CNPJ_API_KEY, bulk CNAE), Meta Ads (INSTAGRAM_ACCESS_TOKEN); enrichLead aceita EnrichLeadParams ou string posicional.
+- [ArqCopilot Sprint 2](arqcopilot-sprint2.md) — copilot usa POST /arch/copilot/chat; extrai ACTIONS: [...] do LLM; AbortController para cancel; history slice(-8); logs em arqAieSnapshotsTable non-blocking.
