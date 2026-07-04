@@ -167,13 +167,13 @@ archAiRenderRouter.get("/arch/ai-render/:id", authenticate, async (req: Request,
   const tid = tenantId(req);
   if (!tid) return res.status(403).json({ success: false, error: "Tenant não identificado" });
 
-  const [render] = await db
+  const [render] = await (db as any)
     .select()
     .from(archAiRendersTable)
     .where(and(
       eq(archAiRendersTable.id,       req.params["id"]!),
-      eq(archAiRendersTable.tenantId, tid),
-    ))
+      eq(archAiRendersTable.tenantId, tid as string),
+    )!)
     .limit(1);
 
   if (!render) return res.status(404).json({ success: false, error: "Render não encontrado" });
@@ -201,13 +201,13 @@ archAiRenderRouter.post("/arch/ai-render/:id/adjust", authenticate, async (req: 
   const tid = tenantId(req);
   if (!tid) return res.status(403).json({ success: false, error: "Tenant não identificado" });
 
-  const [parent] = await db
+  const [parent] = await (db as any)
     .select()
     .from(archAiRendersTable)
     .where(and(
       eq(archAiRendersTable.id,       req.params["id"]!),
-      eq(archAiRendersTable.tenantId, tid),
-    ))
+      eq(archAiRendersTable.tenantId, tid as string),
+    )!)
     .limit(1);
 
   if (!parent) return res.status(404).json({ success: false, error: "Render pai não encontrado" });

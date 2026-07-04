@@ -207,13 +207,13 @@ router.delete("/users/:id", requireRole("super_admin", "tenant_admin"), async (r
     return;
   }
 
-  await db
+  await (db as any)
     .delete(archPromptVariationsTable)
     .where(eq(archPromptVariationsTable.userId, existing.id));
 
   await db.delete(usersTable).where(eq(usersTable.id, existing.id));
 
-  res.status(204).send();
+  return res.status(204).send();
 });
 
 function isUniqueViolation(err: unknown): boolean {

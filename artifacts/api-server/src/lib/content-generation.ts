@@ -7,6 +7,8 @@ import type {
   StoriesVariation,
   ReelsVariation,
   ContentGenerationResult,
+  ContentType,
+  ContentVariation,
 } from "@workspace/db";
 
 interface TenantProfile {
@@ -110,7 +112,7 @@ export async function generateImagesWithReference(
           n: 1,
           size: "1024x1024",
         });
-        const item = Array.isArray(response?.data) ? response.data[0] : undefined;
+        const item = Array.isArray((response as any)?.data) ? (response as any).data[0] : undefined;
         if (!item) continue;
         if (item.b64_json) return await saveB64Image(item.b64_json);
         if (item.url) return item.url as string;
@@ -128,7 +130,7 @@ export async function generateImagesWithReference(
           n: 1,
           size: "1024x1024",
         } as Parameters<typeof openai.images.generate>[0]);
-        const item = Array.isArray(response?.data) ? response.data[0] : undefined;
+        const item = Array.isArray((response as any)?.data) ? (response as any).data[0] : undefined;
         if (!item) continue;
         if ((item as any).b64_json) return await saveB64Image((item as any).b64_json);
         if ((item as any).url) return (item as any).url as string;

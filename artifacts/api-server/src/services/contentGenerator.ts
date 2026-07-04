@@ -163,7 +163,7 @@ export async function generatePDF(
     });
     try {
       const page = await browser.newPage();
-      await page.setContent(htmlContent, { waitUntil: "networkidle0" });
+      await page.setContent(htmlContent, { waitUntil: "domcontentloaded" });
       const pdf = await page.pdf({
         format: "A4",
         printBackground: true,

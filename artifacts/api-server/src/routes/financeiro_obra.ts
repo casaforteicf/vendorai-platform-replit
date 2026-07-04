@@ -33,7 +33,7 @@ router.post(
   "/tenants/:tenantId/obras/:obraId/lancamentos/analisar",
   upload.single("documento"),
   async (req, res) => {
-    const { tenantId, obraId } = req.params;
+    const { tenantId, obraId } = req.params as Record<string, string>;
     if (!canAccess(req, tenantId)) return res.status(403).json({ error: "Forbidden" });
 
     const file = req.file;
@@ -129,7 +129,7 @@ Se um campo não puder ser extraído, use null. Valor sempre como número (float
         tenantId,
         provider: "anthropic",
         model,
-        feature: "proposal_generation",
+        feature: "proposal_generator",
         inputTokens,
         outputTokens,
         costEstimateUsd: costUsd,

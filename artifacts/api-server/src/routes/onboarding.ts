@@ -1026,7 +1026,7 @@ router.get("/onboarding/integracoes", authenticate, async (req, res) => {
     .where(and(eq(whatsappConnectionsTable.tenantId, tenantId)));
 
   const [igConn] = await db
-    .select({ username: instagramConnectionsTable.username, status: instagramConnectionsTable.status })
+    .select({ username: instagramConnectionsTable.username })
     .from(instagramConnectionsTable)
     .where(eq(instagramConnectionsTable.tenantId, tenantId));
 
@@ -1051,7 +1051,7 @@ router.get("/onboarding/integracoes", authenticate, async (req, res) => {
       agendaId: gcAgenda?.id ?? null,
     },
     instagram: {
-      connected: igConn?.status === "active",
+      connected: !!igConn?.username,
       username: igConn?.username ?? null,
     },
     asaas: { connected: !!tenantData?.asaasApiKey },

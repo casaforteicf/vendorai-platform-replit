@@ -62,7 +62,7 @@ export async function runObjectionsExtraction(log: Logger): Promise<void> {
         try {
           // Get the conversation messages
           const msgs = await db
-            .select({ role: messagesTable.role, content: messagesTable.content })
+            .select({ role: messagesTable.direcao, content: messagesTable.conteudo })
             .from(messagesTable)
             .where(eq(messagesTable.conversationId, conv.id))
             .orderBy(desc(messagesTable.createdAt))
@@ -87,7 +87,7 @@ export async function runObjectionsExtraction(log: Logger): Promise<void> {
 
           const conversation = msgs
             .reverse()
-            .map((m) => `${m.role === "user" ? "LEAD" : "SDR"}: ${m.content}`)
+            .map((m) => `${m.role === "entrada" ? "LEAD" : "SDR"}: ${m.content}`)
             .join("\n");
 
           // Extract objections via AI

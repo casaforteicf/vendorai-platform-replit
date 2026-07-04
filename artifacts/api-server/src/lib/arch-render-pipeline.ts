@@ -139,7 +139,7 @@ export async function callReplicateFluxKontext(params: {
       `https://api.replicate.com/v1/predictions/${prediction.id}`,
       { headers: { Authorization: `Token ${token}` } },
     );
-    prediction = await pollRes.json();
+    prediction = await pollRes.json() as typeof prediction;
     polls++;
   }
 
@@ -215,7 +215,7 @@ export async function callReplicateFluxUltraPro(params: {
       `https://api.replicate.com/v1/predictions/${prediction.id}`,
       { headers: { Authorization: `Token ${token}` } },
     );
-    prediction = await pollRes.json();
+    prediction = await pollRes.json() as typeof prediction;
     polls++;
   }
 
@@ -299,7 +299,7 @@ export async function callReplicateFluxFill(params: {
       `https://api.replicate.com/v1/predictions/${prediction.id}`,
       { headers: { Authorization: `Token ${token}` } },
     );
-    prediction = await pollRes.json();
+    prediction = await pollRes.json() as typeof prediction;
     polls++;
   }
 

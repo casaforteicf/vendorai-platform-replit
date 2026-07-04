@@ -72,13 +72,13 @@ export async function dispatchSkuDelivery(propostaId: string): Promise<void> {
   for (const sku of skus) {
     try {
       if (SKU_PLAN_MAP[sku]) {
-        await deliverPlan(proposta, sku, SKU_PLAN_MAP[sku]!, log);
+        await deliverPlan(proposta, sku, SKU_PLAN_MAP[sku]!, log as any);
       } else if (SKU_SETUP_LABEL[sku]) {
-        await deliverSetup(proposta, sku, log);
+        await deliverSetup(proposta, sku, log as any);
       } else if (SKU_USER_ADD.has(sku)) {
-        await deliverExtraUser(proposta, sku, log);
+        await deliverExtraUser(proposta, sku, log as any);
       } else if (SKU_AI_CREDITS[sku] !== undefined) {
-        await deliverAiCredits(proposta, sku, SKU_AI_CREDITS[sku]!, log);
+        await deliverAiCredits(proposta, sku, SKU_AI_CREDITS[sku]!, log as any);
       } else {
         log.warn({ sku }, "SKU delivery: unknown SKU — no handler registered");
       }

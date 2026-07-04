@@ -1,4 +1,4 @@
-import { Router, type IRouter } from "express";
+import { Router, type Request, type IRouter } from "express";
 import { and, eq, ilike, sql, desc, sum, ne, gte, lte, inArray } from "drizzle-orm";
 import multer from "multer";
 import {
@@ -80,19 +80,19 @@ const router: IRouter = Router();
 // Rotas públicas (sem autenticação) — registradas antes do middleware authenticate no index.ts
 const archPublicRouter: IRouter = Router();
 
-function tenantId(req: Express.Request): string {
+function tenantId(req: Request): string {
   return (req as any).user?.tenantId as string;
 }
 
-function isSuperAdmin(req: Express.Request) {
+function isSuperAdmin(req: Request) {
   return (req as any).user?.platformRole === "super_admin";
 }
 
-function canAccessTenant(req: Express.Request, tid: string) {
+function canAccessTenant(req: Request, tid: string) {
   return isSuperAdmin(req) || tenantId(req) === tid;
 }
 
-function getPortalBaseUrl(req: Express.Request): string {
+function getPortalBaseUrl(req: Request): string {
   const domains = process.env.REPLIT_DOMAINS;
   if (domains) {
     return `https://${domains.split(",")[0].trim()}`;
@@ -208,7 +208,7 @@ router.post("/arch/projetos", authenticate, async (req, res) => {
       ...parsed.data,
       portalToken: crypto.randomUUID(),
       portalAtivo: false,
-    })
+    } as any)
     .returning();
 
   return res.status(201).json(projeto);
@@ -271,7 +271,7 @@ router.patch("/arch/projetos/:id", authenticate, async (req, res) => {
 
   const [updated] = await db
     .update(archProjetosTable)
-    .set({ ...parsed.data, updatedAt: new Date() })
+    .set({ ...parsed.data, updatedAt: new Date() } as any)
     .where(eq(archProjetosTable.id, id))
     .returning();
 
@@ -352,7 +352,7 @@ router.post("/arch/projetos/:id/ambientes", authenticate, async (req, res) => {
 
   const [ambiente] = await db
     .insert(archAmbientesTable)
-    .values(parsed.data)
+    .values(parsed.data as any)
     .returning();
 
   return res.status(201).json(ambiente);
@@ -381,7 +381,7 @@ router.patch("/arch/projetos/:id/ambientes/:ambId", authenticate, async (req, re
 
   const [updated] = await db
     .update(archAmbientesTable)
-    .set(parsed.data)
+    .set(parsed.data as any)
     .where(
       and(
         eq(archAmbientesTable.id, ambId),
@@ -499,7 +499,7 @@ router.patch("/arch/cenas/:cenaId", authenticate, async (req, res) => {
 
   const [updated] = await db
     .update(archCenasTable)
-    .set({ ...parsed.data, updatedAt: new Date() })
+    .set({ ...parsed.data, updatedAt: new Date() } as any)
     .where(eq(archCenasTable.id, cenaId))
     .returning();
 
@@ -660,7 +660,7 @@ router.post("/arch/catalogo", authenticate, async (req, res) => {
   const parsed = insertArchCatalogoSchema.safeParse({ ...req.body, tenantId: tid });
   if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
 
-  const [produto] = await db.insert(archCatalogoTable).values(parsed.data).returning();
+  const [produto] = await db.insert(archCatalogoTable).values(parsed.data as any).returning();
   return res.status(201).json(produto);
 });
 
@@ -739,7 +739,7 @@ router.patch("/arch/catalogo/:id", authenticate, async (req, res) => {
 
   const [updated] = await db
     .update(archCatalogoTable)
-    .set(parsed.data)
+    .set(parsed.data as any)
     .where(eq(archCatalogoTable.id, id))
     .returning();
 
@@ -1112,7 +1112,7 @@ router.patch("/arch/orcamento/:itemId", authenticate, async (req, res) => {
 
   const [updated] = await db
     .update(archOrcamentoItensTable)
-    .set({ ...parsed.data, valorTotal })
+    .set({ ...parsed.data, valorTotal } as any)
     .where(eq(archOrcamentoItensTable.id, itemId))
     .returning();
 
@@ -1336,14 +1336,14 @@ async function getCenaTenant(cenaId: string): Promise<{ cena: typeof archCenasTa
   if (!cena) return null;
 
   const [projeto] = await db
-    .select({ tenantId: archProjetosTable.tenantId, nome: archProjetosTable.nome })
+    .select({ tenantId: archProjetosTable.tenantId, titulo: archProjetosTable.titulo })
     .from(archProjetosTable)
     .where(eq(archProjetosTable.id, cena.projetoId))
     .limit(1);
 
   if (!projeto) return null;
 
-  return { cena, tenantId: projeto.tenantId, projetoNome: projeto.nome ?? null };
+  return { cena, tenantId: projeto.tenantId, projetoNome: projeto.titulo ?? null };
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -2083,7 +2083,7 @@ router.post("/arq/projects", authenticate, async (req, res) => {
 
   const [projeto] = await db
     .insert(archProjetosTable)
-    .values({ ...parsed.data, portalToken: crypto.randomUUID(), portalAtivo: false })
+    .values({ ...parsed.data, portalToken: crypto.randomUUID(), portalAtivo: false } as any)
     .returning();
   return res.status(201).json(projeto);
 });
@@ -2105,7 +2105,7 @@ router.patch("/arq/projects/:id", authenticate, async (req, res) => {
 
   const [updated] = await db
     .update(archProjetosTable)
-    .set({ ...parsed.data, updatedAt: new Date() })
+    .set({ ...parsed.data, updatedAt: new Date() } as any)
     .where(eq(archProjetosTable.id, id))
     .returning();
   return res.json(updated);
@@ -2350,15 +2350,15 @@ router.patch("/arch/prompt-variations/:id", authenticate, async (req, res) => {
     return res.status(400).json({ error: "Dados inválidos", details: body.error.issues });
   }
 
-  const [row] = await db
+  const [row] = await (db as any)
     .update(archPromptVariationsTable)
-    .set({ ...body.data, updatedAt: new Date() })
+    .set({ ...body.data, updatedAt: new Date() } as any)
     .where(
       and(
         eq(archPromptVariationsTable.id, id),
-        eq(archPromptVariationsTable.tenantId, tid),
+        eq(archPromptVariationsTable.tenantId, tid!),
         eq(archPromptVariationsTable.userId, uid),
-      ),
+      )!,
     )
     .returning();
 
@@ -2372,14 +2372,14 @@ router.delete("/arch/prompt-variations/:id", authenticate, async (req, res) => {
   const uid = (req as any).user?.sub as string;
   const id = req.params.id;
 
-  const [row] = await db
+  const [row] = await (db as any)
     .delete(archPromptVariationsTable)
     .where(
       and(
         eq(archPromptVariationsTable.id, id),
-        eq(archPromptVariationsTable.tenantId, tid),
+        eq(archPromptVariationsTable.tenantId, tid!),
         eq(archPromptVariationsTable.userId, uid),
-      ),
+      )!,
     )
     .returning({ id: archPromptVariationsTable.id });
 

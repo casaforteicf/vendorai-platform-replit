@@ -302,10 +302,10 @@ export async function logUsage(params: {
   errorMessage?: string;
   requestId?: string;
 }): Promise<void> {
-  await db.insert(aiUsageLogsTable).values({
+  await (db as any).insert(aiUsageLogsTable).values({
     tenantId: params.tenantId,
     provider: params.provider,
-    model: params.model,
+    model: params.model ?? "unknown",
     feature: params.feature,
     inputTokens: params.inputTokens,
     outputTokens: params.outputTokens,
@@ -363,7 +363,7 @@ export async function callOpenAI(
 
   // 1. Estimate cost (rough pre-check based on message length)
   const estimatedInputTokens = messages.reduce((acc, m) => acc + (typeof m.content === "string" ? m.content.length : 0), 0) / 4;
-  const estimatedCost = estimateCost(model, Math.ceil(estimatedInputTokens), options.maxTokens ?? 600);
+  const estimatedCost = estimateCost((model ?? "unknown"), Math.ceil(estimatedInputTokens), options.maxTokens ?? 600);
 
   // 2. Check quota
   const quota = await checkQuota(tenantId, estimatedCost, log);
@@ -381,7 +381,7 @@ export async function callOpenAI(
   let errorMessage: string | undefined;
   try {
     completion = await openai.chat.completions.create({
-      model,
+      model: model!,
       messages,
       temperature: options.temperature ?? 0.7,
       max_tokens: options.maxTokens ?? 600,
@@ -393,8 +393,8 @@ export async function callOpenAI(
     log?.error({ tenantId, feature, model, error: errorMessage }, "ai-gateway: OpenAI call failed");
     // Log the failed attempt
     const inputTokensEst = Math.ceil(estimatedInputTokens);
-    const costUsdEst = estimateCost(model, inputTokensEst, 0);
-    await logUsage({ tenantId, provider: "openai", model, feature, inputTokens: inputTokensEst, outputTokens: 0, costEstimateUsd: costUsdEst, usedByok: key.usedByok, success: false, errorMessage });
+    const costUsdEst = estimateCost((model ?? "unknown"), inputTokensEst, 0);
+    await logUsage({ tenantId, provider: "openai", model: model ?? "unknown", feature, inputTokens: inputTokensEst, outputTokens: 0, costEstimateUsd: costUsdEst, usedByok: key.usedByok, success: false, errorMessage });
     if (quota.ok && !quota.usedByok) await incrementDailySpend(tenantId, costUsdEst);
 
     // Fire-and-forget alert (non-blocking, throttled to 1/15min per error type)
@@ -403,7 +403,7 @@ export async function callOpenAI(
       errorType: err?.status === 429 ? "429_quota" : "502_error",
       feature: String(feature),
       tenantId: String(tenantId),
-      model,
+      model: String(model),
       message: errorMessage,
     });
 
@@ -431,16 +431,16 @@ export async function callOpenAI(
     const friendlyMessage = err?.status === 429
       ? "Limite de uso da IA atingido. Tente novamente em alguns minutos ou configure uma chave própria nas Configurações."
       : (errorMessage ?? "OpenAI call failed");
-    throw new AiGatewayError(friendlyMessage, err?.status === 429 ? 429 : 502, { provider: "openai", model });
+    throw new AiGatewayError(friendlyMessage, err?.status === 429 ? 429 : 502, { provider: "openai", model: model ?? "unknown" });
   }
 
   // 5. Extract tokens
   const inputTokens = completion.usage?.prompt_tokens ?? Math.ceil(estimatedInputTokens);
   const outputTokens = completion.usage?.completion_tokens ?? 0;
-  const costUsd = estimateCost(model, inputTokens, outputTokens);
+  const costUsd = estimateCost((model ?? "unknown"), inputTokens, outputTokens);
 
   // 6. Log usage
-  await logUsage({ tenantId, provider: "openai", model, feature, inputTokens, outputTokens, costEstimateUsd: costUsd, usedByok: key.usedByok, success: true });
+  await logUsage({ tenantId, provider: "openai", model: model ?? "unknown", feature, inputTokens, outputTokens, costEstimateUsd: costUsd, usedByok: key.usedByok, success: true });
 
   // 7. Update daily spend (only if using shared key)
   if (!key.usedByok) {
@@ -474,7 +474,7 @@ export async function callAnthropic(
 
   // 1. Estimate cost
   const estimatedInputTokens = messages.reduce((acc, m) => acc + m.content.length, 0) / 4;
-  const estimatedCost = estimateCost(model, Math.ceil(estimatedInputTokens), options.maxTokens ?? 32000);
+  const estimatedCost = estimateCost((model ?? "unknown"), Math.ceil(estimatedInputTokens), options.maxTokens ?? 32000);
 
   // 2. Check quota
   const quota = await checkQuota(tenantId, estimatedCost, log);
@@ -539,20 +539,20 @@ export async function callAnthropic(
        errorMessage?.toLowerCase().includes("insufficient") ||
        errorMessage?.toLowerCase().includes("billing"));
     if (isBillingError) {
-      const costUsdPartial = estimateCost(model, Math.ceil(inputTokens), 0);
-      await logUsage({ tenantId, provider: "anthropic", model, feature, inputTokens: Math.ceil(inputTokens), outputTokens: 0, costEstimateUsd: costUsdPartial, usedByok: key.usedByok, success: false, errorMessage });
+      const costUsdPartial = estimateCost((model ?? "unknown"), Math.ceil(inputTokens), 0);
+      await logUsage({ tenantId, provider: "anthropic", model: model ?? "unknown", feature, inputTokens: Math.ceil(inputTokens), outputTokens: 0, costEstimateUsd: costUsdPartial, usedByok: key.usedByok, success: false, errorMessage });
       void sendAiFailureAlert({
         provider: "anthropic",
         errorType: "400_billing",
         feature: String(feature),
         tenantId: String(tenantId),
-        model,
+        model: String(model),
         message: errorMessage,
       });
       throw new AiGatewayError(
         "Saldo da IA esgotado. Configure uma chave própria da Anthropic ou da OpenAI nas Configurações → Integrações.",
         402,
-        { provider: "anthropic", model },
+        { provider: "anthropic", model: model ?? "unknown" },
       );
     }
 
@@ -562,13 +562,13 @@ export async function callAnthropic(
       errorType: "502_error",
       feature: String(feature),
       tenantId: String(tenantId),
-      model,
+      model: String(model),
       message: errorMessage,
     });
   }
 
   // 5. Compute cost
-  const costUsd = estimateCost(model, inputTokens, outputTokens);
+  const costUsd = estimateCost((model ?? "unknown"), inputTokens, outputTokens);
 
   // 6. Log usage (even on failure)
   await logUsage({
@@ -677,7 +677,7 @@ export async function generateImage(
   }
 
   if (!success) {
-    throw new AiGatewayError(errorMessage ?? "Image generation failed", 502, { provider: "openai", model });
+    throw new AiGatewayError(errorMessage ?? "Image generation failed", 502, { provider: "openai", model: model ?? "unknown" });
   }
 
   return { urls, costUsd, usedByok: key.usedByok };
@@ -694,7 +694,7 @@ export async function generateEmbedding(
   const log = options.log;
 
   const estimatedInputTokens = Math.ceil(text.length / 4);
-  const estimatedCost = estimateCost(model, estimatedInputTokens, 0);
+  const estimatedCost = estimateCost((model ?? "unknown"), estimatedInputTokens, 0);
 
   const quota = await checkQuota(tenantId, estimatedCost, log);
   if (!quota.ok) {
@@ -718,7 +718,7 @@ export async function generateEmbedding(
     log?.error({ tenantId, model, error: errorMessage }, "ai-gateway: embedding failed");
   }
 
-  const costUsd = estimateCost(model, inputTokens, 0);
+  const costUsd = estimateCost((model ?? "unknown"), inputTokens, 0);
   await logUsage({
     tenantId,
     provider: "openai",
@@ -889,7 +889,7 @@ export async function callReplicateFlux(params: {
           `https://api.replicate.com/v1/predictions/${prediction.id}`,
           { headers: { Authorization: `Token ${token}` } },
         );
-        prediction = await pollRes.json();
+        prediction = await pollRes.json() as typeof prediction;
         polls++;
       }
 

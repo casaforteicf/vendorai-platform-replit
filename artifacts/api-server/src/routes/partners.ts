@@ -194,7 +194,7 @@ router.get("/partners/leads/:id", requirePartner, async (req, res) => {
       .select()
       .from(conversationsTable)
       .where(eq(conversationsTable.leadId, leadId))
-      .orderBy(desc(conversationsTable.startedAt)),
+      .orderBy(desc(conversationsTable.updatedAt)),
     db
       .select()
       .from(dealsTable)
@@ -204,7 +204,7 @@ router.get("/partners/leads/:id", requirePartner, async (req, res) => {
       .select()
       .from(activitiesTable)
       .where(eq(activitiesTable.leadId, leadId))
-      .orderBy(desc(activitiesTable.scheduledAt)),
+      .orderBy(desc(activitiesTable.createdAt)),
   ]);
 
   res.json({ lead, conversations, deals, activities });

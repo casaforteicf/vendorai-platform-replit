@@ -35,6 +35,7 @@ interface DigitalScan {
   tem_ecommerce: boolean;
   presenca_instagram: boolean;
   indicio_crm: boolean;
+  presenca_google?: boolean;
 }
 
 async function runDigitalScanner(lead: {

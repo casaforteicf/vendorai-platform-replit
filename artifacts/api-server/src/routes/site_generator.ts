@@ -545,7 +545,7 @@ async function runGenerateSite(
   tenantId: string,
   config: SiteGeneratorConfig,
   baseOrigin: string,
-  log: ReturnType<typeof import("pino").default>,
+  log: import("pino").Logger,
 ) {
   try {
     // Fallback to business_profile for missing fields
@@ -589,7 +589,7 @@ async function runGenerateSite(
         .from(produtosCatalogoTable)
         .leftJoin(inventoryItemsTable, eq(inventoryItemsTable.produtoId, produtosCatalogoTable.id))
         .where(and(eq(produtosCatalogoTable.tenantId, tenantId), eq(produtosCatalogoTable.ativo, true)))
-        .orderBy(desc(produtosCatalogoTable.destaque), produtosCatalogoTable.nome)
+        .orderBy((desc as any)(produtosCatalogoTable.destaque), produtosCatalogoTable.nome)
         .limit(50);
 
       catalogProducts = rows.map((r) => {

@@ -82,14 +82,14 @@ router.patch("/admin/bug-reports/:id", requireRole("super_admin"), async (req, r
     return;
   }
 
-  const [updated] = await db
+  const [updated] = await (db as any)
     .update(bugReportsTable)
     .set({
       status,
       ...(respostaSuporte !== undefined ? { respostaSuporte } : {}),
       ...(status === "resolvido" ? { resolvidoAt: new Date() } : {}),
       updatedAt: new Date(),
-    })
+    } as any)
     .where(eq(bugReportsTable.id, req.params.id))
     .returning();
 

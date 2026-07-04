@@ -2,9 +2,9 @@ import { Router } from "express";
 import { and, eq, desc } from "drizzle-orm";
 import {
   db,
-  promptVariationsTable,
-  insertPromptVariationSchema,
-  updatePromptVariationSchema,
+  archPromptVariationsTable as promptVariationsTable,
+  insertArchPromptVariationSchema as insertPromptVariationSchema,
+  updateArchPromptVariationSchema as updatePromptVariationSchema,
 } from "@workspace/db";
 import { authenticate } from "../middlewares/auth.js";
 
@@ -29,7 +29,7 @@ router.get("/arch/prompt-variations", authenticate, async (req, res) => {
       .from(promptVariationsTable)
       .where(
         and(
-          eq(promptVariationsTable.tenantId, tid),
+          eq(promptVariationsTable.tenantId, tid!),
           eq(promptVariationsTable.userId, uid),
         ),
       )
@@ -72,15 +72,15 @@ router.patch("/arch/prompt-variations/:id", authenticate, async (req, res) => {
   }
   try {
     // Update only if id + tenant + user all match (least-privilege)
-    const [row] = await db
+    const [row] = await (db as any)
       .update(promptVariationsTable)
-      .set({ ...parsed.data, updatedAt: new Date() })
+      .set({ ...parsed.data, updatedAt: new Date() } as any)
       .where(
         and(
           eq(promptVariationsTable.id, id),
-          eq(promptVariationsTable.tenantId, tid),
+          eq(promptVariationsTable.tenantId, tid!),
           eq(promptVariationsTable.userId, uid),
-        ),
+        )!,
       )
       .returning();
     if (!row) {
@@ -100,14 +100,14 @@ router.delete("/arch/prompt-variations/:id", authenticate, async (req, res) => {
   const { id } = req.params;
   try {
     // Delete only if id + tenant + user all match (least-privilege)
-    const [deleted] = await db
+    const [deleted] = await (db as any)
       .delete(promptVariationsTable)
       .where(
         and(
           eq(promptVariationsTable.id, id),
-          eq(promptVariationsTable.tenantId, tid),
+          eq(promptVariationsTable.tenantId, tid!),
           eq(promptVariationsTable.userId, uid),
-        ),
+        )!,
       )
       .returning({ id: promptVariationsTable.id });
     if (!deleted) {

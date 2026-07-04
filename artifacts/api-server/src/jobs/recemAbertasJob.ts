@@ -128,7 +128,7 @@ export async function runRecemAbertas(log: Logger = rootLogger): Promise<void> {
               cnpj: cnpjClean,
               razaoSocial: empresa.razaoSocial,
               segmento: empresa.cnaeDescricao,
-              socios: empresa.socios.map((s) => ({ nome: s.nome })),
+              socios: empresa.socios.map((s) => ({ nome: s.nome } as any)),
             },
             metadata: {
               origem: "recem_aberta",
@@ -159,7 +159,7 @@ export async function runRecemAbertas(log: Logger = rootLogger): Promise<void> {
             tenantId: tenant.id,
             leadId: lead.id,
             tipo: "tarefa",
-            descricao: `Lead gerado via Recém-abertas (CNAE ${empresa.cnaeCode}) — ${empresa.municipio}`,
+            descricao: `Lead gerado via Recém-abertas (CNAE ${empresa.cnaeCode} as any) — ${empresa.municipio}`,
             concluida: true,
           });
 

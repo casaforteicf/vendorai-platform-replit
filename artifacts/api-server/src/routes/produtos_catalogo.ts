@@ -49,7 +49,7 @@ router.post("/produtos-catalogo", async (req, res) => {
 
   const [product] = await db
     .insert(produtosCatalogoTable)
-    .values(parsed.data)
+    .values(parsed.data as any)
     .returning();
   res.status(201).json(product);
 });
@@ -101,7 +101,7 @@ router.patch("/produtos-catalogo/:id", async (req, res) => {
 
   const [product] = await db
     .update(produtosCatalogoTable)
-    .set({ ...parsed.data, updatedAt: new Date() })
+    .set({ ...parsed.data, updatedAt: new Date() } as any)
     .where(eq(produtosCatalogoTable.id, existing.id))
     .returning();
 

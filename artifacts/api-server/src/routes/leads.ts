@@ -89,7 +89,7 @@ router.post("/leads", async (req, res) => {
     documento: data.documento ? data.documento.replace(/\D/g, "") : data.documento,
     possivelDuplicata: false,
     leadSimilarId: null,
-  }).returning();
+  } as any).returning();
 
   // Auto-create deal in pipeline (aquecimento) unless lead is pipeline-exempt
   if (!lead.pipelineExempt) {
@@ -241,7 +241,7 @@ router.patch("/leads/:id", async (req, res) => {
 
   const [lead] = await db
     .update(leadsTable)
-    .set({ ...parsed.data, updatedAt: new Date() })
+    .set({ ...parsed.data, updatedAt: new Date() } as any)
     .where(eq(leadsTable.id, existing.id))
     .returning();
 
@@ -919,12 +919,12 @@ Seja direto, prático e específico para este cliente. Não invente dados que n�
     if (briefing) {
       await db
         .update(leadBriefingsTable)
-        .set({ aiSummary: summary, updatedAt: new Date() })
+        .set({ aiSummary: summary, updatedAt: new Date() } as any)
         .where(eq(leadBriefingsTable.id, briefing.id));
     } else {
       await db
         .insert(leadBriefingsTable)
-        .values({ tenantId, leadId, aiSummary: summary });
+        .values({ tenantId, leadId, aiSummary: summary } as any);
     }
 
     req.log.info({ tenantId, leadId }, "briefing/summarize: ok");
@@ -966,7 +966,7 @@ router.post("/leads/:id/conversation-starter", async (req, res) => {
   const ctx = [
     `Nome: ${lead.nome}`,
     lead.empresa ? `Empresa: ${lead.empresa}` : null,
-    lead.segmento ? `Segmento: ${lead.segmento}` : null,
+    (lead as any).segmento ? `Segmento: ${(lead as any).segmento}` : null,
     intel?.nextBestAction ? `Próxima ação sugerida pela IA: ${intel.nextBestAction}` : null,
     intel?.intentAnalysis ? `Intenção de compra: ${intel.intentAnalysis}` : null,
     intel?.churnRisk != null ? `Risco de churn: ${intel.churnRisk}%` : null,

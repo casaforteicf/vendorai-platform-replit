@@ -108,7 +108,7 @@ export async function runMicroEventsRescan(log: Logger): Promise<void> {
               descricao: event.descricao,
               scoreBoost: SCORE_BOOST,
               expiresAt,
-            });
+            } as any);
 
             // Boost score temporarily
             await db
