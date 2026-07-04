@@ -48,6 +48,7 @@ const NON_META_COLS = {
   instagramPageAccessToken: agentConfigsTable.instagramPageAccessToken,
   instagramPageId: agentConfigsTable.instagramPageId,
   instagramUsername: agentConfigsTable.instagramUsername,
+  commentKeywords: agentConfigsTable.commentKeywords,
   zapiInstanceId: agentConfigsTable.zapiInstanceId,
   zapiToken: agentConfigsTable.zapiToken,
   zapiClientToken: agentConfigsTable.zapiClientToken,

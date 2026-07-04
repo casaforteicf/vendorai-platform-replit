@@ -1163,8 +1163,77 @@ router.post("/webhooks/meta/instagram", async (req, res) => {
 
     const entries = (body.entry ?? []) as Array<Record<string, unknown>>;
     for (const entry of entries) {
+      // Instagram Page ID is entry.id — used to resolve tenant for comment events
+      const pageId = String(entry.id ?? "");
       const changes = (entry.changes ?? []) as Array<Record<string, unknown>>;
       for (const change of changes) {
+        // ── Comment events (change.field === "comments") ──────────────────────
+        // Payload: { field: "comments", value: { id, text, from: { id, username }, media: { id }, timestamp } }
+        // NOTE: to receive these events, subscribe the "comments" field in the Meta App Dashboard
+        // under Instagram → Webhooks → Subscribed Fields.
+        if (change.field === "comments") {
+          const v = change.value as Record<string, unknown>;
+          const from = v["from"] as Record<string, string> | undefined;
+          const media = v["media"] as Record<string, string> | undefined;
+          const commentText = String(v["text"] ?? "").trim();
+          const commentId = String(v["id"] ?? "");
+          const commentTimestamp = v["timestamp"]
+            ? new Date(Number(v["timestamp"]) * 1000)
+            : new Date();
+          const igsid = from?.id ?? "";
+          const username = from?.username ?? `Instagram @${igsid.slice(0, 8)}`;
+          const postId = media?.id ?? "";
+
+          if (!igsid || !commentText) {
+            req.log.warn({ commentId }, "meta/instagram/comment: missing igsid or text, skipping");
+            continue;
+          }
+
+          // Resolve tenant by Instagram Page ID
+          let tenantId: string | null = null;
+          if (pageId) {
+            const [agentCfg] = await db
+              .select({ tenantId: agentConfigsTable.tenantId, commentKeywords: agentConfigsTable.commentKeywords })
+              .from(agentConfigsTable)
+              .where(eq(agentConfigsTable.instagramPageId, pageId))
+              .limit(1);
+            if (agentCfg) {
+              tenantId = agentCfg.tenantId;
+
+              // Keyword filter — case-insensitive match against any configured keyword
+              const keywords: string[] = Array.isArray(agentCfg.commentKeywords) && agentCfg.commentKeywords.length > 0
+                ? agentCfg.commentKeywords
+                : [];
+
+              if (keywords.length > 0) {
+                const textUpper = commentText.toUpperCase();
+                const matched = keywords.some((kw) => textUpper.includes(kw.toUpperCase()));
+                if (!matched) {
+                  req.log.info(
+                    { commentId, igsid, postId, keywords },
+                    "meta/instagram/comment: no keyword match, skipping"
+                  );
+                  continue;
+                }
+              }
+
+              req.log.info(
+                { commentId, igsid, username, postId, commentText, commentTimestamp, tenantId },
+                "meta/instagram/comment: keyword match captured"
+              );
+
+              // ── Passo 3 will insert lead creation here ───────────────────
+              // capturedComment = { tenantId, igsid, username, commentText, postId, commentTimestamp }
+            }
+          }
+
+          if (!tenantId) {
+            req.log.warn({ igsid, pageId }, "meta/instagram/comment: no tenant found for page");
+          }
+          continue;
+        }
+
+        // ── DM events (value.messaging array) ────────────────────────────────
         const value = change.value as Record<string, unknown>;
         const messaging = (value.messaging ?? []) as Array<Record<string, unknown>>;
 

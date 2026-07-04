@@ -70,6 +70,7 @@ export const agentConfigsTable = pgTable(
     metaVerifyToken: text("meta_verify_token"),
     specialDateMessagesOptOut: boolean("special_date_messages_opt_out").notNull().default(false),
     whatsappTemplateId: text("whatsapp_template_id"),
+    commentKeywords: jsonb("comment_keywords").$type<string[]>(),
     createdAt: timestamp("created_at").notNull().defaultNow(),
     updatedAt: timestamp("updated_at").notNull().defaultNow(),
   },
