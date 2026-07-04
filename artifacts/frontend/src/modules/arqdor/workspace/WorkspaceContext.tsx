@@ -3,7 +3,6 @@ import type { ReactNode } from 'react'
 import type { Project } from '../../../pages/arch/arqdor/domain/arqdor-domain-types'
 import type { ArchProject } from '../../../pages/arch/arqdor-types'
 import type { ProjectContext, ProjectObject, ProjectMaterial } from '../engines/aie/aie-types'
-import { MOCK_PROJECT_CONTEXT } from '../engines/aie/aie-mock-context'
 
 // ─── WorkspaceContext ─────────────────────────────────────────────────────────
 // Holds the live ProjectContext for the currently open project.
@@ -13,6 +12,13 @@ import { MOCK_PROJECT_CONTEXT } from '../engines/aie/aie-mock-context'
 const BASE = '/api'
 const STORAGE_KEY = 'arqdor_workspace_project_id'
 const SAVE_DEBOUNCE_MS = 2000
+
+export const EMPTY_PROJECT_CONTEXT: ProjectContext = {
+  id: '',
+  name: '',
+  objects: [],
+  materials: [],
+}
 
 function getToken(): string | null {
   return localStorage.getItem('vendorai_token')
@@ -27,18 +33,20 @@ function authHeaders() {
 }
 
 export interface WorkspaceContextValue {
-  projectCtx:    ProjectContext
-  isRealProject: boolean
-  setProjectCtx: (ctx: ProjectContext) => void
-  saving:        boolean
-  loadError:     string | null
+  projectCtx:     ProjectContext
+  isRealProject:  boolean
+  isInitializing: boolean
+  setProjectCtx:  (ctx: ProjectContext) => void
+  saving:         boolean
+  loadError:      string | null
 }
 
 export const WorkspaceContext = createContext<WorkspaceContextValue | null>(null)
 
 export function WorkspaceProvider({ children }: { children: ReactNode }) {
-  const [projectCtx, setProjectCtxState] = useState<ProjectContext>(MOCK_PROJECT_CONTEXT)
+  const [projectCtx, setProjectCtxState] = useState<ProjectContext>(EMPTY_PROJECT_CONTEXT)
   const [isRealProject, setIsRealProject] = useState<boolean>(false)
+  const [isInitializing, setIsInitializing] = useState(false)
   const [saving, setSaving]   = useState(false)
   const [loadError, setLoadError] = useState<string | null>(null)
   const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -53,9 +61,10 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
     if (!tok) return
 
     const storedId = localStorage.getItem(STORAGE_KEY)
-    const projectId = storedId ?? MOCK_PROJECT_CONTEXT.id
+    if (!storedId) return  // Nenhum projeto salvo — exibe tela de boas-vindas
 
-    fetch(`${BASE}/arqdor/projects/${projectId}`, { headers: authHeaders() })
+    setIsInitializing(true)
+    fetch(`${BASE}/arqdor/projects/${storedId}`, { headers: authHeaders() })
       .then(async res => {
         if (!res.ok) return
         const ctx = await res.json() as ProjectContext
@@ -67,6 +76,9 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
       })
       .catch(() => {
         setLoadError('Não foi possível carregar o projeto salvo.')
+      })
+      .finally(() => {
+        setIsInitializing(false)
       })
   }, [])
 
@@ -109,8 +121,8 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
   }, [persistCtx])
 
   const value = useMemo<WorkspaceContextValue>(
-    () => ({ projectCtx, isRealProject, setProjectCtx, saving, loadError }),
-    [projectCtx, isRealProject, setProjectCtx, saving, loadError],
+    () => ({ projectCtx, isRealProject, isInitializing, setProjectCtx, saving, loadError }),
+    [projectCtx, isRealProject, isInitializing, setProjectCtx, saving, loadError],
   )
 
   return (

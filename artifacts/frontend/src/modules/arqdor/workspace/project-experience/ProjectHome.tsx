@@ -25,11 +25,11 @@ const STAGES: Stage[] = [
   { id:'moodboard',   icon:'🖼️', label:'Moodboard',        module:'biblioteca' },
   { id:'inteligente', icon:'🏗️', label:'Proj. Inteligente',module:'projeto'    },
   { id:'biblioteca',  icon:'📚', label:'Biblioteca',        module:'biblioteca' },
-  { id:'componentes', icon:'🔩', label:'Componentes',       module:'arqhub'    },
+  { id:'componentes', icon:'🔩', label:'Componentes',       module:'biblioteca' },
   { id:'prompt',      icon:'⚡', label:'Prompt',            module:'prompt'    },
   { id:'render',      icon:'🎬', label:'Render',            module:'renders'   },
   { id:'review',      icon:'🔍', label:'Review',            module:'ai-review' },
-  { id:'memorial',    icon:'📄', label:'Memorial',          module:'config'    },
+  { id:'memorial',    icon:'📄', label:'Memorial',          module:'prompt'    },
   { id:'entrega',     icon:'🚀', label:'Entrega',           module:'cliente'   },
 ]
 
@@ -550,43 +550,81 @@ function SmartPanel({
   )
 }
 
-// ─── Empty state ──────────────────────────────────────────────────────────────
+// ─── Empty state / Welcome screen ────────────────────────────────────────────
 
 function EmptyHome({ onNavigate }: { onNavigate: (module: string) => void }) {
+  const features = [
+    { icon:'🎬', label:'Renders com IA',    desc:'Gere renders fotorrealistas em minutos' },
+    { icon:'🤖', label:'Copilot de Obra',   desc:'Assistente especializado em arquitetura' },
+    { icon:'📚', label:'Biblioteca',         desc:'Materiais, componentes e fabricantes' },
+    { icon:'⚡', label:'Prompt Engine',      desc:'Prompts otimizados para qualquer IA' },
+    { icon:'🔍', label:'AI Review',          desc:'Análise inteligente do projeto' },
+    { icon:'👤', label:'Portal do Cliente',  desc:'Entregas profissionais e aprovações' },
+  ]
+
   return (
     <div style={{
       flex:1, display:'flex', flexDirection:'column' as const, alignItems:'center',
-      justifyContent:'center', gap:16, padding:40,
+      justifyContent:'center', gap:28, padding:'40px 24px', background:T.bg, overflowY:'auto' as const,
     }}>
-      <div style={{ fontSize:48 }}>🏛️</div>
+      {/* Branding */}
       <div style={{ textAlign:'center' as const }}>
-        <h2 style={{ margin:'0 0 8px', fontSize:T.fs.lg, fontWeight:900, color:'#fff' }}>
-          Bem-vindo ao arqdor.ai
-        </h2>
-        <p style={{ margin:'0 0 4px', fontSize:T.fs.md, color:T.textSub }}>
-          Crie ou selecione um projeto para começar
-        </p>
-        <p style={{ margin:0, fontSize:T.fs.sm, color:T.dim }}>
-          O workspace se organiza ao redor do seu projeto
+        <div style={{ fontSize:52, marginBottom:10 }}>🏛️</div>
+        <h1 style={{ margin:'0 0 6px', fontSize:28, fontWeight:900, color:'#fff', letterSpacing:'-0.02em' }}>
+          arqdor<span style={{ color:T.purpleL }}>.ai</span>
+        </h1>
+        <p style={{ margin:0, fontSize:13, color:T.textSub }}>
+          AI Workspace para Arquitetos de Interiores
         </p>
       </div>
-      <div style={{ display:'flex', gap:8, flexWrap:'wrap' as const, justifyContent:'center' }}>
+
+      {/* Feature grid */}
+      <div style={{ display:'grid', gridTemplateColumns:'repeat(3,1fr)', gap:8, maxWidth:540, width:'100%' }}>
+        {features.map(f => (
+          <div key={f.label} style={{
+            padding:'12px 14px', borderRadius:10, background:T.surface,
+            border:`1px solid ${T.border}`, textAlign:'center' as const,
+          }}>
+            <div style={{ fontSize:22, marginBottom:4 }}>{f.icon}</div>
+            <p style={{ margin:'0 0 2px', fontSize:10, fontWeight:700, color:'#fff' }}>{f.label}</p>
+            <p style={{ margin:0, fontSize:9, color:T.dim, lineHeight:1.3 }}>{f.desc}</p>
+          </div>
+        ))}
+      </div>
+
+      {/* Journey steps */}
+      <div style={{
+        display:'flex', gap:6, alignItems:'center', maxWidth:480, width:'100%',
+        padding:'10px 16px', borderRadius:10, background:'rgba(124,58,237,0.06)',
+        border:`1px solid rgba(124,58,237,0.2)`,
+      }}>
+        {['📋 Briefing', '🏗️ Projeto', '⚡ Prompt', '🎬 Render', '👤 Entrega'].map((s, i, arr) => (
+          <span key={s} style={{ display:'flex', alignItems:'center', gap:6, flex:1, minWidth:0 }}>
+            <span style={{ fontSize:9, color: i === 0 ? T.purpleL : T.dim, fontWeight: i === 0 ? 700 : 400, whiteSpace:'nowrap' as const }}>{s}</span>
+            {i < arr.length - 1 && <span style={{ color:T.border, fontSize:10, flexShrink:0 }}>›</span>}
+          </span>
+        ))}
+      </div>
+
+      {/* CTAs */}
+      <div style={{ display:'flex', gap:10, flexWrap:'wrap' as const, justifyContent:'center' }}>
         <button
           onClick={() => onNavigate('projeto')}
           style={{
-            padding:'10px 20px', borderRadius:T.r.md, border:'none',
-            background:T.purple, color:'#fff', cursor:'pointer',
-            fontSize:T.fs.sm, fontWeight:700,
+            padding:'12px 32px', borderRadius:T.r.md, border:'none',
+            background:`linear-gradient(135deg, ${T.purple} 0%, #5b21b6 100%)`,
+            color:'#fff', cursor:'pointer', fontSize:14, fontWeight:800,
+            boxShadow:'0 4px 20px rgba(124,58,237,0.35)',
           }}
         >
-          🏗️ Abrir Módulo Projeto
+          ✨ Criar Projeto
         </button>
         <button
           onClick={() => onNavigate('arqhub')}
           style={{
-            padding:'10px 20px', borderRadius:T.r.md, border:`1px solid ${T.border}`,
-            background:'transparent', color:T.text, cursor:'pointer',
-            fontSize:T.fs.sm, fontWeight:700,
+            padding:'12px 24px', borderRadius:T.r.md, border:`1px solid ${T.border}`,
+            background:'rgba(255,255,255,0.04)', color:T.text, cursor:'pointer',
+            fontSize:13, fontWeight:600,
           }}
         >
           🏛️ Explorar ARQ HUB
@@ -691,6 +729,44 @@ export function ProjectHome({
         healthColor={healthColor}
       />
 
+      {/* ── Próxima Ação / Journey bar ── */}
+      <div style={{
+        padding:'8px 16px', borderBottom:`1px solid ${T.border}`,
+        background:'rgba(124,58,237,0.04)', flexShrink:0,
+        display:'flex', alignItems:'center', gap:12, flexWrap:'wrap' as const,
+      }}>
+        <span style={{ fontSize:9, fontWeight:700, color:T.dim, letterSpacing:'0.08em', whiteSpace:'nowrap' as const }}>PRÓXIMA AÇÃO</span>
+        <div style={{ display:'flex', alignItems:'center', gap:6, flex:1, minWidth:140 }}>
+          <span style={{ fontSize:13 }}>{STAGES[Math.min(currentStage, STAGES.length-1)]?.icon}</span>
+          <span style={{ fontSize:11, color:'#fff', fontWeight:600 }}>
+            {STAGES[Math.min(currentStage, STAGES.length-1)]?.label ?? 'Projeto concluído'}
+          </span>
+          <button
+            onClick={() => onNavigate(STAGES[Math.min(currentStage, STAGES.length-1)]?.module ?? 'projeto')}
+            style={{
+              padding:'3px 12px', borderRadius:6, border:'none',
+              background:T.purple, color:'#fff', cursor:'pointer', fontSize:10, fontWeight:700, marginLeft:4,
+            }}
+          >
+            Ir →
+          </button>
+        </div>
+        <div style={{ display:'flex', gap:6, flexShrink:0 }}>
+          <button
+            onClick={() => onNavigate('renders')}
+            style={{ padding:'5px 12px', borderRadius:6, border:`1px solid ${T.border}`, background:'transparent', color:T.text, cursor:'pointer', fontSize:10, fontWeight:600 }}
+          >
+            🎬 Render
+          </button>
+          <button
+            onClick={() => onNavigate('cliente')}
+            style={{ padding:'5px 12px', borderRadius:6, border:`1px solid ${T.border}`, background:'transparent', color:T.text, cursor:'pointer', fontSize:10, fontWeight:600 }}
+          >
+            👤 Portal
+          </button>
+        </div>
+      </div>
+
       {/* Body */}
       <div style={{ flex:1, display:'flex', overflow:'hidden' }}>
 
@@ -703,8 +779,8 @@ export function ProjectHome({
             <SummaryCard icon="🏠" label="Ambientes"  value={envCategories.length || '—'}  sub="categorias de objetos"           onClick={() => onNavigate('projeto')} />
             <SummaryCard icon="📦" label="Objetos"    value={totalObj}        sub={`${objWithMat} com material`}   accent={T.blue}  onClick={() => onNavigate('projeto')} />
             <SummaryCard icon="🪵" label="Materiais"  value={totalMat}        sub={`${matWithMfg} com fabricante`} accent={T.purpleL} onClick={() => onNavigate('biblioteca')} />
-            <SummaryCard icon="🔩" label="Componentes" value={objects.filter(o=>o.componentId).length} sub="vinculados" onClick={() => onNavigate('arqhub')} />
-            <SummaryCard icon="🎬" label="Renders"    value="—"               sub="sem histórico"                   onClick={() => onNavigate('renders')} />
+            <SummaryCard icon="🔩" label="Componentes" value={objects.filter(o=>o.componentId).length} sub="vinculados" onClick={() => onNavigate('biblioteca')} />
+            <SummaryCard icon="🎬" label="Renders"    value="→"               sub="Ver histórico"                   onClick={() => onNavigate('renders')} />
             <SummaryCard icon="📌" label="Pendências" value={missing.length}  sub="itens em aberto" accent={missing.length>0?T.amber:T.green} />
           </div>
 

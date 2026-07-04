@@ -53,9 +53,9 @@ interface WorkspaceModule {
 // Navegação principal simplificada (FASE 17)
 const PRIMARY_MODULES: WorkspaceModule[] = [
   { id:'home',       icon:'🏠',  label:'Home',        desc:'Dashboard do projeto'          },
-  { id:'renders',    icon:'🎬',  label:'Render',       desc:'Histórico completo', badge:'5' },
+  { id:'renders',    icon:'🎬',  label:'Render',       desc:'Histórico completo'            },
   { id:'biblioteca', icon:'📚',  label:'Biblioteca',   desc:'Materiais e objetos'           },
-  { id:'cliente',    icon:'👤',  label:'Cliente',      desc:'CRM e integração'              },
+  { id:'cliente',    icon:'👤',  label:'Portal',       desc:'Portal do Cliente'             },
 ]
 // Ferramentas avançadas (acessíveis via "Mais…")
 const SECONDARY_MODULES: WorkspaceModule[] = [
@@ -67,7 +67,6 @@ const SECONDARY_MODULES: WorkspaceModule[] = [
   { id:'config',     icon:'⚙️',  label:'Config',       desc:'Providers e plugins'           },
   { id:'arqhub',     icon:'🏛️',  label:'ARQ HUB',      desc:'Ecosystem inteligente', badge:'NEW', badgeColor:'#4ade80' },
   { id:'ai-intel',   icon:'🧠',  label:'AI Intelligence', desc:'Motor de análise AIE', badge:'AIE', badgeColor:'#a78bfa' },
-  { id:'integracao', icon:'🌐',  label:'Integração',   desc:'Vendor.ai Hubs',        badge:'V.AI', badgeColor:'#60a5fa' },
 ]
 
 const ALL_MODULES = [...PRIMARY_MODULES, ...SECONDARY_MODULES]

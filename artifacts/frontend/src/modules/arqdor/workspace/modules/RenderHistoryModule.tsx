@@ -108,9 +108,29 @@ export function RenderHistoryModule() {
               ))}
             </div>
           )}
-          {!loading && filtered.length === 0 && (
+          {!loading && filtered.length === 0 && renders.length === 0 && (
+            <div style={{ textAlign: 'center' as const, padding: '48px 20px', display: 'flex', flexDirection: 'column' as const, alignItems: 'center', gap: 16 }}>
+              <div style={{ fontSize: 40 }}>🎨</div>
+              <div>
+                <p style={{ margin: '0 0 6px', fontSize: 13, fontWeight: 700, color: '#fff' }}>Nenhum render ainda</p>
+                <p style={{ margin: 0, fontSize: 11, color: T.dim, lineHeight: 1.5 }}>Gere seu primeiro render com o<br/>Prompt Engine + AI</p>
+              </div>
+              <a
+                href="/arch/render"
+                style={{
+                  display: 'inline-block', padding: '10px 22px', borderRadius: 8,
+                  background: 'linear-gradient(135deg, #7c3aed 0%, #5b21b6 100%)',
+                  color: '#fff', textDecoration: 'none', fontSize: 12, fontWeight: 700,
+                  boxShadow: '0 4px 16px rgba(124,58,237,0.35)',
+                }}
+              >
+                ✨ Gerar Primeiro Render
+              </a>
+            </div>
+          )}
+          {!loading && filtered.length === 0 && renders.length > 0 && (
             <div style={{ textAlign: 'center' as const, padding: 40, color: T.dim, fontSize: 12 }}>
-              {renders.length === 0 ? '🎨 Nenhum render gerado ainda. Use o Prompt Playground para gerar seu primeiro render.' : 'Nenhum resultado para a busca.'}
+              Nenhum resultado para a busca.
             </div>
           )}
           {!loading && filtered.map(r => {

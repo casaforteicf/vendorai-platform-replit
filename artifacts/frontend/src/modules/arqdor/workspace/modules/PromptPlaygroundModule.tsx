@@ -1,6 +1,5 @@
 import { useState, useMemo, useCallback, useRef, useEffect } from 'react'
 import { useSearch, useLocation } from 'wouter'
-import { MOCK_PROJECT } from '../../../../pages/arch/arqdor/domain/arqdor-mock-project'
 import { generateFullPromptStructure } from '../../../../pages/arch/arqdor/domain/arqdor-prompt-engine'
 import type {
   PromptStructure,
@@ -14,8 +13,8 @@ import {
   LOCKED_PERMISSIONS,
 } from '../../../../pages/arch/arqdor/domain/arqdor-defaults'
 import { runAIE } from '../../engines/aie/aie-engine'
-import { MOCK_PROJECT_CONTEXT } from '../../engines/aie/aie-mock-context'
 import type { ProjectContext } from '../../engines/aie/aie-types'
+import { EMPTY_PROJECT_CONTEXT } from '../WorkspaceContext'
 import {
   buildPrompt,
   TRANSLATORS,
@@ -175,11 +174,11 @@ function PlaygroundTab() {
   const { projectCtx: projectContext } = useWorkspaceProject()
 
   const activeProject = useMemo<Project>(() =>
-    projectContext ? projectContextToProject(projectContext) : MOCK_PROJECT,
+    projectContextToProject(projectContext),
   [projectContext])
 
   const [structure, setStructure] = useState<PromptStructure>(() =>
-    generateFullPromptStructure(projectContext ? projectContextToProject(projectContext) : MOCK_PROJECT)
+    generateFullPromptStructure(projectContextToProject(projectContext))
   )
   const [open, setOpen] = useState<Set<string>>(new Set(['corePrompt','finalPrompt']))
   const [copied, setCopied] = useState<string|null>(null)
@@ -195,7 +194,7 @@ function PlaygroundTab() {
   }, [projectContext])
 
   const regenerate = useCallback(() => {
-    const project = projectContext ? projectContextToProject(projectContext) : MOCK_PROJECT
+    const project = projectContextToProject(projectContext)
     setStructure(generateFullPromptStructure(project))
     lastGeneratedContextRef.current = projectContext
     setStale(false)
@@ -1223,13 +1222,11 @@ function detectShareParam(): boolean {
 export function PromptPlaygroundModule() {
   const [tab, setTab] = useState<TabId>('playwright')
   const { projectCtx } = useWorkspaceProject()
-  const activeProject = projectCtx && projectCtx !== MOCK_PROJECT_CONTEXT
+  const activeProject = projectCtx && projectCtx.id !== ''
     ? projectContextToProject(projectCtx)
     : null
 
-  // Prefer the persisted workspace context (from WorkspaceProvider) which survives refresh;
-  // fall back to mock as a last resort.
-  const resolvedProjectCtx: ProjectContext = projectCtx ?? MOCK_PROJECT_CONTEXT
+  const resolvedProjectCtx: ProjectContext = projectCtx ?? EMPTY_PROJECT_CONTEXT
 
   return (
     <div style={{ height:'100%', display:'flex', flexDirection:'column' as const, background:T.bg }}>

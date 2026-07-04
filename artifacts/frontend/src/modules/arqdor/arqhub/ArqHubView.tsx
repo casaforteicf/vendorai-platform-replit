@@ -125,11 +125,10 @@ export function ArqHubView() {
 
         {/* Footer */}
         <div style={{ padding:'10px 14px 12px', borderTop:`1px solid ${T.border}`, flexShrink:0 }}>
-          <p style={{ margin:'0 0 4px', fontSize:9, fontWeight:700, color:T.dim, letterSpacing:'0.08em' }}>ECOSYSTEM STATUS</p>
+          <p style={{ margin:'0 0 4px', fontSize:9, fontWeight:700, color:T.dim, letterSpacing:'0.08em' }}>ECOSYSTEM</p>
           <div style={{ display:'flex', gap:4, flexWrap:'wrap' as const }}>
-            {['Mock Data','Sem API','Preparado'].map(s=>(
-              <span key={s} style={{ fontSize:8, padding:'2px 5px', borderRadius:4, background:'rgba(74,222,128,0.08)', color:'#4ade80' }}>● {s}</span>
-            ))}
+            <span style={{ fontSize:8, padding:'2px 5px', borderRadius:4, background:'rgba(74,222,128,0.08)', color:'#4ade80' }}>● Conectado</span>
+            <span style={{ fontSize:8, padding:'2px 5px', borderRadius:4, background:'rgba(124,58,237,0.1)', color:'#a78bfa' }}>ARQ HUB v1</span>
           </div>
         </div>
       </div>

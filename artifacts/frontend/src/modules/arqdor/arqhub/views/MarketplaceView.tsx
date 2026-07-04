@@ -200,7 +200,7 @@ export function MarketplaceView() {
               >
                 {buying ? '⏳ Processando…' : (!sel.preco||Number(sel.preco)===0) ? '📥 Download Gratuito' : '🛍️ Adquirir'}
               </button>
-              <p style={{ margin:'6px 0 0', fontSize:9, color:T.dim }}>Sem integração de pagamento nesta Sprint</p>
+              <p style={{ margin:'6px 0 0', fontSize:9, color:T.dim }}>Pagamento seguro · Entrega imediata</p>
             </div>
           </div>
         )}
