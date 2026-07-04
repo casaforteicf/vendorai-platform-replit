@@ -143,6 +143,8 @@ export interface User {
   forcePasswordReset: boolean;
   /** Segment/vertical of the tenant (e.g. "Construção & Reforma") */
   tenantVertical?: string | null;
+  /** Logo URL of the tenant for co-branding */
+  tenantLogoUrl?: string | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -2011,6 +2013,8 @@ export interface Tenant {
   slug: string;
   status: TenantStatus;
   vertical?: string | null;
+  /** Logo URL for co-branding in the dashboard header */
+  logoUrl?: string | null;
   agentsEnabled?: TenantAgentsEnabled;
   setupCompletedAt?: string | null;
   autonomyEnabledAt?: string | null;
@@ -2125,6 +2129,8 @@ export interface UpdateTenantBody {
   tipoFechamentoDefault?: TipoFechamento | null;
   /** Valor da mensalidade recorrente. */
   mensalidadeValor?: number | null;
+  /** Logo URL for co-branding in the dashboard header. */
+  logoUrl?: string | null;
 }
 
 export type BillingEventType = typeof BillingEventType[keyof typeof BillingEventType];

@@ -137,6 +137,34 @@ export function SidebarLayout({ children }: { children: React.ReactNode }) {
   const inteligenciaNav= navigation.filter((i) => i.section === "inteligencia");
   const hubNav         = navigation.filter((i) => i.section === "hub");
 
+  function resolveImgUrl(url: string | null | undefined): string | null {
+    if (!url) return null;
+    return url.startsWith("/objects/") ? `/api/storage${url}` : url;
+  }
+
+  function LogoBranding({ size }: { size: "lg" | "md" | "sm" }) {
+    const tenantLogo = resolveImgUrl(user?.tenantLogoUrl);
+    const vendorH    = size === "lg" ? "h-10" : size === "md" ? "h-8" : "h-7";
+    const tenantH    = size === "lg" ? "h-9"  : size === "md" ? "h-7" : "h-6";
+
+    if (!tenantLogo) {
+      return <img src={logoFull} alt="Vendor.ai" className={`${vendorH} w-auto`} />;
+    }
+
+    return (
+      <div className="flex items-center gap-2">
+        <img src={logoFull} alt="Vendor.ai" className={`${vendorH} w-auto shrink-0`} />
+        <span className="text-muted-foreground/50 font-light text-sm select-none">×</span>
+        <img
+          src={tenantLogo}
+          alt="Logo"
+          className={`${tenantH} w-auto max-w-[100px] shrink-0 object-contain`}
+          onError={(e) => ((e.currentTarget as HTMLImageElement).style.display = "none")}
+        />
+      </div>
+    );
+  }
+
   function NavItem({ item, onNavigate }: { item: any; onNavigate?: () => void }) {
     const isActive = location === item.href || (item.href !== "/" && location.startsWith(item.href));
     return (
@@ -403,7 +431,7 @@ export function SidebarLayout({ children }: { children: React.ReactNode }) {
       {/* ── Desktop sidebar ────────────────────────────────── */}
       <div className="hidden md:flex w-64 bg-card border-r flex-col shrink-0">
         <div className="p-5 border-b">
-          <img src={logoFull} alt="Vendor.ai" className="h-10 w-auto" />
+          <LogoBranding size="lg" />
         </div>
         <div className="flex-1 py-4 flex flex-col gap-1 px-3 overflow-y-auto">
           <NavLinks />
@@ -420,7 +448,7 @@ export function SidebarLayout({ children }: { children: React.ReactNode }) {
           />
           <div className="absolute left-0 top-0 h-full w-72 bg-card flex flex-col shadow-2xl">
             <div className="flex items-center justify-between p-4 border-b">
-              <img src={logoFull} alt="Vendor.ai" className="h-8 w-auto" />
+              <LogoBranding size="md" />
               <Button
                 variant="ghost"
                 size="icon"
@@ -450,7 +478,7 @@ export function SidebarLayout({ children }: { children: React.ReactNode }) {
           >
             <Menu className="h-5 w-5" />
           </Button>
-          <img src={logoFull} alt="Vendor.ai" className="h-7 w-auto" />
+          <LogoBranding size="sm" />
         </header>
 
         {isSuperAdmin && tenantOverride && (

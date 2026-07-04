@@ -16,6 +16,8 @@ export interface Tenant {
   slug: string;
   status: TenantStatus;
   vertical?: string | null;
+  /** Logo URL for co-branding in the dashboard header */
+  logoUrl?: string | null;
   agentsEnabled?: TenantAgentsEnabled;
   setupCompletedAt?: Date | null;
   autonomyEnabledAt?: Date | null;

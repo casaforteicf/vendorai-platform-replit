@@ -23,6 +23,8 @@ export interface User {
   forcePasswordReset: boolean;
   /** Segment/vertical of the tenant (e.g. "Construção & Reforma") */
   tenantVertical?: string | null;
+  /** Logo URL of the tenant for co-branding */
+  tenantLogoUrl?: string | null;
   createdAt: Date;
   updatedAt: Date;
 }

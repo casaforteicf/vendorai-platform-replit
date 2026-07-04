@@ -9,6 +9,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
 import { useLocation } from "wouter";
 import {
+  getGetMeQueryKey,
   useGetBusinessProfileByTenant,
   getGetBusinessProfileByTenantQueryKey,
   useCreateBusinessProfile,
@@ -580,10 +581,12 @@ export default function Configuracoes() {
 
   // ── Image Upload ───────────────────────────────────────────────────────────
   const requestUploadUrl = useRequestUploadUrl();
-  const logoInputRef    = useRef<HTMLInputElement>(null);
-  const faviconInputRef = useRef<HTMLInputElement>(null);
+  const logoInputRef         = useRef<HTMLInputElement>(null);
+  const faviconInputRef      = useRef<HTMLInputElement>(null);
+  const tenantLogoInputRef   = useRef<HTMLInputElement>(null);
   const [logoUploading,    setLogoUploading]    = useState(false);
   const [faviconUploading, setFaviconUploading] = useState(false);
+  const [tenantLogoUploading, setTenantLogoUploading] = useState(false);
 
   async function uploadImageFile(
     file: File,
@@ -610,6 +613,21 @@ export default function Configuracoes() {
     } finally {
       setUploading(false);
     }
+  }
+
+  // ── Tenant Logo ────────────────────────────────────────────────────────────
+  function saveTenantLogo(objectPath: string) {
+    updateTenant.mutate(
+      { id: tenantId, data: { logoUrl: objectPath } },
+      {
+        onSuccess: () => {
+          queryClient.invalidateQueries({ queryKey: getGetTenantQueryKey(tenantId) });
+          queryClient.invalidateQueries({ queryKey: getGetMeQueryKey() });
+          toast({ title: "Logo da plataforma salva com sucesso." });
+        },
+        onError: () => toast({ title: "Erro ao salvar logo.", variant: "destructive" }),
+      }
+    );
   }
 
   // ── Business Profile ───────────────────────────────────────────────────────
@@ -1469,6 +1487,84 @@ export default function Configuracoes() {
 
         {/* ── Tab: Perfil da Empresa ──────────────────────────────────────── */}
         <TabsContent value="perfil">
+          {/* ── Tenant Logo (co-branding) ─────────────────────────────────── */}
+          <div className="rounded-xl border bg-card p-6 space-y-4 mb-4">
+            <div>
+              <h2 className="font-semibold text-base flex items-center gap-2">
+                <Upload className="h-4 w-4 text-primary" />
+                Logo da Plataforma
+              </h2>
+              <p className="text-sm text-muted-foreground mt-0.5">
+                Exibida no header do dashboard ao lado da logo Vendor.ai (co-branding).
+              </p>
+            </div>
+            <input
+              ref={tenantLogoInputRef}
+              type="file"
+              accept="image/*"
+              className="hidden"
+              onChange={(e) => {
+                const file = e.target.files?.[0];
+                if (!file) return;
+                uploadImageFile(file, saveTenantLogo, setTenantLogoUploading);
+                e.target.value = "";
+              }}
+            />
+            <div className="flex items-start gap-4">
+              {/* Preview */}
+              <div className="flex-1 min-w-0">
+                {tenantQuery.data?.logoUrl ? (
+                  <div className="flex items-center gap-3 p-3 rounded-lg border bg-muted/30 mb-3">
+                    <img
+                      src={
+                        tenantQuery.data.logoUrl.startsWith("/objects/")
+                          ? `/api/storage${tenantQuery.data.logoUrl}`
+                          : tenantQuery.data.logoUrl
+                      }
+                      alt="Logo atual"
+                      className="h-10 w-auto max-w-[180px] object-contain rounded"
+                      onError={(e) => ((e.target as HTMLImageElement).style.display = "none")}
+                    />
+                    <div className="flex-1 min-w-0">
+                      <p className="text-xs text-muted-foreground">Logo atual</p>
+                      <p className="text-xs text-muted-foreground/70 truncate">
+                        Co-branding ativo no header
+                      </p>
+                    </div>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      className="text-destructive hover:text-destructive h-8 shrink-0"
+                      onClick={() => saveTenantLogo("")}
+                      disabled={updateTenant.isPending}
+                    >
+                      Remover
+                    </Button>
+                  </div>
+                ) : (
+                  <p className="text-sm text-muted-foreground mb-3">
+                    Nenhuma logo cadastrada. Apenas a logo Vendor.ai será exibida.
+                  </p>
+                )}
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  className="gap-1.5"
+                  onClick={() => tenantLogoInputRef.current?.click()}
+                  disabled={tenantLogoUploading}
+                >
+                  {tenantLogoUploading
+                    ? <Loader2 className="h-4 w-4 animate-spin" />
+                    : <Upload className="h-4 w-4" />
+                  }
+                  {tenantLogoUploading ? "Enviando..." : "Enviar logo"}
+                </Button>
+              </div>
+            </div>
+          </div>
+
           <div className="rounded-xl border bg-card p-6 space-y-6">
             <div>
               <h2 className="font-semibold text-base flex items-center gap-2">

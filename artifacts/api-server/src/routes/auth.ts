@@ -375,7 +375,7 @@ router.post("/auth/register", authenticate, requireRole("super_admin"), async (r
 
 protectedRouter.get("/auth/me", async (req, res) => {
   const [row] = await db
-    .select({ ...PUBLIC_FIELDS, tenantVertical: tenantsTable.vertical })
+    .select({ ...PUBLIC_FIELDS, tenantVertical: tenantsTable.vertical, tenantLogoUrl: tenantsTable.logoUrl })
     .from(usersTable)
     .leftJoin(tenantsTable, eq(usersTable.tenantId, tenantsTable.id))
     .where(eq(usersTable.id, req.user!.sub));

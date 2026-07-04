@@ -12721,6 +12721,10 @@ components:
         vertical:
           type: string
           nullable: true
+        logoUrl:
+          type: string
+          nullable: true
+          description: Logo URL for co-branding in the dashboard header
         agentsEnabled:
           type: object
           additionalProperties: true
@@ -12915,6 +12919,10 @@ components:
           type: number
           nullable: true
           description: Valor da mensalidade recorrente.
+        logoUrl:
+          type: string
+          nullable: true
+          description: Logo URL for co-branding in the dashboard header.
 
     BillingEventType:
       type: string
@@ -14250,6 +14258,10 @@ components:
           type: string
           nullable: true
           description: Segment/vertical of the tenant (e.g. "Construção & Reforma")
+        tenantLogoUrl:
+          type: string
+          nullable: true
+          description: Logo URL of the tenant for co-branding
         createdAt:
           type: string
           format: date-time

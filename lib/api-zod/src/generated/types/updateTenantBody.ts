@@ -43,4 +43,6 @@ export interface UpdateTenantBody {
   tipoFechamentoDefault?: TipoFechamento | null;
   /** Valor da mensalidade recorrente. */
   mensalidadeValor?: number | null;
+  /** Logo URL for co-branding in the dashboard header. */
+  logoUrl?: string | null;
 }

@@ -41,6 +41,7 @@ export const GetMeResponse = zod.object({
   "active": zod.boolean(),
   "forcePasswordReset": zod.boolean().describe('If true, user must change their password on next login.'),
   "tenantVertical": zod.string().nullish().describe('Segment\/vertical of the tenant (e.g. \"Construção & Reforma\")'),
+  "tenantLogoUrl": zod.string().nullish().describe('Logo URL of the tenant for co-branding'),
   "createdAt": zod.coerce.date(),
   "updatedAt": zod.coerce.date()
 })
@@ -64,6 +65,7 @@ export const RefreshTokenResponse = zod.object({
   "active": zod.boolean(),
   "forcePasswordReset": zod.boolean().describe('If true, user must change their password on next login.'),
   "tenantVertical": zod.string().nullish().describe('Segment\/vertical of the tenant (e.g. \"Construção & Reforma\")'),
+  "tenantLogoUrl": zod.string().nullish().describe('Logo URL of the tenant for co-branding'),
   "createdAt": zod.coerce.date(),
   "updatedAt": zod.coerce.date()
 })
@@ -92,6 +94,7 @@ export const LoginResponse = zod.object({
   "active": zod.boolean(),
   "forcePasswordReset": zod.boolean().describe('If true, user must change their password on next login.'),
   "tenantVertical": zod.string().nullish().describe('Segment\/vertical of the tenant (e.g. \"Construção & Reforma\")'),
+  "tenantLogoUrl": zod.string().nullish().describe('Logo URL of the tenant for co-branding'),
   "createdAt": zod.coerce.date(),
   "updatedAt": zod.coerce.date()
 })
@@ -121,6 +124,7 @@ export const DemoLoginResponse = zod.object({
   "active": zod.boolean(),
   "forcePasswordReset": zod.boolean().describe('If true, user must change their password on next login.'),
   "tenantVertical": zod.string().nullish().describe('Segment\/vertical of the tenant (e.g. \"Construção & Reforma\")'),
+  "tenantLogoUrl": zod.string().nullish().describe('Logo URL of the tenant for co-branding'),
   "createdAt": zod.coerce.date(),
   "updatedAt": zod.coerce.date()
 })
@@ -321,6 +325,7 @@ export const ListUsersResponseItem = zod.object({
   "active": zod.boolean(),
   "forcePasswordReset": zod.boolean().describe('If true, user must change their password on next login.'),
   "tenantVertical": zod.string().nullish().describe('Segment\/vertical of the tenant (e.g. \"Construção & Reforma\")'),
+  "tenantLogoUrl": zod.string().nullish().describe('Logo URL of the tenant for co-branding'),
   "createdAt": zod.coerce.date(),
   "updatedAt": zod.coerce.date()
 })
@@ -372,6 +377,7 @@ export const ChangePasswordResponse = zod.object({
   "active": zod.boolean(),
   "forcePasswordReset": zod.boolean().describe('If true, user must change their password on next login.'),
   "tenantVertical": zod.string().nullish().describe('Segment\/vertical of the tenant (e.g. \"Construção & Reforma\")'),
+  "tenantLogoUrl": zod.string().nullish().describe('Logo URL of the tenant for co-branding'),
   "createdAt": zod.coerce.date(),
   "updatedAt": zod.coerce.date()
 })
@@ -396,6 +402,7 @@ export const GetUserResponse = zod.object({
   "active": zod.boolean(),
   "forcePasswordReset": zod.boolean().describe('If true, user must change their password on next login.'),
   "tenantVertical": zod.string().nullish().describe('Segment\/vertical of the tenant (e.g. \"Construção & Reforma\")'),
+  "tenantLogoUrl": zod.string().nullish().describe('Logo URL of the tenant for co-branding'),
   "createdAt": zod.coerce.date(),
   "updatedAt": zod.coerce.date()
 })
@@ -431,6 +438,7 @@ export const UpdateUserResponse = zod.object({
   "active": zod.boolean(),
   "forcePasswordReset": zod.boolean().describe('If true, user must change their password on next login.'),
   "tenantVertical": zod.string().nullish().describe('Segment\/vertical of the tenant (e.g. \"Construção & Reforma\")'),
+  "tenantLogoUrl": zod.string().nullish().describe('Logo URL of the tenant for co-branding'),
   "createdAt": zod.coerce.date(),
   "updatedAt": zod.coerce.date()
 })
@@ -4319,6 +4327,7 @@ export const ListTenantsResponseItem = zod.object({
   "slug": zod.string(),
   "status": zod.enum(['active', 'suspended', 'cancelled']),
   "vertical": zod.string().nullish(),
+  "logoUrl": zod.string().nullish().describe('Logo URL for co-branding in the dashboard header'),
   "agentsEnabled": zod.record(zod.string(), zod.unknown()).optional(),
   "setupCompletedAt": zod.coerce.date().nullish(),
   "autonomyEnabledAt": zod.coerce.date().nullish(),
@@ -4378,6 +4387,7 @@ export const GetTenantResponse = zod.object({
   "slug": zod.string(),
   "status": zod.enum(['active', 'suspended', 'cancelled']),
   "vertical": zod.string().nullish(),
+  "logoUrl": zod.string().nullish().describe('Logo URL for co-branding in the dashboard header'),
   "agentsEnabled": zod.record(zod.string(), zod.unknown()).optional(),
   "setupCompletedAt": zod.coerce.date().nullish(),
   "autonomyEnabledAt": zod.coerce.date().nullish(),
@@ -4425,7 +4435,8 @@ export const UpdateTenantBody = zod.object({
   "analysisMessageThreshold": zod.number().nullish().describe('Per-tenant override for new-message count that triggers auto re-analysis. Null falls back to the global ANALYSIS_MESSAGE_THRESHOLD env var.\n'),
   "maxAnalysesPerHour": zod.number().nullish().describe('Per-tenant override for the maximum number of AI analyses allowed per rolling hour window. Null falls back to the global MAX_ANALYSES_PER_TENANT_PER_HOUR env var.\n'),
   "tipoFechamentoDefault": zod.enum(['pedido', 'contrato', 'pedido_e_contrato']).nullish().describe('Tipo de fechamento padrão para novos deals deste tenant.'),
-  "mensalidadeValor": zod.number().nullish().describe('Valor da mensalidade recorrente.')
+  "mensalidadeValor": zod.number().nullish().describe('Valor da mensalidade recorrente.'),
+  "logoUrl": zod.string().nullish().describe('Logo URL for co-branding in the dashboard header.')
 })
 
 export const updateTenantResponseIntegracoesConcluidoDefault = false;
@@ -4436,6 +4447,7 @@ export const UpdateTenantResponse = zod.object({
   "slug": zod.string(),
   "status": zod.enum(['active', 'suspended', 'cancelled']),
   "vertical": zod.string().nullish(),
+  "logoUrl": zod.string().nullish().describe('Logo URL for co-branding in the dashboard header'),
   "agentsEnabled": zod.record(zod.string(), zod.unknown()).optional(),
   "setupCompletedAt": zod.coerce.date().nullish(),
   "autonomyEnabledAt": zod.coerce.date().nullish(),
@@ -5028,6 +5040,7 @@ export const ListTenantUsersResponseItem = zod.object({
   "active": zod.boolean(),
   "forcePasswordReset": zod.boolean().describe('If true, user must change their password on next login.'),
   "tenantVertical": zod.string().nullish().describe('Segment\/vertical of the tenant (e.g. \"Construção & Reforma\")'),
+  "tenantLogoUrl": zod.string().nullish().describe('Logo URL of the tenant for co-branding'),
   "createdAt": zod.coerce.date(),
   "updatedAt": zod.coerce.date()
 })
@@ -6961,6 +6974,7 @@ export const LinkTenantPartnerResponse = zod.object({
   "slug": zod.string(),
   "status": zod.enum(['active', 'suspended', 'cancelled']),
   "vertical": zod.string().nullish(),
+  "logoUrl": zod.string().nullish().describe('Logo URL for co-branding in the dashboard header'),
   "agentsEnabled": zod.record(zod.string(), zod.unknown()).optional(),
   "setupCompletedAt": zod.coerce.date().nullish(),
   "autonomyEnabledAt": zod.coerce.date().nullish(),
