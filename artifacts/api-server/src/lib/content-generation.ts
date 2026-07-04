@@ -272,21 +272,27 @@ const VOICE_TONE_LABELS: Record<string, string> = {
   bastidores_casual: "Bastidores casual",
 };
 const CTA_LABELS: Record<string, string> = {
-  comentar_palavra: "Comentar uma palavra-chave nos comentários",
-  chamar_direct: "Chamar no direct",
-  clicar_link: "Clicar no link da bio",
-  sem_cta: "Nenhum CTA — não inclua chamada para ação",
+  comentar_palavra: "peça ao seguidor para comentar uma palavra-chave",
+  chamar_direct: "convide o seguidor a chamar no direct",
+  clicar_link: "direcione o seguidor para clicar no link da bio",
+  sem_cta: "NÃO inclua nenhuma chamada para ação — finalize o post naturalmente",
 };
 
 function buildStrategyBlock(s?: ContentStrategy): string {
   if (!s?.customerPain) return "";
-  const lines: string[] = [
-    `Dor do cliente que este post ataca: ${s.customerPain}`,
+
+  const objective = s.postObjective ? (POST_OBJECTIVE_LABELS[s.postObjective] ?? s.postObjective) : null;
+  const tone      = s.voiceTone     ? (VOICE_TONE_LABELS[s.voiceTone]         ?? s.voiceTone)     : null;
+  const cta       = s.desiredCta    ? (CTA_LABELS[s.desiredCta]                ?? s.desiredCta)    : null;
+
+  const parts: string[] = [
+    `Crie um post que ataca a dor: "${s.customerPain}".`,
   ];
-  if (s.postObjective) lines.push(`Objetivo do post: ${POST_OBJECTIVE_LABELS[s.postObjective] ?? s.postObjective}`);
-  if (s.voiceTone) lines.push(`Tom de voz: ${VOICE_TONE_LABELS[s.voiceTone] ?? s.voiceTone}`);
-  if (s.desiredCta) lines.push(`CTA desejado: ${CTA_LABELS[s.desiredCta] ?? s.desiredCta}`);
-  return `\nEstratégia do post:\n${lines.join("\n")}\n`;
+  if (objective) parts.push(`Objetivo: ${objective}.`);
+  if (tone)      parts.push(`Tom de voz: ${tone}.`);
+  if (cta)       parts.push(s.desiredCta === "sem_cta" ? `${cta}.` : `Termine com CTA que ${cta}.`);
+
+  return `\nINSTRUÇÃO ESTRATÉGICA (siga à risca — tem prioridade sobre qualquer padrão genérico): ${parts.join(" ")}\n`;
 }
 
 export async function generateFeedContent(
