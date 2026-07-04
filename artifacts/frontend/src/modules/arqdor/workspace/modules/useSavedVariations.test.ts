@@ -1125,6 +1125,62 @@ describe('badge stays hidden after online event with mixed srv-* and local-* ite
     expect(stored).toHaveLength(3)
     stored.forEach(v => expect(v.id).not.toMatch(/^local-/))
   })
+
+  it('pendingCount stays at the number of still-pending items when the server rejects the promotion with 5xx', async () => {
+    // Seed a realistic state: two already-synced server items + one local-only item
+    const srvA = makeVariation({ id: 'srv-reject-1', name: 'Server A', savedAt: 1_700_000_200_000 })
+    const srvB = makeVariation({ id: 'srv-reject-2', name: 'Server B', savedAt: 1_700_000_201_000 })
+    const pending = makeVariation({ id: 'local-reject-offline-1', name: 'Pending offline', savedAt: 1_700_000_202_000 })
+    seedLocalStorage([srvA, srvB, pending])
+    localStorage.setItem('vendorai_token', 'tok-abc')
+
+    const fetchMock = vi
+      .fn()
+      // GET on mount → network error (server was down)
+      .mockRejectedValueOnce(new TypeError('Network failure'))
+      // POST from syncPendingVariations triggered by 'online' → server rejects with 5xx
+      .mockResolvedValueOnce({ ok: false, status: 500 })
+    vi.stubGlobal('fetch', fetchMock)
+
+    const { result } = renderHook(() => useSavedVariations())
+
+    // Wait for the mount-time GET to settle
+    await waitFor(() => expect(result.current.syncing).toBe(false))
+
+    // All 3 items loaded from localStorage; only the local-* one is pending
+    expect(result.current.variations).toHaveLength(3)
+    expect(result.current.pendingCount).toBe(1)
+
+    // Simulate connectivity being restored
+    await act(async () => {
+      window.dispatchEvent(new Event('online'))
+      await new Promise(r => setTimeout(r, 0))
+    })
+
+    // The POST returned 5xx — the local-* item was NOT promoted
+    expect(result.current.pendingCount).toBe(1)
+
+    // The item still carries its local-* id in both state and localStorage
+    const localItems = result.current.variations.filter(v => v.id.startsWith('local-'))
+    expect(localItems).toHaveLength(1)
+    expect(localItems[0].id).toBe('local-reject-offline-1')
+    expect(localItems[0].name).toBe('Pending offline')
+
+    const storedLocal = storedVariations().filter(v => v.id.startsWith('local-'))
+    expect(storedLocal).toHaveLength(1)
+    expect(storedLocal[0].id).toBe('local-reject-offline-1')
+
+    // The srv-* items are completely unaffected
+    const srvItems = result.current.variations.filter(v => !v.id.startsWith('local-'))
+    expect(srvItems).toHaveLength(2)
+    const srvIds = srvItems.map(v => v.id)
+    expect(srvIds).toContain('srv-reject-1')
+    expect(srvIds).toContain('srv-reject-2')
+
+    // Total count must be unchanged
+    expect(result.current.variations).toHaveLength(3)
+    expect(storedVariations()).toHaveLength(3)
+  })
 })
 
 // ─── Scenario: badge stays hidden with clean server-synced list ───────────────
