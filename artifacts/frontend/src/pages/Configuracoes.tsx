@@ -616,9 +616,9 @@ export default function Configuracoes() {
   }
 
   // ── Tenant Logo ────────────────────────────────────────────────────────────
-  function saveTenantLogo(objectPath: string) {
+  function saveTenantLogo(objectPath: string | null) {
     updateTenant.mutate(
-      { id: tenantId, data: { logoUrl: objectPath } },
+      { id: tenantId, data: { logoUrl: objectPath ?? undefined } },
       {
         onSuccess: () => {
           queryClient.invalidateQueries({ queryKey: getGetTenantQueryKey(tenantId) });
@@ -1536,7 +1536,7 @@ export default function Configuracoes() {
                       variant="ghost"
                       size="sm"
                       className="text-destructive hover:text-destructive h-8 shrink-0"
-                      onClick={() => saveTenantLogo("")}
+                      onClick={() => saveTenantLogo(null)}
                       disabled={updateTenant.isPending}
                     >
                       Remover
