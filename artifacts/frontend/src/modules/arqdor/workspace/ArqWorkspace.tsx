@@ -527,6 +527,16 @@ function WorkspaceInner() {
     if (ctx) setProjectCtx(ctx)
   }, [arqState.projectId, arqState.objects, arqState.materials, arqState.projectMeta])
 
+  // arqdor:navigate — permite módulos filhos navegarem sem prop drilling
+  useEffect(() => {
+    const handler = (e: Event) => {
+      const detail = (e as CustomEvent<{ module: string }>).detail
+      if (detail?.module) setActiveModule(detail.module as ModuleId)
+    }
+    window.addEventListener('arqdor:navigate', handler)
+    return () => window.removeEventListener('arqdor:navigate', handler)
+  }, [])
+
   // ─── Keyboard shortcuts ───────────────────────────────────────────────────
   useEffect(() => {
     let pendingG = false
