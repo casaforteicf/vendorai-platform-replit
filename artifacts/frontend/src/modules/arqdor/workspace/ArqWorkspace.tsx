@@ -30,7 +30,8 @@ import { ProjectModule }         from './modules/ProjectModule'
 import { ArqHubView }            from '../arqhub/ArqHubView'
 import { AIEDashboard }          from '../engines/aie/dashboard/AIEDashboard'
 import { useArqProject, type ArqProjectState } from '../hooks/useArqProject'
-import { ProjectHomePhoenix, RenderProgressModal } from './project-experience/ProjectHomePhoenix'
+import { RenderProgressModal } from './project-experience/ProjectHomePhoenix'
+import { InstantRenderZone } from './project-experience/InstantRenderZone'
 import { computeNextAction }     from './project-experience/ProjectHome'
 import { ArqCommandPalette }     from './ArqCommandPalette'
 import { runAIE }                from '../engines/aie/aie-engine'
@@ -228,7 +229,7 @@ const CSS = `
 // ─── Module renderer ──────────────────────────────────────────────────────────
 function renderModule(id: ModuleId, arqState: ArqProjectState, setActive: (m: ModuleId) => void) {
   switch (id) {
-    case 'home':          return <ProjectHomePhoenix arqState={arqState} onNavigate={m => setActive(m as ModuleId)} />
+    case 'home':          return <InstantRenderZone arqState={arqState} onNavigate={m => setActive(m as ModuleId)} />
     case 'projeto':       return <ProjectModule/>
     case 'biblioteca':    return <LibraryModule/>
     case 'especificacao': return <SmartSpecModule/>
@@ -673,8 +674,9 @@ function WorkspaceInner() {
             <button
               className="phx-cta"
               onClick={() => {
-                setShowRenderProgress(true)
-                setTimeout(() => { setShowRenderProgress(false); setActiveModule('renders') }, 5800)
+                setActiveModule('home')
+                // Pequeno delay para garantir que InstantRenderZone está montada antes do evento
+                setTimeout(() => window.dispatchEvent(new CustomEvent('arqdor:open-upload')), 80)
               }}
               title="Gerar Render com IA (✨)"
             >
