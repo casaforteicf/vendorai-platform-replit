@@ -1,641 +1,888 @@
-// ─── InstantRenderZone — "Resultado Primeiro" UX Revolution ──────────────────
-// Filosofia: RESULTADO ANTES DE CONFIGURAÇÃO.
-// Fluxo: Soltar imagem → render automático → resultado → opções de melhoria.
-// Critério: primeiro render em < 60 segundos sem treinamento.
+// ─── ARQDOR Studio — Experiência unificada de render ─────────────────────────
+// Fluxo: Upload + Configurar → Gerar Render → Resultado + Painel de ajustes
+//        → Aplicar → Novo Render → Comparar → Baixar
+// NUNCA expõe prompts ao usuário.
 
 import { useState, useRef, useCallback, useEffect } from 'react'
 import type { ArqProjectState } from '../../hooks/useArqProject'
 import { PHX } from '../../shared/arqdor-theme'
 
-// ─── Constants ──────────────────────────────────────────────────────────────
+// ─── Constantes ──────────────────────────────────────────────────────────────
 const BASE = '/api'
+const getToken   = () => localStorage.getItem('vendorai_token') ?? ''
+const authHeader = () => ({ Authorization: `Bearer ${getToken()}` })
+const jsonHeader = () => ({ ...authHeader(), 'Content-Type': 'application/json' })
 
-function getToken() { return localStorage.getItem('vendorai_token') ?? '' }
-function authHeaders() {
-  return {
-    'Content-Type': 'application/json',
-    Authorization: `Bearer ${getToken()}`,
+// Ambientes disponíveis
+const AMBIENTES = [
+  { id: 'sala de estar', label: 'Sala',      icon: '🛋️' },
+  { id: 'cozinha',       label: 'Cozinha',   icon: '🍳' },
+  { id: 'quarto',        label: 'Quarto',    icon: '🛏️' },
+  { id: 'banheiro',      label: 'Banheiro',  icon: '🚿' },
+  { id: 'escritorio',    label: 'Escritório', icon: '💼' },
+  { id: 'varanda',       label: 'Varanda',   icon: '🌿' },
+  { id: 'fachada',       label: 'Fachada',   icon: '🏠' },
+]
+
+// Estilos visuais
+const ESTILOS = [
+  { id: 'moderno',        label: 'Moderno'      },
+  { id: 'minimalista',    label: 'Minimalista'  },
+  { id: 'escandinavo',    label: 'Escandinavo'  },
+  { id: 'classico',       label: 'Clássico'     },
+  { id: 'industrial',     label: 'Industrial'   },
+  { id: 'tropical',       label: 'Tropical'     },
+]
+
+// Catálogo de materiais — _prompt NUNCA exibido
+interface MatItem { id: string; label: string; bg: string; _prompt: string }
+const MATERIALS: Record<string, MatItem[]> = {
+  armarios: [
+    { id: 'mdf-branco',   label: 'MDF Branco',    bg: '#f5f5f0', _prompt: 'cabinetry white MDF smooth satin finish' },
+    { id: 'cinza',        label: 'Cinza Cimento',  bg: '#9ca3af', _prompt: 'cabinetry cement grey MDF matte' },
+    { id: 'freijo',       label: 'Freijó',         bg: 'linear-gradient(135deg,#8B6914,#A0783A)', _prompt: 'cabinetry Freijo wood-grain MDF warm brown vertical grain satin' },
+    { id: 'carvalho',     label: 'Carvalho',       bg: 'linear-gradient(135deg,#C8A96E,#B8914A)', _prompt: 'cabinetry European oak veneer light warm wood fine grain' },
+    { id: 'nogueira',     label: 'Nogueira',       bg: 'linear-gradient(135deg,#4A2C0A,#6B3D12)', _prompt: 'cabinetry dark walnut wood veneer rich brown premium' },
+    { id: 'preto-fosco',  label: 'Preto Fosco',    bg: '#1f2937', _prompt: 'cabinetry matte black lacquer premium finish' },
+  ],
+  bancadas: [
+    { id: 'granito-branco', label: 'Granito Branco',   bg: '#f0ede8', _prompt: 'countertop white granite polished' },
+    { id: 'granito-preto',  label: 'Granito Preto',    bg: '#1c1c1c', _prompt: 'countertop absolute black granite polished' },
+    { id: 'quartzo',        label: 'Quartzo Branco',   bg: '#f8f8f8', _prompt: 'countertop engineered white quartz seamless polished' },
+    { id: 'silestone',      label: 'Silestone Bege',   bg: '#d4b896', _prompt: 'countertop Silestone desert silver quartz beige tone' },
+    { id: 'marmore',        label: 'Mármore Carrara',  bg: 'repeating-linear-gradient(25deg,#f0ece8 0,#f0ece8 8px,#d4cfc9 8px,#d4cfc9 9px)', _prompt: 'countertop Carrara white marble grey veining polished' },
+    { id: 'calacatta',      label: 'Calacatta Gold',   bg: 'repeating-linear-gradient(15deg,#f5f0e8 0,#f5f0e8 12px,#c9a84c 12px,#c9a84c 13px)', _prompt: 'countertop Calacatta Gold marble white golden veining polished' },
+  ],
+  pisos: [
+    { id: 'porc-cinza',   label: 'Porcelanato Cinza',    bg: '#6b7280', _prompt: 'floor large-format grey porcelain 120x60cm polished seamless' },
+    { id: 'porc-branco',  label: 'Porcelanato Branco',   bg: '#f3f4f6', _prompt: 'floor white porcelain tile 120x60cm polished' },
+    { id: 'cimento',      label: 'Cimento Queimado',     bg: '#78716c', _prompt: 'floor polished burnt cement microcement matte grey-brown' },
+    { id: 'madeira-clara', label: 'Madeira Clara',       bg: 'repeating-linear-gradient(90deg,#c19a6b 0,#c19a6b 60px,#b08850 60px,#b08850 62px)', _prompt: 'floor light oak hardwood planks natural finish' },
+    { id: 'madeira-esc',  label: 'Madeira Escura',       bg: 'repeating-linear-gradient(90deg,#5c3d1e 0,#5c3d1e 60px,#4a2e14 60px,#4a2e14 62px)', _prompt: 'floor dark walnut hardwood planks rich tone' },
+    { id: 'vinilico',     label: 'Vinílico Amadeirado',  bg: '#a0784a', _prompt: 'floor vinyl plank flooring wood-look light brown' },
+  ],
+  paredes: [
+    { id: 'branco',      label: 'Branco Puro',      bg: '#ffffff', _prompt: 'walls painted white smooth finish' },
+    { id: 'cinza-claro', label: 'Cinza Claro',      bg: '#e5e7eb', _prompt: 'walls light grey paint matte' },
+    { id: 'microcimento', label: 'Microcimento',    bg: '#9ca3af', _prompt: 'walls microcement plaster light grey artisanal texture seamless' },
+    { id: 'ripado',      label: 'Painel Ripado',    bg: 'repeating-linear-gradient(90deg,#8B6914 0,#8B6914 18px,#9a7820 18px,#9a7820 21px)', _prompt: 'walls vertical Freijo wood slat panel ripado 3cm spacing warm tone' },
+    { id: 'grafiato',    label: 'Grafiato',         bg: '#d1cfc9', _prompt: 'walls grafiato textured plaster decorative finish beige' },
+    { id: 'pedra',       label: 'Pedra Natural',    bg: '#a0948a', _prompt: 'walls natural stone veneer rustic texture accent wall' },
+  ],
+  metais: [
+    { id: 'preto-fosco', label: 'Preto Fosco',     bg: '#111827', _prompt: 'metal fixtures and faucets matte black finish all hardware' },
+    { id: 'inox',        label: 'Inox Escovado',   bg: 'linear-gradient(90deg,#9ca3af,#cbd5e1,#9ca3af)', _prompt: 'metal fixtures brushed stainless steel inox escovado minimalist' },
+    { id: 'dourado',     label: 'Dourado',         bg: 'linear-gradient(90deg,#d97706,#f59e0b,#d97706)', _prompt: 'metal fixtures champagne gold brushed brass warm luxury' },
+    { id: 'cromado',     label: 'Cromado',         bg: 'linear-gradient(90deg,#94a3b8,#f8fafc,#94a3b8)', _prompt: 'metal fixtures polished chrome high shine traditional' },
+  ],
+}
+
+// Opções de iluminação
+const ILUMINACAO_OPTS = [
+  { id: 'natural',     label: 'Luz Natural',    icon: '☀️', _prompt: 'abundant natural daylight through windows, bright airy atmosphere' },
+  { id: 'artificial',  label: 'Artificial',     icon: '💡', _prompt: 'warm artificial lighting, ceiling fixtures and lamps, evening ambiance' },
+  { id: 'penumbra',    label: 'Penumbra',       icon: '🌆', _prompt: 'dramatic low-light atmosphere, selective spotlighting, moody shadows' },
+  { id: 'ampla',       label: 'Ampla Geral',    icon: '🔆', _prompt: 'bright even general lighting, no shadows, clean bright environment' },
+  { id: 'acolhedora',  label: 'Acolhedora',     icon: '🕯️', _prompt: 'warm cozy intimate lighting, soft glow, hygge atmosphere' },
+  { id: 'dramática',   label: 'Dramática',      icon: '🎭', _prompt: 'high-contrast dramatic lighting, architectural accent lights, bold shadows' },
+]
+
+// Paletas de cores
+const CORES_OPTS = [
+  { id: 'neutros',       label: 'Neutros',       bg: 'linear-gradient(90deg,#f5f5f0,#e5e5e0,#d4d4c8)', _prompt: 'neutral color palette, whites, beiges, light greys, warm naturals' },
+  { id: 'frios',         label: 'Frios',         bg: 'linear-gradient(90deg,#bfdbfe,#93c5fd,#60a5fa)', _prompt: 'cool color palette, blues, grey-blues, cool whites, slate tones' },
+  { id: 'quentes',       label: 'Quentes',       bg: 'linear-gradient(90deg,#fde68a,#fbbf24,#f59e0b)', _prompt: 'warm color palette, amber, terracotta, warm whites, honey tones' },
+  { id: 'terrosos',      label: 'Terrosos',      bg: 'linear-gradient(90deg,#d6b99a,#c19a6b,#8B6914)', _prompt: 'earthy color palette, terracotta, sienna, ochre, natural earth tones' },
+  { id: 'monocromatico', label: 'Monocromático', bg: 'linear-gradient(90deg,#1f2937,#6b7280,#f3f4f6)', _prompt: 'monochromatic palette, shades of same color family, elegant tonal variation' },
+  { id: 'colorido',      label: 'Colorido',      bg: 'linear-gradient(90deg,#f87171,#4ade80,#60a5fa)', _prompt: 'bold vibrant color palette, accent colors, design statement pieces' },
+]
+
+// Estilos de móveis
+const MOVEIS_OPTS = [
+  { id: 'contemporaneo', label: 'Contemporâneo',   _prompt: 'contemporary minimalist furniture, clean lines, linen upholstery, metal legs' },
+  { id: 'escandinavo',   label: 'Escandinavo',     _prompt: 'Scandinavian furniture, light wood, organic forms, neutral palette, hygge' },
+  { id: 'industrial',    label: 'Industrial',      _prompt: 'industrial chic furniture, leather, exposed metal, reclaimed wood, urban loft' },
+  { id: 'classico',      label: 'Clássico',        _prompt: 'classic traditional furniture, carved wood details, rich fabrics, timeless elegance' },
+  { id: 'rustico',       label: 'Rústico',         _prompt: 'rustic furniture, natural wood, handcrafted, warm textures, farmhouse style' },
+  { id: 'luxo',          label: 'Luxo',            _prompt: 'luxury high-end furniture, premium materials, velvet, marble accents, designer pieces' },
+]
+
+// ─── Tipos ───────────────────────────────────────────────────────────────────
+type MainPhase   = 'upload' | 'rendering' | 'result'
+type AdjustType  = 'materiais' | 'cores' | 'iluminacao' | 'moveis' | 'itens' | 'melhorar' | 'variacao' | 'comparar'
+type MatCategory = 'armarios' | 'bancadas' | 'pisos' | 'paredes' | 'metais'
+
+interface Selections {
+  materiais: Partial<Record<MatCategory, string>>
+  cor:       string | null
+  iluminacao: string | null
+  movel:     string | null
+  itens:     string
+}
+
+// ─── Helpers ─────────────────────────────────────────────────────────────────
+function fileToDataUrl(f: File): Promise<string> {
+  return new Promise((res, rej) => {
+    const r = new FileReader()
+    r.onload = () => res(r.result as string)
+    r.onerror = rej
+    r.readAsDataURL(f)
+  })
+}
+
+function buildRenderBody(
+  imageUrl:   string,
+  ambiente:   string,
+  estilo:     string,
+  selections: Selections,
+  adjustType: AdjustType | null,
+) {
+  const materials: { zone: string; promptFragment: string }[] = []
+  const notes: string[] = []
+
+  // Materiais selecionados
+  for (const [cat, matId] of Object.entries(selections.materiais)) {
+    if (!matId) continue
+    const item = MATERIALS[cat]?.find(m => m.id === matId)
+    if (item) materials.push({ zone: cat, promptFragment: item._prompt })
   }
-}
 
-type Phase = 'idle' | 'step1' | 'step2' | 'step3' | 'step4' | 'done' | 'error'
+  // Cor
+  if (selections.cor) {
+    const c = CORES_OPTS.find(o => o.id === selections.cor)
+    if (c) notes.push(c._prompt)
+  }
 
-interface AnalysisStep { label: string; icon: string; doneLabel: string }
+  // Iluminação
+  if (selections.iluminacao) {
+    const il = ILUMINACAO_OPTS.find(o => o.id === selections.iluminacao)
+    if (il) notes.push(il._prompt)
+  }
 
-const ANALYSIS_STEPS: AnalysisStep[] = [
-  { icon: '🔍', label: 'Analisando imagem...',       doneLabel: 'Imagem analisada'       },
-  { icon: '🏠', label: 'Detectando ambiente...',     doneLabel: 'Ambiente detectado'     },
-  { icon: '🧱', label: 'Identificando materiais...', doneLabel: 'Materiais identificados' },
-  { icon: '✨', label: 'Preparando render...',       doneLabel: 'Render em progresso'    },
-]
+  // Móveis
+  if (selections.movel) {
+    const mv = MOVEIS_OPTS.find(o => o.id === selections.movel)
+    if (mv) notes.push(mv._prompt)
+  }
 
-const PHASE_STEP_INDEX: Record<Phase, number> = {
-  idle: -1, step1: 0, step2: 1, step3: 2, step4: 3, done: 4, error: -1,
-}
+  // Itens livres
+  if (selections.itens.trim()) notes.push(selections.itens.trim())
 
-interface ActionChip { icon: string; label: string; module: string }
+  // Melhorar render
+  if (adjustType === 'melhorar') {
+    notes.push('enhance photorealism, improve lighting quality, sharper details, professional architectural photography')
+  }
 
-const ACTION_CHIPS: ActionChip[] = [
-  { icon: '✏️',  label: 'Trocar materiais',   module: 'correcoes'    },
-  { icon: '💡',  label: 'Melhorar iluminação', module: 'correcoes'    },
-  { icon: '🎨',  label: 'Mudar estilo',        module: 'correcoes'    },
-  { icon: '🪑',  label: 'Adicionar decoração', module: 'correcoes'    },
-  { icon: '⭐',  label: 'Versão premium',      module: 'correcoes'    },
-  { icon: '💰',  label: 'Versão econômica',    module: 'correcoes'    },
-  { icon: '📋',  label: 'Gerar memorial',      module: 'especificacao' },
-  { icon: '💾',  label: 'Ver projeto',         module: 'projeto'      },
-]
-
-// Tenta detectar o tipo de ambiente pelo nome do arquivo
-function detectAmbiente(filename: string): string {
-  const f = filename.toLowerCase()
-  if (/\b(sala|living|lounge|estar)\b/.test(f)) return 'sala de estar'
-  if (/\b(cozinha|kitchen)\b/.test(f)) return 'cozinha'
-  if (/\b(quarto|bedroom|dormit)\b/.test(f)) return 'quarto'
-  if (/\b(banheiro|bath)\b/.test(f)) return 'banheiro'
-  if (/\b(escritorio|office)\b/.test(f)) return 'escritorio'
-  if (/\b(varanda|balcon)\b/.test(f)) return 'varanda'
-  if (/\b(fachada|facade|exterior)\b/.test(f)) return 'fachada'
-  return 'sala de estar'
+  return {
+    original_image_url: imageUrl,
+    mode:               'preservar',
+    ambiente,
+    estilo:             estilo || undefined,
+    user_notes:         notes.join('. ') || undefined,
+    materials:          materials.length > 0 ? materials : undefined,
+  }
 }
 
 // ─── CSS ─────────────────────────────────────────────────────────────────────
 const CSS = `
-  @keyframes irz-in   { from{opacity:0;transform:translateY(12px)}to{opacity:1;transform:translateY(0)} }
-  @keyframes irz-fade { from{opacity:0}to{opacity:1} }
-  @keyframes irz-spin { to{transform:rotate(360deg)} }
-  @keyframes irz-glow { 0%,100%{box-shadow:0 0 0 0 rgba(124,58,237,0)}50%{box-shadow:0 0 0 8px rgba(124,58,237,0.15)} }
-  @keyframes irz-float{0%,100%{transform:translateY(0)}50%{transform:translateY(-6px)}}
-  @keyframes irz-step { from{opacity:0;transform:translateX(-8px)}to{opacity:1;transform:translateX(0)} }
-  @keyframes irz-result-in { from{opacity:0;transform:scale(0.97)}to{opacity:1;transform:scale(1)} }
-  @keyframes irz-chip { from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:translateY(0)} }
-  @keyframes irz-pulse { 0%,100%{opacity:1}50%{opacity:0.5} }
-  @keyframes irz-shimmer {
-    0%{background-position:200% 0}
-    100%{background-position:-200% 0}
+  @keyframes s-in    { from{opacity:0;transform:translateY(10px)} to{opacity:1;transform:translateY(0)} }
+  @keyframes s-fade  { from{opacity:0} to{opacity:1} }
+  @keyframes s-spin  { to{transform:rotate(360deg)} }
+  @keyframes s-float { 0%,100%{transform:translateY(0)} 50%{transform:translateY(-5px)} }
+  @keyframes s-pulse { 0%,100%{opacity:1} 50%{opacity:0.4} }
+  @keyframes s-shimmer {
+    0%{background-position:200% 0} 100%{background-position:-200% 0}
   }
 
-  .irz-drop-zone {
-    transition: border-color 0.2s, background 0.2s, transform 0.15s !important;
+  .s-chip {
+    transition: all 0.14s ease !important; cursor: pointer;
   }
-  .irz-drop-zone.dragging {
-    border-color: ${PHX.purple} !important;
-    background: rgba(124,58,237,0.04) !important;
-    transform: scale(1.005) !important;
-  }
-  .irz-upload-btn {
-    transition: all 0.15s ease !important;
-    cursor: pointer;
-  }
-  .irz-upload-btn:hover {
-    background: rgba(124,58,237,0.08) !important;
-    border-color: rgba(124,58,237,0.3) !important;
-    color: ${PHX.purple} !important;
-    transform: translateY(-1px) !important;
-  }
-  .irz-chip {
-    transition: all 0.15s ease !important;
-    cursor: pointer;
-  }
-  .irz-chip:hover {
+  .s-chip:hover, .s-chip.active {
     background: rgba(124,58,237,0.1) !important;
     border-color: ${PHX.purple} !important;
     color: ${PHX.purple} !important;
-    transform: translateY(-2px) !important;
-    box-shadow: 0 4px 12px rgba(124,58,237,0.15) !important;
   }
-  .irz-retry-btn {
-    transition: all 0.15s ease !important;
-    cursor: pointer;
+  .s-chip.active { font-weight: 800 !important; }
+
+  .s-mat-swatch {
+    transition: all 0.14s ease !important; cursor: pointer;
+    position: relative;
   }
-  .irz-retry-btn:hover {
+  .s-mat-swatch:hover { transform: scale(1.04) !important; }
+  .s-mat-swatch.active {
+    box-shadow: 0 0 0 3px ${PHX.purple} !important;
+    transform: scale(1.04) !important;
+  }
+
+  .s-action-btn {
+    transition: all 0.14s ease !important; cursor: pointer;
+  }
+  .s-action-btn:hover {
+    background: rgba(124,58,237,0.08) !important;
+    border-color: rgba(124,58,237,0.35) !important;
+    color: ${PHX.purple} !important;
+    transform: translateY(-1px) !important;
+  }
+  .s-action-btn.active {
+    background: rgba(124,58,237,0.1) !important;
+    border-color: ${PHX.purple} !important;
+    color: ${PHX.purple} !important;
+  }
+
+  .s-render-btn {
+    transition: all 0.14s ease !important; cursor: pointer;
+  }
+  .s-render-btn:hover:not(:disabled) {
+    background: ${PHX.purpleD} !important;
+    transform: translateY(-1px) !important;
+    box-shadow: 0 6px 20px rgba(124,58,237,0.4) !important;
+  }
+  .s-render-btn:disabled { opacity: 0.55 !important; cursor: not-allowed !important; }
+
+  .s-apply-btn {
+    transition: all 0.14s ease !important; cursor: pointer;
+  }
+  .s-apply-btn:hover {
     background: ${PHX.purple} !important;
     color: #fff !important;
     transform: translateY(-1px) !important;
   }
-  .irz-new-btn {
-    transition: all 0.15s ease !important;
-    cursor: pointer;
-  }
-  .irz-new-btn:hover {
-    background: rgba(124,58,237,0.1) !important;
-    border-color: ${PHX.purple} !important;
-    color: ${PHX.purple} !important;
-  }
 `
 
-// ─── Props ───────────────────────────────────────────────────────────────────
-interface Props {
-  arqState: ArqProjectState
-  onNavigate: (module: string) => void
-}
+const MAT_TABS: { id: MatCategory; label: string }[] = [
+  { id: 'armarios', label: 'Armários'  },
+  { id: 'bancadas', label: 'Bancadas'  },
+  { id: 'pisos',    label: 'Pisos'     },
+  { id: 'paredes',  label: 'Paredes'   },
+  { id: 'metais',   label: 'Metais'    },
+]
 
 // ─── Main component ──────────────────────────────────────────────────────────
-export function InstantRenderZone({ arqState, onNavigate }: Props) {
-  const [phase,       setPhase]      = useState<Phase>('idle')
-  const [dragging,    setDragging]   = useState(false)
-  const [resultUrl,   setResultUrl]  = useState<string | null>(null)
-  const [previewUrl,  setPreviewUrl] = useState<string | null>(null)
-  const [errorMsg,    setErrorMsg]   = useState<string | null>(null)
-  const [projectName, setProjectName] = useState<string | null>(null)
+interface Props { arqState: ArqProjectState; onNavigate: (m: string) => void }
+
+export function InstantRenderZone({ arqState }: Props) {
+  // Main state
+  const [phase,         setPhase]         = useState<MainPhase>('upload')
+  const [dragging,      setDragging]      = useState(false)
+  const [imageDataUrl,  setImageDataUrl]  = useState<string | null>(null)   // user's original
+  const [currentRender, setCurrentRender] = useState<string | null>(null)   // latest render
+  const [prevRender,    setPrevRender]    = useState<string | null>(null)   // for compare
+  const [ambiente,      setAmbiente]      = useState('sala de estar')
+  const [estilo,        setEstilo]        = useState('moderno')
+  const [errorMsg,      setErrorMsg]      = useState<string | null>(null)
+  const [stepIdx,       setStepIdx]       = useState(0)
+  const [reRendering,   setReRendering]   = useState(false)
+
+  // Adjustment state
+  const [activeAdj,    setActiveAdj]    = useState<AdjustType | null>(null)
+  const [matTab,       setMatTab]       = useState<MatCategory>('armarios')
+  const [selections,   setSelections]   = useState<Selections>({
+    materiais: {}, cor: null, iluminacao: null, movel: null, itens: '',
+  })
+  const hasAdjustments = !!(
+    Object.values(selections.materiais).some(Boolean) ||
+    selections.cor || selections.iluminacao || selections.movel || selections.itens.trim()
+  )
 
   const fileRef  = useRef<HTMLInputElement>(null)
+  const matRef   = useRef<HTMLInputElement>(null)
   const pollRef  = useRef<ReturnType<typeof setInterval> | null>(null)
   const abortRef = useRef<AbortController | null>(null)
 
-  // Listen for "open upload" event from top bar CTA
   useEffect(() => {
-    const handler = () => {
-      if (phase === 'idle') fileRef.current?.click()
-    }
-    window.addEventListener('arqdor:open-upload', handler)
-    return () => window.removeEventListener('arqdor:open-upload', handler)
+    const h = () => { if (phase === 'upload') fileRef.current?.click() }
+    window.addEventListener('arqdor:open-upload', h)
+    return () => window.removeEventListener('arqdor:open-upload', h)
   }, [phase])
 
-  // Cleanup on unmount
-  useEffect(() => {
-    return () => {
-      if (pollRef.current) clearInterval(pollRef.current)
-      abortRef.current?.abort()
-    }
+  useEffect(() => () => {
+    if (pollRef.current) clearInterval(pollRef.current)
+    abortRef.current?.abort()
   }, [])
 
   // ── File handling ──────────────────────────────────────────────────────────
-  function fileToDataUrl(file: File): Promise<string> {
-    return new Promise((resolve, reject) => {
-      const reader = new FileReader()
-      reader.onload = () => resolve(reader.result as string)
-      reader.onerror = reject
-      reader.readAsDataURL(file)
-    })
+  async function handleFile(file: File) {
+    if (!file.type.startsWith('image/')) { setErrorMsg('Envie uma imagem: JPG, PNG ou WEBP'); return }
+    setErrorMsg(null)
+    setImageDataUrl(await fileToDataUrl(file))
   }
 
-  async function handleFile(file: File) {
-    if (!file.type.startsWith('image/')) {
-      setErrorMsg('Envie uma imagem: JPG, PNG, WEBP ou similar.')
-      setPhase('error')
-      return
+  const onDrop = useCallback((e: React.DragEvent) => {
+    e.preventDefault(); setDragging(false)
+    const f = e.dataTransfer.files[0]; if (f) handleFile(f)
+  }, [])
+
+  // ── Start render ──────────────────────────────────────────────────────────
+  async function startRender(body: Record<string, unknown>, isReRender = false) {
+    if (isReRender) setReRendering(true)
+    else { setPhase('rendering'); setStepIdx(0) }
+
+    // Auto-criar projeto em background
+    arqState.createProject(`Render ${new Date().toLocaleDateString('pt-BR', { day:'2-digit', month:'2-digit' })}`, 'interiores')
+      .catch(() => {})
+
+    // Cosmetic steps (only for first render)
+    if (!isReRender) {
+      const steps = [1, 2, 3]
+      steps.forEach((_, i) => setTimeout(() => setStepIdx(i + 1), (i + 1) * 1400))
     }
 
-    const dataUrl  = await fileToDataUrl(file)
-    const ambiente = detectAmbiente(file.name)
-    setPreviewUrl(dataUrl)
-    setPhase('step1')
-
-    // Auto-criar projeto em background (sem bloquear UX)
-    const today   = new Date().toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' })
-    const projTitle = `Render Rápido — ${today}`
-    setProjectName(projTitle)
-    arqState.createProject(projTitle, 'interiores').catch(() => {/* silent */})
-
-    // Avança etapas cosméticas a cada ~1.4s, na 4ª chama a API
-    const advance = [
-      () => setPhase('step2'),
-      () => setPhase('step3'),
-      () => { setPhase('step4'); startRender(dataUrl, ambiente) },
-    ]
-    advance.forEach((fn, i) => setTimeout(fn, (i + 1) * 1400))
-  }
-
-  // ── Render API ─────────────────────────────────────────────────────────────
-  async function startRender(dataUrl: string, ambiente: string) {
     try {
       abortRef.current = new AbortController()
       const res = await fetch(`${BASE}/arch/ai-render`, {
-        method: 'POST',
-        headers: authHeaders(),
-        body: JSON.stringify({
-          original_image_url: dataUrl,
-          mode:               'preservar',
-          ambiente,
-        }),
+        method: 'POST', headers: jsonHeader(),
+        body: JSON.stringify(body),
         signal: abortRef.current.signal,
       })
-      if (!res.ok) {
-        const err = await res.json().catch(() => ({})) as any
-        throw new Error(err?.details ?? err?.error ?? `HTTP ${res.status}`)
-      }
-      const body = await res.json()
-      startPolling(body.render_id as string)
-    } catch (err: any) {
-      if (err?.name === 'AbortError') return
-      setErrorMsg(err?.message ?? 'Não foi possível iniciar o render. Tente novamente.')
-      setPhase('error')
+      if (!res.ok) throw new Error((await res.json().catch(() => ({})  ) as any)?.details ?? `HTTP ${res.status}`)
+      const { render_id } = await res.json() as { render_id: string }
+      poll(render_id, isReRender)
+    } catch (e: any) {
+      if (e?.name === 'AbortError') return
+      setErrorMsg(e?.message ?? 'Erro ao iniciar render')
+      setPhase('result'); setReRendering(false)
     }
   }
 
-  function startPolling(renderId: string) {
-    const MAX_POLLS = 90  // 4.5 min máximo
-    let polls = 0
-
+  function poll(renderId: string, isReRender: boolean) {
+    let n = 0
     pollRef.current = setInterval(async () => {
-      polls++
-      if (polls > MAX_POLLS) {
+      if (++n > 100) {
         clearInterval(pollRef.current!)
-        setErrorMsg('O render demorou mais que o esperado. Tente novamente.')
-        setPhase('error')
-        return
+        setErrorMsg('O render demorou demais. Tente novamente.')
+        setPhase('result'); setReRendering(false); return
       }
       try {
-        const res = await fetch(`${BASE}/arch/ai-render/${renderId}`, {
-          headers: { Authorization: `Bearer ${getToken()}` },
-        })
-        if (!res.ok) return
-        const data = await res.json() as {
-          status: string
-          result_image_url?: string
-          erro_msg?: string
-        }
-        if (data.status === 'concluido' && data.result_image_url) {
+        const r = await fetch(`${BASE}/arch/ai-render/${renderId}`, { headers: authHeader() })
+        if (!r.ok) return
+        const d = await r.json() as { status: string; result_image_url?: string; erro_msg?: string }
+        if (d.status === 'concluido' && d.result_image_url) {
           clearInterval(pollRef.current!)
-          setResultUrl(data.result_image_url)
-          setPhase('done')
-        } else if (data.status === 'erro') {
+          if (isReRender) {
+            setPrevRender(currentRender)
+            setCurrentRender(d.result_image_url)
+            setReRendering(false)
+            setActiveAdj('comparar')
+          } else {
+            setCurrentRender(d.result_image_url)
+            setPhase('result')
+          }
+          // Reset selections after applying
+          setSelections({ materiais: {}, cor: null, iluminacao: null, movel: null, itens: '' })
+        } else if (d.status === 'erro') {
           clearInterval(pollRef.current!)
-          setErrorMsg(data.erro_msg ?? 'O render falhou. Tente novamente.')
-          setPhase('error')
+          setErrorMsg(d.erro_msg ?? 'Render falhou'); setPhase('result'); setReRendering(false)
         }
-      } catch { /* ignore network errors, retry next tick */ }
+      } catch {}
     }, 3000)
   }
 
-  // ── Drag & drop ────────────────────────────────────────────────────────────
-  const handleDragOver  = useCallback((e: React.DragEvent) => { e.preventDefault(); setDragging(true)  }, [])
-  const handleDragLeave = useCallback(()                    => { setDragging(false) }, [])
-  const handleDrop      = useCallback((e: React.DragEvent) => {
-    e.preventDefault()
-    setDragging(false)
-    const file = e.dataTransfer.files[0]
-    if (file) handleFile(file)
-  }, [phase])
+  // ── Actions ────────────────────────────────────────────────────────────────
+  function onGerar() {
+    if (!imageDataUrl) return
+    startRender(buildRenderBody(imageDataUrl, ambiente, estilo, { materiais:{}, cor:null, iluminacao:null, movel:null, itens:'' }, null))
+  }
 
-  function handleFileChange(e: React.ChangeEvent<HTMLInputElement>) {
-    const file = e.target.files?.[0]
-    if (file) handleFile(file)
-    e.target.value = ''
+  function onAplicar(adj: AdjustType) {
+    const src = adj === 'melhorar' ? (currentRender ?? imageDataUrl!) : imageDataUrl!
+    startRender(buildRenderBody(src, ambiente, estilo, selections, adj), true)
+    setActiveAdj(null)
+  }
+
+  function onNewRenderWithChanges() {
+    startRender(buildRenderBody(imageDataUrl!, ambiente, estilo, selections, activeAdj), true)
+    setActiveAdj(null)
+  }
+
+  function toggleAdj(a: AdjustType) {
+    setActiveAdj(prev => prev === a ? null : a)
   }
 
   function reset() {
     if (pollRef.current) clearInterval(pollRef.current)
     abortRef.current?.abort()
-    setPhase('idle')
-    setResultUrl(null)
-    setPreviewUrl(null)
-    setErrorMsg(null)
+    setPhase('upload'); setCurrentRender(null); setPrevRender(null)
+    setImageDataUrl(null); setErrorMsg(null); setReRendering(false)
+    setActiveAdj(null); setSelections({ materiais:{}, cor:null, iluminacao:null, movel:null, itens:'' })
   }
 
-  // ── Render ─────────────────────────────────────────────────────────────────
-  const stepIndex = PHASE_STEP_INDEX[phase]
+  // ─────────────────────────────────────────────────────────────────────────
+  // RENDER
+  // ─────────────────────────────────────────────────────────────────────────
+  const STEPS = ['Analisando imagem...','Detectando ambiente...','Identificando materiais...','Preparando render...']
 
   return (
-    <div style={{
-      height: '100%',
-      overflow: 'auto',
-      background: PHX.bg,
-      display: 'flex',
-      flexDirection: 'column',
-      alignItems: 'center',
-      justifyContent: phase === 'idle' ? 'center' : 'flex-start',
-      padding: '24px 24px 40px',
-    }}>
+    <div style={{ height:'100%', overflowY:'auto', background:PHX.bg, display:'flex', flexDirection:'column', alignItems:'center', padding:'20px 16px 60px' }}>
       <style>{CSS}</style>
 
-      <input
-        ref={fileRef}
-        type="file"
-        accept="image/*"
-        style={{ display: 'none' }}
-        onChange={handleFileChange}
-      />
+      {/* Hidden file inputs */}
+      <input ref={fileRef} type="file" accept="image/*" style={{display:'none'}}
+        onChange={e => { const f=e.target.files?.[0]; if(f) handleFile(f); e.target.value='' }} />
+      <input ref={matRef} type="file" accept="image/*" style={{display:'none'}}
+        onChange={e => { /* upload de material — preview apenas, sem envio ainda */ e.target.value='' }} />
 
-      {/* ── IDLE: Drop zone ── */}
-      {phase === 'idle' && (
-        <div
-          className={`irz-drop-zone${dragging ? ' dragging' : ''}`}
-          onDragOver={handleDragOver}
-          onDragLeave={handleDragLeave}
-          onDrop={handleDrop}
-          style={{
-            width: '100%',
-            maxWidth: 600,
-            borderRadius: 24,
-            border: `2px dashed ${PHX.border}`,
-            background: PHX.surface,
-            padding: '56px 40px',
-            textAlign: 'center',
-            animation: 'irz-in 0.4s ease',
-            boxShadow: PHX.shadow,
-          }}
-        >
-          <div style={{ fontSize: 56, marginBottom: 16, animation: 'irz-float 3s ease infinite', display: 'inline-block' }}>
-            📸
-          </div>
-
-          <h1 style={{ margin: '0 0 8px', fontSize: 26, fontWeight: 900, color: PHX.text, letterSpacing: '-0.02em' }}>
-            Arraste uma foto do ambiente
+      {/* ─── UPLOAD phase ───────────────────────────────────────────────── */}
+      {phase === 'upload' && (
+        <div style={{ width:'100%', maxWidth:620, animation:'s-in 0.35s ease' }}>
+          <h1 style={{ margin:'0 0 4px', fontSize:22, fontWeight:900, color:PHX.text, textAlign:'center' }}>
+            ARQDOR Studio
           </h1>
-          <p style={{ margin: '0 0 32px', fontSize: 14, color: PHX.textSub, lineHeight: 1.5 }}>
-            Sala, quarto, cozinha, banheiro, fachada — qualquer foto.<br />
-            A IA vai gerar uma visualização profissional automaticamente.
+          <p style={{ margin:'0 0 24px', fontSize:13, color:PHX.textSub, textAlign:'center' }}>
+            Envie uma foto e gere uma visualização profissional
           </p>
 
-          <button
-            className="irz-upload-btn"
-            onClick={() => fileRef.current?.click()}
+          {/* Drop zone */}
+          <div
+            className={dragging ? 'dragging' : ''}
+            onDragOver={e => { e.preventDefault(); setDragging(true) }}
+            onDragLeave={() => setDragging(false)}
+            onDrop={onDrop}
+            onClick={() => !imageDataUrl && fileRef.current?.click()}
             style={{
-              display: 'inline-flex',
-              alignItems: 'center',
-              gap: 8,
-              padding: '14px 28px',
-              borderRadius: 12,
-              border: `1.5px solid ${PHX.border}`,
-              background: PHX.surface,
-              color: PHX.text,
-              fontSize: 14,
-              fontWeight: 700,
-              marginBottom: 24,
-              boxShadow: PHX.shadowM,
+              borderRadius: 18, border: `2px dashed ${imageDataUrl ? PHX.purple : PHX.border}`,
+              background: imageDataUrl ? 'rgba(124,58,237,0.03)' : PHX.surface,
+              padding: imageDataUrl ? 0 : '40px 20px', textAlign:'center',
+              cursor: imageDataUrl ? 'default' : 'pointer',
+              overflow: 'hidden', marginBottom: 16,
+              boxShadow: PHX.shadowM, transition: 'all 0.2s ease',
             }}
           >
-            <span style={{ fontSize: 16 }}>📁</span>
-            Escolher arquivo
-          </button>
+            {imageDataUrl ? (
+              <div style={{ position:'relative' }}>
+                <img src={imageDataUrl} alt="Sua imagem" style={{ width:'100%', maxHeight:280, objectFit:'cover', display:'block' }} />
+                <button
+                  onClick={e => { e.stopPropagation(); setImageDataUrl(null) }}
+                  style={{
+                    position:'absolute', top:10, right:10,
+                    width:30, height:30, borderRadius:'50%',
+                    border:'none', background:'rgba(0,0,0,0.55)', color:'#fff',
+                    cursor:'pointer', fontSize:14, display:'flex', alignItems:'center', justifyContent:'center',
+                  }}
+                >✕</button>
+                <div style={{ position:'absolute', bottom:10, left:10,
+                  padding:'4px 10px', borderRadius:8,
+                  background:'rgba(124,58,237,0.85)', color:'#fff', fontSize:11, fontWeight:700 }}>
+                  ✓ Imagem carregada
+                </div>
+              </div>
+            ) : (
+              <>
+                <div style={{ fontSize:44, marginBottom:12, display:'inline-block', animation:'s-float 3s ease infinite' }}>📸</div>
+                <p style={{ margin:'0 0 6px', fontSize:16, fontWeight:800, color:PHX.text }}>Arraste ou clique para enviar</p>
+                <p style={{ margin:0, fontSize:12, color:PHX.dim }}>JPG · PNG · WEBP</p>
+              </>
+            )}
+          </div>
 
-          <p style={{ margin: 0, fontSize: 11, color: PHX.dim }}>
-            JPG · PNG · WEBP · HEIC
-          </p>
+          {/* Ambiente */}
+          <div style={{ marginBottom:14 }}>
+            <p style={{ margin:'0 0 8px', fontSize:11, fontWeight:700, color:PHX.dim, letterSpacing:'.06em' }}>TIPO DE AMBIENTE</p>
+            <div style={{ display:'flex', flexWrap:'wrap', gap:7 }}>
+              {AMBIENTES.map(a => (
+                <button key={a.id} className={`s-chip${ambiente===a.id?' active':''}`} onClick={() => setAmbiente(a.id)}
+                  style={{ padding:'7px 13px', borderRadius:9, border:`1.5px solid ${ambiente===a.id?PHX.purple:PHX.border}`,
+                    background:ambiente===a.id?'rgba(124,58,237,0.08)':PHX.surface, color:ambiente===a.id?PHX.purple:PHX.text,
+                    fontSize:12, fontWeight:600, display:'flex', alignItems:'center', gap:5 }}>
+                  <span>{a.icon}</span>{a.label}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Estilo */}
+          <div style={{ marginBottom:22 }}>
+            <p style={{ margin:'0 0 8px', fontSize:11, fontWeight:700, color:PHX.dim, letterSpacing:'.06em' }}>ESTILO</p>
+            <div style={{ display:'flex', flexWrap:'wrap', gap:7 }}>
+              {ESTILOS.map(e => (
+                <button key={e.id} className={`s-chip${estilo===e.id?' active':''}`} onClick={() => setEstilo(e.id)}
+                  style={{ padding:'7px 13px', borderRadius:9, border:`1.5px solid ${estilo===e.id?PHX.purple:PHX.border}`,
+                    background:estilo===e.id?'rgba(124,58,237,0.08)':PHX.surface, color:estilo===e.id?PHX.purple:PHX.text,
+                    fontSize:12, fontWeight:600 }}>
+                  {e.label}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {errorMsg && <p style={{ margin:'0 0 12px', fontSize:12, color:PHX.red, textAlign:'center' }}>⚠️ {errorMsg}</p>}
+
+          <button className="s-render-btn" onClick={onGerar} disabled={!imageDataUrl}
+            style={{ width:'100%', padding:'14px 0', borderRadius:13, border:'none',
+              background:`linear-gradient(135deg,${PHX.purple},${PHX.purpleD})`,
+              color:'#fff', fontSize:15, fontWeight:900, cursor:'pointer',
+              display:'flex', alignItems:'center', justifyContent:'center', gap:9,
+              boxShadow:'0 4px 18px rgba(124,58,237,0.3)',
+              opacity: imageDataUrl ? 1 : 0.5,
+            }}>
+            <span style={{ fontSize:18 }}>✨</span>
+            Gerar Render
+          </button>
         </div>
       )}
 
-      {/* ── LOADING: Animated analysis steps ── */}
-      {phase !== 'idle' && phase !== 'done' && phase !== 'error' && (
-        <div style={{
-          width: '100%',
-          maxWidth: 700,
-          animation: 'irz-in 0.35s ease',
-          paddingTop: 8,
-        }}>
-
-          {/* Header */}
-          <div style={{ textAlign: 'center', marginBottom: 32 }}>
-            <div style={{ fontSize: 40, marginBottom: 12, display: 'inline-block', animation: 'irz-spin 2s linear infinite' }}>
-              ⚙️
-            </div>
-            <h2 style={{ margin: '0 0 6px', fontSize: 22, fontWeight: 900, color: PHX.text }}>
-              Gerando seu render…
-            </h2>
-            <p style={{ margin: 0, fontSize: 13, color: PHX.textSub }}>
-              Processamento de IA em andamento — aguarde
-            </p>
+      {/* ─── RENDERING phase ─────────────────────────────────────────────── */}
+      {phase === 'rendering' && (
+        <div style={{ width:'100%', maxWidth:600, animation:'s-in 0.35s ease', paddingTop:8 }}>
+          <div style={{ textAlign:'center', marginBottom:28 }}>
+            <div style={{ fontSize:36, marginBottom:10, display:'inline-block', animation:'s-spin 2s linear infinite' }}>⚙️</div>
+            <h2 style={{ margin:'0 0 4px', fontSize:20, fontWeight:900, color:PHX.text }}>Gerando render…</h2>
+            <p style={{ margin:0, fontSize:13, color:PHX.textSub }}>Isso leva entre 30 a 90 segundos</p>
           </div>
 
-          {/* 2-column: preview + steps */}
-          <div style={{ display: 'flex', gap: 24, alignItems: 'flex-start' }}>
-
-            {/* Preview thumbnail */}
-            {previewUrl && (
-              <div style={{
-                flexShrink: 0,
-                width: 180,
-                borderRadius: 16,
-                overflow: 'hidden',
-                border: `1px solid ${PHX.border}`,
-                boxShadow: PHX.shadowM,
-                position: 'relative',
-              }}>
-                <img
-                  src={previewUrl}
-                  alt="Sua imagem"
-                  style={{ width: '100%', display: 'block', objectFit: 'cover', aspectRatio: '4/3' }}
-                />
-                {/* Shimmer overlay while processing */}
-                <div style={{
-                  position: 'absolute',
-                  inset: 0,
-                  background: 'linear-gradient(105deg, transparent 40%, rgba(124,58,237,0.12) 50%, transparent 60%)',
-                  backgroundSize: '200% 100%',
-                  animation: 'irz-shimmer 2s linear infinite',
-                }} />
+          <div style={{ display:'flex', gap:18, alignItems:'flex-start' }}>
+            {imageDataUrl && (
+              <div style={{ flexShrink:0, width:160, borderRadius:12, overflow:'hidden', border:`1px solid ${PHX.border}`, boxShadow:PHX.shadowM, position:'relative' }}>
+                <img src={imageDataUrl} alt="" style={{ width:'100%', display:'block', objectFit:'cover', aspectRatio:'4/3' }} />
+                <div style={{ position:'absolute', inset:0,
+                  background:'linear-gradient(105deg,transparent 40%,rgba(124,58,237,0.1) 50%,transparent 60%)',
+                  backgroundSize:'200% 100%', animation:'s-shimmer 2s linear infinite' }} />
               </div>
             )}
-
-            {/* Analysis steps */}
-            <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 12 }}>
-              {ANALYSIS_STEPS.map((step, i) => {
-                const isDone    = stepIndex > i
-                const isActive  = stepIndex === i
-                const isPending = stepIndex < i
-
+            <div style={{ flex:1, display:'flex', flexDirection:'column', gap:10 }}>
+              {STEPS.map((s, i) => {
+                const done   = stepIdx > i
+                const active = stepIdx === i
                 return (
-                  <div
-                    key={i}
-                    style={{
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: 12,
-                      padding: '12px 16px',
-                      borderRadius: 12,
-                      border: `1px solid ${isActive ? `rgba(124,58,237,0.3)` : isDone ? `rgba(22,163,74,0.2)` : PHX.border}`,
-                      background: isActive
-                        ? 'rgba(124,58,237,0.05)'
-                        : isDone
-                          ? 'rgba(22,163,74,0.04)'
-                          : PHX.muted,
-                      opacity: isPending ? 0.45 : 1,
-                      transition: 'all 0.4s ease',
-                      animation: isActive ? 'irz-step 0.3s ease' : 'none',
-                    }}
-                  >
-                    <div style={{
-                      width: 32, height: 32, borderRadius: '50%',
-                      display: 'flex', alignItems: 'center', justifyContent: 'center',
-                      background: isDone
-                        ? 'rgba(22,163,74,0.12)'
-                        : isActive
-                          ? 'rgba(124,58,237,0.12)'
-                          : PHX.muted,
-                      fontSize: 15,
-                      flexShrink: 0,
-                    }}>
-                      {isDone ? '✓' : isActive ? (
-                        <div style={{ width: 16, height: 16, border: `2px solid ${PHX.purple}`, borderTopColor: 'transparent', borderRadius: '50%', animation: 'irz-spin 0.8s linear infinite' }} />
-                      ) : step.icon}
+                  <div key={i} style={{ display:'flex', alignItems:'center', gap:10, padding:'10px 14px', borderRadius:10,
+                    border:`1px solid ${active?'rgba(124,58,237,0.3)':done?'rgba(22,163,74,0.2)':PHX.border}`,
+                    background:active?'rgba(124,58,237,0.05)':done?'rgba(22,163,74,0.04)':PHX.muted,
+                    opacity:stepIdx<i?0.4:1, transition:'all 0.4s ease' }}>
+                    <div style={{ width:28, height:28, borderRadius:'50%', display:'flex', alignItems:'center', justifyContent:'center',
+                      background:done?'rgba(22,163,74,0.12)':'rgba(124,58,237,0.1)', fontSize:12, flexShrink:0 }}>
+                      {done ? '✓' : active ? (
+                        <div style={{ width:14, height:14, border:`2px solid ${PHX.purple}`, borderTopColor:'transparent', borderRadius:'50%', animation:'s-spin 0.8s linear infinite' }} />
+                      ) : (i + 1)}
                     </div>
-                    <div style={{ flex: 1, minWidth: 0 }}>
-                      <p style={{
-                        margin: 0,
-                        fontSize: 13,
-                        fontWeight: isActive ? 700 : 600,
-                        color: isDone ? PHX.green : isActive ? PHX.purple : PHX.dim,
-                        animation: isActive ? 'irz-pulse 1.5s ease infinite' : 'none',
-                      }}>
-                        {isDone ? step.doneLabel : step.label}
-                      </p>
-                    </div>
-                    {isDone && (
-                      <span style={{ fontSize: 16, color: PHX.green }}>✓</span>
-                    )}
+                    <p style={{ margin:0, fontSize:12, fontWeight:active?700:500,
+                      color:done?PHX.green:active?PHX.purple:PHX.dim,
+                      animation:active?'s-pulse 1.5s ease infinite':'none' }}>
+                      {done ? s.replace('...','') + ' ✓' : s}
+                    </p>
                   </div>
                 )
               })}
             </div>
           </div>
 
-          {/* Progress bar */}
-          <div style={{ marginTop: 28, height: 4, borderRadius: 2, background: PHX.muted, overflow: 'hidden' }}>
-            <div style={{
-              height: '100%',
-              borderRadius: 2,
-              background: `linear-gradient(90deg, ${PHX.purple}, ${PHX.purpleL})`,
-              width: `${Math.min(((stepIndex + 1) / ANALYSIS_STEPS.length) * 100, 95)}%`,
-              transition: 'width 1.4s ease',
-            }} />
+          <div style={{ marginTop:24, height:4, borderRadius:2, background:PHX.muted, overflow:'hidden' }}>
+            <div style={{ height:'100%', borderRadius:2, background:`linear-gradient(90deg,${PHX.purple},${PHX.purpleL})`,
+              width:`${Math.min(((stepIdx+1)/STEPS.length)*100,94)}%`, transition:'width 1.4s ease' }} />
           </div>
-          <p style={{ margin: '6px 0 0', textAlign: 'center', fontSize: 10, color: PHX.dim }}>
-            {ANALYSIS_STEPS[Math.min(stepIndex, 3)]?.label}
-          </p>
         </div>
       )}
 
-      {/* ── DONE: Result + action chips ── */}
-      {phase === 'done' && resultUrl && (
-        <div style={{
-          width: '100%',
-          maxWidth: 860,
-          animation: 'irz-result-in 0.5s ease',
-        }}>
+      {/* ─── RESULT phase ────────────────────────────────────────────────── */}
+      {phase === 'result' && currentRender && (
+        <div style={{ width:'100%', maxWidth:860, animation:'s-in 0.45s ease' }}>
 
-          {/* Header */}
-          <div style={{ textAlign: 'center', marginBottom: 24 }}>
-            <div style={{ fontSize: 36, marginBottom: 8 }}>✨</div>
-            <h2 style={{ margin: '0 0 4px', fontSize: 22, fontWeight: 900, color: PHX.text }}>
-              Render concluído!
-            </h2>
-            <p style={{ margin: 0, fontSize: 13, color: PHX.textSub }}>
-              {projectName ? `Projeto salvo como "${projectName}"` : 'Projeto salvo automaticamente'}
-            </p>
-          </div>
+          {/* Error banner */}
+          {errorMsg && (
+            <div style={{ marginBottom:12, padding:'10px 14px', borderRadius:10,
+              background:'rgba(220,38,38,0.06)', border:`1px solid rgba(220,38,38,0.2)`, color:PHX.red, fontSize:13 }}>
+              ⚠️ {errorMsg} —{' '}
+              <button onClick={() => setErrorMsg(null)} style={{ background:'none', border:'none', color:PHX.purple, cursor:'pointer', fontSize:12, fontWeight:700 }}>
+                Fechar
+              </button>
+            </div>
+          )}
 
-          {/* Before / After */}
-          <div style={{ display: 'flex', gap: 16, marginBottom: 28 }}>
-            {previewUrl && (
-              <div style={{ flex: 1, minWidth: 0 }}>
-                <p style={{ margin: '0 0 8px', fontSize: 10, fontWeight: 700, color: PHX.dim, letterSpacing: '.06em' }}>ANTES</p>
-                <div style={{ borderRadius: 16, overflow: 'hidden', border: `1px solid ${PHX.border}`, boxShadow: PHX.shadowM }}>
-                  <img src={previewUrl} alt="Original" style={{ width: '100%', display: 'block', objectFit: 'cover', maxHeight: 380 }} />
+          {/* Images: resultado + original mini */}
+          <div style={{ display:'flex', gap:12, marginBottom:16, alignItems:'flex-start' }}>
+            {/* Render principal */}
+            <div style={{ flex:1, minWidth:0, position:'relative' }}>
+              {reRendering && (
+                <div style={{ position:'absolute', inset:0, borderRadius:16, background:'rgba(255,255,255,0.7)', zIndex:10,
+                  display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center', gap:12 }}>
+                  <div style={{ width:36, height:36, border:`3px solid ${PHX.purple}`, borderTopColor:'transparent', borderRadius:'50%', animation:'s-spin 0.9s linear infinite' }} />
+                  <p style={{ margin:0, fontSize:13, fontWeight:700, color:PHX.purple }}>Gerando novo render…</p>
+                </div>
+              )}
+              <div style={{ borderRadius:16, overflow:'hidden', border:`1.5px solid rgba(124,58,237,0.25)`, boxShadow:`0 8px 32px rgba(124,58,237,0.12)` }}>
+                <img src={currentRender} alt="Render IA" style={{ width:'100%', display:'block', objectFit:'cover', maxHeight:400 }} />
+              </div>
+              <div style={{ display:'flex', gap:6, marginTop:8, justifyContent:'flex-end' }}>
+                <a href={currentRender} download="render-arqdor.png"
+                  style={{ display:'flex', alignItems:'center', gap:5, padding:'6px 12px', borderRadius:8,
+                    background:PHX.surface, border:`1px solid ${PHX.border}`,
+                    color:PHX.textSub, fontSize:11, fontWeight:600, textDecoration:'none', cursor:'pointer' }}>
+                  ⬇️ Baixar
+                </a>
+                <button onClick={reset}
+                  style={{ padding:'6px 12px', borderRadius:8, background:PHX.surface, border:`1px solid ${PHX.border}`,
+                    color:PHX.dim, fontSize:11, fontWeight:600, cursor:'pointer' }}>
+                  🔄 Novo render
+                </button>
+              </div>
+            </div>
+
+            {/* Original mini */}
+            {imageDataUrl && (
+              <div style={{ flexShrink:0, width:120 }}>
+                <p style={{ margin:'0 0 5px', fontSize:9, fontWeight:800, color:PHX.dim, letterSpacing:'.06em' }}>ORIGINAL</p>
+                <div style={{ borderRadius:10, overflow:'hidden', border:`1px solid ${PHX.border}` }}>
+                  <img src={imageDataUrl} alt="Original" style={{ width:'100%', display:'block', objectFit:'cover', aspectRatio:'4/3' }} />
                 </div>
               </div>
             )}
-            <div style={{ flex: 1, minWidth: 0 }}>
-              <p style={{ margin: '0 0 8px', fontSize: 10, fontWeight: 700, color: PHX.purple, letterSpacing: '.06em' }}>DEPOIS — IA ✨</p>
-              <div style={{ borderRadius: 16, overflow: 'hidden', border: `1.5px solid rgba(124,58,237,0.3)`, boxShadow: `0 8px 32px rgba(124,58,237,0.15)` }}>
-                <img src={resultUrl} alt="Render IA" style={{ width: '100%', display: 'block', objectFit: 'cover', maxHeight: 380 }} />
-              </div>
-            </div>
           </div>
 
-          {/* Section label */}
-          <p style={{ margin: '0 0 12px', fontSize: 11, fontWeight: 700, color: PHX.dim, letterSpacing: '.08em' }}>
-            O QUE FAZER AGORA?
-          </p>
-
           {/* Action chips */}
-          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10, marginBottom: 28 }}>
-            {ACTION_CHIPS.map((chip, i) => (
-              <button
-                key={chip.label}
-                className="irz-chip"
-                onClick={() => onNavigate(chip.module)}
-                style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: 7,
-                  padding: '10px 16px',
-                  borderRadius: 10,
-                  border: `1.5px solid ${PHX.border}`,
-                  background: PHX.surface,
-                  color: PHX.text,
-                  fontSize: 13,
-                  fontWeight: 600,
-                  cursor: 'pointer',
-                  boxShadow: PHX.shadow,
-                  animation: `irz-chip 0.4s ease ${i * 0.06}s both`,
+          <p style={{ margin:'0 0 9px', fontSize:11, fontWeight:700, color:PHX.dim, letterSpacing:'.06em' }}>AJUSTES E AÇÕES</p>
+          <div style={{ display:'flex', flexWrap:'wrap', gap:7, marginBottom:16 }}>
+            {([
+              { id:'melhorar',  icon:'✨', label:'Melhorar render'      },
+              { id:'materiais', icon:'🎨', label:'Trocar materiais'     },
+              { id:'cores',     icon:'🖌️', label:'Trocar cores'          },
+              { id:'iluminacao',icon:'💡', label:'Ajustar iluminação'   },
+              { id:'moveis',    icon:'🛋️', label:'Alterar móveis'       },
+              { id:'itens',     icon:'➕', label:'Remover/adicionar'    },
+              { id:'variacao',  icon:'🔀', label:'Gerar variação'       },
+              { id:'comparar',  icon:'◀▶', label:'Comparar',            disabled: !prevRender },
+            ] as const).map(a => (
+              <button key={a.id}
+                className={`s-action-btn${activeAdj===a.id?' active':''}`}
+                onClick={() => {
+                  if ('disabled' in a && a.disabled) return
+                  if (a.id === 'melhorar' || a.id === 'variacao') {
+                    onAplicar(a.id as AdjustType)
+                  } else {
+                    toggleAdj(a.id as AdjustType)
+                  }
                 }}
-              >
-                <span style={{ fontSize: 16 }}>{chip.icon}</span>
-                {chip.label}
+                disabled={('disabled' in a && a.disabled) || reRendering}
+                style={{
+                  padding:'8px 14px', borderRadius:9,
+                  border:`1.5px solid ${activeAdj===a.id?PHX.purple:PHX.border}`,
+                  background:activeAdj===a.id?'rgba(124,58,237,0.08)':PHX.surface,
+                  color:activeAdj===a.id?PHX.purple:PHX.text,
+                  fontSize:12, fontWeight:600, cursor:'pointer',
+                  display:'flex', alignItems:'center', gap:6,
+                  opacity:(('disabled' in a && a.disabled)||reRendering)?0.4:1,
+                }}>
+                <span style={{ fontSize:14 }}>{a.icon}</span>{a.label}
               </button>
             ))}
           </div>
 
-          {/* New render + download row */}
-          <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
-            <button
-              className="irz-new-btn"
-              onClick={reset}
-              style={{
-                display: 'flex', alignItems: 'center', gap: 7,
-                padding: '9px 18px', borderRadius: 10,
-                border: `1.5px solid ${PHX.border}`, background: PHX.surface,
-                color: PHX.textSub, fontSize: 13, fontWeight: 600, cursor: 'pointer',
-              }}
-            >
-              <span style={{ fontSize: 14 }}>🔄</span>
-              Novo render
-            </button>
-            <a
-              href={resultUrl}
-              download="render-arqdor.png"
-              style={{
-                display: 'flex', alignItems: 'center', gap: 7,
-                padding: '9px 18px', borderRadius: 10,
-                border: `1.5px solid rgba(124,58,237,0.3)`,
-                background: 'rgba(124,58,237,0.06)',
-                color: PHX.purple, fontSize: 13, fontWeight: 600,
-                textDecoration: 'none', cursor: 'pointer',
-                transition: 'all 0.15s ease',
-              }}
-            >
-              <span style={{ fontSize: 14 }}>⬇️</span>
-              Baixar imagem
-            </a>
-          </div>
-        </div>
-      )}
+          {/* ─── Adjustment panels ─────────────────────────────────────── */}
 
-      {/* ── ERROR ── */}
-      {phase === 'error' && (
-        <div style={{
-          width: '100%',
-          maxWidth: 480,
-          textAlign: 'center',
-          animation: 'irz-in 0.35s ease',
-        }}>
-          <div style={{ fontSize: 48, marginBottom: 16 }}>⚠️</div>
-          <h2 style={{ margin: '0 0 8px', fontSize: 18, fontWeight: 800, color: PHX.text }}>
-            Algo deu errado
-          </h2>
-          <p style={{ margin: '0 0 24px', fontSize: 14, color: PHX.textSub, lineHeight: 1.5 }}>
-            {errorMsg}
-          </p>
-          <button
-            className="irz-retry-btn"
-            onClick={reset}
-            style={{
-              padding: '12px 28px',
-              borderRadius: 10,
-              border: `1.5px solid ${PHX.purple}`,
-              background: 'transparent',
-              color: PHX.purple,
-              fontSize: 14,
-              fontWeight: 700,
-              cursor: 'pointer',
-            }}
-          >
-            Tentar novamente
-          </button>
+          {/* COMPARAR */}
+          {activeAdj === 'comparar' && prevRender && (
+            <div style={{ borderRadius:14, border:`1px solid ${PHX.border}`, background:PHX.surface, padding:16, marginBottom:14, animation:'s-in 0.3s ease' }}>
+              <p style={{ margin:'0 0 12px', fontSize:12, fontWeight:800, color:PHX.text }}>◀▶ Comparar antes / depois</p>
+              <div style={{ display:'flex', gap:12 }}>
+                <div style={{ flex:1 }}>
+                  <p style={{ margin:'0 0 6px', fontSize:10, fontWeight:700, color:PHX.dim }}>ANTERIOR</p>
+                  <div style={{ borderRadius:10, overflow:'hidden', border:`1px solid ${PHX.border}` }}>
+                    <img src={prevRender} alt="Anterior" style={{ width:'100%', display:'block', objectFit:'cover', maxHeight:260 }} />
+                  </div>
+                </div>
+                <div style={{ flex:1 }}>
+                  <p style={{ margin:'0 0 6px', fontSize:10, fontWeight:700, color:PHX.purple }}>ATUAL ✨</p>
+                  <div style={{ borderRadius:10, overflow:'hidden', border:`1.5px solid rgba(124,58,237,0.25)` }}>
+                    <img src={currentRender} alt="Atual" style={{ width:'100%', display:'block', objectFit:'cover', maxHeight:260 }} />
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* MATERIAIS */}
+          {activeAdj === 'materiais' && (
+            <div style={{ borderRadius:14, border:`1px solid ${PHX.border}`, background:PHX.surface, padding:16, marginBottom:14, animation:'s-in 0.3s ease' }}>
+              <p style={{ margin:'0 0 12px', fontSize:12, fontWeight:800, color:PHX.text }}>🎨 Selecione os materiais</p>
+
+              {/* Tabs */}
+              <div style={{ display:'flex', gap:0, marginBottom:16, borderBottom:`1px solid ${PHX.border}` }}>
+                {MAT_TABS.map(tab => (
+                  <button key={tab.id} onClick={() => setMatTab(tab.id)}
+                    style={{ padding:'8px 14px', borderRadius:0, border:'none', borderBottom:`2px solid ${matTab===tab.id?PHX.purple:'transparent'}`,
+                      background:'transparent', color:matTab===tab.id?PHX.purple:PHX.textSub,
+                      fontSize:12, fontWeight:matTab===tab.id?800:500, cursor:'pointer', transition:'all 0.14s ease',
+                      marginBottom:-1 }}>
+                    {tab.label}
+                    {selections.materiais[tab.id] && (
+                      <span style={{ marginLeft:5, width:6, height:6, borderRadius:'50%', background:PHX.purple, display:'inline-block' }} />
+                    )}
+                  </button>
+                ))}
+              </div>
+
+              {/* Swatches */}
+              <div style={{ display:'flex', flexWrap:'wrap', gap:10, marginBottom:14 }}>
+                {MATERIALS[matTab].map(mat => {
+                  const isActive = selections.materiais[matTab] === mat.id
+                  const isGradient = mat.bg.startsWith('linear') || mat.bg.startsWith('repeating')
+                  return (
+                    <button key={mat.id} className={`s-mat-swatch${isActive?' active':''}`}
+                      onClick={() => setSelections(prev => ({
+                        ...prev, materiais: { ...prev.materiais, [matTab]: isActive ? undefined : mat.id }
+                      }))}
+                      style={{ display:'flex', flexDirection:'column', alignItems:'center', gap:6,
+                        border:`2px solid ${isActive?PHX.purple:PHX.border}`, borderRadius:12,
+                        padding:'10px 8px', background:PHX.muted, cursor:'pointer', width:88 }}>
+                      <div style={{ width:56, height:40, borderRadius:7,
+                        background:isGradient?mat.bg:undefined,
+                        backgroundColor:!isGradient?mat.bg:undefined,
+                        border:`1px solid rgba(0,0,0,0.1)` }} />
+                      <span style={{ fontSize:10, fontWeight:isActive?700:500, color:isActive?PHX.purple:PHX.text,
+                        textAlign:'center', lineHeight:1.3 }}>{mat.label}</span>
+                    </button>
+                  )
+                })}
+                {/* Upload de material */}
+                <button onClick={() => matRef.current?.click()}
+                  style={{ display:'flex', flexDirection:'column', alignItems:'center', gap:6,
+                    border:`2px dashed ${PHX.border}`, borderRadius:12,
+                    padding:'10px 8px', background:'transparent', cursor:'pointer', width:88 }}>
+                  <div style={{ width:56, height:40, borderRadius:7, border:`1px dashed ${PHX.border}`,
+                    display:'flex', alignItems:'center', justifyContent:'center', fontSize:18, background:PHX.muted }}>
+                    +
+                  </div>
+                  <span style={{ fontSize:10, color:PHX.dim, textAlign:'center', lineHeight:1.3 }}>Upload<br/>material</span>
+                </button>
+              </div>
+
+              {/* Summary of selections */}
+              {Object.entries(selections.materiais).some(([,v]) => v) && (
+                <div style={{ padding:'8px 12px', borderRadius:8, background:PHX.muted, marginBottom:12 }}>
+                  <p style={{ margin:'0 0 4px', fontSize:10, fontWeight:700, color:PHX.dim }}>SELECIONADOS:</p>
+                  {Object.entries(selections.materiais).map(([cat, id]) => {
+                    if (!id) return null
+                    const m = MATERIALS[cat]?.find(m => m.id === id)
+                    const label = MAT_TABS.find(t => t.id === cat)?.label
+                    return m ? (
+                      <span key={cat} style={{ display:'inline-block', margin:'2px 4px 2px 0', padding:'2px 8px',
+                        borderRadius:6, background:'rgba(124,58,237,0.1)', color:PHX.purple, fontSize:11, fontWeight:600 }}>
+                        {label}: {m.label}
+                      </span>
+                    ) : null
+                  })}
+                </div>
+              )}
+
+              <ApplyBtn onClick={() => onAplicar('materiais')} loading={reRendering} />
+            </div>
+          )}
+
+          {/* CORES */}
+          {activeAdj === 'cores' && (
+            <AdjPanel title="🖌️ Paleta de cores" onApply={() => onAplicar('cores')} loading={reRendering}>
+              <div style={{ display:'flex', flexWrap:'wrap', gap:8 }}>
+                {CORES_OPTS.map(c => {
+                  const isActive = selections.cor === c.id
+                  return (
+                    <button key={c.id} className={`s-mat-swatch${isActive?' active':''}`}
+                      onClick={() => setSelections(p => ({ ...p, cor: isActive ? null : c.id }))}
+                      style={{ display:'flex', flexDirection:'column', alignItems:'center', gap:6,
+                        border:`2px solid ${isActive?PHX.purple:PHX.border}`, borderRadius:12,
+                        padding:'10px 8px', background:PHX.muted, cursor:'pointer', width:100 }}>
+                      <div style={{ width:72, height:28, borderRadius:6, background:c.bg, border:`1px solid rgba(0,0,0,0.08)` }} />
+                      <span style={{ fontSize:11, fontWeight:isActive?700:500, color:isActive?PHX.purple:PHX.text }}>
+                        {c.label}
+                      </span>
+                    </button>
+                  )
+                })}
+              </div>
+            </AdjPanel>
+          )}
+
+          {/* ILUMINAÇÃO */}
+          {activeAdj === 'iluminacao' && (
+            <AdjPanel title="💡 Tipo de iluminação" onApply={() => onAplicar('iluminacao')} loading={reRendering}>
+              <div style={{ display:'flex', flexWrap:'wrap', gap:8 }}>
+                {ILUMINACAO_OPTS.map(il => {
+                  const isActive = selections.iluminacao === il.id
+                  return (
+                    <button key={il.id} className={`s-chip${isActive?' active':''}`}
+                      onClick={() => setSelections(p => ({ ...p, iluminacao: isActive ? null : il.id }))}
+                      style={{ padding:'9px 16px', borderRadius:10, border:`1.5px solid ${isActive?PHX.purple:PHX.border}`,
+                        background:isActive?'rgba(124,58,237,0.08)':PHX.surface,
+                        color:isActive?PHX.purple:PHX.text, fontSize:13, fontWeight:isActive?700:500,
+                        display:'flex', alignItems:'center', gap:7, cursor:'pointer' }}>
+                      <span style={{ fontSize:16 }}>{il.icon}</span>{il.label}
+                    </button>
+                  )
+                })}
+              </div>
+            </AdjPanel>
+          )}
+
+          {/* MÓVEIS */}
+          {activeAdj === 'moveis' && (
+            <AdjPanel title="🛋️ Estilo de móveis" onApply={() => onAplicar('moveis')} loading={reRendering}>
+              <div style={{ display:'flex', flexWrap:'wrap', gap:8 }}>
+                {MOVEIS_OPTS.map(mv => {
+                  const isActive = selections.movel === mv.id
+                  return (
+                    <button key={mv.id} className={`s-chip${isActive?' active':''}`}
+                      onClick={() => setSelections(p => ({ ...p, movel: isActive ? null : mv.id }))}
+                      style={{ padding:'9px 16px', borderRadius:10, border:`1.5px solid ${isActive?PHX.purple:PHX.border}`,
+                        background:isActive?'rgba(124,58,237,0.08)':PHX.surface,
+                        color:isActive?PHX.purple:PHX.text, fontSize:13, fontWeight:isActive?700:500, cursor:'pointer' }}>
+                      {mv.label}
+                    </button>
+                  )
+                })}
+              </div>
+            </AdjPanel>
+          )}
+
+          {/* ITENS */}
+          {activeAdj === 'itens' && (
+            <AdjPanel title="➕ Remover ou adicionar itens" onApply={() => onAplicar('itens')} loading={reRendering}>
+              <textarea
+                value={selections.itens}
+                onChange={e => setSelections(p => ({ ...p, itens: e.target.value }))}
+                placeholder="Descreva o que deseja remover ou adicionar. Ex: Adicionar planta grande no canto, remover o tapete, incluir mesa de jantar para 6 pessoas…"
+                rows={4}
+                style={{ width:'100%', padding:'10px 12px', borderRadius:9, border:`1.5px solid ${PHX.border}`,
+                  background:PHX.muted, color:PHX.text, fontSize:13, resize:'vertical',
+                  fontFamily:'inherit', lineHeight:1.5, outline:'none', boxSizing:'border-box' }}
+              />
+            </AdjPanel>
+          )}
+
         </div>
       )}
     </div>
+  )
+}
+
+// ─── Sub-components ──────────────────────────────────────────────────────────
+function AdjPanel({ title, children, onApply, loading }: {
+  title: string; children: React.ReactNode; onApply: () => void; loading: boolean
+}) {
+  return (
+    <div style={{ borderRadius:14, border:`1px solid ${PHX.border}`, background:PHX.surface,
+      padding:16, marginBottom:14, animation:'s-in 0.3s ease' }}>
+      <p style={{ margin:'0 0 12px', fontSize:12, fontWeight:800, color:PHX.text }}>{title}</p>
+      {children}
+      <div style={{ marginTop:14 }}>
+        <ApplyBtn onClick={onApply} loading={loading} />
+      </div>
+    </div>
+  )
+}
+
+function ApplyBtn({ onClick, loading }: { onClick: () => void; loading: boolean }) {
+  return (
+    <button className="s-render-btn" onClick={onClick} disabled={loading}
+      style={{ width:'100%', padding:'12px 0', borderRadius:11, border:'none',
+        background:`linear-gradient(135deg,${PHX.purple},${PHX.purpleD})`,
+        color:'#fff', fontSize:13, fontWeight:800, cursor:'pointer',
+        display:'flex', alignItems:'center', justifyContent:'center', gap:8,
+        boxShadow:'0 4px 16px rgba(124,58,237,0.28)',
+      }}>
+      {loading ? (
+        <>
+          <div style={{ width:14, height:14, border:'2px solid rgba(255,255,255,0.4)', borderTopColor:'#fff', borderRadius:'50%', animation:'s-spin 0.8s linear infinite' }} />
+          Gerando novo render…
+        </>
+      ) : (
+        <><span style={{ fontSize:15 }}>✨</span> Aplicar e gerar novo render</>
+      )}
+    </button>
   )
 }
