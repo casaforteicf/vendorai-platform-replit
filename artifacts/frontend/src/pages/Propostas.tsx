@@ -703,7 +703,7 @@ function CatalogoModal({
 }
 
 // ── Proposta Modal (Nova Proposta) ────────────────────────────────────────────
-interface CartLine { produtoId: string; quantidade: number; }
+interface CartLine { produtoId: string; quantidade: number; precoUnitarioOverride?: number; }
 interface FreeItem  { id: string; nome: string; quantidade: number; valorUnitario: number; }
 
 const FORMA_PAGAMENTO_LABELS: Record<string, string> = {
@@ -836,7 +836,9 @@ export function PropostaModal({
   // totals
   const catTotal = cartLines.reduce((s, l) => {
     const p = activeCatalog.find((p) => p.id === l.produtoId);
-    return s + (p ? l.quantidade * parseFloat(p.precoBase) : 0);
+    if (!p) return s;
+    const pu = l.precoUnitarioOverride !== undefined ? l.precoUnitarioOverride : parseFloat(p.precoBase);
+    return s + l.quantidade * pu;
   }, 0);
   const freeTotal = freeItems.reduce((s, i) => s + i.quantidade * i.valorUnitario, 0);
 
@@ -928,7 +930,7 @@ export function PropostaModal({
       const paymentComp = vals.paymentCompositions?.filter((pc) => pc.forma && pc.valor > 0);
       const skipAsaas = vals.skipAsaasBilling;
       createFromCatMut.mutate(
-        { tenantId, data: { leadId: vals.leadId, titulo: vals.titulo, validadeAte: vals.validadeAte || undefined, observacoes: vals.observacoes || undefined, formaPagamento: (vals.formaPagamento || undefined) as FormaPagamentoProposta | undefined, condPagamento: vals.condPagamento || undefined, prazoEntrega: vals.prazoEntrega || undefined, ...recFields, itens: valid.map((l) => ({ produtoId: l.produtoId, quantidade: l.quantidade })), paymentCompositions: paymentComp?.length ? paymentComp.map((pc) => ({ forma: pc.forma as PaymentCompositionLineForma, valor: pc.valor, comprovanteUrl: pc.comprovanteUrl })) : undefined, skipAsaasBilling: skipAsaas } },
+        { tenantId, data: { leadId: vals.leadId, titulo: vals.titulo, validadeAte: vals.validadeAte || undefined, observacoes: vals.observacoes || undefined, formaPagamento: (vals.formaPagamento || undefined) as FormaPagamentoProposta | undefined, condPagamento: vals.condPagamento || undefined, prazoEntrega: vals.prazoEntrega || undefined, ...recFields, itens: valid.map((l) => ({ produtoId: l.produtoId, quantidade: l.quantidade, precoUnitario: l.precoUnitarioOverride })), paymentCompositions: paymentComp?.length ? paymentComp.map((pc) => ({ forma: pc.forma as PaymentCompositionLineForma, valor: pc.valor, comprovanteUrl: pc.comprovanteUrl })) : undefined, skipAsaasBilling: skipAsaas } },
         {
           onSuccess: () => {
             toast({ title: "Orçamento criado com sucesso" });
@@ -1139,7 +1141,8 @@ export function PropostaModal({
                     <TableBody>
                       {cartLines.map((line, idx) => {
                         const prod = activeCatalog.find((p) => p.id === line.produtoId);
-                        const subtotal = prod ? line.quantidade * parseFloat(prod.precoBase) : 0;
+                        const precoUnit = line.precoUnitarioOverride !== undefined ? line.precoUnitarioOverride : (prod ? parseFloat(prod.precoBase) : 0);
+                        const subtotal = prod ? line.quantidade * precoUnit : 0;
                         return (
                           <TableRow key={idx}>
                             <TableCell className="py-1.5">
@@ -1155,8 +1158,21 @@ export function PropostaModal({
                             <TableCell className="py-1.5">
                               <Input type="number" min={1} className="h-8 text-sm w-20" value={line.quantidade} onChange={(e) => updateCatLine(idx, { quantidade: Math.max(1, parseInt(e.target.value) || 1) })} />
                             </TableCell>
-                            <TableCell className="py-1.5 text-right font-mono text-sm text-muted-foreground">
-                              {prod ? <>{fmtCurrency(prod.precoBase)}<span className="text-xs ml-1">/{prod.unidade}</span></> : "—"}
+                            <TableCell className="py-1.5">
+                              <div className="relative flex items-center justify-end">
+                                <span className="absolute left-2 text-muted-foreground text-xs pointer-events-none">R$</span>
+                                <Input
+                                  type="number"
+                                  min={0}
+                                  step={0.01}
+                                  className="h-8 text-sm text-right font-mono pl-7 w-32"
+                                  disabled={!prod}
+                                  placeholder="0,00"
+                                  value={prod ? (line.precoUnitarioOverride !== undefined ? line.precoUnitarioOverride : parseFloat(prod.precoBase)) : ""}
+                                  onChange={(e) => updateCatLine(idx, { precoUnitarioOverride: parseFloat(e.target.value) || 0 })}
+                                />
+                                {prod && <span className="ml-1 text-xs text-muted-foreground shrink-0">/{prod.unidade}</span>}
+                              </div>
                             </TableCell>
                             <TableCell className="py-1.5 text-right font-mono text-sm font-medium">{prod ? fmtCurrency(subtotal) : "—"}</TableCell>
                             <TableCell className="py-1.5">

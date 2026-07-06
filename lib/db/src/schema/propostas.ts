@@ -86,6 +86,7 @@ export const propostasTable = pgTable("propostas", {
 export const insertPropostaSchema = createInsertSchema(propostasTable, {
   itens: z.array(propostaItemSchema).optional(),
   valorTotal: valorField,
+  valorMensal: valorField,
   validadeAte: z.coerce.date().optional(),
   acceptanceMetadata: z.any().optional(),
 }).omit({ id: true, createdAt: true, updatedAt: true });
@@ -93,6 +94,7 @@ export const insertPropostaSchema = createInsertSchema(propostasTable, {
 export const updatePropostaSchema = createSelectSchema(propostasTable, {
   itens: z.array(propostaItemSchema).optional(),
   valorTotal: valorField,
+  valorMensal: valorField,
   validadeAte: z.coerce.date().optional(),
   acceptanceMetadata: z.any().optional(),
 })
