@@ -235,6 +235,76 @@ export async function callReplicateFluxUltraPro(params: {
   return Buffer.from(await imgRes.arrayBuffer()).toString("base64");
 }
 
+// ── Motor de geração por prompt: Flux 1.1 Pro (Content Studio) ───────────────
+// Geração puramente textual (sem input_image). Suporta aspect_ratio nativo,
+// prompt_upsampling e output_format="jpg". Reaproveitado no Content Studio.
+
+export async function callReplicateFlux11Pro(params: {
+  prompt:       string;
+  aspectRatio?: string;
+  logger?:      Logger;
+}): Promise<string> {
+  const token = process.env["REPLICATE_API_TOKEN"];
+  if (!token) throw new Error("REPLICATE_API_TOKEN not set");
+
+  const { prompt, aspectRatio = "1:1", logger } = params;
+  const MODEL = "black-forest-labs/flux-1.1-pro";
+
+  logger?.info({ model: MODEL, aspectRatio }, "Flux1Pro: creating prediction");
+
+  const createRes = await fetch(
+    `https://api.replicate.com/v1/models/${MODEL}/predictions`,
+    {
+      method: "POST",
+      headers: {
+        Authorization:  `Token ${token}`,
+        "Content-Type": "application/json",
+        Prefer:         "wait=60",
+      },
+      body: JSON.stringify({
+        input: {
+          prompt,
+          aspect_ratio:      aspectRatio,
+          output_format:     "jpg",
+          prompt_upsampling: true,
+        },
+      }),
+      signal: AbortSignal.timeout(120_000),
+    },
+  );
+
+  if (!createRes.ok) {
+    const body = await createRes.json().catch(() => ({})) as Record<string, unknown>;
+    throw new Error(`Flux1Pro HTTP ${createRes.status}: ${body["detail"] ?? JSON.stringify(body)}`);
+  }
+
+  let prediction = await createRes.json() as {
+    id: string; status: string; output?: string | string[]; error?: string;
+  };
+
+  let polls = 0;
+  while (prediction.status === "starting" || prediction.status === "processing") {
+    if (polls >= 60) throw new Error("Flux1Pro: polling timeout (120s)");
+    await new Promise<void>((r) => setTimeout(r, 2000));
+    const pollRes = await fetch(
+      `https://api.replicate.com/v1/predictions/${prediction.id}`,
+      { headers: { Authorization: `Token ${token}` } },
+    );
+    prediction = await pollRes.json() as typeof prediction;
+    polls++;
+  }
+
+  if (prediction.status !== "succeeded" || !prediction.output) {
+    throw new Error(`Flux1Pro ${prediction.status}: ${prediction.error ?? "no output"}`);
+  }
+
+  const outputUrl = Array.isArray(prediction.output) ? prediction.output[0] : prediction.output;
+  if (!outputUrl) throw new Error("Flux1Pro: empty output URL");
+
+  logger?.info({ model: MODEL, polls }, "Flux1Pro: prediction succeeded");
+  return outputUrl as string; // Replicate CDN URL — caller must persist it
+}
+
 // ── Motor de ajuste pontual: Flux Fill Pro (segunda chamada sobre resultado) ───
 // Usado exclusivamente em ajuste pós-geração de elemento específico,
 // nunca combinado com o Kontext no mesmo fluxo.

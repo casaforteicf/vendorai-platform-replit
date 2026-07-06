@@ -2,6 +2,7 @@ import { getOpenAIForTenant } from "./agent-engine.js";
 import { callOpenAI as gatewayCallOpenAI } from "./ai-gateway.js";
 import { ObjectStorageService } from "./objectStorage.js";
 import { toFile } from "openai";
+import { callReplicateFlux11Pro } from "./arch-render-pipeline.js";
 import type {
   FeedVariation,
   StoriesVariation,
@@ -37,6 +38,86 @@ function buildBrandContext(profile: TenantProfile): string {
     lines.push(`Slogan: ${disc["sloganMarca"]}`);
   }
   return lines.join("\n") || "Empresa sem contexto definido.";
+}
+
+// ── SEGMENT_STYLE_MAP ─────────────────────────────────────────────────────────
+// Maps the tenant's vertical/segment to a visual style block for image prompts.
+// SEGMENT_STYLE_BLOCK = scene/environment/lighting (Flux prompt context).
+// BRAND_STYLE_BLOCK   = colors/identity (accent layer — never overrides scene palette).
+
+interface SegmentStyle { scene: string; palette: string; lighting: string; mood: string }
+
+const SEGMENT_STYLE_MAP: [string, SegmentStyle][] = [
+  ["construção civil", { scene: "freshly finished construction interior, exposed concrete, premium building materials organized on clean floor", palette: "warm grays, cement tones, sandy beige, clean whites", lighting: "natural daylight through large windows, soft diffused shadows", mood: "solid and professional" }],
+  ["construção",       { scene: "modern construction site or finished renovation, high-quality materials prominently displayed", palette: "warm grays, cement tones, beige", lighting: "bright daylight or clean interior", mood: "professional and durable" }],
+  ["reforma",          { scene: "renovated residential interior before-and-after, clean modern surfaces, tile or flooring detail", palette: "neutral whites, warm grays, warm wood tones", lighting: "bright interior with natural light", mood: "transformation and craftsmanship" }],
+  ["arquitetura",      { scene: "elegant architectural space, high-end residential or commercial project, premium interior design", palette: "sophisticated neutrals, charcoal, warm whites, natural stone tones", lighting: "dramatic architectural lighting, golden hour", mood: "luxurious and refined" }],
+  ["design de interiores", { scene: "curated designer interior, signature furniture pieces in a contemporary showroom or residence", palette: "minimalist neutrals with strong accent colors, premium materials", lighting: "soft diffused studio lighting, elegant shadows", mood: "modern and sophisticated" }],
+  ["design",           { scene: "contemporary studio or showroom, curated objects and surfaces", palette: "minimalist neutrals, accent tones", lighting: "soft diffused light, elegant composition", mood: "modern and sophisticated" }],
+  ["marcenaria",       { scene: "beautifully crafted wooden furniture in warm residential interior, natural wood grain visible, workshop or showroom", palette: "warm oak, walnut, pine tones, cream whites, warm grays", lighting: "warm residential lighting, golden hour side light", mood: "warm and residential" }],
+  ["móveis",           { scene: "modern furniture showroom or styled living space, premium furniture as focal point", palette: "warm neutrals, natural wood, soft whites", lighting: "warm showroom or natural window light", mood: "cozy and aspirational" }],
+  ["saúde",            { scene: "clean modern medical office or wellness center with natural elements, clinical and organized", palette: "clean whites, soft aqua, sage green, light gray", lighting: "bright clinical even lighting", mood: "clinical and bright" }],
+  ["clínica",          { scene: "upscale aesthetic clinic, elegant treatment room, premium medical-grade equipment", palette: "clean whites, soft rose, nude tones, subtle gold", lighting: "warm flattering clinical lighting", mood: "premium and trustworthy" }],
+  ["estética",         { scene: "luxury beauty and aesthetics studio, soft botanicals, marble surfaces, elegant treatment setting", palette: "rose gold, soft white, blush, nude tones", lighting: "warm and flattering, soft shadows", mood: "glamorous and self-care focused" }],
+  ["beleza",           { scene: "elegant beauty salon or spa, premium skincare products on marble surface, floral accents", palette: "soft pinks, gold accents, clean whites, blush tones", lighting: "warm flattering lighting, soft ring-light glow", mood: "glamorous and aspirational" }],
+  ["imobiliária",      { scene: "well-staged premium residential interior or architectural exterior, real estate photography style", palette: "clean whites, warm beiges, natural light tones, greenery accents", lighting: "bright natural daylight, wide angle", mood: "aspirational and welcoming" }],
+  ["imóveis",          { scene: "premium residential or commercial property, beautifully staged interior with lifestyle props", palette: "neutral warm tones, cream, light oak", lighting: "golden hour exterior or bright interior natural light", mood: "aspirational and professional" }],
+  ["autopeças",        { scene: "clean auto parts store or technical workshop, organized parts shelving, garage environment with metallic surfaces", palette: "industrial grays, metallic silver, deep black, red accents", lighting: "bright workshop fluorescent, clean and even", mood: "clean and technical" }],
+  ["distribuidora",    { scene: "organized warehouse or distribution center, product shelves neatly stacked, professional industrial environment", palette: "clean whites, industrial blues, metallic accents", lighting: "bright warehouse lighting, even and shadowless", mood: "organized and reliable" }],
+  ["atacado",          { scene: "large warehouse with organized pallets, bulk product display, logistics environment", palette: "neutral industrial tones, clean whites", lighting: "bright commercial lighting", mood: "efficient and volume-focused" }],
+  ["academia",         { scene: "modern fitness gym interior, premium exercise equipment, high-energy training environment", palette: "bold dark tones, neon accents, steel gray, high contrast black", lighting: "dramatic gym lighting, strong and directional", mood: "energetic and motivational" }],
+  ["fitness",          { scene: "dynamic fitness setting or outdoor workout, active lifestyle moment", palette: "vibrant energetic colors, high contrast, sporty tones", lighting: "natural outdoor light or dramatic gym lighting", mood: "high-energy and inspiring" }],
+  ["moda",             { scene: "fashion editorial setting, styled flat-lay or boutique interior, clothing as art", palette: "fashion-forward seasonal palette, high-contrast editorial tones", lighting: "fashion photography studio or golden hour lifestyle", mood: "stylish and trendy" }],
+  ["varejo",           { scene: "retail store interior, curated product display, modern boutique environment", palette: "clean retail presentation, bright and inviting tones", lighting: "bright retail product-focused lighting", mood: "inviting and commercial" }],
+  ["restaurante",      { scene: "restaurant interior or table setting, beautifully plated food on elegant table, ambient decor", palette: "warm amber, terracotta, cream, deep wood tones", lighting: "warm restaurant ambient lighting, candle glow accents", mood: "appetizing and inviting" }],
+  ["supermercado",     { scene: "supermarket shelving or fresh produce section, clean commercial display, abundance of product", palette: "fresh greens, clean whites, vibrant reds and yellows", lighting: "bright commercial store lighting, fresh and even", mood: "fresh and value-driven" }],
+  ["alimentação",      { scene: "artisan food photography with natural ingredients, kitchen or rustic table setting", palette: "earthy warm tones, fresh greens, natural food colors", lighting: "soft natural window light, food photography standard", mood: "appetizing and authentic" }],
+  ["tecnologia",       { scene: "modern tech office or product studio, clean desk setup with digital screens", palette: "cool blues, grays, white, dark mode accents", lighting: "cool modern studio lighting, screen glow", mood: "innovative and clean" }],
+  ["educação",         { scene: "modern educational environment, classroom or online learning setup with organized materials", palette: "bright blues, greens, whites, academic tones", lighting: "bright natural or studio light", mood: "inspiring and professional" }],
+];
+
+const DEFAULT_SEGMENT_STYLE: SegmentStyle = {
+  scene:    "clean professional product photography studio, neutral elegant background",
+  palette:  "neutral grays and whites, subtle warm accents",
+  lighting: "professional studio lighting, soft and even, minimal shadows",
+  mood:     "clean and professional",
+};
+
+function getSegmentStyle(vertical: string | null | undefined): SegmentStyle {
+  if (!vertical) return DEFAULT_SEGMENT_STYLE;
+  const v = vertical.toLowerCase();
+  for (const [key, style] of SEGMENT_STYLE_MAP) {
+    if (v.includes(key)) return style;
+  }
+  return DEFAULT_SEGMENT_STYLE;
+}
+
+function buildSegmentStyleBlock(vertical: string | null | undefined): string {
+  const s = getSegmentStyle(vertical);
+  return `Scene and environment: ${s.scene}. Environment palette: ${s.palette}. Lighting: ${s.lighting}. Mood: ${s.mood}.`;
+}
+
+function buildBrandStyleBlock(profile: TenantProfile): string {
+  const disc = profile.discoveryData as Record<string, unknown> | null | undefined;
+  const brandColors = Array.isArray(disc?.["coresBrand"]) && (disc["coresBrand"] as string[]).length > 0
+    ? (disc["coresBrand"] as string[]).join(", ")
+    : null;
+  const brand = profile.nomeFantasia || "the brand";
+  const parts: string[] = [`Brand: "${brand}".`];
+  if (brandColors) {
+    parts.push(`Use the brand colors (${brandColors}) as accent tones on product, packaging, props or subtle design elements — never override the scene's environment palette.`);
+  }
+  return parts.join(" ");
+}
+
+async function saveImageFromUrl(url: string): Promise<string> {
+  const res = await fetch(url);
+  if (!res.ok) throw new Error(`Failed to download generated image: ${res.status}`);
+  const buf = Buffer.from(await res.arrayBuffer());
+  const storage = new ObjectStorageService();
+  const objectPath = await storage.savePrivateBuffer(buf, "image/jpeg", `${crypto.randomUUID()}.jpg`);
+  const servePath = objectPath.replace(/^\/objects\//, "");
+  return `/api/storage/objects/${servePath}`;
 }
 
 function verticalHints(vertical: string | null | undefined): string {
@@ -203,63 +284,62 @@ export async function generateImagesForContent(
 ): Promise<string[]> {
   if (imageCount < 1) imageCount = 1;
   if (imageCount > 10) imageCount = 10;
-  const openai = await getOpenAIForTenant(tenantId);
+
   const brand = profile.nomeFantasia || "a empresa";
   const subject = productName ? `${productName} — ${theme}` : theme;
-  const v = profile.vertical ?? "";
-  let styleHint = style ?? "clean, modern, professional marketing photography";
-  if (!style) {
-    if (v.includes("Varejo") || v.includes("Moda") || v.includes("Roupa")) {
-      styleHint = "fashion editorial photography, stylish, trendy, well-lit studio or lifestyle setting";
-    } else if (v.includes("Supermercado") || v.includes("Mercado")) {
-      styleHint = "bright food photography, fresh produce, appetizing, commercial supermarket style";
-    } else if (v.includes("Construção") || v.includes("Reforma")) {
-      styleHint = "professional construction/renovation photography, high quality materials, clean workspace";
-    }
-  }
-
   const observationsNote = observations ? `Client-specific request: ${observations}. ` : "";
 
-  // Build format label based on aspectRatio
   const formatLabel = (() => {
     if (aspectRatio === "9:16") return format === "stories" ? "Stories (vertical, 9:16 portrait)" : "Reels (vertical, 9:16 portrait)";
     if (aspectRatio === "4:5") return "Feed portrait (4:5 ratio, vertical)";
     return "Feed square (1:1 ratio)";
   })();
 
-  // When a reference image is available, use AI editing to improve it
+  // Flux aspect_ratio values
+  const fluxAspectRatio = aspectRatio === "9:16" ? "9:16" : aspectRatio === "4:5" ? "4:5" : "1:1";
+
+  // When a reference image is available, use OpenAI image editing (unchanged)
   if (referenceImageUrl) {
-    const editPrompt = `Improve this product/marketing image for use in an Instagram ${formatLabel} post for the brand "${brand}". Subject: ${subject}. Keep the same product and subject matter. ${observationsNote}Improve: lighting quality, sharpness, color vibrancy, composition. The result must be suitable for professional Instagram marketing. Style: ${styleHint}. No text. No watermarks.`;
+    const editPrompt = `Improve this product/marketing image for Instagram ${formatLabel} post for the brand "${brand}". Subject: ${subject}. Keep the same product and subject matter. ${observationsNote}Improve: lighting, sharpness, color, composition. Professional Instagram marketing quality. No text. No watermarks.`;
     return generateImagesWithReference(tenantId, referenceImageUrl, editPrompt, imageCount);
   }
 
-  const imagePromises = Array.from({ length: imageCount }, async (_, i) => {
-    let lastError: unknown;
-    const concept = IMAGE_CONCEPTS[i % IMAGE_CONCEPTS.length];
-    const imagePrompt = concept.buildPrompt(brand, subject, styleHint, formatLabel, observationsNote);
+  // Build style blocks for Flux prompt (Passo 2 — segment + brand)
+  const segmentBlock = buildSegmentStyleBlock(profile.vertical);
+  const brandBlock = buildBrandStyleBlock(profile);
+  const styleContext = style ?? `${segmentBlock} ${brandBlock}`;
 
+  const imagePromises = Array.from({ length: imageCount }, async (_, i) => {
+    const concept = IMAGE_CONCEPTS[i % IMAGE_CONCEPTS.length];
+    const fullPrompt = concept.buildPrompt(brand, subject, styleContext, formatLabel, observationsNote);
+
+    // Primary: Flux 1.1 Pro via Replicate
+    try {
+      const outputUrl = await callReplicateFlux11Pro({ prompt: fullPrompt, aspectRatio: fluxAspectRatio });
+      return await saveImageFromUrl(outputUrl);
+    } catch {
+      // Fallback: OpenAI image generation
+    }
+
+    const openai = await getOpenAIForTenant(tenantId);
+    let lastError: unknown;
     for (const model of IMAGE_MODELS_PRIORITY) {
       try {
         const size = getImageSize(model, aspectRatio);
         const response = await openai.images.generate({
           model,
-          prompt: imagePrompt,
+          prompt: fullPrompt,
           n: 1,
           size,
           ...(model === "dall-e-3" ? { quality: "standard" } : {}),
         } as Parameters<typeof openai.images.generate>[0]);
-
         const item = "data" in response && Array.isArray(response.data) ? response.data[0] : undefined;
         if (!item) continue;
-
         if ("url" in item && item.url) return item.url as string;
         if ("b64_json" in item && item.b64_json) return await saveB64Image(item.b64_json);
-      } catch (err) {
-        lastError = err;
-      }
+      } catch (err) { lastError = err; }
     }
-
-    throw lastError ?? new Error(`Nenhum modelo de imagem disponível retornou resultado para imagem ${i + 1}`);
+    throw lastError ?? new Error(`Nenhum modelo retornou resultado para imagem ${i + 1}`);
   });
 
   return await Promise.all(imagePromises);
