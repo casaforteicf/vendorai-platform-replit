@@ -408,6 +408,47 @@ router.patch("/tenants/:tenantId/content/:contentId/variations/:idx/image", asyn
   res.json({ success: true, mediaUrl, field: body.data.field });
 });
 
+router.delete("/tenants/:tenantId/content/:contentId/variations/:idx/image", async (req, res) => {
+  const tenantId = String(req.params["tenantId"]);
+  const contentId = String(req.params["contentId"]);
+  const idx = parseInt(String(req.params["idx"]), 10);
+
+  if (req.user?.platformRole !== "super_admin" && req.user?.tenantId !== tenantId) {
+    res.status(403).json({ error: "Acesso negado" }); return;
+  }
+
+  const [gen] = await db
+    .select()
+    .from(contentGenerationsTable)
+    .where(and(eq(contentGenerationsTable.id, contentId), eq(contentGenerationsTable.tenantId, tenantId)))
+    .limit(1);
+
+  if (!gen) { res.status(404).json({ error: "Conteúdo não encontrado" }); return; }
+
+  const imageIndexRaw = req.query["imageIndex"];
+  const imageIndex = imageIndexRaw !== undefined ? parseInt(String(imageIndexRaw), 10) : null;
+
+  const variations = [...gen.result.variations] as (typeof gen.result.variations[number] & { imageUrl?: string | null; imageUrls?: string[] })[];
+  if (!variations[idx]) { res.status(400).json({ error: "Variação inválida" }); return; }
+
+  const v = variations[idx] as typeof variations[number] & { imageUrl?: string | null; imageUrls?: string[] };
+
+  if (imageIndex !== null && !isNaN(imageIndex)) {
+    const currentUrls: string[] = v.imageUrls ?? (v.imageUrl ? [v.imageUrl] : []);
+    const newUrls = currentUrls.filter((_, i) => i !== imageIndex);
+    variations[idx] = { ...v, imageUrl: newUrls[0] ?? null, imageUrls: newUrls.length > 1 ? newUrls : undefined };
+  } else {
+    variations[idx] = { ...v, imageUrl: null, imageUrls: undefined };
+  }
+
+  await db
+    .update(contentGenerationsTable)
+    .set({ result: { variations } })
+    .where(eq(contentGenerationsTable.id, contentId));
+
+  res.json({ success: true });
+});
+
 router.post("/tenants/:tenantId/content/:contentId/publish-instagram", async (req, res) => {
   const tenantId = String(req.params["tenantId"]);
   const contentId = String(req.params["contentId"]);

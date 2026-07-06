@@ -1,4 +1,4 @@
-import { useState, useRef } from "react";
+import React, { useState, useRef } from "react";
 import { useLocation } from "wouter";
 import { useAuth } from "@/contexts/AuthContext";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -253,6 +253,8 @@ function FeedCard({
   editedHashtags = "",
   onChangeCaption,
   onChangeHashtags,
+  onRemoveImage,
+  onUploadClick,
 }: {
   v: FeedVariation;
   editing?: boolean;
@@ -260,6 +262,8 @@ function FeedCard({
   editedHashtags?: string;
   onChangeCaption?: (val: string) => void;
   onChangeHashtags?: (val: string) => void;
+  onRemoveImage?: (imgIdx: number) => void;
+  onUploadClick?: () => void;
 }) {
   const displayCaption = editing ? editedCaption : v.caption;
   const displayHashtagsStr = editing ? editedHashtags : v.hashtags.join(" ");
@@ -268,7 +272,7 @@ function FeedCard({
 
   return (
     <div className="space-y-3">
-      {images.length > 0 && (
+      {images.length > 0 ? (
         <div className={`grid gap-2 ${images.length === 1 ? "grid-cols-1 max-w-sm mx-auto" : images.length === 2 ? "grid-cols-2" : "grid-cols-2 md:grid-cols-3"}`}>
           {images.map((url, idx) => (
             <div key={idx} className="rounded-lg overflow-hidden border bg-muted/30 aspect-square relative group">
@@ -278,21 +282,39 @@ function FeedCard({
                 className="w-full h-full object-cover"
                 loading="lazy"
               />
-              <div className="absolute inset-0 bg-black/0 group-hover:bg-black/40 transition-colors flex items-center justify-center opacity-0 group-hover:opacity-100">
-                <Button
-                  variant="secondary"
-                  size="sm"
-                  className="text-xs"
-                  onClick={() => downloadImage(url, `feed-${idx + 1}.png`)}
+              <div className="absolute inset-0 bg-black/0 group-hover:bg-black/40 transition-colors opacity-0 group-hover:opacity-100">
+                <button
+                  onClick={() => onRemoveImage?.(idx)}
+                  className="absolute top-1.5 right-1.5 bg-black/70 hover:bg-red-600 text-white rounded-full p-0.5 transition-colors"
+                  title="Remover imagem"
                 >
-                  <Download className="h-3 w-3 mr-1" />
-                  Baixar
-                </Button>
+                  <X className="h-3.5 w-3.5" />
+                </button>
+                <div className="absolute inset-0 flex items-center justify-center">
+                  <Button
+                    variant="secondary"
+                    size="sm"
+                    className="text-xs"
+                    onClick={() => downloadImage(url, `feed-${idx + 1}.png`)}
+                  >
+                    <Download className="h-3 w-3 mr-1" />
+                    Baixar
+                  </Button>
+                </div>
               </div>
             </div>
           ))}
         </div>
-      )}
+      ) : onUploadClick ? (
+        <button
+          onClick={onUploadClick}
+          className="w-full border-2 border-dashed border-muted-foreground/30 hover:border-primary/50 rounded-lg aspect-square max-w-sm mx-auto flex flex-col items-center justify-center gap-2 text-muted-foreground hover:text-primary transition-colors bg-muted/10 hover:bg-primary/5"
+        >
+          <Upload className="h-7 w-7" />
+          <span className="text-xs font-medium">Adicionar imagem</span>
+          <span className="text-[10px] opacity-60">Clique para fazer upload</span>
+        </button>
+      ) : null}
       <div className="flex items-start justify-between gap-2">
         {editing ? (
           <Textarea
@@ -336,6 +358,8 @@ function StoriesCard({
   editedCta = "",
   onChangeText,
   onChangeCta,
+  onRemoveImage,
+  onUploadClick,
 }: {
   v: StoriesVariation;
   editing?: boolean;
@@ -343,13 +367,15 @@ function StoriesCard({
   editedCta?: string;
   onChangeText?: (val: string) => void;
   onChangeCta?: (val: string) => void;
+  onRemoveImage?: (imgIdx: number) => void;
+  onUploadClick?: () => void;
 }) {
   const displayText = editing ? editedText : v.text;
   const displayCta = editing ? editedCta : v.cta;
   const images = v.imageUrls ?? (v.imageUrl ? [v.imageUrl] : []);
   return (
     <div className="space-y-3">
-      {images.length > 0 && (
+      {images.length > 0 ? (
         <div className={`grid gap-2 ${images.length === 1 ? "grid-cols-1 max-w-[200px] mx-auto" : "grid-cols-2 max-w-[420px] mx-auto"}`}>
           {images.map((url, idx) => (
             <div key={idx} className="rounded-lg overflow-hidden border bg-muted/30 aspect-[9/16] relative group" style={{ maxWidth: "200px" }}>
@@ -359,21 +385,40 @@ function StoriesCard({
                 className="w-full h-full object-cover"
                 loading="lazy"
               />
-              <div className="absolute inset-0 bg-black/0 group-hover:bg-black/40 transition-colors flex items-center justify-center opacity-0 group-hover:opacity-100">
-                <Button
-                  variant="secondary"
-                  size="sm"
-                  className="text-xs"
-                  onClick={() => downloadImage(url, `stories-${idx + 1}.png`)}
+              <div className="absolute inset-0 bg-black/0 group-hover:bg-black/40 transition-colors opacity-0 group-hover:opacity-100">
+                <button
+                  onClick={() => onRemoveImage?.(idx)}
+                  className="absolute top-1.5 right-1.5 bg-black/70 hover:bg-red-600 text-white rounded-full p-0.5 transition-colors"
+                  title="Remover imagem"
                 >
-                  <Download className="h-3 w-3 mr-1" />
-                  Baixar
-                </Button>
+                  <X className="h-3.5 w-3.5" />
+                </button>
+                <div className="absolute inset-0 flex items-center justify-center">
+                  <Button
+                    variant="secondary"
+                    size="sm"
+                    className="text-xs"
+                    onClick={() => downloadImage(url, `stories-${idx + 1}.png`)}
+                  >
+                    <Download className="h-3 w-3 mr-1" />
+                    Baixar
+                  </Button>
+                </div>
               </div>
             </div>
           ))}
         </div>
-      )}
+      ) : onUploadClick ? (
+        <button
+          onClick={onUploadClick}
+          className="mx-auto border-2 border-dashed border-muted-foreground/30 hover:border-primary/50 rounded-lg flex flex-col items-center justify-center gap-2 text-muted-foreground hover:text-primary transition-colors bg-muted/10 hover:bg-primary/5"
+          style={{ width: "200px", aspectRatio: "9/16" }}
+        >
+          <Upload className="h-7 w-7" />
+          <span className="text-xs font-medium">Adicionar imagem</span>
+          <span className="text-[10px] opacity-60">Clique para upload</span>
+        </button>
+      ) : null}
       <div className="flex items-start justify-between gap-2">
         <div className="flex-1 space-y-2">
           {editing ? (
@@ -536,17 +581,26 @@ function MediaUploadButton({
   tenantId,
   mediaType,
   onUploaded,
+  triggerRef,
 }: {
   contentId: string;
   variationIndex: number;
   tenantId: string;
   mediaType: "image" | "video";
   onUploaded: (mediaUrl: string) => void;
+  triggerRef?: React.MutableRefObject<(() => void) | null>;
 }) {
   const { toast } = useToast();
   const qc = useQueryClient();
   const [uploading, setUploading] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
+
+  React.useEffect(() => {
+    if (triggerRef) {
+      triggerRef.current = () => inputRef.current?.click();
+      return () => { if (triggerRef) triggerRef.current = null; };
+    }
+  }, [triggerRef]);
 
   const isVideo = mediaType === "video";
   const allowedTypes = isVideo
@@ -812,14 +866,44 @@ function VariationCard({
   referenceImageUrl?: string | null;
 }) {
   const [localImageUrl, setLocalImageUrl] = useState<string | undefined>(undefined);
+  const [localImageUrls, setLocalImageUrls] = useState<string[] | null>(null);
   const [localVideoUrl, setLocalVideoUrl] = useState<string | undefined>(undefined);
+  const uploadTriggerRef = useRef<(() => void) | null>(null);
+  const qc = useQueryClient();
 
   const effectiveVariation =
     type === "reels"
       ? localVideoUrl ? { ...variation, videoUrl: localVideoUrl } : variation
-      : localImageUrl ? { ...variation, imageUrl: localImageUrl } : variation;
+      : (() => {
+          const base = localImageUrl ? { ...variation, imageUrl: localImageUrl } : variation;
+          if (localImageUrls !== null) {
+            return { ...base, imageUrls: localImageUrls.length > 0 ? localImageUrls : undefined, imageUrl: localImageUrls[0] ?? undefined };
+          }
+          return base;
+        })();
 
-  const hasImage = !!(effectiveVariation as { imageUrl?: string }).imageUrl;
+  const hasImage = !!(effectiveVariation as { imageUrl?: string }).imageUrl ||
+    !!((effectiveVariation as { imageUrls?: string[] }).imageUrls?.length);
+
+  async function handleRemoveImage(imgIdx: number) {
+    const ev = effectiveVariation as FeedVariation | StoriesVariation;
+    const currentUrls = ev.imageUrls ?? (ev.imageUrl ? [ev.imageUrl] : []);
+    const newUrls = currentUrls.filter((_, i) => i !== imgIdx);
+    setLocalImageUrls(newUrls);
+    setLocalImageUrl(newUrls[0] ?? undefined);
+
+    if (contentId && tenantId) {
+      try {
+        await fetch(
+          `/api/tenants/${tenantId}/content/${contentId}/variations/${index}/image?imageIndex=${imgIdx}`,
+          { method: "DELETE", headers: { Authorization: `Bearer ${localStorage.getItem("vendorai_token")}` } }
+        );
+        qc.invalidateQueries({ queryKey: ["content", tenantId] });
+      } catch {
+        toast({ title: "Erro ao remover imagem", variant: "destructive" });
+      }
+    }
+  }
 
   const { toast } = useToast();
 
@@ -1001,7 +1085,8 @@ function VariationCard({
                     variationIndex={index}
                     tenantId={tenantId}
                     mediaType={type === "reels" ? "video" : "image"}
-                    onUploaded={type === "reels" ? setLocalVideoUrl : setLocalImageUrl}
+                    onUploaded={type === "reels" ? setLocalVideoUrl : (url) => { setLocalImageUrl(url); setLocalImageUrls(null); }}
+                    triggerRef={type !== "reels" ? uploadTriggerRef : undefined}
                   />
                 )}
                 {type !== "reels" && contentId && tenantId && (
@@ -1027,6 +1112,8 @@ function VariationCard({
             editedHashtags={editHashtags}
             onChangeCaption={setEditCaption}
             onChangeHashtags={setEditHashtags}
+            onRemoveImage={contentId && tenantId ? handleRemoveImage : undefined}
+            onUploadClick={contentId && tenantId ? () => uploadTriggerRef.current?.() : undefined}
           />
         )}
         {type === "stories" && (
@@ -1037,6 +1124,8 @@ function VariationCard({
             editedCta={editCta}
             onChangeText={setEditText}
             onChangeCta={setEditCta}
+            onRemoveImage={contentId && tenantId ? handleRemoveImage : undefined}
+            onUploadClick={contentId && tenantId ? () => uploadTriggerRef.current?.() : undefined}
           />
         )}
         {type === "reels" && <ReelsCard v={effectiveVariation as ReelsVariation} />}
