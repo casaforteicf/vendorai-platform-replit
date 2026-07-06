@@ -7,17 +7,19 @@ import { sendDirectWhatsAppMessage } from "../services/omnichannel.js";
 
 const router = Router();
 
-// ─── POST /api/deals/:dealId/confirm-closure ────────────────────────────────
+// ─── POST /deals/:dealId/confirm-closure ────────────────────────────────────
 // Comprehensive deal closure:
 //  1. Marks deal as ganho + lead as convertido
 //  2. Generates contract PDF from tenant template + sends to ZapSign
 //  3. Sends WhatsApp with sign link
 //  4. Creates Asaas charge(s) if configured
 //  5. Sends WhatsApp with payment link(s)
-router.post("/api/deals/:dealId/confirm-closure", async (req, res) => {
+router.post("/deals/:dealId/confirm-closure", async (req, res) => {
   const dealId = String(req.params.dealId);
   const {
     valor,
+    valorImplantacao,
+    valorMensalidade,
     planoContratado,
     condPagamento,
     prazoEntrega,
@@ -26,6 +28,8 @@ router.post("/api/deals/:dealId/confirm-closure", async (req, res) => {
     servicos,
   } = req.body as {
     valor?: number;
+    valorImplantacao?: number;
+    valorMensalidade?: number;
     planoContratado?: string;
     condPagamento?: string;
     prazoEntrega?: string;
@@ -51,9 +55,13 @@ router.post("/api/deals/:dealId/confirm-closure", async (req, res) => {
     return;
   }
 
+  const valorImplantacaoNum = typeof valorImplantacao === "number" ? valorImplantacao : 0;
+  const valorMensalidadeNum = typeof valorMensalidade === "number" ? valorMensalidade : 0;
   const valorNum = typeof valor === "number" && valor > 0
     ? valor
-    : deal.valor ? parseFloat(String(deal.valor)) : 0;
+    : (valorImplantacaoNum + valorMensalidadeNum) > 0
+      ? valorImplantacaoNum + valorMensalidadeNum
+      : deal.valor ? parseFloat(String(deal.valor)) : 0;
 
   // ── 1. Update deal to ganho ─────────────────────────────────────────────
   await db
@@ -66,6 +74,7 @@ router.post("/api/deals/:dealId/confirm-closure", async (req, res) => {
       wonAt: new Date(),
       dataFechamento: new Date(),
       skipAsaasBilling: "true", // prevent double-billing from PATCH hook
+      ...(valorMensalidadeNum > 0 ? { mrr: String(valorMensalidadeNum) } : {}),
       updatedAt: new Date(),
     })
     .where(eq(dealsTable.id, dealId));
@@ -103,11 +112,20 @@ router.post("/api/deals/:dealId/confirm-closure", async (req, res) => {
       const dataHoje = new Date().toLocaleDateString("pt-BR", { day: "2-digit", month: "long", year: "numeric" });
       const tenantNome = ((tenant?.nome_empresa as string) || (tenant?.name as string) || "").trim();
 
+      const implFmt = valorImplantacaoNum > 0
+        ? valorImplantacaoNum.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })
+        : "";
+      const mrrFmt = valorMensalidadeNum > 0
+        ? valorMensalidadeNum.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })
+        : "";
+
       const vars: Record<string, string> = {
         "{{cliente_nome}}": lead.nome ?? lead.empresa ?? "Cliente",
         "{{cliente_cnpj}}": lead.documento ?? "",
         "{{cliente_endereco}}": lead.endereco ?? "",
         "{{valor_total}}": valorFmt,
+        "{{valor_implantacao}}": implFmt,
+        "{{valor_mensalidade}}": mrrFmt,
         "{{condicao_pagamento}}": condPagamento ?? "",
         "{{prazo_entrega}}": prazoEntrega ?? "",
         "{{servicos}}": servicos ?? deal.titulo,
@@ -118,7 +136,7 @@ router.post("/api/deals/:dealId/confirm-closure", async (req, res) => {
         // Legacy compat vars
         "{{cliente_razao_social}}": lead.empresa ?? lead.nome ?? "Cliente",
         "{{deal_valor}}": valorFmt,
-        "{{valor_mensal}}": valorFmt,
+        "{{valor_mensal}}": mrrFmt || valorFmt,
         "{{data_hoje}}": dataHoje,
       };
 

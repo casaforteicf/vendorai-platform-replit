@@ -113,6 +113,8 @@ export function VendidoModal({
 
   const initFromProposta = (p: PropostaLike | null) => ({
     valorFinal: p ? String(propostaTotal(p).toFixed(2)) : String(activeDeal?.valor ?? ""),
+    valorImplantacao: "",
+    valorMensalidade: p?.valorMensal ? String(parseFloat(p.valorMensal).toFixed(2)) : "",
     condPagamento: p?.condPagamento ?? "",
     prazoEntrega: p?.prazoEntrega ?? "",
     planoContratado: activeDeal?.planoContratado ?? "padrao",
@@ -151,6 +153,8 @@ export function VendidoModal({
 
       const servicos = selectedProposta ? propostaServicos(selectedProposta) : undefined;
       const numParcelas = selectedProposta?.numParcelas ?? 1;
+      const valorImplantacaoNum = fields.valorImplantacao ? parseFloat(fields.valorImplantacao.replace(",", ".")) : undefined;
+      const valorMensalidadeNum = fields.valorMensalidade ? parseFloat(fields.valorMensalidade.replace(",", ".")) : undefined;
 
       const res = await fetch(`/api/deals/${activeDeal.id}/confirm-closure`, {
         method: "POST",
@@ -160,6 +164,8 @@ export function VendidoModal({
         },
         body: JSON.stringify({
           valor: valorNum,
+          valorImplantacao: valorImplantacaoNum && !isNaN(valorImplantacaoNum) ? valorImplantacaoNum : undefined,
+          valorMensalidade: valorMensalidadeNum && !isNaN(valorMensalidadeNum) ? valorMensalidadeNum : undefined,
           planoContratado: fields.planoContratado.trim(),
           condPagamento: fields.condPagamento || undefined,
           prazoEntrega: fields.prazoEntrega || undefined,
@@ -311,10 +317,50 @@ export function VendidoModal({
 
             {/* Editable fields */}
             <div className="space-y-3">
+              {/* Valores principais */}
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-1.5">
+                  <Label htmlFor="vd-impl" className="text-xs">
+                    Valor licença / implantação
+                  </Label>
+                  <div className="relative">
+                    <span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground text-sm">R$</span>
+                    <Input
+                      id="vd-impl"
+                      type="number"
+                      min="0"
+                      step="0.01"
+                      className="pl-8"
+                      placeholder="0,00"
+                      value={fields.valorImplantacao}
+                      onChange={(e) => setFields((f) => ({ ...f, valorImplantacao: e.target.value }))}
+                    />
+                  </div>
+                </div>
+                <div className="space-y-1.5">
+                  <Label htmlFor="vd-mrr" className="text-xs">
+                    Valor mensalidade
+                  </Label>
+                  <div className="relative">
+                    <span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground text-sm">R$</span>
+                    <Input
+                      id="vd-mrr"
+                      type="number"
+                      min="0"
+                      step="0.01"
+                      className="pl-8"
+                      placeholder="0,00"
+                      value={fields.valorMensalidade}
+                      onChange={(e) => setFields((f) => ({ ...f, valorMensalidade: e.target.value }))}
+                    />
+                  </div>
+                </div>
+              </div>
+
               <div className="grid grid-cols-2 gap-3">
                 <div className="space-y-1.5">
                   <Label htmlFor="vd-valor" className="text-xs">
-                    Valor final <span className="text-red-500">*</span>
+                    Valor total <span className="text-red-500">*</span>
                   </Label>
                   <div className="relative">
                     <span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground text-sm">R$</span>
