@@ -14698,6 +14698,10 @@ components:
         proximaAcao:
           type: string
           nullable: true
+        assignedTo:
+          type: string
+          nullable: true
+          description: ID do usuário responsável pelo lead
         status:
           type: string
         activeAgentLock:

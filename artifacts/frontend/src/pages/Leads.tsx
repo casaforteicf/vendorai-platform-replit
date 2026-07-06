@@ -16,12 +16,13 @@ import {
   getListTenantBriefingsQueryKey,
   useListTenantUsers,
   getListTenantUsersQueryKey,
+  useUpdateLead,
   Lead,
 } from "@workspace/api-client-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Plus, Search, ChevronRight, AlertTriangle, ArrowDown, ArrowUp, ArrowUpDown, Upload, FileDown, CheckCircle2, XCircle, Flame, Cloud, Snowflake } from "lucide-react";
+import { Plus, Search, ChevronRight, AlertTriangle, ArrowDown, ArrowUp, ArrowUpDown, Upload, FileDown, CheckCircle2, XCircle, Flame, Cloud, Snowflake, UserRound } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { PhoneInput } from "@/components/ui/phone-input";
 import {
@@ -222,11 +223,17 @@ export default function Leads() {
   const [statusFilter, setStatusFilter] = useState<string>(isChurnUrl ? "high_risk" : isQuenteUrl ? "quente" : "all");
   const [churnSort, setChurnSort] = useState<"desc" | "asc" | null>(isChurnUrl ? "desc" : null);
 
+  const isAdmin = user?.platformRole === "super_admin" || user?.platformRole === "tenant_admin";
+
   const [isImportOpen, setIsImportOpen] = useState(false);
   const [parsedRows, setParsedRows] = useState<ParsedLeadRow[]>([]);
   const [importing, setImporting] = useState(false);
   const [importResult, setImportResult] = useState<{ imported: number; errors: { row: number; message: string }[] } | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const [assignDialog, setAssignDialog] = useState<{ open: boolean; leadId: string; currentAssignedTo: string | null }>({ open: false, leadId: "", currentAssignedTo: null });
+  const [assignSelectedUser, setAssignSelectedUser] = useState<string>("");
+  const updateLead = useUpdateLead();
 
   const base = (import.meta.env.BASE_URL ?? "/").replace(/\/$/, "");
 
@@ -725,11 +732,26 @@ export default function Leads() {
                         <p className="font-medium text-sm truncate">{lead.nome}</p>
                       </div>
                       {lead.empresa && <p className="text-xs text-muted-foreground truncate">{lead.empresa}</p>}
-                      {lead.assignedTo && userMap.get(lead.assignedTo) && (
-                        <p className="text-xs text-muted-foreground truncate">
-                          👤 {userMap.get(lead.assignedTo)}
-                        </p>
-                      )}
+                      <div className="flex items-center gap-1.5">
+                        {lead.assignedTo && userMap.get(lead.assignedTo) && (
+                          <p className="text-xs text-muted-foreground truncate">
+                            👤 {userMap.get(lead.assignedTo)}
+                          </p>
+                        )}
+                        {isAdmin && (
+                          <button
+                            title="Atribuir responsável"
+                            className="text-muted-foreground/50 hover:text-primary transition-colors shrink-0"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setAssignSelectedUser(lead.assignedTo ?? "");
+                              setAssignDialog({ open: true, leadId: lead.id, currentAssignedTo: lead.assignedTo ?? null });
+                            }}
+                          >
+                            <UserRound className="h-3.5 w-3.5" />
+                          </button>
+                        )}
+                      </div>
                       <div className="flex items-center gap-2 flex-wrap pt-0.5">
                         <Badge variant="outline" className={`text-xs ${STATUS_STYLES[lead.status] ?? ""}`}>
                           {LEAD_STATUSES.find((s) => s.value === lead.status)?.label ?? lead.status}
@@ -838,7 +860,22 @@ export default function Leads() {
                           </Badge>
                         </TableCell>
                         <TableCell className="text-sm text-muted-foreground">
-                          {lead.assignedTo ? (userMap.get(lead.assignedTo) ?? "—") : "—"}
+                          <span className="flex items-center gap-2">
+                            <span>{lead.assignedTo ? (userMap.get(lead.assignedTo) ?? "—") : "—"}</span>
+                            {isAdmin && (
+                              <button
+                                title="Atribuir responsável"
+                                className="text-muted-foreground/50 hover:text-primary transition-colors shrink-0"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setAssignSelectedUser(lead.assignedTo ?? "");
+                                  setAssignDialog({ open: true, leadId: lead.id, currentAssignedTo: lead.assignedTo ?? null });
+                                }}
+                              >
+                                <UserRound className="h-3.5 w-3.5" />
+                              </button>
+                            )}
+                          </span>
                         </TableCell>
                         <TableCell className="text-right font-mono text-sm text-emerald-700">
                           {formatCurrency(leadValorMap.get(lead.id)) || "—"}
@@ -862,6 +899,69 @@ export default function Leads() {
           </div>
         </CardContent>
       </Card>
+
+      {/* Assign lead dialog */}
+      <Dialog
+        open={assignDialog.open}
+        onOpenChange={(v) => {
+          if (!v) setAssignDialog({ open: false, leadId: "", currentAssignedTo: null });
+        }}
+      >
+        <DialogContent className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <UserRound className="h-4 w-4" />
+              Atribuir responsável
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 pt-1">
+            <Select value={assignSelectedUser} onValueChange={setAssignSelectedUser}>
+              <SelectTrigger>
+                <SelectValue placeholder="Selecionar vendedor..." />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="__none__">Sem responsável</SelectItem>
+                {tenantUsers.map((u) => (
+                  <SelectItem key={u.id} value={u.id}>
+                    {u.name || u.email || u.id}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <div className="flex gap-2 justify-end">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setAssignDialog({ open: false, leadId: "", currentAssignedTo: null })}
+              >
+                Cancelar
+              </Button>
+              <Button
+                size="sm"
+                disabled={updateLead.isPending}
+                onClick={() => {
+                  const newAssignedTo = assignSelectedUser === "__none__" ? null : (assignSelectedUser || null);
+                  updateLead.mutate(
+                    { id: assignDialog.leadId, data: { assignedTo: newAssignedTo } },
+                    {
+                      onSuccess: () => {
+                        queryClient.invalidateQueries({ queryKey: getListTenantLeadsQueryKey(tenantId) });
+                        toast({ title: "Responsável atribuído com sucesso." });
+                        setAssignDialog({ open: false, leadId: "", currentAssignedTo: null });
+                      },
+                      onError: () => {
+                        toast({ title: "Erro ao atribuir responsável", variant: "destructive" });
+                      },
+                    }
+                  );
+                }}
+              >
+                {updateLead.isPending ? "Salvando..." : "Confirmar"}
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
 
       {/* Duplicate merge dialog */}
       <Dialog open={duplicateDialog.open} onOpenChange={(v) => !v && setDuplicateDialog({ open: false, lead: null, matchBy: "" })}>

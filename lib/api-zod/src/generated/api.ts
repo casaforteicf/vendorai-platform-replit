@@ -5352,6 +5352,7 @@ export const UpdateLeadBody = zod.object({
   "planoRecomendado": zod.string().nullish(),
   "dorPrincipal": zod.string().nullish(),
   "proximaAcao": zod.string().nullish(),
+  "assignedTo": zod.string().nullish().describe('ID do usuário responsável pelo lead'),
   "status": zod.string().optional(),
   "activeAgentLock": zod.string().nullish(),
   "dataNascimento": zod.string().nullish(),

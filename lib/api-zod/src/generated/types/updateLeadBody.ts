@@ -22,6 +22,8 @@ export interface UpdateLeadBody {
   planoRecomendado?: string | null;
   dorPrincipal?: string | null;
   proximaAcao?: string | null;
+  /** ID do usuário responsável pelo lead */
+  assignedTo?: string | null;
   status?: string;
   activeAgentLock?: string | null;
   dataNascimento?: string | null;

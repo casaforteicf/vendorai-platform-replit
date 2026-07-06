@@ -83,8 +83,14 @@ router.post("/leads", async (req, res) => {
     return;
   }
 
+  // Auto-assign to creator when they are a seller (not admin)
+  const isAdminCreator = req.user?.platformRole === "super_admin" || req.user?.platformRole === "tenant_admin";
+  const isSellerCreator = !isAdminCreator && (req.user?.platformRole === "tenant_seller" || (req.user?.userFunction as string) === "vendedor");
+  const resolvedAssignedTo = isSellerCreator ? (req.user?.sub ?? data.assignedTo ?? null) : (data.assignedTo ?? null);
+
   const [lead] = await db.insert(leadsTable).values({
     ...data,
+    assignedTo: resolvedAssignedTo,
     telefone: storePhone(data.telefone),
     documento: data.documento ? data.documento.replace(/\D/g, "") : data.documento,
     possivelDuplicata: false,
@@ -98,7 +104,7 @@ router.post("/leads", async (req, res) => {
       leadId: lead.id,
       titulo: lead.nome,
       etapa: "em_aquecimento",
-      assignedTo: data.assignedTo ?? null,
+      assignedTo: resolvedAssignedTo,
     });
   }
 
