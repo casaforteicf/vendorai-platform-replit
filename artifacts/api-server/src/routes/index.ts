@@ -80,6 +80,7 @@ import spinRouter from "./spin";
 import supportRouter from "./support";
 import adminBugReportsRouter from "./admin_bug_reports";
 import contractTemplatesRouter from "./contract_templates";
+import confirmClosureRouter from "./confirm_closure";
 import { authenticate, blockPartnerFromCRM, blockSuspendedTenants, blockExpiredDemo, requireRole, requireSameTenanOrSuperAdmin } from "../middlewares/auth";
 import { eq } from "drizzle-orm";
 import { db, tenantsTable } from "@workspace/db";
@@ -295,6 +296,9 @@ router.use(supportRouter);
 
 // Contract Templates Hub
 router.use(contractTemplatesRouter);
+
+// Confirm Closure (contract + ZapSign + Asaas + WhatsApp)
+router.use(confirmClosureRouter);
 
 export { requireRole, requireSameTenanOrSuperAdmin };
 export default router;

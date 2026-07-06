@@ -11,8 +11,19 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import { Label } from "@/components/ui/label";
-import { useUpdateDeal } from "@workspace/api-client-react";
-import { CheckCircle2, ChevronLeft, Package } from "lucide-react";
+import { useMutation } from "@tanstack/react-query";
+import { useAuth } from "@/contexts/AuthContext";
+import {
+  CheckCircle2,
+  ChevronLeft,
+  Package,
+  ExternalLink,
+  AlertTriangle,
+  Loader2,
+  FileCheck2,
+  CreditCard,
+  PartyPopper,
+} from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 
 type PropostaLike = {
@@ -39,6 +50,13 @@ type DealLike = {
   valor?: number | string | null;
 };
 
+type ClosureResult = {
+  ganho: boolean;
+  signUrl?: string | null;
+  chargeLinks?: string[];
+  errors: string[];
+};
+
 interface VendidoModalProps {
   open: boolean;
   onOpenChange: (v: boolean) => void;
@@ -55,6 +73,11 @@ function fmt(v: number) {
 function propostaTotal(p: PropostaLike): number {
   if (p.valorTotal) return parseFloat(p.valorTotal);
   return p.itens.reduce((s: number, i: { quantidade: number; valorUnitario: number }) => s + i.quantidade * i.valorUnitario, 0);
+}
+
+function propostaServicos(p: PropostaLike): string {
+  if (p.itens.length === 0) return p.titulo;
+  return p.itens.map((i) => `${i.nome ?? "Item"} (${i.quantidade}x)`).join(", ");
 }
 
 const STATUS_COLORS: Record<string, string> = {
@@ -78,14 +101,15 @@ export function VendidoModal({
   onSuccess,
 }: VendidoModalProps) {
   const { toast } = useToast();
-  const updateDeal = useUpdateDeal();
+  const { token } = useAuth();
 
   const activeDeal = deals.find((d) => d.etapa !== "ganho" && d.etapa !== "perdido") ?? deals[0] ?? null;
 
-  const [step, setStep] = useState<"select" | "confirm">(
+  const [step, setStep] = useState<"select" | "confirm" | "resultado">(
     propostas.length > 0 ? "select" : "confirm"
   );
   const [selectedProposta, setSelectedProposta] = useState<PropostaLike | null>(null);
+  const [closureResult, setClosureResult] = useState<ClosureResult | null>(null);
 
   const initFromProposta = (p: PropostaLike | null) => ({
     valorFinal: p ? String(propostaTotal(p).toFixed(2)) : String(activeDeal?.valor ?? ""),
@@ -111,49 +135,53 @@ export function VendidoModal({
     if (!v) {
       setStep(propostas.length > 0 ? "select" : "confirm");
       setSelectedProposta(null);
+      setClosureResult(null);
       setFields(initFromProposta(null));
     }
     onOpenChange(v);
   }
 
-  function handleConfirm() {
-    if (!activeDeal) {
-      toast({ title: "Nenhum negócio encontrado para este lead.", variant: "destructive" });
-      return;
-    }
-    const valorNum = parseFloat(fields.valorFinal.replace(",", "."));
-    if (isNaN(valorNum) || valorNum <= 0) {
-      toast({ title: "Informe um valor final válido.", variant: "destructive" });
-      return;
-    }
-    if (!fields.planoContratado.trim()) {
-      toast({ title: "Informe o plano contratado.", variant: "destructive" });
-      return;
-    }
+  // ── Confirm closure mutation ───────────────────────────────────────────────
+  const closureMutation = useMutation({
+    mutationFn: async () => {
+      if (!activeDeal) throw new Error("Nenhum negócio encontrado para este lead.");
+      const valorNum = parseFloat(fields.valorFinal.replace(",", "."));
+      if (isNaN(valorNum) || valorNum <= 0) throw new Error("Informe um valor final válido.");
+      if (!fields.planoContratado.trim()) throw new Error("Informe o plano contratado.");
 
-    updateDeal.mutate(
-      {
-        id: activeDeal.id,
-        data: {
-          etapa: "ganho",
+      const servicos = selectedProposta ? propostaServicos(selectedProposta) : undefined;
+      const numParcelas = selectedProposta?.numParcelas ?? 1;
+
+      const res = await fetch(`/api/deals/${activeDeal.id}/confirm-closure`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
           valor: valorNum,
           planoContratado: fields.planoContratado.trim(),
-          ...(fields.condPagamento ? {} : {}),
-        },
-      },
-      {
-        onSuccess: () => {
-          toast({ title: `🎉 Venda confirmada para ${leadNome}!` });
-          handleClose(false);
-          onSuccess();
-        },
-        onError: (err: any) => {
-          const msg = err?.data?.message ?? err?.message ?? "Erro ao confirmar fechamento";
-          toast({ title: msg, variant: "destructive" });
-        },
-      }
-    );
-  }
+          condPagamento: fields.condPagamento || undefined,
+          prazoEntrega: fields.prazoEntrega || undefined,
+          observacoes: fields.observacoes || undefined,
+          numParcelas,
+          servicos,
+        }),
+      });
+
+      const data = await res.json() as ClosureResult & { error?: string };
+      if (!res.ok) throw new Error(data.error ?? `Erro ${res.status}`);
+      return data;
+    },
+    onSuccess: (data) => {
+      setClosureResult(data);
+      setStep("resultado");
+      onSuccess();
+    },
+    onError: (err: Error) => {
+      toast({ title: err.message, variant: "destructive" });
+    },
+  });
 
   return (
     <Dialog open={open} onOpenChange={handleClose}>
@@ -167,119 +195,94 @@ export function VendidoModal({
 
         {/* ── Step 1: Select proposta ────────────────────────────────────── */}
         {step === "select" && (
-          <div className="space-y-3 pt-1">
+          <div className="space-y-3">
             <p className="text-sm text-muted-foreground">
-              Selecione o orçamento que será vinculado ao fechamento:
+              Selecione o orçamento que foi aceito ou pule para confirmar manualmente.
             </p>
             <div className="space-y-2 max-h-64 overflow-y-auto pr-1">
-              {propostas
-                .slice()
+              {[...propostas]
                 .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
-                .map((p) => {
-                  const total = propostaTotal(p);
-                  return (
-                    <button
-                      key={p.id}
-                      onClick={() => handleSelectProposta(p)}
-                      className="w-full text-left rounded-lg border border-border p-3 hover:border-emerald-400 hover:bg-emerald-50 transition-colors focus:outline-none focus:ring-2 focus:ring-emerald-300"
-                    >
-                      <div className="flex items-start justify-between gap-3">
-                        <div className="flex-1 min-w-0">
-                          <div className="flex items-center gap-2 flex-wrap">
-                            {p.numero && (
-                              <span className="text-xs font-mono text-muted-foreground bg-muted px-1.5 py-0.5 rounded">
-                                {p.numero}
-                              </span>
-                            )}
-                            <Badge variant="outline" className={`text-xs ${STATUS_COLORS[p.status] ?? ""}`}>
-                              {STATUS_LABELS[p.status] ?? p.status}
-                            </Badge>
-                          </div>
-                          <p className="text-sm font-medium mt-1 truncate">{p.titulo}</p>
-                          {p.condPagamento && (
-                            <p className="text-xs text-muted-foreground mt-0.5 truncate">{p.condPagamento}</p>
-                          )}
-                        </div>
-                        <div className="shrink-0 text-right">
-                          <p className="text-sm font-semibold font-mono text-emerald-700">{fmt(total)}</p>
-                          {p.numParcelas && p.numParcelas > 1 && (
-                            <p className="text-xs text-muted-foreground">{p.numParcelas}x</p>
-                          )}
-                        </div>
+                .map((p) => (
+                  <button
+                    key={p.id}
+                    type="button"
+                    onClick={() => handleSelectProposta(p)}
+                    className="w-full text-left rounded-lg border bg-card hover:border-emerald-500 hover:shadow-sm transition-all p-3 space-y-1"
+                  >
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="font-medium text-sm truncate">{p.titulo}</span>
+                      <Badge
+                        variant="outline"
+                        className={`text-xs shrink-0 ${STATUS_COLORS[p.status] ?? ""}`}
+                      >
+                        {STATUS_LABELS[p.status] ?? p.status}
+                      </Badge>
+                    </div>
+                    {p.condPagamento && (
+                      <p className="text-xs text-muted-foreground mt-0.5 truncate">{p.condPagamento}</p>
+                    )}
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs text-muted-foreground">
+                        {new Date(p.createdAt).toLocaleDateString("pt-BR")}
+                      </span>
+                      <div className="flex items-center gap-2">
+                        {p.numParcelas && p.numParcelas > 1 && (
+                          <p className="text-xs text-muted-foreground">{p.numParcelas}x</p>
+                        )}
+                        <span className="font-semibold text-sm text-emerald-700">
+                          {fmt(propostaTotal(p))}
+                        </span>
                       </div>
-                    </button>
-                  );
-                })}
+                    </div>
+                  </button>
+                ))}
             </div>
-            <p className="text-xs text-muted-foreground text-center pt-1">
-              Ou{" "}
-              <button
-                onClick={() => {
-                  setSelectedProposta(null);
-                  setFields(initFromProposta(null));
-                  setStep("confirm");
-                }}
-                className="underline hover:text-foreground"
-              >
-                prosseguir sem selecionar um orçamento
-              </button>
-            </p>
+            <Button
+              variant="outline"
+              size="sm"
+              className="w-full"
+              onClick={() => setStep("confirm")}
+            >
+              Pular — confirmar manualmente
+            </Button>
           </div>
         )}
 
-        {/* ── Step 2: Preview + editable fields ────────────────────────── */}
+        {/* ── Step 2: Preview + editable fields ─────────────────────────── */}
         {step === "confirm" && (
-          <div className="space-y-4 pt-1">
+          <div className="space-y-4">
             {/* Proposta preview */}
             {selectedProposta && (
-              <div className="rounded-lg border border-emerald-200 bg-emerald-50/50 p-3 space-y-2">
-                <div className="flex items-center justify-between">
-                  <span className="text-xs font-medium text-emerald-700 uppercase tracking-wide">
-                    Orçamento selecionado
-                  </span>
+              <div className="rounded-lg bg-emerald-50 border border-emerald-200 p-3 space-y-2">
+                <p className="text-xs font-semibold text-emerald-800 flex items-center gap-1.5">
+                  <Package className="h-3.5 w-3.5" />
+                  {selectedProposta.titulo}
                   {selectedProposta.numero && (
-                    <span className="text-xs font-mono text-muted-foreground bg-white border px-1.5 py-0.5 rounded">
-                      {selectedProposta.numero}
-                    </span>
+                    <span className="font-normal text-emerald-600">#{selectedProposta.numero}</span>
                   )}
-                </div>
-                <p className="text-sm font-semibold">{selectedProposta.titulo}</p>
-
-                <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-xs text-muted-foreground">
-                  <span className="font-medium text-foreground">Valor total</span>
-                  <span className="font-mono font-semibold text-emerald-700 text-right">
-                    {fmt(propostaTotal(selectedProposta))}
-                  </span>
-
+                </p>
+                <div className="grid grid-cols-2 gap-x-4 text-xs text-emerald-700">
+                  <span className="text-emerald-600">Total</span>
+                  <span className="text-right font-semibold">{fmt(propostaTotal(selectedProposta))}</span>
                   {selectedProposta.numParcelas && selectedProposta.numParcelas > 1 && (
                     <>
-                      <span>Parcelas</span>
+                      <span className="text-emerald-600">Parcelas</span>
                       <span className="text-right">{selectedProposta.numParcelas}x</span>
                     </>
                   )}
                   {selectedProposta.condPagamento && (
                     <>
-                      <span>Pagamento</span>
+                      <span className="text-emerald-600">Pagamento</span>
                       <span className="text-right">{selectedProposta.condPagamento}</span>
                     </>
                   )}
                   {selectedProposta.prazoEntrega && (
                     <>
-                      <span>Prazo</span>
+                      <span className="text-emerald-600">Prazo</span>
                       <span className="text-right">{selectedProposta.prazoEntrega}</span>
                     </>
                   )}
-                  {selectedProposta.recorrente && selectedProposta.valorMensal && (
-                    <>
-                      <span>Mensalidade</span>
-                      <span className="text-right font-mono">
-                        {fmt(parseFloat(selectedProposta.valorMensal))}/mês
-                        {selectedProposta.prazoContratoMeses ? ` · ${selectedProposta.prazoContratoMeses} meses` : ""}
-                      </span>
-                    </>
-                  )}
                 </div>
-
                 {selectedProposta.itens.length > 0 && (
                   <div className="pt-1 border-t border-emerald-200/70">
                     <p className="text-xs font-medium text-muted-foreground mb-1 flex items-center gap-1">
@@ -295,7 +298,7 @@ export function VendidoModal({
                               <span className="text-muted-foreground"> ×{item.quantidade}</span>
                             )}
                           </span>
-                          <span className="font-mono shrink-0">
+                          <span className="shrink-0 text-emerald-700 font-medium">
                             {fmt(item.quantidade * item.valorUnitario)}
                           </span>
                         </li>
@@ -375,6 +378,98 @@ export function VendidoModal({
           </div>
         )}
 
+        {/* ── Step 3: Resultado ──────────────────────────────────────────── */}
+        {step === "resultado" && closureResult && (
+          <div className="space-y-4">
+            {/* Success header */}
+            <div className="flex flex-col items-center gap-2 py-2">
+              <div className="rounded-full bg-emerald-100 p-3">
+                <PartyPopper className="h-7 w-7 text-emerald-600" />
+              </div>
+              <p className="text-base font-semibold text-emerald-700">Venda confirmada! 🎉</p>
+              <p className="text-sm text-muted-foreground text-center">
+                {leadNome} foi movido para <strong>Ganho</strong>.
+              </p>
+            </div>
+
+            {/* Contract / ZapSign */}
+            <div className={`rounded-lg border p-3 space-y-1 ${closureResult.signUrl ? "border-blue-200 bg-blue-50" : "border-gray-200 bg-muted/30"}`}>
+              <p className="text-xs font-semibold flex items-center gap-1.5">
+                <FileCheck2 className={`h-4 w-4 ${closureResult.signUrl ? "text-blue-600" : "text-muted-foreground"}`} />
+                {closureResult.signUrl ? "Contrato enviado para assinatura" : "Contrato"}
+              </p>
+              {closureResult.signUrl ? (
+                <div className="space-y-1.5">
+                  <p className="text-xs text-blue-700">
+                    Documento ZapSign criado e link enviado via WhatsApp ao cliente.
+                  </p>
+                  <a
+                    href={closureResult.signUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="inline-flex items-center gap-1 text-xs text-blue-600 underline underline-offset-2"
+                  >
+                    <ExternalLink className="h-3 w-3" />
+                    Abrir link de assinatura
+                  </a>
+                </div>
+              ) : (
+                <p className="text-xs text-muted-foreground">
+                  {closureResult.errors.find((e) => e.startsWith("Contrato:"))
+                    ?? "ZapSign não configurado — contrato não gerado automaticamente."}
+                </p>
+              )}
+            </div>
+
+            {/* Asaas billing */}
+            {closureResult.chargeLinks && closureResult.chargeLinks.length > 0 ? (
+              <div className="rounded-lg border border-emerald-200 bg-emerald-50 p-3 space-y-1.5">
+                <p className="text-xs font-semibold flex items-center gap-1.5 text-emerald-700">
+                  <CreditCard className="h-4 w-4" />
+                  {closureResult.chargeLinks.length === 1 ? "Boleto gerado" : `${closureResult.chargeLinks.length} boletos gerados`}
+                </p>
+                <p className="text-xs text-emerald-700">Links enviados via WhatsApp ao cliente.</p>
+                <div className="space-y-1">
+                  {closureResult.chargeLinks.map((link, i) => (
+                    <a
+                      key={i}
+                      href={link}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="inline-flex items-center gap-1 text-xs text-emerald-600 underline underline-offset-2 block"
+                    >
+                      <ExternalLink className="h-3 w-3" />
+                      {closureResult.chargeLinks!.length > 1 ? `Parcela ${i + 1}` : "Ver boleto"}
+                    </a>
+                  ))}
+                </div>
+              </div>
+            ) : !closureResult.errors.find((e) => e.startsWith("Cobrança:")) ? (
+              <div className="rounded-lg border border-gray-200 bg-muted/30 p-3">
+                <p className="text-xs text-muted-foreground flex items-center gap-1.5">
+                  <CreditCard className="h-4 w-4" />
+                  Asaas não configurado — cobrança não gerada automaticamente.
+                </p>
+              </div>
+            ) : null}
+
+            {/* Errors */}
+            {closureResult.errors.length > 0 && (
+              <div className="rounded-lg border border-orange-200 bg-orange-50 p-3 space-y-1">
+                <p className="text-xs font-semibold text-orange-700 flex items-center gap-1.5">
+                  <AlertTriangle className="h-3.5 w-3.5" />
+                  Atenção — alguns passos falharam
+                </p>
+                <ul className="space-y-0.5">
+                  {closureResult.errors.map((e, i) => (
+                    <li key={i} className="text-xs text-orange-700">• {e}</li>
+                  ))}
+                </ul>
+              </div>
+            )}
+          </div>
+        )}
+
         <DialogFooter className="gap-2 flex-row justify-between sm:justify-between pt-2">
           {step === "confirm" && propostas.length > 0 ? (
             <Button variant="ghost" size="sm" onClick={handleBack} className="gap-1">
@@ -384,14 +479,34 @@ export function VendidoModal({
           ) : (
             <div />
           )}
+
           {step === "confirm" && (
             <Button
-              onClick={handleConfirm}
-              disabled={updateDeal.isPending}
+              onClick={() => closureMutation.mutate()}
+              disabled={closureMutation.isPending}
+              className="gap-2 bg-emerald-600 hover:bg-emerald-700 text-white"
+            >
+              {closureMutation.isPending ? (
+                <>
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                  Processando...
+                </>
+              ) : (
+                <>
+                  <CheckCircle2 className="h-4 w-4" />
+                  Confirmar Fechamento
+                </>
+              )}
+            </Button>
+          )}
+
+          {step === "resultado" && (
+            <Button
+              onClick={() => handleClose(false)}
               className="gap-2 bg-emerald-600 hover:bg-emerald-700 text-white"
             >
               <CheckCircle2 className="h-4 w-4" />
-              {updateDeal.isPending ? "Confirmando..." : "Confirmar Fechamento"}
+              Fechar
             </Button>
           )}
         </DialogFooter>
