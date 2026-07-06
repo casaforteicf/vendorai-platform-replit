@@ -24,6 +24,7 @@ import {
 import { findLeadByDedup, storePhone } from "../lib/dedup.js";
 import { buildUserFunctionFilter, requireAdminOrUserFunction, type UserFunction } from "../middlewares/auth.js";
 import { callOpenAI } from "../lib/ai-gateway.js";
+import { pickNextVendedor } from "../lib/round-robin.js";
 
 const router: IRouter = Router();
 
@@ -83,10 +84,20 @@ router.post("/leads", async (req, res) => {
     return;
   }
 
-  // Auto-assign to creator when they are a seller (not admin)
+  // Resolve assignedTo:
+  // 1. If creator is a seller → assign to themselves
+  // 2. If admin/no explicit assignedTo → round-robin to next active vendedor
+  // 3. If admin set assignedTo explicitly → use that value
   const isAdminCreator = req.user?.platformRole === "super_admin" || req.user?.platformRole === "tenant_admin";
   const isSellerCreator = !isAdminCreator && (req.user?.platformRole === "tenant_seller" || (req.user?.userFunction as string) === "vendedor");
-  const resolvedAssignedTo = isSellerCreator ? (req.user?.sub ?? data.assignedTo ?? null) : (data.assignedTo ?? null);
+  let resolvedAssignedTo: string | null;
+  if (isSellerCreator) {
+    resolvedAssignedTo = req.user?.sub ?? null;
+  } else if (data.assignedTo) {
+    resolvedAssignedTo = data.assignedTo;
+  } else {
+    resolvedAssignedTo = await pickNextVendedor(data.tenantId);
+  }
 
   const [lead] = await db.insert(leadsTable).values({
     ...data,
@@ -151,6 +162,7 @@ router.post("/tenants/:tenantId/leads/import", async (req, res) => {
         errors.push({ row: i + 1, message: `Duplicate: matched by ${match.matchBy} to lead ${match.lead.id}` });
         continue;
       }
+      const importAssignedTo = await pickNextVendedor(tenantId);
       const [importedLead] = await db.insert(leadsTable).values({
         tenantId,
         nome: row.nome,
@@ -161,9 +173,10 @@ router.post("/tenants/:tenantId/leads/import", async (req, res) => {
         instagramHandle: row.instagram || null,
         possivelDuplicata: match.similar ? true : false,
         leadSimilarId: match.similar?.id ?? null,
+        assignedTo: importAssignedTo,
       }).returning();
       if (importedLead) {
-        await db.insert(dealsTable).values({ tenantId, leadId: importedLead.id, titulo: importedLead.nome, etapa: "em_aquecimento" });
+        await db.insert(dealsTable).values({ tenantId, leadId: importedLead.id, titulo: importedLead.nome, etapa: "em_aquecimento", assignedTo: importAssignedTo });
       }
       imported++;
     } catch (err) {

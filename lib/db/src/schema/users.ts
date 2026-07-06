@@ -38,6 +38,7 @@ export const usersTable = pgTable("users", {
   telefone: text("telefone"),
   active: boolean("active").notNull().default(true),
   forcePasswordReset: boolean("force_password_reset").notNull().default(false),
+  lastAssignedAt: timestamp("last_assigned_at"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
 });

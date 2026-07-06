@@ -200,6 +200,14 @@ async function runStartupMigrations() {
     logger.warn({ err }, "startup migrations: contract_settings skipped");
   }
 
+  // ── Round-robin: last_assigned_at on users ───────────────────────────────────
+  try {
+    await db.execute(sql`ALTER TABLE users ADD COLUMN IF NOT EXISTS last_assigned_at TIMESTAMP`);
+    logger.info("startup migrations: users.last_assigned_at OK");
+  } catch (err) {
+    logger.warn({ err }, "startup migrations: users.last_assigned_at skipped");
+  }
+
   // ── Content Studio Uploads ───────────────────────────────────────────────────
   try {
     await db.execute(sql`
