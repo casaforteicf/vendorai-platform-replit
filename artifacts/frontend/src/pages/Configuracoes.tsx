@@ -98,6 +98,7 @@ import {
   CheckCircle2,
   Clock,
   AlertTriangle,
+  ArrowRightLeft,
   MessageSquare,
   Zap,
   Save,
@@ -557,6 +558,8 @@ export default function Configuracoes() {
   // ── Team Management ────────────────────────────────────────────────────────
   const [inviteEmail, setInviteEmail] = useState("");
   const [lastInviteUrl, setLastInviteUrl] = useState<string | null>(null);
+  const [reassignDialog, setReassignDialog] = useState<{ open: boolean; fromMember: { id: string; name: string } | null }>({ open: false, fromMember: null });
+  const [reassignToUserId, setReassignToUserId] = useState<string>("");
 
   const teamQuery = useListTenantUsers(tenantId, {
     query: { queryKey: getListTenantUsersQueryKey(tenantId), enabled: !!tenantId && isTenantAdmin },
@@ -581,6 +584,25 @@ export default function Configuracoes() {
       },
       onError: () => toast({ title: "Erro ao remover usuário.", variant: "destructive" }),
     },
+  });
+
+  const bulkReassign = useMutation({
+    mutationFn: async ({ fromUserId, toUserId }: { fromUserId: string; toUserId: string }) => {
+      const res = await fetch(`/api/tenants/${tenantId}/leads/bulk-reassign`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ fromUserId, toUserId }),
+      });
+      const data = await res.json() as { leadsReassigned?: number; dealsReassigned?: number; error?: string };
+      if (!res.ok) throw new Error(data.error ?? `Erro ${res.status}`);
+      return data;
+    },
+    onSuccess: (data) => {
+      toast({ title: `Redistribuição concluída: ${data.leadsReassigned ?? 0} leads e ${data.dealsReassigned ?? 0} oportunidades transferidos.` });
+      setReassignDialog({ open: false, fromMember: null });
+      setReassignToUserId("");
+    },
+    onError: (err: Error) => toast({ title: err.message, variant: "destructive" }),
   });
 
   // ── Image Upload ───────────────────────────────────────────────────────────
@@ -3599,15 +3621,29 @@ Body:
                             {member.platformRole === "tenant_admin" ? "Admin" : "Vendedor"}
                           </span>
                           {member.platformRole !== "tenant_admin" && (
-                            <Button
-                              variant="ghost"
-                              size="icon"
-                              className="h-7 w-7 text-muted-foreground hover:text-destructive"
-                              disabled={removeUser.isPending}
-                              onClick={() => removeUser.mutate({ id: member.id })}
-                            >
-                              <Trash2 className="h-3.5 w-3.5" />
-                            </Button>
+                            <>
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                className="h-7 w-7 text-muted-foreground hover:text-primary"
+                                title="Redistribuir leads e oportunidades"
+                                onClick={() => {
+                                  setReassignToUserId("");
+                                  setReassignDialog({ open: true, fromMember: { id: member.id, name: member.name ?? member.email ?? "Vendedor" } });
+                                }}
+                              >
+                                <ArrowRightLeft className="h-3.5 w-3.5" />
+                              </Button>
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                className="h-7 w-7 text-muted-foreground hover:text-destructive"
+                                disabled={removeUser.isPending}
+                                onClick={() => removeUser.mutate({ id: member.id })}
+                              >
+                                <Trash2 className="h-3.5 w-3.5" />
+                              </Button>
+                            </>
                           )}
                         </div>
                       </div>

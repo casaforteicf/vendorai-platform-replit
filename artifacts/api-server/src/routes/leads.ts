@@ -135,6 +135,45 @@ const importLeadsBodySchema = z.object({
   leads: z.array(importLeadRowSchema).min(1).max(500),
 });
 
+// ── POST /tenants/:tenantId/leads/bulk-reassign ────────────────────────────
+router.post("/tenants/:tenantId/leads/bulk-reassign", async (req, res) => {
+  const tenantId = String(req.params["tenantId"]);
+
+  const isAdmin = req.user?.platformRole === "super_admin" || req.user?.platformRole === "tenant_admin";
+  if (!isAdmin) {
+    res.status(403).json({ error: "Apenas administradores podem redistribuir leads." });
+    return;
+  }
+  if (req.user?.platformRole !== "super_admin" && req.user?.tenantId !== tenantId) {
+    res.status(403).json({ error: "Acesso negado" });
+    return;
+  }
+
+  const { fromUserId, toUserId } = req.body as { fromUserId?: string; toUserId?: string };
+  if (!fromUserId || !toUserId) {
+    res.status(422).json({ error: "fromUserId e toUserId são obrigatórios." });
+    return;
+  }
+  if (fromUserId === toUserId) {
+    res.status(422).json({ error: "fromUserId e toUserId devem ser diferentes." });
+    return;
+  }
+
+  const leadsUpdated = await db
+    .update(leadsTable)
+    .set({ assignedTo: toUserId })
+    .where(and(eq(leadsTable.tenantId, tenantId), eq(leadsTable.assignedTo, fromUserId)))
+    .returning({ id: leadsTable.id });
+
+  const dealsUpdated = await db
+    .update(dealsTable)
+    .set({ assignedTo: toUserId })
+    .where(and(eq(dealsTable.tenantId, tenantId), eq(dealsTable.assignedTo, fromUserId)))
+    .returning({ id: dealsTable.id });
+
+  res.json({ leadsReassigned: leadsUpdated.length, dealsReassigned: dealsUpdated.length });
+});
+
 router.post("/tenants/:tenantId/leads/import", async (req, res) => {
   const tenantId = String(req.params["tenantId"]);
 
