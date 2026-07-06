@@ -114,6 +114,8 @@ export default function PropostaPrint() {
   const [eRecorrente, setERecorrente] = useState(false);
   const [eValorMensal, setEValorMensal] = useState("");
   const [ePrazoContrato, setEPrazoContrato] = useState("");
+  const [eFormaPagamentoMensalidade, setEFormaPagamentoMensalidade] = useState("");
+  const [eCondPagamentoMensalidade, setECondPagamentoMensalidade] = useState("");
   const [eItens, setEItens] = useState<ItemEdit[]>([]);
 
   // ── Queries ───────────────────────────────────────────────────────────────
@@ -151,6 +153,8 @@ export default function PropostaPrint() {
     setERecorrente(proposta.recorrente ?? false);
     setEValorMensal(proposta.valorMensal ? String(proposta.valorMensal) : "");
     setEPrazoContrato(proposta.prazoContratoMeses ? String(proposta.prazoContratoMeses) : "");
+    setEFormaPagamentoMensalidade((proposta as any).formaPagamentoMensalidade ?? "");
+    setECondPagamentoMensalidade((proposta as any).condPagamentoMensalidade ?? "");
     setEItens(
       proposta.itens.map((it) => ({
         nome: it.nome,
@@ -185,7 +189,9 @@ export default function PropostaPrint() {
           recorrente: eRecorrente,
           valorMensal: eRecorrente && eValorMensal ? parseFloat(eValorMensal) : undefined,
           prazoContratoMeses: eRecorrente && ePrazoContrato ? parseInt(ePrazoContrato) : undefined,
-        },
+          formaPagamentoMensalidade: eFormaPagamentoMensalidade || undefined,
+          condPagamentoMensalidade: eCondPagamentoMensalidade || undefined,
+        } as any,
       });
       await qc.invalidateQueries({ queryKey: getGetPropostaQueryKey(proposta.id) });
       toast({ title: "Orçamento atualizado!" });
@@ -525,35 +531,72 @@ export default function PropostaPrint() {
           )}
 
           {/* ── Condições Comerciais ── */}
-          {(proposta.formaPagamento || proposta.condPagamento || proposta.prazoEntrega) && (
+          {(proposta.formaPagamento || proposta.condPagamento || proposta.prazoEntrega ||
+            (proposta as any).formaPagamentoMensalidade || (proposta as any).condPagamentoMensalidade) && (
             <div className="mb-6">
               <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-3">
                 Condições Comerciais
               </h3>
-              <div className="grid grid-cols-2 sm:grid-cols-3 gap-4 text-sm">
-                {proposta.formaPagamento && (
-                  <div>
-                    <p className="text-xs text-gray-500 uppercase tracking-wide mb-0.5">Forma de Pagamento</p>
-                    <p className="font-medium text-gray-800">
-                      {FORMA_PAGAMENTO_LABELS[proposta.formaPagamento] ?? proposta.formaPagamento}
+
+              {/* Licença / Implantação */}
+              {(proposta.formaPagamento || proposta.condPagamento || proposta.prazoEntrega) && (
+                <div className="mb-3">
+                  {proposta.recorrente && (
+                    <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-2">
+                      Licença / Implantação
                     </p>
+                  )}
+                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-4 text-sm">
+                    {proposta.formaPagamento && (
+                      <div>
+                        <p className="text-xs text-gray-500 uppercase tracking-wide mb-0.5">Forma de Pagamento</p>
+                        <p className="font-medium text-gray-800">
+                          {FORMA_PAGAMENTO_LABELS[proposta.formaPagamento] ?? proposta.formaPagamento}
+                        </p>
+                      </div>
+                    )}
+                    {proposta.condPagamento && (
+                      <div>
+                        <p className="text-xs text-gray-500 uppercase tracking-wide mb-0.5">Condição</p>
+                        <p className="font-medium text-gray-800">{proposta.condPagamento}</p>
+                      </div>
+                    )}
+                    {proposta.prazoEntrega && (
+                      <div>
+                        <p className="text-xs text-gray-500 uppercase tracking-wide mb-0.5">Prazo de Entrega</p>
+                        <p className="font-medium text-gray-800">
+                          {isIsoDate(proposta.prazoEntrega) ? fmtDate(proposta.prazoEntrega) : proposta.prazoEntrega}
+                        </p>
+                      </div>
+                    )}
                   </div>
-                )}
-                {proposta.condPagamento && (
-                  <div>
-                    <p className="text-xs text-gray-500 uppercase tracking-wide mb-0.5">Condição</p>
-                    <p className="font-medium text-gray-800">{proposta.condPagamento}</p>
+                </div>
+              )}
+
+              {/* Mensalidade */}
+              {proposta.recorrente && ((proposta as any).formaPagamentoMensalidade || (proposta as any).condPagamentoMensalidade) && (
+                <div className="mt-3 pt-3 border-t border-violet-100">
+                  <p className="text-xs font-semibold text-violet-500 uppercase tracking-wide mb-2">
+                    Mensalidade
+                  </p>
+                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-4 text-sm">
+                    {(proposta as any).formaPagamentoMensalidade && (
+                      <div>
+                        <p className="text-xs text-violet-500 uppercase tracking-wide mb-0.5">Forma de Pagamento</p>
+                        <p className="font-medium text-gray-800">
+                          {FORMA_PAGAMENTO_LABELS[(proposta as any).formaPagamentoMensalidade] ?? (proposta as any).formaPagamentoMensalidade}
+                        </p>
+                      </div>
+                    )}
+                    {(proposta as any).condPagamentoMensalidade && (
+                      <div>
+                        <p className="text-xs text-violet-500 uppercase tracking-wide mb-0.5">Condição</p>
+                        <p className="font-medium text-gray-800">{(proposta as any).condPagamentoMensalidade}</p>
+                      </div>
+                    )}
                   </div>
-                )}
-                {proposta.prazoEntrega && (
-                  <div>
-                    <p className="text-xs text-gray-500 uppercase tracking-wide mb-0.5">Prazo de Entrega</p>
-                    <p className="font-medium text-gray-800">
-                      {isIsoDate(proposta.prazoEntrega) ? fmtDate(proposta.prazoEntrega) : proposta.prazoEntrega}
-                    </p>
-                  </div>
-                )}
-              </div>
+                </div>
+              )}
             </div>
           )}
 
@@ -696,35 +739,82 @@ export default function PropostaPrint() {
                 </div>
               </div>
 
-              {/* Condições Comerciais */}
+              {/* Condições Comerciais — Licença / Implantação */}
+              <div>
+                <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">
+                  {eRecorrente ? "Condições — Licença / Implantação" : "Condições Comerciais"}
+                </p>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div className="space-y-1.5">
+                    <Label>Forma de Pagamento</Label>
+                    <Select value={eFormaPagamento} onValueChange={setEFormaPagamento}>
+                      <SelectTrigger className="h-9">
+                        <SelectValue placeholder="Selecionar…" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="pix">PIX</SelectItem>
+                        <SelectItem value="boleto">Boleto</SelectItem>
+                        <SelectItem value="cartao_credito">Cartão de Crédito</SelectItem>
+                        <SelectItem value="cartao_debito">Cartão de Débito</SelectItem>
+                        <SelectItem value="transferencia">Transferência</SelectItem>
+                        <SelectItem value="dinheiro">Dinheiro</SelectItem>
+                        <SelectItem value="a_combinar">A Combinar</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label htmlFor="e-cond">Condição de Pagamento</Label>
+                    <Input
+                      id="e-cond"
+                      value={eCondPagamento}
+                      onChange={(e) => setECondPagamento(e.target.value)}
+                      placeholder="Ex: 50% entrada + 50% entrega"
+                      className="h-9"
+                    />
+                  </div>
+                </div>
+              </div>
+
+              {/* Condições Comerciais — Mensalidade (apenas quando recorrente) */}
+              {eRecorrente && (
+                <div>
+                  <p className="text-xs font-semibold text-violet-600 uppercase tracking-wide mb-2">
+                    Condições — Mensalidade
+                  </p>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div className="space-y-1.5">
+                      <Label>Forma de Pagamento da Mensalidade</Label>
+                      <Select value={eFormaPagamentoMensalidade} onValueChange={setEFormaPagamentoMensalidade}>
+                        <SelectTrigger className="h-9">
+                          <SelectValue placeholder="Selecionar…" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="pix">PIX</SelectItem>
+                          <SelectItem value="boleto">Boleto</SelectItem>
+                          <SelectItem value="cartao_credito">Cartão de Crédito</SelectItem>
+                          <SelectItem value="cartao_debito">Cartão de Débito</SelectItem>
+                          <SelectItem value="transferencia">Transferência</SelectItem>
+                          <SelectItem value="dinheiro">Dinheiro</SelectItem>
+                          <SelectItem value="a_combinar">A Combinar</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div className="space-y-1.5">
+                      <Label htmlFor="e-cond-mensal">Condição da Mensalidade</Label>
+                      <Input
+                        id="e-cond-mensal"
+                        value={eCondPagamentoMensalidade}
+                        onChange={(e) => setECondPagamentoMensalidade(e.target.value)}
+                        placeholder="Ex: Todo dia 10 via boleto"
+                        className="h-9"
+                      />
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* Prazo de Entrega */}
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                <div className="space-y-1.5">
-                  <Label>Forma de Pagamento</Label>
-                  <Select value={eFormaPagamento} onValueChange={setEFormaPagamento}>
-                    <SelectTrigger className="h-9">
-                      <SelectValue placeholder="Selecionar…" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="pix">PIX</SelectItem>
-                      <SelectItem value="boleto">Boleto</SelectItem>
-                      <SelectItem value="cartao_credito">Cartão de Crédito</SelectItem>
-                      <SelectItem value="cartao_debito">Cartão de Débito</SelectItem>
-                      <SelectItem value="transferencia">Transferência</SelectItem>
-                      <SelectItem value="dinheiro">Dinheiro</SelectItem>
-                      <SelectItem value="a_combinar">A Combinar</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div className="space-y-1.5">
-                  <Label htmlFor="e-cond">Condição de Pagamento</Label>
-                  <Input
-                    id="e-cond"
-                    value={eCondPagamento}
-                    onChange={(e) => setECondPagamento(e.target.value)}
-                    placeholder="Ex: 30/60/90 dias"
-                    className="h-9"
-                  />
-                </div>
                 <div className="space-y-1.5">
                   <Label htmlFor="e-prazo">Prazo de Entrega</Label>
                   <div className="flex gap-1.5">

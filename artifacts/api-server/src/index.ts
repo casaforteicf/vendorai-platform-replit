@@ -223,8 +223,16 @@ async function runStartupMigrations() {
     await db.execute(sql`CREATE INDEX IF NOT EXISTS idx_content_studio_uploads_tenant  ON content_studio_uploads(tenant_id)`);
     await db.execute(sql`CREATE INDEX IF NOT EXISTS idx_content_studio_uploads_session ON content_studio_uploads(session_id)`);
     logger.info("startup migrations: content_studio_uploads OK");
+
   } catch (err) {
     logger.warn({ err }, "startup migrations: content_studio_uploads skipped");
+  }
+  try {
+    await db.execute(sql`ALTER TABLE propostas ADD COLUMN IF NOT EXISTS forma_pagamento_mensalidade TEXT`);
+    await db.execute(sql`ALTER TABLE propostas ADD COLUMN IF NOT EXISTS cond_pagamento_mensalidade TEXT`);
+    logger.info("startup migrations: propostas payment mensalidade columns OK");
+  } catch (err) {
+    logger.warn({ err }, "startup migrations: propostas payment mensalidade columns skipped");
   }
 }
 

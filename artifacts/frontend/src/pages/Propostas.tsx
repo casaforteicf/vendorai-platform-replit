@@ -735,6 +735,8 @@ const propostaFormSchema = z.object({
   formaPagamento: z.string().optional(),
   condPagamento: z.string().optional(),
   prazoEntrega: z.string().optional(),
+  formaPagamentoMensalidade: z.string().optional(),
+  condPagamentoMensalidade: z.string().optional(),
   recorrente: z.boolean().default(false),
   valorMensal: z.coerce.number().min(0).optional(),
   prazoContratoMeses: z.coerce.number().int().min(1).optional(),
@@ -800,6 +802,8 @@ export function PropostaModal({
       formaPagamento: "",
       condPagamento: "",
       prazoEntrega: "",
+      formaPagamentoMensalidade: "",
+      condPagamentoMensalidade: "",
       recorrente: false,
       valorMensal: undefined,
       prazoContratoMeses: undefined,
@@ -851,6 +855,8 @@ export function PropostaModal({
       formaPagamento: "",
       condPagamento: "",
       prazoEntrega: "",
+      formaPagamentoMensalidade: "",
+      condPagamentoMensalidade: "",
       recorrente: false,
       valorMensal: undefined,
       prazoContratoMeses: undefined,
@@ -920,7 +926,13 @@ export function PropostaModal({
   // ── submit ────────────────────────────────────────────────────────────────
   function onSubmit(vals: PropostaFormValues) {
     const recFields = vals.recorrente
-      ? { recorrente: true, valorMensal: vals.valorMensal, prazoContratoMeses: vals.prazoContratoMeses }
+      ? {
+          recorrente: true,
+          valorMensal: vals.valorMensal,
+          prazoContratoMeses: vals.prazoContratoMeses,
+          formaPagamentoMensalidade: vals.formaPagamentoMensalidade || undefined,
+          condPagamentoMensalidade: vals.condPagamentoMensalidade || undefined,
+        }
       : { recorrente: false, valorMensal: undefined, prazoContratoMeses: undefined };
 
     if (mode === "catalogo") {
@@ -1393,37 +1405,77 @@ export function PropostaModal({
             </div>
 
             {/* Condições Comerciais */}
-            <div className="grid grid-cols-3 gap-3">
-              <FormField control={form.control} name="condPagamento" render={({ field }) => (
-                <FormItem>
-                  <FormLabel>Condição de Pagamento <span className="text-muted-foreground text-xs">(opcional)</span></FormLabel>
-                  <FormControl><Input placeholder="Ex: 30/60/90 dias" {...field} value={field.value ?? ""} /></FormControl>
-                  <FormMessage />
-                </FormItem>
-              )} />
-              <FormField control={form.control} name="prazoEntrega" render={({ field }) => (
-                <FormItem>
-                  <FormLabel>Prazo de Entrega <span className="text-muted-foreground text-xs">(opcional)</span></FormLabel>
-                  <FormControl><Input placeholder="Ex: 7 dias úteis" {...field} value={field.value ?? ""} /></FormControl>
-                  <FormMessage />
-                </FormItem>
-              )} />
-              <FormField control={form.control} name="formaPagamento" render={({ field }) => (
-                <FormItem>
-                  <FormLabel>Forma Principal <span className="text-muted-foreground text-xs">(opcional)</span></FormLabel>
-                  <Select onValueChange={field.onChange} value={field.value ?? ""}>
-                    <FormControl>
-                      <SelectTrigger><SelectValue placeholder="Selecione…" /></SelectTrigger>
-                    </FormControl>
-                    <SelectContent>
-                      {Object.entries(pmLabels).map(([val, label]) => (
-                        <SelectItem key={val} value={val}>{label}</SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                  <FormMessage />
-                </FormItem>
-              )} />
+            <div className="space-y-3">
+              {/* Label do bloco */}
+              <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">
+                {watchRecorrente ? "Condições — Licença / Implantação" : "Condições Comerciais"}
+              </p>
+              <div className="grid grid-cols-3 gap-3">
+                <FormField control={form.control} name="condPagamento" render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Condição de Pagamento <span className="text-muted-foreground text-xs">(opcional)</span></FormLabel>
+                    <FormControl><Input placeholder="Ex: 50% entrada + 50% entrega" {...field} value={field.value ?? ""} /></FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )} />
+                <FormField control={form.control} name="prazoEntrega" render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Prazo de Entrega <span className="text-muted-foreground text-xs">(opcional)</span></FormLabel>
+                    <FormControl><Input placeholder="Ex: 7 dias úteis" {...field} value={field.value ?? ""} /></FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )} />
+                <FormField control={form.control} name="formaPagamento" render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Forma de Pagamento <span className="text-muted-foreground text-xs">(opcional)</span></FormLabel>
+                    <Select onValueChange={field.onChange} value={field.value ?? ""}>
+                      <FormControl>
+                        <SelectTrigger><SelectValue placeholder="Selecione…" /></SelectTrigger>
+                      </FormControl>
+                      <SelectContent>
+                        {Object.entries(pmLabels).map(([val, label]) => (
+                          <SelectItem key={val} value={val}>{label}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    <FormMessage />
+                  </FormItem>
+                )} />
+              </div>
+
+              {/* Condições da Mensalidade — só quando recorrente */}
+              {watchRecorrente && (
+                <>
+                  <p className="text-xs font-semibold text-violet-600 uppercase tracking-wide pt-1">
+                    Condições — Mensalidade
+                  </p>
+                  <div className="grid grid-cols-2 gap-3">
+                    <FormField control={form.control} name="formaPagamentoMensalidade" render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Forma de Pagamento da Mensalidade <span className="text-muted-foreground text-xs">(opcional)</span></FormLabel>
+                        <Select onValueChange={field.onChange} value={field.value ?? ""}>
+                          <FormControl>
+                            <SelectTrigger><SelectValue placeholder="Selecione…" /></SelectTrigger>
+                          </FormControl>
+                          <SelectContent>
+                            {Object.entries(pmLabels).map(([val, label]) => (
+                              <SelectItem key={val} value={val}>{label}</SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                        <FormMessage />
+                      </FormItem>
+                    )} />
+                    <FormField control={form.control} name="condPagamentoMensalidade" render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Condição da Mensalidade <span className="text-muted-foreground text-xs">(opcional)</span></FormLabel>
+                        <FormControl><Input placeholder="Ex: Todo dia 10 via boleto" {...field} value={field.value ?? ""} /></FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )} />
+                  </div>
+                </>
+              )}
             </div>
 
             {/* Composição de Pagamento */}
