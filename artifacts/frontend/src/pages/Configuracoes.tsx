@@ -3653,6 +3653,63 @@ Body:
               </div>
 
             </div>
+
+            {/* ── Dialog: Redistribuir leads ─────────────────────────────── */}
+            <Dialog open={reassignDialog.open} onOpenChange={(v) => { if (!v) { setReassignDialog({ open: false, fromMember: null }); setReassignToUserId(""); } }}>
+              <DialogContent className="max-w-md">
+                <DialogHeader>
+                  <DialogTitle className="flex items-center gap-2">
+                    <ArrowRightLeft className="h-4 w-4" />
+                    Redistribuir leads
+                  </DialogTitle>
+                  <DialogDescription>
+                    Transfere todos os leads e oportunidades de <strong>{reassignDialog.fromMember?.name}</strong> para outro vendedor.
+                  </DialogDescription>
+                </DialogHeader>
+
+                <div className="space-y-4 py-2">
+                  <div className="space-y-1.5">
+                    <Label className="text-xs">Transferir para</Label>
+                    <Select value={reassignToUserId} onValueChange={setReassignToUserId}>
+                      <SelectTrigger>
+                        <SelectValue placeholder="Selecionar vendedor destino..." />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {(teamQuery.data ?? [])
+                          .filter((m) => m.id !== reassignDialog.fromMember?.id)
+                          .map((m) => (
+                            <SelectItem key={m.id} value={m.id}>
+                              {m.name ?? m.email}
+                            </SelectItem>
+                          ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+
+                  {reassignToUserId && (
+                    <p className="text-xs text-muted-foreground rounded-lg bg-amber-50 dark:bg-amber-950/20 border border-amber-200 dark:border-amber-800 p-3">
+                      ⚠️ Esta ação não pode ser desfeita. Todos os leads e oportunidades de <strong>{reassignDialog.fromMember?.name}</strong> passarão a pertencer ao vendedor selecionado.
+                    </p>
+                  )}
+                </div>
+
+                <DialogFooter>
+                  <Button variant="outline" onClick={() => { setReassignDialog({ open: false, fromMember: null }); setReassignToUserId(""); }}>
+                    Cancelar
+                  </Button>
+                  <Button
+                    disabled={!reassignToUserId || bulkReassign.isPending}
+                    onClick={() => {
+                      if (!reassignDialog.fromMember || !reassignToUserId) return;
+                      bulkReassign.mutate({ fromUserId: reassignDialog.fromMember.id, toUserId: reassignToUserId });
+                    }}
+                  >
+                    {bulkReassign.isPending ? <RefreshCw className="h-4 w-4 animate-spin mr-1.5" /> : <ArrowRightLeft className="h-4 w-4 mr-1.5" />}
+                    Confirmar transferência
+                  </Button>
+                </DialogFooter>
+              </DialogContent>
+            </Dialog>
           </TabsContent>
         )}
 
