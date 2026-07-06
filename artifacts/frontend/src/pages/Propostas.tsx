@@ -1716,6 +1716,22 @@ function PropostaDetailSheet({
                     </div>
                   )}
                 </div>
+                {((proposta as any).formaPagamentoMensalidade || (proposta as any).condPagamentoMensalidade) && (
+                  <div className="grid grid-cols-2 gap-3 pt-2 border-t border-violet-200 text-sm">
+                    {(proposta as any).formaPagamentoMensalidade && (
+                      <div>
+                        <p className="text-xs text-violet-600 uppercase tracking-wide mb-0.5">Forma Pgto Mensalidade</p>
+                        <p className="font-medium text-violet-900">{getPaymentLabel((proposta as any).formaPagamentoMensalidade)}</p>
+                      </div>
+                    )}
+                    {(proposta as any).condPagamentoMensalidade && (
+                      <div>
+                        <p className="text-xs text-violet-600 uppercase tracking-wide mb-0.5">Condição Mensalidade</p>
+                        <p className="font-medium text-violet-900">{(proposta as any).condPagamentoMensalidade}</p>
+                      </div>
+                    )}
+                  </div>
+                )}
               </div>
             </>
           )}
@@ -1723,6 +1739,11 @@ function PropostaDetailSheet({
           {(proposta.formaPagamento || proposta.condPagamento || proposta.prazoEntrega) && (
             <>
               <Separator />
+              {proposta.recorrente && (
+                <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">
+                  Licença / Implantação
+                </p>
+              )}
               <div className="grid grid-cols-3 gap-4 text-sm">
                 {proposta.formaPagamento && (
                   <div>
