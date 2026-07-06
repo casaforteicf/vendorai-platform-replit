@@ -135,6 +135,46 @@ router.delete(
   }
 );
 
+// ─── Save contract template via in-app editor (JSON body) ─────────────────────
+router.put(
+  "/api/tenants/:tenantId/contract-template/editor",
+  requireRole(["tenant_admin", "super_admin"]),
+  async (req, res) => {
+    const tenantId = String(req.params.tenantId);
+
+    if (
+      req.user?.platformRole !== "super_admin" &&
+      req.user?.tenantId !== tenantId
+    ) {
+      res.status(403).json({ error: "Acesso negado" });
+      return;
+    }
+
+    const { html, name } = req.body as { html?: string; name?: string };
+    if (!html || typeof html !== "string") {
+      res.status(400).json({ error: "Campo 'html' é obrigatório" });
+      return;
+    }
+
+    const templateName = (typeof name === "string" && name.trim()) ? name.trim() : "Modelo personalizado";
+
+    try {
+      await db.execute(
+        sql`UPDATE tenants
+            SET contract_template_html = ${html},
+                contract_template_name = ${templateName},
+                updated_at = NOW()
+            WHERE id = ${tenantId}`
+      );
+      req.log.info({ tenantId, templateName }, "contract-template/editor: saved");
+      res.json({ success: true, name: templateName });
+    } catch (err) {
+      req.log.error({ err }, "contract-template/editor: save failed");
+      res.status(500).json({ error: "Erro ao salvar modelo de contrato" });
+    }
+  }
+);
+
 // ─── Get contract settings ─────────────────────────────────────────────────────
 router.get("/api/tenants/:tenantId/contract-settings", async (req, res) => {
   const tenantId = String(req.params.tenantId);

@@ -140,6 +140,7 @@ import {
 import { SiteGeneratorTab } from "./SiteGenerator";
 import { SdrTemplatesSection } from "@/components/SdrTemplatesSection";
 import { FaturamentoTab } from "./FaturamentoTab";
+import { ContractTemplateTab } from "@/components/ContractTemplateTab";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { cn } from "@/lib/utils";
@@ -1445,7 +1446,7 @@ export default function Configuracoes() {
           if (tab !== "integracoes") setIntegracoesUnlocked(false);
         }}
       >
-        <TabsList className={cn("grid w-full max-w-3xl", (isTenantAdmin && showFaturamento) ? "grid-cols-9" : (isTenantAdmin || showFaturamento) ? "grid-cols-8" : "grid-cols-7")}>
+        <TabsList className={cn("grid w-full max-w-3xl", (isTenantAdmin && showFaturamento) ? "grid-cols-10" : isTenantAdmin ? "grid-cols-9" : showFaturamento ? "grid-cols-8" : "grid-cols-7")}>
           <TabsTrigger value="perfil" className="gap-1.5">
             <Building2 className="h-4 w-4" />
             Perfil
@@ -1474,6 +1475,12 @@ export default function Configuracoes() {
             <BrainCircuit className="h-4 w-4" />
             Uso de IA
           </TabsTrigger>
+          {isTenantAdmin && (
+            <TabsTrigger value="contrato" className="gap-1.5">
+              <FileText className="h-4 w-4" />
+              Contrato
+            </TabsTrigger>
+          )}
           {isTenantAdmin && (
             <TabsTrigger value="equipe" className="gap-1.5">
               <Users className="h-4 w-4" />
@@ -3470,6 +3477,13 @@ Body:
           </div>
           )}
         </TabsContent>
+
+        {/* ── Tab: Template de Contrato ───────────────────────────────────── */}
+        {isTenantAdmin && (
+          <TabsContent value="contrato">
+            <ContractTemplateTab tenantId={tenantId} />
+          </TabsContent>
+        )}
 
         {/* ── Tab: Equipe ─────────────────────────────────────────────────── */}
         {isTenantAdmin && (
