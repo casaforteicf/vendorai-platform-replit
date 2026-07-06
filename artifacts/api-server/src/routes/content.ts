@@ -45,6 +45,8 @@ const generateBodySchema = z.object({
   imageUrl: z.string().optional().nullable(),
   contentFormat: z.enum(["feed_square", "feed_portrait", "stories", "reels"]).optional().nullable(),
   aspectRatio: z.string().optional().nullable(),
+  // Fotos do cliente marcadas como "Material" — vão direto como imageUrls do carrossel
+  postMaterialUrls: z.array(z.string()).optional().default([]),
   // Campos estratégicos — Passo 2
   customerPain: z.string().optional().nullable(),
   postObjective: z.string().optional().nullable(),
@@ -106,7 +108,7 @@ router.post("/tenants/:tenantId/content/generate", async (req, res) => {
     return;
   }
 
-  const { type, theme, productId, productSource, variations, imageCount, imageUrl: referenceImageUrl, contentFormat, aspectRatio, customerPain, postObjective, voiceTone, desiredCta } = parsed.data;
+  const { type, theme, productId, productSource, variations, imageCount, imageUrl: referenceImageUrl, contentFormat, aspectRatio, postMaterialUrls, customerPain, postObjective, voiceTone, desiredCta } = parsed.data;
 
   const { used, limit, configId } = await getMonthlyUsage(tenantId);
   if (used >= limit) {
@@ -189,6 +191,15 @@ router.post("/tenants/:tenantId/content/generate", async (req, res) => {
     req.log.error({ err }, "content generation failed");
     res.status(500).json({ error: "Falha na geração de conteúdo. Tente novamente." });
     return;
+  }
+
+  // Se o cliente enviou fotos como "Material", injeta direto nas variações (sem gerar via IA)
+  if (postMaterialUrls && postMaterialUrls.length > 0) {
+    const varArray = result.result.variations as Array<Record<string, unknown>>;
+    for (const v of varArray) {
+      v["imageUrls"] = postMaterialUrls;
+      v["imageUrl"] = postMaterialUrls[0] ?? null;
+    }
   }
 
   const finalResult = result.result;

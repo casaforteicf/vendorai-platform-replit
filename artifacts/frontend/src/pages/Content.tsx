@@ -23,7 +23,7 @@ import {
   useGenerateContentStrategy,
 } from "@workspace/api-client-react";
 import {
-  Sparkles, Copy, Trash2, Loader2, Instagram, Clapperboard, Image,
+  Sparkles, Copy, Trash2, Loader2, Instagram, Clapperboard, Image, ImageIcon,
   CheckCircle2, AlertCircle, ChevronDown, ChevronUp, ExternalLink, Upload,
   Pencil, Check, X, Wand2, Download, Archive, Eye, RefreshCw,
 } from "lucide-react";
@@ -1378,7 +1378,7 @@ export default function Content() {
     enabled: !!tenantId,
   });
 
-  const generateMutation = useMutation<ContentGeneration, Error, { type: ContentType; theme: string; productId?: string; productSource?: ProductSource; variations: number; imageCount: number; imageUrl?: string; contentFormat?: string; aspectRatio?: string; customerPain?: string; postObjective?: string; voiceTone?: string; desiredCta?: string }>({
+  const generateMutation = useMutation<ContentGeneration, Error, { type: ContentType; theme: string; productId?: string; productSource?: ProductSource; variations: number; imageCount: number; imageUrl?: string; postMaterialUrls?: string[]; contentFormat?: string; aspectRatio?: string; customerPain?: string; postObjective?: string; voiceTone?: string; desiredCta?: string }>({
     mutationFn: async (body) => {
       const res = await fetch(`/api/tenants/${tenantId}/content/generate`, {
         method: "POST",
@@ -1529,6 +1529,7 @@ export default function Content() {
     }
     setLastResult(null);
     const styleRef = uploadedImages.find((img) => img.purpose === "style_reference" && !img.uploading);
+    const materialImgs = uploadedImages.filter((img) => img.purpose === "post_material" && !img.uploading).map((img) => img.url);
     generateMutation.mutate({
       type: activeTab,
       theme: theme.trim(),
@@ -1537,6 +1538,7 @@ export default function Content() {
       variations,
       imageCount: activeTab === "reels" ? 1 : imageCount,
       imageUrl: styleRef?.url ?? undefined,
+      postMaterialUrls: materialImgs.length > 0 ? materialImgs : undefined,
       contentFormat,
       aspectRatio,
       customerPain: customerPain.trim(),
@@ -1827,28 +1829,43 @@ export default function Content() {
                           </div>
                         )}
 
-                        {/* Quantidade de imagens — desabilitado para Reels */}
-                        <div className="space-y-1.5">
-                          <Label className={cn(key === "reels" && "text-muted-foreground")}>
-                            Quantidade de imagens
-                            {key === "reels" && <span className="ml-1 text-[10px] font-normal">(Reels gera 1 thumbnail)</span>}
-                            {key === "stories" && <span className="ml-1 text-[10px] font-normal text-muted-foreground">(carrossel sequencial)</span>}
-                          </Label>
-                          <div className="flex gap-2 flex-wrap">
-                            {[1, 2, 4, 6, 8, 10].map((n) => (
-                              <Button
-                                key={n}
-                                variant={imageCount === n ? "default" : "outline"}
-                                size="sm"
-                                onClick={() => setImageCount(n)}
-                                className="w-12"
-                                disabled={key === "reels"}
-                              >
-                                {n}
-                              </Button>
-                            ))}
-                          </div>
-                        </div>
+                        {/* Quantidade de imagens — desabilitado para Reels e quando há Material */}
+                        {(() => {
+                          const hasMaterial = uploadedImages.some((img) => img.purpose === "post_material" && !img.uploading);
+                          return (
+                            <div className="space-y-1.5">
+                              <Label className={cn((key === "reels" || hasMaterial) && "text-muted-foreground")}>
+                                Quantidade de imagens
+                                {key === "reels" && <span className="ml-1 text-[10px] font-normal">(Reels gera 1 thumbnail)</span>}
+                                {key === "stories" && !hasMaterial && <span className="ml-1 text-[10px] font-normal text-muted-foreground">(carrossel sequencial)</span>}
+                                {hasMaterial && <span className="ml-1 text-[10px] font-normal text-emerald-600">(usando fotos do cliente)</span>}
+                              </Label>
+                              {hasMaterial ? (
+                                <div className="flex items-center gap-2 rounded-md bg-emerald-50 dark:bg-emerald-950/30 border border-emerald-200 dark:border-emerald-800 px-3 py-2">
+                                  <ImageIcon className="h-3.5 w-3.5 text-emerald-600 flex-shrink-0" />
+                                  <p className="text-xs text-emerald-700 dark:text-emerald-400">
+                                    {uploadedImages.filter((img) => img.purpose === "post_material" && !img.uploading).length} foto{uploadedImages.filter((img) => img.purpose === "post_material" && !img.uploading).length !== 1 ? "s" : ""} do cliente serão usadas como slides do post
+                                  </p>
+                                </div>
+                              ) : (
+                                <div className="flex gap-2 flex-wrap">
+                                  {[1, 2, 4, 6, 8, 10].map((n) => (
+                                    <Button
+                                      key={n}
+                                      variant={imageCount === n ? "default" : "outline"}
+                                      size="sm"
+                                      onClick={() => setImageCount(n)}
+                                      className="w-12"
+                                      disabled={key === "reels"}
+                                    >
+                                      {n}
+                                    </Button>
+                                  ))}
+                                </div>
+                              )}
+                            </div>
+                          );
+                        })()}
 
                         {/* Passo 3 — Multi-image uploader */}
                         <div className="space-y-2">
