@@ -5,6 +5,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { useAuth } from "@/contexts/AuthContext";
 import { useToast } from "@/hooks/use-toast";
 import { PropostaModal } from "./Propostas";
+import { VendidoModal } from "@/components/VendidoModal";
 import { AgendarReuniaoModal } from "@/components/AgendarReuniaoModal";
 import LeadBriefingTab from "./LeadBriefingTab";
 import LeadPropostaTab from "./LeadPropostaTab";
@@ -292,6 +293,7 @@ export default function LeadDetail() {
 
   const [propostaModalOpen, setPropostaModalOpen] = useState(false);
   const [agendarOpen, setAgendarOpen] = useState(false);
+  const [vendidoOpen, setVendidoOpen] = useState(false);
   const [lightboxUrl, setLightboxUrl] = useState<string | null>(null);
   const [lightboxTitle, setLightboxTitle] = useState<string>("");
 
@@ -1144,6 +1146,17 @@ export default function LeadDetail() {
             <CalendarDays className="h-4 w-4" />
             Agendar reunião
           </Button>
+          {lead.status !== "convertido" && (leadDeals?.length ?? 0) > 0 && (
+            <Button
+              size="sm"
+              className="gap-1.5 bg-emerald-600 hover:bg-emerald-700 text-white"
+              onClick={() => setVendidoOpen(true)}
+              data-testid="btn-vendido"
+            >
+              <CheckCircle2 className="h-4 w-4" />
+              Vendido
+            </Button>
+          )}
           <Badge
             variant="outline"
             className={STATUS_STYLES[lead.status] ?? ""}
@@ -3691,6 +3704,17 @@ export default function LeadDetail() {
         leadEmpresa={lead?.empresa ?? undefined}
         onSuccess={() => {
           void queryClient.invalidateQueries({ queryKey: getListPropostasQueryKey(tenantId, { leadId: id }) });
+          void queryClient.invalidateQueries({ queryKey: getListDealsQueryKey(tenantId) });
+        }}
+      />
+
+      <VendidoModal
+        open={vendidoOpen}
+        onOpenChange={setVendidoOpen}
+        leadNome={lead?.nome ?? lead?.empresa ?? "Lead"}
+        propostas={leadPropostas ?? []}
+        deals={leadDeals ?? []}
+        onSuccess={() => {
           void queryClient.invalidateQueries({ queryKey: getListDealsQueryKey(tenantId) });
         }}
       />
