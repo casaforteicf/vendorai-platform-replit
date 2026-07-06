@@ -364,25 +364,21 @@ Crie ${variationsCount} variações distintas de legenda para o Feed do Instagra
 Retorne SOMENTE JSON válido no formato:
 {"variations": [{"caption": "...", "hashtags": ["#hashtag1", "#hashtag2"]}]}`;
 
-  const [textResult, imageUrls] = await Promise.all([
-    gatewayCallOpenAI(
-      tenantId,
-      "content_generator",
-      [{ role: "user", content: prompt }],
-      { model: "gpt-4o-mini", responseFormat: { type: "json_object" }, temperature: 0.85 },
-    ),
-    generateImagesForContent(profile, tenantId, theme, productName, "feed", imageCount, undefined, referenceImageUrl, undefined, aspectRatio),
-  ]);
+  const textResult = await gatewayCallOpenAI(
+    tenantId,
+    "content_generator",
+    [{ role: "user", content: prompt }],
+    { model: "gpt-4o-mini", responseFormat: { type: "json_object" }, temperature: 0.85 },
+  );
 
   const tokensUsed = textResult.inputTokens + textResult.outputTokens;
   const raw = JSON.parse(textResult.content || "{}") as {
     variations?: Omit<FeedVariation, "imageUrl">[];
   };
 
-  const variations: FeedVariation[] = (raw.variations ?? []).map((v, i) => ({
+  const variations: FeedVariation[] = (raw.variations ?? []).map((v) => ({
     ...v,
-    imageUrl: imageUrls[i % imageUrls.length],
-    imageUrls: imageUrls,
+    ...(referenceImageUrl ? { imageUrl: referenceImageUrl } : {}),
   }));
 
   return {
@@ -432,25 +428,21 @@ Crie ${variationsCount} variações distintas de conteúdo para Stories do Insta
 Retorne SOMENTE JSON válido no formato:
 {"variations": [{"text": "...", "cta": "..."}]}`;
 
-  const [textResult, imageUrls] = await Promise.all([
-    gatewayCallOpenAI(
-      tenantId,
-      "content_generator",
-      [{ role: "user", content: prompt }],
-      { model: "gpt-4o-mini", responseFormat: { type: "json_object" }, temperature: 0.85 },
-    ),
-    generateImagesForContent(profile, tenantId, theme, productName, "stories", imageCount, undefined, referenceImageUrl, undefined, aspectRatio),
-  ]);
+  const textResult = await gatewayCallOpenAI(
+    tenantId,
+    "content_generator",
+    [{ role: "user", content: prompt }],
+    { model: "gpt-4o-mini", responseFormat: { type: "json_object" }, temperature: 0.85 },
+  );
 
   const tokensUsed = textResult.inputTokens + textResult.outputTokens;
   const raw = JSON.parse(textResult.content || "{}") as {
     variations?: Omit<StoriesVariation, "imageUrl">[];
   };
 
-  const variations: StoriesVariation[] = (raw.variations ?? []).map((v, i) => ({
+  const variations: StoriesVariation[] = (raw.variations ?? []).map((v) => ({
     ...v,
-    imageUrl: imageUrls[i % imageUrls.length],
-    imageUrls: imageUrls,
+    ...(referenceImageUrl ? { imageUrl: referenceImageUrl } : {}),
   }));
 
   return {
