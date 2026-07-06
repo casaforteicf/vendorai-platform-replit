@@ -145,12 +145,40 @@ export async function generateImagesWithReference(
   return await Promise.all(imagePromises);
 }
 
-const PHOTO_ANGLES = [
-  "straight-on front-facing shot at eye level, clean neutral background, subject perfectly centered",
-  "dynamic 45-degree 3/4 angle view, showing depth and dimension, premium studio lighting",
-  "overhead flat-lay top-down composition on an elegant styled surface, symmetrical arrangement",
-  "close-up macro detail shot at f/2.8 shallow depth of field, highlighting texture and craftsmanship",
-  "lifestyle contextual scene showing the product in its natural environment, authentic real-world setting",
+/**
+ * IMAGE_CONCEPTS defines fundamentally different visual directions for each image slot.
+ * Slot 0 → hero product shot; Slot 1 → lifestyle / sensation; Slot 2+ → supporting angles.
+ * Each concept produces a prompt that stands alone — no shared base prompt.
+ */
+const IMAGE_CONCEPTS: Array<{
+  label: string;
+  buildPrompt: (brand: string, subject: string, style: string, format: string, obs: string) => string;
+}> = [
+  {
+    label: "hero-product",
+    buildPrompt: (brand, subject, style, format, obs) =>
+      `Professional hero product photograph for Instagram ${format} post. Brand: "${brand}". Subject: ${subject}. ${obs}Clean studio setup, perfect lighting, neutral or elegantly textured background, product centered and sharp, premium commercial photography. Style: ${style}. No text. No watermarks. No people. Focus 100% on the product itself.`,
+  },
+  {
+    label: "lifestyle-sensation",
+    buildPrompt: (brand, subject, style, format, obs) =>
+      `Aspirational lifestyle Instagram ${format} image for the brand "${brand}". Concept: show the FEELING and SENSATION that ${subject} creates in the customer's life — not the product itself, but the emotion, transformation, and lifestyle it enables. ${obs}Authentic scene with natural light, warm atmosphere, real environment where this product fits. People interacting naturally if relevant. Evokes desire, aspiration, and positive emotion. Style: ${style}. No text. No watermarks.`,
+  },
+  {
+    label: "detail-texture",
+    buildPrompt: (brand, subject, style, format, obs) =>
+      `Close-up macro detail photograph for Instagram ${format} for brand "${brand}". Subject: ${subject}. ${obs}Extreme close-up highlighting textures, materials, craftsmanship and quality. Shallow depth of field (f/2.0), soft bokeh background, dramatic lighting to reveal surface details. Conveys premium quality and attention to detail. Style: ${style}. No text. No watermarks.`,
+  },
+  {
+    label: "context-in-use",
+    buildPrompt: (brand, subject, style, format, obs) =>
+      `Contextual in-use Instagram ${format} photograph for brand "${brand}". Subject: ${subject}. ${obs}Product shown in its natural environment being used in a real-world scenario. Authentic and relatable setting with natural light. Tells a story about the product's purpose and benefit. Style: ${style}. No text. No watermarks.`,
+  },
+  {
+    label: "flat-lay",
+    buildPrompt: (brand, subject, style, format, obs) =>
+      `Elegant overhead flat-lay composition for Instagram ${format} for brand "${brand}". Subject: ${subject}. ${obs}Top-down shot, product arranged with complementary props and textures that reinforce the brand identity. Symmetrical or artfully asymmetrical layout. Premium styling on elegant surface. Style: ${style}. No text. No watermarks.`,
+  },
 ];
 
 function getImageSize(model: string, aspectRatio?: string): "1024x1024" | "1024x1536" | "1024x1792" {
@@ -205,12 +233,10 @@ export async function generateImagesForContent(
     return generateImagesWithReference(tenantId, referenceImageUrl, editPrompt, imageCount);
   }
 
-  const basePrompt = `Professional marketing photography for Instagram ${formatLabel} for the brand "${brand}". Subject: ${subject}. Style: ${styleHint}. ${observationsNote}High quality, visually compelling, suitable for a premium Instagram business profile. No text overlays. No watermarks. Perfect exposure, sharp focus, commercial photography aesthetic.`;
-
   const imagePromises = Array.from({ length: imageCount }, async (_, i) => {
     let lastError: unknown;
-    const angle = PHOTO_ANGLES[i % PHOTO_ANGLES.length];
-    const imagePrompt = `${basePrompt} Camera/shot type: ${angle}.`;
+    const concept = IMAGE_CONCEPTS[i % IMAGE_CONCEPTS.length];
+    const imagePrompt = concept.buildPrompt(brand, subject, styleHint, formatLabel, observationsNote);
 
     for (const model of IMAGE_MODELS_PRIORITY) {
       try {
