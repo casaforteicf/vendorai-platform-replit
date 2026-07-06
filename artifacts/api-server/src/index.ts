@@ -191,6 +191,25 @@ async function runStartupMigrations() {
   } catch (err) {
     logger.warn({ err }, "startup migrations: contract_template columns skipped");
   }
+
+  // ── Content Studio Uploads ───────────────────────────────────────────────────
+  try {
+    await db.execute(sql`
+      CREATE TABLE IF NOT EXISTS content_studio_uploads (
+        id TEXT PRIMARY KEY DEFAULT gen_random_uuid()::text,
+        tenant_id TEXT NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+        session_id TEXT NOT NULL,
+        file_url TEXT NOT NULL,
+        purpose TEXT NOT NULL DEFAULT 'style_reference',
+        created_at TIMESTAMP NOT NULL DEFAULT NOW()
+      )
+    `);
+    await db.execute(sql`CREATE INDEX IF NOT EXISTS idx_content_studio_uploads_tenant  ON content_studio_uploads(tenant_id)`);
+    await db.execute(sql`CREATE INDEX IF NOT EXISTS idx_content_studio_uploads_session ON content_studio_uploads(session_id)`);
+    logger.info("startup migrations: content_studio_uploads OK");
+  } catch (err) {
+    logger.warn({ err }, "startup migrations: content_studio_uploads skipped");
+  }
 }
 
 // ─── Boot sequence ────────────────────────────────────────────────────────────

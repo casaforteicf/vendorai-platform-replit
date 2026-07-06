@@ -353,9 +353,9 @@ Retorne SOMENTE JSON válido no formato:
     variations?: Omit<FeedVariation, "imageUrl">[];
   };
 
-  const variations: FeedVariation[] = (raw.variations ?? []).map((v) => ({
+  const variations: FeedVariation[] = (raw.variations ?? []).map((v, i) => ({
     ...v,
-    imageUrl: imageUrls[0],
+    imageUrl: imageUrls[i % imageUrls.length],
     imageUrls: imageUrls,
   }));
 
@@ -423,7 +423,7 @@ Retorne SOMENTE JSON válido no formato:
 
   const variations: StoriesVariation[] = (raw.variations ?? []).map((v, i) => ({
     ...v,
-    imageUrl: imageUrls[0],
+    imageUrl: imageUrls[i % imageUrls.length],
     imageUrls: imageUrls,
   }));
 

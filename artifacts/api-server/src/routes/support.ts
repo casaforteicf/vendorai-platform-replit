@@ -63,6 +63,10 @@ router.post("/support/chat", async (req, res) => {
   res.setHeader("Content-Type", "text/event-stream");
   res.setHeader("Cache-Control", "no-cache");
   res.setHeader("Connection", "keep-alive");
+  res.setHeader("X-Accel-Buffering", "no");
+  res.flushHeaders();
+
+  const flush = () => { if (typeof (res as any).flush === "function") (res as any).flush(); };
 
   let fullResponse = "";
 
@@ -83,6 +87,7 @@ router.post("/support/chat", async (req, res) => {
         const visibleChunk = event.delta.text.replace(reportMarkerRegex, "");
         if (visibleChunk) {
           res.write(`data: ${JSON.stringify({ content: visibleChunk })}\n\n`);
+          flush();
         }
       }
     }

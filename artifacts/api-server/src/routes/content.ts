@@ -636,7 +636,7 @@ router.post("/tenants/:tenantId/content/improve", async (req, res) => {
 
 const libraryBodySchema = z.object({
   type: z.enum(["feed", "stories", "reels"]),
-  variation: z.record(z.unknown()),
+  variation: z.any(),
   theme: z.string().optional().nullable(),
   title: z.string().optional().nullable(),
 });
