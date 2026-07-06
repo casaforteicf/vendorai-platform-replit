@@ -9,7 +9,16 @@ import {
   contractsTable,
   partnersTable,
 } from "@workspace/db";
-import { generateContractFromTemplate, generateContractPDF } from "../lib/contract-generation.js";
+import {
+  generateContractFromTemplate,
+  generateContractPDF,
+  interpolateTemplate,
+  numberToWordsPTBR,
+  dateToExtensoPTBR,
+  DEFAULT_CONTRACT_SETTINGS,
+  type ContractSettings,
+} from "../lib/contract-generation.js";
+import { VENDORAI_SAAS_CONTRACT_HTML } from "../lib/vendorai-contract-template.js";
 import { createDocument, isZapSignConfigured } from "../lib/zapsign.js";
 import { requireRole } from "../middlewares/auth.js";
 
@@ -126,7 +135,71 @@ router.delete(
   }
 );
 
-// ─── List active deals for a lead (for pedido selection in contract) ──────────
+// ─── Get contract settings ─────────────────────────────────────────────────────
+router.get("/api/tenants/:tenantId/contract-settings", async (req, res) => {
+  const tenantId = String(req.params.tenantId);
+
+  if (
+    req.user?.platformRole !== "super_admin" &&
+    req.user?.tenantId !== tenantId
+  ) {
+    res.status(403).json({ error: "Acesso negado" });
+    return;
+  }
+
+  try {
+    const result = await db.execute(
+      sql`SELECT contract_settings FROM tenants WHERE id = ${tenantId}`
+    );
+    const row = result.rows?.[0] as Record<string, unknown> | undefined;
+    const saved = (row?.contract_settings ?? {}) as Partial<ContractSettings>;
+
+    res.json({ settings: { ...DEFAULT_CONTRACT_SETTINGS, ...saved } });
+  } catch (err) {
+    req.log.error({ err }, "contract-settings: get failed");
+    res.status(500).json({ error: "Erro ao buscar configurações" });
+  }
+});
+
+// ─── Update contract settings ──────────────────────────────────────────────────
+router.put(
+  "/api/tenants/:tenantId/contract-settings",
+  requireRole(["tenant_admin", "super_admin"]),
+  async (req, res) => {
+    const tenantId = String(req.params.tenantId);
+
+    if (
+      req.user?.platformRole !== "super_admin" &&
+      req.user?.tenantId !== tenantId
+    ) {
+      res.status(403).json({ error: "Acesso negado" });
+      return;
+    }
+
+    const incoming = req.body as Partial<ContractSettings>;
+
+    try {
+      const current = await db.execute(
+        sql`SELECT contract_settings FROM tenants WHERE id = ${tenantId}`
+      );
+      const currentRow = current.rows?.[0] as Record<string, unknown> | undefined;
+      const existing = (currentRow?.contract_settings ?? {}) as Partial<ContractSettings>;
+      const merged = { ...existing, ...incoming };
+
+      await db.execute(
+        sql`UPDATE tenants SET contract_settings = ${JSON.stringify(merged)}::jsonb, updated_at = NOW() WHERE id = ${tenantId}`
+      );
+
+      req.log.info({ tenantId }, "contract-settings: updated");
+      res.json({ success: true, settings: { ...DEFAULT_CONTRACT_SETTINGS, ...merged } });
+    } catch (err) {
+      req.log.error({ err }, "contract-settings: update failed");
+      res.status(500).json({ error: "Erro ao salvar configurações" });
+    }
+  }
+);
+
+// ─── List active deals for a lead ─────────────────────────────────────────────
 router.get("/api/tenants/:tenantId/leads/:leadId/active-deals", async (req, res) => {
   const tenantId = String(req.params.tenantId);
   const leadId = String(req.params.leadId);
@@ -211,13 +284,32 @@ router.post("/api/deals/:dealId/generate-contract", async (req, res) => {
       return;
     }
 
-    // Fetch tenant
-    const [tenant] = await db
-      .select()
-      .from(tenantsTable)
-      .where(eq(tenantsTable.id, tenantId));
+    // Fetch tenant + contract settings
+    const tenantResult = await db.execute(
+      sql`SELECT id, name, nome_empresa, partner_id, contract_template_html, contract_template_name, contract_settings
+          FROM tenants WHERE id = ${tenantId}`
+    );
+    const tenantRow = tenantResult.rows?.[0] as Record<string, unknown> | undefined;
+    const customTemplateHtml = tenantRow?.contract_template_html as string | null;
+    const rawSettings = (tenantRow?.contract_settings ?? {}) as Partial<ContractSettings>;
+    const settings: ContractSettings = { ...DEFAULT_CONTRACT_SETTINGS, ...rawSettings };
 
-    // Fetch selected deals (pedidos)
+    // Partner
+    let partnerName: string | undefined;
+    let partnerEmail: string | undefined;
+    const partnerId = tenantRow?.partner_id as string | undefined;
+    if (partnerId) {
+      const [partner] = await db
+        .select({ name: partnersTable.name, email: partnersTable.email })
+        .from(partnersTable)
+        .where(eq(partnersTable.id, partnerId));
+      if (partner) {
+        partnerName = partner.name;
+        partnerEmail = partner.email;
+      }
+    }
+
+    // Selected deals
     let selectedDeals: typeof deal[] = [deal];
     if (selectedDealIds && selectedDealIds.length > 0) {
       selectedDeals = await db
@@ -231,21 +323,7 @@ router.post("/api/deals/:dealId/generate-contract", async (req, res) => {
         );
     }
 
-    // Fetch partner if exists
-    let partnerName: string | undefined;
-    let partnerEmail: string | undefined;
-    if (tenant?.partnerId) {
-      const [partner] = await db
-        .select({ name: partnersTable.name, email: partnersTable.email })
-        .from(partnersTable)
-        .where(eq(partnersTable.id, tenant.partnerId));
-      if (partner) {
-        partnerName = partner.name;
-        partnerEmail = partner.email;
-      }
-    }
-
-    // Build signers list
+    // ── Build signers ───────────────────────────────────────────────────────
     const signers: { name: string; email: string }[] = [];
     signers.push({ name: lead.nome ?? "Cliente", email: lead.email });
     if (partnerName && partnerEmail) {
@@ -253,76 +331,126 @@ router.post("/api/deals/:dealId/generate-contract", async (req, res) => {
     }
     const vendoraiEmail = process.env["VENDORAI_SIGNING_EMAIL"];
     if (vendoraiEmail) {
-      signers.push({ name: tenant?.nomeEmpresa ?? "Empresa", email: vendoraiEmail });
+      signers.push({ name: tenantRow?.nome_empresa as string ?? tenantRow?.name as string ?? "Empresa", email: vendoraiEmail });
     }
 
-    // Build pedidos HTML table
+    // ── Build values ────────────────────────────────────────────────────────
     const pedidosHtml = buildPedidosTable(selectedDeals);
 
-    // Compute total value
     const totalValor = selectedDeals.reduce(
       (sum, d) => sum + (d.valor ? Number(d.valor) : 0),
       0
     );
-    const valorFormatado = totalValor > 0
-      ? totalValor.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })
-      : deal.valor
-        ? Number(deal.valor).toLocaleString("pt-BR", { style: "currency", currency: "BRL" })
-        : "Valor a definir";
+    const valorBruto = totalValor > 0
+      ? totalValor
+      : deal.valor ? Number(deal.valor) : 0;
+
+    const valorMensalFormatado = valorBruto > 0
+      ? valorBruto.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })
+      : "Valor a definir";
+
+    const valorExtenso = valorBruto > 0 ? numberToWordsPTBR(valorBruto) : "";
 
     const dataHoje = new Date().toLocaleDateString("pt-BR", {
       day: "2-digit",
       month: "long",
       year: "numeric",
     });
+    const dataExtensoPTBR = dateToExtensoPTBR(new Date());
 
-    // Fetch custom template
-    const templateResult = await db.execute(
-      sql`SELECT contract_template_html, contract_template_name FROM tenants WHERE id = ${tenantId}`
-    );
-    const templateRow = templateResult.rows?.[0] as Record<string, unknown> | undefined;
-    const customTemplateHtml = templateRow?.contract_template_html as string | null;
+    // ── Build client qualifications ─────────────────────────────────────────
+    const clienteRazaoSocial = (lead.empresa ?? lead.nome ?? "Cliente").trim();
+    const clienteEndereco = (lead.endereco ?? "").trim();
 
-    // Generate PDF
+    // Representative qualification (use what's in the system, flag missing parts)
+    const repNome = (lead.nome ?? "").trim();
+    const repEstadoCivil = (lead.estadoCivil ?? "").trim();
+    const repCpfCnpj = (lead.documento ?? "").trim();
+    const qualParts: string[] = [repNome];
+    if (repEstadoCivil) qualParts.push(repEstadoCivil);
+    qualParts.push("Representante Legal");
+    if (repCpfCnpj) qualParts.push(`CPF/CNPJ ${repCpfCnpj}`);
+    const representanteLegalCompleto = qualParts.join(", ");
+
+    const tenantNome = (tenantRow?.nome_empresa as string ?? tenantRow?.name as string ?? "Empresa").trim();
+
+    // ── Assemble ContractData ───────────────────────────────────────────────
     const contractData = {
       dealTitulo: deal.titulo,
-      dealValor: valorFormatado,
+      dealValor: valorMensalFormatado,
       clienteNome: lead.nome ?? "Cliente",
       clienteEmail: lead.email ?? "",
       clienteTelefone: lead.telefone ?? "",
       clienteDocumento: lead.documento ?? undefined,
       clienteEmpresa: lead.empresa ?? undefined,
-      tenantNome: tenant?.nomeEmpresa ?? tenant?.name ?? "Empresa",
+      tenantNome,
       dataHoje,
       produtosServicos: selectedDeals.map((d) => d.titulo).join(", "),
       partnerName,
       partnerEmail,
       pedidosHtml,
+      // extended SaaS fields
+      clienteRazaoSocial,
+      clienteEndereco,
+      representanteNome: repNome,
+      representanteCargo: "Representante Legal",
+      representanteLegalCompleto,
+      valorMensalFormatado,
+      valorExtenso,
+      dataExtensoPTBR,
+      // settings
+      marcosEstadoCivil: settings.marcosEstadoCivil,
+      diaVencimento: settings.diaVencimento,
+      indiceReajuste: settings.indiceReajuste,
+      slaInicioHoras: settings.slaInicioHoras,
+      slaCriticoHoras: settings.slaCriticoHoras,
+      slaAltoHoras: settings.slaAltoHoras,
+      slaMedioHoras: settings.slaMedioHoras,
+      diaLimiteBloqueio: settings.diaLimiteBloqueio,
+      prazoQuarentena: settings.prazoQuarentena,
+      taxaReativacao: settings.taxaReativacao,
+      vigenciaContrato: settings.vigenciaContrato,
+      multaCancelamento: settings.multaCancelamento,
+      localAssinatura: settings.localAssinatura,
+      finalidadeSistema: settings.finalidadeSistema,
+      backupRetencaoDias: settings.backupRetencaoDias,
+      provedorInfra: settings.provedorInfra,
+      regiaoDatacenter: settings.regiaoDatacenter,
+      servicoEmail: settings.servicoEmail,
+      dpoNome: settings.dpoNome,
+      dpoEmail: settings.dpoEmail,
+      dpoTelefone: settings.dpoTelefone,
+      clienteDpoNome: repNome,
     };
 
+    // ── Render PDF ──────────────────────────────────────────────────────────
     let contentBase64: string | undefined;
     try {
       let pdfBuffer: Buffer;
       if (customTemplateHtml) {
+        // User uploaded a custom HTML template — use it
         pdfBuffer = await generateContractFromTemplate(customTemplateHtml, contractData);
       } else {
-        pdfBuffer = await generateContractPDF(contractData, !!tenant?.partnerId);
+        // Use the built-in VendorAI SaaS contract template
+        const interpolated = interpolateTemplate(VENDORAI_SAAS_CONTRACT_HTML, contractData);
+        const { renderHtmlToPdfBuffer } = await importPuppeteer();
+        pdfBuffer = await renderHtmlToPdfBuffer(interpolated);
       }
       contentBase64 = pdfBuffer.toString("base64");
     } catch (pdfErr) {
-      req.log.warn({ err: pdfErr, dealId }, "generate-contract: PDF generation failed");
+      req.log.warn({ err: pdfErr, dealId }, "generate-contract: PDF generation failed, sending without PDF");
     }
 
-    const partes = tenant?.partnerId ? "3 partes" : "2 partes";
+    const partes = partnerId ? "3 partes" : "2 partes";
 
     const doc = await createDocument({
-      name: `Contrato — ${deal.titulo}`,
+      name: `Contrato SaaS — ${clienteRazaoSocial}`,
       lang: "pt-BR",
       signers,
       content_base64: contentBase64,
     });
 
-    // Persist to deals table
+    // ── Persist ──────────────────────────────────────────────────────────────
     await db
       .update(dealsTable)
       .set({
@@ -333,7 +461,6 @@ router.post("/api/deals/:dealId/generate-contract", async (req, res) => {
       })
       .where(eq(dealsTable.id, dealId));
 
-    // Insert into contracts table
     const signUrl = doc.signers?.[0]?.sign_url ?? null;
     await db
       .insert(contractsTable)
@@ -362,6 +489,29 @@ router.post("/api/deals/:dealId/generate-contract", async (req, res) => {
     res.status(500).json({ error: `Erro ao gerar contrato: ${msg}` });
   }
 });
+
+// ─── Helper: import puppeteer to render HTML ──────────────────────────────────
+async function importPuppeteer() {
+  const puppeteer = (await import("puppeteer-core")).default;
+  return {
+    async renderHtmlToPdfBuffer(html: string): Promise<Buffer> {
+      const browser = await puppeteer.launch({
+        headless: true,
+        executablePath: process.env.PUPPETEER_EXECUTABLE_PATH ?? "/usr/bin/chromium",
+        args: ["--no-sandbox", "--disable-setuid-sandbox", "--disable-gpu"],
+      });
+      const page = await browser.newPage();
+      await page.setContent(html, { waitUntil: "load" });
+      const pdf = await page.pdf({
+        format: "A4",
+        printBackground: true,
+        margin: { top: "30px", bottom: "30px", left: "40px", right: "40px" },
+      });
+      await browser.close();
+      return Buffer.from(pdf);
+    },
+  };
+}
 
 function buildPedidosTable(deals: { titulo: string; valor: string | null; planoContratado: string | null }[]): string {
   if (deals.length === 0) return "";

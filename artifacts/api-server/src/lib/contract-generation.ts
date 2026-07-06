@@ -14,6 +14,163 @@ export interface ContractData {
   partnerName?: string;
   partnerEmail?: string;
   pedidosHtml?: string;
+  // ── VendorAI SaaS contract extended fields ──────────────────────────────────
+  clienteRazaoSocial?: string;
+  clienteEndereco?: string;
+  representanteNome?: string;
+  representanteCargo?: string;
+  representanteLegalCompleto?: string;
+  valorMensalFormatado?: string;
+  valorExtenso?: string;
+  dataExtensoPTBR?: string;
+  // settings-driven
+  marcosEstadoCivil?: string;
+  diaVencimento?: string;
+  indiceReajuste?: string;
+  slaInicioHoras?: string;
+  slaCriticoHoras?: string;
+  slaAltoHoras?: string;
+  slaMedioHoras?: string;
+  diaLimiteBloqueio?: string;
+  prazoQuarentena?: string;
+  taxaReativacao?: string;
+  vigenciaContrato?: string;
+  multaCancelamento?: string;
+  localAssinatura?: string;
+  finalidadeSistema?: string;
+  backupRetencaoDias?: string;
+  provedorInfra?: string;
+  regiaoDatacenter?: string;
+  servicoEmail?: string;
+  dpoNome?: string;
+  dpoEmail?: string;
+  dpoTelefone?: string;
+  clienteDpoNome?: string;
+}
+
+// ─── Default contract settings ────────────────────────────────────────────────
+
+export const DEFAULT_CONTRACT_SETTINGS: ContractSettings = {
+  marcosEstadoCivil: "casado",
+  diaVencimento: "10",
+  indiceReajuste: "IPCA/IBGE",
+  slaInicioHoras: "4",
+  slaCriticoHoras: "8",
+  slaAltoHoras: "24",
+  slaMedioHoras: "72",
+  diaLimiteBloqueio: "5º (quinto) dia útil",
+  prazoQuarentena: "30 (trinta)",
+  taxaReativacao: "R$ 250,00",
+  vigenciaContrato: "12 (doze) meses",
+  multaCancelamento: "30% (trinta por cento)",
+  localAssinatura: "Florianópolis/SC",
+  finalidadeSistema: "Gestão comercial com inteligência artificial — CRM, SDR, geração de leads e automação de mensagens",
+  backupRetencaoDias: "30",
+  provedorInfra: "Supabase (PostgreSQL gerenciado)",
+  regiaoDatacenter: "Brasil (São Paulo)",
+  servicoEmail: "Resend",
+  dpoNome: "Marcos Paulo Reisdorfer",
+  dpoEmail: "dpo@vendorai.com.br",
+  dpoTelefone: "",
+};
+
+export interface ContractSettings {
+  marcosEstadoCivil: string;
+  diaVencimento: string;
+  indiceReajuste: string;
+  slaInicioHoras: string;
+  slaCriticoHoras: string;
+  slaAltoHoras: string;
+  slaMedioHoras: string;
+  diaLimiteBloqueio: string;
+  prazoQuarentena: string;
+  taxaReativacao: string;
+  vigenciaContrato: string;
+  multaCancelamento: string;
+  localAssinatura: string;
+  finalidadeSistema: string;
+  backupRetencaoDias: string;
+  provedorInfra: string;
+  regiaoDatacenter: string;
+  servicoEmail: string;
+  dpoNome: string;
+  dpoEmail: string;
+  dpoTelefone: string;
+}
+
+// ─── Number to words (Brazilian Portuguese, monetary) ─────────────────────────
+
+const ONES = [
+  "", "um", "dois", "três", "quatro", "cinco", "seis", "sete", "oito", "nove",
+  "dez", "onze", "doze", "treze", "quatorze", "quinze", "dezesseis", "dezessete",
+  "dezoito", "dezenove",
+];
+const TENS = ["", "", "vinte", "trinta", "quarenta", "cinquenta", "sessenta", "setenta", "oitenta", "noventa"];
+const HUNDREDS = [
+  "", "cento", "duzentos", "trezentos", "quatrocentos", "quinhentos",
+  "seiscentos", "setecentos", "oitocentos", "novecentos",
+];
+const SPECIAL_HUNDREDS = { 100: "cem" } as Record<number, string>;
+
+function threeDigits(n: number): string {
+  if (n === 0) return "";
+  if (n === 100) return "cem";
+  const h = Math.floor(n / 100);
+  const rest = n % 100;
+  const hundredPart = h > 0 ? HUNDREDS[h] : "";
+  let restPart = "";
+  if (rest > 0) {
+    if (rest < 20) {
+      restPart = ONES[rest];
+    } else {
+      const t = Math.floor(rest / 10);
+      const o = rest % 10;
+      restPart = TENS[t] + (o > 0 ? ` e ${ONES[o]}` : "");
+    }
+  }
+  if (hundredPart && restPart) return `${hundredPart} e ${restPart}`;
+  return hundredPart || restPart;
+}
+
+export function numberToWordsPTBR(value: number): string {
+  if (value === 0) return "zero reais";
+  const intPart = Math.floor(value);
+  const centsPart = Math.round((value - intPart) * 100);
+
+  function integerToWords(n: number): string {
+    if (n === 0) return "zero";
+    if (n < 1000) return threeDigits(n);
+    if (n < 1_000_000) {
+      const thousands = Math.floor(n / 1000);
+      const rem = n % 1000;
+      const thousandWord = thousands === 1 ? "mil" : `${threeDigits(thousands)} mil`;
+      return rem > 0 ? `${thousandWord} e ${threeDigits(rem)}` : thousandWord;
+    }
+    if (n < 1_000_000_000) {
+      const millions = Math.floor(n / 1_000_000);
+      const rem = n % 1_000_000;
+      const milWord = millions === 1 ? "um milhão" : `${threeDigits(millions)} milhões`;
+      return rem > 0 ? `${milWord} e ${integerToWords(rem)}` : milWord;
+    }
+    return String(n);
+  }
+
+  const reaisWord = intPart === 1 ? "real" : "reais";
+  const centavosWord = centsPart === 1 ? "centavo" : "centavos";
+
+  if (intPart === 0) return `${integerToWords(centsPart)} ${centavosWord}`;
+  if (centsPart === 0) return `${integerToWords(intPart)} ${reaisWord}`;
+  return `${integerToWords(intPart)} ${reaisWord} e ${integerToWords(centsPart)} ${centavosWord}`;
+}
+
+// ─── Date formatting (extended Portuguese) ───────────────────────────────────
+
+export function dateToExtensoPTBR(date: Date = new Date()): string {
+  return date.toLocaleDateString("pt-BR", {
+    day: "numeric",
+    month: "long",
+    year: "numeric",
+  });
 }
 
 // ─── Default HTML template ────────────────────────────────────────────────────
@@ -95,6 +252,7 @@ function buildContractHtml(data: ContractData, isThreeParty: boolean): string {
 
 export function interpolateTemplate(templateHtml: string, data: ContractData): string {
   const vars: Record<string, string> = {
+    // legacy variables (backward compat)
     cliente_nome: data.clienteNome,
     cliente_email: data.clienteEmail,
     cliente_telefone: data.clienteTelefone,
@@ -108,6 +266,38 @@ export function interpolateTemplate(templateHtml: string, data: ContractData): s
     parceiro_nome: data.partnerName ?? "",
     parceiro_email: data.partnerEmail ?? "",
     pedidos_lista: data.pedidosHtml ?? "",
+    // ── extended SaaS contract variables ──────────────────────────────────────
+    cliente_razao_social: data.clienteRazaoSocial ?? data.clienteEmpresa ?? data.clienteNome,
+    cliente_cnpj: data.clienteDocumento ?? "",
+    cliente_endereco: data.clienteEndereco ?? "",
+    representante_nome: data.representanteNome ?? data.clienteNome,
+    representante_cargo: data.representanteCargo ?? "Representante Legal",
+    representante_legal_completo: data.representanteLegalCompleto ?? data.clienteNome,
+    valor_mensal: data.valorMensalFormatado ?? data.dealValor,
+    valor_extenso: data.valorExtenso ?? "",
+    data_extenso: data.dataExtensoPTBR ?? data.dataHoje,
+    marcos_estado_civil: data.marcosEstadoCivil ?? "casado",
+    dia_vencimento: data.diaVencimento ?? "10",
+    indice_reajuste: data.indiceReajuste ?? "IPCA/IBGE",
+    sla_inicio_horas: data.slaInicioHoras ?? "4",
+    sla_critico_horas: data.slaCriticoHoras ?? "8",
+    sla_alto_horas: data.slaAltoHoras ?? "24",
+    sla_medio_horas: data.slaMedioHoras ?? "72",
+    dia_limite_bloqueio: data.diaLimiteBloqueio ?? "5º dia útil",
+    prazo_quarentena: data.prazoQuarentena ?? "30 (trinta)",
+    taxa_reativacao: data.taxaReativacao ?? "R$ 250,00",
+    vigencia_contrato: data.vigenciaContrato ?? "12 (doze) meses",
+    multa_cancelamento: data.multaCancelamento ?? "30% (trinta por cento)",
+    local_assinatura: data.localAssinatura ?? "Florianópolis/SC",
+    finalidade_sistema: data.finalidadeSistema ?? "Gestão comercial com inteligência artificial",
+    backup_retencao_dias: data.backupRetencaoDias ?? "30",
+    provedor_infra: data.provedorInfra ?? "Supabase",
+    regiao_datacenter: data.regiaoDatacenter ?? "Brasil (São Paulo)",
+    servico_email: data.servicoEmail ?? "Resend",
+    dpo_nome: data.dpoNome ?? "",
+    dpo_email: data.dpoEmail ?? "",
+    dpo_telefone: data.dpoTelefone ?? "",
+    cliente_dpo_nome: data.clienteDpoNome ?? data.representanteNome ?? data.clienteNome,
   };
 
   return templateHtml.replace(/\{\{(\w+)\}\}/g, (_, key: string) => {
@@ -165,4 +355,27 @@ export const CONTRACT_VARIABLES = [
   { variable: "{{produtos_servicos}}", label: "Produtos/serviços (resumo)" },
   { variable: "{{pedidos_lista}}", label: "Tabela de pedidos selecionados" },
   { variable: "{{parceiro_nome}}", label: "Nome do parceiro (se houver)" },
+  // SaaS contract extended
+  { variable: "{{cliente_razao_social}}", label: "Razão social do cliente" },
+  { variable: "{{cliente_cnpj}}", label: "CNPJ do cliente" },
+  { variable: "{{cliente_endereco}}", label: "Endereço completo do cliente" },
+  { variable: "{{representante_nome}}", label: "Nome do representante legal" },
+  { variable: "{{representante_cargo}}", label: "Cargo do representante" },
+  { variable: "{{representante_legal_completo}}", label: "Qualificação completa do representante" },
+  { variable: "{{valor_mensal}}", label: "Valor mensal formatado" },
+  { variable: "{{valor_extenso}}", label: "Valor mensal por extenso" },
+  { variable: "{{data_extenso}}", label: "Data por extenso" },
+  { variable: "{{dia_vencimento}}", label: "Dia de vencimento" },
+  { variable: "{{indice_reajuste}}", label: "Índice de reajuste" },
+  { variable: "{{sla_inicio_horas}}", label: "SLA — início do atendimento (horas)" },
+  { variable: "{{sla_critico_horas}}", label: "SLA — resolução crítica (horas)" },
+  { variable: "{{sla_alto_horas}}", label: "SLA — resolução alta (horas)" },
+  { variable: "{{sla_medio_horas}}", label: "SLA — resolução média/baixa (horas)" },
+  { variable: "{{dia_limite_bloqueio}}", label: "Dia limite para bloqueio automático" },
+  { variable: "{{taxa_reativacao}}", label: "Taxa de reativação" },
+  { variable: "{{vigencia_contrato}}", label: "Vigência do contrato" },
+  { variable: "{{multa_cancelamento}}", label: "Multa por cancelamento antecipado" },
+  { variable: "{{local_assinatura}}", label: "Local de assinatura" },
+  { variable: "{{dpo_nome}}", label: "Nome do DPO (Encarregado de Dados)" },
+  { variable: "{{dpo_email}}", label: "E-mail do DPO" },
 ];

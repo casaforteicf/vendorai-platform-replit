@@ -192,6 +192,14 @@ async function runStartupMigrations() {
     logger.warn({ err }, "startup migrations: contract_template columns skipped");
   }
 
+  // ── Contract settings JSONB on tenants ──────────────────────────────────────
+  try {
+    await db.execute(sql`ALTER TABLE tenants ADD COLUMN IF NOT EXISTS contract_settings JSONB NOT NULL DEFAULT '{}'`);
+    logger.info("startup migrations: contract_settings column OK");
+  } catch (err) {
+    logger.warn({ err }, "startup migrations: contract_settings skipped");
+  }
+
   // ── Content Studio Uploads ───────────────────────────────────────────────────
   try {
     await db.execute(sql`

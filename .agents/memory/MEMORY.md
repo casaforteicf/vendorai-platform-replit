@@ -23,3 +23,4 @@
 - [ARQDOR Orchestrator](arqdor-orchestrator.md) — ArqOrchestrator em src/lib/arqdor/orchestrator/; detectAll+threshold para multi-specialist; max 3 por resposta; adicionar especialista = 1 arquivo + 1 linha no array.
 - [Startup migration pattern](startup-migration.md) — drizzle-kit push é lento/interativo; usar runStartupMigrations() com CREATE TABLE IF NOT EXISTS no index.ts do api-server como fallback confiável.
 - [Project Phoenix UX](project-phoenix-ux.md) — PHX=light shell, T=dark modules; FLOW_STEPS nav; ✨ Gerar Render imutável; Copilot inicia colapsado.
+- [VendorAI SaaS contract auto-gen](vendorai-saas-contract.md) — template HTML completo em vendorai-contract-template.ts; contract_settings JSONB no tenant; numberToWordsPTBR para valor por extenso; settings UI em Configuracoes.tsx.

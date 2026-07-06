@@ -133,6 +133,9 @@ import {
   CalendarPlus,
   CalendarHeart,
   Receipt,
+  Settings2,
+  ChevronDown,
+  ChevronUp,
 } from "lucide-react";
 import { SiteGeneratorTab } from "./SiteGenerator";
 import { SdrTemplatesSection } from "@/components/SdrTemplatesSection";
@@ -2150,6 +2153,11 @@ export default function Configuracoes() {
           {/* Modelo de Contrato — admin only */}
           {(user?.platformRole === "tenant_admin" || user?.platformRole === "super_admin") && (
             <ContractTemplateSection tenantId={tenantId} />
+          )}
+
+          {/* Configurações do Contrato SaaS — admin only */}
+          {(user?.platformRole === "tenant_admin" || user?.platformRole === "super_admin") && (
+            <ContractSettingsSection tenantId={tenantId} />
           )}
         </TabsContent>
 
@@ -4345,6 +4353,222 @@ function ContractTemplateSection({ tenantId }: { tenantId: string }) {
           </div>
         )}
       </div>
+    </div>
+  );
+}
+
+// ─── ContractSettingsSection ──────────────────────────────────────────────────
+
+interface ContractSettings {
+  marcosEstadoCivil: string;
+  diaVencimento: string;
+  indiceReajuste: string;
+  slaInicioHoras: string;
+  slaCriticoHoras: string;
+  slaAltoHoras: string;
+  slaMedioHoras: string;
+  diaLimiteBloqueio: string;
+  prazoQuarentena: string;
+  taxaReativacao: string;
+  vigenciaContrato: string;
+  multaCancelamento: string;
+  localAssinatura: string;
+  finalidadeSistema: string;
+  backupRetencaoDias: string;
+  provedorInfra: string;
+  regiaoDatacenter: string;
+  servicoEmail: string;
+  dpoNome: string;
+  dpoEmail: string;
+  dpoTelefone: string;
+}
+
+function ContractSettingsSection({ tenantId }: { tenantId: string }) {
+  const { token } = useAuth();
+  const { toast } = useToast();
+  const [open, setOpen] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [form, setForm] = useState<ContractSettings>({
+    marcosEstadoCivil: "casado",
+    diaVencimento: "10",
+    indiceReajuste: "IPCA/IBGE",
+    slaInicioHoras: "4",
+    slaCriticoHoras: "8",
+    slaAltoHoras: "24",
+    slaMedioHoras: "72",
+    diaLimiteBloqueio: "5º (quinto) dia útil",
+    prazoQuarentena: "30 (trinta)",
+    taxaReativacao: "R$ 250,00",
+    vigenciaContrato: "12 (doze) meses",
+    multaCancelamento: "30% (trinta por cento)",
+    localAssinatura: "Florianópolis/SC",
+    finalidadeSistema: "Gestão comercial com inteligência artificial — CRM, SDR, geração de leads e automação de mensagens",
+    backupRetencaoDias: "30",
+    provedorInfra: "Supabase (PostgreSQL gerenciado)",
+    regiaoDatacenter: "Brasil (São Paulo)",
+    servicoEmail: "Resend",
+    dpoNome: "Marcos Paulo Reisdorfer",
+    dpoEmail: "dpo@vendorai.com.br",
+    dpoTelefone: "",
+  });
+
+  const settingsQuery = useQuery({
+    queryKey: ["contract-settings", tenantId],
+    queryFn: async () => {
+      const res = await fetch(`/api/tenants/${tenantId}/contract-settings`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (!res.ok) throw new Error("Erro ao buscar configurações");
+      const data = await res.json() as { settings: ContractSettings };
+      return data.settings;
+    },
+    enabled: !!token && open,
+  });
+
+  useEffect(() => {
+    if (settingsQuery.data) setForm(settingsQuery.data);
+  }, [settingsQuery.data]);
+
+  async function handleSave() {
+    setSaving(true);
+    try {
+      const res = await fetch(`/api/tenants/${tenantId}/contract-settings`, {
+        method: "PUT",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify(form),
+      });
+      if (!res.ok) throw new Error("Erro ao salvar");
+      toast({ title: "Parâmetros do contrato salvos!" });
+    } catch {
+      toast({ title: "Erro ao salvar parâmetros", variant: "destructive" });
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  function field(
+    key: keyof ContractSettings,
+    label: string,
+    placeholder?: string,
+    fullWidth?: boolean,
+  ) {
+    return (
+      <div key={key} className={fullWidth ? "col-span-2" : ""}>
+        <label className="text-xs font-medium text-muted-foreground block mb-1">{label}</label>
+        <Input
+          value={form[key]}
+          onChange={(e) => setForm((f) => ({ ...f, [key]: e.target.value }))}
+          placeholder={placeholder ?? label}
+          className="h-8 text-sm"
+        />
+      </div>
+    );
+  }
+
+  return (
+    <div className="rounded-xl border bg-card p-6 space-y-4">
+      <button
+        type="button"
+        className="w-full flex items-center justify-between"
+        onClick={() => setOpen((o) => !o)}
+      >
+        <div className="flex items-center gap-2">
+          <Settings2 className="h-4 w-4 text-primary" />
+          <div className="text-left">
+            <p className="font-semibold text-sm">Parâmetros do Contrato SaaS</p>
+            <p className="text-xs text-muted-foreground">
+              Dia de vencimento, SLA, taxas de reativação, DPO e outros campos variáveis do contrato automático.
+            </p>
+          </div>
+        </div>
+        {open
+          ? <ChevronUp className="h-4 w-4 text-muted-foreground shrink-0" />
+          : <ChevronDown className="h-4 w-4 text-muted-foreground shrink-0" />}
+      </button>
+
+      {open && (
+        <>
+          {settingsQuery.isLoading ? (
+            <div className="space-y-2 pt-2">
+              {[...Array(4)].map((_, i) => (
+                <div key={i} className="h-8 w-full animate-pulse bg-muted rounded" />
+              ))}
+            </div>
+          ) : (
+            <div className="space-y-6 pt-2 border-t mt-2">
+
+              {/* Comercial */}
+              <div className="pt-4">
+                <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-3">
+                  Comercial
+                </p>
+                <div className="grid grid-cols-2 gap-3">
+                  {field("diaVencimento", "Dia de vencimento", "ex: 10")}
+                  {field("indiceReajuste", "Índice de reajuste", "ex: IPCA/IBGE")}
+                  {field("taxaReativacao", "Taxa de reativação", "ex: R$ 250,00")}
+                  {field("multaCancelamento", "Multa por cancelamento antecipado", "ex: 30% (trinta por cento)")}
+                  {field("vigenciaContrato", "Vigência do contrato", "ex: 12 (doze) meses")}
+                  {field("diaLimiteBloqueio", "Dia limite para bloqueio automático", "ex: 5º dia útil")}
+                  {field("prazoQuarentena", "Prazo de quarentena", "ex: 30 (trinta)")}
+                  {field("localAssinatura", "Local de assinatura", "ex: Florianópolis/SC")}
+                </div>
+              </div>
+
+              {/* SLA */}
+              <div>
+                <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-3">
+                  SLA — Níveis de atendimento
+                </p>
+                <div className="grid grid-cols-2 gap-3">
+                  {field("slaInicioHoras", "Início do atendimento (h úteis)", "ex: 4")}
+                  {field("slaCriticoHoras", "Resolução crítica (h úteis)", "ex: 8")}
+                  {field("slaAltoHoras", "Resolução alta (h úteis)", "ex: 24")}
+                  {field("slaMedioHoras", "Resolução média/baixa (h úteis)", "ex: 72")}
+                </div>
+              </div>
+
+              {/* DPO / LGPD */}
+              <div>
+                <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-3">
+                  DPO / LGPD — Anexo Técnico (DPA)
+                </p>
+                <div className="grid grid-cols-2 gap-3">
+                  {field("dpoNome", "Nome do Encarregado (DPO)")}
+                  {field("dpoEmail", "E-mail do DPO", "ex: dpo@vendorai.com.br")}
+                  {field("dpoTelefone", "Telefone do DPO", "ex: (48) 99999-9999")}
+                  {field("provedorInfra", "Provedor de infraestrutura", "ex: Supabase")}
+                  {field("regiaoDatacenter", "Região do datacenter", "ex: Brasil (São Paulo)")}
+                  {field("servicoEmail", "Serviço de e-mail transacional", "ex: Resend")}
+                  {field("backupRetencaoDias", "Retenção de backup (dias)", "ex: 30")}
+                  {field("finalidadeSistema", "Finalidade do sistema (DPA)", undefined, true)}
+                </div>
+              </div>
+
+              {/* Outros */}
+              <div>
+                <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-3">
+                  Outros
+                </p>
+                <div className="grid grid-cols-2 gap-3">
+                  {field("marcosEstadoCivil", "Estado civil do Marcos (Vendor.AI)", "ex: casado")}
+                </div>
+              </div>
+
+              <div className="flex justify-end pt-2">
+                <Button onClick={handleSave} disabled={saving} size="sm" className="gap-2">
+                  {saving
+                    ? <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                    : <Save className="h-3.5 w-3.5" />}
+                  {saving ? "Salvando..." : "Salvar parâmetros"}
+                </Button>
+              </div>
+            </div>
+          )}
+        </>
+      )}
     </div>
   );
 }
