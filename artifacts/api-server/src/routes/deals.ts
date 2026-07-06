@@ -113,7 +113,24 @@ router.get("/deals/:id", async (req, res) => {
     return;
   }
 
-  res.json(deal);
+  // Attach lead data when requested (for contract generation modal)
+  let lead = null;
+  if (deal.leadId && req.query.includeLead === "1") {
+    const [leadRow] = await db
+      .select({
+        id: leadsTable.id,
+        nome: leadsTable.nome,
+        email: leadsTable.email,
+        telefone: leadsTable.telefone,
+        empresa: leadsTable.empresa,
+        documento: leadsTable.documento,
+      })
+      .from(leadsTable)
+      .where(eq(leadsTable.id, deal.leadId));
+    lead = leadRow ?? null;
+  }
+
+  res.json({ ...deal, lead });
 });
 
 router.patch("/deals/:id", async (req, res) => {

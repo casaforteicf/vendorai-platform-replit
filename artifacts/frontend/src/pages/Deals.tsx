@@ -60,7 +60,8 @@ import {
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
-import { Plus, GripVertical, DollarSign, User, UserRound, TrendingUp, Link2, Copy, CheckCheck, FileUp, Loader2, Sparkles, BarChart3, RefreshCw, Users, Package, AlertTriangle, Paperclip, FileCheck, CreditCard, HandCoins, Flame, Cloud, Snowflake, FileText, Clock, CalendarDays } from "lucide-react";
+import { Plus, GripVertical, DollarSign, User, UserRound, TrendingUp, Link2, Copy, CheckCheck, FileUp, Loader2, Sparkles, BarChart3, RefreshCw, Users, Package, AlertTriangle, Paperclip, FileCheck, CreditCard, HandCoins, Flame, Cloud, Snowflake, FileText, Clock, CalendarDays, Pen } from "lucide-react";
+import { ContractGeneratorModal } from "@/components/ContractGeneratorModal";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import {
   DealEtapaSaas,
@@ -559,6 +560,11 @@ function DealCard({
         );
       })()}
 
+      {/* Gerar contrato — ação rápida */}
+      {!overlay && (deal.tipoFechamento === "contrato" || deal.tipoFechamento === "pedido_e_contrato") && deal.etapa !== "perdido" && (
+        <ContractCardButton deal={deal} />
+      )}
+
       {/* Agendar reunião — ação rápida */}
       {onAgendar && !overlay && (
         <div
@@ -575,6 +581,38 @@ function DealCard({
         </div>
       )}
     </div>
+  );
+}
+
+function ContractCardButton({ deal }: { deal: Deal }) {
+  const [open, setOpen] = useState(false);
+  const alreadySent = deal.contractStatus === "sent";
+
+  return (
+    <>
+      <div
+        className="pt-1 border-t border-border/50"
+        onClick={(e) => { e.stopPropagation(); setOpen(true); }}
+      >
+        <button
+          type="button"
+          className={`w-full flex items-center justify-center gap-1.5 text-[11px] font-medium rounded-md py-1 transition-colors ${
+            alreadySent
+              ? "text-green-700 hover:text-green-800 hover:bg-green-50"
+              : "text-violet-600 hover:text-violet-800 hover:bg-violet-50"
+          }`}
+        >
+          <Pen className="h-3 w-3 shrink-0" />
+          {alreadySent ? "Reenviar contrato" : "Gerar contrato"}
+        </button>
+      </div>
+      <ContractGeneratorModal
+        open={open}
+        onClose={() => setOpen(false)}
+        dealId={deal.id}
+        tenantId={deal.tenantId}
+      />
+    </>
   );
 }
 

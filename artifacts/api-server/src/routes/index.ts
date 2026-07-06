@@ -79,6 +79,7 @@ import siteRouter from "./site";
 import spinRouter from "./spin";
 import supportRouter from "./support";
 import adminBugReportsRouter from "./admin_bug_reports";
+import contractTemplatesRouter from "./contract_templates";
 import { authenticate, blockPartnerFromCRM, blockSuspendedTenants, blockExpiredDemo, requireRole, requireSameTenanOrSuperAdmin } from "../middlewares/auth";
 import { eq } from "drizzle-orm";
 import { db, tenantsTable } from "@workspace/db";
@@ -291,6 +292,9 @@ router.use(spinRouter);
 
 // Support chat
 router.use(supportRouter);
+
+// Contract Templates Hub
+router.use(contractTemplatesRouter);
 
 export { requireRole, requireSameTenanOrSuperAdmin };
 export default router;

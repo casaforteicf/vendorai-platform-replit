@@ -182,6 +182,15 @@ async function runStartupMigrations() {
   } catch (err) {
     logger.warn({ err }, "startup migrations: arch_office_os skipped (may already exist)");
   }
+
+  // ── Contract template columns on tenants ────────────────────────────────────
+  try {
+    await db.execute(sql`ALTER TABLE tenants ADD COLUMN IF NOT EXISTS contract_template_html TEXT`);
+    await db.execute(sql`ALTER TABLE tenants ADD COLUMN IF NOT EXISTS contract_template_name TEXT`);
+    logger.info("startup migrations: contract_template columns OK");
+  } catch (err) {
+    logger.warn({ err }, "startup migrations: contract_template columns skipped");
+  }
 }
 
 // ─── Boot sequence ────────────────────────────────────────────────────────────

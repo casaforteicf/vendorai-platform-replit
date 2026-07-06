@@ -5,7 +5,7 @@ import { useForm } from "react-hook-form";
 type UserFunction = "vendedor" | "financeiro" | "suporte" | "entrega" | "administrador" | "outro";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
-import { useQueryClient } from "@tanstack/react-query";
+import { useQueryClient, useQuery, useMutation } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
 import { useLocation } from "wouter";
 import {
@@ -2146,6 +2146,11 @@ export default function Configuracoes() {
               )}
             </div>
           )}
+
+          {/* Modelo de Contrato — admin only */}
+          {(user?.platformRole === "tenant_admin" || user?.platformRole === "super_admin") && (
+            <ContractTemplateSection tenantId={tenantId} />
+          )}
         </TabsContent>
 
         {/* ── Tab: Agentes de IA ──────────────────────────────────────────── */}
@@ -4084,6 +4089,261 @@ function CalendarSettingsTab({ tenantId }: { tenantId: string }) {
           {(create.isPending || update.isPending) && <Loader2 className="h-4 w-4 animate-spin mr-2" />}
           Salvar
         </Button>
+      </div>
+    </div>
+  );
+}
+
+// ── Contract Template Section ─────────────────────────────────────────────────
+
+const CONTRACT_VARIABLES = [
+  { variable: "{{cliente_nome}}", label: "Nome do cliente" },
+  { variable: "{{cliente_email}}", label: "E-mail do cliente" },
+  { variable: "{{cliente_telefone}}", label: "Telefone do cliente" },
+  { variable: "{{cliente_cpf_cnpj}}", label: "CPF/CNPJ do cliente" },
+  { variable: "{{cliente_empresa}}", label: "Empresa do cliente" },
+  { variable: "{{deal_titulo}}", label: "Título do negócio" },
+  { variable: "{{deal_valor}}", label: "Valor total (formatado em R$)" },
+  { variable: "{{empresa_nome}}", label: "Nome da sua empresa" },
+  { variable: "{{data_hoje}}", label: "Data de hoje por extenso" },
+  { variable: "{{produtos_servicos}}", label: "Produtos/serviços (resumo)" },
+  { variable: "{{pedidos_lista}}", label: "Tabela HTML dos pedidos selecionados" },
+  { variable: "{{parceiro_nome}}", label: "Nome do parceiro (se houver)" },
+];
+
+function ContractTemplateSection({ tenantId }: { tenantId: string }) {
+  const { token } = useAuth();
+  const { toast } = useToast();
+  const queryClient = useQueryClient();
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [uploading, setUploading] = useState(false);
+  const [showVars, setShowVars] = useState(false);
+
+  const templateQuery = useQuery({
+    queryKey: ["contract-template", tenantId],
+    queryFn: async () => {
+      const res = await fetch(`/api/tenants/${tenantId}/contract-template`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (!res.ok) return { hasTemplate: false, templateName: null, templateHtml: null };
+      return res.json() as Promise<{ hasTemplate: boolean; templateName: string | null; templateHtml: string | null }>;
+    },
+    enabled: !!tenantId,
+  });
+
+  const deleteMutation = useMutation({
+    mutationFn: async () => {
+      const res = await fetch(`/api/tenants/${tenantId}/contract-template`, {
+        method: "DELETE",
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (!res.ok) throw new Error("Erro ao remover modelo");
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["contract-template", tenantId] });
+      toast({ title: "Modelo removido com sucesso." });
+    },
+    onError: (err: Error) => {
+      toast({ title: "Erro ao remover", description: err.message, variant: "destructive" });
+    },
+  });
+
+  async function handleFileChange(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    if (!file.name.endsWith(".html") && !file.name.endsWith(".htm")) {
+      toast({ title: "Arquivo inválido", description: "Apenas arquivos .html são aceitos.", variant: "destructive" });
+      return;
+    }
+
+    setUploading(true);
+    try {
+      const formData = new FormData();
+      formData.append("file", file);
+      const res = await fetch(`/api/tenants/${tenantId}/contract-template`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${token}` },
+        body: formData,
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error ?? "Falha no upload");
+      queryClient.invalidateQueries({ queryKey: ["contract-template", tenantId] });
+      toast({ title: "Modelo enviado!", description: `${file.name} salvo com sucesso.` });
+    } catch (err) {
+      toast({ title: "Erro no upload", description: err instanceof Error ? err.message : "Erro desconhecido", variant: "destructive" });
+    } finally {
+      setUploading(false);
+      if (fileInputRef.current) fileInputRef.current.value = "";
+    }
+  }
+
+  function downloadDefaultTemplate() {
+    const html = `<!DOCTYPE html>
+<html lang="pt-BR">
+<head><meta charset="UTF-8"><title>Contrato</title>
+<style>
+  body { font-family: Arial, sans-serif; line-height: 1.6; max-width: 800px; margin: 0 auto; padding: 40px; color: #333; }
+  h1 { text-align: center; font-size: 22px; }
+  h2 { font-size: 16px; margin-top: 24px; border-bottom: 1px solid #ddd; padding-bottom: 4px; }
+  .partes { background: #f8f9fa; padding: 16px; border-radius: 8px; margin: 16px 0; }
+  .assinaturas { margin-top: 60px; display: flex; justify-content: space-between; }
+  .assinatura { flex: 1; text-align: center; border-top: 1px solid #333; padding-top: 8px; }
+</style>
+</head>
+<body>
+  <h1>CONTRATO DE PRESTAÇÃO DE SERVIÇOS</h1>
+  <p style="text-align:center;color:#666;">Ref: {{deal_titulo}}</p>
+
+  <div class="partes">
+    <p><strong>CONTRATADA:</strong> {{empresa_nome}}</p>
+    <p><strong>CONTRATANTE:</strong> {{cliente_nome}}, CPF/CNPJ: {{cliente_cpf_cnpj}}, e-mail: {{cliente_email}}, tel: {{cliente_telefone}}</p>
+  </div>
+
+  <h2>1. Objeto</h2>
+  <p>{{produtos_servicos}}</p>
+  {{pedidos_lista}}
+
+  <h2>2. Valor</h2>
+  <p><strong>{{deal_valor}}</strong></p>
+
+  <h2>3. Vigência</h2>
+  <p>O contrato entra em vigor na data de assinatura, conforme proposta comercial aceita.</p>
+
+  <h2>4. Assinatura Eletrônica</h2>
+  <p>Este contrato será assinado eletronicamente via ZapSign, nos termos da Lei 14.063/2020.</p>
+
+  <p style="text-align:right;margin-top:40px;color:#666;">{{data_hoje}}</p>
+
+  <div class="assinaturas">
+    <div class="assinatura"><p><strong>Contratada</strong><br/>{{empresa_nome}}</p></div>
+    <div class="assinatura"><p><strong>Contratante</strong><br/>{{cliente_nome}}</p></div>
+  </div>
+</body>
+</html>`;
+    const blob = new Blob([html], { type: "text/html" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = "modelo-contrato.html";
+    a.click();
+    URL.revokeObjectURL(url);
+  }
+
+  return (
+    <div className="rounded-xl border bg-card p-6 space-y-4">
+      <div>
+        <h2 className="font-semibold text-base flex items-center gap-2">
+          <FileText className="h-4 w-4 text-primary" />
+          Modelo de Contrato
+        </h2>
+        <p className="text-sm text-muted-foreground mt-0.5">
+          Faça upload de um arquivo HTML com as variáveis do sistema. O modelo será usado ao gerar contratos automaticamente via ZapSign.
+        </p>
+      </div>
+
+      {templateQuery.isLoading ? (
+        <div className="h-16 w-full animate-pulse bg-muted rounded" />
+      ) : templateQuery.data?.hasTemplate ? (
+        <div className="rounded-lg bg-violet-50 border border-violet-200 p-4 flex items-start gap-3">
+          <FileText className="h-5 w-5 text-violet-600 mt-0.5 shrink-0" />
+          <div className="flex-1 min-w-0">
+            <p className="text-sm font-medium text-violet-800">Modelo ativo</p>
+            <p className="text-xs text-violet-600 truncate">{templateQuery.data.templateName}</p>
+          </div>
+          <div className="flex items-center gap-2 shrink-0">
+            <Button
+              variant="outline"
+              size="sm"
+              className="gap-1.5 text-xs"
+              onClick={() => fileInputRef.current?.click()}
+              disabled={uploading}
+            >
+              <Upload className="h-3.5 w-3.5" />
+              Trocar
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              className="gap-1.5 text-xs text-destructive hover:bg-red-50"
+              onClick={() => deleteMutation.mutate()}
+              disabled={deleteMutation.isPending}
+            >
+              <X className="h-3.5 w-3.5" />
+              Remover
+            </Button>
+          </div>
+        </div>
+      ) : (
+        <div className="rounded-lg border-2 border-dashed border-border p-6 text-center space-y-3">
+          <div className="flex justify-center">
+            <div className="rounded-full bg-muted p-3">
+              <Upload className="h-5 w-5 text-muted-foreground" />
+            </div>
+          </div>
+          <div>
+            <p className="text-sm font-medium">Nenhum modelo carregado</p>
+            <p className="text-xs text-muted-foreground">O sistema usará o modelo padrão até você enviar o seu.</p>
+          </div>
+          <div className="flex items-center justify-center gap-2 flex-wrap">
+            <Button
+              variant="outline"
+              size="sm"
+              className="gap-1.5"
+              onClick={() => fileInputRef.current?.click()}
+              disabled={uploading}
+            >
+              {uploading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Upload className="h-3.5 w-3.5" />}
+              {uploading ? "Enviando..." : "Enviar modelo HTML"}
+            </Button>
+            <Button
+              variant="ghost"
+              size="sm"
+              className="gap-1.5 text-muted-foreground"
+              onClick={downloadDefaultTemplate}
+            >
+              <Download className="h-3.5 w-3.5" />
+              Baixar modelo padrão
+            </Button>
+          </div>
+        </div>
+      )}
+
+      <input
+        ref={fileInputRef}
+        type="file"
+        accept=".html,.htm"
+        className="hidden"
+        onChange={handleFileChange}
+      />
+
+      {/* Variables reference */}
+      <div className="space-y-2">
+        <button
+          type="button"
+          className="flex items-center gap-2 text-xs text-muted-foreground hover:text-foreground transition-colors"
+          onClick={() => setShowVars((v) => !v)}
+        >
+          <Eye className="h-3.5 w-3.5" />
+          {showVars ? "Ocultar" : "Ver"} variáveis disponíveis para o modelo
+        </button>
+        {showVars && (
+          <div className="rounded-lg bg-muted/40 p-3 space-y-1.5">
+            <p className="text-xs font-medium text-muted-foreground mb-2">
+              Use estas variáveis no seu HTML — elas serão substituídas automaticamente:
+            </p>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-1">
+              {CONTRACT_VARIABLES.map(({ variable, label }) => (
+                <div key={variable} className="flex items-start gap-2 text-xs">
+                  <code className="bg-background border rounded px-1.5 py-0.5 font-mono text-primary shrink-0">
+                    {variable}
+                  </code>
+                  <span className="text-muted-foreground pt-0.5">{label}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );

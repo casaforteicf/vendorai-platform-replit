@@ -13,15 +13,26 @@ export interface ContractData {
   produtosServicos: string;
   partnerName?: string;
   partnerEmail?: string;
+  pedidosHtml?: string;
 }
+
+// ─── Default HTML template ────────────────────────────────────────────────────
 
 function buildContractHtml(data: ContractData, isThreeParty: boolean): string {
   const partes = isThreeParty
-    ? `<p><strong>CONTRATADA:</strong> ${data.tenantNome} (Vendor.ai), representada por seu representante legal.</p>
+    ? `<p><strong>CONTRATADA:</strong> ${data.tenantNome}, representada por seu representante legal.</p>
        <p><strong>PARCEIRO:</strong> ${data.partnerName ?? "Parceiro"}, ${data.partnerEmail ? `e-mail: ${data.partnerEmail}` : ""}.</p>
        <p><strong>CONTRATANTE:</strong> ${data.clienteNome}, ${data.clienteDocumento ? `CPF/CNPJ: ${data.clienteDocumento},` : ""} e-mail: ${data.clienteEmail}, telefone: ${data.clienteTelefone}.</p>`
-    : `<p><strong>CONTRATADA:</strong> ${data.tenantNome} (Vendor.ai), representada por seu representante legal.</p>
+    : `<p><strong>CONTRATADA:</strong> ${data.tenantNome}, representada por seu representante legal.</p>
        <p><strong>CONTRATANTE:</strong> ${data.clienteNome}, ${data.clienteDocumento ? `CPF/CNPJ: ${data.clienteDocumento},` : ""} e-mail: ${data.clienteEmail}, telefone: ${data.clienteTelefone}.</p>`;
+
+  const pedidosSection = data.pedidosHtml
+    ? `<h2>1. Objeto / Pedidos</h2>
+       <p>O presente contrato abrange os seguintes serviços/produtos:</p>
+       ${data.pedidosHtml}`
+    : `<h2>1. Objeto</h2>
+       <p>O presente contrato tem como objeto a prestação dos seguintes serviços/produtos:</p>
+       <p><strong>${data.produtosServicos}</strong></p>`;
 
   return `<!DOCTYPE html>
 <html lang="pt-BR">
@@ -51,9 +62,7 @@ function buildContractHtml(data: ContractData, isThreeParty: boolean): string {
     ${partes}
   </div>
 
-  <h2>1. Objeto</h2>
-  <p>O presente contrato tem como objeto a prestação dos seguintes serviços/produtos:</p>
-  <p><strong>${data.produtosServicos}</strong></p>
+  ${pedidosSection}
 
   <h2>2. Valor</h2>
   <p class="valor">${data.dealValor}</p>
@@ -71,18 +80,44 @@ function buildContractHtml(data: ContractData, isThreeParty: boolean): string {
 
   <div class="assinaturas">
     <div class="assinatura">
-      <p><strong>Vendor.ai</strong><br/>${data.tenantNome}</p>
+      <p><strong>Contratada</strong><br/>${data.tenantNome}</p>
     </div>
     ${isThreeParty ? `<div class="assinatura"><p><strong>Parceiro</strong><br/>${data.partnerName ?? ""}</p></div>` : ""}
     <div class="assinatura">
-      <p><strong>Cliente</strong><br/>${data.clienteNome}</p>
+      <p><strong>Contratante</strong><br/>${data.clienteNome}</p>
     </div>
   </div>
 </body>
 </html>`;
 }
 
-export async function generateContractPDF(data: ContractData, isThreeParty: boolean): Promise<Buffer> {
+// ─── Custom template: variable interpolation ──────────────────────────────────
+
+export function interpolateTemplate(templateHtml: string, data: ContractData): string {
+  const vars: Record<string, string> = {
+    cliente_nome: data.clienteNome,
+    cliente_email: data.clienteEmail,
+    cliente_telefone: data.clienteTelefone,
+    cliente_cpf_cnpj: data.clienteDocumento ?? "",
+    cliente_empresa: data.clienteEmpresa ?? "",
+    deal_titulo: data.dealTitulo,
+    deal_valor: data.dealValor,
+    empresa_nome: data.tenantNome,
+    data_hoje: data.dataHoje,
+    produtos_servicos: data.produtosServicos,
+    parceiro_nome: data.partnerName ?? "",
+    parceiro_email: data.partnerEmail ?? "",
+    pedidos_lista: data.pedidosHtml ?? "",
+  };
+
+  return templateHtml.replace(/\{\{(\w+)\}\}/g, (_, key: string) => {
+    return key in vars ? vars[key] : `{{${key}}}`;
+  });
+}
+
+// ─── PDF renderer (shared) ────────────────────────────────────────────────────
+
+async function renderHtmlToPdf(html: string): Promise<Buffer> {
   try {
     const puppeteer = (await import("puppeteer-core")).default;
     const browser = await puppeteer.launch({
@@ -91,14 +126,43 @@ export async function generateContractPDF(data: ContractData, isThreeParty: bool
       args: ["--no-sandbox", "--disable-setuid-sandbox", "--disable-gpu"],
     });
     const page = await browser.newPage();
-    await page.setContent(buildContractHtml(data, isThreeParty), { waitUntil: "load" });
-    const pdf = await page.pdf({ format: "A4", printBackground: true, margin: { top: "20px", bottom: "20px", left: "20px", right: "20px" } });
+    await page.setContent(html, { waitUntil: "load" });
+    const pdf = await page.pdf({
+      format: "A4",
+      printBackground: true,
+      margin: { top: "20px", bottom: "20px", left: "20px", right: "20px" },
+    });
     await browser.close();
     return Buffer.from(pdf);
   } catch (err) {
-    logger.warn({ err }, "contract-generation: puppeteer failed, falling back to plain text");
-    // Fallback: plain text base64
-    const html = buildContractHtml(data, isThreeParty);
+    logger.warn({ err }, "contract-generation: puppeteer failed, falling back to HTML buffer");
     return Buffer.from(html, "utf-8");
   }
 }
+
+// ─── Public API ───────────────────────────────────────────────────────────────
+
+export async function generateContractPDF(data: ContractData, isThreeParty: boolean): Promise<Buffer> {
+  const html = buildContractHtml(data, isThreeParty);
+  return renderHtmlToPdf(html);
+}
+
+export async function generateContractFromTemplate(templateHtml: string, data: ContractData): Promise<Buffer> {
+  const html = interpolateTemplate(templateHtml, data);
+  return renderHtmlToPdf(html);
+}
+
+export const CONTRACT_VARIABLES = [
+  { variable: "{{cliente_nome}}", label: "Nome do cliente" },
+  { variable: "{{cliente_email}}", label: "E-mail do cliente" },
+  { variable: "{{cliente_telefone}}", label: "Telefone do cliente" },
+  { variable: "{{cliente_cpf_cnpj}}", label: "CPF/CNPJ do cliente" },
+  { variable: "{{cliente_empresa}}", label: "Empresa do cliente" },
+  { variable: "{{deal_titulo}}", label: "Título do negócio" },
+  { variable: "{{deal_valor}}", label: "Valor total (formatado)" },
+  { variable: "{{empresa_nome}}", label: "Nome da sua empresa" },
+  { variable: "{{data_hoje}}", label: "Data de hoje" },
+  { variable: "{{produtos_servicos}}", label: "Produtos/serviços (resumo)" },
+  { variable: "{{pedidos_lista}}", label: "Tabela de pedidos selecionados" },
+  { variable: "{{parceiro_nome}}", label: "Nome do parceiro (se houver)" },
+];
