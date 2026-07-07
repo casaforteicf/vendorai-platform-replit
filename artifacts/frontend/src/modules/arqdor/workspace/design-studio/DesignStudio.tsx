@@ -2,6 +2,7 @@ import React, { useMemo } from "react";
 import { DesignHeader } from "./DesignHeader";
 import { StudioProvider, useStudio } from "./StudioContext";
 import { WorkspaceLayout } from "./WorkspaceLayout";
+import { AIChatPanel } from "./AIChatPanel";
 
 type DesignStudioProps = {
   arqState: any;
@@ -182,7 +183,7 @@ function DesignStudioInner({ arqState, onNavigate }: DesignStudioProps) {
         }
         leftPanel={<StudioTools />}
         canvas={<CanvasPlaceholder />}
-        rightPanel={<RightPanel />}
+        rightPanel={<AIChatPanel projectTitle={getTitle(project)} environmentName={getEnvironment(project)} onClose={() => setRightPanelOpen(false)} />}
         bottomPanel={<BottomTimeline />}
       />
 
