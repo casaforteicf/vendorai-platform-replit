@@ -36,6 +36,7 @@ import ProjectHomeV2 from './project-experience/ProjectHomeV2'
 import SmartProjectModule from './modules/SmartProjectModule'
 import DesignStudio from './design-studio/DesignStudio'
 import SmartRenderEngine from './smart-render-engine/SmartRenderEngine'
+import DocumentationStudio from './documentation-studio/DocumentationStudio'
 import { computeNextAction }     from './project-experience/ProjectHome'
 import { ArqCommandPalette }     from './ArqCommandPalette'
 import { runAIE }                from '../engines/aie/aie-engine'
@@ -236,7 +237,7 @@ function renderModule(id: ModuleId, arqState: ArqProjectState, setActive: (m: Mo
     case 'home':          return <ProjectHomeV2 arqState={arqState} onNavigate={m => setActive(m as ModuleId)} />
     case 'projeto':       return <SmartProjectModule arqState={arqState} onNavigate={m => setActive(m as ModuleId)} />
     case 'biblioteca':    return <LibraryModule/>
-    case 'especificacao': return <SmartSpecModule/>
+    case 'especificacao': return <DocumentationStudio arqState={arqState} onNavigate={m => setActive(m as ModuleId)} />
     case 'prompt':        return <PromptPlaygroundModule/>
     case 'renders':       return <SmartRenderEngine arqState={arqState} />
     case 'ai-review':     return <AIReviewModule/>
