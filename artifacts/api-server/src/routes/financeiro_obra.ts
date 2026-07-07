@@ -19,6 +19,18 @@ import { gerarDrePdf } from "../lib/pdf-dre.js";
 
 const router: IRouter = Router();
 
+// ─── Helper: recalcula custoRealizado da obra a partir dos lançamentos ────────
+async function recalcCustoRealizado(obraId: string, tenantId: string): Promise<void> {
+  const [result] = await db
+    .select({ total: sql<string>`coalesce(sum(${obraLancamentosTable.valor}), '0')` })
+    .from(obraLancamentosTable)
+    .where(and(eq(obraLancamentosTable.obraId, obraId), eq(obraLancamentosTable.tenantId, tenantId)));
+  await db
+    .update(obrasTable)
+    .set({ custoRealizado: result?.total ?? "0", updatedAt: new Date() })
+    .where(and(eq(obrasTable.id, obraId), eq(obrasTable.tenantId, tenantId)));
+}
+
 const upload = multer({
   storage: multer.memoryStorage(),
   limits: { fileSize: 10 * 1024 * 1024 }, // 10 MB
@@ -212,6 +224,7 @@ router.post("/tenants/:tenantId/obras/:obraId/lancamentos", async (req, res) => 
           .update(obraLancamentosTable)
           .set({ asaasPaymentId: charge.id })
           .where(eq(obraLancamentosTable.id, row.id));
+        await recalcCustoRealizado(obraId, tenantId);
         return res.status(201).json({ ...row, asaasPaymentId: charge.id });
       }
     } catch {
@@ -219,6 +232,7 @@ router.post("/tenants/:tenantId/obras/:obraId/lancamentos", async (req, res) => 
     }
   }
 
+  await recalcCustoRealizado(obraId, tenantId);
   return res.status(201).json(row);
 });
 
@@ -243,6 +257,7 @@ router.put("/tenants/:tenantId/obras/:obraId/lancamentos/:lancamentoId", async (
     .returning();
 
   if (!row) return res.status(404).json({ error: "Lançamento não encontrado." });
+  await recalcCustoRealizado(obraId, tenantId);
   return res.json(row);
 });
 
@@ -261,6 +276,7 @@ router.delete("/tenants/:tenantId/obras/:obraId/lancamentos/:lancamentoId", asyn
       ),
     );
 
+  await recalcCustoRealizado(obraId, tenantId);
   return res.status(204).send();
 });
 

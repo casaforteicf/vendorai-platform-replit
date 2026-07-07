@@ -865,6 +865,61 @@ router.get("/tenants/:tenantId/obras/:obraId/orcamentos/:orcamentoId", async (re
   return res.json({ ...orcamento, etapas });
 });
 
+// GET /tenants/:tenantId/obras/:obraId/orcamentos/:orcamentoId/curva-abc
+router.get("/tenants/:tenantId/obras/:obraId/orcamentos/:orcamentoId/curva-abc", async (req, res) => {
+  const { tenantId: tid, obraId, orcamentoId } = req.params;
+  if (!canAccessTenant(req, tid)) return res.status(403).json({ error: "Forbidden" });
+
+  const [orcamento] = await db
+    .select({ id: obraOrcamentosTable.id, bdiGlobal: obraOrcamentosTable.bdiGlobal })
+    .from(obraOrcamentosTable)
+    .where(and(
+      eq(obraOrcamentosTable.id, orcamentoId),
+      eq(obraOrcamentosTable.tenantId, tid),
+      eq(obraOrcamentosTable.obraId, obraId),
+    ));
+  if (!orcamento) return res.status(404).json({ error: "Orçamento não encontrado." });
+
+  const etapas = await db
+    .select({ id: obraOrcamentoEtapasTable.id, nome: obraOrcamentoEtapasTable.nome })
+    .from(obraOrcamentoEtapasTable)
+    .where(eq(obraOrcamentoEtapasTable.orcamentoId, orcamentoId));
+
+  if (etapas.length === 0) return res.json([]);
+
+  const etapaMap = new Map(etapas.map((e) => [e.id, e.nome]));
+  const etapaIds = etapas.map((e) => e.id);
+
+  const itens = await db
+    .select()
+    .from(obraOrcamentoItensTable)
+    .where(inArray(obraOrcamentoItensTable.etapaId, etapaIds));
+
+  const bdiGlobal = parseFloat(orcamento.bdiGlobal ?? "0");
+
+  const comValor = itens.map((item) => {
+    const qtd = parseFloat(item.quantidade ?? "1");
+    const custo = parseFloat(item.custoUnitario ?? "0");
+    const bdi = item.bdi != null ? parseFloat(item.bdi) : bdiGlobal;
+    const valorTotal = qtd * custo * (1 + bdi / 100);
+    return { itemId: item.id, nome: item.nome, etapaNome: etapaMap.get(item.etapaId) ?? "", unidade: item.unidade, quantidade: qtd, custoUnitario: custo, bdi, valorTotal };
+  });
+
+  comValor.sort((a, b) => b.valorTotal - a.valorTotal);
+
+  const totalGeral = comValor.reduce((s, i) => s + i.valorTotal, 0);
+  let acumulado = 0;
+
+  const result = comValor.map((item) => {
+    const pctIndividual = totalGeral > 0 ? (item.valorTotal / totalGeral) * 100 : 0;
+    acumulado += pctIndividual;
+    const classe = acumulado <= 80 ? "A" : acumulado <= 95 ? "B" : "C";
+    return { ...item, pctIndividual: Math.round(pctIndividual * 100) / 100, pctAcumulado: Math.round(acumulado * 100) / 100, classe };
+  });
+
+  return res.json(result);
+});
+
 router.put("/tenants/:tenantId/obras/:obraId/orcamentos/:orcamentoId", async (req, res) => {
   const { tenantId: tid, obraId, orcamentoId } = req.params;
   if (!canAccessTenant(req, tid)) return res.status(403).json({ error: "Forbidden" });

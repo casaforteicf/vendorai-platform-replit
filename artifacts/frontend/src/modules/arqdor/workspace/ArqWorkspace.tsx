@@ -40,6 +40,7 @@ import DocumentationStudio from './documentation-studio/DocumentationStudio'
 import ProductionStudio from './production-studio/ProductionStudio'
 import BudgetEngine from './executive-budget/BudgetEngine'
 import BudgetDisciplinesProposal from './executive-budget/disciplines/BudgetDisciplinesProposal'
+import AlignedStudioShell from './ux-alignment/AlignedStudioShell'
 import { computeNextAction }     from './project-experience/ProjectHome'
 import { ArqCommandPalette }     from './ArqCommandPalette'
 import { runAIE }                from '../engines/aie/aie-engine'
@@ -54,6 +55,7 @@ export type ModuleId =
   | 'ai-review' | 'correcoes' | 'memoria' | 'config'
   | 'arqhub' | 'ai-intel' | 'integracao' | 'ecosystem' | 'knowledge' | 'office'
   | 'orcamento' | 'orcamento-pro'
+  | 'ux-alignment'
 
 export type JourneyId = 'create' | 'design' | 'visualize' | 'deliver' | 'business'
 
@@ -101,6 +103,7 @@ const MODULE_MAP_INTERNAL: Record<ModuleId, { icon:string; label:string }> = {
   'office':     { icon:'🏢', label:'Office OS'     },
   'orcamento':  { icon:'💰', label:'Orçamento'     },
   'orcamento-pro': { icon:'📐', label:'Orç. Disciplinas' },
+  'ux-alignment': { icon:'🎨', label:'UX Alignment'    },
 }
 
 // ─── Legado: Journeys (keyboard shortcuts 1–5) ────────────────────────────────
@@ -260,6 +263,7 @@ function renderModule(id: ModuleId, arqState: ArqProjectState, setActive: (m: Mo
     case 'office':        return <ProductionStudio arqState={arqState} onNavigate={m => setActive(m as ModuleId)} />
     case 'orcamento':     return <BudgetEngine arqState={arqState} onNavigate={m => setActive(m as ModuleId)} />
     case 'orcamento-pro': return <BudgetDisciplinesProposal />
+    case 'ux-alignment':  return <AlignedStudioShell />
   }
 }
 

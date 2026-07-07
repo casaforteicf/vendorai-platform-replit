@@ -40,7 +40,7 @@ import {
   getListObraOrcamentosQueryKey,
   getGetObraOrcamentoQueryKey,
 } from "@workspace/api-client-react";
-import { useQueryClient } from "@tanstack/react-query";
+import { useQueryClient, useQuery } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -2085,7 +2085,135 @@ function TabOrcamento({ tenantId, obraId, portalToken }: { tenantId: string; obr
           )}
         </div>
       )}
+
+      {/* ─── Curva ABC ──────────────────────────────────────────────────────── */}
+      {selectedId && (orcamento?.etapas ?? []).length > 0 && (
+        <CurvaABC tenantId={tenantId} obraId={obraId} orcamentoId={selectedId} />
+      )}
     </div>
+  );
+}
+
+// ─── CurvaABC ────────────────────────────────────────────────────────────────
+
+type CurvaABCItem = {
+  itemId: string;
+  nome: string;
+  etapaNome: string;
+  unidade: string;
+  quantidade: number;
+  custoUnitario: number;
+  bdi: number;
+  valorTotal: number;
+  pctIndividual: number;
+  pctAcumulado: number;
+  classe: "A" | "B" | "C";
+};
+
+const CLASSE_STYLE: Record<string, { bg: string; text: string; label: string }> = {
+  A: { bg: "bg-emerald-100", text: "text-emerald-800", label: "A" },
+  B: { bg: "bg-amber-100",   text: "text-amber-800",   label: "B" },
+  C: { bg: "bg-slate-100",   text: "text-slate-600",   label: "C" },
+};
+
+function CurvaABC({ tenantId, obraId, orcamentoId }: { tenantId: string; obraId: string; orcamentoId: string }) {
+  const [open, setOpen] = useState(false);
+
+  const { data = [], isLoading } = useQuery<CurvaABCItem[]>({
+    queryKey: ["curva-abc", tenantId, obraId, orcamentoId],
+    queryFn: async () => {
+      const token = localStorage.getItem("vendorai_token");
+      const res = await fetch(
+        `/api/tenants/${tenantId}/obras/${obraId}/orcamentos/${orcamentoId}/curva-abc`,
+        { headers: token ? { Authorization: `Bearer ${token}` } : {} },
+      );
+      if (!res.ok) throw new Error("Erro ao carregar Curva ABC");
+      return res.json();
+    },
+    enabled: open && !!tenantId && !!obraId && !!orcamentoId,
+  });
+
+  const counts = { A: data.filter((i) => i.classe === "A").length, B: data.filter((i) => i.classe === "B").length, C: data.filter((i) => i.classe === "C").length };
+
+  return (
+    <Card>
+      <CardHeader className="py-3 px-4 cursor-pointer select-none" onClick={() => setOpen((v) => !v)}>
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <BarChart3 className="h-4 w-4 text-muted-foreground" />
+            <CardTitle className="text-sm font-semibold">Curva ABC do Orçamento</CardTitle>
+            <span className="text-xs text-muted-foreground">Itens por impacto no custo</span>
+          </div>
+          <div className="flex items-center gap-2">
+            {!open && data.length === 0 && !isLoading && (
+              <span className="text-xs text-muted-foreground">clique para carregar</span>
+            )}
+            {open && data.length > 0 && (
+              <div className="flex gap-1">
+                {(["A","B","C"] as const).map((c) => (
+                  <span key={c} className={`text-xs px-2 py-0.5 rounded-full font-medium ${CLASSE_STYLE[c].bg} ${CLASSE_STYLE[c].text}`}>
+                    {c}: {counts[c]}
+                  </span>
+                ))}
+              </div>
+            )}
+            {open ? <ChevronUp className="h-4 w-4 text-muted-foreground" /> : <ChevronDown className="h-4 w-4 text-muted-foreground" />}
+          </div>
+        </div>
+      </CardHeader>
+      {open && (
+        <CardContent className="pt-0 px-0 pb-2">
+          {isLoading ? (
+            <div className="flex items-center justify-center py-8 gap-2 text-muted-foreground text-sm">
+              <Loader2 className="h-4 w-4 animate-spin" /> Calculando…
+            </div>
+          ) : data.length === 0 ? (
+            <p className="text-sm text-muted-foreground text-center py-6">Nenhum item com valor encontrado.</p>
+          ) : (
+            <>
+              <div className="px-4 pb-3 text-xs text-muted-foreground space-y-0.5">
+                <p><span className={`inline-block px-1.5 py-0.5 rounded font-semibold mr-1 ${CLASSE_STYLE.A.bg} ${CLASSE_STYLE.A.text}`}>A</span> Poucos itens, alto impacto — representam até 80% do custo total</p>
+                <p><span className={`inline-block px-1.5 py-0.5 rounded font-semibold mr-1 ${CLASSE_STYLE.B.bg} ${CLASSE_STYLE.B.text}`}>B</span> Impacto médio — de 80% a 95% do custo acumulado</p>
+                <p><span className={`inline-block px-1.5 py-0.5 rounded font-semibold mr-1 ${CLASSE_STYLE.C.bg} ${CLASSE_STYLE.C.text}`}>C</span> Muitos itens, baixo impacto individual — últimos 5%</p>
+              </div>
+              <div className="overflow-x-auto">
+                <table className="w-full text-xs">
+                  <thead>
+                    <tr className="border-y bg-muted/30">
+                      <th className="text-left px-4 py-2 font-medium text-muted-foreground w-6">#</th>
+                      <th className="text-left px-2 py-2 font-medium text-muted-foreground">Item</th>
+                      <th className="text-left px-2 py-2 font-medium text-muted-foreground hidden sm:table-cell">Etapa</th>
+                      <th className="text-right px-2 py-2 font-medium text-muted-foreground">Valor total</th>
+                      <th className="text-right px-2 py-2 font-medium text-muted-foreground">% item</th>
+                      <th className="text-right px-2 py-2 font-medium text-muted-foreground">% acum.</th>
+                      <th className="text-center px-4 py-2 font-medium text-muted-foreground">Classe</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {data.map((item, idx) => {
+                      const st = CLASSE_STYLE[item.classe];
+                      return (
+                        <tr key={item.itemId} className={`border-b last:border-0 ${item.classe === "A" ? "bg-emerald-50/40" : item.classe === "B" ? "bg-amber-50/30" : ""}`}>
+                          <td className="px-4 py-2 text-muted-foreground">{idx + 1}</td>
+                          <td className="px-2 py-2 font-medium max-w-[200px] truncate">{item.nome}</td>
+                          <td className="px-2 py-2 text-muted-foreground hidden sm:table-cell">{item.etapaNome}</td>
+                          <td className="px-2 py-2 text-right tabular-nums font-medium">{fmtBRL(item.valorTotal)}</td>
+                          <td className="px-2 py-2 text-right tabular-nums text-muted-foreground">{item.pctIndividual.toFixed(1)}%</td>
+                          <td className="px-2 py-2 text-right tabular-nums text-muted-foreground">{item.pctAcumulado.toFixed(1)}%</td>
+                          <td className="px-4 py-2 text-center">
+                            <span className={`inline-block px-2 py-0.5 rounded-full font-bold text-xs ${st.bg} ${st.text}`}>{item.classe}</span>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            </>
+          )}
+        </CardContent>
+      )}
+    </Card>
   );
 }
 
