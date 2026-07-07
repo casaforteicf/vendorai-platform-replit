@@ -59,3 +59,9 @@ id = "4GeJTnMeL-01P8pNtoQVd"
 uri = "file://docs/tech-debt-report.md"
 type = "text"
 title = "Vendor.ai — Relatório Técnico (P0–P3)"
+
+[[outputs]]
+id = "4-hz1PWCY-DiU4wMvkEdJ"
+uri = "file://attached_assets/arqdor-files-para-rewrite.zip"
+type = "unspecified"
+title = "arqdor-files-para-rewrite.zip"
