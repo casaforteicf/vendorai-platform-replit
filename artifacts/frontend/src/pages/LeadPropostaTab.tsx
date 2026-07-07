@@ -1283,7 +1283,7 @@ export default function LeadPropostaTab({ leadId, tenantId, lead }: LeadProposta
 
       {/* Preview Dialog */}
       <Dialog open={previewOpen} onOpenChange={setPreviewOpen}>
-        <DialogContent className="max-w-4xl h-[85vh] flex flex-col">
+        <DialogContent className="max-w-[95vw] w-full h-[95vh] flex flex-col p-4">
           <DialogHeader>
             <DialogTitle className="text-sm flex items-center gap-2">
               <FileText className="h-4 w-4" />
