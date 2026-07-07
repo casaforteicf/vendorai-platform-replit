@@ -68,6 +68,7 @@ export interface DiarioEntry {
   observacoes?: string | null;
   status: string;
   fotos?: Array<{ url: string; caption?: string; uploadedAt: string }> | null;
+  resumoIA?: string | null;
 }
 
 export interface PdfRelatorioDiarioOptions {
@@ -124,6 +125,7 @@ async function buildHtml(opts: PdfRelatorioDiarioOptions): Promise<string> {
         <h4>Atividades realizadas</h4>
         <p class="conteudo">${escHtml(e.conteudo).replace(/\n/g, "<br>")}</p>
         ${e.observacoes ? `<div class="obs-box"><strong>⚠ Observações:</strong><br>${escHtml(e.observacoes).replace(/\n/g, "<br>")}</div>` : ""}
+        ${e.resumoIA ? `<div class="resumo-ia-box"><span class="resumo-ia-label">✨ Resumo IA</span><p>${escHtml(e.resumoIA).replace(/\n/g, "<br>")}</p></div>` : ""}
         ${renderFotos(e.fotos)}
       </div>
     </div>`;
@@ -214,6 +216,19 @@ async function buildHtml(opts: PdfRelatorioDiarioOptions): Promise<string> {
     margin-bottom: 12px;
     line-height: 1.5;
   }
+
+  .resumo-ia-box {
+    background: #f0f9ff;
+    border: 1px solid #bae6fd;
+    border-left: 4px solid #0ea5e9;
+    border-radius: 6px;
+    padding: 10px 12px;
+    font-size: 10pt;
+    color: #0c4a6e;
+    margin-bottom: 12px;
+    line-height: 1.5;
+  }
+  .resumo-ia-label { font-weight: 700; font-size: 9pt; text-transform: uppercase; letter-spacing: 0.5px; display: block; margin-bottom: 4px; color: #0284c7; }
 
   /* ── Photo grid ── */
   .fotos-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin-top: 12px; }

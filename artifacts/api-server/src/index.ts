@@ -253,6 +253,12 @@ async function runStartupMigrations() {
   } catch (err) {
     logger.warn({ err }, "startup migrations: business_profiles proposal_template skipped");
   }
+  try {
+    await db.execute(sql`ALTER TABLE obra_diario ADD COLUMN IF NOT EXISTS resumo_ia TEXT`);
+    logger.info("startup migrations: obra_diario resumo_ia OK");
+  } catch (err) {
+    logger.warn({ err }, "startup migrations: obra_diario resumo_ia skipped");
+  }
 }
 
 // ─── Boot sequence ────────────────────────────────────────────────────────────

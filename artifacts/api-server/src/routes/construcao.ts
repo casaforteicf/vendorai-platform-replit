@@ -1,5 +1,7 @@
 import { Router, type IRouter } from "express";
 import multer from "multer";
+import Anthropic from "@anthropic-ai/sdk";
+import { resolveAIKey } from "../lib/ai-gateway.js";
 import { and, eq, desc, asc, ilike, max, inArray, gte, lte } from "drizzle-orm";
 import { searchSinapi } from "../data/sinapi";
 import { gerarRelatorioDiarioPdf } from "../lib/pdf-diario";
@@ -501,6 +503,55 @@ router.post(
     });
   },
 );
+
+// POST /tenants/:tenantId/obras/:obraId/diario/:diarioId/resumo-ia
+// Gera um resumo textual do dia com IA (Anthropic Claude) e salva no registro
+router.post("/tenants/:tenantId/obras/:obraId/diario/:diarioId/resumo-ia", async (req, res) => {
+  const { tenantId: tid, obraId, diarioId } = req.params;
+  if (!canAccessTenant(req, tid)) return res.status(403).json({ error: "Forbidden" });
+
+  const [entry] = await db
+    .select()
+    .from(obraDiarioTable)
+    .where(and(eq(obraDiarioTable.id, diarioId), eq(obraDiarioTable.obraId, obraId)));
+  if (!entry) return res.status(404).json({ error: "Entrada de diário não encontrada." });
+
+  let apiKey: string;
+  try {
+    const resolved = await resolveAIKey(tid, "anthropic");
+    apiKey = resolved.apiKey;
+  } catch {
+    return res.status(422).json({ error: "Chave Anthropic não configurada para este tenant." });
+  }
+
+  const partes: string[] = [];
+  if (entry.climaTempo) partes.push(`Clima: ${entry.climaTempo}`);
+  if (entry.maoDeObra != null) partes.push(`Mão de obra: ${entry.maoDeObra} trabalhadores`);
+  partes.push(`\nAtividades realizadas:\n${entry.conteudo}`);
+  if (entry.observacoes) partes.push(`\nObservações / ocorrências:\n${entry.observacoes}`);
+  if (Array.isArray(entry.fotos) && entry.fotos.length > 0) {
+    partes.push(`\nFotos registradas: ${entry.fotos.length} imagem(ns)`);
+  }
+
+  const prompt = `Você é assistente de engenharia civil. Gere um resumo executivo curto (máx 4 linhas) do registro diário de obra abaixo, destacando: principais atividades, condições do canteiro e ocorrências relevantes. Seja objetivo e use linguagem técnica clara.\n\n${partes.join("\n")}`;
+
+  const anthropic = new Anthropic({ apiKey });
+  const message = await anthropic.messages.create({
+    model: "claude-3-5-haiku-20241022",
+    max_tokens: 300,
+    messages: [{ role: "user", content: prompt }],
+  });
+
+  const resumo = (message.content[0] as { type: string; text: string }).text ?? "";
+
+  const [updated] = await db
+    .update(obraDiarioTable)
+    .set({ resumoIA: resumo })
+    .where(eq(obraDiarioTable.id, diarioId))
+    .returning();
+
+  return res.json(updated);
+});
 
 // ─── Estoque da Obra ──────────────────────────────────────────────────────────
 

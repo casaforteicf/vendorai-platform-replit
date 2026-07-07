@@ -24,3 +24,4 @@
 - [Startup migration pattern](startup-migration.md) — drizzle-kit push é lento/interativo; usar runStartupMigrations() com CREATE TABLE IF NOT EXISTS no index.ts do api-server como fallback confiável.
 - [Project Phoenix UX](project-phoenix-ux.md) — PHX=light shell, T=dark modules; FLOW_STEPS nav; ✨ Gerar Render imutável; Copilot inicia colapsado.
 - [VendorAI SaaS contract auto-gen](vendorai-saas-contract.md) — template HTML completo em vendorai-contract-template.ts; contract_settings JSONB no tenant; numberToWordsPTBR para valor por extenso; settings UI em Configuracoes.tsx.
+- [Obras Hub AI + Gantt drag](obras-hub-gantt-ai.md) — resumoIA: Anthropic via resolveAIKey; Gantt substituído por DraggableGantt div-based com drag via refs/forceUpdate.

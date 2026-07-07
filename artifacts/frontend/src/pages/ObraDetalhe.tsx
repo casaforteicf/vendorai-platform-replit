@@ -57,7 +57,7 @@ import {
   ChevronDown, ChevronUp, BookOpen, User, Building2,
   Upload, X, Image as ImageIcon, FileSpreadsheet, Copy,
   Send, ThumbsUp, ThumbsDown, ChevronRight, AlertCircle,
-  Search, Loader2, FileText, Download,
+  Search, Loader2, FileText, Download, Sparkles,
 } from "lucide-react";
 import TabFinanceiro from "./TabFinanceiro";
 import { format, differenceInCalendarDays, addDays, parseISO } from "date-fns";
@@ -329,6 +329,192 @@ function GanttTooltip({ active, payload }: GanttTooltipProps) {
   );
 }
 
+// ─── DraggableGantt ────────────────────────────────────────────────────────────
+
+interface DraggableGanttProps {
+  ganttRows: GanttRow[];
+  totalDays: number;
+  projectStart: Date;
+  todayOffset: number;
+  onUpdateDates: (etapaId: string, newStart: string, newEnd: string) => void;
+}
+
+function DraggableGantt({ ganttRows, totalDays, projectStart, todayOffset, onUpdateDates }: DraggableGanttProps) {
+  const containerRef = useRef<HTMLDivElement>(null);
+  const [, forceUpdate] = useState(0);
+  const dragRef = useRef<{
+    rowId: string;
+    mode: "move" | "left" | "right";
+    startX: number;
+    origOffset: number;
+    origDuration: number;
+    prevOffset: number;
+    prevDuration: number;
+  } | null>(null);
+
+  const LABEL_W = 140;
+  const ROW_H = 44;
+
+  function startDrag(e: React.MouseEvent, row: GanttRow, mode: "move" | "left" | "right") {
+    e.preventDefault();
+    e.stopPropagation();
+    dragRef.current = {
+      rowId: row.id,
+      mode,
+      startX: e.clientX,
+      origOffset: row.offset,
+      origDuration: row.duration,
+      prevOffset: row.offset,
+      prevDuration: row.duration,
+    };
+    forceUpdate((n) => n + 1);
+
+    function onMove(me: MouseEvent) {
+      if (!dragRef.current || !containerRef.current) return;
+      const pw = containerRef.current.getBoundingClientRect().width - LABEL_W;
+      if (pw <= 0) return;
+      const pxPerDay = pw / totalDays;
+      const dx = me.clientX - dragRef.current.startX;
+      const dd = Math.round(dx / pxPerDay);
+      const { mode: m, origOffset, origDuration } = dragRef.current;
+      let newOffset = origOffset;
+      let newDuration = origDuration;
+      if (m === "move") {
+        newOffset = Math.max(0, origOffset + dd);
+      } else if (m === "left") {
+        newOffset = Math.max(0, Math.min(origOffset + dd, origOffset + origDuration - 1));
+        newDuration = origDuration - (newOffset - origOffset);
+      } else {
+        newDuration = Math.max(1, origDuration + dd);
+      }
+      dragRef.current.prevOffset = newOffset;
+      dragRef.current.prevDuration = newDuration;
+      forceUpdate((n) => n + 1);
+    }
+
+    function onUp() {
+      window.removeEventListener("mousemove", onMove);
+      window.removeEventListener("mouseup", onUp);
+      if (!dragRef.current) return;
+      const { rowId, prevOffset, prevDuration } = dragRef.current;
+      dragRef.current = null;
+      const newStart = addDays(projectStart, prevOffset);
+      const newEnd = addDays(newStart, prevDuration);
+      onUpdateDates(rowId, format(newStart, "yyyy-MM-dd"), format(newEnd, "yyyy-MM-dd"));
+      forceUpdate((n) => n + 1);
+    }
+
+    window.addEventListener("mousemove", onMove);
+    window.addEventListener("mouseup", onUp);
+  }
+
+  const tickCount = Math.min(8, totalDays);
+  const tickStep = Math.max(1, Math.ceil(totalDays / tickCount));
+  const ticks: number[] = [];
+  for (let t = 0; t <= totalDays; t += tickStep) ticks.push(t);
+  if (ticks[ticks.length - 1] !== totalDays) ticks.push(totalDays);
+
+  return (
+    <div className="w-full select-none">
+      {/* X-axis header */}
+      <div className="flex text-[10px] text-muted-foreground mb-1" style={{ paddingLeft: `${LABEL_W}px` }}>
+        <div className="relative flex-1 h-5 overflow-hidden">
+          {ticks.map((t) => (
+            <span key={t} className="absolute -translate-x-1/2 whitespace-nowrap" style={{ left: `${(t / totalDays) * 100}%` }}>
+              {format(addDays(projectStart, Math.min(t, totalDays - 1)), "dd/MM", { locale: ptBR })}
+            </span>
+          ))}
+        </div>
+      </div>
+
+      {/* Grid + bars */}
+      <div ref={containerRef} className="border rounded-lg overflow-hidden bg-white dark:bg-card">
+        {ganttRows.map((row, idx) => {
+          const drag = dragRef.current?.rowId === row.id ? dragRef.current : null;
+          const dispOffset = drag ? drag.prevOffset : row.offset;
+          const dispDuration = drag ? drag.prevDuration : row.duration;
+          const color = GANTT_COLORS[row.status] ?? "#94a3b8";
+          const lPct = (dispOffset / totalDays) * 100;
+          const wPct = Math.max(0.5, (dispDuration / totalDays) * 100);
+          const isDragging = !!drag;
+
+          return (
+            <div
+              key={row.id}
+              className={`flex items-center ${idx < ganttRows.length - 1 ? "border-b border-muted/50" : ""}`}
+              style={{ height: `${ROW_H}px` }}
+            >
+              {/* Label */}
+              <div
+                className="shrink-0 flex items-center px-2 text-xs font-medium text-slate-700 dark:text-slate-300 border-r border-muted/50 bg-muted/20 h-full"
+                style={{ width: `${LABEL_W}px` }}
+              >
+                <span className="truncate">{row.shortNome}</span>
+              </div>
+
+              {/* Timeline */}
+              <div className="relative flex-1 h-full">
+                {ticks.map((t) => (
+                  <div key={t} className="absolute top-0 bottom-0 border-l border-muted/30" style={{ left: `${(t / totalDays) * 100}%` }} />
+                ))}
+                {todayOffset >= 0 && todayOffset <= totalDays && (
+                  <div className="absolute top-0 bottom-0 w-px bg-red-400 z-10 pointer-events-none" style={{ left: `${(todayOffset / totalDays) * 100}%` }} />
+                )}
+                {/* Bar */}
+                <div
+                  title={`${row.nome} — Arraste para mover • Bordas para redimensionar`}
+                  className={`absolute top-1/2 -translate-y-1/2 h-7 rounded flex items-center overflow-visible cursor-grab active:cursor-grabbing ${isDragging ? "ring-2 ring-white ring-offset-1 z-20 shadow-lg" : "hover:brightness-110"}`}
+                  style={{
+                    left: `${lPct}%`,
+                    width: `${wPct}%`,
+                    backgroundColor: color,
+                    opacity: 0.88,
+                    minWidth: "6px",
+                    transition: isDragging ? "none" : "opacity 0.15s",
+                  }}
+                  onMouseDown={(e) => startDrag(e, row, "move")}
+                >
+                  <div className="absolute left-0 top-0 bottom-0 w-2 cursor-ew-resize rounded-l flex items-center justify-center hover:bg-black/15" onMouseDown={(e) => startDrag(e, row, "left")}>
+                    <div className="w-px h-3.5 bg-white/70 rounded" />
+                  </div>
+                  <div className="absolute top-0 left-0 bottom-0 rounded pointer-events-none" style={{ width: `${row.pct}%`, backgroundColor: "rgba(0,0,0,0.15)" }} />
+                  {wPct > 6 && (
+                    <span className="text-white text-[10px] font-bold mx-auto pointer-events-none z-10 relative">{Math.round(row.pct)}%</span>
+                  )}
+                  <div className="absolute right-0 top-0 bottom-0 w-2 cursor-ew-resize rounded-r flex items-center justify-center hover:bg-black/15" onMouseDown={(e) => startDrag(e, row, "right")}>
+                    <div className="w-px h-3.5 bg-white/70 rounded" />
+                  </div>
+                </div>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+
+      {/* Drag preview */}
+      {dragRef.current && (() => {
+        const d = dragRef.current!;
+        const s = addDays(projectStart, d.prevOffset);
+        const eDate = addDays(s, d.prevDuration);
+        const row = ganttRows.find((r) => r.id === d.rowId);
+        return (
+          <p className="text-xs text-center text-primary font-medium mt-2">
+            <Sparkles className="inline h-3 w-3 mr-1" />
+            {row?.nome}: {format(s, "dd/MM/yyyy", { locale: ptBR })} → {format(eDate, "dd/MM/yyyy", { locale: ptBR })} ({d.prevDuration} dias)
+          </p>
+        );
+      })()}
+
+      {/* Hint */}
+      {!dragRef.current && (
+        <p className="text-[10px] text-muted-foreground text-center mt-1.5">
+          Arraste as barras para mover etapas · Bordas para ajustar início/fim
+        </p>
+      )}
+    </div>
+  );
+}
+
 // ─── Cronograma (Gantt) ────────────────────────────────────────────────────────
 
 function Cronograma({ tenantId, obraId, etapas, portalToken }: { tenantId: string; obraId: string; etapas: ObraEtapa[]; portalToken?: string | null }) {
@@ -356,6 +542,16 @@ function Cronograma({ tenantId, obraId, etapas, portalToken }: { tenantId: strin
     await updateEtapa({ tenantId, obraId, etapaId: editEtapa.id, data: editEtapa as any });
     await qc.invalidateQueries({ queryKey: getListObraEtapasQueryKey(tenantId, obraId) });
     setEditEtapa(null);
+  }
+
+  async function handleUpdateDates(etapaId: string, newStart: string, newEnd: string) {
+    try {
+      await updateEtapa({ tenantId, obraId, etapaId, data: { dataInicioPrevista: newStart, dataFimPrevista: newEnd } as any });
+      await qc.invalidateQueries({ queryKey: getListObraEtapasQueryKey(tenantId, obraId) });
+      toast({ title: "Cronograma atualizado", description: `${fmt(newStart)} → ${fmt(newEnd)}` });
+    } catch {
+      toast({ title: "Erro ao salvar datas", variant: "destructive" });
+    }
   }
 
   // ── Gantt data preparation ─────────────────────────────────────────────────
@@ -497,7 +693,7 @@ function Cronograma({ tenantId, obraId, etapas, portalToken }: { tenantId: strin
             </div>
           ) : (
             <Card>
-              <CardContent className="pt-4 pb-2 pr-3">
+              <CardContent className="pt-4 pb-3 px-4">
                 {/* Legend */}
                 <div className="flex items-center gap-4 mb-3 flex-wrap text-xs text-muted-foreground">
                   {Object.entries(GANTT_COLORS).map(([status, color]) => (
@@ -511,54 +707,13 @@ function Cronograma({ tenantId, obraId, etapas, portalToken }: { tenantId: strin
                     <span>Hoje</span>
                   </div>
                 </div>
-
-                <ResponsiveContainer width="100%" height={chartHeight}>
-                  <BarChart
-                    layout="vertical"
-                    data={ganttRows}
-                    margin={{ top: 0, right: 8, left: 0, bottom: 8 }}
-                    barSize={ROW_H - 12}
-                    onClick={(e) => {
-                      if (e?.activePayload?.[0]?.payload) {
-                        setEditEtapa((e.activePayload[0].payload as GanttRow).etapa);
-                      }
-                    }}
-                  >
-                    <XAxis
-                      type="number"
-                      domain={[0, totalDays]}
-                      tickFormatter={xTickFormatter}
-                      tick={{ fontSize: 11 }}
-                      tickCount={Math.min(10, totalDays + 1)}
-                      tickLine={false}
-                      axisLine={{ stroke: "#e5e7eb" }}
-                    />
-                    <YAxis
-                      type="category"
-                      dataKey="shortNome"
-                      width={140}
-                      tick={{ fontSize: 12, fill: "#374151" }}
-                      tickLine={false}
-                      axisLine={false}
-                    />
-                    <Tooltip content={<GanttTooltip />} cursor={{ fill: "#f9fafb" }} />
-
-                    {/* Today reference line */}
-                    {todayOffset >= 0 && todayOffset <= totalDays && (
-                      <ReferenceLine x={todayOffset} stroke="#f87171" strokeWidth={1.5} strokeDasharray="4 3" label={{ value: "Hoje", position: "top", fontSize: 10, fill: "#f87171" }} />
-                    )}
-
-                    {/* Offset bar (transparent spacer) */}
-                    <Bar dataKey="offset" stackId="g" shape={<OffsetShape />} isAnimationActive={false} />
-
-                    {/* Duration bar (colored, with progress) */}
-                    <Bar dataKey="duration" stackId="g" shape={<GanttBarShape />} isAnimationActive={false} cursor="pointer">
-                      {ganttRows.map((row) => (
-                        <Cell key={row.id} fill={GANTT_COLORS[row.status] ?? "#94a3b8"} />
-                      ))}
-                    </Bar>
-                  </BarChart>
-                </ResponsiveContainer>
+                <DraggableGantt
+                  ganttRows={ganttRows}
+                  totalDays={totalDays}
+                  projectStart={projectStart}
+                  todayOffset={todayOffset}
+                  onUpdateDates={handleUpdateDates}
+                />
               </CardContent>
             </Card>
           )}
@@ -896,6 +1051,7 @@ function DiarioDeObra({ tenantId, obraId, portalToken }: { tenantId: string; obr
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [form, setForm] = useState({ data: format(new Date(), "yyyy-MM-dd"), conteudo: "", responsavelNome: "", climaTempo: "", maoDeObra: "", observacoes: "", fotos: [] as Array<{ url: string; caption?: string; uploadedAt: string }> });
   const [uploadingFoto, setUploadingFoto] = useState(false);
+  const [generatingAI, setGeneratingAI] = useState<string | null>(null);
 
   // ── PDF report state ──
   const [pdfOpen, setPdfOpen] = useState(false);
@@ -978,6 +1134,27 @@ function DiarioDeObra({ tenantId, obraId, portalToken }: { tenantId: string; obr
   async function handleApprove(entry: ObraDiario) {
     await updateEntry({ tenantId, obraId, diarioId: entry.id, data: { status: "aprovado" } as any });
     await qc.invalidateQueries({ queryKey: getListObraDiarioQueryKey(tenantId, obraId) });
+  }
+
+  async function handleGerarResumoIA(entry: ObraDiario) {
+    setGeneratingAI(entry.id);
+    try {
+      const token = localStorage.getItem("vendorai_token");
+      const res = await fetch(`/api/tenants/${tenantId}/obras/${obraId}/diario/${entry.id}/resumo-ia`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({})) as any;
+        throw new Error(err.error ?? "Erro ao gerar resumo");
+      }
+      await qc.invalidateQueries({ queryKey: getListObraDiarioQueryKey(tenantId, obraId) });
+      toast({ title: "Resumo gerado com IA", description: "O resumo foi adicionado ao registro do diário." });
+    } catch (err: any) {
+      toast({ title: "Erro ao gerar resumo", description: err.message, variant: "destructive" });
+    } finally {
+      setGeneratingAI(null);
+    }
   }
 
   function copyDiarioLink() {
@@ -1123,6 +1300,18 @@ function DiarioDeObra({ tenantId, obraId, portalToken }: { tenantId: string; obr
                           Aprovar
                         </Button>
                       )}
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="h-7 text-xs gap-1 text-sky-600 border-sky-200 hover:bg-sky-50"
+                        disabled={generatingAI === entry.id}
+                        onClick={() => handleGerarResumoIA(entry)}
+                      >
+                        {generatingAI === entry.id
+                          ? <><Loader2 className="h-3 w-3 animate-spin" />Gerando...</>
+                          : <><Sparkles className="h-3 w-3" />{(entry as any).resumoIA ? "Regerar IA" : "Resumo IA"}</>
+                        }
+                      </Button>
                       <Button variant="ghost" size="sm" className="h-7 w-7 p-0" onClick={() => setExpandedId(isExpanded ? null : entry.id)}>
                         {isExpanded ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
                       </Button>
@@ -1148,6 +1337,15 @@ function DiarioDeObra({ tenantId, obraId, portalToken }: { tenantId: string; obr
                       {entry.climaTempo && <span>🌤 {entry.climaTempo}</span>}
                       {entry.maoDeObra != null && <span>👷 {entry.maoDeObra} pessoas</span>}
                       {entry.observacoes && <span>📝 {entry.observacoes}</span>}
+                    </div>
+                  )}
+                  {isExpanded && (entry as any).resumoIA && (
+                    <div className="mt-2 p-3 rounded-lg border border-sky-200 bg-sky-50/60 dark:bg-sky-950/20 dark:border-sky-800">
+                      <div className="flex items-center gap-1.5 mb-1">
+                        <Sparkles className="h-3.5 w-3.5 text-sky-500" />
+                        <span className="text-xs font-semibold text-sky-700 dark:text-sky-400">Resumo IA</span>
+                      </div>
+                      <p className="text-sm text-sky-900 dark:text-sky-200 whitespace-pre-wrap">{(entry as any).resumoIA}</p>
                     </div>
                   )}
                   {isExpanded && (entry.fotos as any)?.length > 0 && (

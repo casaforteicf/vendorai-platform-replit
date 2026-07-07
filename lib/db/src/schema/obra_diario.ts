@@ -22,6 +22,7 @@ export const obraDiarioTable = pgTable("obra_diario", {
   maoDeObra: integer("mao_de_obra"),
   observacoes: text("observacoes"),
   fotos: jsonb("fotos").$type<Array<{ url: string; caption?: string; uploadedAt: string }>>(),
+  resumoIA: text("resumo_ia"),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow().$onUpdate(() => new Date()),
 });
