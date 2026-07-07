@@ -361,6 +361,36 @@ router.post("/leads/:leadId/proposals", async (req, res) => {
   res.status(201).json({ ...proposal, _provider: result.provider, _model: result.model });
 });
 
+// ── PATCH /leads/:leadId/proposals/:version — save manually edited HTML ───────
+router.patch("/leads/:leadId/proposals/:version", async (req, res) => {
+  const leadId = String(req.params.leadId);
+  const version = parseInt(req.params.version, 10);
+  const { htmlContent } = req.body;
+  if (typeof htmlContent !== "string" || !htmlContent.trim()) {
+    res.status(400).json({ error: "htmlContent é obrigatório" });
+    return;
+  }
+  const [lead] = await db.select({ tenantId: leadsTable.tenantId }).from(leadsTable).where(eq(leadsTable.id, leadId));
+  if (!lead) {
+    res.status(404).json({ error: "Lead not found" });
+    return;
+  }
+  if (req.user?.platformRole !== "super_admin" && lead.tenantId !== req.user?.tenantId) {
+    res.status(403).json({ error: "Access denied" });
+    return;
+  }
+  const [updated] = await db
+    .update(leadProposalsTable)
+    .set({ htmlContent })
+    .where(and(eq(leadProposalsTable.leadId, leadId), eq(leadProposalsTable.tenantId, lead.tenantId), eq(leadProposalsTable.version, version)))
+    .returning({ id: leadProposalsTable.id });
+  if (!updated) {
+    res.status(404).json({ error: "Proposal not found" });
+    return;
+  }
+  res.json({ ok: true });
+});
+
 // ── Lead products CRUD ─────────────────────────────────────────────────────────
 router.get("/leads/:leadId/products", async (req, res) => {
   const leadId = String(req.params.leadId);

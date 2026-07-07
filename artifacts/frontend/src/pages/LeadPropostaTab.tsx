@@ -43,6 +43,9 @@ import {
   MessageCircle,
   CheckSquare,
   Link2,
+  PencilLine,
+  Save,
+  XCircle,
 } from "lucide-react";
 import {
   DropdownMenu,
@@ -61,6 +64,88 @@ import {
   useUpdatePropostaStatus,
 } from "@workspace/api-client-react";
 import type { Proposta } from "@workspace/api-client-react";
+
+// ── Inline editing script injected into proposal preview iframe ────────────────
+const PROPOSTA_EDIT_SCRIPT = `<script id="__proposta_editor__">
+(function(){
+  var TAGS=['h1','h2','h3','h4','h5','h6','p','span','a','li','td','th','strong','em','small','blockquote'];
+  var css=document.createElement('style');
+  css.textContent=
+    '[data-pe]:hover{outline:2px dashed #818cf8!important;outline-offset:2px;cursor:text!important;}'+
+    '[data-pe]:focus{outline:2px solid #6366f1!important;outline-offset:2px;background:rgba(99,102,241,0.06)!important;border-radius:2px;}'+
+    '#__pe_bar__{position:fixed;top:8px;left:50%;transform:translateX(-50%);z-index:99999;background:rgba(15,15,25,.94);padding:5px 10px;border-radius:10px;display:none;align-items:center;gap:5px;box-shadow:0 4px 20px rgba(0,0,0,.5);backdrop-filter:blur(12px);}'+
+    '.__pe_btn{background:none;border:none;color:#e2e8f0;cursor:pointer;padding:3px 8px;border-radius:5px;font-size:13px;line-height:1.4;}'+
+    '.__pe_btn:hover{background:rgba(255,255,255,.18);}'+
+    '.__pe_sep{width:1px;height:18px;background:rgba(255,255,255,.2);margin:0 3px;}'+
+    '.__pe_clr{width:26px;height:22px;padding:0;border:1px solid rgba(255,255,255,.2);border-radius:4px;cursor:pointer;background:transparent;}';
+  document.head.appendChild(css);
+
+  function send(){
+    window.parent.postMessage({type:'proposta-edit',html:'<!DOCTYPE html>'+document.documentElement.outerHTML},'*');
+  }
+
+  var bar=null;
+  function getBar(){
+    if(bar)return bar;
+    bar=document.createElement('div');bar.id='__pe_bar__';
+    function btn(lbl,cmd,val){
+      var b=document.createElement('button');b.className='__pe_btn';b.innerHTML=lbl;
+      b.addEventListener('mousedown',function(e){e.preventDefault();document.execCommand(cmd,false,val||null);send();});
+      return b;
+    }
+    function sep(){var s=document.createElement('div');s.className='__pe_sep';return s;}
+    bar.appendChild(btn('<b>N</b>','bold'));
+    bar.appendChild(btn('<i>I</i>','italic'));
+    bar.appendChild(btn('<u>S</u>','underline'));
+    bar.appendChild(sep());
+    var szLbl=document.createElement('span');szLbl.textContent='Tam:';szLbl.style.cssText='color:#94a3b8;font-size:11px;white-space:nowrap;';
+    bar.appendChild(szLbl);
+    var sz=document.createElement('select');sz.style.cssText='background:rgba(255,255,255,.1);border:1px solid rgba(255,255,255,.2);color:#e2e8f0;padding:2px 5px;border-radius:5px;font-size:12px;cursor:pointer;';
+    [['12px','12'],['14px','14'],['16px','16'],['20px','20'],['24px','24'],['32px','32'],['48px','48']].forEach(function(o){
+      var opt=document.createElement('option');opt.value=o[0];opt.textContent=o[1]+'px';
+      if(o[0]==='16px')opt.selected=true;
+      sz.appendChild(opt);
+    });
+    sz.addEventListener('change',function(){
+      document.execCommand('fontSize',false,'7');
+      document.querySelectorAll('font[size="7"]').forEach(function(f){f.removeAttribute('size');f.style.fontSize=sz.value;});
+      send();
+    });
+    bar.appendChild(sz);
+    bar.appendChild(sep());
+    var clrLbl=document.createElement('span');clrLbl.textContent='Cor:';clrLbl.style.cssText='color:#94a3b8;font-size:11px;';
+    bar.appendChild(clrLbl);
+    var clr=document.createElement('input');clr.type='color';clr.value='#111827';clr.className='__pe_clr';
+    clr.addEventListener('change',function(){document.execCommand('foreColor',false,clr.value);send();});
+    bar.appendChild(clr);
+    document.body.appendChild(bar);
+    return bar;
+  }
+
+  function setup(el){
+    if(el.__pe)return;el.__pe=true;
+    if(!el.textContent.trim())return;
+    var blockTags=/^(DIV|SECTION|ARTICLE|NAV|HEADER|FOOTER|MAIN|ASIDE|UL|OL|TABLE|TBODY|TR|FORM)$/;
+    if((el.tagName==='DIV'||el.tagName==='SPAN')&&Array.from(el.children).some(function(c){return blockTags.test(c.tagName);}))return;
+    el.setAttribute('data-pe','1');
+    el.addEventListener('click',function(e){e.stopPropagation();el.contentEditable='true';el.focus();getBar().style.display='flex';});
+    el.addEventListener('blur',function(){
+      setTimeout(function(){
+        var a=document.activeElement;
+        if(a&&a.closest&&a.closest('#__pe_bar__'))return;
+        el.contentEditable='false';getBar().style.display='none';send();
+      },150);
+    });
+    el.addEventListener('keydown',function(e){
+      if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();el.blur();}
+      if(e.key==='Escape'){el.contentEditable='false';getBar().style.display='none';}
+    });
+  }
+
+  TAGS.forEach(function(tag){document.querySelectorAll(tag).forEach(setup);});
+  new MutationObserver(function(){TAGS.forEach(function(tag){document.querySelectorAll(tag).forEach(setup);});}).observe(document.body,{childList:true,subtree:true});
+})();
+<\/script>`;
 
 interface LeadPropostaTabProps {
   leadId: string;
@@ -115,6 +200,13 @@ export default function LeadPropostaTab({ leadId, tenantId, lead }: LeadProposta
   const [renders, setRenders] = useState<{ id: string; imageUrl: string; cenaNome?: string | null; createdAt: string }[]>([]);
   const [rendersLoading, setRendersLoading] = useState(false);
   const [rendersLoaded, setRendersLoaded] = useState(false);
+
+  // Inline editing
+  const iframeRef = useRef<HTMLIFrameElement>(null);
+  const [editMode, setEditMode] = useState(false);
+  const [editableHtml, setEditableHtml] = useState<string | null>(null);
+  const [editSaving, setEditSaving] = useState(false);
+  const [editDirty, setEditDirty] = useState(false);
 
   // Product form
   const [newProductNome, setNewProductNome] = useState("");
@@ -258,6 +350,63 @@ export default function LeadPropostaTab({ leadId, tenantId, lead }: LeadProposta
     setCorDestaque(lead?.corDestaque ?? "#A78BFA");
     setCorSecundaria(lead?.corSecundaria ?? "");
   }, [lead]);
+
+  // Listen for inline edits from the preview iframe
+  useEffect(() => {
+    const handler = (e: MessageEvent) => {
+      if (e.data?.type === "proposta-edit" && typeof e.data.html === "string") {
+        setEditableHtml(e.data.html);
+        setEditDirty(true);
+      }
+    };
+    window.addEventListener("message", handler);
+    return () => window.removeEventListener("message", handler);
+  }, []);
+
+  function injectEditScript(html: string): string {
+    if (html.includes("</body>")) return html.replace("</body>", PROPOSTA_EDIT_SCRIPT + "</body>");
+    return html + PROPOSTA_EDIT_SCRIPT;
+  }
+
+  function stripEditScript(html: string): string {
+    return html.replace(/<script id="__proposta_editor__">[\s\S]*?<\/script>/g, "");
+  }
+
+  function enterEditMode() {
+    if (!previewHtml) return;
+    setEditableHtml(injectEditScript(previewHtml));
+    setEditDirty(false);
+    setEditMode(true);
+  }
+
+  function cancelEditMode() {
+    setEditMode(false);
+    setEditableHtml(null);
+    setEditDirty(false);
+  }
+
+  async function saveEditedHtml() {
+    const html = editableHtml ? stripEditScript(editableHtml) : previewHtml;
+    if (!html || !activeVersion) return;
+    setEditSaving(true);
+    try {
+      const res = await fetch(api(`/api/leads/${leadId}/proposals/${activeVersion}`), {
+        method: "PATCH",
+        headers,
+        body: JSON.stringify({ htmlContent: html }),
+      });
+      if (!res.ok) throw new Error("Falha ao salvar");
+      setPreviewHtml(html);
+      setEditMode(false);
+      setEditableHtml(null);
+      setEditDirty(false);
+      toast({ title: "Edições salvas com sucesso!" });
+    } catch {
+      toast({ title: "Erro ao salvar edições", variant: "destructive" });
+    } finally {
+      setEditSaving(false);
+    }
+  }
 
   async function uploadImageFile(file: File): Promise<string> {
     const result = await new Promise<{ uploadURL: string; objectPath: string }>((resolve, reject) => {
@@ -1282,19 +1431,44 @@ export default function LeadPropostaTab({ leadId, tenantId, lead }: LeadProposta
       </Dialog>
 
       {/* Preview Dialog */}
-      <Dialog open={previewOpen} onOpenChange={setPreviewOpen}>
+      <Dialog open={previewOpen} onOpenChange={(open) => { if (!open) { cancelEditMode(); setPreviewOpen(false); } }}>
         <DialogContent className="max-w-[95vw] w-full h-[95vh] flex flex-col p-4">
           <DialogHeader>
-            <DialogTitle className="text-sm flex items-center gap-2">
-              <FileText className="h-4 w-4" />
-              Pré-visualização — Proposta v{activeVersion}
-            </DialogTitle>
+            <div className="flex items-center justify-between">
+              <DialogTitle className="text-sm flex items-center gap-2">
+                <FileText className="h-4 w-4" />
+                Pré-visualização — Proposta v{activeVersion}
+                {editMode && (
+                  <span className="ml-1 text-[10px] font-normal bg-violet-100 text-violet-700 dark:bg-violet-900/40 dark:text-violet-300 px-2 py-0.5 rounded-full">
+                    Modo edição — clique em qualquer texto para editar
+                  </span>
+                )}
+              </DialogTitle>
+              {!editMode ? (
+                <Button size="sm" variant="outline" className="h-7 text-xs gap-1.5 mr-6" onClick={enterEditMode}>
+                  <PencilLine className="h-3.5 w-3.5" />
+                  Editar texto
+                </Button>
+              ) : (
+                <div className="flex items-center gap-2 mr-6">
+                  <Button size="sm" variant="outline" className="h-7 text-xs gap-1 text-muted-foreground" onClick={cancelEditMode} disabled={editSaving}>
+                    <XCircle className="h-3.5 w-3.5" />
+                    Cancelar
+                  </Button>
+                  <Button size="sm" className="h-7 text-xs gap-1" onClick={saveEditedHtml} disabled={editSaving || !editDirty}>
+                    {editSaving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Save className="h-3.5 w-3.5" />}
+                    {editSaving ? "Salvando…" : "Salvar edições"}
+                  </Button>
+                </div>
+              )}
+            </div>
           </DialogHeader>
           <div className="flex-1 min-h-0 rounded border overflow-hidden">
             {previewHtml ? (
               <iframe
+                ref={iframeRef}
                 title="Preview"
-                srcDoc={previewHtml}
+                srcDoc={editMode && editableHtml ? editableHtml : previewHtml}
                 className="w-full h-full"
                 sandbox="allow-same-origin allow-scripts"
               />
@@ -1305,25 +1479,21 @@ export default function LeadPropostaTab({ leadId, tenantId, lead }: LeadProposta
             )}
           </div>
           <DialogFooter className="gap-2">
-            <Button
-              variant="outline"
-              size="sm"
-              className="gap-1"
-              onClick={() => activeVersion && downloadProposal(activeVersion, "html")}
-            >
-              <Download className="h-3.5 w-3.5" />
-              Download HTML
-            </Button>
-            <Button
-              variant="outline"
-              size="sm"
-              className="gap-1"
-              onClick={() => activeVersion && downloadProposal(activeVersion, "pdf")}
-            >
-              <FileText className="h-3.5 w-3.5" />
-              Download PDF
-            </Button>
-            <Button size="sm" onClick={() => setPreviewOpen(false)}>
+            {!editMode && (
+              <>
+                <Button variant="outline" size="sm" className="gap-1"
+                  onClick={() => activeVersion && downloadProposal(activeVersion, "html")}>
+                  <Download className="h-3.5 w-3.5" />
+                  Download HTML
+                </Button>
+                <Button variant="outline" size="sm" className="gap-1"
+                  onClick={() => activeVersion && downloadProposal(activeVersion, "pdf")}>
+                  <FileText className="h-3.5 w-3.5" />
+                  Download PDF
+                </Button>
+              </>
+            )}
+            <Button size="sm" variant={editMode ? "outline" : "default"} onClick={() => { cancelEditMode(); setPreviewOpen(false); }}>
               Fechar
             </Button>
           </DialogFooter>
