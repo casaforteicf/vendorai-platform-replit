@@ -63,6 +63,7 @@ vi.mock("@workspace/db", () => ({
   customerIntelligenceTable: { id: "id", tenantId: "tenantId", leadId: "leadId" },
   businessProfilesTable: { id: "id", tenantId: "tenantId" },
   dealsTable: { id: "id", tenantId: "tenantId", leadId: "leadId", etapa: "etapa" },
+  tenantsTable: { id: "id", tenantId: "tenantId", proposalStyleMemory: "proposalStyleMemory" },
 }));
 
 vi.mock("../lib/proposal-engine.js", () => ({
@@ -72,6 +73,7 @@ vi.mock("../lib/proposal-engine.js", () => ({
   generateTheme: vi.fn(() => ({ accent: "#A78BFA" })),
   AI_PROVIDER: "anthropic",
   generateProposalPDF: mockGenerateProposalPDF,
+  learnFromProposalEdit: vi.fn().mockResolvedValue({}),
 }));
 
 import express from "express";
