@@ -37,6 +37,7 @@ import SmartProjectModule from './modules/SmartProjectModule'
 import DesignStudio from './design-studio/DesignStudio'
 import SmartRenderEngine from './smart-render-engine/SmartRenderEngine'
 import DocumentationStudio from './documentation-studio/DocumentationStudio'
+import ProductionStudio from './production-studio/ProductionStudio'
 import { computeNextAction }     from './project-experience/ProjectHome'
 import { ArqCommandPalette }     from './ArqCommandPalette'
 import { runAIE }                from '../engines/aie/aie-engine'
@@ -250,7 +251,7 @@ function renderModule(id: ModuleId, arqState: ArqProjectState, setActive: (m: Mo
     case 'cliente':       return <IntegrationModule/>
     case 'ecosystem':     return <EcosystemModule/>
     case 'knowledge':     return <KnowledgeModule/>
-    case 'office':        return <OfficeModule/>
+    case 'office':        return <ProductionStudio arqState={arqState} onNavigate={m => setActive(m as ModuleId)} />
   }
 }
 
