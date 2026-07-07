@@ -234,6 +234,12 @@ async function runStartupMigrations() {
   } catch (err) {
     logger.warn({ err }, "startup migrations: propostas payment mensalidade columns skipped");
   }
+  try {
+    await db.execute(sql`ALTER TABLE tenants ADD COLUMN IF NOT EXISTS proposal_style_memory JSONB`);
+    logger.info("startup migrations: proposal_style_memory OK");
+  } catch (err) {
+    logger.warn({ err }, "startup migrations: proposal_style_memory skipped");
+  }
 }
 
 // ─── Boot sequence ────────────────────────────────────────────────────────────

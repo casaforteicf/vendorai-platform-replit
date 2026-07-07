@@ -83,6 +83,14 @@ export const tenantsTable = pgTable(
     corPrimaria:  varchar("cor_primaria",  { length: 7   }).default("#A78BFA"),
     site:         varchar("site",          { length: 255 }),
     descricao:    text("descricao"),
+    proposalStyleMemory: json("proposal_style_memory").$type<{
+      toneNotes?: string;
+      structureNotes?: string;
+      contentNotes?: string;
+      avoidNotes?: string;
+      editCount?: number;
+      updatedAt?: string;
+    }>(),
     createdAt: timestamp("created_at").notNull().defaultNow(),
     updatedAt: timestamp("updated_at").notNull().defaultNow(),
   },

@@ -137,6 +137,75 @@ export function generateTheme(primaryHex: string): {
 }
 
 // ── Prompt builder ───────────────────────────────────────────────────────────
+export type ProposalStyleMemory = {
+  toneNotes?: string;
+  structureNotes?: string;
+  contentNotes?: string;
+  avoidNotes?: string;
+  editCount?: number;
+  updatedAt?: string;
+};
+
+/**
+ * Called after the user saves an edited proposal.
+ * Compares original vs edited HTML, extracts stylistic learnings, merges with
+ * existing tenant memory, and persists the result — non-blocking.
+ */
+export async function learnFromProposalEdit(
+  tenantId: string,
+  originalHtml: string,
+  editedHtml: string,
+  existingMemory: ProposalStyleMemory | null,
+  log: { info: (obj: object, msg: string) => void; warn: (obj: object, msg: string) => void },
+): Promise<ProposalStyleMemory> {
+  const existing = existingMemory || {};
+  const editCount = (existing.editCount ?? 0) + 1;
+
+  const systemPrompt = `Você é um assistente de análise de preferências editoriais. Analise as diferenças entre uma proposta comercial gerada por IA e a versão editada manualmente pelo usuário. Extraia padrões de preferência estilística concisos em JSON.`;
+
+  const userPrompt = `Compare os dois HTMLs abaixo e extraia o que o usuário prefere em termos de tom, estrutura e conteúdo.
+
+MEMÓRIA EXISTENTE (pode ser atualizada/refinada):
+${JSON.stringify(existing, null, 2)}
+
+HTML ORIGINAL (gerado pela IA):
+${originalHtml.replace(/<[^>]+>/g, " ").replace(/\s{2,}/g, " ").slice(0, 2000)}
+
+HTML EDITADO (preferências do usuário):
+${editedHtml.replace(/<[^>]+>/g, " ").replace(/\s{2,}/g, " ").slice(0, 2000)}
+
+Retorne APENAS JSON válido com estas chaves (máx 120 caracteres cada):
+{
+  "toneNotes": "descrição do tom preferido (formal/informal, direto/cuidadoso, exemplos de vocabulário)",
+  "structureNotes": "preferências de estrutura (seções mais curtas/longas, o que costuma remover ou adicionar)",
+  "contentNotes": "preferências de conteúdo (tipos de exemplos, nível de detalhe, linguagem do segmento)",
+  "avoidNotes": "o que evitar (frases, estilos, abordagens que o usuário remove ou altera consistentemente)"
+}`;
+
+  try {
+    const result = await callProposalAI(
+      [{ role: "user", content: userPrompt }],
+      tenantId,
+      log,
+    );
+    const cleaned = result.content.replace(/```json\s*/gi, "").replace(/```\s*/g, "").trim();
+    const learned = JSON.parse(cleaned) as Partial<ProposalStyleMemory>;
+    const merged: ProposalStyleMemory = {
+      toneNotes: learned.toneNotes || existing.toneNotes,
+      structureNotes: learned.structureNotes || existing.structureNotes,
+      contentNotes: learned.contentNotes || existing.contentNotes,
+      avoidNotes: learned.avoidNotes || existing.avoidNotes,
+      editCount,
+      updatedAt: new Date().toISOString(),
+    };
+    log.info({ tenantId, editCount }, "proposal style memory updated");
+    return merged;
+  } catch (err: any) {
+    log.warn({ err: err?.message, tenantId }, "learnFromProposalEdit: AI call failed, returning incremented count only");
+    return { ...existing, editCount, updatedAt: new Date().toISOString() };
+  }
+}
+
 export function buildProposalPrompt(ctx: {
   leadName: string;
   empresa?: string | null;
@@ -162,6 +231,7 @@ export function buildProposalPrompt(ctx: {
   tenantName?: string | null;
   tenantPhone?: string | null;
   refinementNotes?: string | null;
+  styleMemory?: ProposalStyleMemory | null;
 }): string {
   const productsBlock = ctx.products.length
     ? `\nProdutos do cliente:\n${ctx.products.map((p) => `- ${p.nome}`).join("\n")}`
@@ -188,6 +258,18 @@ export function buildProposalPrompt(ctx: {
     ? `\n━━━ INSTRUÇÕES ESPECÍFICAS (PRIORIDADE MÁXIMA) ━━━\n${ctx.refinementNotes.trim()}\nESSAS INSTRUÇÕES DEVEM SER APLICADAS FIELMENTE. Elas sobrepõem qualquer outra diretriz de estilo ou formato.`
     : "";
 
+  const styleMemoryBlock = ctx.styleMemory && (
+    ctx.styleMemory.toneNotes ||
+    ctx.styleMemory.structureNotes ||
+    ctx.styleMemory.contentNotes ||
+    ctx.styleMemory.avoidNotes
+  ) ? `\n━━━ PREFERÊNCIAS DO USUÁRIO (aprendidas de ${ctx.styleMemory.editCount ?? 0} edição(ões) anterior(es)) ━━━
+Essas preferências foram extraídas automaticamente das edições que o usuário fez em propostas anteriores. Aplique-as como padrão — podem ser sobrescritas por instruções específicas acima.
+${ctx.styleMemory.toneNotes ? `• Tom/Voz: ${ctx.styleMemory.toneNotes}` : ""}
+${ctx.styleMemory.structureNotes ? `• Estrutura: ${ctx.styleMemory.structureNotes}` : ""}
+${ctx.styleMemory.contentNotes ? `• Conteúdo: ${ctx.styleMemory.contentNotes}` : ""}
+${ctx.styleMemory.avoidNotes ? `• Evitar: ${ctx.styleMemory.avoidNotes}` : ""}` : "";
+
   return `Gere o conteúdo de uma proposta comercial personalizada em formato JSON estrito ${tenantLabel} para o cliente abaixo.
 
 ━━━ DADOS DO CLIENTE ━━━
@@ -204,6 +286,7 @@ ${intelligenceBlock}
 
 ━━━ AMOSTRA DE CONVERSA (calibre o tom exato ao estilo do cliente) ━━━
 ${ctx.conversationSamples || "Sem conversa disponível. Use tom profissional, direto e respeitoso."}
+${styleMemoryBlock}
 ${refinementBlock}
 ━━━ ESTRUTURA JSON OBRIGATÓRIA ━━━
 Retorne APENAS JSON válido — sem markdown, sem \`\`\`json, sem texto antes ou depois.

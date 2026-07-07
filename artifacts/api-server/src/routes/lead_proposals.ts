@@ -12,8 +12,9 @@ import {
   customerIntelligenceTable,
   businessProfilesTable,
   dealsTable,
+  tenantsTable,
 } from "@workspace/db";
-import { buildProposalPrompt, callProposalAI, renderProposalHtml, generateTheme, AI_PROVIDER, generateProposalPDF } from "../lib/proposal-engine.js";
+import { buildProposalPrompt, callProposalAI, renderProposalHtml, generateTheme, AI_PROVIDER, generateProposalPDF, learnFromProposalEdit, type ProposalStyleMemory } from "../lib/proposal-engine.js";
 
 const router: IRouter = Router();
 
@@ -221,6 +222,13 @@ router.post("/leads/:leadId/proposals", async (req, res) => {
 
   const tenantId = ctx.lead.tenantId;
 
+  // Fetch tenant's accumulated style memory
+  const [tenantRow] = await db
+    .select({ proposalStyleMemory: tenantsTable.proposalStyleMemory })
+    .from(tenantsTable)
+    .where(eq(tenantsTable.id, tenantId));
+  const styleMemory = (tenantRow?.proposalStyleMemory ?? null) as ProposalStyleMemory | null;
+
   // Auto-generate briefing if missing
   if (!ctx.briefing) {
     // Trigger a lightweight background briefing (just save an empty one so the flow continues)
@@ -269,6 +277,7 @@ router.post("/leads/:leadId/proposals", async (req, res) => {
     tenantName: ctx.tenantName,
     tenantPhone: ctx.tenantPhone,
     refinementNotes: req.body?.refinementNotes ? String(req.body.refinementNotes) : null,
+    styleMemory,
   });
 
   let result;
@@ -379,6 +388,13 @@ router.patch("/leads/:leadId/proposals/:version", async (req, res) => {
     res.status(403).json({ error: "Access denied" });
     return;
   }
+
+  // Fetch original HTML for learning diff (before overwriting)
+  const [existing] = await db
+    .select({ htmlContent: leadProposalsTable.htmlContent })
+    .from(leadProposalsTable)
+    .where(and(eq(leadProposalsTable.leadId, leadId), eq(leadProposalsTable.tenantId, lead.tenantId), eq(leadProposalsTable.version, version)));
+
   const [updated] = await db
     .update(leadProposalsTable)
     .set({ htmlContent })
@@ -389,6 +405,28 @@ router.patch("/leads/:leadId/proposals/:version", async (req, res) => {
     return;
   }
   res.json({ ok: true });
+
+  // Fire-and-forget: learn from this edit and update tenant style memory
+  if (existing?.htmlContent && existing.htmlContent !== htmlContent) {
+    const tenantId = lead.tenantId;
+    const log = req.log;
+    (async () => {
+      try {
+        const [tenant] = await db.select({ proposalStyleMemory: tenantsTable.proposalStyleMemory }).from(tenantsTable).where(eq(tenantsTable.id, tenantId));
+        const newMemory = await learnFromProposalEdit(
+          tenantId,
+          existing.htmlContent,
+          htmlContent,
+          (tenant?.proposalStyleMemory ?? null) as ProposalStyleMemory | null,
+          log,
+        );
+        await db.update(tenantsTable).set({ proposalStyleMemory: newMemory } as any).where(eq(tenantsTable.id, tenantId));
+        log.info({ tenantId }, "proposal style memory persisted");
+      } catch (err: any) {
+        log.warn({ err: err?.message, tenantId }, "proposal style memory update failed (non-fatal)");
+      }
+    })();
+  }
 });
 
 // ── Lead products CRUD ─────────────────────────────────────────────────────────
