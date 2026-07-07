@@ -420,6 +420,10 @@ export function renderProposalHtml(json: unknown, theme: {
   formaPagamento?: string | null;
   condPagamento?: string | null;
   prazoEntrega?: string | null;
+} | null, contact?: {
+  phone?: string | null;
+  email?: string | null;
+  instagram?: string | null;
 } | null): string {
   const d = json as Record<string, any>;
   const hero = d.hero || {};
@@ -606,6 +610,10 @@ export function renderProposalHtml(json: unknown, theme: {
   .cta-box h2 { color: #fff; font-size: 13.5pt; }
   .cta-box .lead-text { color: #cfc9e6; margin-top: 1.5mm; }
   .cta-link { display: inline-block; margin-top: 4mm; background: linear-gradient(90deg, ${theme.accent}, ${theme.secondary}); color: ${theme.navyDeep}; padding: 2.5mm 7mm; border-radius: 100px; font-weight: 700; font-size: 9pt; text-decoration: none; }
+  .contact-strip { display: flex; gap: 4mm; flex-wrap: wrap; margin-top: 3.5mm; padding-top: 3mm; border-top: 1px solid rgba(255,255,255,0.12); }
+  .contact-item { display: flex; align-items: center; gap: 2mm; color: #cfc9e6; font-size: 8pt; text-decoration: none; }
+  .contact-item svg { flex-shrink: 0; opacity: .75; }
+  .contact-item:hover { color: #fff; }
 
   /* ── orçamento ── */
   .orc-table { width: 100%; border-collapse: collapse; margin: 3.5mm 0; font-size: 8.5pt; }
@@ -729,6 +737,23 @@ export function renderProposalHtml(json: unknown, theme: {
     <h2>${cta.title || ""}</h2>
     <p class="lead-text">${cta.subtitle || ""}</p>
     <a class="cta-link" href="${meta.whatsappUrl || "#"}">${cta.button || "Falar no WhatsApp"}</a>
+    ${(() => {
+      const items: string[] = [];
+      if (contact?.phone) {
+        const clean = contact.phone.replace(/\D/g, "");
+        items.push(`<a class="contact-item" href="https://wa.me/${clean}"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07A19.5 19.5 0 0 1 4.69 12 19.79 19.79 0 0 1 1.65 3.4 2 2 0 0 1 3.62 1h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 8.91a16 16 0 0 0 6.72 6.72l.81-.81a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"/></svg>${contact.phone}</a>`);
+      }
+      if (contact?.email) {
+        items.push(`<a class="contact-item" href="mailto:${contact.email}"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="4" width="20" height="16" rx="2"/><path d="m22 7-8.97 5.7a1.94 1.94 0 0 1-2.06 0L2 7"/></svg>${contact.email}</a>`);
+      }
+      if (contact?.instagram) {
+        const handle = contact.instagram.replace(/^https?:\/\/(www\.)?instagram\.com\/?/, "").replace(/^@/, "").replace(/\/$/, "");
+        const url = handle.startsWith("http") ? handle : `https://instagram.com/${handle}`;
+        const label = handle.startsWith("http") ? handle : `@${handle}`;
+        items.push(`<a class="contact-item" href="${url}"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="2" width="20" height="20" rx="5"/><path d="M16 11.37A4 4 0 1 1 12.63 8 4 4 0 0 1 16 11.37z"/><line x1="17.5" y1="6.5" x2="17.51" y2="6.5"/></svg>${label}</a>`);
+      }
+      return items.length > 0 ? `<div class="contact-strip">${items.join("")}</div>` : "";
+    })()}
   </div>
 </div>
 

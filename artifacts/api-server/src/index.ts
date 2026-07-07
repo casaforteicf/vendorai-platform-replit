@@ -240,6 +240,12 @@ async function runStartupMigrations() {
   } catch (err) {
     logger.warn({ err }, "startup migrations: proposal_style_memory skipped");
   }
+  try {
+    await db.execute(sql`ALTER TABLE business_profiles ADD COLUMN IF NOT EXISTS instagram_url TEXT`);
+    logger.info("startup migrations: business_profiles instagram_url OK");
+  } catch (err) {
+    logger.warn({ err }, "startup migrations: business_profiles instagram_url skipped");
+  }
 }
 
 // ─── Boot sequence ────────────────────────────────────────────────────────────

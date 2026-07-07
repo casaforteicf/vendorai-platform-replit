@@ -186,6 +186,7 @@ const profileSchema = z.object({
   vertical: z.string().optional(),
   metodoVendas: z.string().optional(),
   urlLinhaProdutos: z.string().url("URL inválida").optional().or(z.literal("")),
+  instagramUrl: z.string().optional(),
   logoUrl: z.string().optional(),
 });
 type ProfileForm = z.infer<typeof profileSchema>;
@@ -663,7 +664,7 @@ export default function Configuracoes() {
 
   const profileForm = useForm<ProfileForm>({
     resolver: zodResolver(profileSchema),
-    defaultValues: { razaoSocial: "", nomeFantasia: "", cnpj: "", endereco: "", telefone: "", email: "", vertical: "", metodoVendas: "", urlLinhaProdutos: "", logoUrl: "" },
+    defaultValues: { razaoSocial: "", nomeFantasia: "", cnpj: "", endereco: "", telefone: "", email: "", vertical: "", metodoVendas: "", urlLinhaProdutos: "", instagramUrl: "", logoUrl: "" },
     values: profileQuery.data
       ? {
           razaoSocial:      profileQuery.data.razaoSocial ?? "",
@@ -675,6 +676,7 @@ export default function Configuracoes() {
           vertical:         profileQuery.data.vertical ?? "",
           metodoVendas:     profileQuery.data.metodoVendas ?? "",
           urlLinhaProdutos: profileQuery.data.urlLinhaProdutos ?? "",
+          instagramUrl:     profileQuery.data.instagramUrl ?? "",
           logoUrl:          profileQuery.data.logoUrl ?? "",
         }
       : undefined,
@@ -692,6 +694,7 @@ export default function Configuracoes() {
       vertical:         values.vertical || undefined,
       metodoVendas:     values.metodoVendas || undefined,
       urlLinhaProdutos: values.urlLinhaProdutos || undefined,
+      instagramUrl:     values.instagramUrl || undefined,
       logoUrl:          values.logoUrl || undefined,
     };
 
@@ -1833,6 +1836,19 @@ export default function Configuracoes() {
                           <FormLabel>E-mail comercial</FormLabel>
                           <FormControl>
                             <Input type="email" placeholder="contato@empresa.com" {...field} />
+                          </FormControl>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+                    <FormField
+                      control={profileForm.control}
+                      name="instagramUrl"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>Instagram</FormLabel>
+                          <FormControl>
+                            <Input placeholder="@suaempresa ou https://instagram.com/suaempresa" {...field} />
                           </FormControl>
                           <FormMessage />
                         </FormItem>

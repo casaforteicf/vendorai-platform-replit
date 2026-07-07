@@ -12435,6 +12435,10 @@ components:
           type: string
           nullable: true
           description: URL pública com informações da linha de produtos para a IA
+        instagramUrl:
+          type: string
+          nullable: true
+          description: Perfil do Instagram da empresa
         produtos:
           type: array
           items:
@@ -12506,6 +12510,9 @@ components:
         urlLinhaProdutos:
           type: string
           description: URL pública com informações da linha de produtos para a IA
+        instagramUrl:
+          type: string
+          description: Perfil do Instagram da empresa
         produtos:
           type: array
           items:
@@ -12559,6 +12566,9 @@ components:
         urlLinhaProdutos:
           type: string
           description: URL pública com informações da linha de produtos para a IA
+        instagramUrl:
+          type: string
+          description: Perfil do Instagram da empresa
         produtos:
           type: array
           items:

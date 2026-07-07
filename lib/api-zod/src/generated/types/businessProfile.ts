@@ -24,6 +24,8 @@ export interface BusinessProfile {
   faviconUrl?: string | null;
   /** URL pública com informações da linha de produtos para a IA */
   urlLinhaProdutos?: string | null;
+  /** Perfil do Instagram da empresa */
+  instagramUrl?: string | null;
   produtos?: Product[] | null;
   diferenciais?: string | null;
   publicoAlvo?: string | null;

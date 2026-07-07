@@ -68,6 +68,8 @@ async function loadProposalContext(leadId: string, tenantId: string) {
       nomeFantasia: businessProfilesTable.nomeFantasia,
       razaoSocial: businessProfilesTable.razaoSocial,
       telefone: businessProfilesTable.telefone,
+      email: businessProfilesTable.email,
+      instagramUrl: businessProfilesTable.instagramUrl,
       logoUrl: businessProfilesTable.logoUrl,
     })
     .from(businessProfilesTable)
@@ -75,7 +77,11 @@ async function loadProposalContext(leadId: string, tenantId: string) {
 
   const tenantName = bp?.nomeFantasia || bp?.razaoSocial || null;
 
-  return { lead, briefing, intelligence, products, propostas, conversationSamples, tenantName, tenantPhone: bp?.telefone, tenantLogoUrl: bp?.logoUrl ?? null };
+  return {
+    lead, briefing, intelligence, products, propostas, conversationSamples,
+    tenantName, tenantPhone: bp?.telefone, tenantLogoUrl: bp?.logoUrl ?? null,
+    tenantEmail: bp?.email ?? null, tenantInstagram: bp?.instagramUrl ?? null,
+  };
 }
 
 /** Resolve object-storage relative paths to absolute URLs for HTML/PDF embedding */
@@ -345,7 +351,8 @@ router.post("/leads/:leadId/proposals", async (req, res) => {
     ctx.lead.websiteUrl || undefined,
     resolveStorageUrl(ctx.tenantLogoUrl),
     bodyImagens,
-    orcamentoEmbed
+    orcamentoEmbed,
+    { phone: ctx.tenantPhone ?? null, email: ctx.tenantEmail ?? null, instagram: ctx.tenantInstagram ?? null }
   );
 
   const [proposal] = await db

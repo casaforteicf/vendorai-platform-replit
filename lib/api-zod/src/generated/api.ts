@@ -4157,6 +4157,7 @@ export const CreateBusinessProfileBody = zod.object({
   "logoUrl": zod.string().optional(),
   "faviconUrl": zod.string().optional(),
   "urlLinhaProdutos": zod.string().optional().describe('URL pública com informações da linha de produtos para a IA'),
+  "instagramUrl": zod.string().optional().describe('Perfil do Instagram da empresa'),
   "produtos": zod.array(zod.object({
   "nome": zod.string(),
   "descricao": zod.string().nullish(),
@@ -4192,6 +4193,7 @@ export const GetBusinessProfileByTenantResponse = zod.object({
   "logoUrl": zod.string().nullish(),
   "faviconUrl": zod.string().nullish(),
   "urlLinhaProdutos": zod.string().nullish().describe('URL pública com informações da linha de produtos para a IA'),
+  "instagramUrl": zod.string().nullish().describe('Perfil do Instagram da empresa'),
   "produtos": zod.array(zod.object({
   "nome": zod.string(),
   "descricao": zod.string().nullish(),
@@ -4229,6 +4231,7 @@ export const GetBusinessProfileResponse = zod.object({
   "logoUrl": zod.string().nullish(),
   "faviconUrl": zod.string().nullish(),
   "urlLinhaProdutos": zod.string().nullish().describe('URL pública com informações da linha de produtos para a IA'),
+  "instagramUrl": zod.string().nullish().describe('Perfil do Instagram da empresa'),
   "produtos": zod.array(zod.object({
   "nome": zod.string(),
   "descricao": zod.string().nullish(),
@@ -4264,6 +4267,7 @@ export const UpdateBusinessProfileBody = zod.object({
   "logoUrl": zod.string().optional(),
   "faviconUrl": zod.string().optional(),
   "urlLinhaProdutos": zod.string().optional().describe('URL pública com informações da linha de produtos para a IA'),
+  "instagramUrl": zod.string().optional().describe('Perfil do Instagram da empresa'),
   "produtos": zod.array(zod.object({
   "nome": zod.string(),
   "descricao": zod.string().nullish(),
@@ -4291,6 +4295,7 @@ export const UpdateBusinessProfileResponse = zod.object({
   "logoUrl": zod.string().nullish(),
   "faviconUrl": zod.string().nullish(),
   "urlLinhaProdutos": zod.string().nullish().describe('URL pública com informações da linha de produtos para a IA'),
+  "instagramUrl": zod.string().nullish().describe('Perfil do Instagram da empresa'),
   "produtos": zod.array(zod.object({
   "nome": zod.string(),
   "descricao": zod.string().nullish(),

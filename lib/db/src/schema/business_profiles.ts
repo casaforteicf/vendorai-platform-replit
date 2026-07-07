@@ -28,6 +28,7 @@ export const businessProfilesTable = pgTable(
     logoUrl: text("logo_url"),
     faviconUrl: text("favicon_url"),
     urlLinhaProdutos: text("url_linha_produtos"),
+    instagramUrl: text("instagram_url"),
     produtos: jsonb("produtos").$type<z.infer<typeof productSchema>[]>(),
     diferenciais: text("diferenciais"),
     publicoAlvo: text("publico_alvo"),

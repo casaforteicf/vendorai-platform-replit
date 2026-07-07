@@ -22,6 +22,8 @@ export interface UpdateBusinessProfileBody {
   faviconUrl?: string;
   /** URL pública com informações da linha de produtos para a IA */
   urlLinhaProdutos?: string;
+  /** Perfil do Instagram da empresa */
+  instagramUrl?: string;
   produtos?: Product[];
   diferenciais?: string;
   publicoAlvo?: string;
