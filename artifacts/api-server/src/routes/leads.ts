@@ -734,8 +734,8 @@ router.put("/leads/:leadId/briefing", async (req, res) => {
 });
 
 // ── POST /leads/:leadId/briefing/generate-questions ─────────────────────────
-// Uses AI to generate SPIN questions tailored to the lead's business and the
-// tenant's configured sales approach (metodoVendas).
+// Uses AI to generate SPIN questions deeply tailored to the lead's specific
+// business type and recent conversation context.
 router.post("/leads/:leadId/briefing/generate-questions", async (req, res) => {
   const leadId = String(req.params.leadId);
 
@@ -764,17 +764,26 @@ router.post("/leads/:leadId/briefing/generate-questions", async (req, res) => {
 
   const tenantId = lead.tenantId;
 
-  const [profile] = await db
-    .select({
-      nomeFantasia: businessProfilesTable.nomeFantasia,
-      vertical: businessProfilesTable.vertical,
-      metodoVendas: businessProfilesTable.metodoVendas,
-      diferenciais: businessProfilesTable.diferenciais,
-      publicoAlvo: businessProfilesTable.publicoAlvo,
-      produtos: businessProfilesTable.produtos,
-    })
-    .from(businessProfilesTable)
-    .where(eq(businessProfilesTable.tenantId, tenantId));
+  const [profile, recentMessages] = await Promise.all([
+    db
+      .select({
+        nomeFantasia: businessProfilesTable.nomeFantasia,
+        vertical: businessProfilesTable.vertical,
+        metodoVendas: businessProfilesTable.metodoVendas,
+        diferenciais: businessProfilesTable.diferenciais,
+        publicoAlvo: businessProfilesTable.publicoAlvo,
+        produtos: businessProfilesTable.produtos,
+      })
+      .from(businessProfilesTable)
+      .where(eq(businessProfilesTable.tenantId, tenantId))
+      .then((rows) => rows[0] ?? null),
+    db
+      .select({ direcao: messagesTable.direcao, conteudo: messagesTable.conteudo })
+      .from(messagesTable)
+      .where(and(eq(messagesTable.leadId, leadId), eq(messagesTable.tenantId, tenantId)))
+      .orderBy(desc(messagesTable.createdAt))
+      .limit(12),
+  ]);
 
   const metodoMap: Record<string, string> = {
     consultiva: "Venda Consultiva (foco na dor e contexto do cliente)",
@@ -786,43 +795,64 @@ router.post("/leads/:leadId/briefing/generate-questions", async (req, res) => {
   };
   const abordagem = metodoMap[(profile?.metodoVendas ?? "")] ?? (profile?.metodoVendas ?? "Venda Consultiva");
 
-  const produtosDesc = Array.isArray(profile?.produtos) && profile.produtos.length
-    ? profile.produtos.slice(0, 5).map((p: any) => p.nome).join(", ")
-    : "produtos/serviços do tenant";
+  const produtosDesc = Array.isArray(profile?.produtos) && (profile?.produtos as any[]).length
+    ? (profile?.produtos as any[]).slice(0, 5).map((p: any) => p.nome).join(", ")
+    : null;
 
-  const prompt = `Você é um especialista em vendas B2B. Gere perguntas de briefing personalizadas para um vendedor que vai conversar com o seguinte cliente:
+  const conversaTexto = recentMessages.length
+    ? recentMessages
+        .reverse()
+        .map((m) => `[${m.direcao === "entrada" ? "Cliente" : "Vendedor"}]: ${m.conteudo}`)
+        .join("\n")
+    : null;
 
-CLIENTE:
-- Nome/Empresa: ${lead.empresa ?? lead.nome}
-- Segmento de mercado: ${lead.mercadoSegmento ?? "não informado"}
-- Objetivo/contexto: ${lead.objetivo ?? "não informado"}
+  const segmento = lead.mercadoSegmento?.trim() || lead.objetivo?.trim() || "negócio não identificado";
 
-EMPRESA VENDEDORA:
-- Nome: ${profile?.nomeFantasia ?? "nossa empresa"}
-- Vertical: ${profile?.vertical ?? "não especificado"}
-- Método de vendas: ${abordagem}
-- Público-alvo: ${profile?.publicoAlvo ?? "não especificado"}
-- Diferenciais: ${profile?.diferenciais ?? "não informados"}
-- Produtos/serviços: ${produtosDesc}
+  const systemPrompt = `Você é um especialista em vendas consultivas com profundo conhecimento em diferentes setores de negócio.
+Sua tarefa é gerar perguntas de briefing SPIN altamente específicas para o tipo de negócio do CLIENTE — não perguntas genéricas sobre atendimento ou canais.
 
-TAREFA: Gere exatamente 3 perguntas para cada bloco SPIN, específicas para o contexto deste cliente e do método "${abordagem}". As perguntas devem ser conversacionais, naturais para WhatsApp/ligação, e explorar o contexto de negócio do CLIENTE (não da empresa vendedora).
+REGRAS OBRIGATÓRIAS:
+1. As perguntas devem refletir o COTIDIANO OPERACIONAL do segmento do cliente (ex: para construtora → orçamentos, obras em andamento, relação com fornecedores, subcontratados; para clínica → agenda, retorno de pacientes, convênios; para restaurante → cardápio, delivery, sazonalidade, giro de estoque).
+2. NÃO pergunte sobre canais de atendimento (WhatsApp, Instagram etc.) — isso já está em outra parte do formulário.
+3. NÃO use linguagem corporativa genérica. As perguntas devem soar naturais numa conversa de WhatsApp ou ligação.
+4. Cada pergunta deve revelar algo diferente e complementar — evite variações da mesma dor.
+5. Use o contexto da conversa para tornar as perguntas ainda mais específicas ao momento atual do cliente.`;
 
-Retorne JSON válido neste formato exato:
+  const userPrompt = `## Cliente
+Empresa/Nome: ${lead.empresa ?? lead.nome ?? "não informado"}
+Segmento: ${segmento}
+Objetivo registrado: ${lead.objetivo ?? "não informado"}
+
+## Empresa vendedora
+Nome: ${profile?.nomeFantasia ?? "nossa empresa"}
+Vertical: ${profile?.vertical ?? "não especificado"}
+Método de vendas: ${abordagem}
+${produtosDesc ? `Produtos/serviços: ${produtosDesc}` : ""}
+${profile?.diferenciais ? `Diferenciais: ${profile.diferenciais}` : ""}
+
+${conversaTexto ? `## Trechos recentes da conversa com o cliente\n${conversaTexto}\n` : ""}
+
+## Tarefa
+Gere exatamente 3 perguntas para cada bloco SPIN, específicas para um negócio do tipo "${segmento}".
+As perguntas devem explorar a realidade operacional, as dores e os processos internos típicos desse segmento.
+
+Retorne APENAS JSON válido neste formato:
 {
   "situationQuestions": ["pergunta 1", "pergunta 2", "pergunta 3"],
   "problemQuestions": ["pergunta 1", "pergunta 2", "pergunta 3"],
   "implicationQuestions": ["pergunta 1", "pergunta 2", "pergunta 3"],
   "needQuestions": ["pergunta 1", "pergunta 2", "pergunta 3"]
-}
-
-Não inclua nenhum texto além do JSON.`;
+}`;
 
   try {
     const result = await callOpenAI(
       tenantId,
       "briefing_generator",
-      [{ role: "user", content: prompt }],
-      { model: "gpt-4o-mini", maxTokens: 1000, temperature: 0.7, responseFormat: { type: "json_object" }, log: req.log },
+      [
+        { role: "system", content: systemPrompt },
+        { role: "user", content: userPrompt },
+      ],
+      { model: "gpt-4o-mini", maxTokens: 1200, temperature: 0.6, responseFormat: { type: "json_object" }, log: req.log },
     );
 
     let parsed: Record<string, string[]>;
