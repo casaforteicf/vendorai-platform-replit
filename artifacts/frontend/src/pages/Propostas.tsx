@@ -2063,10 +2063,57 @@ function PropostaViewer({
             </table>
           </div>
 
+          {/* Cobrança Recorrente */}
+          {proposta.recorrente && proposta.valorMensal && (
+            <div className="bg-violet-50 border border-violet-200 rounded-lg p-5">
+              <p className="text-xs font-semibold uppercase tracking-widest text-violet-600 mb-3">Cobrança Recorrente Mensal</p>
+              <div className="grid grid-cols-3 gap-6 text-sm mb-0">
+                <div>
+                  <p className="text-xs text-violet-500 uppercase tracking-wide mb-0.5">Mensalidade</p>
+                  <p className="font-semibold text-violet-900">{fmtCurrency(proposta.valorMensal)}</p>
+                </div>
+                {proposta.prazoContratoMeses && (
+                  <div>
+                    <p className="text-xs text-violet-500 uppercase tracking-wide mb-0.5">Prazo</p>
+                    <p className="font-semibold text-violet-900">
+                      {proposta.prazoContratoMeses} {proposta.prazoContratoMeses === 1 ? "mês" : "meses"}
+                    </p>
+                  </div>
+                )}
+                {proposta.prazoContratoMeses && (
+                  <div>
+                    <p className="text-xs text-violet-500 uppercase tracking-wide mb-0.5">Total do Contrato</p>
+                    <p className="font-bold text-violet-900">
+                      {fmtCurrency(parseFloat(String(proposta.valorMensal)) * proposta.prazoContratoMeses)}
+                    </p>
+                  </div>
+                )}
+              </div>
+              {((proposta as any).formaPagamentoMensalidade || (proposta as any).condPagamentoMensalidade) && (
+                <div className="grid grid-cols-2 gap-4 text-sm mt-4 pt-4 border-t border-violet-200">
+                  {(proposta as any).formaPagamentoMensalidade && (
+                    <div>
+                      <p className="text-xs text-violet-500 uppercase tracking-wide mb-0.5">Forma de Pagamento</p>
+                      <p className="font-medium text-violet-900">{getPaymentLabel((proposta as any).formaPagamentoMensalidade)}</p>
+                    </div>
+                  )}
+                  {(proposta as any).condPagamentoMensalidade && (
+                    <div>
+                      <p className="text-xs text-violet-500 uppercase tracking-wide mb-0.5">Condição de Pagamento</p>
+                      <p className="font-medium text-violet-900">{(proposta as any).condPagamentoMensalidade}</p>
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
+
           {/* Condições comerciais */}
           {(proposta.formaPagamento || proposta.condPagamento || proposta.prazoEntrega) && (
             <div className="border border-gray-200 rounded-lg p-5">
-              <p className="text-xs font-semibold uppercase tracking-widest text-gray-400 mb-3">Condições Comerciais</p>
+              <p className="text-xs font-semibold uppercase tracking-widest text-gray-400 mb-3">
+                {proposta.recorrente ? "Condições — Licença / Implantação" : "Condições Comerciais"}
+              </p>
               <div className="grid grid-cols-3 gap-6 text-sm">
                 {proposta.formaPagamento && (
                   <div>
