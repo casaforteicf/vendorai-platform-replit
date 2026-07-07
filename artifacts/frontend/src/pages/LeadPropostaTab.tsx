@@ -62,6 +62,8 @@ import {
   useRequestUploadUrl,
   useListPropostas,
   useUpdatePropostaStatus,
+  useGetBusinessProfileByTenant,
+  getGetBusinessProfileByTenantQueryKey,
 } from "@workspace/api-client-react";
 import type { Proposta } from "@workspace/api-client-react";
 
@@ -188,6 +190,13 @@ export default function LeadPropostaTab({ leadId, tenantId, lead }: LeadProposta
   const [logoUploading, setLogoUploading] = useState(false);
   const logoInputRef = useRef<HTMLInputElement>(null);
   const requestUploadUrl = useRequestUploadUrl();
+
+  // Business profile — para exibir status do modelo de proposta
+  const profileQuery = useGetBusinessProfileByTenant(tenantId, {
+    query: { queryKey: getGetBusinessProfileByTenantQueryKey(tenantId), enabled: !!tenantId, retry: false },
+  });
+  const hasProposalTemplate = !!(profileQuery.data as any)?.proposalTemplateUrl;
+  const proposalTemplateName = (profileQuery.data as any)?.proposalTemplateName as string | null;
 
   // Imagens da proposta
   const [proposalImages, setProposalImages] = useState<string[]>([]);
@@ -1171,6 +1180,21 @@ export default function LeadPropostaTab({ leadId, tenantId, lead }: LeadProposta
               {generating ? "Gerando..." : "Gerar Proposta"}
             </Button>
           </CardTitle>
+          {/* Template de proposta */}
+          <a href="/configuracoes?tab=perfil" className="flex items-center gap-1.5 text-xs mt-1 no-underline">
+            {hasProposalTemplate ? (
+              <span className="flex items-center gap-1.5 text-emerald-600">
+                <FileText className="h-3 w-3" />
+                Modelo ativo: <span className="font-medium truncate max-w-[160px]">{proposalTemplateName || "modelo-proposta"}</span>
+                <span className="text-muted-foreground ml-1">· Trocar</span>
+              </span>
+            ) : (
+              <span className="flex items-center gap-1.5 text-muted-foreground hover:text-primary transition-colors">
+                <Upload className="h-3 w-3" />
+                Importar modelo de proposta da empresa
+              </span>
+            )}
+          </a>
         </CardHeader>
         <CardContent>
           {/* Seletor de orçamento a incluir */}
