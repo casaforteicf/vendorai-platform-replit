@@ -35,6 +35,7 @@ import { InstantRenderZone } from './project-experience/InstantRenderZone'
 import ProjectHomeV2 from './project-experience/ProjectHomeV2'
 import SmartProjectModule from './modules/SmartProjectModule'
 import DesignStudio from './design-studio/DesignStudio'
+import SmartRenderEngine from './smart-render-engine/SmartRenderEngine'
 import { computeNextAction }     from './project-experience/ProjectHome'
 import { ArqCommandPalette }     from './ArqCommandPalette'
 import { runAIE }                from '../engines/aie/aie-engine'
@@ -237,7 +238,7 @@ function renderModule(id: ModuleId, arqState: ArqProjectState, setActive: (m: Mo
     case 'biblioteca':    return <LibraryModule/>
     case 'especificacao': return <SmartSpecModule/>
     case 'prompt':        return <PromptPlaygroundModule/>
-    case 'renders':       return <DesignStudio arqState={arqState} onNavigate={m => setActive(m as ModuleId)} />
+    case 'renders':       return <SmartRenderEngine arqState={arqState} />
     case 'ai-review':     return <AIReviewModule/>
     case 'correcoes':     return <AICorrectionsModule/>
     case 'memoria':       return <AIMemoryModule/>
