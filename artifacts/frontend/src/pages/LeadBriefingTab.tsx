@@ -57,26 +57,26 @@ import {
 } from "lucide-react";
 
 const SITUATION_QUESTIONS = [
-  "Quando um cliente quer fazer um pedido, qual é o caminho mais comum — liga, manda WhatsApp, ou passa pelo site?",
-  "Vocês têm gente dedicada só pra responder mensagem, ou é o mesmo time do balcão/loja?",
-  "Fora do horário comercial, alguém ainda responde, ou fica pro outro dia?",
+  "Como os clientes costumam entrar em contato com vocês — WhatsApp, ligação, redes sociais ou outro canal?",
+  "Tem alguém dedicado a responder consultas e mensagens dos clientes, ou todo mundo divide essa tarefa?",
+  "Como funciona o atendimento fora do horário comercial?",
 ];
 
 const PROBLEM_QUESTIONS = [
-  "Quando chega mensagem fora do horário ou fim de semana, o que costuma acontecer?",
-  "Já aconteceu de um cliente perguntar preço e demorar pra alguém responder?",
-  "Se a pessoa que sabe os preços de cor falta um dia, como fica o atendimento?",
+  "Qual é a maior dificuldade no atendimento ou nas vendas hoje?",
+  "Já houve situação em que um cliente foi perdido por demora de resposta ou falta de follow-up?",
+  "O que costuma travar uma venda ou atrasar o fechamento?",
 ];
 
 const IMPLICATION_QUESTIONS = [
-  "Quando isso acontece, o pedido espera ou o cliente já compra em outro lugar?",
-  "Um cliente que troca de fornecedor por demora costuma voltar, ou fica com quem atendeu rápido?",
-  "Se isso acontece [x] vezes por semana, multiplicado pelo mês, dá pra ter ideia de quanto representa?",
+  "Quando esse problema acontece, o cliente costuma esperar ou busca outra opção?",
+  "Com que frequência isso ocorre? Já tentou calcular o impacto financeiro?",
+  "Quanto tempo a equipe gasta com tarefas repetitivas que poderiam ser automatizadas?",
 ];
 
 const NEED_QUESTIONS = [
-  "Se toda mensagem fosse respondida na hora, com preço certo, mesmo fora do horário — mudaria o volume de pedido fechado?",
-  "Se o time não precisasse responder a mesma pergunta de preço todo dia, no que focaria o tempo?",
+  "Se esse problema fosse resolvido, o que mudaria no volume de negócios ou na produtividade?",
+  "Como seria o atendimento ideal para os clientes de vocês?",
 ];
 
 const OBJECTION_OPTIONS = [
@@ -334,6 +334,7 @@ export default function LeadBriefingTab({ leadId, tenantId, lead }: LeadBriefing
   const [isSaving, setIsSaving] = useState(false);
   const [hasChanges, setHasChanges] = useState(false);
   const [isGeneratingQuestions, setIsGeneratingQuestions] = useState(false);
+  const [openSpin, setOpenSpin] = useState<string | null>("S");
 
   // ── Tab SPIN Roteiro ────────────────────────────────────────────────────────
   const [activeTab, setActiveTab] = useState<"briefing" | "roteiro">("briefing");
@@ -1170,7 +1171,7 @@ export default function LeadBriefingTab({ leadId, tenantId, lead }: LeadBriefing
         {/* ══ VIEW: FORMULÁRIO ════════════════════════════════════════════ */}
         {activeView === "form" && (
           <>
-        {/* ── Contexto do cliente ────────────────────────────────────────────── */}
+        {/* ── Bloco 1: Contexto do cliente ─────────────────────────────────── */}
         <div className="rounded-lg border border-primary/20 bg-primary/5 p-3 space-y-3">
           <div className="flex items-center justify-between">
             <h3 className="text-xs font-semibold flex items-center gap-1.5 text-primary">
@@ -1179,88 +1180,47 @@ export default function LeadBriefingTab({ leadId, tenantId, lead }: LeadBriefing
               {isGeneratingQuestions && (
                 <span className="ml-2 text-muted-foreground font-normal flex items-center gap-1">
                   <Loader2 className="h-3 w-3 animate-spin" />
-                  Gerando perguntas personalizadas…
+                  Gerando perguntas…
                 </span>
               )}
             </h3>
             {contextChanged && (
-              <Button
-                size="sm"
-                variant="outline"
-                className="h-6 text-xs gap-1"
-                onClick={saveContext}
-                disabled={savingContext}
-              >
+              <Button size="sm" variant="outline" className="h-6 text-xs gap-1" onClick={saveContext} disabled={savingContext}>
                 {savingContext ? <Loader2 className="h-3 w-3 animate-spin" /> : <Save className="h-3 w-3" />}
-                Salvar contexto
+                Salvar
               </Button>
             )}
           </div>
-
           {lead && (
-            <div className="text-xs text-muted-foreground flex flex-wrap gap-2">
+            <div className="text-xs text-muted-foreground flex flex-wrap gap-1.5">
               {lead.empresa && <span className="font-medium text-foreground">{lead.empresa}</span>}
               {lead.nome && lead.empresa && <span>·</span>}
               {lead.nome && <span>{lead.nome}</span>}
             </div>
           )}
-
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div className="space-y-1">
-              <label className="text-xs font-medium">O que o cliente busca / demanda</label>
-              <Textarea
-                className="text-xs min-h-[60px]"
-                placeholder={hints.briefingDemandaPlaceholder}
-                value={demanda}
-                onChange={(e) => { setDemanda(e.target.value); setContextChanged(true); }}
-              />
+              <label className="text-xs font-medium">O que o cliente busca</label>
+              <Textarea className="text-xs min-h-[56px]" placeholder={hints.briefingDemandaPlaceholder} value={demanda}
+                onChange={(e) => { setDemanda(e.target.value); setContextChanged(true); }} />
             </div>
             <div className="space-y-1">
               <label className="text-xs font-medium">Segmento / mercado</label>
-              <Input
-                className="h-8 text-xs"
-                placeholder={hints.briefingSegmentoPlaceholder}
-                value={segmento}
-                onChange={(e) => { setSegmento(e.target.value); setContextChanged(true); }}
-              />
-              <p className="text-[10px] text-muted-foreground">
-                Perguntas geradas automaticamente ao abrir. Salve o contexto e use "Regenerar" para atualizar com novas informações.
-              </p>
+              <Input className="h-8 text-xs" placeholder={hints.briefingSegmentoPlaceholder} value={segmento}
+                onChange={(e) => { setSegmento(e.target.value); setContextChanged(true); }} />
+              <p className="text-[10px] text-muted-foreground">Salve e use "Regenerar perguntas" para personalizar com IA.</p>
             </div>
           </div>
         </div>
 
-        {/* Seção 1 */}
-        <div className="space-y-3">
-          <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Dados da empresa / contato</h3>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+        {/* ── Bloco 2: Dados da abordagem ──────────────────────────────────── */}
+        <div className="space-y-2">
+          <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Dados da abordagem</h3>
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
             <div className="space-y-1">
-              <label className="text-xs font-medium">Canais já usados</label>
-              <div className="flex flex-wrap gap-2">
-                {CHANNEL_OPTIONS.map((ch) => {
-                  const selected = form.channelsUsed.includes(ch.value);
-                  return (
-                    <Badge
-                      key={ch.value}
-                      variant={selected ? "default" : "outline"}
-                      className="cursor-pointer text-xs"
-                      onClick={() => {
-                        const current = form.channelsUsed;
-                        updateField("channelsUsed", selected ? current.filter((v) => v !== ch.value) : [...current, ch.value]);
-                      }}
-                    >
-                      {ch.label}
-                    </Badge>
-                  );
-                })}
-              </div>
-            </div>
-            <div className="space-y-1">
-              <label className="text-xs font-medium">Tipo de contato</label>
+              <label className="text-xs font-medium">Tipo</label>
               <Select value={form.contactType} onValueChange={(v) => updateField("contactType", v)}>
-                <SelectTrigger className="h-8 text-xs">
-                  <SelectValue placeholder="Selecionar..." />
-                </SelectTrigger>
+                <SelectTrigger className="h-8 text-xs"><SelectValue placeholder="Selecionar…" /></SelectTrigger>
                 <SelectContent>
                   {CONTACT_TYPE_OPTIONS.map((opt) => (
                     <SelectItem key={opt.value} value={opt.value}>{opt.label}</SelectItem>
@@ -1269,180 +1229,206 @@ export default function LeadBriefingTab({ leadId, tenantId, lead }: LeadBriefing
               </Select>
             </div>
             <div className="space-y-1">
-              <label className="text-xs font-medium">Data da abordagem</label>
+              <label className="text-xs font-medium">Data</label>
               <Input type="date" className="h-8 text-xs" value={form.contactDate} onChange={(e) => updateField("contactDate", e.target.value)} />
             </div>
-            <div className="space-y-1">
+            <div className="col-span-2 space-y-1">
               <label className="text-xs font-medium">Quem abordou</label>
               <Select value={form.approachedBy} onValueChange={(v) => updateField("approachedBy", v)}>
-                <SelectTrigger className="h-8 text-xs">
-                  <SelectValue placeholder="Selecionar..." />
-                </SelectTrigger>
+                <SelectTrigger className="h-8 text-xs"><SelectValue placeholder="Selecionar…" /></SelectTrigger>
                 <SelectContent>
-                  {users?.map((u) => (
-                    <SelectItem key={u.id} value={u.id}>{u.name}</SelectItem>
-                  ))}
+                  {users?.map((u) => <SelectItem key={u.id} value={u.id}>{u.name}</SelectItem>)}
                 </SelectContent>
               </Select>
             </div>
           </div>
+          <div className="space-y-1">
+            <label className="text-xs font-medium">Canais utilizados</label>
+            <div className="flex flex-wrap gap-1.5">
+              {CHANNEL_OPTIONS.map((ch) => {
+                const selected = form.channelsUsed.includes(ch.value);
+                return (
+                  <Badge key={ch.value} variant={selected ? "default" : "outline"} className="cursor-pointer text-xs"
+                    onClick={() => {
+                      const current = form.channelsUsed;
+                      updateField("channelsUsed", selected ? current.filter((v) => v !== ch.value) : [...current, ch.value]);
+                    }}>
+                    {ch.label}
+                  </Badge>
+                );
+              })}
+            </div>
+          </div>
         </div>
 
-        {/* Seções 2-5 */}
-        {[
-          { key: "situationAnswers" as const, title: "Situação", questions: SITUATION_QUESTIONS },
-          { key: "problemAnswers" as const, title: "Problema", questions: PROBLEM_QUESTIONS, extra: "problemMinimized" as const },
-          { key: "implicationAnswers" as const, title: "Implicação", questions: IMPLICATION_QUESTIONS, extra: "implicationEstimatedValue" as const },
-          { key: "needAnswers" as const, title: "Necessidade", questions: NEED_QUESTIONS, extra: "needThermometer" as const },
-        ].map((section) => (
-          <div key={section.key} className="space-y-3">
-            <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">{section.title}</h3>
-            <div className="space-y-3">
-              {form[section.key].map((item, idx) => (
-                <div key={idx} className="space-y-1">
-                  <p className="text-xs font-medium text-foreground">{item.question}</p>
-                  <Textarea className="text-xs min-h-[60px]" placeholder={hints.briefingRespostaPlaceholder} value={item.answer} onChange={(e) => updateAnswer(section.key, idx, e.target.value)} />
-                </div>
-              ))}
-            </div>
-            {section.extra === "problemMinimized" && (
-              <div className="flex items-center gap-2">
-                <Switch checked={form.problemMinimized} onCheckedChange={(v) => updateField("problemMinimized", v)} />
-                <span className="text-xs">Prospect minimizou o problema</span>
+        {/* ── Bloco 3: SPIN (acordeão) ─────────────────────────────────────── */}
+        <div className="space-y-1.5">
+          <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Perguntas SPIN</h3>
+          {([
+            { key: "situationAnswers" as const, letter: "S", title: "Situação", desc: "Contexto atual do negócio", color: "bg-blue-500" },
+            { key: "problemAnswers" as const,   letter: "P", title: "Problema",  desc: "Dificuldades e gargalos",  color: "bg-amber-500", extra: "problemMinimized" as const },
+            { key: "implicationAnswers" as const, letter: "I", title: "Implicação", desc: "Impacto dos problemas", color: "bg-orange-500", extra: "implicationEstimatedValue" as const },
+            { key: "needAnswers" as const,      letter: "N", title: "Necessidade", desc: "Solução ideal e urgência", color: "bg-emerald-500", extra: "needThermometer" as const },
+          ] as Array<{ key: keyof Pick<BriefingForm,"situationAnswers"|"problemAnswers"|"implicationAnswers"|"needAnswers">; letter: string; title: string; desc: string; color: string; extra?: string }>).map((section) => {
+            const answered = form[section.key].filter((i) => i.answer?.trim()).length;
+            const total = form[section.key].length;
+            const isOpen = openSpin === section.letter;
+            return (
+              <div key={section.key} className="border rounded-lg overflow-hidden">
+                <button type="button"
+                  className="w-full flex items-center justify-between px-3 py-2.5 bg-muted/30 hover:bg-muted/50 transition-colors"
+                  onClick={() => setOpenSpin(isOpen ? null : section.letter)}>
+                  <div className="flex items-center gap-2">
+                    <span className={`inline-flex h-5 w-5 items-center justify-center rounded text-[10px] font-bold text-white ${section.color}`}>
+                      {section.letter}
+                    </span>
+                    <span className="text-xs font-semibold">{section.title}</span>
+                    <span className="text-[10px] text-muted-foreground hidden sm:inline">— {section.desc}</span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    {answered > 0 && (
+                      <span className="text-[10px] text-muted-foreground">{answered}/{total}</span>
+                    )}
+                    {isOpen ? <ChevronUp className="h-3.5 w-3.5 text-muted-foreground" /> : <ChevronDown className="h-3.5 w-3.5 text-muted-foreground" />}
+                  </div>
+                </button>
+                {isOpen && (
+                  <div className="p-3 space-y-3 border-t bg-background">
+                    {form[section.key].map((item, idx) => (
+                      <div key={idx} className="space-y-1">
+                        <p className="text-xs font-medium text-foreground">{item.question}</p>
+                        <Textarea className="text-xs min-h-[52px]" placeholder={hints.briefingRespostaPlaceholder}
+                          value={item.answer} onChange={(e) => updateAnswer(section.key, idx, e.target.value)} />
+                      </div>
+                    ))}
+                    {section.extra === "problemMinimized" && (
+                      <div className="flex items-center gap-2 pt-1">
+                        <Switch checked={form.problemMinimized} onCheckedChange={(v) => updateField("problemMinimized", v)} />
+                        <span className="text-xs">Prospect minimizou o problema</span>
+                      </div>
+                    )}
+                    {section.extra === "implicationEstimatedValue" && (
+                      <div className="space-y-1">
+                        <label className="text-xs font-medium">Valor estimado do impacto</label>
+                        <Input className="h-8 text-xs" placeholder={hints.briefingImpactoPlaceholder}
+                          value={form.implicationEstimatedValue} onChange={(e) => updateField("implicationEstimatedValue", e.target.value)} />
+                      </div>
+                    )}
+                    {section.extra === "needThermometer" && (
+                      <div className="space-y-1.5">
+                        <label className="text-xs font-medium">Temperatura da necessidade</label>
+                        <div className="flex flex-wrap gap-2">
+                          {[
+                            { value: "hot",  label: "Dor latente",       icon: Flame,     color: "bg-red-50 text-red-600 border-red-200" },
+                            { value: "warm", label: "Interesse",          icon: CloudSun,  color: "bg-amber-50 text-amber-600 border-amber-200" },
+                            { value: "cold", label: "Sem urgência",       icon: Snowflake, color: "bg-blue-50 text-blue-600 border-blue-200" },
+                          ].map((opt) => {
+                            const Icon = opt.icon;
+                            const sel = form.needThermometer === opt.value;
+                            return (
+                              <Button key={opt.value} type="button" size="sm" variant="outline"
+                                className={`text-xs gap-1 ${opt.color} ${sel ? "ring-2 ring-offset-1 ring-primary" : ""}`}
+                                onClick={() => updateField("needThermometer", opt.value)}>
+                                <Icon className="h-3 w-3" />{opt.label}
+                              </Button>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )}
               </div>
-            )}
-            {section.extra === "implicationEstimatedValue" && (
-              <div className="space-y-1">
-                <label className="text-xs font-medium">Valor estimado do impacto</label>
-                <Input className="h-8 text-xs" placeholder={hints.briefingImpactoPlaceholder} value={form.implicationEstimatedValue} onChange={(e) => updateField("implicationEstimatedValue", e.target.value)} />
-              </div>
-            )}
-            {section.extra === "needThermometer" && (
-              <div className="space-y-1">
-                <label className="text-xs font-medium">Termômetro da necessidade</label>
-                <div className="flex gap-2">
-                  {[
-                    { value: "hot", label: "Dor latente", icon: Flame, color: "bg-red-50 text-red-600 border-red-200 hover:bg-red-100" },
-                    { value: "warm", label: "Interesse sem urgência", icon: CloudSun, color: "bg-amber-50 text-amber-600 border-amber-200 hover:bg-amber-100" },
-                    { value: "cold", label: "Não é prioridade", icon: Snowflake, color: "bg-blue-50 text-blue-600 border-blue-200 hover:bg-blue-100" },
-                  ].map((opt) => {
-                    const Icon = opt.icon;
-                    const selected = form.needThermometer === opt.value;
-                    return (
-                      <Button key={opt.value} type="button" size="sm" variant="outline"
-                        className={`text-xs gap-1 ${opt.color} ${selected ? "ring-2 ring-offset-1 ring-primary" : ""}`}
-                        onClick={() => updateField("needThermometer", opt.value)}>
-                        <Icon className="h-3 w-3" />
-                        {opt.label}
-                      </Button>
-                    );
-                  })}
-                </div>
-              </div>
-            )}
-          </div>
-        ))}
+            );
+          })}
+        </div>
 
-        {/* Seção 6 */}
+        {/* ── Bloco 4: Desfecho ────────────────────────────────────────────── */}
         <div className="space-y-3">
-          <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Objeções</h3>
-          <div className="space-y-2">
-            {form.objections.map((obj, idx) => (
-              <div key={idx} className="flex items-start gap-2 p-2 border rounded-md bg-muted/20">
-                <div className="flex-1 space-y-2">
-                  <Select value={obj.objection} onValueChange={(v) => updateObjection(idx, "objection", v)}>
-                    <SelectTrigger className="h-8 text-xs">
-                      <SelectValue placeholder="Selecionar objeção..." />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {OBJECTION_OPTIONS.map((o) => (
-                        <SelectItem key={o} value={o}>{o}</SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                  <Textarea className="text-xs min-h-[40px]" placeholder="Resposta dada..." value={obj.response} onChange={(e) => updateObjection(idx, "response", e.target.value)} />
-                </div>
-                <Button size="icon" variant="ghost" className="h-7 w-7 shrink-0" onClick={() => removeObjection(idx)}>
-                  <X className="h-3 w-3" />
+          <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Desfecho da abordagem</h3>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            {/* Próximo passo */}
+            <div className="space-y-1.5">
+              <label className="text-xs font-medium">Próximo passo</label>
+              <div className="flex flex-wrap gap-1.5">
+                {NEXT_STEP_OPTIONS.map((opt) => (
+                  <Button key={opt.value} type="button" size="sm" variant="outline"
+                    className={`text-xs h-7 ${form.nextStepType === opt.value ? "bg-primary text-primary-foreground border-primary" : ""}`}
+                    onClick={() => updateField("nextStepType", opt.value)}>
+                    {opt.label}
+                  </Button>
+                ))}
+              </div>
+              {form.nextStepType && form.nextStepType !== "open_door" && (
+                <Input type="date" className="h-8 text-xs w-40" value={form.nextStepDate} onChange={(e) => updateField("nextStepDate", e.target.value)} />
+              )}
+            </div>
+            {/* Porte */}
+            <div className="space-y-1.5">
+              <label className="text-xs font-medium">Porte do prospect</label>
+              <div className="flex flex-wrap gap-1.5">
+                {PROSPECT_SIZE_OPTIONS.map((opt) => (
+                  <Button key={opt.value} type="button" size="sm" variant="outline"
+                    className={`text-xs h-7 ${form.prospectSize === opt.value ? "bg-primary text-primary-foreground border-primary" : ""}`}
+                    onClick={() => updateField("prospectSize", opt.value)}>
+                    {opt.label}
+                  </Button>
+                ))}
+              </div>
+            </div>
+            {/* Objeções */}
+            <div className="space-y-1.5">
+              <label className="text-xs font-medium">Objeções</label>
+              <div className="space-y-1.5">
+                {form.objections.map((obj, idx) => (
+                  <div key={idx} className="flex items-start gap-1.5">
+                    <div className="flex-1 space-y-1">
+                      <Select value={obj.objection} onValueChange={(v) => updateObjection(idx, "objection", v)}>
+                        <SelectTrigger className="h-7 text-xs"><SelectValue placeholder="Objeção…" /></SelectTrigger>
+                        <SelectContent>
+                          {OBJECTION_OPTIONS.map((o) => <SelectItem key={o} value={o}>{o}</SelectItem>)}
+                        </SelectContent>
+                      </Select>
+                      <Textarea className="text-xs min-h-[36px]" placeholder="Resposta dada…"
+                        value={obj.response} onChange={(e) => updateObjection(idx, "response", e.target.value)} />
+                    </div>
+                    <Button size="icon" variant="ghost" className="h-7 w-7 shrink-0 mt-0.5" onClick={() => removeObjection(idx)}>
+                      <X className="h-3 w-3" />
+                    </Button>
+                  </div>
+                ))}
+                <Button size="sm" variant="outline" className="text-xs gap-1 h-7 w-full" onClick={addObjection}>
+                  <Plus className="h-3 w-3" /> Registrar objeção
                 </Button>
               </div>
-            ))}
-          </div>
-          <Button size="sm" variant="outline" className="text-xs gap-1" onClick={addObjection}>
-            <Plus className="h-3 w-3" />
-            Adicionar objeção
-          </Button>
-        </div>
-
-        {/* Seção 7 */}
-        <div className="space-y-3">
-          <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Classificação de porte</h3>
-          <div className="flex gap-2">
-            {PROSPECT_SIZE_OPTIONS.map((opt) => (
-              <Button key={opt.value} type="button" size="sm" variant="outline"
-                className={`text-xs ${form.prospectSize === opt.value ? "bg-primary text-primary-foreground border-primary" : ""}`}
-                onClick={() => updateField("prospectSize", opt.value)}>
-                {opt.label}
-              </Button>
-            ))}
-          </div>
-        </div>
-
-        {/* Seção 8 */}
-        <div className="space-y-3">
-          <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Material enviado</h3>
-          <div className="flex items-center gap-3">
-            <Switch checked={form.presentationSent} onCheckedChange={(v) => updateField("presentationSent", v)} />
-            <span className="text-xs">Apresentação enviada</span>
-          </div>
-          {form.presentationSent && (
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              <div className="space-y-1">
-                <label className="text-xs font-medium">Data do envio</label>
-                <Input type="date" className="h-8 text-xs" value={form.presentationSentDate} onChange={(e) => updateField("presentationSentDate", e.target.value)} />
-              </div>
-              <div className="space-y-1">
-                <label className="text-xs font-medium">Link</label>
-                <Input className="h-8 text-xs" placeholder="https://..." value={form.presentationLink} onChange={(e) => updateField("presentationLink", e.target.value)} />
-              </div>
             </div>
-          )}
-        </div>
-
-        {/* Seção 9 */}
-        <div className="space-y-3">
-          <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Próximo passo</h3>
-          <div className="flex gap-2">
-            {NEXT_STEP_OPTIONS.map((opt) => (
-              <Button key={opt.value} type="button" size="sm" variant="outline"
-                className={`text-xs ${form.nextStepType === opt.value ? "bg-primary text-primary-foreground border-primary" : ""}`}
-                onClick={() => updateField("nextStepType", opt.value)}>
-                {opt.label}
-              </Button>
-            ))}
-          </div>
-          {form.nextStepType && form.nextStepType !== "open_door" && (
-            <div className="space-y-1">
-              <label className="text-xs font-medium">Data</label>
-              <Input type="date" className="h-8 text-xs w-48" value={form.nextStepDate} onChange={(e) => updateField("nextStepDate", e.target.value)} />
+            {/* Apresentação */}
+            <div className="space-y-1.5">
+              <label className="text-xs font-medium">Material enviado</label>
+              <div className="flex items-center gap-2">
+                <Switch checked={form.presentationSent} onCheckedChange={(v) => updateField("presentationSent", v)} />
+                <span className="text-xs">Apresentação enviada</span>
+              </div>
+              {form.presentationSent && (
+                <div className="space-y-1.5">
+                  <Input type="date" className="h-8 text-xs" value={form.presentationSentDate} onChange={(e) => updateField("presentationSentDate", e.target.value)} />
+                  <Input className="h-8 text-xs" placeholder="Link da apresentação…" value={form.presentationLink} onChange={(e) => updateField("presentationLink", e.target.value)} />
+                </div>
+              )}
             </div>
-          )}
+          </div>
         </div>
 
-        {/* Seção 10 */}
-        <div className="space-y-3">
-          <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Notas livres</h3>
-          <Textarea className="text-xs min-h-[100px]" placeholder={hints.briefingNotasPlaceholder} value={form.freeNotes} onChange={(e) => updateField("freeNotes", e.target.value)} />
+        {/* ── Bloco 5: Notas ───────────────────────────────────────────────── */}
+        <div className="space-y-1.5">
+          <label className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Notas livres</label>
+          <Textarea className="text-xs min-h-[72px]" placeholder={hints.briefingNotasPlaceholder}
+            value={form.freeNotes} onChange={(e) => updateField("freeNotes", e.target.value)} />
         </div>
 
         <div className="flex justify-end pt-2 border-t">
-          <Button
-            size="sm"
-            className="text-xs gap-1"
-            onClick={handleSave}
-            disabled={isSaving || isSummarizing || !hasChanges}
-            data-testid="btn-salvar-briefing-bottom"
-          >
+          <Button size="sm" className="text-xs gap-1" onClick={handleSave}
+            disabled={isSaving || isSummarizing || !hasChanges} data-testid="btn-salvar-briefing-bottom">
             {(isSaving || isSummarizing) ? <Loader2 className="h-3 w-3 animate-spin" /> : <Save className="h-3 w-3" />}
             {isSummarizing ? "Gerando resumo…" : isSaving ? "Salvando…" : "Salvar e gerar resumo"}
           </Button>
