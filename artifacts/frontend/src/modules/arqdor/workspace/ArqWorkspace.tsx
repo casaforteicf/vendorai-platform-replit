@@ -38,6 +38,7 @@ import DesignStudio from './design-studio/DesignStudio'
 import SmartRenderEngine from './smart-render-engine/SmartRenderEngine'
 import DocumentationStudio from './documentation-studio/DocumentationStudio'
 import ProductionStudio from './production-studio/ProductionStudio'
+import BudgetEngine from './executive-budget/BudgetEngine'
 import { computeNextAction }     from './project-experience/ProjectHome'
 import { ArqCommandPalette }     from './ArqCommandPalette'
 import { runAIE }                from '../engines/aie/aie-engine'
@@ -51,6 +52,7 @@ export type ModuleId =
   | 'especificacao'
   | 'ai-review' | 'correcoes' | 'memoria' | 'config'
   | 'arqhub' | 'ai-intel' | 'integracao' | 'ecosystem' | 'knowledge' | 'office'
+  | 'orcamento'
 
 export type JourneyId = 'create' | 'design' | 'visualize' | 'deliver' | 'business'
 
@@ -73,6 +75,7 @@ const FLOW_STEPS: FlowStep[] = [
   { id:'melhorar',    icon:'🔄', label:'Melhorar',    sublabel:'Ajustes IA',      primary:'correcoes',     extras:['ai-review','memoria'],              color: PHX.amber  },
   { id:'especificar', icon:'📋', label:'Especificar', sublabel:'Memorial',        primary:'especificacao', extras:[],                                   color: '#16a34a'  },
   { id:'apresentar',  icon:'👤', label:'Apresentar',  sublabel:'Portal cliente',  primary:'cliente',       extras:[],                                   color: PHX.cyan   },
+  { id:'orcamento',   icon:'💰', label:'Orçamento',   sublabel:'Budget executivo',primary:'orcamento',     extras:[],                                   color: '#0369a1'  },
   { id:'entregar',    icon:'📦', label:'Entregar',    sublabel:'Finalizar',       primary:'office',        extras:['ecosystem','knowledge','arqhub'],    color: '#0d9488'  },
 ]
 
@@ -95,6 +98,7 @@ const MODULE_MAP_INTERNAL: Record<ModuleId, { icon:string; label:string }> = {
   'ecosystem':  { icon:'🌐', label:'Parceiros'     },
   'knowledge':  { icon:'🧠', label:'Knowledge'     },
   'office':     { icon:'🏢', label:'Office OS'     },
+  'orcamento':  { icon:'💰', label:'Orçamento'     },
 }
 
 // ─── Legado: Journeys (keyboard shortcuts 1–5) ────────────────────────────────
@@ -252,6 +256,7 @@ function renderModule(id: ModuleId, arqState: ArqProjectState, setActive: (m: Mo
     case 'ecosystem':     return <EcosystemModule/>
     case 'knowledge':     return <KnowledgeModule/>
     case 'office':        return <ProductionStudio arqState={arqState} onNavigate={m => setActive(m as ModuleId)} />
+    case 'orcamento':     return <BudgetEngine arqState={arqState} onNavigate={m => setActive(m as ModuleId)} />
   }
 }
 
