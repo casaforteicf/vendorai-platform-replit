@@ -372,6 +372,13 @@ export default function LeadPropostaTab({ leadId, tenantId, lead }: LeadProposta
     return () => window.removeEventListener("message", handler);
   }, []);
 
+  function injectScreenStyles(html: string): string {
+    const override = `<style id="__screen_override__">@media screen{html,body{overflow-x:hidden!important}body{box-sizing:border-box!important}.page{width:100%!important;max-width:100%!important;box-sizing:border-box!important;overflow-x:hidden!important}}</style>`;
+    if (html.includes("</head>")) return html.replace("</head>", override + "</head>");
+    if (html.includes("<body")) return html.replace("<body", override + "<body");
+    return override + html;
+  }
+
   function injectEditScript(html: string): string {
     if (html.includes("</body>")) return html.replace("</body>", PROPOSTA_EDIT_SCRIPT + "</body>");
     return html + PROPOSTA_EDIT_SCRIPT;
@@ -1492,7 +1499,7 @@ export default function LeadPropostaTab({ leadId, tenantId, lead }: LeadProposta
               <iframe
                 ref={iframeRef}
                 title="Preview"
-                srcDoc={editMode && editableHtml ? editableHtml : previewHtml}
+                srcDoc={injectScreenStyles(editMode && editableHtml ? editableHtml : (previewHtml ?? ""))}
                 className="w-full h-full"
                 sandbox="allow-same-origin allow-scripts"
               />
