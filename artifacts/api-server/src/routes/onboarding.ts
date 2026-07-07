@@ -940,6 +940,7 @@ router.patch("/onboarding/step/4", authenticate, async (req, res) => {
       billingCycle,
       planStartedAt: now,
       onboardingConcluido: true,
+      setupCompletedAt: now,
       updatedAt: now,
     })
     .where(eq(tenantsTable.id, tenantId));

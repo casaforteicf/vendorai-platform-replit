@@ -12795,6 +12795,10 @@ components:
           type: string
           nullable: true
           description: Internal notes visible only to super admins.
+        onboardingConcluido:
+          type: boolean
+          default: false
+          description: Whether the main onboarding wizard (steps 1-4) has been completed.
         integracoesConcluido:
           type: boolean
           default: false

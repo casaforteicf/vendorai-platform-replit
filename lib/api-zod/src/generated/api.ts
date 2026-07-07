@@ -4319,6 +4319,7 @@ export const DeleteBusinessProfileParams = zod.object({
  * Returns all tenants
  * @summary List tenants
  */
+export const listTenantsResponseOnboardingConcluidoDefault = false;
 export const listTenantsResponseIntegracoesConcluidoDefault = false;
 
 export const ListTenantsResponseItem = zod.object({
@@ -4346,6 +4347,7 @@ export const ListTenantsResponseItem = zod.object({
   "accessSentAt": zod.coerce.date().nullish().describe('When the welcome\/access email was last sent by a super admin.'),
   "firstLoginAt": zod.coerce.date().nullish().describe('Timestamp of the first login by this tenant\'s admin user.'),
   "internalNotes": zod.string().nullish().describe('Internal notes visible only to super admins.'),
+  "onboardingConcluido": zod.boolean().default(listTenantsResponseOnboardingConcluidoDefault).describe('Whether the main onboarding wizard (steps 1-4) has been completed.'),
   "integracoesConcluido": zod.boolean().default(listTenantsResponseIntegracoesConcluidoDefault).describe('Whether the integrations onboarding has been completed.'),
   "createdAt": zod.coerce.date(),
   "updatedAt": zod.coerce.date()
@@ -4379,6 +4381,7 @@ export const GetTenantParams = zod.object({
   "id": zod.coerce.string()
 })
 
+export const getTenantResponseOnboardingConcluidoDefault = false;
 export const getTenantResponseIntegracoesConcluidoDefault = false;
 
 export const GetTenantResponse = zod.object({
@@ -4406,6 +4409,7 @@ export const GetTenantResponse = zod.object({
   "accessSentAt": zod.coerce.date().nullish().describe('When the welcome\/access email was last sent by a super admin.'),
   "firstLoginAt": zod.coerce.date().nullish().describe('Timestamp of the first login by this tenant\'s admin user.'),
   "internalNotes": zod.string().nullish().describe('Internal notes visible only to super admins.'),
+  "onboardingConcluido": zod.boolean().default(getTenantResponseOnboardingConcluidoDefault).describe('Whether the main onboarding wizard (steps 1-4) has been completed.'),
   "integracoesConcluido": zod.boolean().default(getTenantResponseIntegracoesConcluidoDefault).describe('Whether the integrations onboarding has been completed.'),
   "createdAt": zod.coerce.date(),
   "updatedAt": zod.coerce.date()
@@ -4439,6 +4443,7 @@ export const UpdateTenantBody = zod.object({
   "logoUrl": zod.string().nullish().describe('Logo URL for co-branding in the dashboard header.')
 })
 
+export const updateTenantResponseOnboardingConcluidoDefault = false;
 export const updateTenantResponseIntegracoesConcluidoDefault = false;
 
 export const UpdateTenantResponse = zod.object({
@@ -4466,6 +4471,7 @@ export const UpdateTenantResponse = zod.object({
   "accessSentAt": zod.coerce.date().nullish().describe('When the welcome\/access email was last sent by a super admin.'),
   "firstLoginAt": zod.coerce.date().nullish().describe('Timestamp of the first login by this tenant\'s admin user.'),
   "internalNotes": zod.string().nullish().describe('Internal notes visible only to super admins.'),
+  "onboardingConcluido": zod.boolean().default(updateTenantResponseOnboardingConcluidoDefault).describe('Whether the main onboarding wizard (steps 1-4) has been completed.'),
   "integracoesConcluido": zod.boolean().default(updateTenantResponseIntegracoesConcluidoDefault).describe('Whether the integrations onboarding has been completed.'),
   "createdAt": zod.coerce.date(),
   "updatedAt": zod.coerce.date()
@@ -6967,6 +6973,7 @@ export const LinkTenantPartnerBody = zod.object({
   "partnerId": zod.string().nullable()
 })
 
+export const linkTenantPartnerResponseOnboardingConcluidoDefault = false;
 export const linkTenantPartnerResponseIntegracoesConcluidoDefault = false;
 
 export const LinkTenantPartnerResponse = zod.object({
@@ -6994,6 +7001,7 @@ export const LinkTenantPartnerResponse = zod.object({
   "accessSentAt": zod.coerce.date().nullish().describe('When the welcome\/access email was last sent by a super admin.'),
   "firstLoginAt": zod.coerce.date().nullish().describe('Timestamp of the first login by this tenant\'s admin user.'),
   "internalNotes": zod.string().nullish().describe('Internal notes visible only to super admins.'),
+  "onboardingConcluido": zod.boolean().default(linkTenantPartnerResponseOnboardingConcluidoDefault).describe('Whether the main onboarding wizard (steps 1-4) has been completed.'),
   "integracoesConcluido": zod.boolean().default(linkTenantPartnerResponseIntegracoesConcluidoDefault).describe('Whether the integrations onboarding has been completed.'),
   "createdAt": zod.coerce.date(),
   "updatedAt": zod.coerce.date()

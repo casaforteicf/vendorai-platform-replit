@@ -199,7 +199,7 @@ function ProtectedRoute({ component: Component, ...rest }: any) {
   useEffect(() => {
     if (!isTenantAdmin || tenantLoading || !tenant) return;
     if (tenant.status !== "suspended" && !hasOverdueInvoice) {
-      if (!tenant.setupCompletedAt) {
+      if (!tenant.onboardingConcluido && !tenant.setupCompletedAt) {
         setLocation("/onboarding");
       } else if (!tenant.integracoesConcluido) {
         setLocation("/onboarding/integracoes");

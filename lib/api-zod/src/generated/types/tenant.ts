@@ -58,6 +58,8 @@ export interface Tenant {
   firstLoginAt?: Date | null;
   /** Internal notes visible only to super admins. */
   internalNotes?: string | null;
+  /** Whether the main onboarding wizard (steps 1-4) has been completed. */
+  onboardingConcluido?: boolean;
   /** Whether the integrations onboarding has been completed. */
   integracoesConcluido?: boolean;
   createdAt: Date;
