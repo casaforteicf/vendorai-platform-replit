@@ -600,6 +600,7 @@ function MediaUploadButton({
       triggerRef.current = () => inputRef.current?.click();
       return () => { if (triggerRef) triggerRef.current = null; };
     }
+    return undefined;
   }, [triggerRef]);
 
   const isVideo = mediaType === "video";

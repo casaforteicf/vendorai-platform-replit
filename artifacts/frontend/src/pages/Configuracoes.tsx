@@ -100,6 +100,7 @@ import {
   DialogDescription,
   DialogFooter,
 } from "@/components/ui/dialog";
+import { Label } from "@/components/ui/label";
 import {
   Building2,
   Bot,
@@ -548,7 +549,7 @@ function AnalysisLogTab({ tenantId }: { tenantId: string }) {
 // ─── Main Page ────────────────────────────────────────────────────────────────
 
 export default function Configuracoes() {
-  const { user } = useAuth();
+  const { user, token } = useAuth();
   const tenantId = user?.tenantId ?? "";
   const { toast } = useToast();
   const queryClient = useQueryClient();
@@ -4300,7 +4301,7 @@ function ProposalTemplateSection({
 
   function handleRemove() {
     updateProfile.mutate(
-      { id: profileId, data: { proposalTemplateUrl: null, proposalTemplateName: null } },
+      { id: profileId, data: { proposalTemplateUrl: null as unknown as string, proposalTemplateName: null as unknown as string } },
       {
         onSuccess: () => { onUpdate(); toast({ title: "Modelo de proposta removido." }); },
         onError: () => toast({ title: "Erro ao remover.", variant: "destructive" }),

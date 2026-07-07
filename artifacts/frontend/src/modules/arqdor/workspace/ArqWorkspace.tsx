@@ -32,6 +32,7 @@ import { AIEDashboard }          from '../engines/aie/dashboard/AIEDashboard'
 import { useArqProject, type ArqProjectState } from '../hooks/useArqProject'
 import { RenderProgressModal } from './project-experience/ProjectHomePhoenix'
 import { InstantRenderZone } from './project-experience/InstantRenderZone'
+import ProjectHomeV2 from './project-experience/ProjectHomeV2'
 import { computeNextAction }     from './project-experience/ProjectHome'
 import { ArqCommandPalette }     from './ArqCommandPalette'
 import { runAIE }                from '../engines/aie/aie-engine'
@@ -229,7 +230,7 @@ const CSS = `
 // ─── Module renderer ──────────────────────────────────────────────────────────
 function renderModule(id: ModuleId, arqState: ArqProjectState, setActive: (m: ModuleId) => void) {
   switch (id) {
-    case 'home':          return <InstantRenderZone arqState={arqState} onNavigate={m => setActive(m as ModuleId)} />
+    case 'home':          return <ProjectHomeV2 arqState={arqState} onNavigate={m => setActive(m as ModuleId)} />
     case 'projeto':       return <ProjectModule/>
     case 'biblioteca':    return <LibraryModule/>
     case 'especificacao': return <SmartSpecModule/>
