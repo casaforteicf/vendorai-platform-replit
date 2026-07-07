@@ -10,10 +10,12 @@ import {
   obrasTable,
   obraEtapasTable,
   obraLancamentosTable,
+  tenantsTable,
   insertObraLancamentoSchema,
   updateObraLancamentoSchema,
 } from "@workspace/db";
 import { resolveAIKey, logUsage, estimateCost } from "../lib/ai-gateway.js";
+import { gerarDrePdf } from "../lib/pdf-dre.js";
 
 const router: IRouter = Router();
 
@@ -26,6 +28,23 @@ function canAccess(req: Express.Request, tid: string) {
   const u = (req as any).user;
   return u?.tenantId === tid || u?.platformRole === "super_admin";
 }
+
+function isSuperAdmin(req: Express.Request) {
+  return (req as any).user?.platformRole === "super_admin";
+}
+
+// ─── Gate de vertical: todas as rotas com :tenantId exigem vertical=construcao ──
+router.param("tenantId", async (req: any, res: any, next: any, tid: string) => {
+  if (isSuperAdmin(req)) return next();
+  const [tenant] = await db
+    .select({ vertical: tenantsTable.vertical })
+    .from(tenantsTable)
+    .where(eq(tenantsTable.id, tid));
+  if (!tenant || tenant.vertical !== "construcao") {
+    return res.status(403).json({ error: "Acesso restrito à vertical de construção civil." });
+  }
+  return next();
+});
 
 // ─── 1. Análise IA de documento ────────────────────────────────────────────────
 
@@ -334,6 +353,53 @@ router.get("/tenants/:tenantId/obras/:obraId/financeiro/dre", async (req, res) =
       .filter((l) => !l.etapaId && l.status !== "cancelado")
       .reduce((s, l) => s + Number(l.total), 0),
   });
+});
+
+// ─── 4. DRE PDF ───────────────────────────────────────────────────────────────
+
+router.post("/tenants/:tenantId/obras/:obraId/financeiro/dre/pdf", async (req, res) => {
+  const { tenantId, obraId } = req.params as Record<string, string>;
+  if (!canAccess(req, tenantId)) return res.status(403).json({ error: "Forbidden" });
+
+  const [obra] = await db
+    .select({ nome: obrasTable.nome, endereco: obrasTable.endereco, orcamentoTotal: obrasTable.orcamentoTotal })
+    .from(obrasTable)
+    .where(and(eq(obrasTable.id, obraId), eq(obrasTable.tenantId, tenantId)));
+  if (!obra) return res.status(404).json({ error: "Obra não encontrada." });
+
+  const [tenant] = await db
+    .select({ name: tenantsTable.name })
+    .from(tenantsTable)
+    .where(eq(tenantsTable.id, tenantId));
+
+  const lancamentos = await db
+    .select({
+      tipo: obraLancamentosTable.tipo,
+      fornecedor: obraLancamentosTable.fornecedor,
+      valor: obraLancamentosTable.valor,
+      status: obraLancamentosTable.status,
+      dataEmissao: obraLancamentosTable.dataEmissao,
+      dataVencimento: obraLancamentosTable.dataVencimento,
+      descricao: obraLancamentosTable.descricao,
+    })
+    .from(obraLancamentosTable)
+    .where(and(eq(obraLancamentosTable.obraId, obraId), eq(obraLancamentosTable.tenantId, tenantId)))
+    .orderBy(desc(obraLancamentosTable.dataEmissao));
+
+  const pdf = await gerarDrePdf({
+    tenantName: tenant?.name ?? "Construtora",
+    obraNome: obra.nome,
+    obraEndereco: obra.endereco,
+    orcamentoTotal: obra.orcamentoTotal,
+    lancamentos,
+  });
+
+  const slug = obra.nome.replace(/\s+/g, "-").toLowerCase();
+  const filename = `dre-financeiro-${encodeURIComponent(slug)}.pdf`;
+  res.setHeader("Content-Type", "application/pdf");
+  res.setHeader("Content-Disposition", `attachment; filename="${filename}"`);
+  res.setHeader("Content-Length", pdf.length);
+  return res.send(pdf);
 });
 
 export default router;

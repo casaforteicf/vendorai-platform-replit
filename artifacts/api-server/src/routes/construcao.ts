@@ -1,7 +1,10 @@
 import { Router, type IRouter } from "express";
+import multer from "multer";
 import { and, eq, desc, asc, ilike, max, inArray, gte, lte } from "drizzle-orm";
 import { searchSinapi } from "../data/sinapi";
 import { gerarRelatorioDiarioPdf } from "../lib/pdf-diario";
+import { gerarOrcamentoPdf } from "../lib/pdf-orcamento";
+import { ObjectStorageService } from "../lib/objectStorage.js";
 import {
   db,
   obrasTable,
@@ -37,6 +40,15 @@ import { z } from "zod/v4";
 
 const router: IRouter = Router();
 
+const uploadFotos = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 15 * 1024 * 1024, files: 10 },
+  fileFilter: (_req, file, cb) => {
+    if (file.mimetype.startsWith("image/")) return cb(null, true);
+    cb(new Error("Apenas imagens são permitidas."));
+  },
+});
+
 function tenantId(req: Express.Request): string {
   return (req as any).user?.tenantId as string;
 }
@@ -48,6 +60,19 @@ function isSuperAdmin(req: Express.Request) {
 function canAccessTenant(req: Express.Request, tid: string) {
   return isSuperAdmin(req) || tenantId(req) === tid;
 }
+
+// ─── Gate de vertical: todas as rotas com :tenantId exigem vertical=construcao ──
+router.param("tenantId", async (req: any, res: any, next: any, tid: string) => {
+  if (isSuperAdmin(req)) return next();
+  const [tenant] = await db
+    .select({ vertical: tenantsTable.vertical })
+    .from(tenantsTable)
+    .where(eq(tenantsTable.id, tid));
+  if (!tenant || tenant.vertical !== "construcao") {
+    return res.status(403).json({ error: "Acesso restrito à vertical de construção civil." });
+  }
+  return next();
+});
 
 // ─── SINAPI search (public lookup, auth-only) ──────────────────────────────────
 
@@ -282,6 +307,78 @@ router.post("/tenants/:tenantId/obras/:obraId/diario/relatorio-pdf", async (req,
   return res.send(pdf);
 });
 
+// POST /tenants/:tenantId/obras/:obraId/orcamentos/:orcamentoId/pdf
+router.post("/tenants/:tenantId/obras/:obraId/orcamentos/:orcamentoId/pdf", async (req, res) => {
+  const { tenantId: tid, obraId, orcamentoId } = req.params as Record<string, string>;
+  if (!canAccessTenant(req, tid)) return res.status(403).json({ error: "Forbidden" });
+
+  const [obra] = await db
+    .select({ nome: obrasTable.nome, endereco: obrasTable.endereco })
+    .from(obrasTable)
+    .where(and(eq(obrasTable.id, obraId), eq(obrasTable.tenantId, tid)));
+  if (!obra) return res.status(404).json({ error: "Obra não encontrada." });
+
+  const [orcamento] = await db
+    .select()
+    .from(obraOrcamentosTable)
+    .where(and(eq(obraOrcamentosTable.id, orcamentoId), eq(obraOrcamentosTable.obraId, obraId)));
+  if (!orcamento) return res.status(404).json({ error: "Orçamento não encontrado." });
+
+  const [tenant] = await db
+    .select({ name: tenantsTable.name })
+    .from(tenantsTable)
+    .where(eq(tenantsTable.id, tid));
+
+  const etapasRows = await db
+    .select()
+    .from(obraOrcamentoEtapasTable)
+    .where(eq(obraOrcamentoEtapasTable.orcamentoId, orcamentoId))
+    .orderBy(asc(obraOrcamentoEtapasTable.ordem));
+
+  const itensRows = await db
+    .select()
+    .from(obraOrcamentoItensTable)
+    .where(
+      inArray(
+        obraOrcamentoItensTable.etapaId,
+        etapasRows.length > 0 ? etapasRows.map((e) => e.id) : ["__none__"],
+      ),
+    )
+    .orderBy(asc(obraOrcamentoItensTable.ordem));
+
+  const etapas = etapasRows.map((e) => ({
+    nome: e.nome,
+    ordem: e.ordem,
+    itens: itensRows
+      .filter((i) => i.etapaId === e.id)
+      .map((i) => ({
+        nome: i.nome,
+        unidade: i.unidade,
+        quantidade: i.quantidade,
+        custoUnitario: i.custoUnitario,
+        bdi: i.bdi,
+      })),
+  }));
+
+  const pdf = await gerarOrcamentoPdf({
+    tenantName: tenant?.name ?? "Construtora",
+    obraNome: obra.nome,
+    obraEndereco: obra.endereco,
+    orcamentoVersao: orcamento.versao,
+    orcamentoTitulo: orcamento.titulo,
+    orcamentoStatus: orcamento.status,
+    bdiGlobal: orcamento.bdiGlobal,
+    etapas,
+  });
+
+  const slug = obra.nome.replace(/\s+/g, "-").toLowerCase();
+  const filename = `orcamento-v${orcamento.versao}-${encodeURIComponent(slug)}.pdf`;
+  res.setHeader("Content-Type", "application/pdf");
+  res.setHeader("Content-Disposition", `attachment; filename="${filename}"`);
+  res.setHeader("Content-Length", pdf.length);
+  return res.send(pdf);
+});
+
 router.post("/tenants/:tenantId/obras/:obraId/diario", async (req, res) => {
   const { tenantId: tid, obraId } = req.params;
   if (!canAccessTenant(req, tid)) return res.status(403).json({ error: "Forbidden" });
@@ -357,6 +454,53 @@ router.delete("/tenants/:tenantId/obras/:obraId/diario/:diarioId", async (req, r
   await db.delete(obraDiarioTable).where(and(eq(obraDiarioTable.id, diarioId), eq(obraDiarioTable.obraId, obraId)));
   return res.status(204).end();
 });
+
+// POST /tenants/:tenantId/obras/:obraId/diario/:diarioId/fotos
+// Upload de fotos para uma entrada do diário de obra (multipart/form-data; field "fotos", max 10 arquivos)
+router.post(
+  "/tenants/:tenantId/obras/:obraId/diario/:diarioId/fotos",
+  uploadFotos.array("fotos", 10),
+  async (req, res) => {
+    const { tenantId: tid, obraId, diarioId } = req.params as Record<string, string>;
+    if (!canAccessTenant(req, tid)) return res.status(403).json({ error: "Forbidden" });
+
+    const files = req.files as Express.Multer.File[] | undefined;
+    if (!files || files.length === 0) {
+      return res.status(422).json({ error: "Nenhuma imagem enviada. Use o campo 'fotos' com arquivos de imagem." });
+    }
+
+    // Verify the diario entry exists and belongs to this obra/tenant
+    const [entry] = await db
+      .select({ id: obraDiarioTable.id, fotos: obraDiarioTable.fotos })
+      .from(obraDiarioTable)
+      .where(and(eq(obraDiarioTable.id, diarioId), eq(obraDiarioTable.obraId, obraId)));
+    if (!entry) return res.status(404).json({ error: "Entrada de diário não encontrada." });
+
+    const storage = new ObjectStorageService();
+    const caption = (req.body as { caption?: string }).caption;
+    const uploadedAt = new Date().toISOString();
+
+    const novasFotos: Array<{ url: string; caption?: string; uploadedAt: string }> = [];
+    for (const file of files) {
+      const url = await storage.savePrivateBuffer(file.buffer, file.mimetype, file.originalname);
+      novasFotos.push({ url, ...(caption ? { caption } : {}), uploadedAt });
+    }
+
+    const fotosExistentes: Array<{ url: string; caption?: string; uploadedAt: string }> =
+      Array.isArray(entry.fotos) ? (entry.fotos as Array<{ url: string; caption?: string; uploadedAt: string }>) : [];
+
+    const [updated] = await db
+      .update(obraDiarioTable)
+      .set({ fotos: [...fotosExistentes, ...novasFotos] })
+      .where(eq(obraDiarioTable.id, diarioId))
+      .returning();
+
+    return res.status(201).json({
+      uploaded: novasFotos.length,
+      fotos: (updated as typeof entry).fotos,
+    });
+  },
+);
 
 // ─── Estoque da Obra ──────────────────────────────────────────────────────────
 
