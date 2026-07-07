@@ -3,6 +3,7 @@ import { DesignHeader } from "./DesignHeader";
 import { StudioProvider, useStudio } from "./StudioContext";
 import { WorkspaceLayout } from "./WorkspaceLayout";
 import { AIChatPanel } from "./AIChatPanel";
+import { LibraryPanel } from "./LibraryPanel";
 
 type DesignStudioProps = {
   arqState: any;
@@ -168,7 +169,7 @@ function BottomTimeline() {
 
 function DesignStudioInner({ arqState, onNavigate }: DesignStudioProps) {
   const project = useMemo(() => getProject(arqState), [arqState]);
-  const { setRightPanelOpen } = useStudio();
+  const { mode, setRightPanelOpen } = useStudio();
 
   return (
     <div className="min-h-screen bg-[#f7f7f8] p-6 text-slate-950">
@@ -183,7 +184,11 @@ function DesignStudioInner({ arqState, onNavigate }: DesignStudioProps) {
         }
         leftPanel={<StudioTools />}
         canvas={<CanvasPlaceholder />}
-        rightPanel={<AIChatPanel projectTitle={getTitle(project)} environmentName={getEnvironment(project)} onClose={() => setRightPanelOpen(false)} />}
+        rightPanel={
+          mode === "materials"
+            ? <LibraryPanel />
+            : <AIChatPanel projectTitle={getTitle(project)} environmentName={getEnvironment(project)} onClose={() => setRightPanelOpen(false)} />
+        }
         bottomPanel={<BottomTimeline />}
       />
 
