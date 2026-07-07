@@ -70,6 +70,7 @@ async function loadProposalContext(leadId: string, tenantId: string) {
       telefone: businessProfilesTable.telefone,
       email: businessProfilesTable.email,
       instagramUrl: businessProfilesTable.instagramUrl,
+      proposalTemplateUrl: businessProfilesTable.proposalTemplateUrl,
       logoUrl: businessProfilesTable.logoUrl,
     })
     .from(businessProfilesTable)
@@ -81,7 +82,29 @@ async function loadProposalContext(leadId: string, tenantId: string) {
     lead, briefing, intelligence, products, propostas, conversationSamples,
     tenantName, tenantPhone: bp?.telefone, tenantLogoUrl: bp?.logoUrl ?? null,
     tenantEmail: bp?.email ?? null, tenantInstagram: bp?.instagramUrl ?? null,
+    proposalTemplateUrl: bp?.proposalTemplateUrl ?? null,
   };
+}
+
+/** Fetch template content from object storage for AI guidance (HTML/text only, max 3000 chars) */
+async function fetchTemplateGuidance(templateUrl: string | null | undefined): Promise<string | null> {
+  if (!templateUrl) return null;
+  try {
+    const port = process.env.PORT ?? "8080";
+    const base = process.env.BASE_PATH ?? "";
+    const url = templateUrl.startsWith("/objects/")
+      ? `http://localhost:${port}${base}/api/storage${templateUrl}`
+      : templateUrl;
+    const res = await fetch(url, { signal: AbortSignal.timeout(4000) });
+    if (!res.ok) return null;
+    const ct = res.headers.get("content-type") ?? "";
+    if (!ct.includes("text") && !ct.includes("html")) return null;
+    const text = await res.text();
+    // strip HTML tags for cleaner AI context
+    return text.replace(/<[^>]+>/g, " ").replace(/\s{2,}/g, " ").trim().slice(0, 3000);
+  } catch {
+    return null;
+  }
 }
 
 /** Resolve object-storage relative paths to absolute URLs for HTML/PDF embedding */
@@ -284,6 +307,7 @@ router.post("/leads/:leadId/proposals", async (req, res) => {
     tenantPhone: ctx.tenantPhone,
     refinementNotes: req.body?.refinementNotes ? String(req.body.refinementNotes) : null,
     styleMemory,
+    templateGuidance: await fetchTemplateGuidance(ctx.proposalTemplateUrl),
   });
 
   let result;

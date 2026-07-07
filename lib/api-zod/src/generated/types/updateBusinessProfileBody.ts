@@ -24,6 +24,10 @@ export interface UpdateBusinessProfileBody {
   urlLinhaProdutos?: string;
   /** Perfil do Instagram da empresa */
   instagramUrl?: string;
+  /** URL do modelo de proposta padrão da empresa */
+  proposalTemplateUrl?: string;
+  /** Nome original do arquivo de modelo de proposta */
+  proposalTemplateName?: string;
   produtos?: Product[];
   diferenciais?: string;
   publicoAlvo?: string;

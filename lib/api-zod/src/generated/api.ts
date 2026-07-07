@@ -4158,6 +4158,8 @@ export const CreateBusinessProfileBody = zod.object({
   "faviconUrl": zod.string().optional(),
   "urlLinhaProdutos": zod.string().optional().describe('URL pública com informações da linha de produtos para a IA'),
   "instagramUrl": zod.string().optional().describe('Perfil do Instagram da empresa'),
+  "proposalTemplateUrl": zod.string().optional().describe('URL do modelo de proposta padrão da empresa'),
+  "proposalTemplateName": zod.string().optional().describe('Nome original do arquivo de modelo de proposta'),
   "produtos": zod.array(zod.object({
   "nome": zod.string(),
   "descricao": zod.string().nullish(),
@@ -4194,6 +4196,8 @@ export const GetBusinessProfileByTenantResponse = zod.object({
   "faviconUrl": zod.string().nullish(),
   "urlLinhaProdutos": zod.string().nullish().describe('URL pública com informações da linha de produtos para a IA'),
   "instagramUrl": zod.string().nullish().describe('Perfil do Instagram da empresa'),
+  "proposalTemplateUrl": zod.string().nullish().describe('URL do modelo de proposta padrão da empresa'),
+  "proposalTemplateName": zod.string().nullish().describe('Nome original do arquivo de modelo de proposta'),
   "produtos": zod.array(zod.object({
   "nome": zod.string(),
   "descricao": zod.string().nullish(),
@@ -4232,6 +4236,8 @@ export const GetBusinessProfileResponse = zod.object({
   "faviconUrl": zod.string().nullish(),
   "urlLinhaProdutos": zod.string().nullish().describe('URL pública com informações da linha de produtos para a IA'),
   "instagramUrl": zod.string().nullish().describe('Perfil do Instagram da empresa'),
+  "proposalTemplateUrl": zod.string().nullish().describe('URL do modelo de proposta padrão da empresa'),
+  "proposalTemplateName": zod.string().nullish().describe('Nome original do arquivo de modelo de proposta'),
   "produtos": zod.array(zod.object({
   "nome": zod.string(),
   "descricao": zod.string().nullish(),
@@ -4268,6 +4274,8 @@ export const UpdateBusinessProfileBody = zod.object({
   "faviconUrl": zod.string().optional(),
   "urlLinhaProdutos": zod.string().optional().describe('URL pública com informações da linha de produtos para a IA'),
   "instagramUrl": zod.string().optional().describe('Perfil do Instagram da empresa'),
+  "proposalTemplateUrl": zod.string().optional().describe('URL do modelo de proposta padrão da empresa'),
+  "proposalTemplateName": zod.string().optional().describe('Nome original do arquivo de modelo de proposta'),
   "produtos": zod.array(zod.object({
   "nome": zod.string(),
   "descricao": zod.string().nullish(),
@@ -4296,6 +4304,8 @@ export const UpdateBusinessProfileResponse = zod.object({
   "faviconUrl": zod.string().nullish(),
   "urlLinhaProdutos": zod.string().nullish().describe('URL pública com informações da linha de produtos para a IA'),
   "instagramUrl": zod.string().nullish().describe('Perfil do Instagram da empresa'),
+  "proposalTemplateUrl": zod.string().nullish().describe('URL do modelo de proposta padrão da empresa'),
+  "proposalTemplateName": zod.string().nullish().describe('Nome original do arquivo de modelo de proposta'),
   "produtos": zod.array(zod.object({
   "nome": zod.string(),
   "descricao": zod.string().nullish(),

@@ -12439,6 +12439,14 @@ components:
           type: string
           nullable: true
           description: Perfil do Instagram da empresa
+        proposalTemplateUrl:
+          type: string
+          nullable: true
+          description: URL do modelo de proposta padrão da empresa
+        proposalTemplateName:
+          type: string
+          nullable: true
+          description: Nome original do arquivo de modelo de proposta
         produtos:
           type: array
           items:
@@ -12513,6 +12521,12 @@ components:
         instagramUrl:
           type: string
           description: Perfil do Instagram da empresa
+        proposalTemplateUrl:
+          type: string
+          description: URL do modelo de proposta padrão da empresa
+        proposalTemplateName:
+          type: string
+          description: Nome original do arquivo de modelo de proposta
         produtos:
           type: array
           items:
@@ -12569,6 +12583,12 @@ components:
         instagramUrl:
           type: string
           description: Perfil do Instagram da empresa
+        proposalTemplateUrl:
+          type: string
+          description: URL do modelo de proposta padrão da empresa
+        proposalTemplateName:
+          type: string
+          description: Nome original do arquivo de modelo de proposta
         produtos:
           type: array
           items:

@@ -26,6 +26,10 @@ export interface BusinessProfile {
   urlLinhaProdutos?: string | null;
   /** Perfil do Instagram da empresa */
   instagramUrl?: string | null;
+  /** URL do modelo de proposta padrão da empresa */
+  proposalTemplateUrl?: string | null;
+  /** Nome original do arquivo de modelo de proposta */
+  proposalTemplateName?: string | null;
   produtos?: Product[] | null;
   diferenciais?: string | null;
   publicoAlvo?: string | null;

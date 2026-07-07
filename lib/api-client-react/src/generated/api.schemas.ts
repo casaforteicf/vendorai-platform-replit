@@ -1883,6 +1883,10 @@ export interface BusinessProfile {
   urlLinhaProdutos?: string | null;
   /** Perfil do Instagram da empresa */
   instagramUrl?: string | null;
+  /** URL do modelo de proposta padrão da empresa */
+  proposalTemplateUrl?: string | null;
+  /** Nome original do arquivo de modelo de proposta */
+  proposalTemplateName?: string | null;
   produtos?: Product[] | null;
   diferenciais?: string | null;
   publicoAlvo?: string | null;
@@ -1913,6 +1917,10 @@ export interface CreateBusinessProfileBody {
   urlLinhaProdutos?: string;
   /** Perfil do Instagram da empresa */
   instagramUrl?: string;
+  /** URL do modelo de proposta padrão da empresa */
+  proposalTemplateUrl?: string;
+  /** Nome original do arquivo de modelo de proposta */
+  proposalTemplateName?: string;
   produtos?: Product[];
   diferenciais?: string;
   publicoAlvo?: string;
@@ -1940,6 +1948,10 @@ export interface UpdateBusinessProfileBody {
   urlLinhaProdutos?: string;
   /** Perfil do Instagram da empresa */
   instagramUrl?: string;
+  /** URL do modelo de proposta padrão da empresa */
+  proposalTemplateUrl?: string;
+  /** Nome original do arquivo de modelo de proposta */
+  proposalTemplateName?: string;
   produtos?: Product[];
   diferenciais?: string;
   publicoAlvo?: string;

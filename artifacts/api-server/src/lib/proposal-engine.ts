@@ -232,6 +232,7 @@ export function buildProposalPrompt(ctx: {
   tenantPhone?: string | null;
   refinementNotes?: string | null;
   styleMemory?: ProposalStyleMemory | null;
+  templateGuidance?: string | null;
 }): string {
   const productsBlock = ctx.products.length
     ? `\nProdutos do cliente:\n${ctx.products.map((p) => `- ${p.nome}`).join("\n")}`
@@ -252,6 +253,10 @@ export function buildProposalPrompt(ctx: {
   const tenantLabel = ctx.tenantName ? `da empresa "${ctx.tenantName}"` : "da empresa contratada";
   const segmentoBlock = ctx.mercadoSegmento
     ? `\n## Segmento do cliente: "${ctx.mercadoSegmento}"\nIMPORTANTE: toda a proposta DEVE usar terminologia, exemplos, dores e oportunidades específicas deste segmento. Não use linguagem genérica de "empresa". Use jargão real do setor. Os problemas, implicações e módulos devem ser exemplos concretos do dia a dia de ${ctx.mercadoSegmento}. Se for varejo: fale em loja, vendedor, estoque, ticket médio, sazonalidade. Se for construção: obra, engenheiro, orçamento, cliente de obra. Se for saúde: paciente, consulta, agenda. Adapte para o segmento real.`
+    : "";
+
+  const templateBlock = ctx.templateGuidance?.trim()
+    ? `\n━━━ MODELO DE PROPOSTA DA EMPRESA (referência de estrutura e tom) ━━━\nO usuário enviou um modelo de proposta padrão da empresa. Use-o como referência para estrutura, nomenclatura de seções e tom de linguagem. Não copie o conteúdo — adapte-o ao lead atual.\n\n${ctx.templateGuidance.trim().slice(0, 2000)}`
     : "";
 
   const refinementBlock = ctx.refinementNotes?.trim()
@@ -286,6 +291,7 @@ ${intelligenceBlock}
 
 ━━━ AMOSTRA DE CONVERSA (calibre o tom exato ao estilo do cliente) ━━━
 ${ctx.conversationSamples || "Sem conversa disponível. Use tom profissional, direto e respeitoso."}
+${templateBlock}
 ${styleMemoryBlock}
 ${refinementBlock}
 ━━━ ESTRUTURA JSON OBRIGATÓRIA ━━━
@@ -614,6 +620,7 @@ export function renderProposalHtml(json: unknown, theme: {
   .contact-item { display: flex; align-items: center; gap: 2mm; color: #cfc9e6; font-size: 8pt; text-decoration: none; }
   .contact-item svg { flex-shrink: 0; opacity: .75; }
   .contact-item:hover { color: #fff; }
+  .contact-wa-hint { font-size: 7pt; opacity: 0.55; }
 
   /* ── orçamento ── */
   .orc-table { width: 100%; border-collapse: collapse; margin: 3.5mm 0; font-size: 8.5pt; }
@@ -741,7 +748,7 @@ export function renderProposalHtml(json: unknown, theme: {
       const items: string[] = [];
       if (contact?.phone) {
         const clean = contact.phone.replace(/\D/g, "");
-        items.push(`<a class="contact-item" href="https://wa.me/${clean}"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07A19.5 19.5 0 0 1 4.69 12 19.79 19.79 0 0 1 1.65 3.4 2 2 0 0 1 3.62 1h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 8.91a16 16 0 0 0 6.72 6.72l.81-.81a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"/></svg>${contact.phone}</a>`);
+        items.push(`<a class="contact-item" href="https://wa.me/${clean}"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07A19.5 19.5 0 0 1 4.69 12 19.79 19.79 0 0 1 1.65 3.4 2 2 0 0 1 3.62 1h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 8.91a16 16 0 0 0 6.72 6.72l.81-.81a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"/></svg><span>${contact.phone}</span><span class="contact-wa-hint">&nbsp;· wa.me/${clean}</span></a>`);
       }
       if (contact?.email) {
         items.push(`<a class="contact-item" href="mailto:${contact.email}"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="4" width="20" height="16" rx="2"/><path d="m22 7-8.97 5.7a1.94 1.94 0 0 1-2.06 0L2 7"/></svg>${contact.email}</a>`);

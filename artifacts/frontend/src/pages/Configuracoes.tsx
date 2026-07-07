@@ -2195,6 +2195,16 @@ export default function Configuracoes() {
             </div>
           )}
 
+          {/* Modelo de Proposta — admin only */}
+          {(user?.platformRole === "tenant_admin" || user?.platformRole === "super_admin") && profileQuery.data?.id && (
+            <ProposalTemplateSection
+              profileId={profileQuery.data.id}
+              templateUrl={profileQuery.data.proposalTemplateUrl ?? null}
+              templateName={profileQuery.data.proposalTemplateName ?? null}
+              onUpdate={() => queryClient.invalidateQueries({ queryKey: getGetBusinessProfileByTenantQueryKey(tenantId) })}
+            />
+          )}
+
           {/* Modelo de Contrato — admin only */}
           {(user?.platformRole === "tenant_admin" || user?.platformRole === "super_admin") && (
             <ContractTemplateSection tenantId={tenantId} />
@@ -4241,6 +4251,118 @@ const CONTRACT_VARIABLES = [
   { variable: "{{pedidos_lista}}", label: "Tabela HTML dos pedidos selecionados" },
   { variable: "{{parceiro_nome}}", label: "Nome do parceiro (se houver)" },
 ];
+
+// ── Proposal Template Section ──────────────────────────────────────────────────
+function ProposalTemplateSection({
+  profileId, templateUrl, templateName, onUpdate,
+}: { profileId: string; templateUrl: string | null; templateName: string | null; onUpdate: () => void }) {
+  const { toast } = useToast();
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [uploading, setUploading] = useState(false);
+  const requestUploadUrl = useRequestStorageUploadUrl();
+  const updateProfile = useUpdateBusinessProfile();
+
+  async function handleFile(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setUploading(true);
+    try {
+      const result = await new Promise<{ uploadURL: string; objectPath: string }>((resolve, reject) => {
+        requestUploadUrl.mutate(
+          { data: { name: file.name, size: file.size, contentType: file.type } },
+          { onSuccess: resolve, onError: reject },
+        );
+      });
+      const uploadRes = await fetch(result.uploadURL, { method: "PUT", body: file, headers: { "Content-Type": file.type } });
+      if (!uploadRes.ok) throw new Error("Upload falhou");
+      updateProfile.mutate(
+        { id: profileId, data: { proposalTemplateUrl: result.objectPath, proposalTemplateName: file.name } },
+        {
+          onSuccess: () => { onUpdate(); toast({ title: "Modelo de proposta importado com sucesso." }); },
+          onError: () => toast({ title: "Erro ao salvar modelo.", variant: "destructive" }),
+        },
+      );
+    } catch {
+      toast({ title: "Erro no upload. Tente novamente.", variant: "destructive" });
+    } finally {
+      setUploading(false);
+      if (fileInputRef.current) fileInputRef.current.value = "";
+    }
+  }
+
+  function handleRemove() {
+    updateProfile.mutate(
+      { id: profileId, data: { proposalTemplateUrl: null, proposalTemplateName: null } },
+      {
+        onSuccess: () => { onUpdate(); toast({ title: "Modelo de proposta removido." }); },
+        onError: () => toast({ title: "Erro ao remover.", variant: "destructive" }),
+      },
+    );
+  }
+
+  const previewUrl = templateUrl
+    ? (templateUrl.startsWith("/objects/") ? `/api/storage${templateUrl}` : templateUrl)
+    : null;
+
+  return (
+    <div className="rounded-xl border bg-card p-6 space-y-4">
+      <input ref={fileInputRef} type="file" className="hidden" accept=".html,.htm,.txt,.pdf,.doc,.docx" onChange={handleFile} />
+      <div>
+        <h2 className="font-semibold text-base flex items-center gap-2">
+          <FileText className="h-4 w-4 text-primary" />
+          Modelo de Proposta
+        </h2>
+        <p className="text-sm text-muted-foreground mt-0.5">
+          Importe o modelo de proposta padrão da empresa. A IA usará a estrutura e o tom do documento como referência ao gerar novas propostas. Formatos aceitos: HTML, TXT, PDF, DOC.
+        </p>
+      </div>
+
+      {templateUrl ? (
+        <div className="rounded-lg bg-blue-50 border border-blue-200 p-4 flex items-start gap-3">
+          <FileText className="h-5 w-5 text-blue-600 mt-0.5 shrink-0" />
+          <div className="flex-1 min-w-0">
+            <p className="text-sm font-medium text-blue-800">Modelo ativo</p>
+            <p className="text-xs text-blue-600 truncate">{templateName || "modelo-proposta"}</p>
+          </div>
+          <div className="flex items-center gap-2 shrink-0">
+            {previewUrl && (
+              <Button variant="outline" size="sm" className="gap-1.5 text-xs" asChild>
+                <a href={previewUrl} target="_blank" rel="noopener noreferrer">
+                  <ExternalLink className="h-3.5 w-3.5" />
+                  Ver
+                </a>
+              </Button>
+            )}
+            <Button variant="outline" size="sm" className="gap-1.5 text-xs" onClick={() => fileInputRef.current?.click()} disabled={uploading || updateProfile.isPending}>
+              <Upload className="h-3.5 w-3.5" />
+              Trocar
+            </Button>
+            <Button variant="outline" size="sm" className="gap-1.5 text-xs text-destructive hover:bg-red-50" onClick={handleRemove} disabled={updateProfile.isPending}>
+              <X className="h-3.5 w-3.5" />
+              Remover
+            </Button>
+          </div>
+        </div>
+      ) : (
+        <div className="rounded-lg border-2 border-dashed border-border p-6 text-center space-y-3">
+          <div className="flex justify-center">
+            <div className="rounded-full bg-muted p-3">
+              <Upload className="h-5 w-5 text-muted-foreground" />
+            </div>
+          </div>
+          <div>
+            <p className="text-sm font-medium">Nenhum modelo importado</p>
+            <p className="text-xs text-muted-foreground">A IA usará o estilo padrão até você enviar o seu modelo.</p>
+          </div>
+          <Button variant="outline" size="sm" className="gap-1.5" onClick={() => fileInputRef.current?.click()} disabled={uploading}>
+            {uploading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Upload className="h-3.5 w-3.5" />}
+            {uploading ? "Enviando..." : "Importar modelo"}
+          </Button>
+        </div>
+      )}
+    </div>
+  );
+}
 
 function ContractTemplateSection({ tenantId }: { tenantId: string }) {
   const { token } = useAuth();
