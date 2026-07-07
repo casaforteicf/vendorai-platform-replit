@@ -4259,7 +4259,7 @@ function ProposalTemplateSection({
   const { toast } = useToast();
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [uploading, setUploading] = useState(false);
-  const requestUploadUrl = useRequestStorageUploadUrl();
+  const requestUploadUrl = useRequestUploadUrl();
   const updateProfile = useUpdateBusinessProfile();
 
   async function handleFile(e: React.ChangeEvent<HTMLInputElement>) {
