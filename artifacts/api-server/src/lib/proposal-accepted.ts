@@ -18,6 +18,7 @@ import { analyzeLeadIntelligence } from "./analyze-intelligence.js";
 import { logger } from "./logger.js";
 import { checkCatalogMatch } from "./catalog-price-check.js";
 import { sendDirectWhatsAppMessage } from "../services/omnichannel.js";
+import { triggerOnboardingHandoff } from "./agent-engine.js";
 
 export type ProposalAcceptanceChannel = "link" | "whatsapp" | "manual";
 
@@ -286,6 +287,20 @@ export async function proposalAccepted(
   }
 
   log.info({ dealId: deal.id }, "proposalAccepted: deal moved to ganho");
+
+  // 4a. Handoff proativo: fechamento → onboarding. Em vez de esperar o cliente
+  // escrever de novo, dispara a mensagem de boas-vindas imediatamente — non-blocking.
+  if (proposta.leadId) {
+    triggerOnboardingHandoff({
+      tenantId: proposta.tenantId,
+      leadId: proposta.leadId,
+      dealId: deal.id,
+      extraPayload: { propostaId },
+      log,
+    }).catch((err) => {
+      log.warn({ err, dealId: deal.id }, "proposalAccepted: onboarding handoff failed (non-fatal)");
+    });
+  }
 
   // 4b. Trigger re-analysis of churn risk — non-blocking
   // A deal moving to ganho is a strong engagement signal; the churn score

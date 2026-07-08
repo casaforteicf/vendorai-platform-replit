@@ -6,13 +6,16 @@ import {
   agendamentosTable,
   agendasTable,
   leadsTable,
+  dealsTable,
   activitiesTable,
   usersTable,
   businessProfilesTable,
   notificationLogsTable,
+  notificationsTable,
   insertAgendamentoSchema,
   updateAgendamentoSchema,
 } from "@workspace/db";
+import type { Logger } from "pino";
 import {
   createGoogleEvent,
   updateGoogleEvent,
@@ -23,6 +26,66 @@ import { sendDirectWhatsAppMessage } from "../services/omnichannel.js";
 import { sendMeetingInviteEmail } from "../lib/email.js";
 
 const router: IRouter = Router();
+
+// ── Handoff proativo: agendamento confirmado → aviso interno ao Closer ────────
+// Sinal apenas interno (notificação + WhatsApp para o dono do deal); NUNCA
+// reabre a conversa com o lead automaticamente.
+async function notifyCloserOnMeetingConfirmed(
+  agendamento: typeof agendamentosTable.$inferSelect,
+  log: Logger
+): Promise<void> {
+  if (!agendamento.dealId || !agendamento.leadId) return;
+
+  try {
+    const [deal] = await db
+      .select({
+        id: dealsTable.id,
+        etapa: dealsTable.etapa,
+        assignedTo: dealsTable.assignedTo,
+        titulo: dealsTable.titulo,
+      })
+      .from(dealsTable)
+      .where(eq(dealsTable.id, agendamento.dealId));
+
+    if (!deal || deal.etapa === "ganho" || deal.etapa === "perdido") return;
+
+    const [lead] = await db
+      .select({ nome: leadsTable.nome })
+      .from(leadsTable)
+      .where(eq(leadsTable.id, agendamento.leadId));
+
+    const dataStr = new Date(agendamento.dataHoraInicio).toLocaleDateString("pt-BR", {
+      day: "2-digit", month: "2-digit", year: "numeric", timeZone: "America/Sao_Paulo",
+    });
+    const horaStr = new Date(agendamento.dataHoraInicio).toLocaleTimeString("pt-BR", {
+      hour: "2-digit", minute: "2-digit", timeZone: "America/Sao_Paulo",
+    });
+    const leadNome = lead?.nome ?? "Lead";
+
+    await db.insert(notificationsTable).values({
+      tenantId: agendamento.tenantId,
+      title: "Reunião confirmada",
+      message: `${leadNome} confirmou a reunião "${agendamento.titulo}" para ${dataStr} às ${horaStr} (negócio: ${deal.titulo}). Prepare-se para conduzir o fechamento.`,
+      type: "info",
+      category: "meeting_confirmed",
+    });
+
+    if (deal.assignedTo) {
+      const [owner] = await db
+        .select({ telefone: usersTable.telefone })
+        .from(usersTable)
+        .where(eq(usersTable.id, deal.assignedTo));
+      if (owner?.telefone) {
+        const msg = `📅 Reunião confirmada\n\n${leadNome} confirmou "${agendamento.titulo}" para ${dataStr} às ${horaStr}.\nNegócio: ${deal.titulo}.\n\nPrepare-se para conduzir o fechamento.`;
+        await sendDirectWhatsAppMessage(agendamento.tenantId, owner.telefone, msg, log);
+      }
+    }
+
+    log.info({ agendamentoId: agendamento.id, dealId: deal.id }, "agendamento: closer notified on meeting confirmed");
+  } catch (err) {
+    log.warn({ err, agendamentoId: agendamento.id }, "agendamento: closer notification on confirm failed (non-fatal)");
+  }
+}
 
 router.post("/agendamentos", async (req, res) => {
   const parsed = insertAgendamentoSchema.safeParse(req.body);
@@ -226,6 +289,11 @@ router.post("/agendamentos", async (req, res) => {
     } catch (actErr) {
       req.log.warn({ err: actErr }, "agendamento: deal activity creation failed (non-fatal)");
     }
+  }
+
+  // ── Handoff proativo: se já criado como "confirmado", avisa o Closer ───────
+  if (agendamento.status === "confirmado") {
+    await notifyCloserOnMeetingConfirmed(agendamento, req.log);
   }
 });
 
@@ -500,6 +568,13 @@ router.patch("/agendamentos/:id", async (req, res) => {
     } catch (err) {
       req.log.warn({ err }, "Google Calendar sync failed on update");
     }
+  }
+
+  // ── Handoff proativo: transição para "confirmado" avisa o Closer ───────────
+  if (existing.status !== "confirmado" && agendamento.status === "confirmado") {
+    await notifyCloserOnMeetingConfirmed(agendamento, req.log).catch((err) => {
+      req.log.warn({ err }, "agendamento: closer notification on update failed (non-fatal)");
+    });
   }
 });
 

@@ -366,6 +366,70 @@ export async function insertAndRun(params: {
   return isAutonomous ? executeTaskAction(task, log) : task;
 }
 
+// ── Handoff proativo: fechamento → onboarding ──────────────────────────────────
+// Chamado após proposalAccepted() fechar um deal com sucesso. Em vez de esperar
+// o lead escrever de novo (fluxo reativo), dispara imediatamente a mensagem de
+// boas-vindas do agente de onboarding pelo mesmo mecanismo de agent_task usado
+// nos demais agentes (respeita enabled/limits/autonomyEnabledAt do tenant).
+export async function triggerOnboardingHandoff(params: {
+  tenantId:     string;
+  leadId:       string;
+  dealId:       string;
+  extraPayload?: Record<string, unknown>;
+  log:          Logger;
+}): Promise<AgentTask | null> {
+  const { tenantId, leadId, dealId, extraPayload, log } = params;
+
+  const [config] = await db.select().from(agentConfigsTable).where(eq(agentConfigsTable.tenantId, tenantId));
+  if (!config) {
+    log.info({ tenantId, dealId }, "triggerOnboardingHandoff: no agent config, skipping");
+    return null;
+  }
+
+  const agentCfg = config.agents?.onboarding;
+  if (!agentCfg?.enabled) {
+    log.info({ tenantId, dealId }, "triggerOnboardingHandoff: onboarding agent not enabled, skipping");
+    return null;
+  }
+
+  const limits = computeLimits(config);
+  if (!limits.ok) {
+    log.warn({ tenantId, dealId }, "triggerOnboardingHandoff: agent limits reached, skipping proactive welcome");
+    return null;
+  }
+
+  const [lead] = await db.select({ nome: leadsTable.nome }).from(leadsTable).where(eq(leadsTable.id, leadId));
+  if (!lead) {
+    log.warn({ tenantId, dealId, leadId }, "triggerOnboardingHandoff: lead not found, skipping");
+    return null;
+  }
+
+  const primeiroNome = (lead.nome ?? "").trim().split(/\s+/)[0] || undefined;
+  const resposta = `Oi${primeiroNome ? `, ${primeiroNome}` : ""}! 🎉 Que ótimo ter você com a gente! Sua contratação foi confirmada e já estamos preparando os próximos passos para o seu onboarding. Em breve trazemos todos os detalhes por aqui — qualquer dúvida, é só responder essa mensagem!`;
+
+  const now = new Date();
+  await updateCounters(config, limits, 0, now);
+
+  const isAutonomous = !!config.autonomyEnabledAt;
+  const task = await insertAndRun({
+    tenantId,
+    leadId,
+    agentName: "onboarding",
+    actionType: "enviar_whatsapp",
+    resposta,
+    extraPayload: { origin: "proposal_accepted", dealId, ...extraPayload },
+    isAutonomous,
+    now,
+    log,
+  });
+
+  log.info(
+    { taskId: task.id, status: task.status, leadId, dealId, isAutonomous },
+    "triggerOnboardingHandoff: proactive onboarding handoff created"
+  );
+  return task;
+}
+
 // ── Message → OpenAI format ───────────────────────────────────────────────────
 export function msgToOpenAI(m: Message): OpenAI.Chat.ChatCompletionMessageParam {
   const role: "user" | "assistant" = m.direcao === "entrada" ? "user" : "assistant";

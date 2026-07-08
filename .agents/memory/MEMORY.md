@@ -26,3 +26,4 @@
 - [VendorAI SaaS contract auto-gen](vendorai-saas-contract.md) — template HTML completo em vendorai-contract-template.ts; contract_settings JSONB no tenant; numberToWordsPTBR para valor por extenso; settings UI em Configuracoes.tsx.
 - [Obras Hub AI + Gantt drag](obras-hub-gantt-ai.md) — resumoIA: Anthropic via resolveAIKey; Gantt substituído por DraggableGantt div-based com drag via refs/forceUpdate.
 - [Catalog price approval gate](catalog-price-approval-gate.md) — closure paths must check valor vs. produtos_catalogo antes de fechar; divergência cria agent_task pendente e bloqueia até aprovação manual.
+- [Proactive agent handoffs](proactive-agent-handoffs.md) — system-triggered transitions (meeting confirmed, deal won) must be internal signals or agent_task-based, never a raw LLM call with no incoming message.
