@@ -45,6 +45,7 @@ import ProcurementStudio from './procurement-studio/ProcurementStudio'
 import MarketplaceEnterprise from './marketplace-enterprise/MarketplaceEnterprise'
 import ClientExperience from './client-experience/ClientExperience'
 import OperationsCenter from './operations-center/OperationsCenter'
+import AutomationAuditCenter from './operations-center/automation-audit/AutomationAuditCenter'
 import BudgetDisciplinesProposal from './executive-budget/disciplines/BudgetDisciplinesProposal'
 import AlignedStudioShell from './ux-alignment/AlignedStudioShell'
 import { computeNextAction }     from './project-experience/ProjectHome'
@@ -69,6 +70,7 @@ export type ModuleId =
   | 'marketplace' | 'arq-marketplace'
   | 'client' | 'portal-cliente'
   | 'operations' | 'command-center' | 'operacoes'
+  | 'automation-audit' | 'audit' | 'automacoes'
 
 export type JourneyId = 'create' | 'design' | 'visualize' | 'deliver' | 'business'
 
@@ -128,9 +130,12 @@ const MODULE_MAP_INTERNAL: Record<ModuleId, { icon:string; label:string }> = {
   'arq-marketplace': { icon:'🏪', label:'Marketplace'      },
   'client':          { icon:'👤', label:'Portal Cliente'   },
   'portal-cliente':  { icon:'👤', label:'Portal Cliente'   },
-  'operations':      { icon:'⚙️', label:'Operações'        },
-  'command-center':  { icon:'⚙️', label:'Command Center'   },
-  'operacoes':       { icon:'⚙️', label:'Operações'        },
+  'operations':        { icon:'⚙️', label:'Operações'        },
+  'command-center':    { icon:'⚙️', label:'Command Center'   },
+  'operacoes':         { icon:'⚙️', label:'Operações'        },
+  'automation-audit':  { icon:'🔐', label:'Automação & Audit' },
+  'audit':             { icon:'🔐', label:'Audit'            },
+  'automacoes':        { icon:'🔐', label:'Automações'        },
 }
 
 // ─── Legado: Journeys (keyboard shortcuts 1–5) ────────────────────────────────
@@ -293,7 +298,10 @@ function renderModule(id: ModuleId, arqState: ArqProjectState, setActive: (m: Mo
     case 'portal-cliente': return <ClientExperience arqState={arqState} onNavigate={m => setActive(m as ModuleId)} />
     case 'operations':
     case 'command-center':
-    case 'operacoes':     return <OperationsCenter arqState={arqState} onNavigate={m => setActive(m as ModuleId)} />
+    case 'operacoes':       return <OperationsCenter arqState={arqState} onNavigate={m => setActive(m as ModuleId)} />
+    case 'automation-audit':
+    case 'audit':
+    case 'automacoes':      return <AutomationAuditCenter onNavigate={m => setActive(m as ModuleId)} />
     case 'ecosystem':     return <EcosystemModule/>
     case 'knowledge':     return <KnowledgeModule/>
     case 'office':
