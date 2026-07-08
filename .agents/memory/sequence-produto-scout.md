@@ -26,3 +26,15 @@ actual reported progress, not a calendar.
 `revenueScout.ts`'s `analisarCliente` (separate from the generic switch/dedup path used
 by other rule types) because it needs to check `status IN (pendente,enviado,
 aguardando_etapa)` OR `(adiado AND proximaTentativaEm > now)` to decide whether to skip.
+
+## Auto-closing the Scout scoreboard
+When a deal wins, `reconcileScoutOnDealWon` (in `revenueScout.ts`) auto-marks any
+`scout_oportunidades` row with status `"enviado"` for that lead as `"converteu"` (sets
+`dealId`) if it was sent within the last 45 days — called from both `proposalAccepted()`
+and `runDealClosure()` (confirm_closure.ts), non-blocking. Without this, the Scout
+conversion rate silently understates reality because the only other path to
+`"converteu"` is a manual `POST .../oportunidades/:id/converter` call.
+
+**Why:** a lead can independently reply and go through the normal SDR/Closer routing
+after receiving a Scout offer — that's a real Scout-attributed sale, but nothing else
+in the codebase links `scout_oportunidades` to the deal that closed it.
