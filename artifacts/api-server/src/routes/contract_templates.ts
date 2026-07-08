@@ -43,11 +43,39 @@ const uploadTemplate = multer({
   },
 });
 
+// ─── Get default (platform) contract template ─────────────────────────────────
+router.get(
+  "/api/tenants/:tenantId/contract-template/default",
+  async (req, res) => {
+    const tenantId = String(req.params.tenantId);
+
+    if (
+      req.user?.platformRole !== "super_admin" &&
+      req.user?.tenantId !== tenantId
+    ) {
+      res.status(403).json({ error: "Acesso negado" });
+      return;
+    }
+
+    res.json({ templateHtml: VENDORAI_SAAS_CONTRACT_HTML });
+  }
+);
+
 // ─── Upload / replace contract template ───────────────────────────────────────
 router.post(
   "/api/tenants/:tenantId/contract-template",
   requireRole(["tenant_admin", "super_admin"]),
-  uploadTemplate.single("file"),
+  (req, res, next) => {
+    uploadTemplate.single("file")(req, res, (err) => {
+      if (err) {
+        const message =
+          err instanceof Error ? err.message : "Erro no upload do arquivo";
+        res.status(400).json({ error: message });
+        return;
+      }
+      next();
+    });
+  },
   async (req, res) => {
     const tenantId = String(req.params.tenantId);
 
