@@ -9,6 +9,7 @@ import {
   contractsTable,
   partnersTable,
   propostasTable,
+  businessProfilesTable,
 } from "@workspace/db";
 import {
   generateContractFromTemplate,
@@ -423,6 +424,15 @@ router.post("/api/deals/:dealId/generate-contract", async (req, res) => {
       ? (FORMA_PAGAMENTO_LABELS[proposta.formaPagamento] ?? proposta.formaPagamento)
       : "";
 
+    // Dados da empresa (CNPJ/endereço) — puxados do perfil da empresa do tenant
+    const [businessProfile] = await db
+      .select({ cnpj: businessProfilesTable.cnpj, endereco: businessProfilesTable.endereco })
+      .from(businessProfilesTable)
+      .where(eq(businessProfilesTable.tenantId, tenantId));
+    const empresaCnpj = (businessProfile?.cnpj ?? "").trim();
+    const empresaEndereco = (businessProfile?.endereco ?? "").trim();
+    const empresaPerfilIncompleto = !empresaCnpj || !empresaEndereco;
+
     // Representative qualification (use what's in the system, flag missing parts)
     const repNome = (lead.nome ?? "").trim();
     const repCargo = (lead.representanteCargo ?? "").trim() || "Representante Legal";
@@ -468,6 +478,8 @@ router.post("/api/deals/:dealId/generate-contract", async (req, res) => {
       representanteRg: repRg,
       representanteLegalCompleto,
       formaPagamento,
+      empresaCnpj,
+      empresaEndereco,
       valorMensalFormatado,
       valorExtenso,
       dataExtensoPTBR,
@@ -555,6 +567,9 @@ router.post("/api/deals/:dealId/generate-contract", async (req, res) => {
       zapsignDocId: doc.token,
       signUrl,
       signers: doc.signers?.map((s) => ({ name: s.name, email: s.email, signUrl: s.sign_url })) ?? [],
+      warning: empresaPerfilIncompleto
+        ? "Perfil da empresa incompleto: CNPJ e/ou endereço não cadastrados em Configurações → Perfil da Empresa. As variáveis {{empresa_cnpj}} / {{empresa_endereco}} ficaram em branco no contrato."
+        : null,
     });
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);

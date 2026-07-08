@@ -115,6 +115,22 @@ export function ContractGeneratorModal({
     enabled: open,
   });
 
+  // Load business profile (CNPJ/endereço da empresa usados no contrato)
+  const businessProfileQuery = useQuery({
+    queryKey: ["business-profile-contract", tenantId],
+    queryFn: async () => {
+      const res = await fetch(`/api/tenants/${tenantId}/business-profile`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (!res.ok) return null;
+      return res.json() as Promise<{ cnpj: string | null; endereco: string | null }>;
+    },
+    enabled: open,
+  });
+  const businessProfileIncompleto =
+    !businessProfileQuery.isLoading &&
+    (!businessProfileQuery.data?.cnpj || !businessProfileQuery.data?.endereco);
+
   const generateMutation = useMutation({
     mutationFn: async () => {
       const res = await fetch(`/api/deals/${dealId}/generate-contract`, {
@@ -127,7 +143,7 @@ export function ContractGeneratorModal({
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error ?? "Erro ao gerar contrato");
-      return data as { success: boolean; zapsignDocId: string; signUrl: string | null };
+      return data as { success: boolean; zapsignDocId: string; signUrl: string | null; warning?: string | null };
     },
     onSuccess: (data) => {
       setResult({ signUrl: data.signUrl, zapsignDocId: data.zapsignDocId });
@@ -135,6 +151,13 @@ export function ContractGeneratorModal({
         title: "Contrato enviado!",
         description: "O cliente receberá o link de assinatura por e-mail via ZapSign.",
       });
+      if (data.warning) {
+        toast({
+          title: "Atenção: perfil da empresa incompleto",
+          description: data.warning,
+          variant: "destructive",
+        });
+      }
       queryClient.invalidateQueries({ queryKey: ["deals"] });
     },
     onError: (err: Error) => {
@@ -257,6 +280,21 @@ export function ContractGeneratorModal({
                 )}
               </div>
             </div>
+
+            {/* Business profile warning */}
+            {businessProfileIncompleto && (
+              <div className="flex items-start gap-2 text-xs text-amber-800 bg-amber-50 rounded-lg p-3 border border-amber-200">
+                <AlertTriangle className="h-3.5 w-3.5 mt-0.5 shrink-0" />
+                <span>
+                  Perfil da empresa incompleto — CNPJ e/ou endereço não cadastrados. As variáveis{" "}
+                  <code className="bg-background border rounded px-1 py-0.5 font-mono">{"{{empresa_cnpj}}"}</code>{" "}
+                  e{" "}
+                  <code className="bg-background border rounded px-1 py-0.5 font-mono">{"{{empresa_endereco}}"}</code>{" "}
+                  ficarão em branco no contrato. Complete em{" "}
+                  <strong>Configurações → Perfil da Empresa</strong>.
+                </span>
+              </div>
+            )}
 
             {/* Lead info */}
             <div className="space-y-2">

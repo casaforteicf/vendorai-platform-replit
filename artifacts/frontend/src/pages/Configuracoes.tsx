@@ -4422,6 +4422,8 @@ const CONTRACT_VARIABLES = [
   { variable: "{{representante_rg}}", label: "RG do representante" },
   { variable: "{{representante_legal_completo}}", label: "Qualificação completa do representante" },
   { variable: "{{forma_pagamento}}", label: "Forma de pagamento (da proposta vinculada ao deal)" },
+  { variable: "{{empresa_cnpj}}", label: "CNPJ da sua empresa (perfil da empresa)" },
+  { variable: "{{empresa_endereco}}", label: "Endereço da sua empresa (perfil da empresa)" },
   { variable: "{{valor_mensal}}", label: "Valor mensal formatado" },
   { variable: "{{valor_extenso}}", label: "Valor mensal por extenso" },
   { variable: "{{data_extenso}}", label: "Data por extenso" },
