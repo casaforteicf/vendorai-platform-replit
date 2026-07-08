@@ -57,6 +57,7 @@ export type ModuleId =
   | 'arqhub' | 'ai-intel' | 'integracao' | 'ecosystem' | 'knowledge' | 'office'
   | 'orcamento' | 'orcamento-pro'
   | 'ux-alignment'
+  | 'specification' | 'especificacao-produto'
 
 export type JourneyId = 'create' | 'design' | 'visualize' | 'deliver' | 'business'
 
@@ -105,6 +106,8 @@ const MODULE_MAP_INTERNAL: Record<ModuleId, { icon:string; label:string }> = {
   'orcamento':  { icon:'💰', label:'Orçamento'     },
   'orcamento-pro': { icon:'📐', label:'Orç. Disciplinas' },
   'ux-alignment': { icon:'🎨', label:'UX Alignment'    },
+  'specification': { icon:'📋', label:'Especificar'    },
+  'especificacao-produto': { icon:'📦', label:'Spec. Produto' },
 }
 
 // ─── Legado: Journeys (keyboard shortcuts 1–5) ────────────────────────────────
@@ -248,7 +251,9 @@ function renderModule(id: ModuleId, arqState: ArqProjectState, setActive: (m: Mo
     case 'home':          return <ProjectHomeV2 arqState={arqState} onNavigate={m => setActive(m as ModuleId)} />
     case 'projeto':       return <SmartProjectModule arqState={arqState} onNavigate={m => setActive(m as ModuleId)} />
     case 'biblioteca':    return <LibraryModule/>
-    case 'especificacao': return <SpecificationStudio arqState={arqState} onNavigate={m => setActive(m as ModuleId)} />
+    case 'especificacao':
+    case 'specification':
+    case 'especificacao-produto': return <SpecificationStudio arqState={arqState} onNavigate={m => setActive(m as ModuleId)} />
     case 'prompt':        return <PromptPlaygroundModule/>
     case 'renders':       return <SmartRenderEngine arqState={arqState} />
     case 'ai-review':     return <AIReviewModule/>
