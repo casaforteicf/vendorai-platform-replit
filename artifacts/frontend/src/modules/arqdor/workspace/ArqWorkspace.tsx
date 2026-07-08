@@ -58,6 +58,7 @@ export type ModuleId =
   | 'orcamento' | 'orcamento-pro'
   | 'ux-alignment'
   | 'specification' | 'especificacao-produto'
+  | 'production' | 'producao'
 
 export type JourneyId = 'create' | 'design' | 'visualize' | 'deliver' | 'business'
 
@@ -108,6 +109,8 @@ const MODULE_MAP_INTERNAL: Record<ModuleId, { icon:string; label:string }> = {
   'ux-alignment': { icon:'🎨', label:'UX Alignment'    },
   'specification': { icon:'📋', label:'Especificar'    },
   'especificacao-produto': { icon:'📦', label:'Spec. Produto' },
+  'production': { icon:'🏭', label:'Produção'         },
+  'producao':   { icon:'🏭', label:'Produção'         },
 }
 
 // ─── Legado: Journeys (keyboard shortcuts 1–5) ────────────────────────────────
@@ -266,7 +269,9 @@ function renderModule(id: ModuleId, arqState: ArqProjectState, setActive: (m: Mo
     case 'cliente':       return <IntegrationModule/>
     case 'ecosystem':     return <EcosystemModule/>
     case 'knowledge':     return <KnowledgeModule/>
-    case 'office':        return <ProductionStudio arqState={arqState} onNavigate={m => setActive(m as ModuleId)} />
+    case 'office':
+    case 'production':
+    case 'producao':      return <ProductionStudio arqState={arqState} onNavigate={m => setActive(m as ModuleId)} />
     case 'orcamento':     return <BudgetEngine arqState={arqState} onNavigate={m => setActive(m as ModuleId)} />
     case 'orcamento-pro': return <BudgetDisciplinesProposal />
     case 'ux-alignment':  return <AlignedStudioShell />

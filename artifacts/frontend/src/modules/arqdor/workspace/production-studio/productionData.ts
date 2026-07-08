@@ -1,53 +1,122 @@
-import type { ProductionDiscipline } from "./ProductionStudioContext";
+import type { ProductionStatus, ProductionSupplier, QualityCheck, WorkOrder } from "./productionTypes";
 
-export type Supplier = {
-  id: string;
-  name: string;
-  type: "local" | "manufacturer";
-  discipline: ProductionDiscipline;
-  compatibility: number;
-  estimatedCost: string;
-  estimatedDeadline: string;
-  status: "ready" | "needs_review" | "future";
-};
-
-export const disciplines: Array<{ id: ProductionDiscipline; label: string; description: string }> = [
-  { id: "marcenaria", label: "Marcenaria", description: "Módulos, MDF, ferragens, puxadores e produção." },
-  { id: "gesso", label: "Gesso", description: "Forros, sancas, cortineiros, rasgos e perfis." },
-  { id: "marmoraria", label: "Marmoraria", description: "Bancadas, soleiras, peitoris e acabamentos." },
-  { id: "iluminacao", label: "Iluminação", description: "Luminárias, cenas, temperatura e fornecedores." },
-  { id: "pintura", label: "Pintura", description: "Cores, áreas, acabamento e consumo estimado." },
-  { id: "paisagismo", label: "Paisagismo", description: "Espécies, vasos, pedras, iluminação e irrigação." },
-  { id: "esquadrias", label: "Esquadrias", description: "Portas, janelas, vidros, persianas e PVC." },
+export const productionStatuses: Array<{ id: ProductionStatus; label: string }> = [
+  { id: "especificado", label: "Especificado" },
+  { id: "orcado", label: "Orçado" },
+  { id: "comprado", label: "Comprado" },
+  { id: "producao", label: "Produção" },
+  { id: "montagem", label: "Montagem" },
+  { id: "qualidade", label: "Qualidade" },
+  { id: "expedicao", label: "Expedição" },
+  { id: "instalacao", label: "Instalação" },
+  { id: "finalizado", label: "Finalizado" },
 ];
 
-export const suppliers: Supplier[] = [
-  { id: "local-wood-01", name: "Marceneiro Local", type: "local", discipline: "marcenaria", compatibility: 82, estimatedCost: "A cotar", estimatedDeadline: "A definir", status: "ready" },
-  { id: "evviva", name: "Evviva", type: "manufacturer", discipline: "marcenaria", compatibility: 94, estimatedCost: "$$$$", estimatedDeadline: "45 dias", status: "future" },
-  { id: "bertolini", name: "Bertolini", type: "manufacturer", discipline: "marcenaria", compatibility: 91, estimatedCost: "$$$", estimatedDeadline: "35 dias", status: "future" },
-  { id: "gesso-local", name: "Gesseiro Local", type: "local", discipline: "gesso", compatibility: 88, estimatedCost: "A cotar", estimatedDeadline: "A definir", status: "ready" },
-  { id: "marmoraria-local", name: "Marmoraria Local", type: "local", discipline: "marmoraria", compatibility: 86, estimatedCost: "A cotar", estimatedDeadline: "A definir", status: "ready" },
-  { id: "pintor-local", name: "Pintor Local", type: "local", discipline: "pintura", compatibility: 90, estimatedCost: "A cotar", estimatedDeadline: "A definir", status: "ready" },
+export const workOrders: WorkOrder[] = [
+  {
+    id: "op-001",
+    code: "OP-ARQ-001",
+    project: "Projeto ARQDOR",
+    environment: "Sala de Estar",
+    objectName: "Painel TV",
+    discipline: "Marcenaria",
+    supplier: "Marceneiro Local",
+    responsible: "Equipe Marcenaria",
+    quantity: 1,
+    startDate: "2026-07-10",
+    dueDate: "2026-08-04",
+    status: "producao",
+    priority: "alta",
+    cost: "A cotar",
+    progress: 48,
+    aiNote: "Validar rasgo de LED antes da montagem final.",
+  },
+  {
+    id: "op-002",
+    code: "OP-ARQ-002",
+    project: "Projeto ARQDOR",
+    environment: "Cozinha",
+    objectName: "Bancada Gourmet",
+    discipline: "Marmoraria",
+    supplier: "Marmoraria Local",
+    responsible: "Equipe Pedra",
+    quantity: 1,
+    startDate: "2026-07-12",
+    dueDate: "2026-08-01",
+    status: "qualidade",
+    priority: "media",
+    cost: "R$ 6.850",
+    progress: 72,
+    aiNote: "Conferir cuba, cooktop e acabamento antes da expedição.",
+  },
+  {
+    id: "op-003",
+    code: "OP-ARQ-003",
+    project: "Projeto ARQDOR",
+    environment: "Sala de Estar",
+    objectName: "Perfil LED Linear",
+    discipline: "Iluminação",
+    supplier: "Luminárias Pro",
+    responsible: "Equipe Elétrica",
+    quantity: 3,
+    startDate: "2026-07-08",
+    dueDate: "2026-07-20",
+    status: "expedicao",
+    priority: "media",
+    cost: "R$ 2.670",
+    progress: 86,
+    aiNote: "Material dentro do prazo. Agendar instalação junto com marcenaria.",
+  },
+  {
+    id: "op-004",
+    code: "OP-ARQ-004",
+    project: "Projeto ARQDOR",
+    environment: "Sala de Estar",
+    objectName: "Poltrona Lisboa",
+    discipline: "Mobiliário",
+    supplier: "Estofados Casa",
+    responsible: "Fornecedor",
+    quantity: 2,
+    startDate: "2026-07-14",
+    dueDate: "2026-08-02",
+    status: "orcado",
+    priority: "baixa",
+    cost: "R$ 7.700",
+    progress: 24,
+    aiNote: "Aguardar aprovação final do tecido antes da compra.",
+  },
 ];
 
-export function getSuppliersByDiscipline(discipline: ProductionDiscipline) {
-  return suppliers.filter((supplier) => supplier.discipline === discipline);
-}
+export const suppliers: ProductionSupplier[] = [
+  { id: "sup-marceneiro", name: "Marceneiro Local", discipline: "Marcenaria", score: 88, activeOrders: 3, avgDelay: "+2 dias", status: "atencao" },
+  { id: "sup-marmoraria", name: "Marmoraria Local", discipline: "Marmoraria", score: 91, activeOrders: 2, avgDelay: "0 dias", status: "apto" },
+  { id: "sup-luz", name: "Luminárias Pro", discipline: "Iluminação", score: 94, activeOrders: 1, avgDelay: "-1 dia", status: "apto" },
+  { id: "sup-estofados", name: "Estofados Casa", discipline: "Mobiliário", score: 82, activeOrders: 2, avgDelay: "+4 dias", status: "atencao" },
+];
 
-export function buildCompatibilityNotes(supplier?: Supplier | null) {
-  if (!supplier) return ["Selecione um fornecedor ou fabricante para iniciar a compatibilização."];
+export const qualityChecks: QualityCheck[] = [
+  { id: "q1", label: "Medidas conferidas", checked: true, category: "Técnico" },
+  { id: "q2", label: "Material conforme especificação", checked: true, category: "Material" },
+  { id: "q3", label: "Acabamento aprovado", checked: false, category: "Acabamento" },
+  { id: "q4", label: "Ferragens conferidas", checked: false, category: "Componentes" },
+  { id: "q5", label: "Fotos anexadas", checked: true, category: "Registro" },
+  { id: "q6", label: "Cliente/Arquiteto aprovou", checked: false, category: "Aprovação" },
+];
 
-  if (supplier.type === "local") {
-    return [
-      "Documentação neutra para execução por prestador local.",
-      "Gerar pacote técnico com planta, vistas, medidas e memorial.",
-      "Quantitativos precisam ser conferidos antes do orçamento final.",
-    ];
-  }
-
-  return [
-    "Converter projeto para modulação oficial do fabricante.",
-    "Ajustes serão exibidos antes da aplicação.",
-    "Compatibilização não altera o conceito sem aprovação do arquiteto.",
-  ];
-}
+export const aiAlerts = [
+  {
+    title: "Risco de atraso na marcenaria",
+    description: "Fornecedor com média de +2 dias de atraso e OP em produção com pendência de LED.",
+    impact: "Atenção",
+  },
+  {
+    title: "Instalação deve ser agrupada",
+    description: "Perfil LED e painel TV dependem da mesma frente de instalação.",
+    impact: "Otimizar agenda",
+  },
+  {
+    title: "Qualidade pendente",
+    description: "Bancada já está em qualidade, mas acabamento ainda não foi aprovado.",
+    impact: "Ação necessária",
+  },
+];
