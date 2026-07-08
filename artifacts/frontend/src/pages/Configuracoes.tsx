@@ -1221,6 +1221,73 @@ export default function Configuracoes() {
     }
   }
 
+  // ── Z-API connection state ─────────────────────────────────────────────────
+  const [zapiInstanceInput, setZapiInstanceInput] = useState<string>("");
+  const [zapiTokenInput, setZapiTokenInput] = useState<string>("");
+  const [zapiClientTokenInput, setZapiClientTokenInput] = useState<string>("");
+  const [zapiSaving, setZapiSaving] = useState(false);
+  const [syncedZapi, setSyncedZapi] = useState(false);
+
+  if (agentQuery.data && !syncedZapi) {
+    setZapiInstanceInput(agentQuery.data.zapiInstanceId ?? "");
+    setZapiTokenInput(agentQuery.data.zapiToken ?? "");
+    setZapiClientTokenInput(agentQuery.data.zapiClientToken ?? "");
+    setSyncedZapi(true);
+  }
+
+  function onSaveZapi() {
+    if (!agentQuery.data?.id) return;
+    setZapiSaving(true);
+    updateAgentConf.mutate(
+      {
+        id: agentQuery.data.id,
+        data: {
+          zapiInstanceId: zapiInstanceInput.trim() || null,
+          zapiToken: zapiTokenInput.trim() || null,
+          zapiClientToken: zapiClientTokenInput.trim() || null,
+        },
+      },
+      {
+        onSuccess: (updated) => {
+          queryClient.setQueryData(getGetAgentConfigByTenantQueryKey(tenantId ?? ""), updated);
+          setSyncedZapi(false);
+          setZapiSaving(false);
+          toast({ title: "Credenciais Z-API salvas com sucesso." });
+        },
+        onError: () => {
+          setZapiSaving(false);
+          toast({ title: "Erro ao salvar credenciais Z-API.", variant: "destructive" });
+        },
+      }
+    );
+  }
+
+  function onDisconnectZapi() {
+    if (!agentQuery.data?.id) return;
+    setZapiSaving(true);
+    updateAgentConf.mutate(
+      {
+        id: agentQuery.data.id,
+        data: { zapiInstanceId: null, zapiToken: null, zapiClientToken: null },
+      },
+      {
+        onSuccess: (updated) => {
+          queryClient.setQueryData(getGetAgentConfigByTenantQueryKey(tenantId ?? ""), updated);
+          setZapiInstanceInput("");
+          setZapiTokenInput("");
+          setZapiClientTokenInput("");
+          setSyncedZapi(false);
+          setZapiSaving(false);
+          toast({ title: "Z-API desconectado." });
+        },
+        onError: () => {
+          setZapiSaving(false);
+          toast({ title: "Erro ao desconectar Z-API.", variant: "destructive" });
+        },
+      }
+    );
+  }
+
   // ── Meta WhatsApp Cloud API connection state ──────────────────────────────
   const [metaPhoneNumberIdInput, setMetaPhoneNumberIdInput] = useState<string>("");
   const [metaWabaIdInput, setMetaWabaIdInput] = useState<string>("");
@@ -3393,6 +3460,125 @@ Body:
                       <AlertTriangle className="h-3 w-3 shrink-0" />
                       {metaStatus.error}
                     </p>
+                  )}
+                </div>
+              )}
+            </div>
+
+            {/* Z-API — WhatsApp não-oficial via Baileys */}
+            <div className="rounded-xl border bg-card p-6 space-y-5">
+              <div className="flex items-start justify-between gap-4">
+                <div>
+                  <h2 className="font-semibold text-base flex items-center gap-2">
+                    <MessageCircle className="h-4 w-4 text-green-600" />
+                    WhatsApp via Z-API
+                  </h2>
+                  <p className="text-sm text-muted-foreground mt-1">
+                    Conecte usando uma instância Z-API (WhatsApp não-oficial). Informe o Instance ID e o Token gerados no painel Z-API.
+                  </p>
+                </div>
+                {agentQuery.data?.zapiInstanceId && agentQuery.data?.zapiToken && (
+                  <span className="shrink-0 inline-flex items-center gap-1.5 text-xs font-medium bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400 px-2.5 py-1 rounded-full">
+                    <CheckCircle2 className="h-3 w-3" />
+                    Conectado
+                  </span>
+                )}
+              </div>
+
+              {agentQuery.isLoading ? (
+                <div className="space-y-2">
+                  <div className="h-10 bg-muted rounded-md animate-pulse" />
+                  <div className="h-10 bg-muted rounded-md animate-pulse" />
+                </div>
+              ) : (
+                <div className="space-y-4">
+                  <div className="grid grid-cols-2 gap-3">
+                    <div className="space-y-1.5">
+                      <label className="text-sm font-medium">Instance ID</label>
+                      <Input
+                        placeholder="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
+                        value={zapiInstanceInput}
+                        onChange={(e) => setZapiInstanceInput(e.target.value)}
+                        className="font-mono text-sm"
+                      />
+                      <p className="text-xs text-muted-foreground">ID da instância no painel Z-API.</p>
+                    </div>
+                    <div className="space-y-1.5">
+                      <label className="text-sm font-medium">Client Token (opcional)</label>
+                      <Input
+                        placeholder="Client-Token do painel Z-API"
+                        value={zapiClientTokenInput}
+                        onChange={(e) => setZapiClientTokenInput(e.target.value)}
+                        className="font-mono text-sm"
+                      />
+                      <p className="text-xs text-muted-foreground">Client-Token da conta Z-API (se exigido).</p>
+                    </div>
+                  </div>
+
+                  <div className="space-y-1.5">
+                    <label className="text-sm font-medium">Token</label>
+                    <Input
+                      type="password"
+                      placeholder="Token gerado no painel Z-API"
+                      value={zapiTokenInput}
+                      onChange={(e) => setZapiTokenInput(e.target.value)}
+                      className="font-mono text-sm"
+                    />
+                    <p className="text-xs text-muted-foreground">Token de autenticação da instância.</p>
+                  </div>
+
+                  <div className="flex items-center gap-3">
+                    <Button
+                      onClick={onSaveZapi}
+                      disabled={zapiSaving || !agentQuery.data?.id || !zapiInstanceInput.trim() || !zapiTokenInput.trim()}
+                      className="gap-2"
+                    >
+                      <Save className="h-4 w-4" />
+                      {zapiSaving ? "Salvando…" : agentQuery.data?.zapiInstanceId ? "Atualizar credenciais" : "Conectar Z-API"}
+                    </Button>
+                    {agentQuery.data?.zapiInstanceId && (
+                      <Button
+                        variant="outline"
+                        onClick={onDisconnectZapi}
+                        disabled={zapiSaving}
+                        className="gap-2 text-destructive hover:text-destructive"
+                      >
+                        <Trash2 className="h-4 w-4" />
+                        Desconectar
+                      </Button>
+                    )}
+                  </div>
+
+                  {/* Webhook de entrada — URL Z-API */}
+                  {agentQuery.data?.zapiInstanceId && tenantId && (
+                    <div className="rounded-lg border bg-muted/30 p-4 space-y-3">
+                      <p className="text-sm font-semibold flex items-center gap-1.5">
+                        <span className="text-base">📥</span>
+                        Webhook de entrada (receber mensagens)
+                      </p>
+                      <p className="text-xs text-muted-foreground">
+                        No painel Z-API, configure o webhook de mensagens recebidas com a URL abaixo.
+                      </p>
+                      <div className="space-y-1">
+                        <p className="text-xs text-muted-foreground font-medium">URL do webhook:</p>
+                        <div className="flex gap-2 items-center">
+                          <code className="flex-1 text-xs break-all bg-muted border rounded px-2 py-1.5 text-foreground/80">
+                            {`https://${window.location.hostname}/api/tenants/${tenantId}/webhooks/zapi`}
+                          </code>
+                          <Button
+                            variant="outline"
+                            size="icon"
+                            className="shrink-0 h-7 w-7"
+                            onClick={() => {
+                              navigator.clipboard.writeText(`https://${window.location.hostname}/api/tenants/${tenantId}/webhooks/zapi`);
+                              toast({ title: "URL copiada." });
+                            }}
+                          >
+                            <Copy className="h-3 w-3" />
+                          </Button>
+                        </div>
+                      </div>
+                    </div>
                   )}
                 </div>
               )}
