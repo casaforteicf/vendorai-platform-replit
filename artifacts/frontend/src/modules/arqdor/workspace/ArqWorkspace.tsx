@@ -47,6 +47,7 @@ import ClientExperience from './client-experience/ClientExperience'
 import OperationsCenter from './operations-center/OperationsCenter'
 import AutomationAuditCenter from './operations-center/automation-audit/AutomationAuditCenter'
 import AICommandIntelligence from './operations-center/ai-command-intelligence/AICommandIntelligence'
+import ExecutiveCockpit from './operations-center/executive-command/ExecutiveCockpit'
 import BudgetDisciplinesProposal from './executive-budget/disciplines/BudgetDisciplinesProposal'
 import AlignedStudioShell from './ux-alignment/AlignedStudioShell'
 import { computeNextAction }     from './project-experience/ProjectHome'
@@ -73,6 +74,7 @@ export type ModuleId =
   | 'operations' | 'command-center' | 'operacoes'
   | 'automation-audit' | 'audit' | 'automacoes'
   | 'ai-command' | 'ai-intelligence' | 'cerebro-ia'
+  | 'executive' | 'executive-command' | 'cockpit'
 
 export type JourneyId = 'create' | 'design' | 'visualize' | 'deliver' | 'business'
 
@@ -141,6 +143,9 @@ const MODULE_MAP_INTERNAL: Record<ModuleId, { icon:string; label:string }> = {
   'ai-command':        { icon:'🧠', label:'AI Command'       },
   'ai-intelligence':   { icon:'🧠', label:'AI Intelligence'  },
   'cerebro-ia':        { icon:'🧠', label:'Cérebro IA'       },
+  'executive':         { icon:'🎯', label:'Executive'        },
+  'executive-command': { icon:'🎯', label:'Executive Command'},
+  'cockpit':           { icon:'🎯', label:'Cockpit'          },
 }
 
 // ─── Legado: Journeys (keyboard shortcuts 1–5) ────────────────────────────────
@@ -310,6 +315,9 @@ function renderModule(id: ModuleId, arqState: ArqProjectState, setActive: (m: Mo
     case 'ai-command':
     case 'ai-intelligence':
     case 'cerebro-ia':      return <AICommandIntelligence onNavigate={m => setActive(m as ModuleId)} />
+    case 'executive':
+    case 'executive-command':
+    case 'cockpit':         return <ExecutiveCockpit onNavigate={m => setActive(m as ModuleId)} />
     case 'ecosystem':     return <EcosystemModule/>
     case 'knowledge':     return <KnowledgeModule/>
     case 'office':
