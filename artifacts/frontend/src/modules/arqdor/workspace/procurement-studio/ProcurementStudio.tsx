@@ -2,6 +2,7 @@ import React, { useMemo, useState } from "react";
 import { AIProcurementPanel } from "./AIProcurementPanel";
 import { ProcurementDashboard } from "./ProcurementDashboard";
 import { ProcurementSuppliers } from "./ProcurementSuppliers";
+import Quotations from "./quotations/Quotations";
 import { PurchaseRequestInspector } from "./PurchaseRequestInspector";
 import { purchaseRequests } from "./procurementData";
 import type { ProcurementView, PurchaseRequest } from "./procurementTypes";
@@ -80,10 +81,12 @@ function Content({
   view,
   selectedRequest,
   setSelectedRequest,
+  onNavigate,
 }: {
   view: ProcurementView;
   selectedRequest: PurchaseRequest;
   setSelectedRequest: (request: PurchaseRequest) => void;
+  onNavigate?: (module: string) => void;
 }) {
   if (view === "requests") {
     return (
@@ -94,7 +97,7 @@ function Content({
     );
   }
 
-  if (view === "quotations") return <ProcurementSuppliers />;
+  if (view === "quotations") return <Quotations onNavigate={onNavigate} />;
   if (view === "orders") return <Placeholder title="Pedidos de compra" />;
   if (view === "receiving") return <Placeholder title="Recebimento" />;
   if (view === "inventory") return <Placeholder title="Estoque" />;
@@ -121,7 +124,7 @@ export default function ProcurementStudio({ arqState, onNavigate }: ProcurementS
     <div className="min-h-screen bg-[#f7f7f8] text-slate-950">
       <div className="mx-auto flex w-full max-w-[1760px] flex-col gap-5 px-6 py-6">
         <Header project={project} view={view} setView={setView} onNavigate={onNavigate} />
-        <Content view={view} selectedRequest={selectedRequest} setSelectedRequest={setSelectedRequest} />
+        <Content view={view} selectedRequest={selectedRequest} setSelectedRequest={setSelectedRequest} onNavigate={onNavigate} />
       </div>
     </div>
   );
