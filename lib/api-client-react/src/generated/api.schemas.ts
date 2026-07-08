@@ -346,6 +346,37 @@ export interface TenantDashboard {
   perfilCompra: TenantDashboardPerfilCompra;
 }
 
+/**
+ * Which source the displayed valor came from, or null if none available
+ */
+export type RunningAgentRowValorOrigem = typeof RunningAgentRowValorOrigem[keyof typeof RunningAgentRowValorOrigem] | null;
+
+
+export const RunningAgentRowValorOrigem = {
+  proposta: 'proposta',
+  deal: 'deal',
+  orcamento: 'orcamento',
+} as const;
+
+/**
+ * One in-progress lead being handled by an AI agent, for the "Agentes em execução" management table.
+ */
+export interface RunningAgentRow {
+  leadId: string;
+  nome: string;
+  telefone: string | null;
+  /** Value shown, resolved via fallback proposta.valorTotal > deal.valor > lead.orcamento */
+  valor: string | null;
+  /** Which source the displayed valor came from, or null if none available */
+  valorOrigem: RunningAgentRowValorOrigem;
+  conversationId: string;
+  /** createdAt of the lead's most recent conversation */
+  conversationStartedAt: string;
+  /** Currently active agent handling the conversation (currentAgent, falling back to agentName) */
+  agenteAtivo: string | null;
+  dealEtapa: string | null;
+}
+
 export type SubscriptionPlano = typeof SubscriptionPlano[keyof typeof SubscriptionPlano];
 
 

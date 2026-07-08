@@ -1123,4 +1123,95 @@ router.get("/dashboard", authenticate, async (req, res) => {
   });
 });
 
+// ── GET /tenants/:tenantId/dashboard/agentes-em-execucao ────────────────────────
+// Visão gerencial: todo lead com conversa em andamento, cujo status não é
+// "convertido" e cujo deal mais recente (se houver) não está ganho/perdido.
+type RunningAgentDbRow = {
+  lead_id: string;
+  nome: string;
+  telefone: string | null;
+  orcamento: string | null;
+  conversation_id: string;
+  conversation_started_at: Date;
+  current_agent: string | null;
+  agent_name: string | null;
+  deal_valor: string | null;
+  deal_etapa: string | null;
+  proposta_valor: string | null;
+};
+
+router.get("/tenants/:tenantId/dashboard/agentes-em-execucao", async (req, res) => {
+  const tenantId = String(req.params.tenantId);
+
+  const result = await db.execute<RunningAgentDbRow>(sql`
+    WITH latest_conv AS (
+      SELECT id, lead_id, created_at, current_agent, agent_name,
+             ROW_NUMBER() OVER (PARTITION BY lead_id ORDER BY created_at DESC) AS rn
+      FROM conversations
+      WHERE tenant_id = ${tenantId} AND lead_id IS NOT NULL
+    ),
+    latest_deal AS (
+      SELECT id, lead_id, valor, etapa,
+             ROW_NUMBER() OVER (PARTITION BY lead_id ORDER BY updated_at DESC) AS rn
+      FROM deals
+      WHERE tenant_id = ${tenantId}
+    ),
+    latest_proposta AS (
+      SELECT id, lead_id, valor_total,
+             ROW_NUMBER() OVER (PARTITION BY lead_id ORDER BY created_at DESC) AS rn
+      FROM propostas
+      WHERE tenant_id = ${tenantId}
+    )
+    SELECT
+      l.id AS lead_id,
+      l.nome AS nome,
+      l.telefone AS telefone,
+      l.orcamento AS orcamento,
+      c.id AS conversation_id,
+      c.created_at AS conversation_started_at,
+      c.current_agent AS current_agent,
+      c.agent_name AS agent_name,
+      d.valor AS deal_valor,
+      d.etapa AS deal_etapa,
+      p.valor_total AS proposta_valor
+    FROM leads l
+    INNER JOIN latest_conv c ON c.lead_id = l.id AND c.rn = 1
+    LEFT JOIN latest_deal d ON d.lead_id = l.id AND d.rn = 1
+    LEFT JOIN latest_proposta p ON p.lead_id = l.id AND p.rn = 1
+    WHERE l.tenant_id = ${tenantId}
+      AND l.status <> 'convertido'
+      AND (d.id IS NULL OR d.etapa NOT IN ('ganho', 'perdido'))
+    ORDER BY c.created_at DESC
+  `);
+
+  const rows = (result.rows as unknown as RunningAgentDbRow[]).map((row) => {
+    let valor: string | null = null;
+    let valorOrigem: "proposta" | "deal" | "orcamento" | null = null;
+    if (row.proposta_valor != null) {
+      valor = row.proposta_valor;
+      valorOrigem = "proposta";
+    } else if (row.deal_valor != null) {
+      valor = row.deal_valor;
+      valorOrigem = "deal";
+    } else if (row.orcamento != null && row.orcamento !== "") {
+      valor = row.orcamento;
+      valorOrigem = "orcamento";
+    }
+
+    return {
+      leadId: row.lead_id,
+      nome: row.nome,
+      telefone: row.telefone,
+      valor,
+      valorOrigem,
+      conversationId: row.conversation_id,
+      conversationStartedAt: new Date(row.conversation_started_at).toISOString(),
+      agenteAtivo: row.current_agent ?? row.agent_name ?? null,
+      dealEtapa: row.deal_etapa,
+    };
+  });
+
+  res.json(rows);
+});
+
 export default router;

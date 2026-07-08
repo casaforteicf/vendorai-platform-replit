@@ -237,6 +237,7 @@ import type {
   RenderReview,
   ResetPasswordBody,
   Rule,
+  RunningAgentRow,
   SegmentTemplate,
   SendProductPresentation200,
   SiteConfig,
@@ -5500,6 +5501,85 @@ export const useGeneratePerfilInsight = <TError = ErrorType<ErrorResponse>,
       > => {
       return useMutation(getGeneratePerfilInsightMutationOptions(options));
     }
+
+export const getGetRunningAgentsUrl = (tenantId: string,) => {
+
+
+
+
+  return `/api/tenants/${tenantId}/dashboard/agentes-em-execucao`
+}
+
+/**
+ * Returns every lead with an open conversation whose status is not "convertido" and whose most recent deal (if any) is not in "ganho"/"perdido". Each row includes the client's name/phone, the best available value (proposta > deal > lead orçamento), when the conversation started, and the currently active agent. Intended for polling-based refresh on the Dashboard — not real-time.
+
+ * @summary List of leads currently being handled by AI agents (in-progress management view)
+ */
+export const getRunningAgents = async (tenantId: string, options?: RequestInit): Promise<RunningAgentRow[]> => {
+
+  return customFetch<RunningAgentRow[]>(getGetRunningAgentsUrl(tenantId),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetRunningAgentsQueryKey = (tenantId: string,) => {
+    return [
+    `/api/tenants/${tenantId}/dashboard/agentes-em-execucao`
+    ] as const;
+    }
+
+
+export const getGetRunningAgentsQueryOptions = <TData = Awaited<ReturnType<typeof getRunningAgents>>, TError = ErrorType<ErrorResponse>>(tenantId: string, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getRunningAgents>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetRunningAgentsQueryKey(tenantId);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getRunningAgents>>> = ({ signal }) => getRunningAgents(tenantId, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, enabled: !!(tenantId), ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getRunningAgents>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetRunningAgentsQueryResult = NonNullable<Awaited<ReturnType<typeof getRunningAgents>>>
+export type GetRunningAgentsQueryError = ErrorType<ErrorResponse>
+
+
+/**
+ * @summary List of leads currently being handled by AI agents (in-progress management view)
+ */
+
+export function useGetRunningAgents<TData = Awaited<ReturnType<typeof getRunningAgents>>, TError = ErrorType<ErrorResponse>>(
+ tenantId: string, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getRunningAgents>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetRunningAgentsQueryOptions(tenantId,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+
+
+
+
+
 
 export const getGetTenantAnalyticsAgentsUrl = (tenantId: string,) => {
 

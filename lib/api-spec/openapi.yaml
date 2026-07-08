@@ -2086,6 +2086,35 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
+
+  /tenants/{tenantId}/dashboard/agentes-em-execucao:
+    get:
+      operationId: getRunningAgents
+      tags: [executive-intelligence]
+      summary: List of leads currently being handled by AI agents (in-progress management view)
+      description: >
+        Returns every lead with an open conversation whose status is not "convertido"
+        and whose most recent deal (if any) is not in "ganho"/"perdido". Each row
+        includes the client's name/phone, the best available value (proposta > deal >
+        lead orçamento), when the conversation started, and the currently active agent.
+        Intended for polling-based refresh on the Dashboard — not real-time.
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: tenantId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Running agents rows
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/RunningAgentRow"
         "401":
           description: Unauthorized
           content:
@@ -10011,6 +10040,49 @@ components:
         - faixaEtaria
         - diasSemanaGanhos
         - perfilCompra
+
+    RunningAgentRow:
+      type: object
+      description: One in-progress lead being handled by an AI agent, for the "Agentes em execução" management table.
+      properties:
+        leadId:
+          type: string
+        nome:
+          type: string
+        telefone:
+          type: string
+          nullable: true
+        valor:
+          type: string
+          nullable: true
+          description: Value shown, resolved via fallback proposta.valorTotal > deal.valor > lead.orcamento
+        valorOrigem:
+          type: string
+          nullable: true
+          enum: [proposta, deal, orcamento]
+          description: Which source the displayed valor came from, or null if none available
+        conversationId:
+          type: string
+        conversationStartedAt:
+          type: string
+          description: createdAt of the lead's most recent conversation
+        agenteAtivo:
+          type: string
+          nullable: true
+          description: Currently active agent handling the conversation (currentAgent, falling back to agentName)
+        dealEtapa:
+          type: string
+          nullable: true
+      required:
+        - leadId
+        - nome
+        - telefone
+        - valor
+        - valorOrigem
+        - conversationId
+        - conversationStartedAt
+        - agenteAtivo
+        - dealEtapa
 
     SubscriptionPlano:
       type: string

@@ -2306,6 +2306,29 @@ export const GeneratePerfilInsightResponse = zod.object({
 
 
 /**
+ * Returns every lead with an open conversation whose status is not "convertido" and whose most recent deal (if any) is not in "ganho"/"perdido". Each row includes the client's name/phone, the best available value (proposta > deal > lead orçamento), when the conversation started, and the currently active agent. Intended for polling-based refresh on the Dashboard — not real-time.
+
+ * @summary List of leads currently being handled by AI agents (in-progress management view)
+ */
+export const GetRunningAgentsParams = zod.object({
+  "tenantId": zod.coerce.string()
+})
+
+export const GetRunningAgentsResponseItem = zod.object({
+  "leadId": zod.string(),
+  "nome": zod.string(),
+  "telefone": zod.string().nullable(),
+  "valor": zod.string().nullable().describe('Value shown, resolved via fallback proposta.valorTotal > deal.valor > lead.orcamento'),
+  "valorOrigem": zod.enum(['proposta', 'deal', 'orcamento']).nullable().describe('Which source the displayed valor came from, or null if none available'),
+  "conversationId": zod.string(),
+  "conversationStartedAt": zod.string().describe('createdAt of the lead\'s most recent conversation'),
+  "agenteAtivo": zod.string().nullable().describe('Currently active agent handling the conversation (currentAgent, falling back to agentName)'),
+  "dealEtapa": zod.string().nullable()
+}).describe('One in-progress lead being handled by an AI agent, for the \"Agentes em execução\" management table.')
+export const GetRunningAgentsResponse = zod.array(GetRunningAgentsResponseItem)
+
+
+/**
  * Returns agent action counts, task completion rates, messages by channel, and deal conversions by source.
  * @summary Agent performance analytics
  */

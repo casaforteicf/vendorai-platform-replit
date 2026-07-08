@@ -373,6 +373,8 @@ export * from './ruleAcao';
 export * from './ruleAcaoPayload';
 export * from './ruleCondicao';
 export * from './ruleTrigger';
+export * from './runningAgentRow';
+export * from './runningAgentRowValorOrigem';
 export * from './segmentoFiltro';
 export * from './segmentTemplate';
 export * from './segmentTemplatePromptsSugeridos';

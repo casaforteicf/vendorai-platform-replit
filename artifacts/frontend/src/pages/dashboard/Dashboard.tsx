@@ -13,8 +13,16 @@ import {
   SheetDescription,
 } from "@/components/ui/sheet";
 import { Switch } from "@/components/ui/switch";
+import {
+  Table,
+  TableHeader,
+  TableBody,
+  TableRow,
+  TableHead,
+  TableCell,
+} from "@/components/ui/table";
 import { useAuth } from "@/contexts/AuthContext";
-import { useGetLead, getGetLeadQueryKey, useUpdateLead } from "@workspace/api-client-react";
+import { useGetLead, getGetLeadQueryKey, useUpdateLead, useGetRunningAgents, getGetRunningAgentsQueryKey } from "@workspace/api-client-react";
 import { useQueryClient } from "@tanstack/react-query";
 import { formatDistanceToNow, format } from "date-fns";
 import { ptBR } from "date-fns/locale";
@@ -203,6 +211,95 @@ function AtividadeIcone({ tipo }: { tipo: string }) {
   if (tipo === "cliente_convertido")
     return <span className="flex h-8 w-8 items-center justify-center rounded-full bg-green-100 dark:bg-green-900/40"><Star className="h-4 w-4 text-green-600 dark:text-green-400" /></span>;
   return <span className="flex h-8 w-8 items-center justify-center rounded-full bg-muted"><Activity className="h-4 w-4 text-muted-foreground" /></span>;
+}
+
+function formatValorLead(valor: string | null): string {
+  if (valor == null) return "—";
+  const n = Number(valor);
+  if (Number.isFinite(n)) return formatCurrency(n);
+  return valor;
+}
+
+function formatConversationStart(iso: string): string {
+  try {
+    return format(new Date(iso), "dd/MM/yyyy HH:mm", { locale: ptBR });
+  } catch {
+    return "—";
+  }
+}
+
+// ── Agentes em Execução ────────────────────────────────────────────────────────
+function AgentesEmExecucaoSection() {
+  const { user } = useAuth();
+  const [, navigate] = useLocation();
+  const tenantId = user?.tenantId ?? "";
+
+  const { data: rows, isLoading } = useGetRunningAgents(tenantId, {
+    query: {
+      enabled: !!tenantId,
+      refetchInterval: 4000,
+      queryKey: getGetRunningAgentsQueryKey(tenantId),
+    },
+  });
+
+  if (!isLoading && (!rows || rows.length === 0)) return null;
+
+  return (
+    <section className="space-y-3">
+      <h2 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground flex items-center gap-2">
+        <Bot className="h-3.5 w-3.5 text-indigo-500" />
+        Agentes em Execução
+      </h2>
+      <Card>
+        <CardContent className="p-0">
+          {isLoading ? (
+            <div className="p-4 space-y-2">
+              <Skeleton className="h-8 w-full" />
+              <Skeleton className="h-8 w-full" />
+              <Skeleton className="h-8 w-full" />
+            </div>
+          ) : (
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Cliente</TableHead>
+                  <TableHead>Telefone</TableHead>
+                  <TableHead>Valor</TableHead>
+                  <TableHead>Início da conversa</TableHead>
+                  <TableHead>Agente ativo</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {(rows ?? []).map((row) => (
+                  <TableRow
+                    key={row.leadId}
+                    className="cursor-pointer"
+                    onClick={() => navigate(`/conversations?conv=${row.conversationId}`)}
+                  >
+                    <TableCell className="font-medium">{row.nome}</TableCell>
+                    <TableCell className="text-muted-foreground">{row.telefone ?? "—"}</TableCell>
+                    <TableCell>{formatValorLead(row.valor)}</TableCell>
+                    <TableCell className="text-muted-foreground">
+                      {formatConversationStart(row.conversationStartedAt)}
+                    </TableCell>
+                    <TableCell>
+                      {row.agenteAtivo ? (
+                        <Badge variant="secondary" className="font-normal">
+                          {row.agenteAtivo}
+                        </Badge>
+                      ) : (
+                        <span className="text-muted-foreground">—</span>
+                      )}
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          )}
+        </CardContent>
+      </Card>
+    </section>
+  );
 }
 
 // ── Skeleton ──────────────────────────────────────────────────────────────────
@@ -839,6 +936,11 @@ export default function Dashboard() {
           </Card>
         </section>
       )}
+
+      {/* ════════════════════════════════════
+          TABELA — AGENTES EM EXECUÇÃO
+      ════════════════════════════════════ */}
+      <AgentesEmExecucaoSection />
 
       {/* ════════════════════════════════════
           CARDS — IA (3 cols / 1 mobile)
