@@ -37,6 +37,7 @@ import SmartProjectModule from './modules/SmartProjectModule'
 import DesignStudio from './design-studio/DesignStudio'
 import SmartRenderEngine from './smart-render-engine/SmartRenderEngine'
 import DocumentationStudio from './documentation-studio/DocumentationStudio'
+import SpecificationStudio from './specification-studio/SpecificationStudio'
 import ProductionStudio from './production-studio/ProductionStudio'
 import BudgetEngine from './executive-budget/BudgetEngine'
 import BudgetDisciplinesProposal from './executive-budget/disciplines/BudgetDisciplinesProposal'
@@ -247,7 +248,7 @@ function renderModule(id: ModuleId, arqState: ArqProjectState, setActive: (m: Mo
     case 'home':          return <ProjectHomeV2 arqState={arqState} onNavigate={m => setActive(m as ModuleId)} />
     case 'projeto':       return <SmartProjectModule arqState={arqState} onNavigate={m => setActive(m as ModuleId)} />
     case 'biblioteca':    return <LibraryModule/>
-    case 'especificacao': return <DocumentationStudio arqState={arqState} onNavigate={m => setActive(m as ModuleId)} />
+    case 'especificacao': return <SpecificationStudio arqState={arqState} onNavigate={m => setActive(m as ModuleId)} />
     case 'prompt':        return <PromptPlaygroundModule/>
     case 'renders':       return <SmartRenderEngine arqState={arqState} />
     case 'ai-review':     return <AIReviewModule/>
