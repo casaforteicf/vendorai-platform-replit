@@ -43,6 +43,15 @@ export const leadsTable = pgTable("leads", {
   conjugeTelefone: text("conjuge_telefone"),
   conjugeEmail: text("conjuge_email"),
   conjugeDataNascimento: text("conjuge_data_nascimento"),
+
+  // ── Dados para Contrato (qualificação do representante legal + testemunha) ──
+  representanteCargo: text("representante_cargo"),
+  representanteNacionalidade: text("representante_nacionalidade"),
+  representanteEstadoCivil: text("representante_estado_civil"),
+  representanteProfissao: text("representante_profissao"),
+  representanteRg: text("representante_rg"),
+  testemunha2Nome: text("testemunha2_nome"),
+  testemunha2Cpf: text("testemunha2_cpf"),
   filhos: jsonb("filhos").$type<Array<{ nome: string; dataNascimento: string; genero?: string; birthMonth?: number; birthDay?: number; source?: string; lastCampaignSentYear?: number }>>(),
   discoveryData: jsonb("discovery_data").$type<Record<string, unknown>>(),
   tipo: text("tipo").notNull().default("cliente"),

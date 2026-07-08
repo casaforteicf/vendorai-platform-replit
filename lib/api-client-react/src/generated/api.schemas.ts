@@ -3183,6 +3183,22 @@ export interface Lead {
   conjugeEmail?: string | null;
   /** Data de nascimento do cônjuge no formato YYYY-MM-DD. */
   conjugeDataNascimento?: string | null;
+  /** Endereço completo do lead/cliente, usado na qualificação do contrato. */
+  endereco?: string | null;
+  /** Cargo do representante legal (para contratos PJ), ex- Sócio-Administrador. */
+  representanteCargo?: string | null;
+  /** Nacionalidade do representante legal, usada na qualificação do contrato. */
+  representanteNacionalidade?: string | null;
+  /** Estado civil do representante legal, usado na qualificação do contrato. */
+  representanteEstadoCivil?: string | null;
+  /** Profissão do representante legal, usada na qualificação do contrato. */
+  representanteProfissao?: string | null;
+  /** RG do representante legal, usado na qualificação do contrato. */
+  representanteRg?: string | null;
+  /** Nome da segunda testemunha do contrato (a testemunha do lado do cliente). */
+  testemunha2Nome?: string | null;
+  /** CPF da segunda testemunha do contrato. */
+  testemunha2Cpf?: string | null;
   filhos?: LeadFilhosItem[] | null;
   /** Tipo do lead: 'cliente' (prospect que pode comprar) ou 'indicador' (parceiro que gera indicações). */
   tipo?: string;
@@ -3253,6 +3269,22 @@ export interface CreateLeadBody {
   conjugeEmail?: string | null;
   /** Data de nascimento do cônjuge no formato YYYY-MM-DD. */
   conjugeDataNascimento?: string | null;
+  /** Endereço completo do lead/cliente, usado na qualificação do contrato. */
+  endereco?: string | null;
+  /** Cargo do representante legal (para contratos PJ), ex- Sócio-Administrador. */
+  representanteCargo?: string | null;
+  /** Nacionalidade do representante legal, usada na qualificação do contrato. */
+  representanteNacionalidade?: string | null;
+  /** Estado civil do representante legal, usado na qualificação do contrato. */
+  representanteEstadoCivil?: string | null;
+  /** Profissão do representante legal, usada na qualificação do contrato. */
+  representanteProfissao?: string | null;
+  /** RG do representante legal, usado na qualificação do contrato. */
+  representanteRg?: string | null;
+  /** Nome da segunda testemunha do contrato (a testemunha do lado do cliente). */
+  testemunha2Nome?: string | null;
+  /** CPF da segunda testemunha do contrato. */
+  testemunha2Cpf?: string | null;
   filhos?: CreateLeadBodyFilhosItem[] | null;
   /** 'cliente' ou 'indicador' */
   tipo?: string;
@@ -3305,6 +3337,22 @@ export interface UpdateLeadBody {
   conjugeEmail?: string | null;
   /** Data de nascimento do cônjuge no formato YYYY-MM-DD. */
   conjugeDataNascimento?: string | null;
+  /** Endereço completo do lead/cliente, usado na qualificação do contrato. */
+  endereco?: string | null;
+  /** Cargo do representante legal (para contratos PJ), ex- Sócio-Administrador. */
+  representanteCargo?: string | null;
+  /** Nacionalidade do representante legal, usada na qualificação do contrato. */
+  representanteNacionalidade?: string | null;
+  /** Estado civil do representante legal, usado na qualificação do contrato. */
+  representanteEstadoCivil?: string | null;
+  /** Profissão do representante legal, usada na qualificação do contrato. */
+  representanteProfissao?: string | null;
+  /** RG do representante legal, usado na qualificação do contrato. */
+  representanteRg?: string | null;
+  /** Nome da segunda testemunha do contrato (a testemunha do lado do cliente). */
+  testemunha2Nome?: string | null;
+  /** CPF da segunda testemunha do contrato. */
+  testemunha2Cpf?: string | null;
   filhos?: UpdateLeadBodyFilhosItem[] | null;
   /** 'cliente' ou 'indicador' */
   tipo?: string;

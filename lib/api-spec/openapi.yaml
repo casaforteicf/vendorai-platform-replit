@@ -15180,6 +15180,38 @@ components:
           type: string
           nullable: true
           description: "Data de nascimento do cônjuge no formato YYYY-MM-DD."
+        endereco:
+          type: string
+          nullable: true
+          description: Endereço completo do lead/cliente, usado na qualificação do contrato.
+        representanteCargo:
+          type: string
+          nullable: true
+          description: Cargo do representante legal (para contratos PJ), ex- Sócio-Administrador.
+        representanteNacionalidade:
+          type: string
+          nullable: true
+          description: Nacionalidade do representante legal, usada na qualificação do contrato.
+        representanteEstadoCivil:
+          type: string
+          nullable: true
+          description: Estado civil do representante legal, usado na qualificação do contrato.
+        representanteProfissao:
+          type: string
+          nullable: true
+          description: Profissão do representante legal, usada na qualificação do contrato.
+        representanteRg:
+          type: string
+          nullable: true
+          description: RG do representante legal, usado na qualificação do contrato.
+        testemunha2Nome:
+          type: string
+          nullable: true
+          description: Nome da segunda testemunha do contrato (a testemunha do lado do cliente).
+        testemunha2Cpf:
+          type: string
+          nullable: true
+          description: CPF da segunda testemunha do contrato.
         filhos:
           type: array
           nullable: true
@@ -15384,6 +15416,38 @@ components:
           type: string
           nullable: true
           description: "Data de nascimento do cônjuge no formato YYYY-MM-DD."
+        endereco:
+          type: string
+          nullable: true
+          description: Endereço completo do lead/cliente, usado na qualificação do contrato.
+        representanteCargo:
+          type: string
+          nullable: true
+          description: Cargo do representante legal (para contratos PJ), ex- Sócio-Administrador.
+        representanteNacionalidade:
+          type: string
+          nullable: true
+          description: Nacionalidade do representante legal, usada na qualificação do contrato.
+        representanteEstadoCivil:
+          type: string
+          nullable: true
+          description: Estado civil do representante legal, usado na qualificação do contrato.
+        representanteProfissao:
+          type: string
+          nullable: true
+          description: Profissão do representante legal, usada na qualificação do contrato.
+        representanteRg:
+          type: string
+          nullable: true
+          description: RG do representante legal, usado na qualificação do contrato.
+        testemunha2Nome:
+          type: string
+          nullable: true
+          description: Nome da segunda testemunha do contrato (a testemunha do lado do cliente).
+        testemunha2Cpf:
+          type: string
+          nullable: true
+          description: CPF da segunda testemunha do contrato.
         filhos:
           type: array
           nullable: true
@@ -15506,6 +15570,38 @@ components:
           type: string
           nullable: true
           description: "Data de nascimento do cônjuge no formato YYYY-MM-DD."
+        endereco:
+          type: string
+          nullable: true
+          description: Endereço completo do lead/cliente, usado na qualificação do contrato.
+        representanteCargo:
+          type: string
+          nullable: true
+          description: Cargo do representante legal (para contratos PJ), ex- Sócio-Administrador.
+        representanteNacionalidade:
+          type: string
+          nullable: true
+          description: Nacionalidade do representante legal, usada na qualificação do contrato.
+        representanteEstadoCivil:
+          type: string
+          nullable: true
+          description: Estado civil do representante legal, usado na qualificação do contrato.
+        representanteProfissao:
+          type: string
+          nullable: true
+          description: Profissão do representante legal, usada na qualificação do contrato.
+        representanteRg:
+          type: string
+          nullable: true
+          description: RG do representante legal, usado na qualificação do contrato.
+        testemunha2Nome:
+          type: string
+          nullable: true
+          description: Nome da segunda testemunha do contrato (a testemunha do lado do cliente).
+        testemunha2Cpf:
+          type: string
+          nullable: true
+          description: CPF da segunda testemunha do contrato.
         filhos:
           type: array
           nullable: true
