@@ -185,6 +185,7 @@ export * from './dismissDuplicateLead200';
 export * from './dispararSupermercadoCampanha200';
 export * from './documentExtractionResult';
 export * from './entrega';
+export * from './entregaFeedbackStatus';
 export * from './entregaItem';
 export * from './entregaModo';
 export * from './entregaPeriodo';

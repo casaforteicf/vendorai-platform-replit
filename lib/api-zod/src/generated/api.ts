@@ -3286,6 +3286,10 @@ export const ListEntregasResponseItem = zod.object({
   "sku": zod.string().optional()
 })),
   "observacoes": zod.string().nullish(),
+  "feedbackStatus": zod.enum(['aguardando_resposta', 'aguardando_motivo', 'positivo', 'negativo']).nullish().describe('Status da pesquisa de satisfação pós-venda. Gerenciado internamente pelo fluxo de pós-venda, não editável via API.\n'),
+  "feedbackMotivo": zod.string().nullish().describe('Motivo relatado pelo cliente quando o feedback é negativo.'),
+  "avaliacaoSolicitada": zod.boolean().describe('Se a avaliação no Google foi solicitada ao cliente.'),
+  "feedbackRespondidoEm": zod.coerce.date().nullish(),
   "createdAt": zod.coerce.date(),
   "updatedAt": zod.coerce.date()
 })
@@ -3346,6 +3350,10 @@ export const GetEntregaResponse = zod.object({
   "sku": zod.string().optional()
 })),
   "observacoes": zod.string().nullish(),
+  "feedbackStatus": zod.enum(['aguardando_resposta', 'aguardando_motivo', 'positivo', 'negativo']).nullish().describe('Status da pesquisa de satisfação pós-venda. Gerenciado internamente pelo fluxo de pós-venda, não editável via API.\n'),
+  "feedbackMotivo": zod.string().nullish().describe('Motivo relatado pelo cliente quando o feedback é negativo.'),
+  "avaliacaoSolicitada": zod.boolean().describe('Se a avaliação no Google foi solicitada ao cliente.'),
+  "feedbackRespondidoEm": zod.coerce.date().nullish(),
   "createdAt": zod.coerce.date(),
   "updatedAt": zod.coerce.date()
 })
@@ -3393,6 +3401,10 @@ export const UpdateEntregaResponse = zod.object({
   "sku": zod.string().optional()
 })),
   "observacoes": zod.string().nullish(),
+  "feedbackStatus": zod.enum(['aguardando_resposta', 'aguardando_motivo', 'positivo', 'negativo']).nullish().describe('Status da pesquisa de satisfação pós-venda. Gerenciado internamente pelo fluxo de pós-venda, não editável via API.\n'),
+  "feedbackMotivo": zod.string().nullish().describe('Motivo relatado pelo cliente quando o feedback é negativo.'),
+  "avaliacaoSolicitada": zod.boolean().describe('Se a avaliação no Google foi solicitada ao cliente.'),
+  "feedbackRespondidoEm": zod.coerce.date().nullish(),
   "createdAt": zod.coerce.date(),
   "updatedAt": zod.coerce.date()
 })
@@ -4608,6 +4620,7 @@ export const ListTenantsResponseItem = zod.object({
   "internalNotes": zod.string().nullish().describe('Internal notes visible only to super admins.'),
   "onboardingConcluido": zod.boolean().default(listTenantsResponseOnboardingConcluidoDefault).describe('Whether the main onboarding wizard (steps 1-4) has been completed.'),
   "integracoesConcluido": zod.boolean().default(listTenantsResponseIntegracoesConcluidoDefault).describe('Whether the integrations onboarding has been completed.'),
+  "googleReviewLink": zod.string().nullish().describe('Link para avaliação do Google configurado pelo tenant. Usado pelo agente Pós-Venda para solicitar avaliações apenas quando o cliente relata uma experiência positiva na pesquisa de satisfação pós-entrega. Vazio por padrão.\n'),
   "createdAt": zod.coerce.date(),
   "updatedAt": zod.coerce.date()
 })
@@ -4670,6 +4683,7 @@ export const GetTenantResponse = zod.object({
   "internalNotes": zod.string().nullish().describe('Internal notes visible only to super admins.'),
   "onboardingConcluido": zod.boolean().default(getTenantResponseOnboardingConcluidoDefault).describe('Whether the main onboarding wizard (steps 1-4) has been completed.'),
   "integracoesConcluido": zod.boolean().default(getTenantResponseIntegracoesConcluidoDefault).describe('Whether the integrations onboarding has been completed.'),
+  "googleReviewLink": zod.string().nullish().describe('Link para avaliação do Google configurado pelo tenant. Usado pelo agente Pós-Venda para solicitar avaliações apenas quando o cliente relata uma experiência positiva na pesquisa de satisfação pós-entrega. Vazio por padrão.\n'),
   "createdAt": zod.coerce.date(),
   "updatedAt": zod.coerce.date()
 })
@@ -4699,7 +4713,8 @@ export const UpdateTenantBody = zod.object({
   "maxAnalysesPerHour": zod.number().nullish().describe('Per-tenant override for the maximum number of AI analyses allowed per rolling hour window. Null falls back to the global MAX_ANALYSES_PER_TENANT_PER_HOUR env var.\n'),
   "tipoFechamentoDefault": zod.enum(['pedido', 'contrato', 'pedido_e_contrato']).nullish().describe('Tipo de fechamento padrão para novos deals deste tenant.'),
   "mensalidadeValor": zod.number().nullish().describe('Valor da mensalidade recorrente.'),
-  "logoUrl": zod.string().nullish().describe('Logo URL for co-branding in the dashboard header.')
+  "logoUrl": zod.string().nullish().describe('Logo URL for co-branding in the dashboard header.'),
+  "googleReviewLink": zod.string().nullish().describe('Link para avaliação do Google configurado pelo tenant. Editável a qualquer momento; vazio por padrão.\n')
 })
 
 export const updateTenantResponseOnboardingConcluidoDefault = false;
@@ -4732,6 +4747,7 @@ export const UpdateTenantResponse = zod.object({
   "internalNotes": zod.string().nullish().describe('Internal notes visible only to super admins.'),
   "onboardingConcluido": zod.boolean().default(updateTenantResponseOnboardingConcluidoDefault).describe('Whether the main onboarding wizard (steps 1-4) has been completed.'),
   "integracoesConcluido": zod.boolean().default(updateTenantResponseIntegracoesConcluidoDefault).describe('Whether the integrations onboarding has been completed.'),
+  "googleReviewLink": zod.string().nullish().describe('Link para avaliação do Google configurado pelo tenant. Usado pelo agente Pós-Venda para solicitar avaliações apenas quando o cliente relata uma experiência positiva na pesquisa de satisfação pós-entrega. Vazio por padrão.\n'),
   "createdAt": zod.coerce.date(),
   "updatedAt": zod.coerce.date()
 })
@@ -7263,6 +7279,7 @@ export const LinkTenantPartnerResponse = zod.object({
   "internalNotes": zod.string().nullish().describe('Internal notes visible only to super admins.'),
   "onboardingConcluido": zod.boolean().default(linkTenantPartnerResponseOnboardingConcluidoDefault).describe('Whether the main onboarding wizard (steps 1-4) has been completed.'),
   "integracoesConcluido": zod.boolean().default(linkTenantPartnerResponseIntegracoesConcluidoDefault).describe('Whether the integrations onboarding has been completed.'),
+  "googleReviewLink": zod.string().nullish().describe('Link para avaliação do Google configurado pelo tenant. Usado pelo agente Pós-Venda para solicitar avaliações apenas quando o cliente relata uma experiência positiva na pesquisa de satisfação pós-entrega. Vazio por padrão.\n'),
   "createdAt": zod.coerce.date(),
   "updatedAt": zod.coerce.date()
 })

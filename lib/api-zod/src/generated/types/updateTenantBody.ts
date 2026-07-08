@@ -45,4 +45,7 @@ export interface UpdateTenantBody {
   mensalidadeValor?: number | null;
   /** Logo URL for co-branding in the dashboard header. */
   logoUrl?: string | null;
+  /** Link para avaliação do Google configurado pelo tenant. Editável a qualquer momento; vazio por padrão.
+   */
+  googleReviewLink?: string | null;
 }

@@ -10946,13 +10946,38 @@ components:
         observacoes:
           type: string
           nullable: true
+        feedbackStatus:
+          $ref: "#/components/schemas/EntregaFeedbackStatus"
+          nullable: true
+          description: >
+            Status da pesquisa de satisfação pós-venda. Gerenciado internamente
+            pelo fluxo de pós-venda, não editável via API.
+        feedbackMotivo:
+          type: string
+          nullable: true
+          description: Motivo relatado pelo cliente quando o feedback é negativo.
+        avaliacaoSolicitada:
+          type: boolean
+          description: Se a avaliação no Google foi solicitada ao cliente.
+        feedbackRespondidoEm:
+          type: string
+          format: date-time
+          nullable: true
         createdAt:
           type: string
           format: date-time
         updatedAt:
           type: string
           format: date-time
-      required: [id, tenantId, dealId, modo, status, itens, createdAt, updatedAt]
+      required: [id, tenantId, dealId, modo, status, itens, avaliacaoSolicitada, createdAt, updatedAt]
+
+    EntregaFeedbackStatus:
+      type: string
+      enum:
+        - aguardando_resposta
+        - aguardando_motivo
+        - positivo
+        - negativo
 
     CreateEntregaBody:
       type: object
@@ -13328,6 +13353,13 @@ components:
           type: boolean
           default: false
           description: Whether the integrations onboarding has been completed.
+        googleReviewLink:
+          type: string
+          nullable: true
+          description: >
+            Link para avaliação do Google configurado pelo tenant. Usado pelo agente
+            Pós-Venda para solicitar avaliações apenas quando o cliente relata uma
+            experiência positiva na pesquisa de satisfação pós-entrega. Vazio por padrão.
         createdAt:
           type: string
           format: date-time
@@ -13452,6 +13484,12 @@ components:
           type: string
           nullable: true
           description: Logo URL for co-branding in the dashboard header.
+        googleReviewLink:
+          type: string
+          nullable: true
+          description: >
+            Link para avaliação do Google configurado pelo tenant. Editável a
+            qualquer momento; vazio por padrão.
 
     BillingEventType:
       type: string

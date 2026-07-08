@@ -9,6 +9,7 @@ import {
 } from "@workspace/db";
 import { buildUserFunctionFilter } from "../middlewares/auth.js";
 import { checkTurnoCapacity, pickNextMotorista } from "../lib/entregas.js";
+import { triggerDeliveryFeedbackRequest } from "../services/post-venda.js";
 
 const router: IRouter = Router();
 
@@ -145,6 +146,14 @@ router.patch("/entregas/:id", async (req, res) => {
     .set({ ...data, updatedAt: new Date() })
     .where(eq(entregasTable.id, existing.id))
     .returning();
+
+  // Pesquisa de satisfação pós-venda: dispara ao transicionar para "entregue"
+  // (fire-and-forget, não bloqueia a resposta da API).
+  if (entrega && data.status === "entregue" && existing.status !== "entregue") {
+    triggerDeliveryFeedbackRequest({ tenantId: entrega.tenantId, entregaId: entrega.id, log: req.log }).catch((err) => {
+      req.log.warn({ err, entregaId: entrega.id }, "entregas: falha ao disparar pesquisa de satisfação pós-venda");
+    });
+  }
 
   res.json(entrega);
 });

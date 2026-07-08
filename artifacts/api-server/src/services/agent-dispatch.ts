@@ -24,6 +24,7 @@ import {
 } from "@workspace/db";
 import { callOpenAI as gatewayFamilyCallOpenAI } from "../lib/ai-gateway.js";
 import { detectEscalationTrigger, generateHandoffSummary } from "./escalation.js";
+import { handleDeliveryFeedbackReply } from "./post-venda.js";
 import { generateAgentHandoffSummary } from "./handoff.js";
 import { sendDirectWhatsAppMessage } from "./omnichannel.js";
 import {
@@ -143,6 +144,22 @@ export async function processAgentInternal(params: {
     if (ctx.lead.activeAgentLock === "human") {
       log.info({ tenantId, leadId }, "dispatch: lead locked to human — skipping AI response");
       return { status: "skipped", reason: "human_lock" };
+    }
+
+    // 2b2. Pending delivery feedback — a pesquisa de satisfação pós-entrega está
+    // aguardando resposta. Trata de forma determinística (classificação de
+    // sentimento), sem passar pelo roteamento normal de agentes/escalação.
+    if (ctx.lead.pendingFeedbackEntregaId) {
+      await handleDeliveryFeedbackReply({
+        tenantId,
+        leadId,
+        entregaId: ctx.lead.pendingFeedbackEntregaId,
+        mensagem,
+        log,
+      }).catch((err) => {
+        log.warn({ err, tenantId, leadId }, "dispatch: delivery feedback handling failed");
+      });
+      return { status: "skipped", reason: "delivery_feedback_handled" };
     }
 
     // 2c. Escalation detection — check if incoming message needs human escalation

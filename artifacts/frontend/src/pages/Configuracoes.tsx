@@ -986,6 +986,27 @@ export default function Configuracoes() {
     setSyncedTipo(true);
   }
 
+  // ── Link de Avaliação do Google (pós-venda) ───────────────────────────────
+  const [googleReviewLinkLocal, setGoogleReviewLinkLocal] = useState("");
+  const [syncedGoogleReviewLink, setSyncedGoogleReviewLink] = useState(false);
+  if (tenantQuery.data !== undefined && !syncedGoogleReviewLink) {
+    setGoogleReviewLinkLocal(tenantQuery.data.googleReviewLink ?? "");
+    setSyncedGoogleReviewLink(true);
+  }
+
+  function onSaveGoogleReviewLink() {
+    updateTenant.mutate(
+      { id: tenantId, data: { googleReviewLink: googleReviewLinkLocal.trim() || null } },
+      {
+        onSuccess: () => {
+          queryClient.invalidateQueries({ queryKey: getGetTenantQueryKey(tenantId) });
+          toast({ title: "Link de avaliação do Google salvo." });
+        },
+        onError: () => toast({ title: "Erro ao salvar link de avaliação.", variant: "destructive" }),
+      }
+    );
+  }
+
   function onSaveTipoFechamento() {
     updateTenant.mutate(
       { id: tenantId, data: { tipoFechamentoDefault: tipoFechamentoDefaultLocal } },
@@ -2193,6 +2214,43 @@ export default function Configuracoes() {
                   </div>
                   <Button
                     onClick={onSaveTipoFechamento}
+                    disabled={updateTenant.isPending}
+                    className="gap-2 shrink-0"
+                  >
+                    <Save className="h-4 w-4" />
+                    {updateTenant.isPending ? "Salvando..." : "Salvar"}
+                  </Button>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Link de Avaliação do Google — admin only */}
+          {(user?.platformRole === "tenant_admin" || user?.platformRole === "super_admin") && (
+            <div className="rounded-xl border bg-card p-6 space-y-4">
+              <div>
+                <h2 className="font-semibold text-base flex items-center gap-2">
+                  <Link className="h-4 w-4 text-primary" />
+                  Link de Avaliação do Google
+                </h2>
+                <p className="text-sm text-muted-foreground mt-0.5">
+                  Quando o agente Pós-Venda perguntar sobre a entrega e o cliente responder positivamente, ele enviará este link pedindo uma avaliação. Se estiver vazio, nenhuma avaliação será solicitada.
+                </p>
+              </div>
+
+              {tenantQuery.isLoading ? (
+                <div className="h-10 w-full animate-pulse bg-muted rounded" />
+              ) : (
+                <div className="flex items-end gap-3">
+                  <div className="flex-1 space-y-1.5">
+                    <Input
+                      placeholder="https://g.page/r/SEU_NEGOCIO/review"
+                      value={googleReviewLinkLocal}
+                      onChange={(e) => setGoogleReviewLinkLocal(e.target.value)}
+                    />
+                  </div>
+                  <Button
+                    onClick={onSaveGoogleReviewLink}
                     disabled={updateTenant.isPending}
                     className="gap-2 shrink-0"
                   >

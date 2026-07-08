@@ -51,6 +51,8 @@ import {
   CalendarOff,
   Trash2,
   Plus,
+  ThumbsDown,
+  ThumbsUp,
 } from "lucide-react";
 import { format, parseISO } from "date-fns";
 import { ptBR } from "date-fns/locale";
@@ -115,6 +117,25 @@ function EntregaCard({
 
       {entrega.observacoes && (
         <p className="text-xs text-muted-foreground border-t border-border/50 pt-2">{entrega.observacoes}</p>
+      )}
+
+      {entrega.feedbackStatus === "negativo" && (
+        <div className="flex items-start gap-1.5 text-xs bg-red-50 border border-red-200 text-red-700 rounded-md p-2">
+          <ThumbsDown className="h-3.5 w-3.5 mt-0.5 shrink-0" />
+          <div>
+            <span className="font-semibold">Cliente insatisfeito com a entrega</span>
+            {entrega.feedbackMotivo && <p className="mt-0.5">{entrega.feedbackMotivo}</p>}
+          </div>
+        </div>
+      )}
+
+      {entrega.feedbackStatus === "positivo" && (
+        <div className="flex items-center gap-1.5 text-xs bg-emerald-50 border border-emerald-200 text-emerald-700 rounded-md p-2">
+          <ThumbsUp className="h-3.5 w-3.5 shrink-0" />
+          <span className="font-semibold">
+            Cliente satisfeito{entrega.avaliacaoSolicitada ? " — avaliação solicitada" : ""}
+          </span>
+        </div>
       )}
 
       {!isDone && (

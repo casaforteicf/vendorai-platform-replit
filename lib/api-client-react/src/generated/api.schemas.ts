@@ -749,6 +749,16 @@ export interface EntregaItem {
   sku?: string;
 }
 
+export type EntregaFeedbackStatus = typeof EntregaFeedbackStatus[keyof typeof EntregaFeedbackStatus];
+
+
+export const EntregaFeedbackStatus = {
+  aguardando_resposta: 'aguardando_resposta',
+  aguardando_motivo: 'aguardando_motivo',
+  positivo: 'positivo',
+  negativo: 'negativo',
+} as const;
+
 export interface Entrega {
   id: string;
   tenantId: string;
@@ -765,6 +775,14 @@ export interface Entrega {
   enderecoEntrega?: string | null;
   itens: EntregaItem[];
   observacoes?: string | null;
+  /** Status da pesquisa de satisfação pós-venda. Gerenciado internamente pelo fluxo de pós-venda, não editável via API.
+   */
+  feedbackStatus?: EntregaFeedbackStatus | null;
+  /** Motivo relatado pelo cliente quando o feedback é negativo. */
+  feedbackMotivo?: string | null;
+  /** Se a avaliação no Google foi solicitada ao cliente. */
+  avaliacaoSolicitada: boolean;
+  feedbackRespondidoEm?: string | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -2238,6 +2256,9 @@ export interface Tenant {
   onboardingConcluido?: boolean;
   /** Whether the integrations onboarding has been completed. */
   integracoesConcluido?: boolean;
+  /** Link para avaliação do Google configurado pelo tenant. Usado pelo agente Pós-Venda para solicitar avaliações apenas quando o cliente relata uma experiência positiva na pesquisa de satisfação pós-entrega. Vazio por padrão.
+   */
+  googleReviewLink?: string | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -2312,6 +2333,9 @@ export interface UpdateTenantBody {
   mensalidadeValor?: number | null;
   /** Logo URL for co-branding in the dashboard header. */
   logoUrl?: string | null;
+  /** Link para avaliação do Google configurado pelo tenant. Editável a qualquer momento; vazio por padrão.
+   */
+  googleReviewLink?: string | null;
 }
 
 export type BillingEventType = typeof BillingEventType[keyof typeof BillingEventType];

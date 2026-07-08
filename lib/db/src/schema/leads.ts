@@ -25,6 +25,10 @@ export const leadsTable = pgTable("leads", {
   proximaAcao: text("proxima_acao"),
   status: text("status").notNull().default("novo"),
   activeAgentLock: text("active_agent_lock"),
+  // Pós-venda: quando setado, a próxima mensagem recebida do lead é tratada
+  // como resposta à pesquisa de satisfação da entrega (não passa pelo roteamento
+  // normal de agentes). Sem FK para evitar import circular com entregas.ts.
+  pendingFeedbackEntregaId: text("pending_feedback_entrega_id"),
   assignedTo: text("assigned_to").references(() => usersTable.id, { onDelete: "set null" }),
   instagramScopedId: text("instagram_scoped_id"),
   instagramHandle: text("instagram_handle"),

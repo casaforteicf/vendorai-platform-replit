@@ -172,6 +172,7 @@ const ACTIVITY_TIPO_LABELS: Record<string, string> = {
   visita: "Visita",
   tarefa: "Tarefa",
   reuniao: "Reunião Online",
+  feedback_entrega: "Feedback pós-entrega",
 };
 
 const CHANNEL_LABELS: Record<string, string> = {

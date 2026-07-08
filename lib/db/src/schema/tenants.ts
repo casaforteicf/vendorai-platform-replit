@@ -74,6 +74,7 @@ export const tenantsTable = pgTable(
     integracoesConcluido: boolean("integracoes_concluido").notNull().default(false),
     integracoesStep: integer("integracoes_step").notNull().default(0),
     asaasApiKey: text("asaas_api_key"),
+    googleReviewLink: text("google_review_link"),
     zapsignApiKey: text("zapsign_api_key"),
     whatsappProvider: varchar("whatsapp_provider", { length: 20 }).default("zapi"),
     instagramProvider: varchar("instagram_provider", { length: 20 }).default("meta"),

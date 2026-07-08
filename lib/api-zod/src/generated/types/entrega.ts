@@ -5,6 +5,7 @@
  * API specification
  * OpenAPI spec version: 0.1.0
  */
+import type { EntregaFeedbackStatus } from './entregaFeedbackStatus';
 import type { EntregaItem } from './entregaItem';
 import type { EntregaModo } from './entregaModo';
 import type { EntregaPeriodo } from './entregaPeriodo';
@@ -26,6 +27,14 @@ export interface Entrega {
   enderecoEntrega?: string | null;
   itens: EntregaItem[];
   observacoes?: string | null;
+  /** Status da pesquisa de satisfação pós-venda. Gerenciado internamente pelo fluxo de pós-venda, não editável via API.
+   */
+  feedbackStatus?: EntregaFeedbackStatus | null;
+  /** Motivo relatado pelo cliente quando o feedback é negativo. */
+  feedbackMotivo?: string | null;
+  /** Se a avaliação no Google foi solicitada ao cliente. */
+  avaliacaoSolicitada: boolean;
+  feedbackRespondidoEm?: Date | null;
   createdAt: Date;
   updatedAt: Date;
 }

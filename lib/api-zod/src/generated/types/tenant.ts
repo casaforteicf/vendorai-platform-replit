@@ -62,6 +62,9 @@ export interface Tenant {
   onboardingConcluido?: boolean;
   /** Whether the integrations onboarding has been completed. */
   integracoesConcluido?: boolean;
+  /** Link para avaliação do Google configurado pelo tenant. Usado pelo agente Pós-Venda para solicitar avaliações apenas quando o cliente relata uma experiência positiva na pesquisa de satisfação pós-entrega. Vazio por padrão.
+   */
+  googleReviewLink?: string | null;
   createdAt: Date;
   updatedAt: Date;
 }
