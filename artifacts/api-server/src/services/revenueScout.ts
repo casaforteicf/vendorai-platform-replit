@@ -560,3 +560,63 @@ export async function runRevenueScoutJob(log: Logger): Promise<void> {
 
   log.info("scout/job: varredura diária concluída");
 }
+
+// ─── reconcileScoutOnDealWon — fecha o placar automaticamente ─────────────────
+//
+// Quando um deal vira "ganho", verifica se existe uma oportunidade do Revenue
+// Scout com status "enviado" para o mesmo lead dentro de uma janela recente
+// (padrão 45 dias) e, se sim, marca como convertida automaticamente — sem
+// depender de um operador clicar em "converter" manualmente. Fora da janela,
+// a venda é considerada não relacionada à oferta do Scout e nada é feito.
+const RECONCILE_WINDOW_DIAS = 45;
+
+export async function reconcileScoutOnDealWon(params: {
+  tenantId: string;
+  leadId: string;
+  dealId: string;
+  log: Logger;
+  windowDias?: number;
+}): Promise<{ reconciled: boolean; oportunidadeId?: string }> {
+  const { tenantId, leadId, dealId, log, windowDias = RECONCILE_WINDOW_DIAS } = params;
+
+  const candidatas = await db
+    .select({
+      id: scoutOportunidadesTable.id,
+      enviadoEm: scoutOportunidadesTable.enviadoEm,
+      createdAt: scoutOportunidadesTable.createdAt,
+    })
+    .from(scoutOportunidadesTable)
+    .where(
+      and(
+        eq(scoutOportunidadesTable.tenantId, tenantId),
+        eq(scoutOportunidadesTable.clienteId, leadId),
+        eq(scoutOportunidadesTable.status, "enviado"),
+      ),
+    )
+    .orderBy(desc(scoutOportunidadesTable.createdAt));
+
+  if (candidatas.length === 0) return { reconciled: false };
+
+  const cutoff = new Date(Date.now() - windowDias * 24 * 60 * 60 * 1000);
+  const match = candidatas.find((o) => (o.enviadoEm ?? o.createdAt) >= cutoff);
+
+  if (!match) {
+    log.info(
+      { tenantId, leadId, dealId, candidatas: candidatas.length, windowDias },
+      "scout/reconcile: oportunidade(s) 'enviado' encontrada(s) mas fora da janela de correlação",
+    );
+    return { reconciled: false };
+  }
+
+  await db
+    .update(scoutOportunidadesTable)
+    .set({ status: "converteu", converteu: true, dealId })
+    .where(eq(scoutOportunidadesTable.id, match.id));
+
+  log.info(
+    { tenantId, leadId, dealId, oportunidadeId: match.id },
+    "scout/reconcile: oportunidade marcada como convertida automaticamente (deal ganho)",
+  );
+
+  return { reconciled: true, oportunidadeId: match.id };
+}

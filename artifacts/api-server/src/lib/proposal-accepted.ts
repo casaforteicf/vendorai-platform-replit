@@ -20,6 +20,7 @@ import { checkCatalogMatch } from "./catalog-price-check.js";
 import { sendDirectWhatsAppMessage } from "../services/omnichannel.js";
 import { triggerOnboardingHandoff } from "./agent-engine.js";
 import { createEntregasFromProposta } from "./entregas.js";
+import { reconcileScoutOnDealWon } from "../services/revenueScout.js";
 
 export type ProposalAcceptanceChannel = "link" | "whatsapp" | "manual";
 
@@ -285,6 +286,17 @@ export async function proposalAccepted(
       .set({ status: "convertido", updatedAt: new Date() })
       .where(eq(leadsTable.id, proposta.leadId));
     log.info({ dealId: deal.id, leadId: proposta.leadId }, "proposalAccepted: lead status updated to convertido");
+
+    // Fecha o placar do Revenue Scout automaticamente, se essa venda veio de
+    // uma oferta proativa recente — non-blocking, não deve atrapalhar o fechamento.
+    reconcileScoutOnDealWon({
+      tenantId: proposta.tenantId,
+      leadId: proposta.leadId,
+      dealId: deal.id,
+      log,
+    }).catch((err) => {
+      log.warn({ err, dealId: deal.id }, "proposalAccepted: scout reconciliation failed (non-fatal)");
+    });
   }
 
   log.info({ dealId: deal.id }, "proposalAccepted: deal moved to ganho");

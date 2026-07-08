@@ -11,6 +11,7 @@ import { z } from "zod/v4";
 import { tenantsTable } from "./tenants";
 import { leadsTable } from "./leads";
 import { scoutRegrasTable } from "./scout_regras";
+import { dealsTable } from "./deals";
 
 // status: pendente | enviado | respondeu | converteu | ignorado | aguardando_etapa | adiado
 export const SCOUT_OPORTUNIDADE_STATUS = [
@@ -51,6 +52,10 @@ export const scoutOportunidadesTable = pgTable("scout_oportunidades", {
   proximaTentativaEm: timestamp("proxima_tentativa_em"),
   // Snapshot da etapa relatada pelo cliente no momento em que a oportunidade foi adiada.
   etapaRelatada:   text("etapa_relatada"),
+  // Preenchido automaticamente quando um deal do mesmo lead vira "ganho" dentro
+  // da janela de correlação (ver reconcileScoutOnDealWon) — fecha o placar do
+  // Scout sem depender de conversão manual via /converter.
+  dealId:          text("deal_id").references(() => dealsTable.id, { onDelete: "set null" }),
   createdAt:       timestamp("created_at").notNull().defaultNow(),
 });
 

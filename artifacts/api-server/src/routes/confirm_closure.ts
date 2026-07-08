@@ -15,6 +15,7 @@ import { createCharge, createOrGetCustomer, isAsaasConfigured } from "../lib/asa
 import { decrypt } from "../lib/crypto.js";
 import { sendDirectWhatsAppMessage } from "../services/omnichannel.js";
 import { checkCatalogMatch, type CatalogCheckItem } from "../lib/catalog-price-check.js";
+import { reconcileScoutOnDealWon } from "../services/revenueScout.js";
 import type { Logger } from "pino";
 
 const router = Router();
@@ -238,6 +239,17 @@ export async function runDealClosure(
       .update(leadsTable)
       .set({ status: "convertido", updatedAt: new Date() })
       .where(eq(leadsTable.id, deal.leadId));
+
+    // Fecha o placar do Revenue Scout automaticamente, se essa venda veio de
+    // uma oferta proativa recente — non-blocking, não deve atrapalhar o fechamento.
+    reconcileScoutOnDealWon({
+      tenantId,
+      leadId: deal.leadId,
+      dealId: deal.id,
+      log,
+    }).catch((err) => {
+      log.warn({ err, dealId: deal.id }, "confirm-closure: scout reconciliation failed (non-fatal)");
+    });
   }
 
   // Load lead and tenant for subsequent steps
