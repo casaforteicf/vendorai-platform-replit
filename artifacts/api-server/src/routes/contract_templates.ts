@@ -8,6 +8,7 @@ import {
   tenantsTable,
   contractsTable,
   partnersTable,
+  propostasTable,
 } from "@workspace/db";
 import {
   generateContractFromTemplate,
@@ -402,6 +403,26 @@ router.post("/api/deals/:dealId/generate-contract", async (req, res) => {
     const clienteRazaoSocial = (lead.empresa ?? lead.nome ?? "Cliente").trim();
     const clienteEndereco = (lead.endereco ?? "").trim();
 
+    // Forma de pagamento — puxada da proposta mais recente vinculada ao deal
+    const FORMA_PAGAMENTO_LABELS: Record<string, string> = {
+      pix: "PIX",
+      boleto: "Boleto",
+      cartao_credito: "Cartão de Crédito",
+      cartao_debito: "Cartão de Débito",
+      transferencia: "Transferência",
+      dinheiro: "Dinheiro",
+      a_combinar: "A Combinar",
+    };
+    const [proposta] = await db
+      .select({ formaPagamento: propostasTable.formaPagamento })
+      .from(propostasTable)
+      .where(eq(propostasTable.dealId, deal.id))
+      .orderBy(sql`${propostasTable.createdAt} desc`)
+      .limit(1);
+    const formaPagamento = proposta?.formaPagamento
+      ? (FORMA_PAGAMENTO_LABELS[proposta.formaPagamento] ?? proposta.formaPagamento)
+      : "";
+
     // Representative qualification (use what's in the system, flag missing parts)
     const repNome = (lead.nome ?? "").trim();
     const repCargo = (lead.representanteCargo ?? "").trim() || "Representante Legal";
@@ -446,6 +467,7 @@ router.post("/api/deals/:dealId/generate-contract", async (req, res) => {
       representanteProfissao: repProfissao,
       representanteRg: repRg,
       representanteLegalCompleto,
+      formaPagamento,
       valorMensalFormatado,
       valorExtenso,
       dataExtensoPTBR,

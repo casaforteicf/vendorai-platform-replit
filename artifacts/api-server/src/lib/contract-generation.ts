@@ -24,6 +24,7 @@ export interface ContractData {
   representanteProfissao?: string;
   representanteRg?: string;
   representanteLegalCompleto?: string;
+  formaPagamento?: string;
   valorMensalFormatado?: string;
   valorExtenso?: string;
   dataExtensoPTBR?: string;
@@ -281,6 +282,7 @@ export function interpolateTemplate(templateHtml: string, data: ContractData): s
     representante_profissao: data.representanteProfissao ?? "",
     representante_rg: data.representanteRg ?? "",
     representante_legal_completo: data.representanteLegalCompleto ?? data.clienteNome,
+    forma_pagamento: data.formaPagamento ?? "",
     valor_mensal: data.valorMensalFormatado ?? data.dealValor,
     valor_extenso: data.valorExtenso ?? "",
     data_extenso: data.dataExtensoPTBR ?? data.dataHoje,
@@ -374,6 +376,7 @@ export const CONTRACT_VARIABLES = [
   { variable: "{{representante_profissao}}", label: "Profissão do representante" },
   { variable: "{{representante_rg}}", label: "RG do representante" },
   { variable: "{{representante_legal_completo}}", label: "Qualificação completa do representante" },
+  { variable: "{{forma_pagamento}}", label: "Forma de pagamento (da proposta vinculada ao deal)" },
   { variable: "{{valor_mensal}}", label: "Valor mensal formatado" },
   { variable: "{{valor_extenso}}", label: "Valor mensal por extenso" },
   { variable: "{{data_extenso}}", label: "Data por extenso" },
