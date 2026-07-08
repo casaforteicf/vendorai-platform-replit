@@ -809,8 +809,62 @@ router.post("/webhooks/asaas", async (req, res) => {
     tenantId = parts[1] ?? null;
   }
 
+  // Resolve a deal linked to this charge (customer-level cobrança, distinct from
+  // the tenant's own subscription billing above). externalReference is either
+  // the bare dealId (single payment) or `${dealId}-${parcela}` (installments);
+  // dealId is always a 36-char crypto.randomUUID().
+  let linkedDealId: string | null = null;
+  const isKnownPrefixedRef =
+    payment.externalReference?.startsWith("monthly:") ||
+    payment.externalReference?.startsWith("token_topup:") ||
+    payment.externalReference?.startsWith("sku_delivery:");
+  if (!isKnownPrefixedRef && payment.externalReference) {
+    if (payment.externalReference.length === 36) {
+      linkedDealId = payment.externalReference;
+    } else if (payment.externalReference.length > 36 && payment.externalReference[36] === "-") {
+      linkedDealId = payment.externalReference.slice(0, 36);
+    }
+  }
+
+  const [linkedDeal] = linkedDealId
+    ? await db
+        .select({ id: dealsTable.id, tenantId: dealsTable.tenantId })
+        .from(dealsTable)
+        .where(eq(dealsTable.id, linkedDealId))
+        .limit(1)
+    : await db
+        .select({ id: dealsTable.id, tenantId: dealsTable.tenantId })
+        .from(dealsTable)
+        .where(eq(dealsTable.asaasChargeId, payment.id))
+        .limit(1);
+
+  if (linkedDeal) {
+    if (event === "PAYMENT_RECEIVED" || event === "PAYMENT_CONFIRMED") {
+      await db
+        .update(dealsTable)
+        .set({ chargeStatus: "paid", updatedAt: new Date() })
+        .where(eq(dealsTable.id, linkedDeal.id));
+      req.log.info({ dealId: linkedDeal.id, paymentId: payment.id }, "asaas-webhook: deal charge marked paid");
+    } else if (event === "PAYMENT_OVERDUE") {
+      if (payment.dueDate) {
+        const due = new Date(payment.dueDate);
+        const threeDaysAfterDue = new Date(due);
+        threeDaysAfterDue.setDate(threeDaysAfterDue.getDate() + 3);
+        if (new Date() >= threeDaysAfterDue) {
+          await db
+            .update(dealsTable)
+            .set({ chargeStatus: "overdue", updatedAt: new Date() })
+            .where(eq(dealsTable.id, linkedDeal.id));
+          req.log.warn({ dealId: linkedDeal.id, paymentId: payment.id }, "asaas-webhook: deal charge marked overdue ≥3 days");
+        }
+      }
+    }
+  }
+
   if (!tenantId) {
-    req.log.warn({ paymentId: payment.id }, "asaas-webhook: no tenant found for payment — ignoring");
+    if (!linkedDeal) {
+      req.log.warn({ paymentId: payment.id }, "asaas-webhook: no tenant found for payment — ignoring");
+    }
     res.status(200).json({ ok: true });
     return;
   }

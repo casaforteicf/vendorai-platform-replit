@@ -12,6 +12,8 @@ export const AGENT_TYPES = [
   "service",
   "onboarding",
   "relacionamento",
+  "financeiro",
+  "cobranca",
 ] as const;
 
 export type AgentType = (typeof AGENT_TYPES)[number];
@@ -32,6 +34,8 @@ export const agentsMapSchema = z.object({
   service: agentEntrySchema.optional(),
   onboarding: agentEntrySchema.optional(),
   relacionamento: agentEntrySchema.optional(),
+  financeiro: agentEntrySchema.optional(),
+  cobranca: agentEntrySchema.optional(),
 });
 
 export type AgentsMap = z.infer<typeof agentsMapSchema>;
@@ -69,6 +73,7 @@ export const agentConfigsTable = pgTable(
     metaAccessToken: text("meta_access_token"),
     metaVerifyToken: text("meta_verify_token"),
     specialDateMessagesOptOut: boolean("special_date_messages_opt_out").notNull().default(false),
+    posVendaInactivityDays: integer("pos_venda_inactivity_days").notNull().default(30),
     whatsappTemplateId: text("whatsapp_template_id"),
     commentKeywords: jsonb("comment_keywords").$type<string[]>(),
     createdAt: timestamp("created_at").notNull().defaultNow(),

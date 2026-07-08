@@ -24,6 +24,7 @@ import {
 } from "@workspace/db";
 import { callOpenAI as gatewayFamilyCallOpenAI } from "../lib/ai-gateway.js";
 import { detectEscalationTrigger, generateHandoffSummary } from "./escalation.js";
+import { classifyFinancialIntent } from "./financial-intent.js";
 import { handleDeliveryFeedbackReply } from "./post-venda.js";
 import { handleSequenceOfferReply } from "./sequence-offer.js";
 import { generateAgentHandoffSummary } from "./handoff.js";
@@ -52,20 +53,31 @@ type Deal = typeof dealsTable.$inferSelect;
 
 // ── Agent routing ─────────────────────────────────────────────────────────────
 
+/** Charge statuses (Asaas raw or internal) that indicate an overdue/late invoice. */
+const OVERDUE_CHARGE_STATUSES = new Set(["overdue", "vencida"]);
+
+function hasOverdueCharge(deals: Deal[]): boolean {
+  return deals.some((d) => d.chargeStatus && OVERDUE_CHARGE_STATUSES.has(d.chargeStatus.toLowerCase()));
+}
+
 /**
  * Determines which agent should handle an incoming message based on:
  *  1. churnRisk >= 60  → reactivation (highest priority)
- *  2. lead.status      → maps directly to the matching agent
- *  3. open deal etapa  → closer when deal is advancing
- *  4. days since contact ≥ 3 → followup
- *  5. default          → sdr
+ *  2. lead.status === "novo" → sdr
+ *  3. lead.status === "cliente" → refinamento: cobrança vencida > dúvida financeira (LLM) > service
+ *  4. open deal etapa  → closer when deal is advancing
+ *  5. days since contact ≥ 3 → followup
+ *  6. default          → sdr
  */
-export function determineAgent(
+export async function determineAgent(
   lead:  Lead,
   ci:    CI | null,
   deals: Deal[],
   daysSinceContact: number | null,
-): AgentName {
+  mensagem: string,
+  tenantId: string,
+  log: Logger,
+): Promise<AgentName> {
   // 1. High churn risk → reactivation agent (overrides everything)
   if (ci?.churnRisk !== null && ci?.churnRisk !== undefined && ci.churnRisk >= 60) {
     return "reactivation";
@@ -73,9 +85,25 @@ export function determineAgent(
 
   // 2. Lead status → direct mapping
   if (lead.status === "novo") return "sdr";
-  if (lead.status === "cliente") return "service";
+  if (lead.status === "cliente") {
+    // 3a. Fatura vencida/em atraso vinculada a algum deal do cliente → cobrança
+    if (hasOverdueCharge(deals)) {
+      return "cobranca";
+    }
+    // 3b. Dúvida financeira (valores, pagamento, fatura) → financeiro
+    try {
+      const financial = await classifyFinancialIntent(mensagem, tenantId, log);
+      if (financial.isFinancial) {
+        return "financeiro";
+      }
+    } catch (err) {
+      log.warn({ err, tenantId }, "determineAgent: financial intent classification failed — falling back to service");
+    }
+    // 3c. Fallback: atendimento geral
+    return "service";
+  }
 
-  // 3. Has active deals? Route based on their stage
+  // 4. Has active deals? Route based on their stage
   const activeDeals = deals.filter((d) => d.etapa !== "ganho" && d.etapa !== "perdido");
   if (activeDeals.length > 0) {
     const mostAdvanced = activeDeals.sort((a, b) => {
@@ -271,7 +299,7 @@ export async function processAgentInternal(params: {
       agentName = forcedAgent;
     } else {
       const diasSinceContact = daysSinceLastContact(ctx);
-      agentName = determineAgent(ctx.lead, ctx.ci, deals, diasSinceContact);
+      agentName = await determineAgent(ctx.lead, ctx.ci, deals, diasSinceContact, mensagem, tenantId, log);
     }
 
     // 4b. (currentAgent update deferred to step 4c below, after resolvedAgentName is known)

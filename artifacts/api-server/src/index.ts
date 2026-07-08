@@ -305,6 +305,12 @@ async function runStartupMigrations() {
   } catch (err) {
     logger.warn({ err }, "startup migrations: deals cobranca_tipo column skipped");
   }
+  try {
+    await db.execute(sql`ALTER TABLE agent_configs ADD COLUMN IF NOT EXISTS pos_venda_inactivity_days INTEGER NOT NULL DEFAULT 30`);
+    logger.info("startup migrations: agent_configs pos_venda_inactivity_days column OK");
+  } catch (err) {
+    logger.warn({ err }, "startup migrations: agent_configs pos_venda_inactivity_days column skipped");
+  }
 }
 
 // ─── Boot sequence ────────────────────────────────────────────────────────────

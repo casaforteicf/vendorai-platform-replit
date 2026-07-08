@@ -14,6 +14,8 @@ export type AiFeature =
   | "agent_service"
   | "agent_onboarding"
   | "agent_relacionamento"
+  | "agent_financeiro"
+  | "agent_cobranca"
   | "proposal_generator"
   | "briefing_generator"
   | "site_generator"

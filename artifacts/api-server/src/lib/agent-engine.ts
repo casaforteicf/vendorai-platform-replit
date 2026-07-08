@@ -51,16 +51,17 @@ export type LimitOk = {
 type LimitExceeded = { ok: false; httpStatus: 429; body: object };
 export type LimitResult = LimitOk | LimitExceeded;
 
-export type AgentName    = "sdr" | "closer" | "followup" | "reactivation" | "scheduler" | "service" | "onboarding" | "relacionamento";
+export type AgentName    = "sdr" | "closer" | "followup" | "reactivation" | "scheduler" | "service" | "onboarding" | "relacionamento" | "financeiro" | "cobranca";
 export type PromptBuilder = (customPrompt: string | undefined, ctx: AgentContext, scenario?: Record<string, unknown> | null, systemPromptOverride?: string | null) => string;
 
 export type RelacionamentoScenario = {
-  type: "birthday_lead" | "birthday_family" | "deal_anniversary" | "commercial_date" | "spouse_welcome";
+  type: "birthday_lead" | "birthday_family" | "deal_anniversary" | "commercial_date" | "spouse_welcome" | "inactivity_checkin";
   dateName?: string;
   recipientName?: string;
   recipientRelation?: string;
   referrerName?: string;
   spouseName?: string;
+  daysInactive?: number;
   catalog?: Array<{ nome: string; categoria?: string | null; precoBase: string | null }>;
 } | null;
 
@@ -73,6 +74,8 @@ const AGENT_FEATURE_MAP: Record<AgentName, AiFeature> = {
   service: "agent_service",
   onboarding: "agent_onboarding",
   relacionamento: "agent_relacionamento",
+  financeiro: "agent_financeiro",
+  cobranca: "agent_cobranca",
 };
 
 // ── Agent config resolution (new DB-driven system) ───────────────────────────
@@ -95,6 +98,8 @@ export const AGENT_NAME_TO_KEY: Partial<Record<AgentName, string>> = {
   service:      "suporte",
   onboarding:   "suporte",
   relacionamento: "pos_venda",
+  financeiro:   "financeiro",
+  cobranca:     "cobranca",
 };
 
 const TOM_INSTRUCTIONS: Record<string, string> = {
@@ -820,6 +825,62 @@ export function buildServicePrompt(customPrompt: string | undefined, ctx: AgentC
   return parts.join("\n\n");
 }
 
+export function buildFinanceiroPrompt(customPrompt: string | undefined, ctx: AgentContext, _scenario?: Record<string, unknown> | null, systemPromptOverride?: string | null): string {
+  const { lead, ci } = ctx;
+  const parts: string[] = [];
+  if (systemPromptOverride?.trim()) {
+    parts.push(systemPromptOverride.trim());
+  } else {
+    parts.push(
+      "Você é um especialista financeiro de atendimento B2B.\n" +
+      "Missão: esclarecer dúvidas sobre valores, formas de pagamento, faturas, notas fiscais e condições comerciais já contratadas.\n" +
+      "Regras:\n" +
+      "- Responda em português brasileiro, tom claro, objetivo e transparente\n" +
+      "- Máximo 3 parágrafos curtos\n" +
+      "- NUNCA invente valores, prazos ou condições que não estejam no contexto fornecido\n" +
+      "- Se a dúvida exigir acesso a um sistema financeiro externo, seja honesto e indique que vai verificar ou escalar\n" +
+      "- Não confunda dúvida financeira com cobrança de fatura vencida — se identificar atraso de pagamento, apenas oriente e sinalize, sem tom de cobrança agressiva"
+    );
+    if (customPrompt?.trim()) parts.push("## INSTRUÇÕES DA EMPRESA\n" + customPrompt.trim());
+  }
+  parts.push(buildLeadSection(lead));
+  if (ci) {
+    const lines = ["## CONTEXTO DO CLIENTE"];
+    if (ci.journeyStage) lines.push(`Estágio: ${ci.journeyStage}`);
+    if (ci.goalAnalysis) lines.push(`Objetivo do cliente: ${ci.goalAnalysis}`);
+    if (lines.length > 1) parts.push(lines.join("\n"));
+  }
+  return parts.join("\n\n");
+}
+
+export function buildCobrancaPrompt(customPrompt: string | undefined, ctx: AgentContext, _scenario?: Record<string, unknown> | null, systemPromptOverride?: string | null): string {
+  const { lead, ci } = ctx;
+  const parts: string[] = [];
+  if (systemPromptOverride?.trim()) {
+    parts.push(systemPromptOverride.trim());
+  } else {
+    parts.push(
+      "Você é um especialista em cobrança amigável B2B.\n" +
+      "Missão: lembrar o cliente de uma fatura vencida ou em atraso e facilitar a regularização, mantendo o relacionamento.\n" +
+      "Regras:\n" +
+      "- Responda em português brasileiro, tom respeitoso, empático e sem constrangimento\n" +
+      "- Máximo 2 parágrafos curtos\n" +
+      "- Informe que há uma pendência financeira e ofereça ajuda para resolver (segunda via, novo link de pagamento, negociação)\n" +
+      "- NUNCA use tom ameaçador ou constrangedor\n" +
+      "- NUNCA invente valores ou datas — use apenas o que estiver no contexto\n" +
+      "- Se o cliente já indicar que pagou, oriente que a equipe vai confirmar e não insista"
+    );
+    if (customPrompt?.trim()) parts.push("## INSTRUÇÕES DA EMPRESA\n" + customPrompt.trim());
+  }
+  parts.push(buildLeadSection(lead));
+  if (ci) {
+    const lines = ["## CONTEXTO DO CLIENTE"];
+    if (ci.journeyStage) lines.push(`Estágio: ${ci.journeyStage}`);
+    if (lines.length > 1) parts.push(lines.join("\n"));
+  }
+  return parts.join("\n\n");
+}
+
 export function buildOnboardingPrompt(customPrompt: string | undefined, ctx: AgentContext, _scenario?: Record<string, unknown> | null, systemPromptOverride?: string | null): string {
   const { lead, ci } = ctx;
   const parts: string[] = [];
@@ -861,9 +922,22 @@ export function buildRelacionamentoPrompt(
 
   const isPersonal = s?.type === "birthday_lead" || s?.type === "birthday_family" || s?.type === "deal_anniversary" || s?.type === "spouse_welcome";
   const isCommercial = s?.type === "commercial_date";
+  const isInactivity = s?.type === "inactivity_checkin";
 
   if (systemPromptOverride?.trim()) {
     parts.push(systemPromptOverride.trim());
+  } else if (isInactivity) {
+    parts.push(
+      "Você é um especialista em relacionamento e retenção de clientes (pós-venda).\n" +
+      "Missão: reativar contato proativo com um cliente que está inativo há algum tempo, mostrando cuidado genuíno.\n" +
+      "Regras:\n" +
+      "- Responda em português brasileiro, tom acolhedor, leve e sem pressão comercial\n" +
+      "- Máximo 2 parágrafos curtos\n" +
+      "- Pergunte como o cliente está e se precisa de algo, sem tom de cobrança ou venda forçada\n" +
+      "- Se houver produtos relevantes no catálogo, sugira de forma leve, sem pressão\n" +
+      "- NUNCA invente preços ou produtos que não estejam no catálogo fornecido"
+    );
+    if (customPrompt?.trim()) parts.push("## INSTRUÇÕES DA EMPRESA\n" + customPrompt.trim());
   } else if (isPersonal) {
     parts.push(
       "Você é um especialista em relacionamento e fidelização de clientes.\n" +
@@ -933,6 +1007,7 @@ export function buildRelacionamentoPrompt(
     else if (s.type === "deal_anniversary") scLines.push("Hoje é o aniversário de fechamento do deal com o lead!");
     else if (s.type === "commercial_date") scLines.push(`Data comercial: ${s.dateName ?? "data especial"}.`);
     else if (s.type === "spouse_welcome") scLines.push(`Este lead é o cônjuge de ${s.referrerName ?? "um cliente"}. Envie uma mensagem de boas-vindas transparente, mencionando que ${s.referrerName ?? "seu cônjuge"} compartilhou o contato.`);
+    else if (s.type === "inactivity_checkin") scLines.push(`Este cliente está sem interação há ${s.daysInactive ?? "vários"} dias. Envie um check-in proativo e cuidadoso.`);
     parts.push(scLines.join("\n"));
   }
 
@@ -958,4 +1033,6 @@ export const PROMPT_BUILDERS: Record<AgentName, PromptBuilder> = {
   service:     buildServicePrompt,
   onboarding:  buildOnboardingPrompt,
   relacionamento: buildRelacionamentoPrompt,
+  financeiro:  buildFinanceiroPrompt,
+  cobranca:    buildCobrancaPrompt,
 };

@@ -25,6 +25,7 @@
 - [Project Phoenix UX](project-phoenix-ux.md) — PHX=light shell, T=dark modules; FLOW_STEPS nav; ✨ Gerar Render imutável; Copilot inicia colapsado.
 - [VendorAI SaaS contract auto-gen](vendorai-saas-contract.md) — template HTML completo em vendorai-contract-template.ts; contract_settings JSONB no tenant; numberToWordsPTBR para valor por extenso; settings UI em Configuracoes.tsx.
 - [Obras Hub AI + Gantt drag](obras-hub-gantt-ai.md) — resumoIA: Anthropic via resolveAIKey; Gantt substituído por DraggableGantt div-based com drag via refs/forceUpdate.
+- [Financeiro/cobrança routing + inactivity job](financeiro-cobranca-routing.md) — LLM classifier (não regex) para intenção financeira; job proativo via processAgentInternal(forcedAgent) para respeitar guardrails.
 - [Revenue Scout sequencia_produto](sequence-produto-scout.md) — compra detectada via propostas.itens[].produtoId; adiamento via cliente_etapa_projeto + proximaTentativaEm, não recorrência fixa.
 - [Entregas + Bloqueios de agenda](entregas-bloqueios-feature.md) — motorista=user via userFunction; bloqueios_agenda deve ser checado em slots E no round-robin, não só um dos dois.
 - [Dashboard data-fetch patterns](dashboard-data-patterns.md) — Dashboard.tsx mistura raw-fetch legado (payload principal) com generated-hooks contract-first (novos widgets); prefira o segundo.

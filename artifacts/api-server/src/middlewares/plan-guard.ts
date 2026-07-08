@@ -12,6 +12,8 @@ const AGENT_TO_MODULE: Record<string, ModuleKey> = {
   service: "agent_service",
   onboarding: "agent_onboarding",
   relacionamento: "agent_scheduler",
+  financeiro: "agent_service",
+  cobranca: "agent_service",
 };
 
 export const PLAN_UPGRADE_HINT: Partial<Record<ModuleKey, string>> = {

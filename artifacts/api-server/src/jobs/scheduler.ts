@@ -928,6 +928,164 @@ async function runSpecialDateCheck(log: Logger): Promise<void> {
   log.info({ totalDispatched, totalSkipped }, "scheduler/special-dates: complete");
 }
 
+// ── Job: Pós-Venda inactivity check-in ─────────────────────────────────────────
+//
+// For each active tenant with the "relacionamento" agent enabled, finds
+// clientes (lead.status === "cliente") whose most recent conversation message
+// is older than the tenant's configured `posVendaInactivityDays` (default 30,
+// per-tenant via agent_configs.pos_venda_inactivity_days) — or who have no
+// conversation at all — and proactively dispatches a "relacionamento" check-in.
+// Deduplicated once per calendar month per lead via leadCampaignLogTable.
+async function runInactivityCheck(log: Logger): Promise<void> {
+  log.info("scheduler/pos-venda-inactivity: starting");
+
+  const now = new Date();
+  const yearStr = String(now.getFullYear());
+  const monthStr = String(now.getMonth() + 1).padStart(2, "0");
+
+  const tenants = await db
+    .select({ id: tenantsTable.id })
+    .from(tenantsTable)
+    .where(eq(tenantsTable.status, "active"));
+
+  let totalDispatched = 0;
+  let totalSkipped = 0;
+
+  for (const tenant of tenants) {
+    try {
+      const [agentCfg] = await db
+        .select({
+          posVendaInactivityDays: agentConfigsTable.posVendaInactivityDays,
+          agents: agentConfigsTable.agents,
+        })
+        .from(agentConfigsTable)
+        .where(eq(agentConfigsTable.tenantId, tenant.id))
+        .limit(1);
+
+      if (!agentCfg?.agents?.relacionamento?.enabled) {
+        continue;
+      }
+
+      const inactivityDays = agentCfg.posVendaInactivityDays ?? 30;
+      const cutoff = new Date(now);
+      cutoff.setDate(cutoff.getDate() - inactivityDays);
+
+      const catalogRows = await db
+        .select({
+          nome: produtosCatalogoTable.nome,
+          categoriaNome: categoriasProdutoTable.nome,
+          precoBase: produtosCatalogoTable.precoBase,
+        })
+        .from(produtosCatalogoTable)
+        .leftJoin(categoriasProdutoTable, eq(produtosCatalogoTable.categoriaId, categoriasProdutoTable.id))
+        .where(and(eq(produtosCatalogoTable.tenantId, tenant.id), eq(produtosCatalogoTable.ativo, true)))
+        .limit(10);
+      const catalog = catalogRows.map((c) => ({ nome: c.nome, categoria: c.categoriaNome, precoBase: c.precoBase }));
+
+      const clientLeads = await db
+        .select({
+          id: leadsTable.id,
+          specialDateMessagesOptOut: leadsTable.specialDateMessagesOptOut,
+          telefone: leadsTable.telefone,
+        })
+        .from(leadsTable)
+        .where(and(eq(leadsTable.tenantId, tenant.id), eq(leadsTable.status, "cliente")));
+
+      for (const lead of clientLeads) {
+        if (lead.specialDateMessagesOptOut || !lead.telefone) {
+          totalSkipped++;
+          continue;
+        }
+
+        const [conv] = await db
+          .select({ ultimaMensagemEm: conversationsTable.ultimaMensagemEm })
+          .from(conversationsTable)
+          .where(and(eq(conversationsTable.tenantId, tenant.id), eq(conversationsTable.leadId, lead.id)))
+          .orderBy(desc(conversationsTable.ultimaMensagemEm))
+          .limit(1);
+
+        const lastMessageAt = conv?.ultimaMensagemEm ? new Date(conv.ultimaMensagemEm) : null;
+        if (lastMessageAt && lastMessageAt > cutoff) {
+          continue; // ainda ativo — não é caso de check-in de inatividade
+        }
+
+        const daysInactive = lastMessageAt
+          ? Math.floor((now.getTime() - lastMessageAt.getTime()) / (1000 * 60 * 60 * 24))
+          : inactivityDays;
+
+        const campaignKey = `inactivity-checkin-${yearStr}-${monthStr}`;
+
+        const [logRow] = await db
+          .insert(leadCampaignLogTable)
+          .values({
+            tenantId: tenant.id,
+            leadId: lead.id,
+            campaignType: "inactivity_checkin",
+            campaignKey,
+            year: yearStr,
+            status: "pending",
+          })
+          .onConflictDoNothing({ target: [leadCampaignLogTable.tenantId, leadCampaignLogTable.leadId, leadCampaignLogTable.campaignKey, leadCampaignLogTable.year] })
+          .returning({ id: leadCampaignLogTable.id });
+        if (!logRow) {
+          totalSkipped++;
+          continue;
+        }
+
+        let result: DispatchResult | null = null;
+        try {
+          result = await processAgentInternal({
+            tenantId: tenant.id,
+            leadId: lead.id,
+            mensagem: `PROATIVO: check-in de inatividade (${daysInactive} dias sem contato).`,
+            forcedAgent: "relacionamento",
+            log,
+            scenario: {
+              type: "inactivity_checkin",
+              daysInactive,
+              catalog,
+            },
+          });
+        } catch (err) {
+          log.warn({ err, leadId: lead.id, tenantId: tenant.id, campaignKey }, "scheduler/pos-venda-inactivity: dispatch failed");
+        }
+
+        const outcome = result?.status ?? "failed";
+        if (outcome === "sent") {
+          await db
+            .update(leadCampaignLogTable)
+            .set({ status: "sent", sentAt: new Date() })
+            .where(
+              and(
+                eq(leadCampaignLogTable.tenantId, tenant.id),
+                eq(leadCampaignLogTable.leadId, lead.id),
+                eq(leadCampaignLogTable.campaignKey, campaignKey)
+              )
+            );
+          totalDispatched++;
+          log.info({ leadId: lead.id, tenantId: tenant.id, daysInactive }, "scheduler/pos-venda-inactivity: dispatched");
+        } else {
+          await db
+            .update(leadCampaignLogTable)
+            .set({ status: outcome === "skipped" ? "skipped" : "failed" })
+            .where(
+              and(
+                eq(leadCampaignLogTable.tenantId, tenant.id),
+                eq(leadCampaignLogTable.leadId, lead.id),
+                eq(leadCampaignLogTable.campaignKey, campaignKey)
+              )
+            );
+          totalSkipped++;
+        }
+      }
+    } catch (err) {
+      log.error({ err, tenantId: tenant.id }, "scheduler/pos-venda-inactivity: tenant failed (non-fatal)");
+    }
+  }
+
+  log.info({ totalDispatched, totalSkipped }, "scheduler/pos-venda-inactivity: complete");
+}
+
 // ── Job: Prospector campaign orchestrator (every 15 min) ──────────────────────
 //
 // Only runs for tenants with prospect_status='automated'. Advances each active
@@ -1342,6 +1500,13 @@ export function startScheduler(log: Logger): void {
     });
   });
 
+  // Job 7b: Pós-Venda inactivity check-in — daily at 09:30
+  cron.schedule("30 9 * * *", () => {
+    runInactivityCheck(log).catch((err) => {
+      log.error({ err }, "scheduler/pos-venda-inactivity: unhandled error");
+    });
+  });
+
   // Job 8: Partner commission calculator — day 1 of each month at 06:00
   cron.schedule("0 6 1 * *", () => {
     runPartnerCommissions(log).catch((err) => {
@@ -1451,7 +1616,7 @@ export function startScheduler(log: Logger): void {
     });
   }, { timezone: "America/Sao_Paulo" });
 
-  log.info("scheduler: started (churn-check @:05, campaigns @:15, billing @day-5-08:00, reactivation @03:00, demo-expiration @06:00, demo-reset @02:00, special-dates @07:00, partner-commissions @day-1-06:00, partner-prospector @08:00, content-flow @*/5min, blender-poll @30s, revenue-scout @09:00, appointment-reminders @*/30min, no-response-closing @09:30, domain-verify @*/5min, prospector-sync @09:00-BRT, prospector-queue @:35, daily-agenda-summary @08:00-BRT, sdr-followup @*/1h, objections-extraction @02:30-BRT, micro-events @mon-03:30-BRT, recem-abertas @mon-07:00-BRT)");
+  log.info("scheduler: started (churn-check @:05, campaigns @:15, billing @day-5-08:00, reactivation @03:00, demo-expiration @06:00, demo-reset @02:00, special-dates @07:00, partner-commissions @day-1-06:00, partner-prospector @08:00, content-flow @*/5min, blender-poll @30s, revenue-scout @09:00, appointment-reminders @*/30min, no-response-closing @09:30, pos-venda-inactivity @09:30, domain-verify @*/5min, prospector-sync @09:00-BRT, prospector-queue @:35, daily-agenda-summary @08:00-BRT, sdr-followup @*/1h, objections-extraction @02:30-BRT, micro-events @mon-03:30-BRT, recem-abertas @mon-07:00-BRT)");
 }
 
 // ── Job 16: Automatic prospector sync ─────────────────────────────────────────
