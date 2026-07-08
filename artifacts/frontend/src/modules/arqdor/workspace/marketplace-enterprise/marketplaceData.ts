@@ -1,0 +1,140 @@
+import type { Manufacturer, MarketplaceAsset, MarketplaceOrder, MarketplaceProduct, ProductCategory } from "./marketplaceTypes";
+
+export const categories: Array<{ id: ProductCategory; label: string }> = [
+  { id: "todos", label: "Todos" },
+  { id: "moveis", label: "Móveis" },
+  { id: "iluminacao", label: "Iluminação" },
+  { id: "decoracao", label: "Decoração" },
+  { id: "metais", label: "Metais" },
+  { id: "pedras", label: "Pedras" },
+  { id: "tintas", label: "Tintas" },
+  { id: "tecidos", label: "Tecidos" },
+  { id: "mdf", label: "MDF" },
+  { id: "pisos", label: "Pisos" },
+  { id: "revestimentos", label: "Revestimentos" },
+  { id: "eletros", label: "Eletros" },
+];
+
+export const products: MarketplaceProduct[] = [
+  {
+    id: "mp-001",
+    name: "Poltrona Lisboa",
+    category: "moveis",
+    manufacturer: "Estofados Casa",
+    supplier: "Estofados Casa",
+    collection: "Living Premium",
+    sku: "POL-LIS-001",
+    price: 3850,
+    leadTime: "18 dias",
+    stock: "Sob encomenda",
+    score: 92,
+    tags: ["linho", "sala", "contemporâneo"],
+    assets: ["pdf", "sketchup", "image"],
+    status: "publicado",
+  },
+  {
+    id: "mp-002",
+    name: "Perfil LED Linear",
+    category: "iluminacao",
+    manufacturer: "LED Line",
+    supplier: "Luminárias Pro",
+    collection: "Architectural",
+    sku: "LED-PER-300",
+    price: 890,
+    leadTime: "7 dias",
+    stock: "Disponível",
+    score: 96,
+    tags: ["led", "indireta", "perfil"],
+    assets: ["pdf", "bim", "sketchup", "dwg"],
+    status: "publicado",
+  },
+  {
+    id: "mp-003",
+    name: "MDF Carvalho Claro",
+    category: "mdf",
+    manufacturer: "Duratex",
+    supplier: "Distribuidora MDF",
+    collection: "Essencial",
+    sku: "MDF-CARV-CLARO",
+    price: 420,
+    leadTime: "10 dias",
+    stock: "Sob consulta",
+    score: 88,
+    tags: ["madeirado", "fosco", "marcenaria"],
+    assets: ["pdf", "texture"],
+    status: "publicado",
+  },
+  {
+    id: "mp-004",
+    name: "Quartzo Branco Classic",
+    category: "pedras",
+    manufacturer: "Stone Premium",
+    supplier: "Marmoraria Local",
+    collection: "Classic",
+    sku: "QTZ-BR-CLASSIC",
+    price: 1350,
+    leadTime: "15 dias",
+    stock: "Disponível",
+    score: 90,
+    tags: ["cozinha", "bancada", "pedra"],
+    assets: ["pdf", "texture", "image"],
+    status: "publicado",
+  },
+  {
+    id: "mp-005",
+    name: "Linho Performance Areia",
+    category: "tecidos",
+    manufacturer: "Tecidos Premium",
+    supplier: "Tecidos Premium",
+    collection: "Performance",
+    sku: "TEC-LIN-AREIA",
+    price: 142,
+    leadTime: "5 dias",
+    stock: "Disponível",
+    score: 94,
+    tags: ["tecido", "resistente", "economia"],
+    assets: ["pdf", "texture"],
+    status: "publicado",
+  },
+];
+
+export const manufacturers: Manufacturer[] = [
+  { id: "mf-001", name: "LED Line", category: "Iluminação", products: 72, assets: 210, score: 94, status: "premium" },
+  { id: "mf-002", name: "Duratex", category: "MDF", products: 140, assets: 340, score: 91, status: "premium" },
+  { id: "mf-003", name: "Estofados Casa", category: "Móveis", products: 26, assets: 58, score: 82, status: "ativo" },
+  { id: "mf-004", name: "Stone Premium", category: "Pedras", products: 32, assets: 76, score: 90, status: "ativo" },
+  { id: "mf-005", name: "Todeschini", category: "Planejados", products: 0, assets: 0, score: 90, status: "pendente" },
+  { id: "mf-006", name: "SCA", category: "Planejados", products: 0, assets: 0, score: 89, status: "pendente" },
+];
+
+export const assets: MarketplaceAsset[] = [
+  { id: "as-001", name: "Manual Poltrona Lisboa.pdf", product: "Poltrona Lisboa", type: "pdf", size: "420 KB", version: "1.0", status: "validado" },
+  { id: "as-002", name: "Perfil_LED_Linear.rfa", product: "Perfil LED Linear", type: "revit", size: "2.8 MB", version: "2.1", status: "validado" },
+  { id: "as-003", name: "MDF_Carvalho_Texture.jpg", product: "MDF Carvalho Claro", type: "texture", size: "6.4 MB", version: "1.2", status: "validado" },
+  { id: "as-004", name: "Quartzo_Branco_Texture.jpg", product: "Quartzo Branco Classic", type: "texture", size: "5.9 MB", version: "1.0", status: "pendente" },
+  { id: "as-005", name: "Poltrona_Lisboa.skp", product: "Poltrona Lisboa", type: "sketchup", size: "8.2 MB", version: "1.0", status: "validado" },
+];
+
+export const orders: MarketplaceOrder[] = [
+  { id: "ord-001", code: "MKT-001", product: "Perfil LED Linear", buyer: "Projeto ARQDOR", supplier: "Luminárias Pro", value: 2670, status: "entregue", date: "2026-07-19" },
+  { id: "ord-002", code: "MKT-002", product: "Quartzo Branco Classic", buyer: "Projeto ARQDOR", supplier: "Marmoraria Local", value: 10488, status: "processando", date: "2026-07-22" },
+  { id: "ord-003", code: "MKT-003", product: "Linho Performance Areia", buyer: "Projeto ARQDOR", supplier: "Tecidos Premium", value: 1704, status: "novo", date: "2026-07-24" },
+];
+
+export const aiMarketplaceInsights = [
+  {
+    title: "Produto alternativo com melhor margem",
+    description: "Linho Performance Areia reduz custo sem comprometer estética e aumenta durabilidade.",
+    impact: "Economia + desempenho",
+  },
+  {
+    title: "Ativo BIM disponível",
+    description: "Perfil LED possui Revit e DWG validados para documentação técnica.",
+    impact: "Pronto para especificação",
+  },
+  {
+    title: "Fabricantes pendentes",
+    description: "Todeschini e SCA aparecem como oportunidades de biblioteca premium.",
+    impact: "Parceria estratégica",
+  },
+];

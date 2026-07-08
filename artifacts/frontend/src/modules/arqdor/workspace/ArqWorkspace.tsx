@@ -42,6 +42,7 @@ import ProductionStudio from './production-studio/ProductionStudio'
 import BudgetEngine from './executive-budget/BudgetEngine'
 import ExecutiveBudgetStudio from './executive-budget-studio/ExecutiveBudgetStudio'
 import ProcurementStudio from './procurement-studio/ProcurementStudio'
+import MarketplaceEnterprise from './marketplace-enterprise/MarketplaceEnterprise'
 import BudgetDisciplinesProposal from './executive-budget/disciplines/BudgetDisciplinesProposal'
 import AlignedStudioShell from './ux-alignment/AlignedStudioShell'
 import { computeNextAction }     from './project-experience/ProjectHome'
@@ -63,6 +64,7 @@ export type ModuleId =
   | 'production' | 'producao'
   | 'budget'
   | 'procurement' | 'compras'
+  | 'marketplace' | 'arq-marketplace'
 
 export type JourneyId = 'create' | 'design' | 'visualize' | 'deliver' | 'business'
 
@@ -116,8 +118,10 @@ const MODULE_MAP_INTERNAL: Record<ModuleId, { icon:string; label:string }> = {
   'production': { icon:'🏭', label:'Produção'         },
   'producao':   { icon:'🏭', label:'Produção'         },
   'budget':      { icon:'💰', label:'Orçamento'        },
-  'procurement': { icon:'🛒', label:'Compras'          },
-  'compras':     { icon:'🛒', label:'Compras'          },
+  'procurement':     { icon:'🛒', label:'Compras'          },
+  'compras':         { icon:'🛒', label:'Compras'          },
+  'marketplace':     { icon:'🏪', label:'Marketplace'      },
+  'arq-marketplace': { icon:'🏪', label:'Marketplace'      },
 }
 
 // ─── Legado: Journeys (keyboard shortcuts 1–5) ────────────────────────────────
@@ -270,6 +274,8 @@ function renderModule(id: ModuleId, arqState: ArqProjectState, setActive: (m: Mo
     case 'correcoes':     return <AICorrectionsModule/>
     case 'memoria':       return <AIMemoryModule/>
     case 'config':        return <SettingsModule/>
+    case 'marketplace':
+    case 'arq-marketplace': return <MarketplaceEnterprise arqState={arqState} onNavigate={m => setActive(m as ModuleId)} />
     case 'arqhub':        return <ArqHubView/>
     case 'ai-intel':      return <AIEDashboard/>
     case 'integracao':    return <IntegrationModule/>
