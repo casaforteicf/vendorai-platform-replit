@@ -1,5 +1,5 @@
 import { Router, type IRouter } from "express";
-import { and, eq, isNull, sql } from "drizzle-orm";
+import { and, desc, eq, isNull, sql } from "drizzle-orm";
 import multer from "multer";
 import {
   db,
@@ -21,9 +21,11 @@ import {
   activitiesTable,
   reactivationQueueTable,
   agentTasksTable,
+  usersTable,
 } from "@workspace/db";
 import { dispatchVendaWebhook } from "../services/erp-webhook.js";
 import { sendDirectWhatsAppMessage, WhatsAppNotConnectedError } from "../services/omnichannel.js";
+import { checkCatalogMatch, type CatalogCheckItem } from "../lib/catalog-price-check.js";
 import { buildInviteUrl } from "./invites.js";
 import { sendInviteEmail } from "../lib/email.js";
 import {
@@ -162,6 +164,115 @@ router.patch("/deals/:id", async (req, res) => {
   if (!isAdmin2 && (userFn2 === "vendedor" || userFn2 === "entrega") && existing.assignedTo !== req.user?.sub) {
     res.status(403).json({ error: "Access denied to this deal" });
     return;
+  }
+
+  // ── Guardrail: bloquear fechamento direto via PATCH quando valor diverge do
+  // catálogo — mesma regra do confirm-closure e proposal-accepted, para que
+  // "ganho" não possa ser setado direto sem passar pela aprovação humana.
+  if (parsed.data.etapa === "ganho" && existing.etapa !== "ganho") {
+    const tenantIdForCheck = existing.tenantId ?? (req.user?.tenantId || "");
+    const [dealForCheck] = await db
+      .select()
+      .from(dealsTable)
+      .where(eq(dealsTable.id, existing.id));
+
+    const [proposta] = await db
+      .select()
+      .from(propostasTable)
+      .where(eq(propostasTable.dealId, existing.id))
+      .orderBy(desc(propostasTable.createdAt))
+      .limit(1);
+
+    const valorNum = dealForCheck?.valor ? parseFloat(String(dealForCheck.valor)) : 0;
+    const itens: CatalogCheckItem[] =
+      proposta && proposta.itens && proposta.itens.length > 0
+        ? proposta.itens.map((i) => ({
+            nome: i.nome,
+            sku: i.sku ?? null,
+            quantidade: i.quantidade,
+            valorUnitario: i.valorUnitario,
+          }))
+        : [{ nome: dealForCheck?.planoContratado ?? dealForCheck?.titulo ?? "deal", quantidade: 1, valorUnitario: valorNum }];
+
+    const valorTotalOverride =
+      proposta?.valorTotal !== null && proposta?.valorTotal !== undefined
+        ? Number(proposta.valorTotal)
+        : valorNum;
+
+    const catalogCheck = await checkCatalogMatch(tenantIdForCheck, itens, valorTotalOverride);
+
+    if (catalogCheck.hasCatalogBasis && !catalogCheck.matches) {
+      if (!dealForCheck?.leadId) {
+        req.log.error(
+          { dealId: existing.id },
+          "deals-patch: catalog divergence but deal has no leadId — cannot create agent_task, blocking closure"
+        );
+        res.status(422).json({
+          error: "Valor diverge do catálogo e não há lead vinculado para aprovação",
+        });
+        return;
+      }
+
+      const [task] = await db
+        .insert(agentTasksTable)
+        .values({
+          tenantId: tenantIdForCheck,
+          leadId: dealForCheck.leadId,
+          agentName: "closer",
+          actionType: "aprovacao_fechamento",
+          payload: {
+            origin: "deals_patch",
+            dealId: existing.id,
+            body: parsed.data,
+            vendedorNome: (req.user as { name?: string } | undefined)?.name ?? null,
+            valorProposta: catalogCheck.propostaTotal,
+            valorCatalogo: catalogCheck.catalogTotal,
+            diferenca: catalogCheck.diferenca,
+            itens: catalogCheck.itemDetails,
+          },
+        })
+        .returning();
+
+      const fmt = (n: number) => n.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
+      await db.insert(notificationsTable).values({
+        tenantId: tenantIdForCheck,
+        title: "Fechamento pendente de aprovação — valor diverge do catálogo",
+        message: `Fechamento do negócio "${dealForCheck.titulo}" (lead ${dealForCheck.leadId}) tem valor de ${fmt(catalogCheck.propostaTotal)}, mas o catálogo indica ${fmt(catalogCheck.catalogTotal)} (diferença: ${fmt(catalogCheck.diferenca)}). Aprovação manual necessária para fechar este negócio.`,
+        type: "warning",
+        category: "deal_closure_approval",
+      });
+
+      try {
+        if (dealForCheck.assignedTo) {
+          const [owner] = await db
+            .select({ telefone: usersTable.telefone })
+            .from(usersTable)
+            .where(eq(usersTable.id, dealForCheck.assignedTo));
+          if (owner?.telefone) {
+            const msg = `⚠️ Fechamento pendente de aprovação\n\nNegócio "${dealForCheck.titulo}" tem valor de ${fmt(catalogCheck.propostaTotal)}, diferente do catálogo (${fmt(catalogCheck.catalogTotal)}). Diferença: ${fmt(catalogCheck.diferenca)}.\n\nAprove ou rejeite no painel para concluir o fechamento.`;
+            await sendDirectWhatsAppMessage(tenantIdForCheck, owner.telefone, msg, req.log);
+          }
+        }
+      } catch (wErr) {
+        req.log.warn({ err: wErr, dealId: existing.id }, "deals-patch: WhatsApp approval alert failed (non-fatal)");
+      }
+
+      req.log.warn(
+        { dealId: existing.id, taskId: task.id, ...catalogCheck },
+        "deals-patch: valor diverge do catálogo, fechamento bloqueado até aprovação (PATCH direto)"
+      );
+
+      res.status(202).json({
+        pendingApproval: true,
+        agentTaskId: task.id,
+        divergence: {
+          valorProposta: catalogCheck.propostaTotal,
+          valorCatalogo: catalogCheck.catalogTotal,
+          diferenca: catalogCheck.diferenca,
+        },
+      });
+      return;
+    }
   }
 
   const [deal] = await db

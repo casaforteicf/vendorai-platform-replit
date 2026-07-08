@@ -290,6 +290,21 @@ async function runStartupMigrations() {
   } catch (err) {
     logger.warn({ err }, "startup migrations: categorias_produto + produtos_catalogo desconto columns skipped");
   }
+  try {
+    await db.execute(sql`
+      DO $$
+      BEGIN
+        IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'deal_cobranca_tipo') THEN
+          CREATE TYPE deal_cobranca_tipo AS ENUM ('automatico', 'manual');
+        END IF;
+      END
+      $$;
+    `);
+    await db.execute(sql`ALTER TABLE deals ADD COLUMN IF NOT EXISTS cobranca_tipo deal_cobranca_tipo`);
+    logger.info("startup migrations: deals cobranca_tipo column OK");
+  } catch (err) {
+    logger.warn({ err }, "startup migrations: deals cobranca_tipo column skipped");
+  }
 }
 
 // ─── Boot sequence ────────────────────────────────────────────────────────────
