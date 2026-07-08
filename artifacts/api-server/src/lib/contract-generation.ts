@@ -19,6 +19,10 @@ export interface ContractData {
   clienteEndereco?: string;
   representanteNome?: string;
   representanteCargo?: string;
+  representanteNacionalidade?: string;
+  representanteEstadoCivil?: string;
+  representanteProfissao?: string;
+  representanteRg?: string;
   representanteLegalCompleto?: string;
   valorMensalFormatado?: string;
   valorExtenso?: string;
@@ -272,6 +276,10 @@ export function interpolateTemplate(templateHtml: string, data: ContractData): s
     cliente_endereco: data.clienteEndereco ?? "",
     representante_nome: data.representanteNome ?? data.clienteNome,
     representante_cargo: data.representanteCargo ?? "Representante Legal",
+    representante_nacionalidade: data.representanteNacionalidade ?? "",
+    representante_estado_civil: data.representanteEstadoCivil ?? "",
+    representante_profissao: data.representanteProfissao ?? "",
+    representante_rg: data.representanteRg ?? "",
     representante_legal_completo: data.representanteLegalCompleto ?? data.clienteNome,
     valor_mensal: data.valorMensalFormatado ?? data.dealValor,
     valor_extenso: data.valorExtenso ?? "",
@@ -361,6 +369,10 @@ export const CONTRACT_VARIABLES = [
   { variable: "{{cliente_endereco}}", label: "Endereço completo do cliente" },
   { variable: "{{representante_nome}}", label: "Nome do representante legal" },
   { variable: "{{representante_cargo}}", label: "Cargo do representante" },
+  { variable: "{{representante_nacionalidade}}", label: "Nacionalidade do representante" },
+  { variable: "{{representante_estado_civil}}", label: "Estado civil do representante" },
+  { variable: "{{representante_profissao}}", label: "Profissão do representante" },
+  { variable: "{{representante_rg}}", label: "RG do representante" },
   { variable: "{{representante_legal_completo}}", label: "Qualificação completa do representante" },
   { variable: "{{valor_mensal}}", label: "Valor mensal formatado" },
   { variable: "{{valor_extenso}}", label: "Valor mensal por extenso" },

@@ -580,6 +580,13 @@ export default function LeadDetail() {
     pjNumFuncionarios: "",
     pjFaturamentoEstimado: "",
     socios: [] as Array<{ nome: string; dataNascimento: string; telefone: string; email: string }>,
+    // Dados para Contrato
+    endereco: "",
+    representanteCargo: "",
+    representanteNacionalidade: "",
+    representanteEstadoCivil: "",
+    representanteProfissao: "",
+    representanteRg: "",
   });
 
   const { mutate: updateLead, isPending: isUpdatingLead } = useUpdateLead({
@@ -629,6 +636,12 @@ export default function LeadDetail() {
         telefone: s.telefone ?? "",
         email: s.email ?? "",
       })),
+      endereco: (lead as any).endereco ?? "",
+      representanteCargo: (lead as any).representanteCargo ?? "",
+      representanteNacionalidade: (lead as any).representanteNacionalidade ?? "",
+      representanteEstadoCivil: (lead as any).representanteEstadoCivil ?? "",
+      representanteProfissao: (lead as any).representanteProfissao ?? "",
+      representanteRg: (lead as any).representanteRg ?? "",
     });
     setEditingPessoal(true);
   }
@@ -683,6 +696,13 @@ export default function LeadDetail() {
             socios: sociosFiltrados.length > 0 ? sociosFiltrados : [],
           } as any,
         }),
+        // Dados para Contrato (aplicável a PF e PJ)
+        endereco: pessoalDraft.endereco || null,
+        representanteCargo: pessoalDraft.representanteCargo || null,
+        representanteNacionalidade: pessoalDraft.representanteNacionalidade || null,
+        representanteEstadoCivil: pessoalDraft.representanteEstadoCivil || null,
+        representanteProfissao: pessoalDraft.representanteProfissao || null,
+        representanteRg: pessoalDraft.representanteRg || null,
       } as any,
     });
   }
@@ -3247,6 +3267,63 @@ export default function LeadDetail() {
                 ))}
               </div>
             )}
+
+            {/* Dados para Contrato — usados na geração automática do contrato (ZapSign) */}
+            <div className="space-y-2 border-t pt-4">
+              <p className="text-sm font-medium">Dados para Contrato</p>
+              <div className="space-y-1.5">
+                <label className="text-xs font-medium">Endereço</label>
+                <Input
+                  placeholder="Rua, número, bairro, cidade - UF, CEP"
+                  value={pessoalDraft.endereco}
+                  onChange={(e) => setPessoalDraft((d) => ({ ...d, endereco: e.target.value }))}
+                />
+              </div>
+              <div className="grid grid-cols-2 gap-2">
+                <div className="space-y-1.5">
+                  <label className="text-xs font-medium">Cargo do representante</label>
+                  <Input
+                    placeholder="Sócio-Administrador"
+                    value={pessoalDraft.representanteCargo}
+                    onChange={(e) => setPessoalDraft((d) => ({ ...d, representanteCargo: e.target.value }))}
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <label className="text-xs font-medium">Nacionalidade do representante</label>
+                  <Input
+                    placeholder="Brasileiro(a)"
+                    value={pessoalDraft.representanteNacionalidade}
+                    onChange={(e) => setPessoalDraft((d) => ({ ...d, representanteNacionalidade: e.target.value }))}
+                  />
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-2">
+                <div className="space-y-1.5">
+                  <label className="text-xs font-medium">Estado civil do representante</label>
+                  <Input
+                    placeholder="Casado(a)"
+                    value={pessoalDraft.representanteEstadoCivil}
+                    onChange={(e) => setPessoalDraft((d) => ({ ...d, representanteEstadoCivil: e.target.value }))}
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <label className="text-xs font-medium">Profissão do representante</label>
+                  <Input
+                    placeholder="Empresário(a)"
+                    value={pessoalDraft.representanteProfissao}
+                    onChange={(e) => setPessoalDraft((d) => ({ ...d, representanteProfissao: e.target.value }))}
+                  />
+                </div>
+              </div>
+              <div className="space-y-1.5">
+                <label className="text-xs font-medium">RG do representante</label>
+                <Input
+                  placeholder="00.000.000-0"
+                  value={pessoalDraft.representanteRg}
+                  onChange={(e) => setPessoalDraft((d) => ({ ...d, representanteRg: e.target.value }))}
+                />
+              </div>
+            </div>
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setEditingPessoal(false)}>

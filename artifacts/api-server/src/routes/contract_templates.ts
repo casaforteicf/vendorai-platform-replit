@@ -404,11 +404,18 @@ router.post("/api/deals/:dealId/generate-contract", async (req, res) => {
 
     // Representative qualification (use what's in the system, flag missing parts)
     const repNome = (lead.nome ?? "").trim();
-    const repEstadoCivil = (lead.estadoCivil ?? "").trim();
+    const repCargo = (lead.representanteCargo ?? "").trim() || "Representante Legal";
+    const repNacionalidade = (lead.representanteNacionalidade ?? "").trim();
+    const repEstadoCivil = (lead.representanteEstadoCivil ?? lead.estadoCivil ?? "").trim();
+    const repProfissao = (lead.representanteProfissao ?? "").trim();
+    const repRg = (lead.representanteRg ?? "").trim();
     const repCpfCnpj = (lead.documento ?? "").trim();
     const qualParts: string[] = [repNome];
+    if (repNacionalidade) qualParts.push(repNacionalidade);
     if (repEstadoCivil) qualParts.push(repEstadoCivil);
-    qualParts.push("Representante Legal");
+    if (repProfissao) qualParts.push(repProfissao);
+    qualParts.push(repCargo);
+    if (repRg) qualParts.push(`RG ${repRg}`);
     if (repCpfCnpj) qualParts.push(`CPF/CNPJ ${repCpfCnpj}`);
     const representanteLegalCompleto = qualParts.join(", ");
 
@@ -433,7 +440,11 @@ router.post("/api/deals/:dealId/generate-contract", async (req, res) => {
       clienteRazaoSocial,
       clienteEndereco,
       representanteNome: repNome,
-      representanteCargo: "Representante Legal",
+      representanteCargo: repCargo,
+      representanteNacionalidade: repNacionalidade,
+      representanteEstadoCivil: repEstadoCivil,
+      representanteProfissao: repProfissao,
+      representanteRg: repRg,
       representanteLegalCompleto,
       valorMensalFormatado,
       valorExtenso,

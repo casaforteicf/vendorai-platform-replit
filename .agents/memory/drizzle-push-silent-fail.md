@@ -21,6 +21,9 @@ description: drizzle-kit push reports "No changes detected" even when new column
    ```
 4. This keeps Drizzle's TypeScript schema as the source of truth for type safety, while applying the actual SQL manually.
 
+## Variant: push hangs instead of failing silently
+`drizzle-kit push` can also just hang indefinitely on "Pulling schema from database..." (never reaches a diff/prompt) against the large shared Supabase DB, rather than reporting "No changes detected". Treat a hang past ~60s the same as a silent failure: kill it and apply the ALTER TABLE directly via the Node/pg pattern in `executesql-vs-supabase.md` instead of waiting longer or retrying.
+
 ## Critical: apply migrations BEFORE publishing
 
 Dev and prod share the **same Supabase database** (`SUPABASE_DATABASE_URL`). If new columns are added via ALTER TABLE in dev but not verified before publishing, the deployed app will immediately fail with `column "x" does not exist`. Always run and confirm the ALTER TABLE in `executeSql` before clicking "Publish".
