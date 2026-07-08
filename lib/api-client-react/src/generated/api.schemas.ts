@@ -1713,6 +1713,17 @@ export interface UpdateFunilBody {
   etapas?: string[];
 }
 
+/**
+ * Tipo de cobrança - automático via Asaas ou manual (quando o tenant não tem Asaas configurado)
+ */
+export type DealCobrancaTipo = typeof DealCobrancaTipo[keyof typeof DealCobrancaTipo] | null;
+
+
+export const DealCobrancaTipo = {
+  automatico: 'automatico',
+  manual: 'manual',
+} as const;
+
 export interface Deal {
   id: string;
   tenantId: string;
@@ -1773,6 +1784,8 @@ export interface Deal {
   chargeLink?: string | null;
   /** Payment status (PENDING, RECEIVED, OVERDUE, CONFIRMED, manual_paid) */
   chargeStatus?: string | null;
+  /** Tipo de cobrança - automático via Asaas ou manual (quando o tenant não tem Asaas configurado) */
+  cobrancaTipo?: DealCobrancaTipo;
   /** When the deal was marked as lost */
   lostAt?: string | null;
   /** Categoria de motivo de perda */

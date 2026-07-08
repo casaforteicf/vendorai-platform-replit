@@ -23,6 +23,7 @@ import { authenticate, requireSameTenanOrSuperAdmin } from "../middlewares/auth.
 import { objectStorageClient } from "../lib/objectStorage.js";
 import { extractBusinessDataFromDocuments } from "../lib/document-extraction.js";
 import { generateSubdomainSlug } from "../lib/subdomain.js";
+import { encrypt } from "../lib/crypto.js";
 
 const router: IRouter = Router();
 
@@ -897,7 +898,7 @@ router.patch("/onboarding/step/4", authenticate, async (req, res) => {
 
   const { isAsaasConfigured, createOrGetCustomer, createCharge } = await import("../lib/asaas.js");
 
-  if (isAsaasConfigured() && priceCents > 0) {
+  if ((await isAsaasConfigured()) && priceCents > 0) {
     try {
       // Get tenant admin user for customer data
       const { usersTable } = await import("@workspace/db");
@@ -1092,7 +1093,7 @@ router.post("/onboarding/integracoes/validate-asaas", authenticate, async (req, 
     });
     if (!r.ok) { return res.json({ valid: false, error: `Asaas retornou HTTP ${r.status}` }); }
     const data = await r.json() as { name?: string };
-    await db.update(tenantsTable).set({ asaasApiKey: apiKey }).where(eq(tenantsTable.id, tenantId));
+    await db.update(tenantsTable).set({ asaasApiKey: encrypt(apiKey) }).where(eq(tenantsTable.id, tenantId));
     return res.json({ valid: true, name: data.name });
   } catch {
     return res.json({ valid: false, error: "Timeout ou chave inválida" });

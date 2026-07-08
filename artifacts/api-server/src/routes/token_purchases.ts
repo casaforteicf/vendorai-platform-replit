@@ -33,7 +33,7 @@ router.post(
       return;
     }
 
-    if (!isAsaasConfigured()) {
+    if (!(await isAsaasConfigured())) {
       res.status(503).json({ error: "Pagamentos não configurados" });
       return;
     }

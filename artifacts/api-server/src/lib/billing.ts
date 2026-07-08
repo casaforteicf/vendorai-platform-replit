@@ -38,7 +38,7 @@ function isFirstBilling(tenantCreatedAt: Date, mes: string): boolean {
 export async function runMonthlyBilling(log: Logger): Promise<void> {
   log.info("billing/monthly: starting");
 
-  if (!isAsaasConfigured()) {
+  if (!(await isAsaasConfigured())) {
     log.warn("billing/monthly: ASAAS_API_KEY not configured — skipping");
     return;
   }

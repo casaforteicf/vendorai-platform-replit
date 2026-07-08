@@ -1,28 +1,55 @@
+import { eq } from "drizzle-orm";
+import { db, tenantsTable } from "@workspace/db";
 import { logger } from "./logger.js";
+import { decrypt } from "./crypto.js";
 
 const BASE_URL = process.env.ASAAS_SANDBOX === "true"
   ? "https://sandbox.asaas.com/api/v3"
   : "https://www.asaas.com/api/v3";
 
-function getApiKey(): string | null {
-  return process.env.ASAAS_API_KEY ?? null;
+function getApiKey(explicit?: string | null): string | null {
+  return explicit ?? process.env.ASAAS_API_KEY ?? null;
+}
+
+/**
+ * Reads and decrypts a tenant's own Asaas API key (`tenants.asaas_api_key`,
+ * stored encrypted with lib/crypto.ts). Each tenant is expected to have its
+ * own Asaas account — the platform-level `ASAAS_API_KEY` env var is only used
+ * for platform-billed flows (e.g. tenant paying VendorAI itself), not for
+ * tenant-to-customer charges.
+ */
+export async function getTenantAsaasApiKey(tenantId: string): Promise<string | null> {
+  const [tenant] = await db
+    .select({ asaasApiKey: tenantsTable.asaasApiKey })
+    .from(tenantsTable)
+    .where(eq(tenantsTable.id, tenantId));
+
+  if (!tenant?.asaasApiKey) return null;
+
+  try {
+    return decrypt(tenant.asaasApiKey);
+  } catch (err) {
+    logger.warn({ tenantId, err }, "Falha ao descriptografar a chave Asaas do tenant");
+    return null;
+  }
 }
 
 async function asaasRequest<T>(
   method: string,
   path: string,
   body?: unknown,
+  apiKey?: string | null,
 ): Promise<T> {
-  const apiKey = getApiKey();
-  if (!apiKey) {
-    throw new Error("ASAAS_API_KEY not configured");
+  const key = getApiKey(apiKey);
+  if (!key) {
+    throw new Error("Asaas API key not configured");
   }
 
   const res = await fetch(`${BASE_URL}${path}`, {
     method,
     headers: {
       "Content-Type": "application/json",
-      access_token: apiKey,
+      access_token: key,
     },
     body: body !== undefined ? JSON.stringify(body) : undefined,
   });
@@ -56,11 +83,12 @@ export interface AsaasSubaccountOutput {
 
 export async function createSubaccount(
   data: AsaasSubaccountInput,
+  apiKey?: string | null,
 ): Promise<AsaasSubaccountOutput> {
   return asaasRequest<AsaasSubaccountOutput>("POST", "/accounts", {
     ...data,
     companyType: data.companyType ?? "LIMITED",
-  });
+  }, apiKey);
 }
 
 export interface AsaasSplit {
@@ -107,8 +135,9 @@ export interface AsaasChargeOutput {
 
 export async function createCharge(
   data: AsaasChargeInput,
+  apiKey?: string | null,
 ): Promise<AsaasChargeOutput> {
-  return asaasRequest<AsaasChargeOutput>("POST", "/payments", data);
+  return asaasRequest<AsaasChargeOutput>("POST", "/payments", data, apiKey);
 }
 
 export interface AsaasCustomerInput {
@@ -126,18 +155,21 @@ export interface AsaasCustomerOutput {
 
 export async function createOrGetCustomer(
   data: AsaasCustomerInput,
+  apiKey?: string | null,
 ): Promise<AsaasCustomerOutput> {
   if (data.email) {
     const existing = await asaasRequest<{ data: AsaasCustomerOutput[] }>(
       "GET",
       `/customers?email=${encodeURIComponent(data.email)}&limit=1`,
+      undefined,
+      apiKey,
     );
     if (existing.data.length > 0 && existing.data[0]) {
       return existing.data[0];
     }
   }
 
-  return asaasRequest<AsaasCustomerOutput>("POST", "/customers", data);
+  return asaasRequest<AsaasCustomerOutput>("POST", "/customers", data, apiKey);
 }
 
 export interface AsaasPixQrCode {
@@ -146,10 +178,26 @@ export interface AsaasPixQrCode {
   expirationDate: string;
 }
 
-export async function getPixQrCode(chargeId: string): Promise<AsaasPixQrCode> {
-  return asaasRequest<AsaasPixQrCode>("GET", `/payments/${chargeId}/pixQrCode`);
+export async function getPixQrCode(chargeId: string, apiKey?: string | null): Promise<AsaasPixQrCode> {
+  return asaasRequest<AsaasPixQrCode>("GET", `/payments/${chargeId}/pixQrCode`, undefined, apiKey);
 }
 
-export function isAsaasConfigured(): boolean {
+/**
+ * Whether Asaas billing is available.
+ *
+ * - `isAsaasConfigured()` (no args): checks the platform-level `ASAAS_API_KEY`
+ *   env var. Used by platform-billed flows (tenant paying VendorAI itself).
+ * - `isAsaasConfigured(tenantId)`: checks whether that specific tenant has its
+ *   own Asaas account configured (`tenants.asaas_api_key`, encrypted). This is
+ *   the correct check for tenant-to-customer billing (deal-won charges) —
+ *   each tenant has its own Asaas account. Missing configuration here is a
+ *   normal, expected state (not an error): callers should fall back to manual
+ *   billing rather than treating it as a failure.
+ */
+export async function isAsaasConfigured(tenantId?: string): Promise<boolean> {
+  if (tenantId) {
+    const key = await getTenantAsaasApiKey(tenantId);
+    return !!key;
+  }
   return !!getApiKey();
 }

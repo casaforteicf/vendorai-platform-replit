@@ -174,6 +174,7 @@ export * from './customerIntelligenceChurnReasonsEditedBy';
 export * from './dashboardLeadEntry';
 export * from './dashboardOportunidade';
 export * from './deal';
+export * from './dealCobrancaTipo';
 export * from './dealEtapa';
 export * from './dealEtapaSaas';
 export * from './dealUpdateResponse';

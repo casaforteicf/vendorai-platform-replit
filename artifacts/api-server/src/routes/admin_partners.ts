@@ -75,7 +75,7 @@ router.post("/admin/partners", requireRole("super_admin"), async (req, res) => {
       .returning();
 
     // ── Criar subconta Asaas para o parceiro ────────────────────────────────
-    if (isAsaasConfigured()) {
+    if (await isAsaasConfigured()) {
       try {
         const subaccount = await createSubaccount({
           name,

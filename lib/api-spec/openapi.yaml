@@ -12446,6 +12446,11 @@ components:
           type: string
           nullable: true
           description: Payment status (PENDING, RECEIVED, OVERDUE, CONFIRMED, manual_paid)
+        cobrancaTipo:
+          type: string
+          enum: [automatico, manual]
+          nullable: true
+          description: Tipo de cobrança - automático via Asaas ou manual (quando o tenant não tem Asaas configurado)
         lostAt:
           type: string
           format: date-time

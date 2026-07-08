@@ -12,6 +12,7 @@ import {
 } from "@workspace/db";
 import { createDocument, isZapSignConfigured } from "../lib/zapsign.js";
 import { createCharge, createOrGetCustomer, isAsaasConfigured } from "../lib/asaas.js";
+import { decrypt } from "../lib/crypto.js";
 import { sendDirectWhatsAppMessage } from "../services/omnichannel.js";
 import { checkCatalogMatch, type CatalogCheckItem } from "../lib/catalog-price-check.js";
 import type { Logger } from "pino";
@@ -358,19 +359,28 @@ export async function runDealClosure(
   }
 
   // ── 4. Asaas billing ────────────────────────────────────────────────────
-  const tenantAsaasKey = (tenant?.asaas_api_key as string) || null;
-  const asaasReady = tenantAsaasKey || isAsaasConfigured();
+  // Cada tenant tem sua própria conta Asaas; a chave é armazenada criptografada
+  // (lib/crypto.ts). Ausência de chave é um estado normal (fallback manual),
+  // não um erro — só cai no ASAAS_API_KEY global se o tenant não tiver a sua.
+  const rawTenantAsaasKey = (tenant?.asaas_api_key as string) || null;
+  let tenantAsaasKey: string | null = null;
+  if (rawTenantAsaasKey) {
+    try {
+      tenantAsaasKey = decrypt(rawTenantAsaasKey);
+    } catch (err) {
+      log.warn({ err, tenantId }, "confirm-closure: falha ao descriptografar chave Asaas do tenant");
+    }
+  }
+  const asaasReady = tenantAsaasKey ? true : await isAsaasConfigured();
 
   if (asaasReady && valorNum > 0 && lead) {
-    const prevKey = process.env["ASAAS_API_KEY"];
-    if (tenantAsaasKey) process.env["ASAAS_API_KEY"] = tenantAsaasKey;
     try {
       const customer = await createOrGetCustomer({
         name: lead.nome ?? lead.empresa ?? "Cliente",
         email: lead.email ?? undefined,
         cpfCnpj: lead.documento?.replace(/\D/g, "") || undefined,
         phone: lead.telefone ?? undefined,
-      });
+      }, tenantAsaasKey);
 
       const parcelas = numParcelas && numParcelas > 1 ? numParcelas : 1;
       const today = new Date();
@@ -386,7 +396,7 @@ export async function runDealClosure(
           dueDate: dueDateStr,
           description: deal.titulo,
           externalReference: dealId,
-        });
+        }, tenantAsaasKey);
         if (charge.invoiceUrl) chargeLinks.push(charge.invoiceUrl);
         else if (charge.bankSlipUrl) chargeLinks.push(charge.bankSlipUrl);
         await db
@@ -407,7 +417,7 @@ export async function runDealClosure(
               dueDate: due.toISOString().split("T")[0]!,
               description: `${deal.titulo} — Parcela ${i + 1}/${parcelas}`,
               externalReference: `${dealId}-${i + 1}`,
-            });
+            }, tenantAsaasKey);
             if (i === 0) firstId = charge.id;
             if (charge.invoiceUrl) chargeLinks.push(charge.invoiceUrl);
             else if (charge.bankSlipUrl) chargeLinks.push(charge.bankSlipUrl);
@@ -442,11 +452,6 @@ export async function runDealClosure(
       const msg = asaasErr instanceof Error ? asaasErr.message : String(asaasErr);
       log.error({ err: asaasErr, dealId }, "confirm-closure: Asaas failed");
       result.errors.push(`Cobrança: ${msg}`);
-    } finally {
-      if (tenantAsaasKey) {
-        if (prevKey !== undefined) process.env["ASAAS_API_KEY"] = prevKey;
-        else delete process.env["ASAAS_API_KEY"];
-      }
     }
   }
 

@@ -25,6 +25,11 @@ export const dealTipoFechamentoEnum = pgEnum("deal_tipo_fechamento", [
   "pedido_e_contrato",
 ]);
 
+export const dealCobrancaTipoEnum = pgEnum("deal_cobranca_tipo", [
+  "automatico",
+  "manual",
+]);
+
 export const dealsTable = pgTable("deals", {
   id: text("id")
     .primaryKey()
@@ -70,6 +75,10 @@ export const dealsTable = pgTable("deals", {
   probChurn: integer("prob_churn"),
   quoteFileUrl: text("quote_file_url"),
   skipAsaasBilling: text("skip_asaas_billing"),
+  // "automatico" quando o tenant tem Asaas configurado e a cobrança foi criada via API;
+  // "manual" quando o tenant não tem conta Asaas própria e a cobrança precisa ser feita
+  // manualmente pelo financeiro (fallback esperado, não um erro).
+  cobrancaTipo: dealCobrancaTipoEnum("cobranca_tipo"),
   aquecimentoTipo: text("aquecimento_tipo"),
   // Briefing gerado automaticamente pela IA no momento da prospecção
   aiBriefing: text("ai_briefing"),
@@ -123,6 +132,7 @@ export const updateDealSchema = createSelectSchema(dealsTable, {
   probChurn: z.number().int().min(0).max(100).optional(),
   dataRenovacao: z.coerce.date().optional(),
   tipoFechamento: z.enum(["pedido", "contrato", "pedido_e_contrato"]).optional(),
+  cobrancaTipo: z.enum(["automatico", "manual"]).optional(),
 })
   .omit({ id: true, tenantId: true, createdAt: true, updatedAt: true })
   .partial();

@@ -5,6 +5,7 @@
  * API specification
  * OpenAPI spec version: 0.1.0
  */
+import type { DealCobrancaTipo } from './dealCobrancaTipo';
 import type { DealEtapa } from './dealEtapa';
 import type { DealEtapaSaas } from './dealEtapaSaas';
 import type { TipoFechamento } from './tipoFechamento';
@@ -69,6 +70,8 @@ export interface Deal {
   chargeLink?: string | null;
   /** Payment status (PENDING, RECEIVED, OVERDUE, CONFIRMED, manual_paid) */
   chargeStatus?: string | null;
+  /** Tipo de cobrança - automático via Asaas ou manual (quando o tenant não tem Asaas configurado) */
+  cobrancaTipo?: DealCobrancaTipo;
   /** When the deal was marked as lost */
   lostAt?: Date | null;
   /** Categoria de motivo de perda */

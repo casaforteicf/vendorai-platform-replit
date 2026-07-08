@@ -29,3 +29,4 @@
 - [Dashboard data-fetch patterns](dashboard-data-patterns.md) — Dashboard.tsx mistura raw-fetch legado (payload principal) com generated-hooks contract-first (novos widgets); prefira o segundo.
 - [Catalog price approval gate](catalog-price-approval-gate.md) — closure paths must check valor vs. produtos_catalogo antes de fechar; divergência cria agent_task pendente e bloqueia até aprovação manual.
 - [Proactive agent handoffs](proactive-agent-handoffs.md) — system-triggered transitions (meeting confirmed, deal won) must be internal signals or agent_task-based, never a raw LLM call with no incoming message.
+- [Per-tenant Asaas billing](per-tenant-asaas-billing.md) — cada tenant tem sua própria conta Asaas; missing config é fallback esperado (manual), não erro; nunca usar chave global do env para cobrança tenant→cliente.

@@ -20,6 +20,7 @@ import {
   automationLogsTable,
   activitiesTable,
   reactivationQueueTable,
+  agentTasksTable,
 } from "@workspace/db";
 import { dispatchVendaWebhook } from "../services/erp-webhook.js";
 import { sendDirectWhatsAppMessage, WhatsAppNotConnectedError } from "../services/omnichannel.js";
@@ -27,6 +28,7 @@ import { buildInviteUrl } from "./invites.js";
 import { sendInviteEmail } from "../lib/email.js";
 import {
   isAsaasConfigured,
+  getTenantAsaasApiKey,
   createOrGetCustomer,
   createCharge,
   formaPagamentoToBillingType,
@@ -633,9 +635,66 @@ router.patch("/deals/:id", async (req, res) => {
             .update(dealsTable)
             .set({ chargeStatus: "manual_paid", updatedAt: new Date() })
             .where(eq(dealsTable.id, deal.id));
-        } else if (!isAsaasConfigured()) {
+        } else if (!(await isAsaasConfigured(tenantId))) {
+          // Tenant ainda não tem conta Asaas própria configurada — isso é um
+          // estado normal e esperado, não um erro. Cai no fallback de cobrança
+          // manual: cria um agent_task visível ao financeiro com os dados
+          // necessários para cobrar o cliente fora do fluxo automático.
           chargeSkipReason = "asaas_not_configured";
-          req.log.warn({ dealId: deal.id }, "Asaas charge skipped: ASAAS_API_KEY not configured");
+          req.log.info(
+            { dealId: deal.id, tenantId },
+            "Asaas não configurado para este tenant — cobrança manual (fallback esperado)"
+          );
+
+          if (deal.cobrancaTipo !== "manual") {
+            await db
+              .update(dealsTable)
+              .set({ cobrancaTipo: "manual", chargeStatus: "aguardando_cobranca_manual", updatedAt: new Date() })
+              .where(eq(dealsTable.id, deal.id));
+
+            if (deal.leadId) {
+              const [propostaManual] = await db
+                .select({ itens: propostasTable.itens })
+                .from(propostasTable)
+                .where(eq(propostasTable.dealId, deal.id))
+                .orderBy(sql`${propostasTable.createdAt} desc`)
+                .limit(1);
+
+              await db
+                .insert(agentTasksTable)
+                .values({
+                  tenantId,
+                  leadId: deal.leadId,
+                  agentName: "closer",
+                  actionType: "cobranca_manual",
+                  payload: {
+                    dealId: deal.id,
+                    leadNome: lead?.nome ?? null,
+                    telefone: lead?.telefone ?? null,
+                    valor: deal.valor ?? null,
+                    itens: propostaManual?.itens ?? [],
+                  },
+                })
+                .catch((e) =>
+                  req.log.warn({ err: e, dealId: deal.id }, "deal-ganho: falha ao criar agent_task cobranca_manual")
+                );
+            }
+
+            await db
+              .insert(notificationsTable)
+              .values({
+                tenantId,
+                title: "Cobrança manual necessária",
+                message: `O negócio "${deal.titulo}" foi fechado, mas este tenant ainda não tem uma conta Asaas configurada. Realize a cobrança manualmente com o cliente.`,
+                type: "info",
+                category: "billing",
+              })
+              .catch((e) =>
+                req.log.warn({ err: e, dealId: deal.id }, "deal-ganho: falha ao criar notificação cobranca_manual")
+              );
+
+            await logAutomation("asaas_charge", "skipped", "asaas_not_configured_manual_fallback");
+          }
         } else if (!deal.valor) {
           chargeSkipReason = "no_valor";
           req.log.info({ dealId: deal.id }, "Asaas charge skipped: deal has no valor");
@@ -644,6 +703,10 @@ router.patch("/deals/:id", async (req, res) => {
           req.log.info({ dealId: deal.id, chargeId: deal.asaasChargeId }, "Asaas charge already exists, skipping");
         } else {
           try {
+            // Cada tenant tem sua própria conta Asaas — usa a chave do tenant
+            // (já validada por isAsaasConfigured(tenantId) acima), nunca a global.
+            const tenantAsaasKey = await getTenantAsaasApiKey(tenantId);
+
             // Descobrir walletId do parceiro (se tenant tiver parceiro com subconta)
             let partnerWalletId: string | null = null;
             if (tenant?.partnerId) {
@@ -659,7 +722,7 @@ router.patch("/deals/:id", async (req, res) => {
               name: lead?.nome ?? tenant?.name ?? "Cliente",
               email: lead?.email ?? undefined,
               phone: lead?.telefone ?? undefined,
-            });
+            }, tenantAsaasKey);
 
             // Vencimento: 3 dias úteis a partir de hoje
             const dueDate = new Date();
@@ -704,7 +767,7 @@ router.patch("/deals/:id", async (req, res) => {
                 ? [{ walletId: partnerWalletId, percentualValue: 50 }]
                 : undefined,
               ...(installmentCount ? { installmentCount, installmentValue } : {}),
-            });
+            }, tenantAsaasKey);
 
             chargeId = charge.id;
             chargeLink = charge.invoiceUrl ?? charge.bankSlipUrl ?? null;
@@ -716,6 +779,7 @@ router.patch("/deals/:id", async (req, res) => {
                 asaasChargeId: charge.id,
                 chargeLink: charge.invoiceUrl,
                 chargeStatus: charge.status,
+                cobrancaTipo: "automatico",
                 updatedAt: new Date(),
               })
               .where(eq(dealsTable.id, deal.id));
