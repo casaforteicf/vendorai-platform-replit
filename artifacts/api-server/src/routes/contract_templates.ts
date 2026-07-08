@@ -45,7 +45,7 @@ const uploadTemplate = multer({
 
 // ─── Get default (platform) contract template ─────────────────────────────────
 router.get(
-  "/api/tenants/:tenantId/contract-template/default",
+  "/tenants/:tenantId/contract-template/default",
   async (req, res) => {
     const tenantId = String(req.params.tenantId);
 
@@ -63,7 +63,7 @@ router.get(
 
 // ─── Upload / replace contract template ───────────────────────────────────────
 router.post(
-  "/api/tenants/:tenantId/contract-template",
+  "/tenants/:tenantId/contract-template",
   requireRole(["tenant_admin", "super_admin"]),
   (req, res, next) => {
     uploadTemplate.single("file")(req, res, (err) => {
@@ -114,7 +114,7 @@ router.post(
 );
 
 // ─── Get current contract template ────────────────────────────────────────────
-router.get("/api/tenants/:tenantId/contract-template", async (req, res) => {
+router.get("/tenants/:tenantId/contract-template", async (req, res) => {
   const tenantId = String(req.params.tenantId);
 
   if (
@@ -144,7 +144,7 @@ router.get("/api/tenants/:tenantId/contract-template", async (req, res) => {
 
 // ─── Delete contract template ──────────────────────────────────────────────────
 router.delete(
-  "/api/tenants/:tenantId/contract-template",
+  "/tenants/:tenantId/contract-template",
   requireRole(["tenant_admin", "super_admin"]),
   async (req, res) => {
     const tenantId = String(req.params.tenantId);
@@ -167,7 +167,7 @@ router.delete(
 
 // ─── Save contract template via in-app editor (JSON body) ─────────────────────
 router.put(
-  "/api/tenants/:tenantId/contract-template/editor",
+  "/tenants/:tenantId/contract-template/editor",
   requireRole(["tenant_admin", "super_admin"]),
   async (req, res) => {
     const tenantId = String(req.params.tenantId);
@@ -206,7 +206,7 @@ router.put(
 );
 
 // ─── Get contract settings ─────────────────────────────────────────────────────
-router.get("/api/tenants/:tenantId/contract-settings", async (req, res) => {
+router.get("/tenants/:tenantId/contract-settings", async (req, res) => {
   const tenantId = String(req.params.tenantId);
 
   if (
@@ -233,7 +233,7 @@ router.get("/api/tenants/:tenantId/contract-settings", async (req, res) => {
 
 // ─── Update contract settings ──────────────────────────────────────────────────
 router.put(
-  "/api/tenants/:tenantId/contract-settings",
+  "/tenants/:tenantId/contract-settings",
   requireRole(["tenant_admin", "super_admin"]),
   async (req, res) => {
     const tenantId = String(req.params.tenantId);
@@ -270,7 +270,7 @@ router.put(
 );
 
 // ─── List active deals for a lead ─────────────────────────────────────────────
-router.get("/api/tenants/:tenantId/leads/:leadId/active-deals", async (req, res) => {
+router.get("/tenants/:tenantId/leads/:leadId/active-deals", async (req, res) => {
   const tenantId = String(req.params.tenantId);
   const leadId = String(req.params.leadId);
 
@@ -311,7 +311,7 @@ router.get("/api/tenants/:tenantId/leads/:leadId/active-deals", async (req, res)
 });
 
 // ─── Generate & send contract via ZapSign ─────────────────────────────────────
-router.post("/api/deals/:dealId/generate-contract", async (req, res) => {
+router.post("/deals/:dealId/generate-contract", async (req, res) => {
   const dealId = String(req.params.dealId);
   const { selectedDealIds }: { selectedDealIds?: string[] } = req.body ?? {};
 
