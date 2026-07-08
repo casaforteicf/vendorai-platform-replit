@@ -8,7 +8,7 @@
  *
  * runRevenueScoutJob: orquestrador diário chamado pelo scheduler.
  */
-import { and, eq, desc, gte, ne, isNotNull } from "drizzle-orm";
+import { and, eq, desc, gte, ne, isNotNull, or, lte, isNull } from "drizzle-orm";
 import type { Logger } from "pino";
 import {
   db,
@@ -22,8 +22,11 @@ import {
   clinicConsultasTable,
   clinicEspecialidadesTable,
   agentConfigsTable,
+  propostasTable,
+  type PropostaItem,
 } from "@workspace/db";
 import { sendDirectWhatsAppMessage } from "./omnichannel.js";
+import { triggerSequenceOffer } from "./sequence-offer.js";
 
 // ─── Tipos internos ───────────────────────────────────────────────────────────
 
@@ -34,6 +37,44 @@ interface Condicoes {
   servicoSugeridoId?: string;
   servicoAtualId?: string;
   servicoPremiumId?: string;
+  produtoOrigemId?: string;
+  produtoSugeridoId?: string;
+  diasApos?: number;
+}
+
+/**
+ * Retorna a data da compra mais recente (proposta aceita) de um produto
+ * específico por um lead, ou null se nunca comprou. Fonte genérica cross-vertical:
+ * propostas.itens[].produtoId (preenchido em /propostas/from-catalogo).
+ */
+async function dataUltimaCompraProduto(
+  tenantId: string,
+  leadId: string,
+  produtoId: string,
+): Promise<Date | null> {
+  const propostas = await db
+    .select({
+      itens:      propostasTable.itens,
+      acceptedAt: propostasTable.acceptedAt,
+      updatedAt:  propostasTable.updatedAt,
+    })
+    .from(propostasTable)
+    .where(
+      and(
+        eq(propostasTable.tenantId, tenantId),
+        eq(propostasTable.leadId, leadId),
+        eq(propostasTable.status, "aceita"),
+      ),
+    );
+
+  let melhorData: Date | null = null;
+  for (const p of propostas) {
+    const itens = (p.itens ?? []) as PropostaItem[];
+    if (!itens.some((i) => i.produtoId === produtoId)) continue;
+    const data = p.acceptedAt ?? p.updatedAt;
+    if (!melhorData || data > melhorData) melhorData = data;
+  }
+  return melhorData;
 }
 
 interface Acao {
@@ -155,6 +196,64 @@ export async function analisarCliente(
 
   for (const regra of regras) {
     const cond = parseCond(regra.condicoes);
+
+    // "sequencia_produto" tem elegibilidade (async, baseada em compra) e dedup
+    // próprios — não usa o fluxo genérico de "pendente" abaixo, pois precisa
+    // respeitar proximaTentativaEm quando a oferta foi adiada por etapa relatada.
+    if (regra.tipo === "sequencia_produto") {
+      if (!cond.produtoOrigemId || !cond.produtoSugeridoId) continue;
+
+      const dataCompra = await dataUltimaCompraProduto(tenantId, clienteId, cond.produtoOrigemId);
+      if (!dataCompra) continue;
+
+      const diasDesdeCompra = Math.floor((Date.now() - dataCompra.getTime()) / (1000 * 60 * 60 * 24));
+      if (diasDesdeCompra < (cond.diasApos ?? 30)) continue;
+
+      const now = new Date();
+      const [existente] = await db
+        .select({ id: scoutOportunidadesTable.id, status: scoutOportunidadesTable.status, proximaTentativaEm: scoutOportunidadesTable.proximaTentativaEm })
+        .from(scoutOportunidadesTable)
+        .where(
+          and(
+            eq(scoutOportunidadesTable.tenantId, tenantId),
+            eq(scoutOportunidadesTable.clienteId, clienteId),
+            eq(scoutOportunidadesTable.regraId, regra.id),
+          ),
+        )
+        .orderBy(desc(scoutOportunidadesTable.createdAt))
+        .limit(1);
+
+      if (existente) {
+        const aindaEmAndamento =
+          existente.status === "pendente" ||
+          existente.status === "enviado" ||
+          existente.status === "aguardando_etapa";
+        const aindaAdiado =
+          existente.status === "adiado" &&
+          (!existente.proximaTentativaEm || existente.proximaTentativaEm > now);
+        if (aindaEmAndamento || aindaAdiado) continue;
+        // "adiado" com proximaTentativaEm vencida (ou já respondeu antes sem
+        // converter) — permite reabrir uma nova oferta.
+      }
+
+      await db.insert(scoutOportunidadesTable).values({
+        tenantId,
+        clienteId,
+        regraId:   regra.id,
+        tipo:      regra.tipo,
+        descricao: `Sequência de produto: sugerir ${cond.produtoSugeridoId} para ${lead.nome ?? clienteId}`,
+        status:    "pendente",
+      } as any);
+
+      await db
+        .update(scoutRegrasTable)
+        .set({ totalDisparos: (regra.totalDisparos ?? 0) + 1 })
+        .where(eq(scoutRegrasTable.id, regra.id));
+
+      log.info({ tenantId, clienteId, regraId: regra.id, tipo: regra.tipo }, "scout: oportunidade sequencia_produto inserida");
+      continue;
+    }
+
     let seAplica = false;
 
     switch (regra.tipo) {
@@ -306,6 +405,17 @@ export async function processarOportunidades(
 
   for (const op of oportunidades) {
     try {
+      if (op.tipo === "sequencia_produto") {
+        await triggerSequenceOffer({
+          tenantId,
+          oportunidadeId: op.id,
+          leadId: op.clienteId,
+          regraId: op.regraId,
+          log,
+        });
+        continue;
+      }
+
       // Busca lead e regra
       const [lead] = await db
         .select({ nome: leadsTable.nome, telefone: leadsTable.telefone })

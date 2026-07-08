@@ -29,6 +29,10 @@ export const leadsTable = pgTable("leads", {
   // como resposta à pesquisa de satisfação da entrega (não passa pelo roteamento
   // normal de agentes). Sem FK para evitar import circular com entregas.ts.
   pendingFeedbackEntregaId: text("pending_feedback_entrega_id"),
+  // Revenue Scout (sequencia_produto): quando setado, a próxima mensagem do lead é
+  // tratada como resposta à oferta do próximo produto da sequência (não passa pelo
+  // roteamento normal de agentes até ser resolvida). Sem FK para evitar import circular.
+  pendingSequenceOportunidadeId: text("pending_sequence_oportunidade_id"),
   assignedTo: text("assigned_to").references(() => usersTable.id, { onDelete: "set null" }),
   instagramScopedId: text("instagram_scoped_id"),
   instagramHandle: text("instagram_handle"),

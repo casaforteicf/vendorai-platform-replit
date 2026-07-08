@@ -12,7 +12,17 @@ import { tenantsTable } from "./tenants";
 import { leadsTable } from "./leads";
 import { scoutRegrasTable } from "./scout_regras";
 
-// status: pendente | enviado | respondeu | converteu | ignorado
+// status: pendente | enviado | respondeu | converteu | ignorado | aguardando_etapa | adiado
+export const SCOUT_OPORTUNIDADE_STATUS = [
+  "pendente",
+  "enviado",
+  "respondeu",
+  "converteu",
+  "ignorado",
+  "aguardando_etapa",
+  "adiado",
+] as const;
+
 export const scoutOportunidadesTable = pgTable("scout_oportunidades", {
   id: text("id")
     .primaryKey()
@@ -35,17 +45,23 @@ export const scoutOportunidadesTable = pgTable("scout_oportunidades", {
   respondeu:       boolean("respondeu").default(false),
   converteu:       boolean("converteu").default(false),
   enviadoEm:       timestamp("enviado_em"),
+  // Usado apenas por tipo "sequencia_produto": quando status="adiado", a oportunidade
+  // só volta a ser considerada pelo Revenue Scout após este instante (timing recalculado
+  // a partir da etapa relatada pelo cliente), evitando reenvio por calendário fixo.
+  proximaTentativaEm: timestamp("proxima_tentativa_em"),
+  // Snapshot da etapa relatada pelo cliente no momento em que a oportunidade foi adiada.
+  etapaRelatada:   text("etapa_relatada"),
   createdAt:       timestamp("created_at").notNull().defaultNow(),
 });
 
 export const insertScoutOportunidadeSchema = createInsertSchema(scoutOportunidadesTable, {
   valorEstimado: z.coerce.number().nonnegative().optional(),
-  status:        z.enum(["pendente", "enviado", "respondeu", "converteu", "ignorado"]).optional(),
+  status:        z.enum(SCOUT_OPORTUNIDADE_STATUS).optional(),
 }).omit({ id: true, createdAt: true });
 
 export const updateScoutOportunidadeSchema = createSelectSchema(scoutOportunidadesTable, {
   valorEstimado: z.coerce.number().nonnegative().optional(),
-  status:        z.enum(["pendente", "enviado", "respondeu", "converteu", "ignorado"]).optional(),
+  status:        z.enum(SCOUT_OPORTUNIDADE_STATUS).optional(),
 })
   .omit({ id: true, tenantId: true, createdAt: true })
   .partial();

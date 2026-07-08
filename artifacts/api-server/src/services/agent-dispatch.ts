@@ -25,6 +25,7 @@ import {
 import { callOpenAI as gatewayFamilyCallOpenAI } from "../lib/ai-gateway.js";
 import { detectEscalationTrigger, generateHandoffSummary } from "./escalation.js";
 import { handleDeliveryFeedbackReply } from "./post-venda.js";
+import { handleSequenceOfferReply } from "./sequence-offer.js";
 import { generateAgentHandoffSummary } from "./handoff.js";
 import { sendDirectWhatsAppMessage } from "./omnichannel.js";
 import {
@@ -160,6 +161,30 @@ export async function processAgentInternal(params: {
         log.warn({ err, tenantId, leadId }, "dispatch: delivery feedback handling failed");
       });
       return { status: "skipped", reason: "delivery_feedback_handled" };
+    }
+
+    // 2b3. Pending sequence offer (Revenue Scout) — só intercepta se a resposta
+    // ainda precisa de tratamento determinístico (pergunta de etapa). Se o
+    // cliente confirmou interesse (ou resposta ambígua), a função limpa o
+    // pending e deixa a mensagem seguir para o roteamento normal abaixo.
+    if (ctx.lead.pendingSequenceOportunidadeId) {
+      const result = await handleSequenceOfferReply({
+        tenantId,
+        leadId,
+        oportunidadeId: ctx.lead.pendingSequenceOportunidadeId,
+        mensagem,
+        log,
+      }).catch((err) => {
+        log.warn({ err, tenantId, leadId }, "dispatch: sequence offer handling failed");
+        return { handled: false };
+      });
+
+      if (result.handled) {
+        return { status: "skipped", reason: "sequence_offer_handled" };
+      }
+
+      // Recarrega o contexto: handleSequenceOfferReply já limpou o pending flag.
+      ctx.lead.pendingSequenceOportunidadeId = null;
     }
 
     // 2c. Escalation detection — check if incoming message needs human escalation

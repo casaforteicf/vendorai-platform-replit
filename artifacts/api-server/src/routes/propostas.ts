@@ -397,6 +397,8 @@ router.post(
         nome: produto.nome,
         quantidade: item.quantidade,
         valorUnitario,
+        produtoId: produto.id,
+        sku: produto.sku ?? undefined,
       };
     });
 

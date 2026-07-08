@@ -4,6 +4,7 @@ import {
   db,
   scoutRegrasTable,
   scoutOportunidadesTable,
+  SCOUT_REGRA_TIPOS,
 } from "@workspace/db";
 import { runRevenueScoutForTenant } from "../services/revenueScout.js";
 
@@ -51,9 +52,8 @@ router.post("/tenants/:tenantId/scout/regras", async (req, res) => {
     return res.status(422).json({ error: "nome, tipo, condicoes e acao são obrigatórios" });
   }
 
-  const tiposValidos = ["recompra", "cross_sell", "reativacao", "upgrade", "aniversario"];
-  if (!tiposValidos.includes(tipo)) {
-    return res.status(422).json({ error: `tipo inválido. Valores: ${tiposValidos.join(", ")}` });
+  if (!(SCOUT_REGRA_TIPOS as readonly string[]).includes(tipo)) {
+    return res.status(422).json({ error: `tipo inválido. Valores: ${SCOUT_REGRA_TIPOS.join(", ")}` });
   }
 
   const [row] = await db
@@ -67,6 +67,11 @@ router.post("/tenants/:tenantId/scout/regras", async (req, res) => {
 router.patch("/tenants/:tenantId/scout/regras/:id", async (req, res) => {
   const { tenantId, id } = req.params;
   if (!canAccess(req, tenantId)) return res.status(403).json({ error: "Forbidden" });
+
+  const { tipo } = req.body as { tipo?: string };
+  if (tipo !== undefined && !(SCOUT_REGRA_TIPOS as readonly string[]).includes(tipo)) {
+    return res.status(422).json({ error: `tipo inválido. Valores: ${SCOUT_REGRA_TIPOS.join(", ")}` });
+  }
 
   const [row] = await db
     .update(scoutRegrasTable)

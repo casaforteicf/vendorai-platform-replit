@@ -30,6 +30,9 @@ export const propostaItemSchema = z.object({
   valorUnitario: z.number().nonnegative(),
   sku: z.string().optional(),
   descricao: z.string().optional(),
+  // Referência opcional a produtos_catalogo.id — usada pelo Revenue Scout
+  // (regra "sequencia_produto") para detectar compra de um produto específico.
+  produtoId: z.string().optional(),
 });
 
 export type PropostaItem = z.infer<typeof propostaItemSchema>;

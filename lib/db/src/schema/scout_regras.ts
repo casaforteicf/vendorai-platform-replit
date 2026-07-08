@@ -11,8 +11,9 @@ import { createInsertSchema, createSelectSchema } from "drizzle-zod";
 import { z } from "zod/v4";
 import { tenantsTable } from "./tenants";
 
-// tipo: recompra | cross_sell | reativacao | upgrade | aniversario
+// tipo: recompra | cross_sell | reativacao | upgrade | aniversario | sequencia_produto
 // condicoes ex: { diasSemCompra: 30, servicoId: 'uuid' }
+// condicoes (sequencia_produto): { produtoOrigemId, produtoSugeridoId, diasApos }
 // acao ex: { mensagem: 'texto', canal: 'whatsapp' }
 export const scoutRegrasTable = pgTable("scout_regras", {
   id: text("id")
@@ -30,12 +31,14 @@ export const scoutRegrasTable = pgTable("scout_regras", {
   createdAt:     timestamp("created_at").notNull().defaultNow(),
 });
 
+export const SCOUT_REGRA_TIPOS = ["recompra", "cross_sell", "reativacao", "upgrade", "aniversario", "sequencia_produto"] as const;
+
 export const insertScoutRegraSchema = createInsertSchema(scoutRegrasTable, {
-  tipo: z.enum(["recompra", "cross_sell", "reativacao", "upgrade", "aniversario"]),
+  tipo: z.enum(SCOUT_REGRA_TIPOS),
 }).omit({ id: true, createdAt: true });
 
 export const updateScoutRegraSchema = createSelectSchema(scoutRegrasTable, {
-  tipo: z.enum(["recompra", "cross_sell", "reativacao", "upgrade", "aniversario"]).optional(),
+  tipo: z.enum(SCOUT_REGRA_TIPOS).optional(),
 })
   .omit({ id: true, tenantId: true, createdAt: true })
   .partial();
