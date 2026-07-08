@@ -14,6 +14,7 @@ import {
   notificationsTable,
   insertAgendamentoSchema,
   updateAgendamentoSchema,
+  bloqueiosAgendaTable,
 } from "@workspace/db";
 import type { Logger } from "pino";
 import {
@@ -386,9 +387,36 @@ router.get("/tenants/:tenantId/agendamentos/slots", async (req, res) => {
     }
   }
 
+  // Bloqueios de agenda (Bloqueio de agenda feature) — subtract periods where
+  // the responsavel is marked unavailable. dia_inteiro blocks the full
+  // workday; manha/tarde block half the day.
+  let bloqueioBusy: { start: Date; end: Date }[] = [];
+  if (responsavelId) {
+    const bloqueios = await db
+      .select({ dataInicio: bloqueiosAgendaTable.dataInicio, dataFim: bloqueiosAgendaTable.dataFim, periodo: bloqueiosAgendaTable.periodo })
+      .from(bloqueiosAgendaTable)
+      .where(
+        and(
+          eq(bloqueiosAgendaTable.responsavelId, responsavelId),
+          lt(bloqueiosAgendaTable.dataInicio, workEnd),
+          gt(bloqueiosAgendaTable.dataFim, workStart)
+        )
+      );
+
+    const morningEnd = new Date(Date.UTC(year, month - 1, day, 12 - -3, 0, 0)); // 12:00 BRT
+    const afternoonStart = new Date(Date.UTC(year, month - 1, day, 13 - -3, 0, 0)); // 13:00 BRT
+
+    for (const b of bloqueios) {
+      if (b.periodo === "manha") bloqueioBusy.push({ start: workStart, end: morningEnd });
+      else if (b.periodo === "tarde") bloqueioBusy.push({ start: afternoonStart, end: workEnd });
+      else bloqueioBusy.push({ start: workStart, end: workEnd }); // dia_inteiro
+    }
+  }
+
   const busy = [
     ...internal.map((r) => ({ start: new Date(r.start), end: new Date(r.end) })),
     ...googleBusy,
+    ...bloqueioBusy,
   ];
 
   // Build candidate slots at 30-min intervals within working hours

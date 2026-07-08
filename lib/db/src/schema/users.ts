@@ -1,4 +1,4 @@
-import { pgTable, text, boolean, timestamp, pgEnum } from "drizzle-orm/pg-core";
+import { pgTable, text, boolean, timestamp, pgEnum, numeric } from "drizzle-orm/pg-core";
 import { createInsertSchema, createSelectSchema } from "drizzle-zod";
 import { z } from "zod/v4";
 import { tenantsTable } from "./tenants";
@@ -39,6 +39,7 @@ export const usersTable = pgTable("users", {
   active: boolean("active").notNull().default(true),
   forcePasswordReset: boolean("force_password_reset").notNull().default(false),
   lastAssignedAt: timestamp("last_assigned_at"),
+  limiteEntregasPorTurno: numeric("limite_entregas_por_turno", { precision: 6, scale: 0 }),
   createdAt: timestamp("created_at").notNull().defaultNow(),
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
 });

@@ -19,4 +19,5 @@ export interface CreateUserBody {
   userFunction?: UserFunction;
   telefone?: string;
   active?: boolean;
+  limiteEntregasPorTurno?: string | number;
 }

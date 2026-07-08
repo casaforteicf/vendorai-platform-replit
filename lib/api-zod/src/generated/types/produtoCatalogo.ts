@@ -28,6 +28,8 @@ export interface ProdutoCatalogo {
   prazoContrato?: number | null;
   /** Product classification — saas_plan/saas_addon hide stock quantity in UI */
   productType?: ProdutoCatalogoProductType;
+  /** Quando true, a entrega deste produto obrigatoriamente precisa de data/turno marcado (modo agendada) */
+  exigeAgendamento?: boolean;
   createdAt: Date;
   updatedAt: Date;
 }

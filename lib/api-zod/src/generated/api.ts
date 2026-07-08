@@ -42,6 +42,7 @@ export const GetMeResponse = zod.object({
   "forcePasswordReset": zod.boolean().describe('If true, user must change their password on next login.'),
   "tenantVertical": zod.string().nullish().describe('Segment\/vertical of the tenant (e.g. \"Construção & Reforma\")'),
   "tenantLogoUrl": zod.string().nullish().describe('Logo URL of the tenant for co-branding'),
+  "limiteEntregasPorTurno": zod.string().nullish().describe('Limite de entregas por turno (só relevante para userFunction \"entrega\")'),
   "createdAt": zod.coerce.date(),
   "updatedAt": zod.coerce.date()
 })
@@ -66,6 +67,7 @@ export const RefreshTokenResponse = zod.object({
   "forcePasswordReset": zod.boolean().describe('If true, user must change their password on next login.'),
   "tenantVertical": zod.string().nullish().describe('Segment\/vertical of the tenant (e.g. \"Construção & Reforma\")'),
   "tenantLogoUrl": zod.string().nullish().describe('Logo URL of the tenant for co-branding'),
+  "limiteEntregasPorTurno": zod.string().nullish().describe('Limite de entregas por turno (só relevante para userFunction \"entrega\")'),
   "createdAt": zod.coerce.date(),
   "updatedAt": zod.coerce.date()
 })
@@ -95,6 +97,7 @@ export const LoginResponse = zod.object({
   "forcePasswordReset": zod.boolean().describe('If true, user must change their password on next login.'),
   "tenantVertical": zod.string().nullish().describe('Segment\/vertical of the tenant (e.g. \"Construção & Reforma\")'),
   "tenantLogoUrl": zod.string().nullish().describe('Logo URL of the tenant for co-branding'),
+  "limiteEntregasPorTurno": zod.string().nullish().describe('Limite de entregas por turno (só relevante para userFunction \"entrega\")'),
   "createdAt": zod.coerce.date(),
   "updatedAt": zod.coerce.date()
 })
@@ -125,6 +128,7 @@ export const DemoLoginResponse = zod.object({
   "forcePasswordReset": zod.boolean().describe('If true, user must change their password on next login.'),
   "tenantVertical": zod.string().nullish().describe('Segment\/vertical of the tenant (e.g. \"Construção & Reforma\")'),
   "tenantLogoUrl": zod.string().nullish().describe('Logo URL of the tenant for co-branding'),
+  "limiteEntregasPorTurno": zod.string().nullish().describe('Limite de entregas por turno (só relevante para userFunction \"entrega\")'),
   "createdAt": zod.coerce.date(),
   "updatedAt": zod.coerce.date()
 })
@@ -326,6 +330,7 @@ export const ListUsersResponseItem = zod.object({
   "forcePasswordReset": zod.boolean().describe('If true, user must change their password on next login.'),
   "tenantVertical": zod.string().nullish().describe('Segment\/vertical of the tenant (e.g. \"Construção & Reforma\")'),
   "tenantLogoUrl": zod.string().nullish().describe('Logo URL of the tenant for co-branding'),
+  "limiteEntregasPorTurno": zod.string().nullish().describe('Limite de entregas por turno (só relevante para userFunction \"entrega\")'),
   "createdAt": zod.coerce.date(),
   "updatedAt": zod.coerce.date()
 })
@@ -344,7 +349,8 @@ export const CreateUserBody = zod.object({
   "platformRole": zod.enum(['super_admin', 'tenant_admin', 'tenant_seller', 'partner', 'member']).optional(),
   "userFunction": zod.enum(['vendedor', 'financeiro', 'suporte', 'entrega', 'administrador', 'outro']).optional().describe('Função\/tipo do usuário dentro do tenant'),
   "telefone": zod.string().optional(),
-  "active": zod.boolean().optional()
+  "active": zod.boolean().optional(),
+  "limiteEntregasPorTurno": zod.union([zod.string(),zod.number()]).optional()
 })
 
 
@@ -378,6 +384,7 @@ export const ChangePasswordResponse = zod.object({
   "forcePasswordReset": zod.boolean().describe('If true, user must change their password on next login.'),
   "tenantVertical": zod.string().nullish().describe('Segment\/vertical of the tenant (e.g. \"Construção & Reforma\")'),
   "tenantLogoUrl": zod.string().nullish().describe('Logo URL of the tenant for co-branding'),
+  "limiteEntregasPorTurno": zod.string().nullish().describe('Limite de entregas por turno (só relevante para userFunction \"entrega\")'),
   "createdAt": zod.coerce.date(),
   "updatedAt": zod.coerce.date()
 })
@@ -403,6 +410,7 @@ export const GetUserResponse = zod.object({
   "forcePasswordReset": zod.boolean().describe('If true, user must change their password on next login.'),
   "tenantVertical": zod.string().nullish().describe('Segment\/vertical of the tenant (e.g. \"Construção & Reforma\")'),
   "tenantLogoUrl": zod.string().nullish().describe('Logo URL of the tenant for co-branding'),
+  "limiteEntregasPorTurno": zod.string().nullish().describe('Limite de entregas por turno (só relevante para userFunction \"entrega\")'),
   "createdAt": zod.coerce.date(),
   "updatedAt": zod.coerce.date()
 })
@@ -423,7 +431,8 @@ export const UpdateUserBody = zod.object({
   "platformRole": zod.enum(['super_admin', 'tenant_admin', 'tenant_seller', 'partner', 'member']).optional(),
   "userFunction": zod.enum(['vendedor', 'financeiro', 'suporte', 'entrega', 'administrador', 'outro']).optional().describe('Função\/tipo do usuário dentro do tenant'),
   "telefone": zod.string().optional(),
-  "active": zod.boolean().optional()
+  "active": zod.boolean().optional(),
+  "limiteEntregasPorTurno": zod.union([zod.string(),zod.number()]).optional()
 })
 
 export const UpdateUserResponse = zod.object({
@@ -439,6 +448,7 @@ export const UpdateUserResponse = zod.object({
   "forcePasswordReset": zod.boolean().describe('If true, user must change their password on next login.'),
   "tenantVertical": zod.string().nullish().describe('Segment\/vertical of the tenant (e.g. \"Construção & Reforma\")'),
   "tenantLogoUrl": zod.string().nullish().describe('Logo URL of the tenant for co-branding'),
+  "limiteEntregasPorTurno": zod.string().nullish().describe('Limite de entregas por turno (só relevante para userFunction \"entrega\")'),
   "createdAt": zod.coerce.date(),
   "updatedAt": zod.coerce.date()
 })
@@ -3238,6 +3248,206 @@ export const DeleteAgendamentoParams = zod.object({
 
 
 /**
+ * Filtered automatically by assignedTo when the requesting user has
+userFunction "entrega" (or "vendedor")/platformRole tenant_seller.
+
+ * @summary List entregas by tenant
+ */
+export const ListEntregasParams = zod.object({
+  "tenantId": zod.coerce.string()
+})
+
+export const ListEntregasQueryParams = zod.object({
+  "dealId": zod.coerce.string().optional(),
+  "status": zod.enum(['aguardando', 'agendada', 'em_transito', 'entregue', 'cancelada']).optional(),
+  "assignedTo": zod.coerce.string().optional()
+})
+
+export const ListEntregasResponseItem = zod.object({
+  "id": zod.string(),
+  "tenantId": zod.string(),
+  "dealId": zod.string(),
+  "propostaId": zod.string().nullish(),
+  "leadId": zod.string().nullish(),
+  "assignedTo": zod.string().nullish(),
+  "modo": zod.enum(['agendada', 'assincrona']),
+  "status": zod.enum(['aguardando', 'agendada', 'em_transito', 'entregue', 'cancelada']),
+  "periodo": zod.enum(['manha', 'tarde']).optional(),
+  "dataPrevista": zod.coerce.date().nullish(),
+  "dataEntregue": zod.coerce.date().nullish(),
+  "agendamentoId": zod.string().nullish(),
+  "enderecoEntrega": zod.string().nullish(),
+  "itens": zod.array(zod.object({
+  "nome": zod.string(),
+  "quantidade": zod.number(),
+  "sku": zod.string().optional()
+})),
+  "observacoes": zod.string().nullish(),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date()
+})
+export const ListEntregasResponse = zod.array(ListEntregasResponseItem)
+
+
+/**
+ * @summary Create entrega manually
+ */
+export const CreateEntregaParams = zod.object({
+  "tenantId": zod.coerce.string()
+})
+
+export const CreateEntregaBody = zod.object({
+  "tenantId": zod.string(),
+  "dealId": zod.string(),
+  "propostaId": zod.string().optional(),
+  "leadId": zod.string().optional(),
+  "assignedTo": zod.string().optional(),
+  "modo": zod.enum(['agendada', 'assincrona']).optional(),
+  "status": zod.enum(['aguardando', 'agendada', 'em_transito', 'entregue', 'cancelada']).optional(),
+  "periodo": zod.enum(['manha', 'tarde']).optional(),
+  "dataPrevista": zod.coerce.date().optional(),
+  "enderecoEntrega": zod.string().optional(),
+  "itens": zod.array(zod.object({
+  "nome": zod.string(),
+  "quantidade": zod.number(),
+  "sku": zod.string().optional()
+})).optional(),
+  "observacoes": zod.string().optional()
+})
+
+
+/**
+ * @summary Get entrega by ID
+ */
+export const GetEntregaParams = zod.object({
+  "id": zod.coerce.string()
+})
+
+export const GetEntregaResponse = zod.object({
+  "id": zod.string(),
+  "tenantId": zod.string(),
+  "dealId": zod.string(),
+  "propostaId": zod.string().nullish(),
+  "leadId": zod.string().nullish(),
+  "assignedTo": zod.string().nullish(),
+  "modo": zod.enum(['agendada', 'assincrona']),
+  "status": zod.enum(['aguardando', 'agendada', 'em_transito', 'entregue', 'cancelada']),
+  "periodo": zod.enum(['manha', 'tarde']).optional(),
+  "dataPrevista": zod.coerce.date().nullish(),
+  "dataEntregue": zod.coerce.date().nullish(),
+  "agendamentoId": zod.string().nullish(),
+  "enderecoEntrega": zod.string().nullish(),
+  "itens": zod.array(zod.object({
+  "nome": zod.string(),
+  "quantidade": zod.number(),
+  "sku": zod.string().optional()
+})),
+  "observacoes": zod.string().nullish(),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date()
+})
+
+
+/**
+ * When setting status=agendada with dataPrevista+periodo, the server
+enforces limiteEntregasPorTurno for the assigned motorista and may
+return 409 if the turno is full.
+
+ * @summary Update entrega (status, assignment, scheduling)
+ */
+export const UpdateEntregaParams = zod.object({
+  "id": zod.coerce.string()
+})
+
+export const UpdateEntregaBody = zod.object({
+  "assignedTo": zod.string().optional(),
+  "modo": zod.enum(['agendada', 'assincrona']).optional(),
+  "status": zod.enum(['aguardando', 'agendada', 'em_transito', 'entregue', 'cancelada']).optional(),
+  "periodo": zod.enum(['manha', 'tarde']).optional(),
+  "dataPrevista": zod.coerce.date().optional(),
+  "dataEntregue": zod.coerce.date().optional(),
+  "enderecoEntrega": zod.string().optional(),
+  "observacoes": zod.string().optional()
+})
+
+export const UpdateEntregaResponse = zod.object({
+  "id": zod.string(),
+  "tenantId": zod.string(),
+  "dealId": zod.string(),
+  "propostaId": zod.string().nullish(),
+  "leadId": zod.string().nullish(),
+  "assignedTo": zod.string().nullish(),
+  "modo": zod.enum(['agendada', 'assincrona']),
+  "status": zod.enum(['aguardando', 'agendada', 'em_transito', 'entregue', 'cancelada']),
+  "periodo": zod.enum(['manha', 'tarde']).optional(),
+  "dataPrevista": zod.coerce.date().nullish(),
+  "dataEntregue": zod.coerce.date().nullish(),
+  "agendamentoId": zod.string().nullish(),
+  "enderecoEntrega": zod.string().nullish(),
+  "itens": zod.array(zod.object({
+  "nome": zod.string(),
+  "quantidade": zod.number(),
+  "sku": zod.string().optional()
+})),
+  "observacoes": zod.string().nullish(),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date()
+})
+
+
+/**
+ * @summary List agenda blocks by tenant
+ */
+export const ListBloqueiosAgendaParams = zod.object({
+  "tenantId": zod.coerce.string()
+})
+
+export const ListBloqueiosAgendaQueryParams = zod.object({
+  "responsavelId": zod.coerce.string().optional()
+})
+
+export const ListBloqueiosAgendaResponseItem = zod.object({
+  "id": zod.string(),
+  "tenantId": zod.string(),
+  "responsavelId": zod.string(),
+  "dataInicio": zod.coerce.date(),
+  "dataFim": zod.coerce.date(),
+  "periodo": zod.enum(['dia_inteiro', 'manha', 'tarde']),
+  "motivo": zod.string().nullish(),
+  "criadoPor": zod.string().nullish(),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date()
+})
+export const ListBloqueiosAgendaResponse = zod.array(ListBloqueiosAgendaResponseItem)
+
+
+/**
+ * @summary Create an agenda block (mark a user unavailable for a period)
+ */
+export const CreateBloqueioAgendaParams = zod.object({
+  "tenantId": zod.coerce.string()
+})
+
+export const CreateBloqueioAgendaBody = zod.object({
+  "tenantId": zod.string(),
+  "responsavelId": zod.string(),
+  "dataInicio": zod.coerce.date(),
+  "dataFim": zod.coerce.date(),
+  "periodo": zod.enum(['dia_inteiro', 'manha', 'tarde']).optional(),
+  "motivo": zod.string().optional(),
+  "criadoPor": zod.string().optional()
+})
+
+
+/**
+ * @summary Delete an agenda block
+ */
+export const DeleteBloqueioAgendaParams = zod.object({
+  "id": zod.coerce.string()
+})
+
+
+/**
  * @summary Create catalog product
  */
 export const CreateProdutoCatalogoBody = zod.object({
@@ -3251,7 +3461,8 @@ export const CreateProdutoCatalogoBody = zod.object({
   "ativo": zod.boolean().optional(),
   "imagemUrl": zod.string().optional().describe('Product image URL'),
   "recorrencia": zod.enum(['mensal']).nullish().describe('Recurrence type — \"mensal\" for monthly service, null for one-time'),
-  "prazoContrato": zod.number().nullish().describe('Contract term in months')
+  "prazoContrato": zod.number().nullish().describe('Contract term in months'),
+  "exigeAgendamento": zod.boolean().optional()
 })
 
 
@@ -3283,6 +3494,7 @@ export const ListProdutosCatalogoParams = zod.object({
 })
 
 export const listProdutosCatalogoResponseProductTypeDefault = `physical`;
+export const listProdutosCatalogoResponseExigeAgendamentoDefault = false;
 
 export const ListProdutosCatalogoResponseItem = zod.object({
   "id": zod.string(),
@@ -3298,6 +3510,7 @@ export const ListProdutosCatalogoResponseItem = zod.object({
   "recorrencia": zod.enum(['mensal']).nullish().describe('Recurrence type — \"mensal\" for monthly service, null for one-time'),
   "prazoContrato": zod.number().nullish().describe('Contract term in months (e.g. 12 for annual contract)'),
   "productType": zod.enum(['physical', 'service', 'saas_plan', 'saas_addon']).default(listProdutosCatalogoResponseProductTypeDefault).describe('Product classification — saas_plan\/saas_addon hide stock quantity in UI'),
+  "exigeAgendamento": zod.boolean().default(listProdutosCatalogoResponseExigeAgendamentoDefault).describe('Quando true, a entrega deste produto obrigatoriamente precisa de data\/turno marcado (modo agendada)'),
   "createdAt": zod.coerce.date(),
   "updatedAt": zod.coerce.date()
 })
@@ -3312,6 +3525,7 @@ export const GetProdutoCatalogoParams = zod.object({
 })
 
 export const getProdutoCatalogoResponseProductTypeDefault = `physical`;
+export const getProdutoCatalogoResponseExigeAgendamentoDefault = false;
 
 export const GetProdutoCatalogoResponse = zod.object({
   "id": zod.string(),
@@ -3327,6 +3541,7 @@ export const GetProdutoCatalogoResponse = zod.object({
   "recorrencia": zod.enum(['mensal']).nullish().describe('Recurrence type — \"mensal\" for monthly service, null for one-time'),
   "prazoContrato": zod.number().nullish().describe('Contract term in months (e.g. 12 for annual contract)'),
   "productType": zod.enum(['physical', 'service', 'saas_plan', 'saas_addon']).default(getProdutoCatalogoResponseProductTypeDefault).describe('Product classification — saas_plan\/saas_addon hide stock quantity in UI'),
+  "exigeAgendamento": zod.boolean().default(getProdutoCatalogoResponseExigeAgendamentoDefault).describe('Quando true, a entrega deste produto obrigatoriamente precisa de data\/turno marcado (modo agendada)'),
   "createdAt": zod.coerce.date(),
   "updatedAt": zod.coerce.date()
 })
@@ -3349,10 +3564,12 @@ export const UpdateProdutoCatalogoBody = zod.object({
   "ativo": zod.boolean().optional(),
   "imagemUrl": zod.string().optional(),
   "recorrencia": zod.enum(['mensal']).nullish().describe('Recurrence type — \"mensal\" for monthly service, null for one-time'),
-  "prazoContrato": zod.number().nullish().describe('Contract term in months')
+  "prazoContrato": zod.number().nullish().describe('Contract term in months'),
+  "exigeAgendamento": zod.boolean().optional()
 })
 
 export const updateProdutoCatalogoResponseProductTypeDefault = `physical`;
+export const updateProdutoCatalogoResponseExigeAgendamentoDefault = false;
 
 export const UpdateProdutoCatalogoResponse = zod.object({
   "id": zod.string(),
@@ -3368,6 +3585,7 @@ export const UpdateProdutoCatalogoResponse = zod.object({
   "recorrencia": zod.enum(['mensal']).nullish().describe('Recurrence type — \"mensal\" for monthly service, null for one-time'),
   "prazoContrato": zod.number().nullish().describe('Contract term in months (e.g. 12 for annual contract)'),
   "productType": zod.enum(['physical', 'service', 'saas_plan', 'saas_addon']).default(updateProdutoCatalogoResponseProductTypeDefault).describe('Product classification — saas_plan\/saas_addon hide stock quantity in UI'),
+  "exigeAgendamento": zod.boolean().default(updateProdutoCatalogoResponseExigeAgendamentoDefault).describe('Quando true, a entrega deste produto obrigatoriamente precisa de data\/turno marcado (modo agendada)'),
   "createdAt": zod.coerce.date(),
   "updatedAt": zod.coerce.date()
 })
@@ -5085,6 +5303,7 @@ export const ListTenantUsersResponseItem = zod.object({
   "forcePasswordReset": zod.boolean().describe('If true, user must change their password on next login.'),
   "tenantVertical": zod.string().nullish().describe('Segment\/vertical of the tenant (e.g. \"Construção & Reforma\")'),
   "tenantLogoUrl": zod.string().nullish().describe('Logo URL of the tenant for co-branding'),
+  "limiteEntregasPorTurno": zod.string().nullish().describe('Limite de entregas por turno (só relevante para userFunction \"entrega\")'),
   "createdAt": zod.coerce.date(),
   "updatedAt": zod.coerce.date()
 })

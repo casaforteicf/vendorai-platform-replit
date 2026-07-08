@@ -145,6 +145,8 @@ export interface User {
   tenantVertical?: string | null;
   /** Logo URL of the tenant for co-branding */
   tenantLogoUrl?: string | null;
+  /** Limite de entregas por turno (só relevante para userFunction "entrega") */
+  limiteEntregasPorTurno?: string | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -714,6 +716,117 @@ export interface AgendamentoDisponibilidade {
   conflitos: Agendamento[];
 }
 
+export type EntregaModo = typeof EntregaModo[keyof typeof EntregaModo];
+
+
+export const EntregaModo = {
+  agendada: 'agendada',
+  assincrona: 'assincrona',
+} as const;
+
+export type EntregaStatus = typeof EntregaStatus[keyof typeof EntregaStatus];
+
+
+export const EntregaStatus = {
+  aguardando: 'aguardando',
+  agendada: 'agendada',
+  em_transito: 'em_transito',
+  entregue: 'entregue',
+  cancelada: 'cancelada',
+} as const;
+
+export type EntregaPeriodo = typeof EntregaPeriodo[keyof typeof EntregaPeriodo];
+
+
+export const EntregaPeriodo = {
+  manha: 'manha',
+  tarde: 'tarde',
+} as const;
+
+export interface EntregaItem {
+  nome: string;
+  quantidade: number;
+  sku?: string;
+}
+
+export interface Entrega {
+  id: string;
+  tenantId: string;
+  dealId: string;
+  propostaId?: string | null;
+  leadId?: string | null;
+  assignedTo?: string | null;
+  modo: EntregaModo;
+  status: EntregaStatus;
+  periodo?: EntregaPeriodo;
+  dataPrevista?: string | null;
+  dataEntregue?: string | null;
+  agendamentoId?: string | null;
+  enderecoEntrega?: string | null;
+  itens: EntregaItem[];
+  observacoes?: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface CreateEntregaBody {
+  tenantId: string;
+  dealId: string;
+  propostaId?: string;
+  leadId?: string;
+  assignedTo?: string;
+  modo?: EntregaModo;
+  status?: EntregaStatus;
+  periodo?: EntregaPeriodo;
+  dataPrevista?: string;
+  enderecoEntrega?: string;
+  itens?: EntregaItem[];
+  observacoes?: string;
+}
+
+export interface UpdateEntregaBody {
+  assignedTo?: string;
+  modo?: EntregaModo;
+  status?: EntregaStatus;
+  periodo?: EntregaPeriodo;
+  dataPrevista?: string;
+  dataEntregue?: string;
+  enderecoEntrega?: string;
+  observacoes?: string;
+}
+
+export type BloqueioPeriodo = typeof BloqueioPeriodo[keyof typeof BloqueioPeriodo];
+
+
+export const BloqueioPeriodo = {
+  dia_inteiro: 'dia_inteiro',
+  manha: 'manha',
+  tarde: 'tarde',
+} as const;
+
+export interface BloqueioAgenda {
+  id: string;
+  tenantId: string;
+  responsavelId: string;
+  dataInicio: string;
+  dataFim: string;
+  periodo: BloqueioPeriodo;
+  motivo?: string | null;
+  criadoPor?: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface CreateBloqueioAgendaBody {
+  tenantId: string;
+  responsavelId: string;
+  dataInicio: string;
+  dataFim: string;
+  periodo?: BloqueioPeriodo;
+  motivo?: string;
+  criadoPor?: string;
+}
+
 /**
  * Recurrence type — "mensal" for monthly service, null for one-time
  */
@@ -757,6 +870,8 @@ export interface ProdutoCatalogo {
   prazoContrato?: number | null;
   /** Product classification — saas_plan/saas_addon hide stock quantity in UI */
   productType?: ProdutoCatalogoProductType;
+  /** Quando true, a entrega deste produto obrigatoriamente precisa de data/turno marcado (modo agendada) */
+  exigeAgendamento?: boolean;
   createdAt: string;
   updatedAt: string;
 }
@@ -787,6 +902,7 @@ export interface CreateProdutoCatalogoBody {
   recorrencia?: CreateProdutoCatalogoBodyRecorrencia;
   /** Contract term in months */
   prazoContrato?: number | null;
+  exigeAgendamento?: boolean;
 }
 
 /**
@@ -812,6 +928,7 @@ export interface UpdateProdutoCatalogoBody {
   recorrencia?: UpdateProdutoCatalogoBodyRecorrencia;
   /** Contract term in months */
   prazoContrato?: number | null;
+  exigeAgendamento?: boolean;
 }
 
 export interface ImportProdutosCatalogoBody {
@@ -2912,6 +3029,7 @@ export interface CreateUserBody {
   userFunction?: UserFunction;
   telefone?: string;
   active?: boolean;
+  limiteEntregasPorTurno?: string | number;
 }
 
 export interface UpdateUserBody {
@@ -2923,6 +3041,7 @@ export interface UpdateUserBody {
   userFunction?: UserFunction;
   telefone?: string;
   active?: boolean;
+  limiteEntregasPorTurno?: string | number;
 }
 
 export type LeadFilhosItem = {
@@ -5532,6 +5651,16 @@ from: string;
  * End of the window to check (ISO 8601)
  */
 to: string;
+};
+
+export type ListEntregasParams = {
+dealId?: string;
+status?: EntregaStatus;
+assignedTo?: string;
+};
+
+export type ListBloqueiosAgendaParams = {
+responsavelId?: string;
 };
 
 export type ExportIntelligenceAnalysisLogParams = {

@@ -34,6 +34,7 @@ const FlowExecutions     = lazy(() => import("@/pages/prospector/FlowExecutions"
 const Deals              = lazy(() => import("@/pages/Deals"));
 const Conversations      = lazy(() => import("@/pages/Conversations"));
 const Agenda             = lazy(() => import("@/pages/Agenda"));
+const MinhasEntregas      = lazy(() => import("@/pages/MinhasEntregas"));
 const Configuracoes      = lazy(() => import("@/pages/Configuracoes"));
 const Usuarios           = lazy(() => import("@/pages/Usuarios"));
 const Campanhas          = lazy(() => import("@/pages/Campanhas"));
@@ -463,6 +464,9 @@ function AppRoutes() {
         </Route>
         <Route path="/agenda">
           <ProtectedRoute component={Agenda} />
+        </Route>
+        <Route path="/entregas">
+          <ProtectedRoute component={MinhasEntregas} />
         </Route>
         <Route path="/configuracoes">
           <ProtectedRoute component={Configuracoes} />

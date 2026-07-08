@@ -19,6 +19,7 @@ import { logger } from "./logger.js";
 import { checkCatalogMatch } from "./catalog-price-check.js";
 import { sendDirectWhatsAppMessage } from "../services/omnichannel.js";
 import { triggerOnboardingHandoff } from "./agent-engine.js";
+import { createEntregasFromProposta } from "./entregas.js";
 
 export type ProposalAcceptanceChannel = "link" | "whatsapp" | "manual";
 
@@ -391,6 +392,13 @@ export async function proposalAccepted(
     inventoryDeducted = true;
   } catch (err) {
     log.warn({ err, dealId: deal.id }, "proposalAccepted: inventory deduction failed");
+  }
+
+  // 6b. Create entregas (Agenda de entrega por motorista) — best-effort
+  try {
+    await createEntregasFromProposta(propostaId, log);
+  } catch (err) {
+    log.warn({ err, dealId: deal.id }, "proposalAccepted: entrega creation failed (non-fatal)");
   }
 
   // 7. Dispatch ERP webhook (non-blocking)

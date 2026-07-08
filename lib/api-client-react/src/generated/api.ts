@@ -37,6 +37,7 @@ import type {
   ArchPromptVariation,
   ArqProject,
   AuthResponse,
+  BloqueioAgenda,
   BusinessProfile,
   Campaign,
   CampaignAudiencePreview,
@@ -64,12 +65,14 @@ import type {
   CreateAieSnapshotBody,
   CreateArchPromptVariationBody,
   CreateArqProjectBody,
+  CreateBloqueioAgendaBody,
   CreateBusinessProfileBody,
   CreateCampaignBody,
   CreateConsentBody,
   CreateConversationBody,
   CreateCustomerIntelligenceBody,
   CreateDealBody,
+  CreateEntregaBody,
   CreateFunilBody,
   CreateInventoryItemBody,
   CreateInventoryMovementBody,
@@ -117,6 +120,7 @@ import type {
   DismissDuplicateLead200,
   DispararSupermercadoCampanha200,
   DocumentExtractionResult,
+  Entrega,
   ErrorResponse,
   EstoqueCentralItem,
   EstoqueObraItem,
@@ -160,9 +164,11 @@ import type {
   LinkTenantPartnerBody,
   ListActivitiesParams,
   ListAgendamentosParams,
+  ListBloqueiosAgendaParams,
   ListComposicoesParams,
   ListContentResponse,
   ListDealsParams,
+  ListEntregasParams,
   ListInsumosParams,
   ListIntelligenceAnalysisLogParams,
   ListInventoryMovementsParams,
@@ -273,6 +279,7 @@ import type {
   UpdateConversationBody,
   UpdateCustomerIntelligenceBody,
   UpdateDealBody,
+  UpdateEntregaBody,
   UpdateFunilBody,
   UpdateIntegrationSettingsBody,
   UpdateInventoryItemBody,
@@ -8387,6 +8394,554 @@ export const useDeleteAgendamento = <TError = ErrorType<ErrorResponse>,
         TContext
       > => {
       return useMutation(getDeleteAgendamentoMutationOptions(options));
+    }
+
+export const getListEntregasUrl = (tenantId: string,
+    params?: ListEntregasParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : value.toString())
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/api/tenants/${tenantId}/entregas?${stringifiedParams}` : `/api/tenants/${tenantId}/entregas`
+}
+
+/**
+ * Filtered automatically by assignedTo when the requesting user has
+userFunction "entrega" (or "vendedor")/platformRole tenant_seller.
+
+ * @summary List entregas by tenant
+ */
+export const listEntregas = async (tenantId: string,
+    params?: ListEntregasParams, options?: RequestInit): Promise<Entrega[]> => {
+
+  return customFetch<Entrega[]>(getListEntregasUrl(tenantId,params),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getListEntregasQueryKey = (tenantId: string,
+    params?: ListEntregasParams,) => {
+    return [
+    `/api/tenants/${tenantId}/entregas`, ...(params ? [params] : [])
+    ] as const;
+    }
+
+
+export const getListEntregasQueryOptions = <TData = Awaited<ReturnType<typeof listEntregas>>, TError = ErrorType<unknown>>(tenantId: string,
+    params?: ListEntregasParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listEntregas>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getListEntregasQueryKey(tenantId,params);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof listEntregas>>> = ({ signal }) => listEntregas(tenantId,params, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, enabled: !!(tenantId), ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof listEntregas>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type ListEntregasQueryResult = NonNullable<Awaited<ReturnType<typeof listEntregas>>>
+export type ListEntregasQueryError = ErrorType<unknown>
+
+
+/**
+ * @summary List entregas by tenant
+ */
+
+export function useListEntregas<TData = Awaited<ReturnType<typeof listEntregas>>, TError = ErrorType<unknown>>(
+ tenantId: string,
+    params?: ListEntregasParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listEntregas>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getListEntregasQueryOptions(tenantId,params,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+
+
+
+
+
+
+export const getCreateEntregaUrl = (tenantId: string,) => {
+
+
+
+
+  return `/api/tenants/${tenantId}/entregas`
+}
+
+/**
+ * @summary Create entrega manually
+ */
+export const createEntrega = async (tenantId: string,
+    createEntregaBody: CreateEntregaBody, options?: RequestInit): Promise<Entrega> => {
+
+  return customFetch<Entrega>(getCreateEntregaUrl(tenantId),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(
+      createEntregaBody,)
+  }
+);}
+
+
+
+
+export const getCreateEntregaMutationOptions = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createEntrega>>, TError,{tenantId: string;data: BodyType<CreateEntregaBody>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof createEntrega>>, TError,{tenantId: string;data: BodyType<CreateEntregaBody>}, TContext> => {
+
+const mutationKey = ['createEntrega'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof createEntrega>>, {tenantId: string;data: BodyType<CreateEntregaBody>}> = (props) => {
+          const {tenantId,data} = props ?? {};
+
+          return  createEntrega(tenantId,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type CreateEntregaMutationResult = NonNullable<Awaited<ReturnType<typeof createEntrega>>>
+    export type CreateEntregaMutationBody = BodyType<CreateEntregaBody>
+    export type CreateEntregaMutationError = ErrorType<ErrorResponse>
+
+    /**
+ * @summary Create entrega manually
+ */
+export const useCreateEntrega = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createEntrega>>, TError,{tenantId: string;data: BodyType<CreateEntregaBody>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof createEntrega>>,
+        TError,
+        {tenantId: string;data: BodyType<CreateEntregaBody>},
+        TContext
+      > => {
+      return useMutation(getCreateEntregaMutationOptions(options));
+    }
+
+export const getGetEntregaUrl = (id: string,) => {
+
+
+
+
+  return `/api/entregas/${id}`
+}
+
+/**
+ * @summary Get entrega by ID
+ */
+export const getEntrega = async (id: string, options?: RequestInit): Promise<Entrega> => {
+
+  return customFetch<Entrega>(getGetEntregaUrl(id),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetEntregaQueryKey = (id: string,) => {
+    return [
+    `/api/entregas/${id}`
+    ] as const;
+    }
+
+
+export const getGetEntregaQueryOptions = <TData = Awaited<ReturnType<typeof getEntrega>>, TError = ErrorType<ErrorResponse>>(id: string, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getEntrega>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetEntregaQueryKey(id);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getEntrega>>> = ({ signal }) => getEntrega(id, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, enabled: !!(id), ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getEntrega>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetEntregaQueryResult = NonNullable<Awaited<ReturnType<typeof getEntrega>>>
+export type GetEntregaQueryError = ErrorType<ErrorResponse>
+
+
+/**
+ * @summary Get entrega by ID
+ */
+
+export function useGetEntrega<TData = Awaited<ReturnType<typeof getEntrega>>, TError = ErrorType<ErrorResponse>>(
+ id: string, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getEntrega>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetEntregaQueryOptions(id,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+
+
+
+
+
+
+export const getUpdateEntregaUrl = (id: string,) => {
+
+
+
+
+  return `/api/entregas/${id}`
+}
+
+/**
+ * When setting status=agendada with dataPrevista+periodo, the server
+enforces limiteEntregasPorTurno for the assigned motorista and may
+return 409 if the turno is full.
+
+ * @summary Update entrega (status, assignment, scheduling)
+ */
+export const updateEntrega = async (id: string,
+    updateEntregaBody: UpdateEntregaBody, options?: RequestInit): Promise<Entrega> => {
+
+  return customFetch<Entrega>(getUpdateEntregaUrl(id),
+  {
+    ...options,
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(
+      updateEntregaBody,)
+  }
+);}
+
+
+
+
+export const getUpdateEntregaMutationOptions = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updateEntrega>>, TError,{id: string;data: BodyType<UpdateEntregaBody>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof updateEntrega>>, TError,{id: string;data: BodyType<UpdateEntregaBody>}, TContext> => {
+
+const mutationKey = ['updateEntrega'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof updateEntrega>>, {id: string;data: BodyType<UpdateEntregaBody>}> = (props) => {
+          const {id,data} = props ?? {};
+
+          return  updateEntrega(id,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type UpdateEntregaMutationResult = NonNullable<Awaited<ReturnType<typeof updateEntrega>>>
+    export type UpdateEntregaMutationBody = BodyType<UpdateEntregaBody>
+    export type UpdateEntregaMutationError = ErrorType<ErrorResponse>
+
+    /**
+ * @summary Update entrega (status, assignment, scheduling)
+ */
+export const useUpdateEntrega = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updateEntrega>>, TError,{id: string;data: BodyType<UpdateEntregaBody>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof updateEntrega>>,
+        TError,
+        {id: string;data: BodyType<UpdateEntregaBody>},
+        TContext
+      > => {
+      return useMutation(getUpdateEntregaMutationOptions(options));
+    }
+
+export const getListBloqueiosAgendaUrl = (tenantId: string,
+    params?: ListBloqueiosAgendaParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : value.toString())
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/api/tenants/${tenantId}/bloqueios-agenda?${stringifiedParams}` : `/api/tenants/${tenantId}/bloqueios-agenda`
+}
+
+/**
+ * @summary List agenda blocks by tenant
+ */
+export const listBloqueiosAgenda = async (tenantId: string,
+    params?: ListBloqueiosAgendaParams, options?: RequestInit): Promise<BloqueioAgenda[]> => {
+
+  return customFetch<BloqueioAgenda[]>(getListBloqueiosAgendaUrl(tenantId,params),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getListBloqueiosAgendaQueryKey = (tenantId: string,
+    params?: ListBloqueiosAgendaParams,) => {
+    return [
+    `/api/tenants/${tenantId}/bloqueios-agenda`, ...(params ? [params] : [])
+    ] as const;
+    }
+
+
+export const getListBloqueiosAgendaQueryOptions = <TData = Awaited<ReturnType<typeof listBloqueiosAgenda>>, TError = ErrorType<unknown>>(tenantId: string,
+    params?: ListBloqueiosAgendaParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listBloqueiosAgenda>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getListBloqueiosAgendaQueryKey(tenantId,params);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof listBloqueiosAgenda>>> = ({ signal }) => listBloqueiosAgenda(tenantId,params, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, enabled: !!(tenantId), ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof listBloqueiosAgenda>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type ListBloqueiosAgendaQueryResult = NonNullable<Awaited<ReturnType<typeof listBloqueiosAgenda>>>
+export type ListBloqueiosAgendaQueryError = ErrorType<unknown>
+
+
+/**
+ * @summary List agenda blocks by tenant
+ */
+
+export function useListBloqueiosAgenda<TData = Awaited<ReturnType<typeof listBloqueiosAgenda>>, TError = ErrorType<unknown>>(
+ tenantId: string,
+    params?: ListBloqueiosAgendaParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listBloqueiosAgenda>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getListBloqueiosAgendaQueryOptions(tenantId,params,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+
+
+
+
+
+
+export const getCreateBloqueioAgendaUrl = (tenantId: string,) => {
+
+
+
+
+  return `/api/tenants/${tenantId}/bloqueios-agenda`
+}
+
+/**
+ * @summary Create an agenda block (mark a user unavailable for a period)
+ */
+export const createBloqueioAgenda = async (tenantId: string,
+    createBloqueioAgendaBody: CreateBloqueioAgendaBody, options?: RequestInit): Promise<BloqueioAgenda> => {
+
+  return customFetch<BloqueioAgenda>(getCreateBloqueioAgendaUrl(tenantId),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(
+      createBloqueioAgendaBody,)
+  }
+);}
+
+
+
+
+export const getCreateBloqueioAgendaMutationOptions = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createBloqueioAgenda>>, TError,{tenantId: string;data: BodyType<CreateBloqueioAgendaBody>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof createBloqueioAgenda>>, TError,{tenantId: string;data: BodyType<CreateBloqueioAgendaBody>}, TContext> => {
+
+const mutationKey = ['createBloqueioAgenda'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof createBloqueioAgenda>>, {tenantId: string;data: BodyType<CreateBloqueioAgendaBody>}> = (props) => {
+          const {tenantId,data} = props ?? {};
+
+          return  createBloqueioAgenda(tenantId,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type CreateBloqueioAgendaMutationResult = NonNullable<Awaited<ReturnType<typeof createBloqueioAgenda>>>
+    export type CreateBloqueioAgendaMutationBody = BodyType<CreateBloqueioAgendaBody>
+    export type CreateBloqueioAgendaMutationError = ErrorType<ErrorResponse>
+
+    /**
+ * @summary Create an agenda block (mark a user unavailable for a period)
+ */
+export const useCreateBloqueioAgenda = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createBloqueioAgenda>>, TError,{tenantId: string;data: BodyType<CreateBloqueioAgendaBody>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof createBloqueioAgenda>>,
+        TError,
+        {tenantId: string;data: BodyType<CreateBloqueioAgendaBody>},
+        TContext
+      > => {
+      return useMutation(getCreateBloqueioAgendaMutationOptions(options));
+    }
+
+export const getDeleteBloqueioAgendaUrl = (id: string,) => {
+
+
+
+
+  return `/api/bloqueios-agenda/${id}`
+}
+
+/**
+ * @summary Delete an agenda block
+ */
+export const deleteBloqueioAgenda = async (id: string, options?: RequestInit): Promise<void> => {
+
+  return customFetch<void>(getDeleteBloqueioAgendaUrl(id),
+  {
+    ...options,
+    method: 'DELETE'
+
+
+  }
+);}
+
+
+
+
+export const getDeleteBloqueioAgendaMutationOptions = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof deleteBloqueioAgenda>>, TError,{id: string}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof deleteBloqueioAgenda>>, TError,{id: string}, TContext> => {
+
+const mutationKey = ['deleteBloqueioAgenda'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof deleteBloqueioAgenda>>, {id: string}> = (props) => {
+          const {id} = props ?? {};
+
+          return  deleteBloqueioAgenda(id,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type DeleteBloqueioAgendaMutationResult = NonNullable<Awaited<ReturnType<typeof deleteBloqueioAgenda>>>
+
+    export type DeleteBloqueioAgendaMutationError = ErrorType<ErrorResponse>
+
+    /**
+ * @summary Delete an agenda block
+ */
+export const useDeleteBloqueioAgenda = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof deleteBloqueioAgenda>>, TError,{id: string}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof deleteBloqueioAgenda>>,
+        TError,
+        {id: string},
+        TContext
+      > => {
+      return useMutation(getDeleteBloqueioAgendaMutationOptions(options));
     }
 
 export const getCreateProdutoCatalogoUrl = () => {

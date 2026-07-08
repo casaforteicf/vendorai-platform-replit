@@ -25,6 +25,8 @@ export interface User {
   tenantVertical?: string | null;
   /** Logo URL of the tenant for co-branding */
   tenantLogoUrl?: string | null;
+  /** Limite de entregas por turno (só relevante para userFunction "entrega") */
+  limiteEntregasPorTurno?: string | null;
   createdAt: Date;
   updatedAt: Date;
 }

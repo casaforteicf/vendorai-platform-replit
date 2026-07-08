@@ -155,3 +155,5 @@ export * from "./arch_specifications";
 export * from "./arch_partners";
 export * from "./arch_knowledge";
 export * from "./arch_office_templates";
+export * from "./entregas";
+export * from "./bloqueios_agenda";

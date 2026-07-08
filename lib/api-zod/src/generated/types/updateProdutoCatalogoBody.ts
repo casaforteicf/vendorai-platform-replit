@@ -20,4 +20,5 @@ export interface UpdateProdutoCatalogoBody {
   recorrencia?: UpdateProdutoCatalogoBodyRecorrencia;
   /** Contract term in months */
   prazoContrato?: number | null;
+  exigeAgendamento?: boolean;
 }

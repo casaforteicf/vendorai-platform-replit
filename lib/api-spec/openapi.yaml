@@ -3270,6 +3270,230 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
 
+  /tenants/{tenantId}/entregas:
+    get:
+      operationId: listEntregas
+      tags: [schedule-hub]
+      summary: List entregas by tenant
+      description: |
+        Filtered automatically by assignedTo when the requesting user has
+        userFunction "entrega" (or "vendedor")/platformRole tenant_seller.
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: tenantId
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: dealId
+          in: query
+          schema:
+            type: string
+        - name: status
+          in: query
+          schema:
+            $ref: "#/components/schemas/EntregaStatus"
+        - name: assignedTo
+          in: query
+          schema:
+            type: string
+      responses:
+        "200":
+          description: List of entregas
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Entrega"
+    post:
+      operationId: createEntrega
+      tags: [schedule-hub]
+      summary: Create entrega manually
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: tenantId
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateEntregaBody"
+      responses:
+        "201":
+          description: Entrega created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Entrega"
+        "422":
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /entregas/{id}:
+    get:
+      operationId: getEntrega
+      tags: [schedule-hub]
+      summary: Get entrega by ID
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Entrega
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Entrega"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+    patch:
+      operationId: updateEntrega
+      tags: [schedule-hub]
+      summary: Update entrega (status, assignment, scheduling)
+      description: |
+        When setting status=agendada with dataPrevista+periodo, the server
+        enforces limiteEntregasPorTurno for the assigned motorista and may
+        return 409 if the turno is full.
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateEntregaBody"
+      responses:
+        "200":
+          description: Updated entrega
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Entrega"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "409":
+          description: Turno cheio para este motorista/data
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "422":
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /tenants/{tenantId}/bloqueios-agenda:
+    get:
+      operationId: listBloqueiosAgenda
+      tags: [schedule-hub]
+      summary: List agenda blocks by tenant
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: tenantId
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: responsavelId
+          in: query
+          schema:
+            type: string
+      responses:
+        "200":
+          description: List of bloqueios
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/BloqueioAgenda"
+    post:
+      operationId: createBloqueioAgenda
+      tags: [schedule-hub]
+      summary: Create an agenda block (mark a user unavailable for a period)
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: tenantId
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateBloqueioAgendaBody"
+      responses:
+        "201":
+          description: Bloqueio created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BloqueioAgenda"
+        "422":
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /bloqueios-agenda/{id}:
+    delete:
+      operationId: deleteBloqueioAgenda
+      tags: [schedule-hub]
+      summary: Delete an agenda block
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "204":
+          description: Deleted
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
   /produtos-catalogo:
     post:
       operationId: createProdutoCatalogo
@@ -10654,6 +10878,192 @@ components:
             $ref: "#/components/schemas/Agendamento"
       required: [disponivel, conflitos]
 
+    EntregaModo:
+      type: string
+      enum: [agendada, assincrona]
+
+    EntregaStatus:
+      type: string
+      enum: [aguardando, agendada, em_transito, entregue, cancelada]
+
+    EntregaPeriodo:
+      type: string
+      enum: [manha, tarde]
+
+    EntregaItem:
+      type: object
+      properties:
+        nome:
+          type: string
+        quantidade:
+          type: number
+        sku:
+          type: string
+      required: [nome, quantidade]
+
+    Entrega:
+      type: object
+      properties:
+        id:
+          type: string
+        tenantId:
+          type: string
+        dealId:
+          type: string
+        propostaId:
+          type: string
+          nullable: true
+        leadId:
+          type: string
+          nullable: true
+        assignedTo:
+          type: string
+          nullable: true
+        modo:
+          $ref: "#/components/schemas/EntregaModo"
+        status:
+          $ref: "#/components/schemas/EntregaStatus"
+        periodo:
+          $ref: "#/components/schemas/EntregaPeriodo"
+        dataPrevista:
+          type: string
+          format: date-time
+          nullable: true
+        dataEntregue:
+          type: string
+          format: date-time
+          nullable: true
+        agendamentoId:
+          type: string
+          nullable: true
+        enderecoEntrega:
+          type: string
+          nullable: true
+        itens:
+          type: array
+          items:
+            $ref: "#/components/schemas/EntregaItem"
+        observacoes:
+          type: string
+          nullable: true
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+      required: [id, tenantId, dealId, modo, status, itens, createdAt, updatedAt]
+
+    CreateEntregaBody:
+      type: object
+      properties:
+        tenantId:
+          type: string
+        dealId:
+          type: string
+        propostaId:
+          type: string
+        leadId:
+          type: string
+        assignedTo:
+          type: string
+        modo:
+          $ref: "#/components/schemas/EntregaModo"
+        status:
+          $ref: "#/components/schemas/EntregaStatus"
+        periodo:
+          $ref: "#/components/schemas/EntregaPeriodo"
+        dataPrevista:
+          type: string
+          format: date-time
+        enderecoEntrega:
+          type: string
+        itens:
+          type: array
+          items:
+            $ref: "#/components/schemas/EntregaItem"
+        observacoes:
+          type: string
+      required: [tenantId, dealId]
+
+    UpdateEntregaBody:
+      type: object
+      properties:
+        assignedTo:
+          type: string
+        modo:
+          $ref: "#/components/schemas/EntregaModo"
+        status:
+          $ref: "#/components/schemas/EntregaStatus"
+        periodo:
+          $ref: "#/components/schemas/EntregaPeriodo"
+        dataPrevista:
+          type: string
+          format: date-time
+        dataEntregue:
+          type: string
+          format: date-time
+        enderecoEntrega:
+          type: string
+        observacoes:
+          type: string
+
+    BloqueioPeriodo:
+      type: string
+      enum: [dia_inteiro, manha, tarde]
+
+    BloqueioAgenda:
+      type: object
+      properties:
+        id:
+          type: string
+        tenantId:
+          type: string
+        responsavelId:
+          type: string
+        dataInicio:
+          type: string
+          format: date-time
+        dataFim:
+          type: string
+          format: date-time
+        periodo:
+          $ref: "#/components/schemas/BloqueioPeriodo"
+        motivo:
+          type: string
+          nullable: true
+        criadoPor:
+          type: string
+          nullable: true
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+      required: [id, tenantId, responsavelId, dataInicio, dataFim, periodo, createdAt, updatedAt]
+
+    CreateBloqueioAgendaBody:
+      type: object
+      properties:
+        tenantId:
+          type: string
+        responsavelId:
+          type: string
+        dataInicio:
+          type: string
+          format: date-time
+        dataFim:
+          type: string
+          format: date-time
+        periodo:
+          $ref: "#/components/schemas/BloqueioPeriodo"
+        motivo:
+          type: string
+        criadoPor:
+          type: string
+      required: [tenantId, responsavelId, dataInicio, dataFim]
+
     ProdutoCatalogo:
       type: object
       properties:
@@ -10698,6 +11108,10 @@ components:
           enum: [physical, service, saas_plan, saas_addon]
           default: physical
           description: Product classification — saas_plan/saas_addon hide stock quantity in UI
+        exigeAgendamento:
+          type: boolean
+          default: false
+          description: Quando true, a entrega deste produto obrigatoriamente precisa de data/turno marcado (modo agendada)
         createdAt:
           type: string
           format: date-time
@@ -10740,6 +11154,8 @@ components:
           type: integer
           nullable: true
           description: Contract term in months
+        exigeAgendamento:
+          type: boolean
       required: [tenantId, nome, precoBase]
 
     UpdateProdutoCatalogoBody:
@@ -10772,6 +11188,8 @@ components:
           type: integer
           nullable: true
           description: Contract term in months
+        exigeAgendamento:
+          type: boolean
 
     ImportProdutosCatalogoBody:
       type: object
@@ -14368,6 +14786,10 @@ components:
           type: string
           nullable: true
           description: Logo URL of the tenant for co-branding
+        limiteEntregasPorTurno:
+          type: string
+          nullable: true
+          description: Limite de entregas por turno (só relevante para userFunction "entrega")
         createdAt:
           type: string
           format: date-time
@@ -14407,6 +14829,10 @@ components:
           type: string
         active:
           type: boolean
+        limiteEntregasPorTurno:
+          oneOf:
+            - type: string
+            - type: number
       required:
         - tenantId
         - name
@@ -14432,6 +14858,10 @@ components:
           type: string
         active:
           type: boolean
+        limiteEntregasPorTurno:
+          oneOf:
+            - type: string
+            - type: number
 
     Lead:
       type: object

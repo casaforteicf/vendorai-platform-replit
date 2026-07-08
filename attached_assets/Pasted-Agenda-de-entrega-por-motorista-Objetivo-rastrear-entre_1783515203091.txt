@@ -1,0 +1,66 @@
+Agenda de entrega por motorista
+Objetivo: rastrear entrega de produto físico após venda fechada, no CRM geral (não específico de vertical), com dois modos — compromisso com hora marcada ou status assíncrono — atribuída a um motorista (usuário com userFunction: "entrega"), respeitando limite de entregas por turno.
+Decisões já confirmadas:
+Sem tabela veiculos — o controle é só por motorista (usuário), não por veículo específico.
+Motorista precisa logar no sistema e ver só as entregas dele — reaproveita o mecanismo já existente buildUserFunctionFilter (que já inclui userFunction === "entrega" na condição, mesmo sem a feature existir ainda), desde que o campo se chame assignedTo.
+Motorista não é tabela separada — é um user com userFunction: "entrega", mesmo padrão já usado para vendedor.
+Notificação via Google Calendar reaproveita a integração já conectada (lib/google-calendar.ts, OAuth por agenda já implementado) — não precisa construir integração nova.
+Schema:
+Nova tabela: entregas
+- id, tenantId
+- dealId (FK → deals)
+- propostaId (FK → propostas, nullable)
+- leadId (denormalizado)
+- assignedTo (FK → users — mesmo campo usado em leads/deals, 
+  reaproveita buildUserFunctionFilter sem alteração)
+- modo: "agendada" | "assincrona"
+- status: "aguardando" | "agendada" | "em_transito" | "entregue" | "cancelada"
+- periodo: "manha" | "tarde" (usado quando modo="agendada" sem hora fixa)
+- dataPrevista, dataEntregue
+- agendamentoId (FK → agendamentos, nullable — vincula ao tipo 
+  "instalacao" já existente no enum, hoje sem uso real)
+- enderecoEntrega
+- itens (jsonb — itens da proposta incluídos nessa entrega, 
+  permite entrega parcial)
+- observacoes
+
+produtos_catalogo (1 campo novo)
+- exigeAgendamento: boolean (default false)
+  → false: produto simples, entrega vira assíncrona (só status)
+  → true: obrigatoriamente modo="agendada", precisa hora/turno marcado
+
+users (1 campo novo, só relevante para userFunction="entrega")
+- limiteEntregasPorTurno (numeric — limite configurável por motorista)
+Regra de criação automática: Quando proposalAccepted() completa (após aprovação do Bloco 1), criar automaticamente um ou mais registros em entregas a partir dos itens da proposta, status inicial "aguardando". Itens com exigeAgendamento=true ficam pendentes de marcação de data/turno; os demais seguem fluxo assíncrono de status.
+Regra de limite por turno:
+Antes de confirmar uma entrega num motorista/data/período:
+  contarEntregas = COUNT(entregas WHERE assignedTo = X 
+                          AND dataPrevista = Y AND periodo = Z 
+                          AND status NOT IN ('cancelada'))
+
+  SE contarEntregas >= usuario.limiteEntregasPorTurno:
+      → não permite agendar nesse motorista/turno
+      → sugere próximo turno/motorista disponível
+  SENÃO:
+      → confirma a entrega
+Notificação: ao atribuir/confirmar uma entrega a um motorista, criar evento na agenda vinculada a ele (mesmo mecanismo de Google Calendar/Meet já usado para reuniões) e, se o motorista tiver e-mail, notificar também por e-mail.
+Frontend: tela nova "Minhas Entregas", espelhando a estrutura de Leads.tsx/Deals.tsx (tabela + status). Backend já filtra automaticamente por assignedTo quando userFunction === "entrega" — não precisa lógica de permissão nova.
+Múltiplos motoristas: o desenho já suporta N motoristas nativamente (assignedTo é sempre um user qualquer). Ao sugerir turno disponível:
+Atribuição automática (IA): reaproveita round-robin (lastAssignedAt, mesmo padrão de vendedor) — verifica todos os motoristas elegíveis do turno pedido, só recusa a data se todos estiverem no limite (limiteEntregasPorTurno). Mais motoristas = mais capacidade agregada.
+Atribuição manual (vendedor, cliente presencial): reaproveitar o modal AgendarReuniaoModal.tsx já existente — já resolve disponibilidade via GET /agendamentos/slots, já tem campo responsavelId (= motorista), já evita conflito de horário. Precisa apenas: (a) adaptar cálculo de slot pra pensar em turno (manhã/tarde) em vez de horário exato, e (b) aplicar limiteEntregasPorTurno na checagem de disponibilidade, além do conflito de horário que já é verificado.
+
+Bloqueio de agenda / indisponibilidade
+Objetivo: permitir marcar um usuário (motorista, vendedor, qualquer responsavelId) como indisponível num período, impedindo que o sistema sugira horários/turnos pra ele nesse intervalo — hoje isso não existe, a única forma de "bloquear" é criar um evento fake no Google Calendar.
+Schema:
+Nova tabela: bloqueios_agenda
+- id, tenantId
+- responsavelId (FK → users)
+- dataInicio, dataFim
+- periodo: "dia_inteiro" | "manha" | "tarde"
+- motivo (texto livre: "folga", "férias", "outro")
+- criadoPor (FK → users)
+Implementação:
+Estender o cálculo de disponibilidade em GET /agendamentos/slots (hoje só olha agendamentosTable + Google Calendar) para somar também bloqueios_agenda como fonte de ocupação.
+Na lógica de round-robin de motorista (Bloco 7), pular automaticamente qualquer motorista bloqueado naquele turno antes mesmo de checar limiteEntregasPorTurno.
+Tela simples: botão "Bloquear agenda" na tela de Agenda ou no perfil do usuário — escolhe período, motivo, salva.
+

@@ -37,6 +37,7 @@ export const produtosCatalogoTable = pgTable("produtos_catalogo", {
   dimensoes: jsonb("dimensoes").$type<ProdutoDimensoes>(),
   recorrencia: text("recorrencia"),
   prazoContrato: integer("prazo_contrato"),
+  exigeAgendamento: boolean("exige_agendamento").notNull().default(false),
   createdAt: timestamp("created_at").notNull().defaultNow(),
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
 });

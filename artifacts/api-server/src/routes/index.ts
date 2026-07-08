@@ -23,6 +23,8 @@ import agendasRouter, { googleCallbackRouter } from "./agendas";
 import { instagramCallbackRouter } from "./instagram-auth";
 import { whatsappCallbackRouter } from "./whatsapp-auth";
 import agendamentosRouter from "./agendamentos";
+import entregasRouter from "./entregas";
+import bloqueiosAgendaRouter from "./bloqueios_agenda";
 import subscriptionsRouter from "./subscriptions";
 import invoicesRouter from "./invoices";
 import dashboardRouter from "./dashboard";
@@ -177,6 +179,8 @@ router.use(produtosCatalogoRouter);
 // Schedule Hub
 router.use(agendasRouter);
 router.use(agendamentosRouter);
+router.use(entregasRouter);
+router.use(bloqueiosAgendaRouter);
 
 // Billing Hub
 router.use(subscriptionsRouter);
