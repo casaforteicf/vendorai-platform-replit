@@ -4,6 +4,7 @@ import { ProcurementDashboard } from "./ProcurementDashboard";
 import { ProcurementSuppliers } from "./ProcurementSuppliers";
 import Quotations from "./quotations/Quotations";
 import ReceivingInventoryStudio from "./receiving-inventory/ReceivingInventoryStudio";
+import ProcurementAnalytics from "./ai-analytics/ProcurementAnalytics";
 import { PurchaseRequestInspector } from "./PurchaseRequestInspector";
 import { purchaseRequests } from "./procurementData";
 import type { ProcurementView, PurchaseRequest } from "./procurementTypes";
@@ -103,7 +104,7 @@ function Content({
   if (view === "receiving") return <ReceivingInventoryStudio onNavigate={onNavigate} />;
   if (view === "inventory") return <ReceivingInventoryStudio onNavigate={onNavigate} />;
   if (view === "logistics") return <ReceivingInventoryStudio onNavigate={onNavigate} />;
-  if (view === "ai") return <AIProcurementPanel />;
+  if (view === "ai") return <ProcurementAnalytics onNavigate={onNavigate} />;
 
   return (
     <div className="grid gap-5 xl:grid-cols-[1fr_390px]">
