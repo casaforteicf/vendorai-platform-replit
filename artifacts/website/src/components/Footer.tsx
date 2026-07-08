@@ -40,7 +40,7 @@ export default function Footer() {
           <div>
             <h4 className="font-semibold text-white mb-4">Contato</h4>
             <ul className="space-y-2 text-sm">
-              <li>contato@vendorai.com.br</li>
+              <li>vendorai@appvendorai.com</li>
               <li>São Paulo, SP — Brasil</li>
             </ul>
           </div>

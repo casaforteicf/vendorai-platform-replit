@@ -99,7 +99,7 @@ export default function Contato() {
                 </div>
                 <div>
                   <p className="font-bold text-slate-900">E-mail</p>
-                  <p className="text-sm text-slate-600">contato@vendorai.com.br</p>
+                  <p className="text-sm text-slate-600">vendorai@appvendorai.com</p>
                 </div>
               </div>
 
