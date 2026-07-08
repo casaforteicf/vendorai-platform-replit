@@ -46,6 +46,7 @@ import MarketplaceEnterprise from './marketplace-enterprise/MarketplaceEnterpris
 import ClientExperience from './client-experience/ClientExperience'
 import OperationsCenter from './operations-center/OperationsCenter'
 import AutomationAuditCenter from './operations-center/automation-audit/AutomationAuditCenter'
+import AICommandIntelligence from './operations-center/ai-command-intelligence/AICommandIntelligence'
 import BudgetDisciplinesProposal from './executive-budget/disciplines/BudgetDisciplinesProposal'
 import AlignedStudioShell from './ux-alignment/AlignedStudioShell'
 import { computeNextAction }     from './project-experience/ProjectHome'
@@ -71,6 +72,7 @@ export type ModuleId =
   | 'client' | 'portal-cliente'
   | 'operations' | 'command-center' | 'operacoes'
   | 'automation-audit' | 'audit' | 'automacoes'
+  | 'ai-command' | 'ai-intelligence' | 'cerebro-ia'
 
 export type JourneyId = 'create' | 'design' | 'visualize' | 'deliver' | 'business'
 
@@ -136,6 +138,9 @@ const MODULE_MAP_INTERNAL: Record<ModuleId, { icon:string; label:string }> = {
   'automation-audit':  { icon:'🔐', label:'Automação & Audit' },
   'audit':             { icon:'🔐', label:'Audit'            },
   'automacoes':        { icon:'🔐', label:'Automações'        },
+  'ai-command':        { icon:'🧠', label:'AI Command'       },
+  'ai-intelligence':   { icon:'🧠', label:'AI Intelligence'  },
+  'cerebro-ia':        { icon:'🧠', label:'Cérebro IA'       },
 }
 
 // ─── Legado: Journeys (keyboard shortcuts 1–5) ────────────────────────────────
@@ -302,6 +307,9 @@ function renderModule(id: ModuleId, arqState: ArqProjectState, setActive: (m: Mo
     case 'automation-audit':
     case 'audit':
     case 'automacoes':      return <AutomationAuditCenter onNavigate={m => setActive(m as ModuleId)} />
+    case 'ai-command':
+    case 'ai-intelligence':
+    case 'cerebro-ia':      return <AICommandIntelligence onNavigate={m => setActive(m as ModuleId)} />
     case 'ecosystem':     return <EcosystemModule/>
     case 'knowledge':     return <KnowledgeModule/>
     case 'office':
