@@ -64,7 +64,7 @@ router.get(
 // ─── Upload / replace contract template ───────────────────────────────────────
 router.post(
   "/tenants/:tenantId/contract-template",
-  requireRole(["tenant_admin", "super_admin"]),
+  requireRole("tenant_admin", "super_admin"),
   (req, res, next) => {
     uploadTemplate.single("file")(req, res, (err) => {
       if (err) {
@@ -145,7 +145,7 @@ router.get("/tenants/:tenantId/contract-template", async (req, res) => {
 // ─── Delete contract template ──────────────────────────────────────────────────
 router.delete(
   "/tenants/:tenantId/contract-template",
-  requireRole(["tenant_admin", "super_admin"]),
+  requireRole("tenant_admin", "super_admin"),
   async (req, res) => {
     const tenantId = String(req.params.tenantId);
 
@@ -168,7 +168,7 @@ router.delete(
 // ─── Save contract template via in-app editor (JSON body) ─────────────────────
 router.put(
   "/tenants/:tenantId/contract-template/editor",
-  requireRole(["tenant_admin", "super_admin"]),
+  requireRole("tenant_admin", "super_admin"),
   async (req, res) => {
     const tenantId = String(req.params.tenantId);
 
@@ -234,7 +234,7 @@ router.get("/tenants/:tenantId/contract-settings", async (req, res) => {
 // ─── Update contract settings ──────────────────────────────────────────────────
 router.put(
   "/tenants/:tenantId/contract-settings",
-  requireRole(["tenant_admin", "super_admin"]),
+  requireRole("tenant_admin", "super_admin"),
   async (req, res) => {
     const tenantId = String(req.params.tenantId);
 
