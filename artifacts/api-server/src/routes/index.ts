@@ -19,6 +19,7 @@ import customerIntelligenceRouter from "./customer_intelligence";
 import agentTasksRouter from "./agent_tasks";
 import campaignsRouter from "./campaigns";
 import produtosCatalogoRouter from "./produtos_catalogo";
+import categoriasProdutoRouter from "./categorias_produto";
 import agendasRouter, { googleCallbackRouter } from "./agendas";
 import { instagramCallbackRouter } from "./instagram-auth";
 import { whatsappCallbackRouter } from "./whatsapp-auth";
@@ -175,6 +176,7 @@ router.use(campaignsRouter);
 
 // Sales / CPQ Hub
 router.use(produtosCatalogoRouter);
+router.use(categoriasProdutoRouter);
 
 // Schedule Hub
 router.use(agendasRouter);

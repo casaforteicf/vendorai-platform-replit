@@ -12,7 +12,9 @@ export interface CreateProdutoCatalogoBody {
   nome: string;
   sku?: string;
   descricao?: string;
-  categoria?: string;
+  categoriaId?: string | null;
+  /** Teto de desconto (%) específico deste produto (sobrescreve o da categoria). Null herda o teto da categoria. */
+  descontoMaximoPercentual?: string | number | null;
   /** Decimal price (e.g. 99.90 or "99.90") */
   precoBase: string | number;
   unidade?: string;

@@ -3577,6 +3577,114 @@ paths:
                 items:
                   $ref: "#/components/schemas/ProdutoCatalogo"
 
+  /tenants/{tenantId}/categorias-produto:
+    get:
+      operationId: listCategoriasProduto
+      tags: [sales-cpq]
+      summary: List product categories by tenant (ordered by name)
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: tenantId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: List of categories
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/CategoriaProduto"
+    post:
+      operationId: createCategoriaProduto
+      tags: [sales-cpq]
+      summary: Create a product category with its discount ceiling
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: tenantId
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateCategoriaProdutoBody"
+      responses:
+        "201":
+          description: Category created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CategoriaProduto"
+        "422":
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /categorias-produto/{id}:
+    patch:
+      operationId: updateCategoriaProduto
+      tags: [sales-cpq]
+      summary: Update a product category (name and/or discount ceiling)
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateCategoriaProdutoBody"
+      responses:
+        "200":
+          description: Category updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CategoriaProduto"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+    delete:
+      operationId: deleteCategoriaProduto
+      tags: [sales-cpq]
+      summary: Delete a product category (products keep categoriaId set to null)
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "204":
+          description: Category deleted
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
   /produtos-catalogo/{id}:
     get:
       operationId: getProdutoCatalogo
@@ -11104,9 +11212,22 @@ components:
         descricao:
           type: string
           nullable: true
-        categoria:
+        categoriaId:
           type: string
           nullable: true
+          description: FK para categorias_produto
+        categoriaNome:
+          type: string
+          nullable: true
+          description: Nome da categoria (somente leitura, resolvido via join)
+        descontoMaximoPercentual:
+          type: string
+          nullable: true
+          description: 'Teto de desconto (%) específico deste produto. Se null, herda o teto da categoria (categoriaDescontoMaximoPercentual).'
+        categoriaDescontoMaximoPercentual:
+          type: string
+          nullable: true
+          description: Teto de desconto (%) herdado da categoria (somente leitura)
         precoBase:
           type: string
           description: Decimal price stored as string (e.g. "99.90")
@@ -11156,8 +11277,15 @@ components:
           type: string
         descricao:
           type: string
-        categoria:
+        categoriaId:
           type: string
+          nullable: true
+        descontoMaximoPercentual:
+          oneOf:
+            - type: string
+            - type: number
+          nullable: true
+          description: Teto de desconto (%) específico deste produto (sobrescreve o da categoria). Null herda o teto da categoria.
         precoBase:
           oneOf:
             - type: string
@@ -11192,8 +11320,15 @@ components:
           type: string
         descricao:
           type: string
-        categoria:
+        categoriaId:
           type: string
+          nullable: true
+        descontoMaximoPercentual:
+          oneOf:
+            - type: string
+            - type: number
+          nullable: true
+          description: Teto de desconto (%) específico deste produto (sobrescreve o da categoria). Null herda o teto da categoria.
         precoBase:
           oneOf:
             - type: string
@@ -11221,8 +11356,49 @@ components:
       properties:
         csv:
           type: string
-          description: "CSV content UTF-8. Header row required. Columns: nome, sku, categoria, preco_base, unidade, descricao, imagem_url"
+          description: "CSV content UTF-8. Header row required. Columns: nome, sku, categoria (nome da categoria — criada automaticamente se não existir), preco_base, unidade, descricao, imagem_url"
       required: [csv]
+
+    CategoriaProduto:
+      type: object
+      properties:
+        id:
+          type: string
+        tenantId:
+          type: string
+        nome:
+          type: string
+        descontoMaximoPercentual:
+          type: string
+          description: Teto de desconto (%) padrão para produtos desta categoria
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+      required: [id, tenantId, nome, descontoMaximoPercentual, createdAt, updatedAt]
+
+    CreateCategoriaProdutoBody:
+      type: object
+      properties:
+        nome:
+          type: string
+        descontoMaximoPercentual:
+          oneOf:
+            - type: string
+            - type: number
+      required: [nome]
+
+    UpdateCategoriaProdutoBody:
+      type: object
+      properties:
+        nome:
+          type: string
+        descontoMaximoPercentual:
+          oneOf:
+            - type: string
+            - type: number
 
     ImportProdutosCatalogoResult:
       type: object

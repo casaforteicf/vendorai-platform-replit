@@ -19,6 +19,7 @@ import {
   leadsTable,
   propostasTable,
   produtosCatalogoTable,
+  categoriasProdutoTable,
   inventoryItemsTable,
   dealsTable,
 } from "@workspace/db";
@@ -379,10 +380,17 @@ export async function runAutoQuotePipeline(params: {
   const { tenantId, leadId, mensagem, log } = params;
 
   // 1. Load catalog
-  const catalogo = await db
-    .select({ id: produtosCatalogoTable.id, nome: produtosCatalogoTable.nome, categoria: produtosCatalogoTable.categoria, sku: produtosCatalogoTable.sku })
+  const catalogoRows = await db
+    .select({
+      id: produtosCatalogoTable.id,
+      nome: produtosCatalogoTable.nome,
+      categoriaNome: categoriasProdutoTable.nome,
+      sku: produtosCatalogoTable.sku,
+    })
     .from(produtosCatalogoTable)
+    .leftJoin(categoriasProdutoTable, eq(produtosCatalogoTable.categoriaId, categoriasProdutoTable.id))
     .where(and(eq(produtosCatalogoTable.tenantId, tenantId), eq(produtosCatalogoTable.ativo, true)));
+  const catalogo = catalogoRows.map((p) => ({ id: p.id, nome: p.nome, categoria: p.categoriaNome, sku: p.sku }));
 
   if (catalogo.length === 0) {
     log.info("auto-quote: no catalog products — skipping");

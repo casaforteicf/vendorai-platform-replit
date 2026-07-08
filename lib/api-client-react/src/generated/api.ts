@@ -41,6 +41,7 @@ import type {
   BusinessProfile,
   Campaign,
   CampaignAudiencePreview,
+  CategoriaProduto,
   ChangePasswordBody,
   CheckAgendamentoDisponibilidadeParams,
   CompleteOnboarding200,
@@ -68,6 +69,7 @@ import type {
   CreateBloqueioAgendaBody,
   CreateBusinessProfileBody,
   CreateCampaignBody,
+  CreateCategoriaProdutoBody,
   CreateConsentBody,
   CreateConversationBody,
   CreateCustomerIntelligenceBody,
@@ -276,6 +278,7 @@ import type {
   UpdateArqProjectBody,
   UpdateBusinessProfileBody,
   UpdateCampaignBody,
+  UpdateCategoriaProdutoBody,
   UpdateConversationBody,
   UpdateCustomerIntelligenceBody,
   UpdateDealBody,
@@ -9163,6 +9166,297 @@ export function useListProdutosCatalogo<TData = Awaited<ReturnType<typeof listPr
 
 
 
+
+export const getListCategoriasProdutoUrl = (tenantId: string,) => {
+
+
+
+
+  return `/api/tenants/${tenantId}/categorias-produto`
+}
+
+/**
+ * @summary List product categories by tenant (ordered by name)
+ */
+export const listCategoriasProduto = async (tenantId: string, options?: RequestInit): Promise<CategoriaProduto[]> => {
+
+  return customFetch<CategoriaProduto[]>(getListCategoriasProdutoUrl(tenantId),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getListCategoriasProdutoQueryKey = (tenantId: string,) => {
+    return [
+    `/api/tenants/${tenantId}/categorias-produto`
+    ] as const;
+    }
+
+
+export const getListCategoriasProdutoQueryOptions = <TData = Awaited<ReturnType<typeof listCategoriasProduto>>, TError = ErrorType<unknown>>(tenantId: string, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listCategoriasProduto>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getListCategoriasProdutoQueryKey(tenantId);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof listCategoriasProduto>>> = ({ signal }) => listCategoriasProduto(tenantId, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, enabled: !!(tenantId), ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof listCategoriasProduto>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type ListCategoriasProdutoQueryResult = NonNullable<Awaited<ReturnType<typeof listCategoriasProduto>>>
+export type ListCategoriasProdutoQueryError = ErrorType<unknown>
+
+
+/**
+ * @summary List product categories by tenant (ordered by name)
+ */
+
+export function useListCategoriasProduto<TData = Awaited<ReturnType<typeof listCategoriasProduto>>, TError = ErrorType<unknown>>(
+ tenantId: string, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listCategoriasProduto>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getListCategoriasProdutoQueryOptions(tenantId,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+
+
+
+
+
+
+export const getCreateCategoriaProdutoUrl = (tenantId: string,) => {
+
+
+
+
+  return `/api/tenants/${tenantId}/categorias-produto`
+}
+
+/**
+ * @summary Create a product category with its discount ceiling
+ */
+export const createCategoriaProduto = async (tenantId: string,
+    createCategoriaProdutoBody: CreateCategoriaProdutoBody, options?: RequestInit): Promise<CategoriaProduto> => {
+
+  return customFetch<CategoriaProduto>(getCreateCategoriaProdutoUrl(tenantId),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(
+      createCategoriaProdutoBody,)
+  }
+);}
+
+
+
+
+export const getCreateCategoriaProdutoMutationOptions = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createCategoriaProduto>>, TError,{tenantId: string;data: BodyType<CreateCategoriaProdutoBody>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof createCategoriaProduto>>, TError,{tenantId: string;data: BodyType<CreateCategoriaProdutoBody>}, TContext> => {
+
+const mutationKey = ['createCategoriaProduto'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof createCategoriaProduto>>, {tenantId: string;data: BodyType<CreateCategoriaProdutoBody>}> = (props) => {
+          const {tenantId,data} = props ?? {};
+
+          return  createCategoriaProduto(tenantId,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type CreateCategoriaProdutoMutationResult = NonNullable<Awaited<ReturnType<typeof createCategoriaProduto>>>
+    export type CreateCategoriaProdutoMutationBody = BodyType<CreateCategoriaProdutoBody>
+    export type CreateCategoriaProdutoMutationError = ErrorType<ErrorResponse>
+
+    /**
+ * @summary Create a product category with its discount ceiling
+ */
+export const useCreateCategoriaProduto = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createCategoriaProduto>>, TError,{tenantId: string;data: BodyType<CreateCategoriaProdutoBody>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof createCategoriaProduto>>,
+        TError,
+        {tenantId: string;data: BodyType<CreateCategoriaProdutoBody>},
+        TContext
+      > => {
+      return useMutation(getCreateCategoriaProdutoMutationOptions(options));
+    }
+
+export const getUpdateCategoriaProdutoUrl = (id: string,) => {
+
+
+
+
+  return `/api/categorias-produto/${id}`
+}
+
+/**
+ * @summary Update a product category (name and/or discount ceiling)
+ */
+export const updateCategoriaProduto = async (id: string,
+    updateCategoriaProdutoBody: UpdateCategoriaProdutoBody, options?: RequestInit): Promise<CategoriaProduto> => {
+
+  return customFetch<CategoriaProduto>(getUpdateCategoriaProdutoUrl(id),
+  {
+    ...options,
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(
+      updateCategoriaProdutoBody,)
+  }
+);}
+
+
+
+
+export const getUpdateCategoriaProdutoMutationOptions = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updateCategoriaProduto>>, TError,{id: string;data: BodyType<UpdateCategoriaProdutoBody>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof updateCategoriaProduto>>, TError,{id: string;data: BodyType<UpdateCategoriaProdutoBody>}, TContext> => {
+
+const mutationKey = ['updateCategoriaProduto'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof updateCategoriaProduto>>, {id: string;data: BodyType<UpdateCategoriaProdutoBody>}> = (props) => {
+          const {id,data} = props ?? {};
+
+          return  updateCategoriaProduto(id,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type UpdateCategoriaProdutoMutationResult = NonNullable<Awaited<ReturnType<typeof updateCategoriaProduto>>>
+    export type UpdateCategoriaProdutoMutationBody = BodyType<UpdateCategoriaProdutoBody>
+    export type UpdateCategoriaProdutoMutationError = ErrorType<ErrorResponse>
+
+    /**
+ * @summary Update a product category (name and/or discount ceiling)
+ */
+export const useUpdateCategoriaProduto = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updateCategoriaProduto>>, TError,{id: string;data: BodyType<UpdateCategoriaProdutoBody>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof updateCategoriaProduto>>,
+        TError,
+        {id: string;data: BodyType<UpdateCategoriaProdutoBody>},
+        TContext
+      > => {
+      return useMutation(getUpdateCategoriaProdutoMutationOptions(options));
+    }
+
+export const getDeleteCategoriaProdutoUrl = (id: string,) => {
+
+
+
+
+  return `/api/categorias-produto/${id}`
+}
+
+/**
+ * @summary Delete a product category (products keep categoriaId set to null)
+ */
+export const deleteCategoriaProduto = async (id: string, options?: RequestInit): Promise<void> => {
+
+  return customFetch<void>(getDeleteCategoriaProdutoUrl(id),
+  {
+    ...options,
+    method: 'DELETE'
+
+
+  }
+);}
+
+
+
+
+export const getDeleteCategoriaProdutoMutationOptions = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof deleteCategoriaProduto>>, TError,{id: string}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof deleteCategoriaProduto>>, TError,{id: string}, TContext> => {
+
+const mutationKey = ['deleteCategoriaProduto'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof deleteCategoriaProduto>>, {id: string}> = (props) => {
+          const {id} = props ?? {};
+
+          return  deleteCategoriaProduto(id,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type DeleteCategoriaProdutoMutationResult = NonNullable<Awaited<ReturnType<typeof deleteCategoriaProduto>>>
+
+    export type DeleteCategoriaProdutoMutationError = ErrorType<ErrorResponse>
+
+    /**
+ * @summary Delete a product category (products keep categoriaId set to null)
+ */
+export const useDeleteCategoriaProduto = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof deleteCategoriaProduto>>, TError,{id: string}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof deleteCategoriaProduto>>,
+        TError,
+        {id: string},
+        TContext
+      > => {
+      return useMutation(getDeleteCategoriaProdutoMutationOptions(options));
+    }
 
 export const getGetProdutoCatalogoUrl = (id: string,) => {
 

@@ -874,7 +874,14 @@ export interface ProdutoCatalogo {
   nome: string;
   sku?: string | null;
   descricao?: string | null;
-  categoria?: string | null;
+  /** FK para categorias_produto */
+  categoriaId?: string | null;
+  /** Nome da categoria (somente leitura, resolvido via join) */
+  categoriaNome?: string | null;
+  /** Teto de desconto (%) específico deste produto. Se null, herda o teto da categoria (categoriaDescontoMaximoPercentual). */
+  descontoMaximoPercentual?: string | null;
+  /** Teto de desconto (%) herdado da categoria (somente leitura) */
+  categoriaDescontoMaximoPercentual?: string | null;
   /** Decimal price stored as string (e.g. "99.90") */
   precoBase: string;
   /** Unit of measure (e.g. "un", "m2", "kg") */
@@ -909,7 +916,9 @@ export interface CreateProdutoCatalogoBody {
   nome: string;
   sku?: string;
   descricao?: string;
-  categoria?: string;
+  categoriaId?: string | null;
+  /** Teto de desconto (%) específico deste produto (sobrescreve o da categoria). Null herda o teto da categoria. */
+  descontoMaximoPercentual?: string | number | null;
   /** Decimal price (e.g. 99.90 or "99.90") */
   precoBase: string | number;
   unidade?: string;
@@ -937,7 +946,9 @@ export interface UpdateProdutoCatalogoBody {
   nome?: string;
   sku?: string;
   descricao?: string;
-  categoria?: string;
+  categoriaId?: string | null;
+  /** Teto de desconto (%) específico deste produto (sobrescreve o da categoria). Null herda o teto da categoria. */
+  descontoMaximoPercentual?: string | number | null;
   precoBase?: string | number;
   unidade?: string;
   ativo?: boolean;
@@ -950,8 +961,28 @@ export interface UpdateProdutoCatalogoBody {
 }
 
 export interface ImportProdutosCatalogoBody {
-  /** CSV content UTF-8. Header row required. Columns: nome, sku, categoria, preco_base, unidade, descricao, imagem_url */
+  /** CSV content UTF-8. Header row required. Columns: nome, sku, categoria (nome da categoria — criada automaticamente se não existir), preco_base, unidade, descricao, imagem_url */
   csv: string;
+}
+
+export interface CategoriaProduto {
+  id: string;
+  tenantId: string;
+  nome: string;
+  /** Teto de desconto (%) padrão para produtos desta categoria */
+  descontoMaximoPercentual: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface CreateCategoriaProdutoBody {
+  nome: string;
+  descontoMaximoPercentual?: string | number;
+}
+
+export interface UpdateCategoriaProdutoBody {
+  nome?: string;
+  descontoMaximoPercentual?: string | number;
 }
 
 export type ImportProdutosCatalogoResultErrorsItem = {

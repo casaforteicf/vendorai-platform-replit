@@ -28,6 +28,8 @@ import {
   useListPaymentMethods,
   getListPaymentMethodsQueryKey,
   useRequestUploadUrl,
+  useListCategoriasProduto,
+  getListCategoriasProdutoQueryKey,
 } from "@workspace/api-client-react";
 import type {
   Proposta,
@@ -36,6 +38,7 @@ import type {
   FormaPagamentoProposta,
   PaymentCompositionLineForma,
   PropostaTemplate,
+  CategoriaProduto,
 } from "@workspace/api-client-react";
 import { useQueryClient } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
@@ -157,7 +160,8 @@ function fmtCurrency(val: string | number | null | undefined) {
 // ── Catalog Modal (CRUD) ──────────────────────────────────────────────────────
 const catFormSchema = z.object({
   nome: z.string().min(1, "Obrigatório"),
-  categoria: z.string().optional(),
+  categoriaId: z.string().optional(),
+  descontoMaximoPercentual: z.coerce.number().min(0).max(100).optional(),
   precoBase: z.coerce.number().min(0, "Preço inválido"),
   unidade: z.string().min(1, "Obrigatório"),
   descricao: z.string().optional(),
@@ -221,16 +225,20 @@ function CatalogoModal({
   const deleteMut = useDeleteProdutoCatalogo();
   const importMut = useImportProdutosCatalogo();
 
+  const { data: categorias = [] } = useListCategoriasProduto(tenantId, {
+    query: { queryKey: getListCategoriasProdutoQueryKey(tenantId), enabled: !!tenantId },
+  });
+
   const form = useForm<CatFormValues>({
     resolver: zodResolver(catFormSchema),
-    defaultValues: { nome: "", categoria: "", precoBase: 0, unidade: "un", descricao: "", imagemUrl: "", ativo: true, recorrente: false, prazoContrato: undefined },
+    defaultValues: { nome: "", categoriaId: undefined, descontoMaximoPercentual: undefined, precoBase: 0, unidade: "un", descricao: "", imagemUrl: "", ativo: true, recorrente: false, prazoContrato: undefined },
   });
 
   const watchRecorrente = form.watch("recorrente");
 
   function openCreate() {
     setEditingProd(null);
-    form.reset({ nome: "", categoria: "", precoBase: 0, unidade: "un", descricao: "", imagemUrl: "", ativo: true, recorrente: false, prazoContrato: undefined });
+    form.reset({ nome: "", categoriaId: undefined, descontoMaximoPercentual: undefined, precoBase: 0, unidade: "un", descricao: "", imagemUrl: "", ativo: true, recorrente: false, prazoContrato: undefined });
     setFormOpen(true);
   }
 
@@ -238,7 +246,8 @@ function CatalogoModal({
     setEditingProd(p);
     form.reset({
       nome: p.nome,
-      categoria: p.categoria ?? "",
+      categoriaId: p.categoriaId ?? undefined,
+      descontoMaximoPercentual: p.descontoMaximoPercentual != null ? parseFloat(p.descontoMaximoPercentual) : undefined,
       precoBase: parseFloat(p.precoBase),
       unidade: p.unidade,
       descricao: p.descricao ?? "",
@@ -257,7 +266,8 @@ function CatalogoModal({
   function onSubmit(vals: CatFormValues) {
     const body = {
       nome: vals.nome,
-      categoria: vals.categoria || undefined,
+      categoriaId: vals.categoriaId || undefined,
+      descontoMaximoPercentual: vals.descontoMaximoPercentual != null ? vals.descontoMaximoPercentual.toFixed(2) : undefined,
       precoBase: vals.precoBase.toFixed(2),
       unidade: vals.unidade,
       descricao: vals.descricao || undefined,
@@ -422,7 +432,7 @@ function CatalogoModal({
                       <div>{p.nome}</div>
                       {p.sku && <div className="text-xs text-muted-foreground">SKU: {p.sku}</div>}
                     </TableCell>
-                    <TableCell className="text-muted-foreground">{p.categoria ?? "—"}</TableCell>
+                    <TableCell className="text-muted-foreground">{p.categoriaNome ?? "—"}</TableCell>
                     <TableCell>
                       <div className="font-mono">{fmtCurrency(p.precoBase)}</div>
                       {p.recorrencia === "mensal" && (
@@ -487,13 +497,45 @@ function CatalogoModal({
                 <FormItem><FormLabel>Nome</FormLabel><FormControl><Input {...field} /></FormControl><FormMessage /></FormItem>
               )} />
               <div className="grid grid-cols-2 gap-3">
-                <FormField control={form.control} name="categoria" render={({ field }) => (
-                  <FormItem><FormLabel>Categoria</FormLabel><FormControl><Input placeholder="Ex: Software" {...field} value={field.value ?? ""} /></FormControl><FormMessage /></FormItem>
+                <FormField control={form.control} name="categoriaId" render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Categoria</FormLabel>
+                    <Select value={field.value ?? "__none__"} onValueChange={(v) => field.onChange(v === "__none__" ? undefined : v)}>
+                      <FormControl>
+                        <SelectTrigger><SelectValue placeholder="Selecione…" /></SelectTrigger>
+                      </FormControl>
+                      <SelectContent>
+                        <SelectItem value="__none__">Sem categoria</SelectItem>
+                        {categorias.map((c) => (
+                          <SelectItem key={c.id} value={c.id}>{c.nome}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    <FormMessage />
+                  </FormItem>
                 )} />
                 <FormField control={form.control} name="unidade" render={({ field }) => (
                   <FormItem><FormLabel>Unidade</FormLabel><FormControl><Input placeholder="un, m², h…" {...field} /></FormControl><FormMessage /></FormItem>
                 )} />
               </div>
+              <FormField control={form.control} name="descontoMaximoPercentual" render={({ field }) => {
+                const catSel = categorias.find((c) => c.id === form.watch("categoriaId"));
+                return (
+                  <FormItem>
+                    <FormLabel>Teto de desconto (%) <span className="text-muted-foreground text-xs">(opcional — sobrepõe a categoria)</span></FormLabel>
+                    <FormControl>
+                      <Input
+                        type="number" step="0.01" min="0" max="100"
+                        placeholder={catSel?.descontoMaximoPercentual != null ? `Categoria: ${catSel.descontoMaximoPercentual}%` : "Sem teto"}
+                        {...field}
+                        value={field.value ?? ""}
+                        onChange={(e) => field.onChange(e.target.value === "" ? undefined : parseFloat(e.target.value))}
+                      />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                );
+              }} />
               <FormField control={form.control} name="precoBase" render={({ field }) => (
                 <FormItem><FormLabel>Preço Base (R$)</FormLabel><FormControl>
                   <Input type="number" step="0.01" min="0" {...field} onChange={e => field.onChange(parseFloat(e.target.value) || 0)} />
@@ -1162,7 +1204,7 @@ export function PropostaModal({
                                 <SelectTrigger className="h-8 text-sm"><SelectValue placeholder="Selecione…" /></SelectTrigger>
                                 <SelectContent>
                                   {activeCatalog.map((p) => (
-                                    <SelectItem key={p.id} value={p.id}>{p.nome}{p.categoria ? ` · ${p.categoria}` : ""}</SelectItem>
+                                    <SelectItem key={p.id} value={p.id}>{p.nome}{p.categoriaNome ? ` · ${p.categoriaNome}` : ""}</SelectItem>
                                   ))}
                                 </SelectContent>
                               </Select>

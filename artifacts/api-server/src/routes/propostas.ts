@@ -5,6 +5,7 @@ import {
   db,
   propostasTable,
   produtosCatalogoTable,
+  categoriasProdutoTable,
   propostaTemplatesTable,
   businessProfilesTable,
   insertPropostaSchema,
@@ -128,12 +129,13 @@ router.get("/propostas/:id/pdf", async (req, res) => {
     .select({
       nome: produtosCatalogoTable.nome,
       descricao: produtosCatalogoTable.descricao,
-      categoria: produtosCatalogoTable.categoria,
+      categoria: categoriasProdutoTable.nome,
       precoBase: produtosCatalogoTable.precoBase,
       unidade: produtosCatalogoTable.unidade,
       imagemUrl: produtosCatalogoTable.imagemUrl,
     })
     .from(produtosCatalogoTable)
+    .leftJoin(categoriasProdutoTable, eq(produtosCatalogoTable.categoriaId, categoriasProdutoTable.id))
     .where(and(
       eq(produtosCatalogoTable.tenantId, proposta.tenantId),
       eq(produtosCatalogoTable.ativo, true),
@@ -468,9 +470,10 @@ router.post("/tenants/:tenantId/propostas/suggest-items", async (req, res) => {
       nome: produtosCatalogoTable.nome,
       precoBase: produtosCatalogoTable.precoBase,
       unidade: produtosCatalogoTable.unidade,
-      categoria: produtosCatalogoTable.categoria,
+      categoria: categoriasProdutoTable.nome,
     })
     .from(produtosCatalogoTable)
+    .leftJoin(categoriasProdutoTable, eq(produtosCatalogoTable.categoriaId, categoriasProdutoTable.id))
     .where(and(eq(produtosCatalogoTable.tenantId, tenantId), eq(produtosCatalogoTable.ativo, true)))
     .limit(20);
 

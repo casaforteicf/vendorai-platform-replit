@@ -11,7 +11,9 @@ export interface UpdateProdutoCatalogoBody {
   nome?: string;
   sku?: string;
   descricao?: string;
-  categoria?: string;
+  categoriaId?: string | null;
+  /** Teto de desconto (%) específico deste produto (sobrescreve o da categoria). Null herda o teto da categoria. */
+  descontoMaximoPercentual?: string | number | null;
   precoBase?: string | number;
   unidade?: string;
   ativo?: boolean;

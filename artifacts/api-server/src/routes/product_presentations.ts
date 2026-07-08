@@ -7,6 +7,7 @@ import {
   customerIntelligenceTable,
   productPresentationsTable,
   produtosCatalogoTable,
+  categoriasProdutoTable,
   businessProfilesTable,
 } from "@workspace/db";
 import { generateProductPresentation } from "../lib/product-presentation-engine.js";
@@ -103,12 +104,21 @@ router.post("/leads/:leadId/product-presentations", async (req, res) => {
     ) || null;
   }
 
+  let catalogCategoriaNome: string | null = null;
+  if (catalogProduct?.categoriaId) {
+    const [cat] = await db
+      .select({ nome: categoriasProdutoTable.nome })
+      .from(categoriasProdutoTable)
+      .where(eq(categoriasProdutoTable.id, catalogProduct.categoriaId));
+    catalogCategoriaNome = cat?.nome ?? null;
+  }
+
   // 2. Determine if web search is needed
   const hasCatalogDescription = catalogProduct && catalogProduct.descricao && catalogProduct.descricao.length > 30;
   let webResult = null;
   if (!hasCatalogDescription) {
     req.log.info({ productName, catalogFound: !!catalogProduct }, "Catalog insufficient, triggering web search");
-    webResult = await searchProductInfo(productName, catalogProduct?.categoria, tenantId, req.log);
+    webResult = await searchProductInfo(productName, catalogCategoriaNome, tenantId, req.log);
   }
 
   // 3. Check if we have enough data
@@ -141,7 +151,7 @@ Intenção: ${ctx.intelligence.intentAnalysis || "Não identificado"}`
     productFeatures: allFeatures,
     productPrice: catalogProduct?.precoBase ? `R$ ${catalogProduct.precoBase}` : webResult?.price || null,
     productImageUrl: catalogProduct?.imagemUrl || webResult?.imageUrl || null,
-    productBrand: catalogProduct?.categoria || webResult?.brand || null,
+    productBrand: catalogCategoriaNome || webResult?.brand || null,
     webSources: webResult?.sources || undefined,
     leadName: ctx.lead.nome,
     leadEmpresa: ctx.lead.empresa,

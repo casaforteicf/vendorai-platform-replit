@@ -38,6 +38,7 @@ import {
   activitiesTable,
   inventoryItemsTable,
   produtosCatalogoTable,
+  categoriasProdutoTable,
   agendasTable,
   agentActionsLogTable,
   intelligenceAnalysisLogTable,
@@ -713,11 +714,18 @@ async function runSpecialDateCheck(log: Logger): Promise<void> {
 
       const commercialDates = calendarSettings?.commercialDates ?? getDefaultCommercialDates();
 
-      const catalog = await db
-        .select({ id: produtosCatalogoTable.id, nome: produtosCatalogoTable.nome, categoria: produtosCatalogoTable.categoria, precoBase: produtosCatalogoTable.precoBase })
+      const catalogRows = await db
+        .select({
+          id: produtosCatalogoTable.id,
+          nome: produtosCatalogoTable.nome,
+          categoriaNome: categoriasProdutoTable.nome,
+          precoBase: produtosCatalogoTable.precoBase,
+        })
         .from(produtosCatalogoTable)
+        .leftJoin(categoriasProdutoTable, eq(produtosCatalogoTable.categoriaId, categoriasProdutoTable.id))
         .where(and(eq(produtosCatalogoTable.tenantId, tenant.id), eq(produtosCatalogoTable.ativo, true)))
         .limit(10);
+      const catalog = catalogRows.map((c) => ({ id: c.id, nome: c.nome, categoria: c.categoriaNome, precoBase: c.precoBase }));
 
       const leads = await db
         .select()

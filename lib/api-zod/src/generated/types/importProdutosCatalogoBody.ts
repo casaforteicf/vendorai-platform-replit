@@ -7,6 +7,6 @@
  */
 
 export interface ImportProdutosCatalogoBody {
-  /** CSV content UTF-8. Header row required. Columns: nome, sku, categoria, preco_base, unidade, descricao, imagem_url */
+  /** CSV content UTF-8. Header row required. Columns: nome, sku, categoria (nome da categoria — criada automaticamente se não existir), preco_base, unidade, descricao, imagem_url */
   csv: string;
 }

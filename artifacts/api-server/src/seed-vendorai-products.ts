@@ -116,7 +116,6 @@ async function seed() {
         unidade: p.unidade,
         tenantId: null as unknown as string, // platform product
         ativo: true,
-        categoria: p.productType === "service" ? "servico" : "saas",
       });
       console.log(`  created: ${p.sku}`);
     }

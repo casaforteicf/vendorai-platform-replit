@@ -322,7 +322,7 @@ export default function Estoque() {
   // ── Derived ───────────────────────────────────────────────────────────────
   const produtoMap    = Object.fromEntries(produtos.map((p) => [p.id, p.nome]));
   const precoMap      = Object.fromEntries(produtos.map((p) => [p.id, p.precoBase]));
-  const categoriaMap  = Object.fromEntries(produtos.map((p) => [p.id, p.categoria ?? ""]));
+  const categoriaMap  = Object.fromEntries(produtos.map((p) => [p.id, p.categoriaNome ?? ""]));
 
   const categoriasDisponiveis = [...new Set(
     items.map((i) => categoriaMap[i.produtoId] ?? "").filter(Boolean)
@@ -617,7 +617,7 @@ export default function Estoque() {
             (() => {
               const q = catalogSearch.toLowerCase().trim();
               const filtered = produtos.filter((p) =>
-                !q || p.nome.toLowerCase().includes(q) || (p.sku ?? "").toLowerCase().includes(q) || (p.categoria ?? "").toLowerCase().includes(q)
+                !q || p.nome.toLowerCase().includes(q) || (p.sku ?? "").toLowerCase().includes(q) || (p.categoriaNome ?? "").toLowerCase().includes(q)
               );
               if (filtered.length === 0) return (
                 <div className="flex flex-col items-center justify-center py-16 text-center gap-3">
@@ -661,9 +661,9 @@ export default function Estoque() {
                             {!produto.ativo && <Badge variant="secondary" className="text-xs shrink-0">Inativo</Badge>}
                           </div>
                           {produto.sku && <p className="text-xs text-muted-foreground font-mono">SKU: {produto.sku}</p>}
-                          {produto.categoria && (
+                          {produto.categoriaNome && (
                             <Badge variant="outline" className="text-xs gap-1 w-fit">
-                              <Tag className="h-2.5 w-2.5" />{produto.categoria}
+                              <Tag className="h-2.5 w-2.5" />{produto.categoriaNome}
                             </Badge>
                           )}
                         </div>
@@ -1250,9 +1250,9 @@ function ProdutoDetailSheet({
               {!produto.ativo && <Badge variant="secondary" className="shrink-0">Inativo</Badge>}
             </div>
             {produto.sku && <p className="text-xs text-muted-foreground font-mono">SKU: {produto.sku}</p>}
-            {produto.categoria && (
+            {produto.categoriaNome && (
               <Badge variant="outline" className="gap-1 w-fit text-xs">
-                <Tag className="h-2.5 w-2.5" />{produto.categoria}
+                <Tag className="h-2.5 w-2.5" />{produto.categoriaNome}
               </Badge>
             )}
           </div>

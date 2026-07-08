@@ -16,6 +16,7 @@ export * from "./customer_intelligence";
 export * from "./agent_tasks";
 export * from "./campaigns";
 export * from "./produtos_catalogo";
+export * from "./categorias_produto";
 export * from "./agendas";
 export * from "./agendamentos";
 export * from "./subscriptions";

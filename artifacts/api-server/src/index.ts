@@ -272,6 +272,24 @@ async function runStartupMigrations() {
   } catch (err) {
     logger.warn({ err }, "startup migrations: deal_etapa conferencia_estoque enum value skipped");
   }
+  try {
+    await db.execute(sql`
+      CREATE TABLE IF NOT EXISTS categorias_produto (
+        id TEXT PRIMARY KEY DEFAULT gen_random_uuid()::text,
+        tenant_id TEXT NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+        nome TEXT NOT NULL,
+        desconto_maximo_percentual NUMERIC(5,2),
+        created_at TIMESTAMP NOT NULL DEFAULT NOW(),
+        updated_at TIMESTAMP NOT NULL DEFAULT NOW()
+      )
+    `);
+    await db.execute(sql`ALTER TABLE produtos_catalogo ADD COLUMN IF NOT EXISTS categoria_id TEXT REFERENCES categorias_produto(id) ON DELETE SET NULL`);
+    await db.execute(sql`ALTER TABLE produtos_catalogo ADD COLUMN IF NOT EXISTS desconto_maximo_percentual NUMERIC(5,2)`);
+    await db.execute(sql`ALTER TABLE produtos_catalogo DROP COLUMN IF EXISTS categoria`);
+    logger.info("startup migrations: categorias_produto + produtos_catalogo desconto columns OK");
+  } catch (err) {
+    logger.warn({ err }, "startup migrations: categorias_produto + produtos_catalogo desconto columns skipped");
+  }
 }
 
 // ─── Boot sequence ────────────────────────────────────────────────────────────

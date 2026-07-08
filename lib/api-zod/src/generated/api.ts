@@ -3470,7 +3470,8 @@ export const CreateProdutoCatalogoBody = zod.object({
   "nome": zod.string(),
   "sku": zod.string().optional(),
   "descricao": zod.string().optional(),
-  "categoria": zod.string().optional(),
+  "categoriaId": zod.string().nullish(),
+  "descontoMaximoPercentual": zod.union([zod.string(),zod.number()]).nullish().describe('Teto de desconto (%) específico deste produto (sobrescreve o da categoria). Null herda o teto da categoria.'),
   "precoBase": zod.union([zod.string(),zod.number()]).describe('Decimal price (e.g. 99.90 or \"99.90\")'),
   "unidade": zod.string().optional(),
   "ativo": zod.boolean().optional(),
@@ -3489,7 +3490,7 @@ export const ImportProdutosCatalogoParams = zod.object({
 })
 
 export const ImportProdutosCatalogoBody = zod.object({
-  "csv": zod.string().describe('CSV content UTF-8. Header row required. Columns: nome, sku, categoria, preco_base, unidade, descricao, imagem_url')
+  "csv": zod.string().describe('CSV content UTF-8. Header row required. Columns: nome, sku, categoria (nome da categoria — criada automaticamente se não existir), preco_base, unidade, descricao, imagem_url')
 })
 
 export const ImportProdutosCatalogoResponse = zod.object({
@@ -3517,7 +3518,10 @@ export const ListProdutosCatalogoResponseItem = zod.object({
   "nome": zod.string(),
   "sku": zod.string().nullish(),
   "descricao": zod.string().nullish(),
-  "categoria": zod.string().nullish(),
+  "categoriaId": zod.string().nullish().describe('FK para categorias_produto'),
+  "categoriaNome": zod.string().nullish().describe('Nome da categoria (somente leitura, resolvido via join)'),
+  "descontoMaximoPercentual": zod.string().nullish().describe('Teto de desconto (%) específico deste produto. Se null, herda o teto da categoria (categoriaDescontoMaximoPercentual).'),
+  "categoriaDescontoMaximoPercentual": zod.string().nullish().describe('Teto de desconto (%) herdado da categoria (somente leitura)'),
   "precoBase": zod.string().describe('Decimal price stored as string (e.g. \"99.90\")'),
   "unidade": zod.string().describe('Unit of measure (e.g. \"un\", \"m2\", \"kg\")'),
   "ativo": zod.boolean(),
@@ -3530,6 +3534,67 @@ export const ListProdutosCatalogoResponseItem = zod.object({
   "updatedAt": zod.coerce.date()
 })
 export const ListProdutosCatalogoResponse = zod.array(ListProdutosCatalogoResponseItem)
+
+
+/**
+ * @summary List product categories by tenant (ordered by name)
+ */
+export const ListCategoriasProdutoParams = zod.object({
+  "tenantId": zod.coerce.string()
+})
+
+export const ListCategoriasProdutoResponseItem = zod.object({
+  "id": zod.string(),
+  "tenantId": zod.string(),
+  "nome": zod.string(),
+  "descontoMaximoPercentual": zod.string().describe('Teto de desconto (%) padrão para produtos desta categoria'),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date()
+})
+export const ListCategoriasProdutoResponse = zod.array(ListCategoriasProdutoResponseItem)
+
+
+/**
+ * @summary Create a product category with its discount ceiling
+ */
+export const CreateCategoriaProdutoParams = zod.object({
+  "tenantId": zod.coerce.string()
+})
+
+export const CreateCategoriaProdutoBody = zod.object({
+  "nome": zod.string(),
+  "descontoMaximoPercentual": zod.union([zod.string(),zod.number()]).optional()
+})
+
+
+/**
+ * @summary Update a product category (name and/or discount ceiling)
+ */
+export const UpdateCategoriaProdutoParams = zod.object({
+  "id": zod.coerce.string()
+})
+
+export const UpdateCategoriaProdutoBody = zod.object({
+  "nome": zod.string().optional(),
+  "descontoMaximoPercentual": zod.union([zod.string(),zod.number()]).optional()
+})
+
+export const UpdateCategoriaProdutoResponse = zod.object({
+  "id": zod.string(),
+  "tenantId": zod.string(),
+  "nome": zod.string(),
+  "descontoMaximoPercentual": zod.string().describe('Teto de desconto (%) padrão para produtos desta categoria'),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date()
+})
+
+
+/**
+ * @summary Delete a product category (products keep categoriaId set to null)
+ */
+export const DeleteCategoriaProdutoParams = zod.object({
+  "id": zod.coerce.string()
+})
 
 
 /**
@@ -3548,7 +3613,10 @@ export const GetProdutoCatalogoResponse = zod.object({
   "nome": zod.string(),
   "sku": zod.string().nullish(),
   "descricao": zod.string().nullish(),
-  "categoria": zod.string().nullish(),
+  "categoriaId": zod.string().nullish().describe('FK para categorias_produto'),
+  "categoriaNome": zod.string().nullish().describe('Nome da categoria (somente leitura, resolvido via join)'),
+  "descontoMaximoPercentual": zod.string().nullish().describe('Teto de desconto (%) específico deste produto. Se null, herda o teto da categoria (categoriaDescontoMaximoPercentual).'),
+  "categoriaDescontoMaximoPercentual": zod.string().nullish().describe('Teto de desconto (%) herdado da categoria (somente leitura)'),
   "precoBase": zod.string().describe('Decimal price stored as string (e.g. \"99.90\")'),
   "unidade": zod.string().describe('Unit of measure (e.g. \"un\", \"m2\", \"kg\")'),
   "ativo": zod.boolean(),
@@ -3573,7 +3641,8 @@ export const UpdateProdutoCatalogoBody = zod.object({
   "nome": zod.string().optional(),
   "sku": zod.string().optional(),
   "descricao": zod.string().optional(),
-  "categoria": zod.string().optional(),
+  "categoriaId": zod.string().nullish(),
+  "descontoMaximoPercentual": zod.union([zod.string(),zod.number()]).nullish().describe('Teto de desconto (%) específico deste produto (sobrescreve o da categoria). Null herda o teto da categoria.'),
   "precoBase": zod.union([zod.string(),zod.number()]).optional(),
   "unidade": zod.string().optional(),
   "ativo": zod.boolean().optional(),
@@ -3592,7 +3661,10 @@ export const UpdateProdutoCatalogoResponse = zod.object({
   "nome": zod.string(),
   "sku": zod.string().nullish(),
   "descricao": zod.string().nullish(),
-  "categoria": zod.string().nullish(),
+  "categoriaId": zod.string().nullish().describe('FK para categorias_produto'),
+  "categoriaNome": zod.string().nullish().describe('Nome da categoria (somente leitura, resolvido via join)'),
+  "descontoMaximoPercentual": zod.string().nullish().describe('Teto de desconto (%) específico deste produto. Se null, herda o teto da categoria (categoriaDescontoMaximoPercentual).'),
+  "categoriaDescontoMaximoPercentual": zod.string().nullish().describe('Teto de desconto (%) herdado da categoria (somente leitura)'),
   "precoBase": zod.string().describe('Decimal price stored as string (e.g. \"99.90\")'),
   "unidade": zod.string().describe('Unit of measure (e.g. \"un\", \"m2\", \"kg\")'),
   "ativo": zod.boolean(),

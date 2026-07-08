@@ -14,7 +14,14 @@ export interface ProdutoCatalogo {
   nome: string;
   sku?: string | null;
   descricao?: string | null;
-  categoria?: string | null;
+  /** FK para categorias_produto */
+  categoriaId?: string | null;
+  /** Nome da categoria (somente leitura, resolvido via join) */
+  categoriaNome?: string | null;
+  /** Teto de desconto (%) específico deste produto. Se null, herda o teto da categoria (categoriaDescontoMaximoPercentual). */
+  descontoMaximoPercentual?: string | null;
+  /** Teto de desconto (%) herdado da categoria (somente leitura) */
+  categoriaDescontoMaximoPercentual?: string | null;
   /** Decimal price stored as string (e.g. "99.90") */
   precoBase: string;
   /** Unit of measure (e.g. "un", "m2", "kg") */

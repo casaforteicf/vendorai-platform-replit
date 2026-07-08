@@ -5,6 +5,7 @@ import {
   inventoryItemsTable,
   inventoryMovementsTable,
   produtosCatalogoTable,
+  categoriasProdutoTable,
   tenantsTable,
   insertInventoryItemSchema,
   updateInventoryItemSchema,
@@ -277,12 +278,37 @@ router.post("/tenants/:tenantId/inventory-items/import", async (req, res) => {
         const precoBase = row.preco
           ? String(parseFloat(row.preco.replace(",", ".")).toFixed(2))
           : "0.00";
+
+        let categoriaId: string | null = null;
+        if (row.categoria) {
+          const categoriaNome = row.categoria.trim();
+          const [existingCategoria] = await db
+            .select({ id: categoriasProdutoTable.id })
+            .from(categoriasProdutoTable)
+            .where(
+              and(
+                eq(categoriasProdutoTable.tenantId, tenantId),
+                ilike(categoriasProdutoTable.nome, categoriaNome)
+              )
+            )
+            .limit(1);
+          if (existingCategoria) {
+            categoriaId = existingCategoria.id;
+          } else {
+            const [created] = await db
+              .insert(categoriasProdutoTable)
+              .values({ tenantId, nome: categoriaNome })
+              .returning({ id: categoriasProdutoTable.id });
+            categoriaId = created.id;
+          }
+        }
+
         [produto] = await db
           .insert(produtosCatalogoTable)
           .values({
             tenantId,
             nome: row.nome.trim(),
-            categoria: row.categoria ?? null,
+            categoriaId,
             precoBase,
             unidade: row.unidade ?? "un",
           })

@@ -4,12 +4,42 @@ import { z } from "zod";
 import {
   db,
   produtosCatalogoTable,
+  categoriasProdutoTable,
   insertProdutoCatalogoSchema,
   updateProdutoCatalogoSchema,
   inventoryItemsTable,
 } from "@workspace/db";
 
 const router: IRouter = Router();
+
+// ── Join helper: attach categoriaNome + categoriaDescontoMaximoPercentual ────
+async function attachCategoriaInfo<T extends { categoriaId: string | null }>(
+  products: T[]
+): Promise<(T & { categoriaNome: string | null; categoriaDescontoMaximoPercentual: string | null })[]> {
+  const ids = [...new Set(products.map((p) => p.categoriaId).filter((id): id is string => !!id))];
+  if (ids.length === 0) {
+    return products.map((p) => ({ ...p, categoriaNome: null, categoriaDescontoMaximoPercentual: null }));
+  }
+
+  const categorias = await db
+    .select({
+      id: categoriasProdutoTable.id,
+      nome: categoriasProdutoTable.nome,
+      descontoMaximoPercentual: categoriasProdutoTable.descontoMaximoPercentual,
+    })
+    .from(categoriasProdutoTable);
+
+  const map = new Map(categorias.map((c) => [c.id, c]));
+
+  return products.map((p) => {
+    const cat = p.categoriaId ? map.get(p.categoriaId) : undefined;
+    return {
+      ...p,
+      categoriaNome: cat?.nome ?? null,
+      categoriaDescontoMaximoPercentual: cat?.descontoMaximoPercentual ?? null,
+    };
+  });
+}
 
 // ── CSV parser (handles quoted fields) ───────────────────────────────────────
 function parseCsvLine(line: string): string[] {
@@ -60,7 +90,7 @@ router.get("/tenants/:tenantId/produtos-catalogo", async (req, res) => {
     .from(produtosCatalogoTable)
     .where(eq(produtosCatalogoTable.tenantId, String(req.params.tenantId)))
     .orderBy(produtosCatalogoTable.nome);
-  res.json(products);
+  res.json(await attachCategoriaInfo(products));
 });
 
 router.get("/produtos-catalogo/:id", async (req, res) => {
@@ -74,7 +104,8 @@ router.get("/produtos-catalogo/:id", async (req, res) => {
     return;
   }
 
-  res.json(product);
+  const [withCategoria] = await attachCategoriaInfo([product]);
+  res.json(withCategoria);
 });
 
 router.patch("/produtos-catalogo/:id", async (req, res) => {
@@ -150,6 +181,27 @@ router.post("/tenants/:tenantId/produtos-catalogo/import", async (req, res) => {
     return;
   }
 
+  // Categories arrive as free-text in the CSV (e.g. "Materiais elétricos") — resolve to
+  // categoriaId, creating the category (with 0% discount ceiling) if it doesn't exist yet.
+  const existingCategorias = await db
+    .select({ id: categoriasProdutoTable.id, nome: categoriasProdutoTable.nome })
+    .from(categoriasProdutoTable)
+    .where(eq(categoriasProdutoTable.tenantId, tenantId));
+  const categoriaByNome = new Map(existingCategorias.map((c) => [c.nome.trim().toLowerCase(), c.id]));
+
+  async function resolveCategoriaId(nomeCategoria: string | null): Promise<string | null> {
+    if (!nomeCategoria) return null;
+    const key = nomeCategoria.trim().toLowerCase();
+    const existing = categoriaByNome.get(key);
+    if (existing) return existing;
+    const [created] = await db
+      .insert(categoriasProdutoTable)
+      .values({ tenantId, nome: nomeCategoria.trim() })
+      .returning({ id: categoriasProdutoTable.id });
+    categoriaByNome.set(key, created.id);
+    return created.id;
+  }
+
   const errors: { row: number; message: string }[] = [];
   const toInsert: typeof produtosCatalogoTable.$inferInsert[] = [];
 
@@ -167,14 +219,16 @@ router.post("/tenants/:tenantId/produtos-catalogo/import", async (req, res) => {
     }
 
     const imagemUrl = iImagem >= 0 ? (cols[iImagem]?.trim() || null) : null;
+    const categoriaNome = iCategoria >= 0 ? (cols[iCategoria]?.trim() || null) : null;
+    const categoriaId = await resolveCategoriaId(categoriaNome);
 
     toInsert.push({
       tenantId,
       nome,
-      sku:       iSku       >= 0 ? (cols[iSku]?.trim()       || null) : null,
-      categoria: iCategoria >= 0 ? (cols[iCategoria]?.trim() || null) : null,
-      unidade:   iUnidade   >= 0 ? (cols[iUnidade]?.trim()   || "un") : "un",
-      descricao: iDesc      >= 0 ? (cols[iDesc]?.trim()      || null) : null,
+      sku:        iSku     >= 0 ? (cols[iSku]?.trim()     || null) : null,
+      categoriaId,
+      unidade:    iUnidade >= 0 ? (cols[iUnidade]?.trim() || "un") : "un",
+      descricao:  iDesc    >= 0 ? (cols[iDesc]?.trim()    || null) : null,
       imagemUrl,
       precoBase: preco.toFixed(2),
       ativo: true,

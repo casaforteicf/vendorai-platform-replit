@@ -2,6 +2,7 @@ import { pgTable, text, timestamp, boolean, numeric, integer, jsonb } from "driz
 import { createInsertSchema, createSelectSchema } from "drizzle-zod";
 import { z } from "zod/v4";
 import { tenantsTable } from "./tenants";
+import { categoriasProdutoTable } from "./categorias_produto";
 
 export const PRODUCT_TYPES = ["physical", "service", "saas_plan", "saas_addon"] as const;
 export type ProductType = typeof PRODUCT_TYPES[number];
@@ -24,7 +25,8 @@ export const produtosCatalogoTable = pgTable("produtos_catalogo", {
   productType: text("product_type").$type<ProductType>().notNull().default("physical"),
   descricao: text("descricao"),
   descricaoLonga: text("descricao_longa"),
-  categoria: text("categoria"),
+  categoriaId: text("categoria_id").references(() => categoriasProdutoTable.id, { onDelete: "set null" }),
+  descontoMaximoPercentual: numeric("desconto_maximo_percentual", { precision: 5, scale: 2 }),
   marca: text("marca"),
   tags: jsonb("tags").$type<string[]>(),
   precoBase: numeric("preco_base", { precision: 12, scale: 2 }).notNull(),
@@ -42,6 +44,12 @@ export const produtosCatalogoTable = pgTable("produtos_catalogo", {
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
 });
 
+const descontoMaximoPercentualSchema = z
+  .union([z.string(), z.number()])
+  .transform((v) => String(v))
+  .pipe(z.string().regex(/^\d+(\.\d{1,2})?$/, "Invalid percentage"))
+  .nullable();
+
 export const insertProdutoCatalogoSchema = createInsertSchema(
   produtosCatalogoTable,
   {
@@ -49,6 +57,7 @@ export const insertProdutoCatalogoSchema = createInsertSchema(
       .union([z.string(), z.number()])
       .transform((v) => String(v))
       .pipe(z.string().regex(/^\d+(\.\d{1,2})?$/, "Invalid decimal price")),
+    descontoMaximoPercentual: descontoMaximoPercentualSchema.optional(),
   }
 ).omit({ id: true, createdAt: true, updatedAt: true });
 
@@ -60,6 +69,7 @@ export const updateProdutoCatalogoSchema = createSelectSchema(
       .transform((v) => String(v))
       .pipe(z.string().regex(/^\d+(\.\d{1,2})?$/, "Invalid decimal price"))
       .optional(),
+    descontoMaximoPercentual: descontoMaximoPercentualSchema.optional(),
   }
 )
   .omit({ id: true, tenantId: true, createdAt: true, updatedAt: true })
