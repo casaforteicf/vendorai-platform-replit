@@ -1,0 +1,4 @@
+import React from 'react';
+import { budgetVersions } from './budgetData';
+import { currency } from './budgetUtils';
+export function BudgetVersions(){return <section className="rounded-[34px] border border-slate-100 bg-white p-5 shadow-sm"><p className="text-xs font-semibold uppercase tracking-wide text-violet-600">Versões</p><h2 className="mt-1 text-xl font-semibold text-slate-950">Histórico de orçamento</h2><div className="mt-5 grid gap-5 md:grid-cols-3">{budgetVersions.map((version)=><article key={version.id} className="rounded-[30px] border border-slate-100 bg-white p-5 shadow-sm"><p className="text-base font-semibold text-slate-950">{version.name}</p><p className="mt-1 text-sm text-slate-500">{version.date}</p><p className="mt-5 text-2xl font-semibold text-slate-950">{currency(version.total)}</p><p className="mt-1 text-sm text-slate-500">Margem {version.margin}% • {version.status}</p></article>)}</div></section>}
