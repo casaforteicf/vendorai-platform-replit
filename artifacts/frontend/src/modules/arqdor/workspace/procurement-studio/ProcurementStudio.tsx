@@ -3,6 +3,7 @@ import { AIProcurementPanel } from "./AIProcurementPanel";
 import { ProcurementDashboard } from "./ProcurementDashboard";
 import { ProcurementSuppliers } from "./ProcurementSuppliers";
 import Quotations from "./quotations/Quotations";
+import ReceivingInventoryStudio from "./receiving-inventory/ReceivingInventoryStudio";
 import { PurchaseRequestInspector } from "./PurchaseRequestInspector";
 import { purchaseRequests } from "./procurementData";
 import type { ProcurementView, PurchaseRequest } from "./procurementTypes";
@@ -99,9 +100,9 @@ function Content({
 
   if (view === "quotations") return <Quotations onNavigate={onNavigate} />;
   if (view === "orders") return <Placeholder title="Pedidos de compra" />;
-  if (view === "receiving") return <Placeholder title="Recebimento" />;
-  if (view === "inventory") return <Placeholder title="Estoque" />;
-  if (view === "logistics") return <Placeholder title="Logística" />;
+  if (view === "receiving") return <ReceivingInventoryStudio onNavigate={onNavigate} />;
+  if (view === "inventory") return <ReceivingInventoryStudio onNavigate={onNavigate} />;
+  if (view === "logistics") return <ReceivingInventoryStudio onNavigate={onNavigate} />;
   if (view === "ai") return <AIProcurementPanel />;
 
   return (
