@@ -430,6 +430,70 @@ export async function triggerOnboardingHandoff(params: {
   return task;
 }
 
+// ── Reação proativa: conferência de estoque reprovada → Closer oferece alternativa ──
+// Chamado quando um agent_task "conferencia_estoque" é rejeitado e o deal não
+// tem vendedor (assignedTo) atribuído. Reaciona o agente Closer na conversa
+// com o lead pelo mesmo mecanismo de agent_task usado nos demais agentes
+// (respeita enabled/limits/autonomyEnabledAt do tenant).
+export async function triggerCloserStockRejectionOffer(params: {
+  tenantId: string;
+  leadId:   string;
+  dealId:   string;
+  motivo?:  string;
+  log:      Logger;
+}): Promise<AgentTask | null> {
+  const { tenantId, leadId, dealId, motivo, log } = params;
+
+  const [config] = await db.select().from(agentConfigsTable).where(eq(agentConfigsTable.tenantId, tenantId));
+  if (!config) {
+    log.info({ tenantId, dealId }, "triggerCloserStockRejectionOffer: no agent config, skipping");
+    return null;
+  }
+
+  const agentCfg = config.agents?.closer;
+  if (!agentCfg?.enabled) {
+    log.info({ tenantId, dealId }, "triggerCloserStockRejectionOffer: closer agent not enabled, skipping");
+    return null;
+  }
+
+  const limits = computeLimits(config);
+  if (!limits.ok) {
+    log.warn({ tenantId, dealId }, "triggerCloserStockRejectionOffer: agent limits reached, skipping proactive offer");
+    return null;
+  }
+
+  const [lead] = await db.select({ nome: leadsTable.nome }).from(leadsTable).where(eq(leadsTable.id, leadId));
+  if (!lead) {
+    log.warn({ tenantId, dealId, leadId }, "triggerCloserStockRejectionOffer: lead not found, skipping");
+    return null;
+  }
+
+  const primeiroNome = (lead.nome ?? "").trim().split(/\s+/)[0] || undefined;
+  const resposta = `Oi${primeiroNome ? `, ${primeiroNome}` : ""}! Sobre a proposta que fechamos: infelizmente identificamos que um dos itens não tem disponibilidade em estoque no momento${motivo ? ` (${motivo})` : ""}. Posso te oferecer um produto substituto, um prazo de entrega maior ou ajustar a quantidade — qual dessas opções funciona melhor pra você?`;
+
+  const now = new Date();
+  await updateCounters(config, limits, 0, now);
+
+  const isAutonomous = !!config.autonomyEnabledAt;
+  const task = await insertAndRun({
+    tenantId,
+    leadId,
+    agentName: "closer",
+    actionType: "enviar_whatsapp",
+    resposta,
+    extraPayload: { origin: "conferencia_estoque_reprovada", dealId },
+    isAutonomous,
+    now,
+    log,
+  });
+
+  log.info(
+    { taskId: task.id, status: task.status, leadId, dealId, isAutonomous },
+    "triggerCloserStockRejectionOffer: proactive closer reactivation created"
+  );
+  return task;
+}
+
 // ── Message → OpenAI format ───────────────────────────────────────────────────
 export function msgToOpenAI(m: Message): OpenAI.Chat.ChatCompletionMessageParam {
   const role: "user" | "assistant" = m.direcao === "entrada" ? "user" : "assistant";

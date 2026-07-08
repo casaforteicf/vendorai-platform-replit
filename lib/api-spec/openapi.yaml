@@ -12285,7 +12285,7 @@ components:
 
     DealEtapa:
       type: string
-      enum: [em_aquecimento, novo, qualificado, proposta, negociacao, ganho, em_execucao, entregue, perdido, parceiro]
+      enum: [em_aquecimento, novo, qualificado, proposta, negociacao, conferencia_estoque, ganho, em_execucao, entregue, perdido, parceiro]
 
     DealEtapaSaas:
       type: string
@@ -13360,6 +13360,19 @@ components:
             Link para avaliação do Google configurado pelo tenant. Usado pelo agente
             Pós-Venda para solicitar avaliações apenas quando o cliente relata uma
             experiência positiva na pesquisa de satisfação pós-entrega. Vazio por padrão.
+        confirmarEstoqueAntesFinanceiro:
+          type: boolean
+          default: false
+          description: >
+            Quando true, o fechamento de negócios pausa em uma etapa de conferência de
+            estoque antes de gerar contrato/cobrança, aguardando aprovação do usuário
+            responsável.
+        usuarioConferenciaEstoqueId:
+          type: string
+          nullable: true
+          description: >
+            ID do usuário responsável por confirmar a disponibilidade em estoque antes
+            do fechamento financeiro (sem FK formal para evitar import circular).
         createdAt:
           type: string
           format: date-time
@@ -13490,6 +13503,18 @@ components:
           description: >
             Link para avaliação do Google configurado pelo tenant. Editável a
             qualquer momento; vazio por padrão.
+        confirmarEstoqueAntesFinanceiro:
+          type: boolean
+          description: >
+            Quando true, o fechamento de negócios pausa em uma etapa de conferência de
+            estoque antes de gerar contrato/cobrança, aguardando aprovação do usuário
+            responsável.
+        usuarioConferenciaEstoqueId:
+          type: string
+          nullable: true
+          description: >
+            ID do usuário responsável por confirmar a disponibilidade em estoque antes
+            do fechamento financeiro.
 
     BillingEventType:
       type: string

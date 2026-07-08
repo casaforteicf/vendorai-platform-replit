@@ -12,6 +12,7 @@ export const dealEtapaEnum = pgEnum("deal_etapa", [
   "qualificado",
   "proposta",
   "negociacao",
+  "conferencia_estoque",
   "ganho",
   "em_execucao",
   "entregue",

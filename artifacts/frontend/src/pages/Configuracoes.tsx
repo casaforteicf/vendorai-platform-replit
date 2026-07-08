@@ -1020,6 +1020,53 @@ export default function Configuracoes() {
     );
   }
 
+  // ── Confirmação de Estoque antes do Financeiro ────────────────────────────
+  const [confirmarEstoqueLocal, setConfirmarEstoqueLocal] = useState(false);
+  const [usuarioConferenciaEstoqueLocal, setUsuarioConferenciaEstoqueLocal] = useState<string>("");
+  const [syncedConfirmarEstoque, setSyncedConfirmarEstoque] = useState(false);
+  if (tenantQuery.data !== undefined && !syncedConfirmarEstoque) {
+    setConfirmarEstoqueLocal(!!tenantQuery.data.confirmarEstoqueAntesFinanceiro);
+    setUsuarioConferenciaEstoqueLocal(tenantQuery.data.usuarioConferenciaEstoqueId ?? "");
+    setSyncedConfirmarEstoque(true);
+  }
+
+  function onToggleConfirmarEstoque(checked: boolean) {
+    setConfirmarEstoqueLocal(checked);
+    updateTenant.mutate(
+      {
+        id: tenantId,
+        data: {
+          confirmarEstoqueAntesFinanceiro: checked,
+          ...(checked ? {} : { usuarioConferenciaEstoqueId: null }),
+        },
+      },
+      {
+        onSuccess: () => {
+          queryClient.invalidateQueries({ queryKey: getGetTenantQueryKey(tenantId) });
+          toast({ title: checked ? "Confirmação de estoque ativada." : "Confirmação de estoque desativada." });
+        },
+        onError: () => {
+          setConfirmarEstoqueLocal(!checked);
+          toast({ title: "Erro ao salvar configuração.", variant: "destructive" });
+        },
+      }
+    );
+  }
+
+  function onSaveUsuarioConferenciaEstoque(userId: string) {
+    setUsuarioConferenciaEstoqueLocal(userId);
+    updateTenant.mutate(
+      { id: tenantId, data: { usuarioConferenciaEstoqueId: userId || null } },
+      {
+        onSuccess: () => {
+          queryClient.invalidateQueries({ queryKey: getGetTenantQueryKey(tenantId) });
+          toast({ title: "Responsável pela conferência de estoque atualizado." });
+        },
+        onError: () => toast({ title: "Erro ao salvar responsável.", variant: "destructive" }),
+      }
+    );
+  }
+
   // ── Site Config ───────────────────────────────────────────────────────────
   const siteQuery = useGetSiteConfigByTenant(tenantId, { query: { queryKey: getGetSiteConfigByTenantQueryKey(tenantId), enabled: !!tenantId } });
 
@@ -2220,6 +2267,52 @@ export default function Configuracoes() {
                     <Save className="h-4 w-4" />
                     {updateTenant.isPending ? "Salvando..." : "Salvar"}
                   </Button>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Confirmação de Estoque antes do Financeiro — admin only */}
+          {(user?.platformRole === "tenant_admin" || user?.platformRole === "super_admin") && (
+            <div className="rounded-xl border bg-card p-6 space-y-4">
+              <div className="flex items-center justify-between gap-4">
+                <div>
+                  <h2 className="font-semibold text-base flex items-center gap-2">
+                    <FileText className="h-4 w-4 text-primary" />
+                    Confirmação de Estoque antes do Financeiro
+                  </h2>
+                  <p className="text-sm text-muted-foreground mt-0.5">
+                    Quando ativado, o fechamento pausa antes de gerar contrato/cobrança e aguarda um responsável confirmar a disponibilidade em estoque.
+                  </p>
+                </div>
+                <Switch
+                  checked={confirmarEstoqueLocal}
+                  onCheckedChange={onToggleConfirmarEstoque}
+                  disabled={updateTenant.isPending || tenantQuery.isLoading}
+                />
+              </div>
+
+              {confirmarEstoqueLocal && (
+                <div className="space-y-1.5 pt-2 border-t">
+                  <label className="text-sm font-medium">Responsável pela conferência</label>
+                  <Select
+                    value={usuarioConferenciaEstoqueLocal || undefined}
+                    onValueChange={onSaveUsuarioConferenciaEstoque}
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="Selecione um usuário" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {(teamQuery.data ?? []).map((u) => (
+                        <SelectItem key={u.id} value={u.id}>
+                          {u.name ?? u.email}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <p className="text-xs text-muted-foreground">
+                    Esse usuário receberá a notificação e poderá aprovar ou reprovar a conferência de estoque no painel.
+                  </p>
                 </div>
               )}
             </div>

@@ -33,3 +33,4 @@
 - [Per-tenant Asaas billing](per-tenant-asaas-billing.md) — cada tenant tem sua própria conta Asaas; missing config é fallback esperado (manual), não erro; nunca usar chave global do env para cobrança tenant→cliente.
 - [activity_tipo enum drift](activity-tipo-enum-drift.md) — Postgres enum real no Supabase pode estar dessincronizado do TS schema; sempre comparar via pg_enum antes de considerar migração de enum completa.
 - [Pós-venda feedback de entrega](post-venda-feedback-entrega.md) — pergunta de satisfação pós-entrega classificada por IA (não keyword); positivo pede avaliação Google só se tenant configurou link; negativo registra motivo em 2 turnos.
+- [OpenAPI enum mirrors DB pgEnum](openapi-enum-mirrors-db-enum.md) — nova value em pgEnum (ex: deal_etapa) precisa ser adicionada manualmente ao enum do OpenAPI + codegen, senão frontend quebra TS2322.

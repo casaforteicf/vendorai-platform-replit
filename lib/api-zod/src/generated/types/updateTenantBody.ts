@@ -48,4 +48,10 @@ export interface UpdateTenantBody {
   /** Link para avaliação do Google configurado pelo tenant. Editável a qualquer momento; vazio por padrão.
    */
   googleReviewLink?: string | null;
+  /** Quando true, o fechamento de negócios pausa em uma etapa de conferência de estoque antes de gerar contrato/cobrança, aguardando aprovação do usuário responsável.
+   */
+  confirmarEstoqueAntesFinanceiro?: boolean;
+  /** ID do usuário responsável por confirmar a disponibilidade em estoque antes do fechamento financeiro.
+   */
+  usuarioConferenciaEstoqueId?: string | null;
 }

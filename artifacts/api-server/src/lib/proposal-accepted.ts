@@ -37,6 +37,8 @@ export interface ProposalAcceptanceResult {
   webhookDispatched: boolean;
   /** true when the closure was blocked pending manual approval (valor ≠ catálogo) */
   pendingApproval?: boolean;
+  /** true when the closure was paused pending manual stock confirmation */
+  pendingStockConfirmation?: boolean;
   agentTaskId?: string;
   divergence?: { valorProposta: number; valorCatalogo: number; diferenca: number };
 }
@@ -54,6 +56,12 @@ export interface ProposalAcceptedOptions {
    * the check already ran once and a human already signed off on it.
    */
   skipApprovalCheck?: boolean;
+  /**
+   * Skips the stock-confirmation gate. Used when re-running the closure
+   * after a "conferencia_estoque" agent_task has been approved — the check
+   * already ran once and the designated user already confirmed availability.
+   */
+  skipStockCheck?: boolean;
 }
 
 /**
@@ -265,6 +273,101 @@ export async function proposalAccepted(
           valorCatalogo: catalogCheck.catalogTotal,
           diferenca: catalogCheck.diferenca,
         },
+      };
+    }
+  }
+
+  // 3c. Stock confirmation gate — tenant pode exigir confirmação de estoque
+  // humana antes de disparar contrato/cobrança, evitando vender item sem
+  // disponibilidade real. Roda depois do guardrail de valor do Bloco 1.
+  if (!options?.skipStockCheck) {
+    const [tenantCfg] = await db
+      .select({
+        confirmarEstoqueAntesFinanceiro: tenantsTable.confirmarEstoqueAntesFinanceiro,
+        usuarioConferenciaEstoqueId: tenantsTable.usuarioConferenciaEstoqueId,
+      })
+      .from(tenantsTable)
+      .where(eq(tenantsTable.id, proposta.tenantId));
+
+    if (tenantCfg?.confirmarEstoqueAntesFinanceiro) {
+      if (!proposta.leadId) {
+        log.error(
+          { dealId: deal.id },
+          "proposalAccepted: confirmação de estoque exigida mas proposta não tem leadId — não é possível criar agent_task"
+        );
+        return { ok: false, error: "Confirmação de estoque exigida e não há lead vinculado para conferência", propostaId };
+      }
+
+      const etapaAnterior = deal.etapa;
+      await db
+        .update(dealsTable)
+        .set({
+          etapa: "conferencia_estoque" as typeof dealsTable.$inferInsert.etapa,
+          updatedAt: new Date(),
+        })
+        .where(eq(dealsTable.id, deal.id));
+
+      const [task] = await db
+        .insert(agentTasksTable)
+        .values({
+          tenantId: proposta.tenantId,
+          leadId: proposta.leadId,
+          agentName: "closer",
+          actionType: "conferencia_estoque",
+          payload: {
+            origin: "proposal_accepted",
+            propostaId,
+            dealId: deal.id,
+            channel,
+            metadata: metadata ?? null,
+            etapaAnterior,
+            assignedUserId: tenantCfg.usuarioConferenciaEstoqueId ?? null,
+            itens: (proposta.itens ?? []).map((i) => ({ nome: i.nome, sku: i.sku ?? null, quantidade: i.quantidade })),
+          },
+        })
+        .returning();
+
+      await db.insert(notificationsTable).values({
+        tenantId: proposta.tenantId,
+        title: "Confirmação de estoque pendente antes do fechamento",
+        message: `Proposta "${proposta.numero ?? proposta.titulo}" (lead ${proposta.leadId}) aguarda confirmação de disponibilidade em estoque antes de seguir para contrato e cobrança.`,
+        type: "warning",
+        category: "conferencia_estoque",
+      });
+
+      try {
+        if (tenantCfg.usuarioConferenciaEstoqueId) {
+          const [responsavel] = await db
+            .select({ telefone: usersTable.telefone })
+            .from(usersTable)
+            .where(eq(usersTable.id, tenantCfg.usuarioConferenciaEstoqueId));
+          if (responsavel?.telefone) {
+            const msg = `📦 Confirmação de estoque pendente\n\nProposta "${proposta.numero ?? proposta.titulo}" precisa de conferência de estoque antes de seguir para contrato/cobrança.\n\nAprove ou reprove no painel para continuar o fechamento.`;
+            await sendDirectWhatsAppMessage(proposta.tenantId, responsavel.telefone, msg, log);
+          }
+        }
+      } catch (wErr) {
+        log.warn({ err: wErr, dealId: deal.id }, "proposalAccepted: WhatsApp de conferência de estoque falhou (non-fatal)");
+      }
+
+      log.info(
+        { dealId: deal.id, taskId: task.id },
+        "proposalAccepted: aguardando confirmação de estoque, fechamento pausado"
+      );
+
+      return {
+        ok: true,
+        alreadyProcessed: false,
+        propostaId,
+        dealId: deal.id,
+        channel,
+        closureTriggeredAt: null,
+        chargeCreated: false,
+        inventoryDeducted: false,
+        activityCreated: false,
+        webhookDispatched: false,
+        pendingStockConfirmation: true,
+        agentTaskId: task.id,
       };
     }
   }

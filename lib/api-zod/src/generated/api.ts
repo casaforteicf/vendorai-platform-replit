@@ -1349,7 +1349,7 @@ export const CreateDealBody = zod.object({
   "leadId": zod.string().optional(),
   "titulo": zod.string(),
   "valor": zod.number().optional(),
-  "etapa": zod.enum(['em_aquecimento', 'novo', 'qualificado', 'proposta', 'negociacao', 'ganho', 'em_execucao', 'entregue', 'perdido', 'parceiro']).optional(),
+  "etapa": zod.enum(['em_aquecimento', 'novo', 'qualificado', 'proposta', 'negociacao', 'conferencia_estoque', 'ganho', 'em_execucao', 'entregue', 'perdido', 'parceiro']).optional(),
   "funilId": zod.string().optional(),
   "probabilidade": zod.number().min(createDealBodyProbabilidadeMin).max(createDealBodyProbabilidadeMax).optional(),
   "dataFechamentoPrevista": zod.coerce.date().optional(),
@@ -1376,7 +1376,7 @@ export const ListDealsParams = zod.object({
 })
 
 export const ListDealsQueryParams = zod.object({
-  "etapa": zod.enum(['em_aquecimento', 'novo', 'qualificado', 'proposta', 'negociacao', 'ganho', 'em_execucao', 'entregue', 'perdido', 'parceiro']).optional(),
+  "etapa": zod.enum(['em_aquecimento', 'novo', 'qualificado', 'proposta', 'negociacao', 'conferencia_estoque', 'ganho', 'em_execucao', 'entregue', 'perdido', 'parceiro']).optional(),
   "funilId": zod.coerce.string().optional(),
   "leadId": zod.coerce.string().optional()
 })
@@ -1395,7 +1395,7 @@ export const ListDealsResponseItem = zod.object({
   "leadId": zod.string().nullish(),
   "titulo": zod.string(),
   "valor": zod.string().nullish().describe('Decimal stored as string (Postgres numeric)'),
-  "etapa": zod.enum(['em_aquecimento', 'novo', 'qualificado', 'proposta', 'negociacao', 'ganho', 'em_execucao', 'entregue', 'perdido', 'parceiro']),
+  "etapa": zod.enum(['em_aquecimento', 'novo', 'qualificado', 'proposta', 'negociacao', 'conferencia_estoque', 'ganho', 'em_execucao', 'entregue', 'perdido', 'parceiro']),
   "funilId": zod.string().nullish(),
   "probabilidade": zod.number().min(listDealsResponseProbabilidadeMin).max(listDealsResponseProbabilidadeMax).nullish(),
   "dataFechamentoPrevista": zod.coerce.date().nullish(),
@@ -1470,7 +1470,7 @@ export const GetDealResponse = zod.object({
   "leadId": zod.string().nullish(),
   "titulo": zod.string(),
   "valor": zod.string().nullish().describe('Decimal stored as string (Postgres numeric)'),
-  "etapa": zod.enum(['em_aquecimento', 'novo', 'qualificado', 'proposta', 'negociacao', 'ganho', 'em_execucao', 'entregue', 'perdido', 'parceiro']),
+  "etapa": zod.enum(['em_aquecimento', 'novo', 'qualificado', 'proposta', 'negociacao', 'conferencia_estoque', 'ganho', 'em_execucao', 'entregue', 'perdido', 'parceiro']),
   "funilId": zod.string().nullish(),
   "probabilidade": zod.number().min(getDealResponseProbabilidadeMin).max(getDealResponseProbabilidadeMax).nullish(),
   "dataFechamentoPrevista": zod.coerce.date().nullish(),
@@ -1527,7 +1527,7 @@ export const UpdateDealBody = zod.object({
   "leadId": zod.string().optional(),
   "titulo": zod.string().optional(),
   "valor": zod.number().optional(),
-  "etapa": zod.enum(['em_aquecimento', 'novo', 'qualificado', 'proposta', 'negociacao', 'ganho', 'em_execucao', 'entregue', 'perdido', 'parceiro']).optional(),
+  "etapa": zod.enum(['em_aquecimento', 'novo', 'qualificado', 'proposta', 'negociacao', 'conferencia_estoque', 'ganho', 'em_execucao', 'entregue', 'perdido', 'parceiro']).optional(),
   "funilId": zod.string().optional(),
   "probabilidade": zod.number().min(updateDealBodyProbabilidadeMin).max(updateDealBodyProbabilidadeMax).optional(),
   "dataFechamentoPrevista": zod.coerce.date().optional(),
@@ -1563,7 +1563,7 @@ export const UpdateDealResponse = zod.object({
   "leadId": zod.string().nullish(),
   "titulo": zod.string(),
   "valor": zod.string().nullish().describe('Decimal stored as string (Postgres numeric)'),
-  "etapa": zod.enum(['em_aquecimento', 'novo', 'qualificado', 'proposta', 'negociacao', 'ganho', 'em_execucao', 'entregue', 'perdido', 'parceiro']),
+  "etapa": zod.enum(['em_aquecimento', 'novo', 'qualificado', 'proposta', 'negociacao', 'conferencia_estoque', 'ganho', 'em_execucao', 'entregue', 'perdido', 'parceiro']),
   "funilId": zod.string().nullish(),
   "probabilidade": zod.number().min(updateDealResponseOneProbabilidadeMin).max(updateDealResponseOneProbabilidadeMax).nullish(),
   "dataFechamentoPrevista": zod.coerce.date().nullish(),
@@ -4592,6 +4592,7 @@ export const DeleteBusinessProfileParams = zod.object({
  */
 export const listTenantsResponseOnboardingConcluidoDefault = false;
 export const listTenantsResponseIntegracoesConcluidoDefault = false;
+export const listTenantsResponseConfirmarEstoqueAntesFinanceiroDefault = false;
 
 export const ListTenantsResponseItem = zod.object({
   "id": zod.string(),
@@ -4621,6 +4622,8 @@ export const ListTenantsResponseItem = zod.object({
   "onboardingConcluido": zod.boolean().default(listTenantsResponseOnboardingConcluidoDefault).describe('Whether the main onboarding wizard (steps 1-4) has been completed.'),
   "integracoesConcluido": zod.boolean().default(listTenantsResponseIntegracoesConcluidoDefault).describe('Whether the integrations onboarding has been completed.'),
   "googleReviewLink": zod.string().nullish().describe('Link para avaliação do Google configurado pelo tenant. Usado pelo agente Pós-Venda para solicitar avaliações apenas quando o cliente relata uma experiência positiva na pesquisa de satisfação pós-entrega. Vazio por padrão.\n'),
+  "confirmarEstoqueAntesFinanceiro": zod.boolean().default(listTenantsResponseConfirmarEstoqueAntesFinanceiroDefault).describe('Quando true, o fechamento de negócios pausa em uma etapa de conferência de estoque antes de gerar contrato\/cobrança, aguardando aprovação do usuário responsável.\n'),
+  "usuarioConferenciaEstoqueId": zod.string().nullish().describe('ID do usuário responsável por confirmar a disponibilidade em estoque antes do fechamento financeiro (sem FK formal para evitar import circular).\n'),
   "createdAt": zod.coerce.date(),
   "updatedAt": zod.coerce.date()
 })
@@ -4655,6 +4658,7 @@ export const GetTenantParams = zod.object({
 
 export const getTenantResponseOnboardingConcluidoDefault = false;
 export const getTenantResponseIntegracoesConcluidoDefault = false;
+export const getTenantResponseConfirmarEstoqueAntesFinanceiroDefault = false;
 
 export const GetTenantResponse = zod.object({
   "id": zod.string(),
@@ -4684,6 +4688,8 @@ export const GetTenantResponse = zod.object({
   "onboardingConcluido": zod.boolean().default(getTenantResponseOnboardingConcluidoDefault).describe('Whether the main onboarding wizard (steps 1-4) has been completed.'),
   "integracoesConcluido": zod.boolean().default(getTenantResponseIntegracoesConcluidoDefault).describe('Whether the integrations onboarding has been completed.'),
   "googleReviewLink": zod.string().nullish().describe('Link para avaliação do Google configurado pelo tenant. Usado pelo agente Pós-Venda para solicitar avaliações apenas quando o cliente relata uma experiência positiva na pesquisa de satisfação pós-entrega. Vazio por padrão.\n'),
+  "confirmarEstoqueAntesFinanceiro": zod.boolean().default(getTenantResponseConfirmarEstoqueAntesFinanceiroDefault).describe('Quando true, o fechamento de negócios pausa em uma etapa de conferência de estoque antes de gerar contrato\/cobrança, aguardando aprovação do usuário responsável.\n'),
+  "usuarioConferenciaEstoqueId": zod.string().nullish().describe('ID do usuário responsável por confirmar a disponibilidade em estoque antes do fechamento financeiro (sem FK formal para evitar import circular).\n'),
   "createdAt": zod.coerce.date(),
   "updatedAt": zod.coerce.date()
 })
@@ -4714,11 +4720,14 @@ export const UpdateTenantBody = zod.object({
   "tipoFechamentoDefault": zod.enum(['pedido', 'contrato', 'pedido_e_contrato']).nullish().describe('Tipo de fechamento padrão para novos deals deste tenant.'),
   "mensalidadeValor": zod.number().nullish().describe('Valor da mensalidade recorrente.'),
   "logoUrl": zod.string().nullish().describe('Logo URL for co-branding in the dashboard header.'),
-  "googleReviewLink": zod.string().nullish().describe('Link para avaliação do Google configurado pelo tenant. Editável a qualquer momento; vazio por padrão.\n')
+  "googleReviewLink": zod.string().nullish().describe('Link para avaliação do Google configurado pelo tenant. Editável a qualquer momento; vazio por padrão.\n'),
+  "confirmarEstoqueAntesFinanceiro": zod.boolean().optional().describe('Quando true, o fechamento de negócios pausa em uma etapa de conferência de estoque antes de gerar contrato\/cobrança, aguardando aprovação do usuário responsável.\n'),
+  "usuarioConferenciaEstoqueId": zod.string().nullish().describe('ID do usuário responsável por confirmar a disponibilidade em estoque antes do fechamento financeiro.\n')
 })
 
 export const updateTenantResponseOnboardingConcluidoDefault = false;
 export const updateTenantResponseIntegracoesConcluidoDefault = false;
+export const updateTenantResponseConfirmarEstoqueAntesFinanceiroDefault = false;
 
 export const UpdateTenantResponse = zod.object({
   "id": zod.string(),
@@ -4748,6 +4757,8 @@ export const UpdateTenantResponse = zod.object({
   "onboardingConcluido": zod.boolean().default(updateTenantResponseOnboardingConcluidoDefault).describe('Whether the main onboarding wizard (steps 1-4) has been completed.'),
   "integracoesConcluido": zod.boolean().default(updateTenantResponseIntegracoesConcluidoDefault).describe('Whether the integrations onboarding has been completed.'),
   "googleReviewLink": zod.string().nullish().describe('Link para avaliação do Google configurado pelo tenant. Usado pelo agente Pós-Venda para solicitar avaliações apenas quando o cliente relata uma experiência positiva na pesquisa de satisfação pós-entrega. Vazio por padrão.\n'),
+  "confirmarEstoqueAntesFinanceiro": zod.boolean().default(updateTenantResponseConfirmarEstoqueAntesFinanceiroDefault).describe('Quando true, o fechamento de negócios pausa em uma etapa de conferência de estoque antes de gerar contrato\/cobrança, aguardando aprovação do usuário responsável.\n'),
+  "usuarioConferenciaEstoqueId": zod.string().nullish().describe('ID do usuário responsável por confirmar a disponibilidade em estoque antes do fechamento financeiro (sem FK formal para evitar import circular).\n'),
   "createdAt": zod.coerce.date(),
   "updatedAt": zod.coerce.date()
 })
@@ -7251,6 +7262,7 @@ export const LinkTenantPartnerBody = zod.object({
 
 export const linkTenantPartnerResponseOnboardingConcluidoDefault = false;
 export const linkTenantPartnerResponseIntegracoesConcluidoDefault = false;
+export const linkTenantPartnerResponseConfirmarEstoqueAntesFinanceiroDefault = false;
 
 export const LinkTenantPartnerResponse = zod.object({
   "id": zod.string(),
@@ -7280,6 +7292,8 @@ export const LinkTenantPartnerResponse = zod.object({
   "onboardingConcluido": zod.boolean().default(linkTenantPartnerResponseOnboardingConcluidoDefault).describe('Whether the main onboarding wizard (steps 1-4) has been completed.'),
   "integracoesConcluido": zod.boolean().default(linkTenantPartnerResponseIntegracoesConcluidoDefault).describe('Whether the integrations onboarding has been completed.'),
   "googleReviewLink": zod.string().nullish().describe('Link para avaliação do Google configurado pelo tenant. Usado pelo agente Pós-Venda para solicitar avaliações apenas quando o cliente relata uma experiência positiva na pesquisa de satisfação pós-entrega. Vazio por padrão.\n'),
+  "confirmarEstoqueAntesFinanceiro": zod.boolean().default(linkTenantPartnerResponseConfirmarEstoqueAntesFinanceiroDefault).describe('Quando true, o fechamento de negócios pausa em uma etapa de conferência de estoque antes de gerar contrato\/cobrança, aguardando aprovação do usuário responsável.\n'),
+  "usuarioConferenciaEstoqueId": zod.string().nullish().describe('ID do usuário responsável por confirmar a disponibilidade em estoque antes do fechamento financeiro (sem FK formal para evitar import circular).\n'),
   "createdAt": zod.coerce.date(),
   "updatedAt": zod.coerce.date()
 })

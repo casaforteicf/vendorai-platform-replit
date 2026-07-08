@@ -259,6 +259,19 @@ async function runStartupMigrations() {
   } catch (err) {
     logger.warn({ err }, "startup migrations: obra_diario resumo_ia skipped");
   }
+  try {
+    await db.execute(sql`ALTER TABLE tenants ADD COLUMN IF NOT EXISTS confirmar_estoque_antes_financeiro BOOLEAN NOT NULL DEFAULT FALSE`);
+    await db.execute(sql`ALTER TABLE tenants ADD COLUMN IF NOT EXISTS usuario_conferencia_estoque_id TEXT`);
+    logger.info("startup migrations: tenants confirmacao de estoque columns OK");
+  } catch (err) {
+    logger.warn({ err }, "startup migrations: tenants confirmacao de estoque columns skipped");
+  }
+  try {
+    await db.execute(sql`ALTER TYPE deal_etapa ADD VALUE IF NOT EXISTS 'conferencia_estoque'`);
+    logger.info("startup migrations: deal_etapa conferencia_estoque enum value OK");
+  } catch (err) {
+    logger.warn({ err }, "startup migrations: deal_etapa conferencia_estoque enum value skipped");
+  }
 }
 
 // ─── Boot sequence ────────────────────────────────────────────────────────────

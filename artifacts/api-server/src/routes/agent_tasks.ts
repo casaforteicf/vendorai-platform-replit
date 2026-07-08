@@ -4,6 +4,9 @@ import {
   db,
   agentTasksTable,
   agentConfigsTable,
+  dealsTable,
+  usersTable,
+  notificationsTable,
   insertAgentTaskSchema,
   updateAgentTaskSchema,
 } from "@workspace/db";
@@ -12,6 +15,7 @@ import { z } from "zod";
 import {
   sendOutgoingMessage,
   sendAgentAttachments,
+  sendDirectWhatsAppMessage,
   LeadNotFoundError,
   type AgentAttachment,
 } from "../services/omnichannel.js";
@@ -19,6 +23,7 @@ import { tenantAgentConfigsTable } from "@workspace/db";
 import type { Logger } from "pino";
 import { proposalAccepted } from "../lib/proposal-accepted.js";
 import { runDealClosure, type ConfirmClosureBody } from "./confirm_closure.js";
+import { triggerCloserStockRejectionOffer } from "../lib/agent-engine.js";
 
 const router: IRouter = Router();
 
@@ -53,6 +58,27 @@ const aprovacaoFechamentoPayloadSchema = z.object({
   vendedorNome: z.string().nullable().optional(),
 });
 
+// ── Payload schema for actionType="conferencia_estoque" ──────────────────────
+const conferenciaEstoquePayloadSchema = z.object({
+  origin: z.enum(["proposal_accepted", "confirm_closure"]),
+  dealId: z.string().min(1),
+  propostaId: z.string().optional(),
+  channel: z.enum(["link", "whatsapp", "manual"]).optional(),
+  metadata: z
+    .object({
+      ip: z.string().optional(),
+      nome: z.string().optional(),
+      documento: z.string().optional(),
+    })
+    .nullable()
+    .optional(),
+  body: z.record(z.string(), z.unknown()).optional(),
+  vendedorNome: z.string().nullable().optional(),
+  etapaAnterior: z.string(),
+  assignedUserId: z.string().nullable().optional(),
+  itens: z.array(z.record(z.string(), z.unknown())).optional(),
+});
+
 // ── Shared action executor ────────────────────────────────────────────────────
 // Runs the action for a task that is already in "executando" status.
 // Updates the task to "concluido" with result, or "erro" with errorMessage.
@@ -62,6 +88,10 @@ export async function executeTaskAction(
 ): Promise<AgentTask> {
   if (task.actionType === "aprovacao_fechamento") {
     return executeAprovacaoFechamento(task, log);
+  }
+
+  if (task.actionType === "conferencia_estoque") {
+    return executeConferenciaEstoque(task, log);
   }
 
   if (task.actionType !== "enviar_whatsapp") {
@@ -235,6 +265,146 @@ async function executeAprovacaoFechamento(task: AgentTask, log: Logger): Promise
   }
 }
 
+// ── conferencia_estoque ────────────────────────────────────────────────────────
+// Re-runs the deal closure that was paused pending manual stock confirmation.
+// Dispatches to the same code path the original request would have taken,
+// skipping the catalog + stock checks this time since a human already
+// confirmed availability.
+async function executeConferenciaEstoque(task: AgentTask, log: Logger): Promise<AgentTask> {
+  const parsedPayload = conferenciaEstoquePayloadSchema.safeParse(task.payload ?? {});
+  if (!parsedPayload.success) {
+    const [updated] = await db
+      .update(agentTasksTable)
+      .set({
+        status: "erro",
+        errorMessage: `Invalid payload: ${parsedPayload.error.message}`,
+        updatedAt: new Date(),
+      })
+      .where(eq(agentTasksTable.id, task.id))
+      .returning();
+    log.warn({ taskId: task.id }, "agent_task: invalid conferencia_estoque payload");
+    return updated;
+  }
+
+  const { origin, dealId, propostaId, channel, metadata, body, vendedorNome } = parsedPayload.data;
+
+  try {
+    let result: unknown;
+
+    if (origin === "confirm_closure") {
+      result = await runDealClosure(
+        dealId,
+        (body ?? {}) as ConfirmClosureBody,
+        { vendedorNome: vendedorNome ?? undefined },
+        log
+      );
+    } else {
+      if (!propostaId) {
+        throw new Error("conferencia_estoque: propostaId ausente para origin=proposal_accepted");
+      }
+      result = await proposalAccepted(propostaId, channel ?? "manual", metadata ?? undefined, {
+        skipApprovalCheck: true,
+        skipStockCheck: true,
+      });
+    }
+
+    const [updated] = await db
+      .update(agentTasksTable)
+      .set({
+        status: "concluido",
+        result: result as Record<string, unknown>,
+        executedAt: new Date(),
+        updatedAt: new Date(),
+      })
+      .where(eq(agentTasksTable.id, task.id))
+      .returning();
+
+    log.info({ taskId: task.id, dealId }, "agent_task: conferencia_estoque aprovada e concluida");
+    return updated;
+  } catch (err) {
+    const errorMessage = err instanceof Error ? err.message : "Unknown error during closure execution";
+    const [updated] = await db
+      .update(agentTasksTable)
+      .set({ status: "erro", errorMessage, updatedAt: new Date() })
+      .where(eq(agentTasksTable.id, task.id))
+      .returning();
+
+    log.error({ taskId: task.id, err }, "agent_task: conferencia_estoque failed");
+    return updated;
+  }
+}
+
+// ── conferencia_estoque rejeitada ──────────────────────────────────────────────
+// Reverte o deal para a etapa anterior à conferência e notifica o responsável
+// pelo negócio: vendedor atribuído (se houver) via WhatsApp, ou registro para
+// o tenant_admin + reativação proativa do Closer para oferecer uma alternativa
+// ao cliente (produto substituto, prazo maior, quantidade menor).
+async function handleConferenciaEstoqueRejected(
+  task: AgentTask,
+  motivo: string | undefined,
+  log: Logger
+): Promise<void> {
+  const parsedPayload = conferenciaEstoquePayloadSchema.safeParse(task.payload ?? {});
+  if (!parsedPayload.success) {
+    log.warn(
+      { taskId: task.id },
+      "agent_task: conferencia_estoque rejeitada com payload inválido, revert do deal pulado"
+    );
+    return;
+  }
+
+  const { dealId, etapaAnterior } = parsedPayload.data;
+
+  const [deal] = await db.select().from(dealsTable).where(eq(dealsTable.id, dealId));
+  if (!deal) {
+    log.warn({ taskId: task.id, dealId }, "agent_task: conferencia_estoque rejeitada mas deal não encontrado");
+    return;
+  }
+
+  await db
+    .update(dealsTable)
+    .set({ etapa: etapaAnterior as typeof dealsTable.$inferInsert.etapa, updatedAt: new Date() })
+    .where(eq(dealsTable.id, dealId));
+
+  const motivoTexto = motivo?.trim() || "Item sem estoque disponível";
+
+  await db.insert(notificationsTable).values({
+    tenantId: task.tenantId,
+    title: "Conferência de estoque reprovada",
+    message: `A conferência de estoque do negócio "${deal.titulo}" foi reprovada. Motivo: ${motivoTexto}.`,
+    type: "warning",
+    category: "conferencia_estoque_reprovada",
+  });
+
+  try {
+    if (deal.assignedTo) {
+      const [vendedor] = await db
+        .select({ telefone: usersTable.telefone })
+        .from(usersTable)
+        .where(eq(usersTable.id, deal.assignedTo));
+      if (vendedor?.telefone) {
+        const msg = `⚠️ Conferência de estoque reprovada\n\nO fechamento do negócio "${deal.titulo}" foi reprovado na conferência de estoque.\n\nMotivo: ${motivoTexto}\n\nO negócio voltou para a etapa de negociação — ofereça uma alternativa ao cliente.`;
+        await sendDirectWhatsAppMessage(task.tenantId, vendedor.telefone, msg, log);
+      }
+    } else if (deal.leadId) {
+      await triggerCloserStockRejectionOffer({
+        tenantId: task.tenantId,
+        leadId: deal.leadId,
+        dealId: deal.id,
+        motivo: motivoTexto,
+        log,
+      });
+    }
+  } catch (err) {
+    log.warn(
+      { err, taskId: task.id, dealId },
+      "agent_task: notificação/reativação pós-rejeição de conferencia_estoque falhou (non-fatal)"
+    );
+  }
+
+  log.info({ taskId: task.id, dealId, etapaAnterior }, "agent_task: conferencia_estoque rejeitada, deal revertido");
+}
+
 // ── POST /agent-tasks ─────────────────────────────────────────────────────────
 router.post("/agent-tasks", async (req, res) => {
   const parsed = insertAgentTaskSchema.safeParse(req.body);
@@ -346,12 +516,14 @@ router.post(
     const isAutonomous =
       autonomy !== null && autonomy !== undefined && autonomy <= now;
 
-    // enviar_whatsapp and aprovacao_fechamento always execute immediately on
-    // approval (no holding state) — the human approval IS the trigger.
+    // enviar_whatsapp, aprovacao_fechamento and conferencia_estoque always
+    // execute immediately on approval (no holding state) — the human
+    // approval IS the trigger.
     const shouldExecuteNow =
       isAutonomous ||
       task.actionType === "enviar_whatsapp" ||
-      task.actionType === "aprovacao_fechamento";
+      task.actionType === "aprovacao_fechamento" ||
+      task.actionType === "conferencia_estoque";
 
     if (shouldExecuteNow) {
       // Move to "executando" first, then run the action
@@ -461,6 +633,11 @@ router.post(
       .set({ status: "rejeitado", updatedAt: new Date() })
       .where(eq(agentTasksTable.id, String(id)))
       .returning();
+
+    if (updated.actionType === "conferencia_estoque") {
+      const motivo = typeof req.body?.motivo === "string" ? req.body.motivo : undefined;
+      await handleConferenciaEstoqueRejected(updated, motivo, req.log);
+    }
 
     res.json(updated);
   }

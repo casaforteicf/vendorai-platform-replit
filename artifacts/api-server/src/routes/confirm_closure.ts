@@ -9,6 +9,7 @@ import {
   agentTasksTable,
   notificationsTable,
   usersTable,
+  tenantsTable,
 } from "@workspace/db";
 import { createDocument, isZapSignConfigured } from "../lib/zapsign.js";
 import { createCharge, createOrGetCustomer, isAsaasConfigured } from "../lib/asaas.js";
@@ -166,6 +167,86 @@ router.post("/deals/:dealId/confirm-closure", async (req, res) => {
         valorCatalogo: catalogCheck.catalogTotal,
         diferenca: catalogCheck.diferenca,
       },
+    });
+    return;
+  }
+
+  // ── Stock confirmation gate — tenant pode exigir confirmação de estoque
+  // humana antes de disparar contrato/cobrança. Roda depois do guardrail de
+  // valor do Bloco 1.
+  const [tenantStockCfg] = await db
+    .select({
+      confirmarEstoqueAntesFinanceiro: tenantsTable.confirmarEstoqueAntesFinanceiro,
+      usuarioConferenciaEstoqueId: tenantsTable.usuarioConferenciaEstoqueId,
+    })
+    .from(tenantsTable)
+    .where(eq(tenantsTable.id, tenantId));
+
+  if (tenantStockCfg?.confirmarEstoqueAntesFinanceiro) {
+    if (!deal.leadId) {
+      req.log.error(
+        { dealId },
+        "confirm-closure: confirmação de estoque exigida mas deal não tem leadId — não é possível criar agent_task"
+      );
+      res.status(422).json({
+        error: "Confirmação de estoque exigida e não há lead vinculado para conferência",
+      });
+      return;
+    }
+
+    const etapaAnterior = deal.etapa;
+    await db
+      .update(dealsTable)
+      .set({ etapa: "conferencia_estoque", updatedAt: new Date() })
+      .where(eq(dealsTable.id, dealId));
+
+    const [task] = await db
+      .insert(agentTasksTable)
+      .values({
+        tenantId,
+        leadId: deal.leadId,
+        agentName: "closer",
+        actionType: "conferencia_estoque",
+        payload: {
+          origin: "confirm_closure",
+          dealId,
+          body,
+          vendedorNome: (req.user as { name?: string } | undefined)?.name ?? null,
+          etapaAnterior,
+          assignedUserId: tenantStockCfg.usuarioConferenciaEstoqueId ?? null,
+          itens: catalogCheck.itemDetails,
+        },
+      })
+      .returning();
+
+    await db.insert(notificationsTable).values({
+      tenantId,
+      title: "Confirmação de estoque pendente antes do fechamento",
+      message: `Fechamento do negócio "${deal.titulo}" (lead ${deal.leadId}) aguarda confirmação de disponibilidade em estoque antes de seguir para contrato e cobrança.`,
+      type: "warning",
+      category: "conferencia_estoque",
+    });
+
+    try {
+      if (tenantStockCfg.usuarioConferenciaEstoqueId) {
+        const [responsavel] = await db
+          .select({ telefone: usersTable.telefone })
+          .from(usersTable)
+          .where(eq(usersTable.id, tenantStockCfg.usuarioConferenciaEstoqueId));
+        if (responsavel?.telefone) {
+          const msg = `📦 Confirmação de estoque pendente\n\nFechamento do negócio "${deal.titulo}" precisa de conferência de estoque antes de seguir para contrato/cobrança.\n\nAprove ou reprove no painel para continuar o fechamento.`;
+          await sendDirectWhatsAppMessage(tenantId, responsavel.telefone, msg, req.log);
+        }
+      }
+    } catch (wErr) {
+      req.log.warn({ err: wErr, dealId }, "confirm-closure: WhatsApp de conferência de estoque falhou (non-fatal)");
+    }
+
+    req.log.warn({ dealId, taskId: task.id }, "confirm-closure: aguardando confirmação de estoque, fechamento pausado");
+
+    res.status(202).json({
+      pendingStockConfirmation: true,
+      agentTaskId: task.id,
     });
     return;
   }

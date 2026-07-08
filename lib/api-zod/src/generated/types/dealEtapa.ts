@@ -15,6 +15,7 @@ export const DealEtapa = {
   qualificado: 'qualificado',
   proposta: 'proposta',
   negociacao: 'negociacao',
+  conferencia_estoque: 'conferencia_estoque',
   ganho: 'ganho',
   em_execucao: 'em_execucao',
   entregue: 'entregue',

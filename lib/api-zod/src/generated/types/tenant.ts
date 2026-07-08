@@ -65,6 +65,12 @@ export interface Tenant {
   /** Link para avaliação do Google configurado pelo tenant. Usado pelo agente Pós-Venda para solicitar avaliações apenas quando o cliente relata uma experiência positiva na pesquisa de satisfação pós-entrega. Vazio por padrão.
    */
   googleReviewLink?: string | null;
+  /** Quando true, o fechamento de negócios pausa em uma etapa de conferência de estoque antes de gerar contrato/cobrança, aguardando aprovação do usuário responsável.
+   */
+  confirmarEstoqueAntesFinanceiro?: boolean;
+  /** ID do usuário responsável por confirmar a disponibilidade em estoque antes do fechamento financeiro (sem FK formal para evitar import circular).
+   */
+  usuarioConferenciaEstoqueId?: string | null;
   createdAt: Date;
   updatedAt: Date;
 }

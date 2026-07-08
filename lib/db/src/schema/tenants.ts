@@ -72,6 +72,14 @@ export const tenantsTable = pgTable(
     internalNotes: text("internal_notes"),
     onboardingConcluido: boolean("onboarding_concluido").notNull().default(false),
     integracoesConcluido: boolean("integracoes_concluido").notNull().default(false),
+    // Confirmação de estoque antes do financeiro: quando true, o fechamento
+    // pausa em deals.etapa="conferencia_estoque" (novo agent_task tipo
+    // "conferencia_estoque") antes de disparar contrato/cobrança.
+    confirmarEstoqueAntesFinanceiro: boolean("confirmar_estoque_antes_financeiro").notNull().default(false),
+    // FK para users.id — sem .references() para evitar import circular
+    // (users.ts já importa tenantsTable). Escolha livre do tenant, não
+    // amarrado a uma função/cargo específico.
+    usuarioConferenciaEstoqueId: text("usuario_conferencia_estoque_id"),
     integracoesStep: integer("integracoes_step").notNull().default(0),
     asaasApiKey: text("asaas_api_key"),
     googleReviewLink: text("google_review_link"),
