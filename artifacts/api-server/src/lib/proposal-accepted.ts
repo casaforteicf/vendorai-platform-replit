@@ -9,10 +9,15 @@ import {
   inventoryItemsTable,
   inventoryMovementsTable,
   produtosCatalogoTable,
+  agentTasksTable,
+  notificationsTable,
+  usersTable,
 } from "@workspace/db";
 import { dispatchVendaWebhook } from "../services/erp-webhook.js";
 import { analyzeLeadIntelligence } from "./analyze-intelligence.js";
 import { logger } from "./logger.js";
+import { checkCatalogMatch } from "./catalog-price-check.js";
+import { sendDirectWhatsAppMessage } from "../services/omnichannel.js";
 
 export type ProposalAcceptanceChannel = "link" | "whatsapp" | "manual";
 
@@ -27,12 +32,25 @@ export interface ProposalAcceptanceResult {
   inventoryDeducted: boolean;
   activityCreated: boolean;
   webhookDispatched: boolean;
+  /** true when the closure was blocked pending manual approval (valor ≠ catálogo) */
+  pendingApproval?: boolean;
+  agentTaskId?: string;
+  divergence?: { valorProposta: number; valorCatalogo: number; diferenca: number };
 }
 
 export interface ProposalAcceptanceError {
   ok: false;
   error: string;
   propostaId: string;
+}
+
+export interface ProposalAcceptedOptions {
+  /**
+   * Skips the catalog-price divergence check. Used when re-running the
+   * closure after an "aprovacao_fechamento" agent_task has been approved —
+   * the check already ran once and a human already signed off on it.
+   */
+  skipApprovalCheck?: boolean;
 }
 
 /**
@@ -50,7 +68,8 @@ export async function proposalAccepted(
     ip?: string;
     nome?: string;
     documento?: string;
-  }
+  },
+  options?: ProposalAcceptedOptions
 ): Promise<ProposalAcceptanceResult | ProposalAcceptanceError> {
   const log = logger.child({ propostaId, channel });
 
@@ -146,6 +165,105 @@ export async function proposalAccepted(
       activityCreated: false,
       webhookDispatched: false,
     };
+  }
+
+  // 3b. Catalog-price divergence guard — Closer não pode fechar sozinho se o
+  // valor da proposta divergir do preço de catálogo (produtos_catalogo).
+  if (!options?.skipApprovalCheck) {
+    const itens = (proposta.itens ?? []).map((i) => ({
+      nome: i.nome,
+      sku: i.sku ?? null,
+      quantidade: i.quantidade,
+      valorUnitario: i.valorUnitario,
+    }));
+    const catalogCheck = await checkCatalogMatch(
+      proposta.tenantId,
+      itens,
+      proposta.valorTotal !== null && proposta.valorTotal !== undefined
+        ? Number(proposta.valorTotal)
+        : undefined
+    );
+
+    if (catalogCheck.hasCatalogBasis && !catalogCheck.matches) {
+      if (!proposta.leadId) {
+        log.error(
+          { dealId: deal.id },
+          "proposalAccepted: catalog divergence but proposta has no leadId — cannot create agent_task, blocking closure"
+        );
+        return { ok: false, error: "Valor diverge do catálogo e não há lead vinculado para aprovação", propostaId };
+      }
+
+      const [task] = await db
+        .insert(agentTasksTable)
+        .values({
+          tenantId: proposta.tenantId,
+          leadId: proposta.leadId,
+          agentName: "closer",
+          actionType: "aprovacao_fechamento",
+          payload: {
+            origin: "proposal_accepted",
+            propostaId,
+            dealId: deal.id,
+            channel,
+            metadata: metadata ?? null,
+            valorProposta: catalogCheck.propostaTotal,
+            valorCatalogo: catalogCheck.catalogTotal,
+            diferenca: catalogCheck.diferenca,
+            itens: catalogCheck.itemDetails,
+          },
+        })
+        .returning();
+
+      const fmt = (n: number) => n.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
+      await db.insert(notificationsTable).values({
+        tenantId: proposta.tenantId,
+        title: "Fechamento pendente de aprovação — valor diverge do catálogo",
+        message: `Proposta "${proposta.numero ?? proposta.titulo}" (lead ${proposta.leadId}) tem valor de ${fmt(catalogCheck.propostaTotal)}, mas o catálogo indica ${fmt(catalogCheck.catalogTotal)} (diferença: ${fmt(catalogCheck.diferenca)}). Aprovação manual necessária para fechar este negócio.`,
+        type: "warning",
+        category: "deal_closure_approval",
+      });
+
+      // Best-effort WhatsApp to the deal owner
+      try {
+        if (deal.assignedTo) {
+          const [owner] = await db
+            .select({ telefone: usersTable.telefone })
+            .from(usersTable)
+            .where(eq(usersTable.id, deal.assignedTo));
+          if (owner?.telefone) {
+            const msg = `⚠️ Fechamento pendente de aprovação\n\nProposta "${proposta.numero ?? proposta.titulo}" tem valor de ${fmt(catalogCheck.propostaTotal)}, diferente do catálogo (${fmt(catalogCheck.catalogTotal)}). Diferença: ${fmt(catalogCheck.diferenca)}.\n\nAprove ou rejeite no painel para concluir o fechamento.`;
+            await sendDirectWhatsAppMessage(proposta.tenantId, owner.telefone, msg, log);
+          }
+        }
+      } catch (wErr) {
+        log.warn({ err: wErr, dealId: deal.id }, "proposalAccepted: WhatsApp approval alert failed (non-fatal)");
+      }
+
+      log.warn(
+        { dealId: deal.id, taskId: task.id, ...catalogCheck },
+        "proposalAccepted: valor diverge do catálogo, fechamento bloqueado até aprovação"
+      );
+
+      return {
+        ok: true,
+        alreadyProcessed: false,
+        propostaId,
+        dealId: deal.id,
+        channel,
+        closureTriggeredAt: null,
+        chargeCreated: false,
+        inventoryDeducted: false,
+        activityCreated: false,
+        webhookDispatched: false,
+        pendingApproval: true,
+        agentTaskId: task.id,
+        divergence: {
+          valorProposta: catalogCheck.propostaTotal,
+          valorCatalogo: catalogCheck.catalogTotal,
+          diferenca: catalogCheck.diferenca,
+        },
+      };
+    }
   }
 
   // 4. Move deal to ganho — this triggers the full closure automation

@@ -25,3 +25,4 @@
 - [Project Phoenix UX](project-phoenix-ux.md) — PHX=light shell, T=dark modules; FLOW_STEPS nav; ✨ Gerar Render imutável; Copilot inicia colapsado.
 - [VendorAI SaaS contract auto-gen](vendorai-saas-contract.md) — template HTML completo em vendorai-contract-template.ts; contract_settings JSONB no tenant; numberToWordsPTBR para valor por extenso; settings UI em Configuracoes.tsx.
 - [Obras Hub AI + Gantt drag](obras-hub-gantt-ai.md) — resumoIA: Anthropic via resolveAIKey; Gantt substituído por DraggableGantt div-based com drag via refs/forceUpdate.
+- [Catalog price approval gate](catalog-price-approval-gate.md) — closure paths must check valor vs. produtos_catalogo antes de fechar; divergência cria agent_task pendente e bloqueia até aprovação manual.

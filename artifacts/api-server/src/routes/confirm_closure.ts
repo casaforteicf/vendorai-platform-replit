@@ -1,11 +1,38 @@
 import { Router } from "express";
-import { eq, sql } from "drizzle-orm";
-import { db, dealsTable, leadsTable, contractsTable } from "@workspace/db";
+import { eq, desc, sql } from "drizzle-orm";
+import {
+  db,
+  dealsTable,
+  leadsTable,
+  contractsTable,
+  propostasTable,
+  agentTasksTable,
+  notificationsTable,
+  usersTable,
+} from "@workspace/db";
 import { createDocument, isZapSignConfigured } from "../lib/zapsign.js";
 import { createCharge, createOrGetCustomer, isAsaasConfigured } from "../lib/asaas.js";
 import { sendDirectWhatsAppMessage } from "../services/omnichannel.js";
+import { checkCatalogMatch, type CatalogCheckItem } from "../lib/catalog-price-check.js";
+import type { Logger } from "pino";
 
 const router = Router();
+
+export interface ConfirmClosureBody {
+  valor?: number;
+  valorImplantacao?: number;
+  valorMensalidade?: number;
+  planoContratado?: string;
+  condPagamento?: string;
+  prazoEntrega?: string;
+  observacoes?: string;
+  numParcelas?: number;
+  servicos?: string;
+}
+
+export interface ConfirmClosureOpts {
+  vendedorNome?: string;
+}
 
 // ─── POST /deals/:dealId/confirm-closure ────────────────────────────────────
 // Comprehensive deal closure:
@@ -16,29 +43,9 @@ const router = Router();
 //  5. Sends WhatsApp with payment link(s)
 router.post("/deals/:dealId/confirm-closure", async (req, res) => {
   const dealId = String(req.params.dealId);
-  const {
-    valor,
-    valorImplantacao,
-    valorMensalidade,
-    planoContratado,
-    condPagamento,
-    prazoEntrega,
-    observacoes,
-    numParcelas,
-    servicos,
-  } = req.body as {
-    valor?: number;
-    valorImplantacao?: number;
-    valorMensalidade?: number;
-    planoContratado?: string;
-    condPagamento?: string;
-    prazoEntrega?: string;
-    observacoes?: string;
-    numParcelas?: number;
-    servicos?: string;
-  };
+  const body = req.body as ConfirmClosureBody;
 
-  if (!planoContratado) {
+  if (!body.planoContratado) {
     res.status(400).json({ error: "planoContratado é obrigatório" });
     return;
   }
@@ -54,6 +61,151 @@ router.post("/deals/:dealId/confirm-closure", async (req, res) => {
     res.status(403).json({ error: "Acesso negado" });
     return;
   }
+
+  const valorImplantacaoNum = typeof body.valorImplantacao === "number" ? body.valorImplantacao : 0;
+  const valorMensalidadeNum = typeof body.valorMensalidade === "number" ? body.valorMensalidade : 0;
+  const valorNum = typeof body.valor === "number" && body.valor > 0
+    ? body.valor
+    : (valorImplantacaoNum + valorMensalidadeNum) > 0
+      ? valorImplantacaoNum + valorMensalidadeNum
+      : deal.valor ? parseFloat(String(deal.valor)) : 0;
+
+  // ── Catalog-price divergence guard — mesma regra do proposalAccepted() ────
+  const [proposta] = await db
+    .select()
+    .from(propostasTable)
+    .where(eq(propostasTable.dealId, dealId))
+    .orderBy(desc(propostasTable.createdAt))
+    .limit(1);
+
+  const itens: CatalogCheckItem[] =
+    proposta && proposta.itens && proposta.itens.length > 0
+      ? proposta.itens.map((i) => ({
+          nome: i.nome,
+          sku: i.sku ?? null,
+          quantidade: i.quantidade,
+          valorUnitario: i.valorUnitario,
+        }))
+      : [{ nome: body.planoContratado, quantidade: 1, valorUnitario: valorNum }];
+
+  const valorTotalOverride =
+    proposta?.valorTotal !== null && proposta?.valorTotal !== undefined
+      ? Number(proposta.valorTotal)
+      : valorNum;
+
+  const catalogCheck = await checkCatalogMatch(tenantId, itens, valorTotalOverride);
+
+  if (catalogCheck.hasCatalogBasis && !catalogCheck.matches) {
+    if (!deal.leadId) {
+      req.log.error(
+        { dealId },
+        "confirm-closure: catalog divergence but deal has no leadId — cannot create agent_task, blocking closure"
+      );
+      res.status(422).json({
+        error: "Valor diverge do catálogo e não há lead vinculado para aprovação",
+      });
+      return;
+    }
+
+    const [task] = await db
+      .insert(agentTasksTable)
+      .values({
+        tenantId,
+        leadId: deal.leadId,
+        agentName: "closer",
+        actionType: "aprovacao_fechamento",
+        payload: {
+          origin: "confirm_closure",
+          dealId,
+          body,
+          vendedorNome: (req.user as { name?: string } | undefined)?.name ?? null,
+          valorProposta: catalogCheck.propostaTotal,
+          valorCatalogo: catalogCheck.catalogTotal,
+          diferenca: catalogCheck.diferenca,
+          itens: catalogCheck.itemDetails,
+        },
+      })
+      .returning();
+
+    const fmt = (n: number) => n.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
+    await db.insert(notificationsTable).values({
+      tenantId,
+      title: "Fechamento pendente de aprovação — valor diverge do catálogo",
+      message: `Fechamento do negócio "${deal.titulo}" (lead ${deal.leadId}) tem valor de ${fmt(catalogCheck.propostaTotal)}, mas o catálogo indica ${fmt(catalogCheck.catalogTotal)} (diferença: ${fmt(catalogCheck.diferenca)}). Aprovação manual necessária para fechar este negócio.`,
+      type: "warning",
+      category: "deal_closure_approval",
+    });
+
+    try {
+      if (deal.assignedTo) {
+        const [owner] = await db
+          .select({ telefone: usersTable.telefone })
+          .from(usersTable)
+          .where(eq(usersTable.id, deal.assignedTo));
+        if (owner?.telefone) {
+          const msg = `⚠️ Fechamento pendente de aprovação\n\nNegócio "${deal.titulo}" tem valor de ${fmt(catalogCheck.propostaTotal)}, diferente do catálogo (${fmt(catalogCheck.catalogTotal)}). Diferença: ${fmt(catalogCheck.diferenca)}.\n\nAprove ou rejeite no painel para concluir o fechamento.`;
+          await sendDirectWhatsAppMessage(tenantId, owner.telefone, msg, req.log);
+        }
+      }
+    } catch (wErr) {
+      req.log.warn({ err: wErr, dealId }, "confirm-closure: WhatsApp approval alert failed (non-fatal)");
+    }
+
+    req.log.warn(
+      { dealId, taskId: task.id, ...catalogCheck },
+      "confirm-closure: valor diverge do catálogo, fechamento bloqueado até aprovação"
+    );
+
+    res.status(202).json({
+      pendingApproval: true,
+      agentTaskId: task.id,
+      divergence: {
+        valorProposta: catalogCheck.propostaTotal,
+        valorCatalogo: catalogCheck.catalogTotal,
+        diferenca: catalogCheck.diferenca,
+      },
+    });
+    return;
+  }
+
+  const result = await runDealClosure(
+    dealId,
+    body,
+    { vendedorNome: (req.user as { name?: string } | undefined)?.name },
+    req.log
+  );
+  res.json(result);
+});
+
+// ── Helpers ──────────────────────────────────────────────────────────────────
+
+export async function runDealClosure(
+  dealId: string,
+  body: ConfirmClosureBody,
+  opts: ConfirmClosureOpts,
+  log: Logger
+): Promise<{
+  ganho: boolean;
+  signUrl?: string | null;
+  chargeLinks?: string[];
+  errors: string[];
+}> {
+  const {
+    valor,
+    valorImplantacao,
+    valorMensalidade,
+    planoContratado,
+    condPagamento,
+    prazoEntrega,
+    servicos,
+    numParcelas,
+  } = body;
+
+  const [deal] = await db.select().from(dealsTable).where(eq(dealsTable.id, dealId));
+  if (!deal) {
+    throw new Error(`runDealClosure: deal ${dealId} não encontrado`);
+  }
+  const tenantId = deal.tenantId;
 
   const valorImplantacaoNum = typeof valorImplantacao === "number" ? valorImplantacao : 0;
   const valorMensalidadeNum = typeof valorMensalidade === "number" ? valorMensalidade : 0;
@@ -130,7 +282,7 @@ router.post("/deals/:dealId/confirm-closure", async (req, res) => {
         "{{prazo_entrega}}": prazoEntrega ?? "",
         "{{servicos}}": servicos ?? deal.titulo,
         "{{data_contrato}}": dataHoje,
-        "{{vendedor_nome}}": (req.user as any)?.name ?? "",
+        "{{vendedor_nome}}": opts.vendedorNome ?? "",
         "{{empresa_nome}}": tenantNome,
         "{{empresa_cnpj}}": (tenant?.cnpj as string) ?? "",
         // Legacy compat vars
@@ -147,7 +299,7 @@ router.post("/deals/:dealId/confirm-closure", async (req, res) => {
         const buf = await renderHtmlToPdf(html);
         pdfB64 = buf.toString("base64");
       } catch (pdfErr) {
-        req.log.warn({ err: pdfErr, dealId }, "confirm-closure: PDF render failed, sending without PDF");
+        log.warn({ err: pdfErr, dealId }, "confirm-closure: PDF render failed, sending without PDF");
       }
 
       const clientName = lead.nome ?? lead.empresa ?? "Cliente";
@@ -186,17 +338,17 @@ router.post("/deals/:dealId/confirm-closure", async (req, res) => {
       if (lead.telefone && signUrl) {
         try {
           const msg = `Olá, ${clientName}! 👋\n\nSeu contrato está pronto para assinatura digital. 📄\n\nAcesse o link abaixo para assinar (leva menos de 1 minuto):\n${signUrl}\n\nQualquer dúvida estamos à disposição!`;
-          await sendDirectWhatsAppMessage(tenantId, lead.telefone, msg, req.log);
-          req.log.info({ dealId }, "confirm-closure: WhatsApp sign link sent");
+          await sendDirectWhatsAppMessage(tenantId, lead.telefone, msg, log);
+          log.info({ dealId }, "confirm-closure: WhatsApp sign link sent");
         } catch (wErr) {
-          req.log.warn({ err: wErr }, "confirm-closure: WhatsApp sign notification failed (non-fatal)");
+          log.warn({ err: wErr }, "confirm-closure: WhatsApp sign notification failed (non-fatal)");
         }
       }
 
-      req.log.info({ dealId, docToken: doc.token }, "confirm-closure: ZapSign OK");
+      log.info({ dealId, docToken: doc.token }, "confirm-closure: ZapSign OK");
     } catch (zErr) {
       const msg = zErr instanceof Error ? zErr.message : String(zErr);
-      req.log.error({ err: zErr, dealId }, "confirm-closure: ZapSign failed");
+      log.error({ err: zErr, dealId }, "confirm-closure: ZapSign failed");
       result.errors.push(`Contrato: ${msg}`);
       await db
         .update(dealsTable)
@@ -278,17 +430,17 @@ router.post("/deals/:dealId/confirm-closure", async (req, res) => {
           const msg = parcelas === 1
             ? `Olá, ${nome}! 💳\n\nSeu boleto de ${valorFmt} foi gerado:\n\n${chargeLinks[0]}\n\nAny questions, just ask!`
             : `Olá, ${nome}! 💳\n\nSeu parcelamento em ${parcelas}x foi criado!\n\nBoletos:\n${chargeLinks.map((l, i) => `${i + 1}ª parcela: ${l}`).join("\n")}\n\nVencimentos mensais a partir de hoje.`;
-          await sendDirectWhatsAppMessage(tenantId, lead.telefone, msg, req.log);
-          req.log.info({ dealId, parcelas }, "confirm-closure: WhatsApp charge links sent");
+          await sendDirectWhatsAppMessage(tenantId, lead.telefone, msg, log);
+          log.info({ dealId, parcelas }, "confirm-closure: WhatsApp charge links sent");
         } catch (wErr) {
-          req.log.warn({ err: wErr }, "confirm-closure: WhatsApp charge notification failed (non-fatal)");
+          log.warn({ err: wErr }, "confirm-closure: WhatsApp charge notification failed (non-fatal)");
         }
       }
 
-      req.log.info({ dealId, parcelas }, "confirm-closure: Asaas OK");
+      log.info({ dealId, parcelas }, "confirm-closure: Asaas OK");
     } catch (asaasErr) {
       const msg = asaasErr instanceof Error ? asaasErr.message : String(asaasErr);
-      req.log.error({ err: asaasErr, dealId }, "confirm-closure: Asaas failed");
+      log.error({ err: asaasErr, dealId }, "confirm-closure: Asaas failed");
       result.errors.push(`Cobrança: ${msg}`);
     } finally {
       if (tenantAsaasKey) {
@@ -298,10 +450,8 @@ router.post("/deals/:dealId/confirm-closure", async (req, res) => {
     }
   }
 
-  res.json(result);
-});
-
-// ── Helpers ──────────────────────────────────────────────────────────────────
+  return result;
+}
 
 function renderTemplate(html: string, vars: Record<string, string>): string {
   let result = html;

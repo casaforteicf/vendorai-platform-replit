@@ -17,6 +17,8 @@ import {
 } from "../services/omnichannel.js";
 import { tenantAgentConfigsTable } from "@workspace/db";
 import type { Logger } from "pino";
+import { proposalAccepted } from "../lib/proposal-accepted.js";
+import { runDealClosure, type ConfirmClosureBody } from "./confirm_closure.js";
 
 const router: IRouter = Router();
 
@@ -33,6 +35,24 @@ const whatsappPayloadSchema = z.object({
     .default("whatsapp"),
 });
 
+// ── Payload schema for actionType="aprovacao_fechamento" ─────────────────────
+const aprovacaoFechamentoPayloadSchema = z.object({
+  origin: z.enum(["proposal_accepted", "confirm_closure"]),
+  dealId: z.string().min(1),
+  propostaId: z.string().optional(),
+  channel: z.enum(["link", "whatsapp", "manual"]).optional(),
+  metadata: z
+    .object({
+      ip: z.string().optional(),
+      nome: z.string().optional(),
+      documento: z.string().optional(),
+    })
+    .nullable()
+    .optional(),
+  body: z.record(z.string(), z.unknown()).optional(),
+  vendedorNome: z.string().nullable().optional(),
+});
+
 // ── Shared action executor ────────────────────────────────────────────────────
 // Runs the action for a task that is already in "executando" status.
 // Updates the task to "concluido" with result, or "erro" with errorMessage.
@@ -40,6 +60,10 @@ export async function executeTaskAction(
   task: AgentTask,
   log: Logger
 ): Promise<AgentTask> {
+  if (task.actionType === "aprovacao_fechamento") {
+    return executeAprovacaoFechamento(task, log);
+  }
+
   if (task.actionType !== "enviar_whatsapp") {
     // Unknown action — mark as error so the task doesn't get stuck
     const [updated] = await db
@@ -139,6 +163,74 @@ export async function executeTaskAction(
       .returning();
 
     log.error({ taskId: task.id, err }, "agent_task: execution failed");
+    return updated;
+  }
+}
+
+// ── aprovacao_fechamento ───────────────────────────────────────────────────────
+// Re-runs the deal closure that was held pending manual approval (valor
+// divergente do catálogo). Dispatches to the same code path the original
+// request would have taken, skipping the catalog check this time since a
+// human already reviewed the divergence.
+async function executeAprovacaoFechamento(task: AgentTask, log: Logger): Promise<AgentTask> {
+  const parsedPayload = aprovacaoFechamentoPayloadSchema.safeParse(task.payload ?? {});
+  if (!parsedPayload.success) {
+    const [updated] = await db
+      .update(agentTasksTable)
+      .set({
+        status: "erro",
+        errorMessage: `Invalid payload: ${parsedPayload.error.message}`,
+        updatedAt: new Date(),
+      })
+      .where(eq(agentTasksTable.id, task.id))
+      .returning();
+    log.warn({ taskId: task.id }, "agent_task: invalid aprovacao_fechamento payload");
+    return updated;
+  }
+
+  const { origin, dealId, propostaId, channel, metadata, body, vendedorNome } = parsedPayload.data;
+
+  try {
+    let result: unknown;
+
+    if (origin === "confirm_closure") {
+      result = await runDealClosure(
+        dealId,
+        (body ?? {}) as ConfirmClosureBody,
+        { vendedorNome: vendedorNome ?? undefined },
+        log
+      );
+    } else {
+      if (!propostaId) {
+        throw new Error("aprovacao_fechamento: propostaId ausente para origin=proposal_accepted");
+      }
+      result = await proposalAccepted(propostaId, channel ?? "manual", metadata ?? undefined, {
+        skipApprovalCheck: true,
+      });
+    }
+
+    const [updated] = await db
+      .update(agentTasksTable)
+      .set({
+        status: "concluido",
+        result: result as Record<string, unknown>,
+        executedAt: new Date(),
+        updatedAt: new Date(),
+      })
+      .where(eq(agentTasksTable.id, task.id))
+      .returning();
+
+    log.info({ taskId: task.id, dealId }, "agent_task: aprovacao_fechamento concluido");
+    return updated;
+  } catch (err) {
+    const errorMessage = err instanceof Error ? err.message : "Unknown error during closure execution";
+    const [updated] = await db
+      .update(agentTasksTable)
+      .set({ status: "erro", errorMessage, updatedAt: new Date() })
+      .where(eq(agentTasksTable.id, task.id))
+      .returning();
+
+    log.error({ taskId: task.id, err }, "agent_task: aprovacao_fechamento failed");
     return updated;
   }
 }
@@ -254,8 +346,12 @@ router.post(
     const isAutonomous =
       autonomy !== null && autonomy !== undefined && autonomy <= now;
 
-    // enviar_whatsapp always executes immediately on approval (no holding state)
-    const shouldExecuteNow = isAutonomous || task.actionType === "enviar_whatsapp";
+    // enviar_whatsapp and aprovacao_fechamento always execute immediately on
+    // approval (no holding state) — the human approval IS the trigger.
+    const shouldExecuteNow =
+      isAutonomous ||
+      task.actionType === "enviar_whatsapp" ||
+      task.actionType === "aprovacao_fechamento";
 
     if (shouldExecuteNow) {
       // Move to "executando" first, then run the action
