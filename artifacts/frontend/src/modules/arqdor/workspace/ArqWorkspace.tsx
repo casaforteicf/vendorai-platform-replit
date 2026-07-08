@@ -43,6 +43,7 @@ import BudgetEngine from './executive-budget/BudgetEngine'
 import ExecutiveBudgetStudio from './executive-budget-studio/ExecutiveBudgetStudio'
 import ProcurementStudio from './procurement-studio/ProcurementStudio'
 import MarketplaceEnterprise from './marketplace-enterprise/MarketplaceEnterprise'
+import ClientExperience from './client-experience/ClientExperience'
 import BudgetDisciplinesProposal from './executive-budget/disciplines/BudgetDisciplinesProposal'
 import AlignedStudioShell from './ux-alignment/AlignedStudioShell'
 import { computeNextAction }     from './project-experience/ProjectHome'
@@ -65,6 +66,7 @@ export type ModuleId =
   | 'budget'
   | 'procurement' | 'compras'
   | 'marketplace' | 'arq-marketplace'
+  | 'client' | 'portal-cliente'
 
 export type JourneyId = 'create' | 'design' | 'visualize' | 'deliver' | 'business'
 
@@ -122,6 +124,8 @@ const MODULE_MAP_INTERNAL: Record<ModuleId, { icon:string; label:string }> = {
   'compras':         { icon:'🛒', label:'Compras'          },
   'marketplace':     { icon:'🏪', label:'Marketplace'      },
   'arq-marketplace': { icon:'🏪', label:'Marketplace'      },
+  'client':          { icon:'👤', label:'Portal Cliente'   },
+  'portal-cliente':  { icon:'👤', label:'Portal Cliente'   },
 }
 
 // ─── Legado: Journeys (keyboard shortcuts 1–5) ────────────────────────────────
@@ -279,7 +283,9 @@ function renderModule(id: ModuleId, arqState: ArqProjectState, setActive: (m: Mo
     case 'arqhub':        return <ArqHubView/>
     case 'ai-intel':      return <AIEDashboard/>
     case 'integracao':    return <IntegrationModule/>
-    case 'cliente':       return <IntegrationModule/>
+    case 'cliente':
+    case 'client':
+    case 'portal-cliente': return <ClientExperience arqState={arqState} onNavigate={m => setActive(m as ModuleId)} />
     case 'ecosystem':     return <EcosystemModule/>
     case 'knowledge':     return <KnowledgeModule/>
     case 'office':
