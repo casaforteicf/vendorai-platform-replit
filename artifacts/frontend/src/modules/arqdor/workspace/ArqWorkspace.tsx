@@ -41,6 +41,7 @@ import SpecificationStudio from './specification-studio/SpecificationStudio'
 import ProductionStudio from './production-studio/ProductionStudio'
 import BudgetEngine from './executive-budget/BudgetEngine'
 import ExecutiveBudgetStudio from './executive-budget-studio/ExecutiveBudgetStudio'
+import ProcurementStudio from './procurement-studio/ProcurementStudio'
 import BudgetDisciplinesProposal from './executive-budget/disciplines/BudgetDisciplinesProposal'
 import AlignedStudioShell from './ux-alignment/AlignedStudioShell'
 import { computeNextAction }     from './project-experience/ProjectHome'
@@ -61,6 +62,7 @@ export type ModuleId =
   | 'specification' | 'especificacao-produto'
   | 'production' | 'producao'
   | 'budget'
+  | 'procurement' | 'compras'
 
 export type JourneyId = 'create' | 'design' | 'visualize' | 'deliver' | 'business'
 
@@ -113,7 +115,9 @@ const MODULE_MAP_INTERNAL: Record<ModuleId, { icon:string; label:string }> = {
   'especificacao-produto': { icon:'📦', label:'Spec. Produto' },
   'production': { icon:'🏭', label:'Produção'         },
   'producao':   { icon:'🏭', label:'Produção'         },
-  'budget':     { icon:'💰', label:'Orçamento'        },
+  'budget':      { icon:'💰', label:'Orçamento'        },
+  'procurement': { icon:'🛒', label:'Compras'          },
+  'compras':     { icon:'🛒', label:'Compras'          },
 }
 
 // ─── Legado: Journeys (keyboard shortcuts 1–5) ────────────────────────────────
@@ -277,6 +281,8 @@ function renderModule(id: ModuleId, arqState: ArqProjectState, setActive: (m: Mo
     case 'producao':      return <ProductionStudio arqState={arqState} onNavigate={m => setActive(m as ModuleId)} />
     case 'orcamento':
     case 'budget':        return <ExecutiveBudgetStudio arqState={arqState} onNavigate={m => setActive(m as ModuleId)} />
+    case 'procurement':
+    case 'compras':       return <ProcurementStudio arqState={arqState} onNavigate={m => setActive(m as ModuleId)} />
     case 'orcamento-pro': return <BudgetDisciplinesProposal />
     case 'ux-alignment':  return <AlignedStudioShell />
   }
