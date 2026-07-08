@@ -4624,44 +4624,235 @@ function ContractTemplateSection({ tenantId }: { tenantId: string }) {
   function downloadDefaultTemplate() {
     const html = `<!DOCTYPE html>
 <html lang="pt-BR">
-<head><meta charset="UTF-8"><title>Contrato</title>
-<style>
-  body { font-family: Arial, sans-serif; line-height: 1.6; max-width: 800px; margin: 0 auto; padding: 40px; color: #333; }
-  h1 { text-align: center; font-size: 22px; }
-  h2 { font-size: 16px; margin-top: 24px; border-bottom: 1px solid #ddd; padding-bottom: 4px; }
-  .partes { background: #f8f9fa; padding: 16px; border-radius: 8px; margin: 16px 0; }
-  .assinaturas { margin-top: 60px; display: flex; justify-content: space-between; }
-  .assinatura { flex: 1; text-align: center; border-top: 1px solid #333; padding-top: 8px; }
-</style>
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Contrato de Venda e Prestação de Serviços</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+
+        body {
+            background: #e6e9ef;
+            font-family: 'Segoe UI', 'Roboto', system-ui, sans-serif;
+            padding: 2rem 1rem;
+            display: flex;
+            justify-content: center;
+        }
+
+        .contrato-wrapper {
+            max-width: 1000px;
+            width: 100%;
+            background: #ffffff;
+            border-radius: 24px;
+            box-shadow: 0 20px 40px -12px rgba(0, 0, 0, 0.2);
+            padding: 2.6rem 3rem;
+        }
+
+        @media (max-width: 700px) {
+            .contrato-wrapper { padding: 1.6rem 1.2rem; }
+        }
+
+        .header-doc {
+            border-bottom: 2px solid #1a2b4c;
+            padding-bottom: 1.1rem;
+            margin-bottom: 2rem;
+            display: flex;
+            flex-wrap: wrap;
+            justify-content: space-between;
+            align-items: flex-end;
+        }
+
+        .header-doc h1 {
+            font-size: 1.6rem;
+            font-weight: 600;
+            color: #0b1a33;
+        }
+
+        .header-doc .badge {
+            background: #1a2b4c;
+            color: white;
+            font-weight: 500;
+            font-size: 0.78rem;
+            padding: 0.35rem 0.9rem;
+            border-radius: 60px;
+            text-transform: uppercase;
+        }
+
+        h2 {
+            font-size: 1.3rem;
+            color: #0f2642;
+            font-weight: 600;
+            border-left: 5px solid #1a2b4c;
+            padding-left: 0.8rem;
+            margin-top: 1.8rem;
+            margin-bottom: 0.7rem;
+        }
+
+        p, li { line-height: 1.6; color: #1e2c41; font-size: 0.96rem; }
+        ul, ol { padding-left: 1.7rem; margin: 0.5rem 0 1rem 0; }
+        li { margin-bottom: 0.25rem; }
+
+        .grid-info {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 0.4rem 2rem;
+            background: #fafbff;
+            border-radius: 14px;
+            padding: 1rem 1.4rem;
+            margin: 0.8rem 0 1.2rem 0;
+        }
+        @media (max-width: 500px) { .grid-info { grid-template-columns: 1fr; } }
+        .grid-info strong { color: #1f3a5c; }
+
+        .destaque-box {
+            background: #f5f7fc;
+            border-radius: 12px;
+            padding: 1rem 1.5rem;
+            margin: 1rem 0;
+            border-left: 5px solid #1a2b4c;
+        }
+
+        .assinatura-area {
+            margin-top: 2.6rem;
+            border-top: 1px solid #cbd5e1;
+            padding-top: 1.8rem;
+            display: flex;
+            flex-wrap: wrap;
+            gap: 2.2rem;
+            justify-content: space-between;
+        }
+        .assinatura-bloco { flex: 1 1 200px; }
+        .assinatura-bloco p { margin: 0.25rem 0; font-size: 0.92rem; }
+        .linha-assinatura {
+            margin-top: 1rem;
+            border-bottom: 1px solid #2c3e5c;
+            width: 100%;
+            max-width: 260px;
+            height: 20px;
+        }
+
+        .preencher-fixo {
+            background: #e0f2fe;
+            color: #075985;
+            padding: 0.1rem 0.4rem;
+            border-radius: 4px;
+            font-weight: 600;
+            font-size: 0.85em;
+        }
+
+        .instrucoes {
+            background: #fff3cd;
+            border-radius: 14px;
+            padding: 1.2rem 1.6rem;
+            margin-bottom: 2rem;
+            font-size: 0.92rem;
+            color: #664d03;
+        }
+        .instrucoes strong { color: #4a3800; }
+
+        .rodape-doc {
+            margin-top: 2rem;
+            color: #2b405e;
+            font-size: 0.85rem;
+            text-align: center;
+            border-top: 1px solid #dce3ed;
+            padding-top: 1.5rem;
+        }
+    </style>
 </head>
 <body>
-  <h1>CONTRATO DE PRESTAÇÃO DE SERVIÇOS</h1>
-  <p style="text-align:center;color:#666;">Ref: {{deal_titulo}}</p>
+<div class="contrato-wrapper">
 
-  <div class="partes">
-    <p><strong>CONTRATADA:</strong> {{empresa_nome}}</p>
-    <p><strong>CONTRATANTE:</strong> {{cliente_nome}}, CPF/CNPJ: {{cliente_cpf_cnpj}}, e-mail: {{cliente_email}}, tel: {{cliente_telefone}}</p>
-  </div>
+    <div class="instrucoes">
+        <strong>Como usar este modelo:</strong> este é um contrato genérico de venda/prestação de serviços, compatível com o gerador automático de contratos do Vendor.ai. Antes de subir este arquivo em Configurações → Modelo de Contrato:
+        <ol>
+            <li>Substitua os campos destacados em azul (<span class="preencher-fixo">assim</span>) pelos dados fixos da sua empresa — eles não mudam entre contratos, então digite direto no HTML.</li>
+            <li>Não altere o texto entre chaves duplas, como <code>{{cliente_nome}}</code> — essas variáveis são preenchidas automaticamente pelo sistema com os dados de cada negócio fechado.</li>
+            <li>Ajuste as cláusulas de acordo com o seu ramo de atuação (ex: prazo de entrega, garantia, política de troca) — o texto abaixo é uma base geral, não jurídica específica do seu setor.</li>
+            <li>Remova este quadro de instruções antes de salvar o modelo final.</li>
+        </ol>
+        <p style="margin-top: 0.8rem;"><strong>⚠️ Recomendação importante:</strong> este modelo cobre pontos legais comuns (CDC, LGPD, assinatura eletrônica), mas não substitui a revisão de um advogado antes de usar com clientes reais. Cada ramo de atividade pode ter exigências específicas não cobertas aqui.</p>
+    </div>
 
-  <h2>1. Objeto</h2>
-  <p>{{produtos_servicos}}</p>
-  {{pedidos_lista}}
+    <div class="header-doc">
+        <h1>CONTRATO DE VENDA E<br>PRESTAÇÃO DE SERVIÇOS</h1>
+        <span class="badge">Contrato · {{empresa_nome}}</span>
+    </div>
 
-  <h2>2. Valor</h2>
-  <p><strong>{{deal_valor}}</strong></p>
+    <div style="margin-bottom: 1.6rem;">
+        <p><strong>CONTRATADA (VENDEDORA):</strong> {{empresa_nome}}, pessoa jurídica de direito privado, inscrita no CNPJ sob o nº {{empresa_cnpj}}, com sede em {{empresa_endereco}}, doravante denominada simplesmente <strong>VENDEDORA</strong>.</p>
+        <p style="margin-top: 0.6rem;"><strong>CONTRATANTE (COMPRADORA):</strong> {{cliente_empresa}}, inscrita no CNPJ/CPF sob o nº {{cliente_cpf_cnpj}}, representada por {{cliente_nome}}, contato {{cliente_email}} / {{cliente_telefone}}, doravante denominada simplesmente <strong>CLIENTE</strong>.</p>
+        <p style="margin-top: 0.6rem;">As partes acima identificadas, na melhor forma de direito, celebram o presente contrato, referente ao negócio <strong>"{{deal_titulo}}"</strong>, que se regerá pelas cláusulas a seguir expostas:</p>
+    </div>
 
-  <h2>3. Vigência</h2>
-  <p>O contrato entra em vigor na data de assinatura, conforme proposta comercial aceita.</p>
+    <h2>CLÁUSULA 1 – DO OBJETO</h2>
+    <p><strong>1.1.</strong> O presente contrato tem por objeto a venda dos produtos e/ou prestação dos serviços descritos abaixo, conforme acordado entre as partes:</p>
+    <div class="destaque-box">
+        <p><strong>Resumo:</strong> {{produtos_servicos}}</p>
+    </div>
+    <p>{{pedidos_lista}}</p>
+    <p><strong>1.2.</strong> Eventuais especificações técnicas, quantidades e características dos itens são as descritas na proposta comercial que originou este contrato, parte integrante deste instrumento.</p>
 
-  <h2>4. Assinatura Eletrônica</h2>
-  <p>Este contrato será assinado eletronicamente via ZapSign, nos termos da Lei 14.063/2020.</p>
+    <h2>CLÁUSULA 2 – DO VALOR E CONDIÇÕES DE PAGAMENTO</h2>
+    <div class="grid-info">
+        <p><strong>Valor total:</strong> {{deal_valor}}</p>
+        <p><strong>Forma de pagamento:</strong> {{forma_pagamento}}</p>
+        <p><strong>Data do contrato:</strong> {{data_hoje}}</p>
+    </div>
+    <p><strong>2.1.</strong> O valor acima contempla a totalidade dos produtos/serviços descritos na Cláusula 1, salvo disposição expressa em contrário na proposta comercial.</p>
+    <p><strong>2.2. Mora.</strong> Em caso de atraso no pagamento, incidirão sobre o valor em aberto: multa moratória de até 2% (dois por cento), juros de mora de 1% (um por cento) ao mês, e correção monetária pelo índice legalmente aplicável, salvo condição diversa pactuada expressamente entre as partes.</p>
+    <p><strong>2.3.</strong> A CLIENTE, quando enquadrada como consumidora nos termos do Código de Defesa do Consumidor (Lei nº 8.078/1990), possui os direitos ali assegurados, os quais prevalecem sobre disposição em contrário deste contrato, em caso de conflito.</p>
 
-  <p style="text-align:right;margin-top:40px;color:#666;">{{data_hoje}}</p>
+    <h2>CLÁUSULA 3 – DA ENTREGA / EXECUÇÃO</h2>
+    <p><strong>3.1.</strong> Os produtos serão entregues, ou os serviços prestados, dentro do prazo combinado entre as partes, considerando a disponibilidade de estoque e/ou agenda da VENDEDORA.</p>
+    <p><strong>3.2. Caso Fortuito e Força Maior.</strong> Eventuais atrasos decorrentes de caso fortuito, força maior, ou fatores razoavelmente fora do controle da VENDEDORA (ex: falhas de fornecedores, condições climáticas adversas, greves, restrições governamentais) não gerarão direito a indenização, sem prejuízo do dever de comunicação tempestiva à CLIENTE e de eventual reagendamento do prazo.</p>
 
-  <div class="assinaturas">
-    <div class="assinatura"><p><strong>Contratada</strong><br/>{{empresa_nome}}</p></div>
-    <div class="assinatura"><p><strong>Contratante</strong><br/>{{cliente_nome}}</p></div>
-  </div>
+    <h2>CLÁUSULA 4 – DA GARANTIA E VÍCIOS DO PRODUTO/SERVIÇO</h2>
+    <p><strong>4.1.</strong> Os produtos fornecidos possuem garantia legal contra vícios de qualidade ou quantidade que os tornem impróprios ou inadequados ao uso a que se destinam, nos termos dos Art. 18 a 26 do Código de Defesa do Consumidor, sem prejuízo de garantia contratual adicional oferecida pelo fabricante, quando aplicável.</p>
+    <p><strong>4.2.</strong> Prazo para reclamar de vícios aparentes: 30 (trinta) dias para produtos/serviços não duráveis, e 90 (noventa) dias para produtos/serviços duráveis, contados da entrega ou do término da execução, conforme Art. 26 do CDC.</p>
+    <p><strong>4.3.</strong> A garantia não cobre danos decorrentes de mau uso, uso indevido, desgaste natural, ou modificações realizadas por terceiros não autorizados pela VENDEDORA.</p>
+
+    <h2>CLÁUSULA 5 – DO DIREITO DE ARREPENDIMENTO</h2>
+    <p><strong>5.1.</strong> Nos termos do Art. 49 do Código de Defesa do Consumidor, quando a contratação ocorrer fora do estabelecimento comercial (por telefone, internet, WhatsApp ou domicílio), a CLIENTE consumidora poderá desistir do contrato no prazo de 7 (sete) dias corridos, contados da assinatura ou do recebimento do produto/serviço, com devolução integral dos valores eventualmente pagos, devidamente atualizados.</p>
+
+    <h2>CLÁUSULA 6 – DO CANCELAMENTO E RESCISÃO</h2>
+    <p><strong>6.1.</strong> Qualquer das partes poderá rescindir este contrato em caso de descumprimento de obrigação essencial pela outra parte, mediante notificação prévia, respeitado o prazo para regularização quando aplicável.</p>
+    <p><strong>6.2.</strong> Havendo pagamento antecipado por serviço ainda não executado, em caso de cancelamento por iniciativa da CLIENTE fora do prazo de arrependimento da Cláusula 5, poderá ser retido valor proporcional aos custos já incorridos pela VENDEDORA, mediante comprovação.</p>
+
+    <h2>CLÁUSULA 7 – DA PROTEÇÃO DE DADOS PESSOAIS (LGPD)</h2>
+    <p><strong>7.1.</strong> As partes se comprometem a tratar os dados pessoais compartilhados em razão deste contrato exclusivamente para as finalidades aqui previstas, em conformidade com a Lei Geral de Proteção de Dados Pessoais (Lei nº 13.709/2018).</p>
+    <p><strong>7.2.</strong> Os dados pessoais da CLIENTE serão utilizados para emissão de documentos fiscais, comunicação sobre o negócio, e cumprimento de obrigações legais, não sendo compartilhados com terceiros para finalidade distinta sem consentimento, salvo obrigação legal.</p>
+
+    <h2>CLÁUSULA 8 – DA CONFIDENCIALIDADE</h2>
+    <p><strong>8.1.</strong> As partes se comprometem a manter sigilo sobre informações comerciais, técnicas e condições específicas deste contrato de que venham a ter conhecimento, não as divulgando a terceiros sem autorização prévia por escrito, ressalvadas as hipóteses de exigência legal ou determinação judicial.</p>
+
+    <h2>CLÁUSULA 9 – DAS DISPOSIÇÕES GERAIS</h2>
+    <p><strong>9.1. Assinatura Eletrônica.</strong> Este contrato é celebrado por meio eletrônico, com assinatura digital reconhecida (nos termos da Medida Provisória nº 2.200-2/2001 e da Lei nº 14.063/2020), sendo válido para todos os fins de direito, incluindo como título executivo extrajudicial quando os requisitos legais aplicáveis estiverem presentes.</p>
+    <p><strong>9.2.</strong> A tolerância de qualquer das partes quanto ao eventual descumprimento de cláusulas não constitui novação ou renúncia a direitos, podendo a parte lesada exigir o cumprimento integral do contrato a qualquer tempo.</p>
+    <p><strong>9.3.</strong> A nulidade ou invalidade de qualquer cláusula não afetará as demais, que permanecerão em pleno vigor.</p>
+    <p style="margin-top: 0.8rem;"><em>Negócio intermediado por: {{parceiro_nome}}</em> <span style="color:#8a94a6; font-size: 0.85em;">(remova esta linha se não houver parceiro envolvido)</span></p>
+
+    <h2>CLÁUSULA 10 – DO FORO</h2>
+    <p><strong>10.1.</strong> Para dirimir eventuais controvérsias oriundas deste contrato, fica eleito o foro do domicílio da CLIENTE, quando esta for consumidora, nos termos do Art. 101, I, do CDC, ou o foro da comarca de <span class="preencher-fixo">[SUA CIDADE/UF]</span> nas demais hipóteses.</p>
+
+    <p style="margin-top: 2rem;">E por estarem de acordo, as partes firmam o presente instrumento por meio de assinatura eletrônica, para todos os fins de direito.</p>
+
+    <div class="assinatura-area">
+        <div class="assinatura-bloco">
+            <p><strong>{{empresa_nome}}</strong></p>
+            <p>CNPJ: {{empresa_cnpj}}</p>
+            <div class="linha-assinatura"></div>
+        </div>
+        <div class="assinatura-bloco">
+            <p><strong>{{cliente_nome}}</strong></p>
+            <p>{{cliente_empresa}}</p>
+            <div class="linha-assinatura"></div>
+        </div>
+    </div>
+
+    <p class="rodape-doc">Modelo padrão gerado pelo Vendor.ai · Recomendamos revisão jurídica antes do uso em produção com clientes reais.</p>
+
+</div>
 </body>
 </html>`;
     const blob = new Blob([html], { type: "text/html" });
