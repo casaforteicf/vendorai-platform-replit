@@ -411,7 +411,7 @@ export async function generateFeedContent(
   variationsCount: number,
   imageCount: number = 1,
   productExtra?: string,
-  referenceImageUrl?: string,
+  referenceImageUrls?: string[],
   aspectRatio?: string,
   strategy?: ContentStrategy,
 ): Promise<{ result: ContentGenerationResult; tokensUsed: number }> {
@@ -456,9 +456,11 @@ Retorne SOMENTE JSON válido no formato:
     variations?: Omit<FeedVariation, "imageUrl">[];
   };
 
-  const variations: FeedVariation[] = (raw.variations ?? []).map((v) => ({
+  const refImages = referenceImageUrls && referenceImageUrls.length > 0 ? referenceImageUrls : null;
+  const variations: FeedVariation[] = (raw.variations ?? []).map((v, i) => ({
     ...v,
-    ...(referenceImageUrl ? { imageUrl: referenceImageUrl } : {}),
+    ...(refImages ? { imageUrl: refImages[i % refImages.length] } : {}),
+    ...(refImages && refImages.length > 1 ? { imageUrls: refImages } : {}),
   }));
 
   return {
@@ -475,7 +477,7 @@ export async function generateStoriesContent(
   variationsCount: number,
   imageCount: number = 1,
   productExtra?: string,
-  referenceImageUrl?: string,
+  referenceImageUrls?: string[],
   aspectRatio?: string,
   strategy?: ContentStrategy,
 ): Promise<{ result: ContentGenerationResult; tokensUsed: number }> {
@@ -520,9 +522,11 @@ Retorne SOMENTE JSON válido no formato:
     variations?: Omit<StoriesVariation, "imageUrl">[];
   };
 
-  const variations: StoriesVariation[] = (raw.variations ?? []).map((v) => ({
+  const refImages = referenceImageUrls && referenceImageUrls.length > 0 ? referenceImageUrls : null;
+  const variations: StoriesVariation[] = (raw.variations ?? []).map((v, i) => ({
     ...v,
-    ...(referenceImageUrl ? { imageUrl: referenceImageUrl } : {}),
+    ...(refImages ? { imageUrl: refImages[i % refImages.length] } : {}),
+    ...(refImages && refImages.length > 1 ? { imageUrls: refImages } : {}),
   }));
 
   return {

@@ -40,9 +40,9 @@ const generateBodySchema = z.object({
   theme: z.string().min(3, "Descreva o tema (mín. 3 caracteres)"),
   productId: z.string().optional().nullable(),
   productSource: z.enum(["catalog", "varejo", "supermercado", "insumo"]).optional().default("catalog"),
-  variations: z.coerce.number().int().min(1).max(3).default(2),
+  variations: z.coerce.number().int().min(1).max(3).default(1),
   imageCount: z.coerce.number().int().min(1).max(10).default(2),
-  imageUrl: z.string().optional().nullable(),
+  imageUrls: z.array(z.string()).optional().default([]),
   contentFormat: z.enum(["feed_square", "feed_portrait", "stories", "reels"]).optional().nullable(),
   aspectRatio: z.string().optional().nullable(),
   // Fotos do cliente marcadas como "Material" — vão direto como imageUrls do carrossel
@@ -108,7 +108,7 @@ router.post("/tenants/:tenantId/content/generate", async (req, res) => {
     return;
   }
 
-  const { type, theme, productId, productSource, variations, imageCount, imageUrl: referenceImageUrl, contentFormat, aspectRatio, postMaterialUrls, customerPain, postObjective, voiceTone, desiredCta } = parsed.data;
+  const { type, theme, productId, productSource, variations, imageCount, imageUrls: referenceImageUrls, contentFormat, aspectRatio, postMaterialUrls, customerPain, postObjective, voiceTone, desiredCta } = parsed.data;
 
   const { used, limit, configId } = await getMonthlyUsage(tenantId);
   if (used >= limit) {
@@ -181,9 +181,9 @@ router.post("/tenants/:tenantId/content/generate", async (req, res) => {
   let result: { result: { variations: unknown[] }; tokensUsed: number };
   try {
     if (type === "feed") {
-      result = await generateFeedContent(profile ?? {}, tenantId, theme, productName, variations, imageCount, productExtra, referenceImageUrl ?? undefined, aspectRatio ?? undefined, strategy);
+      result = await generateFeedContent(profile ?? {}, tenantId, theme, productName, variations, imageCount, productExtra, referenceImageUrls.length > 0 ? referenceImageUrls : undefined, aspectRatio ?? undefined, strategy);
     } else if (type === "stories") {
-      result = await generateStoriesContent(profile ?? {}, tenantId, theme, productName, variations, imageCount, productExtra, referenceImageUrl ?? undefined, aspectRatio ?? undefined, strategy);
+      result = await generateStoriesContent(profile ?? {}, tenantId, theme, productName, variations, imageCount, productExtra, referenceImageUrls.length > 0 ? referenceImageUrls : undefined, aspectRatio ?? undefined, strategy);
     } else {
       result = await generateReelsScript(profile ?? {}, tenantId, theme, productName, variations, productExtra, strategy);
     }

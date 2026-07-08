@@ -1379,7 +1379,7 @@ export default function Content() {
     enabled: !!tenantId,
   });
 
-  const generateMutation = useMutation<ContentGeneration, Error, { type: ContentType; theme: string; productId?: string; productSource?: ProductSource; variations: number; imageCount: number; imageUrl?: string; postMaterialUrls?: string[]; contentFormat?: string; aspectRatio?: string; customerPain?: string; postObjective?: string; voiceTone?: string; desiredCta?: string }>({
+  const generateMutation = useMutation<ContentGeneration, Error, { type: ContentType; theme: string; productId?: string; productSource?: ProductSource; variations: number; imageCount: number; imageUrls?: string[]; postMaterialUrls?: string[]; contentFormat?: string; aspectRatio?: string; customerPain?: string; postObjective?: string; voiceTone?: string; desiredCta?: string }>({
     mutationFn: async (body) => {
       const res = await fetch(`/api/tenants/${tenantId}/content/generate`, {
         method: "POST",
@@ -1529,7 +1529,7 @@ export default function Content() {
       return;
     }
     setLastResult(null);
-    const styleRef = uploadedImages.find((img) => img.purpose === "style_reference" && !img.uploading);
+    const styleRefs = uploadedImages.filter((img) => img.purpose === "style_reference" && !img.uploading).map((img) => img.url);
     const materialImgs = uploadedImages.filter((img) => img.purpose === "post_material" && !img.uploading).map((img) => img.url);
     generateMutation.mutate({
       type: activeTab,
@@ -1538,7 +1538,7 @@ export default function Content() {
       productSource,
       variations,
       imageCount: activeTab === "reels" ? 1 : imageCount,
-      imageUrl: styleRef?.url ?? undefined,
+      imageUrls: styleRefs.length > 0 ? styleRefs : undefined,
       postMaterialUrls: materialImgs.length > 0 ? materialImgs : undefined,
       contentFormat,
       aspectRatio,
