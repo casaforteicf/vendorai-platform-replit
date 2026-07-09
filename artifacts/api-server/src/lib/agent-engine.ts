@@ -549,6 +549,33 @@ export function daysSinceLastContact(ctx: AgentContext): number | null {
 }
 
 // ═════════════════════════════════════════════════════════════════════════════
+//  SHARED CALIBRATION RULE  (appended to every conversational agent prompt)
+// ═════════════════════════════════════════════════════════════════════════════
+
+/**
+ * Response-length calibration rule injected into every agent prompt.
+ *
+ * The LLM already receives the full message history, so it can see how the
+ * lead writes. This rule tells it to mirror that rhythm instead of defaulting
+ * to long, structured responses regardless of context.
+ */
+const RESPONSE_CALIBRATION_RULE =
+  "## CALIBRAÇÃO DE TAMANHO DE RESPOSTA\n" +
+  "Adapte o comprimento e o estilo da sua resposta ao ritmo de escrita do lead nesta conversa:\n" +
+  "- Lead escreve mensagens CURTAS (poucas palavras, frases diretas como \"oi\", \"quanto custa\", \"top\") → responda com 1 a 3 frases curtas e diretas. Sem listas numeradas, sem parágrafos longos, sem tópicos estruturados — a menos que a pergunta exija explicação técnica detalhada.\n" +
+  "- Lead escreve mensagens LONGAS ou DETALHADAS, ou faz múltiplas perguntas de uma vez → você pode responder de forma mais completa, com mais contexto ou estrutura (listas, tópicos) quando útil.\n" +
+  "- NUNCA use formatação pesada (múltiplos itens numerados, blocos extensos) para responder uma pergunta simples de uma linha.\n" +
+  "- Objetivo: espelhar o ritmo natural da conversa, como um vendedor humano faria — sem desengajar por resposta curta demais, sem cansar por resposta longa demais.";
+
+/**
+ * Joins prompt parts and appends the shared calibration rule as the final section.
+ * Used by all conversational agent prompt builders.
+ */
+function joinWithCalibration(parts: string[]): string {
+  return [...parts, RESPONSE_CALIBRATION_RULE].join("\n\n");
+}
+
+// ═════════════════════════════════════════════════════════════════════════════
 //  PROMPT BUILDERS
 // ═════════════════════════════════════════════════════════════════════════════
 
@@ -608,7 +635,7 @@ export function buildSdrPrompt(customPrompt: string | undefined, ctx: AgentConte
     if (ci.nextBestActionReason) lines.push(`Motivo: ${ci.nextBestActionReason}`);
     if (lines.length > 1) parts.push(lines.join("\n"));
   }
-  return parts.join("\n\n");
+  return joinWithCalibration(parts);
 }
 
 export function buildCloserPrompt(customPrompt: string | undefined, ctx: AgentContext, scenario?: Record<string, unknown> | null, systemPromptOverride?: string | null): string {
@@ -688,7 +715,7 @@ export function buildCloserPrompt(customPrompt: string | undefined, ctx: AgentCo
     if (ci.nextBestActionReason) lines.push(`Motivo: ${ci.nextBestActionReason}`);
     if (lines.length > 1) parts.push(lines.join("\n"));
   }
-  return parts.join("\n\n");
+  return joinWithCalibration(parts);
 }
 
 export function buildFollowupPrompt(customPrompt: string | undefined, ctx: AgentContext, _scenario?: Record<string, unknown> | null, systemPromptOverride?: string | null): string {
@@ -736,7 +763,7 @@ export function buildFollowupPrompt(customPrompt: string | undefined, ctx: Agent
     if (ci.nextBestActionReason) lines.push(`Motivo: ${ci.nextBestActionReason}`);
     if (lines.length > 1) parts.push(lines.join("\n"));
   }
-  return parts.join("\n\n");
+  return joinWithCalibration(parts);
 }
 
 export function buildReactivationPrompt(customPrompt: string | undefined, ctx: AgentContext, _scenario?: Record<string, unknown> | null, systemPromptOverride?: string | null): string {
@@ -828,7 +855,7 @@ export function buildReactivationPrompt(customPrompt: string | undefined, ctx: A
     if (ci.nextBestActionReason) lines.push(`Motivo: ${ci.nextBestActionReason}`);
     if (lines.length > 1) parts.push(lines.join("\n"));
   }
-  return parts.join("\n\n");
+  return joinWithCalibration(parts);
 }
 
 export function buildSchedulerPrompt(
@@ -869,7 +896,7 @@ export function buildSchedulerPrompt(
   if (ci?.nextBestAction) {
     parts.push(`## CONTEXTO\nPróxima ação recomendada: ${ci.nextBestAction}`);
   }
-  return parts.join("\n\n");
+  return joinWithCalibration(parts);
 }
 
 export function buildServicePrompt(customPrompt: string | undefined, ctx: AgentContext, _scenario?: Record<string, unknown> | null, systemPromptOverride?: string | null): string {
@@ -902,7 +929,7 @@ export function buildServicePrompt(customPrompt: string | undefined, ctx: AgentC
     if (ci.nextBestActionReason) lines.push(`Motivo: ${ci.nextBestActionReason}`);
     if (lines.length > 1) parts.push(lines.join("\n"));
   }
-  return parts.join("\n\n");
+  return joinWithCalibration(parts);
 }
 
 export function buildFinanceiroPrompt(customPrompt: string | undefined, ctx: AgentContext, _scenario?: Record<string, unknown> | null, systemPromptOverride?: string | null): string {
@@ -930,7 +957,7 @@ export function buildFinanceiroPrompt(customPrompt: string | undefined, ctx: Age
     if (ci.goalAnalysis) lines.push(`Objetivo do cliente: ${ci.goalAnalysis}`);
     if (lines.length > 1) parts.push(lines.join("\n"));
   }
-  return parts.join("\n\n");
+  return joinWithCalibration(parts);
 }
 
 export function buildCobrancaPrompt(customPrompt: string | undefined, ctx: AgentContext, _scenario?: Record<string, unknown> | null, systemPromptOverride?: string | null): string {
@@ -958,7 +985,7 @@ export function buildCobrancaPrompt(customPrompt: string | undefined, ctx: Agent
     if (ci.journeyStage) lines.push(`Estágio: ${ci.journeyStage}`);
     if (lines.length > 1) parts.push(lines.join("\n"));
   }
-  return parts.join("\n\n");
+  return joinWithCalibration(parts);
 }
 
 export function buildOnboardingPrompt(customPrompt: string | undefined, ctx: AgentContext, _scenario?: Record<string, unknown> | null, systemPromptOverride?: string | null): string {
@@ -987,7 +1014,7 @@ export function buildOnboardingPrompt(customPrompt: string | undefined, ctx: Age
     if (ci.nextBestActionReason) lines.push(`Motivo: ${ci.nextBestActionReason}`);
     if (lines.length > 1) parts.push(lines.join("\n"));
   }
-  return parts.join("\n\n");
+  return joinWithCalibration(parts);
 }
 
 export function buildRelacionamentoPrompt(
@@ -1100,7 +1127,7 @@ export function buildRelacionamentoPrompt(
     parts.push(catLines.join("\n"));
   }
 
-  return parts.join("\n\n");
+  return joinWithCalibration(parts);
 }
 
 // ── Prompt builder map ────────────────────────────────────────────────────────
