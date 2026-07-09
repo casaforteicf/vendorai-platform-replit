@@ -541,7 +541,7 @@ export default function LeadDetail() {
       void queryClient.invalidateQueries({ queryKey: getListDealsQueryKey(lead.tenantId) });
       setIniciarDialogOpen(false);
       toast({ title: "Conversa iniciada!" });
-      setLocation("/conversas");
+      setLocation("/conversations");
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : "Erro ao iniciar conversa";
       toast({ title: msg, variant: "destructive" });
