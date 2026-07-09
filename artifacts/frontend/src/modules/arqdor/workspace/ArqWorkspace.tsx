@@ -53,6 +53,7 @@ import ConstructionHub from './construction-hub/ConstructionHub'
 import SmartBuildingCenter from './iot-smart-building/SmartBuildingCenter'
 import FacilityManagementCenter from './facility-management/FacilityManagementCenter'
 import IntegrationHub from './integration-hub/IntegrationHub'
+import DataSyncCenter from './integration-hub/data-sync/DataSyncCenter'
 import BudgetDisciplinesProposal from './executive-budget/disciplines/BudgetDisciplinesProposal'
 import AlignedStudioShell from './ux-alignment/AlignedStudioShell'
 import { computeNextAction }     from './project-experience/ProjectHome'
@@ -85,6 +86,7 @@ export type ModuleId =
   | 'iot' | 'smart-building' | 'building'
   | 'facility' | 'facility-management' | 'manutencao'
   | 'integration' | 'integration-hub'
+  | 'data-sync' | 'api-connectors' | 'event-bus'
 
 export type JourneyId = 'create' | 'design' | 'visualize' | 'deliver' | 'business'
 
@@ -170,6 +172,9 @@ const MODULE_MAP_INTERNAL: Record<ModuleId, { icon:string; label:string }> = {
   'manutencao':         { icon:'🔧', label:'Manutenção'       },
   'integration':        { icon:'🔗', label:'Integration Hub'  },
   'integration-hub':    { icon:'🔗', label:'Integration Hub'  },
+  'data-sync':          { icon:'🔄', label:'Data Sync'        },
+  'api-connectors':     { icon:'🔄', label:'API Connectors'   },
+  'event-bus':          { icon:'🔄', label:'Event Bus'        },
 }
 
 // ─── Legado: Journeys (keyboard shortcuts 1–5) ────────────────────────────────
@@ -357,6 +362,9 @@ function renderModule(id: ModuleId, arqState: ArqProjectState, setActive: (m: Mo
     case 'integration':
     case 'integration-hub':
     case 'integracao':       return <IntegrationHub arqState={arqState} onNavigate={m => setActive(m as ModuleId)} />
+    case 'data-sync':
+    case 'api-connectors':
+    case 'event-bus':        return <DataSyncCenter onNavigate={m => setActive(m as ModuleId)} />
     case 'ecosystem':     return <EcosystemModule/>
     case 'knowledge':     return <KnowledgeModule/>
     case 'office':
