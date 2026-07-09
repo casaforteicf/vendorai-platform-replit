@@ -838,6 +838,60 @@ async function runStartupMigrations() {
   } catch (err) {
     logger.warn({ err }, "startup migrations: arch_release_gates skipped (may already exist)");
   }
+  try {
+    await db.execute(sql`
+      CREATE TABLE IF NOT EXISTS sdr_templates (
+        id          TEXT PRIMARY KEY NOT NULL,
+        tenant_id   TEXT REFERENCES tenants(id) ON DELETE CASCADE,
+        cenario     TEXT NOT NULL,
+        ordem       INTEGER DEFAULT 1 NOT NULL,
+        delay_horas INTEGER DEFAULT 0 NOT NULL,
+        template    TEXT NOT NULL,
+        ativo       BOOLEAN DEFAULT true NOT NULL,
+        created_at  TIMESTAMPTZ DEFAULT now() NOT NULL,
+        updated_at  TIMESTAMPTZ DEFAULT now() NOT NULL
+      )
+    `);
+    await db.execute(sql`
+      INSERT INTO sdr_templates (id, tenant_id, cenario, ordem, delay_horas, template, ativo)
+      SELECT gen_random_uuid()::text, NULL, 'frio_teste', 1, 0,
+        'Oi {dono_nome}! Passei rapidinho — vi que vocês trabalham com {segmento_produto} em {cidade}. A gente ajuda negócios do setor a não perder venda por demora no atendimento do WhatsApp, com IA que responde e qualifica na hora, mesmo fora do horário comercial.
+
+Faz sentido eu te mostrar em uns 10 minutos? Consigo {dia_sugestao_1} ou {dia_sugestao_2}, o que for melhor pra você.',
+        true
+      WHERE NOT EXISTS (SELECT 1 FROM sdr_templates WHERE tenant_id IS NULL AND cenario = 'frio_teste' AND ordem = 1)
+    `);
+    await db.execute(sql`
+      INSERT INTO sdr_templates (id, tenant_id, cenario, ordem, delay_horas, template, ativo)
+      SELECT gen_random_uuid()::text, NULL, 'frio_revelacao', 1, 20,
+        'Oi {dono_nome}, tudo bem? {status_resposta} sobre a mensagem anterior — sem problema, sei que a rotina é corrida. Só reforçando: a ideia é simples, {empresa_lead} passa a responder cliente na hora pelo WhatsApp, sem precisar contratar mais gente pro atendimento.
+
+Se quiser, consigo te mostrar rapidinho essa semana. Algum horário funciona melhor?',
+        true
+      WHERE NOT EXISTS (SELECT 1 FROM sdr_templates WHERE tenant_id IS NULL AND cenario = 'frio_revelacao' AND ordem = 1)
+    `);
+    await db.execute(sql`
+      INSERT INTO sdr_templates (id, tenant_id, cenario, ordem, delay_horas, template, ativo)
+      SELECT gen_random_uuid()::text, NULL, 'pos_visita', 1, 0,
+        'Oi {dono_nome}! Passei aí em {empresa_lead} e conversei com {nome_gatekeeper} sobre como a IA pode ajudar vocês a atender mais rápido pelo WhatsApp. Fiquei pensando no que você comentou sobre {principal_reclamacao} — é exatamente o tipo de coisa que resolvemos.
+
+Topa uma conversa rápida pra eu te mostrar como funcionaria na prática? {dia_sugestao_1} ou {dia_sugestao_2}?',
+        true
+      WHERE NOT EXISTS (SELECT 1 FROM sdr_templates WHERE tenant_id IS NULL AND cenario = 'pos_visita' AND ordem = 1)
+    `);
+    await db.execute(sql`
+      INSERT INTO sdr_templates (id, tenant_id, cenario, ordem, delay_horas, template, ativo)
+      SELECT gen_random_uuid()::text, NULL, 'direto_dono', 1, 0,
+        '{dono_nome}, tudo bem? Sou {vendedor_nome}, trabalho ajudando empresas de {segmento} a vender mais organizando o atendimento pelo WhatsApp com IA. Antes de qualquer coisa: faz sentido pra {empresa_lead} hoje, ou vocês já têm isso resolvido?
+
+Se fizer sentido, te mostro em 10 minutos como funciona.',
+        true
+      WHERE NOT EXISTS (SELECT 1 FROM sdr_templates WHERE tenant_id IS NULL AND cenario = 'direto_dono' AND ordem = 1)
+    `);
+    logger.info("startup migrations: sdr_templates global seeds OK");
+  } catch (err) {
+    logger.warn({ err }, "startup migrations: sdr_templates global seeds skipped");
+  }
 }
 
 // ─── Boot sequence ────────────────────────────────────────────────────────────

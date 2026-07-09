@@ -167,6 +167,8 @@ export async function resolveTemplateVars(
     dia_sugestao_2:   diaSugestao2,
     hora_sugestao_1:  horaSugestao1,
     empresa_nome:     empresaNome,
+    nome_lead:        lead.nome ?? "",
+    empresa_lead:     lead.empresa ?? lead.nome ?? "",
   };
 
   let result = template;
