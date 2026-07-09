@@ -78,6 +78,7 @@ import RealSpecificationCatalogStudio from './real-specification-catalog/RealSpe
 import RealBudgetEngineStudio from './real-budget-engine/RealBudgetEngineStudio'
 import ClientPortalApprovalStudio from './client-portal-approval/ClientPortalApprovalStudio'
 import ProductionProcurementExecutionStudio from './production-procurement-execution/ProductionProcurementExecutionStudio'
+import PostSaleDeliverySuccessStudio from './post-sale-delivery-success/PostSaleDeliverySuccessStudio'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 export type ModuleId =
@@ -120,6 +121,7 @@ export type ModuleId =
   | 'real-budget' | 'orcamento-real' | 'budget-engine'
   | 'client-portal-approval' | 'proposal-delivery' | 'portal-aprovacao'
   | 'execution' | 'production-procurement'
+  | 'post-sale' | 'pos-venda' | 'delivery-success' | 'customer-success' | 'success'
 
 export type JourneyId = 'create' | 'design' | 'visualize' | 'deliver' | 'business'
 
@@ -258,6 +260,11 @@ const MODULE_MAP_INTERNAL: Record<ModuleId, { icon:string; label:string }> = {
   'portal-aprovacao':    { icon:'🤝', label:'Portal Aprovação'          },
   'execution':           { icon:'⚙️', label:'Execução'                  },
   'production-procurement': { icon:'⚙️', label:'Produção & Compras'      },
+  'post-sale':          { icon:'🌟', label:'Pós-Venda'                },
+  'pos-venda':          { icon:'🌟', label:'Pós-Venda'                },
+  'delivery-success':   { icon:'🌟', label:'Entrega & Sucesso'        },
+  'customer-success':   { icon:'🌟', label:'Customer Success'         },
+  'success':            { icon:'🌟', label:'Sucesso do Cliente'       },
 }
 
 // ─── Legado: Journeys (keyboard shortcuts 1–5) ────────────────────────────────
@@ -496,6 +503,11 @@ function renderModule(id: ModuleId, arqState: ArqProjectState, setActive: (m: Mo
     case 'portal-aprovacao': return <ClientPortalApprovalStudio arqState={arqState} onNavigate={m => setActive(m as ModuleId)} />
     case 'execution':
     case 'production-procurement': return <ProductionProcurementExecutionStudio arqState={arqState} onNavigate={m => setActive(m as ModuleId)} />
+    case 'post-sale':
+    case 'pos-venda':
+    case 'delivery-success':
+    case 'customer-success':
+    case 'success': return <PostSaleDeliverySuccessStudio arqState={arqState} onNavigate={m => setActive(m as ModuleId)} />
     case 'ecosystem':     return <EcosystemModule/>
     case 'knowledge':     return <KnowledgeModule/>
     case 'office':        return <OfficeModule/>
