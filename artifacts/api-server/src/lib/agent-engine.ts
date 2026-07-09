@@ -633,6 +633,32 @@ export function buildCloserPrompt(customPrompt: string | undefined, ctx: AgentCo
     if (customPrompt?.trim()) parts.push("## INSTRUÇÕES DA EMPRESA\n" + customPrompt.trim());
   }
 
+  // Catalog plans section — injected by dispatch when tenant has active products.
+  // Allows Closer to answer pricing questions with real data instead of refusing.
+  type CatalogPlan = { nome: string; precoBase: string | null; precoImplantacao?: string | null; precoMensalidade?: string | null };
+  const catalogPlans = Array.isArray(scenario?.catalogPlans)
+    ? (scenario!.catalogPlans as CatalogPlan[])
+    : null;
+  if (catalogPlans && catalogPlans.length > 0) {
+    const fmtBRL = (v: string | null | undefined) =>
+      v ? `R$ ${Number(v).toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : null;
+    const planLines = catalogPlans.map((p) => {
+      const priceParts: string[] = [];
+      const impl = fmtBRL(p.precoImplantacao);
+      const mens = fmtBRL(p.precoMensalidade);
+      const base = fmtBRL(p.precoBase);
+      if (impl) priceParts.push(`Implantação: ${impl}`);
+      if (mens) priceParts.push(`Mensalidade: ${mens}`);
+      else if (base) priceParts.push(`Valor: ${base}`);
+      return `• **${p.nome}**: ${priceParts.join(" · ") || "consulte valores"}`;
+    });
+    parts.push(
+      "## PLANOS E PREÇOS DISPONÍVEIS\n" +
+      "Quando o lead perguntar sobre preços, planos ou valores, responda com as informações reais abaixo — nunca se recuse a informar ou seja evasivo. Você não precisa oferecer proativamente, mas quando perguntado diretamente, informe com confiança:\n" +
+      planLines.join("\n"),
+    );
+  }
+
   // Product presentation scenario
   if (scenario?.type === "product_presentation") {
     const s = scenario as { type: "product_presentation"; productName: string; features?: string[]; price?: string; brand?: string };

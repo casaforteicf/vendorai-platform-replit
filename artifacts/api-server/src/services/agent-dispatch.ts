@@ -12,13 +12,16 @@ import {
   db,
   agentConfigsTable,
   activitiesTable,
+  businessProfilesTable,
   conversationsTable,
   customerIntelligenceTable,
   dealsTable,
   leadsTable,
   messagesTable,
   notificationsTable,
+  produtosCatalogoTable,
   propostasTable,
+  tenantsTable,
   usersTable,
   leadSpouseConsentTable,
   tenantCalendarSettingsTable,
@@ -54,6 +57,25 @@ type Lead    = typeof leadsTable.$inferSelect;
 type CI      = typeof customerIntelligenceTable.$inferSelect;
 type Deal    = typeof dealsTable.$inferSelect;
 type Message = typeof messagesTable.$inferSelect;
+
+// ── System prompt variable interpolation ──────────────────────────────────────
+
+/**
+ * Replaces common placeholder tokens in a system prompt stored in the DB.
+ * Supported tokens (case-insensitive):
+ *   - [Seu Nome] | [Nome] | {vendedor_nome} | {{vendedor_nome}} → vendor name
+ *   - [Empresa]  | {empresa_nome} | {{empresa_nome}}            → company name
+ * Any remaining unrecognised [Placeholder] pattern is stripped to prevent literal
+ * bracket text leaking to the lead.
+ */
+function interpolateSystemPrompt(text: string, vars: { vendedor_nome: string; empresa_nome: string }): string {
+  let out = text;
+  out = out.replace(/\[Seu\s+Nome\]|\[Nome\]|\{?\{vendedor_nome\}\}?/gi, vars.vendedor_nome);
+  out = out.replace(/\[Empresa\]|\{?\{empresa_nome\}\}?/gi, vars.empresa_nome);
+  // Remove any leftover [Unknown Placeholder] patterns (1–60 chars between brackets)
+  out = out.replace(/\[[^\]]{1,60}\]/g, "");
+  return out;
+}
 
 // ── Agent routing ─────────────────────────────────────────────────────────────
 
@@ -583,6 +605,54 @@ export async function processAgentInternal(params: {
       );
     }
 
+    // For closer: inject active catalog plans so the agent can answer pricing questions.
+    if (resolvedAgentName === "closer") {
+      const catalogPlans = await db
+        .select({
+          nome:              produtosCatalogoTable.nome,
+          precoBase:         produtosCatalogoTable.precoBase,
+          precoImplantacao:  produtosCatalogoTable.precoImplantacao,
+          precoMensalidade:  produtosCatalogoTable.precoMensalidade,
+        })
+        .from(produtosCatalogoTable)
+        .where(and(eq(produtosCatalogoTable.tenantId, tenantId), eq(produtosCatalogoTable.ativo, true)))
+        .orderBy(produtosCatalogoTable.precoBase)
+        .limit(20);
+      if (catalogPlans.length > 0) {
+        enrichedScenario = { ...(enrichedScenario ?? {}), catalogPlans };
+        log.info({ tenantId, count: catalogPlans.length }, "dispatch: closer catalog plans injected");
+      }
+    }
+
+    // Fetch vendor name and company name for system prompt variable interpolation.
+    // These are used to replace placeholders like [Seu Nome] or {empresa_nome} in
+    // custom system prompts saved by tenant admins — applied to every agent.
+    const [bpRow, tenantRow] = await Promise.all([
+      db.select({ nomeFantasia: businessProfilesTable.nomeFantasia })
+        .from(businessProfilesTable)
+        .where(eq(businessProfilesTable.tenantId, tenantId))
+        .limit(1)
+        .then((rows) => rows[0] ?? null),
+      db.select({ name: tenantsTable.name })
+        .from(tenantsTable)
+        .where(eq(tenantsTable.id, tenantId))
+        .limit(1)
+        .then((rows) => rows[0] ?? null),
+    ]);
+    const empresaNome = bpRow?.nomeFantasia ?? tenantRow?.name ?? "";
+    let vendedorNome = "";
+    if (ctx.lead.assignedTo) {
+      const [vendedor] = await db
+        .select({ name: usersTable.name })
+        .from(usersTable)
+        .where(eq(usersTable.id, ctx.lead.assignedTo))
+        .limit(1);
+      vendedorNome = vendedor?.name ?? "";
+    }
+    if (!vendedorNome) {
+      vendedorNome = empresaNome ? `Equipe ${empresaNome}` : "Equipe Comercial";
+    }
+
     // Resolve DB-driven system prompt override
     let dispatchSystemPrompt: string | null = null;
     const dispatchAgentKey = AGENT_NAME_TO_KEY[resolvedAgentName];
@@ -593,6 +663,13 @@ export async function processAgentInternal(params: {
       } catch (err) {
         log.warn({ err, agentName: resolvedAgentName, tenantId }, "dispatch: getAgentConfig failed, using hardcoded fallback");
       }
+    }
+
+    // Apply variable interpolation to the system prompt before sending to OpenAI.
+    // Prevents placeholder text like "[Seu Nome]" from leaking to the lead verbatim.
+    if (dispatchSystemPrompt) {
+      dispatchSystemPrompt = interpolateSystemPrompt(dispatchSystemPrompt, { vendedor_nome: vendedorNome, empresa_nome: empresaNome });
+      log.debug({ tenantId, agentName: resolvedAgentName }, "dispatch: system prompt variables interpolated");
     }
 
     // Inject handoff context at the start of the system prompt if available
