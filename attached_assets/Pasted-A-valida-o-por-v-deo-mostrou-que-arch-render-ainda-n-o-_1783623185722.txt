@@ -1,0 +1,84 @@
+A validação por vídeo mostrou que /arch/render ainda não está aprovado.
+
+Problema:
+Apesar do typecheck estar limpo e existirem handlers/toasts, a tela continua parecendo estática.
+O usuário clica e quase nada muda visualmente.
+
+Não considerar toast como funcionalidade suficiente.
+Toast pode existir, mas cada clique precisa alterar painel, estado visual persistente, navegação ou abrir modal.
+
+Corrigir agora:
+
+1. Sidebar global da Vendor.ai
+- Nas rotas /arch/*, esconder a sidebar global da Vendor.ai.
+- Manter apenas a sidebar interna do ARQDOR.
+- O canvas precisa ocupar mais espaço.
+
+2. Navegação interna do ARQDOR
+Quando clicar em:
+- Studio
+- Ambientes
+- Storyboard
+- Biblioteca
+- Especificações
+- Produção
+- Execução
+- Entrega
+- Evolução
+
+A área central precisa mudar visualmente.
+Se o módulo ainda não estiver pronto, renderizar um painel vazio/placeholder claro, por exemplo:
+
+"Módulo Ambientes"
+"Configure ambientes como sala, cozinha, suíte e área gourmet."
+Botão: "Criar ambiente"
+
+Não basta apenas toast.
+
+3. Abas inferiores
+Quando clicar em:
+- Versões
+- Comentários
+- Memória
+- Histórico
+- IA
+
+O conteúdo abaixo das abas precisa mudar.
+Hoje no vídeo a aba Comentários fica ativa, mas continua mostrando os cards do Storyboard.
+
+Corrigir:
+- Storyboard → mostra cards do storyboard
+- Versões → mostra painel "Versões do render"
+- Comentários → mostra painel "Comentários e revisões"
+- Memória → mostra painel "Memória IA"
+- Histórico → mostra painel "Histórico de ações"
+- IA → mostra painel "Sugestões da IA"
+
+4. Botões do painel direito
+Substituir objeto, Testar, Ignorar e Copilot precisam gerar mudança visível:
+- abrir modal;
+- abrir drawer;
+- atualizar painel;
+- adicionar mensagem;
+- ou mostrar loading/resultado.
+
+5. Próxima Etapa
+Não pode só mostrar toast.
+Deve abrir modal ou avançar visualmente para Storyboard/Próxima etapa.
+
+Critério de aceite:
+1. Clicar em qualquer item da sidebar muda a área central.
+2. Clicar em qualquer aba inferior muda o painel inferior.
+3. Não pode continuar mostrando Storyboard quando a aba Comentários estiver ativa.
+4. Toast é permitido, mas não pode ser o único feedback.
+5. /arch/render deve abrir sem sidebar global da Vendor.ai.
+6. Typecheck limpo.
+
+Retornar:
+- print de Studio;
+- print de Ambientes;
+- print de Comentários;
+- print de Versões;
+- print de IA;
+- print sem a sidebar global da Vendor.ai;
+- resultado do pnpm typecheck.

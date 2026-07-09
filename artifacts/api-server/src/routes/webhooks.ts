@@ -278,42 +278,50 @@ router.post("/tenants/:tenantId/webhooks/whatsapp", async (req, res) => {
 // ── POST /tenants/:tenantId/webhooks/zapi ────────────────────────────────────
 // Receives incoming WhatsApp messages directly from Z-API (native payload).
 // Auth: ?secret=<webhookSecret> query param (Z-API doesn't support custom headers).
-// Only processes: isMessage=true, fromMe=false, direct messages (not groups).
+//
+// Z-API v2 payload contract (developer.z-api.io/webhooks/on-message-received-examples):
+// - `type` is ALWAYS "ReceivedCallback" for every real inbound message (text, audio, image…)
+//   — values like "AudioCallback", "ImageCallback" do NOT exist in real payloads.
+// - `isMessage` field does NOT exist in real Z-API payloads; never use it to filter.
+// - Content type is identified by which sub-object is present: audio, image, document, text…
 const zapiNativeBody = z.object({
-  isMessage: z.boolean().optional(),
-  fromMe: z.boolean().optional(),
-  phone: z.string().optional(),
+  type:             z.string().optional(),   // always "ReceivedCallback" for real messages
+  fromMe:           z.boolean().optional(),
+  isGroup:          z.boolean().optional(),
+  phone:            z.string().optional(),
   participantPhone: z.string().nullable().optional(),
-  chatName: z.string().optional(),
-  senderName: z.string().optional(),
+  chatName:         z.string().optional(),
+  senderName:       z.string().optional(),
+  // Text message — identified by payload.text?.message presence
   text: z.object({ message: z.string() }).optional(),
-  body: z.string().optional(),  // older Z-API format
-  type: z.string().optional(),
-  // Audio (type: "audio" | "ptt" | "AudioCallback")
+  body: z.string().optional(),              // fallback: older Z-API text format
+  // Audio / PTT — identified by payload.audio?.audioUrl presence
   audio: z.object({
+    ptt:      z.boolean().optional(),
     audioUrl: z.string().optional(),
-    url:      z.string().optional(),
-    mediaUrl: z.string().optional(),
     mimeType: z.string().optional(),
     seconds:  z.number().optional(),
+    viewOnce: z.boolean().optional(),
   }).optional(),
-  audioUrl:     z.string().optional(),
-  audioMessage: z.object({ url: z.string().optional() }).optional(),
-  data: z.object({
-    audio: z.object({ url: z.string().optional() }).optional(),
-  }).optional(),
-  // Image (type: "image")
+  // Image — identified by payload.image?.imageUrl presence
   image: z.object({
     imageUrl: z.string().optional(),
-    caption: z.string().optional(),
+    caption:  z.string().optional(),
     mimeType: z.string().optional(),
   }).optional(),
-  // Document / PDF (type: "document")
+  // Document — identified by payload.document?.documentUrl presence
   document: z.object({
     documentUrl: z.string().optional(),
-    fileName: z.string().optional(),
+    fileName:    z.string().optional(),
+    mimeType:    z.string().optional(),
+    caption:     z.string().optional(),
+  }).optional(),
+  // Video — identified by payload.video?.videoUrl presence
+  video: z.object({
+    videoUrl: z.string().optional(),
+    caption:  z.string().optional(),
     mimeType: z.string().optional(),
-    caption: z.string().optional(),
+    seconds:  z.number().optional(),
   }).optional(),
 }).passthrough();
 
@@ -343,40 +351,15 @@ router.post("/tenants/:tenantId/webhooks/zapi", async (req, res) => {
   }
 
   // ── 2. Parse payload ───────────────────────────────────────────────────────
-  // DIAGNÓSTICO TEMPORÁRIO — o middleware zapi-raw-capture em app.ts já consumiu
-  // o stream bruto, logou tudo incondicionalmente e tentou JSON.parse antes de
-  // express.json() rodar. req.body agora é: objeto JSON (parse OK), string crua
-  // (parse falhou mas body não era vazio), ou undefined (body vazio).
-  // Não tentamos ler o stream aqui pois ele já foi consumido.
-  const rawBodyStr = (req as Request & { _zapiRawBody?: string })._zapiRawBody ?? "";
-  let bodyToValidate: unknown = req.body;
-
-  // Se req.body ainda for undefined/null após o middleware, há algo muito errado —
-  // logamos como evidência adicional.
-  if (bodyToValidate === undefined || bodyToValidate === null) {
-    req.log.warn(
-      {
-        contentType: req.headers["content-type"] ?? "AUSENTE",
-        rawBodyStr: rawBodyStr.slice(0, 300),
-        note: "middleware zapi-raw-capture rodou mas req.body ainda é undefined/null",
-      },
-      "zapi-webhook: req.body vazio após middleware de captura — body provavelmente foi enviado vazio pela Z-API"
-    );
-  }
-
-  const parsed = zapiNativeBody.safeParse(bodyToValidate);
+  const parsed = zapiNativeBody.safeParse(req.body);
   if (!parsed.success) {
     req.log.warn(
       {
         reason: "invalid_payload",
-        bodyType: typeof bodyToValidate,
-        contentType: req.headers["content-type"] ?? "none",
-        bodyPreview: typeof bodyToValidate === "string"
-          ? bodyToValidate.slice(0, 300)
-          : JSON.stringify(bodyToValidate)?.slice(0, 300),
+        bodyPreview: JSON.stringify(req.body)?.slice(0, 300),
         zodIssues: parsed.error.issues.slice(0, 5),
       },
-      "zapi-webhook: payload validation failed — body did not match expected schema"
+      "zapi-webhook: payload validation failed"
     );
     res.status(200).json({ ignored: true, reason: "invalid_payload" });
     return;
@@ -384,163 +367,76 @@ router.post("/tenants/:tenantId/webhooks/zapi", async (req, res) => {
 
   const payload = parsed.data;
 
-  // ── 3. Filter — only incoming messages from direct chats ──────────────────
-  //
-  // IMPORTANT: Z-API may send audio/ptt callbacks with isMessage=false even
-  // when they are legitimate inbound customer messages. We therefore:
-  //   a) always log the discard reason + payload.type so nothing is invisible
-  //   b) allow all media types through even when isMessage is falsy,
-  //      because Z-API callback format for media differs from text callbacks.
-  //   c) still block fromMe=true for all types (prevents bot self-echo loop).
-
-  const earlyType = payload.type ?? "unknown";
-
-  // Z-API sends media callbacks (audio, image, document, video) with isMessage=false
-  // even when they are legitimate inbound customer messages. Bypass the isMessage
-  // guard for all known media types so they reach the correct handler.
-  const ZAPI_MEDIA_TYPES = new Set([
-    "audio", "ptt", "AudioCallback",
-    "image", "ImageCallback",
-    "document", "DocumentCallback",
-    "video", "VideoCallback",
-  ]);
-  const isMediaType = ZAPI_MEDIA_TYPES.has(earlyType);
+  // ── 3. Guards — block self-echo and group messages ────────────────────────
+  // Note: "isMessage" does NOT exist in real Z-API payloads — never use it.
 
   if (payload.fromMe === true) {
     req.log.info(
-      { reason: "fromMe_true", type: earlyType, phone: payload.phone },
-      "zapi-webhook: message discarded — fromMe=true (outgoing, bot self-echo guard)"
+      { phone: payload.phone, type: payload.type },
+      "zapi-webhook: discarded — fromMe=true (self-echo guard)"
     );
     res.status(200).json({ ignored: true, reason: "fromMe_true" });
     return;
   }
 
-  if (payload.isMessage === false) {
-    if (isMediaType) {
-      // Z-API media callbacks often arrive with isMessage=false.
-      // Log a warning but DO NOT discard — let it reach the type handler.
-      req.log.warn(
-        { reason: "isMessage_false_but_media_type_allowed", type: earlyType, phone: payload.phone },
-        "zapi-webhook: isMessage=false on media type — allowing through (Z-API quirk)"
-      );
-    } else {
-      req.log.info(
-        { reason: "isMessage_false", type: earlyType, phone: payload.phone },
-        "zapi-webhook: message discarded — isMessage=false (non-message event)"
-      );
-      res.status(200).json({ ignored: true, reason: "isMessage_false" });
-      return;
-    }
-  }
-
   if (!payload.phone) {
-    req.log.info(
-      { reason: "no_phone", type: earlyType },
-      "zapi-webhook: message discarded — no phone field in payload"
-    );
+    req.log.info({ type: payload.type }, "zapi-webhook: discarded — no phone field");
     res.status(200).json({ ignored: true, reason: "no_phone" });
     return;
   }
 
-  // Ignore group messages (participantPhone is set for groups)
-  if (payload.participantPhone) {
+  if (payload.participantPhone || payload.phone.includes("@g.us")) {
     req.log.info(
-      { reason: "group_message", type: earlyType, phone: payload.phone },
-      "zapi-webhook: message discarded — group message (participantPhone present)"
+      { phone: payload.phone, type: payload.type },
+      "zapi-webhook: discarded — group message"
     );
     res.status(200).json({ ignored: true, reason: "group_message" });
     return;
   }
 
-  // Ignore group chat IDs (contain @g.us)
-  if (payload.phone.includes("@g.us")) {
-    req.log.info(
-      { reason: "group_chat", type: earlyType, phone: payload.phone },
-      "zapi-webhook: message discarded — group chat ID (@g.us)"
-    );
-    res.status(200).json({ ignored: true, reason: "group_chat" });
-    return;
-  }
+  // ── 4. Identify content type by field presence (Z-API v2 ReceivedCallback) ─
+  // `type` is always "ReceivedCallback" for real messages — never compare it to
+  // identify content. Instead, check which content sub-object is present.
 
   let mensagem = "";
   let tipoConteudo: "texto" | "audio" | "imagem" | "documento" = "texto";
 
-  const msgType = payload.type ?? "chat";
-
-  if (msgType === "chat" || msgType === "text" || msgType === "ReceivedCallback") {
-    mensagem = payload.text?.message ?? payload.body ?? "";
-
-  } else if (msgType === "audio" || msgType === "ptt" || msgType === "AudioCallback") {
-    // CRITICAL: always log the full payload for audio messages so we can diagnose
-    // field-name mismatches even when no URL is found.
+  if (payload.audio?.audioUrl) {
+    // ── Audio / PTT ──────────────────────────────────────────────────────────
+    const url = payload.audio.audioUrl;
     req.log.info(
-      { msgType, phone: payload.phone, audioPayload: JSON.stringify(payload) },
-      "zapi-webhook: audio message received — full payload logged for diagnostics"
+      { phone: payload.phone, ptt: payload.audio.ptt, seconds: payload.audio.seconds, url: url.slice(0, 80) },
+      "zapi-webhook: audio — starting transcription"
     );
-
-    // Try every known field path where Z-API may deliver the audio URL.
-    const url =
-      payload.audio?.audioUrl ??
-      payload.audio?.url ??
-      payload.audio?.mediaUrl ??
-      payload.audioUrl ??
-      payload.audioMessage?.url ??
-      payload.data?.audio?.url ??
-      (typeof payload.body === "string" && payload.body.startsWith("http") ? payload.body : undefined);
-
-    if (!url) {
-      req.log.warn(
-        {
-          msgType,
-          phone: payload.phone,
-          audioPayload: JSON.stringify(payload),
-          checkedFields: "audio.audioUrl|audio.url|audio.mediaUrl|audioUrl|audioMessage.url|data.audio.url|body",
-        },
-        "zapi-webhook: audio_url_not_found — none of the known URL fields matched; check audioPayload above to find the real field name"
-      );
-      res.status(200).json({ ignored: true, reason: "audio_url_not_found_check_payload_structure_in_logs" });
-      return;
-    }
-
-    req.log.info({ msgType, url: url.slice(0, 80) }, "zapi-webhook: audio URL resolved — starting transcription");
     try {
       mensagem = await transcribeAudio(url, tenantId, req.log);
       tipoConteudo = "audio";
-      req.log.info({ msgType, chars: mensagem.length }, "zapi-webhook: audio transcription succeeded");
+      req.log.info({ chars: mensagem.length }, "zapi-webhook: audio transcription succeeded");
     } catch (err) {
       const errMsg = err instanceof Error ? err.message : String(err);
-      req.log.error(
-        { err, url: url.slice(0, 80), errMsg },
-        "zapi-webhook: audio transcription failed — full error logged"
-      );
+      req.log.error({ err, url: url.slice(0, 80) }, "zapi-webhook: audio transcription failed");
       res.status(200).json({ ignored: true, reason: "audio_transcription_failed", detail: errMsg });
       return;
     }
 
-  } else if (msgType === "image" || msgType === "ImageCallback") {
-    const url = payload.image?.imageUrl;
-    if (!url) {
-      res.status(200).json({ ignored: true, reason: "image_without_url" });
-      return;
-    }
+  } else if (payload.image?.imageUrl) {
+    // ── Image ────────────────────────────────────────────────────────────────
+    const url = payload.image.imageUrl;
+    req.log.info({ phone: payload.phone, url: url.slice(0, 80) }, "zapi-webhook: image — starting interpretation");
     try {
-      mensagem = await interpretImage(url, tenantId, payload.image?.caption, req.log);
+      mensagem = await interpretImage(url, tenantId, payload.image.caption, req.log);
       tipoConteudo = "imagem";
     } catch (err) {
-      req.log.error({ err, url: url.slice(0, 60) }, "image: interpretation failed");
+      req.log.error({ err, url: url.slice(0, 60) }, "zapi-webhook: image interpretation failed");
       res.status(200).json({ ignored: true, reason: "image_interpretation_failed" });
       return;
     }
 
-  } else if (msgType === "document" || msgType === "DocumentCallback") {
-    const url = payload.document?.documentUrl;
-    if (!url) {
-      res.status(200).json({ ignored: true, reason: "document_without_url" });
-      return;
-    }
-    const mimeType = payload.document?.mimeType ?? "";
-    const fileName = payload.document?.fileName;
-    // Only interpret PDF and Word documents; skip other binary types
+  } else if (payload.document?.documentUrl) {
+    // ── Document ─────────────────────────────────────────────────────────────
+    const url = payload.document.documentUrl;
+    const mimeType = payload.document.mimeType ?? "";
+    const fileName = payload.document.fileName;
     const isSupportedDoc = mimeType.includes("pdf") || mimeType.includes("word") ||
       fileName?.endsWith(".pdf") || fileName?.endsWith(".doc") || fileName?.endsWith(".docx");
     if (!isSupportedDoc) {
@@ -548,23 +444,28 @@ router.post("/tenants/:tenantId/webhooks/zapi", async (req, res) => {
       res.status(200).json({ ignored: true, reason: "unsupported_document_type" });
       return;
     }
+    req.log.info({ phone: payload.phone, fileName, url: url.slice(0, 80) }, "zapi-webhook: document — starting extraction");
     try {
       mensagem = await interpretPdf(url, tenantId, fileName, req.log);
       tipoConteudo = "documento";
     } catch (err) {
-      req.log.error({ err, url: url.slice(0, 60) }, "document: extraction failed");
+      req.log.error({ err, url: url.slice(0, 60) }, "zapi-webhook: document extraction failed");
       res.status(200).json({ ignored: true, reason: "document_extraction_failed" });
       return;
     }
 
+  } else if (payload.text?.message || payload.body) {
+    // ── Text ─────────────────────────────────────────────────────────────────
+    mensagem = payload.text?.message ?? payload.body ?? "";
+    tipoConteudo = "texto";
+
   } else {
-    // Unsupported message type (video, sticker, location, etc.)
-    // Log the full type received so future Z-API callback name mismatches are easy to diagnose
+    // No recognized content field — log payload keys for future diagnosis
     req.log.info(
-      { type: msgType, phone: payload.phone, knownTypes: "chat|text|ReceivedCallback|audio|ptt|AudioCallback|image|ImageCallback|document|DocumentCallback" },
-      "zapi-webhook: unsupported message type — add to handler if this is a Z-API *Callback name"
+      { type: payload.type, phone: payload.phone, payloadKeys: Object.keys(payload as object) },
+      "zapi-webhook: discarded — no recognized content field (audio/image/document/text)"
     );
-    res.status(200).json({ ignored: true, reason: `unsupported_type_${msgType}` });
+    res.status(200).json({ ignored: true, reason: "no_recognized_content" });
     return;
   }
 
@@ -576,7 +477,7 @@ router.post("/tenants/:tenantId/webhooks/zapi", async (req, res) => {
   const telefone = normalizeZapiPhone(payload.phone);
   const nome = payload.chatName ?? payload.senderName ?? telefone;
 
-  req.log.info({ telefone, nome, tipoConteudo }, "zapi-webhook: incoming message received");
+  req.log.info({ telefone, nome, tipoConteudo, type: payload.type }, "zapi-webhook: processing message");
 
   // ── 4. Find or create lead (dedup-aware) ───────────────────────────────────
   const normalized = storePhone(telefone);
