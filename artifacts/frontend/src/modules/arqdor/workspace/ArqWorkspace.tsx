@@ -66,6 +66,7 @@ import { runAIE }                from '../engines/aie/aie-engine'
 import { PHX, T }                from '../shared/arqdor-theme'
 import type { ProjectContext }   from '../engines/aie/aie-types'
 import ReleaseCandidateCenter   from './release-candidate/ReleaseCandidateCenter'
+import LaunchStudio             from './launch-studio/LaunchStudio'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 export type ModuleId =
@@ -96,6 +97,7 @@ export type ModuleId =
   | 'migration' | 'migration-audit' | 'mock-migration'
   | 'mock-api-inventory' | 'mock-inventory' | 'api-inventory'
   | 'release' | 'release-candidate' | 'rc'
+  | 'launch' | 'go-to-market' | 'gtm'
 
 export type JourneyId = 'create' | 'design' | 'visualize' | 'deliver' | 'business'
 
@@ -199,6 +201,9 @@ const MODULE_MAP_INTERNAL: Record<ModuleId, { icon:string; label:string }> = {
   'release':            { icon:'🚀', label:'Release Candidate' },
   'release-candidate':  { icon:'🚀', label:'Release Candidate' },
   'rc':                 { icon:'🚀', label:'RC'                },
+  'launch':             { icon:'🎯', label:'Launch Studio'     },
+  'go-to-market':       { icon:'🎯', label:'Go-to-Market'      },
+  'gtm':                { icon:'🎯', label:'GTM'               },
 }
 
 // ─── Legado: Journeys (keyboard shortcuts 1–5) ────────────────────────────────
@@ -402,6 +407,9 @@ function renderModule(id: ModuleId, arqState: ArqProjectState, setActive: (m: Mo
     case 'release':
     case 'release-candidate':
     case 'rc':               return <ReleaseCandidateCenter arqState={arqState} onNavigate={m => setActive(m as ModuleId)} />
+    case 'launch':
+    case 'go-to-market':
+    case 'gtm':              return <LaunchStudio arqState={arqState} onNavigate={m => setActive(m as ModuleId)} />
     case 'ecosystem':     return <EcosystemModule/>
     case 'knowledge':     return <KnowledgeModule/>
     case 'office':        return <OfficeModule/>
