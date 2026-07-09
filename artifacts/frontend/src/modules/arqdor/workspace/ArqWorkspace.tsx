@@ -52,6 +52,7 @@ import DigitalTwinCenter from './bim-digital-twin/DigitalTwinCenter'
 import ConstructionHub from './construction-hub/ConstructionHub'
 import SmartBuildingCenter from './iot-smart-building/SmartBuildingCenter'
 import FacilityManagementCenter from './facility-management/FacilityManagementCenter'
+import IntegrationHub from './integration-hub/IntegrationHub'
 import BudgetDisciplinesProposal from './executive-budget/disciplines/BudgetDisciplinesProposal'
 import AlignedStudioShell from './ux-alignment/AlignedStudioShell'
 import { computeNextAction }     from './project-experience/ProjectHome'
@@ -83,6 +84,7 @@ export type ModuleId =
   | 'construction' | 'obra' | 'construction-hub'
   | 'iot' | 'smart-building' | 'building'
   | 'facility' | 'facility-management' | 'manutencao'
+  | 'integration' | 'integration-hub'
 
 export type JourneyId = 'create' | 'design' | 'visualize' | 'deliver' | 'business'
 
@@ -166,6 +168,8 @@ const MODULE_MAP_INTERNAL: Record<ModuleId, { icon:string; label:string }> = {
   'facility':           { icon:'🔧', label:'Facility'         },
   'facility-management':{ icon:'🔧', label:'Facility Mgmt'   },
   'manutencao':         { icon:'🔧', label:'Manutenção'       },
+  'integration':        { icon:'🔗', label:'Integration Hub'  },
+  'integration-hub':    { icon:'🔗', label:'Integration Hub'  },
 }
 
 // ─── Legado: Journeys (keyboard shortcuts 1–5) ────────────────────────────────
@@ -350,6 +354,9 @@ function renderModule(id: ModuleId, arqState: ArqProjectState, setActive: (m: Mo
     case 'facility':
     case 'facility-management':
     case 'manutencao':       return <FacilityManagementCenter arqState={arqState} onNavigate={m => setActive(m as ModuleId)} />
+    case 'integration':
+    case 'integration-hub':
+    case 'integracao':       return <IntegrationHub arqState={arqState} onNavigate={m => setActive(m as ModuleId)} />
     case 'ecosystem':     return <EcosystemModule/>
     case 'knowledge':     return <KnowledgeModule/>
     case 'office':
