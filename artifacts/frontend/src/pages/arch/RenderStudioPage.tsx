@@ -85,6 +85,46 @@ const STUDIO_ROUTES: Record<string, string> = {
 
 const CANVAS_TABS = ["Storyboard", "Versões", "Comentários", "Memória", "Histórico", "IA"] as const;
 
+// ─── Tab panel data ────────────────────────────────────────────────────────────
+const VERSOES_ITEMS = [
+  { id: "v3", label: "v3 — Render final revisado",  date: "08/06/2024", tag: "Atual",     tagColor: "#10B981" },
+  { id: "v2", label: "v2 — Ajuste de iluminação",   date: "02/06/2024", tag: "Aprovada",  tagColor: "#7C3AED" },
+  { id: "v1", label: "v1 — Conceito inicial",        date: "25/05/2024", tag: "Arquivada", tagColor: "#94A3B8" },
+] as const;
+
+const COMENTARIOS_ITEMS = [
+  { id: "c1", autor: "Cliente",     msg: "Adorei a poltrona, mas a cor da parede ficou muito escura.", hora: "10:23", avatar: "👤" },
+  { id: "c2", autor: "Marcos V.",   msg: "Pode clarear sim, vou gerar uma variação com tom mais quente.", hora: "10:45", avatar: "🏛️" },
+  { id: "c3", autor: "Cliente",     msg: "Ótimo! E o piso também pode ser mais claro?", hora: "11:02", avatar: "👤" },
+] as const;
+
+const MEMORIA_ITEMS = [
+  { icon: "🎨", label: "Paleta",    val: "Neutros + rosé gold" },
+  { icon: "🪑", label: "Mobiliário", val: "Contemporâneo minimalista" },
+  { icon: "💡", label: "Iluminação", val: "Indireta + spots embutidos" },
+  { icon: "🪵", label: "Materiais",  val: "Madeira clara, mármore, linho" },
+] as const;
+
+const HISTORICO_ITEMS = [
+  { icon: "✨", label: "Render gerado",          det: "v3 — Sala de Estar",      hora: "08/06 14:32" },
+  { icon: "🎨", label: "Material alterado",       det: "Poltrona: Linho Bege",    hora: "08/06 14:10" },
+  { icon: "↺",  label: "Versão restaurada",       det: "v2 — Iluminação",         hora: "02/06 11:45" },
+  { icon: "📋", label: "Especificação exportada", det: "PDF Sala de Estar",        hora: "25/05 09:20" },
+] as const;
+
+const IA_SUGESTOES = [
+  { icon: "💡", titulo: "Iluminação de realce",  desc: "A parede de mármore ficará mais valorizada com luz indireta acima do painel.", cta: "Testar" },
+  { icon: "🎨", titulo: "Harmonia de cores",     desc: "Um tapete em bege-areia harmonizaria o piso com a poltrona.",                   cta: "Ver sugestão" },
+  { icon: "🪑", titulo: "Objeto alternativo",    desc: "Identificamos uma mesa de centro que complementa o estilo contemporâneo.",      cta: "Substituir" },
+] as const;
+
+// ─── Nav module placeholders ──────────────────────────────────────────────────
+const MODULE_PLACEHOLDERS: Record<string, { icon: string; title: string; desc: string; action: string }> = {
+  ambientes:  { icon: "🏠", title: "Ambientes", desc: "Configure ambientes como sala, cozinha, suíte e área gourmet.", action: "Criar ambiente" },
+  execucao:   { icon: "⚙️", title: "Execução",  desc: "Acompanhe o cronograma de obra e tarefas dos executores.", action: "Ver cronograma" },
+  evolucao:   { icon: "📈", title: "Evolução",   desc: "Veja o histórico de alterações e evolução do projeto.", action: "Ver histórico" },
+};
+
 const STORYBOARD_ITEMS = [
   { id: "01", label: "Conceito inicial",    date: "12/05/2024", active: false },
   { id: "02", label: "Estudo de layout",    date: "18/05/2024", active: false },
@@ -522,13 +562,7 @@ function CanvasTabs({ activeTab, onTab }: { activeTab: string; onTab: (t: string
         return (
           <button
             key={tab}
-            onClick={() => {
-              onTab(tab);
-              // Abas sem painel implementado ainda: garantir feedback visual explícito
-              if (tab !== "Storyboard") {
-                toast({ description: `Aba ${tab} em desenvolvimento` });
-              }
-            }}
+            onClick={() => onTab(tab)}
             style={{
               padding: "0 12px", height: "100%", border: "none", background: "transparent",
               cursor: "pointer", fontSize: 11, fontWeight: isActive ? 700 : 500,
@@ -941,6 +975,145 @@ function StatusBar({
   );
 }
 
+// ─── Tab panel — switches bottom panel based on active tab ───────────────────
+function TabPanel({
+  activeTab,
+  onNewStoryboard,
+  onTestarIA,
+}: {
+  activeTab: string;
+  onNewStoryboard: () => void;
+  onTestarIA: () => void;
+}) {
+  const panelBase: React.CSSProperties = {
+    flexShrink: 0, background: C.surface, borderTop: `1px solid ${C.border}`,
+    overflowX: "auto", overflowY: "auto",
+  };
+
+  if (activeTab === "Storyboard") {
+    return <StoryboardGrid onNewStoryboard={onNewStoryboard} />;
+  }
+
+  if (activeTab === "Versões") {
+    return (
+      <div style={{ ...panelBase, height: 128, padding: "10px 16px" }}>
+        <p style={{ margin: "0 0 6px", fontSize: 9, fontWeight: 700, color: C.textDim, textTransform: "uppercase", letterSpacing: "0.07em" }}>Versões do Render</p>
+        <div style={{ display: "flex", flexDirection: "column", gap: 5 }}>
+          {VERSOES_ITEMS.map(v => (
+            <div key={v.id} style={{ display: "flex", alignItems: "center", gap: 8 }}>
+              <div style={{ width: 7, height: 7, borderRadius: "50%", background: v.tagColor, flexShrink: 0 }} />
+              <span style={{ flex: 1, fontSize: 10, color: C.text, fontWeight: 500 }}>{v.label}</span>
+              <span style={{ fontSize: 9, color: C.textDim }}>{v.date}</span>
+              <span style={{
+                padding: "1px 7px", borderRadius: 8, fontSize: 8, fontWeight: 700,
+                background: v.tagColor === "#10B981" ? "#D1FAE5" : v.tagColor === "#7C3AED" ? C.activeNavBg : C.inputBg,
+                color: v.tagColor,
+              }}>{v.tag}</span>
+              <button style={{ padding: "2px 8px", fontSize: 8, border: `1px solid ${C.border}`, borderRadius: 5, cursor: "pointer", background: C.inputBg, color: C.textSub }}>Restaurar</button>
+            </div>
+          ))}
+        </div>
+      </div>
+    );
+  }
+
+  if (activeTab === "Comentários") {
+    return (
+      <div style={{ ...panelBase, height: 128, padding: "10px 16px", overflowX: "hidden" }}>
+        <p style={{ margin: "0 0 6px", fontSize: 9, fontWeight: 700, color: C.textDim, textTransform: "uppercase", letterSpacing: "0.07em" }}>Comentários e Revisões</p>
+        <div style={{ display: "flex", flexDirection: "column", gap: 7 }}>
+          {COMENTARIOS_ITEMS.map(c => (
+            <div key={c.id} style={{ display: "flex", gap: 7, alignItems: "flex-start" }}>
+              <div style={{
+                width: 22, height: 22, borderRadius: "50%", background: C.activeNavBg, flexShrink: 0,
+                display: "flex", alignItems: "center", justifyContent: "center", fontSize: 11,
+              }}>{c.avatar}</div>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ display: "flex", gap: 4, alignItems: "baseline" }}>
+                  <span style={{ fontSize: 9, fontWeight: 700, color: C.purple }}>{c.autor}</span>
+                  <span style={{ fontSize: 8, color: C.textDim }}>{c.hora}</span>
+                </div>
+                <p style={{ margin: 0, fontSize: 9, color: C.text, lineHeight: 1.4 }}>{c.msg}</p>
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+    );
+  }
+
+  if (activeTab === "Memória") {
+    return (
+      <div style={{ ...panelBase, height: 96, display: "flex", alignItems: "center", gap: 10, padding: "0 16px" }}>
+        <p style={{ margin: 0, fontSize: 9, fontWeight: 700, color: C.textDim, textTransform: "uppercase", letterSpacing: "0.07em", flexShrink: 0 }}>Memória IA</p>
+        <div style={{ width: 1, height: 32, background: C.border, flexShrink: 0 }} />
+        {MEMORIA_ITEMS.map(m => (
+          <div key={m.label} style={{
+            flexShrink: 0, padding: "7px 12px", background: C.activeNavBg,
+            borderRadius: 9, border: `1px solid ${C.purpleLight}`,
+          }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 5, marginBottom: 2 }}>
+              <span style={{ fontSize: 13 }}>{m.icon}</span>
+              <span style={{ fontSize: 9, fontWeight: 700, color: C.purpleText }}>{m.label}</span>
+            </div>
+            <p style={{ margin: 0, fontSize: 9, color: C.textSub }}>{m.val}</p>
+          </div>
+        ))}
+      </div>
+    );
+  }
+
+  if (activeTab === "Histórico") {
+    return (
+      <div style={{ ...panelBase, height: 128, padding: "10px 16px", overflowX: "hidden" }}>
+        <p style={{ margin: "0 0 6px", fontSize: 9, fontWeight: 700, color: C.textDim, textTransform: "uppercase", letterSpacing: "0.07em" }}>Histórico de Ações</p>
+        <div style={{ display: "flex", flexDirection: "column", gap: 5 }}>
+          {HISTORICO_ITEMS.map(h => (
+            <div key={h.hora} style={{ display: "flex", alignItems: "center", gap: 7, padding: "3px 0" }}>
+              <span style={{ fontSize: 12, flexShrink: 0 }}>{h.icon}</span>
+              <span style={{ flex: 1, fontSize: 9, color: C.text, fontWeight: 500 }}>{h.label}</span>
+              <span style={{ fontSize: 9, color: C.textSub }}>{h.det}</span>
+              <span style={{ fontSize: 8, color: C.textDim, flexShrink: 0 }}>{h.hora}</span>
+            </div>
+          ))}
+        </div>
+      </div>
+    );
+  }
+
+  if (activeTab === "IA") {
+    return (
+      <div style={{ ...panelBase, height: 120, display: "flex", alignItems: "stretch", gap: 8, padding: "8px 16px" }}>
+        <div style={{ display: "flex", alignItems: "center", flexShrink: 0, marginRight: 4 }}>
+          <p style={{ margin: 0, fontSize: 9, fontWeight: 700, color: C.textDim, textTransform: "uppercase", letterSpacing: "0.07em", writingMode: "vertical-rl", transform: "rotate(180deg)" }}>Sugestões da IA</p>
+        </div>
+        {IA_SUGESTOES.map(s => (
+          <div key={s.titulo} style={{
+            flexShrink: 0, width: 210, padding: "9px 12px", background: C.activeNavBg,
+            borderRadius: 10, border: `1px solid ${C.purpleLight}`,
+            display: "flex", flexDirection: "column", gap: 5,
+          }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+              <span style={{ fontSize: 15 }}>{s.icon}</span>
+              <span style={{ fontSize: 10, fontWeight: 700, color: C.purpleText }}>{s.titulo}</span>
+            </div>
+            <p style={{ margin: 0, fontSize: 9, color: C.textSub, lineHeight: 1.45, flex: 1 }}>{s.desc}</p>
+            <button
+              onClick={onTestarIA}
+              style={{
+                padding: "4px 10px", borderRadius: 6, border: "none",
+                background: C.purple, color: "#fff", fontSize: 9, fontWeight: 700,
+                cursor: "pointer", alignSelf: "flex-start",
+              }}>{s.cta}</button>
+          </div>
+        ))}
+      </div>
+    );
+  }
+
+  return null;
+}
+
 // ─── Canvas area content switcher ────────────────────────────────────────────
 function NavContent({
   activeNav,
@@ -965,22 +1138,33 @@ function NavContent({
       />
     );
   }
-  const labels: Record<string, string> = {
-    ambientes:      "Ambientes",
-    execucao:       "Execução",
-    evolucao:       "Evolução",
-  };
+  const ph = MODULE_PLACEHOLDERS[activeNav];
   return (
     <div style={{
       flex: 1, margin: "12px", borderRadius: 16,
       background: C.surface, border: `1px solid ${C.border}`,
-      display: "flex", alignItems: "center", justifyContent: "center", flexDirection: "column", gap: 12,
+      display: "flex", alignItems: "center", justifyContent: "center", flexDirection: "column", gap: 14,
     }}>
-      <div style={{ fontSize: 32 }}>🚧</div>
-      <p style={{ margin: 0, fontSize: 14, fontWeight: 700, color: C.text }}>
-        {labels[activeNav] ?? activeNav}
-      </p>
-      <p style={{ margin: 0, fontSize: 12, color: C.textSub }}>Módulo em desenvolvimento</p>
+      <div style={{
+        width: 64, height: 64, borderRadius: 18, background: C.activeNavBg,
+        border: `2px solid ${C.purpleLight}`, display: "flex", alignItems: "center",
+        justifyContent: "center", fontSize: 28,
+      }}>{ph?.icon ?? "🏗️"}</div>
+      <div style={{ textAlign: "center" }}>
+        <p style={{ margin: "0 0 6px", fontSize: 15, fontWeight: 800, color: C.text }}>
+          Módulo {ph?.title ?? activeNav}
+        </p>
+        <p style={{ margin: 0, fontSize: 12, color: C.textSub, maxWidth: 320, lineHeight: 1.6 }}>
+          {ph?.desc ?? "Este módulo está em desenvolvimento e será disponibilizado em breve."}
+        </p>
+      </div>
+      <button style={{
+        padding: "9px 20px", border: "none", borderRadius: 10,
+        background: C.purple, color: "#fff", fontSize: 12, fontWeight: 700,
+        cursor: "pointer", boxShadow: "0 2px 12px rgba(124,58,237,0.35)",
+      }}>
+        {ph?.action ?? "Em breve"}
+      </button>
     </div>
   );
 }
@@ -996,29 +1180,26 @@ function RenderStudioInner() {
   const [renderUrl, setRenderUrl] = useState<string | undefined>();
   const [imageUrl, setImageUrl] = useState<string | undefined>();
   const [isGenerating, setIsGenerating] = useState(false);
+  const [showNextStepModal, setShowNextStepModal] = useState(false);
+  const [showSubstituirModal, setShowSubstituirModal] = useState(false);
+  const [substituirSearch, setSubstituirSearch] = useState("");
 
   const projectName = arqState.projectMeta?.titulo || arqState.projects[0]?.titulo || "Residência Silva";
   const environmentName = "Sala de Estar";
 
   function handleNavigate(id: string) {
-    // ESCRITÓRIO: navigate to real routes
     if (id in ESCRITORIO_ROUTES) {
       setLocation(ESCRITORIO_ROUTES[id]!);
       return;
     }
-    // Studio items with dedicated routes
     if (id in STUDIO_ROUTES) {
       setLocation(STUDIO_ROUTES[id]!);
       return;
     }
-    // Local nav (studio, ambientes, storyboard, execucao, evolucao)
+    // Local nav — just switch the active module; content changes visually
     setActiveNav(id);
     if (id === "storyboard") {
       setActiveTab("Storyboard");
-    }
-    if (id !== "studio" && id !== "storyboard") {
-      const item = NAV_ITEMS.find(n => n.id === id);
-      toast({ description: `Módulo ${item?.label ?? id} em desenvolvimento` });
     }
   }
 
@@ -1108,7 +1289,7 @@ function RenderStudioInner() {
       <TopBar
         projectName={projectName}
         environmentName={environmentName}
-        onNextStep={() => toast({ description: "Gerar Storyboard em desenvolvimento" })}
+        onNextStep={() => setShowNextStepModal(true)}
         onSearch={() => toast({ description: "Busca em desenvolvimento" })}
         onCopilot={() => toast({ description: "Copilot: aberto no painel direito" })}
         onNotifications={() => toast({ description: "Nenhuma notificação no momento" })}
@@ -1119,7 +1300,7 @@ function RenderStudioInner() {
         {/* Left sidebar */}
         <LeftSidebar activeNav={activeNav} onNavigate={handleNavigate} />
 
-        {/* Center: toolbar + canvas + tabs + storyboard */}
+        {/* Center: toolbar + canvas + tabs + tab panel */}
         <div style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden", minWidth: 0, background: C.bg }}>
           <CanvasToolbar onAction={handleToolAction} />
           <NavContent
@@ -1130,19 +1311,21 @@ function RenderStudioInner() {
             isGenerating={isGenerating}
           />
           <CanvasTabs activeTab={activeTab} onTab={setActiveTab} />
-          <StoryboardGrid
-            onNewStoryboard={() => toast({ description: "Criação de novo storyboard em desenvolvimento" })}
+          <TabPanel
+            activeTab={activeTab}
+            onNewStoryboard={() => toast({ description: "Novo storyboard em desenvolvimento" })}
+            onTestarIA={() => { toast({ description: "✨ Aplicando sugestão IA..." }); void handleGenerate(); }}
           />
         </div>
 
         {/* Right panel */}
         <RightPanel
-          onSubstituir={() => toast({ description: "Abrindo fluxo de substituição de objeto..." })}
+          onSubstituir={() => setShowSubstituirModal(true)}
           onTestar={() => {
             toast({ description: "✨ Testando sugestão IA — aguarde..." });
             void handleGenerate();
           }}
-          onIgnorar={() => toast({ description: "Sugestão IA ignorada" })}
+          onIgnorar={() => toast({ description: "Sugestão IA descartada" })}
         />
       </div>
 
@@ -1154,6 +1337,132 @@ function RenderStudioInner() {
         })}
         onHelp={() => toast({ description: "Documentação disponível em arqdor.ai/docs" })}
       />
+
+      {/* ── Modal: Próxima Etapa ────────────────────────────────────────────── */}
+      {showNextStepModal && (
+        <div
+          onClick={() => setShowNextStepModal(false)}
+          style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.55)", zIndex: 1000, display: "flex", alignItems: "center", justifyContent: "center" }}
+        >
+          <div
+            onClick={e => e.stopPropagation()}
+            style={{ background: "#fff", borderRadius: 18, padding: 28, width: 460, boxShadow: "0 24px 64px rgba(0,0,0,0.3)", fontFamily: "inherit" }}
+          >
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 6 }}>
+              <h2 style={{ margin: 0, fontSize: 17, fontWeight: 800, color: C.text }}>✦ Próxima Etapa</h2>
+              <button onClick={() => setShowNextStepModal(false)} style={{ border: "none", background: "transparent", fontSize: 18, color: C.textDim, cursor: "pointer" }}>✕</button>
+            </div>
+            <p style={{ margin: "0 0 20px", fontSize: 12, color: C.textSub }}>Avançar o projeto para a fase de Storyboard</p>
+
+            {/* Step flow */}
+            <div style={{ display: "flex", alignItems: "center", gap: 0, marginBottom: 22 }}>
+              {(["Studio", "Storyboard", "Produção", "Entrega"] as const).map((step, i) => (
+                <div key={step} style={{ flex: 1, display: "flex", alignItems: "center" }}>
+                  <div style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", gap: 4 }}>
+                    <div style={{
+                      width: 34, height: 34, borderRadius: "50%",
+                      background: i === 0 ? C.purple : i === 1 ? C.activeNavBg : C.inputBg,
+                      border: `2px solid ${i <= 1 ? C.purple : C.border}`,
+                      display: "flex", alignItems: "center", justifyContent: "center",
+                      fontSize: 11, fontWeight: 800, color: i === 0 ? "#fff" : i === 1 ? C.purple : C.textDim,
+                    }}>{i === 0 ? "✓" : i + 1}</div>
+                    <span style={{ fontSize: 9, color: i <= 1 ? C.purple : C.textDim, fontWeight: i <= 1 ? 700 : 400 }}>{step}</span>
+                  </div>
+                  {i < 3 && <div style={{ width: 24, height: 2, background: i === 0 ? C.purple : C.border, flexShrink: 0, marginBottom: 16 }} />}
+                </div>
+              ))}
+            </div>
+
+            <p style={{ margin: "0 0 22px", fontSize: 12, color: C.textSub, lineHeight: 1.65, background: C.activeNavBg, padding: "12px 14px", borderRadius: 10, borderLeft: `3px solid ${C.purple}` }}>
+              O <strong>Studio</strong> foi concluído. O próximo passo é criar o <strong>Storyboard</strong> com versões e variações do ambiente para aprovação do cliente.
+            </p>
+
+            <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
+              <button
+                onClick={() => setShowNextStepModal(false)}
+                style={{ padding: "9px 18px", border: `1px solid ${C.border}`, borderRadius: 9, background: "transparent", color: C.textSub, fontSize: 12, cursor: "pointer" }}>
+                Cancelar
+              </button>
+              <button
+                onClick={() => { setActiveNav("storyboard"); setActiveTab("Storyboard"); setShowNextStepModal(false); }}
+                style={{ padding: "9px 18px", border: "none", borderRadius: 9, background: C.purple, color: "#fff", fontSize: 12, fontWeight: 700, cursor: "pointer", boxShadow: "0 2px 12px rgba(124,58,237,0.4)" }}>
+                Ir para Storyboard →
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Modal: Substituir Objeto ────────────────────────────────────────── */}
+      {showSubstituirModal && (
+        <div
+          onClick={() => setShowSubstituirModal(false)}
+          style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.55)", zIndex: 1000, display: "flex", alignItems: "center", justifyContent: "center" }}
+        >
+          <div
+            onClick={e => e.stopPropagation()}
+            style={{ background: "#fff", borderRadius: 18, padding: 24, width: 500, boxShadow: "0 24px 64px rgba(0,0,0,0.3)", fontFamily: "inherit" }}
+          >
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 14 }}>
+              <div>
+                <h2 style={{ margin: 0, fontSize: 16, fontWeight: 800, color: C.text }}>Substituir objeto</h2>
+                <p style={{ margin: 0, fontSize: 11, color: C.textSub }}>Poltrona Lisboa — selecione um substituto</p>
+              </div>
+              <button onClick={() => setShowSubstituirModal(false)} style={{ border: "none", background: "transparent", fontSize: 18, color: C.textDim, cursor: "pointer" }}>✕</button>
+            </div>
+
+            {/* Search */}
+            <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "7px 12px", background: C.inputBg, border: `1px solid ${C.inputBdr}`, borderRadius: 9, marginBottom: 14 }}>
+              <span style={{ fontSize: 13 }}>🔍</span>
+              <input
+                value={substituirSearch}
+                onChange={e => setSubstituirSearch(e.target.value)}
+                placeholder="Buscar na biblioteca de objetos..."
+                style={{ flex: 1, border: "none", background: "transparent", outline: "none", fontSize: 11, color: C.text }}
+              />
+            </div>
+
+            {/* Items grid */}
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 10, marginBottom: 18 }}>
+              {[
+                { icon: "🪑", name: "Poltrona Oslo",  brand: "Tok&Stok",      price: "R$ 2.890", tag: "Estoque" },
+                { icon: "🛋️", name: "Poltrona Loft",  brand: "MadeiraMadeira", price: "R$ 1.990", tag: "Popular" },
+                { icon: "🪑", name: "Poltrona Egg",   brand: "Design Italia",  price: "R$ 8.500", tag: "Premium" },
+              ].map(item => (
+                <div
+                  key={item.name}
+                  style={{ border: `1px solid ${C.border}`, borderRadius: 10, overflow: "hidden", cursor: "pointer", transition: "border-color 0.15s" }}
+                  onMouseEnter={e => (e.currentTarget.style.borderColor = C.purple)}
+                  onMouseLeave={e => (e.currentTarget.style.borderColor = C.border)}
+                >
+                  <div style={{ height: 70, background: "linear-gradient(135deg, #1E293B, #334155)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 26 }}>{item.icon}</div>
+                  <div style={{ padding: "8px 10px" }}>
+                    <p style={{ margin: 0, fontSize: 10, fontWeight: 700, color: C.text }}>{item.name}</p>
+                    <p style={{ margin: "1px 0", fontSize: 9, color: C.textSub }}>{item.brand}</p>
+                    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                      <p style={{ margin: 0, fontSize: 10, fontWeight: 700, color: C.purple }}>{item.price}</p>
+                      <span style={{ fontSize: 8, padding: "1px 5px", borderRadius: 6, background: C.activeNavBg, color: C.purpleText, fontWeight: 600 }}>{item.tag}</span>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
+              <button
+                onClick={() => setShowSubstituirModal(false)}
+                style={{ padding: "9px 18px", border: `1px solid ${C.border}`, borderRadius: 9, background: "transparent", color: C.textSub, fontSize: 12, cursor: "pointer" }}>
+                Cancelar
+              </button>
+              <button
+                onClick={() => { toast({ description: "✨ Objeto substituído no render" }); setShowSubstituirModal(false); }}
+                style={{ padding: "9px 18px", border: "none", borderRadius: 9, background: C.purple, color: "#fff", fontSize: 12, fontWeight: 700, cursor: "pointer", boxShadow: "0 2px 12px rgba(124,58,237,0.4)" }}>
+                Aplicar substituição
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

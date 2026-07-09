@@ -508,7 +508,8 @@ export function SidebarLayout({ children }: { children: React.ReactNode }) {
         </main>
       </div>
     </div>
-    <SupportChatWidget />
+    {/* Hide global support widget on /arch/* routes (ARQDOR has its own shell) */}
+    {!location.startsWith("/arch") && <SupportChatWidget />}
     </>
   );
 }
