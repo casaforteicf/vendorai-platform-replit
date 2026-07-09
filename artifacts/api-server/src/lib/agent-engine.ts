@@ -519,25 +519,35 @@ export function buildLeadSection(lead: Lead): string {
   if (lead.planoRecomendado) lines.push(`Plano recomendado: ${lead.planoRecomendado}`);
   if (lead.proximaAcao)      lines.push(`Próxima ação sugerida: ${lead.proximaAcao}`);
 
-  // Qualification data collected from conversation (persistent across message window)
-  const dd = lead.discoveryData as Record<string, unknown> | null | undefined;
-  if (dd && Object.keys(dd).length > 0) {
-    const LABELS: Record<string, string> = {
-      numero_funcionarios: "Nº de funcionários",
-      segmento:            "Segmento/setor",
-      crm_atual:           "CRM atual",
-      faturamento:         "Faturamento",
-      objetivo:            "Objetivo",
-      dor_principal:       "Dor principal",
-      orcamento:           "Orçamento disponível",
-      urgencia:            "Urgência",
-      canal_preferido:     "Canal preferido",
-    };
-    const items = Object.entries(dd)
-      .map(([k, v]) => `  ${LABELS[k] ?? k}: ${String(v)}`)
-      .join("\n");
-    lines.push(`Qualificação coletada (NÃO repita estas perguntas):\n${items}`);
+  // Qualification memory — always shown so the agent knows what was already collected
+  // and what still needs to be asked, even in long conversations where early messages
+  // have scrolled out of the 10-message window.
+  const dd = (lead.discoveryData ?? {}) as Record<string, unknown>;
+
+  // Merge dedicated lead columns into the qualification view (extractor saves to both)
+  const QUAL_FIELDS: Array<{ key: string; label: string; value: string | null }> = [
+    { key: "numero_funcionarios", label: "Funcionários",      value: (dd.numero_funcionarios as string | undefined) ?? lead.tamanhoEquipe ?? null },
+    { key: "segmento",            label: "Segmento",          value: (dd.segmento as string | undefined) ?? null },
+    { key: "crm_atual",           label: "CRM atual",         value: (dd.crm_atual as string | undefined) ?? null },
+    { key: "faturamento",         label: "Faturamento mensal",value: (dd.faturamento as string | undefined) ?? null },
+    { key: "objetivo",            label: "Objetivo",          value: (dd.objetivo as string | undefined) ?? lead.objetivo ?? null },
+    { key: "dor_principal",       label: "Dor principal",     value: (dd.dor_principal as string | undefined) ?? lead.dorPrincipal ?? null },
+    { key: "orcamento",           label: "Orçamento",         value: (dd.orcamento as string | undefined) ?? lead.orcamento ?? null },
+    { key: "urgencia",            label: "Urgência",          value: (dd.urgencia as string | undefined) ?? lead.urgencia ?? null },
+  ];
+
+  const collected = QUAL_FIELDS.filter((f) => f.value != null);
+  const missing   = QUAL_FIELDS.filter((f) => f.value == null);
+
+  const qualLines: string[] = ["Qualificação persistente (sobrevive a conversas longas):"];
+  if (collected.length > 0) {
+    qualLines.push("  Já coletado (NÃO repita estas perguntas):");
+    qualLines.push(...collected.map((f) => `    ✓ ${f.label}: ${f.value}`));
   }
+  if (missing.length > 0) {
+    qualLines.push(`  Ainda não coletado: ${missing.map((f) => f.label).join(" | ")}`);
+  }
+  lines.push(qualLines.join("\n"));
 
   return lines.join("\n");
 }
