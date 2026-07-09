@@ -17,11 +17,15 @@ export interface CreateProdutoCatalogoBody {
   descontoMaximoPercentual?: string | number | null;
   /** Decimal price (e.g. 99.90 or "99.90") */
   precoBase: string | number;
+  /** One-time setup fee (implantação) */
+  precoImplantacao?: string | number | null;
+  /** Monthly recurring fee */
+  precoMensalidade?: string | number | null;
   unidade?: string;
   ativo?: boolean;
   /** Product image URL */
   imagemUrl?: string;
-  /** Recurrence type — "mensal" for monthly service, null for one-time */
+  /** Recurrence type — "mensal" or "anual", null for one-time */
   recorrencia?: CreateProdutoCatalogoBodyRecorrencia;
   /** Contract term in months */
   prazoContrato?: number | null;

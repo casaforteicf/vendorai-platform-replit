@@ -11231,6 +11231,14 @@ components:
         precoBase:
           type: string
           description: Decimal price stored as string (e.g. "99.90")
+        precoImplantacao:
+          type: string
+          nullable: true
+          description: One-time setup fee (implantação). When set together with precoMensalidade, both are shown separately in quotes instead of precoBase.
+        precoMensalidade:
+          type: string
+          nullable: true
+          description: Monthly recurring fee. When set together with precoImplantacao, the auto-quote shows dual pricing.
         unidade:
           type: string
           description: 'Unit of measure (e.g. "un", "m2", "kg")'
@@ -11243,8 +11251,8 @@ components:
         recorrencia:
           type: string
           nullable: true
-          enum: [mensal]
-          description: Recurrence type — "mensal" for monthly service, null for one-time
+          enum: [mensal, anual]
+          description: Recurrence type — "mensal" or "anual", null for one-time
         prazoContrato:
           type: integer
           nullable: true
@@ -11291,6 +11299,18 @@ components:
             - type: string
             - type: number
           description: Decimal price (e.g. 99.90 or "99.90")
+        precoImplantacao:
+          oneOf:
+            - type: string
+            - type: number
+          nullable: true
+          description: One-time setup fee (implantação)
+        precoMensalidade:
+          oneOf:
+            - type: string
+            - type: number
+          nullable: true
+          description: Monthly recurring fee
         unidade:
           type: string
         ativo:
@@ -11301,8 +11321,8 @@ components:
         recorrencia:
           type: string
           nullable: true
-          enum: [mensal]
-          description: Recurrence type — "mensal" for monthly service, null for one-time
+          enum: [mensal, anual]
+          description: Recurrence type — "mensal" or "anual", null for one-time
         prazoContrato:
           type: integer
           nullable: true
@@ -11333,6 +11353,18 @@ components:
           oneOf:
             - type: string
             - type: number
+        precoImplantacao:
+          oneOf:
+            - type: string
+            - type: number
+          nullable: true
+          description: One-time setup fee (implantação)
+        precoMensalidade:
+          oneOf:
+            - type: string
+            - type: number
+          nullable: true
+          description: Monthly recurring fee
         unidade:
           type: string
         ativo:
@@ -11342,8 +11374,8 @@ components:
         recorrencia:
           type: string
           nullable: true
-          enum: [mensal]
-          description: Recurrence type — "mensal" for monthly service, null for one-time
+          enum: [mensal, anual]
+          description: Recurrence type — "mensal" or "anual", null for one-time
         prazoContrato:
           type: integer
           nullable: true

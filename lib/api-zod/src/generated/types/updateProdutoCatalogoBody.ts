@@ -15,10 +15,14 @@ export interface UpdateProdutoCatalogoBody {
   /** Teto de desconto (%) específico deste produto (sobrescreve o da categoria). Null herda o teto da categoria. */
   descontoMaximoPercentual?: string | number | null;
   precoBase?: string | number;
+  /** One-time setup fee (implantação) */
+  precoImplantacao?: string | number | null;
+  /** Monthly recurring fee */
+  precoMensalidade?: string | number | null;
   unidade?: string;
   ativo?: boolean;
   imagemUrl?: string;
-  /** Recurrence type — "mensal" for monthly service, null for one-time */
+  /** Recurrence type — "mensal" or "anual", null for one-time */
   recorrencia?: UpdateProdutoCatalogoBodyRecorrencia;
   /** Contract term in months */
   prazoContrato?: number | null;

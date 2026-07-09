@@ -95,7 +95,7 @@ export async function determineAgent(
     );
     const fourHoursAgo = Date.now() - 4 * 60 * 60 * 1000;
     const hasRecentAgentActivity = (recentMessages ?? []).some(
-      (m) => m.enviadoPor === "agente" && new Date(m.createdAt).getTime() > fourHoursAgo,
+      (m) => m.enviadoPor === "agente_ia" && new Date(m.createdAt).getTime() > fourHoursAgo,
     );
     if (hasAdvancedDeal || hasRecentAgentActivity) {
       log.info(

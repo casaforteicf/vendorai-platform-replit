@@ -900,6 +900,54 @@ Se fizer sentido, te mostro em 10 minutos como funciona.',
   } catch (err) {
     logger.warn({ err }, "startup migrations: campaigns.image_url skipped");
   }
+
+  // Dual-price support for catalog products (implantação + mensalidade)
+  try {
+    await db.execute(sql`ALTER TABLE produtos_catalogo ADD COLUMN IF NOT EXISTS preco_implantacao NUMERIC(12,2)`);
+    await db.execute(sql`ALTER TABLE produtos_catalogo ADD COLUMN IF NOT EXISTS preco_mensalidade NUMERIC(12,2)`);
+    logger.info("startup migrations: produtos_catalogo dual-price columns OK");
+  } catch (err) {
+    logger.warn({ err }, "startup migrations: produtos_catalogo dual-price columns skipped");
+  }
+
+  // Seed VendorAI SaaS plans for tenant 1d4ea673-58d0-413a-a554-c9aca72a3121
+  // Deactivate the old generic plan and insert the 6 real plans (3 planos × mensal + anual)
+  try {
+    const VENDORAI_TENANT = "1d4ea673-58d0-413a-a554-c9aca72a3121";
+    await db.execute(sql`
+      UPDATE produtos_catalogo
+      SET ativo = false, updated_at = now()
+      WHERE tenant_id = ${VENDORAI_TENANT}
+        AND product_type = 'saas_plan'
+        AND nome NOT IN ('Growth Mensal','Growth Anual','PME+ Mensal','PME+ Anual','Enterprise Mensal','Enterprise Anual')
+    `);
+    const plans = [
+      { nome: "Growth Mensal",      precoBase: "1490.00", implantacao: "4900.00", mensalidade: "1490.00", recorrencia: "mensal", prazo: 12 },
+      { nome: "Growth Anual",       precoBase: "1190.00", implantacao: "4900.00", mensalidade: "1190.00", recorrencia: "anual",  prazo: 12 },
+      { nome: "PME+ Mensal",        precoBase: "1890.00", implantacao: "6900.00", mensalidade: "1890.00", recorrencia: "mensal", prazo: 12 },
+      { nome: "PME+ Anual",         precoBase: "1490.00", implantacao: "6900.00", mensalidade: "1490.00", recorrencia: "anual",  prazo: 12 },
+      { nome: "Enterprise Mensal",  precoBase: "2490.00", implantacao: "8900.00", mensalidade: "2490.00", recorrencia: "mensal", prazo: 12 },
+      { nome: "Enterprise Anual",   precoBase: "1990.00", implantacao: "8900.00", mensalidade: "1990.00", recorrencia: "anual",  prazo: 12 },
+    ];
+    for (const p of plans) {
+      await db.execute(sql`
+        INSERT INTO produtos_catalogo
+          (id, tenant_id, nome, product_type, preco_base, preco_implantacao, preco_mensalidade,
+           recorrencia, prazo_contrato, unidade, ativo, destaque, exige_agendamento, created_at, updated_at)
+        SELECT
+          gen_random_uuid(), ${VENDORAI_TENANT}, ${p.nome}, 'saas_plan',
+          ${p.precoBase}::numeric, ${p.implantacao}::numeric, ${p.mensalidade}::numeric,
+          ${p.recorrencia}, ${p.prazo}, 'un', true, true, false, now(), now()
+        WHERE NOT EXISTS (
+          SELECT 1 FROM produtos_catalogo
+          WHERE tenant_id = ${VENDORAI_TENANT} AND nome = ${p.nome}
+        )
+      `);
+    }
+    logger.info("startup migrations: VendorAI SaaS plans seeded OK");
+  } catch (err) {
+    logger.warn({ err }, "startup migrations: VendorAI SaaS plans seed skipped");
+  }
 }
 
 // ─── Boot sequence ────────────────────────────────────────────────────────────

@@ -24,12 +24,16 @@ export interface ProdutoCatalogo {
   categoriaDescontoMaximoPercentual?: string | null;
   /** Decimal price stored as string (e.g. "99.90") */
   precoBase: string;
+  /** One-time setup fee (implantação). When set together with precoMensalidade, both are shown separately in quotes instead of precoBase. */
+  precoImplantacao?: string | null;
+  /** Monthly recurring fee. When set together with precoImplantacao, the auto-quote shows dual pricing. */
+  precoMensalidade?: string | null;
   /** Unit of measure (e.g. "un", "m2", "kg") */
   unidade: string;
   ativo: boolean;
   /** Product image URL */
   imagemUrl?: string | null;
-  /** Recurrence type — "mensal" for monthly service, null for one-time */
+  /** Recurrence type — "mensal" or "anual", null for one-time */
   recorrencia?: ProdutoCatalogoRecorrencia;
   /** Contract term in months (e.g. 12 for annual contract) */
   prazoContrato?: number | null;

@@ -846,13 +846,14 @@ export interface CreateBloqueioAgendaBody {
 }
 
 /**
- * Recurrence type — "mensal" for monthly service, null for one-time
+ * Recurrence type — "mensal" or "anual", null for one-time
  */
 export type ProdutoCatalogoRecorrencia = typeof ProdutoCatalogoRecorrencia[keyof typeof ProdutoCatalogoRecorrencia] | null;
 
 
 export const ProdutoCatalogoRecorrencia = {
   mensal: 'mensal',
+  anual: 'anual',
 } as const;
 
 /**
@@ -884,12 +885,16 @@ export interface ProdutoCatalogo {
   categoriaDescontoMaximoPercentual?: string | null;
   /** Decimal price stored as string (e.g. "99.90") */
   precoBase: string;
+  /** One-time setup fee (implantação). When set together with precoMensalidade, both are shown separately in quotes instead of precoBase. */
+  precoImplantacao?: string | null;
+  /** Monthly recurring fee. When set together with precoImplantacao, the auto-quote shows dual pricing. */
+  precoMensalidade?: string | null;
   /** Unit of measure (e.g. "un", "m2", "kg") */
   unidade: string;
   ativo: boolean;
   /** Product image URL */
   imagemUrl?: string | null;
-  /** Recurrence type — "mensal" for monthly service, null for one-time */
+  /** Recurrence type — "mensal" or "anual", null for one-time */
   recorrencia?: ProdutoCatalogoRecorrencia;
   /** Contract term in months (e.g. 12 for annual contract) */
   prazoContrato?: number | null;
@@ -902,13 +907,14 @@ export interface ProdutoCatalogo {
 }
 
 /**
- * Recurrence type — "mensal" for monthly service, null for one-time
+ * Recurrence type — "mensal" or "anual", null for one-time
  */
 export type CreateProdutoCatalogoBodyRecorrencia = typeof CreateProdutoCatalogoBodyRecorrencia[keyof typeof CreateProdutoCatalogoBodyRecorrencia] | null;
 
 
 export const CreateProdutoCatalogoBodyRecorrencia = {
   mensal: 'mensal',
+  anual: 'anual',
 } as const;
 
 export interface CreateProdutoCatalogoBody {
@@ -921,11 +927,15 @@ export interface CreateProdutoCatalogoBody {
   descontoMaximoPercentual?: string | number | null;
   /** Decimal price (e.g. 99.90 or "99.90") */
   precoBase: string | number;
+  /** One-time setup fee (implantação) */
+  precoImplantacao?: string | number | null;
+  /** Monthly recurring fee */
+  precoMensalidade?: string | number | null;
   unidade?: string;
   ativo?: boolean;
   /** Product image URL */
   imagemUrl?: string;
-  /** Recurrence type — "mensal" for monthly service, null for one-time */
+  /** Recurrence type — "mensal" or "anual", null for one-time */
   recorrencia?: CreateProdutoCatalogoBodyRecorrencia;
   /** Contract term in months */
   prazoContrato?: number | null;
@@ -933,13 +943,14 @@ export interface CreateProdutoCatalogoBody {
 }
 
 /**
- * Recurrence type — "mensal" for monthly service, null for one-time
+ * Recurrence type — "mensal" or "anual", null for one-time
  */
 export type UpdateProdutoCatalogoBodyRecorrencia = typeof UpdateProdutoCatalogoBodyRecorrencia[keyof typeof UpdateProdutoCatalogoBodyRecorrencia] | null;
 
 
 export const UpdateProdutoCatalogoBodyRecorrencia = {
   mensal: 'mensal',
+  anual: 'anual',
 } as const;
 
 export interface UpdateProdutoCatalogoBody {
@@ -950,10 +961,14 @@ export interface UpdateProdutoCatalogoBody {
   /** Teto de desconto (%) específico deste produto (sobrescreve o da categoria). Null herda o teto da categoria. */
   descontoMaximoPercentual?: string | number | null;
   precoBase?: string | number;
+  /** One-time setup fee (implantação) */
+  precoImplantacao?: string | number | null;
+  /** Monthly recurring fee */
+  precoMensalidade?: string | number | null;
   unidade?: string;
   ativo?: boolean;
   imagemUrl?: string;
-  /** Recurrence type — "mensal" for monthly service, null for one-time */
+  /** Recurrence type — "mensal" or "anual", null for one-time */
   recorrencia?: UpdateProdutoCatalogoBodyRecorrencia;
   /** Contract term in months */
   prazoContrato?: number | null;

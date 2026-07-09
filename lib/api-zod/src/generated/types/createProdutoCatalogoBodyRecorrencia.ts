@@ -7,11 +7,12 @@
  */
 
 /**
- * Recurrence type — "mensal" for monthly service, null for one-time
+ * Recurrence type — "mensal" or "anual", null for one-time
  */
 export type CreateProdutoCatalogoBodyRecorrencia = typeof CreateProdutoCatalogoBodyRecorrencia[keyof typeof CreateProdutoCatalogoBodyRecorrencia] | null;
 
 
 export const CreateProdutoCatalogoBodyRecorrencia = {
   mensal: 'mensal',
+  anual: 'anual',
 } as const;

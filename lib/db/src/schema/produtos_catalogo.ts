@@ -30,6 +30,8 @@ export const produtosCatalogoTable = pgTable("produtos_catalogo", {
   marca: text("marca"),
   tags: jsonb("tags").$type<string[]>(),
   precoBase: numeric("preco_base", { precision: 12, scale: 2 }).notNull(),
+  precoImplantacao: numeric("preco_implantacao", { precision: 12, scale: 2 }),
+  precoMensalidade: numeric("preco_mensalidade", { precision: 12, scale: 2 }),
   unidade: text("unidade").notNull().default("un"),
   ativo: boolean("ativo").notNull().default(true),
   destaque: boolean("destaque").notNull().default(false),
@@ -50,13 +52,17 @@ const descontoMaximoPercentualSchema = z
   .pipe(z.string().regex(/^\d+(\.\d{1,2})?$/, "Invalid percentage"))
   .nullable();
 
+const precoDecimalSchema = z
+  .union([z.string(), z.number()])
+  .transform((v) => String(v))
+  .pipe(z.string().regex(/^\d+(\.\d{1,2})?$/, "Invalid decimal price"));
+
 export const insertProdutoCatalogoSchema = createInsertSchema(
   produtosCatalogoTable,
   {
-    precoBase: z
-      .union([z.string(), z.number()])
-      .transform((v) => String(v))
-      .pipe(z.string().regex(/^\d+(\.\d{1,2})?$/, "Invalid decimal price")),
+    precoBase: precoDecimalSchema,
+    precoImplantacao: precoDecimalSchema.nullable().optional(),
+    precoMensalidade: precoDecimalSchema.nullable().optional(),
     descontoMaximoPercentual: descontoMaximoPercentualSchema.optional(),
   }
 ).omit({ id: true, createdAt: true, updatedAt: true });
@@ -64,11 +70,9 @@ export const insertProdutoCatalogoSchema = createInsertSchema(
 export const updateProdutoCatalogoSchema = createSelectSchema(
   produtosCatalogoTable,
   {
-    precoBase: z
-      .union([z.string(), z.number()])
-      .transform((v) => String(v))
-      .pipe(z.string().regex(/^\d+(\.\d{1,2})?$/, "Invalid decimal price"))
-      .optional(),
+    precoBase: precoDecimalSchema.optional(),
+    precoImplantacao: precoDecimalSchema.nullable().optional(),
+    precoMensalidade: precoDecimalSchema.nullable().optional(),
     descontoMaximoPercentual: descontoMaximoPercentualSchema.optional(),
   }
 )
