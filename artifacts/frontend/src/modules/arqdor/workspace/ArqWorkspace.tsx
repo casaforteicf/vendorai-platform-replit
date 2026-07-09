@@ -50,6 +50,7 @@ import AICommandIntelligence from './operations-center/ai-command-intelligence/A
 import ExecutiveCockpit from './operations-center/executive-command/ExecutiveCockpit'
 import DigitalTwinCenter from './bim-digital-twin/DigitalTwinCenter'
 import ConstructionHub from './construction-hub/ConstructionHub'
+import SmartBuildingCenter from './iot-smart-building/SmartBuildingCenter'
 import BudgetDisciplinesProposal from './executive-budget/disciplines/BudgetDisciplinesProposal'
 import AlignedStudioShell from './ux-alignment/AlignedStudioShell'
 import { computeNextAction }     from './project-experience/ProjectHome'
@@ -79,6 +80,7 @@ export type ModuleId =
   | 'executive' | 'executive-command' | 'cockpit'
   | 'bim' | 'digital-twin' | 'twin'
   | 'construction' | 'obra' | 'construction-hub'
+  | 'iot' | 'smart-building' | 'building'
 
 export type JourneyId = 'create' | 'design' | 'visualize' | 'deliver' | 'business'
 
@@ -156,6 +158,9 @@ const MODULE_MAP_INTERNAL: Record<ModuleId, { icon:string; label:string }> = {
   'construction':      { icon:'🦺', label:'Construction Hub' },
   'obra':              { icon:'🦺', label:'Obra'             },
   'construction-hub':  { icon:'🦺', label:'Construction Hub' },
+  'iot':               { icon:'📡', label:'IoT'              },
+  'smart-building':    { icon:'📡', label:'Smart Building'   },
+  'building':          { icon:'📡', label:'Building'         },
 }
 
 // ─── Legado: Journeys (keyboard shortcuts 1–5) ────────────────────────────────
@@ -334,6 +339,9 @@ function renderModule(id: ModuleId, arqState: ArqProjectState, setActive: (m: Mo
     case 'construction':
     case 'obra':
     case 'construction-hub': return <ConstructionHub arqState={arqState} onNavigate={m => setActive(m as ModuleId)} />
+    case 'iot':
+    case 'smart-building':
+    case 'building':         return <SmartBuildingCenter arqState={arqState} onNavigate={m => setActive(m as ModuleId)} />
     case 'ecosystem':     return <EcosystemModule/>
     case 'knowledge':     return <KnowledgeModule/>
     case 'office':
