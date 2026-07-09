@@ -757,8 +757,8 @@ export async function processAgentInternal(params: {
       });
     }
 
-    // 11. Post-response: extract and persist qualification answers after SDR turns (async, non-blocking)
-    if (resolvedAgentName === "sdr") {
+    // 11. Post-response: extract and persist qualification answers after SDR, Closer, and Reactivation turns (async, non-blocking)
+    if (["sdr", "closer", "reactivation"].includes(resolvedAgentName)) {
       extractAndSaveQualification(tenantId, leadId, ctx, mensagem, finalResposta, log).catch((err) => {
         log.warn({ err, leadId, tenantId }, "dispatch: qualification extraction failed");
       });
