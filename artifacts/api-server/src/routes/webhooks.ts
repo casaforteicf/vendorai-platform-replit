@@ -352,21 +352,69 @@ router.post("/tenants/:tenantId/webhooks/zapi", async (req, res) => {
   const payload = parsed.data;
 
   // ── 3. Filter — only incoming messages from direct chats ──────────────────
-  if (payload.isMessage === false || payload.fromMe === true) {
-    res.status(200).json({ ignored: true, reason: "outgoing_or_non_message" });
+  //
+  // IMPORTANT: Z-API may send audio/ptt callbacks with isMessage=false even
+  // when they are legitimate inbound customer messages. We therefore:
+  //   a) always log the discard reason + payload.type so nothing is invisible
+  //   b) allow audio/ptt/AudioCallback through even when isMessage is falsy,
+  //      because the Z-API audio callback format differs from text callbacks.
+  //   c) still block fromMe=true for all types (prevents bot self-echo loop).
+
+  const earlyType = payload.type ?? "unknown";
+  const isAudioType = earlyType === "audio" || earlyType === "ptt" || earlyType === "AudioCallback";
+
+  if (payload.fromMe === true) {
+    req.log.info(
+      { reason: "fromMe_true", type: earlyType, phone: payload.phone },
+      "zapi-webhook: message discarded — fromMe=true (outgoing, bot self-echo guard)"
+    );
+    res.status(200).json({ ignored: true, reason: "fromMe_true" });
     return;
   }
+
+  if (payload.isMessage === false) {
+    if (isAudioType) {
+      // Z-API audio callbacks often arrive with isMessage=false.
+      // Log a warning but DO NOT discard — let it reach the audio handler.
+      req.log.warn(
+        { reason: "isMessage_false_but_audio_type_allowed", type: earlyType, phone: payload.phone },
+        "zapi-webhook: isMessage=false on audio type — allowing through (Z-API quirk)"
+      );
+    } else {
+      req.log.info(
+        { reason: "isMessage_false", type: earlyType, phone: payload.phone },
+        "zapi-webhook: message discarded — isMessage=false (non-message event)"
+      );
+      res.status(200).json({ ignored: true, reason: "isMessage_false" });
+      return;
+    }
+  }
+
   if (!payload.phone) {
+    req.log.info(
+      { reason: "no_phone", type: earlyType },
+      "zapi-webhook: message discarded — no phone field in payload"
+    );
     res.status(200).json({ ignored: true, reason: "no_phone" });
     return;
   }
+
   // Ignore group messages (participantPhone is set for groups)
   if (payload.participantPhone) {
+    req.log.info(
+      { reason: "group_message", type: earlyType, phone: payload.phone },
+      "zapi-webhook: message discarded — group message (participantPhone present)"
+    );
     res.status(200).json({ ignored: true, reason: "group_message" });
     return;
   }
+
   // Ignore group chat IDs (contain @g.us)
   if (payload.phone.includes("@g.us")) {
+    req.log.info(
+      { reason: "group_chat", type: earlyType, phone: payload.phone },
+      "zapi-webhook: message discarded — group chat ID (@g.us)"
+    );
     res.status(200).json({ ignored: true, reason: "group_chat" });
     return;
   }
