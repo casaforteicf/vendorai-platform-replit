@@ -31,17 +31,17 @@ export function DeliveryTermPanel({
   const [acceptedBy, setAcceptedBy] = useState(delivery?.clientName || "");
 
   return (
-    <section className="rounded-[34px] border border-slate-100 bg-white p-5 shadow-sm">
-      <p className="text-xs font-semibold uppercase tracking-wide text-violet-600">Termo</p>
-      <h2 className="mt-1 text-xl font-semibold text-slate-950">Termo de entrega e aceite</h2>
+    <section className="rounded-[34px] border border-[var(--arq-border)] bg-[var(--arq-card)] p-5 shadow-sm">
+      <p className="text-xs font-semibold uppercase tracking-wide text-[var(--arq-accent)]">Termo</p>
+      <h2 className="mt-1 text-xl font-semibold text-[var(--arq-foreground)]">Termo de entrega e aceite</h2>
 
       <label className="mt-5 block">
-        <span className="text-xs font-semibold uppercase tracking-wide text-slate-400">Conteúdo</span>
+        <span className="text-xs font-semibold uppercase tracking-wide text-[var(--arq-muted)]">Conteúdo</span>
         <textarea
           value={content}
           onChange={(event) => setContent(event.target.value)}
           rows={8}
-          className="mt-2 w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm leading-6 outline-none focus:border-violet-300 focus:ring-4 focus:ring-violet-50"
+          className="mt-2 w-full rounded-2xl border border-[var(--arq-border)] bg-[var(--arq-card)] px-4 py-3 text-sm leading-6 outline-none focus:border-violet-300 focus:ring-4 focus:ring-violet-50"
         />
       </label>
 
@@ -56,11 +56,11 @@ export function DeliveryTermPanel({
 
       <div className="mt-5 space-y-3">
         {terms.map((term) => (
-          <article key={term.id} className="rounded-[26px] border border-slate-100 bg-slate-50 p-4">
+          <article key={term.id} className="rounded-[26px] border border-[var(--arq-border)] bg-[var(--arq-card-soft)] p-4">
             <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
               <div>
-                <p className="text-sm font-semibold text-slate-950">{term.title}</p>
-                <p className="mt-1 text-xs text-slate-500">
+                <p className="text-sm font-semibold text-[var(--arq-foreground)]">{term.title}</p>
+                <p className="mt-1 text-xs text-[var(--arq-muted)]">
                   {term.accepted ? `Aceito em ${dateShort(term.acceptedAt)}` : "Aguardando aceite"}
                 </p>
               </div>
@@ -70,7 +70,7 @@ export function DeliveryTermPanel({
                   value={acceptedBy}
                   onChange={(event) => setAcceptedBy(event.target.value)}
                   placeholder="Nome do cliente"
-                  className="rounded-2xl border border-slate-200 bg-white px-4 py-2 text-sm"
+                  className="rounded-2xl border border-[var(--arq-border)] bg-[var(--arq-card)] px-4 py-2 text-sm"
                 />
                 <button
                   type="button"

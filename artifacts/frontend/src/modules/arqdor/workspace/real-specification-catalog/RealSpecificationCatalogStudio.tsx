@@ -43,14 +43,14 @@ export default function RealSpecificationCatalogStudio({ arqState, onNavigate }:
   } = useRealSpecificationCatalog(projectId, renderId || undefined);
 
   return (
-    <div className="min-h-screen bg-[#f7f7f8] text-slate-950">
+    <div className="min-h-screen bg-[var(--arq-background)] text-[var(--arq-foreground)]">
       <div className="mx-auto flex w-full max-w-[1760px] flex-col gap-5 px-6 py-6">
-        <header className="rounded-[34px] border border-slate-100 bg-white p-5 shadow-sm">
+        <header className="rounded-[34px] border border-[var(--arq-border)] bg-[var(--arq-card)] p-5 shadow-sm">
           <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
             <div>
-              <p className="text-xs font-semibold uppercase tracking-wide text-violet-600">Sprint 030 • Real Specification Catalog</p>
-              <h1 className="mt-1 text-3xl font-semibold tracking-tight text-slate-950">SpecObject persistente + catálogo real</h1>
-              <p className="mt-1 text-sm text-slate-500">
+              <p className="text-xs font-semibold uppercase tracking-wide text-[var(--arq-accent)]">Sprint 030 • Real Specification Catalog</p>
+              <h1 className="mt-1 text-3xl font-semibold tracking-tight text-[var(--arq-foreground)]">SpecObject persistente + catálogo real</h1>
+              <p className="mt-1 text-sm text-[var(--arq-muted)]">
                 {projectTitle} • render aprovado vira objeto especificável, catálogo real, valores e envio ao orçamento.
               </p>
             </div>
@@ -70,7 +70,7 @@ export default function RealSpecificationCatalogStudio({ arqState, onNavigate }:
               <button
                 type="button"
                 onClick={() => onNavigate?.("orcamento")}
-                className="rounded-2xl border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-700 hover:border-violet-200 hover:text-violet-700"
+                className="rounded-2xl border border-[var(--arq-border)] bg-[var(--arq-card)] px-4 py-2 text-sm font-semibold text-[var(--arq-foreground)] hover:border-violet-200 hover:text-[var(--arq-accent)]"
               >
                 Orçamento
               </button>
@@ -78,18 +78,18 @@ export default function RealSpecificationCatalogStudio({ arqState, onNavigate }:
           </div>
 
           <div className="mt-5 grid gap-3 md:grid-cols-[1fr_320px]">
-            <div className="rounded-3xl bg-slate-50 p-4">
-              <p className="text-xs font-semibold uppercase tracking-wide text-slate-400">Projeto</p>
-              <p className="mt-1 text-sm font-semibold text-slate-800">{projectId || "Projeto não identificado"}</p>
+            <div className="rounded-3xl bg-[var(--arq-card-soft)] p-4">
+              <p className="text-xs font-semibold uppercase tracking-wide text-[var(--arq-muted)]">Projeto</p>
+              <p className="mt-1 text-sm font-semibold text-[var(--arq-foreground)]">{projectId || "Projeto não identificado"}</p>
             </div>
 
-            <label className="block rounded-3xl bg-slate-50 p-4">
-              <span className="text-xs font-semibold uppercase tracking-wide text-slate-400">Render aprovado ID</span>
+            <label className="block rounded-3xl bg-[var(--arq-card-soft)] p-4">
+              <span className="text-xs font-semibold uppercase tracking-wide text-[var(--arq-muted)]">Render aprovado ID</span>
               <input
                 value={renderId}
                 onChange={(event) => setRenderId(event.target.value)}
                 placeholder="opcional, vindo da Sprint 029"
-                className="mt-2 w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm outline-none focus:border-violet-300 focus:ring-4 focus:ring-violet-50"
+                className="mt-2 w-full rounded-2xl border border-[var(--arq-border)] bg-[var(--arq-card)] px-4 py-3 text-sm outline-none focus:border-violet-300 focus:ring-4 focus:ring-violet-50"
               />
             </label>
           </div>

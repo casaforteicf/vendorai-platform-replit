@@ -59,14 +59,14 @@ export default function PostSaleDeliverySuccessStudio({ arqState, onNavigate }: 
   ] as const;
 
   return (
-    <div className="min-h-screen bg-[#f7f7f8] text-slate-950">
+    <div className="min-h-screen bg-[var(--arq-background)] text-[var(--arq-foreground)]">
       <div className="mx-auto flex w-full max-w-[1760px] flex-col gap-5 px-6 py-6">
-        <header className="rounded-[34px] border border-slate-100 bg-white p-5 shadow-sm">
+        <header className="rounded-[34px] border border-[var(--arq-border)] bg-[var(--arq-card)] p-5 shadow-sm">
           <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
             <div>
-              <p className="text-xs font-semibold uppercase tracking-wide text-violet-600">Sprint 034 • Post-Sale, Delivery & Customer Success</p>
-              <h1 className="mt-1 text-3xl font-semibold tracking-tight text-slate-950">Entrega, pós-venda e sucesso do cliente</h1>
-              <p className="mt-1 text-sm text-slate-500">
+              <p className="text-xs font-semibold uppercase tracking-wide text-[var(--arq-accent)]">Sprint 034 • Post-Sale, Delivery & Customer Success</p>
+              <h1 className="mt-1 text-3xl font-semibold tracking-tight text-[var(--arq-foreground)]">Entrega, pós-venda e sucesso do cliente</h1>
+              <p className="mt-1 text-sm text-[var(--arq-muted)]">
                 {projectTitle} • termo de entrega, documentação final, satisfação, depoimento e novas oportunidades.
               </p>
             </div>
@@ -85,7 +85,7 @@ export default function PostSaleDeliverySuccessStudio({ arqState, onNavigate }: 
                   onClick={() => setView(item.id)}
                   className={[
                     "rounded-2xl px-4 py-2 text-sm font-semibold transition",
-                    view === item.id ? "bg-slate-950 text-white" : "bg-slate-50 text-slate-600 hover:bg-violet-50 hover:text-violet-700",
+                    view === item.id ? "bg-slate-950 text-white" : "bg-[var(--arq-card-soft)] text-[var(--arq-muted)] hover:bg-[var(--arq-card-soft)] hover:text-[var(--arq-accent)]",
                   ].join(" ")}
                 >
                   {item.label}
@@ -95,7 +95,7 @@ export default function PostSaleDeliverySuccessStudio({ arqState, onNavigate }: 
               <button
                 type="button"
                 onClick={() => void reload()}
-                className="rounded-2xl border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-700 hover:border-violet-200 hover:text-violet-700"
+                className="rounded-2xl border border-[var(--arq-border)] bg-[var(--arq-card)] px-4 py-2 text-sm font-semibold text-[var(--arq-foreground)] hover:border-violet-200 hover:text-[var(--arq-accent)]"
               >
                 {loading ? "Carregando..." : "Atualizar"}
               </button>
@@ -104,7 +104,7 @@ export default function PostSaleDeliverySuccessStudio({ arqState, onNavigate }: 
                 type="button"
                 disabled={creating}
                 onClick={() => void createFromProduction()}
-                className="rounded-2xl bg-violet-600 px-4 py-2 text-sm font-semibold text-white hover:bg-violet-700 disabled:opacity-50"
+                className="rounded-2xl bg-[var(--arq-accent)] px-4 py-2 text-sm font-semibold text-white hover:opacity-90 disabled:opacity-50"
               >
                 {creating ? "Criando..." : "Iniciar pós-venda"}
               </button>
@@ -186,16 +186,16 @@ export default function PostSaleDeliverySuccessStudio({ arqState, onNavigate }: 
           <PostSaleTimelinePanel events={events} />
         ) : null}
 
-        <section className="rounded-[34px] border border-slate-100 bg-white p-5 shadow-sm">
-          <p className="text-xs font-semibold uppercase tracking-wide text-violet-600">Ciclo fechado</p>
-          <h2 className="mt-1 text-xl font-semibold text-slate-950">Projeto entregue → relacionamento contínuo</h2>
-          <p className="mt-2 text-sm leading-6 text-slate-600">
+        <section className="rounded-[34px] border border-[var(--arq-border)] bg-[var(--arq-card)] p-5 shadow-sm">
+          <p className="text-xs font-semibold uppercase tracking-wide text-[var(--arq-accent)]">Ciclo fechado</p>
+          <h2 className="mt-1 text-xl font-semibold text-[var(--arq-foreground)]">Projeto entregue → relacionamento contínuo</h2>
+          <p className="mt-2 text-sm leading-6 text-[var(--arq-muted)]">
             Após o aceite, o ARQDOR mantém histórico, documentação, feedback e oportunidades futuras para alimentar CRM, campanhas e novos projetos.
           </p>
           <button
             type="button"
             onClick={() => onNavigate?.("crm")}
-            className="mt-4 rounded-2xl border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-700 hover:border-violet-200 hover:text-violet-700"
+            className="mt-4 rounded-2xl border border-[var(--arq-border)] bg-[var(--arq-card)] px-4 py-2 text-sm font-semibold text-[var(--arq-foreground)] hover:border-violet-200 hover:text-[var(--arq-accent)]"
           >
             Enviar oportunidades para CRM
           </button>
@@ -207,9 +207,9 @@ export default function PostSaleDeliverySuccessStudio({ arqState, onNavigate }: 
 
 function Info({ label, value }: { label: string; value: string }) {
   return (
-    <div className="rounded-3xl bg-slate-50 p-4">
-      <p className="text-xs font-semibold uppercase tracking-wide text-slate-400">{label}</p>
-      <p className="mt-1 truncate text-sm font-semibold text-slate-800">{value}</p>
+    <div className="rounded-3xl bg-[var(--arq-card-soft)] p-4">
+      <p className="text-xs font-semibold uppercase tracking-wide text-[var(--arq-muted)]">{label}</p>
+      <p className="mt-1 truncate text-sm font-semibold text-[var(--arq-foreground)]">{value}</p>
     </div>
   );
 }

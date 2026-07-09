@@ -39,22 +39,22 @@ export function SupplierOrdersPanel({
   }
 
   return (
-    <section className="rounded-[34px] border border-slate-100 bg-white p-5 shadow-sm">
-      <p className="text-xs font-semibold uppercase tracking-wide text-violet-600">Compras</p>
-      <h2 className="mt-1 text-xl font-semibold text-slate-950">Pedidos e fornecedores</h2>
+    <section className="rounded-[34px] border border-[var(--arq-border)] bg-[var(--arq-card)] p-5 shadow-sm">
+      <p className="text-xs font-semibold uppercase tracking-wide text-[var(--arq-accent)]">Compras</p>
+      <h2 className="mt-1 text-xl font-semibold text-[var(--arq-foreground)]">Pedidos e fornecedores</h2>
 
       <div className="mt-5 grid gap-3 md:grid-cols-[1fr_1fr_auto]">
         <input
           value={supplierName}
           onChange={(event) => setSupplierName(event.target.value)}
           placeholder="Fornecedor"
-          className="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm outline-none focus:border-violet-300 focus:ring-4 focus:ring-violet-50"
+          className="rounded-2xl border border-[var(--arq-border)] bg-[var(--arq-card)] px-4 py-3 text-sm outline-none focus:border-violet-300 focus:ring-4 focus:ring-violet-50"
         />
         <input
           value={item}
           onChange={(event) => setItem(event.target.value)}
           placeholder="Item"
-          className="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm outline-none focus:border-violet-300 focus:ring-4 focus:ring-violet-50"
+          className="rounded-2xl border border-[var(--arq-border)] bg-[var(--arq-card)] px-4 py-3 text-sm outline-none focus:border-violet-300 focus:ring-4 focus:ring-violet-50"
         />
         <button
           type="button"
@@ -66,9 +66,9 @@ export function SupplierOrdersPanel({
         </button>
       </div>
 
-      <div className="mt-5 overflow-x-auto rounded-3xl border border-slate-100">
+      <div className="mt-5 overflow-x-auto rounded-3xl border border-[var(--arq-border)]">
         <table className="min-w-[900px] w-full text-left text-sm">
-          <thead className="bg-slate-50 text-xs uppercase tracking-wide text-slate-400">
+          <thead className="bg-[var(--arq-card-soft)] text-xs uppercase tracking-wide text-[var(--arq-muted)]">
             <tr>
               <th className="px-4 py-3">Fornecedor</th>
               <th className="px-4 py-3">Item</th>
@@ -78,14 +78,14 @@ export function SupplierOrdersPanel({
               <th className="px-4 py-3">Status</th>
             </tr>
           </thead>
-          <tbody className="divide-y divide-slate-100">
+          <tbody className="divide-y divide-[var(--arq-border)]">
             {orders.map((order) => (
               <tr key={order.id}>
-                <td className="px-4 py-4 font-medium text-slate-800">{order.supplierName}</td>
-                <td className="px-4 py-4 text-slate-500">{order.item}</td>
-                <td className="px-4 py-4 text-slate-500">{order.quantity} {order.unit}</td>
-                <td className="px-4 py-4 text-slate-500">{money(order.estimatedValue)}</td>
-                <td className="px-4 py-4 text-slate-500">{dateShort(order.expectedDelivery)}</td>
+                <td className="px-4 py-4 font-medium text-[var(--arq-foreground)]">{order.supplierName}</td>
+                <td className="px-4 py-4 text-[var(--arq-muted)]">{order.item}</td>
+                <td className="px-4 py-4 text-[var(--arq-muted)]">{order.quantity} {order.unit}</td>
+                <td className="px-4 py-4 text-[var(--arq-muted)]">{money(order.estimatedValue)}</td>
+                <td className="px-4 py-4 text-[var(--arq-muted)]">{dateShort(order.expectedDelivery)}</td>
                 <td className="px-4 py-4">
                   <select
                     value={order.status}
@@ -107,7 +107,7 @@ export function SupplierOrdersPanel({
 
             {!orders.length ? (
               <tr>
-                <td colSpan={6} className="px-4 py-12 text-center text-sm text-slate-500">
+                <td colSpan={6} className="px-4 py-12 text-center text-sm text-[var(--arq-muted)]">
                   Nenhum pedido de fornecedor criado.
                 </td>
               </tr>

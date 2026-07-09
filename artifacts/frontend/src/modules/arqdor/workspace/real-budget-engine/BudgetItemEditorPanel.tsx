@@ -57,9 +57,9 @@ export function BudgetItemEditorPanel({
   }
 
   return (
-    <section className="rounded-[34px] border border-slate-100 bg-white p-5 shadow-sm">
-      <p className="text-xs font-semibold uppercase tracking-wide text-violet-600">Editor</p>
-      <h2 className="mt-1 text-xl font-semibold text-slate-950">{selectedItem ? "Editar item" : "Adicionar item"}</h2>
+    <section className="rounded-[34px] border border-[var(--arq-border)] bg-[var(--arq-card)] p-5 shadow-sm">
+      <p className="text-xs font-semibold uppercase tracking-wide text-[var(--arq-accent)]">Editor</p>
+      <h2 className="mt-1 text-xl font-semibold text-[var(--arq-foreground)]">{selectedItem ? "Editar item" : "Adicionar item"}</h2>
 
       <div className="mt-5 grid gap-3 md:grid-cols-2">
         <Field label="Item" value={form.item} onChange={(value) => set("item", value)} />
@@ -74,18 +74,18 @@ export function BudgetItemEditorPanel({
         <Field label="Fornecedor" value={form.supplierName || ""} onChange={(value) => set("supplierName", value)} />
       </div>
 
-      <label className="mt-4 flex items-center gap-3 rounded-2xl bg-slate-50 px-4 py-3">
+      <label className="mt-4 flex items-center gap-3 rounded-2xl bg-[var(--arq-card-soft)] px-4 py-3">
         <input
           type="checkbox"
           checked={Boolean(form.visibleToClient)}
           onChange={(event) => set("visibleToClient", event.target.checked)}
         />
-        <span className="text-sm font-medium text-slate-700">Mostrar este item na versão do cliente</span>
+        <span className="text-sm font-medium text-[var(--arq-foreground)]">Mostrar este item na versão do cliente</span>
       </label>
 
-      <div className="mt-5 rounded-3xl bg-slate-50 p-4">
-        <p className="text-xs font-semibold uppercase tracking-wide text-slate-400">Total do item</p>
-        <p className="mt-1 text-3xl font-semibold text-slate-950">{money(total)}</p>
+      <div className="mt-5 rounded-3xl bg-[var(--arq-card-soft)] p-4">
+        <p className="text-xs font-semibold uppercase tracking-wide text-[var(--arq-muted)]">Total do item</p>
+        <p className="mt-1 text-3xl font-semibold text-[var(--arq-foreground)]">{money(total)}</p>
       </div>
 
       <button
@@ -125,11 +125,11 @@ function Field({
 }) {
   return (
     <label className="block">
-      <span className="text-xs font-semibold uppercase tracking-wide text-slate-400">{label}</span>
+      <span className="text-xs font-semibold uppercase tracking-wide text-[var(--arq-muted)]">{label}</span>
       <input
         value={value}
         onChange={(event) => onChange(event.target.value)}
-        className="mt-2 w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm outline-none focus:border-violet-300 focus:ring-4 focus:ring-violet-50"
+        className="mt-2 w-full rounded-2xl border border-[var(--arq-border)] bg-[var(--arq-card)] px-4 py-3 text-sm outline-none focus:border-violet-300 focus:ring-4 focus:ring-violet-50"
       />
     </label>
   );
@@ -146,12 +146,12 @@ function NumberField({
 }) {
   return (
     <label className="block">
-      <span className="text-xs font-semibold uppercase tracking-wide text-slate-400">{label}</span>
+      <span className="text-xs font-semibold uppercase tracking-wide text-[var(--arq-muted)]">{label}</span>
       <input
         type="number"
         value={value}
         onChange={(event) => onChange(Number(event.target.value))}
-        className="mt-2 w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm outline-none focus:border-violet-300 focus:ring-4 focus:ring-violet-50"
+        className="mt-2 w-full rounded-2xl border border-[var(--arq-border)] bg-[var(--arq-card)] px-4 py-3 text-sm outline-none focus:border-violet-300 focus:ring-4 focus:ring-violet-50"
       />
     </label>
   );

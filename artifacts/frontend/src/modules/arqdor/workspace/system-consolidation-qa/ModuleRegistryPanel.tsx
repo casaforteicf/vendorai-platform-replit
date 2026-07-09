@@ -10,13 +10,13 @@ export function ModuleRegistryPanel({
   onNavigate?: (routeKey: string) => void;
 }) {
   return (
-    <section className="rounded-[34px] border border-slate-100 bg-white p-5 shadow-sm">
-      <p className="text-xs font-semibold uppercase tracking-wide text-violet-600">Registro</p>
-      <h2 className="mt-1 text-xl font-semibold text-slate-950">Módulos ARQDOR 029–034</h2>
+    <section className="rounded-[34px] border border-[var(--arq-border)] bg-[var(--arq-card)] p-5 shadow-sm">
+      <p className="text-xs font-semibold uppercase tracking-wide text-[var(--arq-accent)]">Registro</p>
+      <h2 className="mt-1 text-xl font-semibold text-[var(--arq-foreground)]">Módulos ARQDOR 029–034</h2>
 
-      <div className="mt-5 overflow-x-auto rounded-3xl border border-slate-100">
+      <div className="mt-5 overflow-x-auto rounded-3xl border border-[var(--arq-border)]">
         <table className="min-w-[1100px] w-full text-left text-sm">
-          <thead className="bg-slate-50 text-xs uppercase tracking-wide text-slate-400">
+          <thead className="bg-[var(--arq-card-soft)] text-xs uppercase tracking-wide text-[var(--arq-muted)]">
             <tr>
               <th className="px-4 py-3">Sprint</th>
               <th className="px-4 py-3">Módulo</th>
@@ -28,17 +28,17 @@ export function ModuleRegistryPanel({
             </tr>
           </thead>
 
-          <tbody className="divide-y divide-slate-100">
+          <tbody className="divide-y divide-[var(--arq-border)]">
             {modules.map((module) => (
               <tr key={module.id}>
-                <td className="px-4 py-4 font-semibold text-slate-950">{module.sprint}</td>
+                <td className="px-4 py-4 font-semibold text-[var(--arq-foreground)]">{module.sprint}</td>
                 <td className="px-4 py-4">
-                  <p className="font-medium text-slate-800">{module.label}</p>
-                  <p className="mt-1 text-xs text-slate-500">{module.description}</p>
+                  <p className="font-medium text-[var(--arq-foreground)]">{module.label}</p>
+                  <p className="mt-1 text-xs text-[var(--arq-muted)]">{module.description}</p>
                 </td>
-                <td className="px-4 py-4 text-slate-500">{module.componentName}</td>
-                <td className="px-4 py-4 text-slate-500">{module.routeKeys.join(", ")}</td>
-                <td className="px-4 py-4 text-slate-500">{module.status}</td>
+                <td className="px-4 py-4 text-[var(--arq-muted)]">{module.componentName}</td>
+                <td className="px-4 py-4 text-[var(--arq-muted)]">{module.routeKeys.join(", ")}</td>
+                <td className="px-4 py-4 text-[var(--arq-muted)]">{module.status}</td>
                 <td className="px-4 py-4">
                   <span className={`rounded-full px-3 py-1 text-xs font-semibold ${healthClass(module.health)}`}>
                     {module.health}

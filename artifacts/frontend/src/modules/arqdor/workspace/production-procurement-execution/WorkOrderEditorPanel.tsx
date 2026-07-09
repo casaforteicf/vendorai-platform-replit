@@ -65,9 +65,9 @@ export function WorkOrderEditorPanel({
   }
 
   return (
-    <section className="rounded-[34px] border border-slate-100 bg-white p-5 shadow-sm">
-      <p className="text-xs font-semibold uppercase tracking-wide text-violet-600">Editor</p>
-      <h2 className="mt-1 text-xl font-semibold text-slate-950">
+    <section className="rounded-[34px] border border-[var(--arq-border)] bg-[var(--arq-card)] p-5 shadow-sm">
+      <p className="text-xs font-semibold uppercase tracking-wide text-[var(--arq-accent)]">Editor</p>
+      <h2 className="mt-1 text-xl font-semibold text-[var(--arq-foreground)]">
         {selectedOrder ? "Editar ordem" : "Criar ordem"}
       </h2>
 
@@ -76,11 +76,11 @@ export function WorkOrderEditorPanel({
         <Field label="Item" value={form.item || ""} onChange={(value) => set("item", value)} />
 
         <label className="block">
-          <span className="text-xs font-semibold uppercase tracking-wide text-slate-400">Tipo</span>
+          <span className="text-xs font-semibold uppercase tracking-wide text-[var(--arq-muted)]">Tipo</span>
           <select
             value={form.type}
             onChange={(event) => set("type", event.target.value as WorkOrderType)}
-            className="mt-2 w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm outline-none focus:border-violet-300 focus:ring-4 focus:ring-violet-50"
+            className="mt-2 w-full rounded-2xl border border-[var(--arq-border)] bg-[var(--arq-card)] px-4 py-3 text-sm outline-none focus:border-violet-300 focus:ring-4 focus:ring-violet-50"
           >
             <option value="production">Produção</option>
             <option value="procurement">Compra</option>
@@ -92,11 +92,11 @@ export function WorkOrderEditorPanel({
         </label>
 
         <label className="block">
-          <span className="text-xs font-semibold uppercase tracking-wide text-slate-400">Prioridade</span>
+          <span className="text-xs font-semibold uppercase tracking-wide text-[var(--arq-muted)]">Prioridade</span>
           <select
             value={form.priority}
             onChange={(event) => set("priority", event.target.value as WorkOrderPriority)}
-            className="mt-2 w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm outline-none focus:border-violet-300 focus:ring-4 focus:ring-violet-50"
+            className="mt-2 w-full rounded-2xl border border-[var(--arq-border)] bg-[var(--arq-card)] px-4 py-3 text-sm outline-none focus:border-violet-300 focus:ring-4 focus:ring-violet-50"
           >
             <option value="low">Baixa</option>
             <option value="medium">Média</option>
@@ -118,18 +118,18 @@ export function WorkOrderEditorPanel({
       </div>
 
       <label className="mt-4 block">
-        <span className="text-xs font-semibold uppercase tracking-wide text-slate-400">Descrição / observações</span>
+        <span className="text-xs font-semibold uppercase tracking-wide text-[var(--arq-muted)]">Descrição / observações</span>
         <textarea
           value={form.description || ""}
           onChange={(event) => set("description", event.target.value)}
           rows={4}
-          className="mt-2 w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm leading-6 outline-none focus:border-violet-300 focus:ring-4 focus:ring-violet-50"
+          className="mt-2 w-full rounded-2xl border border-[var(--arq-border)] bg-[var(--arq-card)] px-4 py-3 text-sm leading-6 outline-none focus:border-violet-300 focus:ring-4 focus:ring-violet-50"
         />
       </label>
 
-      <div className="mt-5 rounded-3xl bg-slate-50 p-4">
-        <p className="text-xs font-semibold uppercase tracking-wide text-slate-400">Custo previsto</p>
-        <p className="mt-1 text-3xl font-semibold text-slate-950">{money(form.estimatedCost)}</p>
+      <div className="mt-5 rounded-3xl bg-[var(--arq-card-soft)] p-4">
+        <p className="text-xs font-semibold uppercase tracking-wide text-[var(--arq-muted)]">Custo previsto</p>
+        <p className="mt-1 text-3xl font-semibold text-[var(--arq-foreground)]">{money(form.estimatedCost)}</p>
       </div>
 
       <button
@@ -164,11 +164,11 @@ function emptyOrder(projectId: string, proposalId?: string): WorkOrderPayload {
 function Field({ label, value, onChange }: { label: string; value: string; onChange: (value: string) => void }) {
   return (
     <label className="block">
-      <span className="text-xs font-semibold uppercase tracking-wide text-slate-400">{label}</span>
+      <span className="text-xs font-semibold uppercase tracking-wide text-[var(--arq-muted)]">{label}</span>
       <input
         value={value}
         onChange={(event) => onChange(event.target.value)}
-        className="mt-2 w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm outline-none focus:border-violet-300 focus:ring-4 focus:ring-violet-50"
+        className="mt-2 w-full rounded-2xl border border-[var(--arq-border)] bg-[var(--arq-card)] px-4 py-3 text-sm outline-none focus:border-violet-300 focus:ring-4 focus:ring-violet-50"
       />
     </label>
   );
@@ -177,12 +177,12 @@ function Field({ label, value, onChange }: { label: string; value: string; onCha
 function NumberField({ label, value, onChange }: { label: string; value: number; onChange: (value: number) => void }) {
   return (
     <label className="block">
-      <span className="text-xs font-semibold uppercase tracking-wide text-slate-400">{label}</span>
+      <span className="text-xs font-semibold uppercase tracking-wide text-[var(--arq-muted)]">{label}</span>
       <input
         type="number"
         value={value}
         onChange={(event) => onChange(Number(event.target.value))}
-        className="mt-2 w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm outline-none focus:border-violet-300 focus:ring-4 focus:ring-violet-50"
+        className="mt-2 w-full rounded-2xl border border-[var(--arq-border)] bg-[var(--arq-card)] px-4 py-3 text-sm outline-none focus:border-violet-300 focus:ring-4 focus:ring-violet-50"
       />
     </label>
   );
@@ -191,12 +191,12 @@ function NumberField({ label, value, onChange }: { label: string; value: number;
 function DateField({ label, value, onChange }: { label: string; value: string; onChange: (value: string) => void }) {
   return (
     <label className="block">
-      <span className="text-xs font-semibold uppercase tracking-wide text-slate-400">{label}</span>
+      <span className="text-xs font-semibold uppercase tracking-wide text-[var(--arq-muted)]">{label}</span>
       <input
         type="date"
         value={value ? value.slice(0, 10) : ""}
         onChange={(event) => onChange(event.target.value)}
-        className="mt-2 w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm outline-none focus:border-violet-300 focus:ring-4 focus:ring-violet-50"
+        className="mt-2 w-full rounded-2xl border border-[var(--arq-border)] bg-[var(--arq-card)] px-4 py-3 text-sm outline-none focus:border-violet-300 focus:ring-4 focus:ring-violet-50"
       />
     </label>
   );

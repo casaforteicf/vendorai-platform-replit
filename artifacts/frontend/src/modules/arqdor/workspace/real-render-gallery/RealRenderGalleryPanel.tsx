@@ -16,26 +16,26 @@ export function RealRenderGalleryPanel({
   onReload: () => void;
 }) {
   return (
-    <section className="rounded-[34px] border border-slate-100 bg-white p-5 shadow-sm">
+    <section className="rounded-[34px] border border-[var(--arq-border)] bg-[var(--arq-card)] p-5 shadow-sm">
       <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
         <div>
-          <p className="text-xs font-semibold uppercase tracking-wide text-violet-600">Galeria real</p>
-          <h2 className="mt-1 text-xl font-semibold text-slate-950">Histórico de renders do projeto</h2>
+          <p className="text-xs font-semibold uppercase tracking-wide text-[var(--arq-accent)]">Galeria real</p>
+          <h2 className="mt-1 text-xl font-semibold text-[var(--arq-foreground)]">Histórico de renders do projeto</h2>
         </div>
 
         <button
           type="button"
           onClick={onReload}
-          className="rounded-2xl border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-700 hover:border-violet-200 hover:text-violet-700"
+          className="rounded-2xl border border-[var(--arq-border)] bg-[var(--arq-card)] px-4 py-2 text-sm font-semibold text-[var(--arq-foreground)] hover:border-violet-200 hover:text-[var(--arq-accent)]"
         >
           {loading ? "Carregando..." : "Atualizar"}
         </button>
       </div>
 
       {!loading && !items.length ? (
-        <div className="mt-5 rounded-[28px] border border-dashed border-slate-200 bg-slate-50 p-8 text-center">
-          <p className="text-sm font-semibold text-slate-700">Nenhum render encontrado</p>
-          <p className="mt-1 text-sm text-slate-500">
+        <div className="mt-5 rounded-[28px] border border-dashed border-[var(--arq-border)] bg-[var(--arq-card-soft)] p-8 text-center">
+          <p className="text-sm font-semibold text-[var(--arq-foreground)]">Nenhum render encontrado</p>
+          <p className="mt-1 text-sm text-[var(--arq-muted)]">
             Gere um render ou confirme se /arch/renders/gallery está retornando dados para este projeto.
           </p>
         </div>

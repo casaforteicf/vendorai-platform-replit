@@ -34,9 +34,9 @@ export function MaterialChangePanel({
   }
 
   return (
-    <section className="rounded-[34px] border border-slate-100 bg-white p-5 shadow-sm">
-      <p className="text-xs font-semibold uppercase tracking-wide text-violet-600">Materiais</p>
-      <h2 className="mt-1 text-xl font-semibold text-slate-950">Alteração de material por região</h2>
+    <section className="rounded-[34px] border border-[var(--arq-border)] bg-[var(--arq-card)] p-5 shadow-sm">
+      <p className="text-xs font-semibold uppercase tracking-wide text-[var(--arq-accent)]">Materiais</p>
+      <h2 className="mt-1 text-xl font-semibold text-[var(--arq-foreground)]">Alteração de material por região</h2>
 
       <div className="mt-5 grid gap-3 md:grid-cols-2">
         <Field label="Região/objeto" value={target} onChange={setTarget} placeholder="ex: bancada, armário inferior, piso" />
@@ -55,10 +55,10 @@ export function MaterialChangePanel({
 
       <div className="mt-5 space-y-2">
         {changes.map((change) => (
-          <div key={change.id} className="flex items-center justify-between gap-3 rounded-2xl bg-violet-50 px-4 py-3">
+          <div key={change.id} className="flex items-center justify-between gap-3 rounded-2xl bg-[var(--arq-card-soft)] px-4 py-3">
             <div>
               <p className="text-sm font-semibold text-violet-950">{change.target} → {change.toMaterial}</p>
-              <p className="text-xs text-violet-700">{change.notes || "Sem observação."}</p>
+              <p className="text-xs text-[var(--arq-accent)]">{change.notes || "Sem observação."}</p>
             </div>
             <button type="button" onClick={() => removeChange(change.id)} className="text-xs font-semibold text-rose-600">
               remover
@@ -83,12 +83,12 @@ function Field({
 }) {
   return (
     <label className="block">
-      <span className="text-xs font-semibold uppercase tracking-wide text-slate-400">{label}</span>
+      <span className="text-xs font-semibold uppercase tracking-wide text-[var(--arq-muted)]">{label}</span>
       <input
         value={value}
         onChange={(event) => onChange(event.target.value)}
         placeholder={placeholder}
-        className="mt-2 w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm outline-none focus:border-violet-300 focus:ring-4 focus:ring-violet-50"
+        className="mt-2 w-full rounded-2xl border border-[var(--arq-border)] bg-[var(--arq-card)] px-4 py-3 text-sm outline-none focus:border-violet-300 focus:ring-4 focus:ring-violet-50"
       />
     </label>
   );

@@ -43,14 +43,14 @@ export default function RealBudgetEngineStudio({ arqState, onNavigate }: RealBud
   } = useRealBudgetEngine(projectId, projectTitle, clientName);
 
   return (
-    <div className="min-h-screen bg-[#f7f7f8] text-slate-950">
+    <div className="min-h-screen bg-[var(--arq-background)] text-[var(--arq-foreground)]">
       <div className="mx-auto flex w-full max-w-[1760px] flex-col gap-5 px-6 py-6">
-        <header className="rounded-[34px] border border-slate-100 bg-white p-5 shadow-sm print:hidden">
+        <header className="rounded-[34px] border border-[var(--arq-border)] bg-[var(--arq-card)] p-5 shadow-sm print:hidden">
           <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
             <div>
-              <p className="text-xs font-semibold uppercase tracking-wide text-violet-600">Sprint 031 • Real Budget Engine</p>
-              <h1 className="mt-1 text-3xl font-semibold tracking-tight text-slate-950">Orçamento real + impressão corrigida</h1>
-              <p className="mt-1 text-sm text-slate-500">
+              <p className="text-xs font-semibold uppercase tracking-wide text-[var(--arq-accent)]">Sprint 031 • Real Budget Engine</p>
+              <h1 className="mt-1 text-3xl font-semibold tracking-tight text-[var(--arq-foreground)]">Orçamento real + impressão corrigida</h1>
+              <p className="mt-1 text-sm text-[var(--arq-muted)]">
                 {projectTitle} • material e mão de obra separados, itens visíveis na impressão e versão cliente/interna.
               </p>
             </div>
@@ -65,7 +65,7 @@ export default function RealBudgetEngineStudio({ arqState, onNavigate }: RealBud
               <button
                 type="button"
                 onClick={() => setViewMode(viewMode === "internal" ? "client" : "internal")}
-                className="rounded-2xl border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-700 hover:border-violet-200 hover:text-violet-700"
+                className="rounded-2xl border border-[var(--arq-border)] bg-[var(--arq-card)] px-4 py-2 text-sm font-semibold text-[var(--arq-foreground)] hover:border-violet-200 hover:text-[var(--arq-accent)]"
               >
                 Modo: {viewMode === "internal" ? "Interno" : "Cliente"}
               </button>
@@ -73,7 +73,7 @@ export default function RealBudgetEngineStudio({ arqState, onNavigate }: RealBud
               <button
                 type="button"
                 onClick={() => void reload()}
-                className="rounded-2xl border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-700 hover:border-violet-200 hover:text-violet-700"
+                className="rounded-2xl border border-[var(--arq-border)] bg-[var(--arq-card)] px-4 py-2 text-sm font-semibold text-[var(--arq-foreground)] hover:border-violet-200 hover:text-[var(--arq-accent)]"
               >
                 {loading ? "Carregando..." : "Atualizar"}
               </button>
@@ -90,7 +90,7 @@ export default function RealBudgetEngineStudio({ arqState, onNavigate }: RealBud
                 type="button"
                 onClick={() => void generateFromSpecObjects()}
                 disabled={generating}
-                className="rounded-2xl bg-violet-600 px-4 py-2 text-sm font-semibold text-white hover:bg-violet-700 disabled:opacity-50"
+                className="rounded-2xl bg-[var(--arq-accent)] px-4 py-2 text-sm font-semibold text-white hover:opacity-90 disabled:opacity-50"
               >
                 {generating ? "Gerando..." : "Gerar dos SpecObjects"}
               </button>
@@ -147,16 +147,16 @@ export default function RealBudgetEngineStudio({ arqState, onNavigate }: RealBud
               onSave={saveBudget}
             />
 
-            <section className="rounded-[34px] border border-slate-100 bg-white p-5 shadow-sm">
-              <p className="text-xs font-semibold uppercase tracking-wide text-violet-600">Ações</p>
-              <h2 className="mt-1 text-xl font-semibold text-slate-950">Enviar, aprovar e continuar fluxo</h2>
+            <section className="rounded-[34px] border border-[var(--arq-border)] bg-[var(--arq-card)] p-5 shadow-sm">
+              <p className="text-xs font-semibold uppercase tracking-wide text-[var(--arq-accent)]">Ações</p>
+              <h2 className="mt-1 text-xl font-semibold text-[var(--arq-foreground)]">Enviar, aprovar e continuar fluxo</h2>
 
               <div className="mt-5 grid gap-3">
                 <button
                   type="button"
                   disabled={!budget || sending}
                   onClick={() => void sendBudget()}
-                  className="rounded-2xl bg-violet-600 px-5 py-3 text-sm font-semibold text-white hover:bg-violet-700 disabled:opacity-50"
+                  className="rounded-2xl bg-[var(--arq-accent)] px-5 py-3 text-sm font-semibold text-white hover:opacity-90 disabled:opacity-50"
                 >
                   {sending ? "Enviando..." : "Marcar como enviado"}
                 </button>
@@ -173,7 +173,7 @@ export default function RealBudgetEngineStudio({ arqState, onNavigate }: RealBud
                 <button
                   type="button"
                   onClick={() => onNavigate?.("portal-cliente")}
-                  className="rounded-2xl border border-slate-200 bg-white px-5 py-3 text-sm font-semibold text-slate-700 hover:border-violet-200 hover:text-violet-700"
+                  className="rounded-2xl border border-[var(--arq-border)] bg-[var(--arq-card)] px-5 py-3 text-sm font-semibold text-[var(--arq-foreground)] hover:border-violet-200 hover:text-[var(--arq-accent)]"
                 >
                   Ir para portal cliente
                 </button>
@@ -188,9 +188,9 @@ export default function RealBudgetEngineStudio({ arqState, onNavigate }: RealBud
 
 function Info({ label, value }: { label: string; value: string }) {
   return (
-    <div className="rounded-3xl bg-slate-50 p-4">
-      <p className="text-xs font-semibold uppercase tracking-wide text-slate-400">{label}</p>
-      <p className="mt-1 truncate text-sm font-semibold text-slate-800">{value}</p>
+    <div className="rounded-3xl bg-[var(--arq-card-soft)] p-4">
+      <p className="text-xs font-semibold uppercase tracking-wide text-[var(--arq-muted)]">{label}</p>
+      <p className="mt-1 truncate text-sm font-semibold text-[var(--arq-foreground)]">{value}</p>
     </div>
   );
 }

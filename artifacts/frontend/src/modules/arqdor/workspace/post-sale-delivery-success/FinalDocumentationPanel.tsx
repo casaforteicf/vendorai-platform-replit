@@ -35,15 +35,15 @@ export function FinalDocumentationPanel({
   }
 
   return (
-    <section className="rounded-[34px] border border-slate-100 bg-white p-5 shadow-sm">
-      <p className="text-xs font-semibold uppercase tracking-wide text-violet-600">Documentação</p>
-      <h2 className="mt-1 text-xl font-semibold text-slate-950">Fotos finais, garantias e manuais</h2>
+    <section className="rounded-[34px] border border-[var(--arq-border)] bg-[var(--arq-card)] p-5 shadow-sm">
+      <p className="text-xs font-semibold uppercase tracking-wide text-[var(--arq-accent)]">Documentação</p>
+      <h2 className="mt-1 text-xl font-semibold text-[var(--arq-foreground)]">Fotos finais, garantias e manuais</h2>
 
       <div className="mt-5 grid gap-3 md:grid-cols-[180px_1fr_1fr_auto]">
         <select
           value={type}
           onChange={(event) => setType(event.target.value as DocumentType)}
-          className="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm outline-none focus:border-violet-300 focus:ring-4 focus:ring-violet-50"
+          className="rounded-2xl border border-[var(--arq-border)] bg-[var(--arq-card)] px-4 py-3 text-sm outline-none focus:border-violet-300 focus:ring-4 focus:ring-violet-50"
         >
           <option value="photo">Foto</option>
           <option value="video">Vídeo</option>
@@ -59,14 +59,14 @@ export function FinalDocumentationPanel({
           value={title}
           onChange={(event) => setTitle(event.target.value)}
           placeholder="Título do documento"
-          className="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm outline-none focus:border-violet-300 focus:ring-4 focus:ring-violet-50"
+          className="rounded-2xl border border-[var(--arq-border)] bg-[var(--arq-card)] px-4 py-3 text-sm outline-none focus:border-violet-300 focus:ring-4 focus:ring-violet-50"
         />
 
         <input
           value={fileUrl}
           onChange={(event) => setFileUrl(event.target.value)}
           placeholder="URL do arquivo"
-          className="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm outline-none focus:border-violet-300 focus:ring-4 focus:ring-violet-50"
+          className="rounded-2xl border border-[var(--arq-border)] bg-[var(--arq-card)] px-4 py-3 text-sm outline-none focus:border-violet-300 focus:ring-4 focus:ring-violet-50"
         />
 
         <button
@@ -79,7 +79,7 @@ export function FinalDocumentationPanel({
         </button>
       </div>
 
-      <label className="mt-3 flex items-center gap-3 rounded-2xl bg-slate-50 px-4 py-3 text-sm font-medium text-slate-700">
+      <label className="mt-3 flex items-center gap-3 rounded-2xl bg-[var(--arq-card-soft)] px-4 py-3 text-sm font-medium text-[var(--arq-foreground)]">
         <input
           type="checkbox"
           checked={visibleToClient}
@@ -90,23 +90,23 @@ export function FinalDocumentationPanel({
 
       <div className="mt-5 grid gap-4 md:grid-cols-2 xl:grid-cols-4">
         {documents.map((doc) => (
-          <article key={doc.id} className="rounded-[26px] border border-slate-100 bg-white p-4 shadow-sm">
+          <article key={doc.id} className="rounded-[26px] border border-[var(--arq-border)] bg-[var(--arq-card)] p-4 shadow-sm">
             <div className="aspect-[4/3] overflow-hidden rounded-2xl bg-slate-100">
               {doc.thumbnailUrl || doc.fileUrl ? (
                 <img src={doc.thumbnailUrl || doc.fileUrl || ""} alt={doc.title} className="h-full w-full object-cover" />
               ) : (
-                <div className="flex h-full items-center justify-center text-xs text-slate-400">{documentTypeLabel(doc.type)}</div>
+                <div className="flex h-full items-center justify-center text-xs text-[var(--arq-muted)]">{documentTypeLabel(doc.type)}</div>
               )}
             </div>
-            <p className="mt-3 text-sm font-semibold text-slate-950">{doc.title}</p>
-            <p className="mt-1 text-xs text-slate-500">
+            <p className="mt-3 text-sm font-semibold text-[var(--arq-foreground)]">{doc.title}</p>
+            <p className="mt-1 text-xs text-[var(--arq-muted)]">
               {documentTypeLabel(doc.type)} • {doc.visibleToClient ? "cliente" : "interno"}
             </p>
           </article>
         ))}
 
         {!documents.length ? (
-          <div className="rounded-[26px] border border-dashed border-slate-200 bg-slate-50 p-8 text-center text-sm text-slate-500">
+          <div className="rounded-[26px] border border-dashed border-[var(--arq-border)] bg-[var(--arq-card-soft)] p-8 text-center text-sm text-[var(--arq-muted)]">
             Nenhum documento final adicionado.
           </div>
         ) : null}

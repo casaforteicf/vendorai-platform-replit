@@ -24,10 +24,10 @@ export function SystemSummaryCards({
   return (
     <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-5">
       {cards.map((card) => (
-        <div key={card.label} className="rounded-[28px] border border-slate-100 bg-white p-5 shadow-sm">
-          <p className="text-xs font-semibold uppercase tracking-wide text-slate-400">{card.label}</p>
-          <p className="mt-2 text-2xl font-semibold text-slate-950">{card.value}</p>
-          <p className="mt-1 text-xs leading-5 text-slate-500">{card.description}</p>
+        <div key={card.label} className="rounded-[28px] border border-[var(--arq-border)] bg-[var(--arq-card)] p-5 shadow-sm">
+          <p className="text-xs font-semibold uppercase tracking-wide text-[var(--arq-muted)]">{card.label}</p>
+          <p className="mt-2 text-2xl font-semibold text-[var(--arq-foreground)]">{card.value}</p>
+          <p className="mt-1 text-xs leading-5 text-[var(--arq-muted)]">{card.description}</p>
         </div>
       ))}
     </section>

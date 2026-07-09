@@ -20,11 +20,11 @@ export function SpecObjectListPanel({
   onExtract: () => void;
 }) {
   return (
-    <section className="rounded-[34px] border border-slate-100 bg-white p-5 shadow-sm">
+    <section className="rounded-[34px] border border-[var(--arq-border)] bg-[var(--arq-card)] p-5 shadow-sm">
       <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
         <div>
-          <p className="text-xs font-semibold uppercase tracking-wide text-violet-600">SpecObjects</p>
-          <h2 className="mt-1 text-xl font-semibold text-slate-950">Objetos especificáveis persistentes</h2>
+          <p className="text-xs font-semibold uppercase tracking-wide text-[var(--arq-accent)]">SpecObjects</p>
+          <h2 className="mt-1 text-xl font-semibold text-[var(--arq-foreground)]">Objetos especificáveis persistentes</h2>
         </div>
 
         <button
@@ -38,9 +38,9 @@ export function SpecObjectListPanel({
       </div>
 
       {!loading && !items.length ? (
-        <div className="mt-5 rounded-[28px] border border-dashed border-slate-200 bg-slate-50 p-8 text-center">
-          <p className="text-sm font-semibold text-slate-700">Nenhum objeto persistido</p>
-          <p className="mt-1 text-sm text-slate-500">Crie manualmente ou extraia objetos do render aprovado.</p>
+        <div className="mt-5 rounded-[28px] border border-dashed border-[var(--arq-border)] bg-[var(--arq-card-soft)] p-8 text-center">
+          <p className="text-sm font-semibold text-[var(--arq-foreground)]">Nenhum objeto persistido</p>
+          <p className="mt-1 text-sm text-[var(--arq-muted)]">Crie manualmente ou extraia objetos do render aprovado.</p>
         </div>
       ) : null}
 
@@ -53,21 +53,21 @@ export function SpecObjectListPanel({
             className={[
               "w-full rounded-[26px] border p-4 text-left transition",
               selectedObject?.id === item.id
-                ? "border-violet-300 bg-violet-50"
-                : "border-slate-100 bg-white hover:border-violet-200",
+                ? "border-violet-300 bg-[var(--arq-card-soft)]"
+                : "border-[var(--arq-border)] bg-[var(--arq-card)] hover:border-violet-200",
             ].join(" ")}
           >
             <div className="flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
               <div>
-                <p className="text-sm font-semibold text-slate-950">{item.name}</p>
-                <p className="mt-1 text-xs text-slate-500">{item.region || "sem região"} • {item.quantity} {item.unit}</p>
+                <p className="text-sm font-semibold text-[var(--arq-foreground)]">{item.name}</p>
+                <p className="mt-1 text-xs text-[var(--arq-muted)]">{item.region || "sem região"} • {item.quantity} {item.unit}</p>
               </div>
 
               <div className="flex flex-wrap gap-2">
                 <span className={`rounded-full px-3 py-1 text-xs font-semibold ${statusClass(item.status)}`}>
                   {statusLabel(item.status)}
                 </span>
-                <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-700">
+                <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-[var(--arq-foreground)]">
                   {money(item.totalValue)}
                 </span>
               </div>
@@ -87,9 +87,9 @@ export function SpecObjectListPanel({
 
 function Info({ label, value }: { label: string; value: string }) {
   return (
-    <div className="rounded-2xl bg-slate-50 p-3">
-      <p className="text-xs text-slate-400">{label}</p>
-      <p className="mt-1 truncate text-sm font-semibold text-slate-800">{value}</p>
+    <div className="rounded-2xl bg-[var(--arq-card-soft)] p-3">
+      <p className="text-xs text-[var(--arq-muted)]">{label}</p>
+      <p className="mt-1 truncate text-sm font-semibold text-[var(--arq-foreground)]">{value}</p>
     </div>
   );
 }

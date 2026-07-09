@@ -71,11 +71,11 @@ export function SpecObjectEditorPanel({
   }
 
   return (
-    <section className="rounded-[34px] border border-slate-100 bg-white p-5 shadow-sm">
+    <section className="rounded-[34px] border border-[var(--arq-border)] bg-[var(--arq-card)] p-5 shadow-sm">
       <div className="flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
         <div>
-          <p className="text-xs font-semibold uppercase tracking-wide text-violet-600">Editor</p>
-          <h2 className="mt-1 text-xl font-semibold text-slate-950">
+          <p className="text-xs font-semibold uppercase tracking-wide text-[var(--arq-accent)]">Editor</p>
+          <h2 className="mt-1 text-xl font-semibold text-[var(--arq-foreground)]">
             {selectedObject ? "Editar SpecObject" : "Criar SpecObject"}
           </h2>
         </div>
@@ -102,19 +102,19 @@ export function SpecObjectEditorPanel({
       </div>
 
       <label className="mt-4 block">
-        <span className="text-xs font-semibold uppercase tracking-wide text-slate-400">Observações</span>
+        <span className="text-xs font-semibold uppercase tracking-wide text-[var(--arq-muted)]">Observações</span>
         <textarea
           value={form.notes || ""}
           onChange={(event) => set("notes", event.target.value)}
           rows={4}
-          className="mt-2 w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm leading-6 outline-none focus:border-violet-300 focus:ring-4 focus:ring-violet-50"
+          className="mt-2 w-full rounded-2xl border border-[var(--arq-border)] bg-[var(--arq-card)] px-4 py-3 text-sm leading-6 outline-none focus:border-violet-300 focus:ring-4 focus:ring-violet-50"
         />
       </label>
 
-      <div className="mt-5 rounded-3xl bg-slate-50 p-4">
-        <p className="text-xs font-semibold uppercase tracking-wide text-slate-400">Total do item</p>
-        <p className="mt-1 text-3xl font-semibold text-slate-950">{money(total)}</p>
-        <p className="mt-1 text-xs text-slate-500">Material + mão de obra × quantidade.</p>
+      <div className="mt-5 rounded-3xl bg-[var(--arq-card-soft)] p-4">
+        <p className="text-xs font-semibold uppercase tracking-wide text-[var(--arq-muted)]">Total do item</p>
+        <p className="mt-1 text-3xl font-semibold text-[var(--arq-foreground)]">{money(total)}</p>
+        <p className="mt-1 text-xs text-[var(--arq-muted)]">Material + mão de obra × quantidade.</p>
       </div>
 
       <div className="mt-5 grid gap-3 md:grid-cols-2">
@@ -131,7 +131,7 @@ export function SpecObjectEditorPanel({
           type="button"
           disabled={!selectedObject || sendingToBudget}
           onClick={() => selectedObject ? onSendToBudget(selectedObject) : undefined}
-          className="rounded-2xl bg-violet-600 px-5 py-3 text-sm font-semibold text-white hover:bg-violet-700 disabled:cursor-not-allowed disabled:opacity-50"
+          className="rounded-2xl bg-[var(--arq-accent)] px-5 py-3 text-sm font-semibold text-white hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
         >
           {sendingToBudget ? "Enviando..." : "Enviar para orçamento"}
         </button>
@@ -166,11 +166,11 @@ function Field({
 }) {
   return (
     <label className="block">
-      <span className="text-xs font-semibold uppercase tracking-wide text-slate-400">{label}</span>
+      <span className="text-xs font-semibold uppercase tracking-wide text-[var(--arq-muted)]">{label}</span>
       <input
         value={value}
         onChange={(event) => onChange(event.target.value)}
-        className="mt-2 w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm outline-none focus:border-violet-300 focus:ring-4 focus:ring-violet-50"
+        className="mt-2 w-full rounded-2xl border border-[var(--arq-border)] bg-[var(--arq-card)] px-4 py-3 text-sm outline-none focus:border-violet-300 focus:ring-4 focus:ring-violet-50"
       />
     </label>
   );
@@ -187,12 +187,12 @@ function NumberField({
 }) {
   return (
     <label className="block">
-      <span className="text-xs font-semibold uppercase tracking-wide text-slate-400">{label}</span>
+      <span className="text-xs font-semibold uppercase tracking-wide text-[var(--arq-muted)]">{label}</span>
       <input
         type="number"
         value={value}
         onChange={(event) => onChange(Number(event.target.value))}
-        className="mt-2 w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm outline-none focus:border-violet-300 focus:ring-4 focus:ring-violet-50"
+        className="mt-2 w-full rounded-2xl border border-[var(--arq-border)] bg-[var(--arq-card)] px-4 py-3 text-sm outline-none focus:border-violet-300 focus:ring-4 focus:ring-violet-50"
       />
     </label>
   );

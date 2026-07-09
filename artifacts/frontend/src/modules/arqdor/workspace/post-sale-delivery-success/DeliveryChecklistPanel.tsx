@@ -40,15 +40,15 @@ export function DeliveryChecklistPanel({
   }, {});
 
   return (
-    <section className="rounded-[34px] border border-slate-100 bg-white p-5 shadow-sm">
-      <p className="text-xs font-semibold uppercase tracking-wide text-violet-600">Entrega</p>
-      <h2 className="mt-1 text-xl font-semibold text-slate-950">Checklist final de entrega</h2>
+    <section className="rounded-[34px] border border-[var(--arq-border)] bg-[var(--arq-card)] p-5 shadow-sm">
+      <p className="text-xs font-semibold uppercase tracking-wide text-[var(--arq-accent)]">Entrega</p>
+      <h2 className="mt-1 text-xl font-semibold text-[var(--arq-foreground)]">Checklist final de entrega</h2>
 
       <div className="mt-5 grid gap-3 md:grid-cols-[220px_1fr_auto]">
         <select
           value={category}
           onChange={(event) => setCategory(event.target.value as ChecklistCategory)}
-          className="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm outline-none focus:border-violet-300 focus:ring-4 focus:ring-violet-50"
+          className="rounded-2xl border border-[var(--arq-border)] bg-[var(--arq-card)] px-4 py-3 text-sm outline-none focus:border-violet-300 focus:ring-4 focus:ring-violet-50"
         >
           <option value="execution">Execução</option>
           <option value="quality">Qualidade</option>
@@ -62,7 +62,7 @@ export function DeliveryChecklistPanel({
           value={label}
           onChange={(event) => setLabel(event.target.value)}
           placeholder="Novo item do checklist..."
-          className="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm outline-none focus:border-violet-300 focus:ring-4 focus:ring-violet-50"
+          className="rounded-2xl border border-[var(--arq-border)] bg-[var(--arq-card)] px-4 py-3 text-sm outline-none focus:border-violet-300 focus:ring-4 focus:ring-violet-50"
         />
 
         <button
@@ -77,12 +77,12 @@ export function DeliveryChecklistPanel({
 
       <div className="mt-5 grid gap-5 md:grid-cols-2 xl:grid-cols-3">
         {Object.entries(grouped).map(([key, list]) => (
-          <div key={key} className="rounded-[28px] bg-slate-50 p-4">
-            <p className="text-sm font-semibold text-slate-800">{checklistCategoryLabel(key as ChecklistCategory)}</p>
+          <div key={key} className="rounded-[28px] bg-[var(--arq-card-soft)] p-4">
+            <p className="text-sm font-semibold text-[var(--arq-foreground)]">{checklistCategoryLabel(key as ChecklistCategory)}</p>
 
             <div className="mt-3 space-y-2">
               {list.map((item) => (
-                <label key={item.id} className="flex items-start gap-3 rounded-2xl bg-white p-3 text-sm text-slate-700">
+                <label key={item.id} className="flex items-start gap-3 rounded-2xl bg-[var(--arq-card)] p-3 text-sm text-[var(--arq-foreground)]">
                   <input
                     type="checkbox"
                     checked={item.done}
@@ -90,11 +90,11 @@ export function DeliveryChecklistPanel({
                     className="mt-1"
                   />
                   <span>
-                    <span className={item.done ? "font-medium line-through text-slate-400" : "font-medium text-slate-800"}>
+                    <span className={item.done ? "font-medium line-through text-[var(--arq-muted)]" : "font-medium text-[var(--arq-foreground)]"}>
                       {item.label}
                     </span>
                     {item.required ? <span className="ml-2 text-xs font-semibold text-rose-500">obrigatório</span> : null}
-                    {item.notes ? <p className="mt-1 text-xs text-slate-500">{item.notes}</p> : null}
+                    {item.notes ? <p className="mt-1 text-xs text-[var(--arq-muted)]">{item.notes}</p> : null}
                   </span>
                 </label>
               ))}
@@ -103,7 +103,7 @@ export function DeliveryChecklistPanel({
         ))}
 
         {!checklist.length ? (
-          <div className="rounded-[28px] border border-dashed border-slate-200 bg-slate-50 p-8 text-center text-sm text-slate-500">
+          <div className="rounded-[28px] border border-dashed border-[var(--arq-border)] bg-[var(--arq-card-soft)] p-8 text-center text-sm text-[var(--arq-muted)]">
             Nenhum item criado. Inicie o pós-venda a partir da produção.
           </div>
         ) : null}

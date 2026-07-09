@@ -42,13 +42,13 @@ export function PortalDeliveryPanel({
   }
 
   return (
-    <section className="rounded-[34px] border border-slate-100 bg-white p-5 shadow-sm">
-      <p className="text-xs font-semibold uppercase tracking-wide text-violet-600">Envio</p>
-      <h2 className="mt-1 text-xl font-semibold text-slate-950">Portal público com token</h2>
+    <section className="rounded-[34px] border border-[var(--arq-border)] bg-[var(--arq-card)] p-5 shadow-sm">
+      <p className="text-xs font-semibold uppercase tracking-wide text-[var(--arq-accent)]">Envio</p>
+      <h2 className="mt-1 text-xl font-semibold text-[var(--arq-foreground)]">Portal público com token</h2>
 
-      <div className="mt-5 rounded-3xl bg-slate-50 p-4">
-        <p className="text-xs font-semibold uppercase tracking-wide text-slate-400">Link público</p>
-        <p className="mt-2 break-all text-sm font-medium text-slate-800">{url || "Portal ainda não ativado"}</p>
+      <div className="mt-5 rounded-3xl bg-[var(--arq-card-soft)] p-4">
+        <p className="text-xs font-semibold uppercase tracking-wide text-[var(--arq-muted)]">Link público</p>
+        <p className="mt-2 break-all text-sm font-medium text-[var(--arq-foreground)]">{url || "Portal ainda não ativado"}</p>
         <div className="mt-4 flex flex-wrap gap-2">
           <button
             type="button"
@@ -63,7 +63,7 @@ export function PortalDeliveryPanel({
             type="button"
             disabled={!url}
             onClick={copyUrl}
-            className="rounded-2xl border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-700 disabled:opacity-50"
+            className="rounded-2xl border border-[var(--arq-border)] bg-[var(--arq-card)] px-4 py-2 text-sm font-semibold text-[var(--arq-foreground)] disabled:opacity-50"
           >
             Copiar link
           </button>
@@ -76,21 +76,21 @@ export function PortalDeliveryPanel({
       </div>
 
       <label className="mt-4 block">
-        <span className="text-xs font-semibold uppercase tracking-wide text-slate-400">Mensagem</span>
+        <span className="text-xs font-semibold uppercase tracking-wide text-[var(--arq-muted)]">Mensagem</span>
         <textarea
           value={message}
           onChange={(event) => setMessage(event.target.value)}
           rows={4}
-          className="mt-2 w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm leading-6 outline-none focus:border-violet-300 focus:ring-4 focus:ring-violet-50"
+          className="mt-2 w-full rounded-2xl border border-[var(--arq-border)] bg-[var(--arq-card)] px-4 py-3 text-sm leading-6 outline-none focus:border-violet-300 focus:ring-4 focus:ring-violet-50"
         />
       </label>
 
       <div className="mt-4 grid gap-3 md:grid-cols-2">
-        <label className="flex items-center gap-3 rounded-2xl bg-slate-50 px-4 py-3 text-sm font-medium text-slate-700">
+        <label className="flex items-center gap-3 rounded-2xl bg-[var(--arq-card-soft)] px-4 py-3 text-sm font-medium text-[var(--arq-foreground)]">
           <input type="checkbox" checked={sendEmail} onChange={(event) => setSendEmail(event.target.checked)} />
           Enviar por e-mail
         </label>
-        <label className="flex items-center gap-3 rounded-2xl bg-slate-50 px-4 py-3 text-sm font-medium text-slate-700">
+        <label className="flex items-center gap-3 rounded-2xl bg-[var(--arq-card-soft)] px-4 py-3 text-sm font-medium text-[var(--arq-foreground)]">
           <input type="checkbox" checked={sendWhatsapp} onChange={(event) => setSendWhatsapp(event.target.checked)} />
           Enviar por WhatsApp
         </label>
@@ -100,7 +100,7 @@ export function PortalDeliveryPanel({
         type="button"
         disabled={!proposal || sending}
         onClick={submitSend}
-        className="mt-5 w-full rounded-2xl bg-violet-600 px-5 py-3 text-sm font-semibold text-white hover:bg-violet-700 disabled:opacity-50"
+        className="mt-5 w-full rounded-2xl bg-[var(--arq-accent)] px-5 py-3 text-sm font-semibold text-white hover:opacity-90 disabled:opacity-50"
       >
         {sending ? "Enviando..." : "Enviar proposta"}
       </button>
@@ -119,11 +119,11 @@ function Field({
 }) {
   return (
     <label className="block">
-      <span className="text-xs font-semibold uppercase tracking-wide text-slate-400">{label}</span>
+      <span className="text-xs font-semibold uppercase tracking-wide text-[var(--arq-muted)]">{label}</span>
       <input
         value={value}
         onChange={(event) => onChange(event.target.value)}
-        className="mt-2 w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm outline-none focus:border-violet-300 focus:ring-4 focus:ring-violet-50"
+        className="mt-2 w-full rounded-2xl border border-[var(--arq-border)] bg-[var(--arq-card)] px-4 py-3 text-sm outline-none focus:border-violet-300 focus:ring-4 focus:ring-violet-50"
       />
     </label>
   );

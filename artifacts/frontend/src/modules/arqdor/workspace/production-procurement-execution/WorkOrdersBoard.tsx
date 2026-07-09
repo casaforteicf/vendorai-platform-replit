@@ -23,19 +23,19 @@ export function WorkOrdersBoard({
   onStatusChange: (order: WorkOrder, status: ProductionStatus) => void;
 }) {
   return (
-    <section className="rounded-[34px] border border-slate-100 bg-white p-5 shadow-sm">
-      <p className="text-xs font-semibold uppercase tracking-wide text-violet-600">Ordens</p>
-      <h2 className="mt-1 text-xl font-semibold text-slate-950">Produção, compras e execução</h2>
+    <section className="rounded-[34px] border border-[var(--arq-border)] bg-[var(--arq-card)] p-5 shadow-sm">
+      <p className="text-xs font-semibold uppercase tracking-wide text-[var(--arq-accent)]">Ordens</p>
+      <h2 className="mt-1 text-xl font-semibold text-[var(--arq-foreground)]">Produção, compras e execução</h2>
 
       <div className="mt-5 grid gap-4 xl:grid-cols-6">
         {columns.map((column) => {
           const list = orders.filter((order) => order.status === column.status);
 
           return (
-            <div key={column.status} className="rounded-[28px] bg-slate-50 p-3">
+            <div key={column.status} className="rounded-[28px] bg-[var(--arq-card-soft)] p-3">
               <div className="mb-3 flex items-center justify-between">
-                <p className="text-sm font-semibold text-slate-800">{column.label}</p>
-                <span className="rounded-full bg-white px-2 py-1 text-xs font-semibold text-slate-500">{list.length}</span>
+                <p className="text-sm font-semibold text-[var(--arq-foreground)]">{column.label}</p>
+                <span className="rounded-full bg-[var(--arq-card)] px-2 py-1 text-xs font-semibold text-[var(--arq-muted)]">{list.length}</span>
               </div>
 
               <div className="space-y-3">
@@ -43,23 +43,23 @@ export function WorkOrdersBoard({
                   <article
                     key={order.id}
                     className={[
-                      "rounded-[24px] border bg-white p-4 shadow-sm transition",
-                      selectedOrder?.id === order.id ? "border-violet-300 ring-4 ring-violet-50" : "border-slate-100",
+                      "rounded-[24px] border bg-[var(--arq-card)] p-4 shadow-sm transition",
+                      selectedOrder?.id === order.id ? "border-violet-300 ring-4 ring-violet-50" : "border-[var(--arq-border)]",
                     ].join(" ")}
                   >
                     <button type="button" onClick={() => onSelect(order)} className="w-full text-left">
                       <div className="flex items-start justify-between gap-3">
                         <div>
-                          <p className="text-sm font-semibold text-slate-950">{order.title}</p>
-                          <p className="mt-1 text-xs text-slate-500">{typeLabel(order.type)} • {order.quantity} {order.unit}</p>
+                          <p className="text-sm font-semibold text-[var(--arq-foreground)]">{order.title}</p>
+                          <p className="mt-1 text-xs text-[var(--arq-muted)]">{typeLabel(order.type)} • {order.quantity} {order.unit}</p>
                         </div>
                         <span className={`rounded-full px-2 py-1 text-[10px] font-semibold ${priorityClass(order.priority)}`}>
                           {order.priority}
                         </span>
                       </div>
 
-                      <p className="mt-3 line-clamp-2 text-xs leading-5 text-slate-500">{order.description || order.item || "-"}</p>
-                      <p className="mt-3 text-xs text-slate-400">Prazo: {dateShort(order.plannedEnd)}</p>
+                      <p className="mt-3 line-clamp-2 text-xs leading-5 text-[var(--arq-muted)]">{order.description || order.item || "-"}</p>
+                      <p className="mt-3 text-xs text-[var(--arq-muted)]">Prazo: {dateShort(order.plannedEnd)}</p>
                     </button>
 
                     <select
@@ -82,7 +82,7 @@ export function WorkOrdersBoard({
                 ))}
 
                 {!list.length ? (
-                  <div className="rounded-[20px] border border-dashed border-slate-200 bg-white p-4 text-center text-xs text-slate-400">
+                  <div className="rounded-[20px] border border-dashed border-[var(--arq-border)] bg-[var(--arq-card)] p-4 text-center text-xs text-[var(--arq-muted)]">
                     Sem itens
                   </div>
                 ) : null}
@@ -93,8 +93,8 @@ export function WorkOrdersBoard({
       </div>
 
       {orders.some((order) => ["draft", "ready", "installed", "blocked", "cancelled"].includes(order.status)) ? (
-        <div className="mt-5 rounded-3xl bg-slate-50 p-4">
-          <p className="text-xs font-semibold uppercase tracking-wide text-slate-400">Outros status</p>
+        <div className="mt-5 rounded-3xl bg-[var(--arq-card-soft)] p-4">
+          <p className="text-xs font-semibold uppercase tracking-wide text-[var(--arq-muted)]">Outros status</p>
           <div className="mt-3 flex flex-wrap gap-2">
             {orders
               .filter((order) => ["draft", "ready", "installed", "blocked", "cancelled"].includes(order.status))

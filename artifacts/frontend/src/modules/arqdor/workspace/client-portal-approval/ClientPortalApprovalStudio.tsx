@@ -35,14 +35,14 @@ export default function ClientPortalApprovalStudio({ arqState, onNavigate }: Cli
   } = useClientPortalApproval(projectId, projectTitle, clientName, budgetId);
 
   return (
-    <div className="min-h-screen bg-[#f7f7f8] text-slate-950">
+    <div className="min-h-screen bg-[var(--arq-background)] text-[var(--arq-foreground)]">
       <div className="mx-auto flex w-full max-w-[1760px] flex-col gap-5 px-6 py-6">
-        <header className="rounded-[34px] border border-slate-100 bg-white p-5 shadow-sm">
+        <header className="rounded-[34px] border border-[var(--arq-border)] bg-[var(--arq-card)] p-5 shadow-sm">
           <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
             <div>
-              <p className="text-xs font-semibold uppercase tracking-wide text-violet-600">Sprint 032 • Client Portal Approval</p>
-              <h1 className="mt-1 text-3xl font-semibold tracking-tight text-slate-950">Proposta, portal público e aprovação do cliente</h1>
-              <p className="mt-1 text-sm text-slate-500">
+              <p className="text-xs font-semibold uppercase tracking-wide text-[var(--arq-accent)]">Sprint 032 • Client Portal Approval</p>
+              <h1 className="mt-1 text-3xl font-semibold tracking-tight text-[var(--arq-foreground)]">Proposta, portal público e aprovação do cliente</h1>
+              <p className="mt-1 text-sm text-[var(--arq-muted)]">
                 {projectTitle} • orçamento vira proposta, link público com token, aprovação por item e decisão final.
               </p>
             </div>
@@ -57,7 +57,7 @@ export default function ClientPortalApprovalStudio({ arqState, onNavigate }: Cli
               <button
                 type="button"
                 onClick={() => void reload()}
-                className="rounded-2xl border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-700 hover:border-violet-200 hover:text-violet-700"
+                className="rounded-2xl border border-[var(--arq-border)] bg-[var(--arq-card)] px-4 py-2 text-sm font-semibold text-[var(--arq-foreground)] hover:border-violet-200 hover:text-[var(--arq-accent)]"
               >
                 {loading ? "Carregando..." : "Atualizar"}
               </button>
@@ -74,7 +74,7 @@ export default function ClientPortalApprovalStudio({ arqState, onNavigate }: Cli
               <button
                 type="button"
                 onClick={() => onNavigate?.("production")}
-                className="rounded-2xl border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-700 hover:border-violet-200 hover:text-violet-700"
+                className="rounded-2xl border border-[var(--arq-border)] bg-[var(--arq-card)] px-4 py-2 text-sm font-semibold text-[var(--arq-foreground)] hover:border-violet-200 hover:text-[var(--arq-accent)]"
               >
                 Produção
               </button>
@@ -121,9 +121,9 @@ export default function ClientPortalApprovalStudio({ arqState, onNavigate }: Cli
 
 function Info({ label, value }: { label: string; value: string }) {
   return (
-    <div className="rounded-3xl bg-slate-50 p-4">
-      <p className="text-xs font-semibold uppercase tracking-wide text-slate-400">{label}</p>
-      <p className="mt-1 truncate text-sm font-semibold text-slate-800">{value}</p>
+    <div className="rounded-3xl bg-[var(--arq-card-soft)] p-4">
+      <p className="text-xs font-semibold uppercase tracking-wide text-[var(--arq-muted)]">{label}</p>
+      <p className="mt-1 truncate text-sm font-semibold text-[var(--arq-foreground)]">{value}</p>
     </div>
   );
 }

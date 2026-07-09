@@ -14,17 +14,17 @@ export function BudgetBridgePanel({
   const ready = items.filter((item) => ["specified", "priced", "approved"].includes(item.status));
 
   return (
-    <section className="rounded-[34px] border border-slate-100 bg-white p-5 shadow-sm">
-      <p className="text-xs font-semibold uppercase tracking-wide text-violet-600">Orçamento</p>
-      <h2 className="mt-1 text-xl font-semibold text-slate-950">Itens prontos para orçamento</h2>
+    <section className="rounded-[34px] border border-[var(--arq-border)] bg-[var(--arq-card)] p-5 shadow-sm">
+      <p className="text-xs font-semibold uppercase tracking-wide text-[var(--arq-accent)]">Orçamento</p>
+      <h2 className="mt-1 text-xl font-semibold text-[var(--arq-foreground)]">Itens prontos para orçamento</h2>
 
       <div className="mt-5 space-y-3">
         {ready.map((item) => (
-          <article key={item.id} className="rounded-[26px] border border-slate-100 bg-white p-4 shadow-sm">
+          <article key={item.id} className="rounded-[26px] border border-[var(--arq-border)] bg-[var(--arq-card)] p-4 shadow-sm">
             <div className="flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
               <div>
-                <p className="text-sm font-semibold text-slate-950">{item.name}</p>
-                <p className="mt-1 text-xs text-slate-500">
+                <p className="text-sm font-semibold text-[var(--arq-foreground)]">{item.name}</p>
+                <p className="mt-1 text-xs text-[var(--arq-muted)]">
                   {item.quantity} {item.unit} • material {money(item.materialValue)} • mão de obra {money(item.laborValue)}
                 </p>
               </div>
@@ -47,7 +47,7 @@ export function BudgetBridgePanel({
         ))}
 
         {!ready.length ? (
-          <div className="rounded-[26px] border border-dashed border-slate-200 bg-slate-50 p-6 text-center text-sm text-slate-500">
+          <div className="rounded-[26px] border border-dashed border-[var(--arq-border)] bg-[var(--arq-card-soft)] p-6 text-center text-sm text-[var(--arq-muted)]">
             Nenhum item pronto. Especifique produto/material e valores antes de enviar ao orçamento.
           </div>
         ) : null}

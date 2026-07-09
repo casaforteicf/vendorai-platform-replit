@@ -12,11 +12,11 @@ export function EndpointHealthPanel({
   onCheck: () => void;
 }) {
   return (
-    <section className="rounded-[34px] border border-slate-100 bg-white p-5 shadow-sm">
+    <section className="rounded-[34px] border border-[var(--arq-border)] bg-[var(--arq-card)] p-5 shadow-sm">
       <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
         <div>
-          <p className="text-xs font-semibold uppercase tracking-wide text-violet-600">APIs</p>
-          <h2 className="mt-1 text-xl font-semibold text-slate-950">Matriz de endpoints reais</h2>
+          <p className="text-xs font-semibold uppercase tracking-wide text-[var(--arq-accent)]">APIs</p>
+          <h2 className="mt-1 text-xl font-semibold text-[var(--arq-foreground)]">Matriz de endpoints reais</h2>
         </div>
 
         <button
@@ -29,9 +29,9 @@ export function EndpointHealthPanel({
         </button>
       </div>
 
-      <div className="mt-5 overflow-x-auto rounded-3xl border border-slate-100">
+      <div className="mt-5 overflow-x-auto rounded-3xl border border-[var(--arq-border)]">
         <table className="min-w-[1000px] w-full text-left text-sm">
-          <thead className="bg-slate-50 text-xs uppercase tracking-wide text-slate-400">
+          <thead className="bg-[var(--arq-card-soft)] text-xs uppercase tracking-wide text-[var(--arq-muted)]">
             <tr>
               <th className="px-4 py-3">Endpoint</th>
               <th className="px-4 py-3">Módulo</th>
@@ -42,19 +42,19 @@ export function EndpointHealthPanel({
             </tr>
           </thead>
 
-          <tbody className="divide-y divide-slate-100">
+          <tbody className="divide-y divide-[var(--arq-border)]">
             {endpoints.map((endpoint) => (
               <tr key={`${endpoint.method}-${endpoint.path}-${endpoint.moduleId}`}>
-                <td className="px-4 py-4 font-medium text-slate-800">{endpointLabel(endpoint)}</td>
-                <td className="px-4 py-4 text-slate-500">{endpoint.moduleId}</td>
-                <td className="px-4 py-4 text-slate-500">{endpoint.required ? "sim" : "não"}</td>
+                <td className="px-4 py-4 font-medium text-[var(--arq-foreground)]">{endpointLabel(endpoint)}</td>
+                <td className="px-4 py-4 text-[var(--arq-muted)]">{endpoint.moduleId}</td>
+                <td className="px-4 py-4 text-[var(--arq-muted)]">{endpoint.required ? "sim" : "não"}</td>
                 <td className="px-4 py-4">
                   <span className={`rounded-full px-3 py-1 text-xs font-semibold ${healthClass(endpoint.health)}`}>
                     {endpoint.health}
                   </span>
                 </td>
-                <td className="px-4 py-4 text-slate-500">{endpoint.lastStatus || "-"}</td>
-                <td className="px-4 py-4 text-slate-500">{endpoint.error || "-"}</td>
+                <td className="px-4 py-4 text-[var(--arq-muted)]">{endpoint.lastStatus || "-"}</td>
+                <td className="px-4 py-4 text-[var(--arq-muted)]">{endpoint.error || "-"}</td>
               </tr>
             ))}
           </tbody>
