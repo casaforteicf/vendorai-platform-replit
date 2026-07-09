@@ -372,7 +372,7 @@ router.post("/tenants/:tenantId/webhooks/zapi", async (req, res) => {
   if (msgType === "chat" || msgType === "text" || msgType === "ReceivedCallback") {
     mensagem = payload.text?.message ?? payload.body ?? "";
 
-  } else if (msgType === "audio" || msgType === "ptt") {
+  } else if (msgType === "audio" || msgType === "ptt" || msgType === "AudioCallback") {
     const url = payload.audio?.audioUrl;
     if (!url) {
       res.status(200).json({ ignored: true, reason: "audio_without_url" });
@@ -387,7 +387,7 @@ router.post("/tenants/:tenantId/webhooks/zapi", async (req, res) => {
       return;
     }
 
-  } else if (msgType === "image") {
+  } else if (msgType === "image" || msgType === "ImageCallback") {
     const url = payload.image?.imageUrl;
     if (!url) {
       res.status(200).json({ ignored: true, reason: "image_without_url" });
@@ -402,7 +402,7 @@ router.post("/tenants/:tenantId/webhooks/zapi", async (req, res) => {
       return;
     }
 
-  } else if (msgType === "document") {
+  } else if (msgType === "document" || msgType === "DocumentCallback") {
     const url = payload.document?.documentUrl;
     if (!url) {
       res.status(200).json({ ignored: true, reason: "document_without_url" });
@@ -429,7 +429,11 @@ router.post("/tenants/:tenantId/webhooks/zapi", async (req, res) => {
 
   } else {
     // Unsupported message type (video, sticker, location, etc.)
-    req.log.info({ type: msgType }, "zapi-webhook: unsupported message type");
+    // Log the full type received so future Z-API callback name mismatches are easy to diagnose
+    req.log.info(
+      { type: msgType, phone: payload.phone, knownTypes: "chat|text|ReceivedCallback|audio|ptt|AudioCallback|image|ImageCallback|document|DocumentCallback" },
+      "zapi-webhook: unsupported message type — add to handler if this is a Z-API *Callback name"
+    );
     res.status(200).json({ ignored: true, reason: `unsupported_type_${msgType}` });
     return;
   }
