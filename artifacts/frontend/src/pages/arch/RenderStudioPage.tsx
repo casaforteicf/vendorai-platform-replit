@@ -522,7 +522,13 @@ function CanvasTabs({ activeTab, onTab }: { activeTab: string; onTab: (t: string
         return (
           <button
             key={tab}
-            onClick={() => onTab(tab)}
+            onClick={() => {
+              onTab(tab);
+              // Abas sem painel implementado ainda: garantir feedback visual explícito
+              if (tab !== "Storyboard") {
+                toast({ description: `Aba ${tab} em desenvolvimento` });
+              }
+            }}
             style={{
               padding: "0 12px", height: "100%", border: "none", background: "transparent",
               cursor: "pointer", fontSize: 11, fontWeight: isActive ? 700 : 500,
