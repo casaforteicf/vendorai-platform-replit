@@ -356,12 +356,22 @@ router.post("/tenants/:tenantId/webhooks/zapi", async (req, res) => {
   // IMPORTANT: Z-API may send audio/ptt callbacks with isMessage=false even
   // when they are legitimate inbound customer messages. We therefore:
   //   a) always log the discard reason + payload.type so nothing is invisible
-  //   b) allow audio/ptt/AudioCallback through even when isMessage is falsy,
-  //      because the Z-API audio callback format differs from text callbacks.
+  //   b) allow all media types through even when isMessage is falsy,
+  //      because Z-API callback format for media differs from text callbacks.
   //   c) still block fromMe=true for all types (prevents bot self-echo loop).
 
   const earlyType = payload.type ?? "unknown";
-  const isAudioType = earlyType === "audio" || earlyType === "ptt" || earlyType === "AudioCallback";
+
+  // Z-API sends media callbacks (audio, image, document, video) with isMessage=false
+  // even when they are legitimate inbound customer messages. Bypass the isMessage
+  // guard for all known media types so they reach the correct handler.
+  const ZAPI_MEDIA_TYPES = new Set([
+    "audio", "ptt", "AudioCallback",
+    "image", "ImageCallback",
+    "document", "DocumentCallback",
+    "video", "VideoCallback",
+  ]);
+  const isMediaType = ZAPI_MEDIA_TYPES.has(earlyType);
 
   if (payload.fromMe === true) {
     req.log.info(
@@ -373,12 +383,12 @@ router.post("/tenants/:tenantId/webhooks/zapi", async (req, res) => {
   }
 
   if (payload.isMessage === false) {
-    if (isAudioType) {
-      // Z-API audio callbacks often arrive with isMessage=false.
-      // Log a warning but DO NOT discard — let it reach the audio handler.
+    if (isMediaType) {
+      // Z-API media callbacks often arrive with isMessage=false.
+      // Log a warning but DO NOT discard — let it reach the type handler.
       req.log.warn(
-        { reason: "isMessage_false_but_audio_type_allowed", type: earlyType, phone: payload.phone },
-        "zapi-webhook: isMessage=false on audio type — allowing through (Z-API quirk)"
+        { reason: "isMessage_false_but_media_type_allowed", type: earlyType, phone: payload.phone },
+        "zapi-webhook: isMessage=false on media type — allowing through (Z-API quirk)"
       );
     } else {
       req.log.info(
