@@ -369,7 +369,7 @@ router.post("/tenants/:tenantId/webhooks/zapi", async (req, res) => {
 
   const msgType = payload.type ?? "chat";
 
-  if (msgType === "chat" || msgType === "text") {
+  if (msgType === "chat" || msgType === "text" || msgType === "ReceivedCallback") {
     mensagem = payload.text?.message ?? payload.body ?? "";
 
   } else if (msgType === "audio" || msgType === "ptt") {
