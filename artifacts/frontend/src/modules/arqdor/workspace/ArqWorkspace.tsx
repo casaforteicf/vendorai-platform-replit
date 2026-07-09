@@ -75,6 +75,7 @@ import IntegrationAutomationStudio from './integration-automation-studio/Integra
 import SystemConsolidationStudio from './system-consolidation-studio/SystemConsolidationStudio'
 import RealRenderGalleryStudio from './real-render-gallery/RealRenderGalleryStudio'
 import RealSpecificationCatalogStudio from './real-specification-catalog/RealSpecificationCatalogStudio'
+import RealBudgetEngineStudio from './real-budget-engine/RealBudgetEngineStudio'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 export type ModuleId =
@@ -114,6 +115,7 @@ export type ModuleId =
   | 'consolidation' | 'system-consolidation' | 'real-integration'
   | 'real-render-gallery' | 'render-gallery' | 'post-render'
   | 'real-specification' | 'spec-catalog' | 'spec-objects'
+  | 'real-budget' | 'orcamento-real' | 'budget-engine'
 
 export type JourneyId = 'create' | 'design' | 'visualize' | 'deliver' | 'business'
 
@@ -244,6 +246,9 @@ const MODULE_MAP_INTERNAL: Record<ModuleId, { icon:string; label:string }> = {
   'real-specification':  { icon:'📐', label:'Spec Catalog'              },
   'spec-catalog':        { icon:'📐', label:'Spec Catalog'              },
   'spec-objects':        { icon:'📐', label:'SpecObjects'               },
+  'real-budget':         { icon:'💰', label:'Budget Engine'             },
+  'orcamento-real':      { icon:'💰', label:'Orçamento Real'            },
+  'budget-engine':       { icon:'💰', label:'Budget Engine'             },
 }
 
 // ─── Legado: Journeys (keyboard shortcuts 1–5) ────────────────────────────────
@@ -474,6 +479,9 @@ function renderModule(id: ModuleId, arqState: ArqProjectState, setActive: (m: Mo
     case 'real-specification':
     case 'spec-catalog':
     case 'spec-objects': return <RealSpecificationCatalogStudio arqState={arqState} onNavigate={m => setActive(m as ModuleId)} />
+    case 'real-budget':
+    case 'orcamento-real':
+    case 'budget-engine': return <RealBudgetEngineStudio arqState={arqState} onNavigate={m => setActive(m as ModuleId)} />
     case 'ecosystem':     return <EcosystemModule/>
     case 'knowledge':     return <KnowledgeModule/>
     case 'office':        return <OfficeModule/>

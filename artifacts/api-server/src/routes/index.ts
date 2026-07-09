@@ -59,6 +59,7 @@ import construcaoRouter from "./construcao";
 import archRouter, { archPublicRouter } from "./arch";
 import { archAiRenderRouter } from "./arch_ai_render";
 import archSpecObjectsRouter from "./arch_spec_objects";
+import archBudgetEngineRouter from "./arch_budget_engine";
 import financeiroObraRouter from "./financeiro_obra";
 import portalRouter from "./portal";
 import varejoRouter from "./varejo";
@@ -270,6 +271,7 @@ router.use(partnerProspectorRouter);
 // Arch Hub
 router.use(archRouter);
 router.use(archSpecObjectsRouter);
+router.use(archBudgetEngineRouter);
 
 // Beauty (Salão de Beleza) Hub
 router.use(sdrTemplatesRouter);
