@@ -75,7 +75,7 @@ export type ModuleId =
   | 'orcamento' | 'orcamento-pro'
   | 'ux-alignment'
   | 'specification' | 'especificacao-produto'
-  | 'production' | 'producao'
+  | 'production' | 'producao' | 'production-studio'
   | 'budget'
   | 'procurement' | 'compras'
   | 'marketplace' | 'arq-marketplace'
@@ -145,6 +145,7 @@ const MODULE_MAP_INTERNAL: Record<ModuleId, { icon:string; label:string }> = {
   'especificacao-produto': { icon:'📦', label:'Spec. Produto' },
   'production': { icon:'🏭', label:'Produção'         },
   'producao':   { icon:'🏭', label:'Produção'         },
+  'production-studio': { icon:'🏭', label:'Production Studio' },
   'budget':      { icon:'💰', label:'Orçamento'        },
   'procurement':     { icon:'🛒', label:'Compras'          },
   'compras':         { icon:'🛒', label:'Compras'          },
@@ -390,9 +391,10 @@ function renderModule(id: ModuleId, arqState: ArqProjectState, setActive: (m: Mo
     case 'api-inventory':    return <MockApiInventoryCenter onNavigate={m => setActive(m as ModuleId)} />
     case 'ecosystem':     return <EcosystemModule/>
     case 'knowledge':     return <KnowledgeModule/>
-    case 'office':
+    case 'office':        return <OfficeModule/>
     case 'production':
-    case 'producao':      return <ProductionStudio arqState={arqState} onNavigate={m => setActive(m as ModuleId)} />
+    case 'producao':
+    case 'production-studio': return <ProductionStudio arqState={arqState} onNavigate={m => setActive(m as ModuleId)} />
     case 'orcamento':
     case 'budget':        return <ExecutiveBudgetStudio arqState={arqState} onNavigate={m => setActive(m as ModuleId)} />
     case 'procurement':
