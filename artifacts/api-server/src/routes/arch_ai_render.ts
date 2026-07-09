@@ -195,6 +195,44 @@ archAiRenderRouter.get("/arch/ai-render/:id", authenticate, async (req: Request,
   });
 });
 
+// ── POST /api/arch/ai-render/:id/approve — Aprova versão concluída ────────────
+
+archAiRenderRouter.post("/arch/ai-render/:id/approve", authenticate, async (req: Request, res: Response) => {
+  const tid = tenantId(req);
+  if (!tid) return res.status(403).json({ success: false, error: "Tenant não identificado" });
+
+  const [render] = await (db as any)
+    .select()
+    .from(archAiRendersTable)
+    .where(and(
+      eq(archAiRendersTable.id,       req.params["id"] as string),
+      eq(archAiRendersTable.tenantId, tid as string),
+    ))
+    .limit(1);
+
+  if (!render) return res.status(404).json({ success: false, error: "Render não encontrado" });
+  if (render.status !== "concluido") {
+    return res.status(400).json({ success: false, error: "Apenas renders concluídos podem ser aprovados" });
+  }
+
+  const [updated] = await db
+    .update(archAiRendersTable)
+    .set({ versionTag: "aprovado" })
+    .where(and(
+      eq(archAiRendersTable.id,       req.params["id"] as string),
+      eq(archAiRendersTable.tenantId, tid as string),
+    ))
+    .returning();
+
+  return res.json({
+    success:          true,
+    render_id:        updated?.id ?? render.id,
+    status:           updated?.status ?? render.status,
+    result_image_url: updated?.resultImageUrl ?? render.resultImageUrl,
+    version_tag:      updated?.versionTag ?? "aprovado",
+  });
+});
+
 // ── POST /api/arch/ai-render/:id/adjust — Ajuste pós-geração ─────────────────
 
 archAiRenderRouter.post("/arch/ai-render/:id/adjust", authenticate, async (req: Request, res: Response) => {

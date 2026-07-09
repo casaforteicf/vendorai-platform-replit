@@ -72,6 +72,28 @@ function fileToDataUrl(file: File): Promise<string> {
   });
 }
 
+async function waitForRenderCompletion(renderId: string, timeoutAttempts = 90) {
+  let attempts = 0;
+
+  while (attempts < timeoutAttempts) {
+    await new Promise((r) => setTimeout(r, 2000));
+
+    const data = await apiGet(`/api/arch/ai-render/${renderId}`);
+
+    if (data.status === "concluido" && data.result_image_url) {
+      return data;
+    }
+
+    if (data.status === "erro") {
+      throw new Error(data.erro_msg ?? "Erro no processamento do render");
+    }
+
+    attempts++;
+  }
+
+  throw new Error("Tempo esgotado aguardando o render.");
+}
+
 // ─── Design tokens ────────────────────────────────────────────────────────────
 
 const T = {
@@ -389,26 +411,18 @@ function OriginalRenderWorkspaceInner() {
     setRenderId(null);
     try {
       const { render_id } = await apiPost("/api/arch/ai-render", {
+        project_id: arq.projectId ?? undefined,
         original_image_url: imageDataUrl,
         mode: "preservar",
         ambiente: ambiente.toLowerCase().replace(/\s+/g, "_"),
+        user_notes: "Preservar absolutamente o projeto, medidas, câmera, perspectiva, layout, marcenaria, circulação, aberturas e proporções. Alterar somente a qualidade visual do render.",
       });
+
       setRenderId(render_id);
 
-      let attempts = 0;
-      while (attempts < 90) {
-        await new Promise((r) => setTimeout(r, 2000));
-        const data = await apiGet(`/api/arch/ai-render/${render_id}`);
-        if (data.status === "concluido" && data.result_image_url) {
-          setRenderUrl(data.result_image_url);
-          setVersions([{ id: render_id, url: data.result_image_url, label: "Versão 1" }]);
-          setLoading(false);
-          return;
-        }
-        if (data.status === "erro") throw new Error(data.erro_msg ?? "Erro no processamento");
-        attempts++;
-      }
-      throw new Error("Tempo esgotado aguardando o render.");
+      const data = await waitForRenderCompletion(render_id);
+      setRenderUrl(data.result_image_url);
+      setVersions([{ id: render_id, url: data.result_image_url, label: "Versão 1 · Original" }]);
     } catch (e: unknown) {
       setErr(e instanceof Error ? e.message : "Erro ao gerar render.");
     } finally {
@@ -478,24 +492,35 @@ function OriginalRenderWorkspaceInner() {
     setLoading(true);
     setErr(null);
     try {
-      const data = await apiPost(`/api/arch/ai-render/${renderId}/adjust`, {
-        mode: melhoriaMode,
-        prompt: melhoriaPrompt.trim(),
+      const { render_id } = await apiPost(`/api/arch/ai-render/${renderId}/adjust`, {
+        ajuste_prompt: [
+          melhoriaMode === "change-material" ? "Alteração de material solicitada." : null,
+          melhoriaMode === "change-lighting" ? "Ajuste de iluminação solicitado." : null,
+          melhoriaPrompt.trim(),
+          "Preservar absolutamente medidas, câmera, perspectiva, layout, marcenaria, circulação e proporções. Criar nova versão sem substituir a original.",
+        ].filter(Boolean).join(" "),
+        mask_zones: melhoriaMode === "change-material" ? ["material"] : [],
         createNewVersion: true,
         preserveGeometry: true,
         preserveCamera: true,
       });
-      const newRender = data.render ?? data.data ?? data;
-      const newId  = newRender.id ?? newRender.render_id ?? renderId;
-      const newUrl = newRender.result_image_url ?? newRender.imageUrl ?? renderUrl;
-      if (newUrl) {
-        setRenderUrl(newUrl);
-        setRenderId(newId);
-        setVersions((v) => [
-          { id: newId, url: newUrl, label: `Versão ${v.length + 1}` },
-          ...v,
-        ]);
-      }
+
+      const data = await waitForRenderCompletion(render_id);
+
+      setRenderUrl(data.result_image_url);
+      setRenderId(render_id);
+      setVersions((v) => [
+        {
+          id: render_id,
+          url: data.result_image_url,
+          label: `Versão ${v.length + 1} · ${
+            melhoriaMode === "change-material" ? "Material" :
+            melhoriaMode === "change-lighting" ? "Iluminação" :
+            "Melhoria"
+          }`,
+        },
+        ...v,
+      ]);
       go("versao");
     } catch (e: unknown) {
       setErr(e instanceof Error ? e.message : "Erro ao aplicar melhoria.");
@@ -656,15 +681,14 @@ function OriginalRenderWorkspaceInner() {
 
   // ── Step: Especificação ───────────────────────────────────────────────────
   async function handleSendToSpec() {
-    if (!renderId || !arq.projectId) return;
+    if (!renderId || !arq.projectId || !renderUrl) return;
     setLoading(true);
     setErr(null);
     try {
-      await apiPost(`/api/arch/ai-render/${renderId}/send-to-specification`, {
+      await apiPost(`/api/arch/specification/analyze`, {
         renderId,
-        projectId: arq.projectId,
-        extractObjects: true,
-        preservePrompt: true,
+        projetoId: arq.projectId,
+        imageUrl: renderUrl,
       });
       setSpecDone(true);
     } catch (e: unknown) {
@@ -708,8 +732,8 @@ function OriginalRenderWorkspaceInner() {
               }}>
                 Novo render
               </Btn>
-              <Btn onClick={() => setLocation("/arch/especificacoes")}>
-                Ver especificações →
+              <Btn onClick={() => setLocation(`/arch/projetos/${arq.projectId}`)}>
+                Ver projeto →
               </Btn>
             </div>
           </div>
