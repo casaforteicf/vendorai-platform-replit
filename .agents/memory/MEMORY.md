@@ -35,3 +35,4 @@
 - [activity_tipo enum drift](activity-tipo-enum-drift.md) — Postgres enum real no Supabase pode estar dessincronizado do TS schema; sempre comparar via pg_enum antes de considerar migração de enum completa.
 - [Pós-venda feedback de entrega](post-venda-feedback-entrega.md) — pergunta de satisfação pós-entrega classificada por IA (não keyword); positivo pede avaliação Google só se tenant configurou link; negativo registra motivo em 2 turnos.
 - [OpenAPI enum mirrors DB pgEnum](openapi-enum-mirrors-db-enum.md) — nova value em pgEnum (ex: deal_etapa) precisa ser adicionada manualmente ao enum do OpenAPI + codegen, senão frontend quebra TS2322.
+- [ARQDOR Render Studio layout](arqdor-render-studio-layout.md) — IDE de 4 painéis (topbar+sidebar+canvas+right panel+bottom+footer) em RenderStudioPage.tsx; toda lógica de API preservada; FullscreenProtectedRoute oculta sidebar global.

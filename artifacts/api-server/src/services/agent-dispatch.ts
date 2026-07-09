@@ -6,7 +6,7 @@
  *   - routes/webhooks.ts  (fire-and-forget after WhatsApp message insert)
  *   - jobs/scheduler.ts   (campaign message dispatch)
  */
-import { and, desc, eq, isNull, or } from "drizzle-orm";
+import { and, desc, eq, gte, isNull, or } from "drizzle-orm";
 import type { Logger } from "pino";
 import {
   db,
@@ -66,9 +66,10 @@ function hasOverdueCharge(deals: Deal[]): boolean {
 
 /**
  * Determines which agent should handle an incoming message based on:
- *  1. churnRisk >= 60  → reactivation (highest priority) — BUT skipped when an active
- *     deal is in progress (qualificado/proposta/negociacao) or an agent replied
- *     within the last 4 hours (mid-conversation gap ≠ churn).
+ *  1. churnRisk >= 60  → reactivation (highest priority) — BUT skipped when:
+ *     (a) deal in qualificado/proposta/negociacao/ganho (active negotiation or won), OR
+ *     (b) agent replied within the last 4h (mid-conversation gap ≠ churn), OR
+ *     (c) lead sent a message within the past 24h (not truly inactive).
  *  2. lead.status === "novo" → sdr
  *  3. lead.status === "cliente" → refinamento: cobrança vencida > dúvida financeira (LLM) > service
  *  4. open deal etapa  → closer when deal is advancing
@@ -86,24 +87,50 @@ export async function determineAgent(
   recentMessages?: Message[],
 ): Promise<AgentName> {
   // 1. High churn risk → reactivation agent
-  //    Guard: do NOT switch to cold-reactivation if there is an ongoing conversation:
-  //    (a) any active deal in an advanced stage, OR
-  //    (b) an agent already replied within the last 4 hours.
+  //    Guards: do NOT switch to cold-reactivation if there is an ongoing conversation.
   if (ci?.churnRisk !== null && ci?.churnRisk !== undefined && ci.churnRisk >= 60) {
+    // (a) Active deal in an advanced or completed stage
     const hasAdvancedDeal = deals.some(
-      (d) => d.etapa === "qualificado" || d.etapa === "proposta" || d.etapa === "negociacao",
+      (d) => d.etapa === "qualificado" || d.etapa === "proposta" || d.etapa === "negociacao" || d.etapa === "ganho",
     );
+
+    // (b) Agent already replied within the last 4 hours (mid-conversation short gap ≠ churn)
     const fourHoursAgo = Date.now() - 4 * 60 * 60 * 1000;
     const hasRecentAgentActivity = (recentMessages ?? []).some(
       (m) => m.enviadoPor === "agente_ia" && new Date(m.createdAt).getTime() > fourHoursAgo,
     );
-    if (hasAdvancedDeal || hasRecentAgentActivity) {
+
+    // (c) Lead was genuinely active within the past 24h — reactivation is only valid after
+    //     real inactivity (≥24h silence from the lead before this message).
+    //     Look at the previous lead message (before the current trigger) to measure the gap.
+    const msgs = recentMessages ?? [];
+    const leadMsgs = msgs.filter((m) => m.enviadoPor === "lead");
+    // leadMsgs is in chronological order; the last entry is the current trigger.
+    // The previous lead message (second-to-last) reveals pre-trigger inactivity.
+    const prevLeadMsg = leadMsgs.length >= 2 ? leadMsgs[leadMsgs.length - 2] : null;
+    const twentyFourHoursAgo = Date.now() - 24 * 60 * 60 * 1000;
+    const leadWasRecentlyActive = prevLeadMsg != null &&
+      new Date(prevLeadMsg.createdAt).getTime() > twentyFourHoursAgo;
+
+    if (hasAdvancedDeal || hasRecentAgentActivity || leadWasRecentlyActive) {
       log.info(
-        { tenantId, leadId: lead.id, churnRisk: ci.churnRisk, hasAdvancedDeal, hasRecentAgentActivity },
+        {
+          tenantId,
+          leadId: lead.id,
+          churnRisk: ci.churnRisk,
+          hasAdvancedDeal,
+          hasRecentAgentActivity,
+          leadWasRecentlyActive,
+          daysSinceContact,
+        },
         "determineAgent: churnRisk >= 60 but active conversation/deal detected — skipping reactivation",
       );
       // Fall through to normal routing below
     } else {
+      log.info(
+        { tenantId, leadId: lead.id, churnRisk: ci.churnRisk, daysSinceContact },
+        "determineAgent: churnRisk >= 60 with real inactivity — routing to reactivation",
+      );
       return "reactivation";
     }
   }
@@ -529,6 +556,33 @@ export async function processAgentInternal(params: {
     const buildPrompt = PROMPT_BUILDERS[resolvedAgentName];
     const scenario = params.scenario ?? null;
 
+    // For reactivation: enrich scenario with DB-sourced hasActiveProposal flag.
+    // Checks proposals created in the last 72h — more reliable than scanning recentMessages.
+    let enrichedScenario: Record<string, unknown> | null = scenario
+      ? { ...(scenario as Record<string, unknown>) }
+      : null;
+    if (resolvedAgentName === "reactivation") {
+      const seventyTwoHoursAgo = new Date(Date.now() - 72 * 60 * 60 * 1000);
+      const [recentProposal] = await db
+        .select({ id: propostasTable.id })
+        .from(propostasTable)
+        .where(
+          and(
+            eq(propostasTable.leadId, leadId),
+            eq(propostasTable.tenantId, tenantId),
+            or(eq(propostasTable.status, "enviada"), eq(propostasTable.status, "pendente")),
+            gte(propostasTable.createdAt, seventyTwoHoursAgo),
+          ),
+        )
+        .limit(1);
+      const hasActiveProposal = recentProposal != null;
+      enrichedScenario = { ...(enrichedScenario ?? {}), hasActiveProposal };
+      log.info(
+        { leadId, tenantId, hasActiveProposal },
+        "dispatch: reactivation hasActiveProposal computed from DB (last 72h)",
+      );
+    }
+
     // Resolve DB-driven system prompt override
     let dispatchSystemPrompt: string | null = null;
     const dispatchAgentKey = AGENT_NAME_TO_KEY[resolvedAgentName];
@@ -542,7 +596,7 @@ export async function processAgentInternal(params: {
     }
 
     // Inject handoff context at the start of the system prompt if available
-    const baseSystemContent = buildPrompt(resolvedAgentCfg?.prompt, ctx, scenario, dispatchSystemPrompt);
+    const baseSystemContent = buildPrompt(resolvedAgentCfg?.prompt, ctx, enrichedScenario, dispatchSystemPrompt);
     const systemContent = handoffContextForPrompt
       ? `## Contexto recebido do agente anterior:\n${handoffContextForPrompt}\n\n---\n\n${baseSystemContent}`
       : baseSystemContent;

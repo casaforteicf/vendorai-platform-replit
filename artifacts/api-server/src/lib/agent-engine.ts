@@ -741,11 +741,11 @@ export function buildReactivationPrompt(customPrompt: string | undefined, ctx: A
     );
     if (customPrompt?.trim()) parts.push("## INSTRUÇÕES DA EMPRESA\n" + customPrompt.trim());
   } else {
-    // Detect if an active proposal/quote is present in the recent message history.
-    // auto-quote messages are stored with agentName = "auto-quote", direcao = "saida".
-    const hasActiveProposal = ctx.recentMessages.some(
-      (m) => m.agentName === "auto-quote" && m.direcao === "saida",
-    );
+    // Prefer DB-sourced flag from scenario (set by dispatch via 72h proposal query);
+    // fall back to scanning recent messages for an auto-quote output as a last resort.
+    const hasActiveProposal =
+      (_scenario as Record<string, unknown> | null | undefined)?.hasActiveProposal === true ||
+      ctx.recentMessages.some((m) => m.agentName === "auto-quote" && m.direcao === "saida");
 
     if (hasActiveProposal) {
       // The lead is asking about a real proposal that was just generated.
