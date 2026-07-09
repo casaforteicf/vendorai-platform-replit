@@ -61,6 +61,7 @@ import { archAiRenderRouter } from "./arch_ai_render";
 import archSpecObjectsRouter from "./arch_spec_objects";
 import archBudgetEngineRouter from "./arch_budget_engine";
 import archClientPortalApprovalRouter from "./arch_client_portal_approval";
+import archProductionProcurementRouter from "./arch_production_procurement";
 import financeiroObraRouter from "./financeiro_obra";
 import portalRouter from "./portal";
 import varejoRouter from "./varejo";
@@ -274,6 +275,7 @@ router.use(archRouter);
 router.use(archSpecObjectsRouter);
 router.use(archBudgetEngineRouter);
 router.use(archClientPortalApprovalRouter);
+router.use(archProductionProcurementRouter);
 
 // Beauty (Salão de Beleza) Hub
 router.use(sdrTemplatesRouter);

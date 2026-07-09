@@ -77,6 +77,7 @@ import RealRenderGalleryStudio from './real-render-gallery/RealRenderGalleryStud
 import RealSpecificationCatalogStudio from './real-specification-catalog/RealSpecificationCatalogStudio'
 import RealBudgetEngineStudio from './real-budget-engine/RealBudgetEngineStudio'
 import ClientPortalApprovalStudio from './client-portal-approval/ClientPortalApprovalStudio'
+import ProductionProcurementExecutionStudio from './production-procurement-execution/ProductionProcurementExecutionStudio'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 export type ModuleId =
@@ -118,6 +119,7 @@ export type ModuleId =
   | 'real-specification' | 'spec-catalog' | 'spec-objects'
   | 'real-budget' | 'orcamento-real' | 'budget-engine'
   | 'client-portal-approval' | 'proposal-delivery' | 'portal-aprovacao'
+  | 'execution' | 'production-procurement'
 
 export type JourneyId = 'create' | 'design' | 'visualize' | 'deliver' | 'business'
 
@@ -254,6 +256,8 @@ const MODULE_MAP_INTERNAL: Record<ModuleId, { icon:string; label:string }> = {
   'client-portal-approval': { icon:'🤝', label:'Portal Cliente'          },
   'proposal-delivery':   { icon:'🤝', label:'Envio de Proposta'         },
   'portal-aprovacao':    { icon:'🤝', label:'Portal Aprovação'          },
+  'execution':           { icon:'⚙️', label:'Execução'                  },
+  'production-procurement': { icon:'⚙️', label:'Produção & Compras'      },
 }
 
 // ─── Legado: Journeys (keyboard shortcuts 1–5) ────────────────────────────────
@@ -490,6 +494,8 @@ function renderModule(id: ModuleId, arqState: ArqProjectState, setActive: (m: Mo
     case 'client-portal-approval':
     case 'proposal-delivery':
     case 'portal-aprovacao': return <ClientPortalApprovalStudio arqState={arqState} onNavigate={m => setActive(m as ModuleId)} />
+    case 'execution':
+    case 'production-procurement': return <ProductionProcurementExecutionStudio arqState={arqState} onNavigate={m => setActive(m as ModuleId)} />
     case 'ecosystem':     return <EcosystemModule/>
     case 'knowledge':     return <KnowledgeModule/>
     case 'office':        return <OfficeModule/>
