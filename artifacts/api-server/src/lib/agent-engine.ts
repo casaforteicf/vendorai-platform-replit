@@ -518,6 +518,27 @@ export function buildLeadSection(lead: Lead): string {
   if (lead.orcamento)        lines.push(`Orçamento: ${lead.orcamento}`);
   if (lead.planoRecomendado) lines.push(`Plano recomendado: ${lead.planoRecomendado}`);
   if (lead.proximaAcao)      lines.push(`Próxima ação sugerida: ${lead.proximaAcao}`);
+
+  // Qualification data collected from conversation (persistent across message window)
+  const dd = lead.discoveryData as Record<string, unknown> | null | undefined;
+  if (dd && Object.keys(dd).length > 0) {
+    const LABELS: Record<string, string> = {
+      numero_funcionarios: "Nº de funcionários",
+      segmento:            "Segmento/setor",
+      crm_atual:           "CRM atual",
+      faturamento:         "Faturamento",
+      objetivo:            "Objetivo",
+      dor_principal:       "Dor principal",
+      orcamento:           "Orçamento disponível",
+      urgencia:            "Urgência",
+      canal_preferido:     "Canal preferido",
+    };
+    const items = Object.entries(dd)
+      .map(([k, v]) => `  ${LABELS[k] ?? k}: ${String(v)}`)
+      .join("\n");
+    lines.push(`Qualificação coletada (NÃO repita estas perguntas):\n${items}`);
+  }
+
   return lines.join("\n");
 }
 
@@ -544,7 +565,12 @@ export function buildSdrPrompt(customPrompt: string | undefined, ctx: AgentConte
       "- Responda em português brasileiro\n" +
       "- Máximo 3 parágrafos curtos\n" +
       "- Nunca invente informações sobre produtos ou preços\n" +
-      "- Se houver interesse claro, sugira agendar uma conversa com o time"
+      "- Se houver interesse claro, sugira agendar uma conversa com o time\n" +
+      "- QUALIFICAÇÃO: verifique sempre a seção 'Qualificação coletada' no perfil do lead. " +
+      "NUNCA repita uma pergunta cujo campo já esteja preenchido ali. " +
+      "Pergunte apenas o que ainda não foi respondido — avance a conversa para o próximo passo assim que tiver as informações essenciais.\n" +
+      "- VALORES MONETÁRIOS: ao mencionar faturamento, orçamento ou qualquer valor financeiro na conversa, " +
+      "use SEMPRE o formato brasileiro: R$ X.XXX,00 (ex: R$ 100.000,00). Nunca mencione o número cru."
     );
     if (customPrompt?.trim()) parts.push("## INSTRUÇÕES DA EMPRESA\n" + customPrompt.trim());
   }
@@ -715,22 +741,46 @@ export function buildReactivationPrompt(customPrompt: string | undefined, ctx: A
     );
     if (customPrompt?.trim()) parts.push("## INSTRUÇÕES DA EMPRESA\n" + customPrompt.trim());
   } else {
-    parts.push(
-      "Você é um agente de reativação de relacionamento comercial.\n" +
-      "Missão: reabrir contato com um lead inativo de forma calorosa e natural — como se fosse um amigo ou colega de negócios que não se fala há algum tempo.\n" +
-      "Regras ESTRITAS para esta mensagem de abertura:\n" +
-      "- Responda em português brasileiro, tom leve, caloroso e genuíno\n" +
-      "- MÁXIMO 2 frases — seja breve e direto\n" +
-      "- Cumprimente pelo nome de forma descontraída\n" +
-      "- Faça UMA pergunta aberta e simples sobre como o lead está (ex: 'como você está?', 'como andam as coisas?', 'sumiu um pouco, tudo bem?')\n" +
-      "- NÃO mencione produto, solução, serviço, demonstração, reunião, proposta ou qualquer oferta\n" +
-      "- NÃO diga que 'percebeu que faz tempo' ou que está 'entrando em contato pois notou inatividade' — isso soa automático\n" +
-      "- NÃO tente puxar o lead para uma conversa comercial nesta mensagem\n" +
-      "- Aguarde o lead responder e sinalizar uma necessidade antes de conduzir para vendas\n" +
-      "- Exemplos de tom correto: 'Oi [nome]! Tudo bem? Sumiu um pouco :)' ou 'Oi [nome], tudo certo? Passando aqui pra saber como você anda!'" +
-      (dias !== null && dias > 7 ? `\n- Contexto interno (NÃO mencionar): o lead está inativo há ${dias} dias` : "") +
-      (churnAlert ? `\n- Contexto interno (NÃO mencionar): ${churnAlert}` : "")
+    // Detect if an active proposal/quote is present in the recent message history.
+    // auto-quote messages are stored with agentName = "auto-quote", direcao = "saida".
+    const hasActiveProposal = ctx.recentMessages.some(
+      (m) => m.agentName === "auto-quote" && m.direcao === "saida",
     );
+
+    if (hasActiveProposal) {
+      // The lead is asking about a real proposal that was just generated.
+      // Use a consultative prompt instead of the cold cold-reactivation one.
+      parts.push(
+        "Você é um consultor de vendas que acompanha a proposta enviada ao lead.\n" +
+        "Missão: ajudar o lead a entender e avaliar a proposta/orçamento que acabou de ser gerado, tirando dúvidas e removendo objeções.\n" +
+        "Regras:\n" +
+        "- Responda em português brasileiro, tom consultivo e empático\n" +
+        "- Máximo 3 parágrafos curtos\n" +
+        "- VOCÊ PODE e DEVE comentar sobre a proposta/orçamento presente no histórico — essa é exatamente a sua missão agora\n" +
+        "- Explique valores, itens, condições e próximos passos de forma clara\n" +
+        "- Se o lead tiver dúvidas sobre os valores, explique cada item\n" +
+        "- Se o lead quiser negociar, sinalize que pode verificar possibilidades\n" +
+        "- Não invente valores ou condições que não estejam na proposta" +
+        (churnAlert ? `\n- Contexto interno (NÃO mencionar diretamente): ${churnAlert}` : "")
+      );
+    } else {
+      parts.push(
+        "Você é um agente de reativação de relacionamento comercial.\n" +
+        "Missão: reabrir contato com um lead inativo de forma calorosa e natural — como se fosse um amigo ou colega de negócios que não se fala há algum tempo.\n" +
+        "Regras ESTRITAS para esta mensagem de abertura:\n" +
+        "- Responda em português brasileiro, tom leve, caloroso e genuíno\n" +
+        "- MÁXIMO 2 frases — seja breve e direto\n" +
+        "- Cumprimente pelo nome de forma descontraída\n" +
+        "- Faça UMA pergunta aberta e simples sobre como o lead está (ex: 'como você está?', 'como andam as coisas?', 'sumiu um pouco, tudo bem?')\n" +
+        "- NÃO mencione produto, solução, serviço, demonstração, reunião, proposta ou qualquer oferta\n" +
+        "- NÃO diga que 'percebeu que faz tempo' ou que está 'entrando em contato pois notou inatividade' — isso soa automático\n" +
+        "- NÃO tente puxar o lead para uma conversa comercial nesta mensagem\n" +
+        "- Aguarde o lead responder e sinalizar uma necessidade antes de conduzir para vendas\n" +
+        "- Exemplos de tom correto: 'Oi [nome]! Tudo bem? Sumiu um pouco :)' ou 'Oi [nome], tudo certo? Passando aqui pra saber como você anda!'" +
+        (dias !== null && dias > 7 ? `\n- Contexto interno (NÃO mencionar): o lead está inativo há ${dias} dias` : "") +
+        (churnAlert ? `\n- Contexto interno (NÃO mencionar): ${churnAlert}` : "")
+      );
+    }
     if (customPrompt?.trim()) parts.push("## INSTRUÇÕES DA EMPRESA\n" + customPrompt.trim());
   }
   parts.push(buildLeadSection(lead));

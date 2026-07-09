@@ -16,6 +16,7 @@ import {
   customerIntelligenceTable,
   dealsTable,
   leadsTable,
+  messagesTable,
   notificationsTable,
   propostasTable,
   usersTable,
@@ -49,9 +50,10 @@ import {
 import { proposalAccepted } from "../lib/proposal-accepted.js";
 import { checkAgentPlan } from "../middlewares/plan-guard.js";
 
-type Lead = typeof leadsTable.$inferSelect;
-type CI   = typeof customerIntelligenceTable.$inferSelect;
-type Deal = typeof dealsTable.$inferSelect;
+type Lead    = typeof leadsTable.$inferSelect;
+type CI      = typeof customerIntelligenceTable.$inferSelect;
+type Deal    = typeof dealsTable.$inferSelect;
+type Message = typeof messagesTable.$inferSelect;
 
 // ── Agent routing ─────────────────────────────────────────────────────────────
 
@@ -64,7 +66,9 @@ function hasOverdueCharge(deals: Deal[]): boolean {
 
 /**
  * Determines which agent should handle an incoming message based on:
- *  1. churnRisk >= 60  → reactivation (highest priority)
+ *  1. churnRisk >= 60  → reactivation (highest priority) — BUT skipped when an active
+ *     deal is in progress (qualificado/proposta/negociacao) or an agent replied
+ *     within the last 4 hours (mid-conversation gap ≠ churn).
  *  2. lead.status === "novo" → sdr
  *  3. lead.status === "cliente" → refinamento: cobrança vencida > dúvida financeira (LLM) > service
  *  4. open deal etapa  → closer when deal is advancing
@@ -79,10 +83,29 @@ export async function determineAgent(
   mensagem: string,
   tenantId: string,
   log: Logger,
+  recentMessages?: Message[],
 ): Promise<AgentName> {
-  // 1. High churn risk → reactivation agent (overrides everything)
+  // 1. High churn risk → reactivation agent
+  //    Guard: do NOT switch to cold-reactivation if there is an ongoing conversation:
+  //    (a) any active deal in an advanced stage, OR
+  //    (b) an agent already replied within the last 4 hours.
   if (ci?.churnRisk !== null && ci?.churnRisk !== undefined && ci.churnRisk >= 60) {
-    return "reactivation";
+    const hasAdvancedDeal = deals.some(
+      (d) => d.etapa === "qualificado" || d.etapa === "proposta" || d.etapa === "negociacao",
+    );
+    const fourHoursAgo = Date.now() - 4 * 60 * 60 * 1000;
+    const hasRecentAgentActivity = (recentMessages ?? []).some(
+      (m) => m.enviadoPor === "agente" && new Date(m.createdAt).getTime() > fourHoursAgo,
+    );
+    if (hasAdvancedDeal || hasRecentAgentActivity) {
+      log.info(
+        { tenantId, leadId: lead.id, churnRisk: ci.churnRisk, hasAdvancedDeal, hasRecentAgentActivity },
+        "determineAgent: churnRisk >= 60 but active conversation/deal detected — skipping reactivation",
+      );
+      // Fall through to normal routing below
+    } else {
+      return "reactivation";
+    }
   }
 
   // 2. Lead status → direct mapping
@@ -413,7 +436,7 @@ export async function processAgentInternal(params: {
       agentName = forcedAgent;
     } else {
       const diasSinceContact = daysSinceLastContact(ctx);
-      agentName = await determineAgent(ctx.lead, ctx.ci, deals, diasSinceContact, mensagem, tenantId, log);
+      agentName = await determineAgent(ctx.lead, ctx.ci, deals, diasSinceContact, mensagem, tenantId, log, ctx.recentMessages);
     }
 
     // 4b. (currentAgent update deferred to step 4c below, after resolvedAgentName is known)
@@ -603,6 +626,13 @@ export async function processAgentInternal(params: {
       });
     }
 
+    // 11. Post-response: extract and persist qualification answers after SDR turns (async, non-blocking)
+    if (resolvedAgentName === "sdr") {
+      extractAndSaveQualification(tenantId, leadId, ctx, mensagem, finalResposta, log).catch((err) => {
+        log.warn({ err, leadId, tenantId }, "dispatch: qualification extraction failed");
+      });
+    }
+
     return { status: "sent", taskId: task.id, agentName: resolvedAgentName, tokensUsed };
   } catch (err) {
     log.error({ err, tenantId, leadId }, "dispatch: unexpected error — skipping");
@@ -756,6 +786,191 @@ ${conversationText}`;
       }
     }
   }
+}
+
+// ── BRL currency normalizer ───────────────────────────────────────────────────
+
+/**
+ * Parses a free-form Portuguese monetary/revenue string into a numeric value.
+ * Handles:
+ *   "100000"        → 100000
+ *   "100.000"       → 100000  (Brazilian thousands separator)
+ *   "100,000"       → 100000  (English thousands separator)
+ *   "100 mil"       → 100000
+ *   "1 milhão"      → 1000000
+ *   "1,5 milhão"    → 1500000
+ *   "R$ 100.000,00" → 100000
+ *   "cem mil reais" → returns null (word numbers not supported, LLM handles those)
+ */
+function parseBRLText(raw: string): number | null {
+  if (!raw || typeof raw !== "string") return null;
+  let s = raw
+    .toLowerCase()
+    .trim()
+    .replace(/r\$\s*/g, "")
+    .replace(/reais?/g, "")
+    .replace(/\s+/g, " ")
+    .trim();
+
+  // Detect magnitude multipliers
+  let multiplier = 1;
+  if (/milh(ã|a)o|milh(õ|o)es|\bmi\b/.test(s)) {
+    multiplier = 1_000_000;
+    s = s.replace(/milh(ã|a)o|milh(õ|o)es|\bmi\b/g, "").trim();
+  } else if (/\bmil\b/.test(s)) {
+    multiplier = 1_000;
+    s = s.replace(/\bmil\b/g, "").trim();
+  }
+
+  // Remove any remaining letters
+  s = s.replace(/[a-z]+/g, "").trim();
+
+  // Resolve ambiguous separators:
+  // If there are multiple dots → all are thousands separators (1.000.000)
+  const dotCount = (s.match(/\./g) ?? []).length;
+  const commaCount = (s.match(/,/g) ?? []).length;
+
+  if (dotCount > 1) {
+    // 1.000.000 → remove all dots
+    s = s.replace(/\./g, "");
+  } else if (dotCount === 1 && commaCount === 1) {
+    // Determine which is decimal: last one is decimal
+    const lastDot   = s.lastIndexOf(".");
+    const lastComma = s.lastIndexOf(",");
+    if (lastComma > lastDot) {
+      // Brazilian: 1.000,50 → dot=thousands, comma=decimal
+      s = s.replace(".", "").replace(",", ".");
+    } else {
+      // English: 1,000.50 → comma=thousands
+      s = s.replace(",", "");
+    }
+  } else if (dotCount === 1) {
+    // Single dot: could be thousands (100.000) or decimal (100.50)
+    const afterDot = s.split(".")[1] ?? "";
+    if (afterDot.length === 3) {
+      // Thousands separator: 100.000
+      s = s.replace(".", "");
+    }
+    // else treat as decimal point
+  } else if (commaCount === 1) {
+    // Single comma: could be thousands (100,000 EN) or decimal (100,50 BR)
+    const afterComma = s.split(",")[1] ?? "";
+    if (afterComma.length === 3) {
+      // Thousands: 100,000
+      s = s.replace(",", "");
+    } else {
+      // Decimal: 100,50
+      s = s.replace(",", ".");
+    }
+  }
+
+  const n = parseFloat(s.replace(/[^0-9.]/g, ""));
+  if (!isFinite(n) || n <= 0) return null;
+  return n * multiplier;
+}
+
+/**
+ * Normalizes a free-form monetary/revenue string to "R$ X.XXX,00" format.
+ * Returns the original string if parsing fails (safe fallback).
+ */
+function normalizeToBRL(raw: string): string {
+  if (!raw) return raw;
+  const n = parseBRLText(raw);
+  if (n === null) return raw;
+  return n.toLocaleString("pt-BR", {
+    style: "currency",
+    currency: "BRL",
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  });
+}
+
+// ── Qualification extractor ───────────────────────────────────────────────────
+
+/**
+ * After an SDR turn, extract qualification answers from the last few messages
+ * and persist them to `leads.discovery_data` (and dedicated columns when
+ * available). This runs non-blocking so it never delays the WhatsApp reply.
+ *
+ * Fields extracted: numero_funcionarios, segmento, crm_atual, faturamento,
+ * objetivo, dor_principal, orcamento, urgencia.
+ */
+async function extractAndSaveQualification(
+  tenantId: string,
+  leadId: string,
+  ctx: AgentContext,
+  incomingMessage: string,
+  agentReply: string,
+  log: Logger,
+): Promise<void> {
+  const { lead } = ctx;
+
+  // Build a compact transcript: last 8 messages + the current exchange
+  const recentSlice = ctx.recentMessages.slice(-8);
+  const transcript = [
+    ...recentSlice.map((m) => `${m.enviadoPor === "lead" ? "Lead" : "Agente"}: ${m.conteudo}`),
+    `Lead: ${incomingMessage}`,
+    `Agente: ${agentReply}`,
+  ].join("\n");
+
+  const extractionPrompt =
+    `Você é um extrator de dados de qualificação de vendas. Analise a conversa abaixo e extraia APENAS as informações que o lead afirmou explicitamente. Não infira, não suponha.\n\n` +
+    `Responda APENAS em JSON válido, sem markdown, sem explicações. Use este formato:\n` +
+    `{"numero_funcionarios":"...","segmento":"...","crm_atual":"...","faturamento":"...","objetivo":"...","dor_principal":"...","orcamento":"...","urgencia":"..."}\n\n` +
+    `Regras:\n` +
+    `- Inclua apenas os campos que o lead afirmou claramente\n` +
+    `- Se um campo não foi mencionado, omita-o completamente (não use null, não use "")\n` +
+    `- Se não houver nenhum dado, retorne {}\n` +
+    `- Valores devem ser curtos e objetivos (máx. 100 caracteres cada)\n` +
+    `- Para campos monetários (faturamento, orcamento): retorne APENAS o número puro, sem símbolo de moeda e sem separadores de milhar (ex: lead disse "100 mil" → retorne "100000"; "1,5 milhão" → "1500000"; "100.000" → "100000")\n\n` +
+    `Conversa:\n${transcript}`;
+
+  let extracted: Record<string, unknown>;
+  try {
+    const aiResult = await gatewayFamilyCallOpenAI(
+      tenantId,
+      "intelligence_analysis",
+      [{ role: "user", content: extractionPrompt }],
+      { model: "gpt-4.1-mini", maxTokens: 300, temperature: 0.0, log },
+    );
+    const raw = (aiResult.content ?? "{}").trim();
+    extracted = JSON.parse(raw.replace(/^```json\s*/, "").replace(/\s*```$/, "")) as Record<string, unknown>;
+  } catch (err) {
+    log.warn({ err, leadId, tenantId }, "dispatch: qualification extraction AI call failed");
+    return;
+  }
+
+  if (Object.keys(extracted).length === 0) return;
+
+  // Normalize monetary fields to "R$ X.XXX,00" before persisting
+  if (extracted.faturamento) {
+    extracted.faturamento = normalizeToBRL(String(extracted.faturamento));
+  }
+  if (extracted.orcamento) {
+    extracted.orcamento = normalizeToBRL(String(extracted.orcamento));
+  }
+
+  // Merge into existing discoveryData (never overwrite already-set values)
+  const existingDd = (lead.discoveryData ?? {}) as Record<string, unknown>;
+  const mergedDd: Record<string, unknown> = { ...existingDd };
+  for (const [k, v] of Object.entries(extracted)) {
+    if (v && !existingDd[k]) mergedDd[k] = v;
+  }
+
+  // Build lead update: discoveryData + dedicated columns (only if still empty)
+  const update: Record<string, unknown> = { discoveryData: mergedDd, updatedAt: new Date() };
+  if (extracted.objetivo && !lead.objetivo)          update.objetivo = String(extracted.objetivo);
+  if (extracted.dor_principal && !lead.dorPrincipal) update.dorPrincipal = String(extracted.dor_principal);
+  if (extracted.orcamento && !lead.orcamento)        update.orcamento = String(extracted.orcamento);
+  if (extracted.urgencia && !lead.urgencia)          update.urgencia = String(extracted.urgencia);
+  if (extracted.numero_funcionarios && !lead.tamanhoEquipe) {
+    update.tamanhoEquipe = String(extracted.numero_funcionarios);
+  }
+
+  await db.update(leadsTable).set(update).where(
+    and(eq(leadsTable.id, leadId), eq(leadsTable.tenantId, tenantId)),
+  );
+  log.info({ leadId, tenantId, extracted: Object.keys(extracted) }, "dispatch: qualification data extracted and saved");
 }
 
 // ── Fire-and-forget wrapper ───────────────────────────────────────────────────
