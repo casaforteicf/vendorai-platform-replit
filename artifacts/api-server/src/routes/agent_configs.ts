@@ -583,27 +583,104 @@ router.get("/agent-configs/:id/meta-status", async (req, res) => {
   }
 });
 
-// ── POST /agent-configs/:id/zapi-setup-webhook — DEPRECATED ──────────────────
-// Z-API has been replaced by Meta Cloud API. Webhook registration is automatic.
-router.post("/agent-configs/:id/zapi-setup-webhook", (req, res) => {
-  req.log.warn({ id: req.params.id }, "zapi-setup-webhook: called but Z-API is deprecated");
-  res.status(410).json({
-    error: "Z-API foi substituído pela Meta Cloud API. Configure o webhook no painel Meta Business.",
-    deprecated: true,
-  });
+// ── POST /agent-configs/:id/zapi-setup-webhook ───────────────────────────────
+// Configures the Z-API webhook URL for received messages for this tenant.
+router.post("/agent-configs/:id/zapi-setup-webhook", async (req, res) => {
+  const [config] = await db
+    .select({
+      id: agentConfigsTable.id,
+      tenantId: agentConfigsTable.tenantId,
+      zapiInstanceId: agentConfigsTable.zapiInstanceId,
+      zapiToken: agentConfigsTable.zapiToken,
+      zapiClientToken: agentConfigsTable.zapiClientToken,
+    })
+    .from(agentConfigsTable)
+    .where(eq(agentConfigsTable.id, String(req.params.id)));
+
+  if (!config) return res.status(404).json({ error: "Agent config not found" });
+
+  if (req.user?.platformRole !== "super_admin" && config.tenantId !== req.user?.tenantId) {
+    return res.status(403).json({ error: "Access denied" });
+  }
+
+  if (!config.zapiInstanceId || !config.zapiToken || !config.zapiClientToken) {
+    return res.status(422).json({ error: "Credenciais Z-API não configuradas (Instance ID, Token e Client-Token são obrigatórios)." });
+  }
+
+  // Build the webhook URL for this tenant
+  const host = req.headers["x-forwarded-host"] ?? req.headers.host ?? "localhost";
+  const proto = req.headers["x-forwarded-proto"] ?? "https";
+  const webhookUrl = `${proto}://${host}/api/tenants/${config.tenantId}/webhooks/zapi`;
+
+  try {
+    // Set received-message webhook on Z-API
+    const zapiRes = await fetch(
+      `https://api.z-api.io/instances/${config.zapiInstanceId}/token/${config.zapiToken}/update-webhook-message-received`,
+      {
+        method: "PUT",
+        headers: { "Content-Type": "application/json", "Client-Token": config.zapiClientToken },
+        body: JSON.stringify({ webhookMessageReceived: webhookUrl }),
+      }
+    );
+    const data = await zapiRes.json().catch(() => ({})) as Record<string, unknown>;
+    if (!zapiRes.ok) {
+      req.log.warn({ data, instanceId: config.zapiInstanceId }, "zapi-setup-webhook: Z-API API error");
+      return res.status(502).json({ error: `Z-API respondeu com erro ${zapiRes.status}`, details: data });
+    }
+    req.log.info({ instanceId: config.zapiInstanceId, webhookUrl }, "zapi-setup-webhook: webhook configured");
+    return res.json({ ok: true, webhookUrl, zapiResponse: data });
+  } catch (err) {
+    req.log.error({ err }, "zapi-setup-webhook: fetch failed");
+    return res.status(502).json({ error: "Falha ao contatar a API do Z-API. Verifique as credenciais e tente novamente." });
+  }
 });
 
-// ── GET /agent-configs/:id/zapi-status — DEPRECATED ──────────────────────────
-router.get("/agent-configs/:id/zapi-status", (req, res) => {
-  req.log.warn({ id: req.params.id }, "zapi-status: called but Z-API is deprecated");
-  res.status(410).json({
-    error: "Z-API foi substituído pela Meta Cloud API. Use /agent-configs/:id/meta-status.",
-    deprecated: true,
-    configured: false,
-    connected: false,
-    session: false,
-    smartphoneConnected: false,
-  });
+// ── GET /agent-configs/:id/zapi-status ───────────────────────────────────────
+// Returns the live connection status from the Z-API instance.
+router.get("/agent-configs/:id/zapi-status", async (req, res) => {
+  const [config] = await db
+    .select({
+      id: agentConfigsTable.id,
+      tenantId: agentConfigsTable.tenantId,
+      zapiInstanceId: agentConfigsTable.zapiInstanceId,
+      zapiToken: agentConfigsTable.zapiToken,
+      zapiClientToken: agentConfigsTable.zapiClientToken,
+    })
+    .from(agentConfigsTable)
+    .where(eq(agentConfigsTable.id, String(req.params.id)));
+
+  if (!config) return res.status(404).json({ error: "Agent config not found" });
+
+  if (req.user?.platformRole !== "super_admin" && config.tenantId !== req.user?.tenantId) {
+    return res.status(403).json({ error: "Access denied" });
+  }
+
+  if (!config.zapiInstanceId || !config.zapiToken || !config.zapiClientToken) {
+    return res.json({ configured: false, connected: false, session: false, smartphoneConnected: false });
+  }
+
+  try {
+    const zapiRes = await fetch(
+      `https://api.z-api.io/instances/${config.zapiInstanceId}/token/${config.zapiToken}/status`,
+      { headers: { "Client-Token": config.zapiClientToken } }
+    );
+    const data = await zapiRes.json().catch(() => ({})) as Record<string, unknown>;
+    if (!zapiRes.ok) {
+      req.log.warn({ data, instanceId: config.zapiInstanceId }, "zapi-status: Z-API API error");
+      return res.json({ configured: true, connected: false, session: false, smartphoneConnected: false, error: `Z-API ${zapiRes.status}` });
+    }
+    // Z-API status payload: { connected, session, smartphoneConnected, ... }
+    return res.json({
+      configured: true,
+      connected: Boolean(data["connected"]),
+      session: Boolean(data["session"]),
+      smartphoneConnected: Boolean(data["smartphoneConnected"]),
+      details: data,
+    });
+  } catch (err) {
+    req.log.warn({ err }, "zapi-status: fetch failed");
+    return res.json({ configured: true, connected: false, session: false, smartphoneConnected: false, error: "fetch failed" });
+  }
 });
 
 function isPgCode(err: unknown, code: string): boolean {

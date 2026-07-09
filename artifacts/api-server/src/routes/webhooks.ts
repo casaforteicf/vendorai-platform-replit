@@ -316,7 +316,6 @@ function normalizeZapiPhone(raw: string): string {
 }
 
 router.post("/tenants/:tenantId/webhooks/zapi", async (req, res) => {
-  req.log.warn({ tenantId: req.params.tenantId }, "webhooks/zapi: DEPRECATED — migrate to Meta Cloud API webhook (/webhooks/meta/whatsapp)");
   const { tenantId } = req.params;
   const secret = req.query["secret"];
 
