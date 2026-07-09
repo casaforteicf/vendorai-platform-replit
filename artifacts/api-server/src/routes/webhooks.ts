@@ -289,11 +289,18 @@ const zapiNativeBody = z.object({
   text: z.object({ message: z.string() }).optional(),
   body: z.string().optional(),  // older Z-API format
   type: z.string().optional(),
-  // Audio (type: "audio" | "ptt")
+  // Audio (type: "audio" | "ptt" | "AudioCallback")
   audio: z.object({
     audioUrl: z.string().optional(),
+    url:      z.string().optional(),
+    mediaUrl: z.string().optional(),
     mimeType: z.string().optional(),
-    seconds: z.number().optional(),
+    seconds:  z.number().optional(),
+  }).optional(),
+  audioUrl:     z.string().optional(),
+  audioMessage: z.object({ url: z.string().optional() }).optional(),
+  data: z.object({
+    audio: z.object({ url: z.string().optional() }).optional(),
   }).optional(),
   // Image (type: "image")
   image: z.object({
@@ -373,17 +380,49 @@ router.post("/tenants/:tenantId/webhooks/zapi", async (req, res) => {
     mensagem = payload.text?.message ?? payload.body ?? "";
 
   } else if (msgType === "audio" || msgType === "ptt" || msgType === "AudioCallback") {
-    const url = payload.audio?.audioUrl;
+    // CRITICAL: always log the full payload for audio messages so we can diagnose
+    // field-name mismatches even when no URL is found.
+    req.log.info(
+      { msgType, phone: payload.phone, audioPayload: JSON.stringify(payload) },
+      "zapi-webhook: audio message received — full payload logged for diagnostics"
+    );
+
+    // Try every known field path where Z-API may deliver the audio URL.
+    const url =
+      payload.audio?.audioUrl ??
+      payload.audio?.url ??
+      payload.audio?.mediaUrl ??
+      payload.audioUrl ??
+      payload.audioMessage?.url ??
+      payload.data?.audio?.url ??
+      (typeof payload.body === "string" && payload.body.startsWith("http") ? payload.body : undefined);
+
     if (!url) {
-      res.status(200).json({ ignored: true, reason: "audio_without_url" });
+      req.log.warn(
+        {
+          msgType,
+          phone: payload.phone,
+          audioPayload: JSON.stringify(payload),
+          checkedFields: "audio.audioUrl|audio.url|audio.mediaUrl|audioUrl|audioMessage.url|data.audio.url|body",
+        },
+        "zapi-webhook: audio_url_not_found — none of the known URL fields matched; check audioPayload above to find the real field name"
+      );
+      res.status(200).json({ ignored: true, reason: "audio_url_not_found_check_payload_structure_in_logs" });
       return;
     }
+
+    req.log.info({ msgType, url: url.slice(0, 80) }, "zapi-webhook: audio URL resolved — starting transcription");
     try {
       mensagem = await transcribeAudio(url, tenantId, req.log);
       tipoConteudo = "audio";
+      req.log.info({ msgType, chars: mensagem.length }, "zapi-webhook: audio transcription succeeded");
     } catch (err) {
-      req.log.error({ err, url: url.slice(0, 60) }, "audio: transcription failed");
-      res.status(200).json({ ignored: true, reason: "audio_transcription_failed" });
+      const errMsg = err instanceof Error ? err.message : String(err);
+      req.log.error(
+        { err, url: url.slice(0, 80), errMsg },
+        "zapi-webhook: audio transcription failed — full error logged"
+      );
+      res.status(200).json({ ignored: true, reason: "audio_transcription_failed", detail: errMsg });
       return;
     }
 
