@@ -451,8 +451,8 @@ export default function Prospector() {
   const [cnaeSelected, setCnaeSelected] = useState("");
   const [cnpjUf, setCnpjUf] = useState("");
   const [cnpjMunicipio, setCnpjMunicipio] = useState("");
-  const [cnpjAberturaDias, setCnpjAberturaDias] = useState<string>("");
-  const [cnpjPorte, setCnpjPorte] = useState("");
+  const [cnpjAberturaDias, setCnpjAberturaDias] = useState<string>("qualquer");
+  const [cnpjPorte, setCnpjPorte] = useState("todos");
   const [cnpjResultados, setCnpjResultados] = useState<CnpjEmpresa[]>([]);
   const [cnpjSearched, setCnpjSearched] = useState(false);
   const [cnpjApiKeyRequired, setCnpjApiKeyRequired] = useState(false);
@@ -1210,7 +1210,7 @@ export default function Prospector() {
                   <Select value={cnpjAberturaDias} onValueChange={setCnpjAberturaDias}>
                     <SelectTrigger><SelectValue placeholder="Qualquer data" /></SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="">Qualquer data</SelectItem>
+                      <SelectItem value="qualquer">Qualquer data</SelectItem>
                       <SelectItem value="30">Últimos 30 dias ⭐</SelectItem>
                       <SelectItem value="90">Últimos 90 dias</SelectItem>
                       <SelectItem value="180">Últimos 6 meses</SelectItem>
@@ -1223,7 +1223,7 @@ export default function Prospector() {
                   <Select value={cnpjPorte} onValueChange={setCnpjPorte}>
                     <SelectTrigger><SelectValue placeholder="Todos" /></SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="">Todos</SelectItem>
+                      <SelectItem value="todos">Todos</SelectItem>
                       <SelectItem value="MEI">MEI</SelectItem>
                       <SelectItem value="ME">ME (Microempresa)</SelectItem>
                       <SelectItem value="EPP">EPP (Pequena)</SelectItem>
@@ -1241,8 +1241,8 @@ export default function Prospector() {
                     cnae: cnaeSelected,
                     uf: cnpjUf || undefined,
                     municipio: cnpjMunicipio || undefined,
-                    aberturaDias: cnpjAberturaDias ? Number(cnpjAberturaDias) : undefined,
-                    porte: cnpjPorte || undefined,
+                    aberturaDias: cnpjAberturaDias && cnpjAberturaDias !== "qualquer" ? Number(cnpjAberturaDias) : undefined,
+                    porte: cnpjPorte && cnpjPorte !== "todos" ? cnpjPorte : undefined,
                   })
                 }
               >
