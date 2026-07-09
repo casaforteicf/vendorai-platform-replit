@@ -73,6 +73,7 @@ import BillingSubscriptionStudio from './billing-subscription-studio/BillingSubs
 import TenantAdminProvisioningStudio from './tenant-admin-provisioning-studio/TenantAdminProvisioningStudio'
 import IntegrationAutomationStudio from './integration-automation-studio/IntegrationAutomationStudio'
 import SystemConsolidationStudio from './system-consolidation-studio/SystemConsolidationStudio'
+import RealRenderGalleryStudio from './real-render-gallery/RealRenderGalleryStudio'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 export type ModuleId =
@@ -110,6 +111,7 @@ export type ModuleId =
   | 'tenant-admin' | 'provisioning' | 'saas-admin'
   | 'integrations' | 'automation' | 'integration-automation'
   | 'consolidation' | 'system-consolidation' | 'real-integration'
+  | 'real-render-gallery' | 'render-gallery' | 'post-render'
 
 export type JourneyId = 'create' | 'design' | 'visualize' | 'deliver' | 'business'
 
@@ -234,6 +236,9 @@ const MODULE_MAP_INTERNAL: Record<ModuleId, { icon:string; label:string }> = {
   'consolidation':          { icon:'🧩', label:'Consolidation'            },
   'system-consolidation':   { icon:'🧩', label:'System Consolidation'     },
   'real-integration':       { icon:'🧩', label:'Real Integration'         },
+  'real-render-gallery':    { icon:'🖼️', label:'Render Gallery'           },
+  'render-gallery':         { icon:'🖼️', label:'Render Gallery'           },
+  'post-render':            { icon:'🖼️', label:'Post-Render'              },
 }
 
 // ─── Legado: Journeys (keyboard shortcuts 1–5) ────────────────────────────────
@@ -458,6 +463,9 @@ function renderModule(id: ModuleId, arqState: ArqProjectState, setActive: (m: Mo
     case 'consolidation':
     case 'system-consolidation':
     case 'real-integration': return <SystemConsolidationStudio arqState={arqState} onNavigate={m => setActive(m as ModuleId)} />
+    case 'real-render-gallery':
+    case 'render-gallery':
+    case 'post-render': return <RealRenderGalleryStudio arqState={arqState} onNavigate={m => setActive(m as ModuleId)} />
     case 'ecosystem':     return <EcosystemModule/>
     case 'knowledge':     return <KnowledgeModule/>
     case 'office':        return <OfficeModule/>
