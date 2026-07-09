@@ -800,7 +800,10 @@ export default function ArqWorkspace() {
 
 // ─── WorkspaceInner ───────────────────────────────────────────────────────────
 function WorkspaceInner() {
-  const [activeModule,     setActiveModuleRaw]  = useState<ModuleId>('home')
+  const [activeModule,     setActiveModuleRaw]  = useState<ModuleId>(() => {
+    if (typeof window !== 'undefined' && window.location.pathname === '/arch/render') return 'render-gallery'
+    return 'home'
+  })
   const [copilotCollapsed, setCopilotCollapsed] = useState(true)   // starts collapsed
   const [paletteOpen,      setPaletteOpen]      = useState(false)
   const [shortcutsVisible, setShortcutsVisible] = useState(false)
