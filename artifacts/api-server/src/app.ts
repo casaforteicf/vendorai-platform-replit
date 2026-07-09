@@ -76,7 +76,7 @@ app.use((req: Request, _res: Response, next: NextFunction) => {
         contentType: req.headers['content-type'] ?? 'AUSENTE',
         contentLength: req.headers['content-length'] ?? 'AUSENTE',
         bodyByteLength: rawBuf ? rawBuf.length : 0,
-        bodyPreview: rawStr.slice(0, 500),
+        bodyPreview: rawStr.slice(0, 2000),
         allHeaders: req.headers,
         rawReadErr: rawErr ? String(rawErr) : undefined,
       },
