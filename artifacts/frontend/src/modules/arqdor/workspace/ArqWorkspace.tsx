@@ -67,6 +67,7 @@ import { PHX, T }                from '../shared/arqdor-theme'
 import type { ProjectContext }   from '../engines/aie/aie-types'
 import ReleaseCandidateCenter   from './release-candidate/ReleaseCandidateCenter'
 import LaunchStudio             from './launch-studio/LaunchStudio'
+import PilotOperationsStudio   from './pilot-operations-studio/PilotOperationsStudio'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 export type ModuleId =
@@ -98,6 +99,7 @@ export type ModuleId =
   | 'mock-api-inventory' | 'mock-inventory' | 'api-inventory'
   | 'release' | 'release-candidate' | 'rc'
   | 'launch' | 'go-to-market' | 'gtm'
+  | 'pilot' | 'pilots' | 'pilot-operations'
 
 export type JourneyId = 'create' | 'design' | 'visualize' | 'deliver' | 'business'
 
@@ -204,6 +206,9 @@ const MODULE_MAP_INTERNAL: Record<ModuleId, { icon:string; label:string }> = {
   'launch':             { icon:'🎯', label:'Launch Studio'     },
   'go-to-market':       { icon:'🎯', label:'Go-to-Market'      },
   'gtm':                { icon:'🎯', label:'GTM'               },
+  'pilot':              { icon:'🧪', label:'Pilot Operations'  },
+  'pilots':             { icon:'🧪', label:'Pilots'            },
+  'pilot-operations':   { icon:'🧪', label:'Pilot Ops'        },
 }
 
 // ─── Legado: Journeys (keyboard shortcuts 1–5) ────────────────────────────────
@@ -410,6 +415,9 @@ function renderModule(id: ModuleId, arqState: ArqProjectState, setActive: (m: Mo
     case 'launch':
     case 'go-to-market':
     case 'gtm':              return <LaunchStudio arqState={arqState} onNavigate={m => setActive(m as ModuleId)} />
+    case 'pilot':
+    case 'pilots':
+    case 'pilot-operations': return <PilotOperationsStudio arqState={arqState} onNavigate={m => setActive(m as ModuleId)} />
     case 'ecosystem':     return <EcosystemModule/>
     case 'knowledge':     return <KnowledgeModule/>
     case 'office':        return <OfficeModule/>
