@@ -11,6 +11,9 @@ import {
 } from "@workspace/db";
 import type { NumericFilter, SegmentoFiltro } from "@workspace/db";
 import type { SQL } from "drizzle-orm";
+import { z } from "zod";
+import { callReplicateFlux11Pro } from "../lib/arch-render-pipeline.js";
+import { ObjectStorageService } from "../lib/objectStorage.js";
 
 const router: IRouter = Router();
 
@@ -63,6 +66,43 @@ function buildAudienceConditions(
 
   return conditions;
 }
+
+// ── AI image generation for campaigns ────────────────────────────────────────
+const generateImageSchema = z.object({
+  descricao: z.string().min(1).max(1000),
+  aspectRatio: z.enum(["1:1", "4:5", "16:9", "9:16"]).optional().default("1:1"),
+});
+
+router.post("/tenants/:tenantId/campaigns/generate-image", async (req, res) => {
+  const { tenantId } = req.params;
+
+  if (req.user?.platformRole !== "super_admin" && req.user?.tenantId !== tenantId) {
+    res.status(403).json({ error: "Access denied" });
+    return;
+  }
+
+  const parsed = generateImageSchema.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(422).json({ error: parsed.error.message });
+    return;
+  }
+
+  const { descricao, aspectRatio } = parsed.data;
+
+  const prompt = `Marketing campaign visual: ${descricao}. Professional, high quality, vibrant colors, suitable for WhatsApp messaging.`;
+
+  const outputUrl = await callReplicateFlux11Pro({ prompt, aspectRatio: aspectRatio as "1:1" | "4:5" | "16:9" | "9:16" });
+
+  const imgRes = await fetch(outputUrl);
+  if (!imgRes.ok) throw new Error(`Failed to fetch generated image: ${imgRes.status}`);
+  const buf = Buffer.from(await imgRes.arrayBuffer());
+
+  const storage = new ObjectStorageService();
+  const objectPath = await storage.savePrivateBuffer(buf, "image/jpeg", `campaign-img-${crypto.randomUUID()}.jpg`);
+  const imageUrl = `/api/storage/objects${objectPath.replace(/^\/objects/, "")}`;
+
+  res.json({ imageUrl, objectPath });
+});
 
 router.post("/campaigns", async (req, res) => {
   const parsed = insertCampaignSchema.safeParse(req.body);

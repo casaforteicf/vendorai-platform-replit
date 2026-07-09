@@ -34,6 +34,7 @@ const whatsappPayloadSchema = z.object({
   agentName: z.string().optional(),
   agentKey: z.string().optional(),
   attachmentNames: z.array(z.string()).optional(),
+  campaignImageObjectPath: z.string().optional(),
   canal: z
     .enum(["whatsapp", "instagram", "email", "chat"])
     .optional()
@@ -125,13 +126,25 @@ export async function executeTaskAction(
     return updated;
   }
 
-  const { leadId, conteudo, agentName, agentKey, attachmentNames, canal } = parsedPayload.data;
+  const { leadId, conteudo, agentName, agentKey, attachmentNames, campaignImageObjectPath, canal } = parsedPayload.data;
 
   try {
     const { message, telefoneDestino } = await sendOutgoingMessage(
       { tenantId: task.tenantId, leadId, conteudo, agentName, canal },
       log
     );
+
+    // ── Send campaign image (if any) ─────────────────────────────────────────
+    if (campaignImageObjectPath && telefoneDestino && canal === "whatsapp") {
+      const ext = campaignImageObjectPath.split(".").pop()?.toLowerCase() ?? "jpg";
+      const mimeType = ext === "png" ? "image/png" : "image/jpeg";
+      await sendAgentAttachments(
+        task.tenantId,
+        telefoneDestino,
+        [{ objectPath: campaignImageObjectPath, name: `imagem-campanha.${ext}`, mimeType }],
+        log
+      ).catch((err) => log.warn({ err }, "agent_task: failed to send campaign image (non-fatal)"));
+    }
 
     // ── Send AI-chosen attachments (specific files the AI decided to send) ────
     if (agentKey && telefoneDestino && canal === "whatsapp" && attachmentNames && attachmentNames.length > 0) {

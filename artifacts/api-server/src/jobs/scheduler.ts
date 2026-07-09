@@ -355,6 +355,11 @@ async function dispatchDueCampaigns(log: Logger): Promise<void> {
         try {
           const etapa = leadEtapaMap[leadId];
           const mensagemParaLead = (etapa && mensagensEtapa?.[etapa]) || campaign.mensagem;
+          const campaignImageUrl = (campaign as Record<string, unknown>).imageUrl as string | null | undefined;
+          const campaignImageObjectPath = campaignImageUrl
+            ? campaignImageUrl.replace(/^\/api\/storage\/objects/, "/objects")
+            : undefined;
+
           const [task] = await db
             .insert(agentTasksTable)
             .values({
@@ -368,6 +373,7 @@ async function dispatchDueCampaigns(log: Logger): Promise<void> {
                 agentName:  "sdr",
                 canal:      campaign.tipo === "whatsapp" ? "whatsapp" : "whatsapp",
                 campaignId: campaign.id,
+                ...(campaignImageObjectPath ? { campaignImageObjectPath } : {}),
               },
               status:     isAutonomous ? "executando" : "pendente_aprovacao",
               ...(isAutonomous && { executedAt: dispatchTime }),

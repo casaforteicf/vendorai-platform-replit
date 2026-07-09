@@ -52,6 +52,7 @@ export const campaignsTable = pgTable("campaigns", {
   tipo: campaignTipoEnum("tipo").notNull(),
   segmentoFiltro: jsonb("segmento_filtro").$type<SegmentoFiltro>(),
   mensagem: text("mensagem").notNull(),
+  imageUrl: text("image_url"),
   mensagensEtapa: jsonb("mensagens_etapa").$type<Record<string, string>>(),
   status: campaignStatusEnum("status").notNull().default("rascunho"),
   agendadaPara: timestamp("agendada_para"),

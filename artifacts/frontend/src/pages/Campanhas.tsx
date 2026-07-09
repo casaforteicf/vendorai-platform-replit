@@ -80,6 +80,9 @@ import {
   ArrowLeft,
   SlidersHorizontal,
   X,
+  Sparkles,
+  RefreshCw,
+  CheckCircle2,
 } from "lucide-react";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
@@ -208,6 +211,37 @@ function CampaignModal({
   const updateMutation = useUpdateCampaign();
   const deleteMutation = useDeleteCampaign();
 
+  const [aiImageEnabled, setAiImageEnabled] = useState(false);
+  const [aiImagePrompt, setAiImagePrompt] = useState("");
+  const [aiImageUrl, setAiImageUrl] = useState<string | null>((editingCampaign as any)?.imageUrl ?? null);
+  const [aiImageObjectPath, setAiImageObjectPath] = useState<string | null>(null);
+  const [aiImageLoading, setAiImageLoading] = useState(false);
+  const [aiImageError, setAiImageError] = useState<string | null>(null);
+
+  async function generateAiImage() {
+    if (!aiImagePrompt.trim()) return;
+    setAiImageLoading(true);
+    setAiImageError(null);
+    try {
+      const res = await fetch(`/api/tenants/${tenantId}/campaigns/generate-image`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ descricao: aiImagePrompt, aspectRatio: "1:1" }),
+      });
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        throw new Error((body as any).error ?? `Erro ${res.status}`);
+      }
+      const { imageUrl, objectPath } = await res.json();
+      setAiImageUrl(imageUrl);
+      setAiImageObjectPath(objectPath);
+    } catch (err) {
+      setAiImageError(err instanceof Error ? err.message : "Erro ao gerar imagem");
+    } finally {
+      setAiImageLoading(false);
+    }
+  }
+
   const { data: previewData, isLoading: previewLoading } =
     usePreviewCampaignAudience(tenantId, previewCampaignId!, {
       query: {
@@ -226,6 +260,11 @@ function CampaignModal({
   function handleClose() {
     setStep("form");
     setPreviewCampaignId(null);
+    setAiImageEnabled(false);
+    setAiImagePrompt("");
+    setAiImageUrl(null);
+    setAiImageObjectPath(null);
+    setAiImageError(null);
     form.reset();
     onClose();
   }
@@ -245,7 +284,8 @@ function CampaignModal({
             ? values.mensagensEtapa
             : undefined,
           agendadaPara: values.agendadaPara || undefined,
-        },
+          ...(aiImageUrl ? { imageUrl: aiImageUrl } : { imageUrl: null }),
+        } as any,
       },
       {
         onSuccess: () => {
@@ -272,7 +312,8 @@ function CampaignModal({
             : undefined,
           agendadaPara: values.agendadaPara || undefined,
           status: "rascunho",
-        },
+          ...(aiImageUrl ? { imageUrl: aiImageUrl } : {}),
+        } as any,
       },
       {
         onSuccess: (campaign) => {
@@ -507,6 +548,120 @@ function CampaignModal({
                   </FormItem>
                 )}
               />
+
+              {/* ── AI image section ───────────────────────────────────────── */}
+              <div className="space-y-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    const next = !aiImageEnabled;
+                    setAiImageEnabled(next);
+                    if (!next) {
+                      setAiImageUrl(null);
+                      setAiImageObjectPath(null);
+                      setAiImageError(null);
+                    }
+                  }}
+                  className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground hover:text-foreground transition-colors"
+                >
+                  <Sparkles className="h-3.5 w-3.5 text-purple-500" />
+                  {aiImageEnabled ? "Remover seção de imagem" : "Adicionar imagem com IA"}
+                  {aiImageUrl && !aiImageEnabled && (
+                    <span className="text-emerald-600 ml-1">(imagem vinculada)</span>
+                  )}
+                </button>
+
+                {aiImageEnabled && (
+                  <div className="rounded-lg border border-purple-200 p-3 space-y-3 bg-purple-50/40">
+                    <div className="space-y-1.5">
+                      <label className="text-xs font-medium text-muted-foreground">
+                        Descreva a imagem para a campanha
+                      </label>
+                      <div className="flex gap-2">
+                        <input
+                          type="text"
+                          value={aiImagePrompt}
+                          onChange={(e) => setAiImagePrompt(e.target.value)}
+                          onKeyDown={(e) => {
+                            if (e.key === "Enter") {
+                              e.preventDefault();
+                              generateAiImage();
+                            }
+                          }}
+                          placeholder="Ex: produto de beleza com fundo claro e flores"
+                          className="flex-1 h-8 text-xs rounded-md border border-input bg-background px-3 py-1 focus:outline-none focus:ring-1 focus:ring-ring"
+                        />
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant="secondary"
+                          disabled={aiImageLoading || !aiImagePrompt.trim()}
+                          onClick={generateAiImage}
+                          className="h-8 text-xs shrink-0 bg-purple-100 hover:bg-purple-200 text-purple-700 border-purple-200"
+                        >
+                          {aiImageLoading && !aiImageUrl ? (
+                            <Loader2 className="h-3 w-3 animate-spin mr-1" />
+                          ) : (
+                            <Sparkles className="h-3 w-3 mr-1" />
+                          )}
+                          {aiImageLoading && !aiImageUrl ? "Gerando…" : "Gerar"}
+                        </Button>
+                      </div>
+                      {aiImageError && (
+                        <p className="text-xs text-destructive">{aiImageError}</p>
+                      )}
+                    </div>
+
+                    {aiImageLoading && !aiImageUrl && (
+                      <div className="flex items-center justify-center gap-2 py-6 text-muted-foreground">
+                        <Loader2 className="h-5 w-5 animate-spin text-purple-500" />
+                        <span className="text-xs">Gerando imagem com IA… (pode levar 20–40s)</span>
+                      </div>
+                    )}
+
+                    {aiImageUrl && (
+                      <div className="space-y-2">
+                        <img
+                          src={aiImageUrl}
+                          alt="Imagem gerada pela IA"
+                          className="w-full rounded-md object-cover max-h-52 border"
+                        />
+                        <div className="flex items-center gap-2">
+                          <Button
+                            type="button"
+                            size="sm"
+                            variant="outline"
+                            className="h-7 text-xs"
+                            disabled={aiImageLoading || !aiImagePrompt.trim()}
+                            onClick={generateAiImage}
+                          >
+                            {aiImageLoading ? (
+                              <Loader2 className="h-3 w-3 animate-spin mr-1" />
+                            ) : (
+                              <RefreshCw className="h-3 w-3 mr-1" />
+                            )}
+                            {aiImageLoading ? "Gerando…" : "Gerar nova"}
+                          </Button>
+                          <button
+                            type="button"
+                            className="h-7 text-xs px-2 rounded text-destructive hover:bg-destructive/10 transition-colors"
+                            onClick={() => {
+                              setAiImageUrl(null);
+                              setAiImageObjectPath(null);
+                            }}
+                          >
+                            Remover
+                          </button>
+                          <span className="ml-auto flex items-center gap-1 text-xs text-emerald-600 font-medium">
+                            <CheckCircle2 className="h-3 w-3" />
+                            Imagem vinculada
+                          </span>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
 
               {/* Segmento */}
               {(() => {

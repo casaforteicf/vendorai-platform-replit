@@ -892,6 +892,14 @@ Se fizer sentido, te mostro em 10 minutos como funciona.',
   } catch (err) {
     logger.warn({ err }, "startup migrations: sdr_templates global seeds skipped");
   }
+
+  // Campaign image support
+  try {
+    await db.execute(sql`ALTER TABLE campaigns ADD COLUMN IF NOT EXISTS image_url TEXT`);
+    logger.info("startup migrations: campaigns.image_url OK");
+  } catch (err) {
+    logger.warn({ err }, "startup migrations: campaigns.image_url skipped");
+  }
 }
 
 // ─── Boot sequence ────────────────────────────────────────────────────────────
