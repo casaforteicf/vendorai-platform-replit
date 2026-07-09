@@ -68,6 +68,7 @@ import type { ProjectContext }   from '../engines/aie/aie-types'
 import ReleaseCandidateCenter   from './release-candidate/ReleaseCandidateCenter'
 import LaunchStudio             from './launch-studio/LaunchStudio'
 import PilotOperationsStudio   from './pilot-operations-studio/PilotOperationsStudio'
+import RevenueOperationsStudio from './revenue-operations-studio/RevenueOperationsStudio'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 export type ModuleId =
@@ -100,6 +101,7 @@ export type ModuleId =
   | 'release' | 'release-candidate' | 'rc'
   | 'launch' | 'go-to-market' | 'gtm'
   | 'pilot' | 'pilots' | 'pilot-operations'
+  | 'revenue' | 'revops' | 'revenue-operations'
 
 export type JourneyId = 'create' | 'design' | 'visualize' | 'deliver' | 'business'
 
@@ -209,6 +211,9 @@ const MODULE_MAP_INTERNAL: Record<ModuleId, { icon:string; label:string }> = {
   'pilot':              { icon:'🧪', label:'Pilot Operations'  },
   'pilots':             { icon:'🧪', label:'Pilots'            },
   'pilot-operations':   { icon:'🧪', label:'Pilot Ops'        },
+  'revenue':            { icon:'💹', label:'Revenue Ops'       },
+  'revops':             { icon:'💹', label:'RevOps'            },
+  'revenue-operations': { icon:'💹', label:'Revenue Operations'},
 }
 
 // ─── Legado: Journeys (keyboard shortcuts 1–5) ────────────────────────────────
@@ -418,6 +423,9 @@ function renderModule(id: ModuleId, arqState: ArqProjectState, setActive: (m: Mo
     case 'pilot':
     case 'pilots':
     case 'pilot-operations': return <PilotOperationsStudio arqState={arqState} onNavigate={m => setActive(m as ModuleId)} />
+    case 'revenue':
+    case 'revops':
+    case 'revenue-operations': return <RevenueOperationsStudio arqState={arqState} onNavigate={m => setActive(m as ModuleId)} />
     case 'ecosystem':     return <EcosystemModule/>
     case 'knowledge':     return <KnowledgeModule/>
     case 'office':        return <OfficeModule/>
