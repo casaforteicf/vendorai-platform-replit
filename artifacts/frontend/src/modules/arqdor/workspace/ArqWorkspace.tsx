@@ -72,6 +72,7 @@ import RevenueOperationsStudio from './revenue-operations-studio/RevenueOperatio
 import BillingSubscriptionStudio from './billing-subscription-studio/BillingSubscriptionStudio'
 import TenantAdminProvisioningStudio from './tenant-admin-provisioning-studio/TenantAdminProvisioningStudio'
 import IntegrationAutomationStudio from './integration-automation-studio/IntegrationAutomationStudio'
+import SystemConsolidationStudio from './system-consolidation-studio/SystemConsolidationStudio'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 export type ModuleId =
@@ -108,6 +109,7 @@ export type ModuleId =
   | 'billing' | 'subscriptions' | 'billing-subscription'
   | 'tenant-admin' | 'provisioning' | 'saas-admin'
   | 'integrations' | 'automation' | 'integration-automation'
+  | 'consolidation' | 'system-consolidation' | 'real-integration'
 
 export type JourneyId = 'create' | 'design' | 'visualize' | 'deliver' | 'business'
 
@@ -229,6 +231,9 @@ const MODULE_MAP_INTERNAL: Record<ModuleId, { icon:string; label:string }> = {
   'integrations':        { icon:'🔗', label:'Integrations'          },
   'automation':          { icon:'🔗', label:'Automation'            },
   'integration-automation': { icon:'🔗', label:'Integration & Automation' },
+  'consolidation':          { icon:'🧩', label:'Consolidation'            },
+  'system-consolidation':   { icon:'🧩', label:'System Consolidation'     },
+  'real-integration':       { icon:'🧩', label:'Real Integration'         },
 }
 
 // ─── Legado: Journeys (keyboard shortcuts 1–5) ────────────────────────────────
@@ -450,6 +455,9 @@ function renderModule(id: ModuleId, arqState: ArqProjectState, setActive: (m: Mo
     case 'integrations':
     case 'automation':
     case 'integration-automation': return <IntegrationAutomationStudio arqState={arqState} onNavigate={m => setActive(m as ModuleId)} />
+    case 'consolidation':
+    case 'system-consolidation':
+    case 'real-integration': return <SystemConsolidationStudio arqState={arqState} onNavigate={m => setActive(m as ModuleId)} />
     case 'ecosystem':     return <EcosystemModule/>
     case 'knowledge':     return <KnowledgeModule/>
     case 'office':        return <OfficeModule/>
