@@ -21,9 +21,11 @@ import {
   usersTable,
   leadSpouseConsentTable,
   tenantCalendarSettingsTable,
+  scoutOportunidadesTable,
 } from "@workspace/db";
 import { callOpenAI as gatewayFamilyCallOpenAI } from "../lib/ai-gateway.js";
 import { detectEscalationTrigger, generateHandoffSummary } from "./escalation.js";
+import { detectBotPattern, BOT_SIGNAL_THRESHOLD } from "./bot-detection.js";
 import { classifyFinancialIntent } from "./financial-intent.js";
 import { handleDeliveryFeedbackReply } from "./post-venda.js";
 import { handleSequenceOfferReply } from "./sequence-offer.js";
@@ -283,6 +285,118 @@ export async function processAgentInternal(params: {
         }
 
         return { status: "skipped", reason: `escalated:${escalation.reason}` };
+      }
+    }
+
+    // 2d. Prospector bot detection — check if this is an active scout/prospector
+    // conversation (oportunidade.status = "enviado") and classify the reply for bot patterns.
+    // Prevents AI↔bot loops and wasted credits in cold-outreach flows.
+    if (!params.forcedAgent) {
+      const [activeOp] = await db
+        .select()
+        .from(scoutOportunidadesTable)
+        .where(
+          and(
+            eq(scoutOportunidadesTable.tenantId, tenantId),
+            eq(scoutOportunidadesTable.clienteId, leadId),
+            eq(scoutOportunidadesTable.status, "enviado"),
+          ),
+        )
+        .orderBy(desc(scoutOportunidadesTable.createdAt))
+        .limit(1);
+
+      if (activeOp) {
+        const botResult = await detectBotPattern(
+          mensagem,
+          ctx.recentMessages,
+          tenantId,
+          log,
+        );
+
+        if (botResult.isHuman) {
+          // Real human confirmed — mark oportunidade as responded and let agent reply normally
+          await db
+            .update(scoutOportunidadesTable)
+            .set({ status: "respondeu", respondeu: true })
+            .where(eq(scoutOportunidadesTable.id, activeOp.id))
+            .catch((err: unknown) => log.warn({ err }, "dispatch: failed to mark oportunidade as respondeu"));
+
+          log.info({ tenantId, leadId, opId: activeOp.id }, "dispatch: prospector human confirmed — proceeding with agent");
+
+        } else if (botResult.isBot) {
+          const newCount = (activeOp.sinaisBot ?? 0) + 1;
+          log.info({ tenantId, leadId, opId: activeOp.id, sinaisBot: newCount }, "dispatch: prospector bot signal detected");
+
+          if (newCount >= BOT_SIGNAL_THRESHOLD) {
+            // Threshold reached — pause prospector, notify operator
+            await db
+              .update(scoutOportunidadesTable)
+              .set({ status: "pendente_revisao_bot", sinaisBot: newCount })
+              .where(eq(scoutOportunidadesTable.id, activeOp.id));
+
+            // Build transcript for operator notification
+            const transcript = ctx.recentMessages
+              .slice(-10)
+              .map((m) => `${m.enviadoPor === "lead" ? "🤖 Lead" : "📤 Agente"}: ${m.conteudo}`)
+              .join("\n");
+
+            const notifMsg =
+              `⚠️ *Possível bot detectado — prospecção pausada*\n` +
+              `Lead: *${ctx.lead.nome ?? leadId}*\n` +
+              `Sinais de bot: ${newCount}/${BOT_SIGNAL_THRESHOLD}\n\n` +
+              `*Transcrição recente:*\n${transcript.slice(0, 600)}\n\n` +
+              `Acesse o CRM para decidir o próximo passo: ligar, tentar outro canal ou descartar.`;
+
+            // In-app notification
+            await db.insert(notificationsTable).values({
+              tenantId,
+              title: "⚠️ Prospecção pausada — possível bot detectado",
+              message: `Lead *${ctx.lead.nome ?? leadId}* respondeu com padrões de bot por ${newCount} vezes seguidas. Status alterado para revisão manual. ${transcript.slice(0, 200)}`,
+              type: "warning",
+              category: "prospector_bot",
+            } as any).catch((err: unknown) => log.warn({ err }, "dispatch: failed to insert bot notification"));
+
+            // Log activity
+            await db.insert(activitiesTable).values({
+              tenantId,
+              leadId,
+              tipo: "prospector_bot_detectado",
+              titulo: "Prospecção pausada — bot de atendimento detectado",
+              descricao: transcript.slice(0, 500),
+              status: "concluida",
+              concluidaEm: new Date(),
+              resultadoExecucao: `sinais_bot:${newCount}`,
+            } as any).catch((err: unknown) => log.warn({ err }, "dispatch: failed to insert bot activity"));
+
+            // Best-effort: notify responsible via WhatsApp
+            if (ctx.lead.assignedTo) {
+              const [responsible] = await db
+                .select({ telefone: usersTable.telefone })
+                .from(usersTable)
+                .where(eq(usersTable.id, ctx.lead.assignedTo))
+                .limit(1);
+
+              if (responsible?.telefone) {
+                sendDirectWhatsAppMessage(tenantId, responsible.telefone, notifMsg, log).catch((err: unknown) => {
+                  log.warn({ err, tenantId, leadId }, "dispatch: failed to send bot-detection WhatsApp to responsible");
+                });
+              }
+            }
+
+            return { status: "skipped", reason: "prospector_bot_threshold_reached" };
+
+          } else {
+            // Below threshold — increment counter and skip AI response to avoid loop
+            await db
+              .update(scoutOportunidadesTable)
+              .set({ sinaisBot: newCount })
+              .where(eq(scoutOportunidadesTable.id, activeOp.id));
+
+            log.info({ tenantId, leadId, opId: activeOp.id, sinaisBot: newCount, threshold: BOT_SIGNAL_THRESHOLD }, "dispatch: prospector bot signal below threshold — skipping AI response");
+            return { status: "skipped", reason: `prospector_bot_signal_${newCount}` };
+          }
+        }
+        // isBot=false AND isHuman=false (ambiguous) → fall through and let agent reply normally
       }
     }
 

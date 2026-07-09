@@ -5,6 +5,7 @@ import {
   timestamp,
   numeric,
   boolean,
+  integer,
 } from "drizzle-orm/pg-core";
 import { createInsertSchema, createSelectSchema } from "drizzle-zod";
 import { z } from "zod/v4";
@@ -13,7 +14,7 @@ import { leadsTable } from "./leads";
 import { scoutRegrasTable } from "./scout_regras";
 import { dealsTable } from "./deals";
 
-// status: pendente | enviado | respondeu | converteu | ignorado | aguardando_etapa | adiado
+// status: pendente | enviado | respondeu | converteu | ignorado | aguardando_etapa | adiado | pendente_revisao_bot
 export const SCOUT_OPORTUNIDADE_STATUS = [
   "pendente",
   "enviado",
@@ -22,6 +23,7 @@ export const SCOUT_OPORTUNIDADE_STATUS = [
   "ignorado",
   "aguardando_etapa",
   "adiado",
+  "pendente_revisao_bot",
 ] as const;
 
 export const scoutOportunidadesTable = pgTable("scout_oportunidades", {
@@ -56,6 +58,9 @@ export const scoutOportunidadesTable = pgTable("scout_oportunidades", {
   // da janela de correlação (ver reconcileScoutOnDealWon) — fecha o placar do
   // Scout sem depender de conversão manual via /converter.
   dealId:          text("deal_id").references(() => dealsTable.id, { onDelete: "set null" }),
+  // Contador de sinais de bot detectados em respostas do lead nesta oportunidade.
+  // Quando atingir o limite (default: 3), muda o status para "pendente_revisao_bot".
+  sinaisBot:       integer("sinais_bot").notNull().default(0),
   createdAt:       timestamp("created_at").notNull().defaultNow(),
 });
 

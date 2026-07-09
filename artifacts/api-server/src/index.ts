@@ -784,6 +784,17 @@ async function runStartupMigrations() {
   } catch (err) {
     logger.warn({ err }, "startup migrations: arch_deliveries skipped (may already exist)");
   }
+
+  // Sprint — Prospector bot detection: add sinais_bot column + new status value
+  try {
+    await db.execute(sql`
+      ALTER TABLE scout_oportunidades
+        ADD COLUMN IF NOT EXISTS sinais_bot INTEGER NOT NULL DEFAULT 0
+    `);
+    logger.info("startup migrations: scout_oportunidades.sinais_bot OK");
+  } catch (err) {
+    logger.warn({ err }, "startup migrations: scout_oportunidades.sinais_bot skipped (may already exist)");
+  }
 }
 
 // ─── Boot sequence ────────────────────────────────────────────────────────────
