@@ -65,6 +65,7 @@ import { ArqCommandPalette }     from './ArqCommandPalette'
 import { runAIE }                from '../engines/aie/aie-engine'
 import { PHX, T }                from '../shared/arqdor-theme'
 import type { ProjectContext }   from '../engines/aie/aie-types'
+import ReleaseCandidateCenter   from './release-candidate/ReleaseCandidateCenter'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 export type ModuleId =
@@ -94,6 +95,7 @@ export type ModuleId =
   | 'unified-copilot' | 'copilot' | 'ai-copilot'
   | 'migration' | 'migration-audit' | 'mock-migration'
   | 'mock-api-inventory' | 'mock-inventory' | 'api-inventory'
+  | 'release' | 'release-candidate' | 'rc'
 
 export type JourneyId = 'create' | 'design' | 'visualize' | 'deliver' | 'business'
 
@@ -194,6 +196,9 @@ const MODULE_MAP_INTERNAL: Record<ModuleId, { icon:string; label:string }> = {
   'mock-api-inventory': { icon:'📦', label:'Mock/API Inventory'},
   'mock-inventory':     { icon:'📦', label:'Mock Inventory'   },
   'api-inventory':      { icon:'📦', label:'API Inventory'    },
+  'release':            { icon:'🚀', label:'Release Candidate' },
+  'release-candidate':  { icon:'🚀', label:'Release Candidate' },
+  'rc':                 { icon:'🚀', label:'RC'                },
 }
 
 // ─── Legado: Journeys (keyboard shortcuts 1–5) ────────────────────────────────
@@ -394,6 +399,9 @@ function renderModule(id: ModuleId, arqState: ArqProjectState, setActive: (m: Mo
     case 'mock-api-inventory':
     case 'mock-inventory':
     case 'api-inventory':    return <MockApiInventoryCenter onNavigate={m => setActive(m as ModuleId)} />
+    case 'release':
+    case 'release-candidate':
+    case 'rc':               return <ReleaseCandidateCenter arqState={arqState} onNavigate={m => setActive(m as ModuleId)} />
     case 'ecosystem':     return <EcosystemModule/>
     case 'knowledge':     return <KnowledgeModule/>
     case 'office':        return <OfficeModule/>
